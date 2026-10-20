@@ -149,7 +149,7 @@ struct SLBufferQueueItf_ {
 extern const void *SL_IID_ENGINE, *SL_IID_PLAY, *SL_IID_BUFFERQUEUE;
 unsigned slCreateEngine(SLObjectItf *, unsigned, const void *, unsigned, const void *, const void *);
 
-#define TAG "megler-demo"
+#define TAG "meglet-demo"
 #define LOG(...) __android_log_print(4, TAG, __VA_ARGS__)
 
 enum { CMD_INPUT_CREATED = 1, CMD_WINDOW_CREATED, CMD_WINDOW_DESTROYED, CMD_FOCUS, CMD_BLUR, CMD_OTHER, CMD_DESTROY, CMD_INPUT_DESTROYED };

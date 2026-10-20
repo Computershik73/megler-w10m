@@ -3,28 +3,28 @@ package android.bluetooth.le;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AdvertiseData implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public boolean getIncludeDeviceName() { return (meglerProps.get("IncludeDeviceName") instanceof Boolean ? (Boolean) meglerProps.get("IncludeDeviceName") : false); }
-    public boolean getIncludeTxPowerLevel() { return (meglerProps.get("IncludeTxPowerLevel") instanceof Boolean ? (Boolean) meglerProps.get("IncludeTxPowerLevel") : false); }
-    public android.util.SparseArray getManufacturerSpecificData() { return (android.util.SparseArray) meglerProps.get("ManufacturerSpecificData"); }
-    public java.util.Map getServiceData() { return (meglerProps.get("ServiceData") != null ? (java.util.Map) meglerProps.get("ServiceData") : new java.util.HashMap()); }
-    public java.util.List getServiceSolicitationUuids() { return (meglerProps.get("ServiceSolicitationUuids") != null ? (java.util.List) meglerProps.get("ServiceSolicitationUuids") : new java.util.ArrayList()); }
-    public java.util.List getServiceUuids() { return (meglerProps.get("ServiceUuids") != null ? (java.util.List) meglerProps.get("ServiceUuids") : new java.util.ArrayList()); }
-    public java.util.List getTransportDiscoveryData() { return (meglerProps.get("TransportDiscoveryData") != null ? (java.util.List) meglerProps.get("TransportDiscoveryData") : new java.util.ArrayList()); }
+    public boolean getIncludeDeviceName() { return (megletProps.get("IncludeDeviceName") instanceof Boolean ? (Boolean) megletProps.get("IncludeDeviceName") : false); }
+    public boolean getIncludeTxPowerLevel() { return (megletProps.get("IncludeTxPowerLevel") instanceof Boolean ? (Boolean) megletProps.get("IncludeTxPowerLevel") : false); }
+    public android.util.SparseArray getManufacturerSpecificData() { return (android.util.SparseArray) megletProps.get("ManufacturerSpecificData"); }
+    public java.util.Map getServiceData() { return (megletProps.get("ServiceData") != null ? (java.util.Map) megletProps.get("ServiceData") : new java.util.HashMap()); }
+    public java.util.List getServiceSolicitationUuids() { return (megletProps.get("ServiceSolicitationUuids") != null ? (java.util.List) megletProps.get("ServiceSolicitationUuids") : new java.util.ArrayList()); }
+    public java.util.List getServiceUuids() { return (megletProps.get("ServiceUuids") != null ? (java.util.List) megletProps.get("ServiceUuids") : new java.util.ArrayList()); }
+    public java.util.List getTransportDiscoveryData() { return (megletProps.get("TransportDiscoveryData") != null ? (java.util.List) megletProps.get("TransportDiscoveryData") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected AdvertiseData() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public android.bluetooth.le.AdvertiseData.Builder addManufacturerData(int p0, byte[] p1) { return this; }
         public android.bluetooth.le.AdvertiseData.Builder addServiceData(android.os.ParcelUuid p0, byte[] p1) { return this; }
         public android.bluetooth.le.AdvertiseData.Builder addServiceSolicitationUuid(android.os.ParcelUuid p0) { return this; }
         public android.bluetooth.le.AdvertiseData.Builder addServiceUuid(android.os.ParcelUuid p0) { return this; }
         public android.bluetooth.le.AdvertiseData.Builder addTransportDiscoveryData(android.bluetooth.le.TransportDiscoveryData p0) { return this; }
-        public android.bluetooth.le.AdvertiseData build() { android.bluetooth.le.AdvertiseData x = new android.bluetooth.le.AdvertiseData(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.bluetooth.le.AdvertiseData.Builder setIncludeDeviceName(boolean p0) { meglerProps.put("IncludeDeviceName", Boolean.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertiseData.Builder setIncludeTxPowerLevel(boolean p0) { meglerProps.put("IncludeTxPowerLevel", Boolean.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertiseData build() { android.bluetooth.le.AdvertiseData x = new android.bluetooth.le.AdvertiseData(); x.megletProps.putAll(megletProps); return x; }
+        public android.bluetooth.le.AdvertiseData.Builder setIncludeDeviceName(boolean p0) { megletProps.put("IncludeDeviceName", Boolean.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertiseData.Builder setIncludeTxPowerLevel(boolean p0) { megletProps.put("IncludeTxPowerLevel", Boolean.valueOf(p0)); return this; }
     }
 }

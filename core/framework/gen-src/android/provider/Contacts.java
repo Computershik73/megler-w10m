@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Contacts {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String AUTHORITY = "contacts";
     public static android.net.Uri CONTENT_URI;
     public static final int KIND_EMAIL = 1;
@@ -13,7 +13,7 @@ public class Contacts {
     public static final int KIND_POSTAL = 2;
     protected Contacts() {}
     public static final class ContactMethods implements android.provider.BaseColumns, android.provider.Contacts.ContactMethodsColumns, android.provider.Contacts.PeopleColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_EMAIL_ITEM_TYPE = "vnd.android.cursor.item/email";
         public static final java.lang.String CONTENT_EMAIL_TYPE = "vnd.android.cursor.dir/email";
         public static android.net.Uri CONTENT_EMAIL_URI;
@@ -57,7 +57,7 @@ public class Contacts {
         int TYPE_WORK = 2;
     }
     public static final class Extensions implements android.provider.BaseColumns, android.provider.Contacts.ExtensionsColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/contact_extensions";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/contact_extensions";
         public static android.net.Uri CONTENT_URI;
@@ -70,7 +70,7 @@ public class Contacts {
         java.lang.String VALUE = "value";
     }
     public static final class GroupMembership implements android.provider.BaseColumns, android.provider.Contacts.GroupsColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_DIRECTORY = "groupmembership";
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/contactsgroupmembership";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/contactsgroupmembership";
@@ -85,7 +85,7 @@ public class Contacts {
         protected GroupMembership() {}
     }
     public static final class Groups implements android.provider.BaseColumns, android.provider.Contacts.GroupsColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/contactsgroup";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/contactsgroup";
         public static android.net.Uri CONTENT_URI;
@@ -102,7 +102,7 @@ public class Contacts {
         java.lang.String SYSTEM_ID = "system_id";
     }
     public static final class Intents {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String ATTACH_IMAGE = "com.android.contacts.action.ATTACH_IMAGE";
         public static final java.lang.String EXTRA_CREATE_DESCRIPTION = "com.android.contacts.action.CREATE_DESCRIPTION";
         public static final java.lang.String EXTRA_FORCE_CREATE = "com.android.contacts.action.FORCE_CREATE";
@@ -113,7 +113,7 @@ public class Contacts {
         public static final java.lang.String SHOW_OR_CREATE_CONTACT = "com.android.contacts.action.SHOW_OR_CREATE_CONTACT";
         public Intents() {}
         public static final class Insert {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String ACTION = "android.intent.action.INSERT";
             public static final java.lang.String COMPANY = "company";
             public static final java.lang.String EMAIL = "email";
@@ -144,7 +144,7 @@ public class Contacts {
             public Insert() {}
         }
         public static final class UI {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String FILTER_CONTACTS_ACTION = "com.android.contacts.action.FILTER_CONTACTS";
             public static final java.lang.String FILTER_TEXT_EXTRA_KEY = "com.android.contacts.extra.FILTER_TEXT";
             public static final java.lang.String GROUP_NAME_EXTRA_KEY = "com.android.contacts.extra.GROUP";
@@ -171,7 +171,7 @@ public class Contacts {
         int TYPE_WORK = 1;
     }
     public static final class Organizations implements android.provider.BaseColumns, android.provider.Contacts.OrganizationColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_DIRECTORY = "organizations";
         public static android.net.Uri CONTENT_URI;
         public static final java.lang.String DEFAULT_SORT_ORDER = "company, title, isprimary ASC";
@@ -179,7 +179,7 @@ public class Contacts {
         protected Organizations() {}
     }
     public static final class People implements android.provider.BaseColumns, android.provider.Contacts.PeopleColumns, android.provider.Contacts.PhonesColumns, android.provider.Contacts.PresenceColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_FILTER_URI;
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/person";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/person";
@@ -202,20 +202,20 @@ public class Contacts {
         public static long tryGetMyContactsGroupId(android.content.ContentResolver p0) { return 0L; }
         protected People() {}
         public static final class ContactMethods implements android.provider.BaseColumns, android.provider.Contacts.ContactMethodsColumns, android.provider.Contacts.PeopleColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "contact_methods";
             public static final java.lang.String DEFAULT_SORT_ORDER = "data ASC";
             protected ContactMethods() {}
         }
         public static class Extensions implements android.provider.BaseColumns, android.provider.Contacts.ExtensionsColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "extensions";
             public static final java.lang.String DEFAULT_SORT_ORDER = "name ASC";
             public static final java.lang.String PERSON_ID = "person";
             protected Extensions() {}
         }
         public static final class Phones implements android.provider.BaseColumns, android.provider.Contacts.PhonesColumns, android.provider.Contacts.PeopleColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "phones";
             public static final java.lang.String DEFAULT_SORT_ORDER = "number ASC";
             protected Phones() {}
@@ -235,7 +235,7 @@ public class Contacts {
         java.lang.String TIMES_CONTACTED = "times_contacted";
     }
     public static final class Phones implements android.provider.BaseColumns, android.provider.Contacts.PhonesColumns, android.provider.Contacts.PeopleColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_FILTER_URL;
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/phone";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/phone";
@@ -262,7 +262,7 @@ public class Contacts {
         int TYPE_WORK = 3;
     }
     public static final class Photos implements android.provider.BaseColumns, android.provider.Contacts.PhotosColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_DIRECTORY = "photo";
         public static android.net.Uri CONTENT_URI;
         public static final java.lang.String DEFAULT_SORT_ORDER = "person ASC";
@@ -277,7 +277,7 @@ public class Contacts {
         java.lang.String SYNC_ERROR = "sync_error";
     }
     public static final class Presence implements android.provider.BaseColumns, android.provider.Contacts.PresenceColumns, android.provider.Contacts.PeopleColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI;
         public static final java.lang.String PERSON_ID = "person";
         public Presence() {}
@@ -299,7 +299,7 @@ public class Contacts {
         java.lang.String PRIORITY = "priority";
     }
     public static final class Settings implements android.provider.BaseColumns, android.provider.Contacts.SettingsColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_DIRECTORY = "settings";
         public static android.net.Uri CONTENT_URI;
         public static final java.lang.String DEFAULT_SORT_ORDER = "key ASC";

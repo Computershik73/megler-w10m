@@ -3,29 +3,29 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Face {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ID_UNSUPPORTED = -1;
     public static final int SCORE_MAX = 100;
     public static final int SCORE_MIN = 1;
     public Face(android.graphics.Rect p0, int p1) {}
     public Face(android.graphics.Rect p0, int p1, int p2, android.graphics.Point p3, android.graphics.Point p4, android.graphics.Point p5) {}
-    public android.graphics.Rect getBounds() { return (android.graphics.Rect) meglerProps.get("Bounds"); }
-    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
-    public android.graphics.Point getLeftEyePosition() { return (android.graphics.Point) meglerProps.get("LeftEyePosition"); }
-    public android.graphics.Point getMouthPosition() { return (android.graphics.Point) meglerProps.get("MouthPosition"); }
-    public android.graphics.Point getRightEyePosition() { return (android.graphics.Point) meglerProps.get("RightEyePosition"); }
-    public int getScore() { return (meglerProps.get("Score") instanceof Integer ? (Integer) meglerProps.get("Score") : 0); }
+    public android.graphics.Rect getBounds() { return (android.graphics.Rect) megletProps.get("Bounds"); }
+    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
+    public android.graphics.Point getLeftEyePosition() { return (android.graphics.Point) megletProps.get("LeftEyePosition"); }
+    public android.graphics.Point getMouthPosition() { return (android.graphics.Point) megletProps.get("MouthPosition"); }
+    public android.graphics.Point getRightEyePosition() { return (android.graphics.Point) megletProps.get("RightEyePosition"); }
+    public int getScore() { return (megletProps.get("Score") instanceof Integer ? (Integer) megletProps.get("Score") : 0); }
     Face() { this((android.graphics.Rect) null, (int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.hardware.camera2.params.Face p0) {}
-        public android.hardware.camera2.params.Face build() { android.hardware.camera2.params.Face x = new android.hardware.camera2.params.Face(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.hardware.camera2.params.Face.Builder setBounds(android.graphics.Rect p0) { meglerProps.put("Bounds", p0); return this; }
-        public android.hardware.camera2.params.Face.Builder setId(int p0) { meglerProps.put("Id", Integer.valueOf(p0)); return this; }
-        public android.hardware.camera2.params.Face.Builder setLeftEyePosition(android.graphics.Point p0) { meglerProps.put("LeftEyePosition", p0); return this; }
-        public android.hardware.camera2.params.Face.Builder setMouthPosition(android.graphics.Point p0) { meglerProps.put("MouthPosition", p0); return this; }
-        public android.hardware.camera2.params.Face.Builder setRightEyePosition(android.graphics.Point p0) { meglerProps.put("RightEyePosition", p0); return this; }
-        public android.hardware.camera2.params.Face.Builder setScore(int p0) { meglerProps.put("Score", Integer.valueOf(p0)); return this; }
+        public android.hardware.camera2.params.Face build() { android.hardware.camera2.params.Face x = new android.hardware.camera2.params.Face(); x.megletProps.putAll(megletProps); return x; }
+        public android.hardware.camera2.params.Face.Builder setBounds(android.graphics.Rect p0) { megletProps.put("Bounds", p0); return this; }
+        public android.hardware.camera2.params.Face.Builder setId(int p0) { megletProps.put("Id", Integer.valueOf(p0)); return this; }
+        public android.hardware.camera2.params.Face.Builder setLeftEyePosition(android.graphics.Point p0) { megletProps.put("LeftEyePosition", p0); return this; }
+        public android.hardware.camera2.params.Face.Builder setMouthPosition(android.graphics.Point p0) { megletProps.put("MouthPosition", p0); return this; }
+        public android.hardware.camera2.params.Face.Builder setRightEyePosition(android.graphics.Point p0) { megletProps.put("RightEyePosition", p0); return this; }
+        public android.hardware.camera2.params.Face.Builder setScore(int p0) { megletProps.put("Score", Integer.valueOf(p0)); return this; }
     }
 }

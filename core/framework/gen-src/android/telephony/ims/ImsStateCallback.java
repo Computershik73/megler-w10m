@@ -3,7 +3,7 @@ package android.telephony.ims;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ImsStateCallback {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int REASON_IMS_SERVICE_DISCONNECTED = 3;
     public static final int REASON_IMS_SERVICE_NOT_READY = 6;
     public static final int REASON_NO_IMS_SERVICE_CONFIGURED = 4;
@@ -12,13 +12,13 @@ public abstract class ImsStateCallback {
     public static final int REASON_UNKNOWN_TEMPORARY_ERROR = 1;
     public ImsStateCallback() {}
     public void binderDied() {}
-    public android.telephony.ims.ImsStateCallback.IImsStateCallbackStub getCallbackBinder() { return (android.telephony.ims.ImsStateCallback.IImsStateCallbackStub) meglerProps.get("CallbackBinder"); }
+    public android.telephony.ims.ImsStateCallback.IImsStateCallbackStub getCallbackBinder() { return (android.telephony.ims.ImsStateCallback.IImsStateCallbackStub) megletProps.get("CallbackBinder"); }
     public void init(java.util.concurrent.Executor p0) {}
     public abstract void onAvailable();
     public abstract void onError();
     public abstract void onUnavailable(int p0);
     public static class IImsStateCallbackStub {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public void onAvailable() {}
         public void onUnavailable(int p0) {}
         protected IImsStateCallbackStub() {}

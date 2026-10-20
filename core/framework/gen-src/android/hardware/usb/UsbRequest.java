@@ -3,15 +3,15 @@ package android.hardware.usb;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class UsbRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public UsbRequest() {}
     public boolean cancel() { return false; }
     public void close() {}
     protected void finalize() {}
-    public java.lang.Object getClientData() { return (java.lang.Object) meglerProps.get("ClientData"); }
-    public android.hardware.usb.UsbEndpoint getEndpoint() { return (android.hardware.usb.UsbEndpoint) meglerProps.get("Endpoint"); }
+    public java.lang.Object getClientData() { return (java.lang.Object) megletProps.get("ClientData"); }
+    public android.hardware.usb.UsbEndpoint getEndpoint() { return (android.hardware.usb.UsbEndpoint) megletProps.get("Endpoint"); }
     public boolean initialize(android.hardware.usb.UsbDeviceConnection p0, android.hardware.usb.UsbEndpoint p1) { return false; }
     public boolean queue(java.nio.ByteBuffer p0) { return false; }
     public boolean queue(java.nio.ByteBuffer p0, int p1) { return false; }
-    public void setClientData(java.lang.Object p0) { meglerProps.put("ClientData", p0); }
+    public void setClientData(java.lang.Object p0) { megletProps.put("ClientData", p0); }
 }

@@ -3,7 +3,7 @@ package android.location.altitude;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AltitudeConverter {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public AltitudeConverter() {}
     public void addMslAltitudeToLocation(android.content.Context p0, android.location.Location p1) {}
     public android.frameworks.location.altitude.GetGeoidHeightResponse getGeoidHeight(android.content.Context p0, android.frameworks.location.altitude.GetGeoidHeightRequest p1) { return null; }

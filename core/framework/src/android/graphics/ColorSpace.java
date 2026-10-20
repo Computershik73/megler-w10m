@@ -39,10 +39,10 @@ public abstract class ColorSpace {
         BRADFORD, CIECAT02, VON_KRIES;
     }
     public static class Connector {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-        public android.graphics.ColorSpace getDestination() { return (android.graphics.ColorSpace) meglerProps.get("Destination"); }
-        public android.graphics.ColorSpace.RenderIntent getRenderIntent() { return (android.graphics.ColorSpace.RenderIntent) meglerProps.get("RenderIntent"); }
-        public android.graphics.ColorSpace getSource() { return (android.graphics.ColorSpace) meglerProps.get("Source"); }
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        public android.graphics.ColorSpace getDestination() { return (android.graphics.ColorSpace) megletProps.get("Destination"); }
+        public android.graphics.ColorSpace.RenderIntent getRenderIntent() { return (android.graphics.ColorSpace.RenderIntent) megletProps.get("RenderIntent"); }
+        public android.graphics.ColorSpace getSource() { return (android.graphics.ColorSpace) megletProps.get("Source"); }
         public float[] transform(float p0, float p1, float p2) { return null; }
         public float[] transform(float[] p0) { return null; }
         protected Connector() {}
@@ -55,7 +55,7 @@ public abstract class ColorSpace {
         ABSOLUTE, PERCEPTUAL, RELATIVE, SATURATION;
     }
     public static class Rgb extends android.graphics.ColorSpace {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Rgb(java.lang.String p0, float[] p1, double p2) { super(); }
         public Rgb(java.lang.String p0, float[] p1, android.graphics.ColorSpace.Rgb.TransferParameters p2) { super(); }
         public Rgb(java.lang.String p0, float[] p1, java.util.function.DoubleUnaryOperator p2, java.util.function.DoubleUnaryOperator p3) { super(); }
@@ -65,27 +65,27 @@ public abstract class ColorSpace {
         public float[] fromLinear(float p0, float p1, float p2) { return null; }
         public float[] fromLinear(float[] p0) { return null; }
         public float[] fromXyz(float[] p0) { return null; }
-        public java.util.function.DoubleUnaryOperator getEotf() { return (java.util.function.DoubleUnaryOperator) meglerProps.get("Eotf"); }
-        public float[] getInverseTransform() { return (float[]) meglerProps.get("InverseTransform"); }
+        public java.util.function.DoubleUnaryOperator getEotf() { return (java.util.function.DoubleUnaryOperator) megletProps.get("Eotf"); }
+        public float[] getInverseTransform() { return (float[]) megletProps.get("InverseTransform"); }
         public float[] getInverseTransform(float[] p0) { return null; }
         public float getMaxValue(int p0) { return 0f; }
         public float getMinValue(int p0) { return 0f; }
-        public java.util.function.DoubleUnaryOperator getOetf() { return (java.util.function.DoubleUnaryOperator) meglerProps.get("Oetf"); }
-        public float[] getPrimaries() { return (float[]) meglerProps.get("Primaries"); }
+        public java.util.function.DoubleUnaryOperator getOetf() { return (java.util.function.DoubleUnaryOperator) megletProps.get("Oetf"); }
+        public float[] getPrimaries() { return (float[]) megletProps.get("Primaries"); }
         public float[] getPrimaries(float[] p0) { return null; }
-        public android.graphics.ColorSpace.Rgb.TransferParameters getTransferParameters() { return (android.graphics.ColorSpace.Rgb.TransferParameters) meglerProps.get("TransferParameters"); }
-        public float[] getTransform() { return (float[]) meglerProps.get("Transform"); }
+        public android.graphics.ColorSpace.Rgb.TransferParameters getTransferParameters() { return (android.graphics.ColorSpace.Rgb.TransferParameters) megletProps.get("TransferParameters"); }
+        public float[] getTransform() { return (float[]) megletProps.get("Transform"); }
         public float[] getTransform(float[] p0) { return null; }
-        public float[] getWhitePoint() { return (float[]) meglerProps.get("WhitePoint"); }
+        public float[] getWhitePoint() { return (float[]) megletProps.get("WhitePoint"); }
         public float[] getWhitePoint(float[] p0) { return null; }
-        public boolean isSrgb() { return (meglerProps.get("Srgb") instanceof Boolean ? (Boolean) meglerProps.get("Srgb") : false); }
-        public boolean isWideGamut() { return (meglerProps.get("WideGamut") instanceof Boolean ? (Boolean) meglerProps.get("WideGamut") : false); }
+        public boolean isSrgb() { return (megletProps.get("Srgb") instanceof Boolean ? (Boolean) megletProps.get("Srgb") : false); }
+        public boolean isWideGamut() { return (megletProps.get("WideGamut") instanceof Boolean ? (Boolean) megletProps.get("WideGamut") : false); }
         public float[] toLinear(float p0, float p1, float p2) { return null; }
         public float[] toLinear(float[] p0) { return null; }
         public float[] toXyz(float[] p0) { return null; }
         Rgb() { this((java.lang.String) null, (float[]) null, (double) 0d); }
         public static class TransferParameters {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public double a;
             public double b;
             public double c;

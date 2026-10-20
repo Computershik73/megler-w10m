@@ -3,7 +3,7 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IkeTrafficSelector {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int PORT_NUMBER_MAX = 65535;
     public static final int PORT_NUMBER_MIN = 0;
     public static final int TRAFFIC_SELECTOR_TYPE_IPV4_ADDR_RANGE = 7;

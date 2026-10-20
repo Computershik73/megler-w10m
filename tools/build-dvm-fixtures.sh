@@ -19,7 +19,7 @@
 # Python is all it needs.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PY="${MEGLER_PYTHON:-python}"
+PY="${MEGLET_PYTHON:-python}"
 # Paths relative to the repository: Python here is a Windows program, and a caller may have told the shell not to translate /c/... for it.
 OUT=build/guest/armeabi-v7a/dvm
 GEN=build/dvm/gen

@@ -3,10 +3,10 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TabActivity extends android.app.ActivityGroup {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public TabActivity() { super(); }
-    public android.widget.TabHost getTabHost() { return (android.widget.TabHost) meglerProps.get("TabHost"); }
-    public android.widget.TabWidget getTabWidget() { return (android.widget.TabWidget) meglerProps.get("TabWidget"); }
-    public void setDefaultTab(int p0) { meglerProps.put("DefaultTab", Integer.valueOf(p0)); }
-    public void setDefaultTab(java.lang.String p0) { meglerProps.put("DefaultTab", p0); }
+    public android.widget.TabHost getTabHost() { return (android.widget.TabHost) megletProps.get("TabHost"); }
+    public android.widget.TabWidget getTabWidget() { return (android.widget.TabWidget) megletProps.get("TabWidget"); }
+    public void setDefaultTab(int p0) { megletProps.put("DefaultTab", Integer.valueOf(p0)); }
+    public void setDefaultTab(java.lang.String p0) { megletProps.put("DefaultTab", p0); }
 }

@@ -7,13 +7,13 @@ public class Typeface {
     public static final Typeface DEFAULT, DEFAULT_BOLD, SANS_SERIF, SERIF, MONOSPACE;
     private static final HashMap<String, Typeface> sCache = new HashMap<>();
     static {
-        DEFAULT = new Typeface(megler.Gfx.tfDefault(), NORMAL);
-        DEFAULT_BOLD = new Typeface(megler.Gfx.tfCreate("sans-serif", BOLD), BOLD);
+        DEFAULT = new Typeface(meglet.Gfx.tfDefault(), NORMAL);
+        DEFAULT_BOLD = new Typeface(meglet.Gfx.tfCreate("sans-serif", BOLD), BOLD);
         SANS_SERIF = DEFAULT;
-        SERIF = new Typeface(megler.Gfx.tfCreate("serif", NORMAL), NORMAL);
-        MONOSPACE = new Typeface(megler.Gfx.tfCreate("monospace", NORMAL), NORMAL);
+        SERIF = new Typeface(meglet.Gfx.tfCreate("serif", NORMAL), NORMAL);
+        MONOSPACE = new Typeface(meglet.Gfx.tfCreate("monospace", NORMAL), NORMAL);
     }
-    /** The native face (megler.Gfx). */
+    /** The native face (meglet.Gfx). */
     public final long native_instance;
     private final int mStyle;
     private String mFamily;
@@ -22,32 +22,32 @@ public class Typeface {
     public int getStyle() { return mStyle; }
     public final boolean isBold() { return (mStyle & BOLD) != 0 || getWeight() >= 600; }
     public final boolean isItalic() { return (mStyle & ITALIC) != 0; }
-    public int getWeight() { return megler.Gfx.tfWeight(native_instance); }
+    public int getWeight() { return meglet.Gfx.tfWeight(native_instance); }
     public String getSystemFontFamilyName() { return mFamily; }
 
     public static Typeface create(String family, int style) {
         String key = family + "/" + style;
         synchronized (sCache) {
             Typeface t = sCache.get(key);
-            if (t == null) { t = new Typeface(megler.Gfx.tfCreate(family, style), style); t.mFamily = family; sCache.put(key, t); }
+            if (t == null) { t = new Typeface(meglet.Gfx.tfCreate(family, style), style); t.mFamily = family; sCache.put(key, t); }
             return t;
         }
     }
     public static Typeface create(Typeface family, int style) {
         if (family == null) family = DEFAULT;
         if (family.mStyle == style) return family;
-        return new Typeface(megler.Gfx.tfDerive(family.native_instance, style, 0), style);
+        return new Typeface(meglet.Gfx.tfDerive(family.native_instance, style, 0), style);
     }
     public static Typeface create(Typeface family, int weight, boolean italic) {
         if (family == null) family = DEFAULT;
         int style = (weight >= 600 ? BOLD : 0) | (italic ? ITALIC : 0);
-        return new Typeface(megler.Gfx.tfDerive(family.native_instance, style, weight), style);
+        return new Typeface(meglet.Gfx.tfDerive(family.native_instance, style, weight), style);
     }
     public static Typeface defaultFromStyle(int style) { return style == NORMAL ? DEFAULT : create(DEFAULT, style); }
     public static Typeface createFromAsset(android.content.res.AssetManager mgr, String path) {
-        byte[] d = megler.Native.readAsset(path);
+        byte[] d = meglet.Native.readAsset(path);
         if (d == null) throw new RuntimeException("Font asset not found " + path);
-        long h = megler.Gfx.tfFromData(d);
+        long h = meglet.Gfx.tfFromData(d);
         if (h == 0) throw new RuntimeException("Font asset not readable " + path);
         return new Typeface(h, NORMAL);
     }
@@ -55,13 +55,13 @@ public class Typeface {
     public static Typeface createFromFile(String path) {
         try {
             byte[] d = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path));
-            long h = megler.Gfx.tfFromData(d);
+            long h = meglet.Gfx.tfFromData(d);
             if (h != 0) return new Typeface(h, NORMAL);
         } catch (java.io.IOException e) {}
         throw new RuntimeException("Font not found " + path);
     }
-    /** Megler: a face from font bytes (resources' fonts). */
-    public static Typeface meglerFromData(byte[] d) { long h = d == null ? 0 : megler.Gfx.tfFromData(d); return h == 0 ? DEFAULT : new Typeface(h, NORMAL); }
+    /** Meglet: a face from font bytes (resources' fonts). */
+    public static Typeface megletFromData(byte[] d) { long h = d == null ? 0 : meglet.Gfx.tfFromData(d); return h == 0 ? DEFAULT : new Typeface(h, NORMAL); }
     @Override public boolean equals(Object o) { return o instanceof Typeface && ((Typeface) o).native_instance == native_instance; }
     @Override public int hashCode() { return (int) native_instance; }
 
@@ -79,9 +79,9 @@ public class Typeface {
         public Typeface build() {
             android.graphics.fonts.FontStyle want = mStyle != null ? mStyle : new android.graphics.fonts.FontStyle();
             for (android.graphics.fonts.FontFamily f : mFamilies) {
-                android.graphics.fonts.Font best = f.meglerClosest(want);
+                android.graphics.fonts.Font best = f.megletClosest(want);
                 if (best == null) continue;
-                Typeface t = meglerFromData(best.meglerData());
+                Typeface t = megletFromData(best.megletData());
                 boolean italic = want.getSlant() == android.graphics.fonts.FontStyle.FONT_SLANT_ITALIC;
                 return want.getWeight() != 400 || italic ? create(t, want.getWeight(), italic) : t;
             }
@@ -92,13 +92,13 @@ public class Typeface {
     public static final class Builder {
         private byte[] data; private int weight = -1; private boolean italic; private String fallback;
         public Builder(java.io.File f) { try { data = java.nio.file.Files.readAllBytes(f.toPath()); } catch (java.io.IOException e) {} }
-        public Builder(android.content.res.AssetManager m, String path) { data = megler.Native.readAsset(path); }
+        public Builder(android.content.res.AssetManager m, String path) { data = meglet.Native.readAsset(path); }
         public Builder setWeight(int w) { weight = w; return this; }
         public Builder setItalic(boolean i) { italic = i; return this; }
         public Builder setFallback(String f) { fallback = f; return this; }
         public Builder setFontVariationSettings(String s) { return this; }
         public Typeface build() {
-            Typeface t = data != null ? meglerFromData(data) : create(fallback, NORMAL);
+            Typeface t = data != null ? megletFromData(data) : create(fallback, NORMAL);
             return weight > 0 || italic ? create(t, weight > 0 ? weight : 400, italic) : t;
         }
         // ---- generated by tools/compat/fillmembers.py (Builder): the platform's members this class does not write (signatures only)

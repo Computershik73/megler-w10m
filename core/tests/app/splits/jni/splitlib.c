@@ -6,7 +6,7 @@
 
 #include <android/log.h>
 
-JNIEXPORT jint JNICALL Java_megler_test_splits_Main_answer(JNIEnv *env, jclass cls)
+JNIEXPORT jint JNICALL Java_meglet_test_splits_Main_answer(JNIEnv *env, jclass cls)
 {
     (void)env;
     (void)cls;

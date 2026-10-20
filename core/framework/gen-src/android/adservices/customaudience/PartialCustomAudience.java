@@ -3,22 +3,22 @@ package android.adservices.customaudience;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PartialCustomAudience implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public java.time.Instant getActivationTime() { return (java.time.Instant) meglerProps.get("ActivationTime"); }
-    public java.time.Instant getExpirationTime() { return (java.time.Instant) meglerProps.get("ExpirationTime"); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public android.adservices.common.AdSelectionSignals getUserBiddingSignals() { return (android.adservices.common.AdSelectionSignals) meglerProps.get("UserBiddingSignals"); }
+    public java.time.Instant getActivationTime() { return (java.time.Instant) megletProps.get("ActivationTime"); }
+    public java.time.Instant getExpirationTime() { return (java.time.Instant) megletProps.get("ExpirationTime"); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public android.adservices.common.AdSelectionSignals getUserBiddingSignals() { return (android.adservices.common.AdSelectionSignals) megletProps.get("UserBiddingSignals"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected PartialCustomAudience() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0) {}
-        public android.adservices.customaudience.PartialCustomAudience build() { android.adservices.customaudience.PartialCustomAudience x = new android.adservices.customaudience.PartialCustomAudience(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.customaudience.PartialCustomAudience.Builder setActivationTime(java.time.Instant p0) { meglerProps.put("ActivationTime", p0); return this; }
-        public android.adservices.customaudience.PartialCustomAudience.Builder setExpirationTime(java.time.Instant p0) { meglerProps.put("ExpirationTime", p0); return this; }
-        public android.adservices.customaudience.PartialCustomAudience.Builder setUserBiddingSignals(android.adservices.common.AdSelectionSignals p0) { meglerProps.put("UserBiddingSignals", p0); return this; }
+        public android.adservices.customaudience.PartialCustomAudience build() { android.adservices.customaudience.PartialCustomAudience x = new android.adservices.customaudience.PartialCustomAudience(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.customaudience.PartialCustomAudience.Builder setActivationTime(java.time.Instant p0) { megletProps.put("ActivationTime", p0); return this; }
+        public android.adservices.customaudience.PartialCustomAudience.Builder setExpirationTime(java.time.Instant p0) { megletProps.put("ExpirationTime", p0); return this; }
+        public android.adservices.customaudience.PartialCustomAudience.Builder setUserBiddingSignals(android.adservices.common.AdSelectionSignals p0) { megletProps.put("UserBiddingSignals", p0); return this; }
         Builder() { this((java.lang.String) null); }
     }
 }

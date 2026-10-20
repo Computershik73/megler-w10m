@@ -3,7 +3,7 @@ package android.app.role;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RoleManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_REQUEST_ROLE = "android.app.role.action.REQUEST_ROLE";
     public static final int MANAGE_HOLDERS_FLAG_DONT_KILL_APP = 1;
     public static final java.lang.String PERMISSION_MANAGE_ROLES_FROM_CONTROLLER = "com.android.permissioncontroller.permission.MANAGE_ROLES_FROM_CONTROLLER";
@@ -45,7 +45,7 @@ public final class RoleManager {
     public java.util.List getRoleHoldersAsUser(java.lang.String p0, android.os.UserHandle p1) { return new java.util.ArrayList(); }
     public java.lang.String getSmsRoleHolder(int p0) { return null; }
     public void isApplicationVisibleForRole(java.lang.String p0, java.lang.String p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) {}
-    public boolean isBypassingRoleQualification() { return (meglerProps.get("BypassingRoleQualification") instanceof Boolean ? (Boolean) meglerProps.get("BypassingRoleQualification") : false); }
+    public boolean isBypassingRoleQualification() { return (megletProps.get("BypassingRoleQualification") instanceof Boolean ? (Boolean) megletProps.get("BypassingRoleQualification") : false); }
     public boolean isRoleAvailable(java.lang.String p0) { return false; }
     public boolean isRoleFallbackEnabled(java.lang.String p0) { return false; }
     public boolean isRoleHeld(java.lang.String p0) { return false; }
@@ -56,11 +56,11 @@ public final class RoleManager {
     public boolean removeRoleHolderFromController(java.lang.String p0, java.lang.String p1) { return false; }
     public void setActiveUserForRole(java.lang.String p0, android.os.UserHandle p1, int p2) {}
     public boolean setBrowserRoleHolder(java.lang.String p0, int p1) { return false; }
-    public void setBypassingRoleQualification(boolean p0) { meglerProps.put("BypassingRoleQualification", Boolean.valueOf(p0)); }
+    public void setBypassingRoleQualification(boolean p0) { megletProps.put("BypassingRoleQualification", Boolean.valueOf(p0)); }
     public void setDefaultApplication(java.lang.String p0, java.lang.String p1, int p2, java.util.concurrent.Executor p3, java.util.function.Consumer p4) {}
     public void setDefaultHoldersForTest(java.lang.String p0, java.util.List p1) {}
     public void setRoleFallbackEnabled(java.lang.String p0, boolean p1) {}
-    public void setRoleNamesFromController(java.util.List p0) { meglerProps.put("RoleNamesFromController", p0); }
+    public void setRoleNamesFromController(java.util.List p0) { megletProps.put("RoleNamesFromController", p0); }
     public void setRoleVisibleForTest(java.lang.String p0, boolean p1) {}
     RoleManager() { this((android.content.Context) null, (android.app.role.IRoleManager) null); }
 }

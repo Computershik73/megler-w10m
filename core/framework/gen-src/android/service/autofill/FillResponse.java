@@ -3,7 +3,7 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FillResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_CREDENTIAL_MANAGER_RESPONSE = 8;
     public static final int FLAG_DELAY_FILL = 4;
@@ -11,62 +11,62 @@ public final class FillResponse implements android.os.Parcelable {
     public static final int FLAG_TRACK_CONTEXT_COMMITED = 1;
     public static android.service.autofill.FillResponse shallowCopy(android.service.autofill.FillResponse p0, java.util.List p1, android.service.autofill.SaveInfo p2) { return new FillResponse(); }
     public int describeContents() { return 0; }
-    public android.content.IntentSender getAuthentication() { return (android.content.IntentSender) meglerProps.get("Authentication"); }
-    public android.view.autofill.AutofillId[] getAuthenticationIds() { return (android.view.autofill.AutofillId[]) meglerProps.get("AuthenticationIds"); }
-    public int[] getCancelIds() { return (int[]) meglerProps.get("CancelIds"); }
-    public android.os.Bundle getClientState() { return (android.os.Bundle) meglerProps.get("ClientState"); }
-    public java.util.List getDatasets() { return (meglerProps.get("Datasets") != null ? (java.util.List) meglerProps.get("Datasets") : new java.util.ArrayList()); }
-    public java.util.Set getDetectedFieldClassifications() { return (meglerProps.get("DetectedFieldClassifications") != null ? (java.util.Set) meglerProps.get("DetectedFieldClassifications") : new java.util.HashSet()); }
-    public android.widget.RemoteViews getDialogHeader() { return (android.widget.RemoteViews) meglerProps.get("DialogHeader"); }
-    public android.widget.RemoteViews getDialogPresentation() { return (android.widget.RemoteViews) meglerProps.get("DialogPresentation"); }
-    public long getDisableDuration() { return (meglerProps.get("DisableDuration") instanceof Long ? (Long) meglerProps.get("DisableDuration") : 0L); }
-    public android.view.autofill.AutofillId[] getFieldClassificationIds() { return (android.view.autofill.AutofillId[]) meglerProps.get("FieldClassificationIds"); }
-    public android.view.autofill.AutofillId[] getFillDialogTriggerIds() { return (android.view.autofill.AutofillId[]) meglerProps.get("FillDialogTriggerIds"); }
-    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
-    public android.widget.RemoteViews getFooter() { return (android.widget.RemoteViews) meglerProps.get("Footer"); }
-    public android.widget.RemoteViews getHeader() { return (android.widget.RemoteViews) meglerProps.get("Header"); }
-    public int getIconResourceId() { return (meglerProps.get("IconResourceId") instanceof Integer ? (Integer) meglerProps.get("IconResourceId") : 0); }
-    public android.view.autofill.AutofillId[] getIgnoredIds() { return (android.view.autofill.AutofillId[]) meglerProps.get("IgnoredIds"); }
-    public android.service.autofill.InlinePresentation getInlinePresentation() { return (android.service.autofill.InlinePresentation) meglerProps.get("InlinePresentation"); }
-    public android.service.autofill.InlinePresentation getInlineTooltipPresentation() { return (android.service.autofill.InlinePresentation) meglerProps.get("InlineTooltipPresentation"); }
-    public android.widget.RemoteViews getPresentation() { return (android.widget.RemoteViews) meglerProps.get("Presentation"); }
-    public int getRequestId() { return (meglerProps.get("RequestId") instanceof Integer ? (Integer) meglerProps.get("RequestId") : 0); }
-    public android.service.autofill.SaveInfo getSaveInfo() { return (android.service.autofill.SaveInfo) meglerProps.get("SaveInfo"); }
-    public int getServiceDisplayNameResourceId() { return (meglerProps.get("ServiceDisplayNameResourceId") instanceof Integer ? (Integer) meglerProps.get("ServiceDisplayNameResourceId") : 0); }
-    public boolean getShowFillDialogIcon() { return (meglerProps.get("ShowFillDialogIcon") instanceof Boolean ? (Boolean) meglerProps.get("ShowFillDialogIcon") : false); }
-    public boolean getShowSaveDialogIcon() { return (meglerProps.get("ShowSaveDialogIcon") instanceof Boolean ? (Boolean) meglerProps.get("ShowSaveDialogIcon") : false); }
-    public android.service.autofill.UserData getUserData() { return (android.service.autofill.UserData) meglerProps.get("UserData"); }
-    public void setRequestId(int p0) { meglerProps.put("RequestId", Integer.valueOf(p0)); }
+    public android.content.IntentSender getAuthentication() { return (android.content.IntentSender) megletProps.get("Authentication"); }
+    public android.view.autofill.AutofillId[] getAuthenticationIds() { return (android.view.autofill.AutofillId[]) megletProps.get("AuthenticationIds"); }
+    public int[] getCancelIds() { return (int[]) megletProps.get("CancelIds"); }
+    public android.os.Bundle getClientState() { return (android.os.Bundle) megletProps.get("ClientState"); }
+    public java.util.List getDatasets() { return (megletProps.get("Datasets") != null ? (java.util.List) megletProps.get("Datasets") : new java.util.ArrayList()); }
+    public java.util.Set getDetectedFieldClassifications() { return (megletProps.get("DetectedFieldClassifications") != null ? (java.util.Set) megletProps.get("DetectedFieldClassifications") : new java.util.HashSet()); }
+    public android.widget.RemoteViews getDialogHeader() { return (android.widget.RemoteViews) megletProps.get("DialogHeader"); }
+    public android.widget.RemoteViews getDialogPresentation() { return (android.widget.RemoteViews) megletProps.get("DialogPresentation"); }
+    public long getDisableDuration() { return (megletProps.get("DisableDuration") instanceof Long ? (Long) megletProps.get("DisableDuration") : 0L); }
+    public android.view.autofill.AutofillId[] getFieldClassificationIds() { return (android.view.autofill.AutofillId[]) megletProps.get("FieldClassificationIds"); }
+    public android.view.autofill.AutofillId[] getFillDialogTriggerIds() { return (android.view.autofill.AutofillId[]) megletProps.get("FillDialogTriggerIds"); }
+    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
+    public android.widget.RemoteViews getFooter() { return (android.widget.RemoteViews) megletProps.get("Footer"); }
+    public android.widget.RemoteViews getHeader() { return (android.widget.RemoteViews) megletProps.get("Header"); }
+    public int getIconResourceId() { return (megletProps.get("IconResourceId") instanceof Integer ? (Integer) megletProps.get("IconResourceId") : 0); }
+    public android.view.autofill.AutofillId[] getIgnoredIds() { return (android.view.autofill.AutofillId[]) megletProps.get("IgnoredIds"); }
+    public android.service.autofill.InlinePresentation getInlinePresentation() { return (android.service.autofill.InlinePresentation) megletProps.get("InlinePresentation"); }
+    public android.service.autofill.InlinePresentation getInlineTooltipPresentation() { return (android.service.autofill.InlinePresentation) megletProps.get("InlineTooltipPresentation"); }
+    public android.widget.RemoteViews getPresentation() { return (android.widget.RemoteViews) megletProps.get("Presentation"); }
+    public int getRequestId() { return (megletProps.get("RequestId") instanceof Integer ? (Integer) megletProps.get("RequestId") : 0); }
+    public android.service.autofill.SaveInfo getSaveInfo() { return (android.service.autofill.SaveInfo) megletProps.get("SaveInfo"); }
+    public int getServiceDisplayNameResourceId() { return (megletProps.get("ServiceDisplayNameResourceId") instanceof Integer ? (Integer) megletProps.get("ServiceDisplayNameResourceId") : 0); }
+    public boolean getShowFillDialogIcon() { return (megletProps.get("ShowFillDialogIcon") instanceof Boolean ? (Boolean) megletProps.get("ShowFillDialogIcon") : false); }
+    public boolean getShowSaveDialogIcon() { return (megletProps.get("ShowSaveDialogIcon") instanceof Boolean ? (Boolean) megletProps.get("ShowSaveDialogIcon") : false); }
+    public android.service.autofill.UserData getUserData() { return (android.service.autofill.UserData) megletProps.get("UserData"); }
+    public void setRequestId(int p0) { megletProps.put("RequestId", Integer.valueOf(p0)); }
     public boolean supportsInlineSuggestions() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected FillResponse() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public android.service.autofill.FillResponse.Builder addDataset(android.service.autofill.Dataset p0) { return this; }
-        public android.service.autofill.FillResponse build() { android.service.autofill.FillResponse x = new android.service.autofill.FillResponse(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.service.autofill.FillResponse build() { android.service.autofill.FillResponse x = new android.service.autofill.FillResponse(); x.megletProps.putAll(megletProps); return x; }
         public android.service.autofill.FillResponse.Builder disableAutofill(long p0) { return this; }
         public android.service.autofill.FillResponse.Builder setAuthentication(android.view.autofill.AutofillId[] p0, android.content.IntentSender p1, android.service.autofill.Presentations p2) { return this; }
         public android.service.autofill.FillResponse.Builder setAuthentication(android.view.autofill.AutofillId[] p0, android.content.IntentSender p1, android.widget.RemoteViews p2) { return this; }
         public android.service.autofill.FillResponse.Builder setAuthentication(android.view.autofill.AutofillId[] p0, android.content.IntentSender p1, android.widget.RemoteViews p2, android.service.autofill.InlinePresentation p3) { return this; }
         public android.service.autofill.FillResponse.Builder setAuthentication(android.view.autofill.AutofillId[] p0, android.content.IntentSender p1, android.widget.RemoteViews p2, android.service.autofill.InlinePresentation p3, android.service.autofill.InlinePresentation p4) { return this; }
-        public android.service.autofill.FillResponse.Builder setClientState(android.os.Bundle p0) { meglerProps.put("ClientState", p0); return this; }
-        public android.service.autofill.FillResponse.Builder setDatasets(java.util.ArrayList p0) { meglerProps.put("Datasets", p0); return this; }
-        public android.service.autofill.FillResponse.Builder setDetectedFieldClassifications(java.util.Set p0) { meglerProps.put("DetectedFieldClassifications", p0); return this; }
-        public android.service.autofill.FillResponse.Builder setDialogHeader(android.widget.RemoteViews p0) { meglerProps.put("DialogHeader", p0); return this; }
-        public android.service.autofill.FillResponse.Builder setDialogPendingIntent(android.app.PendingIntent p0) { meglerProps.put("DialogPendingIntent", p0); return this; }
-        public android.service.autofill.FillResponse.Builder setFieldClassificationIds(android.view.autofill.AutofillId[] p0) { meglerProps.put("FieldClassificationIds", p0); return this; }
-        public android.service.autofill.FillResponse.Builder setFillDialogTriggerIds(android.view.autofill.AutofillId[] p0) { meglerProps.put("FillDialogTriggerIds", p0); return this; }
-        public android.service.autofill.FillResponse.Builder setFlags(int p0) { meglerProps.put("Flags", Integer.valueOf(p0)); return this; }
-        public android.service.autofill.FillResponse.Builder setFooter(android.widget.RemoteViews p0) { meglerProps.put("Footer", p0); return this; }
-        public android.service.autofill.FillResponse.Builder setHeader(android.widget.RemoteViews p0) { meglerProps.put("Header", p0); return this; }
-        public android.service.autofill.FillResponse.Builder setIconResourceId(int p0) { meglerProps.put("IconResourceId", Integer.valueOf(p0)); return this; }
-        public android.service.autofill.FillResponse.Builder setIgnoredIds(android.view.autofill.AutofillId[] p0) { meglerProps.put("IgnoredIds", p0); return this; }
-        public android.service.autofill.FillResponse.Builder setPresentationCancelIds(int[] p0) { meglerProps.put("PresentationCancelIds", p0); return this; }
-        public android.service.autofill.FillResponse.Builder setSaveInfo(android.service.autofill.SaveInfo p0) { meglerProps.put("SaveInfo", p0); return this; }
-        public android.service.autofill.FillResponse.Builder setServiceDisplayNameResourceId(int p0) { meglerProps.put("ServiceDisplayNameResourceId", Integer.valueOf(p0)); return this; }
-        public android.service.autofill.FillResponse.Builder setShowFillDialogIcon(boolean p0) { meglerProps.put("ShowFillDialogIcon", Boolean.valueOf(p0)); return this; }
-        public android.service.autofill.FillResponse.Builder setShowSaveDialogIcon(boolean p0) { meglerProps.put("ShowSaveDialogIcon", Boolean.valueOf(p0)); return this; }
-        public android.service.autofill.FillResponse.Builder setUserData(android.service.autofill.UserData p0) { meglerProps.put("UserData", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setClientState(android.os.Bundle p0) { megletProps.put("ClientState", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setDatasets(java.util.ArrayList p0) { megletProps.put("Datasets", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setDetectedFieldClassifications(java.util.Set p0) { megletProps.put("DetectedFieldClassifications", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setDialogHeader(android.widget.RemoteViews p0) { megletProps.put("DialogHeader", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setDialogPendingIntent(android.app.PendingIntent p0) { megletProps.put("DialogPendingIntent", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setFieldClassificationIds(android.view.autofill.AutofillId[] p0) { megletProps.put("FieldClassificationIds", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setFillDialogTriggerIds(android.view.autofill.AutofillId[] p0) { megletProps.put("FillDialogTriggerIds", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setFlags(int p0) { megletProps.put("Flags", Integer.valueOf(p0)); return this; }
+        public android.service.autofill.FillResponse.Builder setFooter(android.widget.RemoteViews p0) { megletProps.put("Footer", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setHeader(android.widget.RemoteViews p0) { megletProps.put("Header", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setIconResourceId(int p0) { megletProps.put("IconResourceId", Integer.valueOf(p0)); return this; }
+        public android.service.autofill.FillResponse.Builder setIgnoredIds(android.view.autofill.AutofillId[] p0) { megletProps.put("IgnoredIds", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setPresentationCancelIds(int[] p0) { megletProps.put("PresentationCancelIds", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setSaveInfo(android.service.autofill.SaveInfo p0) { megletProps.put("SaveInfo", p0); return this; }
+        public android.service.autofill.FillResponse.Builder setServiceDisplayNameResourceId(int p0) { megletProps.put("ServiceDisplayNameResourceId", Integer.valueOf(p0)); return this; }
+        public android.service.autofill.FillResponse.Builder setShowFillDialogIcon(boolean p0) { megletProps.put("ShowFillDialogIcon", Boolean.valueOf(p0)); return this; }
+        public android.service.autofill.FillResponse.Builder setShowSaveDialogIcon(boolean p0) { megletProps.put("ShowSaveDialogIcon", Boolean.valueOf(p0)); return this; }
+        public android.service.autofill.FillResponse.Builder setUserData(android.service.autofill.UserData p0) { megletProps.put("UserData", p0); return this; }
     }
 }

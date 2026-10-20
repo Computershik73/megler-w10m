@@ -3,7 +3,7 @@ package android.os.strictmode;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ResourceMismatchViolation extends android.os.strictmode.Violation {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public ResourceMismatchViolation(java.lang.Object p0) { super(); }
     ResourceMismatchViolation() { this((java.lang.Object) null); }
 }

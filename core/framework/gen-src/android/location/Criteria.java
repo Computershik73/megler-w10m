@@ -3,7 +3,7 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Criteria implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ACCURACY_COARSE = 2;
     public static final int ACCURACY_FINE = 1;
     public static final int ACCURACY_HIGH = 3;
@@ -17,25 +17,25 @@ public class Criteria implements android.os.Parcelable {
     public Criteria() {}
     public Criteria(android.location.Criteria p0) {}
     public int describeContents() { return 0; }
-    public int getAccuracy() { return (meglerProps.get("Accuracy") instanceof Integer ? (Integer) meglerProps.get("Accuracy") : 0); }
-    public int getBearingAccuracy() { return (meglerProps.get("BearingAccuracy") instanceof Integer ? (Integer) meglerProps.get("BearingAccuracy") : 0); }
-    public int getHorizontalAccuracy() { return (meglerProps.get("HorizontalAccuracy") instanceof Integer ? (Integer) meglerProps.get("HorizontalAccuracy") : 0); }
-    public int getPowerRequirement() { return (meglerProps.get("PowerRequirement") instanceof Integer ? (Integer) meglerProps.get("PowerRequirement") : 0); }
-    public int getSpeedAccuracy() { return (meglerProps.get("SpeedAccuracy") instanceof Integer ? (Integer) meglerProps.get("SpeedAccuracy") : 0); }
-    public int getVerticalAccuracy() { return (meglerProps.get("VerticalAccuracy") instanceof Integer ? (Integer) meglerProps.get("VerticalAccuracy") : 0); }
-    public boolean isAltitudeRequired() { return (meglerProps.get("AltitudeRequired") instanceof Boolean ? (Boolean) meglerProps.get("AltitudeRequired") : false); }
-    public boolean isBearingRequired() { return (meglerProps.get("BearingRequired") instanceof Boolean ? (Boolean) meglerProps.get("BearingRequired") : false); }
-    public boolean isCostAllowed() { return (meglerProps.get("CostAllowed") instanceof Boolean ? (Boolean) meglerProps.get("CostAllowed") : false); }
-    public boolean isSpeedRequired() { return (meglerProps.get("SpeedRequired") instanceof Boolean ? (Boolean) meglerProps.get("SpeedRequired") : false); }
-    public void setAccuracy(int p0) { meglerProps.put("Accuracy", Integer.valueOf(p0)); }
-    public void setAltitudeRequired(boolean p0) { meglerProps.put("AltitudeRequired", Boolean.valueOf(p0)); }
-    public void setBearingAccuracy(int p0) { meglerProps.put("BearingAccuracy", Integer.valueOf(p0)); }
-    public void setBearingRequired(boolean p0) { meglerProps.put("BearingRequired", Boolean.valueOf(p0)); }
-    public void setCostAllowed(boolean p0) { meglerProps.put("CostAllowed", Boolean.valueOf(p0)); }
-    public void setHorizontalAccuracy(int p0) { meglerProps.put("HorizontalAccuracy", Integer.valueOf(p0)); }
-    public void setPowerRequirement(int p0) { meglerProps.put("PowerRequirement", Integer.valueOf(p0)); }
-    public void setSpeedAccuracy(int p0) { meglerProps.put("SpeedAccuracy", Integer.valueOf(p0)); }
-    public void setSpeedRequired(boolean p0) { meglerProps.put("SpeedRequired", Boolean.valueOf(p0)); }
-    public void setVerticalAccuracy(int p0) { meglerProps.put("VerticalAccuracy", Integer.valueOf(p0)); }
+    public int getAccuracy() { return (megletProps.get("Accuracy") instanceof Integer ? (Integer) megletProps.get("Accuracy") : 0); }
+    public int getBearingAccuracy() { return (megletProps.get("BearingAccuracy") instanceof Integer ? (Integer) megletProps.get("BearingAccuracy") : 0); }
+    public int getHorizontalAccuracy() { return (megletProps.get("HorizontalAccuracy") instanceof Integer ? (Integer) megletProps.get("HorizontalAccuracy") : 0); }
+    public int getPowerRequirement() { return (megletProps.get("PowerRequirement") instanceof Integer ? (Integer) megletProps.get("PowerRequirement") : 0); }
+    public int getSpeedAccuracy() { return (megletProps.get("SpeedAccuracy") instanceof Integer ? (Integer) megletProps.get("SpeedAccuracy") : 0); }
+    public int getVerticalAccuracy() { return (megletProps.get("VerticalAccuracy") instanceof Integer ? (Integer) megletProps.get("VerticalAccuracy") : 0); }
+    public boolean isAltitudeRequired() { return (megletProps.get("AltitudeRequired") instanceof Boolean ? (Boolean) megletProps.get("AltitudeRequired") : false); }
+    public boolean isBearingRequired() { return (megletProps.get("BearingRequired") instanceof Boolean ? (Boolean) megletProps.get("BearingRequired") : false); }
+    public boolean isCostAllowed() { return (megletProps.get("CostAllowed") instanceof Boolean ? (Boolean) megletProps.get("CostAllowed") : false); }
+    public boolean isSpeedRequired() { return (megletProps.get("SpeedRequired") instanceof Boolean ? (Boolean) megletProps.get("SpeedRequired") : false); }
+    public void setAccuracy(int p0) { megletProps.put("Accuracy", Integer.valueOf(p0)); }
+    public void setAltitudeRequired(boolean p0) { megletProps.put("AltitudeRequired", Boolean.valueOf(p0)); }
+    public void setBearingAccuracy(int p0) { megletProps.put("BearingAccuracy", Integer.valueOf(p0)); }
+    public void setBearingRequired(boolean p0) { megletProps.put("BearingRequired", Boolean.valueOf(p0)); }
+    public void setCostAllowed(boolean p0) { megletProps.put("CostAllowed", Boolean.valueOf(p0)); }
+    public void setHorizontalAccuracy(int p0) { megletProps.put("HorizontalAccuracy", Integer.valueOf(p0)); }
+    public void setPowerRequirement(int p0) { megletProps.put("PowerRequirement", Integer.valueOf(p0)); }
+    public void setSpeedAccuracy(int p0) { megletProps.put("SpeedAccuracy", Integer.valueOf(p0)); }
+    public void setSpeedRequired(boolean p0) { megletProps.put("SpeedRequired", Boolean.valueOf(p0)); }
+    public void setVerticalAccuracy(int p0) { megletProps.put("VerticalAccuracy", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

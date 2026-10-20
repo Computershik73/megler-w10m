@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the Java framework an app with an Activity runs on: android.* written
-# in Java on top of libcore, with its native side in megler.* classes that the
+# in Java on top of libcore, with its native side in meglet.* classes that the
 # core answers (core/src/drivers/hk_java*.c).
 #
 #   tools/build-framework.sh [--force]
@@ -30,32 +30,32 @@
 # javac, then d8, with what this PC has. The generated files of gen-src are
 # kept as they are; nothing regenerates them here.
 #
-#   out: build/framework/megler-framework.dex   (tools/dvm-android-root.sh puts
-#        it in the Android root as framework/megler-framework.dex)
+#   out: build/framework/meglet-framework.dex   (tools/dvm-android-root.sh puts
+#        it in the Android root as framework/meglet-framework.dex)
 #
 # Nothing is rebuilt when the DEX file is newer than every source, unless
 # --force is given. Nothing is downloaded.
 #
-#   MEGLER_JDK          a JDK's folder (C:\Program Files\Java\jdk1.8.0_202)
-#   MEGLER_ANDROID_SDK  an Android SDK with build-tools 29.0.3 and
+#   MEGLET_JDK          a JDK's folder (C:\Program Files\Java\jdk1.8.0_202)
+#   MEGLET_ANDROID_SDK  an Android SDK with build-tools 29.0.3 and
 #                          platforms/android-29 (the user's Documents folder)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FW="$ROOT/core/framework"
-JDK="${MEGLER_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
-SDK="${MEGLER_ANDROID_SDK:-$USERPROFILE/Documents}"
+JDK="${MEGLET_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
+SDK="${MEGLET_ANDROID_SDK:-$USERPROFILE/Documents}"
 D8="$SDK/build-tools/29.0.3/lib/d8.jar"
 LIB="$SDK/platforms/android-29/android.jar"
 OVERLAY="$ROOT/core/framework-overlay"
 OUT="$ROOT/build/framework"
-DEX="$OUT/megler-framework.dex"
+DEX="$OUT/meglet-framework.dex"
 FORCE=0
 [ "${1:-}" = --force ] && FORCE=1
-[ -x "$JDK/bin/javac" ] || [ -f "$JDK/bin/javac.exe" ] || { echo "no javac in $JDK (MEGLER_JDK)" >&2; exit 1; }
-[ -f "$D8" ] && [ -f "$LIB" ] || { echo "no build-tools/29.0.3/lib/d8.jar or platforms/android-29/android.jar in $SDK (MEGLER_ANDROID_SDK)" >&2; exit 1; }
+[ -x "$JDK/bin/javac" ] || [ -f "$JDK/bin/javac.exe" ] || { echo "no javac in $JDK (MEGLET_JDK)" >&2; exit 1; }
+[ -f "$D8" ] && [ -f "$LIB" ] || { echo "no build-tools/29.0.3/lib/d8.jar or platforms/android-29/android.jar in $SDK (MEGLET_ANDROID_SDK)" >&2; exit 1; }
 
 if [ "$FORCE" = 0 ] && [ -f "$DEX" ] && [ -z "$(find "$FW/src" "$FW/gen-src" "$FW/stubs" "$OVERLAY" "$0" -newer "$DEX" -type f -print -quit)" ]; then
-  echo "build/framework/megler-framework.dex is newer than its sources ($(( $(stat -c%s "$DEX") / 1024 )) KB)"
+  echo "build/framework/meglet-framework.dex is newer than its sources ($(( $(stat -c%s "$DEX") / 1024 )) KB)"
   exit 0
 fi
 
@@ -123,4 +123,4 @@ echo "framework: $(find "$OUT/classes" -name '*.class' | wc -l) classes compiled
 [ ! -f "$OUT/dex/classes2.dex" ] || { echo "d8 wrote more than one DEX file: the framework has outgrown one, and the runtime is given one" >&2; exit 1; }
 mv "$OUT/dex/classes.dex" "$DEX"
 rm -rf "$OUT/dex" "$OUT/classes" "$OUT/stubs" "$OUT/classes.jar"
-echo "built build/framework/megler-framework.dex ($(( $(stat -c%s "$DEX") / 1024 )) KB)"
+echo "built build/framework/meglet-framework.dex ($(( $(stat -c%s "$DEX") / 1024 )) KB)"

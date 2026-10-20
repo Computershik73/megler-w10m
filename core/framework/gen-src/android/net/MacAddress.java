@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MacAddress implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.net.MacAddress ALL_ZEROS_ADDRESS;
     public static android.net.MacAddress BROADCAST_ADDRESS;
     public static android.os.Parcelable.Creator CREATOR;
@@ -19,9 +19,9 @@ public final class MacAddress implements android.os.Parcelable {
     public static int macAddressType(byte[] p0) { return 0; }
     public static java.lang.String stringAddrFromByteAddr(byte[] p0) { return null; }
     public int describeContents() { return 0; }
-    public int getAddressType() { return (meglerProps.get("AddressType") instanceof Integer ? (Integer) meglerProps.get("AddressType") : 0); }
-    public java.net.Inet6Address getLinkLocalIpv6FromEui48Mac() { return (java.net.Inet6Address) meglerProps.get("LinkLocalIpv6FromEui48Mac"); }
-    public boolean isLocallyAssigned() { return (meglerProps.get("LocallyAssigned") instanceof Boolean ? (Boolean) meglerProps.get("LocallyAssigned") : false); }
+    public int getAddressType() { return (megletProps.get("AddressType") instanceof Integer ? (Integer) megletProps.get("AddressType") : 0); }
+    public java.net.Inet6Address getLinkLocalIpv6FromEui48Mac() { return (java.net.Inet6Address) megletProps.get("LinkLocalIpv6FromEui48Mac"); }
+    public boolean isLocallyAssigned() { return (megletProps.get("LocallyAssigned") instanceof Boolean ? (Boolean) megletProps.get("LocallyAssigned") : false); }
     public boolean matches(android.net.MacAddress p0, android.net.MacAddress p1) { return false; }
     public byte[] toByteArray() { return null; }
     public java.lang.String toOuiString() { return null; }

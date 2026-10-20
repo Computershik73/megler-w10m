@@ -3,7 +3,7 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RggbChannelVector {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int BLUE = 3;
     public static final int COUNT = 4;
     public static final int GREEN_EVEN = 1;
@@ -11,10 +11,10 @@ public final class RggbChannelVector {
     public static int RED;
     public RggbChannelVector(float p0, float p1, float p2, float p3) {}
     public void copyTo(float[] p0, int p1) {}
-    public float getBlue() { return (meglerProps.get("Blue") instanceof Float ? (Float) meglerProps.get("Blue") : 0f); }
+    public float getBlue() { return (megletProps.get("Blue") instanceof Float ? (Float) megletProps.get("Blue") : 0f); }
     public float getComponent(int p0) { return 0f; }
-    public float getGreenEven() { return (meglerProps.get("GreenEven") instanceof Float ? (Float) meglerProps.get("GreenEven") : 0f); }
-    public float getGreenOdd() { return (meglerProps.get("GreenOdd") instanceof Float ? (Float) meglerProps.get("GreenOdd") : 0f); }
-    public float getRed() { return (meglerProps.get("Red") instanceof Float ? (Float) meglerProps.get("Red") : 0f); }
+    public float getGreenEven() { return (megletProps.get("GreenEven") instanceof Float ? (Float) megletProps.get("GreenEven") : 0f); }
+    public float getGreenOdd() { return (megletProps.get("GreenOdd") instanceof Float ? (Float) megletProps.get("GreenOdd") : 0f); }
+    public float getRed() { return (megletProps.get("Red") instanceof Float ? (Float) megletProps.get("Red") : 0f); }
     RggbChannelVector() { this((float) 0f, (float) 0f, (float) 0f, (float) 0f); }
 }

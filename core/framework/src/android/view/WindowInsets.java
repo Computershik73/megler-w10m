@@ -34,8 +34,8 @@ public final class WindowInsets {
     public WindowInsets(Insets system, Insets ime, boolean consumed) { mSystem = system; mIme = ime; mConsumed = consumed; }
     public WindowInsets(WindowInsets o) { this(o.mSystem, o.mIme, o.mConsumed); mCutout = o.mCutout; mCutoutConsumed = o.mCutoutConsumed; }
     public WindowInsets(Rect r) { this(Insets.of(r), Insets.NONE, false); }
-    /** Megler: the window's insets (the status bar and home indicator areas, the keyboard). */
-    public static WindowInsets meglerOf(int l, int t, int r, int b, int imeBottom, DisplayCutout cutout) { WindowInsets i = new WindowInsets(Insets.of(l, t, r, b), Insets.of(0, 0, 0, imeBottom), false); i.mCutout = cutout; return i; }
+    /** Meglet: the window's insets (the status bar and home indicator areas, the keyboard). */
+    public static WindowInsets megletOf(int l, int t, int r, int b, int imeBottom, DisplayCutout cutout) { WindowInsets i = new WindowInsets(Insets.of(l, t, r, b), Insets.of(0, 0, 0, imeBottom), false); i.mCutout = cutout; return i; }
     public int getSystemWindowInsetLeft() { return mConsumed ? 0 : mSystem.left; }
     public int getSystemWindowInsetTop() { return mConsumed ? 0 : mSystem.top; }
     public int getSystemWindowInsetRight() { return mConsumed ? 0 : mSystem.right; }

@@ -3,7 +3,7 @@ package android.nfc.tech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class MifareUltralight extends android.nfc.tech.BasicTagTechnology {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_IS_UL_C = "isulc";
     public static final int PAGE_SIZE = 4;
     public static final int TYPE_ULTRALIGHT = 1;
@@ -13,14 +13,14 @@ public abstract class MifareUltralight extends android.nfc.tech.BasicTagTechnolo
     public static android.nfc.tech.MifareUltralight get(android.nfc.Tag p0) { return null; }
     public void close() {}
     public void connect() {}
-    public int getMaxTransceiveLength() { return (meglerProps.get("MaxTransceiveLength") instanceof Integer ? (Integer) meglerProps.get("MaxTransceiveLength") : 0); }
-    public android.nfc.Tag getTag() { return (android.nfc.Tag) meglerProps.get("Tag"); }
-    public int getTimeout() { return (meglerProps.get("Timeout") instanceof Integer ? (Integer) meglerProps.get("Timeout") : 0); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
-    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
+    public int getMaxTransceiveLength() { return (megletProps.get("MaxTransceiveLength") instanceof Integer ? (Integer) megletProps.get("MaxTransceiveLength") : 0); }
+    public android.nfc.Tag getTag() { return (android.nfc.Tag) megletProps.get("Tag"); }
+    public int getTimeout() { return (megletProps.get("Timeout") instanceof Integer ? (Integer) megletProps.get("Timeout") : 0); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
     public byte[] readPages(int p0) { return null; }
     public void reconnect() {}
-    public void setTimeout(int p0) { meglerProps.put("Timeout", Integer.valueOf(p0)); }
+    public void setTimeout(int p0) { megletProps.put("Timeout", Integer.valueOf(p0)); }
     public byte[] transceive(byte[] p0) { return null; }
     public void writePage(int p0, byte[] p1) {}
     MifareUltralight() { this((android.nfc.Tag) null); }

@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AudioRecordingConfiguration implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AudioRecordingConfiguration(int p0, int p1, int p2, android.media.AudioFormat p3, android.media.AudioFormat p4, int p5, java.lang.String p6) {}
     public AudioRecordingConfiguration(int p0, int p1, int p2, android.media.AudioFormat p3, android.media.AudioFormat p4, int p5, java.lang.String p6, int p7, boolean p8, int p9, android.media.audiofx.AudioEffect.Descriptor[] p10, android.media.audiofx.AudioEffect.Descriptor[] p11) {}
@@ -11,18 +11,18 @@ public final class AudioRecordingConfiguration implements android.os.Parcelable 
     public static java.lang.String toLogFriendlyString(android.media.AudioRecordingConfiguration p0) { return null; }
     public int describeContents() { return 0; }
     public void dump(java.io.PrintWriter p0) {}
-    public android.media.AudioDeviceInfo getAudioDevice() { return (android.media.AudioDeviceInfo) meglerProps.get("AudioDevice"); }
-    public int getAudioSource() { return (meglerProps.get("AudioSource") instanceof Integer ? (Integer) meglerProps.get("AudioSource") : 0); }
-    public int getClientAudioSessionId() { return (meglerProps.get("ClientAudioSessionId") instanceof Integer ? (Integer) meglerProps.get("ClientAudioSessionId") : 0); }
-    public int getClientAudioSource() { return (meglerProps.get("ClientAudioSource") instanceof Integer ? (Integer) meglerProps.get("ClientAudioSource") : 0); }
-    public java.util.List getClientEffects() { return (meglerProps.get("ClientEffects") != null ? (java.util.List) meglerProps.get("ClientEffects") : new java.util.ArrayList()); }
-    public android.media.AudioFormat getClientFormat() { return (android.media.AudioFormat) meglerProps.get("ClientFormat"); }
-    public java.lang.String getClientPackageName() { return (java.lang.String) meglerProps.get("ClientPackageName"); }
-    public int getClientPortId() { return (meglerProps.get("ClientPortId") instanceof Integer ? (Integer) meglerProps.get("ClientPortId") : 0); }
-    public int getClientUid() { return (meglerProps.get("ClientUid") instanceof Integer ? (Integer) meglerProps.get("ClientUid") : 0); }
-    public java.util.List getEffects() { return (meglerProps.get("Effects") != null ? (java.util.List) meglerProps.get("Effects") : new java.util.ArrayList()); }
-    public android.media.AudioFormat getFormat() { return (android.media.AudioFormat) meglerProps.get("Format"); }
-    public boolean isClientSilenced() { return (meglerProps.get("ClientSilenced") instanceof Boolean ? (Boolean) meglerProps.get("ClientSilenced") : false); }
+    public android.media.AudioDeviceInfo getAudioDevice() { return (android.media.AudioDeviceInfo) megletProps.get("AudioDevice"); }
+    public int getAudioSource() { return (megletProps.get("AudioSource") instanceof Integer ? (Integer) megletProps.get("AudioSource") : 0); }
+    public int getClientAudioSessionId() { return (megletProps.get("ClientAudioSessionId") instanceof Integer ? (Integer) megletProps.get("ClientAudioSessionId") : 0); }
+    public int getClientAudioSource() { return (megletProps.get("ClientAudioSource") instanceof Integer ? (Integer) megletProps.get("ClientAudioSource") : 0); }
+    public java.util.List getClientEffects() { return (megletProps.get("ClientEffects") != null ? (java.util.List) megletProps.get("ClientEffects") : new java.util.ArrayList()); }
+    public android.media.AudioFormat getClientFormat() { return (android.media.AudioFormat) megletProps.get("ClientFormat"); }
+    public java.lang.String getClientPackageName() { return (java.lang.String) megletProps.get("ClientPackageName"); }
+    public int getClientPortId() { return (megletProps.get("ClientPortId") instanceof Integer ? (Integer) megletProps.get("ClientPortId") : 0); }
+    public int getClientUid() { return (megletProps.get("ClientUid") instanceof Integer ? (Integer) megletProps.get("ClientUid") : 0); }
+    public java.util.List getEffects() { return (megletProps.get("Effects") != null ? (java.util.List) megletProps.get("Effects") : new java.util.ArrayList()); }
+    public android.media.AudioFormat getFormat() { return (android.media.AudioFormat) megletProps.get("Format"); }
+    public boolean isClientSilenced() { return (megletProps.get("ClientSilenced") instanceof Boolean ? (Boolean) megletProps.get("ClientSilenced") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AudioRecordingConfiguration() { this((int) 0, (int) 0, (int) 0, (android.media.AudioFormat) null, (android.media.AudioFormat) null, (int) 0, (java.lang.String) null); }
 }

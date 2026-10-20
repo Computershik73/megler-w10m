@@ -3,7 +3,7 @@ package android.hardware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class BatteryState {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int STATUS_CHARGING = 2;
     public static final int STATUS_DISCHARGING = 3;
     public static final int STATUS_FULL = 5;

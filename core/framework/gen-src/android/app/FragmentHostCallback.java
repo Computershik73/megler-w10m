@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class FragmentHostCallback extends android.app.FragmentContainer {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public FragmentHostCallback(android.content.Context p0, android.os.Handler p1, int p2) { super(); }
     public void onAttachFragment(android.app.Fragment p0) {}
     public void onDump(java.lang.String p0, java.io.FileDescriptor p1, java.io.PrintWriter p2, java.lang.String[] p3) {}

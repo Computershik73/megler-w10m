@@ -3,7 +3,7 @@ package android.app.backup;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class RestoreObserver {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public RestoreObserver() {}
     public void onUpdate(int p0, java.lang.String p1) {}
     public void restoreFinished(int p0) {}

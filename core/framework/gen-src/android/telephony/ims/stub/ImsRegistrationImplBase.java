@@ -3,7 +3,7 @@ package android.telephony.ims.stub;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ImsRegistrationImplBase {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DEFAULT_THROTTLE_SEC = 0;
     public static final int REASON_ALLOWED_NETWORK_TYPES_CHANGED = 3;
     public static final int REASON_HANDOVER_FAILED = 6;
@@ -23,7 +23,7 @@ public class ImsRegistrationImplBase {
     public ImsRegistrationImplBase() {}
     public ImsRegistrationImplBase(java.util.concurrent.Executor p0) {}
     public void clearRegistrationCache() {}
-    public android.telephony.ims.aidl.IImsRegistration getBinder() { return (android.telephony.ims.aidl.IImsRegistration) meglerProps.get("Binder"); }
+    public android.telephony.ims.aidl.IImsRegistration getBinder() { return (android.telephony.ims.aidl.IImsRegistration) megletProps.get("Binder"); }
     public void onDeregistered(android.telephony.ims.ImsReasonInfo p0) {}
     public void onDeregistered(android.telephony.ims.ImsReasonInfo p0, int p1, int p2) {}
     public void onDeregistered(android.telephony.ims.ImsReasonInfo p0, int p1, int p2, android.telephony.ims.SipDetails p3) {}
@@ -37,7 +37,7 @@ public class ImsRegistrationImplBase {
     public void onSubscriberAssociatedUriChanged(android.net.Uri[] p0) {}
     public void onTechnologyChangeFailed(int p0, android.telephony.ims.ImsReasonInfo p1) {}
     public void onTechnologyChangeFailed(android.telephony.ims.ImsReasonInfo p0, android.telephony.ims.ImsRegistrationAttributes p1) {}
-    public void setDefaultExecutor(java.util.concurrent.Executor p0) { meglerProps.put("DefaultExecutor", p0); }
+    public void setDefaultExecutor(java.util.concurrent.Executor p0) { megletProps.put("DefaultExecutor", p0); }
     public void triggerDeregistration(int p0) {}
     public void triggerFullNetworkRegistration(int p0, java.lang.String p1) {}
     public void triggerSipDelegateDeregistration() {}

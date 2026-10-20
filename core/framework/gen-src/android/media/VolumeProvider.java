@@ -3,23 +3,23 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class VolumeProvider {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int VOLUME_CONTROL_ABSOLUTE = 2;
     public static final int VOLUME_CONTROL_FIXED = 0;
     public static final int VOLUME_CONTROL_RELATIVE = 1;
     public VolumeProvider(int p0, int p1, int p2) {}
     public VolumeProvider(int p0, int p1, int p2, java.lang.String p3) {}
-    public int getCurrentVolume() { return (meglerProps.get("CurrentVolume") instanceof Integer ? (Integer) meglerProps.get("CurrentVolume") : 0); }
-    public int getMaxVolume() { return (meglerProps.get("MaxVolume") instanceof Integer ? (Integer) meglerProps.get("MaxVolume") : 0); }
-    public int getVolumeControl() { return (meglerProps.get("VolumeControl") instanceof Integer ? (Integer) meglerProps.get("VolumeControl") : 0); }
-    public java.lang.String getVolumeControlId() { return (java.lang.String) meglerProps.get("VolumeControlId"); }
+    public int getCurrentVolume() { return (megletProps.get("CurrentVolume") instanceof Integer ? (Integer) megletProps.get("CurrentVolume") : 0); }
+    public int getMaxVolume() { return (megletProps.get("MaxVolume") instanceof Integer ? (Integer) megletProps.get("MaxVolume") : 0); }
+    public int getVolumeControl() { return (megletProps.get("VolumeControl") instanceof Integer ? (Integer) megletProps.get("VolumeControl") : 0); }
+    public java.lang.String getVolumeControlId() { return (java.lang.String) megletProps.get("VolumeControlId"); }
     public void onAdjustVolume(int p0) {}
     public void onSetVolumeTo(int p0) {}
-    public void setCallback(android.media.VolumeProvider.Callback p0) { meglerProps.put("Callback", p0); }
-    public void setCurrentVolume(int p0) { meglerProps.put("CurrentVolume", Integer.valueOf(p0)); }
+    public void setCallback(android.media.VolumeProvider.Callback p0) { megletProps.put("Callback", p0); }
+    public void setCurrentVolume(int p0) { megletProps.put("CurrentVolume", Integer.valueOf(p0)); }
     VolumeProvider() { this((int) 0, (int) 0, (int) 0); }
     public static abstract class Callback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Callback() {}
         public abstract void onVolumeChanged(android.media.VolumeProvider p0);
     }

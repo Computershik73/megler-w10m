@@ -3,7 +3,7 @@ package android.view.textclassifier;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class TextClassifierEvent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CATEGORY_CONVERSATION_ACTIONS = 3;
     public static final int CATEGORY_LANGUAGE_DETECTION = 4;
     public static final int CATEGORY_LINKIFY = 2;
@@ -33,81 +33,81 @@ public abstract class TextClassifierEvent implements android.os.Parcelable {
     public static final int TYPE_SMART_SELECTION_SINGLE = 3;
     public android.view.textclassifier.TextClassificationSessionId mHiddenTempSessionId;
     public int describeContents() { return 0; }
-    public int[] getActionIndices() { return (int[]) meglerProps.get("ActionIndices"); }
-    public java.lang.String[] getEntityTypes() { return (java.lang.String[]) meglerProps.get("EntityTypes"); }
-    public int getEventCategory() { return (meglerProps.get("EventCategory") instanceof Integer ? (Integer) meglerProps.get("EventCategory") : 0); }
-    public android.view.textclassifier.TextClassificationContext getEventContext() { return (android.view.textclassifier.TextClassificationContext) meglerProps.get("EventContext"); }
-    public int getEventIndex() { return (meglerProps.get("EventIndex") instanceof Integer ? (Integer) meglerProps.get("EventIndex") : 0); }
-    public int getEventType() { return (meglerProps.get("EventType") instanceof Integer ? (Integer) meglerProps.get("EventType") : 0); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-    public java.lang.String getModelName() { return (java.lang.String) meglerProps.get("ModelName"); }
-    public java.lang.String getResultId() { return (java.lang.String) meglerProps.get("ResultId"); }
-    public float[] getScores() { return (float[]) meglerProps.get("Scores"); }
+    public int[] getActionIndices() { return (int[]) megletProps.get("ActionIndices"); }
+    public java.lang.String[] getEntityTypes() { return (java.lang.String[]) megletProps.get("EntityTypes"); }
+    public int getEventCategory() { return (megletProps.get("EventCategory") instanceof Integer ? (Integer) megletProps.get("EventCategory") : 0); }
+    public android.view.textclassifier.TextClassificationContext getEventContext() { return (android.view.textclassifier.TextClassificationContext) megletProps.get("EventContext"); }
+    public int getEventIndex() { return (megletProps.get("EventIndex") instanceof Integer ? (Integer) megletProps.get("EventIndex") : 0); }
+    public int getEventType() { return (megletProps.get("EventType") instanceof Integer ? (Integer) megletProps.get("EventType") : 0); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public java.lang.String getModelName() { return (java.lang.String) megletProps.get("ModelName"); }
+    public java.lang.String getResultId() { return (java.lang.String) megletProps.get("ResultId"); }
+    public float[] getScores() { return (float[]) megletProps.get("Scores"); }
     public android.view.textclassifier.SelectionEvent toSelectionEvent() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TextClassifierEvent() {}
     public static abstract class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-        public android.view.textclassifier.TextClassifierEvent.Builder setActionIndices(int[] p0) { meglerProps.put("ActionIndices", p0); return this; }
-        public android.view.textclassifier.TextClassifierEvent.Builder setEntityTypes(java.lang.String[] p0) { meglerProps.put("EntityTypes", p0); return this; }
-        public android.view.textclassifier.TextClassifierEvent.Builder setEventContext(android.view.textclassifier.TextClassificationContext p0) { meglerProps.put("EventContext", p0); return this; }
-        public android.view.textclassifier.TextClassifierEvent.Builder setEventIndex(int p0) { meglerProps.put("EventIndex", Integer.valueOf(p0)); return this; }
-        public android.view.textclassifier.TextClassifierEvent.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
-        public android.view.textclassifier.TextClassifierEvent.Builder setModelName(java.lang.String p0) { meglerProps.put("ModelName", p0); return this; }
-        public android.view.textclassifier.TextClassifierEvent.Builder setResultId(java.lang.String p0) { meglerProps.put("ResultId", p0); return this; }
-        public android.view.textclassifier.TextClassifierEvent.Builder setScores(float[] p0) { meglerProps.put("Scores", p0); return this; }
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        public android.view.textclassifier.TextClassifierEvent.Builder setActionIndices(int[] p0) { megletProps.put("ActionIndices", p0); return this; }
+        public android.view.textclassifier.TextClassifierEvent.Builder setEntityTypes(java.lang.String[] p0) { megletProps.put("EntityTypes", p0); return this; }
+        public android.view.textclassifier.TextClassifierEvent.Builder setEventContext(android.view.textclassifier.TextClassificationContext p0) { megletProps.put("EventContext", p0); return this; }
+        public android.view.textclassifier.TextClassifierEvent.Builder setEventIndex(int p0) { megletProps.put("EventIndex", Integer.valueOf(p0)); return this; }
+        public android.view.textclassifier.TextClassifierEvent.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+        public android.view.textclassifier.TextClassifierEvent.Builder setModelName(java.lang.String p0) { megletProps.put("ModelName", p0); return this; }
+        public android.view.textclassifier.TextClassifierEvent.Builder setResultId(java.lang.String p0) { megletProps.put("ResultId", p0); return this; }
+        public android.view.textclassifier.TextClassifierEvent.Builder setScores(float[] p0) { megletProps.put("Scores", p0); return this; }
         protected Builder() {}
     }
     public static final class ConversationActionsEvent extends android.view.textclassifier.TextClassifierEvent implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         protected ConversationActionsEvent() { super(); }
         public static final class Builder extends android.view.textclassifier.TextClassifierEvent.Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(int p0) { super(); }
-            public android.view.textclassifier.TextClassifierEvent.ConversationActionsEvent build() { android.view.textclassifier.TextClassifierEvent.ConversationActionsEvent x = new android.view.textclassifier.TextClassifierEvent.ConversationActionsEvent(); x.meglerProps.putAll(meglerProps); return x; }
+            public android.view.textclassifier.TextClassifierEvent.ConversationActionsEvent build() { android.view.textclassifier.TextClassifierEvent.ConversationActionsEvent x = new android.view.textclassifier.TextClassifierEvent.ConversationActionsEvent(); x.megletProps.putAll(megletProps); return x; }
             Builder() { this((int) 0); }
         }
     }
     public static final class LanguageDetectionEvent extends android.view.textclassifier.TextClassifierEvent implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         protected LanguageDetectionEvent() { super(); }
         public static final class Builder extends android.view.textclassifier.TextClassifierEvent.Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(int p0) { super(); }
-            public android.view.textclassifier.TextClassifierEvent.LanguageDetectionEvent build() { android.view.textclassifier.TextClassifierEvent.LanguageDetectionEvent x = new android.view.textclassifier.TextClassifierEvent.LanguageDetectionEvent(); x.meglerProps.putAll(meglerProps); return x; }
+            public android.view.textclassifier.TextClassifierEvent.LanguageDetectionEvent build() { android.view.textclassifier.TextClassifierEvent.LanguageDetectionEvent x = new android.view.textclassifier.TextClassifierEvent.LanguageDetectionEvent(); x.megletProps.putAll(megletProps); return x; }
             Builder() { this((int) 0); }
         }
     }
     public static final class TextLinkifyEvent extends android.view.textclassifier.TextClassifierEvent implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         protected TextLinkifyEvent() { super(); }
         public static final class Builder extends android.view.textclassifier.TextClassifierEvent.Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(int p0) { super(); }
-            public android.view.textclassifier.TextClassifierEvent.TextLinkifyEvent build() { android.view.textclassifier.TextClassifierEvent.TextLinkifyEvent x = new android.view.textclassifier.TextClassifierEvent.TextLinkifyEvent(); x.meglerProps.putAll(meglerProps); return x; }
+            public android.view.textclassifier.TextClassifierEvent.TextLinkifyEvent build() { android.view.textclassifier.TextClassifierEvent.TextLinkifyEvent x = new android.view.textclassifier.TextClassifierEvent.TextLinkifyEvent(); x.megletProps.putAll(megletProps); return x; }
             Builder() { this((int) 0); }
         }
     }
     public static final class TextSelectionEvent extends android.view.textclassifier.TextClassifierEvent implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
-        public int getRelativeSuggestedWordEndIndex() { return (meglerProps.get("RelativeSuggestedWordEndIndex") instanceof Integer ? (Integer) meglerProps.get("RelativeSuggestedWordEndIndex") : 0); }
-        public int getRelativeSuggestedWordStartIndex() { return (meglerProps.get("RelativeSuggestedWordStartIndex") instanceof Integer ? (Integer) meglerProps.get("RelativeSuggestedWordStartIndex") : 0); }
-        public int getRelativeWordEndIndex() { return (meglerProps.get("RelativeWordEndIndex") instanceof Integer ? (Integer) meglerProps.get("RelativeWordEndIndex") : 0); }
-        public int getRelativeWordStartIndex() { return (meglerProps.get("RelativeWordStartIndex") instanceof Integer ? (Integer) meglerProps.get("RelativeWordStartIndex") : 0); }
+        public int getRelativeSuggestedWordEndIndex() { return (megletProps.get("RelativeSuggestedWordEndIndex") instanceof Integer ? (Integer) megletProps.get("RelativeSuggestedWordEndIndex") : 0); }
+        public int getRelativeSuggestedWordStartIndex() { return (megletProps.get("RelativeSuggestedWordStartIndex") instanceof Integer ? (Integer) megletProps.get("RelativeSuggestedWordStartIndex") : 0); }
+        public int getRelativeWordEndIndex() { return (megletProps.get("RelativeWordEndIndex") instanceof Integer ? (Integer) megletProps.get("RelativeWordEndIndex") : 0); }
+        public int getRelativeWordStartIndex() { return (megletProps.get("RelativeWordStartIndex") instanceof Integer ? (Integer) megletProps.get("RelativeWordStartIndex") : 0); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected TextSelectionEvent() { super(); }
         public static final class Builder extends android.view.textclassifier.TextClassifierEvent.Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(int p0) { super(); }
-            public android.view.textclassifier.TextClassifierEvent.TextSelectionEvent build() { android.view.textclassifier.TextClassifierEvent.TextSelectionEvent x = new android.view.textclassifier.TextClassifierEvent.TextSelectionEvent(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.view.textclassifier.TextClassifierEvent.TextSelectionEvent.Builder setRelativeSuggestedWordEndIndex(int p0) { meglerProps.put("RelativeSuggestedWordEndIndex", Integer.valueOf(p0)); return this; }
-            public android.view.textclassifier.TextClassifierEvent.TextSelectionEvent.Builder setRelativeSuggestedWordStartIndex(int p0) { meglerProps.put("RelativeSuggestedWordStartIndex", Integer.valueOf(p0)); return this; }
-            public android.view.textclassifier.TextClassifierEvent.TextSelectionEvent.Builder setRelativeWordEndIndex(int p0) { meglerProps.put("RelativeWordEndIndex", Integer.valueOf(p0)); return this; }
-            public android.view.textclassifier.TextClassifierEvent.TextSelectionEvent.Builder setRelativeWordStartIndex(int p0) { meglerProps.put("RelativeWordStartIndex", Integer.valueOf(p0)); return this; }
+            public android.view.textclassifier.TextClassifierEvent.TextSelectionEvent build() { android.view.textclassifier.TextClassifierEvent.TextSelectionEvent x = new android.view.textclassifier.TextClassifierEvent.TextSelectionEvent(); x.megletProps.putAll(megletProps); return x; }
+            public android.view.textclassifier.TextClassifierEvent.TextSelectionEvent.Builder setRelativeSuggestedWordEndIndex(int p0) { megletProps.put("RelativeSuggestedWordEndIndex", Integer.valueOf(p0)); return this; }
+            public android.view.textclassifier.TextClassifierEvent.TextSelectionEvent.Builder setRelativeSuggestedWordStartIndex(int p0) { megletProps.put("RelativeSuggestedWordStartIndex", Integer.valueOf(p0)); return this; }
+            public android.view.textclassifier.TextClassifierEvent.TextSelectionEvent.Builder setRelativeWordEndIndex(int p0) { megletProps.put("RelativeWordEndIndex", Integer.valueOf(p0)); return this; }
+            public android.view.textclassifier.TextClassifierEvent.TextSelectionEvent.Builder setRelativeWordStartIndex(int p0) { megletProps.put("RelativeWordStartIndex", Integer.valueOf(p0)); return this; }
             Builder() { this((int) 0); }
         }
     }

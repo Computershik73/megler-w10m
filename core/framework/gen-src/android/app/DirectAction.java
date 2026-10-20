@@ -3,26 +3,26 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DirectAction implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String KEY_ACTIONS_LIST = "actions_list";
     public DirectAction(android.app.DirectAction p0) {}
     public DirectAction(java.lang.String p0, android.os.Bundle p1, android.content.LocusId p2) {}
     public int describeContents() { return 0; }
-    public android.os.IBinder getActivityId() { return (android.os.IBinder) meglerProps.get("ActivityId"); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
-    public android.content.LocusId getLocusId() { return (android.content.LocusId) meglerProps.get("LocusId"); }
-    public int getTaskId() { return (meglerProps.get("TaskId") instanceof Integer ? (Integer) meglerProps.get("TaskId") : 0); }
+    public android.os.IBinder getActivityId() { return (android.os.IBinder) megletProps.get("ActivityId"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
+    public android.content.LocusId getLocusId() { return (android.content.LocusId) megletProps.get("LocusId"); }
+    public int getTaskId() { return (megletProps.get("TaskId") instanceof Integer ? (Integer) megletProps.get("TaskId") : 0); }
     public void setSource(int p0, android.os.IBinder p1) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     DirectAction() { this((android.app.DirectAction) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0) {}
-        public android.app.DirectAction build() { android.app.DirectAction x = new android.app.DirectAction(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.app.DirectAction.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
-        public android.app.DirectAction.Builder setLocusId(android.content.LocusId p0) { meglerProps.put("LocusId", p0); return this; }
+        public android.app.DirectAction build() { android.app.DirectAction x = new android.app.DirectAction(); x.megletProps.putAll(megletProps); return x; }
+        public android.app.DirectAction.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+        public android.app.DirectAction.Builder setLocusId(android.content.LocusId p0) { megletProps.put("LocusId", p0); return this; }
         Builder() { this((java.lang.String) null); }
     }
 }

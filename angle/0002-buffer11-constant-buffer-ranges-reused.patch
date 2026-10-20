@@ -5,7 +5,7 @@
          if (!cacheEntry->storage)
          {
 -            cacheEntry->storage  = allocateStorage(BUFFER_USAGE_UNIFORM);
-+            // megler-w10m: where the driver has no constant buffer offsets, each range of a uniform
++            // Meglet: where the driver has no constant buffer offsets, each range of a uniform
 +            // buffer an app binds is a buffer of its own here, kept by its offset, the least
 +            // recently used one deleted once they come to twice the buffer's size. An app that
 +            // keeps its uniforms in one large buffer and binds the next range of it for each draw

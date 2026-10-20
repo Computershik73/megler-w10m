@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PhoneAccount implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CAPABILITY_ADHOC_CONFERENCE_CALLING = 16384;
     public static final int CAPABILITY_CALL_COMPOSER = 32768;
     public static final int CAPABILITY_CALL_PROVIDER = 2;
@@ -45,49 +45,49 @@ public final class PhoneAccount implements android.os.Parcelable {
     public static android.telecom.PhoneAccount.Builder builder(android.telecom.PhoneAccountHandle p0, java.lang.CharSequence p1) { return null; }
     public java.lang.String capabilitiesToString() { return null; }
     public int describeContents() { return 0; }
-    public android.telecom.PhoneAccountHandle getAccountHandle() { return (android.telecom.PhoneAccountHandle) meglerProps.get("AccountHandle"); }
-    public android.net.Uri getAddress() { return (android.net.Uri) meglerProps.get("Address"); }
-    public int getCapabilities() { return (meglerProps.get("Capabilities") instanceof Integer ? (Integer) meglerProps.get("Capabilities") : 0); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-    public java.lang.String getGroupId() { return (java.lang.String) meglerProps.get("GroupId"); }
-    public int getHighlightColor() { return (meglerProps.get("HighlightColor") instanceof Integer ? (Integer) meglerProps.get("HighlightColor") : 0); }
-    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) meglerProps.get("Icon"); }
-    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) meglerProps.get("Label"); }
-    public java.lang.CharSequence getShortDescription() { return (java.lang.CharSequence) meglerProps.get("ShortDescription"); }
-    public java.util.Set getSimultaneousCallingRestriction() { return (meglerProps.get("SimultaneousCallingRestriction") != null ? (java.util.Set) meglerProps.get("SimultaneousCallingRestriction") : new java.util.HashSet()); }
-    public android.net.Uri getSubscriptionAddress() { return (android.net.Uri) meglerProps.get("SubscriptionAddress"); }
-    public int getSupportedAudioRoutes() { return (meglerProps.get("SupportedAudioRoutes") instanceof Integer ? (Integer) meglerProps.get("SupportedAudioRoutes") : 0); }
-    public java.util.List getSupportedUriSchemes() { return (meglerProps.get("SupportedUriSchemes") != null ? (java.util.List) meglerProps.get("SupportedUriSchemes") : new java.util.ArrayList()); }
+    public android.telecom.PhoneAccountHandle getAccountHandle() { return (android.telecom.PhoneAccountHandle) megletProps.get("AccountHandle"); }
+    public android.net.Uri getAddress() { return (android.net.Uri) megletProps.get("Address"); }
+    public int getCapabilities() { return (megletProps.get("Capabilities") instanceof Integer ? (Integer) megletProps.get("Capabilities") : 0); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public java.lang.String getGroupId() { return (java.lang.String) megletProps.get("GroupId"); }
+    public int getHighlightColor() { return (megletProps.get("HighlightColor") instanceof Integer ? (Integer) megletProps.get("HighlightColor") : 0); }
+    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) megletProps.get("Icon"); }
+    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) megletProps.get("Label"); }
+    public java.lang.CharSequence getShortDescription() { return (java.lang.CharSequence) megletProps.get("ShortDescription"); }
+    public java.util.Set getSimultaneousCallingRestriction() { return (megletProps.get("SimultaneousCallingRestriction") != null ? (java.util.Set) megletProps.get("SimultaneousCallingRestriction") : new java.util.HashSet()); }
+    public android.net.Uri getSubscriptionAddress() { return (android.net.Uri) megletProps.get("SubscriptionAddress"); }
+    public int getSupportedAudioRoutes() { return (megletProps.get("SupportedAudioRoutes") instanceof Integer ? (Integer) megletProps.get("SupportedAudioRoutes") : 0); }
+    public java.util.List getSupportedUriSchemes() { return (megletProps.get("SupportedUriSchemes") != null ? (java.util.List) megletProps.get("SupportedUriSchemes") : new java.util.ArrayList()); }
     public boolean hasAudioRoutes(int p0) { return false; }
     public boolean hasCapabilities(int p0) { return false; }
     public boolean hasSimultaneousCallingRestriction() { return false; }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
-    public boolean isSelfManaged() { return (meglerProps.get("SelfManaged") instanceof Boolean ? (Boolean) meglerProps.get("SelfManaged") : false); }
-    public void setIsEnabled(boolean p0) { meglerProps.put("IsEnabled", Boolean.valueOf(p0)); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
+    public boolean isSelfManaged() { return (megletProps.get("SelfManaged") instanceof Boolean ? (Boolean) megletProps.get("SelfManaged") : false); }
+    public void setIsEnabled(boolean p0) { megletProps.put("IsEnabled", Boolean.valueOf(p0)); }
     public boolean supportsUriScheme(java.lang.String p0) { return false; }
     public android.telecom.PhoneAccount.Builder toBuilder() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected PhoneAccount() {}
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.telecom.PhoneAccount p0) {}
         public Builder(android.telecom.PhoneAccountHandle p0, java.lang.CharSequence p1) {}
         public android.telecom.PhoneAccount.Builder addSupportedUriScheme(java.lang.String p0) { return this; }
-        public android.telecom.PhoneAccount build() { android.telecom.PhoneAccount x = new android.telecom.PhoneAccount(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.telecom.PhoneAccount build() { android.telecom.PhoneAccount x = new android.telecom.PhoneAccount(); x.megletProps.putAll(megletProps); return x; }
         public android.telecom.PhoneAccount.Builder clearSimultaneousCallingRestriction() { return this; }
-        public android.telecom.PhoneAccount.Builder setAddress(android.net.Uri p0) { meglerProps.put("Address", p0); return this; }
-        public android.telecom.PhoneAccount.Builder setCapabilities(int p0) { meglerProps.put("Capabilities", Integer.valueOf(p0)); return this; }
-        public android.telecom.PhoneAccount.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
-        public android.telecom.PhoneAccount.Builder setGroupId(java.lang.String p0) { meglerProps.put("GroupId", p0); return this; }
-        public android.telecom.PhoneAccount.Builder setHighlightColor(int p0) { meglerProps.put("HighlightColor", Integer.valueOf(p0)); return this; }
-        public android.telecom.PhoneAccount.Builder setIcon(android.graphics.drawable.Icon p0) { meglerProps.put("Icon", p0); return this; }
-        public android.telecom.PhoneAccount.Builder setIsEnabled(boolean p0) { meglerProps.put("IsEnabled", Boolean.valueOf(p0)); return this; }
-        public android.telecom.PhoneAccount.Builder setLabel(java.lang.CharSequence p0) { meglerProps.put("Label", p0); return this; }
-        public android.telecom.PhoneAccount.Builder setShortDescription(java.lang.CharSequence p0) { meglerProps.put("ShortDescription", p0); return this; }
-        public android.telecom.PhoneAccount.Builder setSimultaneousCallingRestriction(java.util.Set p0) { meglerProps.put("SimultaneousCallingRestriction", p0); return this; }
-        public android.telecom.PhoneAccount.Builder setSubscriptionAddress(android.net.Uri p0) { meglerProps.put("SubscriptionAddress", p0); return this; }
-        public android.telecom.PhoneAccount.Builder setSupportedAudioRoutes(int p0) { meglerProps.put("SupportedAudioRoutes", Integer.valueOf(p0)); return this; }
-        public android.telecom.PhoneAccount.Builder setSupportedUriSchemes(java.util.List p0) { meglerProps.put("SupportedUriSchemes", p0); return this; }
+        public android.telecom.PhoneAccount.Builder setAddress(android.net.Uri p0) { megletProps.put("Address", p0); return this; }
+        public android.telecom.PhoneAccount.Builder setCapabilities(int p0) { megletProps.put("Capabilities", Integer.valueOf(p0)); return this; }
+        public android.telecom.PhoneAccount.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+        public android.telecom.PhoneAccount.Builder setGroupId(java.lang.String p0) { megletProps.put("GroupId", p0); return this; }
+        public android.telecom.PhoneAccount.Builder setHighlightColor(int p0) { megletProps.put("HighlightColor", Integer.valueOf(p0)); return this; }
+        public android.telecom.PhoneAccount.Builder setIcon(android.graphics.drawable.Icon p0) { megletProps.put("Icon", p0); return this; }
+        public android.telecom.PhoneAccount.Builder setIsEnabled(boolean p0) { megletProps.put("IsEnabled", Boolean.valueOf(p0)); return this; }
+        public android.telecom.PhoneAccount.Builder setLabel(java.lang.CharSequence p0) { megletProps.put("Label", p0); return this; }
+        public android.telecom.PhoneAccount.Builder setShortDescription(java.lang.CharSequence p0) { megletProps.put("ShortDescription", p0); return this; }
+        public android.telecom.PhoneAccount.Builder setSimultaneousCallingRestriction(java.util.Set p0) { megletProps.put("SimultaneousCallingRestriction", p0); return this; }
+        public android.telecom.PhoneAccount.Builder setSubscriptionAddress(android.net.Uri p0) { megletProps.put("SubscriptionAddress", p0); return this; }
+        public android.telecom.PhoneAccount.Builder setSupportedAudioRoutes(int p0) { megletProps.put("SupportedAudioRoutes", Integer.valueOf(p0)); return this; }
+        public android.telecom.PhoneAccount.Builder setSupportedUriSchemes(java.util.List p0) { megletProps.put("SupportedUriSchemes", p0); return this; }
         Builder() { this((android.telecom.PhoneAccount) null); }
     }
 }

@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VpnProfileState implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int STATE_CONNECTED = 2;
     public static final int STATE_CONNECTING = 1;
@@ -11,10 +11,10 @@ public final class VpnProfileState implements android.os.Parcelable {
     public static final int STATE_FAILED = 3;
     public VpnProfileState(int p0, java.lang.String p1, boolean p2, boolean p3) {}
     public int describeContents() { return 0; }
-    public java.lang.String getSessionId() { return (java.lang.String) meglerProps.get("SessionId"); }
-    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
-    public boolean isAlwaysOn() { return (meglerProps.get("AlwaysOn") instanceof Boolean ? (Boolean) meglerProps.get("AlwaysOn") : false); }
-    public boolean isLockdownEnabled() { return (meglerProps.get("LockdownEnabled") instanceof Boolean ? (Boolean) meglerProps.get("LockdownEnabled") : false); }
+    public java.lang.String getSessionId() { return (java.lang.String) megletProps.get("SessionId"); }
+    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
+    public boolean isAlwaysOn() { return (megletProps.get("AlwaysOn") instanceof Boolean ? (Boolean) megletProps.get("AlwaysOn") : false); }
+    public boolean isLockdownEnabled() { return (megletProps.get("LockdownEnabled") instanceof Boolean ? (Boolean) megletProps.get("LockdownEnabled") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     VpnProfileState() { this((int) 0, (java.lang.String) null, (boolean) false, (boolean) false); }
 }

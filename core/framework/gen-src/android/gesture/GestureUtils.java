@@ -3,7 +3,7 @@ package android.gesture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GestureUtils {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.gesture.OrientedBoundingBox computeOrientedBoundingBox(java.util.ArrayList p0) { return null; }
     public static android.gesture.OrientedBoundingBox computeOrientedBoundingBox(float[] p0) { return null; }
     public static float[] spatialSampling(android.gesture.Gesture p0, int p1) { return null; }

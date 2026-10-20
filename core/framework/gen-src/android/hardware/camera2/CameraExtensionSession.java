@@ -3,16 +3,16 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CameraExtensionSession implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public CameraExtensionSession() {}
     public int capture(android.hardware.camera2.CaptureRequest p0, java.util.concurrent.Executor p1, android.hardware.camera2.CameraExtensionSession.ExtensionCaptureCallback p2) { return 0; }
     public void close() {}
-    public android.hardware.camera2.CameraDevice getDevice() { return (android.hardware.camera2.CameraDevice) meglerProps.get("Device"); }
-    public android.hardware.camera2.CameraExtensionSession.StillCaptureLatency getRealtimeStillCaptureLatency() { return (android.hardware.camera2.CameraExtensionSession.StillCaptureLatency) meglerProps.get("RealtimeStillCaptureLatency"); }
+    public android.hardware.camera2.CameraDevice getDevice() { return (android.hardware.camera2.CameraDevice) megletProps.get("Device"); }
+    public android.hardware.camera2.CameraExtensionSession.StillCaptureLatency getRealtimeStillCaptureLatency() { return (android.hardware.camera2.CameraExtensionSession.StillCaptureLatency) megletProps.get("RealtimeStillCaptureLatency"); }
     public int setRepeatingRequest(android.hardware.camera2.CaptureRequest p0, java.util.concurrent.Executor p1, android.hardware.camera2.CameraExtensionSession.ExtensionCaptureCallback p2) { return 0; }
     public void stopRepeating() {}
     public static abstract class ExtensionCaptureCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ExtensionCaptureCallback() {}
         public void onCaptureFailed(android.hardware.camera2.CameraExtensionSession p0, android.hardware.camera2.CaptureRequest p1) {}
         public void onCaptureFailed(android.hardware.camera2.CameraExtensionSession p0, android.hardware.camera2.CaptureRequest p1, int p2) {}
@@ -27,10 +27,10 @@ public abstract class CameraExtensionSession implements java.lang.AutoCloseable 
         protected StateCallback() {}
     }
     public static final class StillCaptureLatency {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public StillCaptureLatency(long p0, long p1) {}
-        public long getCaptureLatency() { return (meglerProps.get("CaptureLatency") instanceof Long ? (Long) meglerProps.get("CaptureLatency") : 0L); }
-        public long getProcessingLatency() { return (meglerProps.get("ProcessingLatency") instanceof Long ? (Long) meglerProps.get("ProcessingLatency") : 0L); }
+        public long getCaptureLatency() { return (megletProps.get("CaptureLatency") instanceof Long ? (Long) megletProps.get("CaptureLatency") : 0L); }
+        public long getProcessingLatency() { return (megletProps.get("ProcessingLatency") instanceof Long ? (Long) megletProps.get("ProcessingLatency") : 0L); }
         StillCaptureLatency() { this((long) 0L, (long) 0L); }
     }
 }

@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class BroadcastOptions extends android.app.ComponentOptions {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final long CHANGE_ALWAYS_DISABLED = 210856463L;
     public static final long CHANGE_ALWAYS_ENABLED = 209888056L;
     public static final long CHANGE_INVALID = -9223372036854775808L;
@@ -30,55 +30,55 @@ public abstract class BroadcastOptions extends android.app.ComponentOptions {
     public void clearDeliveryGroupMatchingKey() {}
     public void clearDeliveryGroupPolicy() {}
     public void clearRequireCompatChange() {}
-    public java.lang.String getDebugReason() { return (java.lang.String) meglerProps.get("DebugReason"); }
-    public int getDeferralPolicy() { return (meglerProps.get("DeferralPolicy") instanceof Integer ? (Integer) meglerProps.get("DeferralPolicy") : 0); }
-    public android.os.BundleMerger getDeliveryGroupExtrasMerger() { return (android.os.BundleMerger) meglerProps.get("DeliveryGroupExtrasMerger"); }
-    public android.content.IntentFilter getDeliveryGroupMatchingFilter() { return (android.content.IntentFilter) meglerProps.get("DeliveryGroupMatchingFilter"); }
-    public java.lang.String getDeliveryGroupMatchingKey() { return (java.lang.String) meglerProps.get("DeliveryGroupMatchingKey"); }
-    public java.lang.String getDeliveryGroupMatchingKeyFragment() { return (java.lang.String) meglerProps.get("DeliveryGroupMatchingKeyFragment"); }
-    public java.lang.String getDeliveryGroupMatchingNamespaceFragment() { return (java.lang.String) meglerProps.get("DeliveryGroupMatchingNamespaceFragment"); }
-    public int getDeliveryGroupPolicy() { return (meglerProps.get("DeliveryGroupPolicy") instanceof Integer ? (Integer) meglerProps.get("DeliveryGroupPolicy") : 0); }
-    public long getIdForResponseEvent() { return (meglerProps.get("IdForResponseEvent") instanceof Long ? (Long) meglerProps.get("IdForResponseEvent") : 0L); }
-    public java.lang.String[] getIncludedPackages() { return (java.lang.String[]) meglerProps.get("IncludedPackages"); }
-    public int getMaxManifestReceiverApiLevel() { return (meglerProps.get("MaxManifestReceiverApiLevel") instanceof Integer ? (Integer) meglerProps.get("MaxManifestReceiverApiLevel") : 0); }
-    public int getMinManifestReceiverApiLevel() { return (meglerProps.get("MinManifestReceiverApiLevel") instanceof Integer ? (Integer) meglerProps.get("MinManifestReceiverApiLevel") : 0); }
-    public int getPendingIntentBackgroundActivityStartMode() { return (meglerProps.get("PendingIntentBackgroundActivityStartMode") instanceof Integer ? (Integer) meglerProps.get("PendingIntentBackgroundActivityStartMode") : 0); }
-    public long getRequireCompatChangeId() { return (meglerProps.get("RequireCompatChangeId") instanceof Long ? (Long) meglerProps.get("RequireCompatChangeId") : 0L); }
-    public long getTemporaryAppAllowlistDuration() { return (meglerProps.get("TemporaryAppAllowlistDuration") instanceof Long ? (Long) meglerProps.get("TemporaryAppAllowlistDuration") : 0L); }
-    public java.lang.String getTemporaryAppAllowlistReason() { return (java.lang.String) meglerProps.get("TemporaryAppAllowlistReason"); }
-    public int getTemporaryAppAllowlistReasonCode() { return (meglerProps.get("TemporaryAppAllowlistReasonCode") instanceof Integer ? (Integer) meglerProps.get("TemporaryAppAllowlistReasonCode") : 0); }
-    public int getTemporaryAppAllowlistType() { return (meglerProps.get("TemporaryAppAllowlistType") instanceof Integer ? (Integer) meglerProps.get("TemporaryAppAllowlistType") : 0); }
-    public boolean isAlarmBroadcast() { return (meglerProps.get("AlarmBroadcast") instanceof Boolean ? (Boolean) meglerProps.get("AlarmBroadcast") : false); }
-    public boolean isDebugLogEnabled() { return (meglerProps.get("DebugLogEnabled") instanceof Boolean ? (Boolean) meglerProps.get("DebugLogEnabled") : false); }
-    public boolean isDontSendToRestrictedApps() { return (meglerProps.get("DontSendToRestrictedApps") instanceof Boolean ? (Boolean) meglerProps.get("DontSendToRestrictedApps") : false); }
-    public boolean isInteractive() { return (meglerProps.get("Interactive") instanceof Boolean ? (Boolean) meglerProps.get("Interactive") : false); }
-    public boolean isPendingIntentBackgroundActivityLaunchAllowed() { return (meglerProps.get("PendingIntentBackgroundActivityLaunchAllowed") instanceof Boolean ? (Boolean) meglerProps.get("PendingIntentBackgroundActivityLaunchAllowed") : false); }
-    public boolean isPushMessagingBroadcast() { return (meglerProps.get("PushMessagingBroadcast") instanceof Boolean ? (Boolean) meglerProps.get("PushMessagingBroadcast") : false); }
-    public boolean isPushMessagingOverQuotaBroadcast() { return (meglerProps.get("PushMessagingOverQuotaBroadcast") instanceof Boolean ? (Boolean) meglerProps.get("PushMessagingOverQuotaBroadcast") : false); }
-    public boolean isShareIdentityEnabled() { return (meglerProps.get("ShareIdentityEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ShareIdentityEnabled") : false); }
+    public java.lang.String getDebugReason() { return (java.lang.String) megletProps.get("DebugReason"); }
+    public int getDeferralPolicy() { return (megletProps.get("DeferralPolicy") instanceof Integer ? (Integer) megletProps.get("DeferralPolicy") : 0); }
+    public android.os.BundleMerger getDeliveryGroupExtrasMerger() { return (android.os.BundleMerger) megletProps.get("DeliveryGroupExtrasMerger"); }
+    public android.content.IntentFilter getDeliveryGroupMatchingFilter() { return (android.content.IntentFilter) megletProps.get("DeliveryGroupMatchingFilter"); }
+    public java.lang.String getDeliveryGroupMatchingKey() { return (java.lang.String) megletProps.get("DeliveryGroupMatchingKey"); }
+    public java.lang.String getDeliveryGroupMatchingKeyFragment() { return (java.lang.String) megletProps.get("DeliveryGroupMatchingKeyFragment"); }
+    public java.lang.String getDeliveryGroupMatchingNamespaceFragment() { return (java.lang.String) megletProps.get("DeliveryGroupMatchingNamespaceFragment"); }
+    public int getDeliveryGroupPolicy() { return (megletProps.get("DeliveryGroupPolicy") instanceof Integer ? (Integer) megletProps.get("DeliveryGroupPolicy") : 0); }
+    public long getIdForResponseEvent() { return (megletProps.get("IdForResponseEvent") instanceof Long ? (Long) megletProps.get("IdForResponseEvent") : 0L); }
+    public java.lang.String[] getIncludedPackages() { return (java.lang.String[]) megletProps.get("IncludedPackages"); }
+    public int getMaxManifestReceiverApiLevel() { return (megletProps.get("MaxManifestReceiverApiLevel") instanceof Integer ? (Integer) megletProps.get("MaxManifestReceiverApiLevel") : 0); }
+    public int getMinManifestReceiverApiLevel() { return (megletProps.get("MinManifestReceiverApiLevel") instanceof Integer ? (Integer) megletProps.get("MinManifestReceiverApiLevel") : 0); }
+    public int getPendingIntentBackgroundActivityStartMode() { return (megletProps.get("PendingIntentBackgroundActivityStartMode") instanceof Integer ? (Integer) megletProps.get("PendingIntentBackgroundActivityStartMode") : 0); }
+    public long getRequireCompatChangeId() { return (megletProps.get("RequireCompatChangeId") instanceof Long ? (Long) megletProps.get("RequireCompatChangeId") : 0L); }
+    public long getTemporaryAppAllowlistDuration() { return (megletProps.get("TemporaryAppAllowlistDuration") instanceof Long ? (Long) megletProps.get("TemporaryAppAllowlistDuration") : 0L); }
+    public java.lang.String getTemporaryAppAllowlistReason() { return (java.lang.String) megletProps.get("TemporaryAppAllowlistReason"); }
+    public int getTemporaryAppAllowlistReasonCode() { return (megletProps.get("TemporaryAppAllowlistReasonCode") instanceof Integer ? (Integer) megletProps.get("TemporaryAppAllowlistReasonCode") : 0); }
+    public int getTemporaryAppAllowlistType() { return (megletProps.get("TemporaryAppAllowlistType") instanceof Integer ? (Integer) megletProps.get("TemporaryAppAllowlistType") : 0); }
+    public boolean isAlarmBroadcast() { return (megletProps.get("AlarmBroadcast") instanceof Boolean ? (Boolean) megletProps.get("AlarmBroadcast") : false); }
+    public boolean isDebugLogEnabled() { return (megletProps.get("DebugLogEnabled") instanceof Boolean ? (Boolean) megletProps.get("DebugLogEnabled") : false); }
+    public boolean isDontSendToRestrictedApps() { return (megletProps.get("DontSendToRestrictedApps") instanceof Boolean ? (Boolean) megletProps.get("DontSendToRestrictedApps") : false); }
+    public boolean isInteractive() { return (megletProps.get("Interactive") instanceof Boolean ? (Boolean) megletProps.get("Interactive") : false); }
+    public boolean isPendingIntentBackgroundActivityLaunchAllowed() { return (megletProps.get("PendingIntentBackgroundActivityLaunchAllowed") instanceof Boolean ? (Boolean) megletProps.get("PendingIntentBackgroundActivityLaunchAllowed") : false); }
+    public boolean isPushMessagingBroadcast() { return (megletProps.get("PushMessagingBroadcast") instanceof Boolean ? (Boolean) megletProps.get("PushMessagingBroadcast") : false); }
+    public boolean isPushMessagingOverQuotaBroadcast() { return (megletProps.get("PushMessagingOverQuotaBroadcast") instanceof Boolean ? (Boolean) megletProps.get("PushMessagingOverQuotaBroadcast") : false); }
+    public boolean isShareIdentityEnabled() { return (megletProps.get("ShareIdentityEnabled") instanceof Boolean ? (Boolean) megletProps.get("ShareIdentityEnabled") : false); }
     public void recordResponseEventWhileInBackground(long p0) {}
-    public void setAlarmBroadcast(boolean p0) { meglerProps.put("AlarmBroadcast", Boolean.valueOf(p0)); }
-    public void setBackgroundActivityStartsAllowed(boolean p0) { meglerProps.put("BackgroundActivityStartsAllowed", Boolean.valueOf(p0)); }
-    public android.app.BroadcastOptions setDebugLogEnabled(boolean p0) { meglerProps.put("DebugLogEnabled", Boolean.valueOf(p0)); return this; }
-    public android.app.BroadcastOptions setDebugReason(java.lang.String p0) { meglerProps.put("DebugReason", p0); return this; }
-    public android.app.BroadcastOptions setDeferralPolicy(int p0) { meglerProps.put("DeferralPolicy", Integer.valueOf(p0)); return this; }
-    public android.app.BroadcastOptions setDeliveryGroupExtrasMerger(android.os.BundleMerger p0) { meglerProps.put("DeliveryGroupExtrasMerger", p0); return this; }
-    public android.app.BroadcastOptions setDeliveryGroupMatchingFilter(android.content.IntentFilter p0) { meglerProps.put("DeliveryGroupMatchingFilter", p0); return this; }
+    public void setAlarmBroadcast(boolean p0) { megletProps.put("AlarmBroadcast", Boolean.valueOf(p0)); }
+    public void setBackgroundActivityStartsAllowed(boolean p0) { megletProps.put("BackgroundActivityStartsAllowed", Boolean.valueOf(p0)); }
+    public android.app.BroadcastOptions setDebugLogEnabled(boolean p0) { megletProps.put("DebugLogEnabled", Boolean.valueOf(p0)); return this; }
+    public android.app.BroadcastOptions setDebugReason(java.lang.String p0) { megletProps.put("DebugReason", p0); return this; }
+    public android.app.BroadcastOptions setDeferralPolicy(int p0) { megletProps.put("DeferralPolicy", Integer.valueOf(p0)); return this; }
+    public android.app.BroadcastOptions setDeliveryGroupExtrasMerger(android.os.BundleMerger p0) { megletProps.put("DeliveryGroupExtrasMerger", p0); return this; }
+    public android.app.BroadcastOptions setDeliveryGroupMatchingFilter(android.content.IntentFilter p0) { megletProps.put("DeliveryGroupMatchingFilter", p0); return this; }
     public android.app.BroadcastOptions setDeliveryGroupMatchingKey(java.lang.String p0, java.lang.String p1) { return this; }
-    public android.app.BroadcastOptions setDeliveryGroupPolicy(int p0) { meglerProps.put("DeliveryGroupPolicy", Integer.valueOf(p0)); return this; }
-    public void setDontSendToRestrictedApps(boolean p0) { meglerProps.put("DontSendToRestrictedApps", Boolean.valueOf(p0)); }
-    public android.app.BroadcastOptions setIncludedPackages(java.lang.String[] p0) { meglerProps.put("IncludedPackages", p0); return this; }
-    public android.app.BroadcastOptions setInteractive(boolean p0) { meglerProps.put("Interactive", Boolean.valueOf(p0)); return this; }
-    public void setMaxManifestReceiverApiLevel(int p0) { meglerProps.put("MaxManifestReceiverApiLevel", Integer.valueOf(p0)); }
-    public void setMinManifestReceiverApiLevel(int p0) { meglerProps.put("MinManifestReceiverApiLevel", Integer.valueOf(p0)); }
-    public void setPendingIntentBackgroundActivityLaunchAllowed(boolean p0) { meglerProps.put("PendingIntentBackgroundActivityLaunchAllowed", Boolean.valueOf(p0)); }
-    public android.app.BroadcastOptions setPendingIntentBackgroundActivityStartMode(int p0) { meglerProps.put("PendingIntentBackgroundActivityStartMode", Integer.valueOf(p0)); return this; }
-    public void setRequireAllOfPermissions(java.lang.String[] p0) { meglerProps.put("RequireAllOfPermissions", p0); }
+    public android.app.BroadcastOptions setDeliveryGroupPolicy(int p0) { megletProps.put("DeliveryGroupPolicy", Integer.valueOf(p0)); return this; }
+    public void setDontSendToRestrictedApps(boolean p0) { megletProps.put("DontSendToRestrictedApps", Boolean.valueOf(p0)); }
+    public android.app.BroadcastOptions setIncludedPackages(java.lang.String[] p0) { megletProps.put("IncludedPackages", p0); return this; }
+    public android.app.BroadcastOptions setInteractive(boolean p0) { megletProps.put("Interactive", Boolean.valueOf(p0)); return this; }
+    public void setMaxManifestReceiverApiLevel(int p0) { megletProps.put("MaxManifestReceiverApiLevel", Integer.valueOf(p0)); }
+    public void setMinManifestReceiverApiLevel(int p0) { megletProps.put("MinManifestReceiverApiLevel", Integer.valueOf(p0)); }
+    public void setPendingIntentBackgroundActivityLaunchAllowed(boolean p0) { megletProps.put("PendingIntentBackgroundActivityLaunchAllowed", Boolean.valueOf(p0)); }
+    public android.app.BroadcastOptions setPendingIntentBackgroundActivityStartMode(int p0) { megletProps.put("PendingIntentBackgroundActivityStartMode", Integer.valueOf(p0)); return this; }
+    public void setRequireAllOfPermissions(java.lang.String[] p0) { megletProps.put("RequireAllOfPermissions", p0); }
     public void setRequireCompatChange(long p0, boolean p1) {}
-    public void setRequireNoneOfPermissions(java.lang.String[] p0) { meglerProps.put("RequireNoneOfPermissions", p0); }
-    public android.app.BroadcastOptions setShareIdentityEnabled(boolean p0) { meglerProps.put("ShareIdentityEnabled", Boolean.valueOf(p0)); return this; }
+    public void setRequireNoneOfPermissions(java.lang.String[] p0) { megletProps.put("RequireNoneOfPermissions", p0); }
+    public android.app.BroadcastOptions setShareIdentityEnabled(boolean p0) { megletProps.put("ShareIdentityEnabled", Boolean.valueOf(p0)); return this; }
     public void setTemporaryAppAllowlist(long p0, int p1, int p2, java.lang.String p3) {}
-    public void setTemporaryAppWhitelistDuration(long p0) { meglerProps.put("TemporaryAppWhitelistDuration", Long.valueOf(p0)); }
+    public void setTemporaryAppWhitelistDuration(long p0) { megletProps.put("TemporaryAppWhitelistDuration", Long.valueOf(p0)); }
     public boolean testRequireCompatChange(int p0) { return false; }
     public android.os.Bundle toBundle() { return null; }
 }

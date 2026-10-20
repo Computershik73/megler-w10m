@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Spatializer {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int HEAD_TRACKING_MODE_DISABLED = -1;
     public static final int HEAD_TRACKING_MODE_OTHER = 0;
     public static final int HEAD_TRACKING_MODE_RELATIVE_DEVICE = 2;
@@ -22,29 +22,29 @@ public class Spatializer {
     public boolean canBeSpatialized(android.media.AudioAttributes p0, android.media.AudioFormat p1) { return false; }
     public void clearOnHeadToSoundstagePoseUpdatedListener() {}
     public void clearOnSpatializerOutputChangedListener() {}
-    public java.util.List getCompatibleAudioDevices() { return (meglerProps.get("CompatibleAudioDevices") != null ? (java.util.List) meglerProps.get("CompatibleAudioDevices") : new java.util.ArrayList()); }
-    public int getDesiredHeadTrackingMode() { return (meglerProps.get("DesiredHeadTrackingMode") instanceof Integer ? (Integer) meglerProps.get("DesiredHeadTrackingMode") : 0); }
+    public java.util.List getCompatibleAudioDevices() { return (megletProps.get("CompatibleAudioDevices") != null ? (java.util.List) megletProps.get("CompatibleAudioDevices") : new java.util.ArrayList()); }
+    public int getDesiredHeadTrackingMode() { return (megletProps.get("DesiredHeadTrackingMode") instanceof Integer ? (Integer) megletProps.get("DesiredHeadTrackingMode") : 0); }
     public void getEffectParameter(int p0, byte[] p1) {}
-    public int getHeadTrackingMode() { return (meglerProps.get("HeadTrackingMode") instanceof Integer ? (Integer) meglerProps.get("HeadTrackingMode") : 0); }
-    public int getImmersiveAudioLevel() { return (meglerProps.get("ImmersiveAudioLevel") instanceof Integer ? (Integer) meglerProps.get("ImmersiveAudioLevel") : 0); }
-    public int getOutput() { return (meglerProps.get("Output") instanceof Integer ? (Integer) meglerProps.get("Output") : 0); }
-    public java.util.List getSpatializedChannelMasks() { return (meglerProps.get("SpatializedChannelMasks") != null ? (java.util.List) meglerProps.get("SpatializedChannelMasks") : new java.util.ArrayList()); }
-    public java.util.List getSupportedHeadTrackingModes() { return (meglerProps.get("SupportedHeadTrackingModes") != null ? (java.util.List) meglerProps.get("SupportedHeadTrackingModes") : new java.util.ArrayList()); }
+    public int getHeadTrackingMode() { return (megletProps.get("HeadTrackingMode") instanceof Integer ? (Integer) megletProps.get("HeadTrackingMode") : 0); }
+    public int getImmersiveAudioLevel() { return (megletProps.get("ImmersiveAudioLevel") instanceof Integer ? (Integer) megletProps.get("ImmersiveAudioLevel") : 0); }
+    public int getOutput() { return (megletProps.get("Output") instanceof Integer ? (Integer) megletProps.get("Output") : 0); }
+    public java.util.List getSpatializedChannelMasks() { return (megletProps.get("SpatializedChannelMasks") != null ? (java.util.List) megletProps.get("SpatializedChannelMasks") : new java.util.ArrayList()); }
+    public java.util.List getSupportedHeadTrackingModes() { return (megletProps.get("SupportedHeadTrackingModes") != null ? (java.util.List) megletProps.get("SupportedHeadTrackingModes") : new java.util.ArrayList()); }
     public boolean hasHeadTracker(android.media.AudioDeviceAttributes p0) { return false; }
-    public boolean isAvailable() { return (meglerProps.get("Available") instanceof Boolean ? (Boolean) meglerProps.get("Available") : false); }
+    public boolean isAvailable() { return (megletProps.get("Available") instanceof Boolean ? (Boolean) megletProps.get("Available") : false); }
     public boolean isAvailableForDevice(android.media.AudioDeviceAttributes p0) { return false; }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
-    public boolean isHeadTrackerAvailable() { return (meglerProps.get("HeadTrackerAvailable") instanceof Boolean ? (Boolean) meglerProps.get("HeadTrackerAvailable") : false); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
+    public boolean isHeadTrackerAvailable() { return (megletProps.get("HeadTrackerAvailable") instanceof Boolean ? (Boolean) megletProps.get("HeadTrackerAvailable") : false); }
     public boolean isHeadTrackerEnabled(android.media.AudioDeviceAttributes p0) { return false; }
     public void recenterHeadTracker() {}
     public void removeCompatibleAudioDevice(android.media.AudioDeviceAttributes p0) {}
     public void removeOnHeadTrackerAvailableListener(android.media.Spatializer.OnHeadTrackerAvailableListener p0) {}
     public void removeOnHeadTrackingModeChangedListener(android.media.Spatializer.OnHeadTrackingModeChangedListener p0) {}
     public void removeOnSpatializerStateChangedListener(android.media.Spatializer.OnSpatializerStateChangedListener p0) {}
-    public void setDesiredHeadTrackingMode(int p0) { meglerProps.put("DesiredHeadTrackingMode", Integer.valueOf(p0)); }
+    public void setDesiredHeadTrackingMode(int p0) { megletProps.put("DesiredHeadTrackingMode", Integer.valueOf(p0)); }
     public void setEffectParameter(int p0, byte[] p1) {}
-    public void setEnabled(boolean p0) { meglerProps.put("Enabled", Boolean.valueOf(p0)); }
-    public void setGlobalTransform(float[] p0) { meglerProps.put("GlobalTransform", p0); }
+    public void setEnabled(boolean p0) { megletProps.put("Enabled", Boolean.valueOf(p0)); }
+    public void setGlobalTransform(float[] p0) { megletProps.put("GlobalTransform", p0); }
     public void setHeadTrackerEnabled(boolean p0, android.media.AudioDeviceAttributes p1) {}
     public void setOnHeadToSoundstagePoseUpdatedListener(java.util.concurrent.Executor p0, android.media.Spatializer.OnHeadToSoundstagePoseUpdatedListener p1) {}
     public void setOnSpatializerOutputChangedListener(java.util.concurrent.Executor p0, android.media.Spatializer.OnSpatializerOutputChangedListener p1) {}

@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class DocumentsProvider extends android.content.ContentProvider {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public DocumentsProvider() { super(); }
     public void attachInfoForTesting(android.content.Context p0, android.content.pm.ProviderInfo p1) {}
     public java.lang.String copyDocument(java.lang.String p0, java.lang.String p1) { return null; }

@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TaskInfo {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int PROPERTY_VALUE_UNSET = -1;
     public static final int SELF_MOVABLE_ALLOWED = 1;
     public static final int SELF_MOVABLE_DEFAULT = 0;
@@ -63,17 +63,17 @@ public class TaskInfo {
     public boolean containsLaunchCookie(android.os.IBinder p0) { return false; }
     public boolean equalsForCompatUi(android.app.TaskInfo p0) { return false; }
     public boolean equalsForTaskOrganizer(android.app.TaskInfo p0) { return false; }
-    public int getActivityType() { return (meglerProps.get("ActivityType") instanceof Integer ? (Integer) meglerProps.get("ActivityType") : 0); }
-    public android.content.res.Configuration getConfiguration() { return (android.content.res.Configuration) meglerProps.get("Configuration"); }
-    public int getDisplayId() { return (meglerProps.get("DisplayId") instanceof Integer ? (Integer) meglerProps.get("DisplayId") : 0); }
-    public int getParentTaskId() { return (meglerProps.get("ParentTaskId") instanceof Integer ? (Integer) meglerProps.get("ParentTaskId") : 0); }
-    public android.app.PictureInPictureParams getPictureInPictureParams() { return (android.app.PictureInPictureParams) meglerProps.get("PictureInPictureParams"); }
-    public int getTaskId() { return (meglerProps.get("TaskId") instanceof Integer ? (Integer) meglerProps.get("TaskId") : 0); }
-    public android.window.WindowContainerToken getToken() { return (android.window.WindowContainerToken) meglerProps.get("Token"); }
-    public int getWindowingMode() { return (meglerProps.get("WindowingMode") instanceof Integer ? (Integer) meglerProps.get("WindowingMode") : 0); }
+    public int getActivityType() { return (megletProps.get("ActivityType") instanceof Integer ? (Integer) megletProps.get("ActivityType") : 0); }
+    public android.content.res.Configuration getConfiguration() { return (android.content.res.Configuration) megletProps.get("Configuration"); }
+    public int getDisplayId() { return (megletProps.get("DisplayId") instanceof Integer ? (Integer) megletProps.get("DisplayId") : 0); }
+    public int getParentTaskId() { return (megletProps.get("ParentTaskId") instanceof Integer ? (Integer) megletProps.get("ParentTaskId") : 0); }
+    public android.app.PictureInPictureParams getPictureInPictureParams() { return (android.app.PictureInPictureParams) megletProps.get("PictureInPictureParams"); }
+    public int getTaskId() { return (megletProps.get("TaskId") instanceof Integer ? (Integer) megletProps.get("TaskId") : 0); }
+    public android.window.WindowContainerToken getToken() { return (android.window.WindowContainerToken) megletProps.get("Token"); }
+    public int getWindowingMode() { return (megletProps.get("WindowingMode") instanceof Integer ? (Integer) megletProps.get("WindowingMode") : 0); }
     public boolean hasParentTask() { return false; }
-    public boolean isFreeform() { return (meglerProps.get("Freeform") instanceof Boolean ? (Boolean) meglerProps.get("Freeform") : false); }
-    public boolean isVisible() { return (meglerProps.get("Visible") instanceof Boolean ? (Boolean) meglerProps.get("Visible") : false); }
+    public boolean isFreeform() { return (megletProps.get("Freeform") instanceof Boolean ? (Boolean) megletProps.get("Freeform") : false); }
+    public boolean isVisible() { return (megletProps.get("Visible") instanceof Boolean ? (Boolean) megletProps.get("Visible") : false); }
     public boolean shouldDockBigOverlays() { return false; }
     public void writeTaskToParcel(android.os.Parcel p0, int p1) {}
     TaskInfo() { this((android.os.Parcel) null); }

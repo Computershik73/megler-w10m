@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TelephonyCallback {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DEFAULT_PER_PID_REGISTRATION_LIMIT = 50;
     public static final int EVENT_ACTIVE_DATA_SUBSCRIPTION_ID_CHANGED = 23;
     public static final int EVENT_ALLOWED_NETWORK_TYPE_LIST_CHANGED = 35;

@@ -3,18 +3,18 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FillEventHistory implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public FillEventHistory(int p0, android.os.Bundle p1) {}
     public void addEvent(android.service.autofill.FillEventHistory.Event p0) {}
     public int describeContents() { return 0; }
-    public android.os.Bundle getClientState() { return (android.os.Bundle) meglerProps.get("ClientState"); }
-    public java.util.List getEvents() { return (meglerProps.get("Events") != null ? (java.util.List) meglerProps.get("Events") : new java.util.ArrayList()); }
-    public int getSessionId() { return (meglerProps.get("SessionId") instanceof Integer ? (Integer) meglerProps.get("SessionId") : 0); }
+    public android.os.Bundle getClientState() { return (android.os.Bundle) megletProps.get("ClientState"); }
+    public java.util.List getEvents() { return (megletProps.get("Events") != null ? (java.util.List) megletProps.get("Events") : new java.util.ArrayList()); }
+    public int getSessionId() { return (megletProps.get("SessionId") instanceof Integer ? (Integer) megletProps.get("SessionId") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     FillEventHistory() { this((int) 0, (android.os.Bundle) null); }
     public static final class Event {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int NO_SAVE_UI_REASON_DATASET_MATCH = 6;
         public static final int NO_SAVE_UI_REASON_FIELD_VALIDATION_FAILED = 5;
         public static final int NO_SAVE_UI_REASON_HAS_EMPTY_REQUIRED = 3;
@@ -39,18 +39,18 @@ public final class FillEventHistory implements android.os.Parcelable {
         public Event(int p0, java.lang.String p1, android.os.Bundle p2, java.util.List p3, android.util.ArraySet p4, java.util.ArrayList p5, java.util.ArrayList p6, java.util.ArrayList p7, java.util.ArrayList p8, android.view.autofill.AutofillId[] p9, android.service.autofill.FieldClassification[] p10, int p11, int p12, android.view.autofill.AutofillId p13) {}
         public Event(int p0, java.lang.String p1, android.os.Bundle p2, java.util.List p3, android.util.ArraySet p4, java.util.ArrayList p5, java.util.ArrayList p6, java.util.ArrayList p7, java.util.ArrayList p8, android.view.autofill.AutofillId[] p9, android.service.autofill.FieldClassification[] p10, int p11, android.view.autofill.AutofillId p12) {}
         public Event(int p0, java.lang.String p1, android.os.Bundle p2, java.util.List p3, android.util.ArraySet p4, java.util.ArrayList p5, java.util.ArrayList p6, java.util.ArrayList p7, java.util.ArrayList p8, android.view.autofill.AutofillId[] p9, android.service.autofill.FieldClassification[] p10, android.view.autofill.AutofillId p11) {}
-        public java.util.Map getChangedFields() { return (meglerProps.get("ChangedFields") != null ? (java.util.Map) meglerProps.get("ChangedFields") : new java.util.HashMap()); }
-        public android.os.Bundle getClientState() { return (android.os.Bundle) meglerProps.get("ClientState"); }
-        public java.lang.String getDatasetId() { return (java.lang.String) meglerProps.get("DatasetId"); }
-        public java.util.Map getFieldsClassification() { return (meglerProps.get("FieldsClassification") != null ? (java.util.Map) meglerProps.get("FieldsClassification") : new java.util.HashMap()); }
-        public android.view.autofill.AutofillId getFocusedId() { return (android.view.autofill.AutofillId) meglerProps.get("FocusedId"); }
-        public java.util.Set getIgnoredDatasetIds() { return (meglerProps.get("IgnoredDatasetIds") != null ? (java.util.Set) meglerProps.get("IgnoredDatasetIds") : new java.util.HashSet()); }
-        public java.util.Map getManuallyEnteredField() { return (meglerProps.get("ManuallyEnteredField") != null ? (java.util.Map) meglerProps.get("ManuallyEnteredField") : new java.util.HashMap()); }
-        public int getNoSaveUiReason() { return (meglerProps.get("NoSaveUiReason") instanceof Integer ? (Integer) meglerProps.get("NoSaveUiReason") : 0); }
-        public java.util.Set getSelectedDatasetIds() { return (meglerProps.get("SelectedDatasetIds") != null ? (java.util.Set) meglerProps.get("SelectedDatasetIds") : new java.util.HashSet()); }
-        public java.util.Set getShownDatasetIds() { return (meglerProps.get("ShownDatasetIds") != null ? (java.util.Set) meglerProps.get("ShownDatasetIds") : new java.util.HashSet()); }
-        public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
-        public int getUiType() { return (meglerProps.get("UiType") instanceof Integer ? (Integer) meglerProps.get("UiType") : 0); }
+        public java.util.Map getChangedFields() { return (megletProps.get("ChangedFields") != null ? (java.util.Map) megletProps.get("ChangedFields") : new java.util.HashMap()); }
+        public android.os.Bundle getClientState() { return (android.os.Bundle) megletProps.get("ClientState"); }
+        public java.lang.String getDatasetId() { return (java.lang.String) megletProps.get("DatasetId"); }
+        public java.util.Map getFieldsClassification() { return (megletProps.get("FieldsClassification") != null ? (java.util.Map) megletProps.get("FieldsClassification") : new java.util.HashMap()); }
+        public android.view.autofill.AutofillId getFocusedId() { return (android.view.autofill.AutofillId) megletProps.get("FocusedId"); }
+        public java.util.Set getIgnoredDatasetIds() { return (megletProps.get("IgnoredDatasetIds") != null ? (java.util.Set) megletProps.get("IgnoredDatasetIds") : new java.util.HashSet()); }
+        public java.util.Map getManuallyEnteredField() { return (megletProps.get("ManuallyEnteredField") != null ? (java.util.Map) megletProps.get("ManuallyEnteredField") : new java.util.HashMap()); }
+        public int getNoSaveUiReason() { return (megletProps.get("NoSaveUiReason") instanceof Integer ? (Integer) megletProps.get("NoSaveUiReason") : 0); }
+        public java.util.Set getSelectedDatasetIds() { return (megletProps.get("SelectedDatasetIds") != null ? (java.util.Set) megletProps.get("SelectedDatasetIds") : new java.util.HashSet()); }
+        public java.util.Set getShownDatasetIds() { return (megletProps.get("ShownDatasetIds") != null ? (java.util.Set) megletProps.get("ShownDatasetIds") : new java.util.HashSet()); }
+        public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+        public int getUiType() { return (megletProps.get("UiType") instanceof Integer ? (Integer) megletProps.get("UiType") : 0); }
         Event() { this((int) 0, (java.lang.String) null, (android.os.Bundle) null, (java.util.List) null, (android.util.ArraySet) null, (java.util.ArrayList) null, (java.util.ArrayList) null, (java.util.ArrayList) null, (java.util.ArrayList) null, (android.view.autofill.AutofillId[]) null, (android.service.autofill.FieldClassification[]) null, (android.view.autofill.AutofillId) null); }
     }
 }

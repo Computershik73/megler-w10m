@@ -3,24 +3,24 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TableResponse extends android.media.tv.BroadcastInfoResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TableResponse(int p0, int p1, int p2, android.net.Uri p3, int p4, int p5) { super(); }
     public int describeContents() { return 0; }
-    public int getSize() { return (meglerProps.get("Size") instanceof Integer ? (Integer) meglerProps.get("Size") : 0); }
-    public byte[] getTableByteArray() { return (byte[]) meglerProps.get("TableByteArray"); }
-    public android.os.SharedMemory getTableSharedMemory() { return (android.os.SharedMemory) meglerProps.get("TableSharedMemory"); }
-    public android.net.Uri getTableUri() { return (android.net.Uri) meglerProps.get("TableUri"); }
-    public int getVersion() { return (meglerProps.get("Version") instanceof Integer ? (Integer) meglerProps.get("Version") : 0); }
+    public int getSize() { return (megletProps.get("Size") instanceof Integer ? (Integer) megletProps.get("Size") : 0); }
+    public byte[] getTableByteArray() { return (byte[]) megletProps.get("TableByteArray"); }
+    public android.os.SharedMemory getTableSharedMemory() { return (android.os.SharedMemory) megletProps.get("TableSharedMemory"); }
+    public android.net.Uri getTableUri() { return (android.net.Uri) megletProps.get("TableUri"); }
+    public int getVersion() { return (megletProps.get("Version") instanceof Integer ? (Integer) megletProps.get("Version") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TableResponse() { this((int) 0, (int) 0, (int) 0, (android.net.Uri) null, (int) 0, (int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(int p0, int p1, int p2, int p3, int p4) {}
-        public android.media.tv.TableResponse build() { android.media.tv.TableResponse x = new android.media.tv.TableResponse(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.media.tv.TableResponse.Builder setTableByteArray(byte[] p0) { meglerProps.put("TableByteArray", p0); return this; }
-        public android.media.tv.TableResponse.Builder setTableSharedMemory(android.os.SharedMemory p0) { meglerProps.put("TableSharedMemory", p0); return this; }
-        public android.media.tv.TableResponse.Builder setTableUri(android.net.Uri p0) { meglerProps.put("TableUri", p0); return this; }
+        public android.media.tv.TableResponse build() { android.media.tv.TableResponse x = new android.media.tv.TableResponse(); x.megletProps.putAll(megletProps); return x; }
+        public android.media.tv.TableResponse.Builder setTableByteArray(byte[] p0) { megletProps.put("TableByteArray", p0); return this; }
+        public android.media.tv.TableResponse.Builder setTableSharedMemory(android.os.SharedMemory p0) { megletProps.put("TableSharedMemory", p0); return this; }
+        public android.media.tv.TableResponse.Builder setTableUri(android.net.Uri p0) { megletProps.put("TableUri", p0); return this; }
         Builder() { this((int) 0, (int) 0, (int) 0, (int) 0, (int) 0); }
     }
 }

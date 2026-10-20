@@ -3,7 +3,7 @@ package android.telephony.mbms;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GroupCall implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int REASON_BY_USER_REQUEST = 1;
     public static final int REASON_FREQUENCY_CONFLICT = 3;
     public static final int REASON_LEFT_MBMS_BROADCAST_AREA = 6;
@@ -15,8 +15,8 @@ public class GroupCall implements java.lang.AutoCloseable {
     public static final int STATE_STOPPED = 1;
     public GroupCall(int p0, android.telephony.mbms.vendor.IMbmsGroupCallService p1, android.telephony.MbmsGroupCallSession p2, long p3, android.telephony.mbms.InternalGroupCallCallback p4) {}
     public void close() {}
-    public android.telephony.mbms.InternalGroupCallCallback getCallback() { return (android.telephony.mbms.InternalGroupCallCallback) meglerProps.get("Callback"); }
-    public long getTmgi() { return (meglerProps.get("Tmgi") instanceof Long ? (Long) meglerProps.get("Tmgi") : 0L); }
+    public android.telephony.mbms.InternalGroupCallCallback getCallback() { return (android.telephony.mbms.InternalGroupCallCallback) megletProps.get("Callback"); }
+    public long getTmgi() { return (megletProps.get("Tmgi") instanceof Long ? (Long) megletProps.get("Tmgi") : 0L); }
     public void updateGroupCall(java.util.List p0, java.util.List p1) {}
     GroupCall() { this((int) 0, (android.telephony.mbms.vendor.IMbmsGroupCallService) null, (android.telephony.MbmsGroupCallSession) null, (long) 0L, (android.telephony.mbms.InternalGroupCallCallback) null); }
 }

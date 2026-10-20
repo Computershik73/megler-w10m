@@ -3,9 +3,9 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ReadRecordsResponse {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public ReadRecordsResponse(java.util.List p0, long p1) {}
-    public long getNextPageToken() { return (meglerProps.get("NextPageToken") instanceof Long ? (Long) meglerProps.get("NextPageToken") : 0L); }
-    public java.util.List getRecords() { return (meglerProps.get("Records") != null ? (java.util.List) meglerProps.get("Records") : new java.util.ArrayList()); }
+    public long getNextPageToken() { return (megletProps.get("NextPageToken") instanceof Long ? (Long) megletProps.get("NextPageToken") : 0L); }
+    public java.util.List getRecords() { return (megletProps.get("Records") != null ? (java.util.List) megletProps.get("Records") : new java.util.ArrayList()); }
     ReadRecordsResponse() { this((java.util.List) null, (long) 0L); }
 }

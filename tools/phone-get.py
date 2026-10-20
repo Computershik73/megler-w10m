@@ -1,4 +1,4 @@
-r"""Fetch one file of Megler's from the phone and print it (or save it with --out).
+r"""Fetch one file of Meglet's from the phone and print it (or save it with --out).
 
     python tools/phone-get.py "LocalState/apps/<package>/data/files/Some.txt" [--out FILE]
 

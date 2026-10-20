@@ -3,7 +3,7 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AdRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String KEY_AUDIO_METADATA = "key_audio_metadata";
     public static final java.lang.String KEY_VIDEO_METADATA = "key_video_metadata";
@@ -12,15 +12,15 @@ public final class AdRequest implements android.os.Parcelable {
     public AdRequest(int p0, int p1, android.net.Uri p2, long p3, long p4, long p5, android.os.Bundle p6) {}
     public AdRequest(int p0, int p1, android.os.ParcelFileDescriptor p2, long p3, long p4, long p5, java.lang.String p6, android.os.Bundle p7) {}
     public int describeContents() { return 0; }
-    public long getEchoIntervalMillis() { return (meglerProps.get("EchoIntervalMillis") instanceof Long ? (Long) meglerProps.get("EchoIntervalMillis") : 0L); }
-    public android.os.ParcelFileDescriptor getFileDescriptor() { return (android.os.ParcelFileDescriptor) meglerProps.get("FileDescriptor"); }
-    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
-    public java.lang.String getMediaFileType() { return (java.lang.String) meglerProps.get("MediaFileType"); }
-    public android.os.Bundle getMetadata() { return (android.os.Bundle) meglerProps.get("Metadata"); }
-    public int getRequestType() { return (meglerProps.get("RequestType") instanceof Integer ? (Integer) meglerProps.get("RequestType") : 0); }
-    public long getStartTimeMillis() { return (meglerProps.get("StartTimeMillis") instanceof Long ? (Long) meglerProps.get("StartTimeMillis") : 0L); }
-    public long getStopTimeMillis() { return (meglerProps.get("StopTimeMillis") instanceof Long ? (Long) meglerProps.get("StopTimeMillis") : 0L); }
-    public android.net.Uri getUri() { return (android.net.Uri) meglerProps.get("Uri"); }
+    public long getEchoIntervalMillis() { return (megletProps.get("EchoIntervalMillis") instanceof Long ? (Long) megletProps.get("EchoIntervalMillis") : 0L); }
+    public android.os.ParcelFileDescriptor getFileDescriptor() { return (android.os.ParcelFileDescriptor) megletProps.get("FileDescriptor"); }
+    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
+    public java.lang.String getMediaFileType() { return (java.lang.String) megletProps.get("MediaFileType"); }
+    public android.os.Bundle getMetadata() { return (android.os.Bundle) megletProps.get("Metadata"); }
+    public int getRequestType() { return (megletProps.get("RequestType") instanceof Integer ? (Integer) megletProps.get("RequestType") : 0); }
+    public long getStartTimeMillis() { return (megletProps.get("StartTimeMillis") instanceof Long ? (Long) megletProps.get("StartTimeMillis") : 0L); }
+    public long getStopTimeMillis() { return (megletProps.get("StopTimeMillis") instanceof Long ? (Long) megletProps.get("StopTimeMillis") : 0L); }
+    public android.net.Uri getUri() { return (android.net.Uri) megletProps.get("Uri"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AdRequest() { this((int) 0, (int) 0, (android.net.Uri) null, (long) 0L, (long) 0L, (long) 0L, (android.os.Bundle) null); }
 }

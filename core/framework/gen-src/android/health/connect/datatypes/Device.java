@@ -3,7 +3,7 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Device {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DEVICE_TYPE_CHEST_STRAP = 7;
     public static final int DEVICE_TYPE_CONSUMER_MEDICAL_DEVICE = 9;
     public static final int DEVICE_TYPE_FITNESS_BAND = 6;
@@ -21,18 +21,18 @@ public final class Device {
     public static final int DEVICE_TYPE_UNKNOWN = 0;
     public static final int DEVICE_TYPE_WATCH = 1;
     public static java.util.Set VALID_TYPES;
-    public java.lang.String getDisplayName() { return (java.lang.String) meglerProps.get("DisplayName"); }
-    public java.lang.String getManufacturer() { return (java.lang.String) meglerProps.get("Manufacturer"); }
-    public java.lang.String getModel() { return (java.lang.String) meglerProps.get("Model"); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public java.lang.String getDisplayName() { return (java.lang.String) megletProps.get("DisplayName"); }
+    public java.lang.String getManufacturer() { return (java.lang.String) megletProps.get("Manufacturer"); }
+    public java.lang.String getModel() { return (java.lang.String) megletProps.get("Model"); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
     protected Device() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.health.connect.datatypes.Device build() { android.health.connect.datatypes.Device x = new android.health.connect.datatypes.Device(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.health.connect.datatypes.Device.Builder setDisplayName(java.lang.String p0) { meglerProps.put("DisplayName", p0); return this; }
-        public android.health.connect.datatypes.Device.Builder setManufacturer(java.lang.String p0) { meglerProps.put("Manufacturer", p0); return this; }
-        public android.health.connect.datatypes.Device.Builder setModel(java.lang.String p0) { meglerProps.put("Model", p0); return this; }
-        public android.health.connect.datatypes.Device.Builder setType(int p0) { meglerProps.put("Type", Integer.valueOf(p0)); return this; }
+        public android.health.connect.datatypes.Device build() { android.health.connect.datatypes.Device x = new android.health.connect.datatypes.Device(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.Device.Builder setDisplayName(java.lang.String p0) { megletProps.put("DisplayName", p0); return this; }
+        public android.health.connect.datatypes.Device.Builder setManufacturer(java.lang.String p0) { megletProps.put("Manufacturer", p0); return this; }
+        public android.health.connect.datatypes.Device.Builder setModel(java.lang.String p0) { megletProps.put("Model", p0); return this; }
+        public android.health.connect.datatypes.Device.Builder setType(int p0) { megletProps.put("Type", Integer.valueOf(p0)); return this; }
     }
 }

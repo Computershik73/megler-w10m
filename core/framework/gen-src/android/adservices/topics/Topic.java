@@ -3,10 +3,10 @@ package android.adservices.topics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Topic {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public Topic(long p0, long p1, int p2) {}
-    public long getModelVersion() { return (meglerProps.get("ModelVersion") instanceof Long ? (Long) meglerProps.get("ModelVersion") : 0L); }
-    public long getTaxonomyVersion() { return (meglerProps.get("TaxonomyVersion") instanceof Long ? (Long) meglerProps.get("TaxonomyVersion") : 0L); }
-    public int getTopicId() { return (meglerProps.get("TopicId") instanceof Integer ? (Integer) meglerProps.get("TopicId") : 0); }
+    public long getModelVersion() { return (megletProps.get("ModelVersion") instanceof Long ? (Long) megletProps.get("ModelVersion") : 0L); }
+    public long getTaxonomyVersion() { return (megletProps.get("TaxonomyVersion") instanceof Long ? (Long) megletProps.get("TaxonomyVersion") : 0L); }
+    public int getTopicId() { return (megletProps.get("TopicId") instanceof Integer ? (Integer) megletProps.get("TopicId") : 0); }
     Topic() { this((long) 0L, (long) 0L, (int) 0); }
 }

@@ -3,7 +3,7 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ImageFormat {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DEPTH16 = 1144402265;
     public static final int DEPTH_JPEG = 1768253795;
     public static final int DEPTH_POINT_CLOUD = 257;

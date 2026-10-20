@@ -3,7 +3,7 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LocationManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_ADAS_GNSS_ENABLED_CHANGED = "android.location.action.ADAS_GNSS_ENABLED_CHANGED";
     public static final java.lang.String ACTION_GNSS_CAPABILITIES_CHANGED = "android.location.action.GNSS_CAPABILITIES_CHANGED";
     public static final long BLOCK_GPS_STATUS_USAGE = 144027538L;
@@ -54,25 +54,25 @@ public class LocationManager {
     public void clearTestProviderLocation(java.lang.String p0) {}
     public void clearTestProviderStatus(java.lang.String p0) {}
     public void flushGnssBatch() {}
-    public android.os.PackageTagsList getAdasAllowlist() { return (android.os.PackageTagsList) meglerProps.get("AdasAllowlist"); }
-    public java.util.List getAllProviders() { return (meglerProps.get("AllProviders") != null ? (java.util.List) meglerProps.get("AllProviders") : new java.util.ArrayList()); }
-    public java.lang.String[] getBackgroundThrottlingWhitelist() { return (java.lang.String[]) meglerProps.get("BackgroundThrottlingWhitelist"); }
+    public android.os.PackageTagsList getAdasAllowlist() { return (android.os.PackageTagsList) megletProps.get("AdasAllowlist"); }
+    public java.util.List getAllProviders() { return (megletProps.get("AllProviders") != null ? (java.util.List) megletProps.get("AllProviders") : new java.util.ArrayList()); }
+    public java.lang.String[] getBackgroundThrottlingWhitelist() { return (java.lang.String[]) megletProps.get("BackgroundThrottlingWhitelist"); }
     public java.lang.String getBestProvider(android.location.Criteria p0, boolean p1) { return null; }
     public void getCurrentLocation(android.location.LocationRequest p0, android.os.CancellationSignal p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) {}
     public void getCurrentLocation(java.lang.String p0, android.location.LocationRequest p1, android.os.CancellationSignal p2, java.util.concurrent.Executor p3, java.util.function.Consumer p4) {}
     public void getCurrentLocation(java.lang.String p0, android.os.CancellationSignal p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) {}
-    public java.lang.String getExtraLocationControllerPackage() { return (java.lang.String) meglerProps.get("ExtraLocationControllerPackage"); }
-    public java.util.List getGnssAntennaInfos() { return (meglerProps.get("GnssAntennaInfos") != null ? (java.util.List) meglerProps.get("GnssAntennaInfos") : new java.util.ArrayList()); }
-    public int getGnssBatchSize() { return (meglerProps.get("GnssBatchSize") instanceof Integer ? (Integer) meglerProps.get("GnssBatchSize") : 0); }
-    public android.location.GnssCapabilities getGnssCapabilities() { return (android.location.GnssCapabilities) meglerProps.get("GnssCapabilities"); }
-    public java.lang.String getGnssHardwareModelName() { return (java.lang.String) meglerProps.get("GnssHardwareModelName"); }
-    public int getGnssYearOfHardware() { return (meglerProps.get("GnssYearOfHardware") instanceof Integer ? (Integer) meglerProps.get("GnssYearOfHardware") : 0); }
+    public java.lang.String getExtraLocationControllerPackage() { return (java.lang.String) megletProps.get("ExtraLocationControllerPackage"); }
+    public java.util.List getGnssAntennaInfos() { return (megletProps.get("GnssAntennaInfos") != null ? (java.util.List) megletProps.get("GnssAntennaInfos") : new java.util.ArrayList()); }
+    public int getGnssBatchSize() { return (megletProps.get("GnssBatchSize") instanceof Integer ? (Integer) megletProps.get("GnssBatchSize") : 0); }
+    public android.location.GnssCapabilities getGnssCapabilities() { return (android.location.GnssCapabilities) megletProps.get("GnssCapabilities"); }
+    public java.lang.String getGnssHardwareModelName() { return (java.lang.String) megletProps.get("GnssHardwareModelName"); }
+    public int getGnssYearOfHardware() { return (megletProps.get("GnssYearOfHardware") instanceof Integer ? (Integer) megletProps.get("GnssYearOfHardware") : 0); }
     public android.location.GpsStatus getGpsStatus(android.location.GpsStatus p0) { return null; }
-    public android.os.PackageTagsList getIgnoreSettingsAllowlist() { return (android.os.PackageTagsList) meglerProps.get("IgnoreSettingsAllowlist"); }
-    public java.lang.String[] getIgnoreSettingsWhitelist() { return (java.lang.String[]) meglerProps.get("IgnoreSettingsWhitelist"); }
+    public android.os.PackageTagsList getIgnoreSettingsAllowlist() { return (android.os.PackageTagsList) megletProps.get("IgnoreSettingsAllowlist"); }
+    public java.lang.String[] getIgnoreSettingsWhitelist() { return (java.lang.String[]) megletProps.get("IgnoreSettingsWhitelist"); }
     public android.location.Location getLastKnownLocation(java.lang.String p0) { return null; }
     public android.location.Location getLastKnownLocation(java.lang.String p0, android.location.LastLocationRequest p1) { return null; }
-    public android.location.Location getLastLocation() { return (android.location.Location) meglerProps.get("LastLocation"); }
+    public android.location.Location getLastLocation() { return (android.location.Location) megletProps.get("LastLocation"); }
     public android.location.LocationProvider getProvider(java.lang.String p0) { return null; }
     public java.util.List getProviderPackages(java.lang.String p0) { return new java.util.ArrayList(); }
     public android.location.provider.ProviderProperties getProviderProperties(java.lang.String p0) { return null; }
@@ -81,10 +81,10 @@ public class LocationManager {
     public boolean hasProvider(java.lang.String p0) { return false; }
     public void injectGnssMeasurementCorrections(android.location.GnssMeasurementCorrections p0) {}
     public boolean injectLocation(android.location.Location p0) { return false; }
-    public boolean isAdasGnssLocationEnabled() { return (meglerProps.get("AdasGnssLocationEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AdasGnssLocationEnabled") : false); }
-    public boolean isAutomotiveGnssSuspended() { return (meglerProps.get("AutomotiveGnssSuspended") instanceof Boolean ? (Boolean) meglerProps.get("AutomotiveGnssSuspended") : false); }
-    public boolean isExtraLocationControllerPackageEnabled() { return (meglerProps.get("ExtraLocationControllerPackageEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ExtraLocationControllerPackageEnabled") : false); }
-    public boolean isLocationEnabled() { return (meglerProps.get("LocationEnabled") instanceof Boolean ? (Boolean) meglerProps.get("LocationEnabled") : false); }
+    public boolean isAdasGnssLocationEnabled() { return (megletProps.get("AdasGnssLocationEnabled") instanceof Boolean ? (Boolean) megletProps.get("AdasGnssLocationEnabled") : false); }
+    public boolean isAutomotiveGnssSuspended() { return (megletProps.get("AutomotiveGnssSuspended") instanceof Boolean ? (Boolean) megletProps.get("AutomotiveGnssSuspended") : false); }
+    public boolean isExtraLocationControllerPackageEnabled() { return (megletProps.get("ExtraLocationControllerPackageEnabled") instanceof Boolean ? (Boolean) megletProps.get("ExtraLocationControllerPackageEnabled") : false); }
+    public boolean isLocationEnabled() { return (megletProps.get("LocationEnabled") instanceof Boolean ? (Boolean) megletProps.get("LocationEnabled") : false); }
     public boolean isLocationEnabledForUser(android.os.UserHandle p0) { return false; }
     public boolean isProviderEnabled(java.lang.String p0) { return false; }
     public boolean isProviderEnabledForUser(java.lang.String p0, android.os.UserHandle p1) { return false; }
@@ -133,12 +133,12 @@ public class LocationManager {
     public void requestSingleUpdate(java.lang.String p0, android.app.PendingIntent p1) {}
     public void requestSingleUpdate(java.lang.String p0, android.location.LocationListener p1, android.os.Looper p2) {}
     public boolean sendExtraCommand(java.lang.String p0, java.lang.String p1, android.os.Bundle p2) { return false; }
-    public void setAdasGnssLocationEnabled(boolean p0) { meglerProps.put("AdasGnssLocationEnabled", Boolean.valueOf(p0)); }
-    public void setAutomotiveGnssSuspended(boolean p0) { meglerProps.put("AutomotiveGnssSuspended", Boolean.valueOf(p0)); }
-    public void setExtraLocationControllerPackage(java.lang.String p0) { meglerProps.put("ExtraLocationControllerPackage", p0); }
-    public void setExtraLocationControllerPackageEnabled(boolean p0) { meglerProps.put("ExtraLocationControllerPackageEnabled", Boolean.valueOf(p0)); }
-    public void setLocationControllerExtraPackage(java.lang.String p0) { meglerProps.put("LocationControllerExtraPackage", p0); }
-    public void setLocationControllerExtraPackageEnabled(boolean p0) { meglerProps.put("LocationControllerExtraPackageEnabled", Boolean.valueOf(p0)); }
+    public void setAdasGnssLocationEnabled(boolean p0) { megletProps.put("AdasGnssLocationEnabled", Boolean.valueOf(p0)); }
+    public void setAutomotiveGnssSuspended(boolean p0) { megletProps.put("AutomotiveGnssSuspended", Boolean.valueOf(p0)); }
+    public void setExtraLocationControllerPackage(java.lang.String p0) { megletProps.put("ExtraLocationControllerPackage", p0); }
+    public void setExtraLocationControllerPackageEnabled(boolean p0) { megletProps.put("ExtraLocationControllerPackageEnabled", Boolean.valueOf(p0)); }
+    public void setLocationControllerExtraPackage(java.lang.String p0) { megletProps.put("LocationControllerExtraPackage", p0); }
+    public void setLocationControllerExtraPackageEnabled(boolean p0) { megletProps.put("LocationControllerExtraPackageEnabled", Boolean.valueOf(p0)); }
     public void setLocationEnabledForUser(boolean p0, android.os.UserHandle p1) {}
     public boolean setProviderEnabledForUser(java.lang.String p0, boolean p1, android.os.UserHandle p2) { return false; }
     public void setTestProviderEnabled(java.lang.String p0, boolean p1) {}

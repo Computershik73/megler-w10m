@@ -1,38 +1,38 @@
 // Overlay of core/framework/gen-src/android/hardware/camera2/CaptureResult.java, written by
 // tools/compat/camera2-overlays.py from that generated stub (run it again rather than editing this file).
-// It differs in having keys and values: a picture's result as the camera (camera2/impl/MeglerCameraDevice) fills it, the
+// It differs in having keys and values: a picture's result as the camera (camera2/impl/MegletCameraDevice) fills it, the
 // request's values and the picture's own (its timestamp, the state of focus and exposure).
 package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CaptureResult extends android.hardware.camera2.CameraMetadata {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    // ---- megler-w10m: the values, by their keys' names, and the keys themselves in the order they were set.
-    private final java.util.LinkedHashMap<java.lang.String, java.lang.Object> mMeglerValues = new java.util.LinkedHashMap<>();
-    private final java.util.LinkedHashMap<java.lang.String, Key> mMeglerKeys = new java.util.LinkedHashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    // ---- Meglet: the values, by their keys' names, and the keys themselves in the order they were set.
+    private final java.util.LinkedHashMap<java.lang.String, java.lang.Object> mMegletValues = new java.util.LinkedHashMap<>();
+    private final java.util.LinkedHashMap<java.lang.String, Key> mMegletKeys = new java.util.LinkedHashMap<>();
     /** This layer's: a key's value set (null takes it away). */
-    public void meglerSet(Key key, java.lang.Object value) {
+    public void megletSet(Key key, java.lang.Object value) {
         if (key == null) return;
         if (value == null) {
-            mMeglerValues.remove(key.getName());
-            mMeglerKeys.remove(key.getName());
+            mMegletValues.remove(key.getName());
+            mMegletKeys.remove(key.getName());
         } else {
-            mMeglerValues.put(key.getName(), value);
-            mMeglerKeys.put(key.getName(), key);
+            mMegletValues.put(key.getName(), value);
+            mMegletKeys.put(key.getName(), key);
         }
     }
     /** This layer's: the value of the key of this name, or null. */
-    public java.lang.Object meglerGet(java.lang.String name) { return mMeglerValues.get(name); }
-    private android.hardware.camera2.CaptureRequest mMeglerRequest;
-    private long mMeglerFrameNumber;
-    private int mMeglerSequenceId;
-    private java.lang.String mMeglerCameraId;
+    public java.lang.Object megletGet(java.lang.String name) { return mMegletValues.get(name); }
+    private android.hardware.camera2.CaptureRequest mMegletRequest;
+    private long mMegletFrameNumber;
+    private int mMegletSequenceId;
+    private java.lang.String mMegletCameraId;
     /** This layer's: the camera, request, picture and sequence this result is of. */
-    public void meglerFrom(java.lang.String cameraId, android.hardware.camera2.CaptureRequest request, long frameNumber, int sequenceId) {
-        mMeglerCameraId = cameraId;
-        mMeglerRequest = request;
-        mMeglerFrameNumber = frameNumber;
-        mMeglerSequenceId = sequenceId;
+    public void megletFrom(java.lang.String cameraId, android.hardware.camera2.CaptureRequest request, long frameNumber, int sequenceId) {
+        mMegletCameraId = cameraId;
+        mMegletRequest = request;
+        mMegletFrameNumber = frameNumber;
+        mMegletSequenceId = sequenceId;
     }
     public static final android.hardware.camera2.CaptureResult.Key BLACK_LEVEL_LOCK = new android.hardware.camera2.CaptureResult.Key("android.black.levelLock", java.lang.Object.class);
     public static final android.hardware.camera2.CaptureResult.Key COLOR_CORRECTION_ABERRATION_MODE = new android.hardware.camera2.CaptureResult.Key("android.color.correctionAberrationMode", java.lang.Object.class);
@@ -163,22 +163,22 @@ public class CaptureResult extends android.hardware.camera2.CameraMetadata {
     public CaptureResult(java.lang.String p0, android.hardware.camera2.impl.CameraMetadataNative p1, android.hardware.camera2.CaptureRequest p2, int p3, long p4) { super(); }
     public CaptureResult(java.lang.String p0, android.hardware.camera2.impl.CameraMetadataNative p1, android.hardware.camera2.CaptureRequest p2, android.hardware.camera2.impl.CaptureResultExtras p3) { super(); }
     public void dumpToLog() {}
-    public java.lang.Object get(android.hardware.camera2.CaptureResult.Key p0) { return p0 == null ? null : mMeglerValues.get(p0.getName()); }
-    public java.lang.String getCameraId() { return mMeglerCameraId; }
-    public long getFrameNumber() { return mMeglerFrameNumber; }
+    public java.lang.Object get(android.hardware.camera2.CaptureResult.Key p0) { return p0 == null ? null : mMegletValues.get(p0.getName()); }
+    public java.lang.String getCameraId() { return mMegletCameraId; }
+    public long getFrameNumber() { return mMegletFrameNumber; }
     public java.lang.Class getKeyClass() { return Key.class; }
-    public java.util.List getKeys() { return java.util.Collections.unmodifiableList(new java.util.ArrayList<>(mMeglerKeys.values())); }
-    public android.hardware.camera2.impl.CameraMetadataNative getNativeCopy() { return (android.hardware.camera2.impl.CameraMetadataNative) meglerProps.get("NativeCopy"); }
+    public java.util.List getKeys() { return java.util.Collections.unmodifiableList(new java.util.ArrayList<>(mMegletKeys.values())); }
+    public android.hardware.camera2.impl.CameraMetadataNative getNativeCopy() { return (android.hardware.camera2.impl.CameraMetadataNative) megletProps.get("NativeCopy"); }
     protected java.lang.Object getProtected(android.hardware.camera2.CaptureResult.Key p0) { return get(p0); }
     public java.lang.Object getProtected(java.lang.Object p0) { return p0 instanceof Key ? get((Key) p0) : null; }
-    public android.hardware.camera2.CaptureRequest getRequest() { return mMeglerRequest; }
-    public int getSequenceId() { return mMeglerSequenceId; }
+    public android.hardware.camera2.CaptureRequest getRequest() { return mMegletRequest; }
+    public int getSequenceId() { return mMegletSequenceId; }
     CaptureResult() { this((android.hardware.camera2.impl.CameraMetadataNative) null, (int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.hardware.camera2.CaptureResult p0) {}
-        public android.hardware.camera2.CaptureResult build() { android.hardware.camera2.CaptureResult x = new android.hardware.camera2.CaptureResult(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.hardware.camera2.CaptureResult build() { android.hardware.camera2.CaptureResult x = new android.hardware.camera2.CaptureResult(); x.megletProps.putAll(megletProps); return x; }
         public android.hardware.camera2.CaptureResult.Builder set(android.hardware.camera2.CaptureResult.Key p0, java.lang.Object p1) { return this; }
     }
     /** A key: its name is what it is (two keys of one name are the same key); its type is said for the reader. */

@@ -1,9 +1,9 @@
 // Overlay of core/framework/src/android/os/BatteryManager.java (tools/build-framework.sh).
 // It differs in getIntProperty, isCharging and isPlugWired, which answer from what the core says the battery is
-// (megler.Native.battery: hk_battery_read in the core) where the original had a full battery written in, not charging.
+// (meglet.Native.battery: hk_battery_read in the core) where the original had a full battery written in, not charging.
 //
 // Why. This is the second way an app reads the battery, beside the sticky ACTION_BATTERY_CHANGED intent (the overlay's
-// megler.Broadcasts), and the two must agree: the capacity is the intent's level as a percentage, the status is the intent's.
+// meglet.Broadcasts), and the two must agree: the capacity is the intent's level as a percentage, the status is the intent's.
 // The properties of the fuel gauge this layer has nothing for (current, charge and energy counters) stay 0, as the original
 // had them. Everything else is the original's, unchanged.
 package android.os;
@@ -15,13 +15,13 @@ public class BatteryManager {
     public static final String EXTRA_LEVEL = "level", EXTRA_SCALE = "scale", EXTRA_STATUS = "status", EXTRA_PLUGGED = "plugged", EXTRA_HEALTH = "health",
         EXTRA_PRESENT = "present", EXTRA_TEMPERATURE = "temperature", EXTRA_VOLTAGE = "voltage", EXTRA_TECHNOLOGY = "technology";
     public int getIntProperty(int id) {
-        int[] s = megler.Native.battery();
+        int[] s = meglet.Native.battery();
         return id == BATTERY_PROPERTY_CAPACITY ? (s[1] > 0 ? s[0] * 100 / s[1] : 0) : id == BATTERY_PROPERTY_STATUS ? s[2] : 0;
     }
     public long getLongProperty(int id) { return getIntProperty(id); }
     /** As Android means it: on power, and the charge going up or full. */
     public boolean isCharging() {
-        int[] s = megler.Native.battery();
+        int[] s = meglet.Native.battery();
         return s[3] != 0 && (s[2] == BATTERY_STATUS_CHARGING || s[2] == BATTERY_STATUS_FULL);
     }
     public long computeChargeTimeRemaining() { return -1; }

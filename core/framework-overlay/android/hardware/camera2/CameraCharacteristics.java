@@ -6,29 +6,29 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CameraCharacteristics extends android.hardware.camera2.CameraMetadata {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    // ---- megler-w10m: the values, by their keys' names, and the keys themselves in the order they were set.
-    private final java.util.LinkedHashMap<java.lang.String, java.lang.Object> mMeglerValues = new java.util.LinkedHashMap<>();
-    private final java.util.LinkedHashMap<java.lang.String, Key> mMeglerKeys = new java.util.LinkedHashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    // ---- Meglet: the values, by their keys' names, and the keys themselves in the order they were set.
+    private final java.util.LinkedHashMap<java.lang.String, java.lang.Object> mMegletValues = new java.util.LinkedHashMap<>();
+    private final java.util.LinkedHashMap<java.lang.String, Key> mMegletKeys = new java.util.LinkedHashMap<>();
     /** This layer's: a key's value set (null takes it away). */
-    public void meglerSet(Key key, java.lang.Object value) {
+    public void megletSet(Key key, java.lang.Object value) {
         if (key == null) return;
         if (value == null) {
-            mMeglerValues.remove(key.getName());
-            mMeglerKeys.remove(key.getName());
+            mMegletValues.remove(key.getName());
+            mMegletKeys.remove(key.getName());
         } else {
-            mMeglerValues.put(key.getName(), value);
-            mMeglerKeys.put(key.getName(), key);
+            mMegletValues.put(key.getName(), value);
+            mMegletKeys.put(key.getName(), key);
         }
     }
     /** This layer's: the value of the key of this name, or null. */
-    public java.lang.Object meglerGet(java.lang.String name) { return mMeglerValues.get(name); }
-    private java.util.List<CaptureRequest.Key> mMeglerRequestKeys = new java.util.ArrayList<>();
-    private java.util.List<CaptureResult.Key> mMeglerResultKeys = new java.util.ArrayList<>();
+    public java.lang.Object megletGet(java.lang.String name) { return mMegletValues.get(name); }
+    private java.util.List<CaptureRequest.Key> mMegletRequestKeys = new java.util.ArrayList<>();
+    private java.util.List<CaptureResult.Key> mMegletResultKeys = new java.util.ArrayList<>();
     /** This layer's: the request and result keys the camera takes and says (getAvailableCaptureRequestKeys, ...ResultKeys). */
-    public void meglerSetAvailableKeys(java.util.List<CaptureRequest.Key> request, java.util.List<CaptureResult.Key> result) {
-        mMeglerRequestKeys = request;
-        mMeglerResultKeys = result;
+    public void megletSetAvailableKeys(java.util.List<CaptureRequest.Key> request, java.util.List<CaptureResult.Key> result) {
+        mMegletRequestKeys = request;
+        mMegletResultKeys = result;
     }
     public static final android.hardware.camera2.CameraCharacteristics.Key AUTOMOTIVE_LENS_FACING = new android.hardware.camera2.CameraCharacteristics.Key("android.automotive.lensFacing", java.lang.Object.class);
     public static final android.hardware.camera2.CameraCharacteristics.Key AUTOMOTIVE_LOCATION = new android.hardware.camera2.CameraCharacteristics.Key("android.automotive.location", java.lang.Object.class);
@@ -227,31 +227,31 @@ public final class CameraCharacteristics extends android.hardware.camera2.Camera
     public static final android.hardware.camera2.CameraCharacteristics.Key TONEMAP_AVAILABLE_TONE_MAP_MODES = new android.hardware.camera2.CameraCharacteristics.Key("android.tonemap.availableToneMapModes", java.lang.Object.class);
     public static final android.hardware.camera2.CameraCharacteristics.Key TONEMAP_MAX_CURVE_POINTS = new android.hardware.camera2.CameraCharacteristics.Key("android.tonemap.maxCurvePoints", java.lang.Object.class);
     public CameraCharacteristics(android.hardware.camera2.impl.CameraMetadataNative p0) { super(); }
-    public java.lang.Object get(android.hardware.camera2.CameraCharacteristics.Key p0) { return p0 == null ? null : mMeglerValues.get(p0.getName()); }
-    public java.util.List getAvailableCaptureRequestKeys() { return java.util.Collections.unmodifiableList(mMeglerRequestKeys); }
-    public java.util.List getAvailableCaptureResultKeys() { return java.util.Collections.unmodifiableList(mMeglerResultKeys); }
-    public java.util.List getAvailablePhysicalCameraRequestKeys() { return (meglerProps.get("AvailablePhysicalCameraRequestKeys") != null ? (java.util.List) meglerProps.get("AvailablePhysicalCameraRequestKeys") : new java.util.ArrayList()); }
-    public java.util.List getAvailableSessionCharacteristicsKeys() { return (meglerProps.get("AvailableSessionCharacteristicsKeys") != null ? (java.util.List) meglerProps.get("AvailableSessionCharacteristicsKeys") : new java.util.ArrayList()); }
+    public java.lang.Object get(android.hardware.camera2.CameraCharacteristics.Key p0) { return p0 == null ? null : mMegletValues.get(p0.getName()); }
+    public java.util.List getAvailableCaptureRequestKeys() { return java.util.Collections.unmodifiableList(mMegletRequestKeys); }
+    public java.util.List getAvailableCaptureResultKeys() { return java.util.Collections.unmodifiableList(mMegletResultKeys); }
+    public java.util.List getAvailablePhysicalCameraRequestKeys() { return (megletProps.get("AvailablePhysicalCameraRequestKeys") != null ? (java.util.List) megletProps.get("AvailablePhysicalCameraRequestKeys") : new java.util.ArrayList()); }
+    public java.util.List getAvailableSessionCharacteristicsKeys() { return (megletProps.get("AvailableSessionCharacteristicsKeys") != null ? (java.util.List) megletProps.get("AvailableSessionCharacteristicsKeys") : new java.util.ArrayList()); }
     public java.util.List getAvailableSessionKeys() { return java.util.Collections.emptyList(); }
     public java.lang.Class getKeyClass() { return Key.class; }
-    public java.util.List getKeys() { return java.util.Collections.unmodifiableList(new java.util.ArrayList<>(mMeglerKeys.values())); }
-    public java.util.List getKeysNeedingPermission() { return (meglerProps.get("KeysNeedingPermission") != null ? (java.util.List) meglerProps.get("KeysNeedingPermission") : new java.util.ArrayList()); }
-    public android.hardware.camera2.impl.CameraMetadataNative getNativeCopy() { return (android.hardware.camera2.impl.CameraMetadataNative) meglerProps.get("NativeCopy"); }
-    public java.util.Set getPhysicalCameraIds() { return (meglerProps.get("PhysicalCameraIds") != null ? (java.util.Set) meglerProps.get("PhysicalCameraIds") : new java.util.HashSet()); }
+    public java.util.List getKeys() { return java.util.Collections.unmodifiableList(new java.util.ArrayList<>(mMegletKeys.values())); }
+    public java.util.List getKeysNeedingPermission() { return (megletProps.get("KeysNeedingPermission") != null ? (java.util.List) megletProps.get("KeysNeedingPermission") : new java.util.ArrayList()); }
+    public android.hardware.camera2.impl.CameraMetadataNative getNativeCopy() { return (android.hardware.camera2.impl.CameraMetadataNative) megletProps.get("NativeCopy"); }
+    public java.util.Set getPhysicalCameraIds() { return (megletProps.get("PhysicalCameraIds") != null ? (java.util.Set) megletProps.get("PhysicalCameraIds") : new java.util.HashSet()); }
     protected java.lang.Object getProtected(android.hardware.camera2.CameraCharacteristics.Key p0) { return get(p0); }
     public java.lang.Object getProtected(java.lang.Object p0) { return p0 instanceof Key ? get((Key) p0) : null; }
     public android.hardware.camera2.params.RecommendedStreamConfigurationMap getRecommendedStreamConfigurationMap(int p0) { return null; }
     CameraCharacteristics() { this((android.hardware.camera2.impl.CameraMetadataNative) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.hardware.camera2.CameraCharacteristics p0) {}
-        public android.hardware.camera2.CameraCharacteristics build() { android.hardware.camera2.CameraCharacteristics x = new android.hardware.camera2.CameraCharacteristics(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.hardware.camera2.CameraCharacteristics build() { android.hardware.camera2.CameraCharacteristics x = new android.hardware.camera2.CameraCharacteristics(); x.megletProps.putAll(megletProps); return x; }
         public android.hardware.camera2.CameraCharacteristics.Builder set(android.hardware.camera2.CameraCharacteristics.Key p0, java.lang.Object p1) { return this; }
-        public android.hardware.camera2.CameraCharacteristics.Builder setAvailableCaptureRequestKeys(java.util.List p0) { meglerProps.put("AvailableCaptureRequestKeys", p0); return this; }
-        public android.hardware.camera2.CameraCharacteristics.Builder setAvailableCaptureResultKeys(java.util.List p0) { meglerProps.put("AvailableCaptureResultKeys", p0); return this; }
-        public android.hardware.camera2.CameraCharacteristics.Builder setAvailableCharacteristicsKeys(java.util.List p0) { meglerProps.put("AvailableCharacteristicsKeys", p0); return this; }
-        public android.hardware.camera2.CameraCharacteristics.Builder setAvailableSessionKeys(java.util.List p0) { meglerProps.put("AvailableSessionKeys", p0); return this; }
+        public android.hardware.camera2.CameraCharacteristics.Builder setAvailableCaptureRequestKeys(java.util.List p0) { megletProps.put("AvailableCaptureRequestKeys", p0); return this; }
+        public android.hardware.camera2.CameraCharacteristics.Builder setAvailableCaptureResultKeys(java.util.List p0) { megletProps.put("AvailableCaptureResultKeys", p0); return this; }
+        public android.hardware.camera2.CameraCharacteristics.Builder setAvailableCharacteristicsKeys(java.util.List p0) { megletProps.put("AvailableCharacteristicsKeys", p0); return this; }
+        public android.hardware.camera2.CameraCharacteristics.Builder setAvailableSessionKeys(java.util.List p0) { megletProps.put("AvailableSessionKeys", p0); return this; }
     }
     /** A key: its name is what it is (two keys of one name are the same key); its type is said for the reader. */
     public static final class Key<T> {

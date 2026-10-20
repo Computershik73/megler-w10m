@@ -3,7 +3,7 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ExerciseSegmentType {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static java.util.List DURATION_EXCLUDE_TYPES;
     public static final int EXERCISE_SEGMENT_TYPE_ARM_CURL = 26;
     public static final int EXERCISE_SEGMENT_TYPE_BACK_EXTENSION = 27;

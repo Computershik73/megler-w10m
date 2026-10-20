@@ -3,19 +3,19 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LauncherActivityInfo {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static boolean isVisible(java.lang.CharSequence p0) { return false; }
-    public android.content.pm.ActivityInfo getActivityInfo() { return (android.content.pm.ActivityInfo) meglerProps.get("ActivityInfo"); }
-    public int getApplicationFlags() { return (meglerProps.get("ApplicationFlags") instanceof Integer ? (Integer) meglerProps.get("ApplicationFlags") : 0); }
-    public android.content.pm.ApplicationInfo getApplicationInfo() { return (android.content.pm.ApplicationInfo) meglerProps.get("ApplicationInfo"); }
+    public android.content.pm.ActivityInfo getActivityInfo() { return (android.content.pm.ActivityInfo) megletProps.get("ActivityInfo"); }
+    public int getApplicationFlags() { return (megletProps.get("ApplicationFlags") instanceof Integer ? (Integer) megletProps.get("ApplicationFlags") : 0); }
+    public android.content.pm.ApplicationInfo getApplicationInfo() { return (android.content.pm.ApplicationInfo) megletProps.get("ApplicationInfo"); }
     public android.graphics.drawable.Drawable getBadgedIcon(int p0) { return null; }
-    public android.content.ComponentName getComponentName() { return (android.content.ComponentName) meglerProps.get("ComponentName"); }
-    public long getFirstInstallTime() { return (meglerProps.get("FirstInstallTime") instanceof Long ? (Long) meglerProps.get("FirstInstallTime") : 0L); }
+    public android.content.ComponentName getComponentName() { return (android.content.ComponentName) megletProps.get("ComponentName"); }
+    public long getFirstInstallTime() { return (megletProps.get("FirstInstallTime") instanceof Long ? (Long) megletProps.get("FirstInstallTime") : 0L); }
     public android.graphics.drawable.Drawable getIcon(int p0) { return null; }
-    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) meglerProps.get("Label"); }
-    public float getLoadingProgress() { return (meglerProps.get("LoadingProgress") instanceof Float ? (Float) meglerProps.get("LoadingProgress") : 0f); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public android.os.UserHandle getUser() { return (android.os.UserHandle) meglerProps.get("User"); }
+    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) megletProps.get("Label"); }
+    public float getLoadingProgress() { return (megletProps.get("LoadingProgress") instanceof Float ? (Float) megletProps.get("LoadingProgress") : 0f); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public android.os.UserHandle getUser() { return (android.os.UserHandle) megletProps.get("User"); }
     public boolean supportsMultiInstance() { return false; }
     protected LauncherActivityInfo() {}
 }

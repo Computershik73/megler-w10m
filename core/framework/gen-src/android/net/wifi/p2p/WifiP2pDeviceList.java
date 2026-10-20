@@ -3,7 +3,7 @@ package android.net.wifi.p2p;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiP2pDeviceList implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public WifiP2pDeviceList() {}
     public WifiP2pDeviceList(android.net.wifi.p2p.WifiP2pDeviceList p0) {}
@@ -11,7 +11,7 @@ public class WifiP2pDeviceList implements android.os.Parcelable {
     public boolean clear() { return false; }
     public int describeContents() { return 0; }
     public android.net.wifi.p2p.WifiP2pDevice get(java.lang.String p0) { return null; }
-    public java.util.Collection getDeviceList() { return (meglerProps.get("DeviceList") != null ? (java.util.Collection) meglerProps.get("DeviceList") : new java.util.ArrayList()); }
+    public java.util.Collection getDeviceList() { return (megletProps.get("DeviceList") != null ? (java.util.Collection) megletProps.get("DeviceList") : new java.util.ArrayList()); }
     public boolean isGroupOwner(java.lang.String p0) { return false; }
     public android.net.wifi.p2p.WifiP2pDevice remove(java.lang.String p0) { return null; }
     public boolean remove(android.net.wifi.p2p.WifiP2pDevice p0) { return false; }

@@ -3,20 +3,20 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaMuxer {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public MediaMuxer(java.io.FileDescriptor p0, int p1) {}
     public MediaMuxer(java.lang.String p0, int p1) {}
     public int addTrack(android.media.MediaFormat p0) { return 0; }
     protected void finalize() {}
     public void release() {}
     public void setLocation(float p0, float p1) {}
-    public void setOrientationHint(int p0) { meglerProps.put("OrientationHint", Integer.valueOf(p0)); }
+    public void setOrientationHint(int p0) { megletProps.put("OrientationHint", Integer.valueOf(p0)); }
     public void start() {}
     public void stop() {}
     public void writeSampleData(int p0, java.nio.ByteBuffer p1, android.media.MediaCodec.BufferInfo p2) {}
     MediaMuxer() { this((java.io.FileDescriptor) null, (int) 0); }
     public static final class OutputFormat {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int MUXER_OUTPUT_3GPP = 2;
         public static final int MUXER_OUTPUT_FIRST = 0;
         public static final int MUXER_OUTPUT_HEIF = 3;

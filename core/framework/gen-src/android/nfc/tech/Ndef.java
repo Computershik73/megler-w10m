@@ -3,7 +3,7 @@ package android.nfc.tech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class Ndef extends android.nfc.tech.BasicTagTechnology {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_NDEF_CARDSTATE = "ndefcardstate";
     public static final java.lang.String EXTRA_NDEF_MAXLENGTH = "ndefmaxlength";
     public static final java.lang.String EXTRA_NDEF_MSG = "ndefmsg";
@@ -30,13 +30,13 @@ public abstract class Ndef extends android.nfc.tech.BasicTagTechnology {
     public boolean canMakeReadOnly() { return false; }
     public void close() {}
     public void connect() {}
-    public android.nfc.NdefMessage getCachedNdefMessage() { return (android.nfc.NdefMessage) meglerProps.get("CachedNdefMessage"); }
-    public int getMaxSize() { return (meglerProps.get("MaxSize") instanceof Integer ? (Integer) meglerProps.get("MaxSize") : 0); }
-    public android.nfc.NdefMessage getNdefMessage() { return (android.nfc.NdefMessage) meglerProps.get("NdefMessage"); }
-    public android.nfc.Tag getTag() { return (android.nfc.Tag) meglerProps.get("Tag"); }
-    public java.lang.String getType() { return (java.lang.String) meglerProps.get("Type"); }
-    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
-    public boolean isWritable() { return (meglerProps.get("Writable") instanceof Boolean ? (Boolean) meglerProps.get("Writable") : false); }
+    public android.nfc.NdefMessage getCachedNdefMessage() { return (android.nfc.NdefMessage) megletProps.get("CachedNdefMessage"); }
+    public int getMaxSize() { return (megletProps.get("MaxSize") instanceof Integer ? (Integer) megletProps.get("MaxSize") : 0); }
+    public android.nfc.NdefMessage getNdefMessage() { return (android.nfc.NdefMessage) megletProps.get("NdefMessage"); }
+    public android.nfc.Tag getTag() { return (android.nfc.Tag) megletProps.get("Tag"); }
+    public java.lang.String getType() { return (java.lang.String) megletProps.get("Type"); }
+    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
+    public boolean isWritable() { return (megletProps.get("Writable") instanceof Boolean ? (Boolean) megletProps.get("Writable") : false); }
     public boolean makeReadOnly() { return false; }
     public void reconnect() {}
     public void writeNdefMessage(android.nfc.NdefMessage p0) {}

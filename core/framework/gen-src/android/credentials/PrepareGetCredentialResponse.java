@@ -3,9 +3,9 @@ package android.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PrepareGetCredentialResponse {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected PrepareGetCredentialResponse(android.credentials.PrepareGetCredentialResponseInternal p0, android.credentials.CredentialManager.GetCredentialTransportPendingUseCase p1) {}
-    public android.credentials.PrepareGetCredentialResponse.PendingGetCredentialHandle getPendingGetCredentialHandle() { return (android.credentials.PrepareGetCredentialResponse.PendingGetCredentialHandle) meglerProps.get("PendingGetCredentialHandle"); }
+    public android.credentials.PrepareGetCredentialResponse.PendingGetCredentialHandle getPendingGetCredentialHandle() { return (android.credentials.PrepareGetCredentialResponse.PendingGetCredentialHandle) megletProps.get("PendingGetCredentialHandle"); }
     public boolean hasAuthenticationResults() { return false; }
     public boolean hasCredentialResults(java.lang.String p0) { return false; }
     public boolean hasRemoteResults() { return false; }
@@ -16,7 +16,7 @@ public final class PrepareGetCredentialResponse {
         void onResponse(android.credentials.GetCredentialResponse p0);
     }
     public static final class PendingGetCredentialHandle {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected PendingGetCredentialHandle() {}
     }
 }

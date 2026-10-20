@@ -38,7 +38,7 @@
 # fetched again (remove its folder to fetch it anew).
 set -euo pipefail
 
-TAG="${MEGLER_AOSP_TAG:-android-9.0.0_r47}"
+TAG="${MEGLET_AOSP_TAG:-android-9.0.0_r47}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/build/android9/aosp"
 BASE="https://android.googlesource.com/platform"

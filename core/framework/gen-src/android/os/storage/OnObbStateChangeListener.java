@@ -3,7 +3,7 @@ package android.os.storage;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class OnObbStateChangeListener {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ERROR_ALREADY_MOUNTED = 24;
     public static final int ERROR_COULD_NOT_MOUNT = 21;
     public static final int ERROR_COULD_NOT_UNMOUNT = 22;

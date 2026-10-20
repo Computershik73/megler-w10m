@@ -3,7 +3,7 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class RenderProcessGoneDetail {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public RenderProcessGoneDetail() {}
     public abstract boolean didCrash();
     public abstract int rendererPriorityAtExit();

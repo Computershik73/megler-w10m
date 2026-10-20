@@ -3,7 +3,7 @@ package android.telephony.mbms;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class StreamingServiceCallback {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int SIGNAL_STRENGTH_UNAVAILABLE = -1;
     public StreamingServiceCallback() {}
     public void onBroadcastSignalStrengthUpdated(int p0) {}

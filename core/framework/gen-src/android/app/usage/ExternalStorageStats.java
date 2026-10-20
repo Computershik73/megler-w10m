@@ -3,7 +3,7 @@ package android.app.usage;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ExternalStorageStats implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public long appBytes;
     public long audioBytes;
@@ -14,11 +14,11 @@ public final class ExternalStorageStats implements android.os.Parcelable {
     public ExternalStorageStats() {}
     public ExternalStorageStats(android.os.Parcel p0) {}
     public int describeContents() { return 0; }
-    public long getAppBytes() { return (meglerProps.get("AppBytes") instanceof Long ? (Long) meglerProps.get("AppBytes") : 0L); }
-    public long getAudioBytes() { return (meglerProps.get("AudioBytes") instanceof Long ? (Long) meglerProps.get("AudioBytes") : 0L); }
-    public long getImageBytes() { return (meglerProps.get("ImageBytes") instanceof Long ? (Long) meglerProps.get("ImageBytes") : 0L); }
-    public long getObbBytes() { return (meglerProps.get("ObbBytes") instanceof Long ? (Long) meglerProps.get("ObbBytes") : 0L); }
-    public long getTotalBytes() { return (meglerProps.get("TotalBytes") instanceof Long ? (Long) meglerProps.get("TotalBytes") : 0L); }
-    public long getVideoBytes() { return (meglerProps.get("VideoBytes") instanceof Long ? (Long) meglerProps.get("VideoBytes") : 0L); }
+    public long getAppBytes() { return (megletProps.get("AppBytes") instanceof Long ? (Long) megletProps.get("AppBytes") : 0L); }
+    public long getAudioBytes() { return (megletProps.get("AudioBytes") instanceof Long ? (Long) megletProps.get("AudioBytes") : 0L); }
+    public long getImageBytes() { return (megletProps.get("ImageBytes") instanceof Long ? (Long) megletProps.get("ImageBytes") : 0L); }
+    public long getObbBytes() { return (megletProps.get("ObbBytes") instanceof Long ? (Long) megletProps.get("ObbBytes") : 0L); }
+    public long getTotalBytes() { return (megletProps.get("TotalBytes") instanceof Long ? (Long) megletProps.get("TotalBytes") : 0L); }
+    public long getVideoBytes() { return (megletProps.get("VideoBytes") instanceof Long ? (Long) megletProps.get("VideoBytes") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

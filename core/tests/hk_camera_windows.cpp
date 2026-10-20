@@ -1,5 +1,5 @@
-// The test program's way to the shell's cameras: megler_camera_host as
-// app/Megler/player/CameraHost.cpp implements it over Windows.Media.Capture,
+// The test program's way to the shell's cameras: meglet_camera_host as
+// app/Meglet/player/CameraHost.cpp implements it over Windows.Media.Capture,
 // for hk_tests --camera-windows (hk_tests_main.c), which opens the PC's first
 // camera through it and the core's camera code and takes a few pictures.
 //
@@ -23,13 +23,13 @@ extern "C" {
 
 /// The shell's cameras, as on a device held sideways (a PC), with nothing kept between runs and no flags. (Windows' calls
 /// are all made on the host's own thread: this one needs no apartment.)
-const megler_camera_host* hk_camera_windows_host(void) {
-    static megler_camera_host host;
-    host = megler::app::CameraHost::shared().callbacks();
+const meglet_camera_host* hk_camera_windows_host(void) {
+    static meglet_camera_host host;
+    host = meglet::app::CameraHost::shared().callbacks();
     return &host;
 }
 
 /// The cameras found, in a line.
-void hk_camera_windows_summary(char* out, size_t size) { snprintf(out, size, "%s", megler::app::CameraHost::shared().summary().c_str()); }
+void hk_camera_windows_summary(char* out, size_t size) { snprintf(out, size, "%s", meglet::app::CameraHost::shared().summary().c_str()); }
 
 } // extern "C"

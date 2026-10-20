@@ -3,13 +3,13 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SetAppInstallAdvertisersRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.util.Set getAdvertisers() { return (meglerProps.get("Advertisers") != null ? (java.util.Set) meglerProps.get("Advertisers") : new java.util.HashSet()); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.util.Set getAdvertisers() { return (megletProps.get("Advertisers") != null ? (java.util.Set) megletProps.get("Advertisers") : new java.util.HashSet()); }
     protected SetAppInstallAdvertisersRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.adselection.SetAppInstallAdvertisersRequest build() { android.adservices.adselection.SetAppInstallAdvertisersRequest x = new android.adservices.adselection.SetAppInstallAdvertisersRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.adselection.SetAppInstallAdvertisersRequest.Builder setAdvertisers(java.util.Set p0) { meglerProps.put("Advertisers", p0); return this; }
+        public android.adservices.adselection.SetAppInstallAdvertisersRequest build() { android.adservices.adselection.SetAppInstallAdvertisersRequest x = new android.adservices.adselection.SetAppInstallAdvertisersRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.adselection.SetAppInstallAdvertisersRequest.Builder setAdvertisers(java.util.Set p0) { megletProps.put("Advertisers", p0); return this; }
     }
 }

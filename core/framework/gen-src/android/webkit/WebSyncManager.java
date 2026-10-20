@@ -3,7 +3,7 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class WebSyncManager implements java.lang.Runnable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected static final java.lang.String LOGTAG = "websync";
     protected android.webkit.WebViewDatabase mDataBase;
     protected android.os.Handler mHandler;

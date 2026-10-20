@@ -3,21 +3,21 @@ package android.hardware.biometrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PromptVerticalListContentView implements android.hardware.biometrics.PromptContentViewParcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static int getMaxEachItemCharacterNumber() { return 0; }
     public static int getMaxItemCount() { return 0; }
     public int describeContents() { return 0; }
-    public java.lang.String getDescription() { return (java.lang.String) meglerProps.get("Description"); }
-    public java.util.List getListItems() { return (meglerProps.get("ListItems") != null ? (java.util.List) meglerProps.get("ListItems") : new java.util.ArrayList()); }
+    public java.lang.String getDescription() { return (java.lang.String) megletProps.get("Description"); }
+    public java.util.List getListItems() { return (megletProps.get("ListItems") != null ? (java.util.List) megletProps.get("ListItems") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected PromptVerticalListContentView() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public android.hardware.biometrics.PromptVerticalListContentView.Builder addListItem(android.hardware.biometrics.PromptContentItem p0) { return this; }
         public android.hardware.biometrics.PromptVerticalListContentView.Builder addListItem(android.hardware.biometrics.PromptContentItem p0, int p1) { return this; }
-        public android.hardware.biometrics.PromptVerticalListContentView build() { android.hardware.biometrics.PromptVerticalListContentView x = new android.hardware.biometrics.PromptVerticalListContentView(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.hardware.biometrics.PromptVerticalListContentView.Builder setDescription(java.lang.String p0) { meglerProps.put("Description", p0); return this; }
+        public android.hardware.biometrics.PromptVerticalListContentView build() { android.hardware.biometrics.PromptVerticalListContentView x = new android.hardware.biometrics.PromptVerticalListContentView(); x.megletProps.putAll(megletProps); return x; }
+        public android.hardware.biometrics.PromptVerticalListContentView.Builder setDescription(java.lang.String p0) { megletProps.put("Description", p0); return this; }
     }
 }

@@ -3,7 +3,7 @@ package android.net.wifi.rtt;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ResponderLocation implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ALTITUDE_FLOORS = 2;
     public static final int ALTITUDE_METERS = 1;
     public static final int ALTITUDE_UNDEFINED = 0;
@@ -19,33 +19,33 @@ public final class ResponderLocation implements android.os.Parcelable {
     public static final int LOCATION_VARIABLE = 1;
     public ResponderLocation(byte[] p0, byte[] p1) {}
     public int describeContents() { return 0; }
-    public double getAltitude() { return (meglerProps.get("Altitude") instanceof Double ? (Double) meglerProps.get("Altitude") : 0d); }
-    public int getAltitudeType() { return (meglerProps.get("AltitudeType") instanceof Integer ? (Integer) meglerProps.get("AltitudeType") : 0); }
-    public double getAltitudeUncertainty() { return (meglerProps.get("AltitudeUncertainty") instanceof Double ? (Double) meglerProps.get("AltitudeUncertainty") : 0d); }
-    public java.lang.String getCivicLocationCountryCode() { return (java.lang.String) meglerProps.get("CivicLocationCountryCode"); }
+    public double getAltitude() { return (megletProps.get("Altitude") instanceof Double ? (Double) megletProps.get("Altitude") : 0d); }
+    public int getAltitudeType() { return (megletProps.get("AltitudeType") instanceof Integer ? (Integer) megletProps.get("AltitudeType") : 0); }
+    public double getAltitudeUncertainty() { return (megletProps.get("AltitudeUncertainty") instanceof Double ? (Double) megletProps.get("AltitudeUncertainty") : 0d); }
+    public java.lang.String getCivicLocationCountryCode() { return (java.lang.String) megletProps.get("CivicLocationCountryCode"); }
     public java.lang.String getCivicLocationElementValue(int p0) { return null; }
-    public java.util.List getColocatedBssids() { return (meglerProps.get("ColocatedBssids") != null ? (java.util.List) meglerProps.get("ColocatedBssids") : new java.util.ArrayList()); }
-    public int getDatum() { return (meglerProps.get("Datum") instanceof Integer ? (Integer) meglerProps.get("Datum") : 0); }
-    public boolean getDependentStationIndication() { return (meglerProps.get("DependentStationIndication") instanceof Boolean ? (Boolean) meglerProps.get("DependentStationIndication") : false); }
-    public int getExpectedToMove() { return (meglerProps.get("ExpectedToMove") instanceof Integer ? (Integer) meglerProps.get("ExpectedToMove") : 0); }
-    public boolean getExtraInfoOnAssociationIndication() { return (meglerProps.get("ExtraInfoOnAssociationIndication") instanceof Boolean ? (Boolean) meglerProps.get("ExtraInfoOnAssociationIndication") : false); }
-    public double getFloorNumber() { return (meglerProps.get("FloorNumber") instanceof Double ? (Double) meglerProps.get("FloorNumber") : 0d); }
-    public double getHeightAboveFloorMeters() { return (meglerProps.get("HeightAboveFloorMeters") instanceof Double ? (Double) meglerProps.get("HeightAboveFloorMeters") : 0d); }
-    public double getHeightAboveFloorUncertaintyMeters() { return (meglerProps.get("HeightAboveFloorUncertaintyMeters") instanceof Double ? (Double) meglerProps.get("HeightAboveFloorUncertaintyMeters") : 0d); }
-    public double getLatitude() { return (meglerProps.get("Latitude") instanceof Double ? (Double) meglerProps.get("Latitude") : 0d); }
-    public double getLatitudeUncertainty() { return (meglerProps.get("LatitudeUncertainty") instanceof Double ? (Double) meglerProps.get("LatitudeUncertainty") : 0d); }
-    public int getLciVersion() { return (meglerProps.get("LciVersion") instanceof Integer ? (Integer) meglerProps.get("LciVersion") : 0); }
-    public double getLongitude() { return (meglerProps.get("Longitude") instanceof Double ? (Double) meglerProps.get("Longitude") : 0d); }
-    public double getLongitudeUncertainty() { return (meglerProps.get("LongitudeUncertainty") instanceof Double ? (Double) meglerProps.get("LongitudeUncertainty") : 0d); }
-    public java.lang.String getMapImageMimeType() { return (java.lang.String) meglerProps.get("MapImageMimeType"); }
-    public android.net.Uri getMapImageUri() { return (android.net.Uri) meglerProps.get("MapImageUri"); }
-    public boolean getRegisteredLocationAgreementIndication() { return (meglerProps.get("RegisteredLocationAgreementIndication") instanceof Boolean ? (Boolean) meglerProps.get("RegisteredLocationAgreementIndication") : false); }
-    public boolean getRegisteredLocationDseIndication() { return (meglerProps.get("RegisteredLocationDseIndication") instanceof Boolean ? (Boolean) meglerProps.get("RegisteredLocationDseIndication") : false); }
-    public boolean getRetentionExpiresIndication() { return (meglerProps.get("RetentionExpiresIndication") instanceof Boolean ? (Boolean) meglerProps.get("RetentionExpiresIndication") : false); }
-    public boolean getRetransmitPolicyIndication() { return (meglerProps.get("RetransmitPolicyIndication") instanceof Boolean ? (Boolean) meglerProps.get("RetransmitPolicyIndication") : false); }
-    public boolean isLciSubelementValid() { return (meglerProps.get("LciSubelementValid") instanceof Boolean ? (Boolean) meglerProps.get("LciSubelementValid") : false); }
-    public boolean isValid() { return (meglerProps.get("Valid") instanceof Boolean ? (Boolean) meglerProps.get("Valid") : false); }
-    public boolean isZaxisSubelementValid() { return (meglerProps.get("ZaxisSubelementValid") instanceof Boolean ? (Boolean) meglerProps.get("ZaxisSubelementValid") : false); }
+    public java.util.List getColocatedBssids() { return (megletProps.get("ColocatedBssids") != null ? (java.util.List) megletProps.get("ColocatedBssids") : new java.util.ArrayList()); }
+    public int getDatum() { return (megletProps.get("Datum") instanceof Integer ? (Integer) megletProps.get("Datum") : 0); }
+    public boolean getDependentStationIndication() { return (megletProps.get("DependentStationIndication") instanceof Boolean ? (Boolean) megletProps.get("DependentStationIndication") : false); }
+    public int getExpectedToMove() { return (megletProps.get("ExpectedToMove") instanceof Integer ? (Integer) megletProps.get("ExpectedToMove") : 0); }
+    public boolean getExtraInfoOnAssociationIndication() { return (megletProps.get("ExtraInfoOnAssociationIndication") instanceof Boolean ? (Boolean) megletProps.get("ExtraInfoOnAssociationIndication") : false); }
+    public double getFloorNumber() { return (megletProps.get("FloorNumber") instanceof Double ? (Double) megletProps.get("FloorNumber") : 0d); }
+    public double getHeightAboveFloorMeters() { return (megletProps.get("HeightAboveFloorMeters") instanceof Double ? (Double) megletProps.get("HeightAboveFloorMeters") : 0d); }
+    public double getHeightAboveFloorUncertaintyMeters() { return (megletProps.get("HeightAboveFloorUncertaintyMeters") instanceof Double ? (Double) megletProps.get("HeightAboveFloorUncertaintyMeters") : 0d); }
+    public double getLatitude() { return (megletProps.get("Latitude") instanceof Double ? (Double) megletProps.get("Latitude") : 0d); }
+    public double getLatitudeUncertainty() { return (megletProps.get("LatitudeUncertainty") instanceof Double ? (Double) megletProps.get("LatitudeUncertainty") : 0d); }
+    public int getLciVersion() { return (megletProps.get("LciVersion") instanceof Integer ? (Integer) megletProps.get("LciVersion") : 0); }
+    public double getLongitude() { return (megletProps.get("Longitude") instanceof Double ? (Double) megletProps.get("Longitude") : 0d); }
+    public double getLongitudeUncertainty() { return (megletProps.get("LongitudeUncertainty") instanceof Double ? (Double) megletProps.get("LongitudeUncertainty") : 0d); }
+    public java.lang.String getMapImageMimeType() { return (java.lang.String) megletProps.get("MapImageMimeType"); }
+    public android.net.Uri getMapImageUri() { return (android.net.Uri) megletProps.get("MapImageUri"); }
+    public boolean getRegisteredLocationAgreementIndication() { return (megletProps.get("RegisteredLocationAgreementIndication") instanceof Boolean ? (Boolean) megletProps.get("RegisteredLocationAgreementIndication") : false); }
+    public boolean getRegisteredLocationDseIndication() { return (megletProps.get("RegisteredLocationDseIndication") instanceof Boolean ? (Boolean) megletProps.get("RegisteredLocationDseIndication") : false); }
+    public boolean getRetentionExpiresIndication() { return (megletProps.get("RetentionExpiresIndication") instanceof Boolean ? (Boolean) megletProps.get("RetentionExpiresIndication") : false); }
+    public boolean getRetransmitPolicyIndication() { return (megletProps.get("RetransmitPolicyIndication") instanceof Boolean ? (Boolean) megletProps.get("RetransmitPolicyIndication") : false); }
+    public boolean isLciSubelementValid() { return (megletProps.get("LciSubelementValid") instanceof Boolean ? (Boolean) megletProps.get("LciSubelementValid") : false); }
+    public boolean isValid() { return (megletProps.get("Valid") instanceof Boolean ? (Boolean) megletProps.get("Valid") : false); }
+    public boolean isZaxisSubelementValid() { return (megletProps.get("ZaxisSubelementValid") instanceof Boolean ? (Boolean) megletProps.get("ZaxisSubelementValid") : false); }
     public void setCivicLocationSubelementDefaults() {}
     public android.location.Address toCivicLocationAddress() { return null; }
     public android.util.SparseArray toCivicLocationSparseArray() { return null; }

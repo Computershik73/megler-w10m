@@ -3,7 +3,7 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CameraDevice implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int AUDIO_RESTRICTION_NONE = 0;
     public static final int AUDIO_RESTRICTION_VIBRATION = 1;
     public static final int AUDIO_RESTRICTION_VIBRATION_SOUND = 3;
@@ -30,12 +30,12 @@ public abstract class CameraDevice implements java.lang.AutoCloseable {
     public abstract android.hardware.camera2.CaptureRequest.Builder createReprocessCaptureRequest(android.hardware.camera2.TotalCaptureResult p0);
     public abstract void createReprocessableCaptureSession(android.hardware.camera2.params.InputConfiguration p0, java.util.List p1, android.hardware.camera2.CameraCaptureSession.StateCallback p2, android.os.Handler p3);
     public abstract void createReprocessableCaptureSessionByConfigurations(android.hardware.camera2.params.InputConfiguration p0, java.util.List p1, android.hardware.camera2.CameraCaptureSession.StateCallback p2, android.os.Handler p3);
-    public int getCameraAudioRestriction() { return (meglerProps.get("CameraAudioRestriction") instanceof Integer ? (Integer) meglerProps.get("CameraAudioRestriction") : 0); }
+    public int getCameraAudioRestriction() { return (megletProps.get("CameraAudioRestriction") instanceof Integer ? (Integer) megletProps.get("CameraAudioRestriction") : 0); }
     public abstract java.lang.String getId();
     public boolean isSessionConfigurationSupported(android.hardware.camera2.params.SessionConfiguration p0) { return false; }
-    public void setCameraAudioRestriction(int p0) { meglerProps.put("CameraAudioRestriction", Integer.valueOf(p0)); }
+    public void setCameraAudioRestriction(int p0) { megletProps.put("CameraAudioRestriction", Integer.valueOf(p0)); }
     public static abstract class CameraDeviceSetup {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public CameraDeviceSetup() {}
         public abstract android.hardware.camera2.CaptureRequest.Builder createCaptureRequest(int p0);
         public abstract java.lang.String getId();
@@ -44,7 +44,7 @@ public abstract class CameraDevice implements java.lang.AutoCloseable {
         public abstract void openCamera(java.util.concurrent.Executor p0, android.hardware.camera2.CameraDevice.StateCallback p1);
     }
     public static abstract class StateCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ERROR_CAMERA_DEVICE = 4;
         public static final int ERROR_CAMERA_DISABLED = 3;
         public static final int ERROR_CAMERA_IN_USE = 1;

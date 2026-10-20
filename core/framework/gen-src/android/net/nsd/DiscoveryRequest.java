@@ -3,23 +3,23 @@ package android.net.nsd;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DiscoveryRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.net.Network getNetwork() { return (android.net.Network) meglerProps.get("Network"); }
-    public int getProtocolType() { return (meglerProps.get("ProtocolType") instanceof Integer ? (Integer) meglerProps.get("ProtocolType") : 0); }
-    public java.lang.String getServiceType() { return (java.lang.String) meglerProps.get("ServiceType"); }
-    public java.lang.String getSubtype() { return (java.lang.String) meglerProps.get("Subtype"); }
+    public android.net.Network getNetwork() { return (android.net.Network) megletProps.get("Network"); }
+    public int getProtocolType() { return (megletProps.get("ProtocolType") instanceof Integer ? (Integer) megletProps.get("ProtocolType") : 0); }
+    public java.lang.String getServiceType() { return (java.lang.String) megletProps.get("ServiceType"); }
+    public java.lang.String getSubtype() { return (java.lang.String) megletProps.get("Subtype"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected DiscoveryRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(int p0, java.lang.String p1) {}
         public Builder(java.lang.String p0) {}
-        public android.net.nsd.DiscoveryRequest build() { android.net.nsd.DiscoveryRequest x = new android.net.nsd.DiscoveryRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.net.nsd.DiscoveryRequest.Builder setNetwork(android.net.Network p0) { meglerProps.put("Network", p0); return this; }
-        public android.net.nsd.DiscoveryRequest.Builder setServiceType(java.lang.String p0) { meglerProps.put("ServiceType", p0); return this; }
-        public android.net.nsd.DiscoveryRequest.Builder setSubtype(java.lang.String p0) { meglerProps.put("Subtype", p0); return this; }
+        public android.net.nsd.DiscoveryRequest build() { android.net.nsd.DiscoveryRequest x = new android.net.nsd.DiscoveryRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.nsd.DiscoveryRequest.Builder setNetwork(android.net.Network p0) { megletProps.put("Network", p0); return this; }
+        public android.net.nsd.DiscoveryRequest.Builder setServiceType(java.lang.String p0) { megletProps.put("ServiceType", p0); return this; }
+        public android.net.nsd.DiscoveryRequest.Builder setSubtype(java.lang.String p0) { megletProps.put("Subtype", p0); return this; }
         Builder() { this((java.lang.String) null); }
     }
 }

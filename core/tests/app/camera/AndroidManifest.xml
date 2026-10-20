@@ -3,7 +3,7 @@
      permission, the features, the cameras' information, the parameters, a preview on a SurfaceView with frames in callback
      buffers, autofocus, the torch, preview callbacks, and the front camera on a TextureView. Each step is a line of the log,
      which the test (core/tests/hk_java_tests.c, run_camera) reads, with the pictures. -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.camera" android:versionCode="1" android:versionName="1.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="meglet.test.camera" android:versionCode="1" android:versionName="1.0">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />

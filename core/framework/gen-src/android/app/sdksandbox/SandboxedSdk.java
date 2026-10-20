@@ -3,13 +3,13 @@ package android.app.sdksandbox;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SandboxedSdk implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public SandboxedSdk(android.os.IBinder p0) {}
     public void attachSharedLibraryInfo(android.content.pm.SharedLibraryInfo p0) {}
     public int describeContents() { return 0; }
-    public android.os.IBinder getInterface() { return (android.os.IBinder) meglerProps.get("Interface"); }
-    public android.content.pm.SharedLibraryInfo getSharedLibraryInfo() { return (android.content.pm.SharedLibraryInfo) meglerProps.get("SharedLibraryInfo"); }
+    public android.os.IBinder getInterface() { return (android.os.IBinder) megletProps.get("Interface"); }
+    public android.content.pm.SharedLibraryInfo getSharedLibraryInfo() { return (android.content.pm.SharedLibraryInfo) megletProps.get("SharedLibraryInfo"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SandboxedSdk() { this((android.os.IBinder) null); }
 }

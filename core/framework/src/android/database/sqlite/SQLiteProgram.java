@@ -16,15 +16,15 @@ public abstract class SQLiteProgram extends SQLiteClosable {
         mSql = sql.trim();
         db.acquire();
         try {
-            long st = megler.Sqlite.prepare(db.handle(), mSql);
+            long st = meglet.Sqlite.prepare(db.handle(), mSql);
             if (st == 0) throw db.error(mSql);
             try {
-                mReadOnly = megler.Sqlite.readOnly(st) != 0;
-                mNumParameters = megler.Sqlite.paramCount(st);
-                int n = megler.Sqlite.columnCount(st);
+                mReadOnly = meglet.Sqlite.readOnly(st) != 0;
+                mNumParameters = meglet.Sqlite.paramCount(st);
+                int n = meglet.Sqlite.columnCount(st);
                 mColumnNames = n == 0 ? EMPTY_STRING_ARRAY : new String[n];
-                for (int i = 0; i < n; i++) mColumnNames[i] = megler.Sqlite.columnName(st, i);
-            } finally { megler.Sqlite.finalizeStatement(st); }
+                for (int i = 0; i < n; i++) mColumnNames[i] = meglet.Sqlite.columnName(st, i);
+            } finally { meglet.Sqlite.finalizeStatement(st); }
         } finally { db.release(); }
         if (bindArgs != null && bindArgs.length > mNumParameters) throw new IllegalArgumentException("Too many bind arguments.  " + bindArgs.length + " arguments were provided but the statement needs " + mNumParameters + " arguments.");
         mBindArgs = mNumParameters != 0 ? new Object[mNumParameters] : null;
@@ -48,65 +48,65 @@ public abstract class SQLiteProgram extends SQLiteClosable {
         mBindArgs[index - 1] = value;
     }
     /** Prepare and bind on the connection (the caller holds the database). */
-    long meglerPrepare() {
-        long st = megler.Sqlite.prepare(mDatabase.handle(), mSql);
+    long megletPrepare() {
+        long st = meglet.Sqlite.prepare(mDatabase.handle(), mSql);
         if (st == 0) throw mDatabase.error(mSql);
         if (mBindArgs != null) {
             for (int i = 0; i < mBindArgs.length; i++) {
                 Object v = mBindArgs[i];
                 int rc;
-                if (v == null) rc = megler.Sqlite.bindNull(st, i + 1);
-                else if (v instanceof byte[]) rc = megler.Sqlite.bindBlob(st, i + 1, (byte[]) v);
-                else if (v instanceof Double || v instanceof Float) rc = megler.Sqlite.bindDouble(st, i + 1, ((Number) v).doubleValue());
-                else if (v instanceof Long || v instanceof Integer || v instanceof Short || v instanceof Byte) rc = megler.Sqlite.bindLong(st, i + 1, ((Number) v).longValue());
-                else if (v instanceof Boolean) rc = megler.Sqlite.bindLong(st, i + 1, ((Boolean) v) ? 1 : 0);
-                else rc = megler.Sqlite.bindString(st, i + 1, v.toString());
-                if (rc != 0) { megler.Sqlite.finalizeStatement(st); throw mDatabase.error(mSql); }
+                if (v == null) rc = meglet.Sqlite.bindNull(st, i + 1);
+                else if (v instanceof byte[]) rc = meglet.Sqlite.bindBlob(st, i + 1, (byte[]) v);
+                else if (v instanceof Double || v instanceof Float) rc = meglet.Sqlite.bindDouble(st, i + 1, ((Number) v).doubleValue());
+                else if (v instanceof Long || v instanceof Integer || v instanceof Short || v instanceof Byte) rc = meglet.Sqlite.bindLong(st, i + 1, ((Number) v).longValue());
+                else if (v instanceof Boolean) rc = meglet.Sqlite.bindLong(st, i + 1, ((Boolean) v) ? 1 : 0);
+                else rc = meglet.Sqlite.bindString(st, i + 1, v.toString());
+                if (rc != 0) { meglet.Sqlite.finalizeStatement(st); throw mDatabase.error(mSql); }
             }
         }
         return st;
     }
     /** Run to completion; sqlite3_changes afterwards. */
-    int meglerExecute() {
+    int megletExecute() {
         SQLiteDatabase db = mDatabase;
         db.acquire();
         try {
-            long st = meglerPrepare();
+            long st = megletPrepare();
             try {
                 int rc;
-                while ((rc = megler.Sqlite.step(st)) == megler.Sqlite.ROW) {}
-                if (rc != megler.Sqlite.DONE) throw db.error(mSql);
-                return megler.Sqlite.changes(db.handle());
-            } finally { megler.Sqlite.finalizeStatement(st); }
+                while ((rc = meglet.Sqlite.step(st)) == meglet.Sqlite.ROW) {}
+                if (rc != meglet.Sqlite.DONE) throw db.error(mSql);
+                return meglet.Sqlite.changes(db.handle());
+            } finally { meglet.Sqlite.finalizeStatement(st); }
         } finally { db.release(); }
     }
     /** Every row of the result into the window. */
-    int meglerFill(CursorWindow window) {
+    int megletFill(CursorWindow window) {
         SQLiteDatabase db = mDatabase;
         db.acquire();
         try {
-            long st = meglerPrepare();
+            long st = megletPrepare();
             try {
-                int cols = megler.Sqlite.columnCount(st), rows = 0, rc;
+                int cols = meglet.Sqlite.columnCount(st), rows = 0, rc;
                 window.clear();
                 window.setNumColumns(cols);
-                while ((rc = megler.Sqlite.step(st)) == megler.Sqlite.ROW) {
+                while ((rc = meglet.Sqlite.step(st)) == meglet.Sqlite.ROW) {
                     Object[] r = new Object[cols];
                     for (int c = 0; c < cols; c++) {
-                        switch (megler.Sqlite.columnType(st, c)) {
-                        case 1: r[c] = megler.Sqlite.columnLong(st, c); break;
-                        case 2: r[c] = megler.Sqlite.columnDouble(st, c); break;
-                        case 3: r[c] = megler.Sqlite.columnText(st, c); break;
-                        case 4: r[c] = megler.Sqlite.columnBlob(st, c); break;
+                        switch (meglet.Sqlite.columnType(st, c)) {
+                        case 1: r[c] = meglet.Sqlite.columnLong(st, c); break;
+                        case 2: r[c] = meglet.Sqlite.columnDouble(st, c); break;
+                        case 3: r[c] = meglet.Sqlite.columnText(st, c); break;
+                        case 4: r[c] = meglet.Sqlite.columnBlob(st, c); break;
                         default: r[c] = null;
                         }
                     }
-                    window.meglerAddRow(r);
+                    window.megletAddRow(r);
                     rows++;
                 }
-                if (rc != megler.Sqlite.DONE) throw db.error(mSql);
+                if (rc != meglet.Sqlite.DONE) throw db.error(mSql);
                 return rows;
-            } finally { megler.Sqlite.finalizeStatement(st); }
+            } finally { meglet.Sqlite.finalizeStatement(st); }
         } finally { db.release(); }
     }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)

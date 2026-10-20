@@ -3,7 +3,7 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DigitalClock extends android.widget.TextView {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public DigitalClock(android.content.Context p0) { super(p0); }
     public DigitalClock(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public void onAttachedToWindow() {}

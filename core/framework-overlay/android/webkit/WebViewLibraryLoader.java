@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// megler-w10m overlay: AOSP's android/webkit/WebViewLibraryLoader.java at android-15.0.0_r36 (frameworks/base/core/java), new
+// Overlay: AOSP's android/webkit/WebViewLibraryLoader.java at android-15.0.0_r36 (frameworks/base/core/java), new
 // to the original's framework (tools/build-framework.sh; docs/JAVA.md, "The WebView").
 //
 // AOSP's reserves address space in the zygote, has an isolated process load the library once to write its relocated RELRO
@@ -73,7 +73,7 @@ public class WebViewLibraryLoader {
      */
     public static int loadNativeLibrary(ClassLoader clazzLoader, String libraryFileName) {
         synchronized (WebViewLibraryLoader.class) {
-            // megler-w10m: no zygote has reserved the space; it is reserved now, once (see the top).
+            // Meglet: no zygote has reserved the space; it is reserved now, once (see the top).
             if (!sAddressSpaceReserved) reserveAddressSpaceInZygote();
         }
         if (!sAddressSpaceReserved) {

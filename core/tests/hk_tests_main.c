@@ -29,35 +29,35 @@
  *   hk_tests --apk <file>...
  *       what the layer makes of real APKs: the report the shell shows, and the icon
  *   hk_tests --java <hello | demos | natives | crash | data | gc | gl | webview> <apk> <data dir> <android root> [picture dir | -] [verbose] [WIDTHxHEIGHT@DPI]
- *       start one of the Java test apps (core/tests/app) through megler_run on that Android root, with a stand-in
+ *       start one of the Java test apps (core/tests/app) through meglet_run on that Android root, with a stand-in
  *       for the shell's drawing; check what it logs and draws, touch it, press Back; write each picture as a BMP
  *   hk_tests --java app <apk> <data dir> <android root> <picture dir | -> <verbose> <WIDTHxHEIGHT@DPI> [tap:X,Y | drag:X,Y,X2,Y2 | wait:MS | back | key:CODE]...
  *       the same for any APK: started, its pictures written (app-1, and one more after each step of the script), nothing checked
  *   hk_tests --gfx-windows <picture dir | -> [gpu | warp | memory | copy]
- *       the shell's drawing (app/Megler/player/GfxHost.cpp: Direct2D, DirectWrite, WIC) through megler_gfx_host: scenes drawn,
+ *       the shell's drawing (app/Meglet/player/GfxHost.cpp: Direct2D, DirectWrite, WIC) through meglet_gfx_host: scenes drawn,
  *       written as PNG files, compared with the stand-in's and checked (hk_gfx_scenes.c). On this machine's graphics processor
  *       (the default, `gpu`; and then what a lost device leaves, last), on WARP (Direct3D's software device), in memory by
  *       Direct2D's software rasterizer, or `copy`: in memory with every canvas copied to a WIC bitmap and back. Only in the
  *       build tools/build-tests.sh win makes; any other says so and does nothing
  *   hk_tests --gfx-record <hello | demos> <apk> <data dir> <android root> <record file>
- *       start one of the Java test apps through megler_run with the stand-in as the shell's drawing, and write every call it
+ *       start one of the Java test apps through meglet_run with the stand-in as the shell's drawing, and write every call it
  *       makes of that drawing to a file (hk_gfx_record.c); only where guest code can run
  *   hk_tests --gfx-replay <record file> <picture dir | -> <name> [standin | memory]
  *       draw such a record again -- by the shell's own drawing in the build tools/build-tests.sh win makes (on the graphics
  *       processor, or in memory with `memory`), by the stand-in with `standin` or in any other build -- and write each picture
  *       the app showed as <picture dir>/<name>-N.png
  *   hk_tests --storage-windows <scratch dir>
- *       the shell's storage host (app/Megler/player/StorageHost.cpp: Windows.Storage) through megler_storage_host: the tests of
+ *       the shell's storage host (app/Meglet/player/StorageHost.cpp: Windows.Storage) through meglet_storage_host: the tests of
  *       hk_storage_tests.c with it in the stand-in's place, on folders under the scratch folder. Only in the build
  *       tools/build-tests.sh win makes; any other says so and does nothing
  *   hk_tests --codec-windows <streams dir> <scratch dir> [speed streams dir]
- *       the shell's decoders (app/Megler/player/CodecHost.cpp: Media Foundation's decoder transforms) through
- *       megler_codec_host, under the core's codec for MediaCodec: the tests of hk_codec_tests.c on the streams in that folder
+ *       the shell's decoders (app/Meglet/player/CodecHost.cpp: Media Foundation's decoder transforms) through
+ *       meglet_codec_host, under the core's codec for MediaCodec: the tests of hk_codec_tests.c on the streams in that folder
  *       (core/tests/app/data/assets), and, with a third folder, how fast they decode the streams there
  *       (tools/media-test-streams.py --speed). Only in the build tools/build-tests.sh win makes; any other says so and does
  *       nothing
  *   hk_tests --camera-windows <scratch dir>
- *       the shell's cameras (app/Megler/player/CameraHost.cpp: Windows.Media.Capture) through megler_camera_host, under the
+ *       the shell's cameras (app/Meglet/player/CameraHost.cpp: Windows.Media.Capture) through meglet_camera_host, under the
  *       core's camera for android.hardware.Camera: the PC's first camera opened, a few pictures taken at its smallest size and
  *       checked, focus and the light where it has them, stop and close. A PC without a camera says so and has nothing to
  *       check. Only in the build tools/build-tests.sh win makes; any other says so and does nothing
@@ -66,7 +66,7 @@
  *       (hk_bundle_tests.c): the test app `splits` in the folder of the test apps (build/guest/java), and the real bundles
  *       in the third folder where one is named
  *   hk_tests --icon <apk> <out file> [drawable]
- *       the APK's icon as megler_apk_icon gives it, written to the file: a picture of the APK's, or one drawn from its
+ *       the APK's icon as meglet_apk_icon gives it, written to the file: a picture of the APK's, or one drawn from its
  *       drawables (core/src/apk/hk_icon.c: an adaptive icon, a vector), to look at; with a drawable's path in the APK
  *       (res/mipmap-anydpi-v26/ic_launcher.xml), that one drawn as an icon instead
  *   hk_tests --run <apk> <data dir> [milliseconds]
@@ -79,7 +79,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../include/megler.h"
+#include "../include/meglet.h"
 #include "../src/apk/hk_apk.h"
 #include "../src/drivers/hk_java.h"
 #include "../src/dvm/hk_dvm_internal.h"
@@ -470,13 +470,13 @@ static void print_line(const char *line, void *user)
 /* ---------------------------------------------------------- --gfx-windows */
 
 #ifdef HK_GFX_WINDOWS
-/* hk_gfx_windows.cpp: the shell's own megler_gfx_host, and what it counted. */
-const megler_gfx_host *hk_gfx_windows_host(void (*line)(const char *text, void *user), void *user, int way);
+/* hk_gfx_windows.cpp: the shell's own meglet_gfx_host, and what it counted. */
+const meglet_gfx_host *hk_gfx_windows_host(void (*line)(const char *text, void *user), void *user, int way);
 void hk_gfx_windows_counts(char *out, size_t size);
 int hk_gfx_windows_on_gpu(void);
 void hk_gfx_windows_lose_device(void);
-int hk_gfx_windows_check_present(const megler_gfx_host *h, void (*line)(const char *text, void *user), int *checks);
-int hk_gfx_windows_check_gl(const megler_gfx_host *h, void (*line)(const char *text, void *user), int *checks);
+int hk_gfx_windows_check_present(const meglet_gfx_host *h, void (*line)(const char *text, void *user), int *checks);
+int hk_gfx_windows_check_gl(const meglet_gfx_host *h, void (*line)(const char *text, void *user), int *checks);
 
 /* A pixel of a 32 x 32 picture, as a check: a line when it is not what it should be. */
 static int gfx_loss_pixel(const u32 *px, int x, int y, u32 want, const char *what)
@@ -493,13 +493,13 @@ static int gfx_loss_pixel(const u32 *px, int x, int y, u32 want, const char *wha
  * its restore with what was drawn into it after the loss, and a shader and a
  * bitmap made before the loss still draw. Last in a run: the loss is for good.
  */
-static int gfx_windows_loss(const megler_gfx_host *h, int *checks)
+static int gfx_windows_loss(const meglet_gfx_host *h, int *checks)
 {
     static const u32 two[2] = { 0xFF00FF00u, 0xFF00FF00u };
     static const float ends[2] = { 0, 1 };
     static u32 px[32 * 32], picture[4 * 4], later[32 * 32];
-    megler_gfx_paint p;
-    megler_gfx_image image;
+    meglet_gfx_paint p;
+    meglet_gfx_image image;
     void *cv, *after, *shader;
     float src[4] = { 0, 0, 4, 4 }, dst[4] = { 24, 24, 28, 28 }, corner[4] = { 28, 28, 32, 32 };
     int failed = 0, i;
@@ -508,7 +508,7 @@ static int gfx_windows_loss(const megler_gfx_host *h, int *checks)
     p.miter_limit = 4;
     p.text_size = 12;
     p.text_scale_x = 1;
-    p.blend = MEGLER_GFX_BLEND_SRC_OVER;
+    p.blend = MEGLET_GFX_BLEND_SRC_OVER;
     p.filter_mode = -1;
     for (i = 0; i < 16; i++) picture[i] = 0xFF00FFFFu;
     memset(&image, 0, sizeof(image));
@@ -524,12 +524,12 @@ static int gfx_windows_loss(const megler_gfx_host *h, int *checks)
         *checks += 1;
         return 1;
     }
-    shader = h->shader_linear(h->user, 0, 0, 32, 0, two, ends, 2, MEGLER_GFX_TILE_CLAMP);
-    h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    shader = h->shader_linear(h->user, 0, 0, 32, 0, two, ends, 2, MEGLET_GFX_TILE_CLAMP);
+    h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     h->draw_rect(h->user, cv, 0, 0, 16, 32, &p, NULL);
     h->draw_bitmap(h->user, cv, &image, src, dst, &p);
     h->flush(h->user, cv);
-    h->save_layer(h->user, cv, NULL, 255, MEGLER_GFX_BLEND_SRC_OVER);
+    h->save_layer(h->user, cv, NULL, 255, MEGLET_GFX_BLEND_SRC_OVER);
     h->draw_rect(h->user, cv, 16, 16, 24, 24, &p, NULL);
     hk_gfx_windows_lose_device();
     p.color = 0xFF0000FFu;
@@ -549,7 +549,7 @@ static int gfx_windows_loss(const megler_gfx_host *h, int *checks)
     /* A canvas made after the loss draws in memory from the start. */
     after = h->canvas_new(h->user, later, 32, 32, 128);
     if (after) {
-        h->draw_color(h->user, after, 0xFF102030u, MEGLER_GFX_BLEND_SRC);
+        h->draw_color(h->user, after, 0xFF102030u, MEGLET_GFX_BLEND_SRC);
         h->draw_rect(h->user, after, 8, 8, 16, 16, &p, NULL);
         h->flush(h->user, after);
         failed += gfx_loss_pixel(later, 10, 10, 0xFF0000FFu, "a canvas made after the loss");
@@ -610,7 +610,7 @@ static int gfx_windows_mode(int argc, char **argv)
    graphics processor, or `memory`), else by the stand-in that recorded it. */
 static int gfx_replay_mode(int argc, char **argv)
 {
-    const megler_gfx_host *host = hk_gfx_standin();
+    const meglet_gfx_host *host = hk_gfx_standin();
     const char *dir = strcmp(argv[3], "-") ? argv[3] : NULL;
     bool same = true;
     int checks = 0, failed;
@@ -638,21 +638,21 @@ static int gfx_replay_mode(int argc, char **argv)
 /* ------------------------------------------------------ --storage-windows */
 
 #ifdef HK_STORAGE_WINDOWS
-/* hk_storage_windows.cpp: the shell's own megler_storage_host, with these folders as its links. */
-const megler_storage_host *hk_storage_windows_host(const char *const *names, const char *const *folders, int count);
+/* hk_storage_windows.cpp: the shell's own meglet_storage_host, with these folders as its links. */
+const meglet_storage_host *hk_storage_windows_host(const char *const *names, const char *const *folders, int count);
 void hk_storage_windows_summary(char *out, size_t size);
 #endif
 
 static int storage_windows_mode(char **argv)
 {
 #ifdef HK_STORAGE_WINDOWS
-    megler_config config;
+    meglet_config config;
     char summary[1200];
     int checks = 0, failed;
     memset(&config, 0, sizeof(config));
     config.data_dir = argv[2];
     config.package_dir = argv[2];
-    megler_init(&config);
+    meglet_init(&config);
     failed = hk_storage_tests_run_shell(argv[2], hk_storage_windows_host, NULL, NULL, &checks);
     hk_storage_windows_summary(summary, sizeof(summary));
     printf("  %s\n%d checks, %d failed\n", summary, checks, failed);
@@ -667,12 +667,12 @@ static int storage_windows_mode(char **argv)
 /* -------------------------------------------------------- --codec-windows */
 
 #ifdef HK_CODEC_WINDOWS
-/* hk_codec_windows.cpp: the shell's own megler_codec_host. */
-const megler_codec_host *hk_codec_windows_host(void);
+/* hk_codec_windows.cpp: the shell's own meglet_codec_host. */
+const meglet_codec_host *hk_codec_windows_host(void);
 void hk_codec_windows_summary(char *out, size_t size);
 void hk_codec_windows_ten_bits(int prefer);
 int hk_codec_windows_call_limit(void);
-const megler_media_host *hk_media_windows_host(void);
+const meglet_media_host *hk_media_windows_host(void);
 
 /*
  * A file of sound alone through the shell's reader of whole files (MediaHost), as drivers/hk_java_audio.c hands it what
@@ -682,9 +682,9 @@ const megler_media_host *hk_media_windows_host(void);
  */
 static void media_sound_check(const char *dir, const char *file, int *checks, int *failed)
 {
-    const megler_media_host *h = hk_media_windows_host();
+    const meglet_media_host *h = hk_media_windows_host();
     char path[1024];
-    megler_media_info info;
+    meglet_media_info info;
     int16_t buf[4096];
     int64_t when = 0, frames = 0, loud = 0;
     void *media;
@@ -718,13 +718,13 @@ static void media_sound_check(const char *dir, const char *file, int *checks, in
 static int codec_windows_mode(int argc, char **argv)
 {
 #ifdef HK_CODEC_WINDOWS
-    megler_config config;
+    meglet_config config;
     char summary[600];
     int checks = 0, failed;
     memset(&config, 0, sizeof(config));
     config.data_dir = argv[3];
     config.package_dir = argv[3];
-    megler_init(&config);
+    meglet_init(&config);
     hk_codec_windows_summary(summary, sizeof(summary));
     printf("  Windows' decoders: %s\n", summary);
     failed = hk_codec_tests_run(argv[2], hk_codec_windows_host(), NULL, NULL, &checks);
@@ -758,8 +758,8 @@ static int codec_windows_mode(int argc, char **argv)
 /* ------------------------------------------------------- --camera-windows */
 
 #ifdef HK_CAMERA_WINDOWS
-/* hk_camera_windows.cpp: the shell's own megler_camera_host. */
-const megler_camera_host *hk_camera_windows_host(void);
+/* hk_camera_windows.cpp: the shell's own meglet_camera_host. */
+const meglet_camera_host *hk_camera_windows_host(void);
 void hk_camera_windows_summary(char *out, size_t size);
 
 static int g_cam_checks, g_cam_failed;
@@ -788,11 +788,11 @@ static int cam_news(hk_jcamera *c, int want, int ms)
 static int camera_windows_mode(int argc, char **argv)
 {
 #ifdef HK_CAMERA_WINDOWS
-    megler_config config;
+    meglet_config config;
     char summary[1200], what[200];
-    const megler_camera_caps *caps;
+    const meglet_camera_caps *caps;
     hk_jcamera *c;
-    megler_camera_info info;
+    meglet_camera_info info;
     int err = 0, i, w, h, frames = 0, news;
     i64 last = -1;
     bool ordered = true, copied = true, drawn = true;
@@ -801,7 +801,7 @@ static int camera_windows_mode(int argc, char **argv)
     memset(&config, 0, sizeof(config));
     config.data_dir = argv[2];
     config.package_dir = argv[2];
-    megler_init(&config);
+    meglet_init(&config);
     hk_java_camera_set_host(hk_camera_windows_host());
     hk_camera_windows_summary(summary, sizeof(summary));
     printf("  Windows' cameras: %s\n", summary);
@@ -811,7 +811,7 @@ static int camera_windows_mode(int argc, char **argv)
     }
     cam_check(hk_jcamera_info(0, &info), "camera 0 is described");
     c = hk_jcamera_open(0, &err);
-    if (!c && err == MEGLER_CAMERA_DENIED) {
+    if (!c && err == MEGLET_CAMERA_DENIED) {
         printf("(Windows refused this program the camera: the privacy setting for desktop apps' cameras says no; nothing more is checked)\n");
         printf("%d checks, %d failed\n", g_cam_checks, g_cam_failed);
         return g_cam_failed ? 1 : 0;
@@ -824,7 +824,7 @@ static int camera_windows_mode(int argc, char **argv)
     caps = hk_jcamera_caps(c);
     cam_check(caps->size_count > 0, "it offers sizes");
     if (caps->size_count > 0) {
-        const megler_camera_size *s = &caps->sizes[caps->size_count - 1];
+        const meglet_camera_size *s = &caps->sizes[caps->size_count - 1];
         w = s->width;
         h = s->height;
         cam_check(hk_jcamera_start(c, w, h, s->max_fps), "it streams at its smallest size");
@@ -839,7 +839,7 @@ static int camera_windows_mode(int argc, char **argv)
             if (hk_jcamera_time(c) <= last) ordered = false;
             last = hk_jcamera_time(c);
             if (hk_jcamera_copy(c, nv21, hk_jcamera_frame_bytes(w, h, 17), 17) != (i32)hk_jcamera_frame_bytes(w, h, 17)) copied = false;
-            if (!hk_jcamera_render(c, bgra, h, w, h * 4, 90, info.facing == MEGLER_CAMERA_FRONT)) drawn = false;
+            if (!hk_jcamera_render(c, bgra, h, w, h * 4, 90, info.facing == MEGLET_CAMERA_FRONT)) drawn = false;
         }
         if (frames > 0 && hk_jcamera_render(c, bgra, w, h, w * 4, 0, false)) {
             /* The last picture as it came, to be looked at: <scratch dir>/camera-0.bmp. */
@@ -854,7 +854,7 @@ static int camera_windows_mode(int argc, char **argv)
         cam_check(copied, "each copied as NV21 at its size");
         cam_check(drawn, "each drawn turned for a view");
         if (caps->focus) {
-            cam_check(hk_jcamera_focus(c, MEGLER_CAMERA_FOCUS_ONCE), "it is asked to focus");
+            cam_check(hk_jcamera_focus(c, MEGLET_CAMERA_FOCUS_ONCE), "it is asked to focus");
             news = cam_news(c, HK_JCAMERA_FOCUSED | HK_JCAMERA_NOT_FOCUSED, 10000);
             printf("  focusing ended %s\n", news & HK_JCAMERA_FOCUSED ? "in focus" : news & HK_JCAMERA_NOT_FOCUSED ? "out of focus" : "not at all");
             cam_check((news & (HK_JCAMERA_FOCUSED | HK_JCAMERA_NOT_FOCUSED)) != 0, "focusing ends");
@@ -891,21 +891,21 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[1], "--camera-windows")) return camera_windows_mode(argc, argv);
     if (argc >= 5 && !strcmp(argv[1], "--gfx-replay")) return gfx_replay_mode(argc, argv);
     if (argc >= 7 && !strcmp(argv[1], "--gfx-record")) {
-        megler_config config;
+        meglet_config config;
         memset(&config, 0, sizeof(config));
         config.data_dir = argv[4];
         config.package_dir = argv[4];
         config.log = hk_gfx_record_log;
-        megler_init(&config);
+        meglet_init(&config);
         return hk_gfx_record_run(argv[2], argv[3], argv[5], argv[6]);
     }
     if (argc >= 6 && !strcmp(argv[1], "--java")) {
-        megler_config config;
+        meglet_config config;
         memset(&config, 0, sizeof(config));
         config.data_dir = argv[4];
         config.package_dir = argv[4];
         config.log = hk_java_tests_log;
-        megler_init(&config);
+        meglet_init(&config);
         if (argc >= 9) {
             int w = 0, h = 0, dpi = 0;
             if (sscanf(argv[8], "%dx%d@%d", &w, &h, &dpi) == 3 && w > 0 && h > 0 && dpi >= 160) hk_tests_java_set_screen(w, h, dpi);
@@ -914,16 +914,16 @@ int main(int argc, char **argv)
         return hk_tests_java_run(argv[2], argv[3], argv[5], argc >= 7 && strcmp(argv[6], "-") ? argv[6] : NULL, argc >= 8 ? atoi(argv[7]) : 0) ? 1 : 0;
     }
     if (argc >= 4 && !strcmp(argv[1], "--icon")) {
-        megler_config config;
+        meglet_config config;
         uint8_t *bytes = NULL;
         size_t size = 0;
         FILE *f;
         memset(&config, 0, sizeof(config));
         config.data_dir = ".";
         config.package_dir = ".";
-        megler_init(&config);
+        meglet_init(&config);
         if (argc >= 5) bytes = hk_apk_icon_draw(argv[2], argv[4], &size);
-        if (argc >= 5 ? !bytes : !megler_apk_icon(argv[2], &bytes, &size)) {
+        if (argc >= 5 ? !bytes : !meglet_apk_icon(argv[2], &bytes, &size)) {
             printf("%s: no icon\n", argv[2]);
             return 1;
         }
@@ -935,37 +935,37 @@ int main(int argc, char **argv)
         }
         fclose(f);
         printf("%s: %u bytes\n", argv[3], (unsigned)size);
-        megler_free(bytes);
+        meglet_free(bytes);
         return 0;
     }
     if (argc >= 4 && !strcmp(argv[1], "--bundles")) {
         /* The scratch folder is the data folder too: a bundle's expansion files go into the app's storage under it. */
-        megler_config config;
+        meglet_config config;
         memset(&config, 0, sizeof(config));
         config.data_dir = argv[3];
         config.package_dir = argv[3];
-        megler_init(&config);
+        meglet_init(&config);
         return hk_bundle_tests_run(argv[2], argv[3], argc >= 5 ? argv[4] : NULL) ? 1 : 0;
     }
 #if HK_HOST_ARM32
     if (argc >= 4 && !strcmp(argv[1], "--load")) return load_mode(argc, argv);
     if (argc >= 4 && !strcmp(argv[1], "--run")) {
-        megler_config config;
+        meglet_config config;
         memset(&config, 0, sizeof(config));
         config.data_dir = argv[3];
         config.package_dir = argv[3];
-        megler_init(&config);
+        meglet_init(&config);
         return hk_tests_smoke_run(argv[2], argc >= 5 ? atoi(argv[4]) : 1500);
     }
 #endif
     if (argc >= 3 && !strcmp(argv[1], "--probe")) {
         /* The device probe, as the app's Device checks runs it; argv[2] is where its step log goes. */
-        megler_config config;
+        meglet_config config;
         memset(&config, 0, sizeof(config));
         config.data_dir = argv[2];
         config.package_dir = argv[2];
-        megler_init(&config);
-        megler_probe(print_line, NULL);
+        meglet_init(&config);
+        meglet_probe(print_line, NULL);
         return 0;
     }
     if (argc >= 3 && !strcmp(argv[1], "--apk")) {
@@ -973,14 +973,14 @@ int main(int argc, char **argv)
         int i;
         hk_core_init();
         for (i = 2; i < argc; i++) {
-            char *report = megler_apk_report(argv[i]);
+            char *report = meglet_apk_report(argv[i]);
             uint8_t *icon = NULL;
             size_t icon_size = 0;
             printf("%s\n%s\n", argv[i], report ? report : "(no report)");
-            if (megler_apk_icon(argv[i], &icon, &icon_size)) printf("icon: %u bytes, starts %02x %02x %02x %02x\n", (unsigned)icon_size, icon[0], icon[1], icon[2], icon[3]);
+            if (meglet_apk_icon(argv[i], &icon, &icon_size)) printf("icon: %u bytes, starts %02x %02x %02x %02x\n", (unsigned)icon_size, icon[0], icon[1], icon[2], icon[3]);
             else printf("icon: none found\n");
-            megler_free(icon);
-            megler_free(report);
+            meglet_free(icon);
+            meglet_free(report);
         }
         return 0;
     }
@@ -1024,11 +1024,11 @@ int main(int argc, char **argv)
     }
     {
         /* The app's data lives under the scratch directory, as it lives under LocalState on the phone. */
-        megler_config config;
+        meglet_config config;
         memset(&config, 0, sizeof(config));
         config.data_dir = argv[2];
         config.package_dir = argv[1];
-        megler_init(&config);
+        meglet_init(&config);
     }
     return hk_tests_run(argv[1][0] == '-' && !argv[1][1] ? NULL : argv[1], argv[2], NULL, NULL) ? 1 : 0;
 }

@@ -3,15 +3,15 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class InCallService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String SERVICE_INTERFACE = "android.telecom.InCallService";
     public InCallService() { super(); }
     public boolean canAddCall() { return false; }
-    public android.telecom.AudioState getAudioState() { return (android.telecom.AudioState) meglerProps.get("AudioState"); }
-    public android.telecom.CallAudioState getCallAudioState() { return (android.telecom.CallAudioState) meglerProps.get("CallAudioState"); }
-    public java.util.List getCalls() { return (meglerProps.get("Calls") != null ? (java.util.List) meglerProps.get("Calls") : new java.util.ArrayList()); }
-    public android.telecom.CallEndpoint getCurrentCallEndpoint() { return (android.telecom.CallEndpoint) meglerProps.get("CurrentCallEndpoint"); }
-    public android.telecom.Phone getPhone() { return (android.telecom.Phone) meglerProps.get("Phone"); }
+    public android.telecom.AudioState getAudioState() { return (android.telecom.AudioState) megletProps.get("AudioState"); }
+    public android.telecom.CallAudioState getCallAudioState() { return (android.telecom.CallAudioState) megletProps.get("CallAudioState"); }
+    public java.util.List getCalls() { return (megletProps.get("Calls") != null ? (java.util.List) megletProps.get("Calls") : new java.util.ArrayList()); }
+    public android.telecom.CallEndpoint getCurrentCallEndpoint() { return (android.telecom.CallEndpoint) megletProps.get("CurrentCallEndpoint"); }
+    public android.telecom.Phone getPhone() { return (android.telecom.Phone) megletProps.get("Phone"); }
     public void onAudioStateChanged(android.telecom.AudioState p0) {}
     public void onAvailableCallEndpointsChanged(java.util.List p0) {}
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
@@ -28,8 +28,8 @@ public abstract class InCallService extends android.app.Service {
     public void onSilenceRinger() {}
     public void requestBluetoothAudio(android.bluetooth.BluetoothDevice p0) {}
     public void requestCallEndpointChange(android.telecom.CallEndpoint p0, java.util.concurrent.Executor p1, android.os.OutcomeReceiver p2) {}
-    public void setAudioRoute(int p0) { meglerProps.put("AudioRoute", Integer.valueOf(p0)); }
-    public void setMuted(boolean p0) { meglerProps.put("Muted", Boolean.valueOf(p0)); }
+    public void setAudioRoute(int p0) { megletProps.put("AudioRoute", Integer.valueOf(p0)); }
+    public void setMuted(boolean p0) { megletProps.put("Muted", Boolean.valueOf(p0)); }
     public static abstract class VideoCall {
         protected VideoCall() {}
     }

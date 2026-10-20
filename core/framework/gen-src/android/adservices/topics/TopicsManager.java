@@ -3,7 +3,7 @@ package android.adservices.topics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TopicsManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String TOPICS_SERVICE = "topics_service";
     public TopicsManager(android.content.Context p0) {}
     public static android.adservices.topics.TopicsManager get(android.content.Context p0) { return new TopicsManager(); }

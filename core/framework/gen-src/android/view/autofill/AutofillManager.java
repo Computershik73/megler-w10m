@@ -3,7 +3,7 @@ package android.view.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AutofillManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ACTION_RESPONSE_EXPIRED = 5;
     public static final int ACTION_START_SESSION = 1;
     public static final int ACTION_VALUE_CHANGED = 4;
@@ -75,29 +75,29 @@ public final class AutofillManager {
     public void disableOwnedAutofillServices() {}
     public void dump(java.lang.String p0, java.io.PrintWriter p1) {}
     public void enableCompatibilityMode() {}
-    public android.content.ComponentName getAutofillServiceComponentName() { return (android.content.ComponentName) meglerProps.get("AutofillServiceComponentName"); }
-    public java.util.List getAvailableFieldClassificationAlgorithms() { return (meglerProps.get("AvailableFieldClassificationAlgorithms") != null ? (java.util.List) meglerProps.get("AvailableFieldClassificationAlgorithms") : new java.util.ArrayList()); }
-    public java.lang.String getDefaultFieldClassificationAlgorithm() { return (java.lang.String) meglerProps.get("DefaultFieldClassificationAlgorithm"); }
-    public android.service.autofill.FillEventHistory getFillEventHistory() { return (android.service.autofill.FillEventHistory) meglerProps.get("FillEventHistory"); }
-    public android.view.autofill.AutofillId getNextAutofillId() { return (android.view.autofill.AutofillId) meglerProps.get("NextAutofillId"); }
-    public android.service.autofill.UserData getUserData() { return (android.service.autofill.UserData) meglerProps.get("UserData"); }
-    public java.lang.String getUserDataId() { return (java.lang.String) meglerProps.get("UserDataId"); }
+    public android.content.ComponentName getAutofillServiceComponentName() { return (android.content.ComponentName) megletProps.get("AutofillServiceComponentName"); }
+    public java.util.List getAvailableFieldClassificationAlgorithms() { return (megletProps.get("AvailableFieldClassificationAlgorithms") != null ? (java.util.List) megletProps.get("AvailableFieldClassificationAlgorithms") : new java.util.ArrayList()); }
+    public java.lang.String getDefaultFieldClassificationAlgorithm() { return (java.lang.String) megletProps.get("DefaultFieldClassificationAlgorithm"); }
+    public android.service.autofill.FillEventHistory getFillEventHistory() { return (android.service.autofill.FillEventHistory) megletProps.get("FillEventHistory"); }
+    public android.view.autofill.AutofillId getNextAutofillId() { return (android.view.autofill.AutofillId) megletProps.get("NextAutofillId"); }
+    public android.service.autofill.UserData getUserData() { return (android.service.autofill.UserData) megletProps.get("UserData"); }
+    public java.lang.String getUserDataId() { return (java.lang.String) megletProps.get("UserDataId"); }
     public boolean hasAutofillFeature() { return false; }
     public boolean hasEnabledAutofillServices() { return false; }
-    public boolean isActivityAllowedForAutofill() { return (meglerProps.get("ActivityAllowedForAutofill") instanceof Boolean ? (Boolean) meglerProps.get("ActivityAllowedForAutofill") : false); }
-    public boolean isActivityDeniedForAutofill() { return (meglerProps.get("ActivityDeniedForAutofill") instanceof Boolean ? (Boolean) meglerProps.get("ActivityDeniedForAutofill") : false); }
-    public boolean isAuthenticationPending() { return (meglerProps.get("AuthenticationPending") instanceof Boolean ? (Boolean) meglerProps.get("AuthenticationPending") : false); }
-    public boolean isAutofillSupported() { return (meglerProps.get("AutofillSupported") instanceof Boolean ? (Boolean) meglerProps.get("AutofillSupported") : false); }
-    public boolean isAutofillUiShowing() { return (meglerProps.get("AutofillUiShowing") instanceof Boolean ? (Boolean) meglerProps.get("AutofillUiShowing") : false); }
+    public boolean isActivityAllowedForAutofill() { return (megletProps.get("ActivityAllowedForAutofill") instanceof Boolean ? (Boolean) megletProps.get("ActivityAllowedForAutofill") : false); }
+    public boolean isActivityDeniedForAutofill() { return (megletProps.get("ActivityDeniedForAutofill") instanceof Boolean ? (Boolean) megletProps.get("ActivityDeniedForAutofill") : false); }
+    public boolean isAuthenticationPending() { return (megletProps.get("AuthenticationPending") instanceof Boolean ? (Boolean) megletProps.get("AuthenticationPending") : false); }
+    public boolean isAutofillSupported() { return (megletProps.get("AutofillSupported") instanceof Boolean ? (Boolean) megletProps.get("AutofillSupported") : false); }
+    public boolean isAutofillUiShowing() { return (megletProps.get("AutofillUiShowing") instanceof Boolean ? (Boolean) megletProps.get("AutofillUiShowing") : false); }
     public boolean isAutofillable(android.view.View p0) { return false; }
-    public boolean isCompatibilityModeEnabledLocked() { return (meglerProps.get("CompatibilityModeEnabledLocked") instanceof Boolean ? (Boolean) meglerProps.get("CompatibilityModeEnabledLocked") : false); }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
-    public boolean isFieldClassificationEnabled() { return (meglerProps.get("FieldClassificationEnabled") instanceof Boolean ? (Boolean) meglerProps.get("FieldClassificationEnabled") : false); }
-    public boolean isImproveFillDialogEnabled() { return (meglerProps.get("ImproveFillDialogEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ImproveFillDialogEnabled") : false); }
-    public boolean isRelativePositionForRelayoutEnabled() { return (meglerProps.get("RelativePositionForRelayoutEnabled") instanceof Boolean ? (Boolean) meglerProps.get("RelativePositionForRelayoutEnabled") : false); }
-    public boolean isRelayoutFixEnabled() { return (meglerProps.get("RelayoutFixEnabled") instanceof Boolean ? (Boolean) meglerProps.get("RelayoutFixEnabled") : false); }
-    public boolean isTriggerFillRequestOnFilteredImportantViewsEnabled() { return (meglerProps.get("TriggerFillRequestOnFilteredImportantViewsEnabled") instanceof Boolean ? (Boolean) meglerProps.get("TriggerFillRequestOnFilteredImportantViewsEnabled") : false); }
-    public boolean isTriggerFillRequestOnUnimportantViewEnabled() { return (meglerProps.get("TriggerFillRequestOnUnimportantViewEnabled") instanceof Boolean ? (Boolean) meglerProps.get("TriggerFillRequestOnUnimportantViewEnabled") : false); }
+    public boolean isCompatibilityModeEnabledLocked() { return (megletProps.get("CompatibilityModeEnabledLocked") instanceof Boolean ? (Boolean) megletProps.get("CompatibilityModeEnabledLocked") : false); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
+    public boolean isFieldClassificationEnabled() { return (megletProps.get("FieldClassificationEnabled") instanceof Boolean ? (Boolean) megletProps.get("FieldClassificationEnabled") : false); }
+    public boolean isImproveFillDialogEnabled() { return (megletProps.get("ImproveFillDialogEnabled") instanceof Boolean ? (Boolean) megletProps.get("ImproveFillDialogEnabled") : false); }
+    public boolean isRelativePositionForRelayoutEnabled() { return (megletProps.get("RelativePositionForRelayoutEnabled") instanceof Boolean ? (Boolean) megletProps.get("RelativePositionForRelayoutEnabled") : false); }
+    public boolean isRelayoutFixEnabled() { return (megletProps.get("RelayoutFixEnabled") instanceof Boolean ? (Boolean) megletProps.get("RelayoutFixEnabled") : false); }
+    public boolean isTriggerFillRequestOnFilteredImportantViewsEnabled() { return (megletProps.get("TriggerFillRequestOnFilteredImportantViewsEnabled") instanceof Boolean ? (Boolean) megletProps.get("TriggerFillRequestOnFilteredImportantViewsEnabled") : false); }
+    public boolean isTriggerFillRequestOnUnimportantViewEnabled() { return (megletProps.get("TriggerFillRequestOnUnimportantViewEnabled") instanceof Boolean ? (Boolean) megletProps.get("TriggerFillRequestOnUnimportantViewEnabled") : false); }
     public void notifyValueChanged(android.view.View p0) {}
     public void notifyValueChanged(android.view.View p0, int p1, android.view.autofill.AutofillValue p2) {}
     public void notifyViewClicked(android.view.View p0) {}
@@ -124,7 +124,7 @@ public final class AutofillManager {
     public void requestAutofill(android.view.View p0, int p1, android.graphics.Rect p2) {}
     public void requestHideFillUi() {}
     public void setAugmentedAutofillWhitelist(java.util.Set p0, java.util.Set p1) {}
-    public void setUserData(android.service.autofill.UserData p0) { meglerProps.put("UserData", p0); }
+    public void setUserData(android.service.autofill.UserData p0) { megletProps.put("UserData", p0); }
     public boolean shouldAlwaysIncludeWebviewInAssistStructure() { return false; }
     public boolean shouldIgnoreCredentialViews() { return false; }
     public boolean shouldIncludeAllChildrenViewInAssistStructure() { return false; }
@@ -136,7 +136,7 @@ public final class AutofillManager {
     public void unregisterCallback(android.view.autofill.AutofillManager.AutofillCallback p0) {}
     AutofillManager() { this((android.content.Context) null, (android.view.autofill.IAutoFillManager) null); }
     public static abstract class AutofillCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int EVENT_INPUT_HIDDEN = 2;
         public static final int EVENT_INPUT_SHOWN = 1;
         public static final int EVENT_INPUT_UNAVAILABLE = 3;

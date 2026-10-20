@@ -30,7 +30,7 @@
 #                                Windows phone's processor has it.
 #
 # Not built: libopenjdkjvm.so and libart.so (the runtime itself answers their
-# functions), libc, libm, libdl, liblog, libz (Megler's layer is those). Where a
+# functions), libc, libm, libdl, liblog, libz (Meglet's layer is those). Where a
 # library has to be linked against one of them, it is linked against the NDK's
 # stub, or against a stub made here from a list of names
 # (tools/android9-natives/*.syms, stub.py), so that the result imports the same
@@ -51,7 +51,7 @@
 # armv7a, said out loud. No NEON, nothing of ARMv8; the script checks the
 # build attributes of what it linked.
 #
-# How the libraries are linked follows from what Megler's linker
+# How the libraries are linked follows from what Meglet's linker
 # (core/src/ld/hk_ld.c, core/src/arm/hk_patch.c) does:
 #
 #   - ld.lld: its PLT entries are a shape hk_patch.c recognises and rewrites
@@ -66,7 +66,7 @@
 #   - No IFUNCs, no text relocations (a warning made fatal), 4 KB pages.
 #   - --no-undefined: every import is a name some library on the link line
 #     defines.
-#   - libc++ is linked statically into each library and hidden. Megler's linker
+#   - libc++ is linked statically into each library and hidden. Meglet's linker
 #     has one name space keyed by file name and looks in the APK first
 #     (read_lib_file), and most NDK apps bring a libc++_shared.so of their own
 #     NDK's version: a second one beside these libraries would shadow it or be
@@ -94,11 +94,11 @@
 #
 #   python tools/android9-natives/report.py    compares the result with Android's own
 #                                              libraries, the bytecode and the layer
-#   tools/android9-natives/loadtest.sh         has Megler's linker load it under qemu-arm
+#   tools/android9-natives/loadtest.sh         has Meglet's linker load it under qemu-arm
 #
-#   MEGLER_NDK        the NDK                 (C:\Users\User\Documents\android-ndk-r21e)
-#   MEGLER_NDK_HOST   its prebuilt host tag   (windows-x86_64)
-#   MEGLER_JOBS       compilers at once       (8)
+#   MEGLET_NDK        the NDK                 (C:\Users\User\Documents\android-ndk-r21e)
+#   MEGLET_NDK_HOST   its prebuilt host tag   (windows-x86_64)
+#   MEGLET_JOBS       compilers at once       (8)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -110,9 +110,9 @@ LIB=build/android9/lib
 UNSTRIPPED=$OBJ/unstripped
 STUBS=$OBJ/stubs
 SHIM=tools/android9-natives
-NDK="${MEGLER_NDK:-/c/Users/User/Documents/android-ndk-r21e}"
-HOST="${MEGLER_NDK_HOST:-windows-x86_64}"
-JOBS="${MEGLER_JOBS:-8}"
+NDK="${MEGLET_NDK:-/c/Users/User/Documents/android-ndk-r21e}"
+HOST="${MEGLET_NDK_HOST:-windows-x86_64}"
+JOBS="${MEGLET_JOBS:-8}"
 TC="$NDK/toolchains/llvm/prebuilt/$HOST"
 EXE=""; case "$HOST" in windows-*) EXE=".exe" ;; esac
 CC="$TC/bin/clang$EXE"
@@ -125,7 +125,7 @@ GNU_READELF="$TC/bin/arm-linux-androideabi-readelf$EXE"
 SYSLIB="$TC/sysroot/usr/lib/arm-linux-androideabi/28"
 
 die() { echo "android9-natives: $*" >&2; exit 1; }
-[ -x "$CC" ] || die "no clang at $CC (set MEGLER_NDK to an Android NDK, r21 or near it)"
+[ -x "$CC" ] || die "no clang at $CC (set MEGLET_NDK to an Android NDK, r21 or near it)"
 [ -f "$SYSLIB/libc.so" ] || die "the NDK has no API 28 libraries for ARM ($SYSLIB)"
 [ -f "$A/libcore/NativeCode.bp" ] || die "no $A/libcore: run tools/android9-sources.sh first"
 VNDK="$A/prebuilts/vndk/v28/arm/arch-arm-armv7-a-neon/shared/vndk-core"
@@ -376,7 +376,7 @@ archive fdlibm
 
 # Soong would also link libziparchive (static) and libutils into libjavacore, and libssl into libopenjdk. Nothing in
 # either library uses them (Android's own import nothing from them), their sources are not fetched, and a DT_NEEDED
-# for a library that does not exist would only make Megler's linker warn. They are left out.
+# for a library that does not exist would only make Meglet's linker warn. They are left out.
 echo "=== libjavacore ==="
 D=$A/libcore
 L=$D/luni/src/main/native

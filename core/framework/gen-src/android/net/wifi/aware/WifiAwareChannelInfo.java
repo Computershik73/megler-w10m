@@ -3,13 +3,13 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WifiAwareChannelInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public WifiAwareChannelInfo(int p0, int p1, int p2) {}
     public int describeContents() { return 0; }
-    public int getChannelBandwidth() { return (meglerProps.get("ChannelBandwidth") instanceof Integer ? (Integer) meglerProps.get("ChannelBandwidth") : 0); }
-    public int getChannelFrequencyMhz() { return (meglerProps.get("ChannelFrequencyMhz") instanceof Integer ? (Integer) meglerProps.get("ChannelFrequencyMhz") : 0); }
-    public int getSpatialStreamCount() { return (meglerProps.get("SpatialStreamCount") instanceof Integer ? (Integer) meglerProps.get("SpatialStreamCount") : 0); }
+    public int getChannelBandwidth() { return (megletProps.get("ChannelBandwidth") instanceof Integer ? (Integer) megletProps.get("ChannelBandwidth") : 0); }
+    public int getChannelFrequencyMhz() { return (megletProps.get("ChannelFrequencyMhz") instanceof Integer ? (Integer) megletProps.get("ChannelFrequencyMhz") : 0); }
+    public int getSpatialStreamCount() { return (megletProps.get("SpatialStreamCount") instanceof Integer ? (Integer) megletProps.get("SpatialStreamCount") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     WifiAwareChannelInfo() { this((int) 0, (int) 0, (int) 0); }
 }

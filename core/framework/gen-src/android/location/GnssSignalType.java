@@ -3,13 +3,13 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GnssSignalType implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.location.GnssSignalType create(int p0, double p1, java.lang.String p2) { return new GnssSignalType(); }
     public int describeContents() { return 0; }
-    public double getCarrierFrequencyHz() { return (meglerProps.get("CarrierFrequencyHz") instanceof Double ? (Double) meglerProps.get("CarrierFrequencyHz") : 0d); }
-    public java.lang.String getCodeType() { return (java.lang.String) meglerProps.get("CodeType"); }
-    public int getConstellationType() { return (meglerProps.get("ConstellationType") instanceof Integer ? (Integer) meglerProps.get("ConstellationType") : 0); }
+    public double getCarrierFrequencyHz() { return (megletProps.get("CarrierFrequencyHz") instanceof Double ? (Double) megletProps.get("CarrierFrequencyHz") : 0d); }
+    public java.lang.String getCodeType() { return (java.lang.String) megletProps.get("CodeType"); }
+    public int getConstellationType() { return (megletProps.get("ConstellationType") instanceof Integer ? (Integer) megletProps.get("ConstellationType") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected GnssSignalType() {}
 }

@@ -3,7 +3,7 @@ package android.hardware.usb;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class UsbManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_USB_ACCESSORY_ATTACHED = "android.hardware.usb.action.USB_ACCESSORY_ATTACHED";
     public static final java.lang.String ACTION_USB_ACCESSORY_DETACHED = "android.hardware.usb.action.USB_ACCESSORY_DETACHED";
     public static final java.lang.String ACTION_USB_ACCESSORY_HANDSHAKE = "android.hardware.usb.action.USB_ACCESSORY_HANDSHAKE";
@@ -83,13 +83,13 @@ public class UsbManager {
     /* no USB devices or accessories are attached here: empty, as on a phone with nothing plugged in (SDL lists them at start) */
     public android.hardware.usb.UsbAccessory[] getAccessoryList() { return null; }
     public android.os.ParcelFileDescriptor getControlFd(long p0) { return null; }
-    public long getCurrentFunctions() { return (meglerProps.get("CurrentFunctions") instanceof Long ? (Long) meglerProps.get("CurrentFunctions") : 0L); }
+    public long getCurrentFunctions() { return (megletProps.get("CurrentFunctions") instanceof Long ? (Long) megletProps.get("CurrentFunctions") : 0L); }
     public java.util.HashMap<String, android.hardware.usb.UsbDevice> getDeviceList() { return new java.util.HashMap<>(); }
-    public int getGadgetHalVersion() { return (meglerProps.get("GadgetHalVersion") instanceof Integer ? (Integer) meglerProps.get("GadgetHalVersion") : 0); }
-    public java.util.List getPorts() { return (meglerProps.get("Ports") != null ? (java.util.List) meglerProps.get("Ports") : new java.util.ArrayList()); }
-    public long getScreenUnlockedFunctions() { return (meglerProps.get("ScreenUnlockedFunctions") instanceof Long ? (Long) meglerProps.get("ScreenUnlockedFunctions") : 0L); }
-    public int getUsbBandwidthMbps() { return (meglerProps.get("UsbBandwidthMbps") instanceof Integer ? (Integer) meglerProps.get("UsbBandwidthMbps") : 0); }
-    public int getUsbHalVersion() { return (meglerProps.get("UsbHalVersion") instanceof Integer ? (Integer) meglerProps.get("UsbHalVersion") : 0); }
+    public int getGadgetHalVersion() { return (megletProps.get("GadgetHalVersion") instanceof Integer ? (Integer) megletProps.get("GadgetHalVersion") : 0); }
+    public java.util.List getPorts() { return (megletProps.get("Ports") != null ? (java.util.List) megletProps.get("Ports") : new java.util.ArrayList()); }
+    public long getScreenUnlockedFunctions() { return (megletProps.get("ScreenUnlockedFunctions") instanceof Long ? (Long) megletProps.get("ScreenUnlockedFunctions") : 0L); }
+    public int getUsbBandwidthMbps() { return (megletProps.get("UsbBandwidthMbps") instanceof Integer ? (Integer) megletProps.get("UsbBandwidthMbps") : 0); }
+    public int getUsbHalVersion() { return (megletProps.get("UsbHalVersion") instanceof Integer ? (Integer) megletProps.get("UsbHalVersion") : 0); }
     public void grantPermission(android.hardware.usb.UsbDevice p0) {}
     public void grantPermission(android.hardware.usb.UsbDevice p0, int p1) {}
     public void grantPermission(android.hardware.usb.UsbDevice p0, java.lang.String p1) {}
@@ -98,7 +98,7 @@ public class UsbManager {
     public boolean hasPermission(android.hardware.usb.UsbDevice p0) { return false; }
     public boolean hasPermission(android.hardware.usb.UsbDevice p0, java.lang.String p1, int p2, int p3) { return false; }
     public boolean isFunctionEnabled(java.lang.String p0) { return false; }
-    public boolean isUvcGadgetSupportEnabled() { return (meglerProps.get("UvcGadgetSupportEnabled") instanceof Boolean ? (Boolean) meglerProps.get("UvcGadgetSupportEnabled") : false); }
+    public boolean isUvcGadgetSupportEnabled() { return (megletProps.get("UvcGadgetSupportEnabled") instanceof Boolean ? (Boolean) megletProps.get("UvcGadgetSupportEnabled") : false); }
     public android.os.ParcelFileDescriptor openAccessory(android.hardware.usb.UsbAccessory p0) { return null; }
     public java.io.InputStream openAccessoryInputStream(android.hardware.usb.UsbAccessory p0) { return null; }
     public java.io.OutputStream openAccessoryOutputStream(android.hardware.usb.UsbAccessory p0) { return null; }
@@ -108,9 +108,9 @@ public class UsbManager {
     public void requestPermission(android.hardware.usb.UsbDevice p0, android.app.PendingIntent p1) {}
     public void resetUsbGadget() {}
     public void setCurrentFunction(java.lang.String p0, boolean p1) {}
-    public void setCurrentFunctions(long p0) { meglerProps.put("CurrentFunctions", Long.valueOf(p0)); }
-    public void setScreenUnlockedFunctions(long p0) { meglerProps.put("ScreenUnlockedFunctions", Long.valueOf(p0)); }
-    public void setUsbDeviceConnectionHandler(android.content.ComponentName p0) { meglerProps.put("UsbDeviceConnectionHandler", p0); }
+    public void setCurrentFunctions(long p0) { megletProps.put("CurrentFunctions", Long.valueOf(p0)); }
+    public void setScreenUnlockedFunctions(long p0) { megletProps.put("ScreenUnlockedFunctions", Long.valueOf(p0)); }
+    public void setUsbDeviceConnectionHandler(android.content.ComponentName p0) { megletProps.put("UsbDeviceConnectionHandler", p0); }
     public void unregisterDisplayPortAltModeInfoListener(android.hardware.usb.UsbManager.DisplayPortAltModeInfoListener p0) {}
     UsbManager() { this((android.content.Context) null, (android.hardware.usb.IUsbManager) null); }
     public interface DisplayPortAltModeInfoListener {

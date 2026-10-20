@@ -17,12 +17,12 @@
 # They run in the PC's build of the tests (build/tests-win/hk_tests.exe), where
 # libcore's native libraries cannot be loaded; `arm` runs the first two under
 # qemu-arm in WSL, with those libraries. The folder libcore is started from is
-# build/android9/root (tools/dvm-android-root.sh). MEGLER_WSL_BUILD names the
-# WSL folder of that build, as for tools/build-tests.sh (~/megler-w10m-build).
+# build/android9/root (tools/dvm-android-root.sh). MEGLET_WSL_BUILD names the
+# WSL folder of that build, as for tools/build-tests.sh (~/meglet-build).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WB="${MEGLER_WSL_BUILD:-}"
-[ -n "$WB" ] || WB='~/megler-w10m-build'
+WB="${MEGLET_WSL_BUILD:-}"
+[ -n "$WB" ] || WB='~/meglet-build'
 WHAT="${1:-}"
 shift || true
 w() { cygpath -w "$1"; }

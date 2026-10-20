@@ -3,7 +3,7 @@ package android.bluetooth.le;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ScanRecord {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DATA_TYPE_3D_INFORMATION_DATA = 61;
     public static final int DATA_TYPE_ADVERTISING_INTERVAL = 26;
     public static final int DATA_TYPE_ADVERTISING_INTERVAL_LONG = 47;
@@ -52,18 +52,18 @@ public final class ScanRecord {
     public static final int DATA_TYPE_TX_POWER_LEVEL = 10;
     public static final int DATA_TYPE_URI = 36;
     public static android.bluetooth.le.ScanRecord parseFromBytes(byte[] p0) { return new ScanRecord(); }
-    public int getAdvertiseFlags() { return (meglerProps.get("AdvertiseFlags") instanceof Integer ? (Integer) meglerProps.get("AdvertiseFlags") : 0); }
-    public java.util.Map getAdvertisingDataMap() { return (meglerProps.get("AdvertisingDataMap") != null ? (java.util.Map) meglerProps.get("AdvertisingDataMap") : new java.util.HashMap()); }
-    public byte[] getBytes() { return (byte[]) meglerProps.get("Bytes"); }
-    public java.lang.String getDeviceName() { return (java.lang.String) meglerProps.get("DeviceName"); }
-    public android.util.SparseArray getManufacturerSpecificData() { return (android.util.SparseArray) meglerProps.get("ManufacturerSpecificData"); }
+    public int getAdvertiseFlags() { return (megletProps.get("AdvertiseFlags") instanceof Integer ? (Integer) megletProps.get("AdvertiseFlags") : 0); }
+    public java.util.Map getAdvertisingDataMap() { return (megletProps.get("AdvertisingDataMap") != null ? (java.util.Map) megletProps.get("AdvertisingDataMap") : new java.util.HashMap()); }
+    public byte[] getBytes() { return (byte[]) megletProps.get("Bytes"); }
+    public java.lang.String getDeviceName() { return (java.lang.String) megletProps.get("DeviceName"); }
+    public android.util.SparseArray getManufacturerSpecificData() { return (android.util.SparseArray) megletProps.get("ManufacturerSpecificData"); }
     public byte[] getManufacturerSpecificData(int p0) { return null; }
-    public java.util.Map getServiceData() { return (meglerProps.get("ServiceData") != null ? (java.util.Map) meglerProps.get("ServiceData") : new java.util.HashMap()); }
+    public java.util.Map getServiceData() { return (megletProps.get("ServiceData") != null ? (java.util.Map) megletProps.get("ServiceData") : new java.util.HashMap()); }
     public byte[] getServiceData(android.os.ParcelUuid p0) { return null; }
-    public java.util.List getServiceSolicitationUuids() { return (meglerProps.get("ServiceSolicitationUuids") != null ? (java.util.List) meglerProps.get("ServiceSolicitationUuids") : new java.util.ArrayList()); }
-    public java.util.List getServiceUuids() { return (meglerProps.get("ServiceUuids") != null ? (java.util.List) meglerProps.get("ServiceUuids") : new java.util.ArrayList()); }
-    public android.bluetooth.le.TransportDiscoveryData getTransportDiscoveryData() { return (android.bluetooth.le.TransportDiscoveryData) meglerProps.get("TransportDiscoveryData"); }
-    public int getTxPowerLevel() { return (meglerProps.get("TxPowerLevel") instanceof Integer ? (Integer) meglerProps.get("TxPowerLevel") : 0); }
+    public java.util.List getServiceSolicitationUuids() { return (megletProps.get("ServiceSolicitationUuids") != null ? (java.util.List) megletProps.get("ServiceSolicitationUuids") : new java.util.ArrayList()); }
+    public java.util.List getServiceUuids() { return (megletProps.get("ServiceUuids") != null ? (java.util.List) megletProps.get("ServiceUuids") : new java.util.ArrayList()); }
+    public android.bluetooth.le.TransportDiscoveryData getTransportDiscoveryData() { return (android.bluetooth.le.TransportDiscoveryData) megletProps.get("TransportDiscoveryData"); }
+    public int getTxPowerLevel() { return (megletProps.get("TxPowerLevel") instanceof Integer ? (Integer) megletProps.get("TxPowerLevel") : 0); }
     public boolean matchesAnyField(java.util.function.Predicate p0) { return false; }
     protected ScanRecord() {}
 }

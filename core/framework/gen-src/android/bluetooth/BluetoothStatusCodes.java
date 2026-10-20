@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothStatusCodes {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ALLOWED = 400;
     public static final int ERROR_ALREADY_IN_TARGET_STATE = 26;
     public static final int ERROR_ANOTHER_ACTIVE_OOB_REQUEST = 1000;

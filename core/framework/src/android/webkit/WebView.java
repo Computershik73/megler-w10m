@@ -40,12 +40,12 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * A web page in the app's window, drawn by WKWebView under the screen (see megler.Web): the view leaves a clear hole in the window
+ * A web page in the app's window, drawn by WKWebView under the screen (see meglet.Web): the view leaves a clear hole in the window
  * where WebKit's page shows through, and tells the host where that is whenever it moves.
  *
- * The app's own content is served through the meglerapp scheme: file:///android_asset/x is meglerapp://android_asset/x, other files
- * meglerapp://file/path, and an http(s) origin whose first page the app's shouldInterceptRequest answers (Capacitor's https://localhost)
- * becomes meglerapp://host. Every request on those comes back here, to shouldInterceptRequest and then the APK's assets or the
+ * The app's own content is served through the megletapp scheme: file:///android_asset/x is megletapp://android_asset/x, other files
+ * megletapp://file/path, and an http(s) origin whose first page the app's shouldInterceptRequest answers (Capacitor's https://localhost)
+ * becomes megletapp://host. Every request on those comes back here, to shouldInterceptRequest and then the APK's assets or the
  * file system; anything else is fetched by the host. The URLs the app sees are always the Android ones.
  */
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
@@ -65,7 +65,7 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
 
     private final int mId;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final MeglerWebSettings mSettings;
+    private final MegletWebSettings mSettings;
     private volatile WebViewClient mClient = new WebViewClient();
     private volatile WebChromeClient mChrome;
     private DownloadListener mDownload;
@@ -96,9 +96,9 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
         setFocusable(true);
         setFocusableInTouchMode(true);
         synchronized (sViews) { mId = sNextId++; sViews.put(mId, this); }
-        mSettings = new MeglerWebSettings(this::settingsChanged);
-        megler.Web.ensureApp();
-        megler.Web.create(mId);
+        mSettings = new MegletWebSettings(this::settingsChanged);
+        meglet.Web.ensureApp();
+        meglet.Web.create(mId);
         pushSettings();
     }
     public WebView(Context context, AttributeSet attrs, int defStyleAttr, boolean privateBrowsing) { this(context, attrs, defStyleAttr, 0); }
@@ -111,7 +111,7 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
         if (javaScriptInterfaces != null) for (Map.Entry<String, Object> e : javaScriptInterfaces.entrySet()) addJavascriptInterface(e.getValue(), e.getKey());
     }
 
-    /** @hide */ public static WebView meglerById(int id) { synchronized (sViews) { return sViews.get(id); } }
+    /** @hide */ public static WebView megletById(int id) { synchronized (sViews) { return sViews.get(id); } }
 
     // ---- static API
     public static void setWebContentsDebuggingEnabled(boolean enabled) {}
@@ -159,9 +159,9 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
     }
     private void pushSettings() {
         if (mDestroyed) return;
-        megler.Web.settings(mId, mSettings.getJavaScriptEnabled(), mSettings.getUserAgentString(), mSettings.getTextZoom(), mSettings.getMediaPlaybackRequiresUserGesture());
+        meglet.Web.settings(mId, mSettings.getJavaScriptEnabled(), mSettings.getUserAgentString(), mSettings.getTextZoom(), mSettings.getMediaPlaybackRequiresUserGesture());
     }
-    @Override public void setBackgroundColor(int color) { if (!mDestroyed) megler.Web.background(mId, color); }
+    @Override public void setBackgroundColor(int color) { if (!mDestroyed) meglet.Web.background(mId, color); }
 
     // ---- loading
     /* both overloads go to one private implementation, as Android's provider does: an app's subclass overriding one of them and
@@ -191,29 +191,29 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
                 boolean virtual = r != null && !NETWORK_ONLY && virtualHost(u.getHost());
                 Log.d(TAG, target + (virtual ? ": the app serves this origin" : r != null ? ": the app also serves this public origin: from the network first" : ": from the network"));
                 synchronized (this) {
-                    // An origin only the app has (localhost, *.androidplatform.net, ...) loads through the meglerapp scheme. A public one
+                    // An origin only the app has (localhost, *.androidplatform.net, ...) loads through the megletapp scheme. A public one
                     // the app also answers for (an offline cache: Notion) loads from the network, so the page keeps its https origin --
                     // pages route by it -- unless the network does not have it (a made-up domain), and then through the app after all.
                     if (virtual) { mLocalSchemes.put(u.getHost(), u.getScheme()); mPrimed.put(toHost(target), r); }
                     else if (r != null && u.getHost() != null) mNetworkFirst.put(u.getHost().toLowerCase(java.util.Locale.ROOT), u.getScheme());
                 }
-                megler.Web.load(mId, toHost(target), headers, null);
+                meglet.Web.load(mId, toHost(target), headers, null);
             });
             return;
         }
-        megler.Web.load(mId, toHost(url), headers, null);
+        meglet.Web.load(mId, toHost(url), headers, null);
     }
     public void postUrl(String url, byte[] postData) {
         if (mDestroyed) return;
         mUrl = url;
-        megler.Web.load(mId, toHost(url), null, postData);
+        meglet.Web.load(mId, toHost(url), null, postData);
     }
     public void loadData(String data, String mimeType, String encoding) {
         if (mDestroyed) return;
         Log.d(TAG, "loadData " + mimeType);
         byte[] bytes = "base64".equalsIgnoreCase(encoding) ? android.util.Base64.decode(data, android.util.Base64.DEFAULT) : (data == null ? "" : data).getBytes(java.nio.charset.StandardCharsets.UTF_8);
         mUrl = "data:" + (mimeType == null ? "text/html" : mimeType) + "," + (data == null ? "" : data.substring(0, Math.min(data.length(), 64)));
-        megler.Web.loadData(mId, bytes, mimeType == null || mimeType.isEmpty() ? "text/html" : mimeType, "utf-8", null);
+        meglet.Web.loadData(mId, bytes, mimeType == null || mimeType.isEmpty() ? "text/html" : mimeType, "utf-8", null);
     }
     public void loadDataWithBaseURL(String baseUrl, String data, String mimeType, String encoding, String historyUrl) {
         if (mDestroyed) return;
@@ -221,21 +221,21 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
         byte[] bytes = (data == null ? "" : data).getBytes(java.nio.charset.StandardCharsets.UTF_8);
         String base = baseUrl == null || baseUrl.startsWith("data:") ? null : baseUrl;
         mUrl = historyUrl != null ? historyUrl : base != null ? base : "about:blank";
-        megler.Web.loadData(mId, bytes, mimeType == null || mimeType.isEmpty() ? "text/html" : mimeType, "utf-8", base == null ? null : toHost(base));
+        meglet.Web.loadData(mId, bytes, mimeType == null || mimeType.isEmpty() ? "text/html" : mimeType, "utf-8", base == null ? null : toHost(base));
     }
     public void evaluateJavascript(String script, ValueCallback<String> resultCallback) { eval(script, resultCallback); }
     private void eval(String script, ValueCallback<String> resultCallback) {
         if (mDestroyed || script == null) return;
         int cb = 0;
         if (resultCallback != null) synchronized (mEvalCallbacks) { cb = mNextCallback++; mEvalCallbacks.put(cb, resultCallback); }
-        megler.Web.eval(mId, script, cb);
+        meglet.Web.eval(mId, script, cb);
     }
-    public void stopLoading() { if (!mDestroyed) megler.Web.go(mId, 3); }
-    public void reload() { if (!mDestroyed) megler.Web.go(mId, 2); }
+    public void stopLoading() { if (!mDestroyed) meglet.Web.go(mId, 3); }
+    public void reload() { if (!mDestroyed) meglet.Web.go(mId, 2); }
     public boolean canGoBack() { return mCanBack; }
-    public void goBack() { if (!mDestroyed) { mCanBack = false; megler.Web.go(mId, 0); } }
+    public void goBack() { if (!mDestroyed) { mCanBack = false; meglet.Web.go(mId, 0); } }
     public boolean canGoForward() { return mCanForward; }
-    public void goForward() { if (!mDestroyed) megler.Web.go(mId, 1); }
+    public void goForward() { if (!mDestroyed) meglet.Web.go(mId, 1); }
     public boolean canGoBackOrForward(int steps) { return steps == 0 || (steps < 0 ? steps == -1 && mCanBack : steps == 1 && mCanForward); }
     public void goBackOrForward(int steps) { if (steps < 0) for (int i = 0; i < -steps; i++) goBack(); else for (int i = 0; i < steps; i++) goForward(); }
     public boolean pageUp(boolean top) { eval(top ? "window.scrollTo(0,0)" : "window.scrollBy(0,-window.innerHeight/2)", null); return true; }
@@ -307,22 +307,22 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
     public android.view.textclassifier.TextClassifier getTextClassifier() { return null; }
     public Looper getWebViewLooper() { return Looper.getMainLooper(); }
     public void postVisualStateCallback(long requestId, VisualStateCallback callback) { mHandler.post(() -> callback.onComplete(requestId)); }
-    public WebMessagePort[] createWebMessageChannel() { return MeglerWebMessagePort.channel(this); }
-    /** A 'message' event at the page's window; ports in the message become the page's MessagePorts (MeglerWebMessagePort). */
+    public WebMessagePort[] createWebMessageChannel() { return MegletWebMessagePort.channel(this); }
+    /** A 'message' event at the page's window; ports in the message become the page's MessagePorts (MegletWebMessagePort). */
     public void postWebMessage(WebMessage message, Uri targetOrigin) {
         StringBuilder ids = new StringBuilder();
         WebMessagePort[] ports = message.getPorts();
-        if (ports != null) for (WebMessagePort p : ports) if (p instanceof MeglerWebMessagePort) ids.append(ids.length() > 0 ? "," : "").append(((MeglerWebMessagePort) p).transfer());
+        if (ports != null) for (WebMessagePort p : ports) if (p instanceof MegletWebMessagePort) ids.append(ids.length() > 0 ? "," : "").append(((MegletWebMessagePort) p).transfer());
         String data = message.getData() == null ? "null" : JSONObject.quote(message.getData());
-        eval("(function(){var ps=[],R=window.__meglerPorts=window.__meglerPorts||{};[" + ids + "].forEach(function(id){var c=new MessageChannel();R[id]=c.port1;"
-             + "c.port1.onmessage=function(e){window.__megler.call('\\u0001port',String(id),[e.data==null?null:String(e.data)])};ps.push(c.port2);});"
+        eval("(function(){var ps=[],R=window.__megletPorts=window.__megletPorts||{};[" + ids + "].forEach(function(id){var c=new MessageChannel();R[id]=c.port1;"
+             + "c.port1.onmessage=function(e){window.__meglet.call('\\u0001port',String(id),[e.data==null?null:String(e.data)])};ps.push(c.port2);});"
              + "window.dispatchEvent(new MessageEvent('message',{data:" + data + ",origin:'',ports:ps}));})()", null);
     }
-    void meglerPortToPage(int id, String data) {
-        eval("(function(){var p=(window.__meglerPorts||{})[" + id + "];if(p)p.postMessage(" + (data == null ? "null" : JSONObject.quote(data)) + ")})()", null);
+    void megletPortToPage(int id, String data) {
+        eval("(function(){var p=(window.__megletPorts||{})[" + id + "];if(p)p.postMessage(" + (data == null ? "null" : JSONObject.quote(data)) + ")})()", null);
     }
-    void meglerPortClose(int id) { eval("(function(){var R=window.__meglerPorts||{};if(R[" + id + "]){R[" + id + "].close();delete R[" + id + "]}})()", null); }
-    Handler meglerHandler() { return mHandler; }
+    void megletPortClose(int id) { eval("(function(){var R=window.__megletPorts||{};if(R[" + id + "]){R[" + id + "].close();delete R[" + id + "]}})()", null); }
+    Handler megletHandler() { return mHandler; }
     public WebBackForwardList copyBackForwardList() {
         final String url = mUrl;
         return new WebBackForwardList() {
@@ -348,7 +348,7 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
         if (mDestroyed) return;
         mDestroyed = true;
         synchronized (sViews) { sViews.remove(mId); }
-        megler.Web.destroy(mId);
+        meglet.Web.destroy(mId);
     }
 
     // ---- addJavascriptInterface: prompt() bridge
@@ -357,15 +357,15 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
         synchronized (mInterfaces) { mInterfaces.put(name, object); }
         StringBuilder js = new StringBuilder("(function(){var n=").append(JSONObject.quote(name)).append(",o={};");
         for (String m : bridgedMethods(object.getClass()))
-            js.append("o[").append(JSONObject.quote(m)).append("]=function(){return window.__megler.call(n,").append(JSONObject.quote(m)).append(",arguments)};");
+            js.append("o[").append(JSONObject.quote(m)).append("]=function(){return window.__meglet.call(n,").append(JSONObject.quote(m)).append(",arguments)};");
         js.append("try{Object.defineProperty(window,n,{value:o,configurable:true,writable:true})}catch(e){window[n]=o}})();");
-        megler.Web.userScript(mId, js.toString());
+        meglet.Web.userScript(mId, js.toString());
     }
     public void removeJavascriptInterface(String name) {
         synchronized (mInterfaces) { mInterfaces.remove(name); }
         eval("try{delete window[" + JSONObject.quote(name) + "]}catch(e){}", null);
     }
-    private static boolean annotationsRequired() { return megler.Manifest.targetSdk >= 17; }
+    private static boolean annotationsRequired() { return meglet.Manifest.targetSdk >= 17; }
     private static Boolean sAnnotationsWork;
     /** Whether the runtime reports annotations at all (JavascriptInterface's own @Retention): without them every public method is bridged. */
     private static boolean annotationsWork() {
@@ -387,19 +387,19 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
         for (Method m : c.getMethods()) if (bridged(m) && seen.add(m.getName())) out.add(m.getName());
         return out;
     }
-    // ---- androidx.webkit's web message listeners and document-start scripts (MeglerSupportLib serves the androidx side)
+    // ---- androidx.webkit's web message listeners and document-start scripts (MegletSupportLib serves the androidx side)
     private final Map<String, Object[]> mMessageListeners = new LinkedHashMap<>();   // object name -> { origin rules, listener }
     private final Map<Integer, String[]> mStartScripts = new HashMap<>();             // script id -> origin rules, while not removed
     private static int sNextStartScript = 1;
 
     /** window[name] in every page whose origin the rules allow: postMessage reaches the listener, replies reach onmessage and
      *  'message' listeners. The page asks (synchronously, as it starts) whether the object is for it. */
-    void meglerAddWebMessageListener(String name, String[] rules, java.lang.reflect.InvocationHandler listener) {
+    void megletAddWebMessageListener(String name, String[] rules, java.lang.reflect.InvocationHandler listener) {
         if (name == null || listener == null || mDestroyed) return;
         synchronized (mMessageListeners) { mMessageListeners.put(name, new Object[] { rules, listener }); }
-        megler.Web.userScript(mId, "(function(){var n=" + JSONObject.quote(name) + ";if(!window.__megler||!window.__megler.call('\u0001wmlok',n,[location.href]))return;"
+        meglet.Web.userScript(mId, "(function(){var n=" + JSONObject.quote(name) + ";if(!window.__meglet||!window.__meglet.call('\u0001wmlok',n,[location.href]))return;"
             + "var ls=[],o={onmessage:null,"
-            + "postMessage:function(m){window.__megler.call('\u0001wml',n,[String(m),location.href,window===window.top]);},"
+            + "postMessage:function(m){window.__meglet.call('\u0001wml',n,[String(m),location.href,window===window.top]);},"
             + "addEventListener:function(t,f){if(t==='message'&&typeof f==='function'&&ls.indexOf(f)<0)ls.push(f);},"
             + "removeEventListener:function(t,f){var i=ls.indexOf(f);if(i>=0)ls.splice(i,1);},"
             + "__deliver:function(d){var e={data:d,type:'message',target:o};"
@@ -407,34 +407,34 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
             + "ls.slice().forEach(function(f){try{f(e)}catch(x){setTimeout(function(){throw x})}});}};"
             + "try{Object.defineProperty(window,n,{value:o,configurable:true,writable:true})}catch(e){window[n]=o}})();");
     }
-    void meglerRemoveWebMessageListener(String name) {
+    void megletRemoveWebMessageListener(String name) {
         synchronized (mMessageListeners) { mMessageListeners.remove(name); }
         eval("try{delete window[" + JSONObject.quote(name) + "]}catch(e){}", null);
     }
     /** A reply through a listener's JavaScriptReplyProxy: to the page's object of that name. */
-    void meglerReplyMessage(String name, String data) {
+    void megletReplyMessage(String name, String data) {
         eval("(function(){var o=window[" + JSONObject.quote(name) + "];if(o&&o.__deliver)o.__deliver(" + (data == null ? "null" : JSONObject.quote(data)) + ")})()", null);
     }
     /** Runs at the start of every page whose origin the rules allow, until removed. A page it is not for stops it with an error at
      *  its first line, so its top-level declarations stay global where it does run. */
-    Runnable meglerAddDocumentStartScript(String script, String[] rules) {
+    Runnable megletAddDocumentStartScript(String script, String[] rules) {
         final int id;
         synchronized (WebView.class) { id = sNextStartScript++; }
         synchronized (mStartScripts) { mStartScripts.put(id, rules); }
-        megler.Web.userScript(mId, "if(!(window.__megler&&window.__megler.call('\u0001ds','" + id + "',[location.href])))throw new Error('megler: a document-start script not for this page');\n" + script);
+        meglet.Web.userScript(mId, "if(!(window.__meglet&&window.__meglet.call('\u0001ds','" + id + "',[location.href])))throw new Error('meglet: a document-start script not for this page');\n" + script);
         return () -> { synchronized (mStartScripts) { mStartScripts.remove(id); } };
     }
     private String supportCall(String kind, String name, JSONArray a) {
         switch (kind) {
         case "\u0001wmlok": {
             Object[] l; synchronized (mMessageListeners) { l = mMessageListeners.get(name); }
-            return "{\"v\":" + (l != null && MeglerSupportLib.originAllowed((String[]) l[0], originOf(a.optString(0, "")))) + "}";
+            return "{\"v\":" + (l != null && MegletSupportLib.originAllowed((String[]) l[0], originOf(a.optString(0, "")))) + "}";
         }
         case "\u0001ds": {
             String[] rules; synchronized (mStartScripts) { rules = mStartScripts.get(Integer.valueOf(name)); }
-            return "{\"v\":" + (rules != null && MeglerSupportLib.originAllowed(rules, originOf(a.optString(0, "")))) + "}";
+            return "{\"v\":" + (rules != null && MegletSupportLib.originAllowed(rules, originOf(a.optString(0, "")))) + "}";
         }
-        case "\u0001port": MeglerWebMessagePort.fromPage(Integer.parseInt(name), a.isNull(0) ? null : a.optString(0)); return "{}";
+        case "\u0001port": MegletWebMessagePort.fromPage(Integer.parseInt(name), a.isNull(0) ? null : a.optString(0)); return "{}";
         case "\u0001wml": {
             Object[] l; synchronized (mMessageListeners) { l = mMessageListeners.get(name); }
             if (l == null) return "{}";
@@ -442,7 +442,7 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
             final Uri origin = originOf(a.optString(1, ""));
             final boolean main = a.optBoolean(2, true);
             final java.lang.reflect.InvocationHandler listener = (java.lang.reflect.InvocationHandler) l[1];
-            mHandler.post(() -> { if (!mDestroyed) MeglerSupportLib.deliver(this, name, listener, data, origin, main); });
+            mHandler.post(() -> { if (!mDestroyed) MegletSupportLib.deliver(this, name, listener, data, origin, main); });
             return "{}";
         }
         }
@@ -460,7 +460,7 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
         try {
             JSONObject req = new JSONObject(json);
             String kind = req.getString("o");
-            if (kind.startsWith("\u0001")) { megler.Web.reply(call, supportCall(kind, req.getString("m"), req.optJSONArray("a") != null ? req.optJSONArray("a") : new JSONArray())); return; }
+            if (kind.startsWith("\u0001")) { meglet.Web.reply(call, supportCall(kind, req.getString("m"), req.optJSONArray("a") != null ? req.optJSONArray("a") : new JSONArray())); return; }
             Object target;
             synchronized (mInterfaces) { target = mInterfaces.get(req.getString("o")); }
             String name = req.getString("m");
@@ -487,7 +487,7 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
             Log.w(TAG, "bridge call failed: " + e);
             result = "{}";
         }
-        megler.Web.reply(call, result);
+        meglet.Web.reply(call, result);
     }
     private static Object convert(Object v, Class<?> t) {
         if (t == String.class) return v == null ? null : v instanceof String ? v : "undefined".equals(v) ? null : String.valueOf(v);
@@ -528,15 +528,15 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
         return s != null && s.equalsIgnoreCase(u.getScheme());
     }
     private synchronized String toHost(String url) {
-        if (url.startsWith("file:///android_asset/")) return "meglerapp://android_asset/" + url.substring(22);
-        if (url.startsWith("file:///android_res/")) return "meglerapp://android_res/" + url.substring(20);
-        if (url.startsWith("file://")) return "meglerapp://file" + url.substring(7);
-        if (url.startsWith("file:/")) return "meglerapp://file" + url.substring(5);
-        if (isHttp(url) && isLocal(url)) return "meglerapp" + url.substring(url.indexOf("://"));
+        if (url.startsWith("file:///android_asset/")) return "megletapp://android_asset/" + url.substring(22);
+        if (url.startsWith("file:///android_res/")) return "megletapp://android_res/" + url.substring(20);
+        if (url.startsWith("file://")) return "megletapp://file" + url.substring(7);
+        if (url.startsWith("file:/")) return "megletapp://file" + url.substring(5);
+        if (isHttp(url) && isLocal(url)) return "megletapp" + url.substring(url.indexOf("://"));
         return url;
     }
     private synchronized String fromHost(String url) {
-        if (url == null || !url.startsWith("meglerapp://")) return url;
+        if (url == null || !url.startsWith("megletapp://")) return url;
         String rest = url.substring(10);
         if (rest.startsWith("android_asset/")) return "file:///" + rest;
         if (rest.startsWith("android_res/")) return "file:///" + rest;
@@ -589,34 +589,34 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
                 if (rh != null) { h = new String[rh.size() * 2]; int i = 0; for (Map.Entry<String, String> e : rh.entrySet()) { h[i++] = e.getKey(); h[i++] = e.getValue(); } }
                 byte[] body = readAll(r.getData());
                 int status = r.getData() == null && r.getStatusCode() == 200 ? 404 : r.getStatusCode();
-                megler.Web.respond(call, status, r.getReasonPhrase(), r.getMimeType(), r.getEncoding(), h, body);
+                meglet.Web.respond(call, status, r.getReasonPhrase(), r.getMimeType(), r.getEncoding(), h, body);
                 return;
             }
             String path = Uri.parse(url).getPath();
             if (url.startsWith("file:///android_asset/")) {
                 byte[] b;
                 try { b = readAll(getContext().getAssets().open(Uri.decode(url.substring(22).replaceAll("[?#].*$", "")))); }
-                catch (IOException e) { megler.Web.respond(call, 404, "Not Found", "text/plain", null, null, new byte[0]); return; }
-                megler.Web.respond(call, 200, "OK", mimeOf(path), null, null, b);
+                catch (IOException e) { meglet.Web.respond(call, 404, "Not Found", "text/plain", null, null, new byte[0]); return; }
+                meglet.Web.respond(call, 200, "OK", mimeOf(path), null, null, b);
                 return;
             }
-            if (url.startsWith("file:///android_res/")) { megler.Web.respond(call, 404, "Not Found", "text/plain", null, null, new byte[0]); return; }
+            if (url.startsWith("file:///android_res/")) { meglet.Web.respond(call, 404, "Not Found", "text/plain", null, null, new byte[0]); return; }
             if (url.startsWith("file:")) {
                 File f = new File(path == null ? "" : path);
-                if (!f.isFile()) { megler.Web.respond(call, 404, "Not Found", "text/plain", null, null, new byte[0]); return; }
-                megler.Web.respond(call, 200, "OK", mimeOf(f.getName()), null, null, readAll(new FileInputStream(f)));
+                if (!f.isFile()) { meglet.Web.respond(call, 404, "Not Found", "text/plain", null, null, new byte[0]); return; }
+                meglet.Web.respond(call, 200, "OK", mimeOf(f.getName()), null, null, readAll(new FileInputStream(f)));
                 return;
             }
-            megler.Web.respond(call, 0, url, null, null, null, null);       // the network's: the host fetches it
+            meglet.Web.respond(call, 0, url, null, null, null, null);       // the network's: the host fetches it
         } catch (IOException | RuntimeException e) {
             Log.w(TAG, "serving " + url + " failed: " + e);
-            megler.Web.respond(call, -1, null, null, null, null, null);
+            meglet.Web.respond(call, -1, null, null, null, null, null);
         }
     }
 
     // ---- events from the host
     /** @hide */
-    public void meglerEvent(String[] f) {
+    public void megletEvent(String[] f) {
         switch (f[0]) {
         case "s": {
             String url = fromHost(f[2]);
@@ -651,7 +651,7 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
                 if (fh != null && mNetworkFirst.remove(fh) != null) {
                     Log.d(TAG, failed + ": not on the network: the app serves it");
                     mLocalSchemes.put(fu.getHost(), fu.getScheme());
-                    megler.Web.load(mId, toHost(failed), null, null);
+                    meglet.Web.load(mId, toHost(failed), null, null);
                     break;
                 }
             }
@@ -713,14 +713,14 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
         boolean override = false;
         try { override = mClient.shouldOverrideUrlLoading(this, request(url, method, main, gesture, null)); }
         catch (RuntimeException e) { Log.e(TAG, "shouldOverrideUrlLoading threw for " + url, e); }
-        if (!override && main && isHttp(url) && isLocal(url) && !url.startsWith("meglerapp:")) {
-            // a link to an origin the app serves: load it through the meglerapp scheme instead
-            megler.Web.reply(call, "\u0001nav-cancel");
-            megler.Web.load(mId, toHost(url), null, null);
+        if (!override && main && isHttp(url) && isLocal(url) && !url.startsWith("megletapp:")) {
+            // a link to an origin the app serves: load it through the megletapp scheme instead
+            meglet.Web.reply(call, "\u0001nav-cancel");
+            meglet.Web.load(mId, toHost(url), null, null);
             return;
         }
         if (!override && !web) Log.w(TAG, "nothing handles " + url);
-        megler.Web.reply(call, override || !web ? "\u0001nav-cancel" : "\u0001nav-allow");
+        meglet.Web.reply(call, override || !web ? "\u0001nav-cancel" : "\u0001nav-allow");
     }
     /** TL_WEB_CONSOLE: every console message in the log, also those the app's chrome client takes (debugging a page that fails quietly) */
     private static final boolean CONSOLE_ALL = System.getenv("TL_WEB_CONSOLE") != null;
@@ -737,9 +737,9 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
         JsResult.ResultReceiver rr = res -> {
             if (answered[0]) return;
             answered[0] = true;
-            if (kind.equals("A")) megler.Web.reply(call, "\u0001alert");
-            else if (kind.equals("C")) megler.Web.reply(call, res.getResult() ? "\u0001yes" : "\u0001no");
-            else megler.Web.reply(call, res.getResult() ? ((JsPromptResult) res).getStringResult() : null);
+            if (kind.equals("A")) meglet.Web.reply(call, "\u0001alert");
+            else if (kind.equals("C")) meglet.Web.reply(call, res.getResult() ? "\u0001yes" : "\u0001no");
+            else meglet.Web.reply(call, res.getResult() ? ((JsPromptResult) res).getStringResult() : null);
         };
         JsResult result = kind.equals("P") ? new JsPromptResult(rr) : new JsResult(rr);
         boolean handled = false;
@@ -753,7 +753,7 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
         if (handled) return;
         // Android's own dialog
         String host = Uri.parse(url).getHost();
-        String title = host == null || host.isEmpty() || url.startsWith("meglerapp:") || url.startsWith("file:") ? "JavaScript" : "The page at \"" + host + "\" says:";
+        String title = host == null || host.isEmpty() || url.startsWith("megletapp:") || url.startsWith("file:") ? "JavaScript" : "The page at \"" + host + "\" says:";
         try {
             android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(getContext()).setTitle(title).setMessage(message);
             final android.widget.EditText edit = kind.equals("P") ? new android.widget.EditText(getContext()) : null;
@@ -777,14 +777,14 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
         int[] loc = new int[2];
         if (visible) getLocationOnScreen(loc);
         // a dialog, popup or menu over the page takes the touches: the page only gets them while its window is the top one
-        megler.ViewRoot root = visible ? megler.ViewRoot.of(getRootView()) : null;
-        boolean touchable = root != null && root == megler.ViewRoot.topTouchable();
+        meglet.ViewRoot root = visible ? meglet.ViewRoot.of(getRootView()) : null;
+        boolean touchable = root != null && root == meglet.ViewRoot.topTouchable();
         if (!force && visible == mFrameVisible && touchable == mFrameTouchable && (!visible || (loc[0] == mFrameX && loc[1] == mFrameY && getWidth() == mFrameW && getHeight() == mFrameH))) return;
         mFrameVisible = visible; mFrameTouchable = touchable; mFrameX = loc[0]; mFrameY = loc[1]; mFrameW = getWidth(); mFrameH = getHeight();
-        megler.Web.frame(mId, loc[0], loc[1], getWidth(), getHeight(), visible, touchable);
+        meglet.Web.frame(mId, loc[0], loc[1], getWidth(), getHeight(), visible, touchable);
     }
     /** @hide A window came or went: every page says again whether it takes touches. */
-    public static void meglerWindowsChanged() {
+    public static void megletWindowsChanged() {
         ArrayList<WebView> all;
         synchronized (sViews) { all = new ArrayList<>(sViews.values()); }
         for (WebView w : all) w.updateFrame(true);
@@ -860,25 +860,25 @@ public class WebView extends AbsoluteLayout implements android.view.ViewTreeObse
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static final class InspectionCompanion implements android.view.inspector.InspectionCompanion {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public InspectionCompanion() {}
         public void mapProperties(android.view.inspector.PropertyMapper p0) {}
         public void readProperties(android.webkit.WebView p0, android.view.inspector.PropertyReader p1) {}
         public void readProperties(java.lang.Object p0, android.view.inspector.PropertyReader p1) {}
     }
     public static class PrivateAccess {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public PrivateAccess(android.webkit.WebView p0) {}
         public void awakenScrollBars(int p0) {}
         public void awakenScrollBars(int p0, boolean p1) {}
-        public float getHorizontalScrollFactor() { return (meglerProps.get("HorizontalScrollFactor") instanceof Float ? (Float) meglerProps.get("HorizontalScrollFactor") : 0f); }
-        public int getHorizontalScrollbarHeight() { return (meglerProps.get("HorizontalScrollbarHeight") instanceof Integer ? (Integer) meglerProps.get("HorizontalScrollbarHeight") : 0); }
-        public float getVerticalScrollFactor() { return (meglerProps.get("VerticalScrollFactor") instanceof Float ? (Float) meglerProps.get("VerticalScrollFactor") : 0f); }
+        public float getHorizontalScrollFactor() { return (megletProps.get("HorizontalScrollFactor") instanceof Float ? (Float) megletProps.get("HorizontalScrollFactor") : 0f); }
+        public int getHorizontalScrollbarHeight() { return (megletProps.get("HorizontalScrollbarHeight") instanceof Integer ? (Integer) megletProps.get("HorizontalScrollbarHeight") : 0); }
+        public float getVerticalScrollFactor() { return (megletProps.get("VerticalScrollFactor") instanceof Float ? (Float) megletProps.get("VerticalScrollFactor") : 0f); }
         public void onScrollChanged(int p0, int p1, int p2, int p3) {}
         public void overScrollBy(int p0, int p1, int p2, int p3, int p4, int p5, int p6, int p7, boolean p8) {}
         public void setMeasuredDimension(int p0, int p1) {}
-        public void setScrollXRaw(int p0) { meglerProps.put("ScrollXRaw", Integer.valueOf(p0)); }
-        public void setScrollYRaw(int p0) { meglerProps.put("ScrollYRaw", Integer.valueOf(p0)); }
+        public void setScrollXRaw(int p0) { megletProps.put("ScrollXRaw", Integer.valueOf(p0)); }
+        public void setScrollYRaw(int p0) { megletProps.put("ScrollYRaw", Integer.valueOf(p0)); }
         public void super_computeScroll() {}
         public boolean super_dispatchKeyEvent(android.view.KeyEvent p0) { return false; }
         public int super_getScrollBarStyle() { return 0; }

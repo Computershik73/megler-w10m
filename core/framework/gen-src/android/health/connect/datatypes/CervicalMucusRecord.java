@@ -3,22 +3,22 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CervicalMucusRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public int getAppearance() { return (meglerProps.get("Appearance") instanceof Integer ? (Integer) meglerProps.get("Appearance") : 0); }
-    public int getSensation() { return (meglerProps.get("Sensation") instanceof Integer ? (Integer) meglerProps.get("Sensation") : 0); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public int getAppearance() { return (megletProps.get("Appearance") instanceof Integer ? (Integer) megletProps.get("Appearance") : 0); }
+    public int getSensation() { return (megletProps.get("Sensation") instanceof Integer ? (Integer) megletProps.get("Sensation") : 0); }
     public android.health.connect.internal.datatypes.CervicalMucusRecordInternal toRecordInternal() { return null; }
     protected CervicalMucusRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, int p2, int p3) {}
-        public android.health.connect.datatypes.CervicalMucusRecord build() { android.health.connect.datatypes.CervicalMucusRecord x = new android.health.connect.datatypes.CervicalMucusRecord(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.datatypes.CervicalMucusRecord build() { android.health.connect.datatypes.CervicalMucusRecord x = new android.health.connect.datatypes.CervicalMucusRecord(); x.megletProps.putAll(megletProps); return x; }
         public android.health.connect.datatypes.CervicalMucusRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.CervicalMucusRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.CervicalMucusRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.CervicalMucusRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (int) 0, (int) 0); }
     }
     public static final class CervicalMucusAppearance {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int APPEARANCE_CREAMY = 3;
         public static final int APPEARANCE_DRY = 1;
         public static final int APPEARANCE_EGG_WHITE = 5;
@@ -30,7 +30,7 @@ public final class CervicalMucusRecord extends android.health.connect.datatypes.
         protected CervicalMucusAppearance() {}
     }
     public static final class CervicalMucusSensation {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int SENSATION_HEAVY = 3;
         public static final int SENSATION_LIGHT = 1;
         public static final int SENSATION_MEDIUM = 2;

@@ -3,7 +3,7 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SafeBrowsingResponse {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public SafeBrowsingResponse() {}
     public abstract void backToSafety(boolean p0);
     public abstract void proceed(boolean p0);

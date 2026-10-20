@@ -3,7 +3,7 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CameraExtensionCharacteristics {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int EXTENSION_AUTOMATIC = 0;
     public static final int EXTENSION_BEAUTY = 1;
     public static final int EXTENSION_BOKEH = 2;
@@ -29,7 +29,7 @@ public final class CameraExtensionCharacteristics {
     public java.util.List getExtensionSupportedSizes(int p0, java.lang.Class p1) { return new java.util.ArrayList(); }
     public java.util.Set getKeys(int p0) { return new java.util.HashSet(); }
     public java.util.List getPostviewSupportedSizes(int p0, android.util.Size p1, int p2) { return new java.util.ArrayList(); }
-    public java.util.List getSupportedExtensions() { return (meglerProps.get("SupportedExtensions") != null ? (java.util.List) meglerProps.get("SupportedExtensions") : new java.util.ArrayList()); }
+    public java.util.List getSupportedExtensions() { return (megletProps.get("SupportedExtensions") != null ? (java.util.List) megletProps.get("SupportedExtensions") : new java.util.ArrayList()); }
     public boolean isCaptureProcessProgressAvailable(int p0) { return false; }
     public boolean isPostviewAvailable(int p0) { return false; }
     CameraExtensionCharacteristics() { this((android.content.Context) null, (java.lang.String) null, (java.util.Map) null); }

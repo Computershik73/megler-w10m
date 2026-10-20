@@ -1,6 +1,6 @@
 /*
- * Bundles of split APKs, unpacked as the shell unpacks them (megler_bundle_unpack), and the APK report of what comes out
- * (megler_apk_report_splits), on both hosts:
+ * Bundles of split APKs, unpacked as the shell unpacks them (meglet_bundle_unpack), and the APK report of what comes out
+ * (meglet_apk_report_splits), on both hosts:
  *
  *   hk_tests --bundles <test apps folder> <scratch folder> [folder of real bundles]
  *
@@ -20,7 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../include/megler.h"
+#include "../include/meglet.h"
 #include "../src/apk/hk_json.h"
 #include "../src/hk_base.h"
 #include "../src/host/hk_host.h"
@@ -28,7 +28,7 @@
 #include "hk_tests.h"
 #include "zlib.h"
 
-const char *megler_data_dir(void);
+const char *meglet_data_dir(void);
 
 static int g_checks, g_failed;
 
@@ -251,7 +251,7 @@ static char *unpack(const char *bundle, const char *apk, const char *splits, int
 {
     char *json;
     u64 started = hk_time_monotonic_ns();
-    json = megler_bundle_unpack(bundle, apk, splits, dpi, languages, p ? progress : NULL, p);
+    json = meglet_bundle_unpack(bundle, apk, splits, dpi, languages, p ? progress : NULL, p);
     say("  %s: %s (%.0f ms)", bundle, json ? json : "(nothing)", (double)(hk_time_monotonic_ns() - started) / 1e6);
     return json;
 }
@@ -277,7 +277,7 @@ static void test_app_bundle(const char *java_dir, const char *scratch, const cha
     hk_path_mkdirs(dir);
     memset(&p, 0, sizeof(p));
     json = unpack(bundle, apk, splits, 320, "en,ru", &p);
-    CHECK(json && strstr(json, "\"ok\":true") && strstr(json, "\"package\":\"megler.test.splits\"") && strstr(json, "\"versionCode\":7"));
+    CHECK(json && strstr(json, "\"ok\":true") && strstr(json, "\"package\":\"meglet.test.splits\"") && strstr(json, "\"versionCode\":7"));
     n = names_in(json ? json : "{}", "splits", names, 32);
     joined(names, n, text, sizeof(text));
     say("  kept: %s", text);
@@ -321,12 +321,12 @@ static void test_app_bundle(const char *java_dir, const char *scratch, const cha
     say("  progress: %d calls, %llu of %llu bytes at the end", p.calls, (unsigned long long)p.last_done, (unsigned long long)p.last_total);
 
     /* The expansion file of the .xapk, in the app's own Android/obb, where it finds it when it runs. */
-    path = hk_sprintf("%s/apps/megler.test.splits/sdcard/Android/obb/megler.test.splits/main.7.megler.test.splits.obb", data_dir);
+    path = hk_sprintf("%s/apps/meglet.test.splits/sdcard/Android/obb/meglet.test.splits/main.7.meglet.test.splits.obb", data_dir);
     if (xapk) {
         size_t size = 0;
         char *obb = (char *)hk_file_read_all(path, &size);
-        CHECK(obb && size == 39 && !memcmp(obb, "the expansion file of megler.test.splits\n", 39));
-        CHECK(json && strstr(json, "\"to\":\"/storage/emulated/0/Android/obb/megler.test.splits/main.7.megler.test.splits.obb\""));
+        CHECK(obb && size == 41 && !memcmp(obb, "the expansion file of meglet.test.splits\n", 41));
+        CHECK(json && strstr(json, "\"to\":\"/storage/emulated/0/Android/obb/meglet.test.splits/main.7.meglet.test.splits.obb\""));
         free(obb);
     } else {
         CHECK(!exists(path));
@@ -337,9 +337,9 @@ static void test_app_bundle(const char *java_dir, const char *scratch, const cha
     free(path);
 
     /* The report of the app as one. */
-    report = megler_apk_report_splits(apk, splits);
+    report = meglet_apk_report_splits(apk, splits);
     say("  report: %s", report ? report : "(none)");
-    CHECK(report && strstr(report, "\"ok\":true") && strstr(report, "\"package\":\"megler.test.splits\"") && strstr(report, "\"versionName\":\"1.7\""));
+    CHECK(report && strstr(report, "\"ok\":true") && strstr(report, "\"package\":\"meglet.test.splits\"") && strstr(report, "\"versionName\":\"1.7\""));
     CHECK(report && strstr(report, "\"abi\":\"armeabi-v7a\"") && strstr(report, "\"engine\":\"java\"") && strstr(report, "\"runnable\":true"));
     CHECK(report && strstr(report, "\"abis\":[\"armeabi-v7a\",\"arm64-v8a\",\"x86\"]"));
     CHECK(report && strstr(report, "\"name\":\"libsplitlib.so\"") && strstr(report, "\"hasIcon\":true"));
@@ -347,14 +347,14 @@ static void test_app_bundle(const char *java_dir, const char *scratch, const cha
     CHECK(n == (int)HK_COUNT(k_kept));
     n = names_in(report ? report : "{}", "splitsLeftOut", names, 32);
     CHECK(n == (xapk ? 4 : 5) && has_name(names, n, "config.arm64_v8a"));
-    megler_free(report);
+    meglet_free(report);
     /* The icon is in the density split alone (the base has no picture of it). */
-    CHECK(megler_apk_icon_splits(apk, splits, &icon, &icon_size) && icon_size > 8 && !memcmp(icon, "\x89PNG", 4));
-    megler_free(icon);
+    CHECK(meglet_apk_icon_splits(apk, splits, &icon, &icon_size) && icon_size > 8 && !memcmp(icon, "\x89PNG", 4));
+    meglet_free(icon);
     icon = NULL;
-    CHECK(!megler_apk_icon(apk, &icon, &icon_size));
-    megler_free(icon);
-    megler_free(json);
+    CHECK(!meglet_apk_icon(apk, &icon, &icon_size));
+    meglet_free(icon);
+    meglet_free(json);
 
     /* Again over the first: a split the folder had that the bundle has not is gone, the rest as before. */
     path = hk_sprintf("%s/split_config.fr.apk", splits);
@@ -367,7 +367,7 @@ static void test_app_bundle(const char *java_dir, const char *scratch, const cha
     path = hk_sprintf("%s/split_config.ru.apk", splits);
     CHECK(!exists(path));
     free(path);
-    megler_free(json);
+    meglet_free(json);
     remove_tree(dir);
     free(bundle);
     free(dir);
@@ -386,11 +386,11 @@ static void test_odd_bundles(const char *java_dir, const char *scratch)
         goto done;
     }
     hk_path_mkdirs(dir);
-    report = megler_apk_report(base);
+    report = meglet_apk_report(base);
     say("  the base alone: %s", report ? report : "(none)");
     CHECK(report && strstr(report, "\"runnable\":true") && strstr(report, "only the base of an app that comes in several APKs") && strstr(report, "\"hasIcon\":false"));
     CHECK(report && !strstr(report, "\"splits\""));
-    megler_free(report);
+    meglet_free(report);
 
     /* Damaged: the first half of the .xapk, which has no central directory. */
     bundle = hk_sprintf("%s/damaged.xapk", dir);
@@ -403,7 +403,7 @@ static void test_odd_bundles(const char *java_dir, const char *scratch)
     json = unpack(bundle, apk, splits, 320, "en", NULL);
     CHECK(json && strstr(json, "\"ok\":false") && strstr(json, "cannot be read"));
     CHECK(!exists(apk) && !exists(splits));
-    megler_free(json);
+    meglet_free(json);
     free(bundle);
 
     /* No base: splits alone. */
@@ -414,25 +414,25 @@ static void test_odd_bundles(const char *java_dir, const char *scratch)
         json = unpack(bundle, apk, splits, 320, "en", NULL);
         CHECK(json && strstr(json, "\"ok\":false") && strstr(json, "no base APK"));
         CHECK(!exists(apk) && !exists(splits));
-        megler_free(json);
+        meglet_free(json);
         free(bundle);
     }
 
     /* SAI's names, and native code for 64-bit ARM alone: unpacked, and the report says it cannot run, and why. */
     {
-        static const char *const names[] = { "megler.test.splits.apk", "config.arm64_v8a.apk", "config.en.apk", "config.xxhdpi.apk" };
+        static const char *const names[] = { "meglet.test.splits.apk", "config.arm64_v8a.apk", "config.en.apk", "config.xxhdpi.apk" };
         static const char *const as[] = { "base.apk", "split_config.arm64_v8a.apk", "split_config.en.apk", "split_config.xxhdpi.apk" };
         bundle = hk_sprintf("%s/arm64.apks", dir);
         CHECK(make_bundle(xapk, bundle, names, as, 4));
         json = unpack(bundle, apk, splits, 560, "en,ru", NULL);
         CHECK(json && strstr(json, "\"ok\":true") && strstr(json, "\"base\":\"base.apk\""));
         CHECK(json && left_out_because(json, "config.arm64_v8a", "arm64-v8a"));
-        megler_free(json);
-        report = megler_apk_report_splits(apk, splits);
+        meglet_free(json);
+        report = meglet_apk_report_splits(apk, splits);
         say("  native code for arm64 alone: %s", report ? report : "(none)");
         CHECK(report && strstr(report, "\"runnable\":false") && strstr(report, "no 32-bit ARM code") && strstr(report, "arm64-v8a only"));
         CHECK(report && strstr(report, "\"abis\":[\"arm64-v8a\"]") && !strstr(report, "\"abi\":"));
-        megler_free(report);
+        meglet_free(report);
         free(bundle);
     }
     remove_tree(dir);
@@ -479,8 +479,8 @@ static void test_real(const char *real_dir, const char *scratch, const real_bund
     joined(names, n, text, sizeof(text));
     say("  left out: %s", text);
     CHECK(has_name(names, n, b->left_out));
-    megler_free(json);
-    report = megler_apk_report_splits(apk, splits);
+    meglet_free(json);
+    report = meglet_apk_report_splits(apk, splits);
     say("  report: %s", report ? report : "(none)");
     CHECK(report && strstr(report, "\"ok\":true") && strstr(report, want));
     snprintf(want, sizeof(want), "\"versionName\":\"%s\"", b->version);
@@ -493,15 +493,15 @@ static void test_real(const char *real_dir, const char *scratch, const real_bund
     }
     CHECK(report && strstr(report, b->runnable ? "\"runnable\":true" : "\"runnable\":false"));
     if (b->reason) CHECK(report && strstr(report, b->reason));
-    megler_free(report);
+    meglet_free(report);
     {
         uint8_t *icon = NULL;
         size_t size = 0;
-        bool found = megler_apk_icon_splits(apk, splits, &icon, &size);
+        bool found = meglet_apk_icon_splits(apk, splits, &icon, &size);
         say("  icon: %s, %u bytes", !found ? "none" : size > 4 && !memcmp(icon, "\x89PNG", 4) ? "a PNG" : size > 12 && !memcmp(icon + 8, "WEBP", 4) ? "a WebP" : "something else",
             (unsigned)size);
         CHECK(found);
-        megler_free(icon);
+        meglet_free(icon);
     }
     remove_tree(dir);
 done:
@@ -525,8 +525,8 @@ int hk_bundle_tests_run(const char *java_dir, const char *scratch, const char *r
     int i;
     g_checks = g_failed = 0;
     hk_path_mkdirs(scratch);
-    test_app_bundle(java_dir, scratch, megler_data_dir(), false);
-    test_app_bundle(java_dir, scratch, megler_data_dir(), true);
+    test_app_bundle(java_dir, scratch, meglet_data_dir(), false);
+    test_app_bundle(java_dir, scratch, meglet_data_dir(), true);
     test_odd_bundles(java_dir, scratch);
     if (real_dir)
         for (i = 0; i < (int)HK_COUNT(real); i++) test_real(real_dir, scratch, &real[i]);

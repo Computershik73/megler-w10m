@@ -9,7 +9,7 @@ public final class GLUtils {
     private GLUtils() {}
     public static int getInternalFormat(Bitmap b) { if (b == null || b.isRecycled()) throw new IllegalArgumentException("bitmap is null or recycled"); return b.getConfig() == Bitmap.Config.ALPHA_8 ? GLES20.GL_ALPHA : b.getConfig() == Bitmap.Config.RGB_565 ? GLES20.GL_RGB : GLES20.GL_RGBA; }
     public static int getType(Bitmap b) { if (b == null || b.isRecycled()) throw new IllegalArgumentException("bitmap is null or recycled"); return GLES20.GL_UNSIGNED_BYTE; }
-    private static ByteBuffer pixels(Bitmap b) { ByteBuffer buf = ByteBuffer.allocateDirect(b.getWidth() * b.getHeight() * 4).order(ByteOrder.nativeOrder()); b.meglerCopyRgba(buf); buf.position(0); return buf; }
+    private static ByteBuffer pixels(Bitmap b) { ByteBuffer buf = ByteBuffer.allocateDirect(b.getWidth() * b.getHeight() * 4).order(ByteOrder.nativeOrder()); b.megletCopyRgba(buf); buf.position(0); return buf; }
     public static void texImage2D(int target, int level, int internalformat, Bitmap b, int border) { texImage2D(target, level, internalformat, b, GLES20.GL_UNSIGNED_BYTE, border); }
     public static void texImage2D(int target, int level, int internalformat, Bitmap b, int type, int border) {
         if (b == null || b.isRecycled()) throw new IllegalArgumentException("bitmap is null or recycled");

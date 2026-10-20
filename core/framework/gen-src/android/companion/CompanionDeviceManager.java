@@ -3,7 +3,7 @@ package android.companion;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CompanionDeviceManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_ASSOCIATION = "android.companion.extra.ASSOCIATION";
     public static final java.lang.String EXTRA_DEVICE = "android.companion.extra.DEVICE";
     public static final java.lang.String FEATURE_AIRPLANE_MODE_SYNC = "airplane_mode_sync";
@@ -52,15 +52,15 @@ public final class CompanionDeviceManager {
     public void dispatchMessage(int p0, int p1, byte[] p2) {}
     public void enablePermissionsSync(int p0) {}
     public void enableSystemDataSyncForTypes(int p0, int p1) {}
-    public java.util.List getAllAssociations() { return (meglerProps.get("AllAssociations") != null ? (java.util.List) meglerProps.get("AllAssociations") : new java.util.ArrayList()); }
+    public java.util.List getAllAssociations() { return (megletProps.get("AllAssociations") != null ? (java.util.List) megletProps.get("AllAssociations") : new java.util.ArrayList()); }
     public java.util.List getAllAssociations(int p0) { return new java.util.ArrayList(); }
-    public java.util.List getAllAssociationsWithTransports() { return (meglerProps.get("AllAssociationsWithTransports") != null ? (java.util.List) meglerProps.get("AllAssociationsWithTransports") : new java.util.ArrayList()); }
+    public java.util.List getAllAssociationsWithTransports() { return (megletProps.get("AllAssociationsWithTransports") != null ? (java.util.List) megletProps.get("AllAssociationsWithTransports") : new java.util.ArrayList()); }
     public android.companion.AssociationInfo getAssociationByDeviceId(android.companion.DeviceId p0) { return null; }
-    public java.util.List getAssociations() { return (meglerProps.get("Associations") != null ? (java.util.List) meglerProps.get("Associations") : new java.util.ArrayList()); }
-    public java.util.List getMyAssociations() { return (meglerProps.get("MyAssociations") != null ? (java.util.List) meglerProps.get("MyAssociations") : new java.util.ArrayList()); }
+    public java.util.List getAssociations() { return (megletProps.get("Associations") != null ? (java.util.List) megletProps.get("Associations") : new java.util.ArrayList()); }
+    public java.util.List getMyAssociations() { return (megletProps.get("MyAssociations") != null ? (java.util.List) megletProps.get("MyAssociations") : new java.util.ArrayList()); }
     public android.companion.datatransfer.PermissionSyncRequest getPermissionSyncRequest(int p0) { return null; }
     public boolean hasNotificationAccess(android.content.ComponentName p0) { return false; }
-    public boolean isCompanionApplicationBound() { return (meglerProps.get("CompanionApplicationBound") instanceof Boolean ? (Boolean) meglerProps.get("CompanionApplicationBound") : false); }
+    public boolean isCompanionApplicationBound() { return (megletProps.get("CompanionApplicationBound") instanceof Boolean ? (Boolean) megletProps.get("CompanionApplicationBound") : false); }
     public boolean isDeviceAssociatedForWifiConnection(java.lang.String p0, android.net.MacAddress p1, android.os.UserHandle p2) { return false; }
     public boolean isPermissionTransferUserConsented(int p0) { return false; }
     public void notifyActionResult(int p0, android.companion.ActionResult p1) {}
@@ -90,7 +90,7 @@ public final class CompanionDeviceManager {
     public void stopObservingDevicePresence(java.lang.String p0) {}
     CompanionDeviceManager() { this((android.companion.ICompanionDeviceManager) null, (android.content.Context) null); }
     public static abstract class Callback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Callback() {}
         public void onAssociationCreated(android.companion.AssociationInfo p0) {}
         public void onAssociationPending(android.content.IntentSender p0) {}

@@ -3,14 +3,14 @@ package android.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BidiFormatter {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.text.BidiFormatter getInstance() { return new BidiFormatter(); }
     public static android.text.BidiFormatter getInstance(java.util.Locale p0) { return new BidiFormatter(); }
     public static android.text.BidiFormatter getInstance(boolean p0) { return new BidiFormatter(); }
-    public boolean getStereoReset() { return (meglerProps.get("StereoReset") instanceof Boolean ? (Boolean) meglerProps.get("StereoReset") : false); }
+    public boolean getStereoReset() { return (megletProps.get("StereoReset") instanceof Boolean ? (Boolean) megletProps.get("StereoReset") : false); }
     public boolean isRtl(java.lang.CharSequence p0) { return false; }
     public boolean isRtl(java.lang.String p0) { return false; }
-    public boolean isRtlContext() { return (meglerProps.get("RtlContext") instanceof Boolean ? (Boolean) meglerProps.get("RtlContext") : false); }
+    public boolean isRtlContext() { return (megletProps.get("RtlContext") instanceof Boolean ? (Boolean) megletProps.get("RtlContext") : false); }
     public java.lang.String markAfter(java.lang.CharSequence p0, android.text.TextDirectionHeuristic p1) { return null; }
     public java.lang.String markBefore(java.lang.CharSequence p0, android.text.TextDirectionHeuristic p1) { return null; }
     public java.lang.CharSequence unicodeWrap(java.lang.CharSequence p0) { return null; }
@@ -23,16 +23,16 @@ public final class BidiFormatter {
     public java.lang.String unicodeWrap(java.lang.String p0, boolean p1) { return null; }
     protected BidiFormatter() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(java.util.Locale p0) {}
         public Builder(boolean p0) {}
-        public android.text.BidiFormatter build() { android.text.BidiFormatter x = new android.text.BidiFormatter(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.text.BidiFormatter.Builder setTextDirectionHeuristic(android.text.TextDirectionHeuristic p0) { meglerProps.put("TextDirectionHeuristic", p0); return this; }
+        public android.text.BidiFormatter build() { android.text.BidiFormatter x = new android.text.BidiFormatter(); x.megletProps.putAll(megletProps); return x; }
+        public android.text.BidiFormatter.Builder setTextDirectionHeuristic(android.text.TextDirectionHeuristic p0) { megletProps.put("TextDirectionHeuristic", p0); return this; }
         public android.text.BidiFormatter.Builder stereoReset(boolean p0) { return this; }
     }
     public static class DirectionalityEstimator {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static byte getDirectionality(int p0) { return (byte) 0; }
         protected DirectionalityEstimator() {}
     }

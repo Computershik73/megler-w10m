@@ -15,17 +15,17 @@ package android.app.usage;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class StorageStatsManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public StorageStatsManager(android.content.Context p0, android.app.usage.IStorageStatsManager p1) {}
     public long getCacheBytes(java.lang.String p0) { return 0L; }
     public long getCacheBytes(java.util.UUID p0) { return 0L; }
     public long getCacheQuotaBytes(java.lang.String p0, int p1) { return 0L; }
     public long getFreeBytes(java.lang.String p0) { return android.os.Environment.getDataDirectory().getUsableSpace(); }
     public long getFreeBytes(java.util.UUID p0) { return android.os.Environment.getDataDirectory().getUsableSpace(); }
-    public long getTotalBytes(java.lang.String p0) { return meglerRound(android.os.Environment.getDataDirectory().getTotalSpace()); }
-    public long getTotalBytes(java.util.UUID p0) { return meglerRound(android.os.Environment.getDataDirectory().getTotalSpace()); }
+    public long getTotalBytes(java.lang.String p0) { return megletRound(android.os.Environment.getDataDirectory().getTotalSpace()); }
+    public long getTotalBytes(java.util.UUID p0) { return megletRound(android.os.Environment.getDataDirectory().getTotalSpace()); }
     /** Android's FileUtils.roundStorageSize: up to the next of 1, 2, 4 ... 512 thousand, million, milliard bytes. */
-    private static long meglerRound(long size) {
+    private static long megletRound(long size) {
         long val = 1, pow = 1;
         while (val * pow < size) {
             val <<= 1;

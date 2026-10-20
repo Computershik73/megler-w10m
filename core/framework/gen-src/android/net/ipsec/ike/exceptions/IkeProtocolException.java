@@ -3,7 +3,7 @@ package android.net.ipsec.ike.exceptions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class IkeProtocolException extends android.net.ipsec.ike.exceptions.IkeException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static byte[] ERROR_DATA_NOT_INCLUDED;
     public static final int ERROR_TYPE_AUTHENTICATION_FAILED = 24;
     public static final int ERROR_TYPE_CHILD_SA_NOT_FOUND = 44;
@@ -28,8 +28,8 @@ public abstract class IkeProtocolException extends android.net.ipsec.ike.excepti
     protected IkeProtocolException(int p0, byte[] p1) { super(); }
     protected static int byteArrayToInteger(byte[] p0) { return 0; }
     protected static byte[] integerToByteArray(int p0, int p1) { return null; }
-    public byte[] getErrorData() { return (byte[]) meglerProps.get("ErrorData"); }
-    public int getErrorType() { return (meglerProps.get("ErrorType") instanceof Integer ? (Integer) meglerProps.get("ErrorType") : 0); }
+    public byte[] getErrorData() { return (byte[]) megletProps.get("ErrorData"); }
+    public int getErrorType() { return (megletProps.get("ErrorType") instanceof Integer ? (Integer) megletProps.get("ErrorType") : 0); }
     protected abstract boolean isValidDataLength(int p0);
     IkeProtocolException() { this((int) 0); }
 }

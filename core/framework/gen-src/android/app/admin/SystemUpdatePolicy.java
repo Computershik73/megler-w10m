@@ -3,7 +3,7 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SystemUpdatePolicy implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int TYPE_INSTALL_AUTOMATIC = 1;
     public static final int TYPE_INSTALL_WINDOWED = 2;
@@ -14,27 +14,27 @@ public final class SystemUpdatePolicy implements android.os.Parcelable {
     public static android.app.admin.SystemUpdatePolicy createWindowedInstallPolicy(int p0, int p1) { return new SystemUpdatePolicy(); }
     public int describeContents() { return 0; }
     public android.util.Pair getCurrentFreezePeriod(java.time.LocalDate p0) { return null; }
-    public java.util.List getFreezePeriods() { return (meglerProps.get("FreezePeriods") != null ? (java.util.List) meglerProps.get("FreezePeriods") : new java.util.ArrayList()); }
-    public int getInstallWindowEnd() { return (meglerProps.get("InstallWindowEnd") instanceof Integer ? (Integer) meglerProps.get("InstallWindowEnd") : 0); }
-    public int getInstallWindowStart() { return (meglerProps.get("InstallWindowStart") instanceof Integer ? (Integer) meglerProps.get("InstallWindowStart") : 0); }
+    public java.util.List getFreezePeriods() { return (megletProps.get("FreezePeriods") != null ? (java.util.List) megletProps.get("FreezePeriods") : new java.util.ArrayList()); }
+    public int getInstallWindowEnd() { return (megletProps.get("InstallWindowEnd") instanceof Integer ? (Integer) megletProps.get("InstallWindowEnd") : 0); }
+    public int getInstallWindowStart() { return (megletProps.get("InstallWindowStart") instanceof Integer ? (Integer) megletProps.get("InstallWindowStart") : 0); }
     public android.app.admin.SystemUpdatePolicy.InstallationOption getInstallationOptionAt(long p0) { return null; }
-    public int getPolicyType() { return (meglerProps.get("PolicyType") instanceof Integer ? (Integer) meglerProps.get("PolicyType") : 0); }
-    public boolean isValid() { return (meglerProps.get("Valid") instanceof Boolean ? (Boolean) meglerProps.get("Valid") : false); }
-    public android.app.admin.SystemUpdatePolicy setFreezePeriods(java.util.List p0) { meglerProps.put("FreezePeriods", p0); return this; }
+    public int getPolicyType() { return (megletProps.get("PolicyType") instanceof Integer ? (Integer) megletProps.get("PolicyType") : 0); }
+    public boolean isValid() { return (megletProps.get("Valid") instanceof Boolean ? (Boolean) megletProps.get("Valid") : false); }
+    public android.app.admin.SystemUpdatePolicy setFreezePeriods(java.util.List p0) { megletProps.put("FreezePeriods", p0); return this; }
     public void validateAgainstPreviousFreezePeriod(java.time.LocalDate p0, java.time.LocalDate p1, java.time.LocalDate p2) {}
     public void validateFreezePeriods() {}
     public void validateType() {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SystemUpdatePolicy() {}
     public static class InstallationOption {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-        public long getEffectiveTime() { return (meglerProps.get("EffectiveTime") instanceof Long ? (Long) meglerProps.get("EffectiveTime") : 0L); }
-        public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        public long getEffectiveTime() { return (megletProps.get("EffectiveTime") instanceof Long ? (Long) megletProps.get("EffectiveTime") : 0L); }
+        public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
         protected void limitEffectiveTime(long p0) {}
         protected InstallationOption() {}
     }
     public static final class ValidationFailedException extends java.lang.IllegalArgumentException implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public static final int ERROR_COMBINED_FREEZE_PERIOD_TOO_CLOSE = 6;
         public static final int ERROR_COMBINED_FREEZE_PERIOD_TOO_LONG = 5;
@@ -49,7 +49,7 @@ public final class SystemUpdatePolicy implements android.os.Parcelable {
         public static android.app.admin.SystemUpdatePolicy.ValidationFailedException freezePeriodTooClose(java.lang.String p0) { return new ValidationFailedException(); }
         public static android.app.admin.SystemUpdatePolicy.ValidationFailedException freezePeriodTooLong(java.lang.String p0) { return new ValidationFailedException(); }
         public int describeContents() { return 0; }
-        public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
+        public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected ValidationFailedException() { super(); }
     }

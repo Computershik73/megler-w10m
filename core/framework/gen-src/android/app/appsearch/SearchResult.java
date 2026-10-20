@@ -3,20 +3,20 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SearchResult extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
-    public java.lang.String getDatabaseName() { return (java.lang.String) meglerProps.get("DatabaseName"); }
-    public android.app.appsearch.GenericDocument getGenericDocument() { return (android.app.appsearch.GenericDocument) meglerProps.get("GenericDocument"); }
-    public java.util.List getInformationalRankingSignals() { return (meglerProps.get("InformationalRankingSignals") != null ? (java.util.List) meglerProps.get("InformationalRankingSignals") : new java.util.ArrayList()); }
-    public java.util.List getJoinedResults() { return (meglerProps.get("JoinedResults") != null ? (java.util.List) meglerProps.get("JoinedResults") : new java.util.ArrayList()); }
-    public java.util.List getMatchInfos() { return (meglerProps.get("MatchInfos") != null ? (java.util.List) meglerProps.get("MatchInfos") : new java.util.ArrayList()); }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-    public java.util.Map getParentTypeMap() { return (meglerProps.get("ParentTypeMap") != null ? (java.util.Map) meglerProps.get("ParentTypeMap") : new java.util.HashMap()); }
-    public double getRankingSignal() { return (meglerProps.get("RankingSignal") instanceof Double ? (Double) meglerProps.get("RankingSignal") : 0d); }
+    public java.lang.String getDatabaseName() { return (java.lang.String) megletProps.get("DatabaseName"); }
+    public android.app.appsearch.GenericDocument getGenericDocument() { return (android.app.appsearch.GenericDocument) megletProps.get("GenericDocument"); }
+    public java.util.List getInformationalRankingSignals() { return (megletProps.get("InformationalRankingSignals") != null ? (java.util.List) megletProps.get("InformationalRankingSignals") : new java.util.ArrayList()); }
+    public java.util.List getJoinedResults() { return (megletProps.get("JoinedResults") != null ? (java.util.List) megletProps.get("JoinedResults") : new java.util.ArrayList()); }
+    public java.util.List getMatchInfos() { return (megletProps.get("MatchInfos") != null ? (java.util.List) megletProps.get("MatchInfos") : new java.util.ArrayList()); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    public java.util.Map getParentTypeMap() { return (megletProps.get("ParentTypeMap") != null ? (java.util.Map) megletProps.get("ParentTypeMap") : new java.util.HashMap()); }
+    public double getRankingSignal() { return (megletProps.get("RankingSignal") instanceof Double ? (Double) megletProps.get("RankingSignal") : 0d); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SearchResult() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.app.appsearch.SearchResult p0) {}
         public Builder(java.lang.String p0, java.lang.String p1) {}
         public android.app.appsearch.SearchResult.Builder addInformationalRankingSignal(double p0) { return this; }
@@ -25,69 +25,69 @@ public abstract class SearchResult extends android.app.appsearch.safeparcel.Abst
         public android.app.appsearch.SearchResult build() { return null; }
         public android.app.appsearch.SearchResult.Builder clearJoinedResults() { return this; }
         public android.app.appsearch.SearchResult.Builder clearMatchInfos() { return this; }
-        public android.app.appsearch.SearchResult.Builder setGenericDocument(android.app.appsearch.GenericDocument p0) { meglerProps.put("GenericDocument", p0); return this; }
-        public android.app.appsearch.SearchResult.Builder setParentTypeMap(java.util.Map p0) { meglerProps.put("ParentTypeMap", p0); return this; }
-        public android.app.appsearch.SearchResult.Builder setRankingSignal(double p0) { meglerProps.put("RankingSignal", Double.valueOf(p0)); return this; }
+        public android.app.appsearch.SearchResult.Builder setGenericDocument(android.app.appsearch.GenericDocument p0) { megletProps.put("GenericDocument", p0); return this; }
+        public android.app.appsearch.SearchResult.Builder setParentTypeMap(java.util.Map p0) { megletProps.put("ParentTypeMap", p0); return this; }
+        public android.app.appsearch.SearchResult.Builder setRankingSignal(double p0) { megletProps.put("RankingSignal", Double.valueOf(p0)); return this; }
         Builder() { this((android.app.appsearch.SearchResult) null); }
     }
     public static abstract class EmbeddingMatchInfo extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public EmbeddingMatchInfo(double p0, int p1, int p2) { super(); }
-        public int getEmbeddingSearchMetricType() { return (meglerProps.get("EmbeddingSearchMetricType") instanceof Integer ? (Integer) meglerProps.get("EmbeddingSearchMetricType") : 0); }
-        public int getQueryEmbeddingVectorIndex() { return (meglerProps.get("QueryEmbeddingVectorIndex") instanceof Integer ? (Integer) meglerProps.get("QueryEmbeddingVectorIndex") : 0); }
-        public double getSemanticScore() { return (meglerProps.get("SemanticScore") instanceof Double ? (Double) meglerProps.get("SemanticScore") : 0d); }
+        public int getEmbeddingSearchMetricType() { return (megletProps.get("EmbeddingSearchMetricType") instanceof Integer ? (Integer) megletProps.get("EmbeddingSearchMetricType") : 0); }
+        public int getQueryEmbeddingVectorIndex() { return (megletProps.get("QueryEmbeddingVectorIndex") instanceof Integer ? (Integer) megletProps.get("QueryEmbeddingVectorIndex") : 0); }
+        public double getSemanticScore() { return (megletProps.get("SemanticScore") instanceof Double ? (Double) megletProps.get("SemanticScore") : 0d); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         EmbeddingMatchInfo() { this((double) 0d, (int) 0, (int) 0); }
     }
     public static abstract class MatchInfo extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
-        public android.app.appsearch.SearchResult.EmbeddingMatchInfo getEmbeddingMatch() { return (android.app.appsearch.SearchResult.EmbeddingMatchInfo) meglerProps.get("EmbeddingMatch"); }
-        public java.lang.CharSequence getExactMatch() { return (java.lang.CharSequence) meglerProps.get("ExactMatch"); }
-        public android.app.appsearch.SearchResult.MatchRange getExactMatchRange() { return (android.app.appsearch.SearchResult.MatchRange) meglerProps.get("ExactMatchRange"); }
-        public java.lang.String getFullText() { return (java.lang.String) meglerProps.get("FullText"); }
-        public java.lang.String getPropertyPath() { return (java.lang.String) meglerProps.get("PropertyPath"); }
-        public android.app.appsearch.PropertyPath getPropertyPathObject() { return (android.app.appsearch.PropertyPath) meglerProps.get("PropertyPathObject"); }
-        public java.lang.CharSequence getSnippet() { return (java.lang.CharSequence) meglerProps.get("Snippet"); }
-        public android.app.appsearch.SearchResult.MatchRange getSnippetRange() { return (android.app.appsearch.SearchResult.MatchRange) meglerProps.get("SnippetRange"); }
-        public java.lang.CharSequence getSubmatch() { return (java.lang.CharSequence) meglerProps.get("Submatch"); }
-        public android.app.appsearch.SearchResult.MatchRange getSubmatchRange() { return (android.app.appsearch.SearchResult.MatchRange) meglerProps.get("SubmatchRange"); }
-        public android.app.appsearch.SearchResult.TextMatchInfo getTextMatch() { return (android.app.appsearch.SearchResult.TextMatchInfo) meglerProps.get("TextMatch"); }
+        public android.app.appsearch.SearchResult.EmbeddingMatchInfo getEmbeddingMatch() { return (android.app.appsearch.SearchResult.EmbeddingMatchInfo) megletProps.get("EmbeddingMatch"); }
+        public java.lang.CharSequence getExactMatch() { return (java.lang.CharSequence) megletProps.get("ExactMatch"); }
+        public android.app.appsearch.SearchResult.MatchRange getExactMatchRange() { return (android.app.appsearch.SearchResult.MatchRange) megletProps.get("ExactMatchRange"); }
+        public java.lang.String getFullText() { return (java.lang.String) megletProps.get("FullText"); }
+        public java.lang.String getPropertyPath() { return (java.lang.String) megletProps.get("PropertyPath"); }
+        public android.app.appsearch.PropertyPath getPropertyPathObject() { return (android.app.appsearch.PropertyPath) megletProps.get("PropertyPathObject"); }
+        public java.lang.CharSequence getSnippet() { return (java.lang.CharSequence) megletProps.get("Snippet"); }
+        public android.app.appsearch.SearchResult.MatchRange getSnippetRange() { return (android.app.appsearch.SearchResult.MatchRange) megletProps.get("SnippetRange"); }
+        public java.lang.CharSequence getSubmatch() { return (java.lang.CharSequence) megletProps.get("Submatch"); }
+        public android.app.appsearch.SearchResult.MatchRange getSubmatchRange() { return (android.app.appsearch.SearchResult.MatchRange) megletProps.get("SubmatchRange"); }
+        public android.app.appsearch.SearchResult.TextMatchInfo getTextMatch() { return (android.app.appsearch.SearchResult.TextMatchInfo) megletProps.get("TextMatch"); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected MatchInfo() { super(); }
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(android.app.appsearch.SearchResult.MatchInfo p0) {}
             public Builder(java.lang.String p0) {}
             public android.app.appsearch.SearchResult.MatchInfo build() { return null; }
-            public android.app.appsearch.SearchResult.MatchInfo.Builder setEmbeddingMatch(android.app.appsearch.SearchResult.EmbeddingMatchInfo p0) { meglerProps.put("EmbeddingMatch", p0); return this; }
-            public android.app.appsearch.SearchResult.MatchInfo.Builder setExactMatchRange(android.app.appsearch.SearchResult.MatchRange p0) { meglerProps.put("ExactMatchRange", p0); return this; }
-            public android.app.appsearch.SearchResult.MatchInfo.Builder setSnippetRange(android.app.appsearch.SearchResult.MatchRange p0) { meglerProps.put("SnippetRange", p0); return this; }
-            public android.app.appsearch.SearchResult.MatchInfo.Builder setSubmatchRange(android.app.appsearch.SearchResult.MatchRange p0) { meglerProps.put("SubmatchRange", p0); return this; }
+            public android.app.appsearch.SearchResult.MatchInfo.Builder setEmbeddingMatch(android.app.appsearch.SearchResult.EmbeddingMatchInfo p0) { megletProps.put("EmbeddingMatch", p0); return this; }
+            public android.app.appsearch.SearchResult.MatchInfo.Builder setExactMatchRange(android.app.appsearch.SearchResult.MatchRange p0) { megletProps.put("ExactMatchRange", p0); return this; }
+            public android.app.appsearch.SearchResult.MatchInfo.Builder setSnippetRange(android.app.appsearch.SearchResult.MatchRange p0) { megletProps.put("SnippetRange", p0); return this; }
+            public android.app.appsearch.SearchResult.MatchInfo.Builder setSubmatchRange(android.app.appsearch.SearchResult.MatchRange p0) { megletProps.put("SubmatchRange", p0); return this; }
             Builder() { this((android.app.appsearch.SearchResult.MatchInfo) null); }
         }
     }
     public static abstract class MatchRange extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public MatchRange(int p0, int p1) { super(); }
-        public int getEnd() { return (meglerProps.get("End") instanceof Integer ? (Integer) meglerProps.get("End") : 0); }
-        public int getStart() { return (meglerProps.get("Start") instanceof Integer ? (Integer) meglerProps.get("Start") : 0); }
+        public int getEnd() { return (megletProps.get("End") instanceof Integer ? (Integer) megletProps.get("End") : 0); }
+        public int getStart() { return (megletProps.get("Start") instanceof Integer ? (Integer) megletProps.get("Start") : 0); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         MatchRange() { this((int) 0, (int) 0); }
     }
     public static abstract class TextMatchInfo extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public TextMatchInfo(android.app.appsearch.SearchResult.MatchRange p0, android.app.appsearch.SearchResult.MatchRange p1, android.app.appsearch.SearchResult.MatchRange p2) { super(); }
-        public java.lang.CharSequence getExactMatch() { return (java.lang.CharSequence) meglerProps.get("ExactMatch"); }
-        public android.app.appsearch.SearchResult.MatchRange getExactMatchRange() { return (android.app.appsearch.SearchResult.MatchRange) meglerProps.get("ExactMatchRange"); }
-        public java.lang.String getFullText() { return (java.lang.String) meglerProps.get("FullText"); }
-        public java.lang.CharSequence getSnippet() { return (java.lang.CharSequence) meglerProps.get("Snippet"); }
-        public android.app.appsearch.SearchResult.MatchRange getSnippetRange() { return (android.app.appsearch.SearchResult.MatchRange) meglerProps.get("SnippetRange"); }
-        public java.lang.CharSequence getSubmatch() { return (java.lang.CharSequence) meglerProps.get("Submatch"); }
-        public android.app.appsearch.SearchResult.MatchRange getSubmatchRange() { return (android.app.appsearch.SearchResult.MatchRange) meglerProps.get("SubmatchRange"); }
+        public java.lang.CharSequence getExactMatch() { return (java.lang.CharSequence) megletProps.get("ExactMatch"); }
+        public android.app.appsearch.SearchResult.MatchRange getExactMatchRange() { return (android.app.appsearch.SearchResult.MatchRange) megletProps.get("ExactMatchRange"); }
+        public java.lang.String getFullText() { return (java.lang.String) megletProps.get("FullText"); }
+        public java.lang.CharSequence getSnippet() { return (java.lang.CharSequence) megletProps.get("Snippet"); }
+        public android.app.appsearch.SearchResult.MatchRange getSnippetRange() { return (android.app.appsearch.SearchResult.MatchRange) megletProps.get("SnippetRange"); }
+        public java.lang.CharSequence getSubmatch() { return (java.lang.CharSequence) megletProps.get("Submatch"); }
+        public android.app.appsearch.SearchResult.MatchRange getSubmatchRange() { return (android.app.appsearch.SearchResult.MatchRange) megletProps.get("SubmatchRange"); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         TextMatchInfo() { this((android.app.appsearch.SearchResult.MatchRange) null, (android.app.appsearch.SearchResult.MatchRange) null, (android.app.appsearch.SearchResult.MatchRange) null); }
     }

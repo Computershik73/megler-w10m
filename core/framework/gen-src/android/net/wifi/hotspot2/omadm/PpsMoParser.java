@@ -3,7 +3,7 @@ package android.net.wifi.hotspot2.omadm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PpsMoParser {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public PpsMoParser() {}
     public static android.net.wifi.hotspot2.PasspointConfiguration parseMoText(java.lang.String p0) { return null; }
 }

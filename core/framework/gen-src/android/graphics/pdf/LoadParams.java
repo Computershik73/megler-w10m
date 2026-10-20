@@ -3,13 +3,13 @@ package android.graphics.pdf;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class LoadParams {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.lang.String getPassword() { return (java.lang.String) meglerProps.get("Password"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.lang.String getPassword() { return (java.lang.String) megletProps.get("Password"); }
     protected LoadParams() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.graphics.pdf.LoadParams build() { android.graphics.pdf.LoadParams x = new android.graphics.pdf.LoadParams(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.graphics.pdf.LoadParams.Builder setPassword(java.lang.String p0) { meglerProps.put("Password", p0); return this; }
+        public android.graphics.pdf.LoadParams build() { android.graphics.pdf.LoadParams x = new android.graphics.pdf.LoadParams(); x.megletProps.putAll(megletProps); return x; }
+        public android.graphics.pdf.LoadParams.Builder setPassword(java.lang.String p0) { megletProps.put("Password", p0); return this; }
     }
 }

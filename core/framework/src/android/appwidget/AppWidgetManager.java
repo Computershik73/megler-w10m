@@ -3,7 +3,7 @@ package android.appwidget;
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 /** No home screen hosts the app's widgets here: none are placed, none can be pinned, and updates go nowhere. */
 public class AppWidgetManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_APPWIDGET_BIND = "android.appwidget.action.APPWIDGET_BIND";
     public static final java.lang.String ACTION_APPWIDGET_CONFIGURE = "android.appwidget.action.APPWIDGET_CONFIGURE";
     public static final java.lang.String ACTION_APPWIDGET_DELETED = "android.appwidget.action.APPWIDGET_DELETED";
@@ -57,7 +57,7 @@ public class AppWidgetManager {
     public boolean hasBindAppWidgetPermission(java.lang.String p0) { return false; }
     public boolean hasBindAppWidgetPermission(java.lang.String p0, int p1) { return false; }
     public boolean isBoundWidgetPackage(java.lang.String p0, int p1) { return false; }
-    public boolean isRequestPinAppWidgetSupported() { return (meglerProps.get("RequestPinAppWidgetSupported") instanceof Boolean ? (Boolean) meglerProps.get("RequestPinAppWidgetSupported") : false); }
+    public boolean isRequestPinAppWidgetSupported() { return (megletProps.get("RequestPinAppWidgetSupported") instanceof Boolean ? (Boolean) megletProps.get("RequestPinAppWidgetSupported") : false); }
     public void noteAppWidgetTapped(int p0) {}
     public void notifyAppWidgetViewDataChanged(int p0, int p1) {}
     public void notifyAppWidgetViewDataChanged(int[] p0, int p1) {}
@@ -69,7 +69,7 @@ public class AppWidgetManager {
     public boolean requestPinAppWidget(android.content.ComponentName p0, android.os.Bundle p1, android.app.PendingIntent p2) { return false; }
     public void setBindAppWidgetPermission(java.lang.String p0, int p1, boolean p2) {}
     public void setBindAppWidgetPermission(java.lang.String p0, boolean p1) {}
-    public void setConfigActivityComplete(int p0) { meglerProps.put("ConfigActivityComplete", Integer.valueOf(p0)); }
+    public void setConfigActivityComplete(int p0) { megletProps.put("ConfigActivityComplete", Integer.valueOf(p0)); }
     public boolean setWidgetPreview(android.content.ComponentName p0, int p1, android.widget.RemoteViews p2) { return false; }
     public void updateAppWidget(int p0, android.widget.RemoteViews p1) {}
     public void updateAppWidget(android.content.ComponentName p0, android.widget.RemoteViews p1) {}
@@ -77,7 +77,7 @@ public class AppWidgetManager {
     public void updateAppWidgetOptions(int p0, android.os.Bundle p1) {}
     public void updateAppWidgetProviderInfo(android.content.ComponentName p0, java.lang.String p1) {}
     public static class ServiceCollectionCache {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ServiceCollectionCache(android.content.Context p0, long p1) {}
         public void connectAndConsume(android.content.Intent p0, java.util.function.Consumer p1) {}
         ServiceCollectionCache() { this((android.content.Context) null, (long) 0L); }

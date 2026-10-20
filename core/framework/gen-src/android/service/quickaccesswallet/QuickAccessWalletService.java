@@ -3,15 +3,15 @@ package android.service.quickaccesswallet;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class QuickAccessWalletService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_VIEW_WALLET = "android.service.quickaccesswallet.action.VIEW_WALLET";
     public static final java.lang.String ACTION_VIEW_WALLET_SETTINGS = "android.service.quickaccesswallet.action.VIEW_WALLET_SETTINGS";
     public static final java.lang.String SERVICE_INTERFACE = "android.service.quickaccesswallet.QuickAccessWalletService";
     public static final java.lang.String SERVICE_META_DATA = "android.quickaccesswallet";
     public static final java.lang.String TILE_SERVICE_META_DATA = "android.quickaccesswallet.tile";
     public QuickAccessWalletService() { super(); }
-    public android.app.PendingIntent getGestureTargetActivityPendingIntent() { return (android.app.PendingIntent) meglerProps.get("GestureTargetActivityPendingIntent"); }
-    public android.app.PendingIntent getTargetActivityPendingIntent() { return (android.app.PendingIntent) meglerProps.get("TargetActivityPendingIntent"); }
+    public android.app.PendingIntent getGestureTargetActivityPendingIntent() { return (android.app.PendingIntent) megletProps.get("GestureTargetActivityPendingIntent"); }
+    public android.app.PendingIntent getTargetActivityPendingIntent() { return (android.app.PendingIntent) megletProps.get("TargetActivityPendingIntent"); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public abstract void onWalletCardSelected(android.service.quickaccesswallet.SelectWalletCardRequest p0);
     public abstract void onWalletCardsRequested(android.service.quickaccesswallet.GetWalletCardsRequest p0, android.service.quickaccesswallet.GetWalletCardsCallback p1);

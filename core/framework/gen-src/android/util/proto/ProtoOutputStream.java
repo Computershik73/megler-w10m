@@ -3,7 +3,7 @@ package android.util.proto;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ProtoOutputStream extends android.util.proto.ProtoStream {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String TAG = "ProtoOutputStream";
     public ProtoOutputStream() { super(); }
     public ProtoOutputStream(int p0) { super(); }
@@ -16,8 +16,8 @@ public abstract class ProtoOutputStream extends android.util.proto.ProtoStream {
     public void endObject(long p0) {}
     public void endRepeatedObject(long p0) {}
     public void flush() {}
-    public byte[] getBytes() { return (byte[]) meglerProps.get("Bytes"); }
-    public int getRawSize() { return (meglerProps.get("RawSize") instanceof Integer ? (Integer) meglerProps.get("RawSize") : 0); }
+    public byte[] getBytes() { return (byte[]) megletProps.get("Bytes"); }
+    public int getRawSize() { return (megletProps.get("RawSize") instanceof Integer ? (Integer) megletProps.get("RawSize") : 0); }
     public long start(long p0) { return 0L; }
     public long startObject(long p0) { return 0L; }
     public long startRepeatedObject(long p0) { return 0L; }

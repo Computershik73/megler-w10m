@@ -1,5 +1,5 @@
 /*
- * megler.Gfx's native methods (core/src/drivers/hk_java_gfx.c), called as the
+ * meglet.Gfx's native methods (core/src/drivers/hk_java_gfx.c), called as the
  * runtime calls them: an hk_jcall with one value for each parameter of the
  * Java declaration, arrays and strings made by the runtime. The shell is the
  * stand-in, so what a call draws can be read back out of the bitmap.
@@ -120,7 +120,7 @@ static hk_jvalue L(hk_jobj *v)
     return x;
 }
 
-/* A native of megler.Gfx by its name, with `count` values for its parameters, in the order of the Java declaration. */
+/* A native of meglet.Gfx by its name, with `count` values for its parameters, in the order of the Java declaration. */
 static hk_jvalue call(const char *name, int count, ...)
 {
     const hk_jhle *e;
@@ -137,7 +137,7 @@ static hk_jvalue call(const char *name, int count, ...)
         if (strcmp(e->name, name) == 0) break;
     if (!e->cls) {
         t_failed++;
-        say("  FAIL: megler.Gfx has no native %s", name);
+        say("  FAIL: meglet.Gfx has no native %s", name);
         return c.ret;
     }
     c.name = e->name;
@@ -960,12 +960,12 @@ static void test_drawing(void)
 
 /* ------------------------------------------------------------------ the paint */
 
-static megler_gfx_paint g_seen;
+static meglet_gfx_paint g_seen;
 static void *g_seen_shader;
 static int g_seen_calls;
 
 /* A shell that only notes the paint it is handed. */
-static void spy_rect(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader)
+static void spy_rect(void *user, void *canvas, float left, float top, float right, float bottom, const meglet_gfx_paint *paint, void *shader)
 {
     (void)user;
     (void)canvas;
@@ -980,7 +980,7 @@ static void spy_rect(void *user, void *canvas, float left, float top, float righ
 
 static void test_paint(void)
 {
-    megler_gfx_host spy = *hk_gfx_standin();
+    meglet_gfx_host spy = *hk_gfx_standin();
     hk_jobj *p = paint(0x80123456u);
     i32 *a = ints_of(p);
     i64 bm = call("bmNew", 2, I(8), I(8)).j, cv = call("cvNew", 1, J(bm)).j, sh;
@@ -1009,17 +1009,17 @@ static void test_paint(void)
     call("cvDrawRect", 7, J(cv), F(0), F(0), F(1), F(1), L(p), J(0));
     CHECK_INT(g_seen_calls, 1);
     CHECK_HEX(g_seen.color, 0x80123456u);
-    CHECK_INT(g_seen.style, MEGLER_GFX_FILL_AND_STROKE);
+    CHECK_INT(g_seen.style, MEGLET_GFX_FILL_AND_STROKE);
     CHECK(g_seen.stroke_width == 3.5f);
     /* The framework's flag bits are not Android's; the two for the bars under and through text are not the shell's business. */
-    CHECK_INT(g_seen.flags, MEGLER_GFX_ANTI_ALIAS | MEGLER_GFX_FILTER_BITMAP | MEGLER_GFX_FAKE_BOLD);
-    CHECK_INT(g_seen.cap, MEGLER_GFX_CAP_ROUND);
-    CHECK_INT(g_seen.join, MEGLER_GFX_JOIN_BEVEL);
+    CHECK_INT(g_seen.flags, MEGLET_GFX_ANTI_ALIAS | MEGLET_GFX_FILTER_BITMAP | MEGLET_GFX_FAKE_BOLD);
+    CHECK_INT(g_seen.cap, MEGLET_GFX_CAP_ROUND);
+    CHECK_INT(g_seen.join, MEGLET_GFX_JOIN_BEVEL);
     CHECK(g_seen.miter_limit == 7);
     CHECK(g_seen.text_size == 17);
-    CHECK_INT(g_seen.text_align, MEGLER_GFX_ALIGN_RIGHT);
+    CHECK_INT(g_seen.text_align, MEGLET_GFX_ALIGN_RIGHT);
     CHECK(g_seen.text_scale_x == 1.25f && g_seen.text_skew_x == -0.25f && g_seen.letter_spacing == 0.125f);
-    CHECK_INT(g_seen.blend, MEGLER_GFX_BLEND_SRC_ATOP);
+    CHECK_INT(g_seen.blend, MEGLET_GFX_BLEND_SRC_ATOP);
     CHECK_INT(g_seen.filter_mode, -1);
     CHECK(g_seen.shadow_radius == 2.5f && g_seen.shadow_dx == 1.5f && g_seen.shadow_dy == -0.5f);
     CHECK_HEX(g_seen.shadow_color, 0x40112233u);
@@ -1036,7 +1036,7 @@ static void test_paint(void)
     sh = call("shLinear", 7, F(0), F(0), F(8), F(0), L(NULL), L(NULL), I(0)).j;
     call("cvDrawRect", 7, J(cv), F(0), F(0), F(1), F(1), L(p), J(sh));
     CHECK_HEX(g_seen.color, 0x80123456u);
-    CHECK_INT(g_seen.filter_mode, MEGLER_GFX_BLEND_SRC_IN);
+    CHECK_INT(g_seen.filter_mode, MEGLET_GFX_BLEND_SRC_IN);
     CHECK_HEX(g_seen.filter_color, 0xFF445566u);
     CHECK(g_seen_shader != NULL && g_seen_shader != (void *)(hk_addr)sh);
     call("shFree", 1, J(sh));
@@ -1054,10 +1054,10 @@ static void test_paint(void)
     a[P_XFER] = 77;
     a[P_CFMODE] = -1;
     call("cvDrawRect", 7, J(cv), F(0), F(0), F(1), F(1), L(p), J(0));
-    CHECK(g_seen.style == MEGLER_GFX_FILL && g_seen.cap == MEGLER_GFX_CAP_BUTT && g_seen.join == MEGLER_GFX_JOIN_MITER && g_seen.text_align == MEGLER_GFX_ALIGN_LEFT);
+    CHECK(g_seen.style == MEGLET_GFX_FILL && g_seen.cap == MEGLET_GFX_CAP_BUTT && g_seen.join == MEGLET_GFX_JOIN_MITER && g_seen.text_align == MEGLET_GFX_ALIGN_LEFT);
     CHECK(g_seen.stroke_width == 0 && g_seen.text_size == 12 && g_seen.miter_limit == 4 && g_seen.text_scale_x == 1 && g_seen.text_skew_x == 0);
     CHECK(g_seen.shadow_radius == 0);
-    CHECK_INT(g_seen.blend, MEGLER_GFX_BLEND_SRC_OVER);
+    CHECK_INT(g_seen.blend, MEGLET_GFX_BLEND_SRC_OVER);
     a[P_STROKE] = (i32)0x7F800000;
     call("cvDrawRect", 7, J(cv), F(0), F(0), F(1), F(1), L(p), J(0));
     CHECK(g_seen.stroke_width == 0);
@@ -1070,8 +1070,8 @@ static void test_paint(void)
     call("cvDrawRect", 7, J(cv), F(0), F(0), F(1), F(1), L(NULL), J(0));
     CHECK_INT(g_seen_calls, 1);
     CHECK_HEX(g_seen.color, 0xFF000000u);
-    CHECK(g_seen.style == 0 && g_seen.stroke_width == 0 && g_seen.flags == MEGLER_GFX_ANTI_ALIAS && g_seen.miter_limit == 4 && g_seen.text_size == 12);
-    CHECK(g_seen.text_scale_x == 1 && g_seen.blend == MEGLER_GFX_BLEND_SRC_OVER && g_seen.filter_mode == -1 && g_seen.shadow_radius == 0);
+    CHECK(g_seen.style == 0 && g_seen.stroke_width == 0 && g_seen.flags == MEGLET_GFX_ANTI_ALIAS && g_seen.miter_limit == 4 && g_seen.text_size == 12);
+    CHECK(g_seen.text_scale_x == 1 && g_seen.blend == MEGLET_GFX_BLEND_SRC_OVER && g_seen.filter_mode == -1 && g_seen.shadow_radius == 0);
     /* A rectangle is handed on with its sides in order, and not at all while the clip is empty. */
     g_seen_calls = 0;
     call("cvClipRect", 6, J(cv), F(9), F(9), F(10), F(10), I(1));
@@ -1239,7 +1239,7 @@ static void test_shaders(void)
 {
     static const i32 three[] = { (i32)0xFF0000FFu, (i32)0xFFFF0000u, (i32)0xFF00FF00u };
     static const float untidy[] = { 0.5f, 0.25f, 7 };
-    megler_gfx_host spy;
+    meglet_gfx_host spy;
     hk_jobj *p = paint(0x80FFFFFFu);
     i64 bm = call("bmNew", 2, I(8), I(8)).j, cv = call("cvNew", 1, J(bm)).j, sh;
     say("  shaders");
@@ -1390,7 +1390,7 @@ static void on_present(void *user, const void *pixels, int width, int height, in
 
 static void test_protocol(void)
 {
-    megler_gfx_host counting = *hk_gfx_standin();
+    meglet_gfx_host counting = *hk_gfx_standin();
     hk_java_gfx_bitmap info;
     hk_jobj *red = paint(0xFFFF0000u);
     i64 bm, cv, cv2, other, cv3;
@@ -1996,7 +1996,7 @@ static void test_lists(void)
     /* A shader: drawn with the local matrix it had when recorded, its own given back afterwards; freed when the Java and the last list are done with it. */
     {
         static const i32 two[2] = { (i32)0xFF00FF00u, (i32)0xFF0000FFu };
-        megler_gfx_host spy = *hk_gfx_standin();
+        meglet_gfx_host spy = *hk_gfx_standin();
         i64 sh;
         spy.shader_matrix = spy_shader_matrix;
         spy.shader_free = spy_shader_free;
@@ -2238,7 +2238,7 @@ static i32 pixel_of(i64 bm, int x, int y) { return call("bmGetPixel", 3, J(bm), 
  * A camera's picture framed as VK mp3 mod frames its QR scanner's (BarcodeViewfinderLayout): a picture of four colours, 40
  * by 40 pixels, drawn over the whole of a canvas `w` x `h` (one picture's pixel to one of the canvas's, under whatever
  * matrix the canvas has), and then a rounded rectangle the canvas's size filled in white by the path's fill rule `fill`
- * (Path.meglerFill: 2 is INVERSE_WINDING), which with an inverse rule is the four corners outside it.
+ * (Path.megletFill: 2 is INVERSE_WINDING), which with an inverse rule is the four corners outside it.
  */
 static void viewfinder(i64 cv, i64 pic, int w, int h, int fill)
 {
@@ -2334,8 +2334,8 @@ static void test_inverse(const char *on)
 }
 
 #ifdef HK_GFX_WINDOWS
-/* hk_gfx_windows.cpp: the shell's own megler_gfx_host (app/Megler/player/GfxHost.cpp), in the Windows build of the tests. */
-const megler_gfx_host *hk_gfx_windows_host(void (*line)(const char *text, void *user), void *user, int way);
+/* hk_gfx_windows.cpp: the shell's own meglet_gfx_host (app/Meglet/player/GfxHost.cpp), in the Windows build of the tests. */
+const meglet_gfx_host *hk_gfx_windows_host(void (*line)(const char *text, void *user), void *user, int way);
 
 static void shell_line(const char *text, void *user)
 {
@@ -2352,7 +2352,7 @@ static void shell_line(const char *text, void *user)
 static void test_lists_on_shell(void)
 {
     static const char *const fonts[] = { "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf" };
-    const megler_gfx_host *shell = hk_gfx_windows_host(shell_line, NULL, 0);
+    const meglet_gfx_host *shell = hk_gfx_windows_host(shell_line, NULL, 0);
     i64 face = 0;
     int ink = 0;
     size_t i;
@@ -2386,12 +2386,12 @@ int hk_gfx_natives_tests_run(hk_test_sink sink, void *user, int *checks)
     t_sink_user = user;
     t_checks = t_failed = 0;
     if (!hk_dvm_running()) {
-        say("megler.Gfx's native methods: not tested, the Dalvik runtime is not running");
+        say("meglet.Gfx's native methods: not tested, the Dalvik runtime is not running");
         return 0;
     }
-    say("megler.Gfx's native methods, over the stand-in");
-    /* One entry for each native method megler/Gfx.java declares. */
-    for (e = hk_java_gfx_natives(); e->cls; e++) n += strcmp(e->cls, "megler/Gfx") == 0 && e->sig && e->fn;
+    say("meglet.Gfx's native methods, over the stand-in");
+    /* One entry for each native method meglet/Gfx.java declares. */
+    for (e = hk_java_gfx_natives(); e->cls; e++) n += strcmp(e->cls, "meglet/Gfx") == 0 && e->sig && e->fn;
     CHECK_INT(n, 66);
     hk_java_gfx_set_host(hk_gfx_standin());
     hk_java_gfx_stats(&bytes0, &count0);

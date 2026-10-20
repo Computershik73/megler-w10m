@@ -18,8 +18,8 @@ public class ColorStateList implements android.os.Parcelable {
         mStateful = sf;
     }
     public static ColorStateList valueOf(int color) { return new ColorStateList(EMPTY, new int[] { color }); }
-    public static ColorStateList createFromXml(Resources r, org.xmlpull.v1.XmlPullParser p) throws org.xmlpull.v1.XmlPullParserException, java.io.IOException { return megler.ResInflate.colorStateList(r, p, null); }
-    public static ColorStateList createFromXml(Resources r, org.xmlpull.v1.XmlPullParser p, Resources.Theme t) throws org.xmlpull.v1.XmlPullParserException, java.io.IOException { return megler.ResInflate.colorStateList(r, p, t); }
+    public static ColorStateList createFromXml(Resources r, org.xmlpull.v1.XmlPullParser p) throws org.xmlpull.v1.XmlPullParserException, java.io.IOException { return meglet.ResInflate.colorStateList(r, p, null); }
+    public static ColorStateList createFromXml(Resources r, org.xmlpull.v1.XmlPullParser p, Resources.Theme t) throws org.xmlpull.v1.XmlPullParserException, java.io.IOException { return meglet.ResInflate.colorStateList(r, p, t); }
     public ColorStateList withAlpha(int a) { int[] c = mColors.clone(); for (int i = 0; i < c.length; i++) c[i] = (c[i] & 0xFFFFFF) | (a << 24); return new ColorStateList(mStateSpecs, c); }
     public ColorStateList withLStar(float l) { return this; }
     public boolean isStateful() { return mStateful; }

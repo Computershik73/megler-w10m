@@ -1,4 +1,4 @@
-r"""Record the phone's own event tracing (ETW) while Megler runs there.
+r"""Record the phone's own event tracing (ETW) while Meglet runs there.
 
     python tools/phone-etw.py [--seconds 30] [--out build/phone/etw.jsonl]
                               [--launch] [--providers NAME[,NAME...]] [--level 5]
@@ -7,7 +7,7 @@ The Windows Device Portal relays events of any provider registered on the
 phone over a WebSocket (/api/etw/session/realtime). This asks for the ones
 that say what the phone's shell does with an app's window -- shown, hidden,
 activated, suspended, ended -- writes every event as one JSON line, and
-prints a one-line digest of each as it comes. --launch stops Megler first and
+prints a one-line digest of each as it comes. --launch stops Meglet first and
 starts it once the recording runs, so the events cover its whole life.
 
 A provider is named by a part of its name (see --list) or by its GUID.
@@ -126,7 +126,7 @@ def main():
         except Exception as e:
             print(f"stop: {e}", file=sys.stderr)
         time.sleep(2)
-        print("--- launching Megler")
+        print("--- launching Meglet")
         phone.cmd_launch(None)
     time.sleep(a.seconds)
     done.set()

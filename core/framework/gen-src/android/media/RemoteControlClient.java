@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RemoteControlClient {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DEFAULT_PLAYBACK_VOLUME = 15;
     public static final int DEFAULT_PLAYBACK_VOLUME_HANDLING = 1;
     public static final int FLAGS_KEY_MEDIA_NONE = 0;
@@ -50,19 +50,19 @@ public class RemoteControlClient {
     public RemoteControlClient(android.app.PendingIntent p0) {}
     public RemoteControlClient(android.app.PendingIntent p0, android.os.Looper p1) {}
     public android.media.RemoteControlClient.MetadataEditor editMetadata(boolean p0) { return null; }
-    public android.media.session.MediaSession getMediaSession() { return (android.media.session.MediaSession) meglerProps.get("MediaSession"); }
-    public android.app.PendingIntent getRcMediaIntent() { return (android.app.PendingIntent) meglerProps.get("RcMediaIntent"); }
+    public android.media.session.MediaSession getMediaSession() { return (android.media.session.MediaSession) megletProps.get("MediaSession"); }
+    public android.app.PendingIntent getRcMediaIntent() { return (android.app.PendingIntent) megletProps.get("RcMediaIntent"); }
     public void registerWithSession(android.media.session.MediaSessionLegacyHelper p0) {}
-    public void setMetadataUpdateListener(android.media.RemoteControlClient.OnMetadataUpdateListener p0) { meglerProps.put("MetadataUpdateListener", p0); }
-    public void setOnGetPlaybackPositionListener(android.media.RemoteControlClient.OnGetPlaybackPositionListener p0) { meglerProps.put("OnGetPlaybackPositionListener", p0); }
-    public void setPlaybackPositionUpdateListener(android.media.RemoteControlClient.OnPlaybackPositionUpdateListener p0) { meglerProps.put("PlaybackPositionUpdateListener", p0); }
-    public void setPlaybackState(int p0) { meglerProps.put("PlaybackState", Integer.valueOf(p0)); }
+    public void setMetadataUpdateListener(android.media.RemoteControlClient.OnMetadataUpdateListener p0) { megletProps.put("MetadataUpdateListener", p0); }
+    public void setOnGetPlaybackPositionListener(android.media.RemoteControlClient.OnGetPlaybackPositionListener p0) { megletProps.put("OnGetPlaybackPositionListener", p0); }
+    public void setPlaybackPositionUpdateListener(android.media.RemoteControlClient.OnPlaybackPositionUpdateListener p0) { megletProps.put("PlaybackPositionUpdateListener", p0); }
+    public void setPlaybackState(int p0) { megletProps.put("PlaybackState", Integer.valueOf(p0)); }
     public void setPlaybackState(int p0, long p1, float p2) {}
-    public void setTransportControlFlags(int p0) { meglerProps.put("TransportControlFlags", Integer.valueOf(p0)); }
+    public void setTransportControlFlags(int p0) { megletProps.put("TransportControlFlags", Integer.valueOf(p0)); }
     public void unregisterWithSession(android.media.session.MediaSessionLegacyHelper p0) {}
     RemoteControlClient() { this((android.app.PendingIntent) null); }
     public static class MetadataEditor extends android.media.MediaMetadataEditor {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int BITMAP_KEY_ARTWORK = 100;
         public static final int METADATA_KEY_ARTWORK = 100;
         public void apply() {}

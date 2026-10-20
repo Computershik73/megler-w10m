@@ -155,7 +155,7 @@ public class JsDialogHelper {
         }
     }
 
-    /** megler-w10m: one of the platform's own resources, by its name in the Android root's framework-res.apk. */
+    /** Meglet: one of the platform's own resources, by its name in the Android root's framework-res.apk. */
     private static int internal(Context context, String type, String name) {
         return context.getResources().getIdentifier(name, type, "android");
     }

@@ -3,12 +3,12 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LocalServerSocket implements java.io.Closeable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public LocalServerSocket(java.io.FileDescriptor p0) {}
     public LocalServerSocket(java.lang.String p0) {}
     public android.net.LocalSocket accept() { return null; }
     public void close() {}
-    public java.io.FileDescriptor getFileDescriptor() { return (java.io.FileDescriptor) meglerProps.get("FileDescriptor"); }
-    public android.net.LocalSocketAddress getLocalSocketAddress() { return (android.net.LocalSocketAddress) meglerProps.get("LocalSocketAddress"); }
+    public java.io.FileDescriptor getFileDescriptor() { return (java.io.FileDescriptor) megletProps.get("FileDescriptor"); }
+    public android.net.LocalSocketAddress getLocalSocketAddress() { return (android.net.LocalSocketAddress) megletProps.get("LocalSocketAddress"); }
     LocalServerSocket() { this((java.io.FileDescriptor) null); }
 }

@@ -3,7 +3,7 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class AutofillService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_ERROR = "error";
     public static final java.lang.String EXTRA_FILL_RESPONSE = "android.service.autofill.extra.FILL_RESPONSE";
     public static final java.lang.String EXTRA_RESULT = "result";
@@ -11,7 +11,7 @@ public abstract class AutofillService extends android.app.Service {
     public static final java.lang.String SERVICE_META_DATA = "android.autofill";
     public static final java.lang.String WEBVIEW_REQUESTED_CREDENTIAL_KEY = "webview_requested_credential";
     public AutofillService() { super(); }
-    public android.service.autofill.FillEventHistory getFillEventHistory() { return (android.service.autofill.FillEventHistory) meglerProps.get("FillEventHistory"); }
+    public android.service.autofill.FillEventHistory getFillEventHistory() { return (android.service.autofill.FillEventHistory) megletProps.get("FillEventHistory"); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public void onConnected() {}
     public void onConvertCredentialRequest(android.service.autofill.ConvertCredentialRequest p0, android.service.autofill.ConvertCredentialCallback p1) {}

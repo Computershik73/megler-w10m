@@ -3,7 +3,7 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ReceiverCallNotAllowedException extends android.util.AndroidRuntimeException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public ReceiverCallNotAllowedException(java.lang.String p0) { super(p0); }
     ReceiverCallNotAllowedException() { this((java.lang.String) null); }
 }

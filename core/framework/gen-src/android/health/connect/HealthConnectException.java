@@ -3,7 +3,7 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class HealthConnectException extends java.lang.RuntimeException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ERROR_DATA_SYNC_IN_PROGRESS = 8;
     public static final int ERROR_INTERNAL = 2;
     public static final int ERROR_INVALID_ARGUMENT = 3;
@@ -16,6 +16,6 @@ public class HealthConnectException extends java.lang.RuntimeException {
     public HealthConnectException(int p0) { super(); }
     public HealthConnectException(int p0, java.lang.String p1) { super(); }
     public HealthConnectException(int p0, java.lang.String p1, java.lang.Throwable p2) { super(); }
-    public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
+    public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
     HealthConnectException() { this((int) 0); }
 }

@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PhoneNumberFormattingTextWatcher implements android.text.TextWatcher {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public PhoneNumberFormattingTextWatcher() {}
     public PhoneNumberFormattingTextWatcher(java.lang.String p0) {}
     public void afterTextChanged(android.text.Editable p0) {}

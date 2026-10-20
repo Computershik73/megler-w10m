@@ -3,17 +3,17 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Session2Token implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int TYPE_SESSION = 0;
     public static final int TYPE_SESSION_SERVICE = 1;
     public Session2Token(android.content.Context p0, android.content.ComponentName p1) {}
     public int describeContents() { return 0; }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-    public java.lang.String getServiceName() { return (java.lang.String) meglerProps.get("ServiceName"); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
-    public int getUid() { return (meglerProps.get("Uid") instanceof Integer ? (Integer) meglerProps.get("Uid") : 0); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    public java.lang.String getServiceName() { return (java.lang.String) megletProps.get("ServiceName"); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public int getUid() { return (megletProps.get("Uid") instanceof Integer ? (Integer) megletProps.get("Uid") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     Session2Token() { this((android.content.Context) null, (android.content.ComponentName) null); }
 }

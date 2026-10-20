@@ -3,6 +3,6 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class EnterpriseGlobalSearchSession extends android.app.appsearch.ReadOnlyGlobalSearchSession {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected EnterpriseGlobalSearchSession() { super(); }
 }

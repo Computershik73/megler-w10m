@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DialogFragment extends android.app.Fragment implements android.content.DialogInterface.OnCancelListener, android.content.DialogInterface.OnDismissListener {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int STYLE_NORMAL = 0;
     public static final int STYLE_NO_FRAME = 2;
     public static final int STYLE_NO_INPUT = 3;
@@ -11,15 +11,15 @@ public class DialogFragment extends android.app.Fragment implements android.cont
     public DialogFragment() { super(); }
     public void dismiss() {}
     public void dismissAllowingStateLoss() {}
-    public android.app.Dialog getDialog() { return (android.app.Dialog) meglerProps.get("Dialog"); }
-    public boolean getShowsDialog() { return (meglerProps.get("ShowsDialog") instanceof Boolean ? (Boolean) meglerProps.get("ShowsDialog") : false); }
-    public int getTheme() { return (meglerProps.get("Theme") instanceof Integer ? (Integer) meglerProps.get("Theme") : 0); }
-    public boolean isCancelable() { return (meglerProps.get("Cancelable") instanceof Boolean ? (Boolean) meglerProps.get("Cancelable") : false); }
+    public android.app.Dialog getDialog() { return (android.app.Dialog) megletProps.get("Dialog"); }
+    public boolean getShowsDialog() { return (megletProps.get("ShowsDialog") instanceof Boolean ? (Boolean) megletProps.get("ShowsDialog") : false); }
+    public int getTheme() { return (megletProps.get("Theme") instanceof Integer ? (Integer) megletProps.get("Theme") : 0); }
+    public boolean isCancelable() { return (megletProps.get("Cancelable") instanceof Boolean ? (Boolean) megletProps.get("Cancelable") : false); }
     public void onCancel(android.content.DialogInterface p0) {}
     public android.app.Dialog onCreateDialog(android.os.Bundle p0) { return null; }
     public void onDismiss(android.content.DialogInterface p0) {}
-    public void setCancelable(boolean p0) { meglerProps.put("Cancelable", Boolean.valueOf(p0)); }
-    public void setShowsDialog(boolean p0) { meglerProps.put("ShowsDialog", Boolean.valueOf(p0)); }
+    public void setCancelable(boolean p0) { megletProps.put("Cancelable", Boolean.valueOf(p0)); }
+    public void setShowsDialog(boolean p0) { megletProps.put("ShowsDialog", Boolean.valueOf(p0)); }
     public void setStyle(int p0, int p1) {}
     public int show(android.app.FragmentTransaction p0, java.lang.String p1) { return 0; }
     public void show(android.app.FragmentManager p0, java.lang.String p1) {}

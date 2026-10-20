@@ -3,39 +3,39 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class Conference extends android.telecom.Conferenceable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static long CONNECT_TIME_NOT_SPECIFIED;
     public Conference(android.telecom.PhoneAccountHandle p0) { super(); }
     public static android.telecom.Conference createFailedConference(android.telecom.DisconnectCause p0, android.telecom.PhoneAccountHandle p1) { return null; }
     public boolean addConnection(android.telecom.Connection p0) { return false; }
     public void destroy() {}
-    public android.net.Uri getAddress() { return (android.net.Uri) meglerProps.get("Address"); }
-    public int getAddressPresentation() { return (meglerProps.get("AddressPresentation") instanceof Integer ? (Integer) meglerProps.get("AddressPresentation") : 0); }
-    public android.telecom.AudioState getAudioState() { return (android.telecom.AudioState) meglerProps.get("AudioState"); }
-    public android.telecom.CallAudioState getCallAudioState() { return (android.telecom.CallAudioState) meglerProps.get("CallAudioState"); }
-    public int getCallDirection() { return (meglerProps.get("CallDirection") instanceof Integer ? (Integer) meglerProps.get("CallDirection") : 0); }
-    public java.lang.String getCallerDisplayName() { return (java.lang.String) meglerProps.get("CallerDisplayName"); }
-    public int getCallerDisplayNamePresentation() { return (meglerProps.get("CallerDisplayNamePresentation") instanceof Integer ? (Integer) meglerProps.get("CallerDisplayNamePresentation") : 0); }
-    public java.util.List getConferenceableConnections() { return (meglerProps.get("ConferenceableConnections") != null ? (java.util.List) meglerProps.get("ConferenceableConnections") : new java.util.ArrayList()); }
-    public java.util.List getConferenceables() { return (meglerProps.get("Conferenceables") != null ? (java.util.List) meglerProps.get("Conferenceables") : new java.util.ArrayList()); }
-    public long getConnectTimeMillis() { return (meglerProps.get("ConnectTimeMillis") instanceof Long ? (Long) meglerProps.get("ConnectTimeMillis") : 0L); }
-    public int getConnectionCapabilities() { return (meglerProps.get("ConnectionCapabilities") instanceof Integer ? (Integer) meglerProps.get("ConnectionCapabilities") : 0); }
-    public int getConnectionProperties() { return (meglerProps.get("ConnectionProperties") instanceof Integer ? (Integer) meglerProps.get("ConnectionProperties") : 0); }
-    public long getConnectionStartElapsedRealtimeMillis() { return (meglerProps.get("ConnectionStartElapsedRealtimeMillis") instanceof Long ? (Long) meglerProps.get("ConnectionStartElapsedRealtimeMillis") : 0L); }
-    public long getConnectionTime() { return (meglerProps.get("ConnectionTime") instanceof Long ? (Long) meglerProps.get("ConnectionTime") : 0L); }
-    public java.util.List getConnections() { return (meglerProps.get("Connections") != null ? (java.util.List) meglerProps.get("Connections") : new java.util.ArrayList()); }
-    public android.telecom.CallEndpoint getCurrentCallEndpoint() { return (android.telecom.CallEndpoint) meglerProps.get("CurrentCallEndpoint"); }
-    public android.telecom.DisconnectCause getDisconnectCause() { return (android.telecom.DisconnectCause) meglerProps.get("DisconnectCause"); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-    public android.telecom.PhoneAccountHandle getPhoneAccountHandle() { return (android.telecom.PhoneAccountHandle) meglerProps.get("PhoneAccountHandle"); }
-    public android.telecom.Connection getPrimaryConnection() { return (android.telecom.Connection) meglerProps.get("PrimaryConnection"); }
-    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
-    public android.telecom.StatusHints getStatusHints() { return (android.telecom.StatusHints) meglerProps.get("StatusHints"); }
-    public java.lang.String getTelecomCallId() { return (java.lang.String) meglerProps.get("TelecomCallId"); }
-    public android.telecom.Connection.VideoProvider getVideoProvider() { return (android.telecom.Connection.VideoProvider) meglerProps.get("VideoProvider"); }
-    public int getVideoState() { return (meglerProps.get("VideoState") instanceof Integer ? (Integer) meglerProps.get("VideoState") : 0); }
-    public boolean isMultiparty() { return (meglerProps.get("Multiparty") instanceof Boolean ? (Boolean) meglerProps.get("Multiparty") : false); }
-    public boolean isRingbackRequested() { return (meglerProps.get("RingbackRequested") instanceof Boolean ? (Boolean) meglerProps.get("RingbackRequested") : false); }
+    public android.net.Uri getAddress() { return (android.net.Uri) megletProps.get("Address"); }
+    public int getAddressPresentation() { return (megletProps.get("AddressPresentation") instanceof Integer ? (Integer) megletProps.get("AddressPresentation") : 0); }
+    public android.telecom.AudioState getAudioState() { return (android.telecom.AudioState) megletProps.get("AudioState"); }
+    public android.telecom.CallAudioState getCallAudioState() { return (android.telecom.CallAudioState) megletProps.get("CallAudioState"); }
+    public int getCallDirection() { return (megletProps.get("CallDirection") instanceof Integer ? (Integer) megletProps.get("CallDirection") : 0); }
+    public java.lang.String getCallerDisplayName() { return (java.lang.String) megletProps.get("CallerDisplayName"); }
+    public int getCallerDisplayNamePresentation() { return (megletProps.get("CallerDisplayNamePresentation") instanceof Integer ? (Integer) megletProps.get("CallerDisplayNamePresentation") : 0); }
+    public java.util.List getConferenceableConnections() { return (megletProps.get("ConferenceableConnections") != null ? (java.util.List) megletProps.get("ConferenceableConnections") : new java.util.ArrayList()); }
+    public java.util.List getConferenceables() { return (megletProps.get("Conferenceables") != null ? (java.util.List) megletProps.get("Conferenceables") : new java.util.ArrayList()); }
+    public long getConnectTimeMillis() { return (megletProps.get("ConnectTimeMillis") instanceof Long ? (Long) megletProps.get("ConnectTimeMillis") : 0L); }
+    public int getConnectionCapabilities() { return (megletProps.get("ConnectionCapabilities") instanceof Integer ? (Integer) megletProps.get("ConnectionCapabilities") : 0); }
+    public int getConnectionProperties() { return (megletProps.get("ConnectionProperties") instanceof Integer ? (Integer) megletProps.get("ConnectionProperties") : 0); }
+    public long getConnectionStartElapsedRealtimeMillis() { return (megletProps.get("ConnectionStartElapsedRealtimeMillis") instanceof Long ? (Long) megletProps.get("ConnectionStartElapsedRealtimeMillis") : 0L); }
+    public long getConnectionTime() { return (megletProps.get("ConnectionTime") instanceof Long ? (Long) megletProps.get("ConnectionTime") : 0L); }
+    public java.util.List getConnections() { return (megletProps.get("Connections") != null ? (java.util.List) megletProps.get("Connections") : new java.util.ArrayList()); }
+    public android.telecom.CallEndpoint getCurrentCallEndpoint() { return (android.telecom.CallEndpoint) megletProps.get("CurrentCallEndpoint"); }
+    public android.telecom.DisconnectCause getDisconnectCause() { return (android.telecom.DisconnectCause) megletProps.get("DisconnectCause"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public android.telecom.PhoneAccountHandle getPhoneAccountHandle() { return (android.telecom.PhoneAccountHandle) megletProps.get("PhoneAccountHandle"); }
+    public android.telecom.Connection getPrimaryConnection() { return (android.telecom.Connection) megletProps.get("PrimaryConnection"); }
+    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
+    public android.telecom.StatusHints getStatusHints() { return (android.telecom.StatusHints) megletProps.get("StatusHints"); }
+    public java.lang.String getTelecomCallId() { return (java.lang.String) megletProps.get("TelecomCallId"); }
+    public android.telecom.Connection.VideoProvider getVideoProvider() { return (android.telecom.Connection.VideoProvider) megletProps.get("VideoProvider"); }
+    public int getVideoState() { return (megletProps.get("VideoState") instanceof Integer ? (Integer) megletProps.get("VideoState") : 0); }
+    public boolean isMultiparty() { return (megletProps.get("Multiparty") instanceof Boolean ? (Boolean) megletProps.get("Multiparty") : false); }
+    public boolean isRingbackRequested() { return (megletProps.get("RingbackRequested") instanceof Boolean ? (Boolean) megletProps.get("RingbackRequested") : false); }
     public void onAddConferenceParticipants(java.util.List p0) {}
     public void onAnswer() {}
     public void onAnswer(int p0) {}
@@ -67,25 +67,25 @@ public abstract class Conference extends android.telecom.Conferenceable {
     public void sendConferenceEvent(java.lang.String p0, android.os.Bundle p1) {}
     public void setActive() {}
     public void setAddress(android.net.Uri p0, int p1) {}
-    public void setCallDirection(int p0) { meglerProps.put("CallDirection", Integer.valueOf(p0)); }
+    public void setCallDirection(int p0) { megletProps.put("CallDirection", Integer.valueOf(p0)); }
     public void setCallerDisplayName(java.lang.String p0, int p1) {}
-    public void setConferenceState(boolean p0) { meglerProps.put("ConferenceState", Boolean.valueOf(p0)); }
-    public void setConferenceableConnections(java.util.List p0) { meglerProps.put("ConferenceableConnections", p0); }
-    public void setConferenceables(java.util.List p0) { meglerProps.put("Conferenceables", p0); }
-    public void setConnectTimeMillis(long p0) { meglerProps.put("ConnectTimeMillis", Long.valueOf(p0)); }
-    public void setConnectionCapabilities(int p0) { meglerProps.put("ConnectionCapabilities", Integer.valueOf(p0)); }
-    public void setConnectionProperties(int p0) { meglerProps.put("ConnectionProperties", Integer.valueOf(p0)); }
-    public void setConnectionStartElapsedRealTime(long p0) { meglerProps.put("ConnectionStartElapsedRealTime", Long.valueOf(p0)); }
-    public void setConnectionStartElapsedRealtimeMillis(long p0) { meglerProps.put("ConnectionStartElapsedRealtimeMillis", Long.valueOf(p0)); }
-    public void setConnectionTime(long p0) { meglerProps.put("ConnectionTime", Long.valueOf(p0)); }
+    public void setConferenceState(boolean p0) { megletProps.put("ConferenceState", Boolean.valueOf(p0)); }
+    public void setConferenceableConnections(java.util.List p0) { megletProps.put("ConferenceableConnections", p0); }
+    public void setConferenceables(java.util.List p0) { megletProps.put("Conferenceables", p0); }
+    public void setConnectTimeMillis(long p0) { megletProps.put("ConnectTimeMillis", Long.valueOf(p0)); }
+    public void setConnectionCapabilities(int p0) { megletProps.put("ConnectionCapabilities", Integer.valueOf(p0)); }
+    public void setConnectionProperties(int p0) { megletProps.put("ConnectionProperties", Integer.valueOf(p0)); }
+    public void setConnectionStartElapsedRealTime(long p0) { megletProps.put("ConnectionStartElapsedRealTime", Long.valueOf(p0)); }
+    public void setConnectionStartElapsedRealtimeMillis(long p0) { megletProps.put("ConnectionStartElapsedRealtimeMillis", Long.valueOf(p0)); }
+    public void setConnectionTime(long p0) { megletProps.put("ConnectionTime", Long.valueOf(p0)); }
     public void setDialing() {}
-    public void setDisconnected(android.telecom.DisconnectCause p0) { meglerProps.put("Disconnected", p0); }
-    public void setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); }
+    public void setDisconnected(android.telecom.DisconnectCause p0) { megletProps.put("Disconnected", p0); }
+    public void setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); }
     public void setOnHold() {}
-    public void setRingbackRequested(boolean p0) { meglerProps.put("RingbackRequested", Boolean.valueOf(p0)); }
+    public void setRingbackRequested(boolean p0) { megletProps.put("RingbackRequested", Boolean.valueOf(p0)); }
     public void setRinging() {}
-    public void setStatusHints(android.telecom.StatusHints p0) { meglerProps.put("StatusHints", p0); }
-    public void setTelecomCallId(java.lang.String p0) { meglerProps.put("TelecomCallId", p0); }
+    public void setStatusHints(android.telecom.StatusHints p0) { megletProps.put("StatusHints", p0); }
+    public void setTelecomCallId(java.lang.String p0) { megletProps.put("TelecomCallId", p0); }
     public void setVideoProvider(android.telecom.Connection p0, android.telecom.Connection.VideoProvider p1) {}
     public void setVideoState(android.telecom.Connection p0, int p1) {}
     Conference() { this((android.telecom.PhoneAccountHandle) null); }

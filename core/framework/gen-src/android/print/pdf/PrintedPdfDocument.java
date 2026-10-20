@@ -3,11 +3,11 @@ package android.print.pdf;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PrintedPdfDocument extends android.graphics.pdf.PdfDocument {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public PrintedPdfDocument(android.content.Context p0, android.print.PrintAttributes p1) { super(); }
-    public android.graphics.Rect getPageContentRect() { return (android.graphics.Rect) meglerProps.get("PageContentRect"); }
-    public int getPageHeight() { return (meglerProps.get("PageHeight") instanceof Integer ? (Integer) meglerProps.get("PageHeight") : 0); }
-    public int getPageWidth() { return (meglerProps.get("PageWidth") instanceof Integer ? (Integer) meglerProps.get("PageWidth") : 0); }
+    public android.graphics.Rect getPageContentRect() { return (android.graphics.Rect) megletProps.get("PageContentRect"); }
+    public int getPageHeight() { return (megletProps.get("PageHeight") instanceof Integer ? (Integer) megletProps.get("PageHeight") : 0); }
+    public int getPageWidth() { return (megletProps.get("PageWidth") instanceof Integer ? (Integer) megletProps.get("PageWidth") : 0); }
     public android.graphics.pdf.PdfDocument.Page startPage(int p0) { return null; }
     PrintedPdfDocument() { this((android.content.Context) null, (android.print.PrintAttributes) null); }
 }

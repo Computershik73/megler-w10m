@@ -3,21 +3,21 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SexualActivityRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public int getProtectionUsed() { return (meglerProps.get("ProtectionUsed") instanceof Integer ? (Integer) meglerProps.get("ProtectionUsed") : 0); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public int getProtectionUsed() { return (megletProps.get("ProtectionUsed") instanceof Integer ? (Integer) megletProps.get("ProtectionUsed") : 0); }
     public android.health.connect.internal.datatypes.SexualActivityRecordInternal toRecordInternal() { return null; }
     protected SexualActivityRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, int p2) {}
-        public android.health.connect.datatypes.SexualActivityRecord build() { android.health.connect.datatypes.SexualActivityRecord x = new android.health.connect.datatypes.SexualActivityRecord(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.datatypes.SexualActivityRecord build() { android.health.connect.datatypes.SexualActivityRecord x = new android.health.connect.datatypes.SexualActivityRecord(); x.megletProps.putAll(megletProps); return x; }
         public android.health.connect.datatypes.SexualActivityRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.SexualActivityRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.SexualActivityRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.SexualActivityRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (int) 0); }
     }
     public static final class SexualActivityProtectionUsed {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int PROTECTION_USED_PROTECTED = 1;
         public static final int PROTECTION_USED_UNKNOWN = 0;
         public static final int PROTECTION_USED_UNPROTECTED = 2;

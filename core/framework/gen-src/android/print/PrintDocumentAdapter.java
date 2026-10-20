@@ -3,7 +3,7 @@ package android.print;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class PrintDocumentAdapter {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_PRINT_PREVIEW = "EXTRA_PRINT_PREVIEW";
     public PrintDocumentAdapter() {}
     public void onFinish() {}
@@ -11,14 +11,14 @@ public abstract class PrintDocumentAdapter {
     public void onStart() {}
     public abstract void onWrite(android.print.PageRange[] p0, android.os.ParcelFileDescriptor p1, android.os.CancellationSignal p2, android.print.PrintDocumentAdapter.WriteResultCallback p3);
     public static abstract class LayoutResultCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public LayoutResultCallback() {}
         public void onLayoutCancelled() {}
         public void onLayoutFailed(java.lang.CharSequence p0) {}
         public void onLayoutFinished(android.print.PrintDocumentInfo p0, boolean p1) {}
     }
     public static abstract class WriteResultCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public WriteResultCallback() {}
         public void onWriteCancelled() {}
         public void onWriteFailed(java.lang.CharSequence p0) {}

@@ -3,11 +3,11 @@ package android.graphics.pdf.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PdfPageImageContent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public PdfPageImageContent(java.lang.String p0) {}
     public int describeContents() { return 0; }
-    public java.lang.String getAltText() { return (java.lang.String) meglerProps.get("AltText"); }
+    public java.lang.String getAltText() { return (java.lang.String) megletProps.get("AltText"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PdfPageImageContent() { this((java.lang.String) null); }
 }

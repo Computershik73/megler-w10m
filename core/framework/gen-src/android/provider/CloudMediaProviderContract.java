@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CloudMediaProviderContract {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_ALBUM_ID = "android.provider.extra.ALBUM_ID";
     public static final java.lang.String EXTRA_ASYNC_CONTENT_PROVIDER = "android.provider.extra.ASYNC_CONTENT_PROVIDER";
     public static final java.lang.String EXTRA_AUTHORITY = "android.provider.extra.authority";
@@ -61,7 +61,7 @@ public final class CloudMediaProviderContract {
     public static final java.lang.String URI_PATH_SURFACE_CONTROLLER = "surface_controller";
     protected CloudMediaProviderContract() {}
     public static final class AlbumColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String ALBUM_ID_CAMERA = "Camera";
         public static final java.lang.String ALBUM_ID_DOWNLOADS = "Downloads";
         public static final java.lang.String ALBUM_ID_FAVORITES = "Favorites";
@@ -78,25 +78,25 @@ public final class CloudMediaProviderContract {
         protected AlbumColumns() {}
     }
     public static final class Capabilities implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public int describeContents() { return 0; }
-        public boolean isAlbumsAsCategoryEnabled() { return (meglerProps.get("AlbumsAsCategoryEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AlbumsAsCategoryEnabled") : false); }
-        public boolean isMediaCategoriesEnabled() { return (meglerProps.get("MediaCategoriesEnabled") instanceof Boolean ? (Boolean) meglerProps.get("MediaCategoriesEnabled") : false); }
-        public boolean isSearchEnabled() { return (meglerProps.get("SearchEnabled") instanceof Boolean ? (Boolean) meglerProps.get("SearchEnabled") : false); }
+        public boolean isAlbumsAsCategoryEnabled() { return (megletProps.get("AlbumsAsCategoryEnabled") instanceof Boolean ? (Boolean) megletProps.get("AlbumsAsCategoryEnabled") : false); }
+        public boolean isMediaCategoriesEnabled() { return (megletProps.get("MediaCategoriesEnabled") instanceof Boolean ? (Boolean) megletProps.get("MediaCategoriesEnabled") : false); }
+        public boolean isSearchEnabled() { return (megletProps.get("SearchEnabled") instanceof Boolean ? (Boolean) megletProps.get("SearchEnabled") : false); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected Capabilities() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder() {}
-            public android.provider.CloudMediaProviderContract.Capabilities build() { android.provider.CloudMediaProviderContract.Capabilities x = new android.provider.CloudMediaProviderContract.Capabilities(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.provider.CloudMediaProviderContract.Capabilities.Builder setAlbumsAsCategoryEnabled(boolean p0) { meglerProps.put("AlbumsAsCategoryEnabled", Boolean.valueOf(p0)); return this; }
-            public android.provider.CloudMediaProviderContract.Capabilities.Builder setMediaCategoriesEnabled(boolean p0) { meglerProps.put("MediaCategoriesEnabled", Boolean.valueOf(p0)); return this; }
-            public android.provider.CloudMediaProviderContract.Capabilities.Builder setSearchEnabled(boolean p0) { meglerProps.put("SearchEnabled", Boolean.valueOf(p0)); return this; }
+            public android.provider.CloudMediaProviderContract.Capabilities build() { android.provider.CloudMediaProviderContract.Capabilities x = new android.provider.CloudMediaProviderContract.Capabilities(); x.megletProps.putAll(megletProps); return x; }
+            public android.provider.CloudMediaProviderContract.Capabilities.Builder setAlbumsAsCategoryEnabled(boolean p0) { megletProps.put("AlbumsAsCategoryEnabled", Boolean.valueOf(p0)); return this; }
+            public android.provider.CloudMediaProviderContract.Capabilities.Builder setMediaCategoriesEnabled(boolean p0) { megletProps.put("MediaCategoriesEnabled", Boolean.valueOf(p0)); return this; }
+            public android.provider.CloudMediaProviderContract.Capabilities.Builder setSearchEnabled(boolean p0) { megletProps.put("SearchEnabled", Boolean.valueOf(p0)); return this; }
         }
     }
     public static final class MediaCategoryColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static java.lang.String[] ALL_PROJECTION;
         public static final java.lang.String DISPLAY_NAME = "display_name";
         public static final java.lang.String ID = "id";
@@ -108,7 +108,7 @@ public final class CloudMediaProviderContract {
         protected MediaCategoryColumns() {}
     }
     public static final class MediaCollectionInfo {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String ACCOUNT_CONFIGURATION_INTENT = "account_configuration_intent";
         public static final java.lang.String ACCOUNT_NAME = "account_name";
         public static final java.lang.String LAST_MEDIA_SYNC_GENERATION = "last_media_sync_generation";
@@ -116,7 +116,7 @@ public final class CloudMediaProviderContract {
         protected MediaCollectionInfo() {}
     }
     public static final class MediaColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static java.lang.String[] ALL_PROJECTION;
         public static final java.lang.String AUTHORITY = "authority";
         public static final java.lang.String DATA = "data";
@@ -141,7 +141,7 @@ public final class CloudMediaProviderContract {
         protected MediaColumns() {}
     }
     public static final class MediaSetColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static java.lang.String[] ALL_PROJECTION;
         public static final java.lang.String DISPLAY_NAME = "display_name";
         public static final java.lang.String ID = "id";
@@ -150,7 +150,7 @@ public final class CloudMediaProviderContract {
         protected MediaSetColumns() {}
     }
     public static final class SearchSuggestionColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static java.lang.String[] ALL_PROJECTION;
         public static final java.lang.String DISPLAY_TEXT = "display_text";
         public static final java.lang.String MEDIA_COVER_ID = "media_cover_id";

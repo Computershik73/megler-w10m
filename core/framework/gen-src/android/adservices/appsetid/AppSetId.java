@@ -3,11 +3,11 @@ package android.adservices.appsetid;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AppSetId {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int SCOPE_APP = 1;
     public static final int SCOPE_DEVELOPER = 2;
     public AppSetId(java.lang.String p0, int p1) {}
-    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
-    public int getScope() { return (meglerProps.get("Scope") instanceof Integer ? (Integer) meglerProps.get("Scope") : 0); }
+    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
+    public int getScope() { return (megletProps.get("Scope") instanceof Integer ? (Integer) megletProps.get("Scope") : 0); }
     AppSetId() { this((java.lang.String) null, (int) 0); }
 }

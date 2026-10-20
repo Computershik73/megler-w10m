@@ -3,7 +3,7 @@ package android.security.identity;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SessionTranscriptMismatchException extends android.security.identity.IdentityCredentialException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public SessionTranscriptMismatchException(java.lang.String p0) { super(p0); }
     public SessionTranscriptMismatchException(java.lang.String p0, java.lang.Throwable p1) { super(p0, p1); }
     SessionTranscriptMismatchException() { this((java.lang.String) null); }

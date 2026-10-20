@@ -3,7 +3,7 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ProfilingResult implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int ERROR_FAILED_EXECUTING = 4;
     public static final int ERROR_FAILED_INVALID_REQUEST = 7;
@@ -17,11 +17,11 @@ public final class ProfilingResult implements android.os.Parcelable {
     public ProfilingResult(int p0, java.lang.String p1, java.lang.String p2, java.lang.String p3, int p4) {}
     public ProfilingResult(android.os.Parcel p0) {}
     public int describeContents() { return 0; }
-    public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
-    public java.lang.String getErrorMessage() { return (java.lang.String) meglerProps.get("ErrorMessage"); }
-    public java.lang.String getResultFilePath() { return (java.lang.String) meglerProps.get("ResultFilePath"); }
-    public java.lang.String getTag() { return (java.lang.String) meglerProps.get("Tag"); }
-    public int getTriggerType() { return (meglerProps.get("TriggerType") instanceof Integer ? (Integer) meglerProps.get("TriggerType") : 0); }
+    public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
+    public java.lang.String getErrorMessage() { return (java.lang.String) megletProps.get("ErrorMessage"); }
+    public java.lang.String getResultFilePath() { return (java.lang.String) megletProps.get("ResultFilePath"); }
+    public java.lang.String getTag() { return (java.lang.String) megletProps.get("Tag"); }
+    public int getTriggerType() { return (megletProps.get("TriggerType") instanceof Integer ? (Integer) megletProps.get("TriggerType") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ProfilingResult() { this((android.os.Parcel) null); }
 }

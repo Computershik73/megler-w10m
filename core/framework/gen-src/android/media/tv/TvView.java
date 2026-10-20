@@ -3,13 +3,13 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TvView extends android.view.ViewGroup {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public TvView(android.content.Context p0) { super(p0); }
     public TvView(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public TvView(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
     public boolean dispatchUnhandledInputEvent(android.view.InputEvent p0) { return false; }
-    public java.util.List getAudioPresentations() { return (meglerProps.get("AudioPresentations") != null ? (java.util.List) meglerProps.get("AudioPresentations") : new java.util.ArrayList()); }
-    public android.media.tv.TvInputManager.Session getInputSession() { return (android.media.tv.TvInputManager.Session) meglerProps.get("InputSession"); }
+    public java.util.List getAudioPresentations() { return (megletProps.get("AudioPresentations") != null ? (java.util.List) megletProps.get("AudioPresentations") : new java.util.ArrayList()); }
+    public android.media.tv.TvInputManager.Session getInputSession() { return (android.media.tv.TvInputManager.Session) megletProps.get("InputSession"); }
     public java.lang.String getSelectedTrack(int p0) { return null; }
     public java.util.List getTracks(int p0) { return new java.util.ArrayList(); }
     public void notifyTvMessage(int p0, android.os.Bundle p1) {}
@@ -22,18 +22,18 @@ public class TvView extends android.view.ViewGroup {
     public void selectAudioPresentation(int p0, int p1) {}
     public void selectTrack(int p0, java.lang.String p1) {}
     public void sendAppPrivateCommand(java.lang.String p0, android.os.Bundle p1) {}
-    public void setCallback(android.media.tv.TvView.TvInputCallback p0) { meglerProps.put("Callback", p0); }
-    public void setCaptionEnabled(boolean p0) { meglerProps.put("CaptionEnabled", Boolean.valueOf(p0)); }
-    public void setHandler(android.os.Handler p0) { meglerProps.put("Handler", p0); }
-    public void setInteractiveAppNotificationEnabled(boolean p0) { meglerProps.put("InteractiveAppNotificationEnabled", Boolean.valueOf(p0)); }
+    public void setCallback(android.media.tv.TvView.TvInputCallback p0) { megletProps.put("Callback", p0); }
+    public void setCaptionEnabled(boolean p0) { megletProps.put("CaptionEnabled", Boolean.valueOf(p0)); }
+    public void setHandler(android.os.Handler p0) { megletProps.put("Handler", p0); }
+    public void setInteractiveAppNotificationEnabled(boolean p0) { megletProps.put("InteractiveAppNotificationEnabled", Boolean.valueOf(p0)); }
     public void setMain() {}
-    public void setOnUnhandledInputEventListener(android.media.tv.TvView.OnUnhandledInputEventListener p0) { meglerProps.put("OnUnhandledInputEventListener", p0); }
-    public void setStreamVolume(float p0) { meglerProps.put("StreamVolume", Float.valueOf(p0)); }
-    public void setTimeShiftPositionCallback(android.media.tv.TvView.TimeShiftPositionCallback p0) { meglerProps.put("TimeShiftPositionCallback", p0); }
+    public void setOnUnhandledInputEventListener(android.media.tv.TvView.OnUnhandledInputEventListener p0) { megletProps.put("OnUnhandledInputEventListener", p0); }
+    public void setStreamVolume(float p0) { megletProps.put("StreamVolume", Float.valueOf(p0)); }
+    public void setTimeShiftPositionCallback(android.media.tv.TvView.TimeShiftPositionCallback p0) { megletProps.put("TimeShiftPositionCallback", p0); }
     public void setTvMessageEnabled(int p0, boolean p1) {}
-    public void setVideoFrozen(boolean p0) { meglerProps.put("VideoFrozen", Boolean.valueOf(p0)); }
-    public void setZOrderMediaOverlay(boolean p0) { meglerProps.put("ZOrderMediaOverlay", Boolean.valueOf(p0)); }
-    public void setZOrderOnTop(boolean p0) { meglerProps.put("ZOrderOnTop", Boolean.valueOf(p0)); }
+    public void setVideoFrozen(boolean p0) { megletProps.put("VideoFrozen", Boolean.valueOf(p0)); }
+    public void setZOrderMediaOverlay(boolean p0) { megletProps.put("ZOrderMediaOverlay", Boolean.valueOf(p0)); }
+    public void setZOrderOnTop(boolean p0) { megletProps.put("ZOrderOnTop", Boolean.valueOf(p0)); }
     public void stopPlayback(int p0) {}
     public void timeShiftPause() {}
     public void timeShiftPlay(java.lang.String p0, android.net.Uri p1) {}
@@ -49,13 +49,13 @@ public class TvView extends android.view.ViewGroup {
         boolean onUnhandledInputEvent(android.view.InputEvent p0);
     }
     public static abstract class TimeShiftPositionCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public TimeShiftPositionCallback() {}
         public void onTimeShiftCurrentPositionChanged(java.lang.String p0, long p1) {}
         public void onTimeShiftStartPositionChanged(java.lang.String p0, long p1) {}
     }
     public static abstract class TvInputCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public TvInputCallback() {}
         public void onAitInfoUpdated(java.lang.String p0, android.media.tv.AitInfo p1) {}
         public void onAudioPresentationSelected(java.lang.String p0, int p1, int p2) {}

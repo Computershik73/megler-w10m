@@ -3,16 +3,16 @@ package android.text.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Rfc822Token {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public Rfc822Token(java.lang.String p0, java.lang.String p1, java.lang.String p2) {}
     public static java.lang.String quoteComment(java.lang.String p0) { return null; }
     public static java.lang.String quoteName(java.lang.String p0) { return null; }
     public static java.lang.String quoteNameIfNecessary(java.lang.String p0) { return null; }
-    public java.lang.String getAddress() { return (java.lang.String) meglerProps.get("Address"); }
-    public java.lang.String getComment() { return (java.lang.String) meglerProps.get("Comment"); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public void setAddress(java.lang.String p0) { meglerProps.put("Address", p0); }
-    public void setComment(java.lang.String p0) { meglerProps.put("Comment", p0); }
-    public void setName(java.lang.String p0) { meglerProps.put("Name", p0); }
+    public java.lang.String getAddress() { return (java.lang.String) megletProps.get("Address"); }
+    public java.lang.String getComment() { return (java.lang.String) megletProps.get("Comment"); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public void setAddress(java.lang.String p0) { megletProps.put("Address", p0); }
+    public void setComment(java.lang.String p0) { megletProps.put("Comment", p0); }
+    public void setName(java.lang.String p0) { megletProps.put("Name", p0); }
     Rfc822Token() { this((java.lang.String) null, (java.lang.String) null, (java.lang.String) null); }
 }

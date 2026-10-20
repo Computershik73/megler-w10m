@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaDescrambler implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final byte SCRAMBLE_CONTROL_EVEN_KEY = (byte) 2;
     public static final byte SCRAMBLE_CONTROL_ODD_KEY = (byte) 3;
     public static final byte SCRAMBLE_CONTROL_RESERVED = (byte) 1;
@@ -13,8 +13,8 @@ public final class MediaDescrambler implements java.lang.AutoCloseable {
     public void close() {}
     public int descramble(java.nio.ByteBuffer p0, java.nio.ByteBuffer p1, android.media.MediaCodec.CryptoInfo p2) { return 0; }
     protected void finalize() {}
-    public boolean isAidlHal() { return (meglerProps.get("AidlHal") instanceof Boolean ? (Boolean) meglerProps.get("AidlHal") : false); }
+    public boolean isAidlHal() { return (megletProps.get("AidlHal") instanceof Boolean ? (Boolean) megletProps.get("AidlHal") : false); }
     public boolean requiresSecureDecoderComponent(java.lang.String p0) { return false; }
-    public void setMediaCasSession(android.media.MediaCas.Session p0) { meglerProps.put("MediaCasSession", p0); }
+    public void setMediaCasSession(android.media.MediaCas.Session p0) { megletProps.put("MediaCasSession", p0); }
     MediaDescrambler() { this((int) 0); }
 }

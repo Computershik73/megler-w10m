@@ -3,7 +3,7 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ViewDebug {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final boolean DEBUG_DRAG = false;
     public static final boolean DEBUG_POSITIONING = false;
     public static final java.lang.String REMOTE_COMMAND_DUMP_ENCODED = "DUMP_ENCODED";
@@ -40,7 +40,7 @@ public class ViewDebug {
         android.graphics.Canvas getCanvas(android.view.View p0, int p1, int p2);
     }
     public static class HardwareCanvasProvider implements android.view.ViewDebug.CanvasProvider {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public HardwareCanvasProvider() {}
         public android.graphics.Bitmap createBitmap() { return null; }
         public android.graphics.Canvas getCanvas(android.view.View p0, int p1, int p2) { return null; }
@@ -56,13 +56,13 @@ public class ViewDebug {
         BIND_VIEW, MOVE_FROM_ACTIVE_TO_SCRAP_HEAP, MOVE_TO_SCRAP_HEAP, NEW_VIEW, RECYCLE_FROM_ACTIVE_HEAP, RECYCLE_FROM_SCRAP_HEAP;
     }
     public static class SoftwareCanvasProvider implements android.view.ViewDebug.CanvasProvider {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public SoftwareCanvasProvider() {}
         public android.graphics.Bitmap createBitmap() { return null; }
         public android.graphics.Canvas getCanvas(android.view.View p0, int p1, int p2) { return null; }
     }
     public static class ViewMethodInvocationSerializationException extends java.lang.Exception {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected ViewMethodInvocationSerializationException() { super(); }
     }
 }

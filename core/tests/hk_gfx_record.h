@@ -5,7 +5,7 @@
  * A Java app runs where guest code runs: under qemu-arm, where the shell's
  * drawing is the stand-in, or on a phone. The shell's real drawing runs on
  * Windows. On one PC the two do not meet, so the app's calls through
- * megler_gfx_host are written down under qemu -- every call that draws, with
+ * meglet_gfx_host are written down under qemu -- every call that draws, with
  * the pixels of every bitmap it draws from, and each picture handed to the
  * window -- and played back on Windows through the real host: the app's
  * views as Direct2D and DirectWrite draw them, laid out as the stand-in's
@@ -14,7 +14,7 @@
 #ifndef HK_GFX_RECORD_H
 #define HK_GFX_RECORD_H
 
-#include "../include/megler.h"
+#include "../include/meglet.h"
 #include "hk_tests.h"
 
 #ifdef __cplusplus
@@ -23,9 +23,9 @@ extern "C" {
 
 /*
  * Starts one of the Java test apps (`which`: "hello" or "demos") through
- * megler_run with the stand-in as the shell's drawing, and writes what it
+ * meglet_run with the stand-in as the shell's drawing, and writes what it
  * asks of the drawing to `record_file`; "hello" has its button pressed once.
- * megler_init first, with hk_gfx_record_log as the log's sink. Only where
+ * meglet_init first, with hk_gfx_record_log as the log's sink. Only where
  * guest code can run. Returns 0 when the app started, showed a picture and
  * ended.
  */
@@ -43,7 +43,7 @@ void hk_gfx_record_log(int level, const char *line, void *user);
  * them. Returns the number of failed checks and adds the number made to
  * *checks.
  */
-int hk_gfx_replay_run(const char *record_file, const megler_gfx_host *host, bool same, const char *out_dir, const char *name, hk_test_sink sink, void *user, int *checks);
+int hk_gfx_replay_run(const char *record_file, const meglet_gfx_host *host, bool same, const char *out_dir, const char *name, hk_test_sink sink, void *user, int *checks);
 
 #ifdef __cplusplus
 }

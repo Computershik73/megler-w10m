@@ -3,14 +3,14 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TextBoundsInfoResult {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CODE_CANCELLED = 3;
     public static final int CODE_FAILED = 2;
     public static final int CODE_SUCCESS = 1;
     public static int CODE_UNSUPPORTED;
     public TextBoundsInfoResult(int p0) {}
     public TextBoundsInfoResult(int p0, android.view.inputmethod.TextBoundsInfo p1) {}
-    public int getResultCode() { return (meglerProps.get("ResultCode") instanceof Integer ? (Integer) meglerProps.get("ResultCode") : 0); }
-    public android.view.inputmethod.TextBoundsInfo getTextBoundsInfo() { return (android.view.inputmethod.TextBoundsInfo) meglerProps.get("TextBoundsInfo"); }
+    public int getResultCode() { return (megletProps.get("ResultCode") instanceof Integer ? (Integer) megletProps.get("ResultCode") : 0); }
+    public android.view.inputmethod.TextBoundsInfo getTextBoundsInfo() { return (android.view.inputmethod.TextBoundsInfo) megletProps.get("TextBoundsInfo"); }
     TextBoundsInfoResult() { this((int) 0); }
 }

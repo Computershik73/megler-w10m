@@ -3,14 +3,14 @@ package android.nfc;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NfcAntennaInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public NfcAntennaInfo(int p0, int p1, boolean p2, java.util.List p3) {}
     public int describeContents() { return 0; }
-    public java.util.List getAvailableNfcAntennas() { return (meglerProps.get("AvailableNfcAntennas") != null ? (java.util.List) meglerProps.get("AvailableNfcAntennas") : new java.util.ArrayList()); }
-    public int getDeviceHeight() { return (meglerProps.get("DeviceHeight") instanceof Integer ? (Integer) meglerProps.get("DeviceHeight") : 0); }
-    public int getDeviceWidth() { return (meglerProps.get("DeviceWidth") instanceof Integer ? (Integer) meglerProps.get("DeviceWidth") : 0); }
-    public boolean isDeviceFoldable() { return (meglerProps.get("DeviceFoldable") instanceof Boolean ? (Boolean) meglerProps.get("DeviceFoldable") : false); }
+    public java.util.List getAvailableNfcAntennas() { return (megletProps.get("AvailableNfcAntennas") != null ? (java.util.List) megletProps.get("AvailableNfcAntennas") : new java.util.ArrayList()); }
+    public int getDeviceHeight() { return (megletProps.get("DeviceHeight") instanceof Integer ? (Integer) megletProps.get("DeviceHeight") : 0); }
+    public int getDeviceWidth() { return (megletProps.get("DeviceWidth") instanceof Integer ? (Integer) megletProps.get("DeviceWidth") : 0); }
+    public boolean isDeviceFoldable() { return (megletProps.get("DeviceFoldable") instanceof Boolean ? (Boolean) megletProps.get("DeviceFoldable") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     NfcAntennaInfo() { this((int) 0, (int) 0, (boolean) false, (java.util.List) null); }
 }

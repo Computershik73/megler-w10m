@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DisconnectCause {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ALREADY_DIALING = 72;
     public static final int ANSWERED_ELSEWHERE = 52;
     public static final int BUSY = 4;

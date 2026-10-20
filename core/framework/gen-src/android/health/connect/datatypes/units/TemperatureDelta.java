@@ -3,10 +3,10 @@ package android.health.connect.datatypes.units;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TemperatureDelta implements java.lang.Comparable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.units.TemperatureDelta fromCelsius(double p0) { return new TemperatureDelta(); }
     public int compareTo(android.health.connect.datatypes.units.TemperatureDelta p0) { return 0; }
     public int compareTo(java.lang.Object p0) { return 0; }
-    public double getInCelsius() { return (meglerProps.get("InCelsius") instanceof Double ? (Double) meglerProps.get("InCelsius") : 0d); }
+    public double getInCelsius() { return (megletProps.get("InCelsius") instanceof Double ? (Double) megletProps.get("InCelsius") : 0d); }
     protected TemperatureDelta() {}
 }

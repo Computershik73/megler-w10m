@@ -3,7 +3,7 @@ package android.service.quicksettings;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TileService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_QS_TILE = "android.service.quicksettings.action.QS_TILE";
     public static final java.lang.String ACTION_QS_TILE_PREFERENCES = "android.service.quicksettings.action.QS_TILE_PREFERENCES";
     public static final java.lang.String CATEGORY_ACCESSIBILITY = "android.service.quicksettings.CATEGORY_ACCESSIBILITY";
@@ -21,9 +21,9 @@ public class TileService extends android.app.Service {
     public TileService() { super(); }
     public static boolean isQuickSettingsSupported() { return false; }
     public static void requestListeningState(android.content.Context p0, android.content.ComponentName p1) {}
-    public android.service.quicksettings.Tile getQsTile() { return (android.service.quicksettings.Tile) meglerProps.get("QsTile"); }
-    public boolean isLocked() { return (meglerProps.get("Locked") instanceof Boolean ? (Boolean) meglerProps.get("Locked") : false); }
-    public boolean isSecure() { return (meglerProps.get("Secure") instanceof Boolean ? (Boolean) meglerProps.get("Secure") : false); }
+    public android.service.quicksettings.Tile getQsTile() { return (android.service.quicksettings.Tile) megletProps.get("QsTile"); }
+    public boolean isLocked() { return (megletProps.get("Locked") instanceof Boolean ? (Boolean) megletProps.get("Locked") : false); }
+    public boolean isSecure() { return (megletProps.get("Secure") instanceof Boolean ? (Boolean) megletProps.get("Secure") : false); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public void onClick() {}
     public void onStartListening() {}

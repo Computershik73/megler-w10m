@@ -3,10 +3,10 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class NetworkSpecifier {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public NetworkSpecifier() {}
     public boolean canBeSatisfiedBy(android.net.NetworkSpecifier p0) { return false; }
-    public long getApplicableRedactions() { return (meglerProps.get("ApplicableRedactions") instanceof Long ? (Long) meglerProps.get("ApplicableRedactions") : 0L); }
+    public long getApplicableRedactions() { return (megletProps.get("ApplicableRedactions") instanceof Long ? (Long) megletProps.get("ApplicableRedactions") : 0L); }
     public android.net.NetworkSpecifier redact() { return this; }
     public android.net.NetworkSpecifier redact(long p0) { return this; }
 }

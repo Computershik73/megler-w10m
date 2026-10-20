@@ -3,10 +3,10 @@ package android.health.connect.datatypes.units;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Length implements java.lang.Comparable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.units.Length fromMeters(double p0) { return new Length(); }
     public int compareTo(android.health.connect.datatypes.units.Length p0) { return 0; }
     public int compareTo(java.lang.Object p0) { return 0; }
-    public double getInMeters() { return (meglerProps.get("InMeters") instanceof Double ? (Double) meglerProps.get("InMeters") : 0d); }
+    public double getInMeters() { return (megletProps.get("InMeters") instanceof Double ? (Double) megletProps.get("InMeters") : 0d); }
     protected Length() {}
 }

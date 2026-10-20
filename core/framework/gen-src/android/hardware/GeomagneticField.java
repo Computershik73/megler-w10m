@@ -3,14 +3,14 @@ package android.hardware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GeomagneticField {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public GeomagneticField(float p0, float p1, float p2, long p3) {}
-    public float getDeclination() { return (meglerProps.get("Declination") instanceof Float ? (Float) meglerProps.get("Declination") : 0f); }
-    public float getFieldStrength() { return (meglerProps.get("FieldStrength") instanceof Float ? (Float) meglerProps.get("FieldStrength") : 0f); }
-    public float getHorizontalStrength() { return (meglerProps.get("HorizontalStrength") instanceof Float ? (Float) meglerProps.get("HorizontalStrength") : 0f); }
-    public float getInclination() { return (meglerProps.get("Inclination") instanceof Float ? (Float) meglerProps.get("Inclination") : 0f); }
-    public float getX() { return (meglerProps.get("X") instanceof Float ? (Float) meglerProps.get("X") : 0f); }
-    public float getY() { return (meglerProps.get("Y") instanceof Float ? (Float) meglerProps.get("Y") : 0f); }
-    public float getZ() { return (meglerProps.get("Z") instanceof Float ? (Float) meglerProps.get("Z") : 0f); }
+    public float getDeclination() { return (megletProps.get("Declination") instanceof Float ? (Float) megletProps.get("Declination") : 0f); }
+    public float getFieldStrength() { return (megletProps.get("FieldStrength") instanceof Float ? (Float) megletProps.get("FieldStrength") : 0f); }
+    public float getHorizontalStrength() { return (megletProps.get("HorizontalStrength") instanceof Float ? (Float) megletProps.get("HorizontalStrength") : 0f); }
+    public float getInclination() { return (megletProps.get("Inclination") instanceof Float ? (Float) megletProps.get("Inclination") : 0f); }
+    public float getX() { return (megletProps.get("X") instanceof Float ? (Float) megletProps.get("X") : 0f); }
+    public float getY() { return (megletProps.get("Y") instanceof Float ? (Float) megletProps.get("Y") : 0f); }
+    public float getZ() { return (megletProps.get("Z") instanceof Float ? (Float) megletProps.get("Z") : 0f); }
     GeomagneticField() { this((float) 0f, (float) 0f, (float) 0f, (long) 0L); }
 }

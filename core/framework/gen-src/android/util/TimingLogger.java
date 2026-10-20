@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TimingLogger {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public TimingLogger(java.lang.String p0, java.lang.String p1) {}
     public void addSplit(java.lang.String p0) {}
     public void dumpToLog() {}

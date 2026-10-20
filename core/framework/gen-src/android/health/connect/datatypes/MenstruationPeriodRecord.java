@@ -3,18 +3,18 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MenstruationPeriodRecord extends android.health.connect.datatypes.IntervalRecord {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public android.health.connect.internal.datatypes.MenstruationPeriodRecordInternal toRecordInternal() { return null; }
     protected MenstruationPeriodRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, java.time.Instant p2) {}
-        public android.health.connect.datatypes.MenstruationPeriodRecord build() { android.health.connect.datatypes.MenstruationPeriodRecord x = new android.health.connect.datatypes.MenstruationPeriodRecord(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.datatypes.MenstruationPeriodRecord build() { android.health.connect.datatypes.MenstruationPeriodRecord x = new android.health.connect.datatypes.MenstruationPeriodRecord(); x.megletProps.putAll(megletProps); return x; }
         public android.health.connect.datatypes.MenstruationPeriodRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.MenstruationPeriodRecord.Builder clearEndZoneOffset() { return this; }
         public android.health.connect.datatypes.MenstruationPeriodRecord.Builder clearStartZoneOffset() { return this; }
-        public android.health.connect.datatypes.MenstruationPeriodRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("EndZoneOffset", p0); return this; }
-        public android.health.connect.datatypes.MenstruationPeriodRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("StartZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.MenstruationPeriodRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { megletProps.put("EndZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.MenstruationPeriodRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { megletProps.put("StartZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (java.time.Instant) null); }
     }
 }

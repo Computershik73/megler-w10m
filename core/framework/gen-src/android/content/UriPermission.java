@@ -3,16 +3,16 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UriPermission implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final long INVALID_TIME = -9223372036854775808L;
     public UriPermission(android.net.Uri p0, int p1, long p2) {}
     public UriPermission(android.os.Parcel p0) {}
     public int describeContents() { return 0; }
-    public long getPersistedTime() { return (meglerProps.get("PersistedTime") instanceof Long ? (Long) meglerProps.get("PersistedTime") : 0L); }
-    public android.net.Uri getUri() { return (android.net.Uri) meglerProps.get("Uri"); }
-    public boolean isReadPermission() { return (meglerProps.get("ReadPermission") instanceof Boolean ? (Boolean) meglerProps.get("ReadPermission") : false); }
-    public boolean isWritePermission() { return (meglerProps.get("WritePermission") instanceof Boolean ? (Boolean) meglerProps.get("WritePermission") : false); }
+    public long getPersistedTime() { return (megletProps.get("PersistedTime") instanceof Long ? (Long) megletProps.get("PersistedTime") : 0L); }
+    public android.net.Uri getUri() { return (android.net.Uri) megletProps.get("Uri"); }
+    public boolean isReadPermission() { return (megletProps.get("ReadPermission") instanceof Boolean ? (Boolean) megletProps.get("ReadPermission") : false); }
+    public boolean isWritePermission() { return (megletProps.get("WritePermission") instanceof Boolean ? (Boolean) megletProps.get("WritePermission") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     UriPermission() { this((android.os.Parcel) null); }
 }

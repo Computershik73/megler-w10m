@@ -3,13 +3,13 @@ package android.service.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class MediaBrowserService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String KEY_MEDIA_ITEM = "media_item";
     public static final java.lang.String SERVICE_INTERFACE = "android.media.browse.MediaBrowserService";
     public MediaBrowserService() { super(); }
-    public android.os.Bundle getBrowserRootHints() { return (android.os.Bundle) meglerProps.get("BrowserRootHints"); }
-    public android.media.session.MediaSessionManager.RemoteUserInfo getCurrentBrowserInfo() { return (android.media.session.MediaSessionManager.RemoteUserInfo) meglerProps.get("CurrentBrowserInfo"); }
-    public android.media.session.MediaSession.Token getSessionToken() { return (android.media.session.MediaSession.Token) meglerProps.get("SessionToken"); }
+    public android.os.Bundle getBrowserRootHints() { return (android.os.Bundle) megletProps.get("BrowserRootHints"); }
+    public android.media.session.MediaSessionManager.RemoteUserInfo getCurrentBrowserInfo() { return (android.media.session.MediaSessionManager.RemoteUserInfo) megletProps.get("CurrentBrowserInfo"); }
+    public android.media.session.MediaSession.Token getSessionToken() { return (android.media.session.MediaSession.Token) megletProps.get("SessionToken"); }
     public void notifyChildrenChanged(java.lang.String p0) {}
     public void notifyChildrenChanged(java.lang.String p0, android.os.Bundle p1) {}
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
@@ -17,20 +17,20 @@ public abstract class MediaBrowserService extends android.app.Service {
     public abstract void onLoadChildren(java.lang.String p0, android.service.media.MediaBrowserService.Result p1);
     public void onLoadChildren(java.lang.String p0, android.service.media.MediaBrowserService.Result p1, android.os.Bundle p2) {}
     public void onLoadItem(java.lang.String p0, android.service.media.MediaBrowserService.Result p1) {}
-    public void setSessionToken(android.media.session.MediaSession.Token p0) { meglerProps.put("SessionToken", p0); }
+    public void setSessionToken(android.media.session.MediaSession.Token p0) { megletProps.put("SessionToken", p0); }
     public static final class BrowserRoot {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String EXTRA_EXCLUDE_CAPABILITIES = "android.service.media.extra.EXCLUDE_CAPABILITIES";
         public static final java.lang.String EXTRA_OFFLINE = "android.service.media.extra.OFFLINE";
         public static final java.lang.String EXTRA_RECENT = "android.service.media.extra.RECENT";
         public static final java.lang.String EXTRA_SUGGESTED = "android.service.media.extra.SUGGESTED";
         public BrowserRoot(java.lang.String p0, android.os.Bundle p1) {}
-        public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-        public java.lang.String getRootId() { return (java.lang.String) meglerProps.get("RootId"); }
+        public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+        public java.lang.String getRootId() { return (java.lang.String) megletProps.get("RootId"); }
         BrowserRoot() { this((java.lang.String) null, (android.os.Bundle) null); }
     }
     public static class Result {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public void detach() {}
         public void sendResult(java.lang.Object p0) {}
         protected Result() {}

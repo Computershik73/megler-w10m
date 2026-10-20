@@ -3,7 +3,7 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GeolocationPermissions {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public GeolocationPermissions() {}
     public static android.webkit.GeolocationPermissions getInstance() { return new GeolocationPermissions(); }
     public void allow(java.lang.String p0) {}

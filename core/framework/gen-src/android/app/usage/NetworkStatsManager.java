@@ -3,7 +3,7 @@ package android.app.usage;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class NetworkStatsManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CALLBACK_LIMIT_REACHED = 0;
     public static final int CALLBACK_RELEASED = 1;
     public static final int FLAG_AUGMENT_WITH_SUBSCRIPTION_PLAN = 4;
@@ -15,9 +15,9 @@ public class NetworkStatsManager {
     public NetworkStatsManager(android.content.Context p0, android.net.INetworkStatsService p1) {}
     public static int getCollapsedRatType(int p0) { return 0; }
     public void forceUpdate() {}
-    public android.net.INetworkStatsService getBinder() { return (android.net.INetworkStatsService) meglerProps.get("Binder"); }
-    public android.net.NetworkStats getMobileUidStats() { return (android.net.NetworkStats) meglerProps.get("MobileUidStats"); }
-    public android.net.NetworkStats getWifiUidStats() { return (android.net.NetworkStats) meglerProps.get("WifiUidStats"); }
+    public android.net.INetworkStatsService getBinder() { return (android.net.INetworkStatsService) megletProps.get("Binder"); }
+    public android.net.NetworkStats getMobileUidStats() { return (android.net.NetworkStats) megletProps.get("MobileUidStats"); }
+    public android.net.NetworkStats getWifiUidStats() { return (android.net.NetworkStats) megletProps.get("WifiUidStats"); }
     public void noteUidForeground(int p0, boolean p1) {}
     public void notifyNetworkStatus(java.util.List p0, java.util.List p1, java.lang.String p2, java.util.List p3) {}
     public android.app.usage.NetworkStats queryDetails(int p0, java.lang.String p1, long p2, long p3) { return null; }
@@ -37,16 +37,16 @@ public class NetworkStatsManager {
     public void registerUsageCallback(int p0, java.lang.String p1, long p2, android.app.usage.NetworkStatsManager.UsageCallback p3) {}
     public void registerUsageCallback(int p0, java.lang.String p1, long p2, android.app.usage.NetworkStatsManager.UsageCallback p3, android.os.Handler p4) {}
     public void registerUsageCallback(android.net.NetworkTemplate p0, long p1, java.util.concurrent.Executor p2, android.app.usage.NetworkStatsManager.UsageCallback p3) {}
-    public void setAugmentWithSubscriptionPlan(boolean p0) { meglerProps.put("AugmentWithSubscriptionPlan", Boolean.valueOf(p0)); }
-    public void setDefaultGlobalAlert(long p0) { meglerProps.put("DefaultGlobalAlert", Long.valueOf(p0)); }
-    public void setPollForce(boolean p0) { meglerProps.put("PollForce", Boolean.valueOf(p0)); }
-    public void setPollOnOpen(boolean p0) { meglerProps.put("PollOnOpen", Boolean.valueOf(p0)); }
+    public void setAugmentWithSubscriptionPlan(boolean p0) { megletProps.put("AugmentWithSubscriptionPlan", Boolean.valueOf(p0)); }
+    public void setDefaultGlobalAlert(long p0) { megletProps.put("DefaultGlobalAlert", Long.valueOf(p0)); }
+    public void setPollForce(boolean p0) { megletProps.put("PollForce", Boolean.valueOf(p0)); }
+    public void setPollOnOpen(boolean p0) { megletProps.put("PollOnOpen", Boolean.valueOf(p0)); }
     public void setStatsProviderWarningAndLimitAsync(java.lang.String p0, long p1, long p2) {}
     public void unregisterNetworkStatsProvider(android.net.netstats.provider.NetworkStatsProvider p0) {}
     public void unregisterUsageCallback(android.app.usage.NetworkStatsManager.UsageCallback p0) {}
     NetworkStatsManager() { this((android.content.Context) null, (android.net.INetworkStatsService) null); }
     public static abstract class UsageCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public UsageCallback() {}
         public abstract void onThresholdReached(int p0, java.lang.String p1);
         public void onThresholdReached(android.net.NetworkTemplate p0) {}

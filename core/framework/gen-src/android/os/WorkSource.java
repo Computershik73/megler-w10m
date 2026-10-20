@@ -3,7 +3,7 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WorkSource implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public WorkSource() {}
     public WorkSource(int p0) {}
@@ -22,12 +22,12 @@ public class WorkSource implements android.os.Parcelable {
     public boolean diff(android.os.WorkSource p0) { return false; }
     public void dumpDebug(android.util.proto.ProtoOutputStream p0, long p1) {}
     public int get(int p0) { return 0; }
-    public int getAttributionUid() { return (meglerProps.get("AttributionUid") instanceof Integer ? (Integer) meglerProps.get("AttributionUid") : 0); }
+    public int getAttributionUid() { return (megletProps.get("AttributionUid") instanceof Integer ? (Integer) megletProps.get("AttributionUid") : 0); }
     public java.lang.String getName(int p0) { return null; }
     public java.lang.String getPackageName(int p0) { return null; }
     public int getUid(int p0) { return 0; }
-    public java.util.List getWorkChains() { return (meglerProps.get("WorkChains") != null ? (java.util.List) meglerProps.get("WorkChains") : new java.util.ArrayList()); }
-    public boolean isEmpty() { return (meglerProps.get("Empty") instanceof Boolean ? (Boolean) meglerProps.get("Empty") : false); }
+    public java.util.List getWorkChains() { return (megletProps.get("WorkChains") != null ? (java.util.List) megletProps.get("WorkChains") : new java.util.ArrayList()); }
+    public boolean isEmpty() { return (megletProps.get("Empty") instanceof Boolean ? (Boolean) megletProps.get("Empty") : false); }
     public boolean remove(android.os.WorkSource p0) { return false; }
     public void set(int p0) {}
     public void set(int p0, java.lang.String p1) {}
@@ -38,17 +38,17 @@ public class WorkSource implements android.os.Parcelable {
     public android.os.WorkSource withoutNames() { return this; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class WorkChain implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public WorkChain() {}
         public WorkChain(android.os.WorkSource.WorkChain p0) {}
         public android.os.WorkSource.WorkChain addNode(int p0, java.lang.String p1) { return this; }
         public int describeContents() { return 0; }
-        public java.lang.String getAttributionTag() { return (java.lang.String) meglerProps.get("AttributionTag"); }
-        public int getAttributionUid() { return (meglerProps.get("AttributionUid") instanceof Integer ? (Integer) meglerProps.get("AttributionUid") : 0); }
-        public int getSize() { return (meglerProps.get("Size") instanceof Integer ? (Integer) meglerProps.get("Size") : 0); }
-        public java.lang.String[] getTags() { return (java.lang.String[]) meglerProps.get("Tags"); }
-        public int[] getUids() { return (int[]) meglerProps.get("Uids"); }
+        public java.lang.String getAttributionTag() { return (java.lang.String) megletProps.get("AttributionTag"); }
+        public int getAttributionUid() { return (megletProps.get("AttributionUid") instanceof Integer ? (Integer) megletProps.get("AttributionUid") : 0); }
+        public int getSize() { return (megletProps.get("Size") instanceof Integer ? (Integer) megletProps.get("Size") : 0); }
+        public java.lang.String[] getTags() { return (java.lang.String[]) megletProps.get("Tags"); }
+        public int[] getUids() { return (int[]) megletProps.get("Uids"); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
     }
 }

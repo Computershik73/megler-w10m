@@ -3,14 +3,14 @@ package android.service.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CallingAppInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public CallingAppInfo(java.lang.String p0, android.content.pm.SigningInfo p1) {}
     public CallingAppInfo(java.lang.String p0, android.content.pm.SigningInfo p1, java.lang.String p2) {}
     public int describeContents() { return 0; }
-    public java.lang.String getOrigin() { return (java.lang.String) meglerProps.get("Origin"); }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-    public android.content.pm.SigningInfo getSigningInfo() { return (android.content.pm.SigningInfo) meglerProps.get("SigningInfo"); }
+    public java.lang.String getOrigin() { return (java.lang.String) megletProps.get("Origin"); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    public android.content.pm.SigningInfo getSigningInfo() { return (android.content.pm.SigningInfo) megletProps.get("SigningInfo"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     CallingAppInfo() { this((java.lang.String) null, (android.content.pm.SigningInfo) null); }
 }

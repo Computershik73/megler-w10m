@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class JetPlayer {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.media.JetPlayer getJetPlayer() { return new JetPlayer(); }
     public static int getMaxTracks() { return 0; }
     public boolean clearQueue() { return false; }
@@ -17,7 +17,7 @@ public class JetPlayer {
     public boolean queueJetSegment(int p0, int p1, int p2, int p3, int p4, byte p5) { return false; }
     public boolean queueJetSegmentMuteArray(int p0, int p1, int p2, int p3, boolean[] p4, byte p5) { return false; }
     public void release() {}
-    public void setEventListener(android.media.JetPlayer.OnJetEventListener p0) { meglerProps.put("EventListener", p0); }
+    public void setEventListener(android.media.JetPlayer.OnJetEventListener p0) { megletProps.put("EventListener", p0); }
     public void setEventListener(android.media.JetPlayer.OnJetEventListener p0, android.os.Handler p1) {}
     public boolean setMuteArray(boolean[] p0, boolean p1) { return false; }
     public boolean setMuteFlag(int p0, boolean p1, boolean p2) { return false; }

@@ -1,5 +1,5 @@
 /*
- * The native library of the test app `natives` (megler.test.natives.Lib): what
+ * The native library of the test app `natives` (meglet.test.natives.Lib): what
  * an app's own library does with JNI and the NDK, each thing small enough to
  * be checked from Java. Built by the NDK (tools/build-test-app.sh) against
  * its real headers, as an app's library is: armeabi-v7a, softfp.
@@ -25,13 +25,13 @@
 #include <unistd.h>
 
 #define TAG "NativesLib"
-#define LIB "megler/test/natives/Lib"
+#define LIB "meglet/test/natives/Lib"
 
 int natives_dep_answer(void);
 long long natives_dep_scale(long long v, int by);
 
 static JavaVM *g_vm;
-static jclass g_lib;                   /* megler.test.natives.Lib, found in JNI_OnLoad and kept: the only way a thread of this library's own can have it */
+static jclass g_lib;                   /* meglet.test.natives.Lib, found in JNI_OnLoad and kept: the only way a thread of this library's own can have it */
 static jmethodID g_on_thread;
 static int g_onload_calls;
 static jint g_after_detach = 12345;
@@ -88,35 +88,35 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
 
 /* ---------------------------------------------------- by name: primitives */
 
-JNIEXPORT jboolean JNICALL Java_megler_test_natives_Lib_flip(JNIEnv *env, jclass cls, jboolean v) { (void)env; (void)cls; return !v; }
-JNIEXPORT jbyte JNICALL Java_megler_test_natives_Lib_nextByte(JNIEnv *env, jclass cls, jbyte v) { (void)env; (void)cls; return (jbyte)(v + 1); }
-JNIEXPORT jchar JNICALL Java_megler_test_natives_Lib_nextChar(JNIEnv *env, jclass cls, jchar v) { (void)env; (void)cls; return (jchar)(v + 1); }
-JNIEXPORT jshort JNICALL Java_megler_test_natives_Lib_nextShort(JNIEnv *env, jclass cls, jshort v) { (void)env; (void)cls; return (jshort)(v + 1); }
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_nextInt(JNIEnv *env, jclass cls, jint v) { (void)env; (void)cls; return (jint)((uint32_t)v + 1u); }
-JNIEXPORT jlong JNICALL Java_megler_test_natives_Lib_nextLong(JNIEnv *env, jclass cls, jlong v) { (void)env; (void)cls; return (jlong)((uint64_t)v + 1u); }
-JNIEXPORT jfloat JNICALL Java_megler_test_natives_Lib_half(JNIEnv *env, jclass cls, jfloat v) { (void)env; (void)cls; return v / 2; }
-JNIEXPORT jdouble JNICALL Java_megler_test_natives_Lib_twice(JNIEnv *env, jclass cls, jdouble v) { (void)env; (void)cls; return v * 2; }
+JNIEXPORT jboolean JNICALL Java_meglet_test_natives_Lib_flip(JNIEnv *env, jclass cls, jboolean v) { (void)env; (void)cls; return !v; }
+JNIEXPORT jbyte JNICALL Java_meglet_test_natives_Lib_nextByte(JNIEnv *env, jclass cls, jbyte v) { (void)env; (void)cls; return (jbyte)(v + 1); }
+JNIEXPORT jchar JNICALL Java_meglet_test_natives_Lib_nextChar(JNIEnv *env, jclass cls, jchar v) { (void)env; (void)cls; return (jchar)(v + 1); }
+JNIEXPORT jshort JNICALL Java_meglet_test_natives_Lib_nextShort(JNIEnv *env, jclass cls, jshort v) { (void)env; (void)cls; return (jshort)(v + 1); }
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_nextInt(JNIEnv *env, jclass cls, jint v) { (void)env; (void)cls; return (jint)((uint32_t)v + 1u); }
+JNIEXPORT jlong JNICALL Java_meglet_test_natives_Lib_nextLong(JNIEnv *env, jclass cls, jlong v) { (void)env; (void)cls; return (jlong)((uint64_t)v + 1u); }
+JNIEXPORT jfloat JNICALL Java_meglet_test_natives_Lib_half(JNIEnv *env, jclass cls, jfloat v) { (void)env; (void)cls; return v / 2; }
+JNIEXPORT jdouble JNICALL Java_meglet_test_natives_Lib_twice(JNIEnv *env, jclass cls, jdouble v) { (void)env; (void)cls; return v * 2; }
 
 /* Ten arguments of every width: the first few in registers, the rest on the stack, each 64-bit one at an even word (softfp). */
-JNIEXPORT jdouble JNICALL Java_megler_test_natives_Lib_mix(JNIEnv *env, jclass cls, jint a, jlong b, jdouble c, jint d, jlong e, jfloat f, jdouble g, jlong h, jint i, jdouble j)
+JNIEXPORT jdouble JNICALL Java_meglet_test_natives_Lib_mix(JNIEnv *env, jclass cls, jint a, jlong b, jdouble c, jint d, jlong e, jfloat f, jdouble g, jlong h, jint i, jdouble j)
 {
     (void)env; (void)cls;
     return (double)a + (double)b + c + (double)d + (double)e + (double)f + g + (double)h + (double)i + j;
 }
 
-JNIEXPORT jlong JNICALL Java_megler_test_natives_Lib_mixLong(JNIEnv *env, jobject self, jlong a, jint b, jlong c, jbyte d, jlong e, jshort f, jchar g, jboolean h)
+JNIEXPORT jlong JNICALL Java_meglet_test_natives_Lib_mixLong(JNIEnv *env, jobject self, jlong a, jint b, jlong c, jbyte d, jlong e, jshort f, jchar g, jboolean h)
 {
     (void)env; (void)self;
     return a * 3 + b * 5 + c * 7 + d * 11 + e * 13 + f * 17 + g * 19 + (h ? 23 : 0);
 }
 
 /* Two methods of one name: the library exports each with its parameters in the name. */
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_over__I(JNIEnv *env, jclass cls, jint v) { (void)env; (void)cls; return v + 1; }
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_over__Ljava_lang_String_2(JNIEnv *env, jclass cls, jstring s) { (void)cls; return (*env)->GetStringLength(env, s); }
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_over__I(JNIEnv *env, jclass cls, jint v) { (void)env; (void)cls; return v + 1; }
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_over__Ljava_lang_String_2(JNIEnv *env, jclass cls, jstring s) { (void)cls; return (*env)->GetStringLength(env, s); }
 
 /* ------------------------------------------------------------------ arrays */
 
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_sum(JNIEnv *env, jclass cls, jintArray a)
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_sum(JNIEnv *env, jclass cls, jintArray a)
 {
     jsize n = (*env)->GetArrayLength(env, a), i;
     jint *v = (*env)->GetIntArrayElements(env, a, NULL), total = 0;
@@ -128,7 +128,7 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_sum(JNIEnv *env, jclass cls,
     return total;
 }
 
-JNIEXPORT void JNICALL Java_megler_test_natives_Lib_fill(JNIEnv *env, jclass cls, jbyteArray a, jint from, jint count, jbyte v)
+JNIEXPORT void JNICALL Java_meglet_test_natives_Lib_fill(JNIEnv *env, jclass cls, jbyteArray a, jint from, jint count, jbyte v)
 {
     jbyte buf[64];
     (void)cls;
@@ -136,7 +136,7 @@ JNIEXPORT void JNICALL Java_megler_test_natives_Lib_fill(JNIEnv *env, jclass cls
     (*env)->SetByteArrayRegion(env, a, from, count, buf);
 }
 
-JNIEXPORT jlongArray JNICALL Java_megler_test_natives_Lib_squares(JNIEnv *env, jclass cls, jint n)
+JNIEXPORT jlongArray JNICALL Java_meglet_test_natives_Lib_squares(JNIEnv *env, jclass cls, jint n)
 {
     jlongArray out = (*env)->NewLongArray(env, n);
     jlong v[32];
@@ -147,7 +147,7 @@ JNIEXPORT jlongArray JNICALL Java_megler_test_natives_Lib_squares(JNIEnv *env, j
     return out;
 }
 
-JNIEXPORT jdouble JNICALL Java_megler_test_natives_Lib_sumCritical(JNIEnv *env, jclass cls, jdoubleArray a)
+JNIEXPORT jdouble JNICALL Java_meglet_test_natives_Lib_sumCritical(JNIEnv *env, jclass cls, jdoubleArray a)
 {
     jsize n = (*env)->GetArrayLength(env, a), i;
     jdouble *v = (jdouble *)(*env)->GetPrimitiveArrayCritical(env, a, NULL), total = 0;
@@ -161,7 +161,7 @@ JNIEXPORT jdouble JNICALL Java_megler_test_natives_Lib_sumCritical(JNIEnv *env, 
 }
 
 /* One element of each of the other primitive kinds read by region and written back changed; the sum of what was read. */
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_others(JNIEnv *env, jclass cls, jbooleanArray z, jcharArray c, jshortArray s, jfloatArray f)
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_others(JNIEnv *env, jclass cls, jbooleanArray z, jcharArray c, jshortArray s, jfloatArray f)
 {
     jboolean zv;
     jchar cv;
@@ -186,7 +186,7 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_others(JNIEnv *env, jclass c
 }
 
 /* The words of a sentence: an array of strings made here. */
-JNIEXPORT jobjectArray JNICALL Java_megler_test_natives_Lib_words(JNIEnv *env, jclass cls, jstring sentence)
+JNIEXPORT jobjectArray JNICALL Java_meglet_test_natives_Lib_words(JNIEnv *env, jclass cls, jstring sentence)
 {
     const char *text = (*env)->GetStringUTFChars(env, sentence, NULL);
     jclass string = (*env)->FindClass(env, "java/lang/String");
@@ -214,7 +214,7 @@ JNIEXPORT jobjectArray JNICALL Java_megler_test_natives_Lib_words(JNIEnv *env, j
     return out;
 }
 
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_total(JNIEnv *env, jclass cls, jobjectArray strings)
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_total(JNIEnv *env, jclass cls, jobjectArray strings)
 {
     jsize n = (*env)->GetArrayLength(env, strings), i;
     jint total = 0;
@@ -228,7 +228,7 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_total(JNIEnv *env, jclass cl
 }
 
 /* A region outside an array, an element outside one, a region outside a string: each an exception and nothing copied. A bit for each that was. */
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_bounds(JNIEnv *env, jclass cls, jintArray ints, jobjectArray objects, jstring s)
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_bounds(JNIEnv *env, jclass cls, jintArray ints, jobjectArray objects, jstring s)
 {
     jclass aioobe = (*env)->FindClass(env, "java/lang/ArrayIndexOutOfBoundsException"), sioobe = (*env)->FindClass(env, "java/lang/StringIndexOutOfBoundsException");
     jint v[8] = { 7, 7, 7, 7, 7, 7, 7, 7 }, bits = 0;
@@ -261,7 +261,7 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_bounds(JNIEnv *env, jclass c
 
 /* ----------------------------------------------------------------- strings */
 
-JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_greet(JNIEnv *env, jclass cls, jstring name)
+JNIEXPORT jstring JNICALL Java_meglet_test_natives_Lib_greet(JNIEnv *env, jclass cls, jstring name)
 {
     const char *n = (*env)->GetStringUTFChars(env, name, NULL);
     char buf[200];
@@ -272,7 +272,7 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_greet(JNIEnv *env, jclass
 }
 
 /* By UTF-16 code units, through the critical pair. */
-JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_reverse(JNIEnv *env, jclass cls, jstring s)
+JNIEXPORT jstring JNICALL Java_meglet_test_natives_Lib_reverse(JNIEnv *env, jclass cls, jstring s)
 {
     jsize n = (*env)->GetStringLength(env, s), i;
     const jchar *in = (*env)->GetStringCritical(env, s, NULL);
@@ -285,7 +285,7 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_reverse(JNIEnv *env, jcla
 }
 
 /* The same stretch of a string taken both ways: as UTF-16, made a string again, and as UTF-8, whose bytes are counted into `utf8Bytes[0]`. */
-JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_region(JNIEnv *env, jclass cls, jstring s, jint start, jint len, jintArray utf8Bytes)
+JNIEXPORT jstring JNICALL Java_meglet_test_natives_Lib_region(JNIEnv *env, jclass cls, jstring s, jint start, jint len, jintArray utf8Bytes)
 {
     jchar units[64];
     char utf8[200];
@@ -301,7 +301,7 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_region(JNIEnv *env, jclas
 
 /* --------------------------------------------- calls back, fields, objects */
 
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_callBack(JNIEnv *env, jclass cls, jobject callback, jint v)
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_callBack(JNIEnv *env, jclass cls, jobject callback, jint v)
 {
     jclass c = (*env)->GetObjectClass(env, callback);
     jmethodID on_value = (*env)->GetMethodID(env, c, "onValue", "(IJDLjava/lang/String;)I");
@@ -316,7 +316,7 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_callBack(JNIEnv *env, jclass
 }
 
 /* A new object of the app's own class, made by its constructor, with a field set after. */
-JNIEXPORT jobject JNICALL Java_megler_test_natives_Lib_make(JNIEnv *env, jclass cls, jint factor, jstring label)
+JNIEXPORT jobject JNICALL Java_meglet_test_natives_Lib_make(JNIEnv *env, jclass cls, jint factor, jstring label)
 {
     jmethodID init = (*env)->GetMethodID(env, cls, "<init>", "(I)V");
     jobject o = (*env)->NewObject(env, cls, init, factor);
@@ -327,7 +327,7 @@ JNIEXPORT jobject JNICALL Java_megler_test_natives_Lib_make(JNIEnv *env, jclass 
 
 /* -------------------------------------------------------------- exceptions */
 
-JNIEXPORT void JNICALL Java_megler_test_natives_Lib_throwIt(JNIEnv *env, jclass cls, jstring message)
+JNIEXPORT void JNICALL Java_meglet_test_natives_Lib_throwIt(JNIEnv *env, jclass cls, jstring message)
 {
     const char *m = (*env)->GetStringUTFChars(env, message, NULL);
     (void)cls;
@@ -336,7 +336,7 @@ JNIEXPORT void JNICALL Java_megler_test_natives_Lib_throwIt(JNIEnv *env, jclass 
 }
 
 /* An exception object of the app's own class, made here and thrown. */
-JNIEXPORT void JNICALL Java_megler_test_natives_Lib_throwOwn(JNIEnv *env, jclass cls, jint code)
+JNIEXPORT void JNICALL Java_meglet_test_natives_Lib_throwOwn(JNIEnv *env, jclass cls, jint code)
 {
     jclass ex = (*env)->FindClass(env, LIB "$Failure");
     jmethodID init = (*env)->GetMethodID(env, ex, "<init>", "(I)V");
@@ -345,7 +345,7 @@ JNIEXPORT void JNICALL Java_megler_test_natives_Lib_throwOwn(JNIEnv *env, jclass
 }
 
 /* Java throws inside a call made from here: seen, described, read and cleared, and its message handed back as an ordinary result. */
-JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_catchIt(JNIEnv *env, jclass cls, jobject runnable)
+JNIEXPORT jstring JNICALL Java_meglet_test_natives_Lib_catchIt(JNIEnv *env, jclass cls, jobject runnable)
 {
     jmethodID run = (*env)->GetMethodID(env, (*env)->GetObjectClass(env, runnable), "run", "()V");
     jthrowable t;
@@ -361,7 +361,7 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_catchIt(JNIEnv *env, jcla
 }
 
 /* "found", or the name of the class of what FindClass threw: a class that is not there is an exception, not a class. */
-JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_find(JNIEnv *env, jclass cls, jstring name)
+JNIEXPORT jstring JNICALL Java_meglet_test_natives_Lib_find(JNIEnv *env, jclass cls, jstring name)
 {
     const char *n = (*env)->GetStringUTFChars(env, name, NULL);
     jclass found = (*env)->FindClass(env, n);
@@ -379,7 +379,7 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_find(JNIEnv *env, jclass 
 /* ------------------------------------------------------------- references */
 
 /* Each bit one thing that held; 0x3FFF is all of them. */
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_refs(JNIEnv *env, jclass cls, jobject o)
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_refs(JNIEnv *env, jclass cls, jobject o)
 {
     jobject global = (*env)->NewGlobalRef(env, o), local = (*env)->NewLocalRef(env, o), kept;
     jweak weak = (*env)->NewWeakGlobalRef(env, o);
@@ -415,7 +415,7 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_refs(JNIEnv *env, jclass cls
 }
 
 /* A Method object to its identifier and called through it; an identifier to a Method object, for Java to look at. */
-JNIEXPORT jobject JNICALL Java_megler_test_natives_Lib_reflect(JNIEnv *env, jclass cls, jobject method, jobject field, jintArray out)
+JNIEXPORT jobject JNICALL Java_meglet_test_natives_Lib_reflect(JNIEnv *env, jclass cls, jobject method, jobject field, jintArray out)
 {
     jmethodID m = (*env)->FromReflectedMethod(env, method);
     jfieldID f = (*env)->FromReflectedField(env, field);
@@ -429,7 +429,7 @@ JNIEXPORT jobject JNICALL Java_megler_test_natives_Lib_reflect(JNIEnv *env, jcla
 }
 
 /* The object's monitor held from here while Java is asked whether this thread holds it. */
-JNIEXPORT jboolean JNICALL Java_megler_test_natives_Lib_monitor(JNIEnv *env, jclass cls, jobject o)
+JNIEXPORT jboolean JNICALL Java_meglet_test_natives_Lib_monitor(JNIEnv *env, jclass cls, jobject o)
 {
     jmethodID holds = (*env)->GetStaticMethodID(env, (*env)->FindClass(env, "java/lang/Thread"), "holdsLock", "(Ljava/lang/Object;)Z");
     jclass thread = (*env)->FindClass(env, "java/lang/Thread");
@@ -491,7 +491,7 @@ static void *worker(void *arg)
     return NULL;
 }
 
-JNIEXPORT jboolean JNICALL Java_megler_test_natives_Lib_startThread(JNIEnv *env, jclass cls, jobject report, jstring name, jboolean daemon)
+JNIEXPORT jboolean JNICALL Java_meglet_test_natives_Lib_startThread(JNIEnv *env, jclass cls, jobject report, jstring name, jboolean daemon)
 {
     job *j = (job *)calloc(1, sizeof(*j));
     const char *n = (*env)->GetStringUTFChars(env, name, NULL);
@@ -507,11 +507,11 @@ JNIEXPORT jboolean JNICALL Java_megler_test_natives_Lib_startThread(JNIEnv *env,
 }
 
 /* What GetEnv said on the library's thread after it had detached. */
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_afterDetach(JNIEnv *env, jclass cls) { (void)env; (void)cls; return g_after_detach; }
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_afterDetach(JNIEnv *env, jclass cls) { (void)env; (void)cls; return g_after_detach; }
 
 /* ---------------------------------------------- the library this one needs */
 
-JNIEXPORT jlong JNICALL Java_megler_test_natives_Lib_dep(JNIEnv *env, jclass cls, jlong v)
+JNIEXPORT jlong JNICALL Java_meglet_test_natives_Lib_dep(JNIEnv *env, jclass cls, jlong v)
 {
     (void)env; (void)cls;
     return natives_dep_scale(v, natives_dep_answer());
@@ -519,7 +519,7 @@ JNIEXPORT jlong JNICALL Java_megler_test_natives_Lib_dep(JNIEnv *env, jclass cls
 
 /* ------------------------------------------------------------- the NDK */
 
-JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_readAsset(JNIEnv *env, jclass cls, jobject asset_manager, jstring name)
+JNIEXPORT jstring JNICALL Java_meglet_test_natives_Lib_readAsset(JNIEnv *env, jclass cls, jobject asset_manager, jstring name)
 {
     AAssetManager *am = AAssetManager_fromJava(env, asset_manager);
     const char *n = (*env)->GetStringUTFChars(env, name, NULL);
@@ -541,7 +541,7 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_readAsset(JNIEnv *env, jc
  * the bottom right pixel half-transparent white (premultiplied, as the NDK
  * says the memory is). What it was told of the bitmap is the string returned.
  */
-JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_paint(JNIEnv *env, jclass cls, jobject bitmap)
+JNIEXPORT jstring JNICALL Java_meglet_test_natives_Lib_paint(JNIEnv *env, jclass cls, jobject bitmap)
 {
     AndroidBitmapInfo info;
     void *pixels = NULL;
@@ -574,7 +574,7 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_paint(JNIEnv *env, jclass
 static unsigned char g_shared[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
 
 /* A direct buffer of Java's making: read here, and written where Java will look. */
-JNIEXPORT jlong JNICALL Java_megler_test_natives_Lib_bufferSum(JNIEnv *env, jclass cls, jobject buffer)
+JNIEXPORT jlong JNICALL Java_meglet_test_natives_Lib_bufferSum(JNIEnv *env, jclass cls, jobject buffer)
 {
     unsigned char *p = (unsigned char *)(*env)->GetDirectBufferAddress(env, buffer);
     jlong n = (*env)->GetDirectBufferCapacity(env, buffer), i, total = 0;
@@ -586,11 +586,11 @@ JNIEXPORT jlong JNICALL Java_megler_test_natives_Lib_bufferSum(JNIEnv *env, jcla
 }
 
 /* And one of this library's memory, for Java to read and write. */
-JNIEXPORT jobject JNICALL Java_megler_test_natives_Lib_sharedBuffer(JNIEnv *env, jclass cls) { (void)cls; return (*env)->NewDirectByteBuffer(env, g_shared, sizeof(g_shared)); }
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_sharedAt(JNIEnv *env, jclass cls, jint i) { (void)env; (void)cls; return g_shared[i & 7]; }
+JNIEXPORT jobject JNICALL Java_meglet_test_natives_Lib_sharedBuffer(JNIEnv *env, jclass cls) { (void)cls; return (*env)->NewDirectByteBuffer(env, g_shared, sizeof(g_shared)); }
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_sharedAt(JNIEnv *env, jclass cls, jint i) { (void)env; (void)cls; return g_shared[i & 7]; }
 
 /* The device as the NDK describes it. */
-JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_configuration(JNIEnv *env, jclass cls, jobject asset_manager)
+JNIEXPORT jstring JNICALL Java_meglet_test_natives_Lib_configuration(JNIEnv *env, jclass cls, jobject asset_manager)
 {
     AConfiguration *c = AConfiguration_new();
     char text[160], lang[3] = { 0, 0, 0 };
@@ -628,7 +628,7 @@ static int on_readable(int fd, int events, void *data)
 }
 
 /* 0 when this thread has no looper; otherwise a pipe is watched on it, and a byte written: the callback comes with the thread's next turn. */
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_watchLooper(JNIEnv *env, jclass cls, jobject report)
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_watchLooper(JNIEnv *env, jclass cls, jobject report)
 {
     ALooper *looper = ALooper_forThread();
     (void)cls;
@@ -649,7 +649,7 @@ static jobject g_held;
  * earlier call. System.gc() is called through JNI in between, after garbage enough to be worth freeing; everything must read
  * as it was. 1 when it does; what went wrong otherwise.
  */
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_holdAcrossGc(JNIEnv *env, jclass cls)
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_holdAcrossGc(JNIEnv *env, jclass cls)
 {
     jclass system = (*env)->FindClass(env, "java/lang/System"), string = (*env)->FindClass(env, "java/lang/String");
     jmethodID gc = (*env)->GetStaticMethodID(env, system, "gc", "()V");
@@ -712,7 +712,7 @@ static void *icu_function(void *lib, const char *name, int *version)
  * --, the allocated object then used as the string. On Android the runtime turns such a call into StringFactory's and the
  * reference into the new string. The two strings joined with a '|'; null if a call threw.
  */
-JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_allocatedString(JNIEnv *env, jclass cls, jbyteArray bytes, jcharArray chars)
+JNIEXPORT jstring JNICALL Java_meglet_test_natives_Lib_allocatedString(JNIEnv *env, jclass cls, jbyteArray bytes, jcharArray chars)
 {
     jclass string = (*env)->FindClass(env, "java/lang/String");
     jmethodID from_bytes = (*env)->GetMethodID(env, string, "<init>", "([BLjava/lang/String;)V");
@@ -740,7 +740,7 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_allocatedString(JNIEnv *e
  * u_strlen counted wrong or the two disagree.
  */
 /* A system property as native code reads it (__system_property_get): "" when there is none. */
-JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_systemProperty(JNIEnv *env, jclass cls, jstring name)
+JNIEXPORT jstring JNICALL Java_meglet_test_natives_Lib_systemProperty(JNIEnv *env, jclass cls, jstring name)
 {
     char value[PROP_VALUE_MAX] = "";
     const char *n = (*env)->GetStringUTFChars(env, name, NULL);
@@ -752,9 +752,9 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Lib_systemProperty(JNIEnv *en
     return (*env)->NewStringUTF(env, value);
 }
 
-JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_icuVersion(JNIEnv *env, jclass cls)
+JNIEXPORT jint JNICALL Java_meglet_test_natives_Lib_icuVersion(JNIEnv *env, jclass cls)
 {
-    static const uint16_t text[] = { 'H', 'u', 's', 'k', 0 };
+    static const uint16_t text[] = { 'M', 'e', 'g', 'l', 'e', 't', 0 };
     void *uc = dlopen("libicuuc.so", RTLD_NOW), *i18n = dlopen("libicui18n.so", RTLD_NOW);
     int32_t (*u_strlen)(const uint16_t *);
     int v = 0, w = 0;
@@ -762,5 +762,5 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_icuVersion(JNIEnv *env, jcla
     if (!uc || !i18n) return -1;
     u_strlen = (int32_t (*)(const uint16_t *))icu_function(uc, "u_strlen", &v);
     if (!u_strlen || !icu_function(i18n, "ucsdet_open", &w)) return -2;
-    return u_strlen(text) == 4 && v == w ? v : -3;
+    return u_strlen(text) == 6 && v == w ? v : -3;
 }

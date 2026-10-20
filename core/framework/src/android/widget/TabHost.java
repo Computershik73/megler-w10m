@@ -33,14 +33,14 @@ public class TabHost extends FrameLayout implements android.view.ViewTreeObserve
         if (mTabWidget == null) throw new RuntimeException("Your TabHost must have a TabWidget whose id attribute is 'android.R.id.tabs'");
         mContent = findViewById(android.R.id.tabcontent);
         if (mContent == null) throw new RuntimeException("Your TabHost must have a FrameLayout whose id attribute is 'android.R.id.tabcontent'");
-        mTabWidget.meglerSetHost(this);
+        mTabWidget.megletSetHost(this);
     }
     public void setup(android.app.LocalActivityManager m) { setup(); }
     public TabSpec newTabSpec(String tag) { if (tag == null) throw new IllegalArgumentException("tag must be non-null"); return new TabSpec(tag); }
     public void addTab(TabSpec spec) {
         if (spec.indicator == null) throw new IllegalArgumentException("you must specify a way to create the tab indicator.");
         if (spec.content == null && spec.contentId == 0 && spec.factory == null) throw new IllegalArgumentException("you must specify a way to create the tab content");
-        mTabWidget.meglerAddTab(spec.indicator(getContext()));
+        mTabWidget.megletAddTab(spec.indicator(getContext()));
         mSpecs.add(spec);
         if (spec.contentId != 0) { View v = mContent.findViewById(spec.contentId); if (v != null) v.setVisibility(GONE); }
         if (mCurrent == -1) setCurrentTab(0);

@@ -3,8 +3,8 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class InsertRecordsResponse {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public InsertRecordsResponse(java.util.List p0) {}
-    public java.util.List getRecords() { return (meglerProps.get("Records") != null ? (java.util.List) meglerProps.get("Records") : new java.util.ArrayList()); }
+    public java.util.List getRecords() { return (megletProps.get("Records") != null ? (java.util.List) megletProps.get("Records") : new java.util.ArrayList()); }
     InsertRecordsResponse() { this((java.util.List) null); }
 }

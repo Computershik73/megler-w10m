@@ -3,20 +3,20 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EncoderProfiles {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.util.List getAudioProfiles() { return (meglerProps.get("AudioProfiles") != null ? (java.util.List) meglerProps.get("AudioProfiles") : new java.util.ArrayList()); }
-    public int getDefaultDurationSeconds() { return (meglerProps.get("DefaultDurationSeconds") instanceof Integer ? (Integer) meglerProps.get("DefaultDurationSeconds") : 0); }
-    public int getRecommendedFileFormat() { return (meglerProps.get("RecommendedFileFormat") instanceof Integer ? (Integer) meglerProps.get("RecommendedFileFormat") : 0); }
-    public java.util.List getVideoProfiles() { return (meglerProps.get("VideoProfiles") != null ? (java.util.List) meglerProps.get("VideoProfiles") : new java.util.ArrayList()); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.util.List getAudioProfiles() { return (megletProps.get("AudioProfiles") != null ? (java.util.List) megletProps.get("AudioProfiles") : new java.util.ArrayList()); }
+    public int getDefaultDurationSeconds() { return (megletProps.get("DefaultDurationSeconds") instanceof Integer ? (Integer) megletProps.get("DefaultDurationSeconds") : 0); }
+    public int getRecommendedFileFormat() { return (megletProps.get("RecommendedFileFormat") instanceof Integer ? (Integer) megletProps.get("RecommendedFileFormat") : 0); }
+    public java.util.List getVideoProfiles() { return (megletProps.get("VideoProfiles") != null ? (java.util.List) megletProps.get("VideoProfiles") : new java.util.ArrayList()); }
     protected EncoderProfiles() {}
     public static final class AudioProfile {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-        public int getBitrate() { return (meglerProps.get("Bitrate") instanceof Integer ? (Integer) meglerProps.get("Bitrate") : 0); }
-        public int getChannels() { return (meglerProps.get("Channels") instanceof Integer ? (Integer) meglerProps.get("Channels") : 0); }
-        public int getCodec() { return (meglerProps.get("Codec") instanceof Integer ? (Integer) meglerProps.get("Codec") : 0); }
-        public java.lang.String getMediaType() { return (java.lang.String) meglerProps.get("MediaType"); }
-        public int getProfile() { return (meglerProps.get("Profile") instanceof Integer ? (Integer) meglerProps.get("Profile") : 0); }
-        public int getSampleRate() { return (meglerProps.get("SampleRate") instanceof Integer ? (Integer) meglerProps.get("SampleRate") : 0); }
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        public int getBitrate() { return (megletProps.get("Bitrate") instanceof Integer ? (Integer) megletProps.get("Bitrate") : 0); }
+        public int getChannels() { return (megletProps.get("Channels") instanceof Integer ? (Integer) megletProps.get("Channels") : 0); }
+        public int getCodec() { return (megletProps.get("Codec") instanceof Integer ? (Integer) megletProps.get("Codec") : 0); }
+        public java.lang.String getMediaType() { return (java.lang.String) megletProps.get("MediaType"); }
+        public int getProfile() { return (megletProps.get("Profile") instanceof Integer ? (Integer) megletProps.get("Profile") : 0); }
+        public int getSampleRate() { return (megletProps.get("SampleRate") instanceof Integer ? (Integer) megletProps.get("SampleRate") : 0); }
         protected AudioProfile() {}
     }
     public static abstract class VideoProfile {

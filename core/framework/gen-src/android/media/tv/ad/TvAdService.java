@@ -3,7 +3,7 @@ package android.media.tv.ad;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class TvAdService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String SERVICE_INTERFACE = "android.media.tv.ad.TvAdService";
     public static final java.lang.String SERVICE_META_DATA = "android.media.tv.ad.service";
     public TvAdService() { super(); }
@@ -11,9 +11,9 @@ public abstract class TvAdService extends android.app.Service {
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public abstract android.media.tv.ad.TvAdService.Session onCreateSession(java.lang.String p0, java.lang.String p1);
     public static abstract class Session implements android.view.KeyEvent.Callback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Session(android.content.Context p0) {}
-        public boolean isMediaViewEnabled() { return (meglerProps.get("MediaViewEnabled") instanceof Boolean ? (Boolean) meglerProps.get("MediaViewEnabled") : false); }
+        public boolean isMediaViewEnabled() { return (megletProps.get("MediaViewEnabled") instanceof Boolean ? (Boolean) megletProps.get("MediaViewEnabled") : false); }
         public void layoutSurface(int p0, int p1, int p2, int p3) {}
         public void notifySessionStateChanged(int p0, int p1) {}
         public android.view.View onCreateMediaView() { return null; }
@@ -45,7 +45,7 @@ public abstract class TvAdService extends android.app.Service {
         public void requestSigning(java.lang.String p0, java.lang.String p1, java.lang.String p2, byte[] p3) {}
         public void requestTrackInfoList() {}
         public void sendTvAdSessionData(java.lang.String p0, android.os.Bundle p1) {}
-        public void setMediaViewEnabled(boolean p0) { meglerProps.put("MediaViewEnabled", Boolean.valueOf(p0)); }
+        public void setMediaViewEnabled(boolean p0) { megletProps.put("MediaViewEnabled", Boolean.valueOf(p0)); }
         Session() { this((android.content.Context) null); }
     }
 }

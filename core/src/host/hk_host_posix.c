@@ -72,7 +72,7 @@ hk_section *hk_section_create(u64 size)
     hk_section *s;
     int fd;
     if (!size) return NULL;
-    fd = (int)syscall(SYS_memfd_create, "megler-section", 1u /* MFD_CLOEXEC */);
+    fd = (int)syscall(SYS_memfd_create, "meglet-section", 1u /* MFD_CLOEXEC */);
     if (fd < 0) return NULL;
     if (ftruncate(fd, (off_t)size) != 0) {
         close(fd);

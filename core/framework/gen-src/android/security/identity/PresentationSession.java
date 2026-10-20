@@ -3,7 +3,7 @@ package android.security.identity;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class PresentationSession {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected PresentationSession() {}
     public abstract android.security.identity.CredentialDataResult getCredentialData(java.lang.String p0, android.security.identity.CredentialDataRequest p1);
     public abstract long getCredstoreOperationHandle();

@@ -3,7 +3,7 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Gainmap implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int GAINMAP_DIRECTION_HDR_TO_SDR = 1;
     public static int GAINMAP_DIRECTION_SDR_TO_HDR;
@@ -11,24 +11,24 @@ public final class Gainmap implements android.os.Parcelable {
     public Gainmap(android.graphics.Gainmap p0, android.graphics.Bitmap p1) {}
     public android.graphics.Gainmap asShared() { return this; }
     public int describeContents() { return 0; }
-    public android.graphics.ColorSpace getAlternativeImagePrimaries() { return (android.graphics.ColorSpace) meglerProps.get("AlternativeImagePrimaries"); }
-    public float getDisplayRatioForFullHdr() { return (meglerProps.get("DisplayRatioForFullHdr") instanceof Float ? (Float) meglerProps.get("DisplayRatioForFullHdr") : 0f); }
-    public float[] getEpsilonHdr() { return (float[]) meglerProps.get("EpsilonHdr"); }
-    public float[] getEpsilonSdr() { return (float[]) meglerProps.get("EpsilonSdr"); }
-    public android.graphics.Bitmap getGainmapContents() { return (android.graphics.Bitmap) meglerProps.get("GainmapContents"); }
-    public int getGainmapDirection() { return (meglerProps.get("GainmapDirection") instanceof Integer ? (Integer) meglerProps.get("GainmapDirection") : 0); }
-    public float[] getGamma() { return (float[]) meglerProps.get("Gamma"); }
-    public float getMinDisplayRatioForHdrTransition() { return (meglerProps.get("MinDisplayRatioForHdrTransition") instanceof Float ? (Float) meglerProps.get("MinDisplayRatioForHdrTransition") : 0f); }
-    public float[] getRatioMax() { return (float[]) meglerProps.get("RatioMax"); }
-    public float[] getRatioMin() { return (float[]) meglerProps.get("RatioMin"); }
-    public void setAlternativeImagePrimaries(android.graphics.ColorSpace p0) { meglerProps.put("AlternativeImagePrimaries", p0); }
-    public void setDisplayRatioForFullHdr(float p0) { meglerProps.put("DisplayRatioForFullHdr", Float.valueOf(p0)); }
+    public android.graphics.ColorSpace getAlternativeImagePrimaries() { return (android.graphics.ColorSpace) megletProps.get("AlternativeImagePrimaries"); }
+    public float getDisplayRatioForFullHdr() { return (megletProps.get("DisplayRatioForFullHdr") instanceof Float ? (Float) megletProps.get("DisplayRatioForFullHdr") : 0f); }
+    public float[] getEpsilonHdr() { return (float[]) megletProps.get("EpsilonHdr"); }
+    public float[] getEpsilonSdr() { return (float[]) megletProps.get("EpsilonSdr"); }
+    public android.graphics.Bitmap getGainmapContents() { return (android.graphics.Bitmap) megletProps.get("GainmapContents"); }
+    public int getGainmapDirection() { return (megletProps.get("GainmapDirection") instanceof Integer ? (Integer) megletProps.get("GainmapDirection") : 0); }
+    public float[] getGamma() { return (float[]) megletProps.get("Gamma"); }
+    public float getMinDisplayRatioForHdrTransition() { return (megletProps.get("MinDisplayRatioForHdrTransition") instanceof Float ? (Float) megletProps.get("MinDisplayRatioForHdrTransition") : 0f); }
+    public float[] getRatioMax() { return (float[]) megletProps.get("RatioMax"); }
+    public float[] getRatioMin() { return (float[]) megletProps.get("RatioMin"); }
+    public void setAlternativeImagePrimaries(android.graphics.ColorSpace p0) { megletProps.put("AlternativeImagePrimaries", p0); }
+    public void setDisplayRatioForFullHdr(float p0) { megletProps.put("DisplayRatioForFullHdr", Float.valueOf(p0)); }
     public void setEpsilonHdr(float p0, float p1, float p2) {}
     public void setEpsilonSdr(float p0, float p1, float p2) {}
-    public void setGainmapContents(android.graphics.Bitmap p0) { meglerProps.put("GainmapContents", p0); }
-    public void setGainmapDirection(int p0) { meglerProps.put("GainmapDirection", Integer.valueOf(p0)); }
+    public void setGainmapContents(android.graphics.Bitmap p0) { megletProps.put("GainmapContents", p0); }
+    public void setGainmapDirection(int p0) { megletProps.put("GainmapDirection", Integer.valueOf(p0)); }
     public void setGamma(float p0, float p1, float p2) {}
-    public void setMinDisplayRatioForHdrTransition(float p0) { meglerProps.put("MinDisplayRatioForHdrTransition", Float.valueOf(p0)); }
+    public void setMinDisplayRatioForHdrTransition(float p0) { megletProps.put("MinDisplayRatioForHdrTransition", Float.valueOf(p0)); }
     public void setRatioMax(float p0, float p1, float p2) {}
     public void setRatioMin(float p0, float p1, float p2) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}

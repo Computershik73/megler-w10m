@@ -3,21 +3,21 @@ package android.service.persistentdata;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PersistentDataBlockManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int FLASH_LOCK_LOCKED = 1;
     public static final int FLASH_LOCK_UNKNOWN = -1;
     public static int FLASH_LOCK_UNLOCKED;
     public PersistentDataBlockManager(android.service.persistentdata.IPersistentDataBlockService p0) {}
     public boolean deactivateFactoryResetProtection(byte[] p0) { return false; }
-    public int getDataBlockSize() { return (meglerProps.get("DataBlockSize") instanceof Integer ? (Integer) meglerProps.get("DataBlockSize") : 0); }
-    public int getFlashLockState() { return (meglerProps.get("FlashLockState") instanceof Integer ? (Integer) meglerProps.get("FlashLockState") : 0); }
-    public long getMaximumDataBlockSize() { return (meglerProps.get("MaximumDataBlockSize") instanceof Long ? (Long) meglerProps.get("MaximumDataBlockSize") : 0L); }
-    public boolean getOemUnlockEnabled() { return (meglerProps.get("OemUnlockEnabled") instanceof Boolean ? (Boolean) meglerProps.get("OemUnlockEnabled") : false); }
-    public java.lang.String getPersistentDataPackageName() { return (java.lang.String) meglerProps.get("PersistentDataPackageName"); }
-    public boolean isFactoryResetProtectionActive() { return (meglerProps.get("FactoryResetProtectionActive") instanceof Boolean ? (Boolean) meglerProps.get("FactoryResetProtectionActive") : false); }
+    public int getDataBlockSize() { return (megletProps.get("DataBlockSize") instanceof Integer ? (Integer) megletProps.get("DataBlockSize") : 0); }
+    public int getFlashLockState() { return (megletProps.get("FlashLockState") instanceof Integer ? (Integer) megletProps.get("FlashLockState") : 0); }
+    public long getMaximumDataBlockSize() { return (megletProps.get("MaximumDataBlockSize") instanceof Long ? (Long) megletProps.get("MaximumDataBlockSize") : 0L); }
+    public boolean getOemUnlockEnabled() { return (megletProps.get("OemUnlockEnabled") instanceof Boolean ? (Boolean) megletProps.get("OemUnlockEnabled") : false); }
+    public java.lang.String getPersistentDataPackageName() { return (java.lang.String) megletProps.get("PersistentDataPackageName"); }
+    public boolean isFactoryResetProtectionActive() { return (megletProps.get("FactoryResetProtectionActive") instanceof Boolean ? (Boolean) megletProps.get("FactoryResetProtectionActive") : false); }
     public byte[] read() { return null; }
     public boolean setFactoryResetProtectionSecret(byte[] p0) { return false; }
-    public void setOemUnlockEnabled(boolean p0) { meglerProps.put("OemUnlockEnabled", Boolean.valueOf(p0)); }
+    public void setOemUnlockEnabled(boolean p0) { megletProps.put("OemUnlockEnabled", Boolean.valueOf(p0)); }
     public void wipe() {}
     public int write(byte[] p0) { return 0; }
     PersistentDataBlockManager() { this((android.service.persistentdata.IPersistentDataBlockService) null); }

@@ -3,12 +3,12 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AitInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AitInfo(int p0, int p1) {}
     public int describeContents() { return 0; }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
-    public int getVersion() { return (meglerProps.get("Version") instanceof Integer ? (Integer) meglerProps.get("Version") : 0); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public int getVersion() { return (megletProps.get("Version") instanceof Integer ? (Integer) megletProps.get("Version") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AitInfo() { this((int) 0, (int) 0); }
 }

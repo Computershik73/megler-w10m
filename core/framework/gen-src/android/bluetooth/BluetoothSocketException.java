@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BluetoothSocketException extends java.io.IOException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int BLUETOOTH_OFF_FAILURE = 15;
     public static final int L2CAP_ACL_FAILURE = 2;
     public static final int L2CAP_CLIENT_SECURITY_FAILURE = 3;
@@ -28,6 +28,6 @@ public class BluetoothSocketException extends java.io.IOException {
     public static final int UNSPECIFIED = 0;
     public BluetoothSocketException(int p0) { super(); }
     public BluetoothSocketException(int p0, java.lang.String p1) { super(); }
-    public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
+    public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
     BluetoothSocketException() { this((int) 0); }
 }

@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BluetoothGattCharacteristic implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FORMAT_FLOAT = 52;
     public static final int FORMAT_SFLOAT = 50;
@@ -46,25 +46,25 @@ public class BluetoothGattCharacteristic implements android.os.Parcelable {
     public boolean addDescriptor(android.bluetooth.BluetoothGattDescriptor p0) { return false; }
     public int describeContents() { return 0; }
     public android.bluetooth.BluetoothGattDescriptor getDescriptor(java.util.UUID p0) { return null; }
-    public java.util.List getDescriptors() { return (meglerProps.get("Descriptors") != null ? (java.util.List) meglerProps.get("Descriptors") : new java.util.ArrayList()); }
+    public java.util.List getDescriptors() { return (megletProps.get("Descriptors") != null ? (java.util.List) megletProps.get("Descriptors") : new java.util.ArrayList()); }
     public java.lang.Float getFloatValue(int p0, int p1) { return null; }
-    public int getInstanceId() { return (meglerProps.get("InstanceId") instanceof Integer ? (Integer) meglerProps.get("InstanceId") : 0); }
+    public int getInstanceId() { return (megletProps.get("InstanceId") instanceof Integer ? (Integer) megletProps.get("InstanceId") : 0); }
     public java.lang.Integer getIntValue(int p0, int p1) { return null; }
-    public int getKeySize() { return (meglerProps.get("KeySize") instanceof Integer ? (Integer) meglerProps.get("KeySize") : 0); }
-    public int getPermissions() { return (meglerProps.get("Permissions") instanceof Integer ? (Integer) meglerProps.get("Permissions") : 0); }
-    public int getProperties() { return (meglerProps.get("Properties") instanceof Integer ? (Integer) meglerProps.get("Properties") : 0); }
-    public android.bluetooth.BluetoothGattService getService() { return (android.bluetooth.BluetoothGattService) meglerProps.get("Service"); }
+    public int getKeySize() { return (megletProps.get("KeySize") instanceof Integer ? (Integer) megletProps.get("KeySize") : 0); }
+    public int getPermissions() { return (megletProps.get("Permissions") instanceof Integer ? (Integer) megletProps.get("Permissions") : 0); }
+    public int getProperties() { return (megletProps.get("Properties") instanceof Integer ? (Integer) megletProps.get("Properties") : 0); }
+    public android.bluetooth.BluetoothGattService getService() { return (android.bluetooth.BluetoothGattService) megletProps.get("Service"); }
     public java.lang.String getStringValue(int p0) { return null; }
-    public java.util.UUID getUuid() { return (java.util.UUID) meglerProps.get("Uuid"); }
-    public byte[] getValue() { return (byte[]) meglerProps.get("Value"); }
-    public int getWriteType() { return (meglerProps.get("WriteType") instanceof Integer ? (Integer) meglerProps.get("WriteType") : 0); }
-    public void setInstanceId(int p0) { meglerProps.put("InstanceId", Integer.valueOf(p0)); }
-    public void setKeySize(int p0) { meglerProps.put("KeySize", Integer.valueOf(p0)); }
+    public java.util.UUID getUuid() { return (java.util.UUID) megletProps.get("Uuid"); }
+    public byte[] getValue() { return (byte[]) megletProps.get("Value"); }
+    public int getWriteType() { return (megletProps.get("WriteType") instanceof Integer ? (Integer) megletProps.get("WriteType") : 0); }
+    public void setInstanceId(int p0) { megletProps.put("InstanceId", Integer.valueOf(p0)); }
+    public void setKeySize(int p0) { megletProps.put("KeySize", Integer.valueOf(p0)); }
     public boolean setValue(int p0, int p1, int p2) { return false; }
     public boolean setValue(int p0, int p1, int p2, int p3) { return false; }
     public boolean setValue(java.lang.String p0) { return false; }
     public boolean setValue(byte[] p0) { return false; }
-    public void setWriteType(int p0) { meglerProps.put("WriteType", Integer.valueOf(p0)); }
+    public void setWriteType(int p0) { megletProps.put("WriteType", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     BluetoothGattCharacteristic() { this((java.util.UUID) null, (int) 0, (int) 0); }
 }

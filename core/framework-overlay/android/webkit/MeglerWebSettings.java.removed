@@ -1,3 +1,0 @@
-// megler-w10m: the original's MeglerWebSettings is not compiled (tools/build-framework.sh, "A third kind").
-// It held the settings of the original's WebView over WKWebView. A WebView's settings are Chromium's here, given by the
-// WebView APK's provider (WebView.getSettings(), AOSP's android.webkit: docs/JAVA.md, "The WebView").

@@ -3,9 +3,9 @@ package android.view.displayhash;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DisplayHashManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public DisplayHashManager() {}
-    public java.util.Set getSupportedHashAlgorithms() { return (meglerProps.get("SupportedHashAlgorithms") != null ? (java.util.Set) meglerProps.get("SupportedHashAlgorithms") : new java.util.HashSet()); }
-    public void setDisplayHashThrottlingEnabled(boolean p0) { meglerProps.put("DisplayHashThrottlingEnabled", Boolean.valueOf(p0)); }
+    public java.util.Set getSupportedHashAlgorithms() { return (megletProps.get("SupportedHashAlgorithms") != null ? (java.util.Set) megletProps.get("SupportedHashAlgorithms") : new java.util.HashSet()); }
+    public void setDisplayHashThrottlingEnabled(boolean p0) { megletProps.put("DisplayHashThrottlingEnabled", Boolean.valueOf(p0)); }
     public android.view.displayhash.VerifiedDisplayHash verifyDisplayHash(android.view.displayhash.DisplayHash p0) { return null; }
 }

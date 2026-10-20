@@ -3,58 +3,58 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ExerciseCompletionGoal {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected ExerciseCompletionGoal() {}
     public static final class ActiveCaloriesBurnedGoal extends android.health.connect.datatypes.ExerciseCompletionGoal {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ActiveCaloriesBurnedGoal(android.health.connect.datatypes.units.Energy p0) { super(); }
-        public android.health.connect.datatypes.units.Energy getActiveCalories() { return (android.health.connect.datatypes.units.Energy) meglerProps.get("ActiveCalories"); }
+        public android.health.connect.datatypes.units.Energy getActiveCalories() { return (android.health.connect.datatypes.units.Energy) megletProps.get("ActiveCalories"); }
         ActiveCaloriesBurnedGoal() { this((android.health.connect.datatypes.units.Energy) null); }
     }
     public static final class DistanceGoal extends android.health.connect.datatypes.ExerciseCompletionGoal {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public DistanceGoal(android.health.connect.datatypes.units.Length p0) { super(); }
-        public android.health.connect.datatypes.units.Length getDistance() { return (android.health.connect.datatypes.units.Length) meglerProps.get("Distance"); }
+        public android.health.connect.datatypes.units.Length getDistance() { return (android.health.connect.datatypes.units.Length) megletProps.get("Distance"); }
         DistanceGoal() { this((android.health.connect.datatypes.units.Length) null); }
     }
     public static final class DistanceWithVariableRestGoal extends android.health.connect.datatypes.ExerciseCompletionGoal {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public DistanceWithVariableRestGoal(android.health.connect.datatypes.units.Length p0, java.time.Duration p1) { super(); }
-        public android.health.connect.datatypes.units.Length getDistance() { return (android.health.connect.datatypes.units.Length) meglerProps.get("Distance"); }
-        public java.time.Duration getDuration() { return (java.time.Duration) meglerProps.get("Duration"); }
+        public android.health.connect.datatypes.units.Length getDistance() { return (android.health.connect.datatypes.units.Length) megletProps.get("Distance"); }
+        public java.time.Duration getDuration() { return (java.time.Duration) megletProps.get("Duration"); }
         DistanceWithVariableRestGoal() { this((android.health.connect.datatypes.units.Length) null, (java.time.Duration) null); }
     }
     public static final class DurationGoal extends android.health.connect.datatypes.ExerciseCompletionGoal {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public DurationGoal(java.time.Duration p0) { super(); }
-        public java.time.Duration getDuration() { return (java.time.Duration) meglerProps.get("Duration"); }
+        public java.time.Duration getDuration() { return (java.time.Duration) megletProps.get("Duration"); }
         DurationGoal() { this((java.time.Duration) null); }
     }
     public static final class RepetitionsGoal extends android.health.connect.datatypes.ExerciseCompletionGoal {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public RepetitionsGoal(int p0) { super(); }
-        public int getRepetitions() { return (meglerProps.get("Repetitions") instanceof Integer ? (Integer) meglerProps.get("Repetitions") : 0); }
+        public int getRepetitions() { return (megletProps.get("Repetitions") instanceof Integer ? (Integer) megletProps.get("Repetitions") : 0); }
         RepetitionsGoal() { this((int) 0); }
     }
     public static final class StepsGoal extends android.health.connect.datatypes.ExerciseCompletionGoal {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public StepsGoal(int p0) { super(); }
-        public int getSteps() { return (meglerProps.get("Steps") instanceof Integer ? (Integer) meglerProps.get("Steps") : 0); }
+        public int getSteps() { return (megletProps.get("Steps") instanceof Integer ? (Integer) megletProps.get("Steps") : 0); }
         StepsGoal() { this((int) 0); }
     }
     public static final class TotalCaloriesBurnedGoal extends android.health.connect.datatypes.ExerciseCompletionGoal {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public TotalCaloriesBurnedGoal(android.health.connect.datatypes.units.Energy p0) { super(); }
-        public android.health.connect.datatypes.units.Energy getTotalCalories() { return (android.health.connect.datatypes.units.Energy) meglerProps.get("TotalCalories"); }
+        public android.health.connect.datatypes.units.Energy getTotalCalories() { return (android.health.connect.datatypes.units.Energy) megletProps.get("TotalCalories"); }
         TotalCaloriesBurnedGoal() { this((android.health.connect.datatypes.units.Energy) null); }
     }
     public static final class UnknownGoal extends android.health.connect.datatypes.ExerciseCompletionGoal {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.health.connect.datatypes.ExerciseCompletionGoal.UnknownGoal INSTANCE;
         protected UnknownGoal() { super(); }
     }
     public static final class UnspecifiedGoal extends android.health.connect.datatypes.ExerciseCompletionGoal {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.health.connect.datatypes.ExerciseCompletionGoal.UnspecifiedGoal INSTANCE;
         protected UnspecifiedGoal() { super(); }
     }

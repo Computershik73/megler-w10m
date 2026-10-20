@@ -3,7 +3,7 @@ package android.view.inspector;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WindowInspector {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static void addGlobalWindowViewsListener(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public static java.util.List getGlobalWindowViews() { return new java.util.ArrayList(); }
     public static void removeGlobalWindowViewsListener(java.util.function.Consumer p0) {}

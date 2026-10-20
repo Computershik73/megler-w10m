@@ -3,15 +3,15 @@ package android.nfc.tech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class NdefFormatable extends android.nfc.tech.BasicTagTechnology {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public NdefFormatable(android.nfc.Tag p0) { super(); }
     public static android.nfc.tech.NdefFormatable get(android.nfc.Tag p0) { return null; }
     public void close() {}
     public void connect() {}
     public void format(android.nfc.NdefMessage p0) {}
     public void formatReadOnly(android.nfc.NdefMessage p0) {}
-    public android.nfc.Tag getTag() { return (android.nfc.Tag) meglerProps.get("Tag"); }
-    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
+    public android.nfc.Tag getTag() { return (android.nfc.Tag) megletProps.get("Tag"); }
+    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
     public void reconnect() {}
     NdefFormatable() { this((android.nfc.Tag) null); }
 }

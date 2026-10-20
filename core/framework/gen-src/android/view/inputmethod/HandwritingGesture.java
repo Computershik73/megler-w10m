@@ -3,7 +3,7 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class HandwritingGesture {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int GESTURE_TYPE_DELETE = 4;
     public static final int GESTURE_TYPE_DELETE_RANGE = 64;
     public static final int GESTURE_TYPE_INSERT = 2;
@@ -16,8 +16,8 @@ public abstract class HandwritingGesture {
     public static final int GRANULARITY_CHARACTER = 2;
     public static final int GRANULARITY_WORD = 1;
     public static android.view.inputmethod.HandwritingGesture fromByteArray(byte[] p0) { return null; }
-    public java.lang.String getFallbackText() { return (java.lang.String) meglerProps.get("FallbackText"); }
-    public int getGestureType() { return (meglerProps.get("GestureType") instanceof Integer ? (Integer) meglerProps.get("GestureType") : 0); }
+    public java.lang.String getFallbackText() { return (java.lang.String) megletProps.get("FallbackText"); }
+    public int getGestureType() { return (megletProps.get("GestureType") instanceof Integer ? (Integer) megletProps.get("GestureType") : 0); }
     public byte[] toByteArray() { return null; }
     protected HandwritingGesture() {}
 }

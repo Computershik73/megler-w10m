@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SignalStrength implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int INVALID = 2147483647;
     public static final int NUM_SIGNAL_STRENGTH_BINS = 5;
@@ -19,42 +19,42 @@ public class SignalStrength implements android.os.Parcelable {
     protected void copyFrom(android.telephony.SignalStrength p0) {}
     public int describeContents() { return 0; }
     public void fillInNotifierBundle(android.os.Bundle p0) {}
-    public int getAsuLevel() { return (meglerProps.get("AsuLevel") instanceof Integer ? (Integer) meglerProps.get("AsuLevel") : 0); }
-    public int getCdmaAsuLevel() { return (meglerProps.get("CdmaAsuLevel") instanceof Integer ? (Integer) meglerProps.get("CdmaAsuLevel") : 0); }
-    public int getCdmaDbm() { return (meglerProps.get("CdmaDbm") instanceof Integer ? (Integer) meglerProps.get("CdmaDbm") : 0); }
-    public int getCdmaEcio() { return (meglerProps.get("CdmaEcio") instanceof Integer ? (Integer) meglerProps.get("CdmaEcio") : 0); }
-    public int getCdmaLevel() { return (meglerProps.get("CdmaLevel") instanceof Integer ? (Integer) meglerProps.get("CdmaLevel") : 0); }
-    public java.util.List getCellSignalStrengths() { return (meglerProps.get("CellSignalStrengths") != null ? (java.util.List) meglerProps.get("CellSignalStrengths") : new java.util.ArrayList()); }
+    public int getAsuLevel() { return (megletProps.get("AsuLevel") instanceof Integer ? (Integer) megletProps.get("AsuLevel") : 0); }
+    public int getCdmaAsuLevel() { return (megletProps.get("CdmaAsuLevel") instanceof Integer ? (Integer) megletProps.get("CdmaAsuLevel") : 0); }
+    public int getCdmaDbm() { return (megletProps.get("CdmaDbm") instanceof Integer ? (Integer) megletProps.get("CdmaDbm") : 0); }
+    public int getCdmaEcio() { return (megletProps.get("CdmaEcio") instanceof Integer ? (Integer) megletProps.get("CdmaEcio") : 0); }
+    public int getCdmaLevel() { return (megletProps.get("CdmaLevel") instanceof Integer ? (Integer) megletProps.get("CdmaLevel") : 0); }
+    public java.util.List getCellSignalStrengths() { return (megletProps.get("CellSignalStrengths") != null ? (java.util.List) megletProps.get("CellSignalStrengths") : new java.util.ArrayList()); }
     public java.util.List getCellSignalStrengths(java.lang.Class p0) { return new java.util.ArrayList(); }
-    public int getDbm() { return (meglerProps.get("Dbm") instanceof Integer ? (Integer) meglerProps.get("Dbm") : 0); }
-    public int getEvdoAsuLevel() { return (meglerProps.get("EvdoAsuLevel") instanceof Integer ? (Integer) meglerProps.get("EvdoAsuLevel") : 0); }
-    public int getEvdoDbm() { return (meglerProps.get("EvdoDbm") instanceof Integer ? (Integer) meglerProps.get("EvdoDbm") : 0); }
-    public int getEvdoEcio() { return (meglerProps.get("EvdoEcio") instanceof Integer ? (Integer) meglerProps.get("EvdoEcio") : 0); }
-    public int getEvdoLevel() { return (meglerProps.get("EvdoLevel") instanceof Integer ? (Integer) meglerProps.get("EvdoLevel") : 0); }
-    public int getEvdoSnr() { return (meglerProps.get("EvdoSnr") instanceof Integer ? (Integer) meglerProps.get("EvdoSnr") : 0); }
-    public int getGsmAsuLevel() { return (meglerProps.get("GsmAsuLevel") instanceof Integer ? (Integer) meglerProps.get("GsmAsuLevel") : 0); }
-    public int getGsmBitErrorRate() { return (meglerProps.get("GsmBitErrorRate") instanceof Integer ? (Integer) meglerProps.get("GsmBitErrorRate") : 0); }
-    public int getGsmDbm() { return (meglerProps.get("GsmDbm") instanceof Integer ? (Integer) meglerProps.get("GsmDbm") : 0); }
-    public int getGsmLevel() { return (meglerProps.get("GsmLevel") instanceof Integer ? (Integer) meglerProps.get("GsmLevel") : 0); }
-    public int getGsmSignalStrength() { return (meglerProps.get("GsmSignalStrength") instanceof Integer ? (Integer) meglerProps.get("GsmSignalStrength") : 0); }
-    public int getLevel() { return (meglerProps.get("Level") instanceof Integer ? (Integer) meglerProps.get("Level") : 0); }
-    public int getLteAsuLevel() { return (meglerProps.get("LteAsuLevel") instanceof Integer ? (Integer) meglerProps.get("LteAsuLevel") : 0); }
-    public int getLteCqi() { return (meglerProps.get("LteCqi") instanceof Integer ? (Integer) meglerProps.get("LteCqi") : 0); }
-    public int getLteDbm() { return (meglerProps.get("LteDbm") instanceof Integer ? (Integer) meglerProps.get("LteDbm") : 0); }
-    public int getLteLevel() { return (meglerProps.get("LteLevel") instanceof Integer ? (Integer) meglerProps.get("LteLevel") : 0); }
-    public int getLteRsrp() { return (meglerProps.get("LteRsrp") instanceof Integer ? (Integer) meglerProps.get("LteRsrp") : 0); }
-    public int getLteRsrq() { return (meglerProps.get("LteRsrq") instanceof Integer ? (Integer) meglerProps.get("LteRsrq") : 0); }
-    public int getLteRssnr() { return (meglerProps.get("LteRssnr") instanceof Integer ? (Integer) meglerProps.get("LteRssnr") : 0); }
-    public int getLteSignalStrength() { return (meglerProps.get("LteSignalStrength") instanceof Integer ? (Integer) meglerProps.get("LteSignalStrength") : 0); }
-    public int getTdScdmaAsuLevel() { return (meglerProps.get("TdScdmaAsuLevel") instanceof Integer ? (Integer) meglerProps.get("TdScdmaAsuLevel") : 0); }
-    public int getTdScdmaDbm() { return (meglerProps.get("TdScdmaDbm") instanceof Integer ? (Integer) meglerProps.get("TdScdmaDbm") : 0); }
-    public int getTdScdmaLevel() { return (meglerProps.get("TdScdmaLevel") instanceof Integer ? (Integer) meglerProps.get("TdScdmaLevel") : 0); }
-    public long getTimestampMillis() { return (meglerProps.get("TimestampMillis") instanceof Long ? (Long) meglerProps.get("TimestampMillis") : 0L); }
-    public int getWcdmaAsuLevel() { return (meglerProps.get("WcdmaAsuLevel") instanceof Integer ? (Integer) meglerProps.get("WcdmaAsuLevel") : 0); }
-    public int getWcdmaDbm() { return (meglerProps.get("WcdmaDbm") instanceof Integer ? (Integer) meglerProps.get("WcdmaDbm") : 0); }
-    public int getWcdmaLevel() { return (meglerProps.get("WcdmaLevel") instanceof Integer ? (Integer) meglerProps.get("WcdmaLevel") : 0); }
-    public int getWcdmaRscp() { return (meglerProps.get("WcdmaRscp") instanceof Integer ? (Integer) meglerProps.get("WcdmaRscp") : 0); }
-    public boolean isGsm() { return (meglerProps.get("Gsm") instanceof Boolean ? (Boolean) meglerProps.get("Gsm") : false); }
+    public int getDbm() { return (megletProps.get("Dbm") instanceof Integer ? (Integer) megletProps.get("Dbm") : 0); }
+    public int getEvdoAsuLevel() { return (megletProps.get("EvdoAsuLevel") instanceof Integer ? (Integer) megletProps.get("EvdoAsuLevel") : 0); }
+    public int getEvdoDbm() { return (megletProps.get("EvdoDbm") instanceof Integer ? (Integer) megletProps.get("EvdoDbm") : 0); }
+    public int getEvdoEcio() { return (megletProps.get("EvdoEcio") instanceof Integer ? (Integer) megletProps.get("EvdoEcio") : 0); }
+    public int getEvdoLevel() { return (megletProps.get("EvdoLevel") instanceof Integer ? (Integer) megletProps.get("EvdoLevel") : 0); }
+    public int getEvdoSnr() { return (megletProps.get("EvdoSnr") instanceof Integer ? (Integer) megletProps.get("EvdoSnr") : 0); }
+    public int getGsmAsuLevel() { return (megletProps.get("GsmAsuLevel") instanceof Integer ? (Integer) megletProps.get("GsmAsuLevel") : 0); }
+    public int getGsmBitErrorRate() { return (megletProps.get("GsmBitErrorRate") instanceof Integer ? (Integer) megletProps.get("GsmBitErrorRate") : 0); }
+    public int getGsmDbm() { return (megletProps.get("GsmDbm") instanceof Integer ? (Integer) megletProps.get("GsmDbm") : 0); }
+    public int getGsmLevel() { return (megletProps.get("GsmLevel") instanceof Integer ? (Integer) megletProps.get("GsmLevel") : 0); }
+    public int getGsmSignalStrength() { return (megletProps.get("GsmSignalStrength") instanceof Integer ? (Integer) megletProps.get("GsmSignalStrength") : 0); }
+    public int getLevel() { return (megletProps.get("Level") instanceof Integer ? (Integer) megletProps.get("Level") : 0); }
+    public int getLteAsuLevel() { return (megletProps.get("LteAsuLevel") instanceof Integer ? (Integer) megletProps.get("LteAsuLevel") : 0); }
+    public int getLteCqi() { return (megletProps.get("LteCqi") instanceof Integer ? (Integer) megletProps.get("LteCqi") : 0); }
+    public int getLteDbm() { return (megletProps.get("LteDbm") instanceof Integer ? (Integer) megletProps.get("LteDbm") : 0); }
+    public int getLteLevel() { return (megletProps.get("LteLevel") instanceof Integer ? (Integer) megletProps.get("LteLevel") : 0); }
+    public int getLteRsrp() { return (megletProps.get("LteRsrp") instanceof Integer ? (Integer) megletProps.get("LteRsrp") : 0); }
+    public int getLteRsrq() { return (megletProps.get("LteRsrq") instanceof Integer ? (Integer) megletProps.get("LteRsrq") : 0); }
+    public int getLteRssnr() { return (megletProps.get("LteRssnr") instanceof Integer ? (Integer) megletProps.get("LteRssnr") : 0); }
+    public int getLteSignalStrength() { return (megletProps.get("LteSignalStrength") instanceof Integer ? (Integer) megletProps.get("LteSignalStrength") : 0); }
+    public int getTdScdmaAsuLevel() { return (megletProps.get("TdScdmaAsuLevel") instanceof Integer ? (Integer) megletProps.get("TdScdmaAsuLevel") : 0); }
+    public int getTdScdmaDbm() { return (megletProps.get("TdScdmaDbm") instanceof Integer ? (Integer) megletProps.get("TdScdmaDbm") : 0); }
+    public int getTdScdmaLevel() { return (megletProps.get("TdScdmaLevel") instanceof Integer ? (Integer) megletProps.get("TdScdmaLevel") : 0); }
+    public long getTimestampMillis() { return (megletProps.get("TimestampMillis") instanceof Long ? (Long) megletProps.get("TimestampMillis") : 0L); }
+    public int getWcdmaAsuLevel() { return (megletProps.get("WcdmaAsuLevel") instanceof Integer ? (Integer) megletProps.get("WcdmaAsuLevel") : 0); }
+    public int getWcdmaDbm() { return (megletProps.get("WcdmaDbm") instanceof Integer ? (Integer) megletProps.get("WcdmaDbm") : 0); }
+    public int getWcdmaLevel() { return (megletProps.get("WcdmaLevel") instanceof Integer ? (Integer) megletProps.get("WcdmaLevel") : 0); }
+    public int getWcdmaRscp() { return (megletProps.get("WcdmaRscp") instanceof Integer ? (Integer) megletProps.get("WcdmaRscp") : 0); }
+    public boolean isGsm() { return (megletProps.get("Gsm") instanceof Boolean ? (Boolean) megletProps.get("Gsm") : false); }
     public void updateLevel(android.os.PersistableBundle p0, android.telephony.ServiceState p1) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

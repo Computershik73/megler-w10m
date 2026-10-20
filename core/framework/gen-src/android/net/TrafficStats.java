@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TrafficStats {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final long GB_IN_BYTES = 1073741824L;
     public static final long KB_IN_BYTES = 1024L;
     public static final long MB_IN_BYTES = 1048576L;

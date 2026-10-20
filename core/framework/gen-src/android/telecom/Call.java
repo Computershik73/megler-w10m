@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Call {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int AUDIO_PROCESSING_USE_CASE_ASK_TO_HOLD = 3;
     public static final int AUDIO_PROCESSING_USE_CASE_CALL_SCREENING = 2;
     public static final int AUDIO_PROCESSING_USE_CASE_UNKNOWN = 0;
@@ -44,20 +44,20 @@ public final class Call {
     public void enterBackgroundAudioProcessing() {}
     public void enterBackgroundAudioProcessing(int p0) {}
     public void exitBackgroundAudioProcessing(boolean p0) {}
-    public int getAudioProcessingUseCase() { return (meglerProps.get("AudioProcessingUseCase") instanceof Integer ? (Integer) meglerProps.get("AudioProcessingUseCase") : 0); }
-    public java.util.List getCannedTextResponses() { return (meglerProps.get("CannedTextResponses") != null ? (java.util.List) meglerProps.get("CannedTextResponses") : new java.util.ArrayList()); }
-    public java.util.List getChildren() { return (meglerProps.get("Children") != null ? (java.util.List) meglerProps.get("Children") : new java.util.ArrayList()); }
-    public java.util.List getConferenceableCalls() { return (meglerProps.get("ConferenceableCalls") != null ? (java.util.List) meglerProps.get("ConferenceableCalls") : new java.util.ArrayList()); }
-    public android.telecom.Call.Details getDetails() { return (android.telecom.Call.Details) meglerProps.get("Details"); }
-    public android.telecom.Call getGenericConferenceActiveChildCall() { return (android.telecom.Call) meglerProps.get("GenericConferenceActiveChildCall"); }
-    public android.telecom.Call getParent() { return (android.telecom.Call) meglerProps.get("Parent"); }
-    public java.lang.String getRemainingPostDialSequence() { return (java.lang.String) meglerProps.get("RemainingPostDialSequence"); }
-    public android.telecom.Call.RttCall getRttCall() { return (android.telecom.Call.RttCall) meglerProps.get("RttCall"); }
-    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
-    public android.telecom.InCallService.VideoCall getVideoCall() { return (android.telecom.InCallService.VideoCall) meglerProps.get("VideoCall"); }
+    public int getAudioProcessingUseCase() { return (megletProps.get("AudioProcessingUseCase") instanceof Integer ? (Integer) megletProps.get("AudioProcessingUseCase") : 0); }
+    public java.util.List getCannedTextResponses() { return (megletProps.get("CannedTextResponses") != null ? (java.util.List) megletProps.get("CannedTextResponses") : new java.util.ArrayList()); }
+    public java.util.List getChildren() { return (megletProps.get("Children") != null ? (java.util.List) megletProps.get("Children") : new java.util.ArrayList()); }
+    public java.util.List getConferenceableCalls() { return (megletProps.get("ConferenceableCalls") != null ? (java.util.List) megletProps.get("ConferenceableCalls") : new java.util.ArrayList()); }
+    public android.telecom.Call.Details getDetails() { return (android.telecom.Call.Details) megletProps.get("Details"); }
+    public android.telecom.Call getGenericConferenceActiveChildCall() { return (android.telecom.Call) megletProps.get("GenericConferenceActiveChildCall"); }
+    public android.telecom.Call getParent() { return (android.telecom.Call) megletProps.get("Parent"); }
+    public java.lang.String getRemainingPostDialSequence() { return (java.lang.String) megletProps.get("RemainingPostDialSequence"); }
+    public android.telecom.Call.RttCall getRttCall() { return (android.telecom.Call.RttCall) megletProps.get("RttCall"); }
+    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
+    public android.telecom.InCallService.VideoCall getVideoCall() { return (android.telecom.InCallService.VideoCall) megletProps.get("VideoCall"); }
     public void handoverTo(android.telecom.PhoneAccountHandle p0, int p1, android.os.Bundle p2) {}
     public void hold() {}
-    public boolean isRttActive() { return (meglerProps.get("RttActive") instanceof Boolean ? (Boolean) meglerProps.get("RttActive") : false); }
+    public boolean isRttActive() { return (megletProps.get("RttActive") instanceof Boolean ? (Boolean) megletProps.get("RttActive") : false); }
     public void mergeConference() {}
     public void phoneAccountSelected(android.telecom.PhoneAccountHandle p0, boolean p1) {}
     public void playDtmfTone(char p0) {}
@@ -87,7 +87,7 @@ public final class Call {
     public void unregisterCallback(android.telecom.Call.Callback p0) {}
     protected Call() {}
     public static abstract class Callback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int HANDOVER_FAILURE_DEST_APP_REJECTED = 1;
         public static final int HANDOVER_FAILURE_NOT_SUPPORTED = 2;
         public static final int HANDOVER_FAILURE_ONGOING_EMERGENCY_CALL = 4;
@@ -115,21 +115,21 @@ public final class Call {
         protected Details() {}
     }
     public static abstract class Listener extends android.telecom.Call.Callback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Listener() { super(); }
     }
     public static final class RttCall {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int RTT_MODE_FULL = 1;
         public static final int RTT_MODE_HCO = 2;
         public static final int RTT_MODE_INVALID = 0;
         public static final int RTT_MODE_VCO = 3;
         public RttCall(java.lang.String p0, java.io.InputStreamReader p1, java.io.OutputStreamWriter p2, int p3, android.telecom.InCallAdapter p4) {}
         public void close() {}
-        public int getRttAudioMode() { return (meglerProps.get("RttAudioMode") instanceof Integer ? (Integer) meglerProps.get("RttAudioMode") : 0); }
+        public int getRttAudioMode() { return (megletProps.get("RttAudioMode") instanceof Integer ? (Integer) megletProps.get("RttAudioMode") : 0); }
         public java.lang.String read() { return null; }
         public java.lang.String readImmediately() { return null; }
-        public void setRttMode(int p0) { meglerProps.put("RttMode", Integer.valueOf(p0)); }
+        public void setRttMode(int p0) { megletProps.put("RttMode", Integer.valueOf(p0)); }
         public void write(java.lang.String p0) {}
         RttCall() { this((java.lang.String) null, (java.io.InputStreamReader) null, (java.io.OutputStreamWriter) null, (int) 0, (android.telecom.InCallAdapter) null); }
     }

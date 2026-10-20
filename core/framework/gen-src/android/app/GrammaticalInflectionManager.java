@@ -3,13 +3,13 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GrammaticalInflectionManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static java.util.Set VALID_GRAMMATICAL_GENDER_VALUES;
     public GrammaticalInflectionManager(android.content.Context p0, android.app.IGrammaticalInflectionManager p1) {}
-    public int getApplicationGrammaticalGender() { return (meglerProps.get("ApplicationGrammaticalGender") instanceof Integer ? (Integer) meglerProps.get("ApplicationGrammaticalGender") : 0); }
-    public int getSystemGrammaticalGender() { return (meglerProps.get("SystemGrammaticalGender") instanceof Integer ? (Integer) meglerProps.get("SystemGrammaticalGender") : 0); }
+    public int getApplicationGrammaticalGender() { return (megletProps.get("ApplicationGrammaticalGender") instanceof Integer ? (Integer) megletProps.get("ApplicationGrammaticalGender") : 0); }
+    public int getSystemGrammaticalGender() { return (megletProps.get("SystemGrammaticalGender") instanceof Integer ? (Integer) megletProps.get("SystemGrammaticalGender") : 0); }
     public int peekSystemGrammaticalGenderByUserId(int p0) { return 0; }
-    public void setRequestedApplicationGrammaticalGender(int p0) { meglerProps.put("RequestedApplicationGrammaticalGender", Integer.valueOf(p0)); }
-    public void setSystemWideGrammaticalGender(int p0) { meglerProps.put("SystemWideGrammaticalGender", Integer.valueOf(p0)); }
+    public void setRequestedApplicationGrammaticalGender(int p0) { megletProps.put("RequestedApplicationGrammaticalGender", Integer.valueOf(p0)); }
+    public void setSystemWideGrammaticalGender(int p0) { megletProps.put("SystemWideGrammaticalGender", Integer.valueOf(p0)); }
     GrammaticalInflectionManager() { this((android.content.Context) null, (android.app.IGrammaticalInflectionManager) null); }
 }

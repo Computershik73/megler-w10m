@@ -3,16 +3,16 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Capability implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected Capability() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0) {}
-        public android.content.pm.Capability build() { android.content.pm.Capability x = new android.content.pm.Capability(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.content.pm.Capability build() { android.content.pm.Capability x = new android.content.pm.Capability(); x.megletProps.putAll(megletProps); return x; }
         Builder() { this((java.lang.String) null); }
     }
 }

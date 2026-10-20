@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Rating implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int RATING_3_STARS = 3;
     public static final int RATING_4_STARS = 4;
@@ -18,12 +18,12 @@ public final class Rating implements android.os.Parcelable {
     public static android.media.Rating newThumbRating(boolean p0) { return new Rating(); }
     public static android.media.Rating newUnratedRating(int p0) { return new Rating(); }
     public int describeContents() { return 0; }
-    public float getPercentRating() { return (meglerProps.get("PercentRating") instanceof Float ? (Float) meglerProps.get("PercentRating") : 0f); }
-    public int getRatingStyle() { return (meglerProps.get("RatingStyle") instanceof Integer ? (Integer) meglerProps.get("RatingStyle") : 0); }
-    public float getStarRating() { return (meglerProps.get("StarRating") instanceof Float ? (Float) meglerProps.get("StarRating") : 0f); }
+    public float getPercentRating() { return (megletProps.get("PercentRating") instanceof Float ? (Float) megletProps.get("PercentRating") : 0f); }
+    public int getRatingStyle() { return (megletProps.get("RatingStyle") instanceof Integer ? (Integer) megletProps.get("RatingStyle") : 0); }
+    public float getStarRating() { return (megletProps.get("StarRating") instanceof Float ? (Float) megletProps.get("StarRating") : 0f); }
     public boolean hasHeart() { return false; }
-    public boolean isRated() { return (meglerProps.get("Rated") instanceof Boolean ? (Boolean) meglerProps.get("Rated") : false); }
-    public boolean isThumbUp() { return (meglerProps.get("ThumbUp") instanceof Boolean ? (Boolean) meglerProps.get("ThumbUp") : false); }
+    public boolean isRated() { return (megletProps.get("Rated") instanceof Boolean ? (Boolean) megletProps.get("Rated") : false); }
+    public boolean isThumbUp() { return (megletProps.get("ThumbUp") instanceof Boolean ? (Boolean) megletProps.get("ThumbUp") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected Rating() {}
 }

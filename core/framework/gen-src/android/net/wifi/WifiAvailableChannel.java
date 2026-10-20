@@ -3,7 +3,7 @@ package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WifiAvailableChannel implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FILTER_CELLULAR_COEXISTENCE = 1;
     public static final int FILTER_CONCURRENCY = 2;
@@ -19,9 +19,9 @@ public final class WifiAvailableChannel implements android.os.Parcelable {
     public WifiAvailableChannel(int p0, int p1, int p2) {}
     public static int getUsableFilter() { return 0; }
     public int describeContents() { return 0; }
-    public int getChannelWidth() { return (meglerProps.get("ChannelWidth") instanceof Integer ? (Integer) meglerProps.get("ChannelWidth") : 0); }
-    public int getFrequencyMhz() { return (meglerProps.get("FrequencyMhz") instanceof Integer ? (Integer) meglerProps.get("FrequencyMhz") : 0); }
-    public int getOperationalModes() { return (meglerProps.get("OperationalModes") instanceof Integer ? (Integer) meglerProps.get("OperationalModes") : 0); }
+    public int getChannelWidth() { return (megletProps.get("ChannelWidth") instanceof Integer ? (Integer) megletProps.get("ChannelWidth") : 0); }
+    public int getFrequencyMhz() { return (megletProps.get("FrequencyMhz") instanceof Integer ? (Integer) megletProps.get("FrequencyMhz") : 0); }
+    public int getOperationalModes() { return (megletProps.get("OperationalModes") instanceof Integer ? (Integer) megletProps.get("OperationalModes") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     WifiAvailableChannel() { this((int) 0, (int) 0); }
 }

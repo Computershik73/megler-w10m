@@ -3,15 +3,15 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SchemaVisibilityConfig extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
-    public java.util.List getAllowedPackages() { return (meglerProps.get("AllowedPackages") != null ? (java.util.List) meglerProps.get("AllowedPackages") : new java.util.ArrayList()); }
-    public android.app.appsearch.PackageIdentifier getPubliclyVisibleTargetPackage() { return (android.app.appsearch.PackageIdentifier) meglerProps.get("PubliclyVisibleTargetPackage"); }
-    public java.util.Set getRequiredPermissions() { return (meglerProps.get("RequiredPermissions") != null ? (java.util.Set) meglerProps.get("RequiredPermissions") : new java.util.HashSet()); }
+    public java.util.List getAllowedPackages() { return (megletProps.get("AllowedPackages") != null ? (java.util.List) megletProps.get("AllowedPackages") : new java.util.ArrayList()); }
+    public android.app.appsearch.PackageIdentifier getPubliclyVisibleTargetPackage() { return (android.app.appsearch.PackageIdentifier) megletProps.get("PubliclyVisibleTargetPackage"); }
+    public java.util.Set getRequiredPermissions() { return (megletProps.get("RequiredPermissions") != null ? (java.util.Set) megletProps.get("RequiredPermissions") : new java.util.HashSet()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SchemaVisibilityConfig() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.app.appsearch.SchemaVisibilityConfig p0) {}
         public android.app.appsearch.SchemaVisibilityConfig.Builder addAllowedPackage(android.app.appsearch.PackageIdentifier p0) { return this; }
@@ -19,6 +19,6 @@ public abstract class SchemaVisibilityConfig extends android.app.appsearch.safep
         public android.app.appsearch.SchemaVisibilityConfig build() { return null; }
         public android.app.appsearch.SchemaVisibilityConfig.Builder clearAllowedPackages() { return this; }
         public android.app.appsearch.SchemaVisibilityConfig.Builder clearRequiredPermissions() { return this; }
-        public android.app.appsearch.SchemaVisibilityConfig.Builder setPubliclyVisibleTargetPackage(android.app.appsearch.PackageIdentifier p0) { meglerProps.put("PubliclyVisibleTargetPackage", p0); return this; }
+        public android.app.appsearch.SchemaVisibilityConfig.Builder setPubliclyVisibleTargetPackage(android.app.appsearch.PackageIdentifier p0) { megletProps.put("PubliclyVisibleTargetPackage", p0); return this; }
     }
 }

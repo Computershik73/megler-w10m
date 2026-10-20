@@ -3,7 +3,7 @@ package android.view.inspector;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IntFlagMapping {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public IntFlagMapping() {}
     public void add(int p0, int p1, java.lang.String p2) {}
     public java.util.Set get(int p0) { return new java.util.HashSet(); }

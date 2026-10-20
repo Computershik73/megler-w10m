@@ -3,7 +3,7 @@ package android.media.tv.interactive;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TvInteractiveAppManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_APP_LINK_COMMAND = "android.media.tv.interactive.action.APP_LINK_COMMAND";
     public static final java.lang.String APP_LINK_KEY_BACK_URI = "back_uri";
     public static final java.lang.String APP_LINK_KEY_CLASS_NAME = "class_name";
@@ -36,8 +36,8 @@ public final class TvInteractiveAppManager {
     public static final int TELETEXT_APP_STATE_SHOW = 1;
     public TvInteractiveAppManager(android.media.tv.interactive.ITvInteractiveAppManager p0, int p1) {}
     public void createSession(java.lang.String p0, int p1, android.media.tv.interactive.TvInteractiveAppManager.SessionCallback p2, android.os.Handler p3) {}
-    public java.util.List getAppLinkInfoList() { return (meglerProps.get("AppLinkInfoList") != null ? (java.util.List) meglerProps.get("AppLinkInfoList") : new java.util.ArrayList()); }
-    public java.util.List getTvInteractiveAppServiceList() { return (meglerProps.get("TvInteractiveAppServiceList") != null ? (java.util.List) meglerProps.get("TvInteractiveAppServiceList") : new java.util.ArrayList()); }
+    public java.util.List getAppLinkInfoList() { return (megletProps.get("AppLinkInfoList") != null ? (java.util.List) megletProps.get("AppLinkInfoList") : new java.util.ArrayList()); }
+    public java.util.List getTvInteractiveAppServiceList() { return (megletProps.get("TvInteractiveAppServiceList") != null ? (java.util.List) megletProps.get("TvInteractiveAppServiceList") : new java.util.ArrayList()); }
     public void registerAppLinkInfo(java.lang.String p0, android.media.tv.interactive.AppLinkInfo p1) {}
     public void registerCallback(java.util.concurrent.Executor p0, android.media.tv.interactive.TvInteractiveAppManager.TvInteractiveAppCallback p1) {}
     public void sendAppLinkCommand(java.lang.String p0, android.os.Bundle p1) {}
@@ -48,7 +48,7 @@ public final class TvInteractiveAppManager {
         protected Session() {}
     }
     public static abstract class SessionCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public SessionCallback() {}
         public void onBiInteractiveAppCreated(android.media.tv.interactive.TvInteractiveAppManager.Session p0, android.net.Uri p1, java.lang.String p2) {}
         public void onCommandRequest(android.media.tv.interactive.TvInteractiveAppManager.Session p0, java.lang.String p1, android.os.Bundle p2) {}
@@ -80,7 +80,7 @@ public final class TvInteractiveAppManager {
         public void onTimeShiftCommandRequest(android.media.tv.interactive.TvInteractiveAppManager.Session p0, java.lang.String p1, android.os.Bundle p2) {}
     }
     public static abstract class TvInteractiveAppCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public TvInteractiveAppCallback() {}
         public void onInteractiveAppServiceAdded(java.lang.String p0) {}
         public void onInteractiveAppServiceRemoved(java.lang.String p0) {}

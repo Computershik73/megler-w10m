@@ -3,30 +3,30 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SpeedRecord extends android.health.connect.datatypes.IntervalRecord {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.AggregationType SPEED_AVG;
     public static android.health.connect.datatypes.AggregationType SPEED_MAX;
     public static android.health.connect.datatypes.AggregationType SPEED_MIN;
-    public java.util.List getSamples() { return (meglerProps.get("Samples") != null ? (java.util.List) meglerProps.get("Samples") : new java.util.ArrayList()); }
+    public java.util.List getSamples() { return (megletProps.get("Samples") != null ? (java.util.List) megletProps.get("Samples") : new java.util.ArrayList()); }
     public android.health.connect.internal.datatypes.SpeedRecordInternal toRecordInternal() { return null; }
     protected SpeedRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, java.time.Instant p2, java.util.List p3) {}
-        public android.health.connect.datatypes.SpeedRecord build() { android.health.connect.datatypes.SpeedRecord x = new android.health.connect.datatypes.SpeedRecord(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.datatypes.SpeedRecord build() { android.health.connect.datatypes.SpeedRecord x = new android.health.connect.datatypes.SpeedRecord(); x.megletProps.putAll(megletProps); return x; }
         public android.health.connect.datatypes.SpeedRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.SpeedRecord.Builder clearEndZoneOffset() { return this; }
         public android.health.connect.datatypes.SpeedRecord.Builder clearStartZoneOffset() { return this; }
-        public android.health.connect.datatypes.SpeedRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("EndZoneOffset", p0); return this; }
-        public android.health.connect.datatypes.SpeedRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("StartZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.SpeedRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { megletProps.put("EndZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.SpeedRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { megletProps.put("StartZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (java.time.Instant) null, (java.util.List) null); }
     }
     public static final class SpeedRecordSample {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public SpeedRecordSample(android.health.connect.datatypes.units.Velocity p0, java.time.Instant p1) {}
         public SpeedRecordSample(android.health.connect.datatypes.units.Velocity p0, java.time.Instant p1, boolean p2) {}
-        public android.health.connect.datatypes.units.Velocity getSpeed() { return (android.health.connect.datatypes.units.Velocity) meglerProps.get("Speed"); }
-        public java.time.Instant getTime() { return (java.time.Instant) meglerProps.get("Time"); }
+        public android.health.connect.datatypes.units.Velocity getSpeed() { return (android.health.connect.datatypes.units.Velocity) megletProps.get("Speed"); }
+        public java.time.Instant getTime() { return (java.time.Instant) megletProps.get("Time"); }
         SpeedRecordSample() { this((android.health.connect.datatypes.units.Velocity) null, (java.time.Instant) null); }
     }
 }

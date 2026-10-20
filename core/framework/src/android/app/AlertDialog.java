@@ -156,7 +156,7 @@ public class AlertDialog extends Dialog implements DialogInterface {
             mButtons[k] = b;
         }
         setContentView(root, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        int sw = megler.Native.screenWidth();
+        int sw = meglet.Native.screenWidth();
         getWindow().setLayout(Math.min((int) (sw * 0.9f), (int) dp(560)), ViewGroup.LayoutParams.WRAP_CONTENT);
     }
     public Button getButton(int which) { build(); int k = which == BUTTON_POSITIVE ? 0 : which == BUTTON_NEGATIVE ? 1 : which == BUTTON_NEUTRAL ? 2 : -1; return k < 0 ? null : mButtons[k]; }

@@ -1,5 +1,5 @@
-/* megler.h over the core. */
-#include "../include/megler.h"
+/* meglet.h over the core. */
+#include "../include/meglet.h"
 
 #include <stdio.h>
 
@@ -10,7 +10,7 @@
 #include "run/hk_run.h"
 #include "webp/hk_webp.h"
 
-static megler_log_fn g_log;
+static meglet_log_fn g_log;
 static void *g_log_user;
 static char g_data_dir[600], g_package_dir[600], g_storage_dir[600];
 
@@ -20,7 +20,7 @@ static void log_sink(int level, const char *line, void *user)
     if (g_log) g_log(level, line, g_log_user);
 }
 
-const char *megler_data_dir(void) { return g_data_dir; }
+const char *meglet_data_dir(void) { return g_data_dir; }
 
 /*
  * A switch for trying something on a device without building for it: on when
@@ -73,8 +73,8 @@ void hk_flags_each(const char *prefix, void (*fn)(const char *rest, void *user),
     hk_path_list(path, flags_each_one, &e, &err);
 }
 
-const char *megler_package_dir(void) { return g_package_dir; }
-const char *megler_storage_dir(void) { return g_storage_dir[0] ? g_storage_dir : g_data_dir; }
+const char *meglet_package_dir(void) { return g_package_dir; }
+const char *meglet_storage_dir(void) { return g_storage_dir[0] ? g_storage_dir : g_data_dir; }
 
 static void copy_dir(char *out, size_t cap, const char *in)
 {
@@ -87,7 +87,7 @@ static void copy_dir(char *out, size_t cap, const char *in)
     while (n > 1 && out[n - 1] == '/') out[--n] = 0;
 }
 
-bool megler_init(const megler_config *config)
+bool meglet_init(const meglet_config *config)
 {
     copy_dir(g_data_dir, sizeof(g_data_dir), config->data_dir);
     copy_dir(g_package_dir, sizeof(g_package_dir), config->package_dir);
@@ -103,41 +103,41 @@ bool megler_init(const megler_config *config)
     return hk_core_init();
 }
 
-bool megler_webp_size(const void *data, size_t size, int *width, int *height) { return hk_webp_size(data, size, width, height); }
-bool megler_webp_decode(const void *data, size_t size, void *pixels, int width, int height, int stride)
+bool meglet_webp_size(const void *data, size_t size, int *width, int *height) { return hk_webp_size(data, size, width, height); }
+bool meglet_webp_decode(const void *data, size_t size, void *pixels, int width, int height, int stride)
 {
     return hk_webp_decode(data, size, pixels, width, height, stride);
 }
 
-bool megler_file_by_handle(const char *path, megler_handle_opener open, void *user) { return hk_file_by_handle(path, open, user); }
+bool meglet_file_by_handle(const char *path, meglet_handle_opener open, void *user) { return hk_file_by_handle(path, open, user); }
 
-const char *megler_version(void) { return "0.1"; }
-void megler_free(void *p) { free(p); }
+const char *meglet_version(void) { return "0.1"; }
+void meglet_free(void *p) { free(p); }
 
-bool megler_run(const megler_run_config *config) { return hk_run_start(config); }
-bool megler_running(void) { return hk_run_active(); }
-const char *megler_last_error(void) { return hk_run_last_error(); }
-void megler_touch(int phase, int pointer_id, float x, float y) { hk_run_touch(phase, pointer_id, x, y); }
-void megler_key(int android_keycode, bool down) { hk_run_key(android_keycode, down); }
+bool meglet_run(const meglet_run_config *config) { return hk_run_start(config); }
+bool meglet_running(void) { return hk_run_active(); }
+const char *meglet_last_error(void) { return hk_run_last_error(); }
+void meglet_touch(int phase, int pointer_id, float x, float y) { hk_run_touch(phase, pointer_id, x, y); }
+void meglet_key(int android_keycode, bool down) { hk_run_key(android_keycode, down); }
 /* Text entry is the Java driver's alone: its framework has the text fields. For any other app these do nothing. */
-void megler_text_commit(const char *utf8) { hk_java_text(utf8); }
-void megler_text_key(int key) { hk_java_text_key(key); }
-void megler_keyboard_closed(void) { hk_java_keyboard_closed(); }
-void megler_keyboard_height(int pixels) { hk_java_keyboard_height(pixels); }
-void megler_set_insets(int left, int top, int right, int bottom) { hk_java_set_insets(left, top, right, bottom); }
-void megler_set_paused(bool paused) { hk_run_set_paused(paused); }
-void megler_set_focused(bool focused) { hk_run_set_focused(focused); }
-void megler_stop(void) { hk_run_stop(); }
-uint32_t megler_frames(void) { return hk_run_frames(); }
+void meglet_text_commit(const char *utf8) { hk_java_text(utf8); }
+void meglet_text_key(int key) { hk_java_text_key(key); }
+void meglet_keyboard_closed(void) { hk_java_keyboard_closed(); }
+void meglet_keyboard_height(int pixels) { hk_java_keyboard_height(pixels); }
+void meglet_set_insets(int left, int top, int right, int bottom) { hk_java_set_insets(left, top, right, bottom); }
+void meglet_set_paused(bool paused) { hk_run_set_paused(paused); }
+void meglet_set_focused(bool focused) { hk_run_set_focused(focused); }
+void meglet_stop(void) { hk_run_stop(); }
+uint32_t meglet_frames(void) { return hk_run_frames(); }
 
 /* The phone, for an app. The time zone is kept where Android's own code looks for it (bionic/hk_bionic.h). */
-void megler_set_timezone(const char *id)
+void meglet_set_timezone(const char *id)
 {
     hk_timezone_set(id);
     if (id && id[0]) hk_info("phone: the time zone is %s", hk_timezone_id());
 }
 
-void megler_set_locale(const char *tag)
+void meglet_set_locale(const char *tag)
 {
     hk_locale_set(tag);
     hk_info("phone: the language and region are %s", hk_locale_tag());
@@ -148,7 +148,7 @@ void megler_set_locale(const char *tag)
  * phone with Windows can say, and the rest is made up here, plausibly: a lithium cell's voltage runs from about 3.4 V
  * empty to 4.2 V full, and an app that shows it wants a number in that range more than it wants the truth of the curve.
  */
-void megler_set_battery(const megler_battery *now)
+void meglet_set_battery(const meglet_battery *now)
 {
     hk_battery b;
     if (!now) {

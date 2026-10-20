@@ -3,18 +3,18 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GenericDocument {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.app.appsearch.GenericDocument EMPTY;
     public static final java.lang.String PARENT_TYPES_SYNTHETIC_PROPERTY = "$$__AppSearch__parentTypes";
     protected GenericDocument(android.app.appsearch.GenericDocument p0) {}
     public GenericDocument(android.app.appsearch.safeparcel.GenericDocumentParcel p0) {}
     public static android.app.appsearch.GenericDocument createFromParcel(android.os.Parcel p0) { return new GenericDocument(); }
     public static int getMaxIndexedProperties() { return 0; }
-    public long getCreationTimestampMillis() { return (meglerProps.get("CreationTimestampMillis") instanceof Long ? (Long) meglerProps.get("CreationTimestampMillis") : 0L); }
-    public android.app.appsearch.safeparcel.GenericDocumentParcel getDocumentParcel() { return (android.app.appsearch.safeparcel.GenericDocumentParcel) meglerProps.get("DocumentParcel"); }
-    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
-    public java.lang.String getNamespace() { return (java.lang.String) meglerProps.get("Namespace"); }
-    public java.util.List getParentTypes() { return (meglerProps.get("ParentTypes") != null ? (java.util.List) meglerProps.get("ParentTypes") : new java.util.ArrayList()); }
+    public long getCreationTimestampMillis() { return (megletProps.get("CreationTimestampMillis") instanceof Long ? (Long) megletProps.get("CreationTimestampMillis") : 0L); }
+    public android.app.appsearch.safeparcel.GenericDocumentParcel getDocumentParcel() { return (android.app.appsearch.safeparcel.GenericDocumentParcel) megletProps.get("DocumentParcel"); }
+    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
+    public java.lang.String getNamespace() { return (java.lang.String) megletProps.get("Namespace"); }
+    public java.util.List getParentTypes() { return (megletProps.get("ParentTypes") != null ? (java.util.List) megletProps.get("ParentTypes") : new java.util.ArrayList()); }
     public java.lang.Object getProperty(java.lang.String p0) { return null; }
     public android.app.appsearch.AppSearchBlobHandle getPropertyBlobHandle(java.lang.String p0) { return null; }
     public android.app.appsearch.AppSearchBlobHandle[] getPropertyBlobHandleArray(java.lang.String p0) { return null; }
@@ -30,24 +30,24 @@ public class GenericDocument {
     public android.app.appsearch.EmbeddingVector[] getPropertyEmbeddingArray(java.lang.String p0) { return null; }
     public long getPropertyLong(java.lang.String p0) { return 0L; }
     public long[] getPropertyLongArray(java.lang.String p0) { return null; }
-    public java.util.Set getPropertyNames() { return (meglerProps.get("PropertyNames") != null ? (java.util.Set) meglerProps.get("PropertyNames") : new java.util.HashSet()); }
+    public java.util.Set getPropertyNames() { return (megletProps.get("PropertyNames") != null ? (java.util.Set) megletProps.get("PropertyNames") : new java.util.HashSet()); }
     public java.lang.String getPropertyString(java.lang.String p0) { return null; }
     public java.lang.String[] getPropertyStringArray(java.lang.String p0) { return null; }
-    public java.lang.String getSchemaType() { return (java.lang.String) meglerProps.get("SchemaType"); }
-    public int getScore() { return (meglerProps.get("Score") instanceof Integer ? (Integer) meglerProps.get("Score") : 0); }
-    public long getTtlMillis() { return (meglerProps.get("TtlMillis") instanceof Long ? (Long) meglerProps.get("TtlMillis") : 0L); }
+    public java.lang.String getSchemaType() { return (java.lang.String) megletProps.get("SchemaType"); }
+    public int getScore() { return (megletProps.get("Score") instanceof Integer ? (Integer) megletProps.get("Score") : 0); }
+    public long getTtlMillis() { return (megletProps.get("TtlMillis") instanceof Long ? (Long) megletProps.get("TtlMillis") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     GenericDocument() { this((android.app.appsearch.GenericDocument) null); }
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.app.appsearch.GenericDocument p0) {}
         public Builder(java.lang.String p0, java.lang.String p1, java.lang.String p2) {}
-        public android.app.appsearch.GenericDocument build() { android.app.appsearch.GenericDocument x = new android.app.appsearch.GenericDocument(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.app.appsearch.GenericDocument build() { android.app.appsearch.GenericDocument x = new android.app.appsearch.GenericDocument(); x.megletProps.putAll(megletProps); return x; }
         public android.app.appsearch.GenericDocument.Builder clearProperty(java.lang.String p0) { return this; }
-        public android.app.appsearch.GenericDocument.Builder setCreationTimestampMillis(long p0) { meglerProps.put("CreationTimestampMillis", Long.valueOf(p0)); return this; }
-        public android.app.appsearch.GenericDocument.Builder setId(java.lang.String p0) { meglerProps.put("Id", p0); return this; }
-        public android.app.appsearch.GenericDocument.Builder setNamespace(java.lang.String p0) { meglerProps.put("Namespace", p0); return this; }
-        public android.app.appsearch.GenericDocument.Builder setParentTypes(java.util.List p0) { meglerProps.put("ParentTypes", p0); return this; }
+        public android.app.appsearch.GenericDocument.Builder setCreationTimestampMillis(long p0) { megletProps.put("CreationTimestampMillis", Long.valueOf(p0)); return this; }
+        public android.app.appsearch.GenericDocument.Builder setId(java.lang.String p0) { megletProps.put("Id", p0); return this; }
+        public android.app.appsearch.GenericDocument.Builder setNamespace(java.lang.String p0) { megletProps.put("Namespace", p0); return this; }
+        public android.app.appsearch.GenericDocument.Builder setParentTypes(java.util.List p0) { megletProps.put("ParentTypes", p0); return this; }
         public android.app.appsearch.GenericDocument.Builder setPropertyBlobHandle(java.lang.String p0, android.app.appsearch.AppSearchBlobHandle[] p1) { return this; }
         public android.app.appsearch.GenericDocument.Builder setPropertyBoolean(java.lang.String p0, boolean[] p1) { return this; }
         public android.app.appsearch.GenericDocument.Builder setPropertyBytes(java.lang.String p0, byte[][] p1) { return this; }
@@ -56,9 +56,9 @@ public class GenericDocument {
         public android.app.appsearch.GenericDocument.Builder setPropertyEmbedding(java.lang.String p0, android.app.appsearch.EmbeddingVector[] p1) { return this; }
         public android.app.appsearch.GenericDocument.Builder setPropertyLong(java.lang.String p0, long[] p1) { return this; }
         public android.app.appsearch.GenericDocument.Builder setPropertyString(java.lang.String p0, java.lang.String[] p1) { return this; }
-        public android.app.appsearch.GenericDocument.Builder setSchemaType(java.lang.String p0) { meglerProps.put("SchemaType", p0); return this; }
-        public android.app.appsearch.GenericDocument.Builder setScore(int p0) { meglerProps.put("Score", Integer.valueOf(p0)); return this; }
-        public android.app.appsearch.GenericDocument.Builder setTtlMillis(long p0) { meglerProps.put("TtlMillis", Long.valueOf(p0)); return this; }
+        public android.app.appsearch.GenericDocument.Builder setSchemaType(java.lang.String p0) { megletProps.put("SchemaType", p0); return this; }
+        public android.app.appsearch.GenericDocument.Builder setScore(int p0) { megletProps.put("Score", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.GenericDocument.Builder setTtlMillis(long p0) { megletProps.put("TtlMillis", Long.valueOf(p0)); return this; }
         Builder() { this((android.app.appsearch.GenericDocument) null); }
     }
 }

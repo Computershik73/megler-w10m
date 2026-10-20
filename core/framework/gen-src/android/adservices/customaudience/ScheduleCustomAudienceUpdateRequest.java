@@ -3,21 +3,21 @@ package android.adservices.customaudience;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ScheduleCustomAudienceUpdateRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.time.Duration getMinDelay() { return (java.time.Duration) meglerProps.get("MinDelay"); }
-    public java.util.List getPartialCustomAudienceList() { return (meglerProps.get("PartialCustomAudienceList") != null ? (java.util.List) meglerProps.get("PartialCustomAudienceList") : new java.util.ArrayList()); }
-    public android.net.Uri getUpdateUri() { return (android.net.Uri) meglerProps.get("UpdateUri"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.time.Duration getMinDelay() { return (java.time.Duration) megletProps.get("MinDelay"); }
+    public java.util.List getPartialCustomAudienceList() { return (megletProps.get("PartialCustomAudienceList") != null ? (java.util.List) megletProps.get("PartialCustomAudienceList") : new java.util.ArrayList()); }
+    public android.net.Uri getUpdateUri() { return (android.net.Uri) megletProps.get("UpdateUri"); }
     public boolean shouldReplacePendingUpdates() { return false; }
     protected ScheduleCustomAudienceUpdateRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.net.Uri p0, java.time.Duration p1) {}
         public Builder(android.net.Uri p0, java.time.Duration p1, java.util.List p2) {}
-        public android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest build() { android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest x = new android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest.Builder setMinDelay(java.time.Duration p0) { meglerProps.put("MinDelay", p0); return this; }
-        public android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest.Builder setPartialCustomAudienceList(java.util.List p0) { meglerProps.put("PartialCustomAudienceList", p0); return this; }
-        public android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest.Builder setShouldReplacePendingUpdates(boolean p0) { meglerProps.put("ShouldReplacePendingUpdates", Boolean.valueOf(p0)); return this; }
-        public android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest.Builder setUpdateUri(android.net.Uri p0) { meglerProps.put("UpdateUri", p0); return this; }
+        public android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest build() { android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest x = new android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest.Builder setMinDelay(java.time.Duration p0) { megletProps.put("MinDelay", p0); return this; }
+        public android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest.Builder setPartialCustomAudienceList(java.util.List p0) { megletProps.put("PartialCustomAudienceList", p0); return this; }
+        public android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest.Builder setShouldReplacePendingUpdates(boolean p0) { megletProps.put("ShouldReplacePendingUpdates", Boolean.valueOf(p0)); return this; }
+        public android.adservices.customaudience.ScheduleCustomAudienceUpdateRequest.Builder setUpdateUri(android.net.Uri p0) { megletProps.put("UpdateUri", p0); return this; }
         Builder() { this((android.net.Uri) null, (java.time.Duration) null); }
     }
 }

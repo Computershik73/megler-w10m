@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CaptivePortal implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int APP_REQUEST_REEVALUATION_REQUIRED = 100;
     public static final int APP_RETURN_DISMISSED = 0;
     public static final int APP_RETURN_UNWANTED = 1;

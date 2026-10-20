@@ -3,15 +3,15 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothHidDeviceAppSdpSettings implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public BluetoothHidDeviceAppSdpSettings(java.lang.String p0, java.lang.String p1, java.lang.String p2, byte p3, byte[] p4) {}
     public int describeContents() { return 0; }
-    public java.lang.String getDescription() { return (java.lang.String) meglerProps.get("Description"); }
-    public byte[] getDescriptors() { return (byte[]) meglerProps.get("Descriptors"); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public java.lang.String getProvider() { return (java.lang.String) meglerProps.get("Provider"); }
-    public byte getSubclass() { return (meglerProps.get("Subclass") instanceof Byte ? (Byte) meglerProps.get("Subclass") : (byte) 0); }
+    public java.lang.String getDescription() { return (java.lang.String) megletProps.get("Description"); }
+    public byte[] getDescriptors() { return (byte[]) megletProps.get("Descriptors"); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public java.lang.String getProvider() { return (java.lang.String) megletProps.get("Provider"); }
+    public byte getSubclass() { return (megletProps.get("Subclass") instanceof Byte ? (Byte) megletProps.get("Subclass") : (byte) 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     BluetoothHidDeviceAppSdpSettings() { this((java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (byte) (byte) 0, (byte[]) null); }
 }

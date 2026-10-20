@@ -3,32 +3,32 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AdSelectionConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.adservices.adselection.AdSelectionConfig EMPTY;
     public android.adservices.adselection.AdSelectionConfig.Builder cloneToBuilder() { return null; }
     public int describeContents() { return 0; }
-    public android.adservices.common.AdSelectionSignals getAdSelectionSignals() { return (android.adservices.common.AdSelectionSignals) meglerProps.get("AdSelectionSignals"); }
-    public java.util.List getCustomAudienceBuyers() { return (meglerProps.get("CustomAudienceBuyers") != null ? (java.util.List) meglerProps.get("CustomAudienceBuyers") : new java.util.ArrayList()); }
-    public android.net.Uri getDecisionLogicUri() { return (android.net.Uri) meglerProps.get("DecisionLogicUri"); }
-    public java.util.Map getPerBuyerSignals() { return (meglerProps.get("PerBuyerSignals") != null ? (java.util.Map) meglerProps.get("PerBuyerSignals") : new java.util.HashMap()); }
-    public java.util.Map getPerBuyerSignedContextualAds() { return (meglerProps.get("PerBuyerSignedContextualAds") != null ? (java.util.Map) meglerProps.get("PerBuyerSignedContextualAds") : new java.util.HashMap()); }
-    public android.adservices.common.AdTechIdentifier getSeller() { return (android.adservices.common.AdTechIdentifier) meglerProps.get("Seller"); }
-    public android.adservices.common.AdSelectionSignals getSellerSignals() { return (android.adservices.common.AdSelectionSignals) meglerProps.get("SellerSignals"); }
-    public android.net.Uri getTrustedScoringSignalsUri() { return (android.net.Uri) meglerProps.get("TrustedScoringSignalsUri"); }
+    public android.adservices.common.AdSelectionSignals getAdSelectionSignals() { return (android.adservices.common.AdSelectionSignals) megletProps.get("AdSelectionSignals"); }
+    public java.util.List getCustomAudienceBuyers() { return (megletProps.get("CustomAudienceBuyers") != null ? (java.util.List) megletProps.get("CustomAudienceBuyers") : new java.util.ArrayList()); }
+    public android.net.Uri getDecisionLogicUri() { return (android.net.Uri) megletProps.get("DecisionLogicUri"); }
+    public java.util.Map getPerBuyerSignals() { return (megletProps.get("PerBuyerSignals") != null ? (java.util.Map) megletProps.get("PerBuyerSignals") : new java.util.HashMap()); }
+    public java.util.Map getPerBuyerSignedContextualAds() { return (megletProps.get("PerBuyerSignedContextualAds") != null ? (java.util.Map) megletProps.get("PerBuyerSignedContextualAds") : new java.util.HashMap()); }
+    public android.adservices.common.AdTechIdentifier getSeller() { return (android.adservices.common.AdTechIdentifier) megletProps.get("Seller"); }
+    public android.adservices.common.AdSelectionSignals getSellerSignals() { return (android.adservices.common.AdSelectionSignals) megletProps.get("SellerSignals"); }
+    public android.net.Uri getTrustedScoringSignalsUri() { return (android.net.Uri) megletProps.get("TrustedScoringSignalsUri"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected AdSelectionConfig() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.adselection.AdSelectionConfig build() { android.adservices.adselection.AdSelectionConfig x = new android.adservices.adselection.AdSelectionConfig(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.adselection.AdSelectionConfig.Builder setAdSelectionSignals(android.adservices.common.AdSelectionSignals p0) { meglerProps.put("AdSelectionSignals", p0); return this; }
-        public android.adservices.adselection.AdSelectionConfig.Builder setCustomAudienceBuyers(java.util.List p0) { meglerProps.put("CustomAudienceBuyers", p0); return this; }
-        public android.adservices.adselection.AdSelectionConfig.Builder setDecisionLogicUri(android.net.Uri p0) { meglerProps.put("DecisionLogicUri", p0); return this; }
-        public android.adservices.adselection.AdSelectionConfig.Builder setPerBuyerSignals(java.util.Map p0) { meglerProps.put("PerBuyerSignals", p0); return this; }
-        public android.adservices.adselection.AdSelectionConfig.Builder setPerBuyerSignedContextualAds(java.util.Map p0) { meglerProps.put("PerBuyerSignedContextualAds", p0); return this; }
-        public android.adservices.adselection.AdSelectionConfig.Builder setSeller(android.adservices.common.AdTechIdentifier p0) { meglerProps.put("Seller", p0); return this; }
-        public android.adservices.adselection.AdSelectionConfig.Builder setSellerSignals(android.adservices.common.AdSelectionSignals p0) { meglerProps.put("SellerSignals", p0); return this; }
-        public android.adservices.adselection.AdSelectionConfig.Builder setTrustedScoringSignalsUri(android.net.Uri p0) { meglerProps.put("TrustedScoringSignalsUri", p0); return this; }
+        public android.adservices.adselection.AdSelectionConfig build() { android.adservices.adselection.AdSelectionConfig x = new android.adservices.adselection.AdSelectionConfig(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.adselection.AdSelectionConfig.Builder setAdSelectionSignals(android.adservices.common.AdSelectionSignals p0) { megletProps.put("AdSelectionSignals", p0); return this; }
+        public android.adservices.adselection.AdSelectionConfig.Builder setCustomAudienceBuyers(java.util.List p0) { megletProps.put("CustomAudienceBuyers", p0); return this; }
+        public android.adservices.adselection.AdSelectionConfig.Builder setDecisionLogicUri(android.net.Uri p0) { megletProps.put("DecisionLogicUri", p0); return this; }
+        public android.adservices.adselection.AdSelectionConfig.Builder setPerBuyerSignals(java.util.Map p0) { megletProps.put("PerBuyerSignals", p0); return this; }
+        public android.adservices.adselection.AdSelectionConfig.Builder setPerBuyerSignedContextualAds(java.util.Map p0) { megletProps.put("PerBuyerSignedContextualAds", p0); return this; }
+        public android.adservices.adselection.AdSelectionConfig.Builder setSeller(android.adservices.common.AdTechIdentifier p0) { megletProps.put("Seller", p0); return this; }
+        public android.adservices.adselection.AdSelectionConfig.Builder setSellerSignals(android.adservices.common.AdSelectionSignals p0) { megletProps.put("SellerSignals", p0); return this; }
+        public android.adservices.adselection.AdSelectionConfig.Builder setTrustedScoringSignalsUri(android.net.Uri p0) { megletProps.put("TrustedScoringSignalsUri", p0); return this; }
     }
 }

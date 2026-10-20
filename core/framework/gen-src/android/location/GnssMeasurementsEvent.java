@@ -3,28 +3,28 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GnssMeasurementsEvent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.location.GnssClock getClock() { return (android.location.GnssClock) meglerProps.get("Clock"); }
-    public java.util.Collection getGnssAutomaticGainControls() { return (meglerProps.get("GnssAutomaticGainControls") != null ? (java.util.Collection) meglerProps.get("GnssAutomaticGainControls") : new java.util.ArrayList()); }
-    public java.util.Collection getMeasurements() { return (meglerProps.get("Measurements") != null ? (java.util.Collection) meglerProps.get("Measurements") : new java.util.ArrayList()); }
+    public android.location.GnssClock getClock() { return (android.location.GnssClock) megletProps.get("Clock"); }
+    public java.util.Collection getGnssAutomaticGainControls() { return (megletProps.get("GnssAutomaticGainControls") != null ? (java.util.Collection) megletProps.get("GnssAutomaticGainControls") : new java.util.ArrayList()); }
+    public java.util.Collection getMeasurements() { return (megletProps.get("Measurements") != null ? (java.util.Collection) megletProps.get("Measurements") : new java.util.ArrayList()); }
     public boolean hasIsFullTracking() { return false; }
-    public boolean isFullTracking() { return (meglerProps.get("FullTracking") instanceof Boolean ? (Boolean) meglerProps.get("FullTracking") : false); }
+    public boolean isFullTracking() { return (megletProps.get("FullTracking") instanceof Boolean ? (Boolean) megletProps.get("FullTracking") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected GnssMeasurementsEvent() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.location.GnssMeasurementsEvent p0) {}
-        public android.location.GnssMeasurementsEvent build() { android.location.GnssMeasurementsEvent x = new android.location.GnssMeasurementsEvent(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.location.GnssMeasurementsEvent build() { android.location.GnssMeasurementsEvent x = new android.location.GnssMeasurementsEvent(); x.megletProps.putAll(megletProps); return x; }
         public android.location.GnssMeasurementsEvent.Builder clearIsFullTracking() { return this; }
-        public android.location.GnssMeasurementsEvent.Builder setClock(android.location.GnssClock p0) { meglerProps.put("Clock", p0); return this; }
-        public android.location.GnssMeasurementsEvent.Builder setGnssAutomaticGainControls(java.util.Collection p0) { meglerProps.put("GnssAutomaticGainControls", p0); return this; }
-        public android.location.GnssMeasurementsEvent.Builder setGnssAutomaticGainControls(android.location.GnssAutomaticGainControl[] p0) { meglerProps.put("GnssAutomaticGainControls", p0); return this; }
-        public android.location.GnssMeasurementsEvent.Builder setIsFullTracking(boolean p0) { meglerProps.put("IsFullTracking", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssMeasurementsEvent.Builder setMeasurements(java.util.Collection p0) { meglerProps.put("Measurements", p0); return this; }
-        public android.location.GnssMeasurementsEvent.Builder setMeasurements(android.location.GnssMeasurement[] p0) { meglerProps.put("Measurements", p0); return this; }
+        public android.location.GnssMeasurementsEvent.Builder setClock(android.location.GnssClock p0) { megletProps.put("Clock", p0); return this; }
+        public android.location.GnssMeasurementsEvent.Builder setGnssAutomaticGainControls(java.util.Collection p0) { megletProps.put("GnssAutomaticGainControls", p0); return this; }
+        public android.location.GnssMeasurementsEvent.Builder setGnssAutomaticGainControls(android.location.GnssAutomaticGainControl[] p0) { megletProps.put("GnssAutomaticGainControls", p0); return this; }
+        public android.location.GnssMeasurementsEvent.Builder setIsFullTracking(boolean p0) { megletProps.put("IsFullTracking", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssMeasurementsEvent.Builder setMeasurements(java.util.Collection p0) { megletProps.put("Measurements", p0); return this; }
+        public android.location.GnssMeasurementsEvent.Builder setMeasurements(android.location.GnssMeasurement[] p0) { megletProps.put("Measurements", p0); return this; }
     }
     public static abstract class Callback {
         protected Callback() {}

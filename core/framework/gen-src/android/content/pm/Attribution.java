@@ -3,12 +3,12 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Attribution implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public Attribution(java.lang.String p0, int p1) {}
     public int describeContents() { return 0; }
-    public int getLabel() { return (meglerProps.get("Label") instanceof Integer ? (Integer) meglerProps.get("Label") : 0); }
-    public java.lang.String getTag() { return (java.lang.String) meglerProps.get("Tag"); }
+    public int getLabel() { return (megletProps.get("Label") instanceof Integer ? (Integer) megletProps.get("Label") : 0); }
+    public java.lang.String getTag() { return (java.lang.String) megletProps.get("Tag"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     Attribution() { this((java.lang.String) null, (int) 0); }
 }

@@ -3,19 +3,19 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SurfaceControlViewHost {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public SurfaceControlViewHost(android.content.Context p0, android.view.Display p1, android.os.IBinder p2) {}
     public SurfaceControlViewHost(android.content.Context p0, android.view.Display p1, android.view.WindowlessWindowManager p2, java.lang.String p3) {}
     public SurfaceControlViewHost(android.content.Context p0, android.view.Display p1, android.window.InputTransferToken p2) {}
     public SurfaceControlViewHost(android.content.Context p0, android.view.Display p1, android.window.InputTransferToken p2, java.lang.String p3) {}
     protected void finalize() {}
-    public android.window.InputTransferToken getInputTransferToken() { return (android.window.InputTransferToken) meglerProps.get("InputTransferToken"); }
-    public android.view.SurfaceControlViewHost.LayoutParams getLayoutParams() { return (android.view.SurfaceControlViewHost.LayoutParams) meglerProps.get("LayoutParams"); }
-    public android.view.AttachedSurfaceControl getRootSurfaceControl() { return (android.view.AttachedSurfaceControl) meglerProps.get("RootSurfaceControl"); }
-    public android.view.SurfaceControlViewHost.SurfacePackage getSurfacePackage() { return (android.view.SurfaceControlViewHost.SurfacePackage) meglerProps.get("SurfacePackage"); }
-    public android.view.View getView() { return (android.view.View) meglerProps.get("View"); }
-    public android.view.IWindow getWindowToken() { return (android.view.IWindow) meglerProps.get("WindowToken"); }
-    public android.view.WindowlessWindowManager getWindowlessWM() { return (android.view.WindowlessWindowManager) meglerProps.get("WindowlessWM"); }
+    public android.window.InputTransferToken getInputTransferToken() { return (android.window.InputTransferToken) megletProps.get("InputTransferToken"); }
+    public android.view.SurfaceControlViewHost.LayoutParams getLayoutParams() { return (android.view.SurfaceControlViewHost.LayoutParams) megletProps.get("LayoutParams"); }
+    public android.view.AttachedSurfaceControl getRootSurfaceControl() { return (android.view.AttachedSurfaceControl) megletProps.get("RootSurfaceControl"); }
+    public android.view.SurfaceControlViewHost.SurfacePackage getSurfacePackage() { return (android.view.SurfaceControlViewHost.SurfacePackage) megletProps.get("SurfacePackage"); }
+    public android.view.View getView() { return (android.view.View) megletProps.get("View"); }
+    public android.view.IWindow getWindowToken() { return (android.view.IWindow) megletProps.get("WindowToken"); }
+    public android.view.WindowlessWindowManager getWindowlessWM() { return (android.view.WindowlessWindowManager) megletProps.get("WindowlessWM"); }
     public void relayout(int p0, int p1) {}
     public void relayout(android.view.SurfaceControlViewHost.LayoutParams p0) {}
     public void relayout(android.view.WindowManager.LayoutParams p0) {}
@@ -28,11 +28,11 @@ public class SurfaceControlViewHost {
     public boolean transferTouchGestureToHost() { return false; }
     SurfaceControlViewHost() { this((android.content.Context) null, (android.view.Display) null, (android.os.IBinder) null); }
     public static class LayoutParams {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public LayoutParams(int p0, int p1, boolean p2) {}
-        public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
-        public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
-        public boolean isFocusable() { return (meglerProps.get("Focusable") instanceof Boolean ? (Boolean) meglerProps.get("Focusable") : false); }
+        public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
+        public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
+        public boolean isFocusable() { return (megletProps.get("Focusable") instanceof Boolean ? (Boolean) megletProps.get("Focusable") : false); }
         LayoutParams() { this((int) 0, (int) 0, (boolean) false); }
     }
     public static abstract class SurfacePackage implements android.os.Parcelable {

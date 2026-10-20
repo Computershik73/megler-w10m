@@ -3,18 +3,18 @@ package android.nfc.tech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class NfcV extends android.nfc.tech.BasicTagTechnology {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_DSFID = "dsfid";
     public static final java.lang.String EXTRA_RESP_FLAGS = "respflags";
     public NfcV(android.nfc.Tag p0) { super(); }
     public static android.nfc.tech.NfcV get(android.nfc.Tag p0) { return null; }
     public void close() {}
     public void connect() {}
-    public byte getDsfId() { return (meglerProps.get("DsfId") instanceof Byte ? (Byte) meglerProps.get("DsfId") : (byte) 0); }
-    public int getMaxTransceiveLength() { return (meglerProps.get("MaxTransceiveLength") instanceof Integer ? (Integer) meglerProps.get("MaxTransceiveLength") : 0); }
-    public byte getResponseFlags() { return (meglerProps.get("ResponseFlags") instanceof Byte ? (Byte) meglerProps.get("ResponseFlags") : (byte) 0); }
-    public android.nfc.Tag getTag() { return (android.nfc.Tag) meglerProps.get("Tag"); }
-    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
+    public byte getDsfId() { return (megletProps.get("DsfId") instanceof Byte ? (Byte) megletProps.get("DsfId") : (byte) 0); }
+    public int getMaxTransceiveLength() { return (megletProps.get("MaxTransceiveLength") instanceof Integer ? (Integer) megletProps.get("MaxTransceiveLength") : 0); }
+    public byte getResponseFlags() { return (megletProps.get("ResponseFlags") instanceof Byte ? (Byte) megletProps.get("ResponseFlags") : (byte) 0); }
+    public android.nfc.Tag getTag() { return (android.nfc.Tag) megletProps.get("Tag"); }
+    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
     public void reconnect() {}
     public byte[] transceive(byte[] p0) { return null; }
     NfcV() { this((android.nfc.Tag) null); }

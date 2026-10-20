@@ -3,21 +3,21 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IkeSaProposal extends android.net.ipsec.ike.SaProposal {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.net.ipsec.ike.IkeSaProposal fromPersistableBundle(android.os.PersistableBundle p0) { return new IkeSaProposal(); }
     public static java.util.Set getSupportedEncryptionAlgorithms() { return new java.util.HashSet(); }
     public static java.util.Set getSupportedIntegrityAlgorithms() { return new java.util.HashSet(); }
     public static java.util.Set getSupportedPseudorandomFunctions() { return new java.util.HashSet(); }
-    public java.util.List getPseudorandomFunctions() { return (meglerProps.get("PseudorandomFunctions") != null ? (java.util.List) meglerProps.get("PseudorandomFunctions") : new java.util.ArrayList()); }
+    public java.util.List getPseudorandomFunctions() { return (megletProps.get("PseudorandomFunctions") != null ? (java.util.List) megletProps.get("PseudorandomFunctions") : new java.util.ArrayList()); }
     public boolean isNegotiatedFrom(android.net.ipsec.ike.SaProposal p0) { return false; }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     public static final class Builder extends android.net.ipsec.ike.SaProposal.Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() { super(); }
         public android.net.ipsec.ike.IkeSaProposal.Builder addDhGroup(int p0) { return this; }
         public android.net.ipsec.ike.IkeSaProposal.Builder addEncryptionAlgorithm(int p0, int p1) { return this; }
         public android.net.ipsec.ike.IkeSaProposal.Builder addIntegrityAlgorithm(int p0) { return this; }
         public android.net.ipsec.ike.IkeSaProposal.Builder addPseudorandomFunction(int p0) { return this; }
-        public android.net.ipsec.ike.IkeSaProposal build() { android.net.ipsec.ike.IkeSaProposal x = new android.net.ipsec.ike.IkeSaProposal(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.ipsec.ike.IkeSaProposal build() { android.net.ipsec.ike.IkeSaProposal x = new android.net.ipsec.ike.IkeSaProposal(); x.megletProps.putAll(megletProps); return x; }
     }
 }

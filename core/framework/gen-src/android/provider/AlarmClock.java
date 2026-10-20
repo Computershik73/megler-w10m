@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AlarmClock {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_DISMISS_ALARM = "android.intent.action.DISMISS_ALARM";
     public static final java.lang.String ACTION_DISMISS_TIMER = "android.intent.action.DISMISS_TIMER";
     public static final java.lang.String ACTION_SET_ALARM = "android.intent.action.SET_ALARM";

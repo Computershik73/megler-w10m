@@ -3,7 +3,7 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GnssCapabilities implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CAPABILITY_SUPPORTED = 1;
     public static final int CAPABILITY_UNKNOWN = 0;
     public static final int CAPABILITY_UNSUPPORTED = 2;
@@ -35,7 +35,7 @@ public final class GnssCapabilities implements android.os.Parcelable {
     public static final int TOP_HAL_CAPABILITY_SINGLE_SHOT = 8;
     public static android.location.GnssCapabilities empty() { return new GnssCapabilities(); }
     public int describeContents() { return 0; }
-    public java.util.List getGnssSignalTypes() { return (meglerProps.get("GnssSignalTypes") != null ? (java.util.List) meglerProps.get("GnssSignalTypes") : new java.util.ArrayList()); }
+    public java.util.List getGnssSignalTypes() { return (megletProps.get("GnssSignalTypes") != null ? (java.util.List) megletProps.get("GnssSignalTypes") : new java.util.ArrayList()); }
     public int hasAccumulatedDeltaRange() { return 0; }
     public boolean hasAntennaInfo() { return false; }
     public boolean hasGeofencing() { return false; }
@@ -72,35 +72,35 @@ public final class GnssCapabilities implements android.os.Parcelable {
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected GnssCapabilities() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.location.GnssCapabilities p0) {}
-        public android.location.GnssCapabilities build() { android.location.GnssCapabilities x = new android.location.GnssCapabilities(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.location.GnssCapabilities.Builder setGnssSignalTypes(java.util.List p0) { meglerProps.put("GnssSignalTypes", p0); return this; }
-        public android.location.GnssCapabilities.Builder setHasAccumulatedDeltaRange(int p0) { meglerProps.put("HasAccumulatedDeltaRange", Integer.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasAntennaInfo(boolean p0) { meglerProps.put("HasAntennaInfo", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasGeofencing(boolean p0) { meglerProps.put("HasGeofencing", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasLowPowerMode(boolean p0) { meglerProps.put("HasLowPowerMode", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasMeasurementCorrections(boolean p0) { meglerProps.put("HasMeasurementCorrections", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasMeasurementCorrectionsExcessPathLength(boolean p0) { meglerProps.put("HasMeasurementCorrectionsExcessPathLength", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasMeasurementCorrectionsForDriving(boolean p0) { meglerProps.put("HasMeasurementCorrectionsForDriving", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasMeasurementCorrectionsLosSats(boolean p0) { meglerProps.put("HasMeasurementCorrectionsLosSats", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasMeasurementCorrectionsReflectingPlane(boolean p0) { meglerProps.put("HasMeasurementCorrectionsReflectingPlane", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasMeasurementCorrelationVectors(boolean p0) { meglerProps.put("HasMeasurementCorrelationVectors", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasMeasurements(boolean p0) { meglerProps.put("HasMeasurements", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasMsa(boolean p0) { meglerProps.put("HasMsa", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasMsb(boolean p0) { meglerProps.put("HasMsb", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasNavigationMessages(boolean p0) { meglerProps.put("HasNavigationMessages", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasOnDemandTime(boolean p0) { meglerProps.put("HasOnDemandTime", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasPowerMultibandAcquisition(boolean p0) { meglerProps.put("HasPowerMultibandAcquisition", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasPowerMultibandTracking(boolean p0) { meglerProps.put("HasPowerMultibandTracking", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasPowerOtherModes(boolean p0) { meglerProps.put("HasPowerOtherModes", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasPowerSinglebandAcquisition(boolean p0) { meglerProps.put("HasPowerSinglebandAcquisition", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasPowerSinglebandTracking(boolean p0) { meglerProps.put("HasPowerSinglebandTracking", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasPowerTotal(boolean p0) { meglerProps.put("HasPowerTotal", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasSatelliteBlocklist(boolean p0) { meglerProps.put("HasSatelliteBlocklist", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasSatellitePvt(boolean p0) { meglerProps.put("HasSatellitePvt", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasScheduling(boolean p0) { meglerProps.put("HasScheduling", Boolean.valueOf(p0)); return this; }
-        public android.location.GnssCapabilities.Builder setHasSingleShotFix(boolean p0) { meglerProps.put("HasSingleShotFix", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities build() { android.location.GnssCapabilities x = new android.location.GnssCapabilities(); x.megletProps.putAll(megletProps); return x; }
+        public android.location.GnssCapabilities.Builder setGnssSignalTypes(java.util.List p0) { megletProps.put("GnssSignalTypes", p0); return this; }
+        public android.location.GnssCapabilities.Builder setHasAccumulatedDeltaRange(int p0) { megletProps.put("HasAccumulatedDeltaRange", Integer.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasAntennaInfo(boolean p0) { megletProps.put("HasAntennaInfo", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasGeofencing(boolean p0) { megletProps.put("HasGeofencing", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasLowPowerMode(boolean p0) { megletProps.put("HasLowPowerMode", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasMeasurementCorrections(boolean p0) { megletProps.put("HasMeasurementCorrections", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasMeasurementCorrectionsExcessPathLength(boolean p0) { megletProps.put("HasMeasurementCorrectionsExcessPathLength", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasMeasurementCorrectionsForDriving(boolean p0) { megletProps.put("HasMeasurementCorrectionsForDriving", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasMeasurementCorrectionsLosSats(boolean p0) { megletProps.put("HasMeasurementCorrectionsLosSats", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasMeasurementCorrectionsReflectingPlane(boolean p0) { megletProps.put("HasMeasurementCorrectionsReflectingPlane", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasMeasurementCorrelationVectors(boolean p0) { megletProps.put("HasMeasurementCorrelationVectors", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasMeasurements(boolean p0) { megletProps.put("HasMeasurements", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasMsa(boolean p0) { megletProps.put("HasMsa", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasMsb(boolean p0) { megletProps.put("HasMsb", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasNavigationMessages(boolean p0) { megletProps.put("HasNavigationMessages", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasOnDemandTime(boolean p0) { megletProps.put("HasOnDemandTime", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasPowerMultibandAcquisition(boolean p0) { megletProps.put("HasPowerMultibandAcquisition", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasPowerMultibandTracking(boolean p0) { megletProps.put("HasPowerMultibandTracking", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasPowerOtherModes(boolean p0) { megletProps.put("HasPowerOtherModes", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasPowerSinglebandAcquisition(boolean p0) { megletProps.put("HasPowerSinglebandAcquisition", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasPowerSinglebandTracking(boolean p0) { megletProps.put("HasPowerSinglebandTracking", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasPowerTotal(boolean p0) { megletProps.put("HasPowerTotal", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasSatelliteBlocklist(boolean p0) { megletProps.put("HasSatelliteBlocklist", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasSatellitePvt(boolean p0) { megletProps.put("HasSatellitePvt", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasScheduling(boolean p0) { megletProps.put("HasScheduling", Boolean.valueOf(p0)); return this; }
+        public android.location.GnssCapabilities.Builder setHasSingleShotFix(boolean p0) { megletProps.put("HasSingleShotFix", Boolean.valueOf(p0)); return this; }
     }
 }

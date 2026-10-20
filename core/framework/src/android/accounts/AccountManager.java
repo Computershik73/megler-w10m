@@ -100,7 +100,7 @@ public class AccountManager {
     public static final int VISIBILITY_VISIBLE = 1;
     public static void invalidateLocalAccountUserDataCaches() {}
     public static void invalidateLocalAccountsDataCaches() {}
-    /** The system account chooser's intent, as Android builds it (Megler has no accounts: started for a result, it comes back cancelled). */
+    /** The system account chooser's intent, as Android builds it (Meglet has no accounts: started for a result, it comes back cancelled). */
     public static android.content.Intent newChooseAccountIntent(android.accounts.Account selected, java.util.ArrayList allowable, java.lang.String[] types, boolean alwaysPrompt, java.lang.String description, java.lang.String authTokenType, java.lang.String[] features, android.os.Bundle options) {
         return newChooseAccountIntent(selected, (java.util.List) allowable, types, description, authTokenType, features, options);
     }

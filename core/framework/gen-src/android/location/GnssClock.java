@@ -3,24 +3,24 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GnssClock implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public GnssClock() {}
     public int describeContents() { return 0; }
-    public double getBiasNanos() { return (meglerProps.get("BiasNanos") instanceof Double ? (Double) meglerProps.get("BiasNanos") : 0d); }
-    public double getBiasUncertaintyNanos() { return (meglerProps.get("BiasUncertaintyNanos") instanceof Double ? (Double) meglerProps.get("BiasUncertaintyNanos") : 0d); }
-    public double getDriftNanosPerSecond() { return (meglerProps.get("DriftNanosPerSecond") instanceof Double ? (Double) meglerProps.get("DriftNanosPerSecond") : 0d); }
-    public double getDriftUncertaintyNanosPerSecond() { return (meglerProps.get("DriftUncertaintyNanosPerSecond") instanceof Double ? (Double) meglerProps.get("DriftUncertaintyNanosPerSecond") : 0d); }
-    public long getElapsedRealtimeNanos() { return (meglerProps.get("ElapsedRealtimeNanos") instanceof Long ? (Long) meglerProps.get("ElapsedRealtimeNanos") : 0L); }
-    public double getElapsedRealtimeUncertaintyNanos() { return (meglerProps.get("ElapsedRealtimeUncertaintyNanos") instanceof Double ? (Double) meglerProps.get("ElapsedRealtimeUncertaintyNanos") : 0d); }
-    public long getFullBiasNanos() { return (meglerProps.get("FullBiasNanos") instanceof Long ? (Long) meglerProps.get("FullBiasNanos") : 0L); }
-    public int getHardwareClockDiscontinuityCount() { return (meglerProps.get("HardwareClockDiscontinuityCount") instanceof Integer ? (Integer) meglerProps.get("HardwareClockDiscontinuityCount") : 0); }
-    public int getLeapSecond() { return (meglerProps.get("LeapSecond") instanceof Integer ? (Integer) meglerProps.get("LeapSecond") : 0); }
-    public double getReferenceCarrierFrequencyHzForIsb() { return (meglerProps.get("ReferenceCarrierFrequencyHzForIsb") instanceof Double ? (Double) meglerProps.get("ReferenceCarrierFrequencyHzForIsb") : 0d); }
-    public java.lang.String getReferenceCodeTypeForIsb() { return (java.lang.String) meglerProps.get("ReferenceCodeTypeForIsb"); }
-    public int getReferenceConstellationTypeForIsb() { return (meglerProps.get("ReferenceConstellationTypeForIsb") instanceof Integer ? (Integer) meglerProps.get("ReferenceConstellationTypeForIsb") : 0); }
-    public long getTimeNanos() { return (meglerProps.get("TimeNanos") instanceof Long ? (Long) meglerProps.get("TimeNanos") : 0L); }
-    public double getTimeUncertaintyNanos() { return (meglerProps.get("TimeUncertaintyNanos") instanceof Double ? (Double) meglerProps.get("TimeUncertaintyNanos") : 0d); }
+    public double getBiasNanos() { return (megletProps.get("BiasNanos") instanceof Double ? (Double) megletProps.get("BiasNanos") : 0d); }
+    public double getBiasUncertaintyNanos() { return (megletProps.get("BiasUncertaintyNanos") instanceof Double ? (Double) megletProps.get("BiasUncertaintyNanos") : 0d); }
+    public double getDriftNanosPerSecond() { return (megletProps.get("DriftNanosPerSecond") instanceof Double ? (Double) megletProps.get("DriftNanosPerSecond") : 0d); }
+    public double getDriftUncertaintyNanosPerSecond() { return (megletProps.get("DriftUncertaintyNanosPerSecond") instanceof Double ? (Double) megletProps.get("DriftUncertaintyNanosPerSecond") : 0d); }
+    public long getElapsedRealtimeNanos() { return (megletProps.get("ElapsedRealtimeNanos") instanceof Long ? (Long) megletProps.get("ElapsedRealtimeNanos") : 0L); }
+    public double getElapsedRealtimeUncertaintyNanos() { return (megletProps.get("ElapsedRealtimeUncertaintyNanos") instanceof Double ? (Double) megletProps.get("ElapsedRealtimeUncertaintyNanos") : 0d); }
+    public long getFullBiasNanos() { return (megletProps.get("FullBiasNanos") instanceof Long ? (Long) megletProps.get("FullBiasNanos") : 0L); }
+    public int getHardwareClockDiscontinuityCount() { return (megletProps.get("HardwareClockDiscontinuityCount") instanceof Integer ? (Integer) megletProps.get("HardwareClockDiscontinuityCount") : 0); }
+    public int getLeapSecond() { return (megletProps.get("LeapSecond") instanceof Integer ? (Integer) megletProps.get("LeapSecond") : 0); }
+    public double getReferenceCarrierFrequencyHzForIsb() { return (megletProps.get("ReferenceCarrierFrequencyHzForIsb") instanceof Double ? (Double) megletProps.get("ReferenceCarrierFrequencyHzForIsb") : 0d); }
+    public java.lang.String getReferenceCodeTypeForIsb() { return (java.lang.String) megletProps.get("ReferenceCodeTypeForIsb"); }
+    public int getReferenceConstellationTypeForIsb() { return (megletProps.get("ReferenceConstellationTypeForIsb") instanceof Integer ? (Integer) megletProps.get("ReferenceConstellationTypeForIsb") : 0); }
+    public long getTimeNanos() { return (megletProps.get("TimeNanos") instanceof Long ? (Long) megletProps.get("TimeNanos") : 0L); }
+    public double getTimeUncertaintyNanos() { return (megletProps.get("TimeUncertaintyNanos") instanceof Double ? (Double) megletProps.get("TimeUncertaintyNanos") : 0d); }
     public boolean hasBiasNanos() { return false; }
     public boolean hasBiasUncertaintyNanos() { return false; }
     public boolean hasDriftNanosPerSecond() { return false; }
@@ -47,19 +47,19 @@ public final class GnssClock implements android.os.Parcelable {
     public void resetReferenceConstellationTypeForIsb() {}
     public void resetTimeUncertaintyNanos() {}
     public void set(android.location.GnssClock p0) {}
-    public void setBiasNanos(double p0) { meglerProps.put("BiasNanos", Double.valueOf(p0)); }
-    public void setBiasUncertaintyNanos(double p0) { meglerProps.put("BiasUncertaintyNanos", Double.valueOf(p0)); }
-    public void setDriftNanosPerSecond(double p0) { meglerProps.put("DriftNanosPerSecond", Double.valueOf(p0)); }
-    public void setDriftUncertaintyNanosPerSecond(double p0) { meglerProps.put("DriftUncertaintyNanosPerSecond", Double.valueOf(p0)); }
-    public void setElapsedRealtimeNanos(long p0) { meglerProps.put("ElapsedRealtimeNanos", Long.valueOf(p0)); }
-    public void setElapsedRealtimeUncertaintyNanos(double p0) { meglerProps.put("ElapsedRealtimeUncertaintyNanos", Double.valueOf(p0)); }
-    public void setFullBiasNanos(long p0) { meglerProps.put("FullBiasNanos", Long.valueOf(p0)); }
-    public void setHardwareClockDiscontinuityCount(int p0) { meglerProps.put("HardwareClockDiscontinuityCount", Integer.valueOf(p0)); }
-    public void setLeapSecond(int p0) { meglerProps.put("LeapSecond", Integer.valueOf(p0)); }
-    public void setReferenceCarrierFrequencyHzForIsb(double p0) { meglerProps.put("ReferenceCarrierFrequencyHzForIsb", Double.valueOf(p0)); }
-    public void setReferenceCodeTypeForIsb(java.lang.String p0) { meglerProps.put("ReferenceCodeTypeForIsb", p0); }
-    public void setReferenceConstellationTypeForIsb(int p0) { meglerProps.put("ReferenceConstellationTypeForIsb", Integer.valueOf(p0)); }
-    public void setTimeNanos(long p0) { meglerProps.put("TimeNanos", Long.valueOf(p0)); }
-    public void setTimeUncertaintyNanos(double p0) { meglerProps.put("TimeUncertaintyNanos", Double.valueOf(p0)); }
+    public void setBiasNanos(double p0) { megletProps.put("BiasNanos", Double.valueOf(p0)); }
+    public void setBiasUncertaintyNanos(double p0) { megletProps.put("BiasUncertaintyNanos", Double.valueOf(p0)); }
+    public void setDriftNanosPerSecond(double p0) { megletProps.put("DriftNanosPerSecond", Double.valueOf(p0)); }
+    public void setDriftUncertaintyNanosPerSecond(double p0) { megletProps.put("DriftUncertaintyNanosPerSecond", Double.valueOf(p0)); }
+    public void setElapsedRealtimeNanos(long p0) { megletProps.put("ElapsedRealtimeNanos", Long.valueOf(p0)); }
+    public void setElapsedRealtimeUncertaintyNanos(double p0) { megletProps.put("ElapsedRealtimeUncertaintyNanos", Double.valueOf(p0)); }
+    public void setFullBiasNanos(long p0) { megletProps.put("FullBiasNanos", Long.valueOf(p0)); }
+    public void setHardwareClockDiscontinuityCount(int p0) { megletProps.put("HardwareClockDiscontinuityCount", Integer.valueOf(p0)); }
+    public void setLeapSecond(int p0) { megletProps.put("LeapSecond", Integer.valueOf(p0)); }
+    public void setReferenceCarrierFrequencyHzForIsb(double p0) { megletProps.put("ReferenceCarrierFrequencyHzForIsb", Double.valueOf(p0)); }
+    public void setReferenceCodeTypeForIsb(java.lang.String p0) { megletProps.put("ReferenceCodeTypeForIsb", p0); }
+    public void setReferenceConstellationTypeForIsb(int p0) { megletProps.put("ReferenceConstellationTypeForIsb", Integer.valueOf(p0)); }
+    public void setTimeNanos(long p0) { megletProps.put("TimeNanos", Long.valueOf(p0)); }
+    public void setTimeUncertaintyNanos(double p0) { megletProps.put("TimeUncertaintyNanos", Double.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

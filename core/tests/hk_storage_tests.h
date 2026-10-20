@@ -27,19 +27,19 @@ int hk_storage_tests_run(const char *scratch, hk_test_sink sink, void *user, int
  * not). That is how the shell's own host, which goes through Windows.Storage,
  * is run on a PC (hk_tests --storage-windows, core/tests/hk_storage_windows.cpp).
  */
-struct megler_storage_host;
-typedef const struct megler_storage_host *(*hk_storage_host_maker)(const char *const *names, const char *const *folders, int count);
+struct meglet_storage_host;
+typedef const struct meglet_storage_host *(*hk_storage_host_maker)(const char *const *names, const char *const *folders, int count);
 int hk_storage_tests_run_shell(const char *scratch, hk_storage_host_maker make, hk_test_sink sink, void *user, int *checks);
 
 /*
- * The check a phone runs (megler_storage_check in megler.h), for each of `count`
+ * The check a phone runs (meglet_storage_check in meglet.h), for each of `count`
  * folders of the shared storage, /sdcard/<name>: what an app does to files,
  * through the C library, a line for every step -- listed; a folder made; a
  * file written, read back through the storage's other name, stat'ed,
  * appended to, emptied; renamed, replaced, moved into a folder; a folder
  * that holds something refused removal; folders renamed and moved; all of it
  * removed again. And a file renamed from the first folder to the second. It
- * works in a folder of its own, megler-storage-check, and touches nothing else
+ * works in a folder of its own, meglet-storage-check, and touches nothing else
  * that is there. The shared storage has to be set (hk_run_storage) and no
  * app running. Returns the number of steps that did not go as they must and
  * adds the number of steps to *checks.

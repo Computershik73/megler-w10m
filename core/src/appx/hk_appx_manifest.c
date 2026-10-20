@@ -1,18 +1,18 @@
 /*
- * The manifest of the package of one Android app, made from Megler's own (hk_appx.h, docs/PER-APP-PACKAGES.md).
+ * The manifest of the package of one Android app, made from Meglet's own (hk_appx.h, docs/PER-APP-PACKAGES.md).
  *
- * Everything Megler's manifest says stays, its capabilities, dependencies, entry point and the publisher cache folder
- * among them, so that an app's package runs Megler as Megler runs; what makes it a package of its own is changed:
- *   - Identity's Name: "MeglerApp." and the Android package, which has only letters, digits, '.' and '_' (Android's rule),
+ * Everything Meglet's manifest says stays, its capabilities, dependencies, entry point and the publisher cache folder
+ * among them, so that an app's package runs Meglet as Meglet runs; what makes it a package of its own is changed:
+ *   - Identity's Name: "MegletApp." and the Android package, which has only letters, digits, '.' and '_' (Android's rule),
  *     '_' made '-' (an identity name has no '_'), always 50 characters long, the most a name may have: one longer is cut
  *     and given a hash of the whole at its end, one shorter is filled with a dot and a hash of the package (its
  *     resources.pri is made from one for a placeholder as long, hk_appx_pri.c);
- *   - PhoneIdentity's PhoneProductId: a GUID made from the Android package, the same for the same package each time, so
- *     that a package made again for the same app is an update of it;
+ *   - PhoneIdentity's PhoneProductId: a GUID made from the identity name, so the same for the same package each time,
+ *     and a package made again for the same app is an update of it;
  *   - Properties' DisplayName, and VisualElements' DisplayName and the tile's ShortName: the app's label (the short name
  *     cut to 40 characters, as the schema has it);
  *   - the tile's and the splash screen's BackgroundColor, when the caller gives them (the app's icon is drawn on them).
- * The version is Megler's: a package made by a newer Megler updates one made by an older.
+ * The version is Meglet's: a package made by a newer Meglet updates one made by an older.
  */
 #include "hk_appx.h"
 
@@ -33,8 +33,8 @@ bool hk_appx_app_identity(const char *android_package, char *out, size_t outlen)
     size_t n = 0;
     const char *s;
     if (!android_package[0] || outlen < 51) return false;
-    memcpy(name, "MeglerApp.", 8);
-    n = 8;
+    memcpy(name, "MegletApp.", 10);
+    n = 10;
     for (s = android_package; *s && n < sizeof(name) - 1; s++) {
         char c = *s;
         if (c == '_') c = '-';
@@ -43,7 +43,7 @@ bool hk_appx_app_identity(const char *android_package, char *out, size_t outlen)
     }
     name[n] = 0;
     if (*s || n > 50) {
-        /* Cut to 41 and a hash of the whole: "MeglerApp.com.example.a-very-long-nam.1a2b3c4d" */
+        /* Cut to 41 and a hash of the whole: "MegletApp.com.example.a-very-long-nam.1a2b3c4d" */
         if (name[40] == '.') name[40] = '-';
         snprintf(name + 41, sizeof(name) - 41, ".%08x", (unsigned)(fnv64(android_package, 0xcbf29ce484222325ull) >> 32));
     } else if (n < 50) {
@@ -146,7 +146,7 @@ static void escaped(char *out, size_t outlen, const char *s, size_t max)
     out[n] = 0;
 }
 
-char *hk_appx_app_manifest(const char *megler, const char *android_package, const char *label, const char *tile_color,
+char *hk_appx_app_manifest(const char *meglet, const char *android_package, const char *label, const char *tile_color,
                            const char *splash_color, char *err, size_t errlen)
 {
     char name[64], guid[40], shown[1600], shortname[260];
@@ -156,21 +156,21 @@ char *hk_appx_app_manifest(const char *megler, const char *android_package, cons
         if (err && errlen) snprintf(err, errlen, "\"%s\" is not an Android package name", android_package);
         return NULL;
     }
-    h1 = fnv64(android_package, 0xcbf29ce484222325ull);
-    h2 = fnv64(android_package, 0x84222325cbf29ce4ull);
+    h1 = fnv64(name, 0xcbf29ce484222325ull);
+    h2 = fnv64(name, 0x84222325cbf29ce4ull);
     /* A version 5 (name-based) layout: version nibble 5, variant 10. */
     snprintf(guid, sizeof(guid), "%08x-%04x-5%03x-%04x-%012llx", (unsigned)(h1 >> 32), (unsigned)(h1 >> 16) & 0xffff,
              (unsigned)h1 & 0xfff, (unsigned)((h2 >> 48) & 0x3fff) | 0x8000, (unsigned long long)(h2 & 0xffffffffffffull));
     escaped(shown, sizeof(shown), label && label[0] ? label : android_package, 256);
     escaped(shortname, sizeof(shortname), label && label[0] ? label : android_package, 40);
-    xml = (char *)malloc(strlen(megler) + 1);
+    xml = (char *)malloc(strlen(meglet) + 1);
     if (!xml) return NULL;
-    strcpy(xml, megler);
+    strcpy(xml, meglet);
 #define STEP(call, what)                                                                                                 \
     do {                                                                                                                 \
         char *next = (call);                                                                                             \
         if (!next) {                                                                                                     \
-            if (err && errlen) snprintf(err, errlen, "Megler's manifest has no %s", what);                                \
+            if (err && errlen) snprintf(err, errlen, "Meglet's manifest has no %s", what);                                \
             free(xml);                                                                                                   \
             return NULL;                                                                                                 \
         }                                                                                                                \

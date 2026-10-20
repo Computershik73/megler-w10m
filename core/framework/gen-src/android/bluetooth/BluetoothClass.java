@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothClass implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int ERROR = -16777216;
     public static final int PROFILE_A2DP = 1;
@@ -16,14 +16,14 @@ public final class BluetoothClass implements android.os.Parcelable {
     public BluetoothClass(int p0) {}
     public int describeContents() { return 0; }
     public boolean doesClassMatch(int p0) { return false; }
-    public int getClassOfDevice() { return (meglerProps.get("ClassOfDevice") instanceof Integer ? (Integer) meglerProps.get("ClassOfDevice") : 0); }
-    public int getDeviceClass() { return (meglerProps.get("DeviceClass") instanceof Integer ? (Integer) meglerProps.get("DeviceClass") : 0); }
-    public int getMajorDeviceClass() { return (meglerProps.get("MajorDeviceClass") instanceof Integer ? (Integer) meglerProps.get("MajorDeviceClass") : 0); }
+    public int getClassOfDevice() { return (megletProps.get("ClassOfDevice") instanceof Integer ? (Integer) megletProps.get("ClassOfDevice") : 0); }
+    public int getDeviceClass() { return (megletProps.get("DeviceClass") instanceof Integer ? (Integer) megletProps.get("DeviceClass") : 0); }
+    public int getMajorDeviceClass() { return (megletProps.get("MajorDeviceClass") instanceof Integer ? (Integer) megletProps.get("MajorDeviceClass") : 0); }
     public boolean hasService(int p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     BluetoothClass() { this((int) 0); }
     public static class Device {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int AUDIO_VIDEO_CAMCORDER = 1076;
         public static final int AUDIO_VIDEO_CAR_AUDIO = 1056;
         public static final int AUDIO_VIDEO_HANDSFREE = 1032;
@@ -80,7 +80,7 @@ public final class BluetoothClass implements android.os.Parcelable {
         public static final int WEARABLE_WRIST_WATCH = 1796;
         public Device() {}
         public static class Major {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final int AUDIO_VIDEO = 1024;
             public static final int COMPUTER = 256;
             public static final int HEALTH = 2304;
@@ -96,7 +96,7 @@ public final class BluetoothClass implements android.os.Parcelable {
         }
     }
     public static final class Service {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int AUDIO = 2097152;
         public static final int CAPTURE = 524288;
         public static final int INFORMATION = 8388608;

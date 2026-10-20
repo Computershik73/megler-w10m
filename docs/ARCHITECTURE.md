@@ -1,6 +1,6 @@
-# How Megler runs Android code on Windows 10 Mobile
+# How Meglet runs Android code on Windows 10 Mobile
 
-an earlier project runs Android games on an iPhone by loading
+[Meglet](https://github.com/Leviidev/Meglet) runs Android games on an iPhone by loading
 their native libraries into its own process and standing in for Android around them.
 This is the same idea on Windows 10 Mobile. Only the translation layer is ported:
 there is no emulated Android system here, and no QEMU.
@@ -21,7 +21,7 @@ Windows 10 Mobile is a 32-bit ARM system, on every phone, including those with
 code cannot enter it. So:
 
 - **`arm64-v8a` libraries cannot run.** Only `armeabi-v7a` (and the older `armeabi`).
-  This is the mirror image of Megler on iOS, which runs only 64-bit code.
+  This is the mirror image of Meglet on iOS, which runs only 64-bit code.
 - An APK that has dropped its 32-bit libraries cannot run here at all. The app page
   says so. Older versions of most games still have them.
 
@@ -29,9 +29,9 @@ code cannot enter it. So:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ Megler.exe: C++/WinRT shell (app/Megler)                          │
+│ Meglet.exe: C++/WinRT shell (app/Meglet)                          │
 │   library, app page, SwapChainPanel, touch, device checks         │
-├─────────────────────────── megler.h ────────────────────────────────┤
+├─────────────────────────── meglet.h ────────────────────────────────┤
 │ core (C11, core/src)                                               │
 │   run/      one app: APKs, data directories, the driver            │
 │   drivers/  the Java side of each kind of app (NativeActivity)     │
@@ -201,7 +201,7 @@ Some apps overwrite libc entry points to install inline hooks. On ARM, `abort`,
 `signal`, `bsd_signal`, `sysv_signal` and `sigaction` therefore resolve to separate
 guest mmap pages, each with a relocatable Thumb NOP prefix and a tail jump to the
 host implementation. Imports and dlsym see the same stable entry. A hook can copy
-the prefix into a trampoline and resume the original without modifying Megler's
+the prefix into a trampoline and resume the original without modifying Meglet's
 executable image. Each entry has its own page so protection changes do not affect
 the other functions. The existing mmap write/execute handling applies; host text
 still rejects executable mprotect requests. Other exports remain direct shims.
@@ -254,7 +254,7 @@ So is a page of one of the app's own libraries asked for so: an inline hook patc
 the app's code. Instagram's `libdistract.so` hooks a function of its
 `libc++_shared.so`; the page stayed executable only, and the app ended on the
 write. Up to 64 such ranges are kept (`g_wx_code` in `bionic/hk_libc_mem.c`), never
-given back, as a hook stays as long as its library. Executable access to Megler's
+given back, as a hook stays as long as its library. Executable access to Meglet's
 own code is still refused (above).
 
 The guest test `t_own_code_hook` hooks a function of its library on a page of its
@@ -347,9 +347,9 @@ There is no Vulkan on Windows 10 Mobile, so apps that need it cannot run.
 
 ### A Java app's views, on the graphics processor
 
-An app whose user interface is Java draws its views through `megler_gfx_host`
-(core/include/megler.h): the core keeps the bitmaps in memory and asks the shell to
-draw into them (`app/Megler/player/GfxHost.cpp`). The first shell drew with
+An app whose user interface is Java draws its views through `meglet_gfx_host`
+(core/include/meglet.h): the core keeps the bitmaps in memory and asks the shell to
+draw into them (`app/Meglet/player/GfxHost.cpp`). The first shell drew with
 Direct2D's software rasterizer straight into that memory. On the phone that was
 slow: a frame that redraws a caret (5% of a 720 x 1280 window, a dozen calls)
 cost 18-20 ms of drawing, half of it in Direct2D's `EndDraw`, and a full window
@@ -373,10 +373,10 @@ contract, and keeps the software way for when there is no device for it.
   says what it is. The window's canvas is not flushed for its pictures (below).
 - **Layers** are target bitmaps of their extent, drawn back at their restore.
   **Bitmaps** drawn from the core's memory are uploaded once and kept under the
-  core's id and version (`megler_gfx_image`) until `bitmap_gone` or a memory budget.
+  core's id and version (`meglet_gfx_image`) until `bitmap_gone` or a memory budget.
 - **The host's own arithmetic** (the other seventeen transfer modes, colour
   filters, shadows, `drawColor`, layers put on by a mode) is done by Direct2D's
-  built-in effects where their formula is megler.h's (Composite, Blend,
+  built-in effects where their formula is meglet.h's (Composite, Blend,
   ArithmeticComposite, Flood, GaussianBlur); what is left reads back the box it
   changes, is put on in memory as before, and is uploaded again. GfxHost.cpp
   lists which is which.
@@ -392,7 +392,7 @@ contract, and keeps the software way for when there is no device for it.
 - **Threads.** The Direct2D factory is the multithreaded kind: it serialises
   every call, contexts' and the device's included, and with them Direct2D's use
   of the Direct3D device, which the shell never calls itself. Each canvas is
-  drawn by one thread at a time (megler.h), and its context, targets and read-back
+  drawn by one thread at a time (meglet.h), and its context, targets and read-back
   bitmap are its own; the kept bitmaps, and the contexts and targets kept for the
   next canvas, have locks.
 
@@ -405,7 +405,7 @@ read-back cost 10-17 ms whatever its size -- the wait for the processor, not the
 bytes -- which left a frame's drawing as dear as the software rasterizer had
 made it. So the window's picture is not read back:
 
-- megler_gfx_host has an optional `present(canvas, x, y, width, height)`: show the
+- meglet_gfx_host has an optional `present(canvas, x, y, width, height)`: show the
   part of the window that changed from the shell's own picture of the canvas,
   without a flush. False when it cannot; the core then flushes and calls
   `present_pixels` as before, which is also what NULL means.
@@ -428,7 +428,7 @@ made it. So the window's picture is not read back:
   latency of two makes `Present` hold the app's thread when it runs ahead of
   the display.
 - The read-backs left are those of other canvases (bitmaps an app draws into
-  and then reads, which megler.h's flush has to put into memory), counted apart in
+  and then reads, which meglet.h's flush has to put into memory), counted apart in
   the log's `gfx:` line, and the window's own when something reads its memory.
 
 `tools/build-tests.sh win` checks the window's path on the PC's processor (shown
@@ -438,8 +438,8 @@ stand-in showing its canvas's memory.
 
 **Blur.** A view with Android's `RenderEffect.createBlurEffect`
 (`View.setRenderEffect`) is drawn into a layer that is put onto the picture
-blurred: megler.h's `save_layer_blur`, from `View.drawFromParent` through
-`Canvas.meglerSaveLayerBlur` (all overlaid). The radii are Android's, and the
+blurred: meglet.h's `save_layer_blur`, from `View.drawFromParent` through
+`Canvas.megletSaveLayerBlur` (all overlaid). The radii are Android's, and the
 blur's standard deviation is Skia's, 0.57735 * radius + 0.5, grown with the
 matrix's scale as a shadow's is. Past the layer's edge is transparent for
 `Shader.TileMode.DECAL`, or the edge carried on for the others.
@@ -463,7 +463,7 @@ React Native views' "filter"); without the blur they were hard-edged bands.
 
 ### OpenGL ES from an app's Java
 
-An app whose user interface is Java draws its views in memory (megler_gfx_host, and
+An app whose user interface is Java draws its views in memory (meglet_gfx_host, and
 `present_pixels` hands the shell the whole window as a picture). Some of its views
 can be OpenGL ES surfaces: a `GLSurfaceView` with a `Renderer`, or any
 `SurfaceView` (or `SurfaceHolder`, or `Surface`) an app makes an EGL window surface
@@ -497,8 +497,8 @@ buffer, takes a `String[]` or a callback, or otherwise differs from C (39 of the
 832) is written by hand in `core/src/drivers/hk_java_gl.c`.
 
 **EGL from Java** is the framework's own Java -- `javax.microedition.khronos.egl`
-(`MeglerEGL`, EGL10 and EGL11) and `android.opengl.EGL14` over it -- on the natives
-of `megler.EGLNative`: a context (an OpenGL ES version, a context to share with),
+(`MegletEGL`, EGL10 and EGL11) and `android.opengl.EGL14` over it -- on the natives
+of `meglet.EGLNative`: a context (an OpenGL ES version, a context to share with),
 a pbuffer surface, a window surface (a pbuffer the size of its view, bound to the
 view), make current, swap, destroy. Every context and every surface is one
 configuration, 8 bits a channel, 24 bits of depth and 8 of stencil; the Java side
@@ -508,11 +508,11 @@ all of them are that one underneath. A version-1 context (`GL10`, the default of
 `GLSurfaceView`) is asked of ANGLE and, where ANGLE has no OpenGL ES 1, is a
 version-2 one, said in the log.
 
-**`GLSurfaceView`.** `megler.Native.startGL(view, renderer, version)` starts a GL
+**`GLSurfaceView`.** `meglet.Native.startGL(view, renderer, version)` starts a GL
 thread of the layer's own for that view (C, in `hk_java_gl.c`), a thread of the
 app's (Java attached, named `GLThread N`, and a guest thread, since the renderer
 may call the app's native code). It makes its context, and then each turn asks the
-view (`GLSurfaceView.meglerFrame`, the overlay's) what to do: the events queued with
+view (`GLSurfaceView.megletFrame`, the overlay's) what to do: the events queued with
 `queueEvent` are run there, on the GL thread with the context current, and the
 answer is one of: end, no surface, paused, draw, or nothing to draw. It draws --
 `onSurfaceCreated` once for each context, `onSurfaceChanged` for each new surface
@@ -584,7 +584,7 @@ composition needs the views in memory.
 the shell's drawing is on the graphics processor (`GfxHost`), the window is
 composed there and nothing is read back, neither the frames nor the views:
 
-- megler_gfx_host has `gl_frame(layer, share_handle, width, height)` and
+- meglet_gfx_host has `gl_frame(layer, share_handle, width, height)` and
   `gl_place(layer, x, y, width, height)` beside `present`. A view that draws
   with EGL is a layer, 0..7. ANGLE's pbuffers have Direct3D textures with DXGI
   shared handles (`EGL_ANGLE_surface_d3d_texture_2d_share_handle`, which the
@@ -699,7 +699,7 @@ The core decodes nothing. An app that plays a film asks Android for an extractor
 (the film's tracks and samples) and a decoder for each track; `ndk/hk_media.c` is
 both, as `libmediandk.so`, and passes the work through. The extractor copies the
 film (a range of the APK, or whatever a data source reads) to a file under the data
-folder and has the shell open it: `megler_media_host` in `megler.h` is open, the next
+folder and has the shell open it: `meglet_media_host` in `meglet.h` is open, the next
 picture as RGBA, the next block of sound as 16-bit PCM, seek, close. A sample the
 extractor hands out is a ticket naming the film and the track; a decoder given
 tickets asks the shell for as many pictures or blocks, in order. It is full after
@@ -713,7 +713,7 @@ binds it to the app's external texture through an EGLImage. The shell's side is
 
 An app whose Java plays video or music reads the file itself (ExoPlayer does)
 and hands `android.media.MediaCodec` one sample at a time. Those decoders are a
-second call of the shell's, `megler_codec_host`: a decoder of a kind (H.264,
+second call of the shell's, `meglet_codec_host`: a decoder of a kind (H.264,
 H.265, AAC, MP3) is opened with the stream's configuration, pushed one sample
 at a time, and gives pictures (NV12) and blocks of 16-bit sound back.
 `drivers/hk_java_media.c` takes whatever form an app hands the samples in and
@@ -725,13 +725,13 @@ MediaCodec draws into the app's `Surface`. The shell's side is
 (`MFTEnumEx`, `ProcessInput`, `ProcessOutput`), a thread for each decoder.
 docs/JAVA.md, "Decoders for MediaCodec", has the details and the tests. What
 a phone's decoders are and how fast they go is what a package built with
-`tools/build-appx.sh arm --auto codec` finds out, into `megler-auto.log`.
+`tools/build-appx.sh arm --auto codec` finds out, into `meglet-auto.log`.
 
 ## Cameras
 
 An app whose Java opens a camera (`android.hardware.Camera`, the old API that
 code scanners use) gets the phone's own, through a call of the shell's,
-`megler_camera_host` in `megler.h`: the cameras by number, which way each faces
+`meglet_camera_host` in `meglet.h`: the cameras by number, which way each faces
 and how far its picture is turned, open (with the sizes it streams at and
 whether it focuses and has a light), start with NV12 pictures to a callback,
 stop, focus, torch, close. Everything Android about it -- the parameters, the
@@ -755,7 +755,7 @@ what 1703 has (frame readers and source groups came with 1607):
 - **Opening** is `MediaCapture.InitializeAsync` with the camera's source group,
   exclusive control, video only and frames in memory. It is made on the UI
   thread, because the first time that is where Windows asks the user whether
-  Megler may use the camera (the package declares `webcam`). A refusal is
+  Meglet may use the camera (the package declares `webcam`). A refusal is
   `E_ACCESSDENIED`, which the core turns into Android's "Fail to connect to
   camera service", and the log has Windows' answer and what its privacy
   setting for the camera says of the app ("not yet asked", "allowed",
@@ -809,7 +809,7 @@ app sees, and where it is under the data folder (`LocalState` on a phone):
 
 An app's own part of the storage is written to before the app has ever run
 when it comes in an .xapk: the expansion files the bundle brings are put
-there as it is unpacked (`megler_bundle_unpack`, which asks `hk_run_own_storage`
+there as it is unpacked (`meglet_bundle_unpack`, which asks `hk_run_own_storage`
 where that is), so a game finds its OBB at its first start, as on Android.
 
 The other names of the storage are rewritten to the one before a path is looked
@@ -841,14 +841,14 @@ The guest test `t_smaps` reads the page size as Instagram does.
 the phone tried, `CreateFile2` and `FindFirstFileExW` are refused there (error
 5) with every library capability declared. What Windows gives an app is
 handles, through Windows.Storage's broker. So the host layer has *foreign
-paths* (`host/hk_host.h`): `megler-link:/2/Camera Roll/a.jpg` is a file of root
+paths* (`host/hk_host.h`): `meglet-link:/2/Camera Roll/a.jpg` is a file of root
 2, and whoever owns the roots is asked for the operating system's own handle
 for it -- a file's, a directory's to list, or whichever is there for its size
 and times -- and to make, remove and rename by name. Every function of the
 host layer that takes a path takes these, and from the handle on a file in a
 link is read, written, mapped and listed by the same code as any other. A
 link is a mount whose host path is such a root. The owner of the roots is the
-shell, through `megler_storage_host` in `megler.h`: its links by name, each
+shell, through `meglet_storage_host` in `meglet.h`: its links by name, each
 writable or not, and four functions. A link that is not writable is refused
 every change in `run/hk_run.c`, before the shell is asked, whichever part of
 the layer wanted it. A rename between a link and anything else is `EXDEV`, as
@@ -860,7 +860,7 @@ libraries' folders to save to as `Music`, `Pictures` and `Movies`
 user added in Settings with the folder picker, which Windows remembers for the
 app (`FutureAccessList`, the name kept as its metadata): the documents
 library, the downloads and a memory card come in that way and no other. A
-link that cannot be listed when Megler starts is left out, and the log has a
+link that cannot be listed when Meglet starts is left out, and the log has a
 line for each. A handle comes from the folder's object:
 `IStorageFolderHandleAccess::Create` for a file by its name,
 `IStorageItemHandleAccess::Create` for a folder itself. A path is walked a
@@ -890,12 +890,12 @@ that reads, writes, seeks, says its size and deletes, and a folder handle that
 lists; everything else -- a handle for the attributes alone, a folder deleted
 or renamed through its handle, what a folder's name asked for as a file is
 answered with, a picked folder kept across starts -- has not been asked of a
-phone. What asks is `megler_storage_check`: in every link the layer does,
+phone. What asks is `meglet_storage_check`: in every link the layer does,
 through its own C library, what an app does to files, in a folder of its own
-(`megler-storage-check`) that it removes again, and says each step and which
+(`meglet-storage-check`) that it removes again, and says each step and which
 way Windows answered. **Settings › Check the Folders** runs it, and so does a
 package built with `tools/build-appx.sh arm --auto storage`, into
-`megler-auto.log`.
+`meglet-auto.log`.
 
 ## The network
 
@@ -1013,7 +1013,7 @@ under qemu by the test app `data` (`InetAddress`, `HttpURLConnection` against
 a `ServerSocket` of the app's own, `DatagramSocket`, a `ServerSocket` closed
 under its accepting thread, a `java.nio` selector woken from another thread
 and then serving two channels without blocking, `NetworkInterface`). The check a phone runs
-(`megler_net_check`) reaches the internet from both. *Expected:* that a phone's
+(`meglet_net_check`) reaches the internet from both. *Expected:* that a phone's
 Winsock in an app container does what the PC's does, loopback within the
 process included (Microsoft's documents allow it within a process).
 `tools/build-appx.sh arm --auto net` asks. No TLS: an https connection fails
@@ -1044,7 +1044,7 @@ callbacks in the framework's order on a thread that stands for Android's main
 thread. Apps built on `android_native_app_glue` run on top of that.
 
 Engines whose Java shell does more (SDL, cocos2d-x, Unity, Unreal, Godot) each need
-their own driver, as they have in Megler on iOS. Apps written in Java need a Java
+their own driver, as they have in Meglet on iOS. Apps written in Java need a Java
 runtime: `core/src/dvm`, a Dalvik interpreter. Until it is started nothing above
 changes -- the classes are C, and an app with a native engine pays nothing for
 it. Once started there is one Java world: every class the JNI layer knows has a
@@ -1055,13 +1055,13 @@ libcore, whose native libraries are guest libraries like an app's, loaded by the
 same linker. [JAVA.md](JAVA.md) is its design, what is proven, and the plan.
 
 *Proven:* `native-test.apk`, a NativeActivity app written like the glue, goes
-through `megler_run` under qemu: manifest, library from the APK, JNI questions,
+through `meglet_run` under qemu: manifest, library from the APK, JNI questions,
 asset, EGL, frames, touches with two fingers, focus and pause, Back, teardown.
 
 ## What the device probe is for
 
 Several things above cannot be known from a PC. **Device checks** in the app runs
-`megler_probe` and writes one line per fact:
+`meglet_probe` and writes one line per fact:
 
 | Line | What it decides |
 |---|---|

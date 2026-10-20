@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CellSignalStrengthLte extends android.telephony.CellSignalStrength implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int USE_RSRP = 1;
     public static final int USE_RSRQ = 2;
@@ -17,17 +17,17 @@ public final class CellSignalStrengthLte extends android.telephony.CellSignalStr
     public android.telephony.CellSignalStrengthLte copy() { return new android.telephony.CellSignalStrengthLte(); }
     protected void copyFrom(android.telephony.CellSignalStrengthLte p0) {}
     public int describeContents() { return 0; }
-    public int getAsuLevel() { return (meglerProps.get("AsuLevel") instanceof Integer ? (Integer) meglerProps.get("AsuLevel") : 0); }
-    public int getCqi() { return (meglerProps.get("Cqi") instanceof Integer ? (Integer) meglerProps.get("Cqi") : 0); }
-    public int getCqiTableIndex() { return (meglerProps.get("CqiTableIndex") instanceof Integer ? (Integer) meglerProps.get("CqiTableIndex") : 0); }
-    public int getDbm() { return (meglerProps.get("Dbm") instanceof Integer ? (Integer) meglerProps.get("Dbm") : 0); }
-    public int getLevel() { return (meglerProps.get("Level") instanceof Integer ? (Integer) meglerProps.get("Level") : 0); }
-    public int getRsrp() { return (meglerProps.get("Rsrp") instanceof Integer ? (Integer) meglerProps.get("Rsrp") : 0); }
-    public int getRsrq() { return (meglerProps.get("Rsrq") instanceof Integer ? (Integer) meglerProps.get("Rsrq") : 0); }
-    public int getRssi() { return (meglerProps.get("Rssi") instanceof Integer ? (Integer) meglerProps.get("Rssi") : 0); }
-    public int getRssnr() { return (meglerProps.get("Rssnr") instanceof Integer ? (Integer) meglerProps.get("Rssnr") : 0); }
-    public int getTimingAdvance() { return (meglerProps.get("TimingAdvance") instanceof Integer ? (Integer) meglerProps.get("TimingAdvance") : 0); }
-    public boolean isValid() { return (meglerProps.get("Valid") instanceof Boolean ? (Boolean) meglerProps.get("Valid") : false); }
+    public int getAsuLevel() { return (megletProps.get("AsuLevel") instanceof Integer ? (Integer) megletProps.get("AsuLevel") : 0); }
+    public int getCqi() { return (megletProps.get("Cqi") instanceof Integer ? (Integer) megletProps.get("Cqi") : 0); }
+    public int getCqiTableIndex() { return (megletProps.get("CqiTableIndex") instanceof Integer ? (Integer) megletProps.get("CqiTableIndex") : 0); }
+    public int getDbm() { return (megletProps.get("Dbm") instanceof Integer ? (Integer) megletProps.get("Dbm") : 0); }
+    public int getLevel() { return (megletProps.get("Level") instanceof Integer ? (Integer) megletProps.get("Level") : 0); }
+    public int getRsrp() { return (megletProps.get("Rsrp") instanceof Integer ? (Integer) megletProps.get("Rsrp") : 0); }
+    public int getRsrq() { return (megletProps.get("Rsrq") instanceof Integer ? (Integer) megletProps.get("Rsrq") : 0); }
+    public int getRssi() { return (megletProps.get("Rssi") instanceof Integer ? (Integer) megletProps.get("Rssi") : 0); }
+    public int getRssnr() { return (megletProps.get("Rssnr") instanceof Integer ? (Integer) megletProps.get("Rssnr") : 0); }
+    public int getTimingAdvance() { return (megletProps.get("TimingAdvance") instanceof Integer ? (Integer) megletProps.get("TimingAdvance") : 0); }
+    public boolean isValid() { return (megletProps.get("Valid") instanceof Boolean ? (Boolean) megletProps.get("Valid") : false); }
     public void setDefaultValues() {}
     public void updateLevel(android.os.PersistableBundle p0, android.telephony.ServiceState p1) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}

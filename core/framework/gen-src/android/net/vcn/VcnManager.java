@@ -3,7 +3,7 @@ package android.net.vcn;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class VcnManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int VCN_ERROR_CODE_CONFIG_ERROR = 1;
     public static final int VCN_ERROR_CODE_INTERNAL_ERROR = 0;
     public static final int VCN_ERROR_CODE_NETWORK_ERROR = 2;
@@ -28,7 +28,7 @@ public class VcnManager {
     public void addVcnUnderlyingNetworkPolicyListener(java.util.concurrent.Executor p0, android.net.vcn.VcnManager.VcnUnderlyingNetworkPolicyListener p1) {}
     public android.net.vcn.VcnNetworkPolicyResult applyVcnNetworkPolicy(android.net.NetworkCapabilities p0, android.net.LinkProperties p1) { return null; }
     public void clearVcnConfig(android.os.ParcelUuid p0) {}
-    public java.util.List getConfiguredSubscriptionGroups() { return (meglerProps.get("ConfiguredSubscriptionGroups") != null ? (java.util.List) meglerProps.get("ConfiguredSubscriptionGroups") : new java.util.ArrayList()); }
+    public java.util.List getConfiguredSubscriptionGroups() { return (megletProps.get("ConfiguredSubscriptionGroups") != null ? (java.util.List) megletProps.get("ConfiguredSubscriptionGroups") : new java.util.ArrayList()); }
     public android.net.vcn.VcnUnderlyingNetworkPolicy getUnderlyingNetworkPolicy(android.net.NetworkCapabilities p0, android.net.LinkProperties p1) { return null; }
     public void registerVcnStatusCallback(android.os.ParcelUuid p0, java.util.concurrent.Executor p1, android.net.vcn.VcnManager.VcnStatusCallback p2) {}
     public void removeVcnNetworkPolicyChangeListener(android.net.vcn.VcnManager.VcnNetworkPolicyChangeListener p0) {}
@@ -40,13 +40,13 @@ public class VcnManager {
         void onPolicyChanged();
     }
     public static abstract class VcnStatusCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public VcnStatusCallback() {}
         public abstract void onGatewayConnectionError(java.lang.String p0, int p1, java.lang.Throwable p2);
         public abstract void onStatusChanged(int p0);
     }
     public static abstract class VcnStatusCallbackBinder extends android.net.vcn.IVcnStatusCallback.Stub {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public VcnStatusCallbackBinder(java.util.concurrent.Executor p0, android.net.vcn.VcnManager.VcnStatusCallback p1) { super(); }
         public void onGatewayConnectionError(java.lang.String p0, int p1, java.lang.String p2, java.lang.String p3) {}
         public void onVcnStatusChanged(int p0) {}

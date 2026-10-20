@@ -3,7 +3,7 @@ package android.telephony.ims;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ImsMmTelManager implements android.telephony.ims.RegistrationManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int WIFI_MODE_CELLULAR_PREFERRED = 1;
     public static final int WIFI_MODE_UNKNOWN = -1;
     public static final int WIFI_MODE_WIFI_ONLY = 0;
@@ -15,31 +15,31 @@ public class ImsMmTelManager implements android.telephony.ims.RegistrationManage
     public void getFeatureState(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public void getRegistrationState(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public void getRegistrationTransportType(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-    public int getVoWiFiModeSetting() { return (meglerProps.get("VoWiFiModeSetting") instanceof Integer ? (Integer) meglerProps.get("VoWiFiModeSetting") : 0); }
-    public int getVoWiFiRoamingModeSetting() { return (meglerProps.get("VoWiFiRoamingModeSetting") instanceof Integer ? (Integer) meglerProps.get("VoWiFiRoamingModeSetting") : 0); }
-    public boolean isAdvancedCallingSettingEnabled() { return (meglerProps.get("AdvancedCallingSettingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AdvancedCallingSettingEnabled") : false); }
+    public int getVoWiFiModeSetting() { return (megletProps.get("VoWiFiModeSetting") instanceof Integer ? (Integer) megletProps.get("VoWiFiModeSetting") : 0); }
+    public int getVoWiFiRoamingModeSetting() { return (megletProps.get("VoWiFiRoamingModeSetting") instanceof Integer ? (Integer) megletProps.get("VoWiFiRoamingModeSetting") : 0); }
+    public boolean isAdvancedCallingSettingEnabled() { return (megletProps.get("AdvancedCallingSettingEnabled") instanceof Boolean ? (Boolean) megletProps.get("AdvancedCallingSettingEnabled") : false); }
     public boolean isAvailable(int p0, int p1) { return false; }
     public boolean isCapable(int p0, int p1) { return false; }
-    public boolean isCrossSimCallingEnabled() { return (meglerProps.get("CrossSimCallingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("CrossSimCallingEnabled") : false); }
+    public boolean isCrossSimCallingEnabled() { return (megletProps.get("CrossSimCallingEnabled") instanceof Boolean ? (Boolean) megletProps.get("CrossSimCallingEnabled") : false); }
     public void isSupported(int p0, int p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) {}
-    public boolean isTtyOverVolteEnabled() { return (meglerProps.get("TtyOverVolteEnabled") instanceof Boolean ? (Boolean) meglerProps.get("TtyOverVolteEnabled") : false); }
-    public boolean isVoWiFiRoamingSettingEnabled() { return (meglerProps.get("VoWiFiRoamingSettingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("VoWiFiRoamingSettingEnabled") : false); }
-    public boolean isVoWiFiSettingEnabled() { return (meglerProps.get("VoWiFiSettingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("VoWiFiSettingEnabled") : false); }
-    public boolean isVtSettingEnabled() { return (meglerProps.get("VtSettingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("VtSettingEnabled") : false); }
+    public boolean isTtyOverVolteEnabled() { return (megletProps.get("TtyOverVolteEnabled") instanceof Boolean ? (Boolean) megletProps.get("TtyOverVolteEnabled") : false); }
+    public boolean isVoWiFiRoamingSettingEnabled() { return (megletProps.get("VoWiFiRoamingSettingEnabled") instanceof Boolean ? (Boolean) megletProps.get("VoWiFiRoamingSettingEnabled") : false); }
+    public boolean isVoWiFiSettingEnabled() { return (megletProps.get("VoWiFiSettingEnabled") instanceof Boolean ? (Boolean) megletProps.get("VoWiFiSettingEnabled") : false); }
+    public boolean isVtSettingEnabled() { return (megletProps.get("VtSettingEnabled") instanceof Boolean ? (Boolean) megletProps.get("VtSettingEnabled") : false); }
     public void registerImsEmergencyRegistrationCallback(java.util.concurrent.Executor p0, android.telephony.ims.RegistrationManager.RegistrationCallback p1) {}
     public void registerImsRegistrationCallback(java.util.concurrent.Executor p0, android.telephony.ims.ImsMmTelManager.RegistrationCallback p1) {}
     public void registerImsRegistrationCallback(java.util.concurrent.Executor p0, android.telephony.ims.RegistrationManager.RegistrationCallback p1) {}
     public void registerImsStateCallback(java.util.concurrent.Executor p0, android.telephony.ims.ImsStateCallback p1) {}
     public void registerMmTelCapabilityCallback(java.util.concurrent.Executor p0, android.telephony.ims.ImsMmTelManager.CapabilityCallback p1) {}
-    public void setAdvancedCallingSettingEnabled(boolean p0) { meglerProps.put("AdvancedCallingSettingEnabled", Boolean.valueOf(p0)); }
-    public void setCrossSimCallingEnabled(boolean p0) { meglerProps.put("CrossSimCallingEnabled", Boolean.valueOf(p0)); }
-    public void setRttCapabilitySetting(boolean p0) { meglerProps.put("RttCapabilitySetting", Boolean.valueOf(p0)); }
-    public void setVoWiFiModeSetting(int p0) { meglerProps.put("VoWiFiModeSetting", Integer.valueOf(p0)); }
+    public void setAdvancedCallingSettingEnabled(boolean p0) { megletProps.put("AdvancedCallingSettingEnabled", Boolean.valueOf(p0)); }
+    public void setCrossSimCallingEnabled(boolean p0) { megletProps.put("CrossSimCallingEnabled", Boolean.valueOf(p0)); }
+    public void setRttCapabilitySetting(boolean p0) { megletProps.put("RttCapabilitySetting", Boolean.valueOf(p0)); }
+    public void setVoWiFiModeSetting(int p0) { megletProps.put("VoWiFiModeSetting", Integer.valueOf(p0)); }
     public void setVoWiFiNonPersistent(boolean p0, int p1) {}
-    public void setVoWiFiRoamingModeSetting(int p0) { meglerProps.put("VoWiFiRoamingModeSetting", Integer.valueOf(p0)); }
-    public void setVoWiFiRoamingSettingEnabled(boolean p0) { meglerProps.put("VoWiFiRoamingSettingEnabled", Boolean.valueOf(p0)); }
-    public void setVoWiFiSettingEnabled(boolean p0) { meglerProps.put("VoWiFiSettingEnabled", Boolean.valueOf(p0)); }
-    public void setVtSettingEnabled(boolean p0) { meglerProps.put("VtSettingEnabled", Boolean.valueOf(p0)); }
+    public void setVoWiFiRoamingModeSetting(int p0) { megletProps.put("VoWiFiRoamingModeSetting", Integer.valueOf(p0)); }
+    public void setVoWiFiRoamingSettingEnabled(boolean p0) { megletProps.put("VoWiFiRoamingSettingEnabled", Boolean.valueOf(p0)); }
+    public void setVoWiFiSettingEnabled(boolean p0) { megletProps.put("VoWiFiSettingEnabled", Boolean.valueOf(p0)); }
+    public void setVtSettingEnabled(boolean p0) { megletProps.put("VtSettingEnabled", Boolean.valueOf(p0)); }
     public void unregisterImsEmergencyRegistrationCallback(android.telephony.ims.RegistrationManager.RegistrationCallback p0) {}
     public void unregisterImsRegistrationCallback(android.telephony.ims.ImsMmTelManager.RegistrationCallback p0) {}
     public void unregisterImsRegistrationCallback(android.telephony.ims.RegistrationManager.RegistrationCallback p0) {}
@@ -47,14 +47,14 @@ public class ImsMmTelManager implements android.telephony.ims.RegistrationManage
     public void unregisterMmTelCapabilityCallback(android.telephony.ims.ImsMmTelManager.CapabilityCallback p0) {}
     ImsMmTelManager() { this((int) 0, (android.telephony.BinderCacheManager) null); }
     public static class CapabilityCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public CapabilityCallback() {}
-        public android.telephony.ims.aidl.IImsCapabilityCallback getBinder() { return (android.telephony.ims.aidl.IImsCapabilityCallback) meglerProps.get("Binder"); }
+        public android.telephony.ims.aidl.IImsCapabilityCallback getBinder() { return (android.telephony.ims.aidl.IImsCapabilityCallback) megletProps.get("Binder"); }
         public void onCapabilitiesStatusChanged(android.telephony.ims.feature.MmTelFeature.MmTelCapabilities p0) {}
-        public void setExecutor(java.util.concurrent.Executor p0) { meglerProps.put("Executor", p0); }
+        public void setExecutor(java.util.concurrent.Executor p0) { megletProps.put("Executor", p0); }
     }
     public static class RegistrationCallback extends android.telephony.ims.RegistrationManager.RegistrationCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public RegistrationCallback() { super(); }
         public void onRegistered(int p0) {}
         public void onRegistering(int p0) {}

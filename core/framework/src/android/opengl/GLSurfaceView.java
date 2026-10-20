@@ -8,7 +8,7 @@ import javax.microedition.khronos.egl.EGLDisplay;
 import javax.microedition.khronos.egl.EGLSurface;
 import javax.microedition.khronos.opengles.GL10;
 
-/** The renderer runs on Megler's GL thread (megler-tl-dvm-android.c), which owns the EGL context on the app's screen. */
+/** The renderer runs on Meglet's GL thread (meglet-tl-dvm-android.c), which owns the EGL context on the app's screen. */
 public class GLSurfaceView extends android.view.SurfaceView implements android.view.SurfaceHolder.Callback2 {
     public static final int RENDERMODE_WHEN_DIRTY = 0, RENDERMODE_CONTINUOUSLY = 1, DEBUG_CHECK_GL_ERROR = 1, DEBUG_LOG_GL_CALLS = 2;
     public interface Renderer { void onSurfaceCreated(GL10 gl, EGLConfig config); void onSurfaceChanged(GL10 gl, int w, int h); void onDrawFrame(GL10 gl); }
@@ -45,10 +45,10 @@ public class GLSurfaceView extends android.view.SurfaceView implements android.v
     public boolean getPreserveEGLContextOnPause() { return true; }
     public void setRenderMode(int m) { renderMode = m; dirty = true; }
     public int getRenderMode() { return renderMode; }
-    public void requestRender() { dirty = true; megler.Native.requestRender(); }
+    public void requestRender() { dirty = true; meglet.Native.requestRender(); }
     public void onPause() { paused = true; }
     public void onResume() { paused = false; dirty = true; }
-    public void queueEvent(Runnable r) { synchronized (queue) { queue.add(r); } megler.Native.requestRender(); }
+    public void queueEvent(Runnable r) { synchronized (queue) { queue.add(r); } meglet.Native.requestRender(); }
     @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); start(); }
     private void start() {
         if (renderer == null || started) return;
@@ -61,7 +61,7 @@ public class GLSurfaceView extends android.view.SurfaceView implements android.v
                 EGLConfig[] cfg = new EGLConfig[1];
                 egl.eglChooseConfig(d, null, cfg, 1, new int[1]);
                 EGLContext probe = contextFactory.createContext(egl, d, cfg[0]);
-                version = Math.max(1, EGLContext.meglerRequestedVersion());
+                version = Math.max(1, EGLContext.megletRequestedVersion());
                 // made off the render thread, that is a real context of its own: the render thread makes the one the app draws with
                 if (probe != null && probe != EGL10.EGL_NO_CONTEXT) try { contextFactory.destroyContext(egl, d, probe); } catch (RuntimeException e) { }
             } catch (RuntimeException e) {
@@ -69,15 +69,15 @@ public class GLSurfaceView extends android.view.SurfaceView implements android.v
                 version = 2;
             }
         }
-        megler.Native.startGL(this, renderer, version);
+        meglet.Native.startGL(this, renderer, version);
     }
 
-    private static MeglerGL10 sGL;
+    private static MegletGL10 sGL;
     /** @hide The GL10 object EGLContext.getGL() hands out. */
-    public static synchronized javax.microedition.khronos.opengles.GL meglerGL() { if (sGL == null) sGL = new MeglerGL10(); return sGL; }
+    public static synchronized javax.microedition.khronos.opengles.GL megletGL() { if (sGL == null) sGL = new MegletGL10(); return sGL; }
 
-    /** Megler's GL thread, each frame: queued events, then whether to draw. */
-    public final boolean meglerBeginFrame() {
+    /** Meglet's GL thread, each frame: queued events, then whether to draw. */
+    public final boolean megletBeginFrame() {
         ArrayList<Runnable> run;
         synchronized (queue) { run = new ArrayList<>(queue); queue.clear(); }
         for (Runnable r : run) r.run();

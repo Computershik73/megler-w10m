@@ -3,7 +3,7 @@ package android.media.tv.ad;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TvAdManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_APP_LINK_COMMAND = "android.media.tv.ad.action.APP_LINK_COMMAND";
     public static final java.lang.String APP_LINK_KEY_BACK_URI = "back_uri";
     public static final java.lang.String APP_LINK_KEY_CLASS_NAME = "class_name";
@@ -35,7 +35,7 @@ public final class TvAdManager {
     public static final int SESSION_STATE_STOPPED = 1;
     public TvAdManager(android.media.tv.ad.ITvAdManager p0, int p1) {}
     public void createSession(java.lang.String p0, java.lang.String p1, android.media.tv.ad.TvAdManager.SessionCallback p2, android.os.Handler p3) {}
-    public java.util.List getTvAdServiceList() { return (meglerProps.get("TvAdServiceList") != null ? (java.util.List) meglerProps.get("TvAdServiceList") : new java.util.ArrayList()); }
+    public java.util.List getTvAdServiceList() { return (megletProps.get("TvAdServiceList") != null ? (java.util.List) megletProps.get("TvAdServiceList") : new java.util.ArrayList()); }
     public void registerCallback(java.util.concurrent.Executor p0, android.media.tv.ad.TvAdManager.TvAdServiceCallback p1) {}
     public void sendAppLinkCommand(java.lang.String p0, android.os.Bundle p1) {}
     public void unregisterCallback(android.media.tv.ad.TvAdManager.TvAdServiceCallback p0) {}
@@ -44,7 +44,7 @@ public final class TvAdManager {
         protected Session() {}
     }
     public static abstract class SessionCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public SessionCallback() {}
         public void onLayoutSurface(android.media.tv.ad.TvAdManager.Session p0, int p1, int p2, int p3, int p4) {}
         public void onRequestCurrentChannelUri(android.media.tv.ad.TvAdManager.Session p0) {}
@@ -56,7 +56,7 @@ public final class TvAdManager {
         public void onSessionReleased(android.media.tv.ad.TvAdManager.Session p0) {}
     }
     public static abstract class TvAdServiceCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public TvAdServiceCallback() {}
         public void onAdServiceAdded(java.lang.String p0) {}
         public void onAdServiceRemoved(java.lang.String p0) {}

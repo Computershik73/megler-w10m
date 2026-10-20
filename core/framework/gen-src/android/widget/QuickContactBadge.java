@@ -3,7 +3,7 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class QuickContactBadge extends android.widget.ImageView implements android.view.View.OnClickListener {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected java.lang.String[] mExcludeMimes;
     public QuickContactBadge(android.content.Context p0) { super(p0); }
     public QuickContactBadge(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
@@ -17,10 +17,10 @@ public class QuickContactBadge extends android.widget.ImageView implements andro
     public void drawableHotspotChanged(float p0, float p1) {}
     public void onAttachedToWindow() {}
     public void onClick(android.view.View p0) {}
-    public void setExcludeMimes(java.lang.String[] p0) { meglerProps.put("ExcludeMimes", p0); }
+    public void setExcludeMimes(java.lang.String[] p0) { megletProps.put("ExcludeMimes", p0); }
     public void setImageToDefault() {}
-    public void setMode(int p0) { meglerProps.put("Mode", Integer.valueOf(p0)); }
-    public void setOverlay(android.graphics.drawable.Drawable p0) { meglerProps.put("Overlay", p0); }
-    public void setPrioritizedMimeType(java.lang.String p0) { meglerProps.put("PrioritizedMimeType", p0); }
+    public void setMode(int p0) { megletProps.put("Mode", Integer.valueOf(p0)); }
+    public void setOverlay(android.graphics.drawable.Drawable p0) { megletProps.put("Overlay", p0); }
+    public void setPrioritizedMimeType(java.lang.String p0) { megletProps.put("PrioritizedMimeType", p0); }
     QuickContactBadge() { this((android.content.Context) null); }
 }

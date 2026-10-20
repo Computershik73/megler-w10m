@@ -3,10 +3,10 @@ package android.security;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AttestedKeyPair {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public AttestedKeyPair(java.security.KeyPair p0, java.util.List p1) {}
     public AttestedKeyPair(java.security.KeyPair p0, java.security.cert.Certificate[] p1) {}
-    public java.util.List getAttestationRecord() { return (meglerProps.get("AttestationRecord") != null ? (java.util.List) meglerProps.get("AttestationRecord") : new java.util.ArrayList()); }
-    public java.security.KeyPair getKeyPair() { return (java.security.KeyPair) meglerProps.get("KeyPair"); }
+    public java.util.List getAttestationRecord() { return (megletProps.get("AttestationRecord") != null ? (java.util.List) megletProps.get("AttestationRecord") : new java.util.ArrayList()); }
+    public java.security.KeyPair getKeyPair() { return (java.security.KeyPair) megletProps.get("KeyPair"); }
     AttestedKeyPair() { this((java.security.KeyPair) null, (java.util.List) null); }
 }

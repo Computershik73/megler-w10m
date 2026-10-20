@@ -3,16 +3,16 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AwareResources implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AwareResources(int p0, int p1, int p2) {}
     public int describeContents() { return 0; }
-    public int getAvailableDataPathsCount() { return (meglerProps.get("AvailableDataPathsCount") instanceof Integer ? (Integer) meglerProps.get("AvailableDataPathsCount") : 0); }
-    public int getAvailablePublishSessionsCount() { return (meglerProps.get("AvailablePublishSessionsCount") instanceof Integer ? (Integer) meglerProps.get("AvailablePublishSessionsCount") : 0); }
-    public int getAvailableSubscribeSessionsCount() { return (meglerProps.get("AvailableSubscribeSessionsCount") instanceof Integer ? (Integer) meglerProps.get("AvailableSubscribeSessionsCount") : 0); }
-    public void setNumOfAvailableDataPaths(int p0) { meglerProps.put("NumOfAvailableDataPaths", Integer.valueOf(p0)); }
-    public void setNumOfAvailablePublishSessions(int p0) { meglerProps.put("NumOfAvailablePublishSessions", Integer.valueOf(p0)); }
-    public void setNumOfAvailableSubscribeSessions(int p0) { meglerProps.put("NumOfAvailableSubscribeSessions", Integer.valueOf(p0)); }
+    public int getAvailableDataPathsCount() { return (megletProps.get("AvailableDataPathsCount") instanceof Integer ? (Integer) megletProps.get("AvailableDataPathsCount") : 0); }
+    public int getAvailablePublishSessionsCount() { return (megletProps.get("AvailablePublishSessionsCount") instanceof Integer ? (Integer) megletProps.get("AvailablePublishSessionsCount") : 0); }
+    public int getAvailableSubscribeSessionsCount() { return (megletProps.get("AvailableSubscribeSessionsCount") instanceof Integer ? (Integer) megletProps.get("AvailableSubscribeSessionsCount") : 0); }
+    public void setNumOfAvailableDataPaths(int p0) { megletProps.put("NumOfAvailableDataPaths", Integer.valueOf(p0)); }
+    public void setNumOfAvailablePublishSessions(int p0) { megletProps.put("NumOfAvailablePublishSessions", Integer.valueOf(p0)); }
+    public void setNumOfAvailableSubscribeSessions(int p0) { megletProps.put("NumOfAvailableSubscribeSessions", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AwareResources() { this((int) 0, (int) 0, (int) 0); }
 }

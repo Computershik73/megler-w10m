@@ -3,7 +3,7 @@ package android.service.controls.templates;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TemperatureControlTemplate extends android.service.controls.templates.ControlTemplate {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int FLAG_MODE_COOL = 8;
     public static final int FLAG_MODE_ECO = 32;
     public static final int FLAG_MODE_HEAT = 4;
@@ -16,10 +16,10 @@ public final class TemperatureControlTemplate extends android.service.controls.t
     public static final int MODE_OFF = 1;
     public static final int MODE_UNKNOWN = 0;
     public TemperatureControlTemplate(java.lang.String p0, android.service.controls.templates.ControlTemplate p1, int p2, int p3, int p4) { super(); }
-    public int getCurrentActiveMode() { return (meglerProps.get("CurrentActiveMode") instanceof Integer ? (Integer) meglerProps.get("CurrentActiveMode") : 0); }
-    public int getCurrentMode() { return (meglerProps.get("CurrentMode") instanceof Integer ? (Integer) meglerProps.get("CurrentMode") : 0); }
-    public int getModes() { return (meglerProps.get("Modes") instanceof Integer ? (Integer) meglerProps.get("Modes") : 0); }
-    public android.service.controls.templates.ControlTemplate getTemplate() { return (android.service.controls.templates.ControlTemplate) meglerProps.get("Template"); }
-    public int getTemplateType() { return (meglerProps.get("TemplateType") instanceof Integer ? (Integer) meglerProps.get("TemplateType") : 0); }
+    public int getCurrentActiveMode() { return (megletProps.get("CurrentActiveMode") instanceof Integer ? (Integer) megletProps.get("CurrentActiveMode") : 0); }
+    public int getCurrentMode() { return (megletProps.get("CurrentMode") instanceof Integer ? (Integer) megletProps.get("CurrentMode") : 0); }
+    public int getModes() { return (megletProps.get("Modes") instanceof Integer ? (Integer) megletProps.get("Modes") : 0); }
+    public android.service.controls.templates.ControlTemplate getTemplate() { return (android.service.controls.templates.ControlTemplate) megletProps.get("Template"); }
+    public int getTemplateType() { return (megletProps.get("TemplateType") instanceof Integer ? (Integer) megletProps.get("TemplateType") : 0); }
     TemperatureControlTemplate() { this((java.lang.String) null, (android.service.controls.templates.ControlTemplate) null, (int) 0, (int) 0, (int) 0); }
 }

@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ConnectivityDiagnosticsManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static java.util.Map sCallbacks;
     public ConnectivityDiagnosticsManager(android.content.Context p0, android.net.IConnectivityManager p1) {}
     public static boolean persistableBundleEquals(android.os.PersistableBundle p0, android.os.PersistableBundle p1) { return false; }
@@ -11,7 +11,7 @@ public class ConnectivityDiagnosticsManager {
     public void unregisterConnectivityDiagnosticsCallback(android.net.ConnectivityDiagnosticsManager.ConnectivityDiagnosticsCallback p0) {}
     ConnectivityDiagnosticsManager() { this((android.content.Context) null, (android.net.IConnectivityManager) null); }
     public static abstract class ConnectivityDiagnosticsBinder extends android.net.IConnectivityDiagnosticsCallback.Stub {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ConnectivityDiagnosticsBinder(android.net.ConnectivityDiagnosticsManager.ConnectivityDiagnosticsCallback p0, java.util.concurrent.Executor p1) { super(); }
         public void onConnectivityReportAvailable(android.net.ConnectivityDiagnosticsManager.ConnectivityReport p0) {}
         public void onDataStallSuspected(android.net.ConnectivityDiagnosticsManager.DataStallReport p0) {}
@@ -19,14 +19,14 @@ public class ConnectivityDiagnosticsManager {
         ConnectivityDiagnosticsBinder() { this((android.net.ConnectivityDiagnosticsManager.ConnectivityDiagnosticsCallback) null, (java.util.concurrent.Executor) null); }
     }
     public static abstract class ConnectivityDiagnosticsCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ConnectivityDiagnosticsCallback() {}
         public void onConnectivityReportAvailable(android.net.ConnectivityDiagnosticsManager.ConnectivityReport p0) {}
         public void onDataStallSuspected(android.net.ConnectivityDiagnosticsManager.DataStallReport p0) {}
         public void onNetworkConnectivityReported(android.net.Network p0, boolean p1) {}
     }
     public static final class ConnectivityReport implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public static final java.lang.String KEY_NETWORK_PROBES_ATTEMPTED_BITMASK = "networkProbesAttempted";
         public static final java.lang.String KEY_NETWORK_PROBES_SUCCEEDED_BITMASK = "networkProbesSucceeded";
@@ -42,16 +42,16 @@ public class ConnectivityDiagnosticsManager {
         public static final int NETWORK_VALIDATION_RESULT_VALID = 1;
         public ConnectivityReport(android.net.Network p0, long p1, android.net.LinkProperties p2, android.net.NetworkCapabilities p3, android.os.PersistableBundle p4) {}
         public int describeContents() { return 0; }
-        public android.os.PersistableBundle getAdditionalInfo() { return (android.os.PersistableBundle) meglerProps.get("AdditionalInfo"); }
-        public android.net.LinkProperties getLinkProperties() { return (android.net.LinkProperties) meglerProps.get("LinkProperties"); }
-        public android.net.Network getNetwork() { return (android.net.Network) meglerProps.get("Network"); }
-        public android.net.NetworkCapabilities getNetworkCapabilities() { return (android.net.NetworkCapabilities) meglerProps.get("NetworkCapabilities"); }
-        public long getReportTimestamp() { return (meglerProps.get("ReportTimestamp") instanceof Long ? (Long) meglerProps.get("ReportTimestamp") : 0L); }
+        public android.os.PersistableBundle getAdditionalInfo() { return (android.os.PersistableBundle) megletProps.get("AdditionalInfo"); }
+        public android.net.LinkProperties getLinkProperties() { return (android.net.LinkProperties) megletProps.get("LinkProperties"); }
+        public android.net.Network getNetwork() { return (android.net.Network) megletProps.get("Network"); }
+        public android.net.NetworkCapabilities getNetworkCapabilities() { return (android.net.NetworkCapabilities) megletProps.get("NetworkCapabilities"); }
+        public long getReportTimestamp() { return (megletProps.get("ReportTimestamp") instanceof Long ? (Long) megletProps.get("ReportTimestamp") : 0L); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         ConnectivityReport() { this((android.net.Network) null, (long) 0L, (android.net.LinkProperties) null, (android.net.NetworkCapabilities) null, (android.os.PersistableBundle) null); }
     }
     public static final class DataStallReport implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public static final int DETECTION_METHOD_DNS_EVENTS = 1;
         public static final int DETECTION_METHOD_TCP_METRICS = 2;
@@ -60,12 +60,12 @@ public class ConnectivityDiagnosticsManager {
         public static final java.lang.String KEY_TCP_PACKET_FAIL_RATE = "tcpPacketFailRate";
         public DataStallReport(android.net.Network p0, long p1, int p2, android.net.LinkProperties p3, android.net.NetworkCapabilities p4, android.os.PersistableBundle p5) {}
         public int describeContents() { return 0; }
-        public int getDetectionMethod() { return (meglerProps.get("DetectionMethod") instanceof Integer ? (Integer) meglerProps.get("DetectionMethod") : 0); }
-        public android.net.LinkProperties getLinkProperties() { return (android.net.LinkProperties) meglerProps.get("LinkProperties"); }
-        public android.net.Network getNetwork() { return (android.net.Network) meglerProps.get("Network"); }
-        public android.net.NetworkCapabilities getNetworkCapabilities() { return (android.net.NetworkCapabilities) meglerProps.get("NetworkCapabilities"); }
-        public long getReportTimestamp() { return (meglerProps.get("ReportTimestamp") instanceof Long ? (Long) meglerProps.get("ReportTimestamp") : 0L); }
-        public android.os.PersistableBundle getStallDetails() { return (android.os.PersistableBundle) meglerProps.get("StallDetails"); }
+        public int getDetectionMethod() { return (megletProps.get("DetectionMethod") instanceof Integer ? (Integer) megletProps.get("DetectionMethod") : 0); }
+        public android.net.LinkProperties getLinkProperties() { return (android.net.LinkProperties) megletProps.get("LinkProperties"); }
+        public android.net.Network getNetwork() { return (android.net.Network) megletProps.get("Network"); }
+        public android.net.NetworkCapabilities getNetworkCapabilities() { return (android.net.NetworkCapabilities) megletProps.get("NetworkCapabilities"); }
+        public long getReportTimestamp() { return (megletProps.get("ReportTimestamp") instanceof Long ? (Long) megletProps.get("ReportTimestamp") : 0L); }
+        public android.os.PersistableBundle getStallDetails() { return (android.os.PersistableBundle) megletProps.get("StallDetails"); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         DataStallReport() { this((android.net.Network) null, (long) 0L, (int) 0, (android.net.LinkProperties) null, (android.net.NetworkCapabilities) null, (android.os.PersistableBundle) null); }
     }

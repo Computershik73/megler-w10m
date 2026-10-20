@@ -3,15 +3,15 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TvContentRating {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.media.tv.TvContentRating UNRATED;
     public static android.media.tv.TvContentRating createRating(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String[] p3) { return new TvContentRating(); }
     public static android.media.tv.TvContentRating unflattenFromString(java.lang.String p0) { return new TvContentRating(); }
     public boolean contains(android.media.tv.TvContentRating p0) { return false; }
     public java.lang.String flattenToString() { return null; }
-    public java.lang.String getDomain() { return (java.lang.String) meglerProps.get("Domain"); }
-    public java.lang.String getMainRating() { return (java.lang.String) meglerProps.get("MainRating"); }
-    public java.lang.String getRatingSystem() { return (java.lang.String) meglerProps.get("RatingSystem"); }
-    public java.util.List getSubRatings() { return (meglerProps.get("SubRatings") != null ? (java.util.List) meglerProps.get("SubRatings") : new java.util.ArrayList()); }
+    public java.lang.String getDomain() { return (java.lang.String) megletProps.get("Domain"); }
+    public java.lang.String getMainRating() { return (java.lang.String) megletProps.get("MainRating"); }
+    public java.lang.String getRatingSystem() { return (java.lang.String) megletProps.get("RatingSystem"); }
+    public java.util.List getSubRatings() { return (megletProps.get("SubRatings") != null ? (java.util.List) megletProps.get("SubRatings") : new java.util.ArrayList()); }
     protected TvContentRating() {}
 }

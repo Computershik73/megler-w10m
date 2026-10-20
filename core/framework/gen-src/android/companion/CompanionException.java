@@ -3,7 +3,7 @@ package android.companion;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CompanionException extends java.lang.RuntimeException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public CompanionException(java.lang.String p0) { super(); }
     CompanionException() { this((java.lang.String) null); }
 }

@@ -3,7 +3,7 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SyncAdapterType implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public java.lang.String accountType;
     public java.lang.String authority;
@@ -14,10 +14,10 @@ public class SyncAdapterType implements android.os.Parcelable {
     public static android.content.SyncAdapterType newKey(java.lang.String p0, java.lang.String p1) { return new SyncAdapterType(); }
     public boolean allowParallelSyncs() { return false; }
     public int describeContents() { return 0; }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-    public java.lang.String getSettingsActivity() { return (java.lang.String) meglerProps.get("SettingsActivity"); }
-    public boolean isAlwaysSyncable() { return (meglerProps.get("AlwaysSyncable") instanceof Boolean ? (Boolean) meglerProps.get("AlwaysSyncable") : false); }
-    public boolean isUserVisible() { return (meglerProps.get("UserVisible") instanceof Boolean ? (Boolean) meglerProps.get("UserVisible") : false); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    public java.lang.String getSettingsActivity() { return (java.lang.String) megletProps.get("SettingsActivity"); }
+    public boolean isAlwaysSyncable() { return (megletProps.get("AlwaysSyncable") instanceof Boolean ? (Boolean) megletProps.get("AlwaysSyncable") : false); }
+    public boolean isUserVisible() { return (megletProps.get("UserVisible") instanceof Boolean ? (Boolean) megletProps.get("UserVisible") : false); }
     public boolean supportsUploading() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SyncAdapterType() { this((android.os.Parcel) null); }

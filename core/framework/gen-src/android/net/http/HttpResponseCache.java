@@ -3,16 +3,16 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class HttpResponseCache extends java.net.ResponseCache implements java.io.Closeable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.net.http.HttpResponseCache getInstalled() { return new HttpResponseCache(); }
     public static android.net.http.HttpResponseCache install(java.io.File p0, long p1) { return new HttpResponseCache(); }
     public void close() {}
     public void delete() {}
     public void flush() {}
     public java.net.CacheResponse get(java.net.URI p0, java.lang.String p1, java.util.Map p2) { return null; }
-    public int getHitCount() { return (meglerProps.get("HitCount") instanceof Integer ? (Integer) meglerProps.get("HitCount") : 0); }
-    public int getNetworkCount() { return (meglerProps.get("NetworkCount") instanceof Integer ? (Integer) meglerProps.get("NetworkCount") : 0); }
-    public int getRequestCount() { return (meglerProps.get("RequestCount") instanceof Integer ? (Integer) meglerProps.get("RequestCount") : 0); }
+    public int getHitCount() { return (megletProps.get("HitCount") instanceof Integer ? (Integer) megletProps.get("HitCount") : 0); }
+    public int getNetworkCount() { return (megletProps.get("NetworkCount") instanceof Integer ? (Integer) megletProps.get("NetworkCount") : 0); }
+    public int getRequestCount() { return (megletProps.get("RequestCount") instanceof Integer ? (Integer) megletProps.get("RequestCount") : 0); }
     public long maxSize() { return 0L; }
     public java.net.CacheRequest put(java.net.URI p0, java.net.URLConnection p1) { return null; }
     public long size() { return 0L; }

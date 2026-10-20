@@ -3,25 +3,25 @@ package android.app.assist;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AssistContent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String EXTRA_APP_FUNCTION_DATA = "android.app.assist.extra.APP_FUNCTION_DATA";
     public AssistContent() {}
     public AssistContent(android.os.Bundle p0) {}
     public int describeContents() { return 0; }
-    public android.content.ClipData getClipData() { return (android.content.ClipData) meglerProps.get("ClipData"); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-    public android.content.Intent getIntent() { return (android.content.Intent) meglerProps.get("Intent"); }
-    public android.net.Uri getSessionTransferUri() { return (android.net.Uri) meglerProps.get("SessionTransferUri"); }
-    public java.lang.String getStructuredData() { return (java.lang.String) meglerProps.get("StructuredData"); }
-    public android.net.Uri getWebUri() { return (android.net.Uri) meglerProps.get("WebUri"); }
-    public boolean isAppProvidedIntent() { return (meglerProps.get("AppProvidedIntent") instanceof Boolean ? (Boolean) meglerProps.get("AppProvidedIntent") : false); }
-    public boolean isAppProvidedWebUri() { return (meglerProps.get("AppProvidedWebUri") instanceof Boolean ? (Boolean) meglerProps.get("AppProvidedWebUri") : false); }
-    public void setClipData(android.content.ClipData p0) { meglerProps.put("ClipData", p0); }
-    public void setDefaultIntent(android.content.Intent p0) { meglerProps.put("DefaultIntent", p0); }
-    public void setIntent(android.content.Intent p0) { meglerProps.put("Intent", p0); }
-    public void setSessionTransferUri(android.net.Uri p0) { meglerProps.put("SessionTransferUri", p0); }
-    public void setStructuredData(java.lang.String p0) { meglerProps.put("StructuredData", p0); }
-    public void setWebUri(android.net.Uri p0) { meglerProps.put("WebUri", p0); }
+    public android.content.ClipData getClipData() { return (android.content.ClipData) megletProps.get("ClipData"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public android.content.Intent getIntent() { return (android.content.Intent) megletProps.get("Intent"); }
+    public android.net.Uri getSessionTransferUri() { return (android.net.Uri) megletProps.get("SessionTransferUri"); }
+    public java.lang.String getStructuredData() { return (java.lang.String) megletProps.get("StructuredData"); }
+    public android.net.Uri getWebUri() { return (android.net.Uri) megletProps.get("WebUri"); }
+    public boolean isAppProvidedIntent() { return (megletProps.get("AppProvidedIntent") instanceof Boolean ? (Boolean) megletProps.get("AppProvidedIntent") : false); }
+    public boolean isAppProvidedWebUri() { return (megletProps.get("AppProvidedWebUri") instanceof Boolean ? (Boolean) megletProps.get("AppProvidedWebUri") : false); }
+    public void setClipData(android.content.ClipData p0) { megletProps.put("ClipData", p0); }
+    public void setDefaultIntent(android.content.Intent p0) { megletProps.put("DefaultIntent", p0); }
+    public void setIntent(android.content.Intent p0) { megletProps.put("Intent", p0); }
+    public void setSessionTransferUri(android.net.Uri p0) { megletProps.put("SessionTransferUri", p0); }
+    public void setStructuredData(java.lang.String p0) { megletProps.put("StructuredData", p0); }
+    public void setWebUri(android.net.Uri p0) { megletProps.put("WebUri", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

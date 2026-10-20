@@ -3,16 +3,16 @@ package android.app.backup;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class FullBackupDataOutput {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public FullBackupDataOutput(long p0) {}
     public FullBackupDataOutput(long p0, int p1) {}
     public FullBackupDataOutput(android.os.ParcelFileDescriptor p0) {}
     public FullBackupDataOutput(android.os.ParcelFileDescriptor p0, long p1) {}
     public FullBackupDataOutput(android.os.ParcelFileDescriptor p0, long p1, int p2) {}
     public void addSize(long p0) {}
-    public android.app.backup.BackupDataOutput getData() { return (android.app.backup.BackupDataOutput) meglerProps.get("Data"); }
-    public long getQuota() { return (meglerProps.get("Quota") instanceof Long ? (Long) meglerProps.get("Quota") : 0L); }
-    public long getSize() { return (meglerProps.get("Size") instanceof Long ? (Long) meglerProps.get("Size") : 0L); }
-    public int getTransportFlags() { return (meglerProps.get("TransportFlags") instanceof Integer ? (Integer) meglerProps.get("TransportFlags") : 0); }
+    public android.app.backup.BackupDataOutput getData() { return (android.app.backup.BackupDataOutput) megletProps.get("Data"); }
+    public long getQuota() { return (megletProps.get("Quota") instanceof Long ? (Long) megletProps.get("Quota") : 0L); }
+    public long getSize() { return (megletProps.get("Size") instanceof Long ? (Long) megletProps.get("Size") : 0L); }
+    public int getTransportFlags() { return (megletProps.get("TransportFlags") instanceof Integer ? (Integer) megletProps.get("TransportFlags") : 0); }
     FullBackupDataOutput() { this((long) 0L); }
 }

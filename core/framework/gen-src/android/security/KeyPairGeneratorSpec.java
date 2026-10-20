@@ -3,33 +3,33 @@ package android.security;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class KeyPairGeneratorSpec implements java.security.spec.AlgorithmParameterSpec {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public KeyPairGeneratorSpec(android.content.Context p0, java.lang.String p1, java.lang.String p2, int p3, java.security.spec.AlgorithmParameterSpec p4, javax.security.auth.x500.X500Principal p5, java.math.BigInteger p6, java.util.Date p7, java.util.Date p8, int p9) {}
-    public java.security.spec.AlgorithmParameterSpec getAlgorithmParameterSpec() { return (java.security.spec.AlgorithmParameterSpec) meglerProps.get("AlgorithmParameterSpec"); }
-    public android.content.Context getContext() { return (android.content.Context) meglerProps.get("Context"); }
-    public java.util.Date getEndDate() { return (java.util.Date) meglerProps.get("EndDate"); }
-    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
-    public int getKeySize() { return (meglerProps.get("KeySize") instanceof Integer ? (Integer) meglerProps.get("KeySize") : 0); }
-    public java.lang.String getKeyType() { return (java.lang.String) meglerProps.get("KeyType"); }
-    public java.lang.String getKeystoreAlias() { return (java.lang.String) meglerProps.get("KeystoreAlias"); }
-    public java.math.BigInteger getSerialNumber() { return (java.math.BigInteger) meglerProps.get("SerialNumber"); }
-    public java.util.Date getStartDate() { return (java.util.Date) meglerProps.get("StartDate"); }
-    public javax.security.auth.x500.X500Principal getSubjectDN() { return (javax.security.auth.x500.X500Principal) meglerProps.get("SubjectDN"); }
-    public boolean isEncryptionRequired() { return (meglerProps.get("EncryptionRequired") instanceof Boolean ? (Boolean) meglerProps.get("EncryptionRequired") : false); }
+    public java.security.spec.AlgorithmParameterSpec getAlgorithmParameterSpec() { return (java.security.spec.AlgorithmParameterSpec) megletProps.get("AlgorithmParameterSpec"); }
+    public android.content.Context getContext() { return (android.content.Context) megletProps.get("Context"); }
+    public java.util.Date getEndDate() { return (java.util.Date) megletProps.get("EndDate"); }
+    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
+    public int getKeySize() { return (megletProps.get("KeySize") instanceof Integer ? (Integer) megletProps.get("KeySize") : 0); }
+    public java.lang.String getKeyType() { return (java.lang.String) megletProps.get("KeyType"); }
+    public java.lang.String getKeystoreAlias() { return (java.lang.String) megletProps.get("KeystoreAlias"); }
+    public java.math.BigInteger getSerialNumber() { return (java.math.BigInteger) megletProps.get("SerialNumber"); }
+    public java.util.Date getStartDate() { return (java.util.Date) megletProps.get("StartDate"); }
+    public javax.security.auth.x500.X500Principal getSubjectDN() { return (javax.security.auth.x500.X500Principal) megletProps.get("SubjectDN"); }
+    public boolean isEncryptionRequired() { return (megletProps.get("EncryptionRequired") instanceof Boolean ? (Boolean) megletProps.get("EncryptionRequired") : false); }
     KeyPairGeneratorSpec() { this((android.content.Context) null, (java.lang.String) null, (java.lang.String) null, (int) 0, (java.security.spec.AlgorithmParameterSpec) null, (javax.security.auth.x500.X500Principal) null, (java.math.BigInteger) null, (java.util.Date) null, (java.util.Date) null, (int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.content.Context p0) {}
-        public android.security.KeyPairGeneratorSpec build() { android.security.KeyPairGeneratorSpec x = new android.security.KeyPairGeneratorSpec(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.security.KeyPairGeneratorSpec.Builder setAlgorithmParameterSpec(java.security.spec.AlgorithmParameterSpec p0) { meglerProps.put("AlgorithmParameterSpec", p0); return this; }
-        public android.security.KeyPairGeneratorSpec.Builder setAlias(java.lang.String p0) { meglerProps.put("Alias", p0); return this; }
+        public android.security.KeyPairGeneratorSpec build() { android.security.KeyPairGeneratorSpec x = new android.security.KeyPairGeneratorSpec(); x.megletProps.putAll(megletProps); return x; }
+        public android.security.KeyPairGeneratorSpec.Builder setAlgorithmParameterSpec(java.security.spec.AlgorithmParameterSpec p0) { megletProps.put("AlgorithmParameterSpec", p0); return this; }
+        public android.security.KeyPairGeneratorSpec.Builder setAlias(java.lang.String p0) { megletProps.put("Alias", p0); return this; }
         public android.security.KeyPairGeneratorSpec.Builder setEncryptionRequired() { return this; }
-        public android.security.KeyPairGeneratorSpec.Builder setEndDate(java.util.Date p0) { meglerProps.put("EndDate", p0); return this; }
-        public android.security.KeyPairGeneratorSpec.Builder setKeySize(int p0) { meglerProps.put("KeySize", Integer.valueOf(p0)); return this; }
-        public android.security.KeyPairGeneratorSpec.Builder setKeyType(java.lang.String p0) { meglerProps.put("KeyType", p0); return this; }
-        public android.security.KeyPairGeneratorSpec.Builder setSerialNumber(java.math.BigInteger p0) { meglerProps.put("SerialNumber", p0); return this; }
-        public android.security.KeyPairGeneratorSpec.Builder setStartDate(java.util.Date p0) { meglerProps.put("StartDate", p0); return this; }
-        public android.security.KeyPairGeneratorSpec.Builder setSubject(javax.security.auth.x500.X500Principal p0) { meglerProps.put("Subject", p0); return this; }
+        public android.security.KeyPairGeneratorSpec.Builder setEndDate(java.util.Date p0) { megletProps.put("EndDate", p0); return this; }
+        public android.security.KeyPairGeneratorSpec.Builder setKeySize(int p0) { megletProps.put("KeySize", Integer.valueOf(p0)); return this; }
+        public android.security.KeyPairGeneratorSpec.Builder setKeyType(java.lang.String p0) { megletProps.put("KeyType", p0); return this; }
+        public android.security.KeyPairGeneratorSpec.Builder setSerialNumber(java.math.BigInteger p0) { megletProps.put("SerialNumber", p0); return this; }
+        public android.security.KeyPairGeneratorSpec.Builder setStartDate(java.util.Date p0) { megletProps.put("StartDate", p0); return this; }
+        public android.security.KeyPairGeneratorSpec.Builder setSubject(javax.security.auth.x500.X500Principal p0) { megletProps.put("Subject", p0); return this; }
         Builder() { this((android.content.Context) null); }
     }
 }

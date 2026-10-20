@@ -3,7 +3,7 @@ package android.app.usage;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UsageStats implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public android.util.SparseIntArray mActivities;
     public int mAppLaunchCount;
@@ -27,29 +27,29 @@ public final class UsageStats implements android.os.Parcelable {
     public UsageStats(android.app.usage.UsageStats p0) {}
     public void add(android.app.usage.UsageStats p0) {}
     public int describeContents() { return 0; }
-    public int getAppLaunchCount() { return (meglerProps.get("AppLaunchCount") instanceof Integer ? (Integer) meglerProps.get("AppLaunchCount") : 0); }
-    public long getFirstTimeStamp() { return (meglerProps.get("FirstTimeStamp") instanceof Long ? (Long) meglerProps.get("FirstTimeStamp") : 0L); }
-    public long getLastTimeAnyComponentUsed() { return (meglerProps.get("LastTimeAnyComponentUsed") instanceof Long ? (Long) meglerProps.get("LastTimeAnyComponentUsed") : 0L); }
-    public long getLastTimeForegroundServiceUsed() { return (meglerProps.get("LastTimeForegroundServiceUsed") instanceof Long ? (Long) meglerProps.get("LastTimeForegroundServiceUsed") : 0L); }
-    public long getLastTimePackageUsed() { return (meglerProps.get("LastTimePackageUsed") instanceof Long ? (Long) meglerProps.get("LastTimePackageUsed") : 0L); }
-    public long getLastTimeStamp() { return (meglerProps.get("LastTimeStamp") instanceof Long ? (Long) meglerProps.get("LastTimeStamp") : 0L); }
-    public long getLastTimeUsed() { return (meglerProps.get("LastTimeUsed") instanceof Long ? (Long) meglerProps.get("LastTimeUsed") : 0L); }
-    public long getLastTimeVisible() { return (meglerProps.get("LastTimeVisible") instanceof Long ? (Long) meglerProps.get("LastTimeVisible") : 0L); }
-    public android.app.usage.UsageStats getObfuscatedForInstantApp() { return (android.app.usage.UsageStats) meglerProps.get("ObfuscatedForInstantApp"); }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-    public long getTotalTimeForegroundServiceUsed() { return (meglerProps.get("TotalTimeForegroundServiceUsed") instanceof Long ? (Long) meglerProps.get("TotalTimeForegroundServiceUsed") : 0L); }
-    public long getTotalTimeInForeground() { return (meglerProps.get("TotalTimeInForeground") instanceof Long ? (Long) meglerProps.get("TotalTimeInForeground") : 0L); }
-    public long getTotalTimeVisible() { return (meglerProps.get("TotalTimeVisible") instanceof Long ? (Long) meglerProps.get("TotalTimeVisible") : 0L); }
+    public int getAppLaunchCount() { return (megletProps.get("AppLaunchCount") instanceof Integer ? (Integer) megletProps.get("AppLaunchCount") : 0); }
+    public long getFirstTimeStamp() { return (megletProps.get("FirstTimeStamp") instanceof Long ? (Long) megletProps.get("FirstTimeStamp") : 0L); }
+    public long getLastTimeAnyComponentUsed() { return (megletProps.get("LastTimeAnyComponentUsed") instanceof Long ? (Long) megletProps.get("LastTimeAnyComponentUsed") : 0L); }
+    public long getLastTimeForegroundServiceUsed() { return (megletProps.get("LastTimeForegroundServiceUsed") instanceof Long ? (Long) megletProps.get("LastTimeForegroundServiceUsed") : 0L); }
+    public long getLastTimePackageUsed() { return (megletProps.get("LastTimePackageUsed") instanceof Long ? (Long) megletProps.get("LastTimePackageUsed") : 0L); }
+    public long getLastTimeStamp() { return (megletProps.get("LastTimeStamp") instanceof Long ? (Long) megletProps.get("LastTimeStamp") : 0L); }
+    public long getLastTimeUsed() { return (megletProps.get("LastTimeUsed") instanceof Long ? (Long) megletProps.get("LastTimeUsed") : 0L); }
+    public long getLastTimeVisible() { return (megletProps.get("LastTimeVisible") instanceof Long ? (Long) megletProps.get("LastTimeVisible") : 0L); }
+    public android.app.usage.UsageStats getObfuscatedForInstantApp() { return (android.app.usage.UsageStats) megletProps.get("ObfuscatedForInstantApp"); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    public long getTotalTimeForegroundServiceUsed() { return (megletProps.get("TotalTimeForegroundServiceUsed") instanceof Long ? (Long) megletProps.get("TotalTimeForegroundServiceUsed") : 0L); }
+    public long getTotalTimeInForeground() { return (megletProps.get("TotalTimeInForeground") instanceof Long ? (Long) megletProps.get("TotalTimeInForeground") : 0L); }
+    public long getTotalTimeVisible() { return (megletProps.get("TotalTimeVisible") instanceof Long ? (Long) megletProps.get("TotalTimeVisible") : 0L); }
     public void update(java.lang.String p0, long p1, int p2, int p3) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.app.usage.UsageStats build() { android.app.usage.UsageStats x = new android.app.usage.UsageStats(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.app.usage.UsageStats.Builder setFirstTimeStamp(long p0) { meglerProps.put("FirstTimeStamp", Long.valueOf(p0)); return this; }
-        public android.app.usage.UsageStats.Builder setLastTimeStamp(long p0) { meglerProps.put("LastTimeStamp", Long.valueOf(p0)); return this; }
-        public android.app.usage.UsageStats.Builder setLastTimeUsed(long p0) { meglerProps.put("LastTimeUsed", Long.valueOf(p0)); return this; }
-        public android.app.usage.UsageStats.Builder setPackageName(java.lang.String p0) { meglerProps.put("PackageName", p0); return this; }
-        public android.app.usage.UsageStats.Builder setTotalTimeInForeground(long p0) { meglerProps.put("TotalTimeInForeground", Long.valueOf(p0)); return this; }
+        public android.app.usage.UsageStats build() { android.app.usage.UsageStats x = new android.app.usage.UsageStats(); x.megletProps.putAll(megletProps); return x; }
+        public android.app.usage.UsageStats.Builder setFirstTimeStamp(long p0) { megletProps.put("FirstTimeStamp", Long.valueOf(p0)); return this; }
+        public android.app.usage.UsageStats.Builder setLastTimeStamp(long p0) { megletProps.put("LastTimeStamp", Long.valueOf(p0)); return this; }
+        public android.app.usage.UsageStats.Builder setLastTimeUsed(long p0) { megletProps.put("LastTimeUsed", Long.valueOf(p0)); return this; }
+        public android.app.usage.UsageStats.Builder setPackageName(java.lang.String p0) { megletProps.put("PackageName", p0); return this; }
+        public android.app.usage.UsageStats.Builder setTotalTimeInForeground(long p0) { megletProps.put("TotalTimeInForeground", Long.valueOf(p0)); return this; }
     }
 }

@@ -3,10 +3,10 @@ package android.health.connect.datatypes.units;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Pressure implements java.lang.Comparable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.units.Pressure fromMillimetersOfMercury(double p0) { return new Pressure(); }
     public int compareTo(android.health.connect.datatypes.units.Pressure p0) { return 0; }
     public int compareTo(java.lang.Object p0) { return 0; }
-    public double getInMillimetersOfMercury() { return (meglerProps.get("InMillimetersOfMercury") instanceof Double ? (Double) meglerProps.get("InMillimetersOfMercury") : 0d); }
+    public double getInMillimetersOfMercury() { return (megletProps.get("InMillimetersOfMercury") instanceof Double ? (Double) megletProps.get("InMillimetersOfMercury") : 0d); }
     protected Pressure() {}
 }

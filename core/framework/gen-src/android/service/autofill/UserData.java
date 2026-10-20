@@ -3,7 +3,7 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UserData implements android.service.autofill.FieldClassificationUserData, android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static void dumpConstraints(java.lang.String p0, java.io.PrintWriter p1) {}
     public static int getMaxCategoryCount() { return 0; }
@@ -13,21 +13,21 @@ public final class UserData implements android.service.autofill.FieldClassificat
     public static int getMinValueLength() { return 0; }
     public int describeContents() { return 0; }
     public void dump(java.lang.String p0, java.io.PrintWriter p1) {}
-    public java.lang.String[] getCategoryIds() { return (java.lang.String[]) meglerProps.get("CategoryIds"); }
-    public android.os.Bundle getDefaultFieldClassificationArgs() { return (android.os.Bundle) meglerProps.get("DefaultFieldClassificationArgs"); }
-    public java.lang.String getFieldClassificationAlgorithm() { return (java.lang.String) meglerProps.get("FieldClassificationAlgorithm"); }
+    public java.lang.String[] getCategoryIds() { return (java.lang.String[]) megletProps.get("CategoryIds"); }
+    public android.os.Bundle getDefaultFieldClassificationArgs() { return (android.os.Bundle) megletProps.get("DefaultFieldClassificationArgs"); }
+    public java.lang.String getFieldClassificationAlgorithm() { return (java.lang.String) megletProps.get("FieldClassificationAlgorithm"); }
     public java.lang.String getFieldClassificationAlgorithmForCategory(java.lang.String p0) { return null; }
-    public android.util.ArrayMap getFieldClassificationAlgorithms() { return (android.util.ArrayMap) meglerProps.get("FieldClassificationAlgorithms"); }
-    public android.util.ArrayMap getFieldClassificationArgs() { return (android.util.ArrayMap) meglerProps.get("FieldClassificationArgs"); }
-    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
-    public java.lang.String[] getValues() { return (java.lang.String[]) meglerProps.get("Values"); }
+    public android.util.ArrayMap getFieldClassificationAlgorithms() { return (android.util.ArrayMap) megletProps.get("FieldClassificationAlgorithms"); }
+    public android.util.ArrayMap getFieldClassificationArgs() { return (android.util.ArrayMap) megletProps.get("FieldClassificationArgs"); }
+    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
+    public java.lang.String[] getValues() { return (java.lang.String[]) megletProps.get("Values"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected UserData() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0, java.lang.String p1, java.lang.String p2) {}
         public android.service.autofill.UserData.Builder add(java.lang.String p0, java.lang.String p1) { return this; }
-        public android.service.autofill.UserData build() { android.service.autofill.UserData x = new android.service.autofill.UserData(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.service.autofill.UserData build() { android.service.autofill.UserData x = new android.service.autofill.UserData(); x.megletProps.putAll(megletProps); return x; }
         public android.service.autofill.UserData.Builder setFieldClassificationAlgorithm(java.lang.String p0, android.os.Bundle p1) { return this; }
         public android.service.autofill.UserData.Builder setFieldClassificationAlgorithmForCategory(java.lang.String p0, java.lang.String p1, android.os.Bundle p2) { return this; }
         Builder() { this((java.lang.String) null, (java.lang.String) null, (java.lang.String) null); }

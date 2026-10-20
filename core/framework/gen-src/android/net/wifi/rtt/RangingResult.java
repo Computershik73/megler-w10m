@@ -3,77 +3,77 @@ package android.net.wifi.rtt;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RangingResult implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int STATUS_FAIL = 1;
     public static final int STATUS_RESPONDER_DOES_NOT_SUPPORT_IEEE80211MC = 2;
     public static final int STATUS_SUCCESS = 0;
     public static final int UNSPECIFIED = -1;
     public int describeContents() { return 0; }
-    public int get80211azInitiatorTxLtfRepetitionsCount() { return (meglerProps.get("80211azInitiatorTxLtfRepetitionsCount") instanceof Integer ? (Integer) meglerProps.get("80211azInitiatorTxLtfRepetitionsCount") : 0); }
-    public int get80211azNumberOfRxSpatialStreams() { return (meglerProps.get("80211azNumberOfRxSpatialStreams") instanceof Integer ? (Integer) meglerProps.get("80211azNumberOfRxSpatialStreams") : 0); }
-    public int get80211azNumberOfTxSpatialStreams() { return (meglerProps.get("80211azNumberOfTxSpatialStreams") instanceof Integer ? (Integer) meglerProps.get("80211azNumberOfTxSpatialStreams") : 0); }
-    public int get80211azResponderTxLtfRepetitionsCount() { return (meglerProps.get("80211azResponderTxLtfRepetitionsCount") instanceof Integer ? (Integer) meglerProps.get("80211azResponderTxLtfRepetitionsCount") : 0); }
-    public int getDistanceMm() { return (meglerProps.get("DistanceMm") instanceof Integer ? (Integer) meglerProps.get("DistanceMm") : 0); }
-    public int getDistanceStdDevMm() { return (meglerProps.get("DistanceStdDevMm") instanceof Integer ? (Integer) meglerProps.get("DistanceStdDevMm") : 0); }
-    public byte[] getLci() { return (byte[]) meglerProps.get("Lci"); }
-    public byte[] getLcr() { return (byte[]) meglerProps.get("Lcr"); }
-    public android.net.MacAddress getMacAddress() { return (android.net.MacAddress) meglerProps.get("MacAddress"); }
-    public long getMaxTimeBetweenNtbMeasurementsMicros() { return (meglerProps.get("MaxTimeBetweenNtbMeasurementsMicros") instanceof Long ? (Long) meglerProps.get("MaxTimeBetweenNtbMeasurementsMicros") : 0L); }
-    public int getMeasurementBandwidth() { return (meglerProps.get("MeasurementBandwidth") instanceof Integer ? (Integer) meglerProps.get("MeasurementBandwidth") : 0); }
-    public int getMeasurementChannelFrequencyMHz() { return (meglerProps.get("MeasurementChannelFrequencyMHz") instanceof Integer ? (Integer) meglerProps.get("MeasurementChannelFrequencyMHz") : 0); }
-    public long getMinTimeBetweenNtbMeasurementsMicros() { return (meglerProps.get("MinTimeBetweenNtbMeasurementsMicros") instanceof Long ? (Long) meglerProps.get("MinTimeBetweenNtbMeasurementsMicros") : 0L); }
-    public int getNumAttemptedMeasurements() { return (meglerProps.get("NumAttemptedMeasurements") instanceof Integer ? (Integer) meglerProps.get("NumAttemptedMeasurements") : 0); }
-    public int getNumSuccessfulMeasurements() { return (meglerProps.get("NumSuccessfulMeasurements") instanceof Integer ? (Integer) meglerProps.get("NumSuccessfulMeasurements") : 0); }
-    public long getPasnComebackAfterMillis() { return (meglerProps.get("PasnComebackAfterMillis") instanceof Long ? (Long) meglerProps.get("PasnComebackAfterMillis") : 0L); }
-    public byte[] getPasnComebackCookie() { return (byte[]) meglerProps.get("PasnComebackCookie"); }
-    public android.net.wifi.aware.PeerHandle getPeerHandle() { return (android.net.wifi.aware.PeerHandle) meglerProps.get("PeerHandle"); }
-    public long getRangingTimestampMillis() { return (meglerProps.get("RangingTimestampMillis") instanceof Long ? (Long) meglerProps.get("RangingTimestampMillis") : 0L); }
-    public int getRssi() { return (meglerProps.get("Rssi") instanceof Integer ? (Integer) meglerProps.get("Rssi") : 0); }
-    public int getSecureHeLtfProtocolVersion() { return (meglerProps.get("SecureHeLtfProtocolVersion") instanceof Integer ? (Integer) meglerProps.get("SecureHeLtfProtocolVersion") : 0); }
-    public int getStatus() { return (meglerProps.get("Status") instanceof Integer ? (Integer) meglerProps.get("Status") : 0); }
-    public android.net.wifi.rtt.ResponderLocation getUnverifiedResponderLocation() { return (android.net.wifi.rtt.ResponderLocation) meglerProps.get("UnverifiedResponderLocation"); }
-    public java.util.List getVendorData() { return (meglerProps.get("VendorData") != null ? (java.util.List) meglerProps.get("VendorData") : new java.util.ArrayList()); }
-    public boolean is80211azNtbMeasurement() { return (meglerProps.get("80211azNtbMeasurement") instanceof Boolean ? (Boolean) meglerProps.get("80211azNtbMeasurement") : false); }
-    public boolean is80211mcMeasurement() { return (meglerProps.get("80211mcMeasurement") instanceof Boolean ? (Boolean) meglerProps.get("80211mcMeasurement") : false); }
-    public boolean isRangingAuthenticated() { return (meglerProps.get("RangingAuthenticated") instanceof Boolean ? (Boolean) meglerProps.get("RangingAuthenticated") : false); }
-    public boolean isRangingFrameProtected() { return (meglerProps.get("RangingFrameProtected") instanceof Boolean ? (Boolean) meglerProps.get("RangingFrameProtected") : false); }
-    public boolean isSecureHeLtfEnabled() { return (meglerProps.get("SecureHeLtfEnabled") instanceof Boolean ? (Boolean) meglerProps.get("SecureHeLtfEnabled") : false); }
+    public int get80211azInitiatorTxLtfRepetitionsCount() { return (megletProps.get("80211azInitiatorTxLtfRepetitionsCount") instanceof Integer ? (Integer) megletProps.get("80211azInitiatorTxLtfRepetitionsCount") : 0); }
+    public int get80211azNumberOfRxSpatialStreams() { return (megletProps.get("80211azNumberOfRxSpatialStreams") instanceof Integer ? (Integer) megletProps.get("80211azNumberOfRxSpatialStreams") : 0); }
+    public int get80211azNumberOfTxSpatialStreams() { return (megletProps.get("80211azNumberOfTxSpatialStreams") instanceof Integer ? (Integer) megletProps.get("80211azNumberOfTxSpatialStreams") : 0); }
+    public int get80211azResponderTxLtfRepetitionsCount() { return (megletProps.get("80211azResponderTxLtfRepetitionsCount") instanceof Integer ? (Integer) megletProps.get("80211azResponderTxLtfRepetitionsCount") : 0); }
+    public int getDistanceMm() { return (megletProps.get("DistanceMm") instanceof Integer ? (Integer) megletProps.get("DistanceMm") : 0); }
+    public int getDistanceStdDevMm() { return (megletProps.get("DistanceStdDevMm") instanceof Integer ? (Integer) megletProps.get("DistanceStdDevMm") : 0); }
+    public byte[] getLci() { return (byte[]) megletProps.get("Lci"); }
+    public byte[] getLcr() { return (byte[]) megletProps.get("Lcr"); }
+    public android.net.MacAddress getMacAddress() { return (android.net.MacAddress) megletProps.get("MacAddress"); }
+    public long getMaxTimeBetweenNtbMeasurementsMicros() { return (megletProps.get("MaxTimeBetweenNtbMeasurementsMicros") instanceof Long ? (Long) megletProps.get("MaxTimeBetweenNtbMeasurementsMicros") : 0L); }
+    public int getMeasurementBandwidth() { return (megletProps.get("MeasurementBandwidth") instanceof Integer ? (Integer) megletProps.get("MeasurementBandwidth") : 0); }
+    public int getMeasurementChannelFrequencyMHz() { return (megletProps.get("MeasurementChannelFrequencyMHz") instanceof Integer ? (Integer) megletProps.get("MeasurementChannelFrequencyMHz") : 0); }
+    public long getMinTimeBetweenNtbMeasurementsMicros() { return (megletProps.get("MinTimeBetweenNtbMeasurementsMicros") instanceof Long ? (Long) megletProps.get("MinTimeBetweenNtbMeasurementsMicros") : 0L); }
+    public int getNumAttemptedMeasurements() { return (megletProps.get("NumAttemptedMeasurements") instanceof Integer ? (Integer) megletProps.get("NumAttemptedMeasurements") : 0); }
+    public int getNumSuccessfulMeasurements() { return (megletProps.get("NumSuccessfulMeasurements") instanceof Integer ? (Integer) megletProps.get("NumSuccessfulMeasurements") : 0); }
+    public long getPasnComebackAfterMillis() { return (megletProps.get("PasnComebackAfterMillis") instanceof Long ? (Long) megletProps.get("PasnComebackAfterMillis") : 0L); }
+    public byte[] getPasnComebackCookie() { return (byte[]) megletProps.get("PasnComebackCookie"); }
+    public android.net.wifi.aware.PeerHandle getPeerHandle() { return (android.net.wifi.aware.PeerHandle) megletProps.get("PeerHandle"); }
+    public long getRangingTimestampMillis() { return (megletProps.get("RangingTimestampMillis") instanceof Long ? (Long) megletProps.get("RangingTimestampMillis") : 0L); }
+    public int getRssi() { return (megletProps.get("Rssi") instanceof Integer ? (Integer) megletProps.get("Rssi") : 0); }
+    public int getSecureHeLtfProtocolVersion() { return (megletProps.get("SecureHeLtfProtocolVersion") instanceof Integer ? (Integer) megletProps.get("SecureHeLtfProtocolVersion") : 0); }
+    public int getStatus() { return (megletProps.get("Status") instanceof Integer ? (Integer) megletProps.get("Status") : 0); }
+    public android.net.wifi.rtt.ResponderLocation getUnverifiedResponderLocation() { return (android.net.wifi.rtt.ResponderLocation) megletProps.get("UnverifiedResponderLocation"); }
+    public java.util.List getVendorData() { return (megletProps.get("VendorData") != null ? (java.util.List) megletProps.get("VendorData") : new java.util.ArrayList()); }
+    public boolean is80211azNtbMeasurement() { return (megletProps.get("80211azNtbMeasurement") instanceof Boolean ? (Boolean) megletProps.get("80211azNtbMeasurement") : false); }
+    public boolean is80211mcMeasurement() { return (megletProps.get("80211mcMeasurement") instanceof Boolean ? (Boolean) megletProps.get("80211mcMeasurement") : false); }
+    public boolean isRangingAuthenticated() { return (megletProps.get("RangingAuthenticated") instanceof Boolean ? (Boolean) megletProps.get("RangingAuthenticated") : false); }
+    public boolean isRangingFrameProtected() { return (megletProps.get("RangingFrameProtected") instanceof Boolean ? (Boolean) megletProps.get("RangingFrameProtected") : false); }
+    public boolean isSecureHeLtfEnabled() { return (megletProps.get("SecureHeLtfEnabled") instanceof Boolean ? (Boolean) megletProps.get("SecureHeLtfEnabled") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected RangingResult() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.net.wifi.rtt.RangingResult p0) {}
-        public android.net.wifi.rtt.RangingResult build() { android.net.wifi.rtt.RangingResult x = new android.net.wifi.rtt.RangingResult(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.net.wifi.rtt.RangingResult.Builder set80211azInitiatorTxLtfRepetitionsCount(int p0) { meglerProps.put("80211azInitiatorTxLtfRepetitionsCount", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder set80211azNtbMeasurement(boolean p0) { meglerProps.put("80211azNtbMeasurement", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder set80211azNumberOfRxSpatialStreams(int p0) { meglerProps.put("80211azNumberOfRxSpatialStreams", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder set80211azNumberOfTxSpatialStreams(int p0) { meglerProps.put("80211azNumberOfTxSpatialStreams", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder set80211azResponderTxLtfRepetitionsCount(int p0) { meglerProps.put("80211azResponderTxLtfRepetitionsCount", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder set80211mcMeasurement(boolean p0) { meglerProps.put("80211mcMeasurement", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setDistanceMm(int p0) { meglerProps.put("DistanceMm", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setDistanceStdDevMm(int p0) { meglerProps.put("DistanceStdDevMm", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setLci(byte[] p0) { meglerProps.put("Lci", p0); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setLcr(byte[] p0) { meglerProps.put("Lcr", p0); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setMacAddress(android.net.MacAddress p0) { meglerProps.put("MacAddress", p0); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setMaxTimeBetweenNtbMeasurementsMicros(long p0) { meglerProps.put("MaxTimeBetweenNtbMeasurementsMicros", Long.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setMeasurementBandwidth(int p0) { meglerProps.put("MeasurementBandwidth", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setMeasurementChannelFrequencyMHz(int p0) { meglerProps.put("MeasurementChannelFrequencyMHz", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setMinTimeBetweenNtbMeasurementsMicros(long p0) { meglerProps.put("MinTimeBetweenNtbMeasurementsMicros", Long.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setNumAttemptedMeasurements(int p0) { meglerProps.put("NumAttemptedMeasurements", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setNumSuccessfulMeasurements(int p0) { meglerProps.put("NumSuccessfulMeasurements", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setPasnComebackAfterMillis(long p0) { meglerProps.put("PasnComebackAfterMillis", Long.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setPasnComebackCookie(byte[] p0) { meglerProps.put("PasnComebackCookie", p0); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setPeerHandle(android.net.wifi.aware.PeerHandle p0) { meglerProps.put("PeerHandle", p0); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setRangingAuthenticated(boolean p0) { meglerProps.put("RangingAuthenticated", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setRangingFrameProtected(boolean p0) { meglerProps.put("RangingFrameProtected", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setRangingTimestampMillis(long p0) { meglerProps.put("RangingTimestampMillis", Long.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setRssi(int p0) { meglerProps.put("Rssi", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setSecureHeLtfEnabled(boolean p0) { meglerProps.put("SecureHeLtfEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setSecureHeLtfProtocolVersion(int p0) { meglerProps.put("SecureHeLtfProtocolVersion", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setStatus(int p0) { meglerProps.put("Status", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setUnverifiedResponderLocation(android.net.wifi.rtt.ResponderLocation p0) { meglerProps.put("UnverifiedResponderLocation", p0); return this; }
-        public android.net.wifi.rtt.RangingResult.Builder setVendorData(java.util.List p0) { meglerProps.put("VendorData", p0); return this; }
+        public android.net.wifi.rtt.RangingResult build() { android.net.wifi.rtt.RangingResult x = new android.net.wifi.rtt.RangingResult(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.wifi.rtt.RangingResult.Builder set80211azInitiatorTxLtfRepetitionsCount(int p0) { megletProps.put("80211azInitiatorTxLtfRepetitionsCount", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder set80211azNtbMeasurement(boolean p0) { megletProps.put("80211azNtbMeasurement", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder set80211azNumberOfRxSpatialStreams(int p0) { megletProps.put("80211azNumberOfRxSpatialStreams", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder set80211azNumberOfTxSpatialStreams(int p0) { megletProps.put("80211azNumberOfTxSpatialStreams", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder set80211azResponderTxLtfRepetitionsCount(int p0) { megletProps.put("80211azResponderTxLtfRepetitionsCount", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder set80211mcMeasurement(boolean p0) { megletProps.put("80211mcMeasurement", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setDistanceMm(int p0) { megletProps.put("DistanceMm", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setDistanceStdDevMm(int p0) { megletProps.put("DistanceStdDevMm", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setLci(byte[] p0) { megletProps.put("Lci", p0); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setLcr(byte[] p0) { megletProps.put("Lcr", p0); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setMacAddress(android.net.MacAddress p0) { megletProps.put("MacAddress", p0); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setMaxTimeBetweenNtbMeasurementsMicros(long p0) { megletProps.put("MaxTimeBetweenNtbMeasurementsMicros", Long.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setMeasurementBandwidth(int p0) { megletProps.put("MeasurementBandwidth", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setMeasurementChannelFrequencyMHz(int p0) { megletProps.put("MeasurementChannelFrequencyMHz", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setMinTimeBetweenNtbMeasurementsMicros(long p0) { megletProps.put("MinTimeBetweenNtbMeasurementsMicros", Long.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setNumAttemptedMeasurements(int p0) { megletProps.put("NumAttemptedMeasurements", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setNumSuccessfulMeasurements(int p0) { megletProps.put("NumSuccessfulMeasurements", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setPasnComebackAfterMillis(long p0) { megletProps.put("PasnComebackAfterMillis", Long.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setPasnComebackCookie(byte[] p0) { megletProps.put("PasnComebackCookie", p0); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setPeerHandle(android.net.wifi.aware.PeerHandle p0) { megletProps.put("PeerHandle", p0); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setRangingAuthenticated(boolean p0) { megletProps.put("RangingAuthenticated", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setRangingFrameProtected(boolean p0) { megletProps.put("RangingFrameProtected", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setRangingTimestampMillis(long p0) { megletProps.put("RangingTimestampMillis", Long.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setRssi(int p0) { megletProps.put("Rssi", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setSecureHeLtfEnabled(boolean p0) { megletProps.put("SecureHeLtfEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setSecureHeLtfProtocolVersion(int p0) { megletProps.put("SecureHeLtfProtocolVersion", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setStatus(int p0) { megletProps.put("Status", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setUnverifiedResponderLocation(android.net.wifi.rtt.ResponderLocation p0) { megletProps.put("UnverifiedResponderLocation", p0); return this; }
+        public android.net.wifi.rtt.RangingResult.Builder setVendorData(java.util.List p0) { megletProps.put("VendorData", p0); return this; }
     }
 }

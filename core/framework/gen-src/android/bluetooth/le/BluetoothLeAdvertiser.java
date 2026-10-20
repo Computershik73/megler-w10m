@@ -3,7 +3,7 @@ package android.bluetooth.le;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothLeAdvertiser {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public BluetoothLeAdvertiser(android.bluetooth.BluetoothAdapter p0) {}
     public void cleanup() {}
     public void startAdvertising(android.bluetooth.le.AdvertiseSettings p0, android.bluetooth.le.AdvertiseData p1, android.bluetooth.le.AdvertiseCallback p2) {}

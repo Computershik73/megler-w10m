@@ -3,17 +3,17 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class YuvImage {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public YuvImage(byte[] p0, int p1, int p2, int p3, int[] p4) {}
     public YuvImage(byte[] p0, int p1, int p2, int p3, int[] p4, android.graphics.ColorSpace p5) {}
     public boolean compressToJpeg(android.graphics.Rect p0, int p1, java.io.OutputStream p2) { return false; }
     public boolean compressToJpegR(android.graphics.YuvImage p0, int p1, java.io.OutputStream p2) { return false; }
     public boolean compressToJpegR(android.graphics.YuvImage p0, int p1, java.io.OutputStream p2, byte[] p3) { return false; }
-    public android.graphics.ColorSpace getColorSpace() { return (android.graphics.ColorSpace) meglerProps.get("ColorSpace"); }
-    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
-    public int[] getStrides() { return (int[]) meglerProps.get("Strides"); }
-    public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
-    public byte[] getYuvData() { return (byte[]) meglerProps.get("YuvData"); }
-    public int getYuvFormat() { return (meglerProps.get("YuvFormat") instanceof Integer ? (Integer) meglerProps.get("YuvFormat") : 0); }
+    public android.graphics.ColorSpace getColorSpace() { return (android.graphics.ColorSpace) megletProps.get("ColorSpace"); }
+    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
+    public int[] getStrides() { return (int[]) megletProps.get("Strides"); }
+    public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
+    public byte[] getYuvData() { return (byte[]) megletProps.get("YuvData"); }
+    public int getYuvFormat() { return (megletProps.get("YuvFormat") instanceof Integer ? (Integer) megletProps.get("YuvFormat") : 0); }
     YuvImage() { this((byte[]) null, (int) 0, (int) 0, (int) 0, (int[]) null); }
 }

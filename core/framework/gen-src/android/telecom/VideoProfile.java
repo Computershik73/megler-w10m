@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class VideoProfile implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int QUALITY_DEFAULT = 4;
     public static final int QUALITY_HIGH = 1;
@@ -25,20 +25,20 @@ public class VideoProfile implements android.os.Parcelable {
     public static boolean isVideo(int p0) { return false; }
     public static java.lang.String videoStateToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public int getQuality() { return (meglerProps.get("Quality") instanceof Integer ? (Integer) meglerProps.get("Quality") : 0); }
-    public int getVideoState() { return (meglerProps.get("VideoState") instanceof Integer ? (Integer) meglerProps.get("VideoState") : 0); }
+    public int getQuality() { return (megletProps.get("Quality") instanceof Integer ? (Integer) megletProps.get("Quality") : 0); }
+    public int getVideoState() { return (megletProps.get("VideoState") instanceof Integer ? (Integer) megletProps.get("VideoState") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     VideoProfile() { this((int) 0); }
     public static final class CameraCapabilities implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public CameraCapabilities(int p0, int p1) {}
         public CameraCapabilities(int p0, int p1, boolean p2, float p3) {}
         public int describeContents() { return 0; }
-        public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
-        public float getMaxZoom() { return (meglerProps.get("MaxZoom") instanceof Float ? (Float) meglerProps.get("MaxZoom") : 0f); }
-        public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
-        public boolean isZoomSupported() { return (meglerProps.get("ZoomSupported") instanceof Boolean ? (Boolean) meglerProps.get("ZoomSupported") : false); }
+        public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
+        public float getMaxZoom() { return (megletProps.get("MaxZoom") instanceof Float ? (Float) megletProps.get("MaxZoom") : 0f); }
+        public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
+        public boolean isZoomSupported() { return (megletProps.get("ZoomSupported") instanceof Boolean ? (Boolean) megletProps.get("ZoomSupported") : false); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         CameraCapabilities() { this((int) 0, (int) 0); }
     }

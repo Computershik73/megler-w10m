@@ -3,18 +3,18 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AdBuffer implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AdBuffer(int p0, java.lang.String p1, android.os.SharedMemory p2, int p3, int p4, long p5, int p6) {}
     public static android.media.tv.AdBuffer dupAdBuffer(android.media.tv.AdBuffer p0) { return new AdBuffer(); }
     public int describeContents() { return 0; }
-    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
-    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
-    public int getLength() { return (meglerProps.get("Length") instanceof Integer ? (Integer) meglerProps.get("Length") : 0); }
-    public java.lang.String getMimeType() { return (java.lang.String) meglerProps.get("MimeType"); }
-    public int getOffset() { return (meglerProps.get("Offset") instanceof Integer ? (Integer) meglerProps.get("Offset") : 0); }
-    public long getPresentationTimeUs() { return (meglerProps.get("PresentationTimeUs") instanceof Long ? (Long) meglerProps.get("PresentationTimeUs") : 0L); }
-    public android.os.SharedMemory getSharedMemory() { return (android.os.SharedMemory) meglerProps.get("SharedMemory"); }
+    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
+    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
+    public int getLength() { return (megletProps.get("Length") instanceof Integer ? (Integer) megletProps.get("Length") : 0); }
+    public java.lang.String getMimeType() { return (java.lang.String) megletProps.get("MimeType"); }
+    public int getOffset() { return (megletProps.get("Offset") instanceof Integer ? (Integer) megletProps.get("Offset") : 0); }
+    public long getPresentationTimeUs() { return (megletProps.get("PresentationTimeUs") instanceof Long ? (Long) megletProps.get("PresentationTimeUs") : 0L); }
+    public android.os.SharedMemory getSharedMemory() { return (android.os.SharedMemory) megletProps.get("SharedMemory"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AdBuffer() { this((int) 0, (java.lang.String) null, (android.os.SharedMemory) null, (int) 0, (int) 0, (long) 0L, (int) 0); }
 }

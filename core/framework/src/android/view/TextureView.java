@@ -37,8 +37,8 @@ public class TextureView extends View {
         if (t == null) throw new NullPointerException("surfaceTexture must not be null");
         if (t == mTexture) return;
         if (t.isReleased()) throw new IllegalArgumentException("Cannot setSurfaceTexture to a released SurfaceTexture");
-        if (mTexture != null) mTexture.meglerView = null;
-        mTexture = t; t.meglerView = this;
+        if (mTexture != null) mTexture.megletView = null;
+        mTexture = t; t.megletView = this;
         if (getWidth() > 0 && getHeight() > 0) t.setDefaultBufferSize(getWidth(), getHeight());
         mAvailable = isAttachedToWindow() && getWidth() > 0;
         invalidate();
@@ -59,10 +59,10 @@ public class TextureView extends View {
     private void ensureTexture() {
         int w = getWidth(), h = getHeight();
         if (!isAttachedToWindow() || w <= 0 || h <= 0) return;
-        if (mTexture == null) { mTexture = new SurfaceTexture(false); mTexture.meglerView = this; }
+        if (mTexture == null) { mTexture = new SurfaceTexture(false); mTexture.megletView = this; }
         if (!mAvailable) {
             mAvailable = true;
-            int[] sz = mTexture.meglerSize();
+            int[] sz = mTexture.megletSize();
             if (sz[0] <= 0 || sz[1] <= 0) mTexture.setDefaultBufferSize(w, h);
             if (mListener != null) mListener.onSurfaceTextureAvailable(mTexture, w, h);
         }
@@ -80,7 +80,7 @@ public class TextureView extends View {
         if (mTexture != null && mAvailable) {
             mAvailable = false;
             boolean release = mListener == null || mListener.onSurfaceTextureDestroyed(mTexture);
-            if (release) { mTexture.release(); mTexture.meglerView = null; mTexture = null; }
+            if (release) { mTexture.release(); mTexture.megletView = null; mTexture = null; }
         }
         if (mCanvasSurface != null) { mCanvasSurface.release(); mCanvasSurface = null; }
         mShown = null;
@@ -88,7 +88,7 @@ public class TextureView extends View {
     @Override public void draw(Canvas c) {
         super.draw(c);
         SurfaceTexture t = mTexture;
-        Bitmap f = t != null ? t.meglerFront() : null;
+        Bitmap f = t != null ? t.megletFront() : null;
         if (f != null) {
             if (f != mShown) { mShown = f; if (mListener != null) mListener.onSurfaceTextureUpdated(t); }
             int save = c.save();
@@ -101,7 +101,7 @@ public class TextureView extends View {
     public Bitmap getBitmap() { return getWidth() > 0 && getHeight() > 0 ? getBitmap(getWidth(), getHeight()) : null; }
     public Bitmap getBitmap(int w, int h) { return isAvailable() && w > 0 && h > 0 ? getBitmap(Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)) : null; }
     public Bitmap getBitmap(Bitmap b) {
-        Bitmap f = mTexture != null ? mTexture.meglerFront() : null;
+        Bitmap f = mTexture != null ? mTexture.megletFront() : null;
         if (b != null && f != null) { Canvas c = new Canvas(b); c.drawBitmap(f, null, new Rect(0, 0, b.getWidth(), b.getHeight()), mPaint); }
         return b;
     }

@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ThumbnailUtils {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int OPTIONS_RECYCLE_INPUT = 2;
     public static final int TARGET_SIZE_MICRO_THUMBNAIL = 96;
     public ThumbnailUtils() {}

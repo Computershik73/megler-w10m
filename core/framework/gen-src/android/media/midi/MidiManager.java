@@ -3,7 +3,7 @@ package android.media.midi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MidiManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String BLUETOOTH_MIDI_SERVICE_CLASS = "com.android.bluetoothmidiservice.BluetoothMidiService";
     public static final java.lang.String BLUETOOTH_MIDI_SERVICE_INTENT = "android.media.midi.BluetoothMidiService";
     public static final java.lang.String BLUETOOTH_MIDI_SERVICE_PACKAGE = "com.android.bluetoothmidiservice";
@@ -12,7 +12,7 @@ public final class MidiManager {
     public MidiManager(android.media.midi.IMidiManager p0) {}
     public void closeBluetoothDevice(android.media.midi.MidiDevice p0) {}
     public android.media.midi.MidiDeviceServer createDeviceServer(android.media.midi.MidiReceiver[] p0, int p1, java.lang.String[] p2, java.lang.String[] p3, android.os.Bundle p4, int p5, int p6, android.media.midi.MidiDeviceServer.Callback p7) { return null; }
-    public android.media.midi.MidiDeviceInfo[] getDevices() { return (android.media.midi.MidiDeviceInfo[]) meglerProps.get("Devices"); }
+    public android.media.midi.MidiDeviceInfo[] getDevices() { return (android.media.midi.MidiDeviceInfo[]) megletProps.get("Devices"); }
     public java.util.Set getDevicesForTransport(int p0) { return new java.util.HashSet(); }
     public void openBluetoothDevice(android.bluetooth.BluetoothDevice p0, android.media.midi.MidiManager.OnDeviceOpenedListener p1, android.os.Handler p2) {}
     public void openDevice(android.media.midi.MidiDeviceInfo p0, android.media.midi.MidiManager.OnDeviceOpenedListener p1, android.os.Handler p2) {}
@@ -21,7 +21,7 @@ public final class MidiManager {
     public void unregisterDeviceCallback(android.media.midi.MidiManager.DeviceCallback p0) {}
     MidiManager() { this((android.media.midi.IMidiManager) null); }
     public static class DeviceCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public DeviceCallback() {}
         public void onDeviceAdded(android.media.midi.MidiDeviceInfo p0) {}
         public void onDeviceRemoved(android.media.midi.MidiDeviceInfo p0) {}

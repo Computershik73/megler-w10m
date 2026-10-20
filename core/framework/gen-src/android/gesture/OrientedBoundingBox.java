@@ -3,7 +3,7 @@ package android.gesture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class OrientedBoundingBox {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public float centerX;
     public float centerY;
     public float height;

@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ServiceState implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int DUPLEX_MODE_FDD = 1;
     public static final int DUPLEX_MODE_TDD = 2;
@@ -71,76 +71,76 @@ public class ServiceState implements android.os.Parcelable {
     public android.telephony.ServiceState createLocationInfoSanitizedCopy(boolean p0) { return this; }
     public int describeContents() { return 0; }
     public void fillInNotifierBundle(android.os.Bundle p0) {}
-    public int getArfcnRsrpBoost() { return (meglerProps.get("ArfcnRsrpBoost") instanceof Integer ? (Integer) meglerProps.get("ArfcnRsrpBoost") : 0); }
-    public int getCdmaNetworkId() { return (meglerProps.get("CdmaNetworkId") instanceof Integer ? (Integer) meglerProps.get("CdmaNetworkId") : 0); }
-    public int getCdmaSystemId() { return (meglerProps.get("CdmaSystemId") instanceof Integer ? (Integer) meglerProps.get("CdmaSystemId") : 0); }
-    public int[] getCellBandwidths() { return (int[]) meglerProps.get("CellBandwidths"); }
-    public int getChannelNumber() { return (meglerProps.get("ChannelNumber") instanceof Integer ? (Integer) meglerProps.get("ChannelNumber") : 0); }
-    public int getCssIndicator() { return (meglerProps.get("CssIndicator") instanceof Integer ? (Integer) meglerProps.get("CssIndicator") : 0); }
-    public int getDataNetworkType() { return (meglerProps.get("DataNetworkType") instanceof Integer ? (Integer) meglerProps.get("DataNetworkType") : 0); }
-    public java.lang.String getDataOperatorAlphaShort() { return (java.lang.String) meglerProps.get("DataOperatorAlphaShort"); }
-    public java.lang.String getDataOperatorNumeric() { return (java.lang.String) meglerProps.get("DataOperatorNumeric"); }
-    public int getDataRegState() { return (meglerProps.get("DataRegState") instanceof Integer ? (Integer) meglerProps.get("DataRegState") : 0); }
-    public int getDataRegistrationState() { return (meglerProps.get("DataRegistrationState") instanceof Integer ? (Integer) meglerProps.get("DataRegistrationState") : 0); }
-    public boolean getDataRoaming() { return (meglerProps.get("DataRoaming") instanceof Boolean ? (Boolean) meglerProps.get("DataRoaming") : false); }
-    public boolean getDataRoamingFromRegistration() { return (meglerProps.get("DataRoamingFromRegistration") instanceof Boolean ? (Boolean) meglerProps.get("DataRoamingFromRegistration") : false); }
-    public int getDataRoamingType() { return (meglerProps.get("DataRoamingType") instanceof Integer ? (Integer) meglerProps.get("DataRoamingType") : 0); }
-    public int getDuplexMode() { return (meglerProps.get("DuplexMode") instanceof Integer ? (Integer) meglerProps.get("DuplexMode") : 0); }
-    public boolean getIsManualSelection() { return (meglerProps.get("IsManualSelection") instanceof Boolean ? (Boolean) meglerProps.get("IsManualSelection") : false); }
+    public int getArfcnRsrpBoost() { return (megletProps.get("ArfcnRsrpBoost") instanceof Integer ? (Integer) megletProps.get("ArfcnRsrpBoost") : 0); }
+    public int getCdmaNetworkId() { return (megletProps.get("CdmaNetworkId") instanceof Integer ? (Integer) megletProps.get("CdmaNetworkId") : 0); }
+    public int getCdmaSystemId() { return (megletProps.get("CdmaSystemId") instanceof Integer ? (Integer) megletProps.get("CdmaSystemId") : 0); }
+    public int[] getCellBandwidths() { return (int[]) megletProps.get("CellBandwidths"); }
+    public int getChannelNumber() { return (megletProps.get("ChannelNumber") instanceof Integer ? (Integer) megletProps.get("ChannelNumber") : 0); }
+    public int getCssIndicator() { return (megletProps.get("CssIndicator") instanceof Integer ? (Integer) megletProps.get("CssIndicator") : 0); }
+    public int getDataNetworkType() { return (megletProps.get("DataNetworkType") instanceof Integer ? (Integer) megletProps.get("DataNetworkType") : 0); }
+    public java.lang.String getDataOperatorAlphaShort() { return (java.lang.String) megletProps.get("DataOperatorAlphaShort"); }
+    public java.lang.String getDataOperatorNumeric() { return (java.lang.String) megletProps.get("DataOperatorNumeric"); }
+    public int getDataRegState() { return (megletProps.get("DataRegState") instanceof Integer ? (Integer) megletProps.get("DataRegState") : 0); }
+    public int getDataRegistrationState() { return (megletProps.get("DataRegistrationState") instanceof Integer ? (Integer) megletProps.get("DataRegistrationState") : 0); }
+    public boolean getDataRoaming() { return (megletProps.get("DataRoaming") instanceof Boolean ? (Boolean) megletProps.get("DataRoaming") : false); }
+    public boolean getDataRoamingFromRegistration() { return (megletProps.get("DataRoamingFromRegistration") instanceof Boolean ? (Boolean) megletProps.get("DataRoamingFromRegistration") : false); }
+    public int getDataRoamingType() { return (megletProps.get("DataRoamingType") instanceof Integer ? (Integer) megletProps.get("DataRoamingType") : 0); }
+    public int getDuplexMode() { return (megletProps.get("DuplexMode") instanceof Integer ? (Integer) megletProps.get("DuplexMode") : 0); }
+    public boolean getIsManualSelection() { return (megletProps.get("IsManualSelection") instanceof Boolean ? (Boolean) megletProps.get("IsManualSelection") : false); }
     public android.telephony.NetworkRegistrationInfo getNetworkRegistrationInfo(int p0, int p1) { return null; }
-    public java.util.List getNetworkRegistrationInfoList() { return (meglerProps.get("NetworkRegistrationInfoList") != null ? (java.util.List) meglerProps.get("NetworkRegistrationInfoList") : new java.util.ArrayList()); }
+    public java.util.List getNetworkRegistrationInfoList() { return (megletProps.get("NetworkRegistrationInfoList") != null ? (java.util.List) megletProps.get("NetworkRegistrationInfoList") : new java.util.ArrayList()); }
     public java.util.List getNetworkRegistrationInfoListForDomain(int p0) { return new java.util.ArrayList(); }
     public java.util.List getNetworkRegistrationInfoListForTransportType(int p0) { return new java.util.ArrayList(); }
-    public int getNrFrequencyRange() { return (meglerProps.get("NrFrequencyRange") instanceof Integer ? (Integer) meglerProps.get("NrFrequencyRange") : 0); }
-    public int getNrState() { return (meglerProps.get("NrState") instanceof Integer ? (Integer) meglerProps.get("NrState") : 0); }
-    public java.lang.String getOperatorAlpha() { return (java.lang.String) meglerProps.get("OperatorAlpha"); }
-    public java.lang.String getOperatorAlphaLong() { return (java.lang.String) meglerProps.get("OperatorAlphaLong"); }
-    public java.lang.String getOperatorAlphaLongRaw() { return (java.lang.String) meglerProps.get("OperatorAlphaLongRaw"); }
-    public java.lang.String getOperatorAlphaShort() { return (java.lang.String) meglerProps.get("OperatorAlphaShort"); }
-    public java.lang.String getOperatorAlphaShortRaw() { return (java.lang.String) meglerProps.get("OperatorAlphaShortRaw"); }
-    public java.lang.String getOperatorNumeric() { return (java.lang.String) meglerProps.get("OperatorNumeric"); }
-    public int getRilDataRadioTechnology() { return (meglerProps.get("RilDataRadioTechnology") instanceof Integer ? (Integer) meglerProps.get("RilDataRadioTechnology") : 0); }
-    public int getRilVoiceRadioTechnology() { return (meglerProps.get("RilVoiceRadioTechnology") instanceof Integer ? (Integer) meglerProps.get("RilVoiceRadioTechnology") : 0); }
-    public boolean getRoaming() { return (meglerProps.get("Roaming") instanceof Boolean ? (Boolean) meglerProps.get("Roaming") : false); }
-    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
-    public int getVoiceNetworkType() { return (meglerProps.get("VoiceNetworkType") instanceof Integer ? (Integer) meglerProps.get("VoiceNetworkType") : 0); }
-    public java.lang.String getVoiceOperatorAlphaLong() { return (java.lang.String) meglerProps.get("VoiceOperatorAlphaLong"); }
-    public java.lang.String getVoiceOperatorAlphaShort() { return (java.lang.String) meglerProps.get("VoiceOperatorAlphaShort"); }
-    public java.lang.String getVoiceOperatorNumeric() { return (java.lang.String) meglerProps.get("VoiceOperatorNumeric"); }
-    public int getVoiceRegState() { return (meglerProps.get("VoiceRegState") instanceof Integer ? (Integer) meglerProps.get("VoiceRegState") : 0); }
-    public boolean getVoiceRoaming() { return (meglerProps.get("VoiceRoaming") instanceof Boolean ? (Boolean) meglerProps.get("VoiceRoaming") : false); }
-    public int getVoiceRoamingType() { return (meglerProps.get("VoiceRoamingType") instanceof Integer ? (Integer) meglerProps.get("VoiceRoamingType") : 0); }
-    public boolean isEmergencyOnly() { return (meglerProps.get("EmergencyOnly") instanceof Boolean ? (Boolean) meglerProps.get("EmergencyOnly") : false); }
-    public boolean isIwlanPreferred() { return (meglerProps.get("IwlanPreferred") instanceof Boolean ? (Boolean) meglerProps.get("IwlanPreferred") : false); }
-    public boolean isSearching() { return (meglerProps.get("Searching") instanceof Boolean ? (Boolean) meglerProps.get("Searching") : false); }
-    public boolean isUsingCarrierAggregation() { return (meglerProps.get("UsingCarrierAggregation") instanceof Boolean ? (Boolean) meglerProps.get("UsingCarrierAggregation") : false); }
-    public boolean isUsingNonTerrestrialNetwork() { return (meglerProps.get("UsingNonTerrestrialNetwork") instanceof Boolean ? (Boolean) meglerProps.get("UsingNonTerrestrialNetwork") : false); }
-    public void setArfcnRsrpBoost(int p0) { meglerProps.put("ArfcnRsrpBoost", Integer.valueOf(p0)); }
+    public int getNrFrequencyRange() { return (megletProps.get("NrFrequencyRange") instanceof Integer ? (Integer) megletProps.get("NrFrequencyRange") : 0); }
+    public int getNrState() { return (megletProps.get("NrState") instanceof Integer ? (Integer) megletProps.get("NrState") : 0); }
+    public java.lang.String getOperatorAlpha() { return (java.lang.String) megletProps.get("OperatorAlpha"); }
+    public java.lang.String getOperatorAlphaLong() { return (java.lang.String) megletProps.get("OperatorAlphaLong"); }
+    public java.lang.String getOperatorAlphaLongRaw() { return (java.lang.String) megletProps.get("OperatorAlphaLongRaw"); }
+    public java.lang.String getOperatorAlphaShort() { return (java.lang.String) megletProps.get("OperatorAlphaShort"); }
+    public java.lang.String getOperatorAlphaShortRaw() { return (java.lang.String) megletProps.get("OperatorAlphaShortRaw"); }
+    public java.lang.String getOperatorNumeric() { return (java.lang.String) megletProps.get("OperatorNumeric"); }
+    public int getRilDataRadioTechnology() { return (megletProps.get("RilDataRadioTechnology") instanceof Integer ? (Integer) megletProps.get("RilDataRadioTechnology") : 0); }
+    public int getRilVoiceRadioTechnology() { return (megletProps.get("RilVoiceRadioTechnology") instanceof Integer ? (Integer) megletProps.get("RilVoiceRadioTechnology") : 0); }
+    public boolean getRoaming() { return (megletProps.get("Roaming") instanceof Boolean ? (Boolean) megletProps.get("Roaming") : false); }
+    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
+    public int getVoiceNetworkType() { return (megletProps.get("VoiceNetworkType") instanceof Integer ? (Integer) megletProps.get("VoiceNetworkType") : 0); }
+    public java.lang.String getVoiceOperatorAlphaLong() { return (java.lang.String) megletProps.get("VoiceOperatorAlphaLong"); }
+    public java.lang.String getVoiceOperatorAlphaShort() { return (java.lang.String) megletProps.get("VoiceOperatorAlphaShort"); }
+    public java.lang.String getVoiceOperatorNumeric() { return (java.lang.String) megletProps.get("VoiceOperatorNumeric"); }
+    public int getVoiceRegState() { return (megletProps.get("VoiceRegState") instanceof Integer ? (Integer) megletProps.get("VoiceRegState") : 0); }
+    public boolean getVoiceRoaming() { return (megletProps.get("VoiceRoaming") instanceof Boolean ? (Boolean) megletProps.get("VoiceRoaming") : false); }
+    public int getVoiceRoamingType() { return (megletProps.get("VoiceRoamingType") instanceof Integer ? (Integer) megletProps.get("VoiceRoamingType") : 0); }
+    public boolean isEmergencyOnly() { return (megletProps.get("EmergencyOnly") instanceof Boolean ? (Boolean) megletProps.get("EmergencyOnly") : false); }
+    public boolean isIwlanPreferred() { return (megletProps.get("IwlanPreferred") instanceof Boolean ? (Boolean) megletProps.get("IwlanPreferred") : false); }
+    public boolean isSearching() { return (megletProps.get("Searching") instanceof Boolean ? (Boolean) megletProps.get("Searching") : false); }
+    public boolean isUsingCarrierAggregation() { return (megletProps.get("UsingCarrierAggregation") instanceof Boolean ? (Boolean) megletProps.get("UsingCarrierAggregation") : false); }
+    public boolean isUsingNonTerrestrialNetwork() { return (megletProps.get("UsingNonTerrestrialNetwork") instanceof Boolean ? (Boolean) megletProps.get("UsingNonTerrestrialNetwork") : false); }
+    public void setArfcnRsrpBoost(int p0) { megletProps.put("ArfcnRsrpBoost", Integer.valueOf(p0)); }
     public void setCdmaSystemAndNetworkId(int p0, int p1) {}
-    public void setCellBandwidths(int[] p0) { meglerProps.put("CellBandwidths", p0); }
-    public void setChannelNumber(int p0) { meglerProps.put("ChannelNumber", Integer.valueOf(p0)); }
-    public void setCssIndicator(int p0) { meglerProps.put("CssIndicator", Integer.valueOf(p0)); }
-    public void setDataRegState(int p0) { meglerProps.put("DataRegState", Integer.valueOf(p0)); }
-    public void setDataRoaming(boolean p0) { meglerProps.put("DataRoaming", Boolean.valueOf(p0)); }
-    public void setDataRoamingFromRegistration(boolean p0) { meglerProps.put("DataRoamingFromRegistration", Boolean.valueOf(p0)); }
-    public void setDataRoamingType(int p0) { meglerProps.put("DataRoamingType", Integer.valueOf(p0)); }
-    public void setEmergencyOnly(boolean p0) { meglerProps.put("EmergencyOnly", Boolean.valueOf(p0)); }
-    public void setIsManualSelection(boolean p0) { meglerProps.put("IsManualSelection", Boolean.valueOf(p0)); }
-    public void setIwlanPreferred(boolean p0) { meglerProps.put("IwlanPreferred", Boolean.valueOf(p0)); }
-    public void setNrFrequencyRange(int p0) { meglerProps.put("NrFrequencyRange", Integer.valueOf(p0)); }
-    public void setOperatorAlphaLong(java.lang.String p0) { meglerProps.put("OperatorAlphaLong", p0); }
-    public void setOperatorAlphaLongRaw(java.lang.String p0) { meglerProps.put("OperatorAlphaLongRaw", p0); }
-    public void setOperatorAlphaShortRaw(java.lang.String p0) { meglerProps.put("OperatorAlphaShortRaw", p0); }
+    public void setCellBandwidths(int[] p0) { megletProps.put("CellBandwidths", p0); }
+    public void setChannelNumber(int p0) { megletProps.put("ChannelNumber", Integer.valueOf(p0)); }
+    public void setCssIndicator(int p0) { megletProps.put("CssIndicator", Integer.valueOf(p0)); }
+    public void setDataRegState(int p0) { megletProps.put("DataRegState", Integer.valueOf(p0)); }
+    public void setDataRoaming(boolean p0) { megletProps.put("DataRoaming", Boolean.valueOf(p0)); }
+    public void setDataRoamingFromRegistration(boolean p0) { megletProps.put("DataRoamingFromRegistration", Boolean.valueOf(p0)); }
+    public void setDataRoamingType(int p0) { megletProps.put("DataRoamingType", Integer.valueOf(p0)); }
+    public void setEmergencyOnly(boolean p0) { megletProps.put("EmergencyOnly", Boolean.valueOf(p0)); }
+    public void setIsManualSelection(boolean p0) { megletProps.put("IsManualSelection", Boolean.valueOf(p0)); }
+    public void setIwlanPreferred(boolean p0) { megletProps.put("IwlanPreferred", Boolean.valueOf(p0)); }
+    public void setNrFrequencyRange(int p0) { megletProps.put("NrFrequencyRange", Integer.valueOf(p0)); }
+    public void setOperatorAlphaLong(java.lang.String p0) { megletProps.put("OperatorAlphaLong", p0); }
+    public void setOperatorAlphaLongRaw(java.lang.String p0) { megletProps.put("OperatorAlphaLongRaw", p0); }
+    public void setOperatorAlphaShortRaw(java.lang.String p0) { megletProps.put("OperatorAlphaShortRaw", p0); }
     public void setOperatorName(java.lang.String p0, java.lang.String p1, java.lang.String p2) {}
-    public void setOutOfService(boolean p0) { meglerProps.put("OutOfService", Boolean.valueOf(p0)); }
-    public void setRilDataRadioTechnology(int p0) { meglerProps.put("RilDataRadioTechnology", Integer.valueOf(p0)); }
-    public void setRilVoiceRadioTechnology(int p0) { meglerProps.put("RilVoiceRadioTechnology", Integer.valueOf(p0)); }
-    public void setRoaming(boolean p0) { meglerProps.put("Roaming", Boolean.valueOf(p0)); }
-    public void setState(int p0) { meglerProps.put("State", Integer.valueOf(p0)); }
+    public void setOutOfService(boolean p0) { megletProps.put("OutOfService", Boolean.valueOf(p0)); }
+    public void setRilDataRadioTechnology(int p0) { megletProps.put("RilDataRadioTechnology", Integer.valueOf(p0)); }
+    public void setRilVoiceRadioTechnology(int p0) { megletProps.put("RilVoiceRadioTechnology", Integer.valueOf(p0)); }
+    public void setRoaming(boolean p0) { megletProps.put("Roaming", Boolean.valueOf(p0)); }
+    public void setState(int p0) { megletProps.put("State", Integer.valueOf(p0)); }
     public void setStateOff() {}
     public void setStateOutOfService() {}
-    public void setVoiceRegState(int p0) { meglerProps.put("VoiceRegState", Integer.valueOf(p0)); }
-    public void setVoiceRoaming(boolean p0) { meglerProps.put("VoiceRoaming", Boolean.valueOf(p0)); }
-    public void setVoiceRoamingType(int p0) { meglerProps.put("VoiceRoamingType", Integer.valueOf(p0)); }
+    public void setVoiceRegState(int p0) { megletProps.put("VoiceRegState", Integer.valueOf(p0)); }
+    public void setVoiceRoaming(boolean p0) { megletProps.put("VoiceRoaming", Boolean.valueOf(p0)); }
+    public void setVoiceRoamingType(int p0) { megletProps.put("VoiceRoamingType", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

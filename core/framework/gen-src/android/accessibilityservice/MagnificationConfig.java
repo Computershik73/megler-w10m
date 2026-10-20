@@ -3,27 +3,27 @@ package android.accessibilityservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MagnificationConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int MAGNIFICATION_MODE_DEFAULT = 0;
     public static final int MAGNIFICATION_MODE_FULLSCREEN = 1;
     public static final int MAGNIFICATION_MODE_WINDOW = 2;
     public int describeContents() { return 0; }
-    public float getCenterX() { return (meglerProps.get("CenterX") instanceof Float ? (Float) meglerProps.get("CenterX") : 0f); }
-    public float getCenterY() { return (meglerProps.get("CenterY") instanceof Float ? (Float) meglerProps.get("CenterY") : 0f); }
-    public int getMode() { return (meglerProps.get("Mode") instanceof Integer ? (Integer) meglerProps.get("Mode") : 0); }
-    public float getScale() { return (meglerProps.get("Scale") instanceof Float ? (Float) meglerProps.get("Scale") : 0f); }
-    public boolean isActivated() { return (meglerProps.get("Activated") instanceof Boolean ? (Boolean) meglerProps.get("Activated") : false); }
+    public float getCenterX() { return (megletProps.get("CenterX") instanceof Float ? (Float) megletProps.get("CenterX") : 0f); }
+    public float getCenterY() { return (megletProps.get("CenterY") instanceof Float ? (Float) megletProps.get("CenterY") : 0f); }
+    public int getMode() { return (megletProps.get("Mode") instanceof Integer ? (Integer) megletProps.get("Mode") : 0); }
+    public float getScale() { return (megletProps.get("Scale") instanceof Float ? (Float) megletProps.get("Scale") : 0f); }
+    public boolean isActivated() { return (megletProps.get("Activated") instanceof Boolean ? (Boolean) megletProps.get("Activated") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected MagnificationConfig() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.accessibilityservice.MagnificationConfig build() { android.accessibilityservice.MagnificationConfig x = new android.accessibilityservice.MagnificationConfig(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.accessibilityservice.MagnificationConfig.Builder setActivated(boolean p0) { meglerProps.put("Activated", Boolean.valueOf(p0)); return this; }
-        public android.accessibilityservice.MagnificationConfig.Builder setCenterX(float p0) { meglerProps.put("CenterX", Float.valueOf(p0)); return this; }
-        public android.accessibilityservice.MagnificationConfig.Builder setCenterY(float p0) { meglerProps.put("CenterY", Float.valueOf(p0)); return this; }
-        public android.accessibilityservice.MagnificationConfig.Builder setMode(int p0) { meglerProps.put("Mode", Integer.valueOf(p0)); return this; }
-        public android.accessibilityservice.MagnificationConfig.Builder setScale(float p0) { meglerProps.put("Scale", Float.valueOf(p0)); return this; }
+        public android.accessibilityservice.MagnificationConfig build() { android.accessibilityservice.MagnificationConfig x = new android.accessibilityservice.MagnificationConfig(); x.megletProps.putAll(megletProps); return x; }
+        public android.accessibilityservice.MagnificationConfig.Builder setActivated(boolean p0) { megletProps.put("Activated", Boolean.valueOf(p0)); return this; }
+        public android.accessibilityservice.MagnificationConfig.Builder setCenterX(float p0) { megletProps.put("CenterX", Float.valueOf(p0)); return this; }
+        public android.accessibilityservice.MagnificationConfig.Builder setCenterY(float p0) { megletProps.put("CenterY", Float.valueOf(p0)); return this; }
+        public android.accessibilityservice.MagnificationConfig.Builder setMode(int p0) { megletProps.put("Mode", Integer.valueOf(p0)); return this; }
+        public android.accessibilityservice.MagnificationConfig.Builder setScale(float p0) { megletProps.put("Scale", Float.valueOf(p0)); return this; }
     }
 }

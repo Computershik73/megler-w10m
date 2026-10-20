@@ -3,7 +3,7 @@ package android.hardware.display;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class HdrConversionMode implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int HDR_CONVERSION_FORCE = 3;
     public static final int HDR_CONVERSION_PASSTHROUGH = 1;
@@ -12,8 +12,8 @@ public final class HdrConversionMode implements android.os.Parcelable {
     public HdrConversionMode(int p0) {}
     public HdrConversionMode(int p0, int p1) {}
     public int describeContents() { return 0; }
-    public int getConversionMode() { return (meglerProps.get("ConversionMode") instanceof Integer ? (Integer) meglerProps.get("ConversionMode") : 0); }
-    public int getPreferredHdrOutputType() { return (meglerProps.get("PreferredHdrOutputType") instanceof Integer ? (Integer) meglerProps.get("PreferredHdrOutputType") : 0); }
+    public int getConversionMode() { return (megletProps.get("ConversionMode") instanceof Integer ? (Integer) megletProps.get("ConversionMode") : 0); }
+    public int getPreferredHdrOutputType() { return (megletProps.get("PreferredHdrOutputType") instanceof Integer ? (Integer) megletProps.get("PreferredHdrOutputType") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     HdrConversionMode() { this((int) 0); }
 }

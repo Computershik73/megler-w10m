@@ -182,7 +182,7 @@ void hk_dvm_set_app_loader(hk_jobj *loader)
 
 bool hk_dvm_start_android(const char *root)
 {
-    static const char *const names[] = { "megler-libcore", "core-oj", "core-libart", "conscrypt", "okhttp", "bouncycastle", "apache-xml" };
+    static const char *const names[] = { "meglet-libcore", "core-oj", "core-libart", "conscrypt", "okhttp", "bouncycastle", "apache-xml" };
     const char *paths[HK_COUNT(names)];
     char *made[HK_COUNT(names)], *crypto;
     hk_stat st;

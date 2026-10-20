@@ -3,7 +3,7 @@ package android.view.textclassifier;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ConversationAction implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String TYPE_ADD_CONTACT = "add_contact";
     public static final java.lang.String TYPE_CALL_PHONE = "call_phone";
@@ -18,22 +18,22 @@ public final class ConversationAction implements android.os.Parcelable {
     public static final java.lang.String TYPE_VIEW_CALENDAR = "view_calendar";
     public static final java.lang.String TYPE_VIEW_MAP = "view_map";
     public int describeContents() { return 0; }
-    public android.app.RemoteAction getAction() { return (android.app.RemoteAction) meglerProps.get("Action"); }
-    public float getConfidenceScore() { return (meglerProps.get("ConfidenceScore") instanceof Float ? (Float) meglerProps.get("ConfidenceScore") : 0f); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-    public java.lang.CharSequence getTextReply() { return (java.lang.CharSequence) meglerProps.get("TextReply"); }
-    public java.lang.String getType() { return (java.lang.String) meglerProps.get("Type"); }
+    public android.app.RemoteAction getAction() { return (android.app.RemoteAction) megletProps.get("Action"); }
+    public float getConfidenceScore() { return (megletProps.get("ConfidenceScore") instanceof Float ? (Float) megletProps.get("ConfidenceScore") : 0f); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public java.lang.CharSequence getTextReply() { return (java.lang.CharSequence) megletProps.get("TextReply"); }
+    public java.lang.String getType() { return (java.lang.String) megletProps.get("Type"); }
     public android.view.textclassifier.ConversationAction.Builder toBuilder() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected ConversationAction() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0) {}
-        public android.view.textclassifier.ConversationAction build() { android.view.textclassifier.ConversationAction x = new android.view.textclassifier.ConversationAction(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.view.textclassifier.ConversationAction.Builder setAction(android.app.RemoteAction p0) { meglerProps.put("Action", p0); return this; }
-        public android.view.textclassifier.ConversationAction.Builder setConfidenceScore(float p0) { meglerProps.put("ConfidenceScore", Float.valueOf(p0)); return this; }
-        public android.view.textclassifier.ConversationAction.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
-        public android.view.textclassifier.ConversationAction.Builder setTextReply(java.lang.CharSequence p0) { meglerProps.put("TextReply", p0); return this; }
+        public android.view.textclassifier.ConversationAction build() { android.view.textclassifier.ConversationAction x = new android.view.textclassifier.ConversationAction(); x.megletProps.putAll(megletProps); return x; }
+        public android.view.textclassifier.ConversationAction.Builder setAction(android.app.RemoteAction p0) { megletProps.put("Action", p0); return this; }
+        public android.view.textclassifier.ConversationAction.Builder setConfidenceScore(float p0) { megletProps.put("ConfidenceScore", Float.valueOf(p0)); return this; }
+        public android.view.textclassifier.ConversationAction.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+        public android.view.textclassifier.ConversationAction.Builder setTextReply(java.lang.CharSequence p0) { megletProps.put("TextReply", p0); return this; }
         Builder() { this((java.lang.String) null); }
     }
 }

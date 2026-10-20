@@ -3,12 +3,12 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VoiceInteractor {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String KEY_CANCELLATION_SIGNAL = "key_cancellation_signal";
     public android.app.VoiceInteractor.Request getActiveRequest(java.lang.String p0) { return null; }
-    public android.app.VoiceInteractor.Request[] getActiveRequests() { return (android.app.VoiceInteractor.Request[]) meglerProps.get("ActiveRequests"); }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-    public boolean isDestroyed() { return (meglerProps.get("Destroyed") instanceof Boolean ? (Boolean) meglerProps.get("Destroyed") : false); }
+    public android.app.VoiceInteractor.Request[] getActiveRequests() { return (android.app.VoiceInteractor.Request[]) megletProps.get("ActiveRequests"); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    public boolean isDestroyed() { return (megletProps.get("Destroyed") instanceof Boolean ? (Boolean) megletProps.get("Destroyed") : false); }
     public void notifyDirectActionsChanged() {}
     public boolean registerOnDestroyedCallback(java.util.concurrent.Executor p0, java.lang.Runnable p1) { return false; }
     public boolean submitRequest(android.app.VoiceInteractor.Request p0) { return false; }
@@ -17,27 +17,27 @@ public final class VoiceInteractor {
     public boolean unregisterOnDestroyedCallback(java.lang.Runnable p0) { return false; }
     protected VoiceInteractor() {}
     public static class AbortVoiceRequest extends android.app.VoiceInteractor.Request {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public AbortVoiceRequest(android.app.VoiceInteractor.Prompt p0, android.os.Bundle p1) { super(); }
         public AbortVoiceRequest(java.lang.CharSequence p0, android.os.Bundle p1) { super(); }
         public void onAbortResult(android.os.Bundle p0) {}
         AbortVoiceRequest() { this((android.app.VoiceInteractor.Prompt) null, (android.os.Bundle) null); }
     }
     public static class CommandRequest extends android.app.VoiceInteractor.Request {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public CommandRequest(java.lang.String p0, android.os.Bundle p1) { super(); }
         public void onCommandResult(boolean p0, android.os.Bundle p1) {}
         CommandRequest() { this((java.lang.String) null, (android.os.Bundle) null); }
     }
     public static class CompleteVoiceRequest extends android.app.VoiceInteractor.Request {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public CompleteVoiceRequest(android.app.VoiceInteractor.Prompt p0, android.os.Bundle p1) { super(); }
         public CompleteVoiceRequest(java.lang.CharSequence p0, android.os.Bundle p1) { super(); }
         public void onCompleteResult(android.os.Bundle p0) {}
         CompleteVoiceRequest() { this((android.app.VoiceInteractor.Prompt) null, (android.os.Bundle) null); }
     }
     public static class ConfirmationRequest extends android.app.VoiceInteractor.Request {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ConfirmationRequest(android.app.VoiceInteractor.Prompt p0, android.os.Bundle p1) { super(); }
         public ConfirmationRequest(java.lang.CharSequence p0, android.os.Bundle p1) { super(); }
         public void onConfirmationResult(boolean p0, android.os.Bundle p1) {}
@@ -50,23 +50,23 @@ public final class VoiceInteractor {
         }
     }
     public static class Prompt implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public Prompt(java.lang.CharSequence p0) {}
         public Prompt(java.lang.CharSequence[] p0, java.lang.CharSequence p1) {}
         public int countVoicePrompts() { return 0; }
         public int describeContents() { return 0; }
-        public java.lang.CharSequence getVisualPrompt() { return (java.lang.CharSequence) meglerProps.get("VisualPrompt"); }
+        public java.lang.CharSequence getVisualPrompt() { return (java.lang.CharSequence) megletProps.get("VisualPrompt"); }
         public java.lang.CharSequence getVoicePromptAt(int p0) { return null; }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         Prompt() { this((java.lang.CharSequence) null); }
     }
     public static abstract class Request {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public void cancel() {}
-        public android.app.Activity getActivity() { return (android.app.Activity) meglerProps.get("Activity"); }
-        public android.content.Context getContext() { return (android.content.Context) meglerProps.get("Context"); }
-        public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+        public android.app.Activity getActivity() { return (android.app.Activity) megletProps.get("Activity"); }
+        public android.content.Context getContext() { return (android.content.Context) megletProps.get("Context"); }
+        public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
         public void onAttached(android.app.Activity p0) {}
         public void onCancel() {}
         public void onDetached() {}

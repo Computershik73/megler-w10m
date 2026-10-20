@@ -3,11 +3,11 @@ package android.app.sdksandbox;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RequestSurfacePackageException extends java.lang.Exception {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public RequestSurfacePackageException(int p0, java.lang.String p1) { super(); }
     public RequestSurfacePackageException(int p0, java.lang.String p1, java.lang.Throwable p2) { super(); }
     public RequestSurfacePackageException(int p0, java.lang.String p1, java.lang.Throwable p2, android.os.Bundle p3) { super(); }
-    public android.os.Bundle getExtraErrorInformation() { return (android.os.Bundle) meglerProps.get("ExtraErrorInformation"); }
-    public int getRequestSurfacePackageErrorCode() { return (meglerProps.get("RequestSurfacePackageErrorCode") instanceof Integer ? (Integer) meglerProps.get("RequestSurfacePackageErrorCode") : 0); }
+    public android.os.Bundle getExtraErrorInformation() { return (android.os.Bundle) megletProps.get("ExtraErrorInformation"); }
+    public int getRequestSurfacePackageErrorCode() { return (megletProps.get("RequestSurfacePackageErrorCode") instanceof Integer ? (Integer) megletProps.get("RequestSurfacePackageErrorCode") : 0); }
     RequestSurfacePackageException() { this((int) 0, (java.lang.String) null); }
 }

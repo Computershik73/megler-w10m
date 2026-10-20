@@ -3,14 +3,14 @@ package android.mtp;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MtpDevice {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public MtpDevice(android.hardware.usb.UsbDevice p0) {}
     public void close() {}
     public boolean deleteObject(int p0) { return false; }
     protected void finalize() {}
-    public int getDeviceId() { return (meglerProps.get("DeviceId") instanceof Integer ? (Integer) meglerProps.get("DeviceId") : 0); }
-    public android.mtp.MtpDeviceInfo getDeviceInfo() { return (android.mtp.MtpDeviceInfo) meglerProps.get("DeviceInfo"); }
-    public java.lang.String getDeviceName() { return (java.lang.String) meglerProps.get("DeviceName"); }
+    public int getDeviceId() { return (megletProps.get("DeviceId") instanceof Integer ? (Integer) megletProps.get("DeviceId") : 0); }
+    public android.mtp.MtpDeviceInfo getDeviceInfo() { return (android.mtp.MtpDeviceInfo) megletProps.get("DeviceInfo"); }
+    public java.lang.String getDeviceName() { return (java.lang.String) megletProps.get("DeviceName"); }
     public byte[] getObject(int p0, int p1) { return null; }
     public int[] getObjectHandles(int p0, int p1, int p2) { return null; }
     public android.mtp.MtpObjectInfo getObjectInfo(int p0) { return null; }
@@ -19,7 +19,7 @@ public final class MtpDevice {
     public long getPartialObject(int p0, long p1, long p2, byte[] p3) { return 0L; }
     public long getPartialObject64(int p0, long p1, long p2, byte[] p3) { return 0L; }
     public long getStorageId(int p0) { return 0L; }
-    public int[] getStorageIds() { return (int[]) meglerProps.get("StorageIds"); }
+    public int[] getStorageIds() { return (int[]) megletProps.get("StorageIds"); }
     public android.mtp.MtpStorageInfo getStorageInfo(int p0) { return null; }
     public byte[] getThumbnail(int p0) { return null; }
     public boolean importFile(int p0, android.os.ParcelFileDescriptor p1) { return false; }

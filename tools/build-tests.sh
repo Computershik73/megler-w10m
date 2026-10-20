@@ -8,9 +8,9 @@
 #   tools/build-tests.sh win
 #       The x64 build with MSVC, run here: the Win32 host layer and everything
 #       that needs no ARM code. And the shell's drawing for a Java app
-#       (app/Megler/player/GfxHost.cpp: Direct2D, DirectWrite, WIC), which
+#       (app/Meglet/player/GfxHost.cpp: Direct2D, DirectWrite, WIC), which
 #       is built into this test program and run as its --gfx-windows mode:
-#       scenes drawn through megler_gfx_host, written to build/gfx-pictures as
+#       scenes drawn through meglet_gfx_host, written to build/gfx-pictures as
 #       PNG files (sheet.png has all of them) and checked, twice -- the second
 #       time with every canvas copied to a WIC bitmap and back -- and a third
 #       time with Android's own fonts where build/android9 has them. Each run ends
@@ -19,7 +19,7 @@
 #       its records of the Java test apps' drawing (build/gfx-records), each
 #       is drawn again here, by the stand-in and by Direct2D:
 #       build/gfx-pictures/app-hello-N.png and app-demos-N.png.
-#       And the shell's storage host (app/Megler/player/StorageHost.cpp:
+#       And the shell's storage host (app/Meglet/player/StorageHost.cpp:
 #       Windows.Storage), built in likewise and run as --storage-windows: the
 #       tests of the phone's folders in an app's storage once more, with
 #       Windows.Storage's own objects handing the handles over where the
@@ -27,14 +27,14 @@
 #       test program is no app container: what the broker refuses an app is
 #       not found out here.
 #       And the shell's decoders for a Java app's MediaCodec
-#       (app/Megler/player/CodecHost.cpp: Media Foundation's decoder
+#       (app/Meglet/player/CodecHost.cpp: Media Foundation's decoder
 #       transforms), built in likewise and run as --codec-windows: the core's
 #       codec over this PC's own decoders, fed the data app's streams
 #       (core/tests/app/data/assets) and checked against what they hold,
 #       and timed on 720p and 1080p streams it makes into build/media-speed
 #       (tools/media-test-streams.py --speed, where Python and ffmpeg are).
 #       And the shell's cameras for a Java app's android.hardware.Camera
-#       (app/Megler/player/CameraHost.cpp: Windows.Media.Capture), built in
+#       (app/Meglet/player/CameraHost.cpp: Windows.Media.Capture), built in
 #       likewise and run as --camera-windows: the PC's first camera opened
 #       through the core's camera code and a few pictures taken, or, on a PC
 #       without one, a line that says so.
@@ -56,7 +56,7 @@
 # leaves the second run out.
 #
 # And, under qemu-arm, each of the Java test apps (core/tests/app) is started
-# through megler_run on that same folder with the Java framework in it, a process
+# through meglet_run on that same folder with the Java framework in it, a process
 # for each: `hello` and `demos`, where a JDK and the Android SDK's build tools
 # are there to build the framework and the apps (tools/build-framework.sh,
 # tools/build-test-app.sh; said and left out where they are not), and
@@ -79,15 +79,15 @@
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
 # --no-java leaves these out.
 #
-# Objects go to ~/megler-w10m-build inside WSL (the Windows drive is slow from
-# there) and to build/tests-win here. MEGLER_WSL_BUILD names another folder
+# Objects go to ~/meglet-build inside WSL (the Windows drive is slow from
+# there) and to build/tests-win here. MEGLET_WSL_BUILD names another folder
 # in WSL, as WSL's own shell reads it (quoted here, so that this shell leaves
-# the ~ alone: MEGLER_WSL_BUILD='~/megler-w10m-build-two'): two checkouts
+# the ~ alone: MEGLET_WSL_BUILD='~/meglet-build-two'): two checkouts
 # building at once must not share one.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WB="${MEGLER_WSL_BUILD:-}"
-[ -n "$WB" ] || WB='~/megler-w10m-build'
+WB="${MEGLET_WSL_BUILD:-}"
+[ -n "$WB" ] || WB='~/meglet-build'
 MODE="${1:-arm}"
 shift || true
 RUN=1
@@ -187,7 +187,7 @@ EOF
           echo "(the Java test app $app is not run: build/guest/java/$app.apk was not built -- its native library needs the NDK, see tools/build-test-app.sh)"
           continue
         fi
-        echo "the Java test app $app (build/guest/java/$app.apk), through megler_run"
+        echo "the Java test app $app (build/guest/java/$app.apk), through meglet_run"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/$app.apk' $WB/$app.apk && rm -rf $WB/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java $app $WB/$app.apk $WB/java-data-$app $WB/android-root '$WROOT/build/java-pictures' 2>&1" || STATUS=1
       done
       # The app in several APKs, from each of its bundles: unpacked as the shell unpacks one, for a screen of 320 dpi, and run.
@@ -196,13 +196,13 @@ EOF
           echo "(the Java test app splits is not run from its .$bundle: build/guest/java/splits.$bundle was not built -- its native library needs the NDK)"
           continue
         fi
-        echo "the Java test app splits (build/guest/java/splits.$bundle), unpacked and run through megler_run"
+        echo "the Java test app splits (build/guest/java/splits.$bundle), unpacked and run through meglet_run"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/splits.$bundle' $WB/splits.$bundle && rm -rf $WB/java-data-splits && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java splits $WB/splits.$bundle $WB/java-data-splits $WB/android-root '$WROOT/build/java-pictures' 0 720x1280@320 2>&1" || STATUS=1
       done
       # The database app, twice: the second run on the data folder the first left, to find what it wrote. Only where the core has SQLite in it.
       if [ -n "$SQLITE_GCC" ] && [ -f "$ROOT/build/guest/java/data.apk" ]; then
         for run in 1 2; do
-          echo "the Java test app data (build/guest/java/data.apk), through megler_run: run $run on its database"
+          echo "the Java test app data (build/guest/java/data.apk), through meglet_run: run $run on its database"
           CLEAN=""
           [ "$run" = 1 ] && CLEAN="rm -rf $WB/java-data-data &&"
           # The second run with the flags trace-net, trace-exceptions, trace-stacks, trace-cpu, trace-native-stacks, trace-profile and a trace-calls on, which hk_java_tests.c finds the lines of.
@@ -215,19 +215,19 @@ EOF
       # The WebView app: Android's System WebView, Chromium, from the Android root (tools/webview-fetch.sh brings it), on pages
       # of the app's own server on loopback. Only where the root carries it.
       if [ -f "$ROOT/build/guest/java/webview.apk" ] && [ -f "$ROOT/build/android9/root/app/webview/webview.apk" ]; then
-        echo "the Java test app webview (build/guest/java/webview.apk), through megler_run: Android's System WebView from the Android root"
+        echo "the Java test app webview (build/guest/java/webview.apk), through meglet_run: Android's System WebView from the Android root"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/webview.apk' $WB/webview.apk && rm -rf $WB/java-data-webview && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java webview $WB/webview.apk $WB/java-data-webview $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 2>&1" || STATUS=1
       else
         echo "(the Java test app webview is not run: no WebView in the Android root -- tools/webview-fetch.sh fetches it)"
       fi
       # The camera app: the old android.hardware.Camera on a stand-in for the shell's cameras (core/tests/hk_camera_standin.c),
-      # its previews' pictures checked in the window; and once more with every camera refused, as Windows refuses Megler the
+      # its previews' pictures checked in the window; and once more with every camera refused, as Windows refuses Meglet the
       # camera when the user has said no.
       if [ -f "$ROOT/build/guest/java/camera.apk" ]; then
         for run in 1 2; do
           SCRIPT=""
           [ "$run" = 2 ] && SCRIPT="denied"
-          echo "the Java test app camera (build/guest/java/camera.apk), through megler_run${SCRIPT:+, every camera refused}"
+          echo "the Java test app camera (build/guest/java/camera.apk), through meglet_run${SCRIPT:+, every camera refused}"
           MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/camera.apk' $WB/camera.apk && rm -rf $WB/java-data-camera && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --java camera $WB/camera.apk $WB/java-data-camera $WB/android-root '$WROOT/build/java-pictures' 0 480x800@160 $SCRIPT 2>&1" || STATUS=1
         done
       fi
@@ -261,16 +261,16 @@ elif [ "$MODE" = win ]; then
   done
   [ -n "${VC:-}" ] || { echo "no MSVC found" >&2; exit 1; }
   SDK="/c/Program Files (x86)/Windows Kits/10"
-  SDKV="${MEGLER_SDK_VERSION:-10.0.22621.0}"
+  SDKV="${MEGLET_SDK_VERSION:-10.0.22621.0}"
   w() { cygpath -w "$1"; }
   export INCLUDE="$(w "$VC/include");$(w "$SDK/Include/$SDKV/ucrt");$(w "$SDK/Include/$SDKV/shared");$(w "$SDK/Include/$SDKV/um")"
   export LIB="$(w "$VC/lib/x64");$(w "$SDK/Lib/$SDKV/ucrt/x64");$(w "$SDK/Lib/$SDKV/um/x64")"
   export PATH="$VC/bin/Hostx64/x64:$PATH"
   export VSLANG=1033 MSYS2_ARG_CONV_EXCL="*"
-  # (MEGLER_TESTS_OPT: the C compiler's optimisation, /O1 unless told; tools/dvm-bench.sh builds with /O2, as the app is
-  # built, into a folder of its own named by MEGLER_TESTS_OUT.)
-  OPT="${MEGLER_TESTS_OPT:-/O1}"
-  OUT="${MEGLER_TESTS_OUT:-$ROOT/build/tests-win}"
+  # (MEGLET_TESTS_OPT: the C compiler's optimisation, /O1 unless told; tools/dvm-bench.sh builds with /O2, as the app is
+  # built, into a folder of its own named by MEGLET_TESTS_OUT.)
+  OPT="${MEGLET_TESTS_OPT:-/O1}"
+  OUT="${MEGLET_TESTS_OUT:-$ROOT/build/tests-win}"
   mkdir -p "$OUT/obj" "$OUT/zobj"
   # Every file is compiled on every run; the objects of the last go first, so that a file that no longer compiles fails
   # the link instead of leaving its old object to be linked with the others (whose structures may have changed since).
@@ -288,9 +288,9 @@ elif [ "$MODE" = win ]; then
     "/Fo$(w "$OUT/zobj")\\" "${ZALL[@]}" | grep -v -E '^[A-Za-z0-9_]+\.c$' || true
   # The shell's drawing itself, the very file the phone's package is built from (it is plain COM, no WinRT), and the few
   # lines that hand it to the tests: C++, with the shell's own flags.
-  GFX_SRC=("$(w "$ROOT/app/Megler/player/GfxHost.cpp")" "$(w "$ROOT/core/tests/hk_gfx_windows.cpp")")
+  GFX_SRC=("$(w "$ROOT/app/Meglet/player/GfxHost.cpp")" "$(w "$ROOT/core/tests/hk_gfx_windows.cpp")")
   GFX_FLAGS=(/nologo /c /MT /W3 /EHsc /GR /permissive- /std:c++20 /utf-8 /DUNICODE /D_UNICODE /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS
-             "/I$(w "$ROOT/app/Megler")" "/I$(w "$ROOT/core/include")")
+             "/I$(w "$ROOT/app/Meglet")" "/I$(w "$ROOT/core/include")")
   mkdir -p "$OUT/gfxobj"
   rm -f "$OUT/gfxobj/"*.obj
   "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /O2 /MP "/Fo$(w "$OUT/gfxobj")\\" "${GFX_SRC[@]}" | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
@@ -299,7 +299,7 @@ elif [ "$MODE" = win ]; then
   done
   # The same file against the headers of the SDK whose libraries the phone's package links (10.0.15063, Windows 10
   # Mobile's last): an interface that only a later Windows has would compile above and fail on the phone.
-  OLD_SDK="${MEGLER_SDK_LIB:-10.0.15063.0}"
+  OLD_SDK="${MEGLET_SDK_LIB:-10.0.15063.0}"
   if [ -f "$SDK/Include/$OLD_SDK/um/d2d1_1.h" ]; then
     mkdir -p "$OUT/gfxobj-old"
     rm -f "$OUT/gfxobj-old/GfxHost.obj"
@@ -310,20 +310,20 @@ elif [ "$MODE" = win ]; then
   else
     echo "(no SDK $OLD_SDK headers here: GfxHost.cpp was not compiled against them)"
   fi
-  # The shell's storage host too (app/Megler/player/StorageHost.cpp: Windows.Storage, through C++/WinRT), the very file
+  # The shell's storage host too (app/Meglet/player/StorageHost.cpp: Windows.Storage, through C++/WinRT), the very file
   # the phone's package is built from, with the shell's Strings.cpp and the few lines that hand it to the tests and stand
   # in for the rest of the shell (core/tests/hk_storage_windows.cpp). The shell's precompiled header is read as a plain
   # header here; the projection's headers are the SDK's own. Compiled as for an app container (WINAPI_FAMILY_APP), which
   # is what the phone's package is compiled as: the headers then show what an app may call and nothing else.
-  # And the shell's decoders for a Java app's MediaCodec (app/Megler/player/CodecHost.cpp: Media Foundation's decoder
+  # And the shell's decoders for a Java app's MediaCodec (app/Meglet/player/CodecHost.cpp: Media Foundation's decoder
   # transforms), likewise, with the lines that hand them to the tests (core/tests/hk_codec_windows.cpp), and its reader of
   # whole files (player/MediaHost.cpp), for the files of sound alone a Java app's MediaPlayer and SoundPool hand it; the
   # shell's log they write to is hk_storage_windows.cpp's. And the shell's cameras (player/CameraHost.cpp:
   # Windows.Media.Capture), with the lines that hand them to the tests (core/tests/hk_camera_windows.cpp).
-  STORAGE_SRC=("$(w "$ROOT/app/Megler/player/StorageHost.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/core/tests/hk_storage_windows.cpp")"
-               "$(w "$ROOT/app/Megler/player/CodecHost.cpp")" "$(w "$ROOT/core/tests/hk_codec_windows.cpp")"
-               "$(w "$ROOT/app/Megler/player/MediaHost.cpp")"
-               "$(w "$ROOT/app/Megler/player/CameraHost.cpp")" "$(w "$ROOT/core/tests/hk_camera_windows.cpp")")
+  STORAGE_SRC=("$(w "$ROOT/app/Meglet/player/StorageHost.cpp")" "$(w "$ROOT/app/Meglet/shell/Strings.cpp")" "$(w "$ROOT/core/tests/hk_storage_windows.cpp")"
+               "$(w "$ROOT/app/Meglet/player/CodecHost.cpp")" "$(w "$ROOT/core/tests/hk_codec_windows.cpp")"
+               "$(w "$ROOT/app/Meglet/player/MediaHost.cpp")"
+               "$(w "$ROOT/app/Meglet/player/CameraHost.cpp")" "$(w "$ROOT/core/tests/hk_camera_windows.cpp")")
   mkdir -p "$OUT/storageobj"
   rm -f "$OUT/storageobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
@@ -332,19 +332,19 @@ elif [ "$MODE" = win ]; then
   for obj in StorageHost Strings hk_storage_windows CodecHost hk_codec_windows MediaHost CameraHost hk_camera_windows; do
     [ -f "$OUT/storageobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
-  # (MEGLER_TESTS_MAP=1: a linker map beside it, hk_tests.map, which tools/dvm-bench.sh profile reads.)
+  # (MEGLET_TESTS_MAP=1: a linker map beside it, hk_tests.map, which tools/dvm-bench.sh profile reads.)
   MAPOPT=()
-  [ "${MEGLER_TESTS_MAP:-0}" = 1 ] && MAPOPT=("/MAP:$(w "$OUT/hk_tests.map")")
-  # (MEGLER_TESTS_ORDER=<file>: the functions it names first in the program's code, in that order (link /ORDER). The
+  [ "${MEGLET_TESTS_MAP:-0}" = 1 ] && MAPOPT=("/MAP:$(w "$OUT/hk_tests.map")")
+  # (MEGLET_TESTS_ORDER=<file>: the functions it names first in the program's code, in that order (link /ORDER). The
   # interpreter's speed moves by half when unrelated code before it shifts its loop's alignment; tools/dvm-bench.sh puts
   # `hk_dvm_interpret` first, so that what it measures is the change and not where the loop fell.)
-  [ -n "${MEGLER_TESTS_ORDER:-}" ] && MAPOPT+=("/ORDER:@$(w "$MEGLER_TESTS_ORDER")")
+  [ -n "${MEGLET_TESTS_ORDER:-}" ] && MAPOPT+=("/ORDER:@$(w "$MEGLET_TESTS_ORDER")")
   "$VC/bin/Hostx64/x64/link.exe" /nologo ${MAPOPT[@]+"${MAPOPT[@]}"} "/OUT:$(w "$OUT/hk_tests.exe")" "$(w "$OUT/obj")\\*.obj" "$(w "$OUT/zobj")\\*.obj" "$(w "$OUT/gfxobj")\\*.obj" \
     "$(w "$OUT/storageobj")\\*.obj" bcrypt.lib synchronization.lib d2d1.lib d3d11.lib dwrite.lib ole32.lib oleaut32.lib ws2_32.lib iphlpapi.lib mfplat.lib mfreadwrite.lib mfuuid.lib
   echo "built $OUT/hk_tests.exe"
   if [ "$RUN" = 1 ]; then
     rm -rf "$OUT/scratch"
-    APK="${MEGLER_TEST_APK:-$USERPROFILE/Downloads/Hollow_Knight_22.10.2022_LQ.apk}"
+    APK="${MEGLET_TEST_APK:-$USERPROFILE/Downloads/Hollow_Knight_22.10.2022_LQ.apk}"
     DVM=(--dvm "$(w "$ROOT/build/guest/armeabi-v7a/dvm")")
     [ -f "$APK" ] && DVM+=(--dvm-apk "$APK")
     "$OUT/hk_tests.exe" - "$(w "$OUT/scratch")" "${DVM[@]}" "${EXTRA[@]}" || STATUS=1
@@ -368,7 +368,7 @@ elif [ "$MODE" = win ]; then
     # out of the image (tools/android9-unpack.sh fonts).
     if [ -f "$ROOT/build/android9/root/fonts/Roboto-Regular.ttf" ]; then
       echo "(with Android's own fonts)"
-      MEGLER_GFX_FONTS="$(w "$ROOT/build/android9/root/fonts")" "$OUT/hk_tests.exe" --gfx-windows - || STATUS=1
+      MEGLET_GFX_FONTS="$(w "$ROOT/build/android9/root/fonts")" "$OUT/hk_tests.exe" --gfx-windows - || STATUS=1
     fi
     # The shell's storage host: the storage's tests once more, with Windows.Storage's own objects handing the handles over
     # instead of the stand-in, on folders under a scratch folder of its own.

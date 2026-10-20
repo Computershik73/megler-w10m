@@ -14,7 +14,7 @@ public class TableRow extends LinearLayout {
     private SparseBooleanArray mCollapsed = new SparseBooleanArray();
     public TableRow(Context c) { super(c); setOrientation(HORIZONTAL); }
     public TableRow(Context c, AttributeSet a) { super(c, a); setOrientation(HORIZONTAL); }
-    void setColumnCollapsedMegler(SparseBooleanArray c) { mCollapsed = c; }
+    void setColumnCollapsedMeglet(SparseBooleanArray c) { mCollapsed = c; }
     private int columnOf(int childIndex) { int col = 0; for (int i = 0; i < childIndex; i++) { View c = getChildAt(i); LayoutParams lp = (LayoutParams) c.getLayoutParams(); if (lp.column >= 0) col = lp.column; col += Math.max(1, lp.span); } LayoutParams lp = (LayoutParams) getChildAt(childIndex).getLayoutParams(); return lp.column >= 0 ? lp.column : col; }
     int[] getColumnsWidths(int ws, int hs) {
         int count = getChildCount(), cols = 0;
@@ -82,9 +82,9 @@ public class TableRow extends LinearLayout {
         public int column = -1, span = 1;
         public LayoutParams(Context c, AttributeSet a) {
             super(c, a);
-            TypedArray t = c.obtainStyledAttributes(a, megler.S.TableRow_Cell);
-            column = t.getInt(megler.S.TableRow_Cell_layout_column, -1);
-            span = Math.max(1, t.getInt(megler.S.TableRow_Cell_layout_span, 1));
+            TypedArray t = c.obtainStyledAttributes(a, meglet.S.TableRow_Cell);
+            column = t.getInt(meglet.S.TableRow_Cell_layout_column, -1);
+            span = Math.max(1, t.getInt(meglet.S.TableRow_Cell_layout_span, 1));
             t.recycle();
             if (width == 0 && weight == 0) width = WRAP_CONTENT;
         }

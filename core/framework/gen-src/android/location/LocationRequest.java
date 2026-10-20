@@ -3,7 +3,7 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class LocationRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ACCURACY_BLOCK = 102;
     public static final int ACCURACY_CITY = 104;
     public static final int ACCURACY_FINE = 100;
@@ -20,62 +20,62 @@ public final class LocationRequest implements android.os.Parcelable {
     public static android.location.LocationRequest createFromDeprecatedCriteria(android.location.Criteria p0, long p1, float p2, boolean p3) { return new LocationRequest(); }
     public static android.location.LocationRequest createFromDeprecatedProvider(java.lang.String p0, long p1, float p2, boolean p3) { return new LocationRequest(); }
     public int describeContents() { return 0; }
-    public long getDurationMillis() { return (meglerProps.get("DurationMillis") instanceof Long ? (Long) meglerProps.get("DurationMillis") : 0L); }
+    public long getDurationMillis() { return (megletProps.get("DurationMillis") instanceof Long ? (Long) megletProps.get("DurationMillis") : 0L); }
     public long getExpirationRealtimeMs(long p0) { return 0L; }
-    public long getExpireAt() { return (meglerProps.get("ExpireAt") instanceof Long ? (Long) meglerProps.get("ExpireAt") : 0L); }
-    public long getExpireIn() { return (meglerProps.get("ExpireIn") instanceof Long ? (Long) meglerProps.get("ExpireIn") : 0L); }
-    public long getFastestInterval() { return (meglerProps.get("FastestInterval") instanceof Long ? (Long) meglerProps.get("FastestInterval") : 0L); }
-    public boolean getHideFromAppOps() { return (meglerProps.get("HideFromAppOps") instanceof Boolean ? (Boolean) meglerProps.get("HideFromAppOps") : false); }
-    public long getInterval() { return (meglerProps.get("Interval") instanceof Long ? (Long) meglerProps.get("Interval") : 0L); }
-    public long getIntervalMillis() { return (meglerProps.get("IntervalMillis") instanceof Long ? (Long) meglerProps.get("IntervalMillis") : 0L); }
-    public long getMaxUpdateDelayMillis() { return (meglerProps.get("MaxUpdateDelayMillis") instanceof Long ? (Long) meglerProps.get("MaxUpdateDelayMillis") : 0L); }
-    public int getMaxUpdates() { return (meglerProps.get("MaxUpdates") instanceof Integer ? (Integer) meglerProps.get("MaxUpdates") : 0); }
-    public float getMinUpdateDistanceMeters() { return (meglerProps.get("MinUpdateDistanceMeters") instanceof Float ? (Float) meglerProps.get("MinUpdateDistanceMeters") : 0f); }
-    public long getMinUpdateIntervalMillis() { return (meglerProps.get("MinUpdateIntervalMillis") instanceof Long ? (Long) meglerProps.get("MinUpdateIntervalMillis") : 0L); }
-    public int getNumUpdates() { return (meglerProps.get("NumUpdates") instanceof Integer ? (Integer) meglerProps.get("NumUpdates") : 0); }
-    public java.lang.String getProvider() { return (java.lang.String) meglerProps.get("Provider"); }
-    public int getQuality() { return (meglerProps.get("Quality") instanceof Integer ? (Integer) meglerProps.get("Quality") : 0); }
-    public float getSmallestDisplacement() { return (meglerProps.get("SmallestDisplacement") instanceof Float ? (Float) meglerProps.get("SmallestDisplacement") : 0f); }
-    public android.os.WorkSource getWorkSource() { return (android.os.WorkSource) meglerProps.get("WorkSource"); }
-    public boolean isAdasGnssBypass() { return (meglerProps.get("AdasGnssBypass") instanceof Boolean ? (Boolean) meglerProps.get("AdasGnssBypass") : false); }
-    public boolean isBypass() { return (meglerProps.get("Bypass") instanceof Boolean ? (Boolean) meglerProps.get("Bypass") : false); }
-    public boolean isHiddenFromAppOps() { return (meglerProps.get("HiddenFromAppOps") instanceof Boolean ? (Boolean) meglerProps.get("HiddenFromAppOps") : false); }
-    public boolean isLocationSettingsIgnored() { return (meglerProps.get("LocationSettingsIgnored") instanceof Boolean ? (Boolean) meglerProps.get("LocationSettingsIgnored") : false); }
-    public boolean isLowPower() { return (meglerProps.get("LowPower") instanceof Boolean ? (Boolean) meglerProps.get("LowPower") : false); }
-    public boolean isLowPowerMode() { return (meglerProps.get("LowPowerMode") instanceof Boolean ? (Boolean) meglerProps.get("LowPowerMode") : false); }
-    public android.location.LocationRequest setExpireAt(long p0) { meglerProps.put("ExpireAt", Long.valueOf(p0)); return this; }
-    public android.location.LocationRequest setExpireIn(long p0) { meglerProps.put("ExpireIn", Long.valueOf(p0)); return this; }
-    public android.location.LocationRequest setFastestInterval(long p0) { meglerProps.put("FastestInterval", Long.valueOf(p0)); return this; }
-    public void setHideFromAppOps(boolean p0) { meglerProps.put("HideFromAppOps", Boolean.valueOf(p0)); }
-    public android.location.LocationRequest setInterval(long p0) { meglerProps.put("Interval", Long.valueOf(p0)); return this; }
-    public android.location.LocationRequest setLocationSettingsIgnored(boolean p0) { meglerProps.put("LocationSettingsIgnored", Boolean.valueOf(p0)); return this; }
-    public android.location.LocationRequest setLowPowerMode(boolean p0) { meglerProps.put("LowPowerMode", Boolean.valueOf(p0)); return this; }
-    public android.location.LocationRequest setNumUpdates(int p0) { meglerProps.put("NumUpdates", Integer.valueOf(p0)); return this; }
-    public android.location.LocationRequest setProvider(java.lang.String p0) { meglerProps.put("Provider", p0); return this; }
-    public android.location.LocationRequest setQuality(int p0) { meglerProps.put("Quality", Integer.valueOf(p0)); return this; }
-    public android.location.LocationRequest setSmallestDisplacement(float p0) { meglerProps.put("SmallestDisplacement", Float.valueOf(p0)); return this; }
-    public void setWorkSource(android.os.WorkSource p0) { meglerProps.put("WorkSource", p0); }
+    public long getExpireAt() { return (megletProps.get("ExpireAt") instanceof Long ? (Long) megletProps.get("ExpireAt") : 0L); }
+    public long getExpireIn() { return (megletProps.get("ExpireIn") instanceof Long ? (Long) megletProps.get("ExpireIn") : 0L); }
+    public long getFastestInterval() { return (megletProps.get("FastestInterval") instanceof Long ? (Long) megletProps.get("FastestInterval") : 0L); }
+    public boolean getHideFromAppOps() { return (megletProps.get("HideFromAppOps") instanceof Boolean ? (Boolean) megletProps.get("HideFromAppOps") : false); }
+    public long getInterval() { return (megletProps.get("Interval") instanceof Long ? (Long) megletProps.get("Interval") : 0L); }
+    public long getIntervalMillis() { return (megletProps.get("IntervalMillis") instanceof Long ? (Long) megletProps.get("IntervalMillis") : 0L); }
+    public long getMaxUpdateDelayMillis() { return (megletProps.get("MaxUpdateDelayMillis") instanceof Long ? (Long) megletProps.get("MaxUpdateDelayMillis") : 0L); }
+    public int getMaxUpdates() { return (megletProps.get("MaxUpdates") instanceof Integer ? (Integer) megletProps.get("MaxUpdates") : 0); }
+    public float getMinUpdateDistanceMeters() { return (megletProps.get("MinUpdateDistanceMeters") instanceof Float ? (Float) megletProps.get("MinUpdateDistanceMeters") : 0f); }
+    public long getMinUpdateIntervalMillis() { return (megletProps.get("MinUpdateIntervalMillis") instanceof Long ? (Long) megletProps.get("MinUpdateIntervalMillis") : 0L); }
+    public int getNumUpdates() { return (megletProps.get("NumUpdates") instanceof Integer ? (Integer) megletProps.get("NumUpdates") : 0); }
+    public java.lang.String getProvider() { return (java.lang.String) megletProps.get("Provider"); }
+    public int getQuality() { return (megletProps.get("Quality") instanceof Integer ? (Integer) megletProps.get("Quality") : 0); }
+    public float getSmallestDisplacement() { return (megletProps.get("SmallestDisplacement") instanceof Float ? (Float) megletProps.get("SmallestDisplacement") : 0f); }
+    public android.os.WorkSource getWorkSource() { return (android.os.WorkSource) megletProps.get("WorkSource"); }
+    public boolean isAdasGnssBypass() { return (megletProps.get("AdasGnssBypass") instanceof Boolean ? (Boolean) megletProps.get("AdasGnssBypass") : false); }
+    public boolean isBypass() { return (megletProps.get("Bypass") instanceof Boolean ? (Boolean) megletProps.get("Bypass") : false); }
+    public boolean isHiddenFromAppOps() { return (megletProps.get("HiddenFromAppOps") instanceof Boolean ? (Boolean) megletProps.get("HiddenFromAppOps") : false); }
+    public boolean isLocationSettingsIgnored() { return (megletProps.get("LocationSettingsIgnored") instanceof Boolean ? (Boolean) megletProps.get("LocationSettingsIgnored") : false); }
+    public boolean isLowPower() { return (megletProps.get("LowPower") instanceof Boolean ? (Boolean) megletProps.get("LowPower") : false); }
+    public boolean isLowPowerMode() { return (megletProps.get("LowPowerMode") instanceof Boolean ? (Boolean) megletProps.get("LowPowerMode") : false); }
+    public android.location.LocationRequest setExpireAt(long p0) { megletProps.put("ExpireAt", Long.valueOf(p0)); return this; }
+    public android.location.LocationRequest setExpireIn(long p0) { megletProps.put("ExpireIn", Long.valueOf(p0)); return this; }
+    public android.location.LocationRequest setFastestInterval(long p0) { megletProps.put("FastestInterval", Long.valueOf(p0)); return this; }
+    public void setHideFromAppOps(boolean p0) { megletProps.put("HideFromAppOps", Boolean.valueOf(p0)); }
+    public android.location.LocationRequest setInterval(long p0) { megletProps.put("Interval", Long.valueOf(p0)); return this; }
+    public android.location.LocationRequest setLocationSettingsIgnored(boolean p0) { megletProps.put("LocationSettingsIgnored", Boolean.valueOf(p0)); return this; }
+    public android.location.LocationRequest setLowPowerMode(boolean p0) { megletProps.put("LowPowerMode", Boolean.valueOf(p0)); return this; }
+    public android.location.LocationRequest setNumUpdates(int p0) { megletProps.put("NumUpdates", Integer.valueOf(p0)); return this; }
+    public android.location.LocationRequest setProvider(java.lang.String p0) { megletProps.put("Provider", p0); return this; }
+    public android.location.LocationRequest setQuality(int p0) { megletProps.put("Quality", Integer.valueOf(p0)); return this; }
+    public android.location.LocationRequest setSmallestDisplacement(float p0) { megletProps.put("SmallestDisplacement", Float.valueOf(p0)); return this; }
+    public void setWorkSource(android.os.WorkSource p0) { megletProps.put("WorkSource", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected LocationRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(long p0) {}
         public Builder(android.location.LocationRequest p0) {}
-        public android.location.LocationRequest build() { android.location.LocationRequest x = new android.location.LocationRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.location.LocationRequest build() { android.location.LocationRequest x = new android.location.LocationRequest(); x.megletProps.putAll(megletProps); return x; }
         public android.location.LocationRequest.Builder clearMinUpdateIntervalMillis() { return this; }
-        public android.location.LocationRequest.Builder setAdasGnssBypass(boolean p0) { meglerProps.put("AdasGnssBypass", Boolean.valueOf(p0)); return this; }
-        public android.location.LocationRequest.Builder setDurationMillis(long p0) { meglerProps.put("DurationMillis", Long.valueOf(p0)); return this; }
-        public android.location.LocationRequest.Builder setHiddenFromAppOps(boolean p0) { meglerProps.put("HiddenFromAppOps", Boolean.valueOf(p0)); return this; }
-        public android.location.LocationRequest.Builder setIntervalMillis(long p0) { meglerProps.put("IntervalMillis", Long.valueOf(p0)); return this; }
-        public android.location.LocationRequest.Builder setLocationSettingsIgnored(boolean p0) { meglerProps.put("LocationSettingsIgnored", Boolean.valueOf(p0)); return this; }
-        public android.location.LocationRequest.Builder setLowPower(boolean p0) { meglerProps.put("LowPower", Boolean.valueOf(p0)); return this; }
-        public android.location.LocationRequest.Builder setMaxUpdateDelayMillis(long p0) { meglerProps.put("MaxUpdateDelayMillis", Long.valueOf(p0)); return this; }
-        public android.location.LocationRequest.Builder setMaxUpdates(int p0) { meglerProps.put("MaxUpdates", Integer.valueOf(p0)); return this; }
-        public android.location.LocationRequest.Builder setMinUpdateDistanceMeters(float p0) { meglerProps.put("MinUpdateDistanceMeters", Float.valueOf(p0)); return this; }
-        public android.location.LocationRequest.Builder setMinUpdateIntervalMillis(long p0) { meglerProps.put("MinUpdateIntervalMillis", Long.valueOf(p0)); return this; }
-        public android.location.LocationRequest.Builder setQuality(int p0) { meglerProps.put("Quality", Integer.valueOf(p0)); return this; }
-        public android.location.LocationRequest.Builder setQuality(android.location.Criteria p0) { meglerProps.put("Quality", p0); return this; }
-        public android.location.LocationRequest.Builder setWorkSource(android.os.WorkSource p0) { meglerProps.put("WorkSource", p0); return this; }
+        public android.location.LocationRequest.Builder setAdasGnssBypass(boolean p0) { megletProps.put("AdasGnssBypass", Boolean.valueOf(p0)); return this; }
+        public android.location.LocationRequest.Builder setDurationMillis(long p0) { megletProps.put("DurationMillis", Long.valueOf(p0)); return this; }
+        public android.location.LocationRequest.Builder setHiddenFromAppOps(boolean p0) { megletProps.put("HiddenFromAppOps", Boolean.valueOf(p0)); return this; }
+        public android.location.LocationRequest.Builder setIntervalMillis(long p0) { megletProps.put("IntervalMillis", Long.valueOf(p0)); return this; }
+        public android.location.LocationRequest.Builder setLocationSettingsIgnored(boolean p0) { megletProps.put("LocationSettingsIgnored", Boolean.valueOf(p0)); return this; }
+        public android.location.LocationRequest.Builder setLowPower(boolean p0) { megletProps.put("LowPower", Boolean.valueOf(p0)); return this; }
+        public android.location.LocationRequest.Builder setMaxUpdateDelayMillis(long p0) { megletProps.put("MaxUpdateDelayMillis", Long.valueOf(p0)); return this; }
+        public android.location.LocationRequest.Builder setMaxUpdates(int p0) { megletProps.put("MaxUpdates", Integer.valueOf(p0)); return this; }
+        public android.location.LocationRequest.Builder setMinUpdateDistanceMeters(float p0) { megletProps.put("MinUpdateDistanceMeters", Float.valueOf(p0)); return this; }
+        public android.location.LocationRequest.Builder setMinUpdateIntervalMillis(long p0) { megletProps.put("MinUpdateIntervalMillis", Long.valueOf(p0)); return this; }
+        public android.location.LocationRequest.Builder setQuality(int p0) { megletProps.put("Quality", Integer.valueOf(p0)); return this; }
+        public android.location.LocationRequest.Builder setQuality(android.location.Criteria p0) { megletProps.put("Quality", p0); return this; }
+        public android.location.LocationRequest.Builder setWorkSource(android.os.WorkSource p0) { megletProps.put("WorkSource", p0); return this; }
         Builder() { this((long) 0L); }
     }
 }

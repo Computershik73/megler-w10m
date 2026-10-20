@@ -3,7 +3,7 @@ package android.opengl;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ETC1 {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DECODED_BLOCK_SIZE = 48;
     public static final int ENCODED_BLOCK_SIZE = 8;
     public static final int ETC1_RGB8_OES = 36196;

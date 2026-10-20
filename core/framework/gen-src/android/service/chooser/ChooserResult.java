@@ -3,7 +3,7 @@ package android.service.chooser;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ChooserResult implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CHOOSER_RESULT_COPY = 1;
     public static final int CHOOSER_RESULT_EDIT = 2;
     public static final int CHOOSER_RESULT_SELECTED_COMPONENT = 0;
@@ -12,9 +12,9 @@ public final class ChooserResult implements android.os.Parcelable {
     public static final long SEND_CHOOSER_RESULT = 263474465L;
     public ChooserResult(int p0, android.content.ComponentName p1, boolean p2) {}
     public int describeContents() { return 0; }
-    public android.content.ComponentName getSelectedComponent() { return (android.content.ComponentName) meglerProps.get("SelectedComponent"); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
-    public boolean isShortcut() { return (meglerProps.get("Shortcut") instanceof Boolean ? (Boolean) meglerProps.get("Shortcut") : false); }
+    public android.content.ComponentName getSelectedComponent() { return (android.content.ComponentName) megletProps.get("SelectedComponent"); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public boolean isShortcut() { return (megletProps.get("Shortcut") instanceof Boolean ? (Boolean) megletProps.get("Shortcut") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ChooserResult() { this((int) 0, (android.content.ComponentName) null, (boolean) false); }
 }

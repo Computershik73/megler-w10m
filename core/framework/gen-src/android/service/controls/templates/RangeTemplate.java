@@ -3,13 +3,13 @@ package android.service.controls.templates;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RangeTemplate extends android.service.controls.templates.ControlTemplate {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public RangeTemplate(java.lang.String p0, float p1, float p2, float p3, float p4, java.lang.CharSequence p5) { super(); }
-    public float getCurrentValue() { return (meglerProps.get("CurrentValue") instanceof Float ? (Float) meglerProps.get("CurrentValue") : 0f); }
-    public java.lang.CharSequence getFormatString() { return (java.lang.CharSequence) meglerProps.get("FormatString"); }
-    public float getMaxValue() { return (meglerProps.get("MaxValue") instanceof Float ? (Float) meglerProps.get("MaxValue") : 0f); }
-    public float getMinValue() { return (meglerProps.get("MinValue") instanceof Float ? (Float) meglerProps.get("MinValue") : 0f); }
-    public float getStepValue() { return (meglerProps.get("StepValue") instanceof Float ? (Float) meglerProps.get("StepValue") : 0f); }
-    public int getTemplateType() { return (meglerProps.get("TemplateType") instanceof Integer ? (Integer) meglerProps.get("TemplateType") : 0); }
+    public float getCurrentValue() { return (megletProps.get("CurrentValue") instanceof Float ? (Float) megletProps.get("CurrentValue") : 0f); }
+    public java.lang.CharSequence getFormatString() { return (java.lang.CharSequence) megletProps.get("FormatString"); }
+    public float getMaxValue() { return (megletProps.get("MaxValue") instanceof Float ? (Float) megletProps.get("MaxValue") : 0f); }
+    public float getMinValue() { return (megletProps.get("MinValue") instanceof Float ? (Float) megletProps.get("MinValue") : 0f); }
+    public float getStepValue() { return (megletProps.get("StepValue") instanceof Float ? (Float) megletProps.get("StepValue") : 0f); }
+    public int getTemplateType() { return (megletProps.get("TemplateType") instanceof Integer ? (Integer) megletProps.get("TemplateType") : 0); }
     RangeTemplate() { this((java.lang.String) null, (float) 0f, (float) 0f, (float) 0f, (float) 0f, (java.lang.CharSequence) null); }
 }

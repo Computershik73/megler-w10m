@@ -3,7 +3,7 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CameraCaptureSession implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int SESSION_ID_NONE = -1;
     public CameraCaptureSession() {}
     public abstract void abortCaptures();
@@ -28,7 +28,7 @@ public abstract class CameraCaptureSession implements java.lang.AutoCloseable {
     public abstract void tearDown(android.view.Surface p0);
     public void updateOutputConfiguration(android.hardware.camera2.params.OutputConfiguration p0) {}
     public static abstract class CaptureCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int NO_FRAMES_CAPTURED = -1;
         public CaptureCallback() {}
         public void onCaptureBufferLost(android.hardware.camera2.CameraCaptureSession p0, android.hardware.camera2.CaptureRequest p1, android.view.Surface p2, long p3) {}

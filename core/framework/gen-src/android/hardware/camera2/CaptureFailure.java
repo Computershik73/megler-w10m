@@ -3,15 +3,15 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CaptureFailure {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int REASON_ERROR = 0;
     public static final int REASON_FLUSHED = 1;
     public CaptureFailure(android.hardware.camera2.CaptureRequest p0, int p1, boolean p2, int p3, long p4, java.lang.String p5) {}
-    public long getFrameNumber() { return (meglerProps.get("FrameNumber") instanceof Long ? (Long) meglerProps.get("FrameNumber") : 0L); }
-    public java.lang.String getPhysicalCameraId() { return (java.lang.String) meglerProps.get("PhysicalCameraId"); }
-    public int getReason() { return (meglerProps.get("Reason") instanceof Integer ? (Integer) meglerProps.get("Reason") : 0); }
-    public android.hardware.camera2.CaptureRequest getRequest() { return (android.hardware.camera2.CaptureRequest) meglerProps.get("Request"); }
-    public int getSequenceId() { return (meglerProps.get("SequenceId") instanceof Integer ? (Integer) meglerProps.get("SequenceId") : 0); }
+    public long getFrameNumber() { return (megletProps.get("FrameNumber") instanceof Long ? (Long) megletProps.get("FrameNumber") : 0L); }
+    public java.lang.String getPhysicalCameraId() { return (java.lang.String) megletProps.get("PhysicalCameraId"); }
+    public int getReason() { return (megletProps.get("Reason") instanceof Integer ? (Integer) megletProps.get("Reason") : 0); }
+    public android.hardware.camera2.CaptureRequest getRequest() { return (android.hardware.camera2.CaptureRequest) megletProps.get("Request"); }
+    public int getSequenceId() { return (megletProps.get("SequenceId") instanceof Integer ? (Integer) megletProps.get("SequenceId") : 0); }
     public boolean wasImageCaptured() { return false; }
     CaptureFailure() { this((android.hardware.camera2.CaptureRequest) null, (int) 0, (boolean) false, (int) 0, (long) 0L, (java.lang.String) null); }
 }

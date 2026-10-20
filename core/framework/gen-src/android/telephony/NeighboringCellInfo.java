@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class NeighboringCellInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int UNKNOWN_CID = -1;
     public static final int UNKNOWN_RSSI = 99;
@@ -14,12 +14,12 @@ public class NeighboringCellInfo implements android.os.Parcelable {
     public NeighboringCellInfo(android.telephony.CellInfoGsm p0) {}
     public NeighboringCellInfo(android.telephony.CellInfoWcdma p0) {}
     public int describeContents() { return 0; }
-    public int getCid() { return (meglerProps.get("Cid") instanceof Integer ? (Integer) meglerProps.get("Cid") : 0); }
-    public int getLac() { return (meglerProps.get("Lac") instanceof Integer ? (Integer) meglerProps.get("Lac") : 0); }
-    public int getNetworkType() { return (meglerProps.get("NetworkType") instanceof Integer ? (Integer) meglerProps.get("NetworkType") : 0); }
-    public int getPsc() { return (meglerProps.get("Psc") instanceof Integer ? (Integer) meglerProps.get("Psc") : 0); }
-    public int getRssi() { return (meglerProps.get("Rssi") instanceof Integer ? (Integer) meglerProps.get("Rssi") : 0); }
-    public void setCid(int p0) { meglerProps.put("Cid", Integer.valueOf(p0)); }
-    public void setRssi(int p0) { meglerProps.put("Rssi", Integer.valueOf(p0)); }
+    public int getCid() { return (megletProps.get("Cid") instanceof Integer ? (Integer) megletProps.get("Cid") : 0); }
+    public int getLac() { return (megletProps.get("Lac") instanceof Integer ? (Integer) megletProps.get("Lac") : 0); }
+    public int getNetworkType() { return (megletProps.get("NetworkType") instanceof Integer ? (Integer) megletProps.get("NetworkType") : 0); }
+    public int getPsc() { return (megletProps.get("Psc") instanceof Integer ? (Integer) megletProps.get("Psc") : 0); }
+    public int getRssi() { return (megletProps.get("Rssi") instanceof Integer ? (Integer) megletProps.get("Rssi") : 0); }
+    public void setCid(int p0) { megletProps.put("Cid", Integer.valueOf(p0)); }
+    public void setRssi(int p0) { megletProps.put("Rssi", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

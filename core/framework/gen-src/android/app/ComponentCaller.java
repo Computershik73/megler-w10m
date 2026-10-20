@@ -3,10 +3,10 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ComponentCaller {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public ComponentCaller(android.os.IBinder p0, android.os.IBinder p1) {}
     public int checkContentUriPermission(android.net.Uri p0, int p1) { return 0; }
-    public java.lang.String getPackage() { return (java.lang.String) meglerProps.get("Package"); }
-    public int getUid() { return (meglerProps.get("Uid") instanceof Integer ? (Integer) meglerProps.get("Uid") : 0); }
+    public java.lang.String getPackage() { return (java.lang.String) megletProps.get("Package"); }
+    public int getUid() { return (megletProps.get("Uid") instanceof Integer ? (Integer) megletProps.get("Uid") : 0); }
     ComponentCaller() { this((android.os.IBinder) null, (android.os.IBinder) null); }
 }

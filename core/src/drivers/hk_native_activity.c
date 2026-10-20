@@ -128,7 +128,7 @@ static void main_thread(void *arg)
     hk_run_ended(0, "stopped");
 }
 
-static bool na_start(const megler_run_config *config, const hk_apk_info *info)
+static bool na_start(const meglet_run_config *config, const hk_apk_info *info)
 {
     char cls[220], *p;
     hk_jobj *activity;

@@ -3,7 +3,7 @@ package android.service.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CredentialProviderService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_AUTOFILL_ID = "android.service.credentials.extra.AUTOFILL_ID";
     public static final java.lang.String EXTRA_BEGIN_GET_CREDENTIAL_REQUEST = "android.service.credentials.extra.BEGIN_GET_CREDENTIAL_REQUEST";
     public static final java.lang.String EXTRA_BEGIN_GET_CREDENTIAL_RESPONSE = "android.service.credentials.extra.BEGIN_GET_CREDENTIAL_RESPONSE";

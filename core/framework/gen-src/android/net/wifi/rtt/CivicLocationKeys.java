@@ -3,7 +3,7 @@ package android.net.wifi.rtt;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CivicLocationKeys {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ADDITIONAL_CODE = 32;
     public static final int APT = 26;
     public static final int BOROUGH = 4;

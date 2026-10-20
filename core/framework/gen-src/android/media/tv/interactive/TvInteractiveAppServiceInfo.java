@@ -3,7 +3,7 @@ package android.media.tv.interactive;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TvInteractiveAppServiceInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int INTERACTIVE_APP_TYPE_ATSC = 2;
     public static final int INTERACTIVE_APP_TYPE_GINGA = 4;
@@ -12,11 +12,11 @@ public final class TvInteractiveAppServiceInfo implements android.os.Parcelable 
     public static final int INTERACTIVE_APP_TYPE_TARGETED_AD = 8;
     public TvInteractiveAppServiceInfo(android.content.Context p0, android.content.ComponentName p1) {}
     public int describeContents() { return 0; }
-    public android.content.ComponentName getComponent() { return (android.content.ComponentName) meglerProps.get("Component"); }
-    public java.util.List getCustomSupportedTypes() { return (meglerProps.get("CustomSupportedTypes") != null ? (java.util.List) meglerProps.get("CustomSupportedTypes") : new java.util.ArrayList()); }
-    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
-    public android.content.pm.ServiceInfo getServiceInfo() { return (android.content.pm.ServiceInfo) meglerProps.get("ServiceInfo"); }
-    public int getSupportedTypes() { return (meglerProps.get("SupportedTypes") instanceof Integer ? (Integer) meglerProps.get("SupportedTypes") : 0); }
+    public android.content.ComponentName getComponent() { return (android.content.ComponentName) megletProps.get("Component"); }
+    public java.util.List getCustomSupportedTypes() { return (megletProps.get("CustomSupportedTypes") != null ? (java.util.List) megletProps.get("CustomSupportedTypes") : new java.util.ArrayList()); }
+    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
+    public android.content.pm.ServiceInfo getServiceInfo() { return (android.content.pm.ServiceInfo) megletProps.get("ServiceInfo"); }
+    public int getSupportedTypes() { return (megletProps.get("SupportedTypes") instanceof Integer ? (Integer) megletProps.get("SupportedTypes") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TvInteractiveAppServiceInfo() { this((android.content.Context) null, (android.content.ComponentName) null); }
 }

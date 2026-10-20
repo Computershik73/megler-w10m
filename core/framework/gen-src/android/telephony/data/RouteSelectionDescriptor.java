@@ -3,7 +3,7 @@ package android.telephony.data;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RouteSelectionDescriptor implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int MAX_ROUTE_PRECEDENCE = 255;
     public static final int MAX_ROUTE_SSC_MODE = 3;
@@ -17,11 +17,11 @@ public final class RouteSelectionDescriptor implements android.os.Parcelable {
     public static final int SESSION_TYPE_IPV6 = 1;
     public RouteSelectionDescriptor(int p0, int p1, int p2, java.util.List p3, java.util.List p4) {}
     public int describeContents() { return 0; }
-    public java.util.List getDataNetworkName() { return (meglerProps.get("DataNetworkName") != null ? (java.util.List) meglerProps.get("DataNetworkName") : new java.util.ArrayList()); }
-    public int getPrecedence() { return (meglerProps.get("Precedence") instanceof Integer ? (Integer) meglerProps.get("Precedence") : 0); }
-    public int getSessionType() { return (meglerProps.get("SessionType") instanceof Integer ? (Integer) meglerProps.get("SessionType") : 0); }
-    public java.util.List getSliceInfo() { return (meglerProps.get("SliceInfo") != null ? (java.util.List) meglerProps.get("SliceInfo") : new java.util.ArrayList()); }
-    public int getSscMode() { return (meglerProps.get("SscMode") instanceof Integer ? (Integer) meglerProps.get("SscMode") : 0); }
+    public java.util.List getDataNetworkName() { return (megletProps.get("DataNetworkName") != null ? (java.util.List) megletProps.get("DataNetworkName") : new java.util.ArrayList()); }
+    public int getPrecedence() { return (megletProps.get("Precedence") instanceof Integer ? (Integer) megletProps.get("Precedence") : 0); }
+    public int getSessionType() { return (megletProps.get("SessionType") instanceof Integer ? (Integer) megletProps.get("SessionType") : 0); }
+    public java.util.List getSliceInfo() { return (megletProps.get("SliceInfo") != null ? (java.util.List) megletProps.get("SliceInfo") : new java.util.ArrayList()); }
+    public int getSscMode() { return (megletProps.get("SscMode") instanceof Integer ? (Integer) megletProps.get("SscMode") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     RouteSelectionDescriptor() { this((int) 0, (int) 0, (int) 0, (java.util.List) null, (java.util.List) null); }
 }

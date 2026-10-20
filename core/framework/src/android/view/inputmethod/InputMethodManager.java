@@ -2,21 +2,21 @@ package android.view.inputmethod;
 
 import android.view.View;
 
-/** The keyboard: the iPhone's, shown for the focused text view and typing into its input connection (megler.InputMethods). */
+/** The keyboard: the iPhone's, shown for the focused text view and typing into its input connection (meglet.InputMethods). */
 public final class InputMethodManager {
     public static final int SHOW_IMPLICIT = 1, SHOW_FORCED = 2, HIDE_IMPLICIT_ONLY = 1, HIDE_NOT_ALWAYS = 2, RESULT_UNCHANGED_SHOWN = 0, RESULT_UNCHANGED_HIDDEN = 1,
         RESULT_SHOWN = 2, RESULT_HIDDEN = 3;
-    public boolean showSoftInput(View v, int flags) { return megler.InputMethods.show(v); }
-    public boolean showSoftInput(View v, int flags, android.os.ResultReceiver r) { boolean s = megler.InputMethods.show(v); if (r != null) r.send(s ? RESULT_SHOWN : RESULT_UNCHANGED_SHOWN, null); return s; }
-    public boolean hideSoftInputFromWindow(android.os.IBinder token, int flags) { return megler.InputMethods.hide(); }
-    public boolean hideSoftInputFromWindow(android.os.IBinder token, int flags, android.os.ResultReceiver r) { boolean h = megler.InputMethods.hide(); if (r != null) r.send(h ? RESULT_HIDDEN : RESULT_UNCHANGED_HIDDEN, null); return h; }
-    public void toggleSoftInput(int show, int hide) { if (megler.InputMethods.shown()) megler.InputMethods.hide(); else megler.InputMethods.show(megler.InputMethods.focused()); }
+    public boolean showSoftInput(View v, int flags) { return meglet.InputMethods.show(v); }
+    public boolean showSoftInput(View v, int flags, android.os.ResultReceiver r) { boolean s = meglet.InputMethods.show(v); if (r != null) r.send(s ? RESULT_SHOWN : RESULT_UNCHANGED_SHOWN, null); return s; }
+    public boolean hideSoftInputFromWindow(android.os.IBinder token, int flags) { return meglet.InputMethods.hide(); }
+    public boolean hideSoftInputFromWindow(android.os.IBinder token, int flags, android.os.ResultReceiver r) { boolean h = meglet.InputMethods.hide(); if (r != null) r.send(h ? RESULT_HIDDEN : RESULT_UNCHANGED_HIDDEN, null); return h; }
+    public void toggleSoftInput(int show, int hide) { if (meglet.InputMethods.shown()) meglet.InputMethods.hide(); else meglet.InputMethods.show(meglet.InputMethods.focused()); }
     public void toggleSoftInputFromWindow(android.os.IBinder token, int show, int hide) { toggleSoftInput(show, hide); }
-    public boolean isActive() { return megler.InputMethods.focused() != null; }
-    public boolean isActive(View v) { return megler.InputMethods.focused() == v; }
-    public boolean isAcceptingText() { return megler.InputMethods.shown(); }
+    public boolean isActive() { return meglet.InputMethods.focused() != null; }
+    public boolean isActive(View v) { return meglet.InputMethods.focused() == v; }
+    public boolean isAcceptingText() { return meglet.InputMethods.shown(); }
     public boolean isFullscreenMode() { return false; }
-    public void restartInput(View v) { megler.InputMethods.restart(v); }
+    public void restartInput(View v) { meglet.InputMethods.restart(v); }
     public void updateSelection(View v, int ss, int se, int cs, int ce) {}
     public void updateCursorAnchorInfo(View v, CursorAnchorInfo info) {}
     public void updateExtractedText(View v, int token, ExtractedText t) {}

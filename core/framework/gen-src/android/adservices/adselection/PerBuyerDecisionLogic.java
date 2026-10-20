@@ -3,12 +3,12 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PerBuyerDecisionLogic implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.adservices.adselection.PerBuyerDecisionLogic EMPTY;
     public PerBuyerDecisionLogic(java.util.Map p0) {}
     public int describeContents() { return 0; }
-    public java.util.Map getPerBuyerLogicMap() { return (meglerProps.get("PerBuyerLogicMap") != null ? (java.util.Map) meglerProps.get("PerBuyerLogicMap") : new java.util.HashMap()); }
+    public java.util.Map getPerBuyerLogicMap() { return (megletProps.get("PerBuyerLogicMap") != null ? (java.util.Map) megletProps.get("PerBuyerLogicMap") : new java.util.HashMap()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PerBuyerDecisionLogic() { this((java.util.Map) null); }
 }

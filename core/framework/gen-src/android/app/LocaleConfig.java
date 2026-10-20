@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LocaleConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int STATUS_NOT_SPECIFIED = 1;
     public static final int STATUS_PARSING_FAILED = 2;
@@ -16,9 +16,9 @@ public class LocaleConfig implements android.os.Parcelable {
     public static android.app.LocaleConfig fromContextIgnoringOverride(android.content.Context p0) { return new LocaleConfig(); }
     public boolean containsLocale(java.util.Locale p0) { return false; }
     public int describeContents() { return 0; }
-    public java.util.Locale getDefaultLocale() { return (java.util.Locale) meglerProps.get("DefaultLocale"); }
-    public int getStatus() { return (meglerProps.get("Status") instanceof Integer ? (Integer) meglerProps.get("Status") : 0); }
-    public android.os.LocaleList getSupportedLocales() { return (android.os.LocaleList) meglerProps.get("SupportedLocales"); }
+    public java.util.Locale getDefaultLocale() { return (java.util.Locale) megletProps.get("DefaultLocale"); }
+    public int getStatus() { return (megletProps.get("Status") instanceof Integer ? (Integer) megletProps.get("Status") : 0); }
+    public android.os.LocaleList getSupportedLocales() { return (android.os.LocaleList) megletProps.get("SupportedLocales"); }
     public boolean isSameLocaleConfig(android.app.LocaleConfig p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     LocaleConfig() { this((android.content.Context) null); }

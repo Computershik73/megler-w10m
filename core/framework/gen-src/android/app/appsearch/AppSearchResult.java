@@ -3,7 +3,7 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AppSearchResult {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int RESULT_ABORTED = 13;
     public static final int RESULT_ALREADY_EXISTS = 12;
     public static final int RESULT_DENIED = 9;
@@ -22,9 +22,9 @@ public final class AppSearchResult {
     public static android.app.appsearch.AppSearchResult newFailedResult(android.app.appsearch.AppSearchResult p0) { return new AppSearchResult(); }
     public static android.app.appsearch.AppSearchResult newSuccessfulResult(java.lang.Object p0) { return new AppSearchResult(); }
     public static android.app.appsearch.AppSearchResult throwableToFailedResult(java.lang.Throwable p0) { return new AppSearchResult(); }
-    public java.lang.String getErrorMessage() { return (java.lang.String) meglerProps.get("ErrorMessage"); }
-    public int getResultCode() { return (meglerProps.get("ResultCode") instanceof Integer ? (Integer) meglerProps.get("ResultCode") : 0); }
-    public java.lang.Object getResultValue() { return (java.lang.Object) meglerProps.get("ResultValue"); }
-    public boolean isSuccess() { return (meglerProps.get("Success") instanceof Boolean ? (Boolean) meglerProps.get("Success") : false); }
+    public java.lang.String getErrorMessage() { return (java.lang.String) megletProps.get("ErrorMessage"); }
+    public int getResultCode() { return (megletProps.get("ResultCode") instanceof Integer ? (Integer) megletProps.get("ResultCode") : 0); }
+    public java.lang.Object getResultValue() { return (java.lang.Object) megletProps.get("ResultValue"); }
+    public boolean isSuccess() { return (megletProps.get("Success") instanceof Boolean ? (Boolean) megletProps.get("Success") : false); }
     protected AppSearchResult() {}
 }

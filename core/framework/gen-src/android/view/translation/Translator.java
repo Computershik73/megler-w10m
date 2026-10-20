@@ -3,16 +3,16 @@ package android.view.translation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Translator {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_SERVICE_BINDER = "binder";
     public static final java.lang.String EXTRA_SESSION_ID = "sessionId";
     public Translator(android.content.Context p0, android.view.translation.TranslationContext p1, int p2, android.view.translation.TranslationManager p3, android.os.Handler p4, android.view.translation.ITranslationManager p5) {}
     public Translator(android.content.Context p0, android.view.translation.TranslationContext p1, int p2, android.view.translation.TranslationManager p3, android.os.Handler p4, android.view.translation.ITranslationManager p5, java.util.function.Consumer p6) {}
     public void destroy() {}
     public void dump(java.lang.String p0, java.io.PrintWriter p1) {}
-    public android.view.translation.TranslationContext getTranslationContext() { return (android.view.translation.TranslationContext) meglerProps.get("TranslationContext"); }
-    public int getTranslatorId() { return (meglerProps.get("TranslatorId") instanceof Integer ? (Integer) meglerProps.get("TranslatorId") : 0); }
-    public boolean isDestroyed() { return (meglerProps.get("Destroyed") instanceof Boolean ? (Boolean) meglerProps.get("Destroyed") : false); }
+    public android.view.translation.TranslationContext getTranslationContext() { return (android.view.translation.TranslationContext) megletProps.get("TranslationContext"); }
+    public int getTranslatorId() { return (megletProps.get("TranslatorId") instanceof Integer ? (Integer) megletProps.get("TranslatorId") : 0); }
+    public boolean isDestroyed() { return (megletProps.get("Destroyed") instanceof Boolean ? (Boolean) megletProps.get("Destroyed") : false); }
     public void requestUiTranslate(android.view.translation.TranslationRequest p0, java.util.concurrent.Executor p1, java.util.function.Consumer p2) {}
     public void translate(android.view.translation.TranslationRequest p0, android.os.CancellationSignal p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) {}
     public void translate(android.view.translation.TranslationRequest p0, java.util.concurrent.Executor p1, java.util.function.Consumer p2) {}

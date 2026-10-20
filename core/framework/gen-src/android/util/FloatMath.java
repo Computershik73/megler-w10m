@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class FloatMath {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static float ceil(float p0) { return 0f; }
     public static float cos(float p0) { return 0f; }
     public static float exp(float p0) { return 0f; }

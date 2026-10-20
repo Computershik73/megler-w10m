@@ -3,7 +3,7 @@ package android.app.sdksandbox;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SdkSandboxManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_START_SANDBOXED_ACTIVITY = "android.app.sdksandbox.action.START_SANDBOXED_ACTIVITY";
     public static final java.lang.String EXTRA_DISPLAY_ID = "android.app.sdksandbox.extra.DISPLAY_ID";
     public static final java.lang.String EXTRA_HEIGHT_IN_PIXELS = "android.app.sdksandbox.extra.HEIGHT_IN_PIXELS";
@@ -28,11 +28,11 @@ public final class SdkSandboxManager {
     public static int getSdkSandboxState() { return 0; }
     public void addSdkSandboxProcessDeathCallback(java.util.concurrent.Executor p0, android.app.sdksandbox.SdkSandboxManager.SdkSandboxProcessDeathCallback p1) {}
     public void addSyncedSharedPreferencesKeys(java.util.Set p0) {}
-    public android.os.IBinder getAdServicesManager() { return (android.os.IBinder) meglerProps.get("AdServicesManager"); }
-    public java.util.List getAppOwnedSdkSandboxInterfaces() { return (meglerProps.get("AppOwnedSdkSandboxInterfaces") != null ? (java.util.List) meglerProps.get("AppOwnedSdkSandboxInterfaces") : new java.util.ArrayList()); }
-    public java.util.List getSandboxedSdks() { return (meglerProps.get("SandboxedSdks") != null ? (java.util.List) meglerProps.get("SandboxedSdks") : new java.util.ArrayList()); }
-    public java.util.Set getSyncedSharedPreferencesKeys() { return (meglerProps.get("SyncedSharedPreferencesKeys") != null ? (java.util.Set) meglerProps.get("SyncedSharedPreferencesKeys") : new java.util.HashSet()); }
-    public boolean isSdkSandboxServiceRunning() { return (meglerProps.get("SdkSandboxServiceRunning") instanceof Boolean ? (Boolean) meglerProps.get("SdkSandboxServiceRunning") : false); }
+    public android.os.IBinder getAdServicesManager() { return (android.os.IBinder) megletProps.get("AdServicesManager"); }
+    public java.util.List getAppOwnedSdkSandboxInterfaces() { return (megletProps.get("AppOwnedSdkSandboxInterfaces") != null ? (java.util.List) megletProps.get("AppOwnedSdkSandboxInterfaces") : new java.util.ArrayList()); }
+    public java.util.List getSandboxedSdks() { return (megletProps.get("SandboxedSdks") != null ? (java.util.List) megletProps.get("SandboxedSdks") : new java.util.ArrayList()); }
+    public java.util.Set getSyncedSharedPreferencesKeys() { return (megletProps.get("SyncedSharedPreferencesKeys") != null ? (java.util.Set) megletProps.get("SyncedSharedPreferencesKeys") : new java.util.HashSet()); }
+    public boolean isSdkSandboxServiceRunning() { return (megletProps.get("SdkSandboxServiceRunning") instanceof Boolean ? (Boolean) megletProps.get("SdkSandboxServiceRunning") : false); }
     public void loadSdk(java.lang.String p0, android.os.Bundle p1, java.util.concurrent.Executor p2, android.os.OutcomeReceiver p3) {}
     public void registerAppOwnedSdkSandboxInterface(android.app.sdksandbox.AppOwnedSdkSandboxInterface p0) {}
     public void removeSdkSandboxProcessDeathCallback(android.app.sdksandbox.SdkSandboxManager.SdkSandboxProcessDeathCallback p0) {}

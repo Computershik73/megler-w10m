@@ -3,59 +3,59 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TextAppearanceInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.view.inputmethod.TextAppearanceInfo createFromTextView(android.widget.TextView p0) { return new TextAppearanceInfo(); }
     public int describeContents() { return 0; }
-    public java.lang.String getFontFeatureSettings() { return (java.lang.String) meglerProps.get("FontFeatureSettings"); }
-    public java.lang.String getFontVariationSettings() { return (java.lang.String) meglerProps.get("FontVariationSettings"); }
-    public int getHighlightTextColor() { return (meglerProps.get("HighlightTextColor") instanceof Integer ? (Integer) meglerProps.get("HighlightTextColor") : 0); }
-    public int getHintTextColor() { return (meglerProps.get("HintTextColor") instanceof Integer ? (Integer) meglerProps.get("HintTextColor") : 0); }
-    public float getLetterSpacing() { return (meglerProps.get("LetterSpacing") instanceof Float ? (Float) meglerProps.get("LetterSpacing") : 0f); }
-    public int getLineBreakStyle() { return (meglerProps.get("LineBreakStyle") instanceof Integer ? (Integer) meglerProps.get("LineBreakStyle") : 0); }
-    public int getLineBreakWordStyle() { return (meglerProps.get("LineBreakWordStyle") instanceof Integer ? (Integer) meglerProps.get("LineBreakWordStyle") : 0); }
-    public int getLinkTextColor() { return (meglerProps.get("LinkTextColor") instanceof Integer ? (Integer) meglerProps.get("LinkTextColor") : 0); }
-    public int getShadowColor() { return (meglerProps.get("ShadowColor") instanceof Integer ? (Integer) meglerProps.get("ShadowColor") : 0); }
-    public float getShadowDx() { return (meglerProps.get("ShadowDx") instanceof Float ? (Float) meglerProps.get("ShadowDx") : 0f); }
-    public float getShadowDy() { return (meglerProps.get("ShadowDy") instanceof Float ? (Float) meglerProps.get("ShadowDy") : 0f); }
-    public float getShadowRadius() { return (meglerProps.get("ShadowRadius") instanceof Float ? (Float) meglerProps.get("ShadowRadius") : 0f); }
-    public java.lang.String getSystemFontFamilyName() { return (java.lang.String) meglerProps.get("SystemFontFamilyName"); }
-    public int getTextColor() { return (meglerProps.get("TextColor") instanceof Integer ? (Integer) meglerProps.get("TextColor") : 0); }
-    public int getTextFontWeight() { return (meglerProps.get("TextFontWeight") instanceof Integer ? (Integer) meglerProps.get("TextFontWeight") : 0); }
-    public android.os.LocaleList getTextLocales() { return (android.os.LocaleList) meglerProps.get("TextLocales"); }
-    public float getTextScaleX() { return (meglerProps.get("TextScaleX") instanceof Float ? (Float) meglerProps.get("TextScaleX") : 0f); }
-    public float getTextSize() { return (meglerProps.get("TextSize") instanceof Float ? (Float) meglerProps.get("TextSize") : 0f); }
-    public int getTextStyle() { return (meglerProps.get("TextStyle") instanceof Integer ? (Integer) meglerProps.get("TextStyle") : 0); }
-    public boolean isAllCaps() { return (meglerProps.get("AllCaps") instanceof Boolean ? (Boolean) meglerProps.get("AllCaps") : false); }
-    public boolean isElegantTextHeight() { return (meglerProps.get("ElegantTextHeight") instanceof Boolean ? (Boolean) meglerProps.get("ElegantTextHeight") : false); }
-    public boolean isFallbackLineSpacing() { return (meglerProps.get("FallbackLineSpacing") instanceof Boolean ? (Boolean) meglerProps.get("FallbackLineSpacing") : false); }
+    public java.lang.String getFontFeatureSettings() { return (java.lang.String) megletProps.get("FontFeatureSettings"); }
+    public java.lang.String getFontVariationSettings() { return (java.lang.String) megletProps.get("FontVariationSettings"); }
+    public int getHighlightTextColor() { return (megletProps.get("HighlightTextColor") instanceof Integer ? (Integer) megletProps.get("HighlightTextColor") : 0); }
+    public int getHintTextColor() { return (megletProps.get("HintTextColor") instanceof Integer ? (Integer) megletProps.get("HintTextColor") : 0); }
+    public float getLetterSpacing() { return (megletProps.get("LetterSpacing") instanceof Float ? (Float) megletProps.get("LetterSpacing") : 0f); }
+    public int getLineBreakStyle() { return (megletProps.get("LineBreakStyle") instanceof Integer ? (Integer) megletProps.get("LineBreakStyle") : 0); }
+    public int getLineBreakWordStyle() { return (megletProps.get("LineBreakWordStyle") instanceof Integer ? (Integer) megletProps.get("LineBreakWordStyle") : 0); }
+    public int getLinkTextColor() { return (megletProps.get("LinkTextColor") instanceof Integer ? (Integer) megletProps.get("LinkTextColor") : 0); }
+    public int getShadowColor() { return (megletProps.get("ShadowColor") instanceof Integer ? (Integer) megletProps.get("ShadowColor") : 0); }
+    public float getShadowDx() { return (megletProps.get("ShadowDx") instanceof Float ? (Float) megletProps.get("ShadowDx") : 0f); }
+    public float getShadowDy() { return (megletProps.get("ShadowDy") instanceof Float ? (Float) megletProps.get("ShadowDy") : 0f); }
+    public float getShadowRadius() { return (megletProps.get("ShadowRadius") instanceof Float ? (Float) megletProps.get("ShadowRadius") : 0f); }
+    public java.lang.String getSystemFontFamilyName() { return (java.lang.String) megletProps.get("SystemFontFamilyName"); }
+    public int getTextColor() { return (megletProps.get("TextColor") instanceof Integer ? (Integer) megletProps.get("TextColor") : 0); }
+    public int getTextFontWeight() { return (megletProps.get("TextFontWeight") instanceof Integer ? (Integer) megletProps.get("TextFontWeight") : 0); }
+    public android.os.LocaleList getTextLocales() { return (android.os.LocaleList) megletProps.get("TextLocales"); }
+    public float getTextScaleX() { return (megletProps.get("TextScaleX") instanceof Float ? (Float) megletProps.get("TextScaleX") : 0f); }
+    public float getTextSize() { return (megletProps.get("TextSize") instanceof Float ? (Float) megletProps.get("TextSize") : 0f); }
+    public int getTextStyle() { return (megletProps.get("TextStyle") instanceof Integer ? (Integer) megletProps.get("TextStyle") : 0); }
+    public boolean isAllCaps() { return (megletProps.get("AllCaps") instanceof Boolean ? (Boolean) megletProps.get("AllCaps") : false); }
+    public boolean isElegantTextHeight() { return (megletProps.get("ElegantTextHeight") instanceof Boolean ? (Boolean) megletProps.get("ElegantTextHeight") : false); }
+    public boolean isFallbackLineSpacing() { return (megletProps.get("FallbackLineSpacing") instanceof Boolean ? (Boolean) megletProps.get("FallbackLineSpacing") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TextAppearanceInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.view.inputmethod.TextAppearanceInfo build() { android.view.inputmethod.TextAppearanceInfo x = new android.view.inputmethod.TextAppearanceInfo(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setAllCaps(boolean p0) { meglerProps.put("AllCaps", Boolean.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setElegantTextHeight(boolean p0) { meglerProps.put("ElegantTextHeight", Boolean.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setFallbackLineSpacing(boolean p0) { meglerProps.put("FallbackLineSpacing", Boolean.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setFontFeatureSettings(java.lang.String p0) { meglerProps.put("FontFeatureSettings", p0); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setFontVariationSettings(java.lang.String p0) { meglerProps.put("FontVariationSettings", p0); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setHighlightTextColor(int p0) { meglerProps.put("HighlightTextColor", Integer.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setHintTextColor(int p0) { meglerProps.put("HintTextColor", Integer.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setLetterSpacing(float p0) { meglerProps.put("LetterSpacing", Float.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setLineBreakStyle(int p0) { meglerProps.put("LineBreakStyle", Integer.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setLineBreakWordStyle(int p0) { meglerProps.put("LineBreakWordStyle", Integer.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setLinkTextColor(int p0) { meglerProps.put("LinkTextColor", Integer.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setShadowColor(int p0) { meglerProps.put("ShadowColor", Integer.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setShadowDx(float p0) { meglerProps.put("ShadowDx", Float.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setShadowDy(float p0) { meglerProps.put("ShadowDy", Float.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setShadowRadius(float p0) { meglerProps.put("ShadowRadius", Float.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setSystemFontFamilyName(java.lang.String p0) { meglerProps.put("SystemFontFamilyName", p0); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setTextColor(int p0) { meglerProps.put("TextColor", Integer.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setTextFontWeight(int p0) { meglerProps.put("TextFontWeight", Integer.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setTextLocales(android.os.LocaleList p0) { meglerProps.put("TextLocales", p0); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setTextScaleX(float p0) { meglerProps.put("TextScaleX", Float.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setTextSize(float p0) { meglerProps.put("TextSize", Float.valueOf(p0)); return this; }
-        public android.view.inputmethod.TextAppearanceInfo.Builder setTextStyle(int p0) { meglerProps.put("TextStyle", Integer.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo build() { android.view.inputmethod.TextAppearanceInfo x = new android.view.inputmethod.TextAppearanceInfo(); x.megletProps.putAll(megletProps); return x; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setAllCaps(boolean p0) { megletProps.put("AllCaps", Boolean.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setElegantTextHeight(boolean p0) { megletProps.put("ElegantTextHeight", Boolean.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setFallbackLineSpacing(boolean p0) { megletProps.put("FallbackLineSpacing", Boolean.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setFontFeatureSettings(java.lang.String p0) { megletProps.put("FontFeatureSettings", p0); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setFontVariationSettings(java.lang.String p0) { megletProps.put("FontVariationSettings", p0); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setHighlightTextColor(int p0) { megletProps.put("HighlightTextColor", Integer.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setHintTextColor(int p0) { megletProps.put("HintTextColor", Integer.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setLetterSpacing(float p0) { megletProps.put("LetterSpacing", Float.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setLineBreakStyle(int p0) { megletProps.put("LineBreakStyle", Integer.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setLineBreakWordStyle(int p0) { megletProps.put("LineBreakWordStyle", Integer.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setLinkTextColor(int p0) { megletProps.put("LinkTextColor", Integer.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setShadowColor(int p0) { megletProps.put("ShadowColor", Integer.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setShadowDx(float p0) { megletProps.put("ShadowDx", Float.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setShadowDy(float p0) { megletProps.put("ShadowDy", Float.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setShadowRadius(float p0) { megletProps.put("ShadowRadius", Float.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setSystemFontFamilyName(java.lang.String p0) { megletProps.put("SystemFontFamilyName", p0); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setTextColor(int p0) { megletProps.put("TextColor", Integer.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setTextFontWeight(int p0) { megletProps.put("TextFontWeight", Integer.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setTextLocales(android.os.LocaleList p0) { megletProps.put("TextLocales", p0); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setTextScaleX(float p0) { megletProps.put("TextScaleX", Float.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setTextSize(float p0) { megletProps.put("TextSize", Float.valueOf(p0)); return this; }
+        public android.view.inputmethod.TextAppearanceInfo.Builder setTextStyle(int p0) { megletProps.put("TextStyle", Integer.valueOf(p0)); return this; }
     }
 }

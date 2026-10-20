@@ -3,7 +3,7 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IkeSessionParams {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int AUTH_DIRECTION_BOTH = 3;
     public static final int AUTH_DIRECTION_LOCAL = 1;
     public static final int AUTH_DIRECTION_REMOTE = 2;
@@ -34,36 +34,36 @@ public final class IkeSessionParams {
     public static final int NATT_KEEPALIVE_INTERVAL_AUTO = -1;
     public static android.net.ipsec.ike.IkeSessionParams fromPersistableBundle(android.os.PersistableBundle p0) { return new IkeSessionParams(); }
     public void dump(java.io.PrintWriter p0, java.lang.String p1) {}
-    public java.util.List getConfigurationRequests() { return (meglerProps.get("ConfigurationRequests") != null ? (java.util.List) meglerProps.get("ConfigurationRequests") : new java.util.ArrayList()); }
-    public android.net.Network getConfiguredNetwork() { return (android.net.Network) meglerProps.get("ConfiguredNetwork"); }
-    public int getDpdDelaySeconds() { return (meglerProps.get("DpdDelaySeconds") instanceof Integer ? (Integer) meglerProps.get("DpdDelaySeconds") : 0); }
-    public int getDscp() { return (meglerProps.get("Dscp") instanceof Integer ? (Integer) meglerProps.get("Dscp") : 0); }
-    public int getEncapType() { return (meglerProps.get("EncapType") instanceof Integer ? (Integer) meglerProps.get("EncapType") : 0); }
-    public long getHardLifetimeMsInternal() { return (meglerProps.get("HardLifetimeMsInternal") instanceof Long ? (Long) meglerProps.get("HardLifetimeMsInternal") : 0L); }
-    public int getHardLifetimeSeconds() { return (meglerProps.get("HardLifetimeSeconds") instanceof Integer ? (Integer) meglerProps.get("HardLifetimeSeconds") : 0); }
-    public android.net.ipsec.ike.ike3gpp.Ike3gppExtension getIke3gppExtension() { return (android.net.ipsec.ike.ike3gpp.Ike3gppExtension) meglerProps.get("Ike3gppExtension"); }
-    public java.util.Set getIkeOptions() { return (meglerProps.get("IkeOptions") != null ? (java.util.Set) meglerProps.get("IkeOptions") : new java.util.HashSet()); }
-    public java.util.List getIkeSaProposals() { return (meglerProps.get("IkeSaProposals") != null ? (java.util.List) meglerProps.get("IkeSaProposals") : new java.util.ArrayList()); }
-    public int getIpVersion() { return (meglerProps.get("IpVersion") instanceof Integer ? (Integer) meglerProps.get("IpVersion") : 0); }
-    public int[] getLivenessRetransmissionTimeoutsMillis() { return (int[]) meglerProps.get("LivenessRetransmissionTimeoutsMillis"); }
-    public android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig getLocalAuthConfig() { return (android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig) meglerProps.get("LocalAuthConfig"); }
-    public android.net.ipsec.ike.IkeIdentification getLocalIdentification() { return (android.net.ipsec.ike.IkeIdentification) meglerProps.get("LocalIdentification"); }
-    public int getNattKeepAliveDelaySeconds() { return (meglerProps.get("NattKeepAliveDelaySeconds") instanceof Integer ? (Integer) meglerProps.get("NattKeepAliveDelaySeconds") : 0); }
-    public android.net.Network getNetwork() { return (android.net.Network) meglerProps.get("Network"); }
-    public android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig getRemoteAuthConfig() { return (android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig) meglerProps.get("RemoteAuthConfig"); }
-    public android.net.ipsec.ike.IkeIdentification getRemoteIdentification() { return (android.net.ipsec.ike.IkeIdentification) meglerProps.get("RemoteIdentification"); }
-    public int[] getRetransmissionTimeoutsMillis() { return (int[]) meglerProps.get("RetransmissionTimeoutsMillis"); }
-    public java.util.List getSaProposals() { return (meglerProps.get("SaProposals") != null ? (java.util.List) meglerProps.get("SaProposals") : new java.util.ArrayList()); }
-    public android.net.ipsec.ike.IkeSaProposal[] getSaProposalsInternal() { return (android.net.ipsec.ike.IkeSaProposal[]) meglerProps.get("SaProposalsInternal"); }
-    public java.lang.String getServerHostname() { return (java.lang.String) meglerProps.get("ServerHostname"); }
-    public long getSoftLifetimeMsInternal() { return (meglerProps.get("SoftLifetimeMsInternal") instanceof Long ? (Long) meglerProps.get("SoftLifetimeMsInternal") : 0L); }
-    public int getSoftLifetimeSeconds() { return (meglerProps.get("SoftLifetimeSeconds") instanceof Integer ? (Integer) meglerProps.get("SoftLifetimeSeconds") : 0); }
+    public java.util.List getConfigurationRequests() { return (megletProps.get("ConfigurationRequests") != null ? (java.util.List) megletProps.get("ConfigurationRequests") : new java.util.ArrayList()); }
+    public android.net.Network getConfiguredNetwork() { return (android.net.Network) megletProps.get("ConfiguredNetwork"); }
+    public int getDpdDelaySeconds() { return (megletProps.get("DpdDelaySeconds") instanceof Integer ? (Integer) megletProps.get("DpdDelaySeconds") : 0); }
+    public int getDscp() { return (megletProps.get("Dscp") instanceof Integer ? (Integer) megletProps.get("Dscp") : 0); }
+    public int getEncapType() { return (megletProps.get("EncapType") instanceof Integer ? (Integer) megletProps.get("EncapType") : 0); }
+    public long getHardLifetimeMsInternal() { return (megletProps.get("HardLifetimeMsInternal") instanceof Long ? (Long) megletProps.get("HardLifetimeMsInternal") : 0L); }
+    public int getHardLifetimeSeconds() { return (megletProps.get("HardLifetimeSeconds") instanceof Integer ? (Integer) megletProps.get("HardLifetimeSeconds") : 0); }
+    public android.net.ipsec.ike.ike3gpp.Ike3gppExtension getIke3gppExtension() { return (android.net.ipsec.ike.ike3gpp.Ike3gppExtension) megletProps.get("Ike3gppExtension"); }
+    public java.util.Set getIkeOptions() { return (megletProps.get("IkeOptions") != null ? (java.util.Set) megletProps.get("IkeOptions") : new java.util.HashSet()); }
+    public java.util.List getIkeSaProposals() { return (megletProps.get("IkeSaProposals") != null ? (java.util.List) megletProps.get("IkeSaProposals") : new java.util.ArrayList()); }
+    public int getIpVersion() { return (megletProps.get("IpVersion") instanceof Integer ? (Integer) megletProps.get("IpVersion") : 0); }
+    public int[] getLivenessRetransmissionTimeoutsMillis() { return (int[]) megletProps.get("LivenessRetransmissionTimeoutsMillis"); }
+    public android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig getLocalAuthConfig() { return (android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig) megletProps.get("LocalAuthConfig"); }
+    public android.net.ipsec.ike.IkeIdentification getLocalIdentification() { return (android.net.ipsec.ike.IkeIdentification) megletProps.get("LocalIdentification"); }
+    public int getNattKeepAliveDelaySeconds() { return (megletProps.get("NattKeepAliveDelaySeconds") instanceof Integer ? (Integer) megletProps.get("NattKeepAliveDelaySeconds") : 0); }
+    public android.net.Network getNetwork() { return (android.net.Network) megletProps.get("Network"); }
+    public android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig getRemoteAuthConfig() { return (android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig) megletProps.get("RemoteAuthConfig"); }
+    public android.net.ipsec.ike.IkeIdentification getRemoteIdentification() { return (android.net.ipsec.ike.IkeIdentification) megletProps.get("RemoteIdentification"); }
+    public int[] getRetransmissionTimeoutsMillis() { return (int[]) megletProps.get("RetransmissionTimeoutsMillis"); }
+    public java.util.List getSaProposals() { return (megletProps.get("SaProposals") != null ? (java.util.List) megletProps.get("SaProposals") : new java.util.ArrayList()); }
+    public android.net.ipsec.ike.IkeSaProposal[] getSaProposalsInternal() { return (android.net.ipsec.ike.IkeSaProposal[]) megletProps.get("SaProposalsInternal"); }
+    public java.lang.String getServerHostname() { return (java.lang.String) megletProps.get("ServerHostname"); }
+    public long getSoftLifetimeMsInternal() { return (megletProps.get("SoftLifetimeMsInternal") instanceof Long ? (Long) megletProps.get("SoftLifetimeMsInternal") : 0L); }
+    public int getSoftLifetimeSeconds() { return (megletProps.get("SoftLifetimeSeconds") instanceof Integer ? (Integer) megletProps.get("SoftLifetimeSeconds") : 0); }
     public boolean hasIkeOption(int p0) { return false; }
-    public boolean isIkeFragmentationSupported() { return (meglerProps.get("IkeFragmentationSupported") instanceof Boolean ? (Boolean) meglerProps.get("IkeFragmentationSupported") : false); }
+    public boolean isIkeFragmentationSupported() { return (megletProps.get("IkeFragmentationSupported") instanceof Boolean ? (Boolean) megletProps.get("IkeFragmentationSupported") : false); }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     protected IkeSessionParams() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.content.Context p0) {}
         public Builder(android.net.ConnectivityManager p0) {}
@@ -74,25 +74,25 @@ public final class IkeSessionParams {
         public android.net.ipsec.ike.IkeSessionParams.Builder addPcscfServerRequest(int p0) { return this; }
         public android.net.ipsec.ike.IkeSessionParams.Builder addPcscfServerRequest(java.net.InetAddress p0) { return this; }
         public android.net.ipsec.ike.IkeSessionParams.Builder addSaProposal(android.net.ipsec.ike.IkeSaProposal p0) { return this; }
-        public android.net.ipsec.ike.IkeSessionParams build() { android.net.ipsec.ike.IkeSessionParams x = new android.net.ipsec.ike.IkeSessionParams(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.ipsec.ike.IkeSessionParams build() { android.net.ipsec.ike.IkeSessionParams x = new android.net.ipsec.ike.IkeSessionParams(); x.megletProps.putAll(megletProps); return x; }
         public android.net.ipsec.ike.IkeSessionParams.Builder removeIkeOption(int p0) { return this; }
         public android.net.ipsec.ike.IkeSessionParams.Builder setAuthDigitalSignature(java.security.cert.X509Certificate p0, java.security.cert.X509Certificate p1, java.security.PrivateKey p2) { return this; }
         public android.net.ipsec.ike.IkeSessionParams.Builder setAuthDigitalSignature(java.security.cert.X509Certificate p0, java.security.cert.X509Certificate p1, java.util.List p2, java.security.PrivateKey p3) { return this; }
         public android.net.ipsec.ike.IkeSessionParams.Builder setAuthEap(java.security.cert.X509Certificate p0, android.net.eap.EapSessionConfig p1) { return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setAuthPsk(byte[] p0) { meglerProps.put("AuthPsk", p0); return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setDpdDelaySeconds(int p0) { meglerProps.put("DpdDelaySeconds", Integer.valueOf(p0)); return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setDscp(int p0) { meglerProps.put("Dscp", Integer.valueOf(p0)); return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setEncapType(int p0) { meglerProps.put("EncapType", Integer.valueOf(p0)); return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setIke3gppExtension(android.net.ipsec.ike.ike3gpp.Ike3gppExtension p0) { meglerProps.put("Ike3gppExtension", p0); return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setIpVersion(int p0) { meglerProps.put("IpVersion", Integer.valueOf(p0)); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setAuthPsk(byte[] p0) { megletProps.put("AuthPsk", p0); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setDpdDelaySeconds(int p0) { megletProps.put("DpdDelaySeconds", Integer.valueOf(p0)); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setDscp(int p0) { megletProps.put("Dscp", Integer.valueOf(p0)); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setEncapType(int p0) { megletProps.put("EncapType", Integer.valueOf(p0)); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setIke3gppExtension(android.net.ipsec.ike.ike3gpp.Ike3gppExtension p0) { megletProps.put("Ike3gppExtension", p0); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setIpVersion(int p0) { megletProps.put("IpVersion", Integer.valueOf(p0)); return this; }
         public android.net.ipsec.ike.IkeSessionParams.Builder setLifetimeSeconds(int p0, int p1) { return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setLivenessRetransmissionTimeoutsMillis(int[] p0) { meglerProps.put("LivenessRetransmissionTimeoutsMillis", p0); return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setLocalIdentification(android.net.ipsec.ike.IkeIdentification p0) { meglerProps.put("LocalIdentification", p0); return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setNattKeepAliveDelaySeconds(int p0) { meglerProps.put("NattKeepAliveDelaySeconds", Integer.valueOf(p0)); return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setNetwork(android.net.Network p0) { meglerProps.put("Network", p0); return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setRemoteIdentification(android.net.ipsec.ike.IkeIdentification p0) { meglerProps.put("RemoteIdentification", p0); return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setRetransmissionTimeoutsMillis(int[] p0) { meglerProps.put("RetransmissionTimeoutsMillis", p0); return this; }
-        public android.net.ipsec.ike.IkeSessionParams.Builder setServerHostname(java.lang.String p0) { meglerProps.put("ServerHostname", p0); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setLivenessRetransmissionTimeoutsMillis(int[] p0) { megletProps.put("LivenessRetransmissionTimeoutsMillis", p0); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setLocalIdentification(android.net.ipsec.ike.IkeIdentification p0) { megletProps.put("LocalIdentification", p0); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setNattKeepAliveDelaySeconds(int p0) { megletProps.put("NattKeepAliveDelaySeconds", Integer.valueOf(p0)); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setNetwork(android.net.Network p0) { megletProps.put("Network", p0); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setRemoteIdentification(android.net.ipsec.ike.IkeIdentification p0) { megletProps.put("RemoteIdentification", p0); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setRetransmissionTimeoutsMillis(int[] p0) { megletProps.put("RetransmissionTimeoutsMillis", p0); return this; }
+        public android.net.ipsec.ike.IkeSessionParams.Builder setServerHostname(java.lang.String p0) { megletProps.put("ServerHostname", p0); return this; }
     }
     public interface ConfigRequestIpv4PcscfServer extends android.net.ipsec.ike.IkeSessionParams.IkeConfigRequest {
         java.net.Inet4Address getAddress();
@@ -101,7 +101,7 @@ public final class IkeSessionParams {
         java.net.Inet6Address getAddress();
     }
     public static abstract class IkeAuthConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public int mAuthDirection;
         public int mAuthMethod;
         public static android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig fromPersistableBundle(android.os.PersistableBundle p0) { return null; }
@@ -109,38 +109,38 @@ public final class IkeSessionParams {
         protected IkeAuthConfig() {}
     }
     public static class IkeAuthDigitalSignLocalConfig extends android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public java.security.cert.X509Certificate mEndCert;
         public java.util.List mIntermediateCerts;
         public java.security.PrivateKey mPrivateKey;
         public static android.net.ipsec.ike.IkeSessionParams.IkeAuthDigitalSignLocalConfig fromPersistableBundle(android.os.PersistableBundle p0) { return new IkeAuthDigitalSignLocalConfig(); }
-        public java.security.cert.X509Certificate getClientEndCertificate() { return (java.security.cert.X509Certificate) meglerProps.get("ClientEndCertificate"); }
-        public java.util.List getIntermediateCertificates() { return (meglerProps.get("IntermediateCertificates") != null ? (java.util.List) meglerProps.get("IntermediateCertificates") : new java.util.ArrayList()); }
-        public java.security.PrivateKey getPrivateKey() { return (java.security.PrivateKey) meglerProps.get("PrivateKey"); }
+        public java.security.cert.X509Certificate getClientEndCertificate() { return (java.security.cert.X509Certificate) megletProps.get("ClientEndCertificate"); }
+        public java.util.List getIntermediateCertificates() { return (megletProps.get("IntermediateCertificates") != null ? (java.util.List) megletProps.get("IntermediateCertificates") : new java.util.ArrayList()); }
+        public java.security.PrivateKey getPrivateKey() { return (java.security.PrivateKey) megletProps.get("PrivateKey"); }
         public android.os.PersistableBundle toPersistableBundle() { return null; }
         protected IkeAuthDigitalSignLocalConfig() { super(); }
     }
     public static class IkeAuthDigitalSignRemoteConfig extends android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public java.security.cert.TrustAnchor mTrustAnchor;
         public static android.net.ipsec.ike.IkeSessionParams.IkeAuthDigitalSignRemoteConfig fromPersistableBundle(android.os.PersistableBundle p0) { return new IkeAuthDigitalSignRemoteConfig(); }
-        public java.security.cert.X509Certificate getRemoteCaCert() { return (java.security.cert.X509Certificate) meglerProps.get("RemoteCaCert"); }
+        public java.security.cert.X509Certificate getRemoteCaCert() { return (java.security.cert.X509Certificate) megletProps.get("RemoteCaCert"); }
         public android.os.PersistableBundle toPersistableBundle() { return null; }
         protected IkeAuthDigitalSignRemoteConfig() { super(); }
     }
     public static class IkeAuthEapConfig extends android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public android.net.eap.EapSessionConfig mEapConfig;
         public static android.net.ipsec.ike.IkeSessionParams.IkeAuthEapConfig fromPersistableBundle(android.os.PersistableBundle p0) { return new IkeAuthEapConfig(); }
-        public android.net.eap.EapSessionConfig getEapConfig() { return (android.net.eap.EapSessionConfig) meglerProps.get("EapConfig"); }
+        public android.net.eap.EapSessionConfig getEapConfig() { return (android.net.eap.EapSessionConfig) megletProps.get("EapConfig"); }
         public android.os.PersistableBundle toPersistableBundle() { return null; }
         protected IkeAuthEapConfig() { super(); }
     }
     public static class IkeAuthPskConfig extends android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public byte[] mPsk;
         public static android.net.ipsec.ike.IkeSessionParams.IkeAuthPskConfig fromPersistableBundle(android.os.PersistableBundle p0) { return new IkeAuthPskConfig(); }
-        public byte[] getPsk() { return (byte[]) meglerProps.get("Psk"); }
+        public byte[] getPsk() { return (byte[]) megletProps.get("Psk"); }
         public android.os.PersistableBundle toPersistableBundle() { return null; }
         protected IkeAuthPskConfig() { super(); }
     }

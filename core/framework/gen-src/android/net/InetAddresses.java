@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class InetAddresses {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static boolean isNumericAddress(java.lang.String p0) { return false; }
     public static java.net.InetAddress parseNumericAddress(java.lang.String p0) { return null; }
     protected InetAddresses() {}

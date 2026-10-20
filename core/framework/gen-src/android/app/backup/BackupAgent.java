@@ -3,7 +3,7 @@ package android.app.backup;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class BackupAgent extends android.content.ContextWrapper {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int FLAG_CLIENT_SIDE_ENCRYPTION_ENABLED = 1;
     public static final int FLAG_CROSS_PLATFORM_DATA_TRANSFER_IOS = 8;
     public static final int FLAG_DEVICE_TO_DEVICE_TRANSFER = 2;
@@ -20,7 +20,7 @@ public abstract class BackupAgent extends android.content.ContextWrapper {
     public void clearBackupRestoreEventLogger() {}
     public void fullBackupFile(java.io.File p0, android.app.backup.FullBackupDataOutput p1) {}
     protected void fullBackupFileTree(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.util.Set p3, android.util.ArraySet p4, android.app.backup.FullBackupDataOutput p5) {}
-    public android.app.backup.BackupRestoreEventLogger getBackupRestoreEventLogger() { return (android.app.backup.BackupRestoreEventLogger) meglerProps.get("BackupRestoreEventLogger"); }
+    public android.app.backup.BackupRestoreEventLogger getBackupRestoreEventLogger() { return (android.app.backup.BackupRestoreEventLogger) megletProps.get("BackupRestoreEventLogger"); }
     public android.app.backup.BackupAgent.IncludeExcludeRules getIncludeExcludeRules(android.app.backup.FullBackup.BackupScheme p0) { return null; }
     public abstract void onBackup(android.os.ParcelFileDescriptor p0, android.app.backup.BackupDataOutput p1, android.os.ParcelFileDescriptor p2);
     public android.os.IBinder onBind() { return null; }
@@ -40,7 +40,7 @@ public abstract class BackupAgent extends android.content.ContextWrapper {
     public void onRestoreFile(android.os.ParcelFileDescriptor p0, long p1, java.io.File p2, int p3, long p4, long p5) {}
     public void onRestoreFinished() {}
     public static class IncludeExcludeRules {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public IncludeExcludeRules(java.util.Map p0, java.util.Set p1) {}
         public static android.app.backup.BackupAgent.IncludeExcludeRules emptyRules() { return new IncludeExcludeRules(); }
         IncludeExcludeRules() { this((java.util.Map) null, (java.util.Set) null); }

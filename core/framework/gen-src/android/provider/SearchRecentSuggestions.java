@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SearchRecentSuggestions {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static java.lang.String[] QUERIES_PROJECTION_1LINE;
     public static java.lang.String[] QUERIES_PROJECTION_2LINE;
     public static final int QUERIES_PROJECTION_DATE_INDEX = 1;

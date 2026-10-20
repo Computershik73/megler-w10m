@@ -3,7 +3,7 @@ package android.hardware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SensorDirectChannel implements java.nio.channels.Channel {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int RATE_FAST = 2;
     public static final int RATE_NORMAL = 1;
     public static final int RATE_STOP = 0;
@@ -13,7 +13,7 @@ public final class SensorDirectChannel implements java.nio.channels.Channel {
     public void close() {}
     public int configure(android.hardware.Sensor p0, int p1) { return 0; }
     protected void finalize() {}
-    public boolean isOpen() { return (meglerProps.get("Open") instanceof Boolean ? (Boolean) meglerProps.get("Open") : false); }
-    public boolean isValid() { return (meglerProps.get("Valid") instanceof Boolean ? (Boolean) meglerProps.get("Valid") : false); }
+    public boolean isOpen() { return (megletProps.get("Open") instanceof Boolean ? (Boolean) megletProps.get("Open") : false); }
+    public boolean isValid() { return (megletProps.get("Valid") instanceof Boolean ? (Boolean) megletProps.get("Valid") : false); }
     protected SensorDirectChannel() {}
 }

@@ -3,16 +3,16 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SyncNotedAppOp implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public SyncNotedAppOp(int p0, int p1, java.lang.String p2, java.lang.String p3) {}
     public SyncNotedAppOp(int p0, java.lang.String p1) {}
     public SyncNotedAppOp(int p0, java.lang.String p1, java.lang.String p2) {}
     public int describeContents() { return 0; }
-    public java.lang.String getAttributionTag() { return (java.lang.String) meglerProps.get("AttributionTag"); }
-    public java.lang.String getOp() { return (java.lang.String) meglerProps.get("Op"); }
-    public int getOpMode() { return (meglerProps.get("OpMode") instanceof Integer ? (Integer) meglerProps.get("OpMode") : 0); }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public java.lang.String getAttributionTag() { return (java.lang.String) megletProps.get("AttributionTag"); }
+    public java.lang.String getOp() { return (java.lang.String) megletProps.get("Op"); }
+    public int getOpMode() { return (megletProps.get("OpMode") instanceof Integer ? (Integer) megletProps.get("OpMode") : 0); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SyncNotedAppOp() { this((int) 0, (java.lang.String) null); }
 }

@@ -3,7 +3,7 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DsmccResponse extends android.media.tv.BroadcastInfoResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String BIOP_MESSAGE_TYPE_DIRECTORY = "directory";
     public static final java.lang.String BIOP_MESSAGE_TYPE_FILE = "file";
     public static final java.lang.String BIOP_MESSAGE_TYPE_SERVICE_GATEWAY = "service_gateway";
@@ -13,11 +13,11 @@ public final class DsmccResponse extends android.media.tv.BroadcastInfoResponse 
     public DsmccResponse(int p0, int p1, int p2, boolean p3, java.util.List p4) { super(); }
     public DsmccResponse(int p0, int p1, int p2, int[] p3, java.lang.String[] p4) { super(); }
     public int describeContents() { return 0; }
-    public java.lang.String getBiopMessageType() { return (java.lang.String) meglerProps.get("BiopMessageType"); }
-    public java.util.List getChildList() { return (meglerProps.get("ChildList") != null ? (java.util.List) meglerProps.get("ChildList") : new java.util.ArrayList()); }
-    public android.os.ParcelFileDescriptor getFile() { return (android.os.ParcelFileDescriptor) meglerProps.get("File"); }
-    public int[] getStreamEventIds() { return (int[]) meglerProps.get("StreamEventIds"); }
-    public java.lang.String[] getStreamEventNames() { return (java.lang.String[]) meglerProps.get("StreamEventNames"); }
+    public java.lang.String getBiopMessageType() { return (java.lang.String) megletProps.get("BiopMessageType"); }
+    public java.util.List getChildList() { return (megletProps.get("ChildList") != null ? (java.util.List) megletProps.get("ChildList") : new java.util.ArrayList()); }
+    public android.os.ParcelFileDescriptor getFile() { return (android.os.ParcelFileDescriptor) megletProps.get("File"); }
+    public int[] getStreamEventIds() { return (int[]) megletProps.get("StreamEventIds"); }
+    public java.lang.String[] getStreamEventNames() { return (java.lang.String[]) megletProps.get("StreamEventNames"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     DsmccResponse() { this((int) 0, (int) 0, (int) 0, (android.os.ParcelFileDescriptor) null); }
 }

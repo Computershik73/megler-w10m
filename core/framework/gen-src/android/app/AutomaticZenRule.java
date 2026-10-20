@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AutomaticZenRule implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FIELD_ICON = 4;
     public static final int FIELD_INTERRUPTION_FILTER = 2;
@@ -24,38 +24,38 @@ public final class AutomaticZenRule implements android.os.Parcelable {
     public AutomaticZenRule(java.lang.String p0, android.content.ComponentName p1, android.net.Uri p2, int p3, boolean p4) {}
     public static java.lang.String fieldsToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public android.net.Uri getConditionId() { return (android.net.Uri) meglerProps.get("ConditionId"); }
-    public android.content.ComponentName getConfigurationActivity() { return (android.content.ComponentName) meglerProps.get("ConfigurationActivity"); }
-    public long getCreationTime() { return (meglerProps.get("CreationTime") instanceof Long ? (Long) meglerProps.get("CreationTime") : 0L); }
-    public android.service.notification.ZenDeviceEffects getDeviceEffects() { return (android.service.notification.ZenDeviceEffects) meglerProps.get("DeviceEffects"); }
-    public int getIconResId() { return (meglerProps.get("IconResId") instanceof Integer ? (Integer) meglerProps.get("IconResId") : 0); }
-    public int getInterruptionFilter() { return (meglerProps.get("InterruptionFilter") instanceof Integer ? (Integer) meglerProps.get("InterruptionFilter") : 0); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public android.content.ComponentName getOwner() { return (android.content.ComponentName) meglerProps.get("Owner"); }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-    public java.lang.String getTriggerDescription() { return (java.lang.String) meglerProps.get("TriggerDescription"); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
-    public android.service.notification.ZenPolicy getZenPolicy() { return (android.service.notification.ZenPolicy) meglerProps.get("ZenPolicy"); }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
-    public boolean isManualInvocationAllowed() { return (meglerProps.get("ManualInvocationAllowed") instanceof Boolean ? (Boolean) meglerProps.get("ManualInvocationAllowed") : false); }
-    public void setConditionId(android.net.Uri p0) { meglerProps.put("ConditionId", p0); }
-    public void setConfigurationActivity(android.content.ComponentName p0) { meglerProps.put("ConfigurationActivity", p0); }
-    public void setDeviceEffects(android.service.notification.ZenDeviceEffects p0) { meglerProps.put("DeviceEffects", p0); }
-    public void setEnabled(boolean p0) { meglerProps.put("Enabled", Boolean.valueOf(p0)); }
-    public void setIconResId(int p0) { meglerProps.put("IconResId", Integer.valueOf(p0)); }
-    public void setInterruptionFilter(int p0) { meglerProps.put("InterruptionFilter", Integer.valueOf(p0)); }
-    public void setManualInvocationAllowed(boolean p0) { meglerProps.put("ManualInvocationAllowed", Boolean.valueOf(p0)); }
-    public void setName(java.lang.String p0) { meglerProps.put("Name", p0); }
-    public void setOwner(android.content.ComponentName p0) { meglerProps.put("Owner", p0); }
-    public void setPackageName(java.lang.String p0) { meglerProps.put("PackageName", p0); }
-    public void setTriggerDescription(java.lang.String p0) { meglerProps.put("TriggerDescription", p0); }
-    public void setType(int p0) { meglerProps.put("Type", Integer.valueOf(p0)); }
-    public void setZenPolicy(android.service.notification.ZenPolicy p0) { meglerProps.put("ZenPolicy", p0); }
+    public android.net.Uri getConditionId() { return (android.net.Uri) megletProps.get("ConditionId"); }
+    public android.content.ComponentName getConfigurationActivity() { return (android.content.ComponentName) megletProps.get("ConfigurationActivity"); }
+    public long getCreationTime() { return (megletProps.get("CreationTime") instanceof Long ? (Long) megletProps.get("CreationTime") : 0L); }
+    public android.service.notification.ZenDeviceEffects getDeviceEffects() { return (android.service.notification.ZenDeviceEffects) megletProps.get("DeviceEffects"); }
+    public int getIconResId() { return (megletProps.get("IconResId") instanceof Integer ? (Integer) megletProps.get("IconResId") : 0); }
+    public int getInterruptionFilter() { return (megletProps.get("InterruptionFilter") instanceof Integer ? (Integer) megletProps.get("InterruptionFilter") : 0); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public android.content.ComponentName getOwner() { return (android.content.ComponentName) megletProps.get("Owner"); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    public java.lang.String getTriggerDescription() { return (java.lang.String) megletProps.get("TriggerDescription"); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public android.service.notification.ZenPolicy getZenPolicy() { return (android.service.notification.ZenPolicy) megletProps.get("ZenPolicy"); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
+    public boolean isManualInvocationAllowed() { return (megletProps.get("ManualInvocationAllowed") instanceof Boolean ? (Boolean) megletProps.get("ManualInvocationAllowed") : false); }
+    public void setConditionId(android.net.Uri p0) { megletProps.put("ConditionId", p0); }
+    public void setConfigurationActivity(android.content.ComponentName p0) { megletProps.put("ConfigurationActivity", p0); }
+    public void setDeviceEffects(android.service.notification.ZenDeviceEffects p0) { megletProps.put("DeviceEffects", p0); }
+    public void setEnabled(boolean p0) { megletProps.put("Enabled", Boolean.valueOf(p0)); }
+    public void setIconResId(int p0) { megletProps.put("IconResId", Integer.valueOf(p0)); }
+    public void setInterruptionFilter(int p0) { megletProps.put("InterruptionFilter", Integer.valueOf(p0)); }
+    public void setManualInvocationAllowed(boolean p0) { megletProps.put("ManualInvocationAllowed", Boolean.valueOf(p0)); }
+    public void setName(java.lang.String p0) { megletProps.put("Name", p0); }
+    public void setOwner(android.content.ComponentName p0) { megletProps.put("Owner", p0); }
+    public void setPackageName(java.lang.String p0) { megletProps.put("PackageName", p0); }
+    public void setTriggerDescription(java.lang.String p0) { megletProps.put("TriggerDescription", p0); }
+    public void setType(int p0) { megletProps.put("Type", Integer.valueOf(p0)); }
+    public void setZenPolicy(android.service.notification.ZenPolicy p0) { megletProps.put("ZenPolicy", p0); }
     public void validate() {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AutomaticZenRule() { this((android.os.Parcel) null); }
     public static final class AzrWithId implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public java.lang.String mId;
         public android.app.AutomaticZenRule mRule;
@@ -65,24 +65,24 @@ public final class AutomaticZenRule implements android.os.Parcelable {
         AzrWithId() { this((java.lang.String) null, (android.app.AutomaticZenRule) null); }
     }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.app.AutomaticZenRule p0) {}
         public Builder(java.lang.String p0, android.net.Uri p1) {}
-        public android.app.AutomaticZenRule build() { android.app.AutomaticZenRule x = new android.app.AutomaticZenRule(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.app.AutomaticZenRule.Builder setConditionId(android.net.Uri p0) { meglerProps.put("ConditionId", p0); return this; }
-        public android.app.AutomaticZenRule.Builder setConfigurationActivity(android.content.ComponentName p0) { meglerProps.put("ConfigurationActivity", p0); return this; }
-        public android.app.AutomaticZenRule.Builder setCreationTime(long p0) { meglerProps.put("CreationTime", Long.valueOf(p0)); return this; }
-        public android.app.AutomaticZenRule.Builder setDeviceEffects(android.service.notification.ZenDeviceEffects p0) { meglerProps.put("DeviceEffects", p0); return this; }
-        public android.app.AutomaticZenRule.Builder setEnabled(boolean p0) { meglerProps.put("Enabled", Boolean.valueOf(p0)); return this; }
-        public android.app.AutomaticZenRule.Builder setIconResId(int p0) { meglerProps.put("IconResId", Integer.valueOf(p0)); return this; }
-        public android.app.AutomaticZenRule.Builder setInterruptionFilter(int p0) { meglerProps.put("InterruptionFilter", Integer.valueOf(p0)); return this; }
-        public android.app.AutomaticZenRule.Builder setManualInvocationAllowed(boolean p0) { meglerProps.put("ManualInvocationAllowed", Boolean.valueOf(p0)); return this; }
-        public android.app.AutomaticZenRule.Builder setName(java.lang.String p0) { meglerProps.put("Name", p0); return this; }
-        public android.app.AutomaticZenRule.Builder setOwner(android.content.ComponentName p0) { meglerProps.put("Owner", p0); return this; }
-        public android.app.AutomaticZenRule.Builder setPackage(java.lang.String p0) { meglerProps.put("Package", p0); return this; }
-        public android.app.AutomaticZenRule.Builder setTriggerDescription(java.lang.String p0) { meglerProps.put("TriggerDescription", p0); return this; }
-        public android.app.AutomaticZenRule.Builder setType(int p0) { meglerProps.put("Type", Integer.valueOf(p0)); return this; }
-        public android.app.AutomaticZenRule.Builder setZenPolicy(android.service.notification.ZenPolicy p0) { meglerProps.put("ZenPolicy", p0); return this; }
+        public android.app.AutomaticZenRule build() { android.app.AutomaticZenRule x = new android.app.AutomaticZenRule(); x.megletProps.putAll(megletProps); return x; }
+        public android.app.AutomaticZenRule.Builder setConditionId(android.net.Uri p0) { megletProps.put("ConditionId", p0); return this; }
+        public android.app.AutomaticZenRule.Builder setConfigurationActivity(android.content.ComponentName p0) { megletProps.put("ConfigurationActivity", p0); return this; }
+        public android.app.AutomaticZenRule.Builder setCreationTime(long p0) { megletProps.put("CreationTime", Long.valueOf(p0)); return this; }
+        public android.app.AutomaticZenRule.Builder setDeviceEffects(android.service.notification.ZenDeviceEffects p0) { megletProps.put("DeviceEffects", p0); return this; }
+        public android.app.AutomaticZenRule.Builder setEnabled(boolean p0) { megletProps.put("Enabled", Boolean.valueOf(p0)); return this; }
+        public android.app.AutomaticZenRule.Builder setIconResId(int p0) { megletProps.put("IconResId", Integer.valueOf(p0)); return this; }
+        public android.app.AutomaticZenRule.Builder setInterruptionFilter(int p0) { megletProps.put("InterruptionFilter", Integer.valueOf(p0)); return this; }
+        public android.app.AutomaticZenRule.Builder setManualInvocationAllowed(boolean p0) { megletProps.put("ManualInvocationAllowed", Boolean.valueOf(p0)); return this; }
+        public android.app.AutomaticZenRule.Builder setName(java.lang.String p0) { megletProps.put("Name", p0); return this; }
+        public android.app.AutomaticZenRule.Builder setOwner(android.content.ComponentName p0) { megletProps.put("Owner", p0); return this; }
+        public android.app.AutomaticZenRule.Builder setPackage(java.lang.String p0) { megletProps.put("Package", p0); return this; }
+        public android.app.AutomaticZenRule.Builder setTriggerDescription(java.lang.String p0) { megletProps.put("TriggerDescription", p0); return this; }
+        public android.app.AutomaticZenRule.Builder setType(int p0) { megletProps.put("Type", Integer.valueOf(p0)); return this; }
+        public android.app.AutomaticZenRule.Builder setZenPolicy(android.service.notification.ZenPolicy p0) { megletProps.put("ZenPolicy", p0); return this; }
         Builder() { this((android.app.AutomaticZenRule) null); }
     }
 }

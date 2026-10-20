@@ -3,7 +3,7 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class IsolatedService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public IsolatedService() { super(); }
     public android.adservices.ondevicepersonalization.EventUrlProvider getEventUrlProvider(android.adservices.ondevicepersonalization.RequestToken p0) { return null; }
     public android.adservices.ondevicepersonalization.FederatedComputeScheduler getFederatedComputeScheduler(android.adservices.ondevicepersonalization.RequestToken p0) { return null; }

@@ -3,7 +3,7 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RecommendedStreamConfigurationMap {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int MAX_USECASE_COUNT = 32;
     public static final int USECASE_10BIT_OUTPUT = 8;
     public static final int USECASE_LOW_LATENCY_SNAPSHOT = 6;
@@ -16,20 +16,20 @@ public final class RecommendedStreamConfigurationMap {
     public static final int USECASE_ZSL = 4;
     public RecommendedStreamConfigurationMap(android.hardware.camera2.params.StreamConfigurationMap p0, int p1, boolean p2) {}
     public java.util.Set getHighResolutionOutputSizes(int p0) { return new java.util.HashSet(); }
-    public java.util.Set getHighSpeedVideoFpsRanges() { return (meglerProps.get("HighSpeedVideoFpsRanges") != null ? (java.util.Set) meglerProps.get("HighSpeedVideoFpsRanges") : new java.util.HashSet()); }
+    public java.util.Set getHighSpeedVideoFpsRanges() { return (megletProps.get("HighSpeedVideoFpsRanges") != null ? (java.util.Set) megletProps.get("HighSpeedVideoFpsRanges") : new java.util.HashSet()); }
     public java.util.Set getHighSpeedVideoFpsRangesFor(android.util.Size p0) { return new java.util.HashSet(); }
-    public java.util.Set getHighSpeedVideoSizes() { return (meglerProps.get("HighSpeedVideoSizes") != null ? (java.util.Set) meglerProps.get("HighSpeedVideoSizes") : new java.util.HashSet()); }
+    public java.util.Set getHighSpeedVideoSizes() { return (megletProps.get("HighSpeedVideoSizes") != null ? (java.util.Set) megletProps.get("HighSpeedVideoSizes") : new java.util.HashSet()); }
     public java.util.Set getHighSpeedVideoSizesFor(android.util.Range p0) { return new java.util.HashSet(); }
-    public java.util.Set getInputFormats() { return (meglerProps.get("InputFormats") != null ? (java.util.Set) meglerProps.get("InputFormats") : new java.util.HashSet()); }
+    public java.util.Set getInputFormats() { return (megletProps.get("InputFormats") != null ? (java.util.Set) megletProps.get("InputFormats") : new java.util.HashSet()); }
     public java.util.Set getInputSizes(int p0) { return new java.util.HashSet(); }
-    public java.util.Set getOutputFormats() { return (meglerProps.get("OutputFormats") != null ? (java.util.Set) meglerProps.get("OutputFormats") : new java.util.HashSet()); }
+    public java.util.Set getOutputFormats() { return (megletProps.get("OutputFormats") != null ? (java.util.Set) megletProps.get("OutputFormats") : new java.util.HashSet()); }
     public long getOutputMinFrameDuration(int p0, android.util.Size p1) { return 0L; }
     public long getOutputMinFrameDuration(java.lang.Class p0, android.util.Size p1) { return 0L; }
     public java.util.Set getOutputSizes(int p0) { return new java.util.HashSet(); }
     public java.util.Set getOutputSizes(java.lang.Class p0) { return new java.util.HashSet(); }
     public long getOutputStallDuration(int p0, android.util.Size p1) { return 0L; }
     public long getOutputStallDuration(java.lang.Class p0, android.util.Size p1) { return 0L; }
-    public int getRecommendedUseCase() { return (meglerProps.get("RecommendedUseCase") instanceof Integer ? (Integer) meglerProps.get("RecommendedUseCase") : 0); }
+    public int getRecommendedUseCase() { return (megletProps.get("RecommendedUseCase") instanceof Integer ? (Integer) megletProps.get("RecommendedUseCase") : 0); }
     public java.util.Set getValidOutputFormatsForInput(int p0) { return new java.util.HashSet(); }
     public boolean isOutputSupportedFor(int p0) { return false; }
     public boolean isOutputSupportedFor(android.view.Surface p0) { return false; }

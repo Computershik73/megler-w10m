@@ -3,17 +3,17 @@ package android.gesture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Gesture implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public Gesture() {}
     public void addStroke(android.gesture.GestureStroke p0) {}
     public java.lang.Object clone() { return null; }
     public int describeContents() { return 0; }
-    public android.graphics.RectF getBoundingBox() { return (android.graphics.RectF) meglerProps.get("BoundingBox"); }
-    public long getID() { return (meglerProps.get("ID") instanceof Long ? (Long) meglerProps.get("ID") : 0L); }
-    public float getLength() { return (meglerProps.get("Length") instanceof Float ? (Float) meglerProps.get("Length") : 0f); }
-    public java.util.ArrayList getStrokes() { return (meglerProps.get("Strokes") != null ? (java.util.ArrayList) meglerProps.get("Strokes") : new java.util.ArrayList()); }
-    public int getStrokesCount() { return (meglerProps.get("StrokesCount") instanceof Integer ? (Integer) meglerProps.get("StrokesCount") : 0); }
+    public android.graphics.RectF getBoundingBox() { return (android.graphics.RectF) megletProps.get("BoundingBox"); }
+    public long getID() { return (megletProps.get("ID") instanceof Long ? (Long) megletProps.get("ID") : 0L); }
+    public float getLength() { return (megletProps.get("Length") instanceof Float ? (Float) megletProps.get("Length") : 0f); }
+    public java.util.ArrayList getStrokes() { return (megletProps.get("Strokes") != null ? (java.util.ArrayList) megletProps.get("Strokes") : new java.util.ArrayList()); }
+    public int getStrokesCount() { return (megletProps.get("StrokesCount") instanceof Integer ? (Integer) megletProps.get("StrokesCount") : 0); }
     public android.graphics.Bitmap toBitmap(int p0, int p1, int p2, int p3) { return null; }
     public android.graphics.Bitmap toBitmap(int p0, int p1, int p2, int p3, int p4) { return null; }
     public android.graphics.Path toPath() { return null; }

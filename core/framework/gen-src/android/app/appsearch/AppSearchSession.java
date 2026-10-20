@@ -3,7 +3,7 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AppSearchSession implements java.io.Closeable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public void close() {}
     public void commitBlob(java.util.Set p0, java.util.concurrent.Executor p1, java.util.function.Consumer p2) {}
     public void getByDocumentId(android.app.appsearch.GetByDocumentIdRequest p0, java.util.concurrent.Executor p1, android.app.appsearch.BatchResultCallback p2) {}

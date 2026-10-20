@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SignalThresholdInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int HYSTERESIS_DB_MINIMUM = 0;
     public static final int HYSTERESIS_MS_DISABLED = 0;
@@ -40,24 +40,24 @@ public final class SignalThresholdInfo implements android.os.Parcelable {
     public static int getMaximumNumberOfThresholdsAllowed() { return 0; }
     public static int getMinimumNumberOfThresholdsAllowed() { return 0; }
     public int describeContents() { return 0; }
-    public int getHysteresisDb() { return (meglerProps.get("HysteresisDb") instanceof Integer ? (Integer) meglerProps.get("HysteresisDb") : 0); }
-    public int getHysteresisMs() { return (meglerProps.get("HysteresisMs") instanceof Integer ? (Integer) meglerProps.get("HysteresisMs") : 0); }
-    public int getRadioAccessNetworkType() { return (meglerProps.get("RadioAccessNetworkType") instanceof Integer ? (Integer) meglerProps.get("RadioAccessNetworkType") : 0); }
-    public int getSignalMeasurementType() { return (meglerProps.get("SignalMeasurementType") instanceof Integer ? (Integer) meglerProps.get("SignalMeasurementType") : 0); }
-    public int[] getThresholds() { return (int[]) meglerProps.get("Thresholds"); }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
+    public int getHysteresisDb() { return (megletProps.get("HysteresisDb") instanceof Integer ? (Integer) megletProps.get("HysteresisDb") : 0); }
+    public int getHysteresisMs() { return (megletProps.get("HysteresisMs") instanceof Integer ? (Integer) megletProps.get("HysteresisMs") : 0); }
+    public int getRadioAccessNetworkType() { return (megletProps.get("RadioAccessNetworkType") instanceof Integer ? (Integer) megletProps.get("RadioAccessNetworkType") : 0); }
+    public int getSignalMeasurementType() { return (megletProps.get("SignalMeasurementType") instanceof Integer ? (Integer) megletProps.get("SignalMeasurementType") : 0); }
+    public int[] getThresholds() { return (int[]) megletProps.get("Thresholds"); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SignalThresholdInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.telephony.SignalThresholdInfo build() { android.telephony.SignalThresholdInfo x = new android.telephony.SignalThresholdInfo(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.telephony.SignalThresholdInfo.Builder setHysteresisDb(int p0) { meglerProps.put("HysteresisDb", Integer.valueOf(p0)); return this; }
-        public android.telephony.SignalThresholdInfo.Builder setHysteresisMs(int p0) { meglerProps.put("HysteresisMs", Integer.valueOf(p0)); return this; }
-        public android.telephony.SignalThresholdInfo.Builder setIsEnabled(boolean p0) { meglerProps.put("IsEnabled", Boolean.valueOf(p0)); return this; }
-        public android.telephony.SignalThresholdInfo.Builder setRadioAccessNetworkType(int p0) { meglerProps.put("RadioAccessNetworkType", Integer.valueOf(p0)); return this; }
-        public android.telephony.SignalThresholdInfo.Builder setSignalMeasurementType(int p0) { meglerProps.put("SignalMeasurementType", Integer.valueOf(p0)); return this; }
-        public android.telephony.SignalThresholdInfo.Builder setThresholds(int[] p0) { meglerProps.put("Thresholds", p0); return this; }
+        public android.telephony.SignalThresholdInfo build() { android.telephony.SignalThresholdInfo x = new android.telephony.SignalThresholdInfo(); x.megletProps.putAll(megletProps); return x; }
+        public android.telephony.SignalThresholdInfo.Builder setHysteresisDb(int p0) { megletProps.put("HysteresisDb", Integer.valueOf(p0)); return this; }
+        public android.telephony.SignalThresholdInfo.Builder setHysteresisMs(int p0) { megletProps.put("HysteresisMs", Integer.valueOf(p0)); return this; }
+        public android.telephony.SignalThresholdInfo.Builder setIsEnabled(boolean p0) { megletProps.put("IsEnabled", Boolean.valueOf(p0)); return this; }
+        public android.telephony.SignalThresholdInfo.Builder setRadioAccessNetworkType(int p0) { megletProps.put("RadioAccessNetworkType", Integer.valueOf(p0)); return this; }
+        public android.telephony.SignalThresholdInfo.Builder setSignalMeasurementType(int p0) { megletProps.put("SignalMeasurementType", Integer.valueOf(p0)); return this; }
+        public android.telephony.SignalThresholdInfo.Builder setThresholds(int[] p0) { megletProps.put("Thresholds", p0); return this; }
         public android.telephony.SignalThresholdInfo.Builder setThresholds(int[] p0, boolean p1) { return this; }
     }
 }

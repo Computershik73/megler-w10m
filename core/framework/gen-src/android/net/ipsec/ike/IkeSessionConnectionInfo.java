@@ -3,10 +3,10 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IkeSessionConnectionInfo {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public IkeSessionConnectionInfo(java.net.InetAddress p0, java.net.InetAddress p1, android.net.Network p2) {}
-    public java.net.InetAddress getLocalAddress() { return (java.net.InetAddress) meglerProps.get("LocalAddress"); }
-    public android.net.Network getNetwork() { return (android.net.Network) meglerProps.get("Network"); }
-    public java.net.InetAddress getRemoteAddress() { return (java.net.InetAddress) meglerProps.get("RemoteAddress"); }
+    public java.net.InetAddress getLocalAddress() { return (java.net.InetAddress) megletProps.get("LocalAddress"); }
+    public android.net.Network getNetwork() { return (android.net.Network) megletProps.get("Network"); }
+    public java.net.InetAddress getRemoteAddress() { return (java.net.InetAddress) megletProps.get("RemoteAddress"); }
     IkeSessionConnectionInfo() { this((java.net.InetAddress) null, (java.net.InetAddress) null, (android.net.Network) null); }
 }

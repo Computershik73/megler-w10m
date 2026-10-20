@@ -3,25 +3,25 @@ package android.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CredentialOption implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String SUPPORTED_ELEMENT_KEYS = "android.credentials.GetCredentialOption.SUPPORTED_ELEMENT_KEYS";
     public CredentialOption(java.lang.String p0, android.os.Bundle p1, android.os.Bundle p2, boolean p3) {}
     public int describeContents() { return 0; }
-    public java.util.Set getAllowedProviders() { return (meglerProps.get("AllowedProviders") != null ? (java.util.Set) meglerProps.get("AllowedProviders") : new java.util.HashSet()); }
-    public android.os.Bundle getCandidateQueryData() { return (android.os.Bundle) meglerProps.get("CandidateQueryData"); }
-    public android.os.Bundle getCredentialRetrievalData() { return (android.os.Bundle) meglerProps.get("CredentialRetrievalData"); }
-    public java.lang.String getType() { return (java.lang.String) meglerProps.get("Type"); }
-    public boolean isSystemProviderRequired() { return (meglerProps.get("SystemProviderRequired") instanceof Boolean ? (Boolean) meglerProps.get("SystemProviderRequired") : false); }
+    public java.util.Set getAllowedProviders() { return (megletProps.get("AllowedProviders") != null ? (java.util.Set) megletProps.get("AllowedProviders") : new java.util.HashSet()); }
+    public android.os.Bundle getCandidateQueryData() { return (android.os.Bundle) megletProps.get("CandidateQueryData"); }
+    public android.os.Bundle getCredentialRetrievalData() { return (android.os.Bundle) megletProps.get("CredentialRetrievalData"); }
+    public java.lang.String getType() { return (java.lang.String) megletProps.get("Type"); }
+    public boolean isSystemProviderRequired() { return (megletProps.get("SystemProviderRequired") instanceof Boolean ? (Boolean) megletProps.get("SystemProviderRequired") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     CredentialOption() { this((java.lang.String) null, (android.os.Bundle) null, (android.os.Bundle) null, (boolean) false); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0, android.os.Bundle p1, android.os.Bundle p2) {}
         public android.credentials.CredentialOption.Builder addAllowedProvider(android.content.ComponentName p0) { return this; }
-        public android.credentials.CredentialOption build() { android.credentials.CredentialOption x = new android.credentials.CredentialOption(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.credentials.CredentialOption.Builder setAllowedProviders(java.util.Set p0) { meglerProps.put("AllowedProviders", p0); return this; }
-        public android.credentials.CredentialOption.Builder setIsSystemProviderRequired(boolean p0) { meglerProps.put("IsSystemProviderRequired", Boolean.valueOf(p0)); return this; }
+        public android.credentials.CredentialOption build() { android.credentials.CredentialOption x = new android.credentials.CredentialOption(); x.megletProps.putAll(megletProps); return x; }
+        public android.credentials.CredentialOption.Builder setAllowedProviders(java.util.Set p0) { megletProps.put("AllowedProviders", p0); return this; }
+        public android.credentials.CredentialOption.Builder setIsSystemProviderRequired(boolean p0) { megletProps.put("IsSystemProviderRequired", Boolean.valueOf(p0)); return this; }
         Builder() { this((java.lang.String) null, (android.os.Bundle) null, (android.os.Bundle) null); }
     }
 }

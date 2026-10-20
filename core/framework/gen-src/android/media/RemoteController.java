@@ -3,14 +3,14 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RemoteController {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int POSITION_SYNCHRONIZATION_CHECK = 1;
     public static final int POSITION_SYNCHRONIZATION_NONE = 0;
     public RemoteController(android.content.Context p0, android.media.RemoteController.OnClientUpdateListener p1) {}
     public RemoteController(android.content.Context p0, android.media.RemoteController.OnClientUpdateListener p1, android.os.Looper p2) {}
     public boolean clearArtworkConfiguration() { return false; }
     public android.media.RemoteController.MetadataEditor editMetadata() { return null; }
-    public long getEstimatedMediaPosition() { return (meglerProps.get("EstimatedMediaPosition") instanceof Long ? (Long) meglerProps.get("EstimatedMediaPosition") : 0L); }
+    public long getEstimatedMediaPosition() { return (megletProps.get("EstimatedMediaPosition") instanceof Long ? (Long) megletProps.get("EstimatedMediaPosition") : 0L); }
     public boolean seekTo(long p0) { return false; }
     public boolean sendMediaKeyEvent(android.view.KeyEvent p0) { return false; }
     public boolean setArtworkConfiguration(int p0, int p1) { return false; }
@@ -18,7 +18,7 @@ public final class RemoteController {
     public boolean setSynchronizationMode(int p0) { return false; }
     RemoteController() { this((android.content.Context) null, (android.media.RemoteController.OnClientUpdateListener) null); }
     public static class MetadataEditor extends android.media.MediaMetadataEditor {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected MetadataEditor(android.media.RemoteController p0) { super(); }
         protected MetadataEditor(android.media.RemoteController p0, android.os.Bundle p1, long p2) { super(); }
         public void apply() {}

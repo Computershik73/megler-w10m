@@ -1,21 +1,21 @@
-    // megler-w10m: members added to the original's generated android.net.wifi.WifiInfo (tools/build-framework.sh, "X.java.members").
+    // Meglet: members added to the original's generated android.net.wifi.WifiInfo (tools/build-framework.sh, "X.java.members").
     // The network WifiManager.getConnectionInfo (overlaid) gives: one the phone is connected to, as Android 9 tells an app
     // without the location permission about it ("<unknown ssid>", BSSID 02:00:00:00:00:00), with the phone's address. The
     // generated getters read these keys; its setSSID stores a WifiSsid where getSSID reads a String, and nothing sets the
     // address, so the values are put here as the getters read them.
-    static WifiInfo meglerConnected(int ipAddress) {
+    static WifiInfo megletConnected(int ipAddress) {
         WifiInfo w = new WifiInfo();
-        w.meglerProps.put("SSID", "<unknown ssid>");
-        w.meglerProps.put("BSSID", "02:00:00:00:00:00");
-        w.meglerProps.put("MacAddress", "02:00:00:00:00:00");
-        w.meglerProps.put("Rssi", Integer.valueOf(-50));
-        w.meglerProps.put("LinkSpeed", Integer.valueOf(72));
-        w.meglerProps.put("TxLinkSpeedMbps", Integer.valueOf(72));
-        w.meglerProps.put("RxLinkSpeedMbps", Integer.valueOf(72));
-        w.meglerProps.put("Frequency", Integer.valueOf(2437));
-        w.meglerProps.put("24GHz", Boolean.TRUE);
-        w.meglerProps.put("IpAddress", Integer.valueOf(ipAddress));
-        w.meglerProps.put("NetworkId", Integer.valueOf(0));
-        w.meglerProps.put("SupplicantState", SupplicantState.COMPLETED);
+        w.megletProps.put("SSID", "<unknown ssid>");
+        w.megletProps.put("BSSID", "02:00:00:00:00:00");
+        w.megletProps.put("MacAddress", "02:00:00:00:00:00");
+        w.megletProps.put("Rssi", Integer.valueOf(-50));
+        w.megletProps.put("LinkSpeed", Integer.valueOf(72));
+        w.megletProps.put("TxLinkSpeedMbps", Integer.valueOf(72));
+        w.megletProps.put("RxLinkSpeedMbps", Integer.valueOf(72));
+        w.megletProps.put("Frequency", Integer.valueOf(2437));
+        w.megletProps.put("24GHz", Boolean.TRUE);
+        w.megletProps.put("IpAddress", Integer.valueOf(ipAddress));
+        w.megletProps.put("NetworkId", Integer.valueOf(0));
+        w.megletProps.put("SupplicantState", SupplicantState.COMPLETED);
         return w;
     }

@@ -3,13 +3,13 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UnsafeStateException extends java.lang.IllegalStateException implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public UnsafeStateException(int p0, int p1) { super(); }
     public int describeContents() { return 0; }
-    public java.lang.String getMessage() { return (java.lang.String) meglerProps.get("Message"); }
-    public int getOperation() { return (meglerProps.get("Operation") instanceof Integer ? (Integer) meglerProps.get("Operation") : 0); }
-    public java.util.List getReasons() { return (meglerProps.get("Reasons") != null ? (java.util.List) meglerProps.get("Reasons") : new java.util.ArrayList()); }
+    public java.lang.String getMessage() { return (java.lang.String) megletProps.get("Message"); }
+    public int getOperation() { return (megletProps.get("Operation") instanceof Integer ? (Integer) megletProps.get("Operation") : 0); }
+    public java.util.List getReasons() { return (megletProps.get("Reasons") != null ? (java.util.List) megletProps.get("Reasons") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     UnsafeStateException() { this((int) 0, (int) 0); }
 }

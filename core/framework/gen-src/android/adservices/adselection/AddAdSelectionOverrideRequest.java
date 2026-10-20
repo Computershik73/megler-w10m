@@ -3,12 +3,12 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AddAdSelectionOverrideRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public AddAdSelectionOverrideRequest(android.adservices.adselection.AdSelectionConfig p0, java.lang.String p1, android.adservices.common.AdSelectionSignals p2) {}
     public AddAdSelectionOverrideRequest(android.adservices.adselection.AdSelectionConfig p0, java.lang.String p1, android.adservices.common.AdSelectionSignals p2, android.adservices.adselection.PerBuyerDecisionLogic p3) {}
-    public android.adservices.adselection.AdSelectionConfig getAdSelectionConfig() { return (android.adservices.adselection.AdSelectionConfig) meglerProps.get("AdSelectionConfig"); }
-    public java.lang.String getDecisionLogicJs() { return (java.lang.String) meglerProps.get("DecisionLogicJs"); }
-    public android.adservices.adselection.PerBuyerDecisionLogic getPerBuyerDecisionLogic() { return (android.adservices.adselection.PerBuyerDecisionLogic) meglerProps.get("PerBuyerDecisionLogic"); }
-    public android.adservices.common.AdSelectionSignals getTrustedScoringSignals() { return (android.adservices.common.AdSelectionSignals) meglerProps.get("TrustedScoringSignals"); }
+    public android.adservices.adselection.AdSelectionConfig getAdSelectionConfig() { return (android.adservices.adselection.AdSelectionConfig) megletProps.get("AdSelectionConfig"); }
+    public java.lang.String getDecisionLogicJs() { return (java.lang.String) megletProps.get("DecisionLogicJs"); }
+    public android.adservices.adselection.PerBuyerDecisionLogic getPerBuyerDecisionLogic() { return (android.adservices.adselection.PerBuyerDecisionLogic) megletProps.get("PerBuyerDecisionLogic"); }
+    public android.adservices.common.AdSelectionSignals getTrustedScoringSignals() { return (android.adservices.common.AdSelectionSignals) megletProps.get("TrustedScoringSignals"); }
     AddAdSelectionOverrideRequest() { this((android.adservices.adselection.AdSelectionConfig) null, (java.lang.String) null, (android.adservices.common.AdSelectionSignals) null); }
 }

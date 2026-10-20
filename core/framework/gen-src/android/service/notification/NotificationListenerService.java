@@ -3,7 +3,7 @@ package android.service.notification;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class NotificationListenerService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_SETTINGS_HOME = "android.service.notification.action.SETTINGS_HOME";
     public static final int FLAG_FILTER_TYPE_ALERTING = 2;
     public static final int FLAG_FILTER_TYPE_CONVERSATIONS = 1;
@@ -67,20 +67,20 @@ public abstract class NotificationListenerService extends android.app.Service {
     public void clearRequestedListenerHints() {}
     public android.app.NotificationChannel createConversationNotificationChannelForPackage(java.lang.String p0, android.os.UserHandle p1, java.lang.String p2, java.lang.String p3) { return null; }
     public void createLegacyIconExtras(android.app.Notification p0) {}
-    public android.service.notification.StatusBarNotification[] getActiveNotifications() { return (android.service.notification.StatusBarNotification[]) meglerProps.get("ActiveNotifications"); }
+    public android.service.notification.StatusBarNotification[] getActiveNotifications() { return (android.service.notification.StatusBarNotification[]) megletProps.get("ActiveNotifications"); }
     public android.service.notification.StatusBarNotification[] getActiveNotifications(int p0) { return null; }
     public android.service.notification.StatusBarNotification[] getActiveNotifications(java.lang.String[] p0) { return null; }
     public android.service.notification.StatusBarNotification[] getActiveNotifications(java.lang.String[] p0, int p1) { return null; }
-    protected android.content.Context getContext() { return (android.content.Context) meglerProps.get("Context"); }
-    public int getCurrentInterruptionFilter() { return (meglerProps.get("CurrentInterruptionFilter") instanceof Integer ? (Integer) meglerProps.get("CurrentInterruptionFilter") : 0); }
-    public int getCurrentListenerHints() { return (meglerProps.get("CurrentListenerHints") instanceof Integer ? (Integer) meglerProps.get("CurrentListenerHints") : 0); }
-    public android.service.notification.NotificationListenerService.RankingMap getCurrentRanking() { return (android.service.notification.NotificationListenerService.RankingMap) meglerProps.get("CurrentRanking"); }
-    public android.os.Handler getHandler() { return (android.os.Handler) meglerProps.get("Handler"); }
+    protected android.content.Context getContext() { return (android.content.Context) megletProps.get("Context"); }
+    public int getCurrentInterruptionFilter() { return (megletProps.get("CurrentInterruptionFilter") instanceof Integer ? (Integer) megletProps.get("CurrentInterruptionFilter") : 0); }
+    public int getCurrentListenerHints() { return (megletProps.get("CurrentListenerHints") instanceof Integer ? (Integer) megletProps.get("CurrentListenerHints") : 0); }
+    public android.service.notification.NotificationListenerService.RankingMap getCurrentRanking() { return (android.service.notification.NotificationListenerService.RankingMap) megletProps.get("CurrentRanking"); }
+    public android.os.Handler getHandler() { return (android.os.Handler) megletProps.get("Handler"); }
     public java.util.List getNotificationChannelGroups(java.lang.String p0, android.os.UserHandle p1) { return new java.util.ArrayList(); }
     public java.util.List getNotificationChannels(java.lang.String p0, android.os.UserHandle p1) { return new java.util.ArrayList(); }
-    protected android.app.INotificationManager getNotificationInterface() { return (android.app.INotificationManager) meglerProps.get("NotificationInterface"); }
-    public android.service.notification.StatusBarNotification[] getSnoozedNotifications() { return (android.service.notification.StatusBarNotification[]) meglerProps.get("SnoozedNotifications"); }
-    protected boolean isBound() { return (meglerProps.get("Bound") instanceof Boolean ? (Boolean) meglerProps.get("Bound") : false); }
+    protected android.app.INotificationManager getNotificationInterface() { return (android.app.INotificationManager) megletProps.get("NotificationInterface"); }
+    public android.service.notification.StatusBarNotification[] getSnoozedNotifications() { return (android.service.notification.StatusBarNotification[]) megletProps.get("SnoozedNotifications"); }
+    protected boolean isBound() { return (megletProps.get("Bound") instanceof Boolean ? (Boolean) megletProps.get("Bound") : false); }
     public void migrateNotificationFilter(int p0, java.util.List p1) {}
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public void onInterruptionFilterChanged(int p0) {}
@@ -101,14 +101,14 @@ public abstract class NotificationListenerService extends android.app.Service {
     public void requestInterruptionFilter(int p0) {}
     public void requestListenerHints(int p0) {}
     public void requestUnbind() {}
-    public void setNotificationsShown(java.lang.String[] p0) { meglerProps.put("NotificationsShown", p0); }
-    public void setOnNotificationPostedTrim(int p0) { meglerProps.put("OnNotificationPostedTrim", Integer.valueOf(p0)); }
+    public void setNotificationsShown(java.lang.String[] p0) { megletProps.put("NotificationsShown", p0); }
+    public void setOnNotificationPostedTrim(int p0) { megletProps.put("OnNotificationPostedTrim", Integer.valueOf(p0)); }
     public void snoozeNotification(java.lang.String p0, long p1) {}
     public void snoozeNotification(java.lang.String p0, java.lang.String p1) {}
     public void unregisterAsSystemService() {}
     public void updateNotificationChannel(java.lang.String p0, android.os.UserHandle p1, android.app.NotificationChannel p2) {}
     public static abstract class NotificationListenerWrapper extends android.service.notification.INotificationListener.Stub {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected NotificationListenerWrapper(android.service.notification.NotificationListenerService p0) { super(); }
         public void onActionClicked(java.lang.String p0, android.app.Notification.Action p1, int p2) {}
         public void onAllowedAdjustmentsChanged() {}
@@ -139,7 +139,7 @@ public abstract class NotificationListenerService extends android.app.Service {
         NotificationListenerWrapper() { this((android.service.notification.NotificationListenerService) null); }
     }
     public static class Ranking {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int RANKING_DEMOTED = -1;
         public static final int RANKING_PROMOTED = 1;
         public static final int RANKING_UNCHANGED = 0;
@@ -152,45 +152,45 @@ public abstract class NotificationListenerService extends android.app.Service {
         public static java.lang.String importanceToString(int p0) { return null; }
         public boolean canBubble() { return false; }
         public boolean canShowBadge() { return false; }
-        public java.util.List getAdditionalPeople() { return (meglerProps.get("AdditionalPeople") != null ? (java.util.List) meglerProps.get("AdditionalPeople") : new java.util.ArrayList()); }
-        public android.app.NotificationChannel getChannel() { return (android.app.NotificationChannel) meglerProps.get("Channel"); }
-        public android.content.pm.ShortcutInfo getConversationShortcutInfo() { return (android.content.pm.ShortcutInfo) meglerProps.get("ConversationShortcutInfo"); }
-        public int getImportance() { return (meglerProps.get("Importance") instanceof Integer ? (Integer) meglerProps.get("Importance") : 0); }
-        public java.lang.CharSequence getImportanceExplanation() { return (java.lang.CharSequence) meglerProps.get("ImportanceExplanation"); }
-        public java.lang.String getKey() { return (java.lang.String) meglerProps.get("Key"); }
-        public long getLastAudiblyAlertedMillis() { return (meglerProps.get("LastAudiblyAlertedMillis") instanceof Long ? (Long) meglerProps.get("LastAudiblyAlertedMillis") : 0L); }
-        public int getLockscreenVisibilityOverride() { return (meglerProps.get("LockscreenVisibilityOverride") instanceof Integer ? (Integer) meglerProps.get("LockscreenVisibilityOverride") : 0); }
-        public java.lang.String getOverrideGroupKey() { return (java.lang.String) meglerProps.get("OverrideGroupKey"); }
-        public int getProposedImportance() { return (meglerProps.get("ProposedImportance") instanceof Integer ? (Integer) meglerProps.get("ProposedImportance") : 0); }
-        public int getRank() { return (meglerProps.get("Rank") instanceof Integer ? (Integer) meglerProps.get("Rank") : 0); }
-        public int getRankingAdjustment() { return (meglerProps.get("RankingAdjustment") instanceof Integer ? (Integer) meglerProps.get("RankingAdjustment") : 0); }
-        public float getRankingScore() { return (meglerProps.get("RankingScore") instanceof Float ? (Float) meglerProps.get("RankingScore") : 0f); }
-        public java.util.List getSmartActions() { return (meglerProps.get("SmartActions") != null ? (java.util.List) meglerProps.get("SmartActions") : new java.util.ArrayList()); }
-        public java.util.List getSmartReplies() { return (meglerProps.get("SmartReplies") != null ? (java.util.List) meglerProps.get("SmartReplies") : new java.util.ArrayList()); }
-        public java.util.List getSnoozeCriteria() { return (meglerProps.get("SnoozeCriteria") != null ? (java.util.List) meglerProps.get("SnoozeCriteria") : new java.util.ArrayList()); }
-        public java.lang.String getSummarization() { return (java.lang.String) meglerProps.get("Summarization"); }
-        public int getSuppressedVisualEffects() { return (meglerProps.get("SuppressedVisualEffects") instanceof Integer ? (Integer) meglerProps.get("SuppressedVisualEffects") : 0); }
-        public int getUserSentiment() { return (meglerProps.get("UserSentiment") instanceof Integer ? (Integer) meglerProps.get("UserSentiment") : 0); }
+        public java.util.List getAdditionalPeople() { return (megletProps.get("AdditionalPeople") != null ? (java.util.List) megletProps.get("AdditionalPeople") : new java.util.ArrayList()); }
+        public android.app.NotificationChannel getChannel() { return (android.app.NotificationChannel) megletProps.get("Channel"); }
+        public android.content.pm.ShortcutInfo getConversationShortcutInfo() { return (android.content.pm.ShortcutInfo) megletProps.get("ConversationShortcutInfo"); }
+        public int getImportance() { return (megletProps.get("Importance") instanceof Integer ? (Integer) megletProps.get("Importance") : 0); }
+        public java.lang.CharSequence getImportanceExplanation() { return (java.lang.CharSequence) megletProps.get("ImportanceExplanation"); }
+        public java.lang.String getKey() { return (java.lang.String) megletProps.get("Key"); }
+        public long getLastAudiblyAlertedMillis() { return (megletProps.get("LastAudiblyAlertedMillis") instanceof Long ? (Long) megletProps.get("LastAudiblyAlertedMillis") : 0L); }
+        public int getLockscreenVisibilityOverride() { return (megletProps.get("LockscreenVisibilityOverride") instanceof Integer ? (Integer) megletProps.get("LockscreenVisibilityOverride") : 0); }
+        public java.lang.String getOverrideGroupKey() { return (java.lang.String) megletProps.get("OverrideGroupKey"); }
+        public int getProposedImportance() { return (megletProps.get("ProposedImportance") instanceof Integer ? (Integer) megletProps.get("ProposedImportance") : 0); }
+        public int getRank() { return (megletProps.get("Rank") instanceof Integer ? (Integer) megletProps.get("Rank") : 0); }
+        public int getRankingAdjustment() { return (megletProps.get("RankingAdjustment") instanceof Integer ? (Integer) megletProps.get("RankingAdjustment") : 0); }
+        public float getRankingScore() { return (megletProps.get("RankingScore") instanceof Float ? (Float) megletProps.get("RankingScore") : 0f); }
+        public java.util.List getSmartActions() { return (megletProps.get("SmartActions") != null ? (java.util.List) megletProps.get("SmartActions") : new java.util.ArrayList()); }
+        public java.util.List getSmartReplies() { return (megletProps.get("SmartReplies") != null ? (java.util.List) megletProps.get("SmartReplies") : new java.util.ArrayList()); }
+        public java.util.List getSnoozeCriteria() { return (megletProps.get("SnoozeCriteria") != null ? (java.util.List) megletProps.get("SnoozeCriteria") : new java.util.ArrayList()); }
+        public java.lang.String getSummarization() { return (java.lang.String) megletProps.get("Summarization"); }
+        public int getSuppressedVisualEffects() { return (megletProps.get("SuppressedVisualEffects") instanceof Integer ? (Integer) megletProps.get("SuppressedVisualEffects") : 0); }
+        public int getUserSentiment() { return (megletProps.get("UserSentiment") instanceof Integer ? (Integer) megletProps.get("UserSentiment") : 0); }
         public boolean hasSensitiveContent() { return false; }
-        public boolean isAmbient() { return (meglerProps.get("Ambient") instanceof Boolean ? (Boolean) meglerProps.get("Ambient") : false); }
-        public boolean isBubble() { return (meglerProps.get("Bubble") instanceof Boolean ? (Boolean) meglerProps.get("Bubble") : false); }
-        public boolean isConversation() { return (meglerProps.get("Conversation") instanceof Boolean ? (Boolean) meglerProps.get("Conversation") : false); }
-        public boolean isNoisy() { return (meglerProps.get("Noisy") instanceof Boolean ? (Boolean) meglerProps.get("Noisy") : false); }
-        public boolean isSuspended() { return (meglerProps.get("Suspended") instanceof Boolean ? (Boolean) meglerProps.get("Suspended") : false); }
-        public boolean isTextChanged() { return (meglerProps.get("TextChanged") instanceof Boolean ? (Boolean) meglerProps.get("TextChanged") : false); }
+        public boolean isAmbient() { return (megletProps.get("Ambient") instanceof Boolean ? (Boolean) megletProps.get("Ambient") : false); }
+        public boolean isBubble() { return (megletProps.get("Bubble") instanceof Boolean ? (Boolean) megletProps.get("Bubble") : false); }
+        public boolean isConversation() { return (megletProps.get("Conversation") instanceof Boolean ? (Boolean) megletProps.get("Conversation") : false); }
+        public boolean isNoisy() { return (megletProps.get("Noisy") instanceof Boolean ? (Boolean) megletProps.get("Noisy") : false); }
+        public boolean isSuspended() { return (megletProps.get("Suspended") instanceof Boolean ? (Boolean) megletProps.get("Suspended") : false); }
+        public boolean isTextChanged() { return (megletProps.get("TextChanged") instanceof Boolean ? (Boolean) megletProps.get("TextChanged") : false); }
         public boolean matchesInterruptionFilter() { return false; }
         public void populate(android.service.notification.NotificationListenerService.Ranking p0) {}
         public void populate(java.lang.String p0, int p1, boolean p2, int p3, int p4, int p5, java.lang.CharSequence p6, java.lang.String p7, android.app.NotificationChannel p8, java.util.ArrayList p9, java.util.ArrayList p10, boolean p11, int p12, boolean p13, long p14, boolean p15, java.util.ArrayList p16, java.util.ArrayList p17, boolean p18, boolean p19, boolean p20, android.content.pm.ShortcutInfo p21, int p22, boolean p23, int p24, boolean p25, java.lang.String p26) {}
-        public void setSmartActions(java.util.ArrayList p0) { meglerProps.put("SmartActions", p0); }
+        public void setSmartActions(java.util.ArrayList p0) { megletProps.put("SmartActions", p0); }
         public android.service.notification.NotificationListenerService.Ranking withAudiblyAlertedInfo(android.service.notification.NotificationListenerService.Ranking p0) { return this; }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
     }
     public static class RankingMap implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public RankingMap(android.service.notification.NotificationListenerService.Ranking[] p0) {}
         public int describeContents() { return 0; }
-        public java.lang.String[] getOrderedKeys() { return (java.lang.String[]) meglerProps.get("OrderedKeys"); }
+        public java.lang.String[] getOrderedKeys() { return (java.lang.String[]) megletProps.get("OrderedKeys"); }
         public boolean getRanking(java.lang.String p0, android.service.notification.NotificationListenerService.Ranking p1) { return false; }
         public android.service.notification.NotificationListenerService.Ranking getRawRankingObject(java.lang.String p0) { return null; }
         public void writeToParcel(android.os.Parcel p0, int p1) {}

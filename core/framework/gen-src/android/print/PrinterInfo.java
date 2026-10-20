@@ -3,36 +3,36 @@ package android.print;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PrinterInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int STATUS_BUSY = 2;
     public static final int STATUS_IDLE = 1;
     public static final int STATUS_UNAVAILABLE = 3;
     public int describeContents() { return 0; }
     public boolean equalsIgnoringStatus(android.print.PrinterInfo p0) { return false; }
-    public android.print.PrinterCapabilitiesInfo getCapabilities() { return (android.print.PrinterCapabilitiesInfo) meglerProps.get("Capabilities"); }
-    public java.lang.String getDescription() { return (java.lang.String) meglerProps.get("Description"); }
-    public boolean getHasCustomPrinterIcon() { return (meglerProps.get("HasCustomPrinterIcon") instanceof Boolean ? (Boolean) meglerProps.get("HasCustomPrinterIcon") : false); }
-    public android.print.PrinterId getId() { return (android.print.PrinterId) meglerProps.get("Id"); }
-    public android.app.PendingIntent getInfoIntent() { return (android.app.PendingIntent) meglerProps.get("InfoIntent"); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public int getStatus() { return (meglerProps.get("Status") instanceof Integer ? (Integer) meglerProps.get("Status") : 0); }
+    public android.print.PrinterCapabilitiesInfo getCapabilities() { return (android.print.PrinterCapabilitiesInfo) megletProps.get("Capabilities"); }
+    public java.lang.String getDescription() { return (java.lang.String) megletProps.get("Description"); }
+    public boolean getHasCustomPrinterIcon() { return (megletProps.get("HasCustomPrinterIcon") instanceof Boolean ? (Boolean) megletProps.get("HasCustomPrinterIcon") : false); }
+    public android.print.PrinterId getId() { return (android.print.PrinterId) megletProps.get("Id"); }
+    public android.app.PendingIntent getInfoIntent() { return (android.app.PendingIntent) megletProps.get("InfoIntent"); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public int getStatus() { return (megletProps.get("Status") instanceof Integer ? (Integer) megletProps.get("Status") : 0); }
     public android.graphics.drawable.Drawable loadIcon(android.content.Context p0) { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected PrinterInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.print.PrinterId p0, java.lang.String p1, int p2) {}
         public Builder(android.print.PrinterInfo p0) {}
-        public android.print.PrinterInfo build() { android.print.PrinterInfo x = new android.print.PrinterInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.print.PrinterInfo build() { android.print.PrinterInfo x = new android.print.PrinterInfo(); x.megletProps.putAll(megletProps); return x; }
         public android.print.PrinterInfo.Builder incCustomPrinterIconGen() { return this; }
-        public android.print.PrinterInfo.Builder setCapabilities(android.print.PrinterCapabilitiesInfo p0) { meglerProps.put("Capabilities", p0); return this; }
-        public android.print.PrinterInfo.Builder setDescription(java.lang.String p0) { meglerProps.put("Description", p0); return this; }
-        public android.print.PrinterInfo.Builder setHasCustomPrinterIcon(boolean p0) { meglerProps.put("HasCustomPrinterIcon", Boolean.valueOf(p0)); return this; }
-        public android.print.PrinterInfo.Builder setIconResourceId(int p0) { meglerProps.put("IconResourceId", Integer.valueOf(p0)); return this; }
-        public android.print.PrinterInfo.Builder setInfoIntent(android.app.PendingIntent p0) { meglerProps.put("InfoIntent", p0); return this; }
-        public android.print.PrinterInfo.Builder setName(java.lang.String p0) { meglerProps.put("Name", p0); return this; }
-        public android.print.PrinterInfo.Builder setStatus(int p0) { meglerProps.put("Status", Integer.valueOf(p0)); return this; }
+        public android.print.PrinterInfo.Builder setCapabilities(android.print.PrinterCapabilitiesInfo p0) { megletProps.put("Capabilities", p0); return this; }
+        public android.print.PrinterInfo.Builder setDescription(java.lang.String p0) { megletProps.put("Description", p0); return this; }
+        public android.print.PrinterInfo.Builder setHasCustomPrinterIcon(boolean p0) { megletProps.put("HasCustomPrinterIcon", Boolean.valueOf(p0)); return this; }
+        public android.print.PrinterInfo.Builder setIconResourceId(int p0) { megletProps.put("IconResourceId", Integer.valueOf(p0)); return this; }
+        public android.print.PrinterInfo.Builder setInfoIntent(android.app.PendingIntent p0) { megletProps.put("InfoIntent", p0); return this; }
+        public android.print.PrinterInfo.Builder setName(java.lang.String p0) { megletProps.put("Name", p0); return this; }
+        public android.print.PrinterInfo.Builder setStatus(int p0) { megletProps.put("Status", Integer.valueOf(p0)); return this; }
         Builder() { this((android.print.PrinterInfo) null); }
     }
 }

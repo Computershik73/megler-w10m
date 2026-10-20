@@ -3,8 +3,8 @@ package android.os.strictmode;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class InstanceCountViolation extends android.os.strictmode.Violation {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public InstanceCountViolation(java.lang.Class p0, long p1, int p2) { super(); }
-    public long getNumberOfInstances() { return (meglerProps.get("NumberOfInstances") instanceof Long ? (Long) meglerProps.get("NumberOfInstances") : 0L); }
+    public long getNumberOfInstances() { return (megletProps.get("NumberOfInstances") instanceof Long ? (Long) megletProps.get("NumberOfInstances") : 0L); }
     InstanceCountViolation() { this((java.lang.Class) null, (long) 0L, (int) 0); }
 }

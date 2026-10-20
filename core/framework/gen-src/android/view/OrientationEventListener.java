@@ -3,7 +3,7 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class OrientationEventListener {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ORIENTATION_UNKNOWN = -1;
     public OrientationEventListener(android.content.Context p0) {}
     public OrientationEventListener(android.content.Context p0, int p1) {}

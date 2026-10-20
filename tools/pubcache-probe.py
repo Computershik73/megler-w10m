@@ -2,7 +2,7 @@
 
     python tools/pubcache-probe.py [--no-install]
 
-Installs MeglerProbeA and MeglerProbeB through the phone's Device Portal, starts A, then B (which sends A to the
+Installs MegletProbeA and MegletProbeB through the phone's Device Portal, starts A, then B (which sends A to the
 background), 25 seconds apart, ends both, and prints what each wrote in its LocalState\\probe.log.
 The probes' logs are appended to, start after start; --fresh removes them first.
 """
@@ -20,7 +20,7 @@ import phone  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "build", "pubcache-probe")
-NAMES = ("MeglerProbeA", "MeglerProbeB")
+NAMES = ("MegletProbeA", "MegletProbeB")
 
 
 def b64(s):
@@ -84,7 +84,7 @@ def main():
                            packagefullname=p["PackageFullName"], path="\\LocalState", filename="probe.log")
             except Exception:
                 pass
-    for n in ("MeglerProbeA", "MeglerProbeB"):
+    for n in ("MegletProbeA", "MegletProbeB"):
         launch(pkgs[n])
         time.sleep(25)
     # A probe that runs holds its log open, and the portal answers 404 for it: both are ended first.

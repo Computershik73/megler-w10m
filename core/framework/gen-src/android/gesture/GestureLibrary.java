@@ -3,21 +3,21 @@ package android.gesture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class GestureLibrary {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected android.gesture.GestureStore mStore;
     protected GestureLibrary() {}
     public void addGesture(java.lang.String p0, android.gesture.Gesture p1) {}
-    public java.util.Set getGestureEntries() { return (meglerProps.get("GestureEntries") != null ? (java.util.Set) meglerProps.get("GestureEntries") : new java.util.HashSet()); }
+    public java.util.Set getGestureEntries() { return (megletProps.get("GestureEntries") != null ? (java.util.Set) megletProps.get("GestureEntries") : new java.util.HashSet()); }
     public java.util.ArrayList getGestures(java.lang.String p0) { return new java.util.ArrayList(); }
-    public android.gesture.Learner getLearner() { return (android.gesture.Learner) meglerProps.get("Learner"); }
-    public int getOrientationStyle() { return (meglerProps.get("OrientationStyle") instanceof Integer ? (Integer) meglerProps.get("OrientationStyle") : 0); }
-    public int getSequenceType() { return (meglerProps.get("SequenceType") instanceof Integer ? (Integer) meglerProps.get("SequenceType") : 0); }
-    public boolean isReadOnly() { return (meglerProps.get("ReadOnly") instanceof Boolean ? (Boolean) meglerProps.get("ReadOnly") : false); }
+    public android.gesture.Learner getLearner() { return (android.gesture.Learner) megletProps.get("Learner"); }
+    public int getOrientationStyle() { return (megletProps.get("OrientationStyle") instanceof Integer ? (Integer) megletProps.get("OrientationStyle") : 0); }
+    public int getSequenceType() { return (megletProps.get("SequenceType") instanceof Integer ? (Integer) megletProps.get("SequenceType") : 0); }
+    public boolean isReadOnly() { return (megletProps.get("ReadOnly") instanceof Boolean ? (Boolean) megletProps.get("ReadOnly") : false); }
     public abstract boolean load();
     public java.util.ArrayList recognize(android.gesture.Gesture p0) { return new java.util.ArrayList(); }
     public void removeEntry(java.lang.String p0) {}
     public void removeGesture(java.lang.String p0, android.gesture.Gesture p1) {}
     public abstract boolean save();
-    public void setOrientationStyle(int p0) { meglerProps.put("OrientationStyle", Integer.valueOf(p0)); }
-    public void setSequenceType(int p0) { meglerProps.put("SequenceType", Integer.valueOf(p0)); }
+    public void setOrientationStyle(int p0) { megletProps.put("OrientationStyle", Integer.valueOf(p0)); }
+    public void setSequenceType(int p0) { megletProps.put("SequenceType", Integer.valueOf(p0)); }
 }

@@ -3,9 +3,9 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TvRecordingClient {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public TvRecordingClient(android.content.Context p0, java.lang.String p1, android.media.tv.TvRecordingClient.RecordingCallback p2, android.os.Handler p3) {}
-    public android.media.tv.TvInputManager.SessionCallback getSessionCallback() { return (android.media.tv.TvInputManager.SessionCallback) meglerProps.get("SessionCallback"); }
+    public android.media.tv.TvInputManager.SessionCallback getSessionCallback() { return (android.media.tv.TvInputManager.SessionCallback) megletProps.get("SessionCallback"); }
     public void pauseRecording() {}
     public void pauseRecording(android.os.Bundle p0) {}
     public void release() {}
@@ -20,7 +20,7 @@ public class TvRecordingClient {
     public void tune(java.lang.String p0, android.net.Uri p1, android.os.Bundle p2) {}
     TvRecordingClient() { this((android.content.Context) null, (java.lang.String) null, (android.media.tv.TvRecordingClient.RecordingCallback) null, (android.os.Handler) null); }
     public static abstract class RecordingCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public RecordingCallback() {}
         public void onConnectionFailed(java.lang.String p0) {}
         public void onDisconnected(java.lang.String p0) {}

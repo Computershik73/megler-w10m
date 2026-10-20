@@ -3,14 +3,14 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DownloadCompletedInput {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public DownloadCompletedInput(android.adservices.ondevicepersonalization.KeyValueStore p0) {}
-    public android.adservices.ondevicepersonalization.KeyValueStore getDownloadedContents() { return (android.adservices.ondevicepersonalization.KeyValueStore) meglerProps.get("DownloadedContents"); }
+    public android.adservices.ondevicepersonalization.KeyValueStore getDownloadedContents() { return (android.adservices.ondevicepersonalization.KeyValueStore) megletProps.get("DownloadedContents"); }
     DownloadCompletedInput() { this((android.adservices.ondevicepersonalization.KeyValueStore) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.adservices.ondevicepersonalization.KeyValueStore p0) {}
-        public android.adservices.ondevicepersonalization.DownloadCompletedInput build() { android.adservices.ondevicepersonalization.DownloadCompletedInput x = new android.adservices.ondevicepersonalization.DownloadCompletedInput(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.adservices.ondevicepersonalization.DownloadCompletedInput build() { android.adservices.ondevicepersonalization.DownloadCompletedInput x = new android.adservices.ondevicepersonalization.DownloadCompletedInput(); x.megletProps.putAll(megletProps); return x; }
         Builder() { this((android.adservices.ondevicepersonalization.KeyValueStore) null); }
     }
 }

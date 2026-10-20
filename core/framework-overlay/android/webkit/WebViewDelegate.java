@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// megler-w10m overlay: AOSP's android/webkit/WebViewDelegate.java at android-15.0.0_r36 (frameworks/base/core/java), new to the
+// Overlay: AOSP's android/webkit/WebViewDelegate.java at android-15.0.0_r36 (frameworks/base/core/java), new to the
 // original's framework (tools/build-framework.sh; docs/JAVA.md, "The WebView").
 //
 // It differs from AOSP's in what is this framework's to give:
@@ -60,7 +60,7 @@ public final class WebViewDelegate {
      * enabled/disabled.
      */
     public void setOnTraceEnabledChangeListener(final OnTraceEnabledChangeListener listener) {
-        // megler-w10m: tracing is never turned on here, so the listener is never called.
+        // Meglet: tracing is never turned on here, so the listener is never called.
     }
 
     /**
@@ -114,7 +114,7 @@ public final class WebViewDelegate {
      * @param functor created by AwDrawFn_CreateFunctor in draw_fn.h.
      */
     public void drawWebViewFunctor(Canvas canvas, int functor) {
-        // megler-w10m: as AOSP's for a canvas that is not a RecordingCanvas, which no canvas is here (see the top).
+        // Meglet: as AOSP's for a canvas that is not a RecordingCanvas, which no canvas is here (see the top).
         throw new IllegalArgumentException(canvas.getClass().getName()
                 + " is not a RecordingCanvas canvas");
     }
@@ -165,7 +165,7 @@ public final class WebViewDelegate {
      * Adds the WebView asset path to {@link android.content.res.AssetManager}.
      */
     public void addWebViewAssetPath(Context context) {
-        // megler-w10m: straight to the app's AssetManager, which every Resources of the app shares (see the top).
+        // Meglet: straight to the app's AssetManager, which every Resources of the app shares (see the top).
         context.getAssets().addAssetPathAsSharedLibrary(
                 WebViewFactory.getLoadedPackageInfo().applicationInfo.sourceDir);
     }
@@ -174,7 +174,7 @@ public final class WebViewDelegate {
      * Returns whether WebView should run in multiprocess mode.
      */
     public boolean isMultiProcessEnabled() {
-        // megler-w10m: no process can be started here; the renderer runs in the app's process (see the top).
+        // Meglet: no process can be started here; the renderer runs in the app's process (see the top).
         return false;
     }
 

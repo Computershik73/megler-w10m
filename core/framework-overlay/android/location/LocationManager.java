@@ -2,8 +2,8 @@
 // It differs in finding the phone: the original is the generated stub, which had no provider, said every one was disabled,
 // knew no location and never called a listener -- an app that checks isProviderEnabled("gps") asked the user to switch the
 // GPS on (Urent, the scooter rental), and one that asks for updates waited for ever. Here the providers gps, network,
-// passive and fused are the phone's location as the shell finds it (Windows.Devices.Geolocation, or a place set in Megler's
-// settings), kept and delivered by megler/LocationService.java: isProviderEnabled and isLocationEnabled say whether it is on,
+// passive and fused are the phone's location as the shell finds it (Windows.Devices.Geolocation, or a place set in Meglet's
+// settings), kept and delivered by meglet/LocationService.java: isProviderEnabled and isLocationEnabled say whether it is on,
 // getLastKnownLocation is the newest fix, requestLocationUpdates, requestSingleUpdate and getCurrentLocation in all their
 // forms (a listener on a Looper or an Executor, a PendingIntent) are delivered to, removeUpdates stops them. GNSS status
 // and NMEA listeners are taken and never called (there are no satellites to report). Every other member of the stub is
@@ -12,7 +12,7 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LocationManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_ADAS_GNSS_ENABLED_CHANGED = "android.location.action.ADAS_GNSS_ENABLED_CHANGED";
     public static final java.lang.String ACTION_GNSS_CAPABILITIES_CHANGED = "android.location.action.GNSS_CAPABILITIES_CHANGED";
     public static final long BLOCK_GPS_STATUS_USAGE = 144027538L;
@@ -64,39 +64,39 @@ public class LocationManager {
     public void clearTestProviderLocation(java.lang.String p0) {}
     public void clearTestProviderStatus(java.lang.String p0) {}
     public void flushGnssBatch() {}
-    public android.os.PackageTagsList getAdasAllowlist() { return (android.os.PackageTagsList) meglerProps.get("AdasAllowlist"); }
+    public android.os.PackageTagsList getAdasAllowlist() { return (android.os.PackageTagsList) megletProps.get("AdasAllowlist"); }
     public java.util.List getAllProviders() { return providers(false); }
-    public java.lang.String[] getBackgroundThrottlingWhitelist() { return (java.lang.String[]) meglerProps.get("BackgroundThrottlingWhitelist"); }
-    public java.lang.String getBestProvider(android.location.Criteria p0, boolean p1) { return !p1 || megler.LocationService.enabled() ? provider(p0) : null; }
-    public void getCurrentLocation(android.location.LocationRequest p0, android.os.CancellationSignal p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) { megler.LocationService.current(providerOf(p0), p1, p2, p3); }
-    public void getCurrentLocation(java.lang.String p0, android.location.LocationRequest p1, android.os.CancellationSignal p2, java.util.concurrent.Executor p3, java.util.function.Consumer p4) { check(p0); megler.LocationService.current(p0, p2, p3, p4); }
-    public void getCurrentLocation(java.lang.String p0, android.os.CancellationSignal p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) { check(p0); megler.LocationService.current(p0, p1, p2, p3); }
-    public java.lang.String getExtraLocationControllerPackage() { return (java.lang.String) meglerProps.get("ExtraLocationControllerPackage"); }
-    public java.util.List getGnssAntennaInfos() { return (meglerProps.get("GnssAntennaInfos") != null ? (java.util.List) meglerProps.get("GnssAntennaInfos") : new java.util.ArrayList()); }
-    public int getGnssBatchSize() { return (meglerProps.get("GnssBatchSize") instanceof Integer ? (Integer) meglerProps.get("GnssBatchSize") : 0); }
-    public android.location.GnssCapabilities getGnssCapabilities() { return (android.location.GnssCapabilities) meglerProps.get("GnssCapabilities"); }
-    public java.lang.String getGnssHardwareModelName() { return (java.lang.String) meglerProps.get("GnssHardwareModelName"); }
-    public int getGnssYearOfHardware() { return (meglerProps.get("GnssYearOfHardware") instanceof Integer ? (Integer) meglerProps.get("GnssYearOfHardware") : 0); }
+    public java.lang.String[] getBackgroundThrottlingWhitelist() { return (java.lang.String[]) megletProps.get("BackgroundThrottlingWhitelist"); }
+    public java.lang.String getBestProvider(android.location.Criteria p0, boolean p1) { return !p1 || meglet.LocationService.enabled() ? provider(p0) : null; }
+    public void getCurrentLocation(android.location.LocationRequest p0, android.os.CancellationSignal p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) { meglet.LocationService.current(providerOf(p0), p1, p2, p3); }
+    public void getCurrentLocation(java.lang.String p0, android.location.LocationRequest p1, android.os.CancellationSignal p2, java.util.concurrent.Executor p3, java.util.function.Consumer p4) { check(p0); meglet.LocationService.current(p0, p2, p3, p4); }
+    public void getCurrentLocation(java.lang.String p0, android.os.CancellationSignal p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) { check(p0); meglet.LocationService.current(p0, p1, p2, p3); }
+    public java.lang.String getExtraLocationControllerPackage() { return (java.lang.String) megletProps.get("ExtraLocationControllerPackage"); }
+    public java.util.List getGnssAntennaInfos() { return (megletProps.get("GnssAntennaInfos") != null ? (java.util.List) megletProps.get("GnssAntennaInfos") : new java.util.ArrayList()); }
+    public int getGnssBatchSize() { return (megletProps.get("GnssBatchSize") instanceof Integer ? (Integer) megletProps.get("GnssBatchSize") : 0); }
+    public android.location.GnssCapabilities getGnssCapabilities() { return (android.location.GnssCapabilities) megletProps.get("GnssCapabilities"); }
+    public java.lang.String getGnssHardwareModelName() { return (java.lang.String) megletProps.get("GnssHardwareModelName"); }
+    public int getGnssYearOfHardware() { return (megletProps.get("GnssYearOfHardware") instanceof Integer ? (Integer) megletProps.get("GnssYearOfHardware") : 0); }
     public android.location.GpsStatus getGpsStatus(android.location.GpsStatus p0) { return null; }
-    public android.os.PackageTagsList getIgnoreSettingsAllowlist() { return (android.os.PackageTagsList) meglerProps.get("IgnoreSettingsAllowlist"); }
-    public java.lang.String[] getIgnoreSettingsWhitelist() { return (java.lang.String[]) meglerProps.get("IgnoreSettingsWhitelist"); }
-    public android.location.Location getLastKnownLocation(java.lang.String p0) { check(p0); return megler.LocationService.last(p0); }
+    public android.os.PackageTagsList getIgnoreSettingsAllowlist() { return (android.os.PackageTagsList) megletProps.get("IgnoreSettingsAllowlist"); }
+    public java.lang.String[] getIgnoreSettingsWhitelist() { return (java.lang.String[]) megletProps.get("IgnoreSettingsWhitelist"); }
+    public android.location.Location getLastKnownLocation(java.lang.String p0) { check(p0); return meglet.LocationService.last(p0); }
     public android.location.Location getLastKnownLocation(java.lang.String p0, android.location.LastLocationRequest p1) { return getLastKnownLocation(p0); }
-    public android.location.Location getLastLocation() { return megler.LocationService.last(FUSED_PROVIDER); }
-    public android.location.LocationProvider getProvider(java.lang.String p0) { return megler.LocationService.known(p0) ? new Provider(p0) : null; }
+    public android.location.Location getLastLocation() { return meglet.LocationService.last(FUSED_PROVIDER); }
+    public android.location.LocationProvider getProvider(java.lang.String p0) { return meglet.LocationService.known(p0) ? new Provider(p0) : null; }
     public java.util.List getProviderPackages(java.lang.String p0) { return new java.util.ArrayList(); }
     public android.location.provider.ProviderProperties getProviderProperties(java.lang.String p0) { return null; }
     public java.util.List getProviders(android.location.Criteria p0, boolean p1) { return providers(p1); }
     public java.util.List getProviders(boolean p0) { return providers(p0); }
-    public boolean hasProvider(java.lang.String p0) { return megler.LocationService.known(p0); }
+    public boolean hasProvider(java.lang.String p0) { return meglet.LocationService.known(p0); }
     public void injectGnssMeasurementCorrections(android.location.GnssMeasurementCorrections p0) {}
     public boolean injectLocation(android.location.Location p0) { return false; }
-    public boolean isAdasGnssLocationEnabled() { return (meglerProps.get("AdasGnssLocationEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AdasGnssLocationEnabled") : false); }
-    public boolean isAutomotiveGnssSuspended() { return (meglerProps.get("AutomotiveGnssSuspended") instanceof Boolean ? (Boolean) meglerProps.get("AutomotiveGnssSuspended") : false); }
-    public boolean isExtraLocationControllerPackageEnabled() { return (meglerProps.get("ExtraLocationControllerPackageEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ExtraLocationControllerPackageEnabled") : false); }
-    public boolean isLocationEnabled() { return megler.LocationService.enabled(); }
-    public boolean isLocationEnabledForUser(android.os.UserHandle p0) { return megler.LocationService.enabled(); }
-    public boolean isProviderEnabled(java.lang.String p0) { check(p0); return PASSIVE_PROVIDER.equals(p0) || megler.LocationService.enabled(); }
+    public boolean isAdasGnssLocationEnabled() { return (megletProps.get("AdasGnssLocationEnabled") instanceof Boolean ? (Boolean) megletProps.get("AdasGnssLocationEnabled") : false); }
+    public boolean isAutomotiveGnssSuspended() { return (megletProps.get("AutomotiveGnssSuspended") instanceof Boolean ? (Boolean) megletProps.get("AutomotiveGnssSuspended") : false); }
+    public boolean isExtraLocationControllerPackageEnabled() { return (megletProps.get("ExtraLocationControllerPackageEnabled") instanceof Boolean ? (Boolean) megletProps.get("ExtraLocationControllerPackageEnabled") : false); }
+    public boolean isLocationEnabled() { return meglet.LocationService.enabled(); }
+    public boolean isLocationEnabledForUser(android.os.UserHandle p0) { return meglet.LocationService.enabled(); }
+    public boolean isProviderEnabled(java.lang.String p0) { check(p0); return PASSIVE_PROVIDER.equals(p0) || meglet.LocationService.enabled(); }
     public boolean isProviderEnabledForUser(java.lang.String p0, android.os.UserHandle p1) { return isProviderEnabled(p0); }
     public boolean isProviderPackage(java.lang.String p0) { return false; }
     public boolean isProviderPackage(java.lang.String p0, java.lang.String p1) { return false; }
@@ -122,33 +122,33 @@ public class LocationManager {
     public void removeProviderRequestChangedListener(android.location.provider.ProviderRequest.ChangedListener p0) {}
     public void removeProximityAlert(android.app.PendingIntent p0) {}
     public void removeTestProvider(java.lang.String p0) {}
-    public void removeUpdates(android.app.PendingIntent p0) { megler.LocationService.remove(p0); }
-    public void removeUpdates(android.location.LocationListener p0) { megler.LocationService.remove(p0); }
+    public void removeUpdates(android.app.PendingIntent p0) { meglet.LocationService.remove(p0); }
+    public void removeUpdates(android.location.LocationListener p0) { meglet.LocationService.remove(p0); }
     public void requestFlush(java.lang.String p0, android.app.PendingIntent p1, int p2) {}
-    public void requestFlush(java.lang.String p0, android.location.LocationListener p1, int p2) { megler.LocationService.flush(p1, p2); }
-    public void requestLocationUpdates(long p0, float p1, android.location.Criteria p2, android.app.PendingIntent p3) { megler.LocationService.request(provider(p2), p0, p1, p3, mContext, 0); }
-    public void requestLocationUpdates(long p0, float p1, android.location.Criteria p2, android.location.LocationListener p3, android.os.Looper p4) { megler.LocationService.request(provider(p2), p0, p1, p3, megler.LocationService.executorFor(p4), 0); }
-    public void requestLocationUpdates(long p0, float p1, android.location.Criteria p2, java.util.concurrent.Executor p3, android.location.LocationListener p4) { megler.LocationService.request(provider(p2), p0, p1, p4, p3, 0); }
-    public void requestLocationUpdates(android.location.LocationRequest p0, android.app.PendingIntent p1) { megler.LocationService.request(providerOf(p0), intervalOf(p0), p0.getMinUpdateDistanceMeters(), p1, mContext, p0.getMaxUpdates()); }
-    public void requestLocationUpdates(android.location.LocationRequest p0, android.location.LocationListener p1, android.os.Looper p2) { megler.LocationService.request(providerOf(p0), intervalOf(p0), p0.getMinUpdateDistanceMeters(), p1, megler.LocationService.executorFor(p2), p0.getMaxUpdates()); }
-    public void requestLocationUpdates(android.location.LocationRequest p0, java.util.concurrent.Executor p1, android.location.LocationListener p2) { megler.LocationService.request(providerOf(p0), intervalOf(p0), p0.getMinUpdateDistanceMeters(), p2, p1, p0.getMaxUpdates()); }
-    public void requestLocationUpdates(java.lang.String p0, long p1, float p2, android.app.PendingIntent p3) { check(p0); megler.LocationService.request(p0, p1, p2, p3, mContext, 0); }
-    public void requestLocationUpdates(java.lang.String p0, long p1, float p2, android.location.LocationListener p3) { check(p0); megler.LocationService.request(p0, p1, p2, p3, megler.LocationService.executorFor(null), 0); }
-    public void requestLocationUpdates(java.lang.String p0, long p1, float p2, android.location.LocationListener p3, android.os.Looper p4) { check(p0); megler.LocationService.request(p0, p1, p2, p3, megler.LocationService.executorFor(p4), 0); }
-    public void requestLocationUpdates(java.lang.String p0, long p1, float p2, java.util.concurrent.Executor p3, android.location.LocationListener p4) { check(p0); megler.LocationService.request(p0, p1, p2, p4, p3, 0); }
-    public void requestLocationUpdates(java.lang.String p0, android.location.LocationRequest p1, android.app.PendingIntent p2) { check(p0); megler.LocationService.request(p0, intervalOf(p1), p1.getMinUpdateDistanceMeters(), p2, mContext, p1.getMaxUpdates()); }
-    public void requestLocationUpdates(java.lang.String p0, android.location.LocationRequest p1, java.util.concurrent.Executor p2, android.location.LocationListener p3) { check(p0); megler.LocationService.request(p0, intervalOf(p1), p1.getMinUpdateDistanceMeters(), p3, p2, p1.getMaxUpdates()); }
-    public void requestSingleUpdate(android.location.Criteria p0, android.app.PendingIntent p1) { megler.LocationService.request(provider(p0), 0, 0, p1, mContext, 1); }
-    public void requestSingleUpdate(android.location.Criteria p0, android.location.LocationListener p1, android.os.Looper p2) { megler.LocationService.request(provider(p0), 0, 0, p1, megler.LocationService.executorFor(p2), 1); }
-    public void requestSingleUpdate(java.lang.String p0, android.app.PendingIntent p1) { check(p0); megler.LocationService.request(p0, 0, 0, p1, mContext, 1); }
-    public void requestSingleUpdate(java.lang.String p0, android.location.LocationListener p1, android.os.Looper p2) { check(p0); megler.LocationService.request(p0, 0, 0, p1, megler.LocationService.executorFor(p2), 1); }
+    public void requestFlush(java.lang.String p0, android.location.LocationListener p1, int p2) { meglet.LocationService.flush(p1, p2); }
+    public void requestLocationUpdates(long p0, float p1, android.location.Criteria p2, android.app.PendingIntent p3) { meglet.LocationService.request(provider(p2), p0, p1, p3, mContext, 0); }
+    public void requestLocationUpdates(long p0, float p1, android.location.Criteria p2, android.location.LocationListener p3, android.os.Looper p4) { meglet.LocationService.request(provider(p2), p0, p1, p3, meglet.LocationService.executorFor(p4), 0); }
+    public void requestLocationUpdates(long p0, float p1, android.location.Criteria p2, java.util.concurrent.Executor p3, android.location.LocationListener p4) { meglet.LocationService.request(provider(p2), p0, p1, p4, p3, 0); }
+    public void requestLocationUpdates(android.location.LocationRequest p0, android.app.PendingIntent p1) { meglet.LocationService.request(providerOf(p0), intervalOf(p0), p0.getMinUpdateDistanceMeters(), p1, mContext, p0.getMaxUpdates()); }
+    public void requestLocationUpdates(android.location.LocationRequest p0, android.location.LocationListener p1, android.os.Looper p2) { meglet.LocationService.request(providerOf(p0), intervalOf(p0), p0.getMinUpdateDistanceMeters(), p1, meglet.LocationService.executorFor(p2), p0.getMaxUpdates()); }
+    public void requestLocationUpdates(android.location.LocationRequest p0, java.util.concurrent.Executor p1, android.location.LocationListener p2) { meglet.LocationService.request(providerOf(p0), intervalOf(p0), p0.getMinUpdateDistanceMeters(), p2, p1, p0.getMaxUpdates()); }
+    public void requestLocationUpdates(java.lang.String p0, long p1, float p2, android.app.PendingIntent p3) { check(p0); meglet.LocationService.request(p0, p1, p2, p3, mContext, 0); }
+    public void requestLocationUpdates(java.lang.String p0, long p1, float p2, android.location.LocationListener p3) { check(p0); meglet.LocationService.request(p0, p1, p2, p3, meglet.LocationService.executorFor(null), 0); }
+    public void requestLocationUpdates(java.lang.String p0, long p1, float p2, android.location.LocationListener p3, android.os.Looper p4) { check(p0); meglet.LocationService.request(p0, p1, p2, p3, meglet.LocationService.executorFor(p4), 0); }
+    public void requestLocationUpdates(java.lang.String p0, long p1, float p2, java.util.concurrent.Executor p3, android.location.LocationListener p4) { check(p0); meglet.LocationService.request(p0, p1, p2, p4, p3, 0); }
+    public void requestLocationUpdates(java.lang.String p0, android.location.LocationRequest p1, android.app.PendingIntent p2) { check(p0); meglet.LocationService.request(p0, intervalOf(p1), p1.getMinUpdateDistanceMeters(), p2, mContext, p1.getMaxUpdates()); }
+    public void requestLocationUpdates(java.lang.String p0, android.location.LocationRequest p1, java.util.concurrent.Executor p2, android.location.LocationListener p3) { check(p0); meglet.LocationService.request(p0, intervalOf(p1), p1.getMinUpdateDistanceMeters(), p3, p2, p1.getMaxUpdates()); }
+    public void requestSingleUpdate(android.location.Criteria p0, android.app.PendingIntent p1) { meglet.LocationService.request(provider(p0), 0, 0, p1, mContext, 1); }
+    public void requestSingleUpdate(android.location.Criteria p0, android.location.LocationListener p1, android.os.Looper p2) { meglet.LocationService.request(provider(p0), 0, 0, p1, meglet.LocationService.executorFor(p2), 1); }
+    public void requestSingleUpdate(java.lang.String p0, android.app.PendingIntent p1) { check(p0); meglet.LocationService.request(p0, 0, 0, p1, mContext, 1); }
+    public void requestSingleUpdate(java.lang.String p0, android.location.LocationListener p1, android.os.Looper p2) { check(p0); meglet.LocationService.request(p0, 0, 0, p1, meglet.LocationService.executorFor(p2), 1); }
     public boolean sendExtraCommand(java.lang.String p0, java.lang.String p1, android.os.Bundle p2) { return false; }
-    public void setAdasGnssLocationEnabled(boolean p0) { meglerProps.put("AdasGnssLocationEnabled", Boolean.valueOf(p0)); }
-    public void setAutomotiveGnssSuspended(boolean p0) { meglerProps.put("AutomotiveGnssSuspended", Boolean.valueOf(p0)); }
-    public void setExtraLocationControllerPackage(java.lang.String p0) { meglerProps.put("ExtraLocationControllerPackage", p0); }
-    public void setExtraLocationControllerPackageEnabled(boolean p0) { meglerProps.put("ExtraLocationControllerPackageEnabled", Boolean.valueOf(p0)); }
-    public void setLocationControllerExtraPackage(java.lang.String p0) { meglerProps.put("LocationControllerExtraPackage", p0); }
-    public void setLocationControllerExtraPackageEnabled(boolean p0) { meglerProps.put("LocationControllerExtraPackageEnabled", Boolean.valueOf(p0)); }
+    public void setAdasGnssLocationEnabled(boolean p0) { megletProps.put("AdasGnssLocationEnabled", Boolean.valueOf(p0)); }
+    public void setAutomotiveGnssSuspended(boolean p0) { megletProps.put("AutomotiveGnssSuspended", Boolean.valueOf(p0)); }
+    public void setExtraLocationControllerPackage(java.lang.String p0) { megletProps.put("ExtraLocationControllerPackage", p0); }
+    public void setExtraLocationControllerPackageEnabled(boolean p0) { megletProps.put("ExtraLocationControllerPackageEnabled", Boolean.valueOf(p0)); }
+    public void setLocationControllerExtraPackage(java.lang.String p0) { megletProps.put("LocationControllerExtraPackage", p0); }
+    public void setLocationControllerExtraPackageEnabled(boolean p0) { megletProps.put("LocationControllerExtraPackageEnabled", Boolean.valueOf(p0)); }
     public void setLocationEnabledForUser(boolean p0, android.os.UserHandle p1) {}
     public boolean setProviderEnabledForUser(java.lang.String p0, boolean p1, android.os.UserHandle p2) { return false; }
     public void setTestProviderEnabled(java.lang.String p0, boolean p1) {}
@@ -163,8 +163,8 @@ public class LocationManager {
 
     private static java.util.List providers(boolean enabledOnly) {
         java.util.ArrayList r = new java.util.ArrayList();
-        boolean on = megler.LocationService.enabled();
-        for (String p : megler.LocationService.PROVIDERS)
+        boolean on = meglet.LocationService.enabled();
+        for (String p : meglet.LocationService.PROVIDERS)
             if (!enabledOnly || on || PASSIVE_PROVIDER.equals(p)) r.add(p);
         return r;
     }
@@ -184,7 +184,7 @@ public class LocationManager {
     /* One of the four providers, as Android's: a request for any other is refused. */
     private static void check(String provider) {
         if (provider == null) throw new IllegalArgumentException("invalid null provider");
-        if (!megler.LocationService.known(provider)) throw new IllegalArgumentException("provider \"" + provider + "\" does not exist");
+        if (!meglet.LocationService.known(provider)) throw new IllegalArgumentException("provider \"" + provider + "\" does not exist");
     }
 
     /* A provider the app may be told of. */

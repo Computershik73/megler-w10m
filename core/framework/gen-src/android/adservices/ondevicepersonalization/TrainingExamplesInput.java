@@ -3,11 +3,11 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TrainingExamplesInput {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public TrainingExamplesInput(java.lang.String p0, java.lang.String p1, byte[] p2, java.lang.String p3) {}
-    public java.lang.String getCollectionName() { return (java.lang.String) meglerProps.get("CollectionName"); }
-    public java.lang.String getPopulationName() { return (java.lang.String) meglerProps.get("PopulationName"); }
-    public byte[] getResumptionToken() { return (byte[]) meglerProps.get("ResumptionToken"); }
-    public java.lang.String getTaskName() { return (java.lang.String) meglerProps.get("TaskName"); }
+    public java.lang.String getCollectionName() { return (java.lang.String) megletProps.get("CollectionName"); }
+    public java.lang.String getPopulationName() { return (java.lang.String) megletProps.get("PopulationName"); }
+    public byte[] getResumptionToken() { return (byte[]) megletProps.get("ResumptionToken"); }
+    public java.lang.String getTaskName() { return (java.lang.String) megletProps.get("TaskName"); }
     TrainingExamplesInput() { this((java.lang.String) null, (java.lang.String) null, (byte[]) null, (java.lang.String) null); }
 }

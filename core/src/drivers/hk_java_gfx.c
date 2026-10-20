@@ -1,12 +1,12 @@
 /*
- * megler.Gfx: the native methods under the Java framework's android.graphics.
+ * meglet.Gfx: the native methods under the Java framework's android.graphics.
  *
- * The framework (the original Megler's, src/java-framework) has Bitmap, Canvas,
+ * The framework (the original Meglet's, src/java-framework) has Bitmap, Canvas,
  * Paint, Path, Typeface and the shaders in Java, on the 54 native methods of
- * megler.Gfx. There they are CoreGraphics and CoreText
- * (megler-tl-dvm-graphics.c). Here a bitmap's pixels and everything that is
+ * meglet.Gfx. There they are CoreGraphics and CoreText
+ * (meglet-tl-dvm-graphics.c). Here a bitmap's pixels and everything that is
  * bookkeeping are this file's, and what has to be drawn, measured or decoded
- * goes to the shell through megler_gfx_host (megler.h, which is the contract for
+ * goes to the shell through meglet_gfx_host (meglet.h, which is the contract for
  * that side and says what each call means). This comment is the other side:
  * what the Java passes.
  *
@@ -67,7 +67,7 @@
  *    9 TRANSFORM m0..m5    everything before it goes through the matrix
  *
  * with a fill rule beside it, 0 winding or 1 even-odd, and 2 more for
- * Android's inverse rules (Path.meglerFill): filled, a path so is everything
+ * Android's inverse rules (Path.megletFill): filled, a path so is everything
  * the path does not cover, within the clip; clipped by, it is the clip taken
  * out (and taken out, the clip kept). The shell sees no inverse rule: a fill
  * is given to it as a rectangle that holds the canvas's clip and the path
@@ -133,7 +133,7 @@ typedef struct gbitmap {
     i32 w, h, stride;
     u8 *px;
     gcanvas *canvases;
-    u32 id, version;                   /* for a shell that keeps textures: megler_gfx_image */
+    u32 id, version;                   /* for a shell that keeps textures: meglet_gfx_image */
     i32 rgba_locks;                    /* above zero: the memory is in Android's order (hk_java_gfx_lock_rgba) */
     i32 refs;                          /* display lists that draw it: it outlives the Java's bmFree until the last goes */
     bool released;                     /* the Java has freed it (bmFree), and only lists keep it */
@@ -167,7 +167,7 @@ typedef struct gface {
     bool italic;
 } gface;
 
-static megler_gfx_host G;
+static meglet_gfx_host G;
 /*
  * The time spent in the shell's drawing, summed for each thread: GFX(statement) runs a statement that calls G and adds what
  * it took, by the clock. Two readings of the clock a call; the Java driver's frame meter reads the main thread's sum
@@ -324,30 +324,30 @@ static u32 unpremultiplied(u32 p)
 
 /*
  * One channel of S put on D by a PorterDuff number, both premultiplied and in
- * 0..1 (megler.h has the table). The same expressions give the alpha when the
+ * 0..1 (meglet.h has the table). The same expressions give the alpha when the
  * channel passed is the alpha itself.
  */
 static float blend_channel(int mode, float s, float d, float sa, float da)
 {
     float both = s * (1 - da) + d * (1 - sa);
     switch (mode) {
-    case MEGLER_GFX_BLEND_CLEAR: return 0;
-    case MEGLER_GFX_BLEND_SRC: return s;
-    case MEGLER_GFX_BLEND_DST: return d;
-    case MEGLER_GFX_BLEND_DST_OVER: return d + s * (1 - da);
-    case MEGLER_GFX_BLEND_SRC_IN: return s * da;
-    case MEGLER_GFX_BLEND_DST_IN: return d * sa;
-    case MEGLER_GFX_BLEND_SRC_OUT: return s * (1 - da);
-    case MEGLER_GFX_BLEND_DST_OUT: return d * (1 - sa);
-    case MEGLER_GFX_BLEND_SRC_ATOP: return s * da + d * (1 - sa);
-    case MEGLER_GFX_BLEND_DST_ATOP: return d * sa + s * (1 - da);
-    case MEGLER_GFX_BLEND_XOR: return both;
-    case MEGLER_GFX_BLEND_PLUS: return s + d > 1 ? 1 : s + d;
-    case MEGLER_GFX_BLEND_MODULATE: return s * d;
-    case MEGLER_GFX_BLEND_SCREEN: return s + d - s * d;
-    case MEGLER_GFX_BLEND_OVERLAY: return both + (2 * d <= da ? 2 * s * d : sa * da - 2 * (da - d) * (sa - s));
-    case MEGLER_GFX_BLEND_DARKEN: return both + (s * da < d * sa ? s * da : d * sa);
-    case MEGLER_GFX_BLEND_LIGHTEN: return both + (s * da > d * sa ? s * da : d * sa);
+    case MEGLET_GFX_BLEND_CLEAR: return 0;
+    case MEGLET_GFX_BLEND_SRC: return s;
+    case MEGLET_GFX_BLEND_DST: return d;
+    case MEGLET_GFX_BLEND_DST_OVER: return d + s * (1 - da);
+    case MEGLET_GFX_BLEND_SRC_IN: return s * da;
+    case MEGLET_GFX_BLEND_DST_IN: return d * sa;
+    case MEGLET_GFX_BLEND_SRC_OUT: return s * (1 - da);
+    case MEGLET_GFX_BLEND_DST_OUT: return d * (1 - sa);
+    case MEGLET_GFX_BLEND_SRC_ATOP: return s * da + d * (1 - sa);
+    case MEGLET_GFX_BLEND_DST_ATOP: return d * sa + s * (1 - da);
+    case MEGLET_GFX_BLEND_XOR: return both;
+    case MEGLET_GFX_BLEND_PLUS: return s + d > 1 ? 1 : s + d;
+    case MEGLET_GFX_BLEND_MODULATE: return s * d;
+    case MEGLET_GFX_BLEND_SCREEN: return s + d - s * d;
+    case MEGLET_GFX_BLEND_OVERLAY: return both + (2 * d <= da ? 2 * s * d : sa * da - 2 * (da - d) * (sa - s));
+    case MEGLET_GFX_BLEND_DARKEN: return both + (s * da < d * sa ? s * da : d * sa);
+    case MEGLET_GFX_BLEND_LIGHTEN: return both + (s * da > d * sa ? s * da : d * sa);
     default: return s + d * (1 - sa);
     }
 }
@@ -512,7 +512,7 @@ static void bm_unref(gbitmap *b)
     if (last) bm_destroy(b);
 }
 
-static void image_of(const gbitmap *b, megler_gfx_image *out)
+static void image_of(const gbitmap *b, meglet_gfx_image *out)
 {
     out->pixels = b->px;
     out->width = b->w;
@@ -650,12 +650,12 @@ enum {
 enum { PF_AA = 1, PF_FILTER = 2, PF_FAKEBOLD = 4, PF_UNDERLINE = 8, PF_STRIKE = 16 };
 
 typedef struct gpaint {
-    megler_gfx_paint p;
+    meglet_gfx_paint p;
     bool underline, strike;            /* drawn here, as rectangles */
 } gpaint;
 
 /* A PorterDuff number the shell can be given: what the framework has no number for is SRC_OVER there already. */
-static int blend_number(i32 mode) { return mode >= 0 && mode <= MEGLER_GFX_BLEND_LIGHTEN ? (int)mode : MEGLER_GFX_BLEND_SRC_OVER; }
+static int blend_number(i32 mode) { return mode >= 0 && mode <= MEGLET_GFX_BLEND_LIGHTEN ? (int)mode : MEGLET_GFX_BLEND_SRC_OVER; }
 
 /*
  * The paint of a drawing call, unpacked and made safe to hand on. No array
@@ -663,31 +663,31 @@ static int blend_number(i32 mode) { return mode >= 0 && mode <= MEGLER_GFX_BLEND
  */
 static void paint_unpack(const i32 *a, gpaint *out)
 {
-    megler_gfx_paint *p = &out->p;
+    meglet_gfx_paint *p = &out->p;
     memset(out, 0, sizeof(*out));
     p->color = 0xFF000000u;
-    p->flags = MEGLER_GFX_ANTI_ALIAS;
+    p->flags = MEGLET_GFX_ANTI_ALIAS;
     p->miter_limit = 4;
     p->text_size = 12;
     p->text_scale_x = 1;
-    p->blend = MEGLER_GFX_BLEND_SRC_OVER;
+    p->blend = MEGLET_GFX_BLEND_SRC_OVER;
     p->filter_mode = -1;
     if (!a) return;
     p->color = (u32)a[P_COLOR];
-    p->style = a[P_STYLE] == 1 || a[P_STYLE] == 2 ? (int)a[P_STYLE] : MEGLER_GFX_FILL;
+    p->style = a[P_STYLE] == 1 || a[P_STYLE] == 2 ? (int)a[P_STYLE] : MEGLET_GFX_FILL;
     p->stroke_width = number(hk_f((u32)a[P_STROKE]), 0);
     if (p->stroke_width < 0) p->stroke_width = 0;
-    p->flags = (a[P_FLAGS] & PF_AA ? MEGLER_GFX_ANTI_ALIAS : 0) | (a[P_FLAGS] & PF_FILTER ? MEGLER_GFX_FILTER_BITMAP : 0) |
-               (a[P_FLAGS] & PF_FAKEBOLD ? MEGLER_GFX_FAKE_BOLD : 0);
+    p->flags = (a[P_FLAGS] & PF_AA ? MEGLET_GFX_ANTI_ALIAS : 0) | (a[P_FLAGS] & PF_FILTER ? MEGLET_GFX_FILTER_BITMAP : 0) |
+               (a[P_FLAGS] & PF_FAKEBOLD ? MEGLET_GFX_FAKE_BOLD : 0);
     out->underline = (a[P_FLAGS] & PF_UNDERLINE) != 0;
     out->strike = (a[P_FLAGS] & PF_STRIKE) != 0;
-    p->cap = a[P_CAP] == 1 || a[P_CAP] == 2 ? (int)a[P_CAP] : MEGLER_GFX_CAP_BUTT;
-    p->join = a[P_JOIN] == 1 || a[P_JOIN] == 2 ? (int)a[P_JOIN] : MEGLER_GFX_JOIN_MITER;
+    p->cap = a[P_CAP] == 1 || a[P_CAP] == 2 ? (int)a[P_CAP] : MEGLET_GFX_CAP_BUTT;
+    p->join = a[P_JOIN] == 1 || a[P_JOIN] == 2 ? (int)a[P_JOIN] : MEGLET_GFX_JOIN_MITER;
     p->miter_limit = number(hk_f((u32)a[P_MITER]), 4);
     if (!(p->miter_limit > 0)) p->miter_limit = 4;
     p->text_size = number(hk_f((u32)a[P_TEXTSIZE]), 12);
     if (!(p->text_size > 0)) p->text_size = 12;
-    p->text_align = a[P_ALIGN] == 1 || a[P_ALIGN] == 2 ? (int)a[P_ALIGN] : MEGLER_GFX_ALIGN_LEFT;
+    p->text_align = a[P_ALIGN] == 1 || a[P_ALIGN] == 2 ? (int)a[P_ALIGN] : MEGLET_GFX_ALIGN_LEFT;
     p->text_scale_x = number(hk_f((u32)a[P_SCALEX]), 1);
     if (!(p->text_scale_x > 0)) p->text_scale_x = 1;
     p->text_skew_x = number(hk_f((u32)a[P_SKEWX]), 0);
@@ -712,7 +712,7 @@ static void paint_of(hk_jobj *array, gpaint *out) { paint_unpack((const i32 *)el
 static bool paint_for(hk_jobj *array, bool plain, gpaint *out)
 {
     paint_of(array, out);
-    if (out->p.blend == MEGLER_GFX_BLEND_DST) return false;
+    if (out->p.blend == MEGLET_GFX_BLEND_DST) return false;
     if (plain && out->p.filter_mode >= 0) {
         out->p.color = filtered(out->p.filter_mode, out->p.filter_color, out->p.color);
         out->p.filter_mode = -1;
@@ -722,10 +722,10 @@ static bool paint_for(hk_jobj *array, bool plain, gpaint *out)
 
 /* ------------------------------------------------------------------ paths */
 
-/* Path.meglerFill's second bit: the inverse of the fill rule in the first (MEGLER_GFX_WINDING or MEGLER_GFX_EVEN_ODD). The shell never sees it. */
+/* Path.megletFill's second bit: the inverse of the fill rule in the first (MEGLET_GFX_WINDING or MEGLET_GFX_EVEN_ODD). The shell never sees it. */
 #define FILL_INVERSE 2
 
-/* What the shell is given (megler.h, draw_path), and what the questions about a path are answered from. */
+/* What the shell is given (meglet.h, draw_path), and what the questions about a path are answered from. */
 typedef struct gpath {
     float *v;
     i32 n, cap;
@@ -768,7 +768,7 @@ static void path_move(gpath *p, float x, float y)
     float xy[2];
     xy[0] = x;
     xy[1] = y;
-    path_put(p, MEGLER_GFX_PATH_MOVE, xy, 2);
+    path_put(p, MEGLET_GFX_PATH_MOVE, xy, 2);
     p->sx = p->cx = x;
     p->sy = p->cy = y;
     p->any = p->open = true;
@@ -793,7 +793,7 @@ static void path_line(gpath *p, float x, float y)
     path_segment(p);
     xy[0] = x;
     xy[1] = y;
-    path_put(p, MEGLER_GFX_PATH_LINE, xy, 2);
+    path_put(p, MEGLET_GFX_PATH_LINE, xy, 2);
     p->cx = x;
     p->cy = y;
 }
@@ -806,7 +806,7 @@ static void path_quad(gpath *p, float x1, float y1, float x, float y)
     xy[1] = y1;
     xy[2] = x;
     xy[3] = y;
-    path_put(p, MEGLER_GFX_PATH_QUAD, xy, 4);
+    path_put(p, MEGLET_GFX_PATH_QUAD, xy, 4);
     p->cx = x;
     p->cy = y;
 }
@@ -821,7 +821,7 @@ static void path_cubic(gpath *p, float x1, float y1, float x2, float y2, float x
     xy[3] = y2;
     xy[4] = x;
     xy[5] = y;
-    path_put(p, MEGLER_GFX_PATH_CUBIC, xy, 6);
+    path_put(p, MEGLET_GFX_PATH_CUBIC, xy, 6);
     p->cx = x;
     p->cy = y;
 }
@@ -830,7 +830,7 @@ static void path_close(gpath *p)
 {
     if (!p->open) return;
     /* A figure of one point has nothing to close; the next segment still starts a figure of its own from there. */
-    if (p->segments) path_put(p, MEGLER_GFX_PATH_CLOSE, NULL, 0);
+    if (p->segments) path_put(p, MEGLET_GFX_PATH_CLOSE, NULL, 0);
     p->cx = p->sx;
     p->cy = p->sy;
     p->open = false;
@@ -946,7 +946,7 @@ static void map_point(const float *m, float x, float y, float *ox, float *oy)
 }
 
 /* How many coordinates follow each verb of a built path. */
-static int verb_floats(int verb) { return verb == MEGLER_GFX_PATH_QUAD ? 4 : verb == MEGLER_GFX_PATH_CUBIC ? 6 : verb == MEGLER_GFX_PATH_CLOSE ? 0 : 2; }
+static int verb_floats(int verb) { return verb == MEGLET_GFX_PATH_QUAD ? 4 : verb == MEGLET_GFX_PATH_CUBIC ? 6 : verb == MEGLET_GFX_PATH_CLOSE ? 0 : 2; }
 
 /* Everything in the path so far through a matrix: Path.transform, which the framework records as an operation. */
 static void path_transform(gpath *p, const float *m)
@@ -1065,7 +1065,7 @@ static bool path_draws(const gpath *p)
     i32 i = 0;
     while (i < p->n) {
         int verb = (int)p->v[i++];
-        if (verb != MEGLER_GFX_PATH_MOVE) return true;
+        if (verb != MEGLET_GFX_PATH_MOVE) return true;
         i += 2;
     }
     return false;
@@ -1143,19 +1143,19 @@ static void path_bounds(const gpath *p, gbox *o)
         const float *q = p->v + i;
         count = verb_floats(verb);
         i += count;
-        if (verb == MEGLER_GFX_PATH_MOVE) {
+        if (verb == MEGLET_GFX_PATH_MOVE) {
             sx = cx = q[0];
             sy = cy = q[1];
             continue;
         }
-        if (verb == MEGLER_GFX_PATH_CLOSE) {
+        if (verb == MEGLET_GFX_PATH_CLOSE) {
             cx = sx;
             cy = sy;
             continue;
         }
         box_point(o, cx, cy);
         box_point(o, q[count - 2], q[count - 1]);
-        if (verb != MEGLER_GFX_PATH_LINE) {
+        if (verb != MEGLET_GFX_PATH_LINE) {
             order = count / 2;
             xs[0] = cx;
             ys[0] = cy;
@@ -1193,10 +1193,10 @@ static void path_edges(const gpath *p, bool closed, edge_fn fn, void *ctx)
         const float *q = p->v + i;
         count = verb_floats(verb);
         i += count;
-        if (verb == MEGLER_GFX_PATH_MOVE || verb == MEGLER_GFX_PATH_CLOSE) {
-            if (open && (closed || verb == MEGLER_GFX_PATH_CLOSE)) fn(ctx, cx, cy, sx, sy);
+        if (verb == MEGLET_GFX_PATH_MOVE || verb == MEGLET_GFX_PATH_CLOSE) {
+            if (open && (closed || verb == MEGLET_GFX_PATH_CLOSE)) fn(ctx, cx, cy, sx, sy);
             open = false;
-            if (verb == MEGLER_GFX_PATH_MOVE) {
+            if (verb == MEGLET_GFX_PATH_MOVE) {
                 sx = q[0];
                 sy = q[1];
             }
@@ -1205,7 +1205,7 @@ static void path_edges(const gpath *p, bool closed, edge_fn fn, void *ctx)
             continue;
         }
         open = true;
-        if (verb == MEGLER_GFX_PATH_LINE) {
+        if (verb == MEGLET_GFX_PATH_LINE) {
             fn(ctx, cx, cy, q[0], q[1]);
         } else {
             order = count / 2;
@@ -1296,7 +1296,7 @@ typedef struct gnode {
     i32 layer_paint[P_COUNT];          /* the layer's paint, as Paint.mP (RN_LAYER_PAINT) */
 } gnode;
 
-/* gnode.flags, as the Java packs them (android.graphics.RenderNode, megler-w10m's overlay). */
+/* gnode.flags, as the Java packs them (android.graphics.RenderNode, Meglet's overlay). */
 enum { RN_IDENTITY = 1, RN_CLIP_BOUNDS = 2, RN_CLIP_RECT = 4, RN_CLIP_OUTLINE = 8, RN_LAYER = 16, RN_LAYER_PAINT = 32 };
 
 typedef struct dl_head {
@@ -1662,7 +1662,7 @@ static bool cv_draw(gcanvas *v, bool replaces)
 
 /*
  * A save, or a layer's: `layer` with its alpha and blend, and `blur` (radius x, radius y, clamp) for a layer put onto the
- * picture blurred (save_layer_blur, megler.h): source-over, through save_layer, sharp, where the shell has no blur.
+ * picture blurred (save_layer_blur, meglet.h): source-over, through save_layer, sharp, where the shell has no blur.
  */
 static i32 cv_save(gcanvas *v, const float *bounds, bool layer, int alpha, int blend, const float *blur)
 {
@@ -1684,7 +1684,7 @@ static i32 cv_save(gcanvas *v, const float *bounds, bool layer, int alpha, int b
     if (v->host) {
         /* A layer the shell cannot make is still a save: the restores must go on matching. */
         if (layer && blur && G.save_layer_blur) GFX(G.save_layer_blur(G.user, v->host, bounds, alpha, blur[0], blur[1], blur[2] != 0));
-        else if (layer && HAS(save_layer)) GFX(G.save_layer(G.user, v->host, bounds, alpha, blur ? MEGLER_GFX_BLEND_SRC_OVER : blend));
+        else if (layer && HAS(save_layer)) GFX(G.save_layer(G.user, v->host, bounds, alpha, blur ? MEGLET_GFX_BLEND_SRC_OVER : blend));
         else if (HAS(save)) GFX(G.save(G.user, v->host));
     }
     if (v->rec) {
@@ -1773,7 +1773,7 @@ N(G_bmErase)
         if (through->host && cv_whole(through)) break;
     hk_lock_release(&g_lock);
     if (through && G.draw_color && cv_draw(through, true)) {
-        GFX(G.draw_color(G.user, through->host, (u32)c->args[1].i, MEGLER_GFX_BLEND_SRC));
+        GFX(G.draw_color(G.user, through->host, (u32)c->args[1].i, MEGLET_GFX_BLEND_SRC));
         return;
     }
     bm_settle(b);
@@ -1966,7 +1966,7 @@ N(G_bmCompress)
     bm_settle(b);
     if (quality < 0) quality = 0;
     if (quality > 100) quality = 100;
-    GFX(encoded = G.image_encode(G.user, b->px, b->w, b->h, b->stride, c->args[1].i == 0 ? MEGLER_GFX_JPEG : MEGLER_GFX_PNG, quality, bytes_write, &out));
+    GFX(encoded = G.image_encode(G.user, b->px, b->w, b->h, b->stride, c->args[1].i == 0 ? MEGLET_GFX_JPEG : MEGLET_GFX_PNG, quality, bytes_write, &out));
     if (encoded && out.size) {
         array = hk_dvm_new_array("[B", (i32)out.size);
         if (array) memcpy(array->u.arr.data, out.data, out.size);
@@ -1978,8 +1978,8 @@ N(G_bmCompress)
 /* A turned or slanted copy is drawing, which is the shell's: through a canvas made for the one call. */
 static void bm_copy_drawn(gbitmap *s, i32 x, i32 y, i32 w, i32 h, const float *m, bool filter, gbitmap *d)
 {
-    megler_gfx_image image;
-    megler_gfx_paint p;
+    meglet_gfx_image image;
+    meglet_gfx_paint p;
     gpaint def;
     float src[4], dst[4];
     void *cv;
@@ -1988,7 +1988,7 @@ static void bm_copy_drawn(gbitmap *s, i32 x, i32 y, i32 w, i32 h, const float *m
     if (!cv) return;
     paint_of(NULL, &def);
     p = def.p;
-    p.flags = filter ? MEGLER_GFX_ANTI_ALIAS | MEGLER_GFX_FILTER_BITMAP : 0;
+    p.flags = filter ? MEGLET_GFX_ANTI_ALIAS | MEGLET_GFX_FILTER_BITMAP : 0;
     image_of(s, &image);
     src[0] = (float)x;
     src[1] = (float)y;
@@ -2135,7 +2135,7 @@ N(G_cvFree)
 N(G_cvSave)
 {
     gcanvas *v = cv_of(c->args[0].j);
-    c->ret.i = v ? cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER, NULL) : 1;
+    c->ret.i = v ? cv_save(v, NULL, false, 255, MEGLET_GFX_BLEND_SRC_OVER, NULL) : 1;
 }
 
 /* (long, l, t, r, b, int alpha[, int mode]): saveLayerAlpha, and saveLayer with a Paint's alpha and transfer mode. A rectangle with no area is "no bounds". */
@@ -2159,7 +2159,7 @@ static void save_layer(hk_jcall *c, int mode)
     c->ret.i = cv_save(v, bounded ? bounds : NULL, true, alpha, mode, NULL);
 }
 
-N(G_cvSaveLayer) { save_layer(c, MEGLER_GFX_BLEND_SRC_OVER); }
+N(G_cvSaveLayer) { save_layer(c, MEGLET_GFX_BLEND_SRC_OVER); }
 
 /*
  * (long, l, t, r, b, int alpha, float radiusX, float radiusY, boolean clamp): a layer put onto the picture blurred, for a view
@@ -2185,7 +2185,7 @@ N(G_cvSaveLayerBlur)
     blur[2] = c->args[8].z ? 1.0f : 0.0f;
     if (alpha < 0) alpha = 0;
     if (alpha > 255) alpha = 255;
-    c->ret.i = cv_save(v, bounded ? bounds : NULL, true, alpha, MEGLER_GFX_BLEND_SRC_OVER, blur[0] > 0 || blur[1] > 0 ? blur : NULL);
+    c->ret.i = cv_save(v, bounded ? bounds : NULL, true, alpha, MEGLET_GFX_BLEND_SRC_OVER, blur[0] > 0 || blur[1] > 0 ? blur : NULL);
 }
 N(G_cvSaveLayerMode) { save_layer(c, blend_number(c->args[6].i)); }
 
@@ -2246,7 +2246,7 @@ N(G_cvGetMatrix)
     if (v && m) memcpy(m, cv_state(v)->m, sizeof(float) * 6);
 }
 
-/* A rectangle taken as the clip (MEGLER_GFX_CLIP_INTERSECT) or out of it. Whether anything is left of the clip. */
+/* A rectangle taken as the clip (MEGLET_GFX_CLIP_INTERSECT) or out of it. Whether anything is left of the clip. */
 static bool cv_clip_rect(gcanvas *v, float l, float t, float r, float b, int op)
 {
     gstate *s = cv_state(v);
@@ -2263,7 +2263,7 @@ static bool cv_clip_rect(gcanvas *v, float l, float t, float r, float b, int op)
     }
     matrix_box(s->m, l, t, r, b, box);
     s->clipped = true;
-    if (op == MEGLER_GFX_CLIP_INTERSECT) clip_intersect(s, box);
+    if (op == MEGLET_GFX_CLIP_INTERSECT) clip_intersect(s, box);
     else if (s->m[1] == 0 && s->m[3] == 0) clip_difference(s, box);
     if (v->host && HAS(clip_rect)) GFX(G.clip_rect(G.user, v->host, l, t, r, b, op));
     if (v->rec) {
@@ -2282,7 +2282,7 @@ N(G_cvClipRect)
 {
     gcanvas *v = cv_of(c->args[0].j);
     c->ret.z = 1;
-    if (v) c->ret.z = cv_clip_rect(v, c->args[1].f, c->args[2].f, c->args[3].f, c->args[4].f, c->args[5].i == 0 ? MEGLER_GFX_CLIP_DIFFERENCE : MEGLER_GFX_CLIP_INTERSECT);
+    if (v) c->ret.z = cv_clip_rect(v, c->args[1].f, c->args[2].f, c->args[3].f, c->args[4].f, c->args[5].i == 0 ? MEGLET_GFX_CLIP_DIFFERENCE : MEGLET_GFX_CLIP_INTERSECT);
 }
 
 /* A built path taken as the clip or out of it. Whether anything is left of the clip. */
@@ -2294,10 +2294,10 @@ static bool cv_clip_path(gcanvas *v, const gpath *p, int fill, int op)
     s->clipped = true;
     if (fill & FILL_INVERSE) {
         /* Inside an inverse path is outside the path: clipping to it is taking the path out, and taking it out keeps it. */
-        op = op == MEGLER_GFX_CLIP_INTERSECT ? MEGLER_GFX_CLIP_DIFFERENCE : MEGLER_GFX_CLIP_INTERSECT;
+        op = op == MEGLET_GFX_CLIP_INTERSECT ? MEGLET_GFX_CLIP_DIFFERENCE : MEGLET_GFX_CLIP_INTERSECT;
         fill &= ~FILL_INVERSE;
     }
-    if (op == MEGLER_GFX_CLIP_INTERSECT) {
+    if (op == MEGLET_GFX_CLIP_INTERSECT) {
         path_bounds(p, &o);
         /* Nothing is inside a path with nothing in it. */
         if (!o.any) {
@@ -2322,7 +2322,7 @@ static bool cv_clip_path(gcanvas *v, const gpath *p, int fill, int op)
 N(G_cvClipPath)
 {
     gcanvas *v = cv_of(c->args[0].j);
-    int fill = c->args[3].i & (MEGLER_GFX_EVEN_ODD | FILL_INVERSE), op = c->args[4].i == 0 ? MEGLER_GFX_CLIP_DIFFERENCE : MEGLER_GFX_CLIP_INTERSECT;
+    int fill = c->args[3].i & (MEGLET_GFX_EVEN_ODD | FILL_INVERSE), op = c->args[4].i == 0 ? MEGLET_GFX_CLIP_DIFFERENCE : MEGLET_GFX_CLIP_INTERSECT;
     gpath p;
     c->ret.z = 1;
     if (!v || !path_of(c->args[1].l, c->args[2].i, &p)) return;
@@ -2356,8 +2356,8 @@ N(G_cvClipBounds)
 
 static void draw_color(gcanvas *v, u32 color, int blend)
 {
-    bool replaces = blend == MEGLER_GFX_BLEND_SRC || blend == MEGLER_GFX_BLEND_CLEAR;
-    if (blend == MEGLER_GFX_BLEND_DST || !v) return;
+    bool replaces = blend == MEGLET_GFX_BLEND_SRC || blend == MEGLET_GFX_BLEND_CLEAR;
+    if (blend == MEGLET_GFX_BLEND_DST || !v) return;
     if (v->rec) {
         dl_color *o = (dl_color *)dl_put(v->rec, DL_COLOR, sizeof(*o), 0);
         o->color = color;
@@ -2400,7 +2400,7 @@ static void draw_rect(gcanvas *v, float l, float t, float r, float b, const gpai
  */
 static void draw_path(gcanvas *v, const gpath *path, int fill, const gpaint *p, void *shader)
 {
-    if ((fill & FILL_INVERSE) && p->p.style != MEGLER_GFX_STROKE) {
+    if ((fill & FILL_INVERSE) && p->p.style != MEGLET_GFX_STROKE) {
         gstate *s;
         float inverse[6], box[4];
         gpath whole;
@@ -2411,12 +2411,12 @@ static void draw_path(gcanvas *v, const gpath *path, int fill, const gpaint *p, 
         path_init(&whole);
         path_rect(&whole, box[0], box[1], box[2], box[3]);
         path_append(&whole, path);
-        if (cv_draw(v, false)) GFX(G.draw_path(G.user, v->host, whole.v, whole.n, MEGLER_GFX_EVEN_ODD, &p->p, shader));
+        if (cv_draw(v, false)) GFX(G.draw_path(G.user, v->host, whole.v, whole.n, MEGLET_GFX_EVEN_ODD, &p->p, shader));
         path_free(&whole);
         return;
     }
     if (!v || !v->host || !path_draws(path) || !HAS(draw_path) || !cv_draw(v, false)) return;
-    GFX(G.draw_path(G.user, v->host, path->v, path->n, fill & MEGLER_GFX_EVEN_ODD, &p->p, shader));
+    GFX(G.draw_path(G.user, v->host, path->v, path->n, fill & MEGLET_GFX_EVEN_ODD, &p->p, shader));
 }
 
 /* A call with a rectangle's numbers, written to a recording canvas's list. */
@@ -2540,8 +2540,8 @@ N(G_cvDrawArc)
     } else {
         path_arc(&path, l, t, r, b, c->args[5].f, c->args[6].f, true);
     }
-    if (v && v->rec) rec_path(v->rec, DL_PATH, path.v, path.n, MEGLER_GFX_WINDING, false, &p, sh);
-    else draw_path(v, &path, MEGLER_GFX_WINDING, &p, sh_host(sh));
+    if (v && v->rec) rec_path(v->rec, DL_PATH, path.v, path.n, MEGLET_GFX_WINDING, false, &p, sh);
+    else draw_path(v, &path, MEGLET_GFX_WINDING, &p, sh_host(sh));
     path_free(&path);
 }
 
@@ -2550,7 +2550,7 @@ N(G_cvDrawPath)
 {
     gcanvas *v = cv_of(c->args[0].j);
     gshader *sh = sh_of(c->args[5].j);
-    int fill = c->args[3].i & (MEGLER_GFX_EVEN_ODD | FILL_INVERSE);
+    int fill = c->args[3].i & (MEGLET_GFX_EVEN_ODD | FILL_INVERSE);
     gpaint p;
     gpath path;
     if (!paint_for(c->args[4].l, !sh, &p) || !path_of(c->args[1].l, c->args[2].i, &path)) return;
@@ -2578,18 +2578,18 @@ static void draw_lines(gcanvas *v, const float *f, i32 n, bool points, const gpa
         double det = fabs((double)m[0] * m[4] - (double)m[1] * m[3]);
         half = p.p.stroke_width > 0 ? p.p.stroke_width / 2 : det > 0 ? (float)(0.5 / sqrt(det)) : 0.5f;
         for (i = 0; i + 1 < n; i += 2) {
-            if (p.p.cap == MEGLER_GFX_CAP_ROUND) path_oval(&path, f[i] - half, f[i + 1] - half, f[i] + half, f[i + 1] + half);
+            if (p.p.cap == MEGLET_GFX_CAP_ROUND) path_oval(&path, f[i] - half, f[i + 1] - half, f[i] + half, f[i + 1] + half);
             else path_rect(&path, f[i] - half, f[i + 1] - half, f[i] + half, f[i + 1] + half);
         }
-        p.p.style = MEGLER_GFX_FILL;
+        p.p.style = MEGLET_GFX_FILL;
     } else {
         for (i = 0; i + 3 < n; i += 4) {
             path_move(&path, f[i], f[i + 1]);
             path_line(&path, f[i + 2], f[i + 3]);
         }
-        p.p.style = MEGLER_GFX_STROKE;
+        p.p.style = MEGLET_GFX_STROKE;
     }
-    draw_path(v, &path, MEGLER_GFX_WINDING, &p, shader);
+    draw_path(v, &path, MEGLET_GFX_WINDING, &p, shader);
     path_free(&path);
 }
 
@@ -2602,7 +2602,7 @@ N(G_cvDrawLines)
     gshader *sh = sh_of(c->args[5].j);
     gpaint p;
     if (!v || !f || off < 0 || n < 0 || off + n > length_of(c->args[1].l) || !paint_for(c->args[4].l, !sh, &p)) return;
-    if (v->rec) rec_path(v->rec, DL_LINES, f + off, (i32)n, MEGLER_GFX_WINDING, c->args[6].z != 0, &p, sh);
+    if (v->rec) rec_path(v->rec, DL_LINES, f + off, (i32)n, MEGLET_GFX_WINDING, c->args[6].z != 0, &p, sh);
     else draw_lines(v, f + off, (i32)n, c->args[6].z != 0, &p, sh_host(sh));
 }
 
@@ -2613,7 +2613,7 @@ N(G_cvDrawLines)
  */
 static void draw_bitmap(gcanvas *v, gbitmap *b, float *src, float *dst, const gpaint *p)
 {
-    megler_gfx_image image;
+    meglet_gfx_image image;
     float sw = src[2] - src[0], sh = src[3] - src[1], dw = dst[2] - dst[0], dh = dst[3] - dst[1], cut;
     if (!v || !v->host || !b || !(sw > 0) || !(sh > 0) || !(dw > 0) || !(dh > 0)) return;
     if (src[0] < 0) {
@@ -2648,7 +2648,7 @@ static void draw_bitmap(gcanvas *v, gbitmap *b, float *src, float *dst, const gp
 static bool bitmap_paint(hk_jobj *paint, gpaint *p)
 {
     if (!paint_for(paint, false, p)) return false;
-    if (!paint) p->p.flags |= MEGLER_GFX_FILTER_BITMAP;
+    if (!paint) p->p.flags |= MEGLET_GFX_FILTER_BITMAP;
     return true;
 }
 
@@ -2770,9 +2770,9 @@ static void draw_text(gcanvas *v, const u16 *text, i32 count, float x, float y, 
     width = text_width(text, count, &p, face);
     size = p.p.text_size;
     thick = size / 18 > 1 ? size / 18 : 1;
-    if (p.p.text_align == MEGLER_GFX_ALIGN_CENTER) x -= width / 2;
-    else if (p.p.text_align == MEGLER_GFX_ALIGN_RIGHT) x -= width;
-    p.p.style = MEGLER_GFX_FILL;
+    if (p.p.text_align == MEGLET_GFX_ALIGN_CENTER) x -= width / 2;
+    else if (p.p.text_align == MEGLET_GFX_ALIGN_RIGHT) x -= width;
+    p.p.style = MEGLET_GFX_FILL;
     if (p.underline) draw_rect(v, x, y + size / 9, x + width, y + size / 9 + thick, &p, shader);
     if (p.strike) draw_rect(v, x, y - size * 0.3f, x + width, y - size * 0.3f + thick, &p, shader);
 }
@@ -2851,13 +2851,13 @@ static void list_play(gcanvas *v, gdlist *l, int depth)
         return;
     }
     dl_ref(l);
-    cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER, NULL);
+    cv_save(v, NULL, false, 255, MEGLET_GFX_BLEND_SRC_OVER, NULL);
     floor_depth = v->depth;
     memcpy(base, cv_state(v)->m, sizeof(base));
     for (at = 0; at < l->n; at += ((const dl_head *)(const void *)(l->ops + at))->size) {
         const dl_head *h = (const dl_head *)(const void *)(l->ops + at);
         switch (h->kind) {
-        case DL_SAVE: cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER, NULL); break;
+        case DL_SAVE: cv_save(v, NULL, false, 255, MEGLET_GFX_BLEND_SRC_OVER, NULL); break;
         case DL_SAVE_LAYER: {
             const dl_layer *o = (const dl_layer *)h;
             cv_save(v, o->bounded ? o->bounds : NULL, true, o->alpha, o->blend, o->blurred ? o->blur : NULL);
@@ -2923,15 +2923,15 @@ static HK_NOINLINE void node_clip_outline(gcanvas *v, const gnode *n)
     int i;
     if (n->outline_kind == 2) {
         path_view(&p, n->outline_path, n->outline_n);
-        cv_clip_path(v, &p, n->outline_fill, MEGLER_GFX_CLIP_INTERSECT);
+        cv_clip_path(v, &p, n->outline_fill, MEGLET_GFX_CLIP_INTERSECT);
     } else if (n->radius > 0) {
         for (i = 0; i < 8; i++) rad[i] = n->radius;
         path_init(&p);
         path_round_rect(&p, n->outline[0], n->outline[1], n->outline[2], n->outline[3], rad);
-        cv_clip_path(v, &p, MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_INTERSECT);
+        cv_clip_path(v, &p, MEGLET_GFX_WINDING, MEGLET_GFX_CLIP_INTERSECT);
         path_free(&p);
     } else {
-        cv_clip_rect(v, n->outline[0], n->outline[1], n->outline[2], n->outline[3], MEGLER_GFX_CLIP_INTERSECT);
+        cv_clip_rect(v, n->outline[0], n->outline[1], n->outline[2], n->outline[3], MEGLET_GFX_CLIP_INTERSECT);
     }
 }
 
@@ -2974,7 +2974,7 @@ static HK_NOINLINE void node_through_bitmap(gcanvas *v, const gnode *n, gdlist *
 static void node_play(gcanvas *v, gnode *n, int depth)
 {
     float w, h, through[6], at[6] = { 1, 0, 0, 0, 1, 0 }, bounds[4];
-    i32 d0, flags, blend = MEGLER_GFX_BLEND_SRC_OVER, filter = -1;
+    i32 d0, flags, blend = MEGLET_GFX_BLEND_SRC_OVER, filter = -1;
     gdlist *l;
     if (!v || !n) return;
     hk_lock_acquire(&g_lock);
@@ -2986,14 +2986,14 @@ static void node_play(gcanvas *v, gnode *n, int depth)
         blend = blend_number(n->layer_paint[P_XFER]);
         filter = n->layer_paint[P_CFMODE];
     }
-    if (!l || !(n->alpha > 0) || ((flags & RN_CLIP_OUTLINE) && !n->outline_kind) || ((flags & RN_LAYER) && blend == MEGLER_GFX_BLEND_DST)) {
+    if (!l || !(n->alpha > 0) || ((flags & RN_CLIP_OUTLINE) && !n->outline_kind) || ((flags & RN_LAYER) && blend == MEGLET_GFX_BLEND_DST)) {
         dl_unref(l);
         return;
     }
     w = n->right - n->left;
     h = n->bottom - n->top;
     d0 = v->depth;
-    cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER, NULL);
+    cv_save(v, NULL, false, 255, MEGLET_GFX_BLEND_SRC_OVER, NULL);
     at[2] = n->left;
     at[5] = n->top;
     if (flags & RN_IDENTITY) memcpy(through, at, sizeof(through));
@@ -3010,7 +3010,7 @@ static void node_play(gcanvas *v, gnode *n, int depth)
             if (n->clip[3] < bounds[3]) bounds[3] = n->clip[3];
         }
         if (filter >= 0) {
-            cv_clip_rect(v, bounds[0], bounds[1], bounds[2], bounds[3], MEGLER_GFX_CLIP_INTERSECT);
+            cv_clip_rect(v, bounds[0], bounds[1], bounds[2], bounds[3], MEGLET_GFX_CLIP_INTERSECT);
             if (flags & RN_CLIP_OUTLINE) node_clip_outline(v, n);
             node_through_bitmap(v, n, l, w, h, depth);
             while (v->depth > d0) cv_restore(v);
@@ -3018,11 +3018,11 @@ static void node_play(gcanvas *v, gnode *n, int depth)
             return;
         }
         /* A layer with no area is no layer to cv_save: the node then draws nothing. */
-        if (!(bounds[2] > bounds[0]) || !(bounds[3] > bounds[1])) cv_clip_rect(v, 0, 0, 0, 0, MEGLER_GFX_CLIP_INTERSECT);
+        if (!(bounds[2] > bounds[0]) || !(bounds[3] > bounds[1])) cv_clip_rect(v, 0, 0, 0, 0, MEGLET_GFX_CLIP_INTERSECT);
         else cv_save(v, bounds, true, n->layer_alpha, blend, NULL);
     } else {
-        if (flags & RN_CLIP_BOUNDS) cv_clip_rect(v, 0, 0, w, h, MEGLER_GFX_CLIP_INTERSECT);
-        if (flags & RN_CLIP_RECT) cv_clip_rect(v, n->clip[0], n->clip[1], n->clip[2], n->clip[3], MEGLER_GFX_CLIP_INTERSECT);
+        if (flags & RN_CLIP_BOUNDS) cv_clip_rect(v, 0, 0, w, h, MEGLET_GFX_CLIP_INTERSECT);
+        if (flags & RN_CLIP_RECT) cv_clip_rect(v, n->clip[0], n->clip[1], n->clip[2], n->clip[3], MEGLET_GFX_CLIP_INTERSECT);
     }
     if (flags & RN_CLIP_OUTLINE) node_clip_outline(v, n);
     list_play(v, l, depth);
@@ -3119,7 +3119,7 @@ N(G_rnDiscard)
 
 /*
  * (long node, float[20] f, int[5] i, float[] outline path or null, int[] layer paint or null): the node's properties, as
- * android.graphics.RenderNode (megler-w10m's overlay) packs them before anything is drawn that may draw the node:
+ * android.graphics.RenderNode (Meglet's overlay) packs them before anything is drawn that may draw the node:
  *
  *   f  0-3 left, top, right, bottom; 4-9 its matrix (RN_IDENTITY: none); 10 alpha; 11-14 setClipRect's rectangle
  *      (RN_CLIP_RECT); 15-18 the outline's rectangle and 19 its corner radius (outline kind 1)
@@ -3158,7 +3158,7 @@ N(G_rnSet)
         if (!path_of(c->args[3].l, k[4], &p)) {
             n->outline_kind = 0;
         } else {
-            n->outline_fill = k[3] & (MEGLER_GFX_EVEN_ODD | FILL_INVERSE);
+            n->outline_fill = k[3] & (MEGLET_GFX_EVEN_ODD | FILL_INVERSE);
             n->outline_n = p.n;
             n->outline_path = (float *)hk_alloc(sizeof(float) * (size_t)(p.n > 0 ? p.n : 1));
             if (p.n) memcpy(n->outline_path, p.v, sizeof(float) * (size_t)p.n);
@@ -3282,7 +3282,7 @@ N(G_tfCreate)
 {
     const char *name = c->args[0].l ? hk_dvm_string_utf8(c->args[0].l) : NULL;
     i32 style = c->args[1].i, weight = (style & 1) ? 700 : 400;
-    int generic = MEGLER_GFX_SANS;
+    int generic = MEGLET_GFX_SANS;
     char family[96], *at;
     void *host = NULL;
     hk_strlcpy(family, name && name[0] ? name : "sans-serif", sizeof(family));
@@ -3292,8 +3292,8 @@ N(G_tfCreate)
     else if (strstr(family, "light")) weight = 300;
     else if (strstr(family, "thin")) weight = 200;
     else if (strstr(family, "black")) weight = 900;
-    if (strstr(family, "mono")) generic = MEGLER_GFX_MONOSPACE;
-    else if (strstr(family, "serif") && !strstr(family, "sans")) generic = MEGLER_GFX_SERIF;
+    if (strstr(family, "mono")) generic = MEGLET_GFX_MONOSPACE;
+    else if (strstr(family, "serif") && !strstr(family, "sans")) generic = MEGLET_GFX_SERIF;
     if (HAS(typeface_create)) GFX(host = G.typeface_create(G.user, family, generic, weight, (style & 2) != 0));
     c->ret.j = handle(tf_new(host, weight, (style & 2) != 0));
 }
@@ -3395,7 +3395,7 @@ static void stops_free(gstops *s)
 }
 
 /* Shader.TileMode as the Java numbers it: 0 CLAMP (and DECAL), 1 REPEAT, 2 MIRROR. */
-static int tile_number(i32 tile) { return tile == 1 || tile == 2 ? (int)tile : MEGLER_GFX_TILE_CLAMP; }
+static int tile_number(i32 tile) { return tile == 1 || tile == 2 ? (int)tile : MEGLET_GFX_TILE_CLAMP; }
 
 /* A shader handle as the Java keeps it: the shell's shader inside one of this file's (gshader, by the canvases' section). */
 static i64 shader_handle(void *host) { return handle(sh_new(host)); }
@@ -3440,7 +3440,7 @@ N(G_shSweep)
 N(G_shBitmap)
 {
     gbitmap *b = bm_of(c->args[0].j);
-    megler_gfx_image image;
+    meglet_gfx_image image;
     void *made;
     if (!b || !HAS(shader_bitmap)) return;
     bm_settle(b);
@@ -3496,7 +3496,7 @@ N(G_pathContains)
     h.x = c->args[3].f;
     h.y = c->args[4].f;
     path_edges(&p, true, hit_edge, &h);
-    c->ret.z = (c->args[2].i & MEGLER_GFX_EVEN_ODD) ? (h.crossings & 1) != 0 : h.winding != 0;
+    c->ret.z = (c->args[2].i & MEGLET_GFX_EVEN_ODD) ? (h.crossings & 1) != 0 : h.winding != 0;
     if (c->args[2].i & FILL_INVERSE) c->ret.z = !c->ret.z;
     path_free(&p);
 }
@@ -3528,7 +3528,7 @@ N(G_pathLength)
 /*
  * Gfx.bmDiffer(a, b, box): how many pixels differ between two bitmaps of one size outside the rectangles box[0..3] and
  * box[4..7] (left, top, right, bottom) as they are given, and then the box round them in box[0..3]. For the tests' check of a
- * window drawn in part (megler.ViewRoot): the screen outside the part drawn against the whole drawn again.
+ * window drawn in part (meglet.ViewRoot): the screen outside the part drawn against the whole drawn again.
  */
 N(G_bmDiffer)
 {
@@ -3573,7 +3573,7 @@ N(G_present)
         return;
     }
     /*
-     * Shown from the shell's own picture of the bitmap where it can (megler_gfx_host.present): when one canvas draws the bitmap
+     * Shown from the shell's own picture of the bitmap where it can (meglet_gfx_host.present): when one canvas draws the bitmap
      * and nothing was written into the memory behind it. The canvas is then not flushed, and stays dirty: whatever reads
      * the memory later flushes it first (bm_settle), as it always has.
      */
@@ -3598,73 +3598,73 @@ N(G_present)
 }
 
 static const hk_jhle k_gfx[] = {
-    { "megler/Gfx", "bmNew", "(II)J", G_bmNew },
-    { "megler/Gfx", "bmFree", "(J)V", G_bmFree },
-    { "megler/Gfx", "bmErase", "(JI)V", G_bmErase },
-    { "megler/Gfx", "bmDiffer", NULL, G_bmDiffer },
-    { "megler/Gfx", "bmGetPixel", "(JII)I", G_bmGetPixel },
-    { "megler/Gfx", "bmSetPixel", "(JIII)V", G_bmSetPixel },
-    { "megler/Gfx", "bmPixels", "(J[IIIIIIIZ)V", G_bmPixels },
-    { "megler/Gfx", "bmRaw", "(JJZ)V", G_bmRaw },
-    { "megler/Gfx", "bmAddress", "(J)J", G_bmAddress },
-    { "megler/Gfx", "bmDecode", "([BIII[IZ)J", G_bmDecode },
-    { "megler/Gfx", "bmCompress", "(JII)[B", G_bmCompress },
-    { "megler/Gfx", "bmCopy", "(JIIII[FZ)J", G_bmCopy },
-    { "megler/Gfx", "cvNew", "(J)J", G_cvNew },
-    { "megler/Gfx", "cvFree", "(J)V", G_cvFree },
-    { "megler/Gfx", "cvSave", "(J)I", G_cvSave },
-    { "megler/Gfx", "cvSaveLayer", "(JFFFFI)I", G_cvSaveLayer },
-    { "megler/Gfx", "cvSaveLayerBlur", "(JFFFFIFFZ)I", G_cvSaveLayerBlur },
-    { "megler/Gfx", "cvSaveLayerMode", "(JFFFFII)I", G_cvSaveLayerMode },
-    { "megler/Gfx", "cvRestore", "(J)V", G_cvRestore },
-    { "megler/Gfx", "cvRestoreTo", "(JI)V", G_cvRestoreTo },
-    { "megler/Gfx", "cvSaveCount", "(J)I", G_cvSaveCount },
-    { "megler/Gfx", "cvMatrix", "(J[FZ)V", G_cvMatrix },
-    { "megler/Gfx", "cvGetMatrix", "(J[F)V", G_cvGetMatrix },
-    { "megler/Gfx", "cvClipRect", "(JFFFFI)Z", G_cvClipRect },
-    { "megler/Gfx", "cvClipPath", "(J[FIII)Z", G_cvClipPath },
-    { "megler/Gfx", "cvClipBounds", "(J[I)Z", G_cvClipBounds },
-    { "megler/Gfx", "cvDrawColor", "(JII)V", G_cvDrawColor },
-    { "megler/Gfx", "cvDrawRect", "(JFFFF[IJ)V", G_cvDrawRect },
-    { "megler/Gfx", "cvDrawRRect", "(JFFFFFF[IJ)V", G_cvDrawRRect },
-    { "megler/Gfx", "cvDrawOval", "(JFFFF[IJ)V", G_cvDrawOval },
-    { "megler/Gfx", "cvDrawArc", "(JFFFFFFZ[IJ)V", G_cvDrawArc },
-    { "megler/Gfx", "cvDrawPath", "(J[FII[IJ)V", G_cvDrawPath },
-    { "megler/Gfx", "cvDrawLines", "(J[FII[IJZ)V", G_cvDrawLines },
-    { "megler/Gfx", "cvDrawBitmap", "(JJFFFFFFFF[I)V", G_cvDrawBitmap },
-    { "megler/Gfx", "cvDrawBitmapM", "(JJ[F[I)V", G_cvDrawBitmapM },
-    { "megler/Gfx", "cvDrawText", "(JLjava/lang/String;IIFF[IJJ)V", G_cvDrawText },
-    { "megler/Gfx", "txMeasure", "(Ljava/lang/String;II[IJ)F", G_txMeasure },
-    { "megler/Gfx", "txMetrics", "([IJ[F)F", G_txMetrics },
-    { "megler/Gfx", "txBounds", "(Ljava/lang/String;II[IJ[I)V", G_txBounds },
-    { "megler/Gfx", "txBreak", "(Ljava/lang/String;IIF[IJZ)I", G_txBreak },
-    { "megler/Gfx", "txWidths", "(Ljava/lang/String;II[IJ[F)V", G_txWidths },
-    { "megler/Gfx", "tfCreate", "(Ljava/lang/String;I)J", G_tfCreate },
-    { "megler/Gfx", "tfDefault", "()J", G_tfDefault },
-    { "megler/Gfx", "tfDerive", "(JII)J", G_tfDerive },
-    { "megler/Gfx", "tfFromData", "([B)J", G_tfFromData },
-    { "megler/Gfx", "tfWeight", "(J)I", G_tfWeight },
-    { "megler/Gfx", "shLinear", "(FFFF[I[FI)J", G_shLinear },
-    { "megler/Gfx", "shRadial", "(FFF[I[FI)J", G_shRadial },
-    { "megler/Gfx", "shSweep", "(FF[I[F)J", G_shSweep },
-    { "megler/Gfx", "shBitmap", "(JI)J", G_shBitmap },
-    { "megler/Gfx", "shMatrix", "(J[F)V", G_shMatrix },
-    { "megler/Gfx", "shFree", "(J)V", G_shFree },
-    { "megler/Gfx", "pathBounds", "([FI[F)V", G_pathBounds },
-    { "megler/Gfx", "pathContains", "([FIIFF)Z", G_pathContains },
-    { "megler/Gfx", "pathLength", "([FI[F)F", G_pathLength },
-    { "megler/Gfx", "present", "(J)V", G_present },
-    { "megler/Gfx", "cvRecord", "(II)J", G_cvRecord },
-    { "megler/Gfx", "cvEndRecord", "(J)J", G_cvEndRecord },
-    { "megler/Gfx", "cvDrawNode", "(JJ)V", G_cvDrawNode },
-    { "megler/Gfx", "cvDrawList", "(JJ)V", G_cvDrawList },
-    { "megler/Gfx", "dlFree", "(J)V", G_dlFree },
-    { "megler/Gfx", "rnNew", "()J", G_rnNew },
-    { "megler/Gfx", "rnFree", "(J)V", G_rnFree },
-    { "megler/Gfx", "rnEnd", "(JJ)V", G_rnEnd },
-    { "megler/Gfx", "rnDiscard", "(J)V", G_rnDiscard },
-    { "megler/Gfx", "rnSet", "(J[F[I[F[I)V", G_rnSet },
-    { "megler/Gfx", "rnBytes", "(J)J", G_rnBytes },
+    { "meglet/Gfx", "bmNew", "(II)J", G_bmNew },
+    { "meglet/Gfx", "bmFree", "(J)V", G_bmFree },
+    { "meglet/Gfx", "bmErase", "(JI)V", G_bmErase },
+    { "meglet/Gfx", "bmDiffer", NULL, G_bmDiffer },
+    { "meglet/Gfx", "bmGetPixel", "(JII)I", G_bmGetPixel },
+    { "meglet/Gfx", "bmSetPixel", "(JIII)V", G_bmSetPixel },
+    { "meglet/Gfx", "bmPixels", "(J[IIIIIIIZ)V", G_bmPixels },
+    { "meglet/Gfx", "bmRaw", "(JJZ)V", G_bmRaw },
+    { "meglet/Gfx", "bmAddress", "(J)J", G_bmAddress },
+    { "meglet/Gfx", "bmDecode", "([BIII[IZ)J", G_bmDecode },
+    { "meglet/Gfx", "bmCompress", "(JII)[B", G_bmCompress },
+    { "meglet/Gfx", "bmCopy", "(JIIII[FZ)J", G_bmCopy },
+    { "meglet/Gfx", "cvNew", "(J)J", G_cvNew },
+    { "meglet/Gfx", "cvFree", "(J)V", G_cvFree },
+    { "meglet/Gfx", "cvSave", "(J)I", G_cvSave },
+    { "meglet/Gfx", "cvSaveLayer", "(JFFFFI)I", G_cvSaveLayer },
+    { "meglet/Gfx", "cvSaveLayerBlur", "(JFFFFIFFZ)I", G_cvSaveLayerBlur },
+    { "meglet/Gfx", "cvSaveLayerMode", "(JFFFFII)I", G_cvSaveLayerMode },
+    { "meglet/Gfx", "cvRestore", "(J)V", G_cvRestore },
+    { "meglet/Gfx", "cvRestoreTo", "(JI)V", G_cvRestoreTo },
+    { "meglet/Gfx", "cvSaveCount", "(J)I", G_cvSaveCount },
+    { "meglet/Gfx", "cvMatrix", "(J[FZ)V", G_cvMatrix },
+    { "meglet/Gfx", "cvGetMatrix", "(J[F)V", G_cvGetMatrix },
+    { "meglet/Gfx", "cvClipRect", "(JFFFFI)Z", G_cvClipRect },
+    { "meglet/Gfx", "cvClipPath", "(J[FIII)Z", G_cvClipPath },
+    { "meglet/Gfx", "cvClipBounds", "(J[I)Z", G_cvClipBounds },
+    { "meglet/Gfx", "cvDrawColor", "(JII)V", G_cvDrawColor },
+    { "meglet/Gfx", "cvDrawRect", "(JFFFF[IJ)V", G_cvDrawRect },
+    { "meglet/Gfx", "cvDrawRRect", "(JFFFFFF[IJ)V", G_cvDrawRRect },
+    { "meglet/Gfx", "cvDrawOval", "(JFFFF[IJ)V", G_cvDrawOval },
+    { "meglet/Gfx", "cvDrawArc", "(JFFFFFFZ[IJ)V", G_cvDrawArc },
+    { "meglet/Gfx", "cvDrawPath", "(J[FII[IJ)V", G_cvDrawPath },
+    { "meglet/Gfx", "cvDrawLines", "(J[FII[IJZ)V", G_cvDrawLines },
+    { "meglet/Gfx", "cvDrawBitmap", "(JJFFFFFFFF[I)V", G_cvDrawBitmap },
+    { "meglet/Gfx", "cvDrawBitmapM", "(JJ[F[I)V", G_cvDrawBitmapM },
+    { "meglet/Gfx", "cvDrawText", "(JLjava/lang/String;IIFF[IJJ)V", G_cvDrawText },
+    { "meglet/Gfx", "txMeasure", "(Ljava/lang/String;II[IJ)F", G_txMeasure },
+    { "meglet/Gfx", "txMetrics", "([IJ[F)F", G_txMetrics },
+    { "meglet/Gfx", "txBounds", "(Ljava/lang/String;II[IJ[I)V", G_txBounds },
+    { "meglet/Gfx", "txBreak", "(Ljava/lang/String;IIF[IJZ)I", G_txBreak },
+    { "meglet/Gfx", "txWidths", "(Ljava/lang/String;II[IJ[F)V", G_txWidths },
+    { "meglet/Gfx", "tfCreate", "(Ljava/lang/String;I)J", G_tfCreate },
+    { "meglet/Gfx", "tfDefault", "()J", G_tfDefault },
+    { "meglet/Gfx", "tfDerive", "(JII)J", G_tfDerive },
+    { "meglet/Gfx", "tfFromData", "([B)J", G_tfFromData },
+    { "meglet/Gfx", "tfWeight", "(J)I", G_tfWeight },
+    { "meglet/Gfx", "shLinear", "(FFFF[I[FI)J", G_shLinear },
+    { "meglet/Gfx", "shRadial", "(FFF[I[FI)J", G_shRadial },
+    { "meglet/Gfx", "shSweep", "(FF[I[F)J", G_shSweep },
+    { "meglet/Gfx", "shBitmap", "(JI)J", G_shBitmap },
+    { "meglet/Gfx", "shMatrix", "(J[F)V", G_shMatrix },
+    { "meglet/Gfx", "shFree", "(J)V", G_shFree },
+    { "meglet/Gfx", "pathBounds", "([FI[F)V", G_pathBounds },
+    { "meglet/Gfx", "pathContains", "([FIIFF)Z", G_pathContains },
+    { "meglet/Gfx", "pathLength", "([FI[F)F", G_pathLength },
+    { "meglet/Gfx", "present", "(J)V", G_present },
+    { "meglet/Gfx", "cvRecord", "(II)J", G_cvRecord },
+    { "meglet/Gfx", "cvEndRecord", "(J)J", G_cvEndRecord },
+    { "meglet/Gfx", "cvDrawNode", "(JJ)V", G_cvDrawNode },
+    { "meglet/Gfx", "cvDrawList", "(JJ)V", G_cvDrawList },
+    { "meglet/Gfx", "dlFree", "(J)V", G_dlFree },
+    { "meglet/Gfx", "rnNew", "()J", G_rnNew },
+    { "meglet/Gfx", "rnFree", "(J)V", G_rnFree },
+    { "meglet/Gfx", "rnEnd", "(JJ)V", G_rnEnd },
+    { "meglet/Gfx", "rnDiscard", "(J)V", G_rnDiscard },
+    { "meglet/Gfx", "rnSet", "(J[F[I[F[I)V", G_rnSet },
+    { "meglet/Gfx", "rnBytes", "(J)J", G_rnBytes },
     { NULL, NULL, NULL, NULL },
 };
 
@@ -3672,7 +3672,7 @@ static const hk_jhle k_gfx[] = {
 
 const hk_jhle *hk_java_gfx_natives(void) { return k_gfx; }
 
-void hk_java_gfx_set_host(const megler_gfx_host *host)
+void hk_java_gfx_set_host(const meglet_gfx_host *host)
 {
     if (host) G = *host;
     else memset(&G, 0, sizeof(G));

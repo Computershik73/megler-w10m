@@ -3,7 +3,7 @@ package android.os.ext;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SdkExtensions {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int AD_SERVICES = 1000000;
     public static java.util.Map getAllExtensionVersions() { return new java.util.HashMap(); }
     public static int getExtensionVersion(int p0) { return 0; }

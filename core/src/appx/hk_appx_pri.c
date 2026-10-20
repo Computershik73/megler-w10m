@@ -2,15 +2,15 @@
  * resources.pri for an app's own package (hk_appx.h, docs/PER-APP-PACKAGES.md).
  *
  * A packaged XAML app has a resources.pri, and its resource map is named after the package's identity name. One made by
- * makepri for Megler names "Megler": an app's package, named otherwise, needs its own. makepri is not on the phone; so
- * Megler carries one made for a placeholder name of 50 characters (the most an identity name may have; every app package's
+ * makepri for Meglet names "Meglet": an app's package, named otherwise, needs its own. makepri is not on the phone; so
+ * Meglet carries one made for a placeholder name of 50 characters (the most an identity name may have; every app package's
  * name has that length, hk_appx_manifest.c) and the name is put in its place here.
  *
  * The name is in the file twice, as the resource map's name and in its unique name "ms-appx://<name>/" (UTF-16). The
  * hierarchical schema's checksum (in "[def_hnamesx]", 24 bytes on) is the CRC-32 of data in which the name is twice too,
  * lower-cased and in UTF-16, followed by `tail1` and `tail2` bytes of the rest. A CRC is linear: replacing the name by
  * another as long changes the checksum by the CRC of the difference followed by as many zero bytes as come after it, at
- * each of the two places. The tails are found when Megler is built (tools/build-appx.sh, from a second file made for a name
+ * each of the two places. The tails are found when Meglet is built (tools/build-appx.sh, from a second file made for a name
  * one character apart). A file so made is byte for byte the one makepri makes for that name (checked on the PC for names
  * with capitals, digits, '.' and '-').
  */

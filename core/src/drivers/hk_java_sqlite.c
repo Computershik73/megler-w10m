@@ -1,10 +1,10 @@
 /*
- * megler.Sqlite: databases for a Java app.
+ * meglet.Sqlite: databases for a Java app.
  *
  * The framework's android.database.sqlite is Java over 29 native methods that
  * are SQLite's C API almost one for one: a database is its sqlite3 *, a
  * statement its sqlite3_stmt *, both held by Java as longs. This is those
- * methods, as the original Megler has them on the system's SQLite of iOS; here
+ * methods, as the original Meglet has them on the system's SQLite of iOS; here
  * the SQLite is the one compiled into the core (sqlite/hk_sqlite.h), over the
  * host layer's files. The two collations Android registers on every
  * connection, LOCALIZED and UNICODE, are registered here too, since apps name
@@ -192,35 +192,35 @@ N(Sqlite_columnBlob)
 N(Sqlite_version) { c->ret.l = hk_dvm_new_string(sqlite3_libversion()); }
 
 static const hk_jhle k_sqlite[] = {
-    { "megler/Sqlite", "open", "(Ljava/lang/String;I)J", Sqlite_open },
-    { "megler/Sqlite", "close", "(J)V", Sqlite_close },
-    { "megler/Sqlite", "errmsg", "(J)Ljava/lang/String;", Sqlite_errmsg },
-    { "megler/Sqlite", "errcode", "(J)I", Sqlite_errcode },
-    { "megler/Sqlite", "exec", "(JLjava/lang/String;)I", Sqlite_exec },
-    { "megler/Sqlite", "changes", "(J)I", Sqlite_changes },
-    { "megler/Sqlite", "lastInsertRowid", "(J)J", Sqlite_lastInsertRowid },
-    { "megler/Sqlite", "autocommit", "(J)I", Sqlite_autocommit },
-    { "megler/Sqlite", "busyTimeout", "(JI)V", Sqlite_busyTimeout },
-    { "megler/Sqlite", "prepare", "(JLjava/lang/String;)J", Sqlite_prepare },
-    { "megler/Sqlite", "finalizeStatement", "(J)V", Sqlite_finalize },
-    { "megler/Sqlite", "reset", "(J)I", Sqlite_reset },
-    { "megler/Sqlite", "clearBindings", "(J)V", Sqlite_clearBindings },
-    { "megler/Sqlite", "paramCount", "(J)I", Sqlite_paramCount },
-    { "megler/Sqlite", "readOnly", "(J)I", Sqlite_readOnly },
-    { "megler/Sqlite", "bindNull", "(JI)I", Sqlite_bindNull },
-    { "megler/Sqlite", "bindLong", "(JIJ)I", Sqlite_bindLong },
-    { "megler/Sqlite", "bindDouble", "(JID)I", Sqlite_bindDouble },
-    { "megler/Sqlite", "bindString", "(JILjava/lang/String;)I", Sqlite_bindString },
-    { "megler/Sqlite", "bindBlob", "(JI[B)I", Sqlite_bindBlob },
-    { "megler/Sqlite", "step", "(J)I", Sqlite_step },
-    { "megler/Sqlite", "columnCount", "(J)I", Sqlite_columnCount },
-    { "megler/Sqlite", "columnName", "(JI)Ljava/lang/String;", Sqlite_columnName },
-    { "megler/Sqlite", "columnType", "(JI)I", Sqlite_columnType },
-    { "megler/Sqlite", "columnLong", "(JI)J", Sqlite_columnLong },
-    { "megler/Sqlite", "columnDouble", "(JI)D", Sqlite_columnDouble },
-    { "megler/Sqlite", "columnText", "(JI)Ljava/lang/String;", Sqlite_columnText },
-    { "megler/Sqlite", "columnBlob", "(JI)[B", Sqlite_columnBlob },
-    { "megler/Sqlite", "version", "()Ljava/lang/String;", Sqlite_version },
+    { "meglet/Sqlite", "open", "(Ljava/lang/String;I)J", Sqlite_open },
+    { "meglet/Sqlite", "close", "(J)V", Sqlite_close },
+    { "meglet/Sqlite", "errmsg", "(J)Ljava/lang/String;", Sqlite_errmsg },
+    { "meglet/Sqlite", "errcode", "(J)I", Sqlite_errcode },
+    { "meglet/Sqlite", "exec", "(JLjava/lang/String;)I", Sqlite_exec },
+    { "meglet/Sqlite", "changes", "(J)I", Sqlite_changes },
+    { "meglet/Sqlite", "lastInsertRowid", "(J)J", Sqlite_lastInsertRowid },
+    { "meglet/Sqlite", "autocommit", "(J)I", Sqlite_autocommit },
+    { "meglet/Sqlite", "busyTimeout", "(JI)V", Sqlite_busyTimeout },
+    { "meglet/Sqlite", "prepare", "(JLjava/lang/String;)J", Sqlite_prepare },
+    { "meglet/Sqlite", "finalizeStatement", "(J)V", Sqlite_finalize },
+    { "meglet/Sqlite", "reset", "(J)I", Sqlite_reset },
+    { "meglet/Sqlite", "clearBindings", "(J)V", Sqlite_clearBindings },
+    { "meglet/Sqlite", "paramCount", "(J)I", Sqlite_paramCount },
+    { "meglet/Sqlite", "readOnly", "(J)I", Sqlite_readOnly },
+    { "meglet/Sqlite", "bindNull", "(JI)I", Sqlite_bindNull },
+    { "meglet/Sqlite", "bindLong", "(JIJ)I", Sqlite_bindLong },
+    { "meglet/Sqlite", "bindDouble", "(JID)I", Sqlite_bindDouble },
+    { "meglet/Sqlite", "bindString", "(JILjava/lang/String;)I", Sqlite_bindString },
+    { "meglet/Sqlite", "bindBlob", "(JI[B)I", Sqlite_bindBlob },
+    { "meglet/Sqlite", "step", "(J)I", Sqlite_step },
+    { "meglet/Sqlite", "columnCount", "(J)I", Sqlite_columnCount },
+    { "meglet/Sqlite", "columnName", "(JI)Ljava/lang/String;", Sqlite_columnName },
+    { "meglet/Sqlite", "columnType", "(JI)I", Sqlite_columnType },
+    { "meglet/Sqlite", "columnLong", "(JI)J", Sqlite_columnLong },
+    { "meglet/Sqlite", "columnDouble", "(JI)D", Sqlite_columnDouble },
+    { "meglet/Sqlite", "columnText", "(JI)Ljava/lang/String;", Sqlite_columnText },
+    { "meglet/Sqlite", "columnBlob", "(JI)[B", Sqlite_columnBlob },
+    { "meglet/Sqlite", "version", "()Ljava/lang/String;", Sqlite_version },
     { NULL, NULL, NULL, NULL },
 };
 
@@ -241,11 +241,11 @@ N(Sqlite_version) { c->ret.l = hk_dvm_new_string("none"); }
 N(Sqlite_nothing) { c->ret.j = 0; }
 
 static const hk_jhle k_sqlite[] = {
-    { "megler/Sqlite", "open", NULL, Sqlite_open },
-    { "megler/Sqlite", "errmsg", NULL, Sqlite_errmsg },
-    { "megler/Sqlite", "errcode", NULL, Sqlite_errcode },
-    { "megler/Sqlite", "version", NULL, Sqlite_version },
-    { "megler/Sqlite", NULL, NULL, Sqlite_nothing },
+    { "meglet/Sqlite", "open", NULL, Sqlite_open },
+    { "meglet/Sqlite", "errmsg", NULL, Sqlite_errmsg },
+    { "meglet/Sqlite", "errcode", NULL, Sqlite_errcode },
+    { "meglet/Sqlite", "version", NULL, Sqlite_version },
+    { "meglet/Sqlite", NULL, NULL, Sqlite_nothing },
     { NULL, NULL, NULL, NULL },
 };
 

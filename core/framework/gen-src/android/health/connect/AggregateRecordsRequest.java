@@ -3,17 +3,17 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AggregateRecordsRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.util.Set getAggregationTypes() { return (meglerProps.get("AggregationTypes") != null ? (java.util.Set) meglerProps.get("AggregationTypes") : new java.util.HashSet()); }
-    public java.util.Set getDataOriginsFilters() { return (meglerProps.get("DataOriginsFilters") != null ? (java.util.Set) meglerProps.get("DataOriginsFilters") : new java.util.HashSet()); }
-    public android.health.connect.TimeRangeFilter getTimeRangeFilter() { return (android.health.connect.TimeRangeFilter) meglerProps.get("TimeRangeFilter"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.util.Set getAggregationTypes() { return (megletProps.get("AggregationTypes") != null ? (java.util.Set) megletProps.get("AggregationTypes") : new java.util.HashSet()); }
+    public java.util.Set getDataOriginsFilters() { return (megletProps.get("DataOriginsFilters") != null ? (java.util.Set) megletProps.get("DataOriginsFilters") : new java.util.HashSet()); }
+    public android.health.connect.TimeRangeFilter getTimeRangeFilter() { return (android.health.connect.TimeRangeFilter) megletProps.get("TimeRangeFilter"); }
     protected AggregateRecordsRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.health.connect.TimeRangeFilter p0) {}
         public android.health.connect.AggregateRecordsRequest.Builder addAggregationType(android.health.connect.datatypes.AggregationType p0) { return this; }
         public android.health.connect.AggregateRecordsRequest.Builder addDataOriginsFilter(android.health.connect.datatypes.DataOrigin p0) { return this; }
-        public android.health.connect.AggregateRecordsRequest build() { android.health.connect.AggregateRecordsRequest x = new android.health.connect.AggregateRecordsRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.AggregateRecordsRequest build() { android.health.connect.AggregateRecordsRequest x = new android.health.connect.AggregateRecordsRequest(); x.megletProps.putAll(megletProps); return x; }
         Builder() { this((android.health.connect.TimeRangeFilter) null); }
     }
 }

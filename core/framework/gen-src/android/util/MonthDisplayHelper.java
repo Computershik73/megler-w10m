@@ -3,19 +3,19 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MonthDisplayHelper {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public MonthDisplayHelper(int p0, int p1) {}
     public MonthDisplayHelper(int p0, int p1, int p2) {}
     public int getColumnOf(int p0) { return 0; }
     public int getDayAt(int p0, int p1) { return 0; }
     public int[] getDigitsForRow(int p0) { return null; }
-    public int getFirstDayOfMonth() { return (meglerProps.get("FirstDayOfMonth") instanceof Integer ? (Integer) meglerProps.get("FirstDayOfMonth") : 0); }
-    public int getMonth() { return (meglerProps.get("Month") instanceof Integer ? (Integer) meglerProps.get("Month") : 0); }
-    public int getNumberOfDaysInMonth() { return (meglerProps.get("NumberOfDaysInMonth") instanceof Integer ? (Integer) meglerProps.get("NumberOfDaysInMonth") : 0); }
-    public int getOffset() { return (meglerProps.get("Offset") instanceof Integer ? (Integer) meglerProps.get("Offset") : 0); }
+    public int getFirstDayOfMonth() { return (megletProps.get("FirstDayOfMonth") instanceof Integer ? (Integer) megletProps.get("FirstDayOfMonth") : 0); }
+    public int getMonth() { return (megletProps.get("Month") instanceof Integer ? (Integer) megletProps.get("Month") : 0); }
+    public int getNumberOfDaysInMonth() { return (megletProps.get("NumberOfDaysInMonth") instanceof Integer ? (Integer) megletProps.get("NumberOfDaysInMonth") : 0); }
+    public int getOffset() { return (megletProps.get("Offset") instanceof Integer ? (Integer) megletProps.get("Offset") : 0); }
     public int getRowOf(int p0) { return 0; }
-    public int getWeekStartDay() { return (meglerProps.get("WeekStartDay") instanceof Integer ? (Integer) meglerProps.get("WeekStartDay") : 0); }
-    public int getYear() { return (meglerProps.get("Year") instanceof Integer ? (Integer) meglerProps.get("Year") : 0); }
+    public int getWeekStartDay() { return (megletProps.get("WeekStartDay") instanceof Integer ? (Integer) megletProps.get("WeekStartDay") : 0); }
+    public int getYear() { return (megletProps.get("Year") instanceof Integer ? (Integer) megletProps.get("Year") : 0); }
     public boolean isWithinCurrentMonth(int p0, int p1) { return false; }
     public void nextMonth() {}
     public void previousMonth() {}

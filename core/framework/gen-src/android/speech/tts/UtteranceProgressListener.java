@@ -3,7 +3,7 @@ package android.speech.tts;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class UtteranceProgressListener {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public UtteranceProgressListener() {}
     public void onAudioAvailable(java.lang.String p0, byte[] p1) {}
     public void onBeginSynthesis(java.lang.String p0, int p1, int p2, int p3) {}

@@ -3,7 +3,7 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class UrlRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int REQUEST_PRIORITY_HIGHEST = 4;
     public static final int REQUEST_PRIORITY_IDLE = 0;
     public static final int REQUEST_PRIORITY_LOW = 2;
@@ -26,7 +26,7 @@ public abstract class UrlRequest {
     public abstract void start();
     protected UrlRequest() {}
     public static abstract class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public abstract android.net.http.UrlRequest.Builder addHeader(java.lang.String p0, java.lang.String p1);
         public abstract android.net.http.UrlRequest.Builder bindToNetwork(android.net.Network p0);
         public abstract android.net.http.UrlRequest build();
@@ -48,7 +48,7 @@ public abstract class UrlRequest {
         void onSucceeded(android.net.http.UrlRequest p0, android.net.http.UrlResponseInfo p1);
     }
     public static class Status {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int CONNECTING = 10;
         public static final int DOWNLOADING_PAC_FILE = 5;
         public static final int ESTABLISHING_PROXY_TUNNEL = 8;

@@ -3,7 +3,7 @@ package android.media.metrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TrackChangeEvent extends android.media.metrics.Event implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int TRACK_CHANGE_REASON_ADAPTIVE = 4;
     public static final int TRACK_CHANGE_REASON_INITIAL = 2;
@@ -16,43 +16,43 @@ public final class TrackChangeEvent extends android.media.metrics.Event implemen
     public static final int TRACK_TYPE_TEXT = 2;
     public static final int TRACK_TYPE_VIDEO = 1;
     public int describeContents() { return 0; }
-    public int getAudioSampleRate() { return (meglerProps.get("AudioSampleRate") instanceof Integer ? (Integer) meglerProps.get("AudioSampleRate") : 0); }
-    public int getBitrate() { return (meglerProps.get("Bitrate") instanceof Integer ? (Integer) meglerProps.get("Bitrate") : 0); }
-    public int getChannelCount() { return (meglerProps.get("ChannelCount") instanceof Integer ? (Integer) meglerProps.get("ChannelCount") : 0); }
-    public java.lang.String getCodecName() { return (java.lang.String) meglerProps.get("CodecName"); }
-    public java.lang.String getContainerMimeType() { return (java.lang.String) meglerProps.get("ContainerMimeType"); }
-    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
-    public java.lang.String getLanguage() { return (java.lang.String) meglerProps.get("Language"); }
-    public java.lang.String getLanguageRegion() { return (java.lang.String) meglerProps.get("LanguageRegion"); }
-    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) meglerProps.get("MetricsBundle"); }
-    public java.lang.String getSampleMimeType() { return (java.lang.String) meglerProps.get("SampleMimeType"); }
-    public long getTimeSinceCreatedMillis() { return (meglerProps.get("TimeSinceCreatedMillis") instanceof Long ? (Long) meglerProps.get("TimeSinceCreatedMillis") : 0L); }
-    public int getTrackChangeReason() { return (meglerProps.get("TrackChangeReason") instanceof Integer ? (Integer) meglerProps.get("TrackChangeReason") : 0); }
-    public int getTrackState() { return (meglerProps.get("TrackState") instanceof Integer ? (Integer) meglerProps.get("TrackState") : 0); }
-    public int getTrackType() { return (meglerProps.get("TrackType") instanceof Integer ? (Integer) meglerProps.get("TrackType") : 0); }
-    public float getVideoFrameRate() { return (meglerProps.get("VideoFrameRate") instanceof Float ? (Float) meglerProps.get("VideoFrameRate") : 0f); }
-    public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
+    public int getAudioSampleRate() { return (megletProps.get("AudioSampleRate") instanceof Integer ? (Integer) megletProps.get("AudioSampleRate") : 0); }
+    public int getBitrate() { return (megletProps.get("Bitrate") instanceof Integer ? (Integer) megletProps.get("Bitrate") : 0); }
+    public int getChannelCount() { return (megletProps.get("ChannelCount") instanceof Integer ? (Integer) megletProps.get("ChannelCount") : 0); }
+    public java.lang.String getCodecName() { return (java.lang.String) megletProps.get("CodecName"); }
+    public java.lang.String getContainerMimeType() { return (java.lang.String) megletProps.get("ContainerMimeType"); }
+    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
+    public java.lang.String getLanguage() { return (java.lang.String) megletProps.get("Language"); }
+    public java.lang.String getLanguageRegion() { return (java.lang.String) megletProps.get("LanguageRegion"); }
+    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) megletProps.get("MetricsBundle"); }
+    public java.lang.String getSampleMimeType() { return (java.lang.String) megletProps.get("SampleMimeType"); }
+    public long getTimeSinceCreatedMillis() { return (megletProps.get("TimeSinceCreatedMillis") instanceof Long ? (Long) megletProps.get("TimeSinceCreatedMillis") : 0L); }
+    public int getTrackChangeReason() { return (megletProps.get("TrackChangeReason") instanceof Integer ? (Integer) megletProps.get("TrackChangeReason") : 0); }
+    public int getTrackState() { return (megletProps.get("TrackState") instanceof Integer ? (Integer) megletProps.get("TrackState") : 0); }
+    public int getTrackType() { return (megletProps.get("TrackType") instanceof Integer ? (Integer) megletProps.get("TrackType") : 0); }
+    public float getVideoFrameRate() { return (megletProps.get("VideoFrameRate") instanceof Float ? (Float) megletProps.get("VideoFrameRate") : 0f); }
+    public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TrackChangeEvent() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(int p0) {}
-        public android.media.metrics.TrackChangeEvent build() { android.media.metrics.TrackChangeEvent x = new android.media.metrics.TrackChangeEvent(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.media.metrics.TrackChangeEvent.Builder setAudioSampleRate(int p0) { meglerProps.put("AudioSampleRate", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setBitrate(int p0) { meglerProps.put("Bitrate", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setChannelCount(int p0) { meglerProps.put("ChannelCount", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setCodecName(java.lang.String p0) { meglerProps.put("CodecName", p0); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setContainerMimeType(java.lang.String p0) { meglerProps.put("ContainerMimeType", p0); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setHeight(int p0) { meglerProps.put("Height", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setLanguage(java.lang.String p0) { meglerProps.put("Language", p0); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setLanguageRegion(java.lang.String p0) { meglerProps.put("LanguageRegion", p0); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setMetricsBundle(android.os.Bundle p0) { meglerProps.put("MetricsBundle", p0); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setSampleMimeType(java.lang.String p0) { meglerProps.put("SampleMimeType", p0); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setTimeSinceCreatedMillis(long p0) { meglerProps.put("TimeSinceCreatedMillis", Long.valueOf(p0)); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setTrackChangeReason(int p0) { meglerProps.put("TrackChangeReason", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setTrackState(int p0) { meglerProps.put("TrackState", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setVideoFrameRate(float p0) { meglerProps.put("VideoFrameRate", Float.valueOf(p0)); return this; }
-        public android.media.metrics.TrackChangeEvent.Builder setWidth(int p0) { meglerProps.put("Width", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.TrackChangeEvent build() { android.media.metrics.TrackChangeEvent x = new android.media.metrics.TrackChangeEvent(); x.megletProps.putAll(megletProps); return x; }
+        public android.media.metrics.TrackChangeEvent.Builder setAudioSampleRate(int p0) { megletProps.put("AudioSampleRate", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setBitrate(int p0) { megletProps.put("Bitrate", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setChannelCount(int p0) { megletProps.put("ChannelCount", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setCodecName(java.lang.String p0) { megletProps.put("CodecName", p0); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setContainerMimeType(java.lang.String p0) { megletProps.put("ContainerMimeType", p0); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setHeight(int p0) { megletProps.put("Height", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setLanguage(java.lang.String p0) { megletProps.put("Language", p0); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setLanguageRegion(java.lang.String p0) { megletProps.put("LanguageRegion", p0); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setMetricsBundle(android.os.Bundle p0) { megletProps.put("MetricsBundle", p0); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setSampleMimeType(java.lang.String p0) { megletProps.put("SampleMimeType", p0); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setTimeSinceCreatedMillis(long p0) { megletProps.put("TimeSinceCreatedMillis", Long.valueOf(p0)); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setTrackChangeReason(int p0) { megletProps.put("TrackChangeReason", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setTrackState(int p0) { megletProps.put("TrackState", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setVideoFrameRate(float p0) { megletProps.put("VideoFrameRate", Float.valueOf(p0)); return this; }
+        public android.media.metrics.TrackChangeEvent.Builder setWidth(int p0) { megletProps.put("Width", Integer.valueOf(p0)); return this; }
         Builder() { this((int) 0); }
     }
 }

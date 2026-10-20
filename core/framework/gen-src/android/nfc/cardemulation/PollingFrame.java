@@ -3,7 +3,7 @@ package android.nfc.cardemulation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PollingFrame implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int POLLING_LOOP_TYPE_A = 65;
     public static final int POLLING_LOOP_TYPE_B = 66;
@@ -13,12 +13,12 @@ public final class PollingFrame implements android.os.Parcelable {
     public static final int POLLING_LOOP_TYPE_UNKNOWN = 85;
     public PollingFrame(int p0, byte[] p1, int p2, long p3, boolean p4) {}
     public int describeContents() { return 0; }
-    public byte[] getData() { return (byte[]) meglerProps.get("Data"); }
-    public long getTimestamp() { return (meglerProps.get("Timestamp") instanceof Long ? (Long) meglerProps.get("Timestamp") : 0L); }
-    public boolean getTriggeredAutoTransact() { return (meglerProps.get("TriggeredAutoTransact") instanceof Boolean ? (Boolean) meglerProps.get("TriggeredAutoTransact") : false); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
-    public int getVendorSpecificGain() { return (meglerProps.get("VendorSpecificGain") instanceof Integer ? (Integer) meglerProps.get("VendorSpecificGain") : 0); }
-    public void setTriggeredAutoTransact(boolean p0) { meglerProps.put("TriggeredAutoTransact", Boolean.valueOf(p0)); }
+    public byte[] getData() { return (byte[]) megletProps.get("Data"); }
+    public long getTimestamp() { return (megletProps.get("Timestamp") instanceof Long ? (Long) megletProps.get("Timestamp") : 0L); }
+    public boolean getTriggeredAutoTransact() { return (megletProps.get("TriggeredAutoTransact") instanceof Boolean ? (Boolean) megletProps.get("TriggeredAutoTransact") : false); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public int getVendorSpecificGain() { return (megletProps.get("VendorSpecificGain") instanceof Integer ? (Integer) megletProps.get("VendorSpecificGain") : 0); }
+    public void setTriggeredAutoTransact(boolean p0) { megletProps.put("TriggeredAutoTransact", Boolean.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PollingFrame() { this((int) 0, (byte[]) null, (int) 0, (long) 0L, (boolean) false); }
 }

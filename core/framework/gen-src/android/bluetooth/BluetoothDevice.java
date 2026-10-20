@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothDevice implements android.os.Parcelable, android.bluetooth.Attributable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ACCESS_ALLOWED = 1;
     public static final int ACCESS_REJECTED = 2;
     public static final int ACCESS_UNKNOWN = 0;
@@ -207,42 +207,42 @@ public final class BluetoothDevice implements android.os.Parcelable, android.blu
     public int disconnect() { return 0; }
     public boolean fetchUuidsWithSdp() { return false; }
     public boolean fetchUuidsWithSdp(int p0) { return false; }
-    public int getActiveAudioDevicePolicy() { return (meglerProps.get("ActiveAudioDevicePolicy") instanceof Integer ? (Integer) meglerProps.get("ActiveAudioDevicePolicy") : 0); }
-    public java.lang.String getAddress() { return (java.lang.String) meglerProps.get("Address"); }
-    public int getAddressType() { return (meglerProps.get("AddressType") instanceof Integer ? (Integer) meglerProps.get("AddressType") : 0); }
-    public java.lang.String getAlias() { return (java.lang.String) meglerProps.get("Alias"); }
-    public java.lang.String getAnonymizedAddress() { return (java.lang.String) meglerProps.get("AnonymizedAddress"); }
-    public int getBatteryLevel() { return (meglerProps.get("BatteryLevel") instanceof Integer ? (Integer) meglerProps.get("BatteryLevel") : 0); }
-    public android.bluetooth.BluetoothClass getBluetoothClass() { return (android.bluetooth.BluetoothClass) meglerProps.get("BluetoothClass"); }
-    public int getBondState() { return (meglerProps.get("BondState") instanceof Integer ? (Integer) meglerProps.get("BondState") : 0); }
+    public int getActiveAudioDevicePolicy() { return (megletProps.get("ActiveAudioDevicePolicy") instanceof Integer ? (Integer) megletProps.get("ActiveAudioDevicePolicy") : 0); }
+    public java.lang.String getAddress() { return (java.lang.String) megletProps.get("Address"); }
+    public int getAddressType() { return (megletProps.get("AddressType") instanceof Integer ? (Integer) megletProps.get("AddressType") : 0); }
+    public java.lang.String getAlias() { return (java.lang.String) megletProps.get("Alias"); }
+    public java.lang.String getAnonymizedAddress() { return (java.lang.String) megletProps.get("AnonymizedAddress"); }
+    public int getBatteryLevel() { return (megletProps.get("BatteryLevel") instanceof Integer ? (Integer) megletProps.get("BatteryLevel") : 0); }
+    public android.bluetooth.BluetoothClass getBluetoothClass() { return (android.bluetooth.BluetoothClass) megletProps.get("BluetoothClass"); }
+    public int getBondState() { return (megletProps.get("BondState") instanceof Integer ? (Integer) megletProps.get("BondState") : 0); }
     public int getConnectionHandle(int p0) { return 0; }
     public android.bluetooth.EncryptionStatus getEncryptionStatus(int p0) { return null; }
-    public java.lang.String getIdentityAddress() { return (java.lang.String) meglerProps.get("IdentityAddress"); }
-    public android.bluetooth.BluetoothDevice.BluetoothAddress getIdentityAddressWithType() { return (android.bluetooth.BluetoothDevice.BluetoothAddress) meglerProps.get("IdentityAddressWithType"); }
-    public int getKeyMissingCount() { return (meglerProps.get("KeyMissingCount") instanceof Integer ? (Integer) meglerProps.get("KeyMissingCount") : 0); }
-    public int getMessageAccessPermission() { return (meglerProps.get("MessageAccessPermission") instanceof Integer ? (Integer) meglerProps.get("MessageAccessPermission") : 0); }
+    public java.lang.String getIdentityAddress() { return (java.lang.String) megletProps.get("IdentityAddress"); }
+    public android.bluetooth.BluetoothDevice.BluetoothAddress getIdentityAddressWithType() { return (android.bluetooth.BluetoothDevice.BluetoothAddress) megletProps.get("IdentityAddressWithType"); }
+    public int getKeyMissingCount() { return (megletProps.get("KeyMissingCount") instanceof Integer ? (Integer) megletProps.get("KeyMissingCount") : 0); }
+    public int getMessageAccessPermission() { return (megletProps.get("MessageAccessPermission") instanceof Integer ? (Integer) megletProps.get("MessageAccessPermission") : 0); }
     public byte[] getMetadata(int p0) { return null; }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public java.lang.String getPackageNameOfBondingApplication() { return (java.lang.String) meglerProps.get("PackageNameOfBondingApplication"); }
-    public int getPhonebookAccessPermission() { return (meglerProps.get("PhonebookAccessPermission") instanceof Integer ? (Integer) meglerProps.get("PhonebookAccessPermission") : 0); }
-    public android.bluetooth.BluetoothSinkAudioPolicy getRequestedAudioPolicyAsSink() { return (android.bluetooth.BluetoothSinkAudioPolicy) meglerProps.get("RequestedAudioPolicyAsSink"); }
-    public int getSimAccessPermission() { return (meglerProps.get("SimAccessPermission") instanceof Integer ? (Integer) meglerProps.get("SimAccessPermission") : 0); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
-    public android.os.ParcelUuid[] getUuids() { return (android.os.ParcelUuid[]) meglerProps.get("Uuids"); }
-    public boolean isBondingInitiatedLocally() { return (meglerProps.get("BondingInitiatedLocally") instanceof Boolean ? (Boolean) meglerProps.get("BondingInitiatedLocally") : false); }
-    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public java.lang.String getPackageNameOfBondingApplication() { return (java.lang.String) megletProps.get("PackageNameOfBondingApplication"); }
+    public int getPhonebookAccessPermission() { return (megletProps.get("PhonebookAccessPermission") instanceof Integer ? (Integer) megletProps.get("PhonebookAccessPermission") : 0); }
+    public android.bluetooth.BluetoothSinkAudioPolicy getRequestedAudioPolicyAsSink() { return (android.bluetooth.BluetoothSinkAudioPolicy) megletProps.get("RequestedAudioPolicyAsSink"); }
+    public int getSimAccessPermission() { return (megletProps.get("SimAccessPermission") instanceof Integer ? (Integer) megletProps.get("SimAccessPermission") : 0); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public android.os.ParcelUuid[] getUuids() { return (android.os.ParcelUuid[]) megletProps.get("Uuids"); }
+    public boolean isBondingInitiatedLocally() { return (megletProps.get("BondingInitiatedLocally") instanceof Boolean ? (Boolean) megletProps.get("BondingInitiatedLocally") : false); }
+    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
     public boolean isConnected(int p0) { return false; }
-    public boolean isEncrypted() { return (meglerProps.get("Encrypted") instanceof Boolean ? (Boolean) meglerProps.get("Encrypted") : false); }
-    public boolean isInSilenceMode() { return (meglerProps.get("InSilenceMode") instanceof Boolean ? (Boolean) meglerProps.get("InSilenceMode") : false); }
-    public boolean isMicrophonePreferredForCalls() { return (meglerProps.get("MicrophonePreferredForCalls") instanceof Boolean ? (Boolean) meglerProps.get("MicrophonePreferredForCalls") : false); }
-    public int isRequestAudioPolicyAsSinkSupported() { return (meglerProps.get("RequestAudioPolicyAsSinkSupported") instanceof Integer ? (Integer) meglerProps.get("RequestAudioPolicyAsSinkSupported") : 0); }
+    public boolean isEncrypted() { return (megletProps.get("Encrypted") instanceof Boolean ? (Boolean) megletProps.get("Encrypted") : false); }
+    public boolean isInSilenceMode() { return (megletProps.get("InSilenceMode") instanceof Boolean ? (Boolean) megletProps.get("InSilenceMode") : false); }
+    public boolean isMicrophonePreferredForCalls() { return (megletProps.get("MicrophonePreferredForCalls") instanceof Boolean ? (Boolean) megletProps.get("MicrophonePreferredForCalls") : false); }
+    public int isRequestAudioPolicyAsSinkSupported() { return (megletProps.get("RequestAudioPolicyAsSinkSupported") instanceof Integer ? (Integer) megletProps.get("RequestAudioPolicyAsSinkSupported") : 0); }
     public void prepareToEnterProcess(android.content.AttributionSource p0) {}
     public boolean removeBond() { return false; }
     public int requestAudioPolicyAsSink(android.bluetooth.BluetoothSinkAudioPolicy p0) { return 0; }
     public boolean sdpSearch(android.os.ParcelUuid p0) { return false; }
     public int setActiveAudioDevicePolicy(int p0) { return 0; }
     public int setAlias(java.lang.String p0) { return 0; }
-    public void setAttributionSource(android.content.AttributionSource p0) { meglerProps.put("AttributionSource", p0); }
+    public void setAttributionSource(android.content.AttributionSource p0) { megletProps.put("AttributionSource", p0); }
     public boolean setLowLatencyAudioAllowed(boolean p0) { return false; }
     public boolean setMessageAccessPermission(int p0) { return false; }
     public boolean setMetadata(int p0, byte[] p1) { return false; }
@@ -258,12 +258,12 @@ public final class BluetoothDevice implements android.os.Parcelable, android.blu
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected BluetoothDevice() {}
     public static final class BluetoothAddress implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public BluetoothAddress(java.lang.String p0, int p1) {}
         public int describeContents() { return 0; }
-        public java.lang.String getAddress() { return (java.lang.String) meglerProps.get("Address"); }
-        public int getAddressType() { return (meglerProps.get("AddressType") instanceof Integer ? (Integer) meglerProps.get("AddressType") : 0); }
+        public java.lang.String getAddress() { return (java.lang.String) megletProps.get("Address"); }
+        public int getAddressType() { return (megletProps.get("AddressType") instanceof Integer ? (Integer) megletProps.get("AddressType") : 0); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         BluetoothAddress() { this((java.lang.String) null, (int) 0); }
     }

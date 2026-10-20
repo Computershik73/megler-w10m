@@ -3,39 +3,39 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ConnectionRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ConnectionRequest(android.telecom.PhoneAccountHandle p0, android.net.Uri p1, android.os.Bundle p2) {}
     public ConnectionRequest(android.telecom.PhoneAccountHandle p0, android.net.Uri p1, android.os.Bundle p2, int p3) {}
     public ConnectionRequest(android.telecom.PhoneAccountHandle p0, android.net.Uri p1, android.os.Bundle p2, int p3, java.lang.String p4, boolean p5) {}
     public int describeContents() { return 0; }
-    public android.telecom.PhoneAccountHandle getAccountHandle() { return (android.telecom.PhoneAccountHandle) meglerProps.get("AccountHandle"); }
-    public android.net.Uri getAddress() { return (android.net.Uri) meglerProps.get("Address"); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-    public java.util.List getParticipants() { return (meglerProps.get("Participants") != null ? (java.util.List) meglerProps.get("Participants") : new java.util.ArrayList()); }
-    public android.os.ParcelFileDescriptor getRttPipeFromInCall() { return (android.os.ParcelFileDescriptor) meglerProps.get("RttPipeFromInCall"); }
-    public android.os.ParcelFileDescriptor getRttPipeToInCall() { return (android.os.ParcelFileDescriptor) meglerProps.get("RttPipeToInCall"); }
-    public android.telecom.Connection.RttTextStream getRttTextStream() { return (android.telecom.Connection.RttTextStream) meglerProps.get("RttTextStream"); }
-    public java.lang.String getTelecomCallId() { return (java.lang.String) meglerProps.get("TelecomCallId"); }
-    public int getVideoState() { return (meglerProps.get("VideoState") instanceof Integer ? (Integer) meglerProps.get("VideoState") : 0); }
-    public boolean isAdhocConferenceCall() { return (meglerProps.get("AdhocConferenceCall") instanceof Boolean ? (Boolean) meglerProps.get("AdhocConferenceCall") : false); }
-    public boolean isRequestingRtt() { return (meglerProps.get("RequestingRtt") instanceof Boolean ? (Boolean) meglerProps.get("RequestingRtt") : false); }
+    public android.telecom.PhoneAccountHandle getAccountHandle() { return (android.telecom.PhoneAccountHandle) megletProps.get("AccountHandle"); }
+    public android.net.Uri getAddress() { return (android.net.Uri) megletProps.get("Address"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public java.util.List getParticipants() { return (megletProps.get("Participants") != null ? (java.util.List) megletProps.get("Participants") : new java.util.ArrayList()); }
+    public android.os.ParcelFileDescriptor getRttPipeFromInCall() { return (android.os.ParcelFileDescriptor) megletProps.get("RttPipeFromInCall"); }
+    public android.os.ParcelFileDescriptor getRttPipeToInCall() { return (android.os.ParcelFileDescriptor) megletProps.get("RttPipeToInCall"); }
+    public android.telecom.Connection.RttTextStream getRttTextStream() { return (android.telecom.Connection.RttTextStream) megletProps.get("RttTextStream"); }
+    public java.lang.String getTelecomCallId() { return (java.lang.String) megletProps.get("TelecomCallId"); }
+    public int getVideoState() { return (megletProps.get("VideoState") instanceof Integer ? (Integer) megletProps.get("VideoState") : 0); }
+    public boolean isAdhocConferenceCall() { return (megletProps.get("AdhocConferenceCall") instanceof Boolean ? (Boolean) megletProps.get("AdhocConferenceCall") : false); }
+    public boolean isRequestingRtt() { return (megletProps.get("RequestingRtt") instanceof Boolean ? (Boolean) megletProps.get("RequestingRtt") : false); }
     public boolean shouldShowIncomingCallUi() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ConnectionRequest() { this((android.telecom.PhoneAccountHandle) null, (android.net.Uri) null, (android.os.Bundle) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.telecom.ConnectionRequest build() { android.telecom.ConnectionRequest x = new android.telecom.ConnectionRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.telecom.ConnectionRequest.Builder setAccountHandle(android.telecom.PhoneAccountHandle p0) { meglerProps.put("AccountHandle", p0); return this; }
-        public android.telecom.ConnectionRequest.Builder setAddress(android.net.Uri p0) { meglerProps.put("Address", p0); return this; }
-        public android.telecom.ConnectionRequest.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
-        public android.telecom.ConnectionRequest.Builder setIsAdhocConferenceCall(boolean p0) { meglerProps.put("IsAdhocConferenceCall", Boolean.valueOf(p0)); return this; }
-        public android.telecom.ConnectionRequest.Builder setParticipants(java.util.List p0) { meglerProps.put("Participants", p0); return this; }
-        public android.telecom.ConnectionRequest.Builder setRttPipeFromInCall(android.os.ParcelFileDescriptor p0) { meglerProps.put("RttPipeFromInCall", p0); return this; }
-        public android.telecom.ConnectionRequest.Builder setRttPipeToInCall(android.os.ParcelFileDescriptor p0) { meglerProps.put("RttPipeToInCall", p0); return this; }
-        public android.telecom.ConnectionRequest.Builder setShouldShowIncomingCallUi(boolean p0) { meglerProps.put("ShouldShowIncomingCallUi", Boolean.valueOf(p0)); return this; }
-        public android.telecom.ConnectionRequest.Builder setTelecomCallId(java.lang.String p0) { meglerProps.put("TelecomCallId", p0); return this; }
-        public android.telecom.ConnectionRequest.Builder setVideoState(int p0) { meglerProps.put("VideoState", Integer.valueOf(p0)); return this; }
+        public android.telecom.ConnectionRequest build() { android.telecom.ConnectionRequest x = new android.telecom.ConnectionRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.telecom.ConnectionRequest.Builder setAccountHandle(android.telecom.PhoneAccountHandle p0) { megletProps.put("AccountHandle", p0); return this; }
+        public android.telecom.ConnectionRequest.Builder setAddress(android.net.Uri p0) { megletProps.put("Address", p0); return this; }
+        public android.telecom.ConnectionRequest.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+        public android.telecom.ConnectionRequest.Builder setIsAdhocConferenceCall(boolean p0) { megletProps.put("IsAdhocConferenceCall", Boolean.valueOf(p0)); return this; }
+        public android.telecom.ConnectionRequest.Builder setParticipants(java.util.List p0) { megletProps.put("Participants", p0); return this; }
+        public android.telecom.ConnectionRequest.Builder setRttPipeFromInCall(android.os.ParcelFileDescriptor p0) { megletProps.put("RttPipeFromInCall", p0); return this; }
+        public android.telecom.ConnectionRequest.Builder setRttPipeToInCall(android.os.ParcelFileDescriptor p0) { megletProps.put("RttPipeToInCall", p0); return this; }
+        public android.telecom.ConnectionRequest.Builder setShouldShowIncomingCallUi(boolean p0) { megletProps.put("ShouldShowIncomingCallUi", Boolean.valueOf(p0)); return this; }
+        public android.telecom.ConnectionRequest.Builder setTelecomCallId(java.lang.String p0) { megletProps.put("TelecomCallId", p0); return this; }
+        public android.telecom.ConnectionRequest.Builder setVideoState(int p0) { megletProps.put("VideoState", Integer.valueOf(p0)); return this; }
     }
 }

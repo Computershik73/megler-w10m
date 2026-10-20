@@ -3,7 +3,7 @@ package android.net.wifi.rtt;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ResponderConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CHANNEL_WIDTH_160MHZ = 3;
     public static final int CHANNEL_WIDTH_20MHZ = 0;
     public static final int CHANNEL_WIDTH_320MHZ = 5;
@@ -43,41 +43,41 @@ public final class ResponderConfig implements android.os.Parcelable {
     public static int translateFromScanResultToLocalChannelWidth(int p0) { return 0; }
     public static int translateFromScanResultToLocalPreamble(int p0) { return 0; }
     public int describeContents() { return 0; }
-    public int getCenterFreq0Mhz() { return (meglerProps.get("CenterFreq0Mhz") instanceof Integer ? (Integer) meglerProps.get("CenterFreq0Mhz") : 0); }
-    public int getCenterFreq1Mhz() { return (meglerProps.get("CenterFreq1Mhz") instanceof Integer ? (Integer) meglerProps.get("CenterFreq1Mhz") : 0); }
-    public int getChannelWidth() { return (meglerProps.get("ChannelWidth") instanceof Integer ? (Integer) meglerProps.get("ChannelWidth") : 0); }
-    public int getFrequencyMhz() { return (meglerProps.get("FrequencyMhz") instanceof Integer ? (Integer) meglerProps.get("FrequencyMhz") : 0); }
-    public android.net.MacAddress getMacAddress() { return (android.net.MacAddress) meglerProps.get("MacAddress"); }
-    public long getNtbMaxTimeBetweenMeasurementsMicros() { return (meglerProps.get("NtbMaxTimeBetweenMeasurementsMicros") instanceof Long ? (Long) meglerProps.get("NtbMaxTimeBetweenMeasurementsMicros") : 0L); }
-    public long getNtbMinTimeBetweenMeasurementsMicros() { return (meglerProps.get("NtbMinTimeBetweenMeasurementsMicros") instanceof Long ? (Long) meglerProps.get("NtbMinTimeBetweenMeasurementsMicros") : 0L); }
-    public android.net.wifi.aware.PeerHandle getPeerHandle() { return (android.net.wifi.aware.PeerHandle) meglerProps.get("PeerHandle"); }
-    public int getPreamble() { return (meglerProps.get("Preamble") instanceof Integer ? (Integer) meglerProps.get("Preamble") : 0); }
-    public int getResponderType() { return (meglerProps.get("ResponderType") instanceof Integer ? (Integer) meglerProps.get("ResponderType") : 0); }
-    public android.net.wifi.rtt.SecureRangingConfig getSecureRangingConfig() { return (android.net.wifi.rtt.SecureRangingConfig) meglerProps.get("SecureRangingConfig"); }
-    public boolean is80211azNtbSupported() { return (meglerProps.get("80211azNtbSupported") instanceof Boolean ? (Boolean) meglerProps.get("80211azNtbSupported") : false); }
-    public boolean is80211mcSupported() { return (meglerProps.get("80211mcSupported") instanceof Boolean ? (Boolean) meglerProps.get("80211mcSupported") : false); }
+    public int getCenterFreq0Mhz() { return (megletProps.get("CenterFreq0Mhz") instanceof Integer ? (Integer) megletProps.get("CenterFreq0Mhz") : 0); }
+    public int getCenterFreq1Mhz() { return (megletProps.get("CenterFreq1Mhz") instanceof Integer ? (Integer) megletProps.get("CenterFreq1Mhz") : 0); }
+    public int getChannelWidth() { return (megletProps.get("ChannelWidth") instanceof Integer ? (Integer) megletProps.get("ChannelWidth") : 0); }
+    public int getFrequencyMhz() { return (megletProps.get("FrequencyMhz") instanceof Integer ? (Integer) megletProps.get("FrequencyMhz") : 0); }
+    public android.net.MacAddress getMacAddress() { return (android.net.MacAddress) megletProps.get("MacAddress"); }
+    public long getNtbMaxTimeBetweenMeasurementsMicros() { return (megletProps.get("NtbMaxTimeBetweenMeasurementsMicros") instanceof Long ? (Long) megletProps.get("NtbMaxTimeBetweenMeasurementsMicros") : 0L); }
+    public long getNtbMinTimeBetweenMeasurementsMicros() { return (megletProps.get("NtbMinTimeBetweenMeasurementsMicros") instanceof Long ? (Long) megletProps.get("NtbMinTimeBetweenMeasurementsMicros") : 0L); }
+    public android.net.wifi.aware.PeerHandle getPeerHandle() { return (android.net.wifi.aware.PeerHandle) megletProps.get("PeerHandle"); }
+    public int getPreamble() { return (megletProps.get("Preamble") instanceof Integer ? (Integer) megletProps.get("Preamble") : 0); }
+    public int getResponderType() { return (megletProps.get("ResponderType") instanceof Integer ? (Integer) megletProps.get("ResponderType") : 0); }
+    public android.net.wifi.rtt.SecureRangingConfig getSecureRangingConfig() { return (android.net.wifi.rtt.SecureRangingConfig) megletProps.get("SecureRangingConfig"); }
+    public boolean is80211azNtbSupported() { return (megletProps.get("80211azNtbSupported") instanceof Boolean ? (Boolean) megletProps.get("80211azNtbSupported") : false); }
+    public boolean is80211mcSupported() { return (megletProps.get("80211mcSupported") instanceof Boolean ? (Boolean) megletProps.get("80211mcSupported") : false); }
     public boolean isValid(boolean p0) { return false; }
-    public void setNtbMaxTimeBetweenMeasurementsMicros(long p0) { meglerProps.put("NtbMaxTimeBetweenMeasurementsMicros", Long.valueOf(p0)); }
-    public void setNtbMinTimeBetweenMeasurementsMicros(long p0) { meglerProps.put("NtbMinTimeBetweenMeasurementsMicros", Long.valueOf(p0)); }
+    public void setNtbMaxTimeBetweenMeasurementsMicros(long p0) { megletProps.put("NtbMaxTimeBetweenMeasurementsMicros", Long.valueOf(p0)); }
+    public void setNtbMinTimeBetweenMeasurementsMicros(long p0) { megletProps.put("NtbMinTimeBetweenMeasurementsMicros", Long.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ResponderConfig() { this((android.net.wifi.rtt.ResponderConfig.Builder) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.net.wifi.rtt.ResponderConfig p0) {}
-        public android.net.wifi.rtt.ResponderConfig build() { android.net.wifi.rtt.ResponderConfig x = new android.net.wifi.rtt.ResponderConfig(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.net.wifi.rtt.ResponderConfig.Builder set80211azNtbSupported(boolean p0) { meglerProps.put("80211azNtbSupported", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.ResponderConfig.Builder set80211mcSupported(boolean p0) { meglerProps.put("80211mcSupported", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.ResponderConfig.Builder setCenterFreq0Mhz(int p0) { meglerProps.put("CenterFreq0Mhz", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.ResponderConfig.Builder setCenterFreq1Mhz(int p0) { meglerProps.put("CenterFreq1Mhz", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.ResponderConfig.Builder setChannelWidth(int p0) { meglerProps.put("ChannelWidth", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.ResponderConfig.Builder setFrequencyMhz(int p0) { meglerProps.put("FrequencyMhz", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.ResponderConfig.Builder setMacAddress(android.net.MacAddress p0) { meglerProps.put("MacAddress", p0); return this; }
-        public android.net.wifi.rtt.ResponderConfig.Builder setNtbMaxTimeBetweenMeasurementsMicros(long p0) { meglerProps.put("NtbMaxTimeBetweenMeasurementsMicros", Long.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.ResponderConfig.Builder setNtbMinTimeBetweenMeasurementsMicros(long p0) { meglerProps.put("NtbMinTimeBetweenMeasurementsMicros", Long.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.ResponderConfig.Builder setPeerHandle(android.net.wifi.aware.PeerHandle p0) { meglerProps.put("PeerHandle", p0); return this; }
-        public android.net.wifi.rtt.ResponderConfig.Builder setPreamble(int p0) { meglerProps.put("Preamble", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.ResponderConfig.Builder setResponderType(int p0) { meglerProps.put("ResponderType", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.ResponderConfig.Builder setSecureRangingConfig(android.net.wifi.rtt.SecureRangingConfig p0) { meglerProps.put("SecureRangingConfig", p0); return this; }
+        public android.net.wifi.rtt.ResponderConfig build() { android.net.wifi.rtt.ResponderConfig x = new android.net.wifi.rtt.ResponderConfig(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.wifi.rtt.ResponderConfig.Builder set80211azNtbSupported(boolean p0) { megletProps.put("80211azNtbSupported", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.ResponderConfig.Builder set80211mcSupported(boolean p0) { megletProps.put("80211mcSupported", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.ResponderConfig.Builder setCenterFreq0Mhz(int p0) { megletProps.put("CenterFreq0Mhz", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.ResponderConfig.Builder setCenterFreq1Mhz(int p0) { megletProps.put("CenterFreq1Mhz", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.ResponderConfig.Builder setChannelWidth(int p0) { megletProps.put("ChannelWidth", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.ResponderConfig.Builder setFrequencyMhz(int p0) { megletProps.put("FrequencyMhz", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.ResponderConfig.Builder setMacAddress(android.net.MacAddress p0) { megletProps.put("MacAddress", p0); return this; }
+        public android.net.wifi.rtt.ResponderConfig.Builder setNtbMaxTimeBetweenMeasurementsMicros(long p0) { megletProps.put("NtbMaxTimeBetweenMeasurementsMicros", Long.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.ResponderConfig.Builder setNtbMinTimeBetweenMeasurementsMicros(long p0) { megletProps.put("NtbMinTimeBetweenMeasurementsMicros", Long.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.ResponderConfig.Builder setPeerHandle(android.net.wifi.aware.PeerHandle p0) { megletProps.put("PeerHandle", p0); return this; }
+        public android.net.wifi.rtt.ResponderConfig.Builder setPreamble(int p0) { megletProps.put("Preamble", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.ResponderConfig.Builder setResponderType(int p0) { megletProps.put("ResponderType", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.ResponderConfig.Builder setSecureRangingConfig(android.net.wifi.rtt.SecureRangingConfig p0) { megletProps.put("SecureRangingConfig", p0); return this; }
     }
 }

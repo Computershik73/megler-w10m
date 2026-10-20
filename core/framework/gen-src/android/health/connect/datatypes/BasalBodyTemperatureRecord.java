@@ -3,18 +3,18 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BasalBodyTemperatureRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public int getMeasurementLocation() { return (meglerProps.get("MeasurementLocation") instanceof Integer ? (Integer) meglerProps.get("MeasurementLocation") : 0); }
-    public android.health.connect.datatypes.units.Temperature getTemperature() { return (android.health.connect.datatypes.units.Temperature) meglerProps.get("Temperature"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public int getMeasurementLocation() { return (megletProps.get("MeasurementLocation") instanceof Integer ? (Integer) megletProps.get("MeasurementLocation") : 0); }
+    public android.health.connect.datatypes.units.Temperature getTemperature() { return (android.health.connect.datatypes.units.Temperature) megletProps.get("Temperature"); }
     public android.health.connect.internal.datatypes.BasalBodyTemperatureRecordInternal toRecordInternal() { return null; }
     protected BasalBodyTemperatureRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, int p2, android.health.connect.datatypes.units.Temperature p3) {}
-        public android.health.connect.datatypes.BasalBodyTemperatureRecord build() { android.health.connect.datatypes.BasalBodyTemperatureRecord x = new android.health.connect.datatypes.BasalBodyTemperatureRecord(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.datatypes.BasalBodyTemperatureRecord build() { android.health.connect.datatypes.BasalBodyTemperatureRecord x = new android.health.connect.datatypes.BasalBodyTemperatureRecord(); x.megletProps.putAll(megletProps); return x; }
         public android.health.connect.datatypes.BasalBodyTemperatureRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.BasalBodyTemperatureRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.BasalBodyTemperatureRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.BasalBodyTemperatureRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (int) 0, (android.health.connect.datatypes.units.Temperature) null); }
     }
 }

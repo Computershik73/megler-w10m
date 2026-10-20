@@ -3,13 +3,13 @@ package android.adservices.customaudience;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class JoinCustomAudienceRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public android.adservices.customaudience.CustomAudience getCustomAudience() { return (android.adservices.customaudience.CustomAudience) meglerProps.get("CustomAudience"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public android.adservices.customaudience.CustomAudience getCustomAudience() { return (android.adservices.customaudience.CustomAudience) megletProps.get("CustomAudience"); }
     protected JoinCustomAudienceRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.customaudience.JoinCustomAudienceRequest build() { android.adservices.customaudience.JoinCustomAudienceRequest x = new android.adservices.customaudience.JoinCustomAudienceRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.customaudience.JoinCustomAudienceRequest.Builder setCustomAudience(android.adservices.customaudience.CustomAudience p0) { meglerProps.put("CustomAudience", p0); return this; }
+        public android.adservices.customaudience.JoinCustomAudienceRequest build() { android.adservices.customaudience.JoinCustomAudienceRequest x = new android.adservices.customaudience.JoinCustomAudienceRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.customaudience.JoinCustomAudienceRequest.Builder setCustomAudience(android.adservices.customaudience.CustomAudience p0) { megletProps.put("CustomAudience", p0); return this; }
     }
 }

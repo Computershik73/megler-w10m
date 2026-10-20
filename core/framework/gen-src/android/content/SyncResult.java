@@ -3,7 +3,7 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SyncResult implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.content.SyncResult ALREADY_IN_PROGRESS;
     public static android.os.Parcelable.Creator CREATOR;
     public boolean databaseError;

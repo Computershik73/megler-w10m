@@ -3,47 +3,47 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MandatoryStreamCombination {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public MandatoryStreamCombination(java.util.List p0, java.lang.String p1, boolean p2) {}
-    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) meglerProps.get("Description"); }
-    public java.util.List getStreamsInformation() { return (meglerProps.get("StreamsInformation") != null ? (java.util.List) meglerProps.get("StreamsInformation") : new java.util.ArrayList()); }
-    public boolean isReprocessable() { return (meglerProps.get("Reprocessable") instanceof Boolean ? (Boolean) meglerProps.get("Reprocessable") : false); }
+    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) megletProps.get("Description"); }
+    public java.util.List getStreamsInformation() { return (megletProps.get("StreamsInformation") != null ? (java.util.List) megletProps.get("StreamsInformation") : new java.util.ArrayList()); }
+    public boolean isReprocessable() { return (megletProps.get("Reprocessable") instanceof Boolean ? (Boolean) megletProps.get("Reprocessable") : false); }
     MandatoryStreamCombination() { this((java.util.List) null, (java.lang.String) null, (boolean) false); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(int p0, int p1, android.util.Size p2, java.util.List p3, android.hardware.camera2.params.StreamConfigurationMap p4, android.hardware.camera2.params.StreamConfigurationMap p5, boolean p6, boolean p7) {}
         public static android.util.Size getMaxSize(android.util.Size[] p0) { return null; }
         public static android.util.Size getMaxSizeOrNull(android.util.Size[] p0) { return null; }
         public static android.util.Size getMinSize(android.util.Size p0, android.util.Size p1) { return null; }
-        public java.util.List getAvailableMandatory10BitStreamCombinations() { return (meglerProps.get("AvailableMandatory10BitStreamCombinations") != null ? (java.util.List) meglerProps.get("AvailableMandatory10BitStreamCombinations") : new java.util.ArrayList()); }
-        public java.util.List getAvailableMandatoryConcurrentStreamCombinations() { return (meglerProps.get("AvailableMandatoryConcurrentStreamCombinations") != null ? (java.util.List) meglerProps.get("AvailableMandatoryConcurrentStreamCombinations") : new java.util.ArrayList()); }
-        public java.util.List getAvailableMandatoryMaximumResolutionStreamCombinations() { return (meglerProps.get("AvailableMandatoryMaximumResolutionStreamCombinations") != null ? (java.util.List) meglerProps.get("AvailableMandatoryMaximumResolutionStreamCombinations") : new java.util.ArrayList()); }
-        public java.util.List getAvailableMandatoryPreviewStabilizedStreamCombinations() { return (meglerProps.get("AvailableMandatoryPreviewStabilizedStreamCombinations") != null ? (java.util.List) meglerProps.get("AvailableMandatoryPreviewStabilizedStreamCombinations") : new java.util.ArrayList()); }
-        public java.util.List getAvailableMandatoryStreamCombinations() { return (meglerProps.get("AvailableMandatoryStreamCombinations") != null ? (java.util.List) meglerProps.get("AvailableMandatoryStreamCombinations") : new java.util.ArrayList()); }
-        public java.util.List getAvailableMandatoryStreamUseCaseCombinations() { return (meglerProps.get("AvailableMandatoryStreamUseCaseCombinations") != null ? (java.util.List) meglerProps.get("AvailableMandatoryStreamUseCaseCombinations") : new java.util.ArrayList()); }
+        public java.util.List getAvailableMandatory10BitStreamCombinations() { return (megletProps.get("AvailableMandatory10BitStreamCombinations") != null ? (java.util.List) megletProps.get("AvailableMandatory10BitStreamCombinations") : new java.util.ArrayList()); }
+        public java.util.List getAvailableMandatoryConcurrentStreamCombinations() { return (megletProps.get("AvailableMandatoryConcurrentStreamCombinations") != null ? (java.util.List) megletProps.get("AvailableMandatoryConcurrentStreamCombinations") : new java.util.ArrayList()); }
+        public java.util.List getAvailableMandatoryMaximumResolutionStreamCombinations() { return (megletProps.get("AvailableMandatoryMaximumResolutionStreamCombinations") != null ? (java.util.List) megletProps.get("AvailableMandatoryMaximumResolutionStreamCombinations") : new java.util.ArrayList()); }
+        public java.util.List getAvailableMandatoryPreviewStabilizedStreamCombinations() { return (megletProps.get("AvailableMandatoryPreviewStabilizedStreamCombinations") != null ? (java.util.List) megletProps.get("AvailableMandatoryPreviewStabilizedStreamCombinations") : new java.util.ArrayList()); }
+        public java.util.List getAvailableMandatoryStreamCombinations() { return (megletProps.get("AvailableMandatoryStreamCombinations") != null ? (java.util.List) megletProps.get("AvailableMandatoryStreamCombinations") : new java.util.ArrayList()); }
+        public java.util.List getAvailableMandatoryStreamUseCaseCombinations() { return (megletProps.get("AvailableMandatoryStreamUseCaseCombinations") != null ? (java.util.List) megletProps.get("AvailableMandatoryStreamUseCaseCombinations") : new java.util.ArrayList()); }
         Builder() { this((int) 0, (int) 0, (android.util.Size) null, (java.util.List) null, (android.hardware.camera2.params.StreamConfigurationMap) null, (android.hardware.camera2.params.StreamConfigurationMap) null, (boolean) false, (boolean) false); }
         public static class SizeComparator implements java.util.Comparator {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public SizeComparator() {}
             public int compare(android.util.Size p0, android.util.Size p1) { return 0; }
             public int compare(java.lang.Object p0, java.lang.Object p1) { return 0; }
         }
     }
     public static final class MandatoryStreamInformation {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public MandatoryStreamInformation(java.util.List p0, int p1, boolean p2) {}
         public MandatoryStreamInformation(java.util.List p0, int p1, boolean p2, boolean p3) {}
         public MandatoryStreamInformation(java.util.List p0, int p1, boolean p2, boolean p3, boolean p4) {}
         public MandatoryStreamInformation(java.util.List p0, int p1, boolean p2, boolean p3, boolean p4, boolean p5) {}
         public MandatoryStreamInformation(java.util.List p0, int p1, boolean p2, boolean p3, boolean p4, boolean p5, long p6) {}
-        public int get10BitFormat() { return (meglerProps.get("10BitFormat") instanceof Integer ? (Integer) meglerProps.get("10BitFormat") : 0); }
-        public java.util.List getAvailableSizes() { return (meglerProps.get("AvailableSizes") != null ? (java.util.List) meglerProps.get("AvailableSizes") : new java.util.ArrayList()); }
-        public int getFormat() { return (meglerProps.get("Format") instanceof Integer ? (Integer) meglerProps.get("Format") : 0); }
-        public long getStreamUseCase() { return (meglerProps.get("StreamUseCase") instanceof Long ? (Long) meglerProps.get("StreamUseCase") : 0L); }
-        public boolean is10BitCapable() { return (meglerProps.get("10BitCapable") instanceof Boolean ? (Boolean) meglerProps.get("10BitCapable") : false); }
-        public boolean isInput() { return (meglerProps.get("Input") instanceof Boolean ? (Boolean) meglerProps.get("Input") : false); }
-        public boolean isMaximumSize() { return (meglerProps.get("MaximumSize") instanceof Boolean ? (Boolean) meglerProps.get("MaximumSize") : false); }
-        public boolean isUltraHighResolution() { return (meglerProps.get("UltraHighResolution") instanceof Boolean ? (Boolean) meglerProps.get("UltraHighResolution") : false); }
+        public int get10BitFormat() { return (megletProps.get("10BitFormat") instanceof Integer ? (Integer) megletProps.get("10BitFormat") : 0); }
+        public java.util.List getAvailableSizes() { return (megletProps.get("AvailableSizes") != null ? (java.util.List) megletProps.get("AvailableSizes") : new java.util.ArrayList()); }
+        public int getFormat() { return (megletProps.get("Format") instanceof Integer ? (Integer) megletProps.get("Format") : 0); }
+        public long getStreamUseCase() { return (megletProps.get("StreamUseCase") instanceof Long ? (Long) megletProps.get("StreamUseCase") : 0L); }
+        public boolean is10BitCapable() { return (megletProps.get("10BitCapable") instanceof Boolean ? (Boolean) megletProps.get("10BitCapable") : false); }
+        public boolean isInput() { return (megletProps.get("Input") instanceof Boolean ? (Boolean) megletProps.get("Input") : false); }
+        public boolean isMaximumSize() { return (megletProps.get("MaximumSize") instanceof Boolean ? (Boolean) megletProps.get("MaximumSize") : false); }
+        public boolean isUltraHighResolution() { return (megletProps.get("UltraHighResolution") instanceof Boolean ? (Boolean) megletProps.get("UltraHighResolution") : false); }
         MandatoryStreamInformation() { this((java.util.List) null, (int) 0, (boolean) false); }
     }
 }

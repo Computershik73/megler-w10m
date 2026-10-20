@@ -3,19 +3,19 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Presentations {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public android.widget.RemoteViews getDialogPresentation() { return (android.widget.RemoteViews) meglerProps.get("DialogPresentation"); }
-    public android.service.autofill.InlinePresentation getInlinePresentation() { return (android.service.autofill.InlinePresentation) meglerProps.get("InlinePresentation"); }
-    public android.service.autofill.InlinePresentation getInlineTooltipPresentation() { return (android.service.autofill.InlinePresentation) meglerProps.get("InlineTooltipPresentation"); }
-    public android.widget.RemoteViews getMenuPresentation() { return (android.widget.RemoteViews) meglerProps.get("MenuPresentation"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public android.widget.RemoteViews getDialogPresentation() { return (android.widget.RemoteViews) megletProps.get("DialogPresentation"); }
+    public android.service.autofill.InlinePresentation getInlinePresentation() { return (android.service.autofill.InlinePresentation) megletProps.get("InlinePresentation"); }
+    public android.service.autofill.InlinePresentation getInlineTooltipPresentation() { return (android.service.autofill.InlinePresentation) megletProps.get("InlineTooltipPresentation"); }
+    public android.widget.RemoteViews getMenuPresentation() { return (android.widget.RemoteViews) megletProps.get("MenuPresentation"); }
     protected Presentations() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.service.autofill.Presentations build() { android.service.autofill.Presentations x = new android.service.autofill.Presentations(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.service.autofill.Presentations.Builder setDialogPresentation(android.widget.RemoteViews p0) { meglerProps.put("DialogPresentation", p0); return this; }
-        public android.service.autofill.Presentations.Builder setInlinePresentation(android.service.autofill.InlinePresentation p0) { meglerProps.put("InlinePresentation", p0); return this; }
-        public android.service.autofill.Presentations.Builder setInlineTooltipPresentation(android.service.autofill.InlinePresentation p0) { meglerProps.put("InlineTooltipPresentation", p0); return this; }
-        public android.service.autofill.Presentations.Builder setMenuPresentation(android.widget.RemoteViews p0) { meglerProps.put("MenuPresentation", p0); return this; }
+        public android.service.autofill.Presentations build() { android.service.autofill.Presentations x = new android.service.autofill.Presentations(); x.megletProps.putAll(megletProps); return x; }
+        public android.service.autofill.Presentations.Builder setDialogPresentation(android.widget.RemoteViews p0) { megletProps.put("DialogPresentation", p0); return this; }
+        public android.service.autofill.Presentations.Builder setInlinePresentation(android.service.autofill.InlinePresentation p0) { megletProps.put("InlinePresentation", p0); return this; }
+        public android.service.autofill.Presentations.Builder setInlineTooltipPresentation(android.service.autofill.InlinePresentation p0) { megletProps.put("InlineTooltipPresentation", p0); return this; }
+        public android.service.autofill.Presentations.Builder setMenuPresentation(android.widget.RemoteViews p0) { megletProps.put("MenuPresentation", p0); return this; }
     }
 }

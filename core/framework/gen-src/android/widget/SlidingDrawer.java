@@ -3,7 +3,7 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SlidingDrawer extends android.view.ViewGroup {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ORIENTATION_HORIZONTAL = 0;
     public static final int ORIENTATION_VERTICAL = 1;
     public SlidingDrawer(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
@@ -13,16 +13,16 @@ public class SlidingDrawer extends android.view.ViewGroup {
     public void animateOpen() {}
     public void animateToggle() {}
     public void close() {}
-    public android.view.View getContent() { return (android.view.View) meglerProps.get("Content"); }
-    public android.view.View getHandle() { return (android.view.View) meglerProps.get("Handle"); }
-    public boolean isMoving() { return (meglerProps.get("Moving") instanceof Boolean ? (Boolean) meglerProps.get("Moving") : false); }
-    public boolean isOpened() { return (meglerProps.get("Opened") instanceof Boolean ? (Boolean) meglerProps.get("Opened") : false); }
+    public android.view.View getContent() { return (android.view.View) megletProps.get("Content"); }
+    public android.view.View getHandle() { return (android.view.View) megletProps.get("Handle"); }
+    public boolean isMoving() { return (megletProps.get("Moving") instanceof Boolean ? (Boolean) megletProps.get("Moving") : false); }
+    public boolean isOpened() { return (megletProps.get("Opened") instanceof Boolean ? (Boolean) megletProps.get("Opened") : false); }
     public void lock() {}
     public void onLayout(boolean p0, int p1, int p2, int p3, int p4) {}
     public void open() {}
-    public void setOnDrawerCloseListener(android.widget.SlidingDrawer.OnDrawerCloseListener p0) { meglerProps.put("OnDrawerCloseListener", p0); }
-    public void setOnDrawerOpenListener(android.widget.SlidingDrawer.OnDrawerOpenListener p0) { meglerProps.put("OnDrawerOpenListener", p0); }
-    public void setOnDrawerScrollListener(android.widget.SlidingDrawer.OnDrawerScrollListener p0) { meglerProps.put("OnDrawerScrollListener", p0); }
+    public void setOnDrawerCloseListener(android.widget.SlidingDrawer.OnDrawerCloseListener p0) { megletProps.put("OnDrawerCloseListener", p0); }
+    public void setOnDrawerOpenListener(android.widget.SlidingDrawer.OnDrawerOpenListener p0) { megletProps.put("OnDrawerOpenListener", p0); }
+    public void setOnDrawerScrollListener(android.widget.SlidingDrawer.OnDrawerScrollListener p0) { megletProps.put("OnDrawerScrollListener", p0); }
     public void toggle() {}
     public void unlock() {}
     SlidingDrawer() { this((android.content.Context) null, (android.util.AttributeSet) null); }

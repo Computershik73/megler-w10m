@@ -1,5 +1,5 @@
 // Overlay of core/framework/src/android/view/ViewGroup.java (tools/build-framework.sh).
-// It differs in one statement of the constructors' init(): the WILL_NOT_DRAW flag is set directly (View.meglerWillNotDraw,
+// It differs in one statement of the constructors' init(): the WILL_NOT_DRAW flag is set directly (View.megletWillNotDraw,
 // added by the overlay's View), as Android's ViewGroup sets it (setFlags(WILL_NOT_DRAW, DRAW_MASK)), where the original
 // called setWillNotDraw(true).
 //
@@ -37,8 +37,8 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         public int width, height;
         public LayoutAnimationController.AnimationParameters layoutAnimationParameters;
         public LayoutParams(Context c, AttributeSet attrs) {
-            TypedArray a = c.obtainStyledAttributes(attrs, megler.S.ViewGroup_Layout);
-            setBaseAttributes(a, megler.S.ViewGroup_Layout_layout_width, megler.S.ViewGroup_Layout_layout_height);
+            TypedArray a = c.obtainStyledAttributes(attrs, meglet.S.ViewGroup_Layout);
+            setBaseAttributes(a, meglet.S.ViewGroup_Layout_layout_width, meglet.S.ViewGroup_Layout_layout_height);
             a.recycle();
         }
         public LayoutParams(int w, int h) { width = w; height = h; }
@@ -56,18 +56,18 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         public int leftMargin, topMargin, rightMargin, bottomMargin;
         private int mStart = Integer.MIN_VALUE, mEnd = Integer.MIN_VALUE;
         public MarginLayoutParams(Context c, AttributeSet attrs) {
-            TypedArray a = c.obtainStyledAttributes(attrs, megler.S.ViewGroup_MarginLayout);
-            setBaseAttributes(a, megler.S.ViewGroup_MarginLayout_layout_width, megler.S.ViewGroup_MarginLayout_layout_height);
-            int m = a.getDimensionPixelSize(megler.S.ViewGroup_MarginLayout_layout_margin, -1);
+            TypedArray a = c.obtainStyledAttributes(attrs, meglet.S.ViewGroup_MarginLayout);
+            setBaseAttributes(a, meglet.S.ViewGroup_MarginLayout_layout_width, meglet.S.ViewGroup_MarginLayout_layout_height);
+            int m = a.getDimensionPixelSize(meglet.S.ViewGroup_MarginLayout_layout_margin, -1);
             if (m >= 0) leftMargin = topMargin = rightMargin = bottomMargin = m;
             else {
-                int h = a.getDimensionPixelSize(megler.S.ViewGroup_MarginLayout_layout_marginHorizontal, -1), v = a.getDimensionPixelSize(megler.S.ViewGroup_MarginLayout_layout_marginVertical, -1);
+                int h = a.getDimensionPixelSize(meglet.S.ViewGroup_MarginLayout_layout_marginHorizontal, -1), v = a.getDimensionPixelSize(meglet.S.ViewGroup_MarginLayout_layout_marginVertical, -1);
                 if (h >= 0) leftMargin = rightMargin = h;
                 if (v >= 0) topMargin = bottomMargin = v;
-                if (h < 0) { leftMargin = a.getDimensionPixelSize(megler.S.ViewGroup_MarginLayout_layout_marginLeft, 0); rightMargin = a.getDimensionPixelSize(megler.S.ViewGroup_MarginLayout_layout_marginRight, 0); }
-                if (v < 0) { topMargin = a.getDimensionPixelSize(megler.S.ViewGroup_MarginLayout_layout_marginTop, 0); bottomMargin = a.getDimensionPixelSize(megler.S.ViewGroup_MarginLayout_layout_marginBottom, 0); }
-                mStart = a.getDimensionPixelSize(megler.S.ViewGroup_MarginLayout_layout_marginStart, Integer.MIN_VALUE);
-                mEnd = a.getDimensionPixelSize(megler.S.ViewGroup_MarginLayout_layout_marginEnd, Integer.MIN_VALUE);
+                if (h < 0) { leftMargin = a.getDimensionPixelSize(meglet.S.ViewGroup_MarginLayout_layout_marginLeft, 0); rightMargin = a.getDimensionPixelSize(meglet.S.ViewGroup_MarginLayout_layout_marginRight, 0); }
+                if (v < 0) { topMargin = a.getDimensionPixelSize(meglet.S.ViewGroup_MarginLayout_layout_marginTop, 0); bottomMargin = a.getDimensionPixelSize(meglet.S.ViewGroup_MarginLayout_layout_marginBottom, 0); }
+                mStart = a.getDimensionPixelSize(meglet.S.ViewGroup_MarginLayout_layout_marginStart, Integer.MIN_VALUE);
+                mEnd = a.getDimensionPixelSize(meglet.S.ViewGroup_MarginLayout_layout_marginEnd, Integer.MIN_VALUE);
                 if (mStart != Integer.MIN_VALUE) leftMargin = mStart;
                 if (mEnd != Integer.MIN_VALUE) rightMargin = mEnd;
             }
@@ -121,18 +121,18 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         super(c, a, defStyleAttr, defStyleRes);
         init();
         if (a == null && defStyleAttr == 0 && defStyleRes == 0) return;
-        TypedArray t = c.obtainStyledAttributes(a, megler.S.ViewGroup, defStyleAttr, defStyleRes);
-        mClipChildren = t.getBoolean(megler.S.ViewGroup_clipChildren, true);
-        mClipToPadding = t.getBoolean(megler.S.ViewGroup_clipToPadding, true);
-        int df = t.getInt(megler.S.ViewGroup_descendantFocusability, 0);
+        TypedArray t = c.obtainStyledAttributes(a, meglet.S.ViewGroup, defStyleAttr, defStyleRes);
+        mClipChildren = t.getBoolean(meglet.S.ViewGroup_clipChildren, true);
+        mClipToPadding = t.getBoolean(meglet.S.ViewGroup_clipToPadding, true);
+        int df = t.getInt(meglet.S.ViewGroup_descendantFocusability, 0);
         mDescendantFocusability = df == 1 ? FOCUS_AFTER_DESCENDANTS : df == 2 ? FOCUS_BLOCK_DESCENDANTS : FOCUS_BEFORE_DESCENDANTS;
-        mAddStatesFromChildren = t.getBoolean(megler.S.ViewGroup_addStatesFromChildren, false);
-        mMotionSplit = t.getBoolean(megler.S.ViewGroup_splitMotionEvents, true);
-        if (t.getBoolean(megler.S.ViewGroup_animateLayoutChanges, false)) mTransition = new android.animation.LayoutTransition();
+        mAddStatesFromChildren = t.getBoolean(meglet.S.ViewGroup_addStatesFromChildren, false);
+        mMotionSplit = t.getBoolean(meglet.S.ViewGroup_splitMotionEvents, true);
+        if (t.getBoolean(meglet.S.ViewGroup_animateLayoutChanges, false)) mTransition = new android.animation.LayoutTransition();
         t.recycle();
     }
     /* (Android's ViewGroup sets the flag itself: setWillNotDraw is a subclass's to override, and its fields are not there yet.) */
-    private void init() { meglerWillNotDraw(true); }
+    private void init() { megletWillNotDraw(true); }
 
     // ---- children
     public int getChildCount() { return mChildrenCount; }
@@ -270,7 +270,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     public void setStaticTransformationsEnabled(boolean e) {}
     protected boolean getChildStaticTransformation(View child, android.view.animation.Transformation t) { return false; }
 
-    @Override void dispatchAttachedToWindow(megler.ViewRoot root, int visibility) {
+    @Override void dispatchAttachedToWindow(meglet.ViewRoot root, int visibility) {
         super.dispatchAttachedToWindow(root, visibility);
         for (int i = 0; i < mChildrenCount; i++) mChildren[i].dispatchAttachedToWindow(root, visibility);
     }
@@ -600,18 +600,18 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             v = v.mParent;
         }
     }
-    public void transformMatrixToGlobalMegler(Matrix m) { transformMatrixToGlobal(m); }
+    public void transformMatrixToGlobalMeglet(Matrix m) { transformMatrixToGlobal(m); }
     @Override public boolean dispatchUnhandledMove(View f, int dir) { return mFocused != null && mFocused.dispatchUnhandledMove(f, dir); }
-    public void setTouchscreenBlocksFocusMegler(boolean b) {}
-    public static int getChildMeasureSpecMegler(int s, int p, int d) { return getChildMeasureSpec(s, p, d); }
-    public void dispatchStartTemporaryDetachMegler() {}
-    public boolean shouldDelayChildPressedStateMegler() { return shouldDelayChildPressedState(); }
+    public void setTouchscreenBlocksFocusMeglet(boolean b) {}
+    public static int getChildMeasureSpecMeglet(int s, int p, int d) { return getChildMeasureSpec(s, p, d); }
+    public void dispatchStartTemporaryDetachMeglet() {}
+    public boolean shouldDelayChildPressedStateMeglet() { return shouldDelayChildPressedState(); }
     @Override public ViewGroupOverlay getOverlay() {
-        if (mOverlay == null) { mOverlay = new ViewGroupOverlay(getContext(), this); if (mRoot != null) mOverlay.meglerAttached(mRoot); }
+        if (mOverlay == null) { mOverlay = new ViewGroupOverlay(getContext(), this); if (mRoot != null) mOverlay.megletAttached(mRoot); }
         return (ViewGroupOverlay) mOverlay;
     }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
     protected static final int FLAG_DISALLOW_INTERCEPT = 524288;
     public static int LAYOUT_MODE_DEFAULT;
     protected java.util.ArrayList mDisappearingChildren;
@@ -665,7 +665,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     protected void internalSetPadding(int p0, int p1, int p2, int p3) {}
     public boolean isAlwaysDrawnWithCacheEnabled() { return false; }
     public boolean isAnimationCacheEnabled() { return false; }
-    protected boolean isChildrenDrawnWithCacheEnabled() { return (meglerFill.get("ChildrenDrawnWithCacheEnabled") instanceof Boolean ? (Boolean) meglerFill.get("ChildrenDrawnWithCacheEnabled") : false); }
+    protected boolean isChildrenDrawnWithCacheEnabled() { return (megletFill.get("ChildrenDrawnWithCacheEnabled") instanceof Boolean ? (Boolean) megletFill.get("ChildrenDrawnWithCacheEnabled") : false); }
     public boolean isShowingContextMenuWithCoords() { return false; }
     public void makeFrameworkOptionalFitsSystemWindows() {}
     @Override public void makeOptionalFitsSystemWindows() { super.makeOptionalFitsSystemWindows(); for (int i = 0; i < mChildrenCount; i++) mChildren[i].makeOptionalFitsSystemWindows(); }
@@ -693,14 +693,14 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     public boolean resolveTextDirection() { return false; }
     public boolean restoreFocusInCluster(int p0) { return false; }
     public boolean restoreFocusNotInCluster() { return false; }
-    protected void setChildrenDrawnWithCacheEnabled(boolean p0) { meglerFill.put("ChildrenDrawnWithCacheEnabled", Boolean.valueOf(p0)); }
+    protected void setChildrenDrawnWithCacheEnabled(boolean p0) { megletFill.put("ChildrenDrawnWithCacheEnabled", Boolean.valueOf(p0)); }
     public void setRequestedFrameRate(float p0) {}
     public void subtractObscuredTouchableRegion(android.graphics.Region p0, android.view.View p1) {}
     public void transformPointToViewLocal(float[] p0, android.view.View p1) {}
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static final class InspectionCompanion implements android.view.inspector.InspectionCompanion {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public InspectionCompanion() {}
         public void mapProperties(android.view.inspector.PropertyMapper p0) {}
         public void readProperties(android.view.ViewGroup p0, android.view.inspector.PropertyReader p1) {}

@@ -3,7 +3,7 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InlineSuggestionInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String SOURCE_AUTOFILL = "android:autofill";
     public static final java.lang.String SOURCE_PLATFORM = "android:platform";
@@ -13,12 +13,12 @@ public final class InlineSuggestionInfo implements android.os.Parcelable {
     public static android.view.inputmethod.InlineSuggestionInfo newInlineSuggestionInfo(android.widget.inline.InlinePresentationSpec p0, java.lang.String p1, java.lang.String[] p2, java.lang.String p3, boolean p4) { return new InlineSuggestionInfo(); }
     public static android.view.inputmethod.InlineSuggestionInfo newInlineSuggestionInfo(android.widget.inline.InlinePresentationSpec p0, java.lang.String p1, java.lang.String[] p2, java.lang.String p3, boolean p4, android.view.inputmethod.InlineSuggestion p5) { return new InlineSuggestionInfo(); }
     public int describeContents() { return 0; }
-    public java.lang.String[] getAutofillHints() { return (java.lang.String[]) meglerProps.get("AutofillHints"); }
-    public android.widget.inline.InlinePresentationSpec getInlinePresentationSpec() { return (android.widget.inline.InlinePresentationSpec) meglerProps.get("InlinePresentationSpec"); }
-    public java.lang.String getSource() { return (java.lang.String) meglerProps.get("Source"); }
-    public android.view.inputmethod.InlineSuggestion getTooltip() { return (android.view.inputmethod.InlineSuggestion) meglerProps.get("Tooltip"); }
-    public java.lang.String getType() { return (java.lang.String) meglerProps.get("Type"); }
-    public boolean isPinned() { return (meglerProps.get("Pinned") instanceof Boolean ? (Boolean) meglerProps.get("Pinned") : false); }
+    public java.lang.String[] getAutofillHints() { return (java.lang.String[]) megletProps.get("AutofillHints"); }
+    public android.widget.inline.InlinePresentationSpec getInlinePresentationSpec() { return (android.widget.inline.InlinePresentationSpec) megletProps.get("InlinePresentationSpec"); }
+    public java.lang.String getSource() { return (java.lang.String) megletProps.get("Source"); }
+    public android.view.inputmethod.InlineSuggestion getTooltip() { return (android.view.inputmethod.InlineSuggestion) megletProps.get("Tooltip"); }
+    public java.lang.String getType() { return (java.lang.String) megletProps.get("Type"); }
+    public boolean isPinned() { return (megletProps.get("Pinned") instanceof Boolean ? (Boolean) megletProps.get("Pinned") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     InlineSuggestionInfo() { this((android.widget.inline.InlinePresentationSpec) null, (java.lang.String) null, (java.lang.String[]) null, (java.lang.String) null, (boolean) false, (android.view.inputmethod.InlineSuggestion) null); }
 }

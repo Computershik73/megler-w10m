@@ -3,7 +3,7 @@ package android.media.audiofx;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Equalizer extends android.media.audiofx.AudioEffect {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int PARAM_BAND_FREQ_RANGE = 4;
     public static final int PARAM_BAND_LEVEL = 2;
     public static final int PARAM_CENTER_FREQ = 3;
@@ -18,22 +18,22 @@ public class Equalizer extends android.media.audiofx.AudioEffect {
     public short getBand(int p0) { return (short) 0; }
     public int[] getBandFreqRange(short p0) { return null; }
     public short getBandLevel(short p0) { return (short) 0; }
-    public short[] getBandLevelRange() { return (short[]) meglerProps.get("BandLevelRange"); }
+    public short[] getBandLevelRange() { return (short[]) megletProps.get("BandLevelRange"); }
     public int getCenterFreq(short p0) { return 0; }
-    public short getCurrentPreset() { return (meglerProps.get("CurrentPreset") instanceof Short ? (Short) meglerProps.get("CurrentPreset") : (short) 0); }
-    public short getNumberOfBands() { return (meglerProps.get("NumberOfBands") instanceof Short ? (Short) meglerProps.get("NumberOfBands") : (short) 0); }
-    public short getNumberOfPresets() { return (meglerProps.get("NumberOfPresets") instanceof Short ? (Short) meglerProps.get("NumberOfPresets") : (short) 0); }
+    public short getCurrentPreset() { return (megletProps.get("CurrentPreset") instanceof Short ? (Short) megletProps.get("CurrentPreset") : (short) 0); }
+    public short getNumberOfBands() { return (megletProps.get("NumberOfBands") instanceof Short ? (Short) megletProps.get("NumberOfBands") : (short) 0); }
+    public short getNumberOfPresets() { return (megletProps.get("NumberOfPresets") instanceof Short ? (Short) megletProps.get("NumberOfPresets") : (short) 0); }
     public java.lang.String getPresetName(short p0) { return null; }
-    public android.media.audiofx.Equalizer.Settings getProperties() { return (android.media.audiofx.Equalizer.Settings) meglerProps.get("Properties"); }
+    public android.media.audiofx.Equalizer.Settings getProperties() { return (android.media.audiofx.Equalizer.Settings) megletProps.get("Properties"); }
     public void setBandLevel(short p0, short p1) {}
-    public void setProperties(android.media.audiofx.Equalizer.Settings p0) { meglerProps.put("Properties", p0); }
+    public void setProperties(android.media.audiofx.Equalizer.Settings p0) { megletProps.put("Properties", p0); }
     public void usePreset(short p0) {}
     Equalizer() { this((int) 0, (int) 0); }
     public interface OnParameterChangeListener {
         void onParameterChange(android.media.audiofx.Equalizer p0, int p1, int p2, int p3, int p4);
     }
     public static class Settings {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public short[] bandLevels;
         public short curPreset;
         public short numBands;

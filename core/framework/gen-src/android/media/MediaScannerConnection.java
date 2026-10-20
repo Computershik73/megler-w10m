@@ -3,12 +3,12 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaScannerConnection implements android.content.ServiceConnection {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public MediaScannerConnection(android.content.Context p0, android.media.MediaScannerConnection.MediaScannerConnectionClient p1) {}
     public static void scanFile(android.content.Context p0, java.lang.String[] p1, java.lang.String[] p2, android.media.MediaScannerConnection.OnScanCompletedListener p3) {}
     public void connect() {}
     public void disconnect() {}
-    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
+    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
     public void onServiceConnected(android.content.ComponentName p0, android.os.IBinder p1) {}
     public void onServiceDisconnected(android.content.ComponentName p0) {}
     public void scanFile(java.lang.String p0, java.lang.String p1) {}

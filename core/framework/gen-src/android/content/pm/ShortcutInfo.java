@@ -3,7 +3,7 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ShortcutInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CLONE_REMOVE_FOR_APP_PREDICTION = 9;
     public static final int CLONE_REMOVE_FOR_CREATOR = 9;
     public static final int CLONE_REMOVE_FOR_LAUNCHER = 27;
@@ -70,48 +70,48 @@ public final class ShortcutInfo implements android.os.Parcelable {
     public int describeContents() { return 0; }
     public void enforceMandatoryFields(boolean p0) {}
     public void ensureUpdatableWith(android.content.pm.ShortcutInfo p0, boolean p1) {}
-    public android.content.ComponentName getActivity() { return (android.content.ComponentName) meglerProps.get("Activity"); }
-    public java.lang.String getBitmapPath() { return (java.lang.String) meglerProps.get("BitmapPath"); }
-    public java.util.List getCapabilities() { return (meglerProps.get("Capabilities") != null ? (java.util.List) meglerProps.get("Capabilities") : new java.util.ArrayList()); }
-    public java.util.Map getCapabilityBindingsInternal() { return (meglerProps.get("CapabilityBindingsInternal") != null ? (java.util.Map) meglerProps.get("CapabilityBindingsInternal") : new java.util.HashMap()); }
+    public android.content.ComponentName getActivity() { return (android.content.ComponentName) megletProps.get("Activity"); }
+    public java.lang.String getBitmapPath() { return (java.lang.String) megletProps.get("BitmapPath"); }
+    public java.util.List getCapabilities() { return (megletProps.get("Capabilities") != null ? (java.util.List) megletProps.get("Capabilities") : new java.util.ArrayList()); }
+    public java.util.Map getCapabilityBindingsInternal() { return (megletProps.get("CapabilityBindingsInternal") != null ? (java.util.Map) megletProps.get("CapabilityBindingsInternal") : new java.util.HashMap()); }
     public java.util.List getCapabilityParams(android.content.pm.Capability p0) { return new java.util.ArrayList(); }
-    public java.util.Set getCategories() { return (meglerProps.get("Categories") != null ? (java.util.Set) meglerProps.get("Categories") : new java.util.HashSet()); }
-    public java.lang.CharSequence getDisabledMessage() { return (java.lang.CharSequence) meglerProps.get("DisabledMessage"); }
-    public java.lang.String getDisabledMessageResName() { return (java.lang.String) meglerProps.get("DisabledMessageResName"); }
-    public int getDisabledMessageResourceId() { return (meglerProps.get("DisabledMessageResourceId") instanceof Integer ? (Integer) meglerProps.get("DisabledMessageResourceId") : 0); }
-    public int getDisabledReason() { return (meglerProps.get("DisabledReason") instanceof Integer ? (Integer) meglerProps.get("DisabledReason") : 0); }
-    public int getExcludedFromSurfaces() { return (meglerProps.get("ExcludedFromSurfaces") instanceof Integer ? (Integer) meglerProps.get("ExcludedFromSurfaces") : 0); }
-    public android.os.PersistableBundle getExtras() { return (android.os.PersistableBundle) meglerProps.get("Extras"); }
-    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
-    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) meglerProps.get("Icon"); }
-    public java.lang.String getIconResName() { return (java.lang.String) meglerProps.get("IconResName"); }
-    public int getIconResourceId() { return (meglerProps.get("IconResourceId") instanceof Integer ? (Integer) meglerProps.get("IconResourceId") : 0); }
-    public java.lang.String getIconUri() { return (java.lang.String) meglerProps.get("IconUri"); }
-    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
-    public int getImplicitRank() { return (meglerProps.get("ImplicitRank") instanceof Integer ? (Integer) meglerProps.get("ImplicitRank") : 0); }
-    public android.content.Intent getIntent() { return (android.content.Intent) meglerProps.get("Intent"); }
-    public android.os.PersistableBundle[] getIntentPersistableExtrases() { return (android.os.PersistableBundle[]) meglerProps.get("IntentPersistableExtrases"); }
-    public android.content.Intent[] getIntents() { return (android.content.Intent[]) meglerProps.get("Intents"); }
-    public android.content.Intent[] getIntentsNoExtras() { return (android.content.Intent[]) meglerProps.get("IntentsNoExtras"); }
-    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) meglerProps.get("Label"); }
-    public long getLastChangedTimestamp() { return (meglerProps.get("LastChangedTimestamp") instanceof Long ? (Long) meglerProps.get("LastChangedTimestamp") : 0L); }
-    public android.content.LocusId getLocusId() { return (android.content.LocusId) meglerProps.get("LocusId"); }
-    public java.lang.CharSequence getLongLabel() { return (java.lang.CharSequence) meglerProps.get("LongLabel"); }
-    public int getLongLabelResourceId() { return (meglerProps.get("LongLabelResourceId") instanceof Integer ? (Integer) meglerProps.get("LongLabelResourceId") : 0); }
-    public java.lang.String getPackage() { return (java.lang.String) meglerProps.get("Package"); }
-    public android.app.Person[] getPersons() { return (android.app.Person[]) meglerProps.get("Persons"); }
-    public int getRank() { return (meglerProps.get("Rank") instanceof Integer ? (Integer) meglerProps.get("Rank") : 0); }
-    public java.lang.CharSequence getShortLabel() { return (java.lang.CharSequence) meglerProps.get("ShortLabel"); }
-    public int getShortLabelResourceId() { return (meglerProps.get("ShortLabelResourceId") instanceof Integer ? (Integer) meglerProps.get("ShortLabelResourceId") : 0); }
-    public java.lang.String getStartingThemeResName() { return (java.lang.String) meglerProps.get("StartingThemeResName"); }
-    public java.lang.CharSequence getText() { return (java.lang.CharSequence) meglerProps.get("Text"); }
-    public int getTextResId() { return (meglerProps.get("TextResId") instanceof Integer ? (Integer) meglerProps.get("TextResId") : 0); }
-    public java.lang.String getTextResName() { return (java.lang.String) meglerProps.get("TextResName"); }
-    public java.lang.CharSequence getTitle() { return (java.lang.CharSequence) meglerProps.get("Title"); }
-    public int getTitleResId() { return (meglerProps.get("TitleResId") instanceof Integer ? (Integer) meglerProps.get("TitleResId") : 0); }
-    public java.lang.String getTitleResName() { return (java.lang.String) meglerProps.get("TitleResName"); }
-    public android.os.UserHandle getUserHandle() { return (android.os.UserHandle) meglerProps.get("UserHandle"); }
-    public int getUserId() { return (meglerProps.get("UserId") instanceof Integer ? (Integer) meglerProps.get("UserId") : 0); }
+    public java.util.Set getCategories() { return (megletProps.get("Categories") != null ? (java.util.Set) megletProps.get("Categories") : new java.util.HashSet()); }
+    public java.lang.CharSequence getDisabledMessage() { return (java.lang.CharSequence) megletProps.get("DisabledMessage"); }
+    public java.lang.String getDisabledMessageResName() { return (java.lang.String) megletProps.get("DisabledMessageResName"); }
+    public int getDisabledMessageResourceId() { return (megletProps.get("DisabledMessageResourceId") instanceof Integer ? (Integer) megletProps.get("DisabledMessageResourceId") : 0); }
+    public int getDisabledReason() { return (megletProps.get("DisabledReason") instanceof Integer ? (Integer) megletProps.get("DisabledReason") : 0); }
+    public int getExcludedFromSurfaces() { return (megletProps.get("ExcludedFromSurfaces") instanceof Integer ? (Integer) megletProps.get("ExcludedFromSurfaces") : 0); }
+    public android.os.PersistableBundle getExtras() { return (android.os.PersistableBundle) megletProps.get("Extras"); }
+    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
+    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) megletProps.get("Icon"); }
+    public java.lang.String getIconResName() { return (java.lang.String) megletProps.get("IconResName"); }
+    public int getIconResourceId() { return (megletProps.get("IconResourceId") instanceof Integer ? (Integer) megletProps.get("IconResourceId") : 0); }
+    public java.lang.String getIconUri() { return (java.lang.String) megletProps.get("IconUri"); }
+    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
+    public int getImplicitRank() { return (megletProps.get("ImplicitRank") instanceof Integer ? (Integer) megletProps.get("ImplicitRank") : 0); }
+    public android.content.Intent getIntent() { return (android.content.Intent) megletProps.get("Intent"); }
+    public android.os.PersistableBundle[] getIntentPersistableExtrases() { return (android.os.PersistableBundle[]) megletProps.get("IntentPersistableExtrases"); }
+    public android.content.Intent[] getIntents() { return (android.content.Intent[]) megletProps.get("Intents"); }
+    public android.content.Intent[] getIntentsNoExtras() { return (android.content.Intent[]) megletProps.get("IntentsNoExtras"); }
+    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) megletProps.get("Label"); }
+    public long getLastChangedTimestamp() { return (megletProps.get("LastChangedTimestamp") instanceof Long ? (Long) megletProps.get("LastChangedTimestamp") : 0L); }
+    public android.content.LocusId getLocusId() { return (android.content.LocusId) megletProps.get("LocusId"); }
+    public java.lang.CharSequence getLongLabel() { return (java.lang.CharSequence) megletProps.get("LongLabel"); }
+    public int getLongLabelResourceId() { return (megletProps.get("LongLabelResourceId") instanceof Integer ? (Integer) megletProps.get("LongLabelResourceId") : 0); }
+    public java.lang.String getPackage() { return (java.lang.String) megletProps.get("Package"); }
+    public android.app.Person[] getPersons() { return (android.app.Person[]) megletProps.get("Persons"); }
+    public int getRank() { return (megletProps.get("Rank") instanceof Integer ? (Integer) megletProps.get("Rank") : 0); }
+    public java.lang.CharSequence getShortLabel() { return (java.lang.CharSequence) megletProps.get("ShortLabel"); }
+    public int getShortLabelResourceId() { return (megletProps.get("ShortLabelResourceId") instanceof Integer ? (Integer) megletProps.get("ShortLabelResourceId") : 0); }
+    public java.lang.String getStartingThemeResName() { return (java.lang.String) megletProps.get("StartingThemeResName"); }
+    public java.lang.CharSequence getText() { return (java.lang.CharSequence) megletProps.get("Text"); }
+    public int getTextResId() { return (megletProps.get("TextResId") instanceof Integer ? (Integer) megletProps.get("TextResId") : 0); }
+    public java.lang.String getTextResName() { return (java.lang.String) megletProps.get("TextResName"); }
+    public java.lang.CharSequence getTitle() { return (java.lang.CharSequence) megletProps.get("Title"); }
+    public int getTitleResId() { return (megletProps.get("TitleResId") instanceof Integer ? (Integer) megletProps.get("TitleResId") : 0); }
+    public java.lang.String getTitleResName() { return (java.lang.String) megletProps.get("TitleResName"); }
+    public android.os.UserHandle getUserHandle() { return (android.os.UserHandle) megletProps.get("UserHandle"); }
+    public int getUserId() { return (megletProps.get("UserId") instanceof Integer ? (Integer) megletProps.get("UserId") : 0); }
     public boolean hasAdaptiveBitmap() { return false; }
     public boolean hasAnyResources() { return false; }
     public boolean hasFlags(int p0) { return false; }
@@ -122,51 +122,51 @@ public final class ShortcutInfo implements android.os.Parcelable {
     public boolean hasRank() { return false; }
     public boolean hasStringResources() { return false; }
     public boolean hasStringResourcesResolved() { return false; }
-    public boolean isAlive() { return (meglerProps.get("Alive") instanceof Boolean ? (Boolean) meglerProps.get("Alive") : false); }
-    public boolean isCached() { return (meglerProps.get("Cached") instanceof Boolean ? (Boolean) meglerProps.get("Cached") : false); }
-    public boolean isDeclaredInManifest() { return (meglerProps.get("DeclaredInManifest") instanceof Boolean ? (Boolean) meglerProps.get("DeclaredInManifest") : false); }
-    public boolean isDynamic() { return (meglerProps.get("Dynamic") instanceof Boolean ? (Boolean) meglerProps.get("Dynamic") : false); }
-    public boolean isDynamicVisible() { return (meglerProps.get("DynamicVisible") instanceof Boolean ? (Boolean) meglerProps.get("DynamicVisible") : false); }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
+    public boolean isAlive() { return (megletProps.get("Alive") instanceof Boolean ? (Boolean) megletProps.get("Alive") : false); }
+    public boolean isCached() { return (megletProps.get("Cached") instanceof Boolean ? (Boolean) megletProps.get("Cached") : false); }
+    public boolean isDeclaredInManifest() { return (megletProps.get("DeclaredInManifest") instanceof Boolean ? (Boolean) megletProps.get("DeclaredInManifest") : false); }
+    public boolean isDynamic() { return (megletProps.get("Dynamic") instanceof Boolean ? (Boolean) megletProps.get("Dynamic") : false); }
+    public boolean isDynamicVisible() { return (megletProps.get("DynamicVisible") instanceof Boolean ? (Boolean) megletProps.get("DynamicVisible") : false); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
     public boolean isExcludedFromSurfaces(int p0) { return false; }
-    public boolean isFloating() { return (meglerProps.get("Floating") instanceof Boolean ? (Boolean) meglerProps.get("Floating") : false); }
-    public boolean isIconPendingSave() { return (meglerProps.get("IconPendingSave") instanceof Boolean ? (Boolean) meglerProps.get("IconPendingSave") : false); }
-    public boolean isImmutable() { return (meglerProps.get("Immutable") instanceof Boolean ? (Boolean) meglerProps.get("Immutable") : false); }
-    public boolean isLongLived() { return (meglerProps.get("LongLived") instanceof Boolean ? (Boolean) meglerProps.get("LongLived") : false); }
-    public boolean isManifestShortcut() { return (meglerProps.get("ManifestShortcut") instanceof Boolean ? (Boolean) meglerProps.get("ManifestShortcut") : false); }
-    public boolean isManifestVisible() { return (meglerProps.get("ManifestVisible") instanceof Boolean ? (Boolean) meglerProps.get("ManifestVisible") : false); }
-    public boolean isNonManifestVisible() { return (meglerProps.get("NonManifestVisible") instanceof Boolean ? (Boolean) meglerProps.get("NonManifestVisible") : false); }
-    public boolean isOriginallyFromManifest() { return (meglerProps.get("OriginallyFromManifest") instanceof Boolean ? (Boolean) meglerProps.get("OriginallyFromManifest") : false); }
-    public boolean isPinned() { return (meglerProps.get("Pinned") instanceof Boolean ? (Boolean) meglerProps.get("Pinned") : false); }
-    public boolean isPinnedVisible() { return (meglerProps.get("PinnedVisible") instanceof Boolean ? (Boolean) meglerProps.get("PinnedVisible") : false); }
-    public boolean isRankChanged() { return (meglerProps.get("RankChanged") instanceof Boolean ? (Boolean) meglerProps.get("RankChanged") : false); }
-    public boolean isReturnedByServer() { return (meglerProps.get("ReturnedByServer") instanceof Boolean ? (Boolean) meglerProps.get("ReturnedByServer") : false); }
-    public boolean isVisibleToPublisher() { return (meglerProps.get("VisibleToPublisher") instanceof Boolean ? (Boolean) meglerProps.get("VisibleToPublisher") : false); }
+    public boolean isFloating() { return (megletProps.get("Floating") instanceof Boolean ? (Boolean) megletProps.get("Floating") : false); }
+    public boolean isIconPendingSave() { return (megletProps.get("IconPendingSave") instanceof Boolean ? (Boolean) megletProps.get("IconPendingSave") : false); }
+    public boolean isImmutable() { return (megletProps.get("Immutable") instanceof Boolean ? (Boolean) megletProps.get("Immutable") : false); }
+    public boolean isLongLived() { return (megletProps.get("LongLived") instanceof Boolean ? (Boolean) megletProps.get("LongLived") : false); }
+    public boolean isManifestShortcut() { return (megletProps.get("ManifestShortcut") instanceof Boolean ? (Boolean) megletProps.get("ManifestShortcut") : false); }
+    public boolean isManifestVisible() { return (megletProps.get("ManifestVisible") instanceof Boolean ? (Boolean) megletProps.get("ManifestVisible") : false); }
+    public boolean isNonManifestVisible() { return (megletProps.get("NonManifestVisible") instanceof Boolean ? (Boolean) megletProps.get("NonManifestVisible") : false); }
+    public boolean isOriginallyFromManifest() { return (megletProps.get("OriginallyFromManifest") instanceof Boolean ? (Boolean) megletProps.get("OriginallyFromManifest") : false); }
+    public boolean isPinned() { return (megletProps.get("Pinned") instanceof Boolean ? (Boolean) megletProps.get("Pinned") : false); }
+    public boolean isPinnedVisible() { return (megletProps.get("PinnedVisible") instanceof Boolean ? (Boolean) megletProps.get("PinnedVisible") : false); }
+    public boolean isRankChanged() { return (megletProps.get("RankChanged") instanceof Boolean ? (Boolean) megletProps.get("RankChanged") : false); }
+    public boolean isReturnedByServer() { return (megletProps.get("ReturnedByServer") instanceof Boolean ? (Boolean) megletProps.get("ReturnedByServer") : false); }
+    public boolean isVisibleToPublisher() { return (megletProps.get("VisibleToPublisher") instanceof Boolean ? (Boolean) megletProps.get("VisibleToPublisher") : false); }
     public void lookupAndFillInResourceIds(android.content.res.Resources p0) {}
     public void lookupAndFillInResourceNames(android.content.res.Resources p0) {}
     public void replaceFlags(int p0) {}
     public void resolveResourceStrings(android.content.res.Resources p0) {}
-    public void setActivity(android.content.ComponentName p0) { meglerProps.put("Activity", p0); }
-    public void setBitmapPath(java.lang.String p0) { meglerProps.put("BitmapPath", p0); }
-    public void setCached(int p0) { meglerProps.put("Cached", Integer.valueOf(p0)); }
-    public void setCategories(java.util.Set p0) { meglerProps.put("Categories", p0); }
-    public void setDisabledMessage(java.lang.String p0) { meglerProps.put("DisabledMessage", p0); }
-    public void setDisabledMessageResId(int p0) { meglerProps.put("DisabledMessageResId", Integer.valueOf(p0)); }
-    public void setDisabledMessageResName(java.lang.String p0) { meglerProps.put("DisabledMessageResName", p0); }
-    public void setDisabledReason(int p0) { meglerProps.put("DisabledReason", Integer.valueOf(p0)); }
+    public void setActivity(android.content.ComponentName p0) { megletProps.put("Activity", p0); }
+    public void setBitmapPath(java.lang.String p0) { megletProps.put("BitmapPath", p0); }
+    public void setCached(int p0) { megletProps.put("Cached", Integer.valueOf(p0)); }
+    public void setCategories(java.util.Set p0) { megletProps.put("Categories", p0); }
+    public void setDisabledMessage(java.lang.String p0) { megletProps.put("DisabledMessage", p0); }
+    public void setDisabledMessageResId(int p0) { megletProps.put("DisabledMessageResId", Integer.valueOf(p0)); }
+    public void setDisabledMessageResName(java.lang.String p0) { megletProps.put("DisabledMessageResName", p0); }
+    public void setDisabledReason(int p0) { megletProps.put("DisabledReason", Integer.valueOf(p0)); }
     public void setIconPendingSave() {}
-    public void setIconResName(java.lang.String p0) { meglerProps.put("IconResName", p0); }
-    public void setIconResourceId(int p0) { meglerProps.put("IconResourceId", Integer.valueOf(p0)); }
-    public void setIconUri(java.lang.String p0) { meglerProps.put("IconUri", p0); }
-    public void setImplicitRank(int p0) { meglerProps.put("ImplicitRank", Integer.valueOf(p0)); }
-    public void setIntents(android.content.Intent[] p0) { meglerProps.put("Intents", p0); }
+    public void setIconResName(java.lang.String p0) { megletProps.put("IconResName", p0); }
+    public void setIconResourceId(int p0) { megletProps.put("IconResourceId", Integer.valueOf(p0)); }
+    public void setIconUri(java.lang.String p0) { megletProps.put("IconUri", p0); }
+    public void setImplicitRank(int p0) { megletProps.put("ImplicitRank", Integer.valueOf(p0)); }
+    public void setIntents(android.content.Intent[] p0) { megletProps.put("Intents", p0); }
     public void setLongLived() {}
-    public void setRank(int p0) { meglerProps.put("Rank", Integer.valueOf(p0)); }
+    public void setRank(int p0) { megletProps.put("Rank", Integer.valueOf(p0)); }
     public void setRankChanged() {}
     public void setReturnedByServer() {}
-    public void setTextResName(java.lang.String p0) { meglerProps.put("TextResName", p0); }
-    public void setTimestamp(long p0) { meglerProps.put("Timestamp", Long.valueOf(p0)); }
-    public void setTitleResName(java.lang.String p0) { meglerProps.put("TitleResName", p0); }
+    public void setTextResName(java.lang.String p0) { megletProps.put("TextResName", p0); }
+    public void setTimestamp(long p0) { megletProps.put("Timestamp", Long.valueOf(p0)); }
+    public void setTitleResName(java.lang.String p0) { megletProps.put("TitleResName", p0); }
     public java.lang.String toDumpString(java.lang.String p0) { return null; }
     public java.lang.String toInsecureString() { return null; }
     public java.lang.String toSimpleString() { return null; }
@@ -175,35 +175,35 @@ public final class ShortcutInfo implements android.os.Parcelable {
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ShortcutInfo() { this((int) 0, (java.lang.String) null, (java.lang.String) null, (android.content.ComponentName) null, (android.graphics.drawable.Icon) null, (java.lang.CharSequence) null, (int) 0, (java.lang.String) null, (java.lang.CharSequence) null, (int) 0, (java.lang.String) null, (java.lang.CharSequence) null, (int) 0, (java.lang.String) null, (java.util.Set) null, (android.content.Intent[]) null, (int) 0, (android.os.PersistableBundle) null, (long) 0L, (int) 0, (int) 0, (java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (int) 0, (android.app.Person[]) null, (android.content.LocusId) null, (java.lang.String) null, (java.util.Map) null); }
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.content.Context p0) {}
         public Builder(android.content.Context p0, java.lang.String p1) {}
         public android.content.pm.ShortcutInfo.Builder addCapabilityBinding(android.content.pm.Capability p0, android.content.pm.CapabilityParams p1) { return this; }
-        public android.content.pm.ShortcutInfo build() { android.content.pm.ShortcutInfo x = new android.content.pm.ShortcutInfo(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.content.pm.ShortcutInfo.Builder setActivity(android.content.ComponentName p0) { meglerProps.put("Activity", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setCategories(java.util.Set p0) { meglerProps.put("Categories", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setDisabledMessage(java.lang.CharSequence p0) { meglerProps.put("DisabledMessage", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setDisabledMessageResId(int p0) { meglerProps.put("DisabledMessageResId", Integer.valueOf(p0)); return this; }
-        public android.content.pm.ShortcutInfo.Builder setExcludedFromSurfaces(int p0) { meglerProps.put("ExcludedFromSurfaces", Integer.valueOf(p0)); return this; }
-        public android.content.pm.ShortcutInfo.Builder setExtras(android.os.PersistableBundle p0) { meglerProps.put("Extras", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setIcon(android.graphics.drawable.Icon p0) { meglerProps.put("Icon", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setId(java.lang.String p0) { meglerProps.put("Id", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setIntent(android.content.Intent p0) { meglerProps.put("Intent", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setIntents(android.content.Intent[] p0) { meglerProps.put("Intents", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setLocusId(android.content.LocusId p0) { meglerProps.put("LocusId", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setLongLabel(java.lang.CharSequence p0) { meglerProps.put("LongLabel", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setLongLabelResId(int p0) { meglerProps.put("LongLabelResId", Integer.valueOf(p0)); return this; }
-        public android.content.pm.ShortcutInfo.Builder setLongLived(boolean p0) { meglerProps.put("LongLived", Boolean.valueOf(p0)); return this; }
-        public android.content.pm.ShortcutInfo.Builder setPerson(android.app.Person p0) { meglerProps.put("Person", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setPersons(android.app.Person[] p0) { meglerProps.put("Persons", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setRank(int p0) { meglerProps.put("Rank", Integer.valueOf(p0)); return this; }
-        public android.content.pm.ShortcutInfo.Builder setShortLabel(java.lang.CharSequence p0) { meglerProps.put("ShortLabel", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setShortLabelResId(int p0) { meglerProps.put("ShortLabelResId", Integer.valueOf(p0)); return this; }
-        public android.content.pm.ShortcutInfo.Builder setStartingTheme(int p0) { meglerProps.put("StartingTheme", Integer.valueOf(p0)); return this; }
-        public android.content.pm.ShortcutInfo.Builder setText(java.lang.CharSequence p0) { meglerProps.put("Text", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setTextResId(int p0) { meglerProps.put("TextResId", Integer.valueOf(p0)); return this; }
-        public android.content.pm.ShortcutInfo.Builder setTitle(java.lang.CharSequence p0) { meglerProps.put("Title", p0); return this; }
-        public android.content.pm.ShortcutInfo.Builder setTitleResId(int p0) { meglerProps.put("TitleResId", Integer.valueOf(p0)); return this; }
+        public android.content.pm.ShortcutInfo build() { android.content.pm.ShortcutInfo x = new android.content.pm.ShortcutInfo(); x.megletProps.putAll(megletProps); return x; }
+        public android.content.pm.ShortcutInfo.Builder setActivity(android.content.ComponentName p0) { megletProps.put("Activity", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setCategories(java.util.Set p0) { megletProps.put("Categories", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setDisabledMessage(java.lang.CharSequence p0) { megletProps.put("DisabledMessage", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setDisabledMessageResId(int p0) { megletProps.put("DisabledMessageResId", Integer.valueOf(p0)); return this; }
+        public android.content.pm.ShortcutInfo.Builder setExcludedFromSurfaces(int p0) { megletProps.put("ExcludedFromSurfaces", Integer.valueOf(p0)); return this; }
+        public android.content.pm.ShortcutInfo.Builder setExtras(android.os.PersistableBundle p0) { megletProps.put("Extras", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setIcon(android.graphics.drawable.Icon p0) { megletProps.put("Icon", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setId(java.lang.String p0) { megletProps.put("Id", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setIntent(android.content.Intent p0) { megletProps.put("Intent", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setIntents(android.content.Intent[] p0) { megletProps.put("Intents", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setLocusId(android.content.LocusId p0) { megletProps.put("LocusId", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setLongLabel(java.lang.CharSequence p0) { megletProps.put("LongLabel", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setLongLabelResId(int p0) { megletProps.put("LongLabelResId", Integer.valueOf(p0)); return this; }
+        public android.content.pm.ShortcutInfo.Builder setLongLived(boolean p0) { megletProps.put("LongLived", Boolean.valueOf(p0)); return this; }
+        public android.content.pm.ShortcutInfo.Builder setPerson(android.app.Person p0) { megletProps.put("Person", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setPersons(android.app.Person[] p0) { megletProps.put("Persons", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setRank(int p0) { megletProps.put("Rank", Integer.valueOf(p0)); return this; }
+        public android.content.pm.ShortcutInfo.Builder setShortLabel(java.lang.CharSequence p0) { megletProps.put("ShortLabel", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setShortLabelResId(int p0) { megletProps.put("ShortLabelResId", Integer.valueOf(p0)); return this; }
+        public android.content.pm.ShortcutInfo.Builder setStartingTheme(int p0) { megletProps.put("StartingTheme", Integer.valueOf(p0)); return this; }
+        public android.content.pm.ShortcutInfo.Builder setText(java.lang.CharSequence p0) { megletProps.put("Text", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setTextResId(int p0) { megletProps.put("TextResId", Integer.valueOf(p0)); return this; }
+        public android.content.pm.ShortcutInfo.Builder setTitle(java.lang.CharSequence p0) { megletProps.put("Title", p0); return this; }
+        public android.content.pm.ShortcutInfo.Builder setTitleResId(int p0) { megletProps.put("TitleResId", Integer.valueOf(p0)); return this; }
         Builder() { this((android.content.Context) null); }
     }
 }

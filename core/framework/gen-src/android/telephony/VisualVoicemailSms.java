@@ -3,22 +3,22 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VisualVoicemailSms implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.os.Bundle getFields() { return (android.os.Bundle) meglerProps.get("Fields"); }
-    public java.lang.String getMessageBody() { return (java.lang.String) meglerProps.get("MessageBody"); }
-    public android.telecom.PhoneAccountHandle getPhoneAccountHandle() { return (android.telecom.PhoneAccountHandle) meglerProps.get("PhoneAccountHandle"); }
-    public java.lang.String getPrefix() { return (java.lang.String) meglerProps.get("Prefix"); }
+    public android.os.Bundle getFields() { return (android.os.Bundle) megletProps.get("Fields"); }
+    public java.lang.String getMessageBody() { return (java.lang.String) megletProps.get("MessageBody"); }
+    public android.telecom.PhoneAccountHandle getPhoneAccountHandle() { return (android.telecom.PhoneAccountHandle) megletProps.get("PhoneAccountHandle"); }
+    public java.lang.String getPrefix() { return (java.lang.String) megletProps.get("Prefix"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected VisualVoicemailSms() {}
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.telephony.VisualVoicemailSms build() { android.telephony.VisualVoicemailSms x = new android.telephony.VisualVoicemailSms(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.telephony.VisualVoicemailSms.Builder setFields(android.os.Bundle p0) { meglerProps.put("Fields", p0); return this; }
-        public android.telephony.VisualVoicemailSms.Builder setMessageBody(java.lang.String p0) { meglerProps.put("MessageBody", p0); return this; }
-        public android.telephony.VisualVoicemailSms.Builder setPhoneAccountHandle(android.telecom.PhoneAccountHandle p0) { meglerProps.put("PhoneAccountHandle", p0); return this; }
-        public android.telephony.VisualVoicemailSms.Builder setPrefix(java.lang.String p0) { meglerProps.put("Prefix", p0); return this; }
+        public android.telephony.VisualVoicemailSms build() { android.telephony.VisualVoicemailSms x = new android.telephony.VisualVoicemailSms(); x.megletProps.putAll(megletProps); return x; }
+        public android.telephony.VisualVoicemailSms.Builder setFields(android.os.Bundle p0) { megletProps.put("Fields", p0); return this; }
+        public android.telephony.VisualVoicemailSms.Builder setMessageBody(java.lang.String p0) { megletProps.put("MessageBody", p0); return this; }
+        public android.telephony.VisualVoicemailSms.Builder setPhoneAccountHandle(android.telecom.PhoneAccountHandle p0) { megletProps.put("PhoneAccountHandle", p0); return this; }
+        public android.telephony.VisualVoicemailSms.Builder setPrefix(java.lang.String p0) { megletProps.put("Prefix", p0); return this; }
     }
 }

@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CloseGuard {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public CloseGuard() {}
     public static android.util.CloseGuard get() { return new CloseGuard(); }
     public void close() {}

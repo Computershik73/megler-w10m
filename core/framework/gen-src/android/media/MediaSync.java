@@ -3,26 +3,26 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaSync {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int MEDIASYNC_ERROR_AUDIOTRACK_FAIL = 1;
     public static final int MEDIASYNC_ERROR_SURFACE_FAIL = 2;
     public MediaSync() {}
     public android.view.Surface createInputSurface() { return null; }
     protected void finalize() {}
     public void flush() {}
-    public android.media.PlaybackParams getPlaybackParams() { return (android.media.PlaybackParams) meglerProps.get("PlaybackParams"); }
-    public android.media.SyncParams getSyncParams() { return (android.media.SyncParams) meglerProps.get("SyncParams"); }
-    public android.media.MediaTimestamp getTimestamp() { return (android.media.MediaTimestamp) meglerProps.get("Timestamp"); }
+    public android.media.PlaybackParams getPlaybackParams() { return (android.media.PlaybackParams) megletProps.get("PlaybackParams"); }
+    public android.media.SyncParams getSyncParams() { return (android.media.SyncParams) megletProps.get("SyncParams"); }
+    public android.media.MediaTimestamp getTimestamp() { return (android.media.MediaTimestamp) megletProps.get("Timestamp"); }
     public void queueAudio(java.nio.ByteBuffer p0, int p1, long p2) {}
     public void release() {}
-    public void setAudioTrack(android.media.AudioTrack p0) { meglerProps.put("AudioTrack", p0); }
+    public void setAudioTrack(android.media.AudioTrack p0) { megletProps.put("AudioTrack", p0); }
     public void setCallback(android.media.MediaSync.Callback p0, android.os.Handler p1) {}
     public void setOnErrorListener(android.media.MediaSync.OnErrorListener p0, android.os.Handler p1) {}
-    public void setPlaybackParams(android.media.PlaybackParams p0) { meglerProps.put("PlaybackParams", p0); }
-    public void setSurface(android.view.Surface p0) { meglerProps.put("Surface", p0); }
-    public void setSyncParams(android.media.SyncParams p0) { meglerProps.put("SyncParams", p0); }
+    public void setPlaybackParams(android.media.PlaybackParams p0) { megletProps.put("PlaybackParams", p0); }
+    public void setSurface(android.view.Surface p0) { megletProps.put("Surface", p0); }
+    public void setSyncParams(android.media.SyncParams p0) { megletProps.put("SyncParams", p0); }
     public static abstract class Callback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Callback() {}
         public abstract void onAudioBufferConsumed(android.media.MediaSync p0, java.nio.ByteBuffer p1, int p2);
     }

@@ -1,4 +1,4 @@
-    // megler-w10m: a member added to the original's android.graphics.drawable.Drawable (tools/build-framework.sh,
+    // Meglet: a member added to the original's android.graphics.drawable.Drawable (tools/build-framework.sh,
     // "X.java.members"). isProjected() is Android 10's: whether the drawable draws outside its view, onto the nearest
     // ancestor's background, as a ripple without a mask does. Material's views ask it of their backgrounds (Device Info
     // names it). Nothing is projected here: every drawable is drawn where its view is.

@@ -3,7 +3,7 @@ package android.hardware.usb;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class UsbAccessory implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int DESCRIPTION_STRING = 2;
     public static final int MANUFACTURER_STRING = 0;
@@ -14,12 +14,12 @@ public class UsbAccessory implements android.os.Parcelable {
     public UsbAccessory(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String p3, java.lang.String p4, android.hardware.usb.IUsbSerialReader p5) {}
     public UsbAccessory(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String p3, java.lang.String p4, java.lang.String p5) {}
     public int describeContents() { return 0; }
-    public java.lang.String getDescription() { return (java.lang.String) meglerProps.get("Description"); }
-    public java.lang.String getManufacturer() { return (java.lang.String) meglerProps.get("Manufacturer"); }
-    public java.lang.String getModel() { return (java.lang.String) meglerProps.get("Model"); }
-    public java.lang.String getSerial() { return (java.lang.String) meglerProps.get("Serial"); }
-    public java.lang.String getUri() { return (java.lang.String) meglerProps.get("Uri"); }
-    public java.lang.String getVersion() { return (java.lang.String) meglerProps.get("Version"); }
+    public java.lang.String getDescription() { return (java.lang.String) megletProps.get("Description"); }
+    public java.lang.String getManufacturer() { return (java.lang.String) megletProps.get("Manufacturer"); }
+    public java.lang.String getModel() { return (java.lang.String) megletProps.get("Model"); }
+    public java.lang.String getSerial() { return (java.lang.String) megletProps.get("Serial"); }
+    public java.lang.String getUri() { return (java.lang.String) megletProps.get("Uri"); }
+    public java.lang.String getVersion() { return (java.lang.String) megletProps.get("Version"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     UsbAccessory() { this((java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (android.hardware.usb.IUsbSerialReader) null); }
 }

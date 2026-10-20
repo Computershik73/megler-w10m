@@ -3,14 +3,14 @@ package android.net.eap;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EapAkaInfo extends android.net.eap.EapInfo {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public EapAkaInfo(byte[] p0) { super((int) 0); }
-    public byte[] getReauthId() { return (byte[]) meglerProps.get("ReauthId"); }
+    public byte[] getReauthId() { return (byte[]) megletProps.get("ReauthId"); }
     EapAkaInfo() { this((byte[]) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.eap.EapAkaInfo build() { android.net.eap.EapAkaInfo x = new android.net.eap.EapAkaInfo(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.net.eap.EapAkaInfo.Builder setReauthId(byte[] p0) { meglerProps.put("ReauthId", p0); return this; }
+        public android.net.eap.EapAkaInfo build() { android.net.eap.EapAkaInfo x = new android.net.eap.EapAkaInfo(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.eap.EapAkaInfo.Builder setReauthId(byte[] p0) { megletProps.put("ReauthId", p0); return this; }
     }
 }

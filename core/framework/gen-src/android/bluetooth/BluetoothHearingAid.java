@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothHearingAid implements android.bluetooth.BluetoothProfile {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_ACTIVE_DEVICE_CHANGED = "android.bluetooth.hearingaid.profile.action.ACTIVE_DEVICE_CHANGED";
     public static final java.lang.String ACTION_CONNECTION_STATE_CHANGED = "android.bluetooth.hearingaid.profile.action.CONNECTION_STATE_CHANGED";
     public static final long HI_SYNC_ID_INVALID = 0L;
@@ -15,10 +15,10 @@ public final class BluetoothHearingAid implements android.bluetooth.BluetoothPro
     public static final int SIDE_UNKNOWN = -1;
     public boolean connect(android.bluetooth.BluetoothDevice p0) { return false; }
     public boolean disconnect(android.bluetooth.BluetoothDevice p0) { return false; }
-    public java.util.List getActiveDevices() { return (meglerProps.get("ActiveDevices") != null ? (java.util.List) meglerProps.get("ActiveDevices") : new java.util.ArrayList()); }
-    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) meglerProps.get("Adapter"); }
+    public java.util.List getActiveDevices() { return (megletProps.get("ActiveDevices") != null ? (java.util.List) megletProps.get("ActiveDevices") : new java.util.ArrayList()); }
+    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) megletProps.get("Adapter"); }
     public android.bluetooth.BluetoothHearingAid.AdvertisementServiceData getAdvertisementServiceData(android.bluetooth.BluetoothDevice p0) { return null; }
-    public java.util.List getConnectedDevices() { return (meglerProps.get("ConnectedDevices") != null ? (java.util.List) meglerProps.get("ConnectedDevices") : new java.util.ArrayList()); }
+    public java.util.List getConnectedDevices() { return (megletProps.get("ConnectedDevices") != null ? (java.util.List) megletProps.get("ConnectedDevices") : new java.util.ArrayList()); }
     public int getConnectionPolicy(android.bluetooth.BluetoothDevice p0) { return 0; }
     public int getConnectionState(android.bluetooth.BluetoothDevice p0) { return 0; }
     public int getDeviceMode(android.bluetooth.BluetoothDevice p0) { return 0; }
@@ -29,17 +29,17 @@ public final class BluetoothHearingAid implements android.bluetooth.BluetoothPro
     public void onServiceDisconnected() {}
     public boolean setActiveDevice(android.bluetooth.BluetoothDevice p0) { return false; }
     public boolean setConnectionPolicy(android.bluetooth.BluetoothDevice p0, int p1) { return false; }
-    public void setVolume(int p0) { meglerProps.put("Volume", Integer.valueOf(p0)); }
+    public void setVolume(int p0) { megletProps.put("Volume", Integer.valueOf(p0)); }
     protected BluetoothHearingAid() {}
     public static final class AdvertisementServiceData implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public AdvertisementServiceData(int p0, int p1) {}
         public int describeContents() { return 0; }
-        public int getDeviceMode() { return (meglerProps.get("DeviceMode") instanceof Integer ? (Integer) meglerProps.get("DeviceMode") : 0); }
-        public int getDeviceSide() { return (meglerProps.get("DeviceSide") instanceof Integer ? (Integer) meglerProps.get("DeviceSide") : 0); }
-        public int getTruncatedHiSyncId() { return (meglerProps.get("TruncatedHiSyncId") instanceof Integer ? (Integer) meglerProps.get("TruncatedHiSyncId") : 0); }
-        public boolean isCsipSupported() { return (meglerProps.get("CsipSupported") instanceof Boolean ? (Boolean) meglerProps.get("CsipSupported") : false); }
+        public int getDeviceMode() { return (megletProps.get("DeviceMode") instanceof Integer ? (Integer) megletProps.get("DeviceMode") : 0); }
+        public int getDeviceSide() { return (megletProps.get("DeviceSide") instanceof Integer ? (Integer) megletProps.get("DeviceSide") : 0); }
+        public int getTruncatedHiSyncId() { return (megletProps.get("TruncatedHiSyncId") instanceof Integer ? (Integer) megletProps.get("TruncatedHiSyncId") : 0); }
+        public boolean isCsipSupported() { return (megletProps.get("CsipSupported") instanceof Boolean ? (Boolean) megletProps.get("CsipSupported") : false); }
         public boolean isInPairWith(android.bluetooth.BluetoothHearingAid.AdvertisementServiceData p0) { return false; }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         AdvertisementServiceData() { this((int) 0, (int) 0); }

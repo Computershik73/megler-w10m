@@ -3,7 +3,7 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TracingConfig {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CATEGORIES_ALL = 1;
     public static final int CATEGORIES_ANDROID_WEBVIEW = 2;
     public static final int CATEGORIES_FRAME_VIEWER = 64;
@@ -15,17 +15,17 @@ public class TracingConfig {
     public static final int RECORD_CONTINUOUSLY = 1;
     public static int RECORD_UNTIL_FULL;
     public TracingConfig(int p0, java.util.List p1, int p2) {}
-    public java.util.List getCustomIncludedCategories() { return (meglerProps.get("CustomIncludedCategories") != null ? (java.util.List) meglerProps.get("CustomIncludedCategories") : new java.util.ArrayList()); }
-    public int getPredefinedCategories() { return (meglerProps.get("PredefinedCategories") instanceof Integer ? (Integer) meglerProps.get("PredefinedCategories") : 0); }
-    public int getTracingMode() { return (meglerProps.get("TracingMode") instanceof Integer ? (Integer) meglerProps.get("TracingMode") : 0); }
+    public java.util.List getCustomIncludedCategories() { return (megletProps.get("CustomIncludedCategories") != null ? (java.util.List) megletProps.get("CustomIncludedCategories") : new java.util.ArrayList()); }
+    public int getPredefinedCategories() { return (megletProps.get("PredefinedCategories") instanceof Integer ? (Integer) megletProps.get("PredefinedCategories") : 0); }
+    public int getTracingMode() { return (megletProps.get("TracingMode") instanceof Integer ? (Integer) megletProps.get("TracingMode") : 0); }
     TracingConfig() { this((int) 0, (java.util.List) null, (int) 0); }
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public android.webkit.TracingConfig.Builder addCategories(java.util.Collection p0) { return this; }
         public android.webkit.TracingConfig.Builder addCategories(int[] p0) { return this; }
         public android.webkit.TracingConfig.Builder addCategories(java.lang.String[] p0) { return this; }
-        public android.webkit.TracingConfig build() { android.webkit.TracingConfig x = new android.webkit.TracingConfig(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.webkit.TracingConfig.Builder setTracingMode(int p0) { meglerProps.put("TracingMode", Integer.valueOf(p0)); return this; }
+        public android.webkit.TracingConfig build() { android.webkit.TracingConfig x = new android.webkit.TracingConfig(); x.megletProps.putAll(megletProps); return x; }
+        public android.webkit.TracingConfig.Builder setTracingMode(int p0) { megletProps.put("TracingMode", Integer.valueOf(p0)); return this; }
     }
 }

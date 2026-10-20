@@ -3,15 +3,15 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TimelineResponse extends android.media.tv.BroadcastInfoResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TimelineResponse(int p0, int p1, int p2, java.lang.String p3, int p4, int p5, long p6, long p7) { super(); }
     public int describeContents() { return 0; }
-    public android.net.Uri getSelector() { return (android.net.Uri) meglerProps.get("Selector"); }
-    public long getTicks() { return (meglerProps.get("Ticks") instanceof Long ? (Long) meglerProps.get("Ticks") : 0L); }
-    public int getUnitsPerSecond() { return (meglerProps.get("UnitsPerSecond") instanceof Integer ? (Integer) meglerProps.get("UnitsPerSecond") : 0); }
-    public int getUnitsPerTick() { return (meglerProps.get("UnitsPerTick") instanceof Integer ? (Integer) meglerProps.get("UnitsPerTick") : 0); }
-    public long getWallClock() { return (meglerProps.get("WallClock") instanceof Long ? (Long) meglerProps.get("WallClock") : 0L); }
+    public android.net.Uri getSelector() { return (android.net.Uri) megletProps.get("Selector"); }
+    public long getTicks() { return (megletProps.get("Ticks") instanceof Long ? (Long) megletProps.get("Ticks") : 0L); }
+    public int getUnitsPerSecond() { return (megletProps.get("UnitsPerSecond") instanceof Integer ? (Integer) megletProps.get("UnitsPerSecond") : 0); }
+    public int getUnitsPerTick() { return (megletProps.get("UnitsPerTick") instanceof Integer ? (Integer) megletProps.get("UnitsPerTick") : 0); }
+    public long getWallClock() { return (megletProps.get("WallClock") instanceof Long ? (Long) megletProps.get("WallClock") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TimelineResponse() { this((int) 0, (int) 0, (int) 0, (java.lang.String) null, (int) 0, (int) 0, (long) 0L, (long) 0L); }
 }

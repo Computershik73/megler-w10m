@@ -3,7 +3,7 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CursorAnchorInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_HAS_INVISIBLE_REGION = 2;
     public static final int FLAG_HAS_VISIBLE_REGION = 1;
@@ -13,34 +13,34 @@ public final class CursorAnchorInfo implements android.os.Parcelable {
     public int describeContents() { return 0; }
     public android.graphics.RectF getCharacterBounds(int p0) { return null; }
     public int getCharacterBoundsFlags(int p0) { return 0; }
-    public java.lang.CharSequence getComposingText() { return (java.lang.CharSequence) meglerProps.get("ComposingText"); }
-    public int getComposingTextStart() { return (meglerProps.get("ComposingTextStart") instanceof Integer ? (Integer) meglerProps.get("ComposingTextStart") : 0); }
-    public android.view.inputmethod.EditorBoundsInfo getEditorBoundsInfo() { return (android.view.inputmethod.EditorBoundsInfo) meglerProps.get("EditorBoundsInfo"); }
-    public float getInsertionMarkerBaseline() { return (meglerProps.get("InsertionMarkerBaseline") instanceof Float ? (Float) meglerProps.get("InsertionMarkerBaseline") : 0f); }
-    public float getInsertionMarkerBottom() { return (meglerProps.get("InsertionMarkerBottom") instanceof Float ? (Float) meglerProps.get("InsertionMarkerBottom") : 0f); }
-    public int getInsertionMarkerFlags() { return (meglerProps.get("InsertionMarkerFlags") instanceof Integer ? (Integer) meglerProps.get("InsertionMarkerFlags") : 0); }
-    public float getInsertionMarkerHorizontal() { return (meglerProps.get("InsertionMarkerHorizontal") instanceof Float ? (Float) meglerProps.get("InsertionMarkerHorizontal") : 0f); }
-    public float getInsertionMarkerTop() { return (meglerProps.get("InsertionMarkerTop") instanceof Float ? (Float) meglerProps.get("InsertionMarkerTop") : 0f); }
-    public android.graphics.Matrix getMatrix() { return (android.graphics.Matrix) meglerProps.get("Matrix"); }
-    public int getSelectionEnd() { return (meglerProps.get("SelectionEnd") instanceof Integer ? (Integer) meglerProps.get("SelectionEnd") : 0); }
-    public int getSelectionStart() { return (meglerProps.get("SelectionStart") instanceof Integer ? (Integer) meglerProps.get("SelectionStart") : 0); }
-    public android.view.inputmethod.TextAppearanceInfo getTextAppearanceInfo() { return (android.view.inputmethod.TextAppearanceInfo) meglerProps.get("TextAppearanceInfo"); }
-    public java.util.List getVisibleLineBounds() { return (meglerProps.get("VisibleLineBounds") != null ? (java.util.List) meglerProps.get("VisibleLineBounds") : new java.util.ArrayList()); }
+    public java.lang.CharSequence getComposingText() { return (java.lang.CharSequence) megletProps.get("ComposingText"); }
+    public int getComposingTextStart() { return (megletProps.get("ComposingTextStart") instanceof Integer ? (Integer) megletProps.get("ComposingTextStart") : 0); }
+    public android.view.inputmethod.EditorBoundsInfo getEditorBoundsInfo() { return (android.view.inputmethod.EditorBoundsInfo) megletProps.get("EditorBoundsInfo"); }
+    public float getInsertionMarkerBaseline() { return (megletProps.get("InsertionMarkerBaseline") instanceof Float ? (Float) megletProps.get("InsertionMarkerBaseline") : 0f); }
+    public float getInsertionMarkerBottom() { return (megletProps.get("InsertionMarkerBottom") instanceof Float ? (Float) megletProps.get("InsertionMarkerBottom") : 0f); }
+    public int getInsertionMarkerFlags() { return (megletProps.get("InsertionMarkerFlags") instanceof Integer ? (Integer) megletProps.get("InsertionMarkerFlags") : 0); }
+    public float getInsertionMarkerHorizontal() { return (megletProps.get("InsertionMarkerHorizontal") instanceof Float ? (Float) megletProps.get("InsertionMarkerHorizontal") : 0f); }
+    public float getInsertionMarkerTop() { return (megletProps.get("InsertionMarkerTop") instanceof Float ? (Float) megletProps.get("InsertionMarkerTop") : 0f); }
+    public android.graphics.Matrix getMatrix() { return (android.graphics.Matrix) megletProps.get("Matrix"); }
+    public int getSelectionEnd() { return (megletProps.get("SelectionEnd") instanceof Integer ? (Integer) megletProps.get("SelectionEnd") : 0); }
+    public int getSelectionStart() { return (megletProps.get("SelectionStart") instanceof Integer ? (Integer) megletProps.get("SelectionStart") : 0); }
+    public android.view.inputmethod.TextAppearanceInfo getTextAppearanceInfo() { return (android.view.inputmethod.TextAppearanceInfo) megletProps.get("TextAppearanceInfo"); }
+    public java.util.List getVisibleLineBounds() { return (megletProps.get("VisibleLineBounds") != null ? (java.util.List) megletProps.get("VisibleLineBounds") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     CursorAnchorInfo() { this((android.os.Parcel) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public android.view.inputmethod.CursorAnchorInfo.Builder addCharacterBounds(int p0, float p1, float p2, float p3, float p4, int p5) { return this; }
         public android.view.inputmethod.CursorAnchorInfo.Builder addVisibleLineBounds(float p0, float p1, float p2, float p3) { return this; }
-        public android.view.inputmethod.CursorAnchorInfo build() { android.view.inputmethod.CursorAnchorInfo x = new android.view.inputmethod.CursorAnchorInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.inputmethod.CursorAnchorInfo build() { android.view.inputmethod.CursorAnchorInfo x = new android.view.inputmethod.CursorAnchorInfo(); x.megletProps.putAll(megletProps); return x; }
         public android.view.inputmethod.CursorAnchorInfo.Builder clearVisibleLineBounds() { return this; }
         public void reset() {}
         public android.view.inputmethod.CursorAnchorInfo.Builder setComposingText(int p0, java.lang.CharSequence p1) { return this; }
-        public android.view.inputmethod.CursorAnchorInfo.Builder setEditorBoundsInfo(android.view.inputmethod.EditorBoundsInfo p0) { meglerProps.put("EditorBoundsInfo", p0); return this; }
+        public android.view.inputmethod.CursorAnchorInfo.Builder setEditorBoundsInfo(android.view.inputmethod.EditorBoundsInfo p0) { megletProps.put("EditorBoundsInfo", p0); return this; }
         public android.view.inputmethod.CursorAnchorInfo.Builder setInsertionMarkerLocation(float p0, float p1, float p2, float p3, int p4) { return this; }
-        public android.view.inputmethod.CursorAnchorInfo.Builder setMatrix(android.graphics.Matrix p0) { meglerProps.put("Matrix", p0); return this; }
+        public android.view.inputmethod.CursorAnchorInfo.Builder setMatrix(android.graphics.Matrix p0) { megletProps.put("Matrix", p0); return this; }
         public android.view.inputmethod.CursorAnchorInfo.Builder setSelectionRange(int p0, int p1) { return this; }
-        public android.view.inputmethod.CursorAnchorInfo.Builder setTextAppearanceInfo(android.view.inputmethod.TextAppearanceInfo p0) { meglerProps.put("TextAppearanceInfo", p0); return this; }
+        public android.view.inputmethod.CursorAnchorInfo.Builder setTextAppearanceInfo(android.view.inputmethod.TextAppearanceInfo p0) { megletProps.put("TextAppearanceInfo", p0); return this; }
     }
 }

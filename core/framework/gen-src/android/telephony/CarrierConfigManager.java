@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CarrierConfigManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_CARRIER_CONFIG_CHANGED = "android.telephony.action.CARRIER_CONFIG_CHANGED";
     public static final int CARRIER_NR_AVAILABILITY_NSA = 1;
     public static final int CARRIER_NR_AVAILABILITY_SA = 2;
@@ -605,12 +605,12 @@ public class CarrierConfigManager {
     public static android.os.PersistableBundle getCarrierConfigSubset(android.content.Context p0, int p1, java.lang.String[] p2) { return null; }
     public static android.os.PersistableBundle getDefaultConfig() { return null; }
     public static boolean isConfigForIdentifiedCarrier(android.os.PersistableBundle p0) { return false; }
-    public android.os.PersistableBundle getConfig() { return (android.os.PersistableBundle) meglerProps.get("Config"); }
+    public android.os.PersistableBundle getConfig() { return (android.os.PersistableBundle) megletProps.get("Config"); }
     public android.os.PersistableBundle getConfig(java.lang.String[] p0) { return null; }
     public android.os.PersistableBundle getConfigByComponentForSubId(java.lang.String p0, int p1) { return null; }
     public android.os.PersistableBundle getConfigForSubId(int p0) { return null; }
     public android.os.PersistableBundle getConfigForSubId(int p0, java.lang.String[] p1) { return null; }
-    public java.lang.String getDefaultCarrierServicePackageName() { return (java.lang.String) meglerProps.get("DefaultCarrierServicePackageName"); }
+    public java.lang.String getDefaultCarrierServicePackageName() { return (java.lang.String) megletProps.get("DefaultCarrierServicePackageName"); }
     public void notifyConfigChangedForSubId(int p0) {}
     public void overrideConfig(int p0, android.os.PersistableBundle p1) {}
     public void overrideConfig(int p0, android.os.PersistableBundle p1, boolean p2) {}
@@ -619,7 +619,7 @@ public class CarrierConfigManager {
     public void updateConfigForPhoneId(int p0, java.lang.String p1) {}
     CarrierConfigManager() { this((android.content.Context) null); }
     public static final class Apn {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String KEY_PREFIX = "apn.";
         public static final java.lang.String KEY_SETTINGS_DEFAULT_PROTOCOL_STRING = "apn.settings_default_protocol_string";
         public static final java.lang.String KEY_SETTINGS_DEFAULT_ROAMING_PROTOCOL_STRING = "apn.settings_default_roaming_protocol_string";
@@ -629,7 +629,7 @@ public class CarrierConfigManager {
         protected Apn() {}
     }
     public static final class Bsf {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String KEY_BSF_SERVER_FQDN_STRING = "bsf.bsf_server_fqdn_string";
         public static final java.lang.String KEY_BSF_SERVER_PORT_INT = "bsf.bsf_server_port_int";
         public static final java.lang.String KEY_BSF_TRANSPORT_TYPE_INT = "bsf.bsf_transport_type_int";
@@ -640,7 +640,7 @@ public class CarrierConfigManager {
         void onCarrierConfigChanged(int p0, int p1, int p2, int p3);
     }
     public static final class Gps {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String KEY_A_GLONASS_POS_PROTOCOL_SELECT_STRING = "gps.a_glonass_pos_protocol_select";
         public static final java.lang.String KEY_ENABLE_NI_SUPL_MESSAGE_INJECTION_BOOL = "gps.enable_ni_supl_message_injection_bool";
         public static final java.lang.String KEY_ES_EXTENSION_SEC_STRING = "gps.es_extension_sec";
@@ -663,7 +663,7 @@ public class CarrierConfigManager {
         protected Gps() {}
     }
     public static final class Ims {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int E911_RTCP_INACTIVITY_ON_CONNECTED = 3;
         public static final int E911_RTP_INACTIVITY_ON_CONNECTED = 4;
         public static final int GEOLOCATION_PIDF_FOR_EMERGENCY_ON_CELLULAR = 4;
@@ -749,7 +749,7 @@ public class CarrierConfigManager {
         protected Ims() {}
     }
     public static final class ImsEmergency {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int DOMAIN_CS = 1;
         public static final int DOMAIN_PS_3GPP = 2;
         public static final int DOMAIN_PS_NON_3GPP = 3;
@@ -792,7 +792,7 @@ public class CarrierConfigManager {
         protected ImsEmergency() {}
     }
     public static final class ImsRtt {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String KEY_PREFIX = "imsrtt.";
         public static final java.lang.String KEY_RED_PAYLOAD_TYPE_INT = "imsrtt.red_payload_type_int";
         public static final java.lang.String KEY_T140_PAYLOAD_TYPE_INT = "imsrtt.t140_payload_type_int";
@@ -805,7 +805,7 @@ public class CarrierConfigManager {
         protected ImsRtt() {}
     }
     public static final class ImsServiceEntitlement {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String KEY_DEFAULT_SERVICE_ENTITLEMENT_STATUS_BOOL = "imsserviceentitlement.default_service_entitlement_status_bool";
         public static final java.lang.String KEY_ENTITLEMENT_SERVER_URL_STRING = "imsserviceentitlement.entitlement_server_url_string";
         public static final java.lang.String KEY_ENTITLEMENT_VERSION_INT = "imsserviceentitlement.entitlement_version_int";
@@ -817,7 +817,7 @@ public class CarrierConfigManager {
         protected ImsServiceEntitlement() {}
     }
     public static final class ImsSms {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String KEY_PREFIX = "imssms.";
         public static final java.lang.String KEY_SMS_CSFB_RETRY_ON_FAILURE_BOOL = "imssms.sms_csfb_retry_on_failure_bool";
         public static final java.lang.String KEY_SMS_MAX_RETRY_COUNT_INT = "imssms.sms_max_retry_count_int";
@@ -835,7 +835,7 @@ public class CarrierConfigManager {
         protected ImsSms() {}
     }
     public static final class ImsSs {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int CALL_WAITING_SYNC_FIRST_CHANGE = 3;
         public static final int CALL_WAITING_SYNC_FIRST_POWER_UP = 2;
         public static final int CALL_WAITING_SYNC_IMS_ONLY = 4;
@@ -883,7 +883,7 @@ public class CarrierConfigManager {
         protected ImsSs() {}
     }
     public static final class ImsVoice {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ALERTING_SRVCC_SUPPORT = 1;
         public static final int BANDWIDTH_EFFICIENT = 0;
         public static final int BASIC_SRVCC_SUPPORT = 0;
@@ -979,7 +979,7 @@ public class CarrierConfigManager {
         protected ImsVoice() {}
     }
     public static final class ImsVt {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String KEY_H264_PAYLOAD_DESCRIPTION_BUNDLE = "imsvt.h264_payload_description_bundle";
         public static final java.lang.String KEY_H264_PAYLOAD_TYPE_INT_ARRAY = "imsvt.h264_payload_type_int_array";
         public static final java.lang.String KEY_H264_VIDEO_CODEC_ATTRIBUTE_PROFILE_LEVEL_ID_STRING = "imsvt.h264_video_codec_attribute_profile_level_id_string";
@@ -999,14 +999,14 @@ public class CarrierConfigManager {
         protected ImsVt() {}
     }
     public static final class ImsWfc {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String KEY_EMERGENCY_CALL_OVER_EMERGENCY_PDN_BOOL = "imswfc.emergency_call_over_emergency_pdn_bool";
         public static final java.lang.String KEY_PIDF_SHORT_CODE_STRING_ARRAY = "imswfc.pidf_short_code_string_array";
         public static final java.lang.String KEY_PREFIX = "imswfc.";
         protected ImsWfc() {}
     }
     public static final class Iwlan {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int AUTHENTICATION_METHOD_CERT = 1;
         public static final int AUTHENTICATION_METHOD_EAP_ONLY = 0;
         public static final int EPDG_ADDRESS_CELLULAR_LOC = 3;
@@ -1066,7 +1066,7 @@ public class CarrierConfigManager {
         protected Iwlan() {}
     }
     public static class OpportunisticNetwork {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String KEY_5G_BACKOFF_TIME_LONG = "opportunistic.5g_backoff_time_long";
         public static final java.lang.String KEY_5G_DATA_SWITCH_EXIT_HYSTERESIS_TIME_LONG = "opportunistic.5g_data_switch_exit_hysteresis_time_long";
         public static final java.lang.String KEY_5G_DATA_SWITCH_EXIT_HYSTERESIS_TIME_LONG_BUNDLE = "opportunistic.5g_data_switch_exit_hysteresis_time_long_bundle";
@@ -1086,7 +1086,7 @@ public class CarrierConfigManager {
         public OpportunisticNetwork() {}
     }
     public static final class Wifi {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String KEY_AVOID_5GHZ_SOFTAP_FOR_LAA_BOOL = "wifi.avoid_5ghz_softap_for_laa_bool";
         public static final java.lang.String KEY_AVOID_5GHZ_WIFI_DIRECT_FOR_LAA_BOOL = "wifi.avoid_5ghz_wifi_direct_for_laa_bool";
         public static final java.lang.String KEY_HOTSPOT_MAX_CLIENT_COUNT = "wifi.hotspot_maximum_client_count";

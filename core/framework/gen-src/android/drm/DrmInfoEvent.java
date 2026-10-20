@@ -3,7 +3,7 @@ package android.drm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DrmInfoEvent extends android.drm.DrmEvent {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int TYPE_ACCOUNT_ALREADY_REGISTERED = 5;
     public static final int TYPE_ALREADY_REGISTERED_BY_ANOTHER_ACCOUNT = 1;
     public static final int TYPE_REMOVE_RIGHTS = 2;

@@ -3,7 +3,7 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RenderScript {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CREATE_FLAG_LOW_LATENCY = 2;
     public static final int CREATE_FLAG_LOW_POWER = 4;
     public static final int CREATE_FLAG_NONE = 0;
@@ -20,13 +20,13 @@ public class RenderScript {
     public void destroy() {}
     protected void finalize() {}
     public void finish() {}
-    public android.content.Context getApplicationContext() { return (android.content.Context) meglerProps.get("ApplicationContext"); }
-    public android.renderscript.RenderScript.RSErrorHandler getErrorHandler() { return (android.renderscript.RenderScript.RSErrorHandler) meglerProps.get("ErrorHandler"); }
-    public android.renderscript.RenderScript.RSMessageHandler getMessageHandler() { return (android.renderscript.RenderScript.RSMessageHandler) meglerProps.get("MessageHandler"); }
+    public android.content.Context getApplicationContext() { return (android.content.Context) megletProps.get("ApplicationContext"); }
+    public android.renderscript.RenderScript.RSErrorHandler getErrorHandler() { return (android.renderscript.RenderScript.RSErrorHandler) megletProps.get("ErrorHandler"); }
+    public android.renderscript.RenderScript.RSMessageHandler getMessageHandler() { return (android.renderscript.RenderScript.RSMessageHandler) megletProps.get("MessageHandler"); }
     public void sendMessage(int p0, int[] p1) {}
-    public void setErrorHandler(android.renderscript.RenderScript.RSErrorHandler p0) { meglerProps.put("ErrorHandler", p0); }
-    public void setMessageHandler(android.renderscript.RenderScript.RSMessageHandler p0) { meglerProps.put("MessageHandler", p0); }
-    public void setPriority(android.renderscript.RenderScript.Priority p0) { meglerProps.put("Priority", p0); }
+    public void setErrorHandler(android.renderscript.RenderScript.RSErrorHandler p0) { megletProps.put("ErrorHandler", p0); }
+    public void setMessageHandler(android.renderscript.RenderScript.RSMessageHandler p0) { megletProps.put("MessageHandler", p0); }
+    public void setPriority(android.renderscript.RenderScript.Priority p0) { megletProps.put("Priority", p0); }
     protected RenderScript() {}
     public enum ContextType {
         DEBUG, NORMAL, PROFILE;
@@ -35,14 +35,14 @@ public class RenderScript {
         LOW, NORMAL;
     }
     public static class RSErrorHandler implements java.lang.Runnable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected java.lang.String mErrorMessage;
         protected int mErrorNum;
         public RSErrorHandler() {}
         public void run() {}
     }
     public static class RSMessageHandler implements java.lang.Runnable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected int[] mData;
         protected int mID;
         protected int mLength;

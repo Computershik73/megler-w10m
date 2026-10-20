@@ -3,7 +3,7 @@ package android.security.identity;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class IdentityCredentialStore {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CIPHERSUITE_ECDHE_HKDF_ECDSA_WITH_AES_256_GCM_SHA256 = 1;
     public static android.security.identity.IdentityCredentialStore getDirectAccessInstance(android.content.Context p0) { return null; }
     public static android.security.identity.IdentityCredentialStore getInstance(android.content.Context p0) { return null; }

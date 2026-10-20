@@ -3,19 +3,19 @@ package android.hardware.usb;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class UsbConfiguration implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public UsbConfiguration(int p0, java.lang.String p1, int p2, int p3) {}
     public int describeContents() { return 0; }
-    public int getAttributes() { return (meglerProps.get("Attributes") instanceof Integer ? (Integer) meglerProps.get("Attributes") : 0); }
-    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
+    public int getAttributes() { return (megletProps.get("Attributes") instanceof Integer ? (Integer) megletProps.get("Attributes") : 0); }
+    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
     public android.hardware.usb.UsbInterface getInterface(int p0) { return null; }
-    public int getInterfaceCount() { return (meglerProps.get("InterfaceCount") instanceof Integer ? (Integer) meglerProps.get("InterfaceCount") : 0); }
-    public int getMaxPower() { return (meglerProps.get("MaxPower") instanceof Integer ? (Integer) meglerProps.get("MaxPower") : 0); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public boolean isRemoteWakeup() { return (meglerProps.get("RemoteWakeup") instanceof Boolean ? (Boolean) meglerProps.get("RemoteWakeup") : false); }
-    public boolean isSelfPowered() { return (meglerProps.get("SelfPowered") instanceof Boolean ? (Boolean) meglerProps.get("SelfPowered") : false); }
-    public void setInterfaces(android.os.Parcelable[] p0) { meglerProps.put("Interfaces", p0); }
+    public int getInterfaceCount() { return (megletProps.get("InterfaceCount") instanceof Integer ? (Integer) megletProps.get("InterfaceCount") : 0); }
+    public int getMaxPower() { return (megletProps.get("MaxPower") instanceof Integer ? (Integer) megletProps.get("MaxPower") : 0); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public boolean isRemoteWakeup() { return (megletProps.get("RemoteWakeup") instanceof Boolean ? (Boolean) megletProps.get("RemoteWakeup") : false); }
+    public boolean isSelfPowered() { return (megletProps.get("SelfPowered") instanceof Boolean ? (Boolean) megletProps.get("SelfPowered") : false); }
+    public void setInterfaces(android.os.Parcelable[] p0) { megletProps.put("Interfaces", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     UsbConfiguration() { this((int) 0, (java.lang.String) null, (int) 0, (int) 0); }
 }

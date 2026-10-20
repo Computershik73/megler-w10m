@@ -1,6 +1,6 @@
 package android.media.metrics;
 
-/** A media metrics session id; Megler has no metrics service, so sessions are only ever NONE or what the app made. */
+/** A media metrics session id; Meglet has no metrics service, so sessions are only ever NONE or what the app made. */
 public final class LogSessionId {
     public static final LogSessionId LOG_SESSION_ID_NONE = new LogSessionId("");
     private final String mId;

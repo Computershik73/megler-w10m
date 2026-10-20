@@ -3,7 +3,7 @@ package android.net.ipsec.ike.exceptions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IkeTimeoutException extends java.io.IOException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public IkeTimeoutException(java.lang.String p0) { super(); }
     IkeTimeoutException() { this((java.lang.String) null); }
 }

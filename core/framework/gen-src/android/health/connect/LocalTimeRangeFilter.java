@@ -3,16 +3,16 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class LocalTimeRangeFilter implements android.health.connect.TimeRangeFilter {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.time.LocalDateTime getEndTime() { return (java.time.LocalDateTime) meglerProps.get("EndTime"); }
-    public java.time.LocalDateTime getStartTime() { return (java.time.LocalDateTime) meglerProps.get("StartTime"); }
-    public boolean isBounded() { return (meglerProps.get("Bounded") instanceof Boolean ? (Boolean) meglerProps.get("Bounded") : false); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.time.LocalDateTime getEndTime() { return (java.time.LocalDateTime) megletProps.get("EndTime"); }
+    public java.time.LocalDateTime getStartTime() { return (java.time.LocalDateTime) megletProps.get("StartTime"); }
+    public boolean isBounded() { return (megletProps.get("Bounded") instanceof Boolean ? (Boolean) megletProps.get("Bounded") : false); }
     protected LocalTimeRangeFilter() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.health.connect.LocalTimeRangeFilter build() { android.health.connect.LocalTimeRangeFilter x = new android.health.connect.LocalTimeRangeFilter(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.health.connect.LocalTimeRangeFilter.Builder setEndTime(java.time.LocalDateTime p0) { meglerProps.put("EndTime", p0); return this; }
-        public android.health.connect.LocalTimeRangeFilter.Builder setStartTime(java.time.LocalDateTime p0) { meglerProps.put("StartTime", p0); return this; }
+        public android.health.connect.LocalTimeRangeFilter build() { android.health.connect.LocalTimeRangeFilter x = new android.health.connect.LocalTimeRangeFilter(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.LocalTimeRangeFilter.Builder setEndTime(java.time.LocalDateTime p0) { megletProps.put("EndTime", p0); return this; }
+        public android.health.connect.LocalTimeRangeFilter.Builder setStartTime(java.time.LocalDateTime p0) { megletProps.put("StartTime", p0); return this; }
     }
 }

@@ -3,7 +3,7 @@ package android.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CreateCredentialException extends java.lang.Exception {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String TYPE_INTERRUPTED = "android.credentials.CreateCredentialException.TYPE_INTERRUPTED";
     public static final java.lang.String TYPE_NO_CREATE_OPTIONS = "android.credentials.CreateCredentialException.TYPE_NO_CREATE_OPTIONS";
     public static final java.lang.String TYPE_UNKNOWN = "android.credentials.CreateCredentialException.TYPE_UNKNOWN";
@@ -12,6 +12,6 @@ public class CreateCredentialException extends java.lang.Exception {
     public CreateCredentialException(java.lang.String p0, java.lang.String p1) { super(); }
     public CreateCredentialException(java.lang.String p0, java.lang.String p1, java.lang.Throwable p2) { super(); }
     public CreateCredentialException(java.lang.String p0, java.lang.Throwable p1) { super(); }
-    public java.lang.String getType() { return (java.lang.String) meglerProps.get("Type"); }
+    public java.lang.String getType() { return (java.lang.String) megletProps.get("Type"); }
     CreateCredentialException() { this((java.lang.String) null); }
 }

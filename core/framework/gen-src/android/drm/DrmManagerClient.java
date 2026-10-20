@@ -3,7 +3,7 @@ package android.drm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DrmManagerClient implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ERROR_NONE = 0;
     public static final int ERROR_UNKNOWN = -2000;
     public static final int INVALID_SESSION = -1;
@@ -21,8 +21,8 @@ public class DrmManagerClient implements java.lang.AutoCloseable {
     public android.drm.DrmConvertedStatus closeConvertSession(int p0) { return null; }
     public android.drm.DrmConvertedStatus convertData(int p0, byte[] p1) { return null; }
     protected void finalize() {}
-    public java.lang.String[] getAvailableDrmEngines() { return (java.lang.String[]) meglerProps.get("AvailableDrmEngines"); }
-    public java.util.Collection getAvailableDrmSupportInfo() { return (meglerProps.get("AvailableDrmSupportInfo") != null ? (java.util.Collection) meglerProps.get("AvailableDrmSupportInfo") : new java.util.ArrayList()); }
+    public java.lang.String[] getAvailableDrmEngines() { return (java.lang.String[]) megletProps.get("AvailableDrmEngines"); }
+    public java.util.Collection getAvailableDrmSupportInfo() { return (megletProps.get("AvailableDrmSupportInfo") != null ? (java.util.Collection) megletProps.get("AvailableDrmSupportInfo") : new java.util.ArrayList()); }
     public android.content.ContentValues getConstraints(android.net.Uri p0, int p1) { return null; }
     public android.content.ContentValues getConstraints(java.lang.String p0, int p1) { return null; }
     public int getDrmObjectType(android.net.Uri p0, java.lang.String p1) { return 0; }
@@ -39,9 +39,9 @@ public class DrmManagerClient implements java.lang.AutoCloseable {
     public int removeRights(android.net.Uri p0) { return 0; }
     public int removeRights(java.lang.String p0) { return 0; }
     public int saveRights(android.drm.DrmRights p0, java.lang.String p1, java.lang.String p2) { return 0; }
-    public void setOnErrorListener(android.drm.DrmManagerClient.OnErrorListener p0) { meglerProps.put("OnErrorListener", p0); }
-    public void setOnEventListener(android.drm.DrmManagerClient.OnEventListener p0) { meglerProps.put("OnEventListener", p0); }
-    public void setOnInfoListener(android.drm.DrmManagerClient.OnInfoListener p0) { meglerProps.put("OnInfoListener", p0); }
+    public void setOnErrorListener(android.drm.DrmManagerClient.OnErrorListener p0) { megletProps.put("OnErrorListener", p0); }
+    public void setOnEventListener(android.drm.DrmManagerClient.OnEventListener p0) { megletProps.put("OnEventListener", p0); }
+    public void setOnInfoListener(android.drm.DrmManagerClient.OnInfoListener p0) { megletProps.put("OnInfoListener", p0); }
     DrmManagerClient() { this((android.content.Context) null); }
     public interface OnErrorListener {
         void onError(android.drm.DrmManagerClient p0, android.drm.DrmErrorEvent p1);

@@ -3,7 +3,7 @@ package android.app.blob;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BlobHandle implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ALGO_SHA_256 = "SHA-256";
     public static android.os.Parcelable.Creator CREATOR;
     public java.lang.String algorithm;
@@ -18,11 +18,11 @@ public final class BlobHandle implements android.os.Parcelable {
     public void assertIsValid() {}
     public int describeContents() { return 0; }
     public void dump(android.util.IndentingPrintWriter p0, boolean p1) {}
-    public long getExpiryTimeMillis() { return (meglerProps.get("ExpiryTimeMillis") instanceof Long ? (Long) meglerProps.get("ExpiryTimeMillis") : 0L); }
-    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) meglerProps.get("Label"); }
-    public byte[] getSha256Digest() { return (byte[]) meglerProps.get("Sha256Digest"); }
-    public java.lang.String getTag() { return (java.lang.String) meglerProps.get("Tag"); }
-    public boolean isExpired() { return (meglerProps.get("Expired") instanceof Boolean ? (Boolean) meglerProps.get("Expired") : false); }
+    public long getExpiryTimeMillis() { return (megletProps.get("ExpiryTimeMillis") instanceof Long ? (Long) megletProps.get("ExpiryTimeMillis") : 0L); }
+    public java.lang.CharSequence getLabel() { return (java.lang.CharSequence) megletProps.get("Label"); }
+    public byte[] getSha256Digest() { return (byte[]) megletProps.get("Sha256Digest"); }
+    public java.lang.String getTag() { return (java.lang.String) megletProps.get("Tag"); }
+    public boolean isExpired() { return (megletProps.get("Expired") instanceof Boolean ? (Boolean) megletProps.get("Expired") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public void writeToXml(org.xmlpull.v1.XmlSerializer p0) {}
     protected BlobHandle() {}

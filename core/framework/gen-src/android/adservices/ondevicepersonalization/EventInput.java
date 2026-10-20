@@ -3,10 +3,10 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EventInput {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public EventInput(android.adservices.ondevicepersonalization.EventInputParcel p0) {}
     public EventInput(android.adservices.ondevicepersonalization.RequestLogRecord p0, android.os.PersistableBundle p1) {}
-    public android.os.PersistableBundle getParameters() { return (android.os.PersistableBundle) meglerProps.get("Parameters"); }
-    public android.adservices.ondevicepersonalization.RequestLogRecord getRequestLogRecord() { return (android.adservices.ondevicepersonalization.RequestLogRecord) meglerProps.get("RequestLogRecord"); }
+    public android.os.PersistableBundle getParameters() { return (android.os.PersistableBundle) megletProps.get("Parameters"); }
+    public android.adservices.ondevicepersonalization.RequestLogRecord getRequestLogRecord() { return (android.adservices.ondevicepersonalization.RequestLogRecord) megletProps.get("RequestLogRecord"); }
     EventInput() { this((android.adservices.ondevicepersonalization.EventInputParcel) null); }
 }

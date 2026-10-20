@@ -3,7 +3,7 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class IdentityChangedListener {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CLUSTER_CHANGE_EVENT_JOINED = 1;
     public static int CLUSTER_CHANGE_EVENT_STARTED;
     public IdentityChangedListener() {}

@@ -3,7 +3,7 @@ package android.os.strictmode;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ContentUriWithoutPermissionViolation extends android.os.strictmode.Violation {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public ContentUriWithoutPermissionViolation(android.net.Uri p0, java.lang.String p1) { super(); }
     ContentUriWithoutPermissionViolation() { this((android.net.Uri) null, (java.lang.String) null); }
 }

@@ -9,7 +9,7 @@
  *     asked for, falling back to what a feature-level-9_3 phone needs;
  *   - the guest's window is an ANativeWindow, and its window surface is a
  *     pbuffer over a texture the shell provides. eglSwapBuffers hands the
- *     finished frame to the shell, which owns the swap chain (megler.h). On a
+ *     finished frame to the shell, which owns the swap chain (meglet.h). On a
  *     SurfaceView's window (ANativeWindow_fromSurface in a Java app) the
  *     surface is the window's own, composed under the app's views
  *     (drivers/hk_java_ndk.c, hk_java_gl.c), and the app's EGLSurface stands

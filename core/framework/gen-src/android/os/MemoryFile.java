@@ -3,15 +3,15 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MemoryFile {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public MemoryFile(java.lang.String p0, int p1) {}
     public static int getSize(java.io.FileDescriptor p0) { return 0; }
     public boolean allowPurging(boolean p0) { return false; }
     public void close() {}
-    public java.io.FileDescriptor getFileDescriptor() { return (java.io.FileDescriptor) meglerProps.get("FileDescriptor"); }
-    public java.io.InputStream getInputStream() { return (java.io.InputStream) meglerProps.get("InputStream"); }
-    public java.io.OutputStream getOutputStream() { return (java.io.OutputStream) meglerProps.get("OutputStream"); }
-    public boolean isPurgingAllowed() { return (meglerProps.get("PurgingAllowed") instanceof Boolean ? (Boolean) meglerProps.get("PurgingAllowed") : false); }
+    public java.io.FileDescriptor getFileDescriptor() { return (java.io.FileDescriptor) megletProps.get("FileDescriptor"); }
+    public java.io.InputStream getInputStream() { return (java.io.InputStream) megletProps.get("InputStream"); }
+    public java.io.OutputStream getOutputStream() { return (java.io.OutputStream) megletProps.get("OutputStream"); }
+    public boolean isPurgingAllowed() { return (megletProps.get("PurgingAllowed") instanceof Boolean ? (Boolean) megletProps.get("PurgingAllowed") : false); }
     public int length() { return 0; }
     public int readBytes(byte[] p0, int p1, int p2, int p3) { return 0; }
     public void writeBytes(byte[] p0, int p1, int p2, int p3) {}

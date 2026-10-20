@@ -3,11 +3,11 @@ package android.drm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DrmUtils {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public DrmUtils() {}
     public static android.drm.DrmUtils.ExtendedMetadataParser getExtendedMetadataParser(byte[] p0) { return null; }
     public static class ExtendedMetadataParser {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public java.lang.String get(java.lang.String p0) { return null; }
         public java.util.Iterator iterator() { return null; }
         public java.util.Iterator keyIterator() { return null; }

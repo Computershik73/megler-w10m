@@ -3,7 +3,7 @@ package android.hardware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class HardwareBuffer implements android.os.Parcelable, java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int BGRA_1010102 = 67;
     public static final int BGRX_1010102 = 68;
     public static final int BLOB = 33;
@@ -53,13 +53,13 @@ public final class HardwareBuffer implements android.os.Parcelable, java.lang.Au
     public void close() {}
     public int describeContents() { return 0; }
     protected void finalize() {}
-    public int getFormat() { return (meglerProps.get("Format") instanceof Integer ? (Integer) meglerProps.get("Format") : 0); }
-    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
-    public long getId() { return (meglerProps.get("Id") instanceof Long ? (Long) meglerProps.get("Id") : 0L); }
-    public int getLayers() { return (meglerProps.get("Layers") instanceof Integer ? (Integer) meglerProps.get("Layers") : 0); }
-    public long getUsage() { return (meglerProps.get("Usage") instanceof Long ? (Long) meglerProps.get("Usage") : 0L); }
-    public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
-    public boolean isClosed() { return (meglerProps.get("Closed") instanceof Boolean ? (Boolean) meglerProps.get("Closed") : false); }
+    public int getFormat() { return (megletProps.get("Format") instanceof Integer ? (Integer) megletProps.get("Format") : 0); }
+    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
+    public long getId() { return (megletProps.get("Id") instanceof Long ? (Long) megletProps.get("Id") : 0L); }
+    public int getLayers() { return (megletProps.get("Layers") instanceof Integer ? (Integer) megletProps.get("Layers") : 0); }
+    public long getUsage() { return (megletProps.get("Usage") instanceof Long ? (Long) megletProps.get("Usage") : 0L); }
+    public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
+    public boolean isClosed() { return (megletProps.get("Closed") instanceof Boolean ? (Boolean) megletProps.get("Closed") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected HardwareBuffer() {}
 }

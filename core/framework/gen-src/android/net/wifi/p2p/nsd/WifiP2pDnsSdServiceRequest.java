@@ -3,7 +3,7 @@ package android.net.wifi.p2p.nsd;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiP2pDnsSdServiceRequest extends android.net.wifi.p2p.nsd.WifiP2pServiceRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceRequest newInstance() { return new WifiP2pDnsSdServiceRequest(); }
     public static android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceRequest newInstance(java.lang.String p0) { return new WifiP2pDnsSdServiceRequest(); }
     public static android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceRequest newInstance(java.lang.String p0, java.lang.String p1) { return new WifiP2pDnsSdServiceRequest(); }

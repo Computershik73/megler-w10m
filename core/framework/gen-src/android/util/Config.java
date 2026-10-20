@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Config {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final boolean DEBUG = false;
     public static final boolean LOGD = true;
     public static final boolean LOGV = false;

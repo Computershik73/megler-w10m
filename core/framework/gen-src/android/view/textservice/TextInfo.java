@@ -3,17 +3,17 @@ package android.view.textservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TextInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TextInfo(android.os.Parcel p0) {}
     public TextInfo(java.lang.CharSequence p0, int p1, int p2, int p3, int p4) {}
     public TextInfo(java.lang.String p0) {}
     public TextInfo(java.lang.String p0, int p1, int p2) {}
     public int describeContents() { return 0; }
-    public java.lang.CharSequence getCharSequence() { return (java.lang.CharSequence) meglerProps.get("CharSequence"); }
-    public int getCookie() { return (meglerProps.get("Cookie") instanceof Integer ? (Integer) meglerProps.get("Cookie") : 0); }
-    public int getSequence() { return (meglerProps.get("Sequence") instanceof Integer ? (Integer) meglerProps.get("Sequence") : 0); }
-    public java.lang.String getText() { return (java.lang.String) meglerProps.get("Text"); }
+    public java.lang.CharSequence getCharSequence() { return (java.lang.CharSequence) megletProps.get("CharSequence"); }
+    public int getCookie() { return (megletProps.get("Cookie") instanceof Integer ? (Integer) megletProps.get("Cookie") : 0); }
+    public int getSequence() { return (megletProps.get("Sequence") instanceof Integer ? (Integer) megletProps.get("Sequence") : 0); }
+    public java.lang.String getText() { return (java.lang.String) megletProps.get("Text"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TextInfo() { this((android.os.Parcel) null); }
 }

@@ -3,11 +3,11 @@ package android.security.keystore;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WrappedKeyEntry implements java.security.KeyStore.Entry {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public WrappedKeyEntry(byte[] p0, java.lang.String p1, java.lang.String p2, java.security.spec.AlgorithmParameterSpec p3) {}
-    public java.security.spec.AlgorithmParameterSpec getAlgorithmParameterSpec() { return (java.security.spec.AlgorithmParameterSpec) meglerProps.get("AlgorithmParameterSpec"); }
-    public java.lang.String getTransformation() { return (java.lang.String) meglerProps.get("Transformation"); }
-    public byte[] getWrappedKeyBytes() { return (byte[]) meglerProps.get("WrappedKeyBytes"); }
-    public java.lang.String getWrappingKeyAlias() { return (java.lang.String) meglerProps.get("WrappingKeyAlias"); }
+    public java.security.spec.AlgorithmParameterSpec getAlgorithmParameterSpec() { return (java.security.spec.AlgorithmParameterSpec) megletProps.get("AlgorithmParameterSpec"); }
+    public java.lang.String getTransformation() { return (java.lang.String) megletProps.get("Transformation"); }
+    public byte[] getWrappedKeyBytes() { return (byte[]) megletProps.get("WrappedKeyBytes"); }
+    public java.lang.String getWrappingKeyAlias() { return (java.lang.String) megletProps.get("WrappingKeyAlias"); }
     WrappedKeyEntry() { this((byte[]) null, (java.lang.String) null, (java.lang.String) null, (java.security.spec.AlgorithmParameterSpec) null); }
 }

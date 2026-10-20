@@ -3,19 +3,19 @@ package android.service.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BeginCreateCredentialResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public BeginCreateCredentialResponse() {}
     public int describeContents() { return 0; }
-    public java.util.List getCreateEntries() { return (meglerProps.get("CreateEntries") != null ? (java.util.List) meglerProps.get("CreateEntries") : new java.util.ArrayList()); }
-    public android.service.credentials.RemoteEntry getRemoteCreateEntry() { return (android.service.credentials.RemoteEntry) meglerProps.get("RemoteCreateEntry"); }
+    public java.util.List getCreateEntries() { return (megletProps.get("CreateEntries") != null ? (java.util.List) megletProps.get("CreateEntries") : new java.util.ArrayList()); }
+    public android.service.credentials.RemoteEntry getRemoteCreateEntry() { return (android.service.credentials.RemoteEntry) megletProps.get("RemoteCreateEntry"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public android.service.credentials.BeginCreateCredentialResponse.Builder addCreateEntry(android.service.credentials.CreateEntry p0) { return this; }
-        public android.service.credentials.BeginCreateCredentialResponse build() { android.service.credentials.BeginCreateCredentialResponse x = new android.service.credentials.BeginCreateCredentialResponse(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.service.credentials.BeginCreateCredentialResponse.Builder setCreateEntries(java.util.List p0) { meglerProps.put("CreateEntries", p0); return this; }
-        public android.service.credentials.BeginCreateCredentialResponse.Builder setRemoteCreateEntry(android.service.credentials.RemoteEntry p0) { meglerProps.put("RemoteCreateEntry", p0); return this; }
+        public android.service.credentials.BeginCreateCredentialResponse build() { android.service.credentials.BeginCreateCredentialResponse x = new android.service.credentials.BeginCreateCredentialResponse(); x.megletProps.putAll(megletProps); return x; }
+        public android.service.credentials.BeginCreateCredentialResponse.Builder setCreateEntries(java.util.List p0) { megletProps.put("CreateEntries", p0); return this; }
+        public android.service.credentials.BeginCreateCredentialResponse.Builder setRemoteCreateEntry(android.service.credentials.RemoteEntry p0) { megletProps.put("RemoteCreateEntry", p0); return this; }
     }
 }

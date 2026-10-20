@@ -3,17 +3,17 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BodyWaterMassRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public android.health.connect.datatypes.units.Mass getBodyWaterMass() { return (android.health.connect.datatypes.units.Mass) meglerProps.get("BodyWaterMass"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public android.health.connect.datatypes.units.Mass getBodyWaterMass() { return (android.health.connect.datatypes.units.Mass) megletProps.get("BodyWaterMass"); }
     public android.health.connect.internal.datatypes.BodyWaterMassRecordInternal toRecordInternal() { return null; }
     protected BodyWaterMassRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, android.health.connect.datatypes.units.Mass p2) {}
-        public android.health.connect.datatypes.BodyWaterMassRecord build() { android.health.connect.datatypes.BodyWaterMassRecord x = new android.health.connect.datatypes.BodyWaterMassRecord(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.datatypes.BodyWaterMassRecord build() { android.health.connect.datatypes.BodyWaterMassRecord x = new android.health.connect.datatypes.BodyWaterMassRecord(); x.megletProps.putAll(megletProps); return x; }
         public android.health.connect.datatypes.BodyWaterMassRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.BodyWaterMassRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.BodyWaterMassRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.BodyWaterMassRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (android.health.connect.datatypes.units.Mass) null); }
     }
 }

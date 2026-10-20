@@ -3,7 +3,7 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BlackLevelPattern {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int COUNT = 4;
     public BlackLevelPattern(int[] p0) {}
     public void copyTo(int[] p0, int p1) {}

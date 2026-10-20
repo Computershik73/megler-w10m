@@ -3,16 +3,16 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CommandRequest extends android.media.tv.BroadcastInfoRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ARGUMENT_TYPE_JSON = "json";
     public static final java.lang.String ARGUMENT_TYPE_XML = "xml";
     public static android.os.Parcelable.Creator CREATOR;
     public CommandRequest(int p0, int p1, java.lang.String p2, java.lang.String p3, java.lang.String p4, java.lang.String p5) { super(); }
     public int describeContents() { return 0; }
-    public java.lang.String getArgumentType() { return (java.lang.String) meglerProps.get("ArgumentType"); }
-    public java.lang.String getArguments() { return (java.lang.String) meglerProps.get("Arguments"); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public java.lang.String getNamespace() { return (java.lang.String) meglerProps.get("Namespace"); }
+    public java.lang.String getArgumentType() { return (java.lang.String) megletProps.get("ArgumentType"); }
+    public java.lang.String getArguments() { return (java.lang.String) megletProps.get("Arguments"); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public java.lang.String getNamespace() { return (java.lang.String) megletProps.get("Namespace"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     CommandRequest() { this((int) 0, (int) 0, (java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (java.lang.String) null); }
 }

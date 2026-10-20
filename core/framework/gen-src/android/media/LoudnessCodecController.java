@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LoudnessCodecController implements android.media.permission.SafeCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.media.LoudnessCodecController create(int p0) { return new LoudnessCodecController(); }
     public static android.media.LoudnessCodecController create(int p0, java.util.concurrent.Executor p1, android.media.LoudnessCodecController.OnLoudnessCodecUpdateListener p2) { return new LoudnessCodecController(); }
     public static android.media.LoudnessCodecController createForTesting(int p0, java.util.concurrent.Executor p1, android.media.LoudnessCodecController.OnLoudnessCodecUpdateListener p2, android.media.IAudioService p3) { return new LoudnessCodecController(); }

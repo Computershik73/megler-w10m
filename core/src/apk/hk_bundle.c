@@ -1,7 +1,7 @@
 /*
  * Bundles of split APKs -- .apks (SAI's, bundletool's, APKPure's) and .xapk (APKPure's) -- unpacked into the base APK and
- * the splits this phone can use, as an installer picks what to install of what Google Play offers (megler.h,
- * megler_bundle_unpack).
+ * the splits this phone can use, as an installer picks what to install of what Google Play offers (meglet.h,
+ * meglet_bundle_unpack).
  *
  * Which APK in a bundle is which is said by their manifests: the base names no split, a split names itself
  * (split="config.armeabi_v7a"). A split for a processor, a screen density or a language is named after what it is for,
@@ -18,7 +18,7 @@
 
 #include <stdio.h>
 
-#include "../../include/megler.h"
+#include "../../include/meglet.h"
 #include "../host/hk_host.h"
 #include "../run/hk_run.h"
 #include "../zip/hk_zip.h"
@@ -439,7 +439,7 @@ static char *expansion_target(const ctx *c, const char *install_path)
         size_t n = strlen(parts[i]);
         const char *rest = install_path + n;
         if (strncmp(install_path, parts[i], n) || strncmp(rest, c->package, plen) || rest[plen] != '/' || !safe_rest(rest)) continue;
-        own = hk_run_own_storage(megler_storage_dir(), c->package);
+        own = hk_run_own_storage(meglet_storage_dir(), c->package);
         out = hk_sprintf("%s/%s", own, install_path);
         free(own);
         return out;
@@ -522,7 +522,7 @@ static void add_entry(const hk_zip_entry *e, void *user)
     it->kind = kind_of(it->name, it);
 }
 
-/* Every file of a folder that megler_bundle_unpack writes, and the folder itself. */
+/* Every file of a folder that meglet_bundle_unpack writes, and the folder itself. */
 static void remove_folder(const char *dir)
 {
     hk_path_list(dir, clear_one, (void *)dir, NULL);
@@ -649,7 +649,7 @@ static char *answer(ctx *c, const char *bundle_path, const item *base, const cha
     return r.s;
 }
 
-char *megler_bundle_unpack(const char *bundle_path, const char *apk_path, const char *splits_dir, int density_dpi, const char *languages,
+char *meglet_bundle_unpack(const char *bundle_path, const char *apk_path, const char *splits_dir, int density_dpi, const char *languages,
                          void (*progress)(void *user, uint64_t done, uint64_t total), void *user)
 {
     ctx *c = (ctx *)hk_alloc(sizeof(ctx));

@@ -1,0 +1,59 @@
+// What the shell tells the core about the phone at start-up (meglet_init), and
+// the facts the Settings screen shows: where the data lives, the memory
+// ceiling, whether this process may run Android code, whether the package
+// carries ANGLE.
+#pragma once
+
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
+
+namespace meglet::app::platform {
+
+bool isMobile();
+std::string deviceFamily();
+std::string osVersion();
+std::string packageVersion();
+std::string architecture();
+/// LocalState, where everything the app keeps lives.
+const std::wstring& localStateDirectory();
+/// The installed package's folder.
+const std::wstring& installDirectory();
+/// "390 MB limit, 85 MB in use" from MemoryManager, or why not.
+std::string memorySummary();
+/// Reads the app's memory use and limit for the core to hand to the app
+/// (Platform.cpp). On the shell's own thread: at start-up and on its tick.
+void sampleMemory();
+
+/// meglet_init: the log's sink, LocalState as the data folder, the install
+/// folder as the package's, MemoryManager behind the memory callbacks. Once,
+/// on the UI thread, after shellLog::initialize.
+void initializeCore();
+/// What meglet_init returned: false when the phone did not grant
+/// codeGeneration, so no Android code can run (APKs can still be read).
+bool canRunAndroidCode();
+
+struct AngleStatus {
+    bool present = false;
+    /// "In the package", or "ANGLE missing: libEGL.dll, ...".
+    std::string summary;
+};
+/// Whether the package carries ANGLE and what it loads with
+/// (tools/build-appx.sh, "ANGLE"): looked for as files, nothing is loaded.
+const AngleStatus& angle();
+
+/// Loads ANGLE's DLLs one by one with LoadPackagedLibrary, in the order they
+/// depend on each other, and says for each whether the loader took it and
+/// with which error if not -- 126 is a DLL (or one it imports) not found, 127
+/// a function missing from one, 193 a wrong architecture. The first phone
+/// run's question about the packaging, answered in the probe's own log: each
+/// answer goes to `line` before the next DLL is tried, so a load that ends
+/// the process still leaves the ones before it on record.
+void angleLoadCheck(const std::function<void(const std::string&)>& line);
+
+/// Runs `work` on a new thread with a stack of `stackBytes`; std::thread has
+/// no say in the size. The thread is never joined.
+bool startThread(std::function<void()> work, size_t stackBytes);
+
+} // namespace meglet::app::platform

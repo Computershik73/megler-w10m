@@ -3,14 +3,14 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WifiSsidPolicy implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int WIFI_SSID_POLICY_TYPE_ALLOWLIST = 0;
     public static final int WIFI_SSID_POLICY_TYPE_DENYLIST = 1;
     public WifiSsidPolicy(int p0, java.util.Set p1) {}
     public int describeContents() { return 0; }
-    public int getPolicyType() { return (meglerProps.get("PolicyType") instanceof Integer ? (Integer) meglerProps.get("PolicyType") : 0); }
-    public java.util.Set getSsids() { return (meglerProps.get("Ssids") != null ? (java.util.Set) meglerProps.get("Ssids") : new java.util.HashSet()); }
+    public int getPolicyType() { return (megletProps.get("PolicyType") instanceof Integer ? (Integer) megletProps.get("PolicyType") : 0); }
+    public java.util.Set getSsids() { return (megletProps.get("Ssids") != null ? (java.util.Set) megletProps.get("Ssids") : new java.util.HashSet()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     WifiSsidPolicy() { this((int) 0, (java.util.Set) null); }
 }

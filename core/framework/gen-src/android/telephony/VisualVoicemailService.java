@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class VisualVoicemailService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String DATA_PHONE_ACCOUNT_HANDLE = "data_phone_account_handle";
     public static final java.lang.String DATA_SMS = "data_sms";
     public static final int MSG_ON_CELL_SERVICE_CONNECTED = 1;
@@ -21,7 +21,7 @@ public abstract class VisualVoicemailService extends android.app.Service {
     public abstract void onSmsReceived(android.telephony.VisualVoicemailService.VisualVoicemailTask p0, android.telephony.VisualVoicemailSms p1);
     public abstract void onStopped(android.telephony.VisualVoicemailService.VisualVoicemailTask p0);
     public static class VisualVoicemailTask {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public void finish() {}
         protected VisualVoicemailTask() {}
     }

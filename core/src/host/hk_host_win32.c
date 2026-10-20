@@ -315,7 +315,7 @@ void hk_thread_set_interrupt(void (*fn)(void), bool (*in_guest_code)(hk_addr pc)
 }
 
 /* Raised by a thread that has finished an interruption, for the vectored handler to put it back where it was. */
-#define EXCEPTION_MEGLER_RESUME 0xE0484B01u
+#define EXCEPTION_MEGLET_RESUME 0xE0484B01u
 
 #if defined(_M_ARM)
 #if WINAPI_FAMILY == WINAPI_FAMILY_APP
@@ -348,7 +348,7 @@ static void interrupt_landing(hk_thread *t)
     ULONG_PTR arg = (ULONG_PTR)t;
     InterlockedIncrement(&g_int_landed);
     g_interrupt_fn();
-    RaiseException(EXCEPTION_MEGLER_RESUME, 0, 1, &arg);
+    RaiseException(EXCEPTION_MEGLET_RESUME, 0, 1, &arg);
     for (;;) Sleep(INFINITE);
 }
 
@@ -955,7 +955,7 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
     hk_fault f;
     EXCEPTION_RECORD *er = ep->ExceptionRecord;
 #if defined(_M_ARM)
-    if (er->ExceptionCode == EXCEPTION_MEGLER_RESUME && er->NumberParameters == 1) {
+    if (er->ExceptionCode == EXCEPTION_MEGLET_RESUME && er->NumberParameters == 1) {
         /* A thread back from an interruption: every register as it was. Its state is taken from bit 0 of Pc. */
         hk_thread *t = (hk_thread *)er->ExceptionInformation[0];
         *ep->ContextRecord = t->was;

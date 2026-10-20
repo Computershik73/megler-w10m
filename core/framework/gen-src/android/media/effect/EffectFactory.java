@@ -3,7 +3,7 @@ package android.media.effect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class EffectFactory {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EFFECT_AUTOFIX = "android.media.effect.effects.AutoFixEffect";
     public static final java.lang.String EFFECT_BACKDROPPER = "android.media.effect.effects.BackDropperEffect";
     public static final java.lang.String EFFECT_BITMAPOVERLAY = "android.media.effect.effects.BitmapOverlayEffect";

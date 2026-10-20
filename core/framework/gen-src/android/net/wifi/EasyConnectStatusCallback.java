@@ -3,7 +3,7 @@ package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class EasyConnectStatusCallback {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int EASY_CONNECT_EVENT_FAILURE_AUTHENTICATION = -2;
     public static final int EASY_CONNECT_EVENT_FAILURE_BUSY = -5;
     public static final int EASY_CONNECT_EVENT_FAILURE_CANNOT_FIND_NETWORK = -10;

@@ -3,7 +3,7 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ScriptC extends android.renderscript.Script {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected ScriptC(int p0, android.renderscript.RenderScript p1) { super(); }
     protected ScriptC(long p0, android.renderscript.RenderScript p1) { super(); }
     protected ScriptC(android.renderscript.RenderScript p0, android.content.res.Resources p1, int p2) { super(); }

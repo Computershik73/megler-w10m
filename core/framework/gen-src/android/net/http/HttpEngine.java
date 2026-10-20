@@ -3,7 +3,7 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class HttpEngine {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected HttpEngine() {}
     public static android.net.http.HttpEngine.Builder builder(android.content.Context p0) { return null; }
     public static java.lang.String getVersionString() { return null; }
@@ -15,7 +15,7 @@ public abstract class HttpEngine {
     public abstract java.net.URLConnection openConnection(java.net.URL p0);
     public abstract void shutdown();
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int HTTP_CACHE_DISABLED = 0;
         public static final int HTTP_CACHE_DISK = 3;
         public static final int HTTP_CACHE_DISK_NO_HTTP = 2;
@@ -26,17 +26,17 @@ public abstract class HttpEngine {
         public android.net.http.HttpEngine.Builder addPublicKeyPins(java.lang.String p0, java.util.Set p1, boolean p2, java.time.Instant p3) { return this; }
         public android.net.http.HttpEngine.Builder addQuicHint(java.lang.String p0, int p1, int p2) { return this; }
         public android.net.http.HttpEngine build() { return null; }
-        public java.lang.String getDefaultUserAgent() { return (java.lang.String) meglerProps.get("DefaultUserAgent"); }
-        public android.net.http.HttpEngine.Builder setConnectionMigrationOptions(android.net.http.ConnectionMigrationOptions p0) { meglerProps.put("ConnectionMigrationOptions", p0); return this; }
-        public android.net.http.HttpEngine.Builder setDnsOptions(android.net.http.DnsOptions p0) { meglerProps.put("DnsOptions", p0); return this; }
-        public android.net.http.HttpEngine.Builder setEnableBrotli(boolean p0) { meglerProps.put("EnableBrotli", Boolean.valueOf(p0)); return this; }
-        public android.net.http.HttpEngine.Builder setEnableHttp2(boolean p0) { meglerProps.put("EnableHttp2", Boolean.valueOf(p0)); return this; }
+        public java.lang.String getDefaultUserAgent() { return (java.lang.String) megletProps.get("DefaultUserAgent"); }
+        public android.net.http.HttpEngine.Builder setConnectionMigrationOptions(android.net.http.ConnectionMigrationOptions p0) { megletProps.put("ConnectionMigrationOptions", p0); return this; }
+        public android.net.http.HttpEngine.Builder setDnsOptions(android.net.http.DnsOptions p0) { megletProps.put("DnsOptions", p0); return this; }
+        public android.net.http.HttpEngine.Builder setEnableBrotli(boolean p0) { megletProps.put("EnableBrotli", Boolean.valueOf(p0)); return this; }
+        public android.net.http.HttpEngine.Builder setEnableHttp2(boolean p0) { megletProps.put("EnableHttp2", Boolean.valueOf(p0)); return this; }
         public android.net.http.HttpEngine.Builder setEnableHttpCache(int p0, long p1) { return this; }
-        public android.net.http.HttpEngine.Builder setEnablePublicKeyPinningBypassForLocalTrustAnchors(boolean p0) { meglerProps.put("EnablePublicKeyPinningBypassForLocalTrustAnchors", Boolean.valueOf(p0)); return this; }
-        public android.net.http.HttpEngine.Builder setEnableQuic(boolean p0) { meglerProps.put("EnableQuic", Boolean.valueOf(p0)); return this; }
-        public android.net.http.HttpEngine.Builder setQuicOptions(android.net.http.QuicOptions p0) { meglerProps.put("QuicOptions", p0); return this; }
-        public android.net.http.HttpEngine.Builder setStoragePath(java.lang.String p0) { meglerProps.put("StoragePath", p0); return this; }
-        public android.net.http.HttpEngine.Builder setUserAgent(java.lang.String p0) { meglerProps.put("UserAgent", p0); return this; }
+        public android.net.http.HttpEngine.Builder setEnablePublicKeyPinningBypassForLocalTrustAnchors(boolean p0) { megletProps.put("EnablePublicKeyPinningBypassForLocalTrustAnchors", Boolean.valueOf(p0)); return this; }
+        public android.net.http.HttpEngine.Builder setEnableQuic(boolean p0) { megletProps.put("EnableQuic", Boolean.valueOf(p0)); return this; }
+        public android.net.http.HttpEngine.Builder setQuicOptions(android.net.http.QuicOptions p0) { megletProps.put("QuicOptions", p0); return this; }
+        public android.net.http.HttpEngine.Builder setStoragePath(java.lang.String p0) { megletProps.put("StoragePath", p0); return this; }
+        public android.net.http.HttpEngine.Builder setUserAgent(java.lang.String p0) { megletProps.put("UserAgent", p0); return this; }
         Builder() { this((android.content.Context) null); }
     }
 }

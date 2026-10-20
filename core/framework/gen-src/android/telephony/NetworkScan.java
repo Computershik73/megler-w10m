@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class NetworkScan {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ERROR_INTERRUPTED = 10002;
     public static final int ERROR_INVALID_SCAN = 2;
     public static final int ERROR_INVALID_SCANID = 10001;

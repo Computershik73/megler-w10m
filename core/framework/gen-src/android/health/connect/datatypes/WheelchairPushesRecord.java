@@ -3,20 +3,20 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WheelchairPushesRecord extends android.health.connect.datatypes.IntervalRecord {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.AggregationType WHEEL_CHAIR_PUSHES_COUNT_TOTAL;
-    public long getCount() { return (meglerProps.get("Count") instanceof Long ? (Long) meglerProps.get("Count") : 0L); }
+    public long getCount() { return (megletProps.get("Count") instanceof Long ? (Long) megletProps.get("Count") : 0L); }
     public android.health.connect.internal.datatypes.WheelchairPushesRecordInternal toRecordInternal() { return null; }
     protected WheelchairPushesRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, java.time.Instant p2, long p3) {}
-        public android.health.connect.datatypes.WheelchairPushesRecord build() { android.health.connect.datatypes.WheelchairPushesRecord x = new android.health.connect.datatypes.WheelchairPushesRecord(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.datatypes.WheelchairPushesRecord build() { android.health.connect.datatypes.WheelchairPushesRecord x = new android.health.connect.datatypes.WheelchairPushesRecord(); x.megletProps.putAll(megletProps); return x; }
         public android.health.connect.datatypes.WheelchairPushesRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.WheelchairPushesRecord.Builder clearEndZoneOffset() { return this; }
         public android.health.connect.datatypes.WheelchairPushesRecord.Builder clearStartZoneOffset() { return this; }
-        public android.health.connect.datatypes.WheelchairPushesRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("EndZoneOffset", p0); return this; }
-        public android.health.connect.datatypes.WheelchairPushesRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("StartZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.WheelchairPushesRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { megletProps.put("EndZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.WheelchairPushesRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { megletProps.put("StartZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (java.time.Instant) null, (long) 0L); }
     }
 }

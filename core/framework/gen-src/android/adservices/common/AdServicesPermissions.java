@@ -3,7 +3,7 @@ package android.adservices.common;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AdServicesPermissions {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACCESS_ADSERVICES_AD_ID = "android.permission.ACCESS_ADSERVICES_AD_ID";
     public static final java.lang.String ACCESS_ADSERVICES_AD_SELECTION = "android.permission.ACCESS_ADSERVICES_AD_SELECTION";
     public static final java.lang.String ACCESS_ADSERVICES_ATTRIBUTION = "android.permission.ACCESS_ADSERVICES_ATTRIBUTION";

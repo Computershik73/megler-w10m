@@ -3,7 +3,7 @@ package android.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PrecomputedText implements android.text.Spannable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.text.PrecomputedText create(java.lang.CharSequence p0, android.text.PrecomputedText.Params p1) { return new PrecomputedText(); }
     public static android.text.PrecomputedText.ParagraphInfo[] createMeasuredParagraphs(java.lang.CharSequence p0, android.text.PrecomputedText.Params p1, int p2, int p3, boolean p4, boolean p5) { return null; }
     public char charAt(int p0) { return '\0'; }
@@ -11,21 +11,21 @@ public class PrecomputedText implements android.text.Spannable {
     public int findParaIndex(int p0) { return 0; }
     public void getBounds(int p0, int p1, android.graphics.Rect p2) {}
     public float getCharWidthAt(int p0) { return 0f; }
-    public int getEnd() { return (meglerProps.get("End") instanceof Integer ? (Integer) meglerProps.get("End") : 0); }
+    public int getEnd() { return (megletProps.get("End") instanceof Integer ? (Integer) megletProps.get("End") : 0); }
     public void getFontMetricsInt(int p0, int p1, android.graphics.Paint.FontMetricsInt p2) {}
     public android.text.MeasuredParagraph getMeasuredParagraph(int p0) { return null; }
-    public int getMemoryUsage() { return (meglerProps.get("MemoryUsage") instanceof Integer ? (Integer) meglerProps.get("MemoryUsage") : 0); }
-    public int getParagraphCount() { return (meglerProps.get("ParagraphCount") instanceof Integer ? (Integer) meglerProps.get("ParagraphCount") : 0); }
+    public int getMemoryUsage() { return (megletProps.get("MemoryUsage") instanceof Integer ? (Integer) megletProps.get("MemoryUsage") : 0); }
+    public int getParagraphCount() { return (megletProps.get("ParagraphCount") instanceof Integer ? (Integer) megletProps.get("ParagraphCount") : 0); }
     public int getParagraphEnd(int p0) { return 0; }
-    public android.text.PrecomputedText.ParagraphInfo[] getParagraphInfo() { return (android.text.PrecomputedText.ParagraphInfo[]) meglerProps.get("ParagraphInfo"); }
+    public android.text.PrecomputedText.ParagraphInfo[] getParagraphInfo() { return (android.text.PrecomputedText.ParagraphInfo[]) megletProps.get("ParagraphInfo"); }
     public int getParagraphStart(int p0) { return 0; }
-    public android.text.PrecomputedText.Params getParams() { return (android.text.PrecomputedText.Params) meglerProps.get("Params"); }
+    public android.text.PrecomputedText.Params getParams() { return (android.text.PrecomputedText.Params) megletProps.get("Params"); }
     public int getSpanEnd(java.lang.Object p0) { return 0; }
     public int getSpanFlags(java.lang.Object p0) { return 0; }
     public int getSpanStart(java.lang.Object p0) { return 0; }
     public java.lang.Object[] getSpans(int p0, int p1, java.lang.Class p2) { return null; }
-    public int getStart() { return (meglerProps.get("Start") instanceof Integer ? (Integer) meglerProps.get("Start") : 0); }
-    public java.lang.CharSequence getText() { return (java.lang.CharSequence) meglerProps.get("Text"); }
+    public int getStart() { return (megletProps.get("Start") instanceof Integer ? (Integer) megletProps.get("Start") : 0); }
+    public java.lang.CharSequence getText() { return (java.lang.CharSequence) megletProps.get("Text"); }
     public float getWidth(int p0, int p1) { return 0f; }
     public int length() { return 0; }
     public int nextSpanTransition(int p0, int p1, java.lang.Class p2) { return 0; }
@@ -34,34 +34,34 @@ public class PrecomputedText implements android.text.Spannable {
     public java.lang.CharSequence subSequence(int p0, int p1) { return null; }
     protected PrecomputedText() {}
     public static class ParagraphInfo {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public android.text.MeasuredParagraph measured;
         public int paragraphEnd;
         public ParagraphInfo(int p0, android.text.MeasuredParagraph p1) {}
         ParagraphInfo() { this((int) 0, (android.text.MeasuredParagraph) null); }
     }
     public static final class Params {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int NEED_RECOMPUTE = 1;
         public static final int UNUSABLE = 0;
         public static final int USABLE = 2;
         public Params(android.text.TextPaint p0, android.graphics.text.LineBreakConfig p1, android.text.TextDirectionHeuristic p2, int p3, int p4) {}
         public int checkResultUsable(android.text.TextPaint p0, android.text.TextDirectionHeuristic p1, int p2, int p3, android.graphics.text.LineBreakConfig p4) { return 0; }
-        public int getBreakStrategy() { return (meglerProps.get("BreakStrategy") instanceof Integer ? (Integer) meglerProps.get("BreakStrategy") : 0); }
-        public int getHyphenationFrequency() { return (meglerProps.get("HyphenationFrequency") instanceof Integer ? (Integer) meglerProps.get("HyphenationFrequency") : 0); }
-        public android.graphics.text.LineBreakConfig getLineBreakConfig() { return (android.graphics.text.LineBreakConfig) meglerProps.get("LineBreakConfig"); }
-        public android.text.TextDirectionHeuristic getTextDirection() { return (android.text.TextDirectionHeuristic) meglerProps.get("TextDirection"); }
-        public android.text.TextPaint getTextPaint() { return (android.text.TextPaint) meglerProps.get("TextPaint"); }
+        public int getBreakStrategy() { return (megletProps.get("BreakStrategy") instanceof Integer ? (Integer) megletProps.get("BreakStrategy") : 0); }
+        public int getHyphenationFrequency() { return (megletProps.get("HyphenationFrequency") instanceof Integer ? (Integer) megletProps.get("HyphenationFrequency") : 0); }
+        public android.graphics.text.LineBreakConfig getLineBreakConfig() { return (android.graphics.text.LineBreakConfig) megletProps.get("LineBreakConfig"); }
+        public android.text.TextDirectionHeuristic getTextDirection() { return (android.text.TextDirectionHeuristic) megletProps.get("TextDirection"); }
+        public android.text.TextPaint getTextPaint() { return (android.text.TextPaint) megletProps.get("TextPaint"); }
         Params() { this((android.text.TextPaint) null, (android.graphics.text.LineBreakConfig) null, (android.text.TextDirectionHeuristic) null, (int) 0, (int) 0); }
         public static class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(android.text.PrecomputedText.Params p0) {}
             public Builder(android.text.TextPaint p0) {}
-            public android.text.PrecomputedText.Params build() { android.text.PrecomputedText.Params x = new android.text.PrecomputedText.Params(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.text.PrecomputedText.Params.Builder setBreakStrategy(int p0) { meglerProps.put("BreakStrategy", Integer.valueOf(p0)); return this; }
-            public android.text.PrecomputedText.Params.Builder setHyphenationFrequency(int p0) { meglerProps.put("HyphenationFrequency", Integer.valueOf(p0)); return this; }
-            public android.text.PrecomputedText.Params.Builder setLineBreakConfig(android.graphics.text.LineBreakConfig p0) { meglerProps.put("LineBreakConfig", p0); return this; }
-            public android.text.PrecomputedText.Params.Builder setTextDirection(android.text.TextDirectionHeuristic p0) { meglerProps.put("TextDirection", p0); return this; }
+            public android.text.PrecomputedText.Params build() { android.text.PrecomputedText.Params x = new android.text.PrecomputedText.Params(); x.megletProps.putAll(megletProps); return x; }
+            public android.text.PrecomputedText.Params.Builder setBreakStrategy(int p0) { megletProps.put("BreakStrategy", Integer.valueOf(p0)); return this; }
+            public android.text.PrecomputedText.Params.Builder setHyphenationFrequency(int p0) { megletProps.put("HyphenationFrequency", Integer.valueOf(p0)); return this; }
+            public android.text.PrecomputedText.Params.Builder setLineBreakConfig(android.graphics.text.LineBreakConfig p0) { megletProps.put("LineBreakConfig", p0); return this; }
+            public android.text.PrecomputedText.Params.Builder setTextDirection(android.text.TextDirectionHeuristic p0) { megletProps.put("TextDirection", p0); return this; }
             Builder() { this((android.text.PrecomputedText.Params) null); }
         }
     }

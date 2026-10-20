@@ -120,27 +120,27 @@ static u32 faded(u32 p, u32 alpha)
     return mul255(p >> 24, alpha) << 24 | mul255((p >> 16) & 255, alpha) << 16 | mul255((p >> 8) & 255, alpha) << 8 | mul255(p & 255, alpha);
 }
 
-/* One channel of S on D by megler.h's table, in whole numbers of 255ths. */
+/* One channel of S on D by meglet.h's table, in whole numbers of 255ths. */
 static u32 blend_channel(int mode, u32 s, u32 d, u32 sa, u32 da)
 {
     u32 v, both = mul255(s, 255 - da) + mul255(d, 255 - sa), x = mul255(s, da), y = mul255(d, sa);
     switch (mode) {
-    case MEGLER_GFX_BLEND_CLEAR: v = 0; break;
-    case MEGLER_GFX_BLEND_SRC: v = s; break;
-    case MEGLER_GFX_BLEND_DST: v = d; break;
-    case MEGLER_GFX_BLEND_DST_OVER: v = d + mul255(s, 255 - da); break;
-    case MEGLER_GFX_BLEND_SRC_IN: v = x; break;
-    case MEGLER_GFX_BLEND_DST_IN: v = y; break;
-    case MEGLER_GFX_BLEND_SRC_OUT: v = mul255(s, 255 - da); break;
-    case MEGLER_GFX_BLEND_DST_OUT: v = mul255(d, 255 - sa); break;
-    case MEGLER_GFX_BLEND_SRC_ATOP: v = x + mul255(d, 255 - sa); break;
-    case MEGLER_GFX_BLEND_DST_ATOP: v = y + mul255(s, 255 - da); break;
-    case MEGLER_GFX_BLEND_XOR: v = both; break;
-    case MEGLER_GFX_BLEND_PLUS: v = s + d; break;
-    case MEGLER_GFX_BLEND_MODULATE: v = mul255(s, d); break;
-    case MEGLER_GFX_BLEND_SCREEN: v = s + d - mul255(s, d); break;
-    case MEGLER_GFX_BLEND_DARKEN: v = both + (x < y ? x : y); break;
-    case MEGLER_GFX_BLEND_LIGHTEN: v = both + (x > y ? x : y); break;
+    case MEGLET_GFX_BLEND_CLEAR: v = 0; break;
+    case MEGLET_GFX_BLEND_SRC: v = s; break;
+    case MEGLET_GFX_BLEND_DST: v = d; break;
+    case MEGLET_GFX_BLEND_DST_OVER: v = d + mul255(s, 255 - da); break;
+    case MEGLET_GFX_BLEND_SRC_IN: v = x; break;
+    case MEGLET_GFX_BLEND_DST_IN: v = y; break;
+    case MEGLET_GFX_BLEND_SRC_OUT: v = mul255(s, 255 - da); break;
+    case MEGLET_GFX_BLEND_DST_OUT: v = mul255(d, 255 - sa); break;
+    case MEGLET_GFX_BLEND_SRC_ATOP: v = x + mul255(d, 255 - sa); break;
+    case MEGLET_GFX_BLEND_DST_ATOP: v = y + mul255(s, 255 - da); break;
+    case MEGLET_GFX_BLEND_XOR: v = both; break;
+    case MEGLET_GFX_BLEND_PLUS: v = s + d; break;
+    case MEGLET_GFX_BLEND_MODULATE: v = mul255(s, d); break;
+    case MEGLET_GFX_BLEND_SCREEN: v = s + d - mul255(s, d); break;
+    case MEGLET_GFX_BLEND_DARKEN: v = both + (x < y ? x : y); break;
+    case MEGLET_GFX_BLEND_LIGHTEN: v = both + (x > y ? x : y); break;
     default: v = s + mul255(d, 255 - sa); break;
     }
     return v > 255 ? 255 : v;
@@ -149,7 +149,7 @@ static u32 blend_channel(int mode, u32 s, u32 d, u32 sa, u32 da)
 static u32 blended(int mode, u32 s, u32 d)
 {
     u32 sa = s >> 24, da = d >> 24;
-    if (mode == MEGLER_GFX_BLEND_SRC_OVER && sa == 255) return s;
+    if (mode == MEGLET_GFX_BLEND_SRC_OVER && sa == 255) return s;
     return blend_channel(mode, sa, da, sa, da) << 24 | blend_channel(mode, (s >> 16) & 255, (d >> 16) & 255, sa, da) << 16 |
            blend_channel(mode, (s >> 8) & 255, (d >> 8) & 255, sa, da) << 8 | blend_channel(mode, s & 255, d & 255, sa, da);
 }
@@ -280,7 +280,7 @@ static void s_restore(void *user, void *canvas)
     float m[6];
     (void)user;
     if (v->depth <= 0) return;
-    /* The matrix is not the save's to keep (megler.h): the one in force stays. */
+    /* The matrix is not the save's to keep (meglet.h): the one in force stays. */
     memcpy(m, state(v)->m, sizeof(m));
     v->depth--;
     memcpy(state(v)->m, m, sizeof(m));
@@ -299,7 +299,7 @@ static void s_clip_rect(void *user, void *canvas, float left, float top, float r
     i32 box[4];
     (void)user;
     pixel_box(s->m, left, top, right, bottom, box);
-    if (op == MEGLER_GFX_CLIP_INTERSECT) {
+    if (op == MEGLET_GFX_CLIP_INTERSECT) {
         clip_to(s, box);
     } else if (s->m[1] == 0 && s->m[3] == 0 && s->cuts < MAX_CUTS) {
         memcpy(s->cut[s->cuts++], box, sizeof(box));
@@ -350,7 +350,7 @@ static void points_rect(spoints *p, double l, double t, double r, double b)
     points_end(p, true);
 }
 
-/* A path as megler.h's draw_path has it, into corners. A stream that is not well formed ends where it goes wrong. */
+/* A path as meglet.h's draw_path has it, into corners. A stream that is not well formed ends where it goes wrong. */
 static void points_path(spoints *p, const float *path, int count)
 {
     double cx = 0, cy = 0, t, u, x, y;
@@ -358,16 +358,16 @@ static void points_path(spoints *p, const float *path, int count)
     while (path && i < count) {
         if (!(path[i] >= 0 && path[i] <= 4)) break;
         verb = (int)path[i++];
-        need = verb == MEGLER_GFX_PATH_QUAD ? 4 : verb == MEGLER_GFX_PATH_CUBIC ? 6 : verb == MEGLER_GFX_PATH_CLOSE ? 0 : 2;
+        need = verb == MEGLET_GFX_PATH_QUAD ? 4 : verb == MEGLET_GFX_PATH_CUBIC ? 6 : verb == MEGLET_GFX_PATH_CLOSE ? 0 : 2;
         if (i + need > count) break;
-        if (verb == MEGLER_GFX_PATH_CLOSE) {
+        if (verb == MEGLET_GFX_PATH_CLOSE) {
             points_end(p, true);
             continue;
         }
-        if (verb == MEGLER_GFX_PATH_MOVE) {
+        if (verb == MEGLET_GFX_PATH_MOVE) {
             points_end(p, false);
             points_add(p, path[i], path[i + 1]);
-        } else if (verb == MEGLER_GFX_PATH_LINE) {
+        } else if (verb == MEGLET_GFX_PATH_LINE) {
             points_add(p, path[i], path[i + 1]);
         } else {
             for (k = 1; k <= CURVE_PIECES; k++) {
@@ -376,7 +376,7 @@ static void points_path(spoints *p, const float *path, int count)
                 if (k == CURVE_PIECES) {
                     x = path[i + need - 2];
                     y = path[i + need - 1];
-                } else if (verb == MEGLER_GFX_PATH_QUAD) {
+                } else if (verb == MEGLET_GFX_PATH_QUAD) {
                     x = u * u * cx + 2 * u * t * path[i] + t * t * path[i + 2];
                     y = u * u * cy + 2 * u * t * path[i + 1] + t * t * path[i + 3];
                 } else {
@@ -398,7 +398,7 @@ static void points_path(spoints *p, const float *path, int count)
 
 static int path_cubic(float *o, float x1, float y1, float x2, float y2, float x, float y)
 {
-    o[0] = MEGLER_GFX_PATH_CUBIC;
+    o[0] = MEGLET_GFX_PATH_CUBIC;
     o[1] = x1;
     o[2] = y1;
     o[3] = x2;
@@ -421,16 +421,16 @@ static int path_round(float *o, float l, float t, float r, float b, float rx, fl
 {
     float kx = rx * QUARTER, ky = ry * QUARTER;
     int n = 0;
-    n += path_to(o + n, MEGLER_GFX_PATH_MOVE, l + rx, t);
-    n += path_to(o + n, MEGLER_GFX_PATH_LINE, r - rx, t);
+    n += path_to(o + n, MEGLET_GFX_PATH_MOVE, l + rx, t);
+    n += path_to(o + n, MEGLET_GFX_PATH_LINE, r - rx, t);
     n += path_cubic(o + n, r - rx + kx, t, r, t + ry - ky, r, t + ry);
-    n += path_to(o + n, MEGLER_GFX_PATH_LINE, r, b - ry);
+    n += path_to(o + n, MEGLET_GFX_PATH_LINE, r, b - ry);
     n += path_cubic(o + n, r, b - ry + ky, r - rx + kx, b, r - rx, b);
-    n += path_to(o + n, MEGLER_GFX_PATH_LINE, l + rx, b);
+    n += path_to(o + n, MEGLET_GFX_PATH_LINE, l + rx, b);
     n += path_cubic(o + n, l + rx - kx, b, l, b - ry + ky, l, b - ry);
-    n += path_to(o + n, MEGLER_GFX_PATH_LINE, l, t + ry);
+    n += path_to(o + n, MEGLET_GFX_PATH_LINE, l, t + ry);
     n += path_cubic(o + n, l, t + ry - ky, l + rx - kx, t, l + rx, t);
-    o[n++] = MEGLER_GFX_PATH_CLOSE;
+    o[n++] = MEGLET_GFX_PATH_CLOSE;
     return n;
 }
 
@@ -455,8 +455,8 @@ static void points_stroke(const spoints *in, spoints *out, double half, int cap)
             uy = dy / len;
             nx = -uy * half;
             ny = ux * half;
-            before = in->closed[f] || s > 0 || cap != MEGLER_GFX_CAP_BUTT ? half : 0;
-            after = in->closed[f] || s < sides - 1 || cap != MEGLER_GFX_CAP_BUTT ? half : 0;
+            before = in->closed[f] || s > 0 || cap != MEGLET_GFX_CAP_BUTT ? half : 0;
+            after = in->closed[f] || s < sides - 1 || cap != MEGLET_GFX_CAP_BUTT ? half : 0;
             points_add(out, a[0] - ux * before + nx, a[1] - uy * before + ny);
             points_add(out, b[0] + ux * after + nx, b[1] + uy * after + ny);
             points_add(out, b[0] + ux * after - nx, b[1] + uy * after - ny);
@@ -550,7 +550,7 @@ static void mask_fill(scanvas *v, const spoints *p, int rule)
         winding = 0;
         for (i = 0; i + 1 < n; i++) {
             winding += cross[i].way;
-            if (rule == MEGLER_GFX_EVEN_ODD ? (i & 1) != 0 : winding == 0) continue;
+            if (rule == MEGLET_GFX_EVEN_ODD ? (i & 1) != 0 : winding == 0) continue;
             mask_span(v, y, pixel_at(ceil(cross[i].x - 0.5)), pixel_at(ceil(cross[i + 1].x - 0.5)));
         }
     }
@@ -579,7 +579,7 @@ static void mask_paint(scanvas *v, u32 color, int blend)
 }
 
 /* The colour a call draws with: the paint's, or the shader's with the paint's alpha and filter, and the layers' alpha over all of it. */
-static u32 source_of(scanvas *v, const megler_gfx_paint *p, const sshader *shader)
+static u32 source_of(scanvas *v, const meglet_gfx_paint *p, const sshader *shader)
 {
     u32 c = premultiplied(p->color);
     if (shader) c = faded(shader->color, p->color >> 24);
@@ -588,7 +588,7 @@ static u32 source_of(scanvas *v, const megler_gfx_paint *p, const sshader *shade
 }
 
 /* How wide a stroke is in the drawing's coordinates: the paint's width, or for a hairline what comes to a pixel. */
-static double stroke_half(scanvas *v, const megler_gfx_paint *p)
+static double stroke_half(scanvas *v, const meglet_gfx_paint *p)
 {
     const float *m = state(v)->m;
     double det = fabs((double)m[0] * m[4] - (double)m[1] * m[3]);
@@ -596,30 +596,30 @@ static double stroke_half(scanvas *v, const megler_gfx_paint *p)
     return det > 0 ? 0.5 / sqrt(det) : 0.5;
 }
 
-static void draw_points(scanvas *v, spoints *p, int rule, const megler_gfx_paint *paint, void *shader)
+static void draw_points(scanvas *v, spoints *p, int rule, const meglet_gfx_paint *paint, void *shader)
 {
     spoints outline;
-    if (paint->style != MEGLER_GFX_STROKE) mask_fill(v, p, rule);
-    if (paint->style != MEGLER_GFX_FILL) {
+    if (paint->style != MEGLET_GFX_STROKE) mask_fill(v, p, rule);
+    if (paint->style != MEGLET_GFX_FILL) {
         memset(&outline, 0, sizeof(outline));
         points_stroke(p, &outline, stroke_half(v, paint), paint->cap);
-        mask_fill(v, &outline, MEGLER_GFX_WINDING);
+        mask_fill(v, &outline, MEGLET_GFX_WINDING);
         points_free(&outline);
     }
     mask_paint(v, source_of(v, paint, (const sshader *)shader), paint->blend);
     points_free(p);
 }
 
-static void s_draw_rect(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader)
+static void s_draw_rect(void *user, void *canvas, float left, float top, float right, float bottom, const meglet_gfx_paint *paint, void *shader)
 {
     spoints p;
     (void)user;
     memset(&p, 0, sizeof(p));
     points_rect(&p, left, top, right, bottom);
-    draw_points((scanvas *)canvas, &p, MEGLER_GFX_WINDING, paint, shader);
+    draw_points((scanvas *)canvas, &p, MEGLET_GFX_WINDING, paint, shader);
 }
 
-static void s_draw_round_rect(void *user, void *canvas, float left, float top, float right, float bottom, float rx, float ry, const megler_gfx_paint *paint,
+static void s_draw_round_rect(void *user, void *canvas, float left, float top, float right, float bottom, float rx, float ry, const meglet_gfx_paint *paint,
                               void *shader)
 {
     float path[64];
@@ -627,15 +627,15 @@ static void s_draw_round_rect(void *user, void *canvas, float left, float top, f
     (void)user;
     memset(&p, 0, sizeof(p));
     points_path(&p, path, path_round(path, left, top, right, bottom, rx, ry));
-    draw_points((scanvas *)canvas, &p, MEGLER_GFX_WINDING, paint, shader);
+    draw_points((scanvas *)canvas, &p, MEGLET_GFX_WINDING, paint, shader);
 }
 
-static void s_draw_oval(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader)
+static void s_draw_oval(void *user, void *canvas, float left, float top, float right, float bottom, const meglet_gfx_paint *paint, void *shader)
 {
     s_draw_round_rect(user, canvas, left, top, right, bottom, (right - left) / 2, (bottom - top) / 2, paint, shader);
 }
 
-static void s_draw_path(void *user, void *canvas, const float *path, int count, int fill, const megler_gfx_paint *paint, void *shader)
+static void s_draw_path(void *user, void *canvas, const float *path, int count, int fill, const meglet_gfx_paint *paint, void *shader)
 {
     spoints p;
     (void)user;
@@ -654,7 +654,7 @@ static void s_clip_path(void *user, void *canvas, const float *path, int count, 
     i32 i, box[4];
     (void)user;
     (void)fill;
-    if (op != MEGLER_GFX_CLIP_INTERSECT && (s->m[1] != 0 || s->m[3] != 0 || s->cuts >= MAX_CUTS)) return;
+    if (op != MEGLET_GFX_CLIP_INTERSECT && (s->m[1] != 0 || s->m[3] != 0 || s->cuts >= MAX_CUTS)) return;
     memset(&p, 0, sizeof(p));
     points_path(&p, path, count);
     for (i = 0; i < p.n; i++) {
@@ -668,7 +668,7 @@ static void s_clip_path(void *user, void *canvas, const float *path, int count, 
     box[1] = pixel_at(ceil(y0 - 0.5));
     box[2] = pixel_at(ceil(x1 - 0.5));
     box[3] = pixel_at(ceil(y1 - 0.5));
-    if (op == MEGLER_GFX_CLIP_INTERSECT) clip_to(s, box);
+    if (op == MEGLET_GFX_CLIP_INTERSECT) clip_to(s, box);
     else if (p.n) memcpy(s->cut[s->cuts++], box, sizeof(box));
     points_free(&p);
 }
@@ -694,7 +694,7 @@ static void s_draw_color(void *user, void *canvas, uint32_t color, int blend)
  * of the image that the same place in `src` falls in: the nearest one, never
  * one outside `src`.
  */
-static void s_draw_bitmap(void *user, void *canvas, const megler_gfx_image *image, const float *src, const float *dst, const megler_gfx_paint *paint)
+static void s_draw_bitmap(void *user, void *canvas, const meglet_gfx_image *image, const float *src, const float *dst, const meglet_gfx_paint *paint)
 {
     scanvas *v = (scanvas *)canvas;
     const sstate *s = state(v);
@@ -742,11 +742,11 @@ static void s_draw_bitmap(void *user, void *canvas, const megler_gfx_image *imag
 
 /* ------------------------------------------------------------------- text */
 
-static float advance_of(const megler_gfx_paint *p) { return (0.6f + p->letter_spacing) * p->text_size * p->text_scale_x; }
-static float box_width(const megler_gfx_paint *p) { return 0.5f * p->text_size * p->text_scale_x; }
+static float advance_of(const meglet_gfx_paint *p) { return (0.6f + p->letter_spacing) * p->text_size * p->text_scale_x; }
+static float box_width(const meglet_gfx_paint *p) { return 0.5f * p->text_size * p->text_scale_x; }
 static bool inked(u16 unit) { return unit > 0x20 && unit != 0xA0; }
 
-static float s_text_measure(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface)
+static float s_text_measure(void *user, const uint16_t *text, int count, const meglet_gfx_paint *paint, void *typeface)
 {
     (void)user;
     (void)text;
@@ -754,7 +754,7 @@ static float s_text_measure(void *user, const uint16_t *text, int count, const m
     return count > 0 ? (float)count * advance_of(paint) : 0;
 }
 
-static float s_text_metrics(void *user, const megler_gfx_paint *paint, void *typeface, float *out)
+static float s_text_metrics(void *user, const meglet_gfx_paint *paint, void *typeface, float *out)
 {
     float up = 0.8f * paint->text_size, down = 0.2f * paint->text_size;
     (void)user;
@@ -767,7 +767,7 @@ static float s_text_metrics(void *user, const megler_gfx_paint *paint, void *typ
     return up + down;
 }
 
-static void s_text_bounds(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface, float *out)
+static void s_text_bounds(void *user, const uint16_t *text, int count, const meglet_gfx_paint *paint, void *typeface, float *out)
 {
     int i, first = -1, last = -1;
     (void)user;
@@ -786,7 +786,7 @@ static void s_text_bounds(void *user, const uint16_t *text, int count, const meg
 
 static bool spacing(u16 unit) { return unit == ' ' || unit == '\t' || unit == '\n'; }
 
-static int s_text_break(void *user, const uint16_t *text, int count, float max_width, const megler_gfx_paint *paint, void *typeface, bool words)
+static int s_text_break(void *user, const uint16_t *text, int count, float max_width, const meglet_gfx_paint *paint, void *typeface, bool words)
 {
     float advance = advance_of(paint);
     int line = count, fit = 0, i, kept, best = -1;
@@ -810,7 +810,7 @@ static int s_text_break(void *user, const uint16_t *text, int count, float max_w
     return best >= 0 ? best : fit;
 }
 
-static void s_text_widths(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface, float *out)
+static void s_text_widths(void *user, const uint16_t *text, int count, const meglet_gfx_paint *paint, void *typeface, float *out)
 {
     int i;
     (void)user;
@@ -819,7 +819,7 @@ static void s_text_widths(void *user, const uint16_t *text, int count, const meg
     for (i = 0; i < count; i++) out[i] = advance_of(paint);
 }
 
-static void s_draw_text(void *user, void *canvas, const uint16_t *text, int count, float x, float y, const megler_gfx_paint *paint, void *typeface,
+static void s_draw_text(void *user, void *canvas, const uint16_t *text, int count, float x, float y, const meglet_gfx_paint *paint, void *typeface,
                         void *shader)
 {
     scanvas *v = (scanvas *)canvas;
@@ -828,12 +828,12 @@ static void s_draw_text(void *user, void *canvas, const uint16_t *text, int coun
     int i;
     (void)user;
     (void)typeface;
-    if (paint->text_align == MEGLER_GFX_ALIGN_CENTER) x -= width / 2;
-    else if (paint->text_align == MEGLER_GFX_ALIGN_RIGHT) x -= width;
+    if (paint->text_align == MEGLET_GFX_ALIGN_CENTER) x -= width / 2;
+    else if (paint->text_align == MEGLET_GFX_ALIGN_RIGHT) x -= width;
     memset(&p, 0, sizeof(p));
     for (i = 0; i < count; i++)
         if (inked(text[i])) points_rect(&p, x + (float)i * advance, y - 0.7f * paint->text_size, x + (float)i * advance + box_width(paint), y);
-    mask_fill(v, &p, MEGLER_GFX_WINDING);
+    mask_fill(v, &p, MEGLET_GFX_WINDING);
     mask_paint(v, source_of(v, paint, (const sshader *)shader), paint->blend);
     points_free(&p);
 }
@@ -910,7 +910,7 @@ static void *s_shader_sweep(void *user, float cx, float cy, const uint32_t *colo
     return s_shader_linear(user, cx, cy, 0, 0, colors, positions, count, 0);
 }
 
-static void *s_shader_bitmap(void *user, const megler_gfx_image *image, int tile)
+static void *s_shader_bitmap(void *user, const meglet_gfx_image *image, int tile)
 {
     (void)user;
     (void)tile;
@@ -1125,7 +1125,7 @@ static size_t png_chunk(u8 *out, const char *type, const u8 *data, u32 len)
     return 12 + (size_t)len;
 }
 
-static bool s_image_encode(void *user, const void *pixels, int width, int height, int stride, int format, int quality, megler_gfx_write write, void *sink)
+static bool s_image_encode(void *user, const void *pixels, int width, int height, int stride, int format, int quality, meglet_gfx_write write, void *sink)
 {
     size_t line = (size_t)width * 4 + 1, nraw = line * (size_t)height, at;
     u8 *raw, *packed = NULL, *out = NULL, head[13];
@@ -1242,9 +1242,9 @@ bool hk_gfx_standin_pixels(void *canvas, const void **pixels, int *width, int *h
 
 /* ---------------------------------------------------------------- the host */
 
-const megler_gfx_host *hk_gfx_standin(void)
+const meglet_gfx_host *hk_gfx_standin(void)
 {
-    static const megler_gfx_host host = {
+    static const meglet_gfx_host host = {
         .canvas_new = s_canvas_new,
         .canvas_free = s_canvas_free,
         .flush = s_nothing,

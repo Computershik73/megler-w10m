@@ -3,7 +3,7 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CameraMetadata {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int AUTOMOTIVE_LENS_FACING_EXTERIOR_FRONT = 1;
     public static final int AUTOMOTIVE_LENS_FACING_EXTERIOR_LEFT = 3;
     public static final int AUTOMOTIVE_LENS_FACING_EXTERIOR_OTHER = 0;
@@ -322,9 +322,9 @@ public abstract class CameraMetadata {
     public static int TONEMAP_PRESET_CURVE_SRGB;
     protected CameraMetadata() {}
     protected abstract java.lang.Class getKeyClass();
-    public java.util.List getKeys() { return (meglerProps.get("Keys") != null ? (java.util.List) meglerProps.get("Keys") : new java.util.ArrayList()); }
-    public android.hardware.camera2.impl.CameraMetadataNative getNativeMetadata() { return (android.hardware.camera2.impl.CameraMetadataNative) meglerProps.get("NativeMetadata"); }
-    public long getNativeMetadataPtr() { return (meglerProps.get("NativeMetadataPtr") instanceof Long ? (Long) meglerProps.get("NativeMetadataPtr") : 0L); }
+    public java.util.List getKeys() { return (megletProps.get("Keys") != null ? (java.util.List) megletProps.get("Keys") : new java.util.ArrayList()); }
+    public android.hardware.camera2.impl.CameraMetadataNative getNativeMetadata() { return (android.hardware.camera2.impl.CameraMetadataNative) megletProps.get("NativeMetadata"); }
+    public long getNativeMetadataPtr() { return (megletProps.get("NativeMetadataPtr") instanceof Long ? (Long) megletProps.get("NativeMetadataPtr") : 0L); }
     protected abstract java.lang.Object getProtected(java.lang.Object p0);
-    protected void setNativeInstance(android.hardware.camera2.impl.CameraMetadataNative p0) { meglerProps.put("NativeInstance", p0); }
+    protected void setNativeInstance(android.hardware.camera2.impl.CameraMetadataNative p0) { megletProps.put("NativeInstance", p0); }
 }

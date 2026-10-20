@@ -1,3 +1,0 @@
-// megler-w10m: the original's MeglerWebMessagePort is not compiled (tools/build-framework.sh, "A third kind").
-// It was the message port of the original's WebView over WKWebView. Message ports are Chromium's here, made by the WebView
-// APK's provider (WebView.createWebMessageChannel, AOSP's android.webkit: docs/JAVA.md, "The WebView").

@@ -3,8 +3,8 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class InstantRecord extends android.health.connect.datatypes.Record {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.time.Instant getTime() { return (java.time.Instant) meglerProps.get("Time"); }
-    public java.time.ZoneOffset getZoneOffset() { return (java.time.ZoneOffset) meglerProps.get("ZoneOffset"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.time.Instant getTime() { return (java.time.Instant) megletProps.get("Time"); }
+    public java.time.ZoneOffset getZoneOffset() { return (java.time.ZoneOffset) megletProps.get("ZoneOffset"); }
     protected InstantRecord() { super(); }
 }

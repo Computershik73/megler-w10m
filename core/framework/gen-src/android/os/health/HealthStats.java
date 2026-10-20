@@ -3,26 +3,26 @@ package android.os.health;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class HealthStats {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public HealthStats(android.os.Parcel p0) {}
-    public java.lang.String getDataType() { return (java.lang.String) meglerProps.get("DataType"); }
+    public java.lang.String getDataType() { return (java.lang.String) megletProps.get("DataType"); }
     public long getMeasurement(int p0) { return 0L; }
     public int getMeasurementKeyAt(int p0) { return 0; }
-    public int getMeasurementKeyCount() { return (meglerProps.get("MeasurementKeyCount") instanceof Integer ? (Integer) meglerProps.get("MeasurementKeyCount") : 0); }
+    public int getMeasurementKeyCount() { return (megletProps.get("MeasurementKeyCount") instanceof Integer ? (Integer) megletProps.get("MeasurementKeyCount") : 0); }
     public java.util.Map getMeasurements(int p0) { return new java.util.HashMap(); }
     public int getMeasurementsKeyAt(int p0) { return 0; }
-    public int getMeasurementsKeyCount() { return (meglerProps.get("MeasurementsKeyCount") instanceof Integer ? (Integer) meglerProps.get("MeasurementsKeyCount") : 0); }
+    public int getMeasurementsKeyCount() { return (megletProps.get("MeasurementsKeyCount") instanceof Integer ? (Integer) megletProps.get("MeasurementsKeyCount") : 0); }
     public java.util.Map getStats(int p0) { return new java.util.HashMap(); }
     public int getStatsKeyAt(int p0) { return 0; }
-    public int getStatsKeyCount() { return (meglerProps.get("StatsKeyCount") instanceof Integer ? (Integer) meglerProps.get("StatsKeyCount") : 0); }
+    public int getStatsKeyCount() { return (megletProps.get("StatsKeyCount") instanceof Integer ? (Integer) megletProps.get("StatsKeyCount") : 0); }
     public android.os.health.TimerStat getTimer(int p0) { return null; }
     public int getTimerCount(int p0) { return 0; }
     public int getTimerKeyAt(int p0) { return 0; }
-    public int getTimerKeyCount() { return (meglerProps.get("TimerKeyCount") instanceof Integer ? (Integer) meglerProps.get("TimerKeyCount") : 0); }
+    public int getTimerKeyCount() { return (megletProps.get("TimerKeyCount") instanceof Integer ? (Integer) megletProps.get("TimerKeyCount") : 0); }
     public long getTimerTime(int p0) { return 0L; }
     public java.util.Map getTimers(int p0) { return new java.util.HashMap(); }
     public int getTimersKeyAt(int p0) { return 0; }
-    public int getTimersKeyCount() { return (meglerProps.get("TimersKeyCount") instanceof Integer ? (Integer) meglerProps.get("TimersKeyCount") : 0); }
+    public int getTimersKeyCount() { return (megletProps.get("TimersKeyCount") instanceof Integer ? (Integer) megletProps.get("TimersKeyCount") : 0); }
     public boolean hasMeasurement(int p0) { return false; }
     public boolean hasMeasurements(int p0) { return false; }
     public boolean hasStats(int p0) { return false; }

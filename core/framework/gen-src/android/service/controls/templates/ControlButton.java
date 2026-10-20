@@ -3,12 +3,12 @@ package android.service.controls.templates;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ControlButton implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ControlButton(boolean p0, java.lang.CharSequence p1) {}
     public int describeContents() { return 0; }
-    public java.lang.CharSequence getActionDescription() { return (java.lang.CharSequence) meglerProps.get("ActionDescription"); }
-    public boolean isChecked() { return (meglerProps.get("Checked") instanceof Boolean ? (Boolean) meglerProps.get("Checked") : false); }
+    public java.lang.CharSequence getActionDescription() { return (java.lang.CharSequence) megletProps.get("ActionDescription"); }
+    public boolean isChecked() { return (megletProps.get("Checked") instanceof Boolean ? (Boolean) megletProps.get("Checked") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ControlButton() { this((boolean) false, (java.lang.CharSequence) null); }
 }

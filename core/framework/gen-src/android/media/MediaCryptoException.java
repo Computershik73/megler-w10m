@@ -3,11 +3,11 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaCryptoException extends java.lang.Exception implements android.media.MediaDrmThrowable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public MediaCryptoException(java.lang.String p0) { super(); }
     public MediaCryptoException(java.lang.String p0, int p1, int p2, int p3) { super(); }
-    public int getErrorContext() { return (meglerProps.get("ErrorContext") instanceof Integer ? (Integer) meglerProps.get("ErrorContext") : 0); }
-    public int getOemError() { return (meglerProps.get("OemError") instanceof Integer ? (Integer) meglerProps.get("OemError") : 0); }
-    public int getVendorError() { return (meglerProps.get("VendorError") instanceof Integer ? (Integer) meglerProps.get("VendorError") : 0); }
+    public int getErrorContext() { return (megletProps.get("ErrorContext") instanceof Integer ? (Integer) megletProps.get("ErrorContext") : 0); }
+    public int getOemError() { return (megletProps.get("OemError") instanceof Integer ? (Integer) megletProps.get("OemError") : 0); }
+    public int getVendorError() { return (megletProps.get("VendorError") instanceof Integer ? (Integer) megletProps.get("VendorError") : 0); }
     MediaCryptoException() { this((java.lang.String) null); }
 }

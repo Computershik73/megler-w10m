@@ -3,7 +3,7 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class HttpException extends java.io.IOException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public HttpException(java.lang.String p0, java.lang.Throwable p1) { super(); }
     HttpException() { this((java.lang.String) null, (java.lang.Throwable) null); }
 }

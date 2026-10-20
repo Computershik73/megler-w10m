@@ -3,17 +3,17 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LabeledIntent extends android.content.Intent {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public LabeledIntent(android.content.Intent p0, java.lang.String p1, int p2, int p3) { super(); }
     public LabeledIntent(android.content.Intent p0, java.lang.String p1, java.lang.CharSequence p2, int p3) { super(); }
     protected LabeledIntent(android.os.Parcel p0) { super(p0); }
     public LabeledIntent(java.lang.String p0, int p1, int p2) { super(); }
     public LabeledIntent(java.lang.String p0, java.lang.CharSequence p1, int p2) { super(); }
-    public int getIconResource() { return (meglerProps.get("IconResource") instanceof Integer ? (Integer) meglerProps.get("IconResource") : 0); }
-    public int getLabelResource() { return (meglerProps.get("LabelResource") instanceof Integer ? (Integer) meglerProps.get("LabelResource") : 0); }
-    public java.lang.CharSequence getNonLocalizedLabel() { return (java.lang.CharSequence) meglerProps.get("NonLocalizedLabel"); }
-    public java.lang.String getSourcePackage() { return (java.lang.String) meglerProps.get("SourcePackage"); }
+    public int getIconResource() { return (megletProps.get("IconResource") instanceof Integer ? (Integer) megletProps.get("IconResource") : 0); }
+    public int getLabelResource() { return (megletProps.get("LabelResource") instanceof Integer ? (Integer) megletProps.get("LabelResource") : 0); }
+    public java.lang.CharSequence getNonLocalizedLabel() { return (java.lang.CharSequence) megletProps.get("NonLocalizedLabel"); }
+    public java.lang.String getSourcePackage() { return (java.lang.String) megletProps.get("SourcePackage"); }
     public android.graphics.drawable.Drawable loadIcon(android.content.pm.PackageManager p0) { return null; }
     public java.lang.CharSequence loadLabel(android.content.pm.PackageManager p0) { return null; }
     public void readFromParcel(android.os.Parcel p0) {}

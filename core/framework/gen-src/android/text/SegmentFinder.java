@@ -3,7 +3,7 @@ package android.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SegmentFinder {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DONE = -1;
     public SegmentFinder() {}
     public abstract int nextEndBoundary(int p0);
@@ -11,7 +11,7 @@ public abstract class SegmentFinder {
     public abstract int previousEndBoundary(int p0);
     public abstract int previousStartBoundary(int p0);
     public static class PrescribedSegmentFinder extends android.text.SegmentFinder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public PrescribedSegmentFinder(int[] p0) { super(); }
         public int nextEndBoundary(int p0) { return 0; }
         public int nextStartBoundary(int p0) { return 0; }

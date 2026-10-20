@@ -3,7 +3,7 @@ package android.graphics.drawable;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AnimatedImageDrawable extends android.graphics.drawable.Drawable implements android.graphics.drawable.Animatable2 {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int LOOP_INFINITE = -1;
     public static final int REPEAT_INFINITE = -1;
     public AnimatedImageDrawable() { super(); }
@@ -11,11 +11,11 @@ public class AnimatedImageDrawable extends android.graphics.drawable.Drawable im
     public void clearAnimationCallbacks() {}
     public void draw(android.graphics.Canvas p0) {}
     public int getLoopCount(int p0) { return 0; }
-    public int getRepeatCount() { return (meglerProps.get("RepeatCount") instanceof Integer ? (Integer) meglerProps.get("RepeatCount") : 0); }
-    public boolean isRunning() { return (meglerProps.get("Running") instanceof Boolean ? (Boolean) meglerProps.get("Running") : false); }
+    public int getRepeatCount() { return (megletProps.get("RepeatCount") instanceof Integer ? (Integer) megletProps.get("RepeatCount") : 0); }
+    public boolean isRunning() { return (megletProps.get("Running") instanceof Boolean ? (Boolean) megletProps.get("Running") : false); }
     public void registerAnimationCallback(android.graphics.drawable.Animatable2.AnimationCallback p0) {}
-    public void setLoopCount(int p0) { meglerProps.put("LoopCount", Integer.valueOf(p0)); }
-    public void setRepeatCount(int p0) { meglerProps.put("RepeatCount", Integer.valueOf(p0)); }
+    public void setLoopCount(int p0) { megletProps.put("LoopCount", Integer.valueOf(p0)); }
+    public void setRepeatCount(int p0) { megletProps.put("RepeatCount", Integer.valueOf(p0)); }
     public void start() {}
     public void stop() {}
     public boolean unregisterAnimationCallback(android.graphics.drawable.Animatable2.AnimationCallback p0) { return false; }

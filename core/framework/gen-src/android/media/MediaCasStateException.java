@@ -3,8 +3,8 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaCasStateException extends java.lang.IllegalStateException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.lang.String getDiagnosticInfo() { return (java.lang.String) meglerProps.get("DiagnosticInfo"); }
-    public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.lang.String getDiagnosticInfo() { return (java.lang.String) megletProps.get("DiagnosticInfo"); }
+    public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
     protected MediaCasStateException() { super(); }
 }

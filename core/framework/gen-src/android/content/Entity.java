@@ -3,14 +3,14 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Entity {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public Entity(android.content.ContentValues p0) {}
     public void addSubValue(android.net.Uri p0, android.content.ContentValues p1) {}
-    public android.content.ContentValues getEntityValues() { return (android.content.ContentValues) meglerProps.get("EntityValues"); }
-    public java.util.ArrayList getSubValues() { return (meglerProps.get("SubValues") != null ? (java.util.ArrayList) meglerProps.get("SubValues") : new java.util.ArrayList()); }
+    public android.content.ContentValues getEntityValues() { return (android.content.ContentValues) megletProps.get("EntityValues"); }
+    public java.util.ArrayList getSubValues() { return (megletProps.get("SubValues") != null ? (java.util.ArrayList) megletProps.get("SubValues") : new java.util.ArrayList()); }
     Entity() { this((android.content.ContentValues) null); }
     public static class NamedContentValues {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public android.net.Uri uri;
         public android.content.ContentValues values;
         public NamedContentValues(android.net.Uri p0, android.content.ContentValues p1) {}

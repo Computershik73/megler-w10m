@@ -1,5 +1,5 @@
 /*
- * Packages (.appx) made and signed here, on the phone: a package of Megler for one Android app, its own process and memory
+ * Packages (.appx) made and signed here, on the phone: a package of Meglet for one Android app, its own process and memory
  * (docs/PER-APP-PACKAGES.md). Written as makeappx writes one, its files stored (not compressed), and signed as signtool
  * signs one, with a key and a self-signed certificate made here once.
  *
@@ -29,13 +29,13 @@ bool hk_appx_add_data(hk_appx *a, const char *name, const void *data, size_t siz
 /* Finishes and closes the package (and frees `a`, whatever the outcome). */
 bool hk_appx_finish(hk_appx *a, const hk_appx_key *k, char *err, size_t errlen);
 
-/* The identity name of the package of the Android app `android_package` ("MeglerApp." and the package; hk_appx_manifest.c),
+/* The identity name of the package of the Android app `android_package` ("MegletApp." and the package; hk_appx_manifest.c),
    into out (at least 51 bytes); false for a name that is not an Android package's. */
 bool hk_appx_app_identity(const char *android_package, char *out, size_t outlen);
-/* The manifest of that package, made from Megler's own (`megler`, the text of its AppxManifest.xml): its identity name,
+/* The manifest of that package, made from Meglet's own (`meglet`, the text of its AppxManifest.xml): its identity name,
    phone product id and shown names changed, and the tile's and the splash screen's background colours when given
-   ("#rrggbb" or "transparent"; NULL keeps Megler's), all else Megler's. A new string, or NULL (err says why). Any host. */
-char *hk_appx_app_manifest(const char *megler, const char *android_package, const char *label, const char *tile_color,
+   ("#rrggbb" or "transparent"; NULL keeps Meglet's), all else Meglet's. A new string, or NULL (err says why). Any host. */
+char *hk_appx_app_manifest(const char *meglet, const char *android_package, const char *label, const char *tile_color,
                            const char *splash_color, char *err, size_t errlen);
 /* The resources.pri of a package named `name`, made from one made for `placeholder` (as long) whose schema checksum
    covers the name, lower-cased, followed by `tail1` and `tail2` bytes (hk_appx_pri.c): into `out`, as large as `pri`.

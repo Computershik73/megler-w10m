@@ -3,12 +3,12 @@ package android.graphics.pdf.models;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PageMatchBounds implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public PageMatchBounds(java.util.List p0, int p1) {}
     public int describeContents() { return 0; }
-    public java.util.List getBounds() { return (meglerProps.get("Bounds") != null ? (java.util.List) meglerProps.get("Bounds") : new java.util.ArrayList()); }
-    public int getTextStartIndex() { return (meglerProps.get("TextStartIndex") instanceof Integer ? (Integer) meglerProps.get("TextStartIndex") : 0); }
+    public java.util.List getBounds() { return (megletProps.get("Bounds") != null ? (java.util.List) megletProps.get("Bounds") : new java.util.ArrayList()); }
+    public int getTextStartIndex() { return (megletProps.get("TextStartIndex") instanceof Integer ? (Integer) megletProps.get("TextStartIndex") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PageMatchBounds() { this((java.util.List) null, (int) 0); }
 }

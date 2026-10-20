@@ -3,7 +3,7 @@ package android.hardware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Camera {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_NEW_PICTURE = "android.hardware.action.NEW_PICTURE";
     public static final java.lang.String ACTION_NEW_VIDEO = "android.hardware.action.NEW_VIDEO";
     public static final int CAMERA_ERROR_DISABLED = 3;
@@ -32,26 +32,26 @@ public class Camera {
     public boolean disableShutterSound() { return false; }
     public boolean enableShutterSound(boolean p0) { return false; }
     protected void finalize() {}
-    public int getAudioRestriction() { return (meglerProps.get("AudioRestriction") instanceof Integer ? (Integer) meglerProps.get("AudioRestriction") : 0); }
-    public android.hardware.Camera.Parameters getParameters() { return (android.hardware.Camera.Parameters) meglerProps.get("Parameters"); }
+    public int getAudioRestriction() { return (megletProps.get("AudioRestriction") instanceof Integer ? (Integer) megletProps.get("AudioRestriction") : 0); }
+    public android.hardware.Camera.Parameters getParameters() { return (android.hardware.Camera.Parameters) megletProps.get("Parameters"); }
     public void lock() {}
     public boolean previewEnabled() { return false; }
     public void reconnect() {}
     public void release() {}
-    public void setAudioRestriction(int p0) { meglerProps.put("AudioRestriction", Integer.valueOf(p0)); }
-    public void setAutoFocusMoveCallback(android.hardware.Camera.AutoFocusMoveCallback p0) { meglerProps.put("AutoFocusMoveCallback", p0); }
-    public void setDetailedErrorCallback(android.hardware.Camera.ErrorCallback p0) { meglerProps.put("DetailedErrorCallback", p0); }
-    public void setDisplayOrientation(int p0) { meglerProps.put("DisplayOrientation", Integer.valueOf(p0)); }
-    public void setErrorCallback(android.hardware.Camera.ErrorCallback p0) { meglerProps.put("ErrorCallback", p0); }
-    public void setFaceDetectionListener(android.hardware.Camera.FaceDetectionListener p0) { meglerProps.put("FaceDetectionListener", p0); }
-    public void setOneShotPreviewCallback(android.hardware.Camera.PreviewCallback p0) { meglerProps.put("OneShotPreviewCallback", p0); }
-    public void setParameters(android.hardware.Camera.Parameters p0) { meglerProps.put("Parameters", p0); }
-    public void setPreviewCallback(android.hardware.Camera.PreviewCallback p0) { meglerProps.put("PreviewCallback", p0); }
-    public void setPreviewCallbackWithBuffer(android.hardware.Camera.PreviewCallback p0) { meglerProps.put("PreviewCallbackWithBuffer", p0); }
-    public void setPreviewDisplay(android.view.SurfaceHolder p0) { meglerProps.put("PreviewDisplay", p0); }
-    public void setPreviewSurface(android.view.Surface p0) { meglerProps.put("PreviewSurface", p0); }
-    public void setPreviewTexture(android.graphics.SurfaceTexture p0) { meglerProps.put("PreviewTexture", p0); }
-    public void setZoomChangeListener(android.hardware.Camera.OnZoomChangeListener p0) { meglerProps.put("ZoomChangeListener", p0); }
+    public void setAudioRestriction(int p0) { megletProps.put("AudioRestriction", Integer.valueOf(p0)); }
+    public void setAutoFocusMoveCallback(android.hardware.Camera.AutoFocusMoveCallback p0) { megletProps.put("AutoFocusMoveCallback", p0); }
+    public void setDetailedErrorCallback(android.hardware.Camera.ErrorCallback p0) { megletProps.put("DetailedErrorCallback", p0); }
+    public void setDisplayOrientation(int p0) { megletProps.put("DisplayOrientation", Integer.valueOf(p0)); }
+    public void setErrorCallback(android.hardware.Camera.ErrorCallback p0) { megletProps.put("ErrorCallback", p0); }
+    public void setFaceDetectionListener(android.hardware.Camera.FaceDetectionListener p0) { megletProps.put("FaceDetectionListener", p0); }
+    public void setOneShotPreviewCallback(android.hardware.Camera.PreviewCallback p0) { megletProps.put("OneShotPreviewCallback", p0); }
+    public void setParameters(android.hardware.Camera.Parameters p0) { megletProps.put("Parameters", p0); }
+    public void setPreviewCallback(android.hardware.Camera.PreviewCallback p0) { megletProps.put("PreviewCallback", p0); }
+    public void setPreviewCallbackWithBuffer(android.hardware.Camera.PreviewCallback p0) { megletProps.put("PreviewCallbackWithBuffer", p0); }
+    public void setPreviewDisplay(android.view.SurfaceHolder p0) { megletProps.put("PreviewDisplay", p0); }
+    public void setPreviewSurface(android.view.Surface p0) { megletProps.put("PreviewSurface", p0); }
+    public void setPreviewTexture(android.graphics.SurfaceTexture p0) { megletProps.put("PreviewTexture", p0); }
+    public void setZoomChangeListener(android.hardware.Camera.OnZoomChangeListener p0) { megletProps.put("ZoomChangeListener", p0); }
     public void startFaceDetection() {}
     public void startPreview() {}
     public void startSmoothZoom(int p0) {}
@@ -63,7 +63,7 @@ public class Camera {
     public void unlock() {}
     protected Camera() {}
     public static class Area {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public android.graphics.Rect rect;
         public int weight;
         public Area(android.graphics.Rect p0, int p1) {}
@@ -76,7 +76,7 @@ public class Camera {
         void onAutoFocusMoving(boolean p0, android.hardware.Camera p1);
     }
     public static class CameraInfo {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int CAMERA_FACING_BACK = 0;
         public static final int CAMERA_FACING_FRONT = 1;
         public boolean canDisableShutterSound;
@@ -88,7 +88,7 @@ public class Camera {
         void onError(int p0, android.hardware.Camera p1);
     }
     public static class Face {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public int id;
         public android.graphics.Point leftEye;
         public android.graphics.Point mouth;
@@ -104,7 +104,7 @@ public class Camera {
         void onZoomChange(int p0, boolean p1, android.hardware.Camera p2);
     }
     public static class Parameters {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String ANTIBANDING_50HZ = "50hz";
         public static final java.lang.String ANTIBANDING_60HZ = "60hz";
         public static final java.lang.String ANTIBANDING_AUTO = "auto";
@@ -164,96 +164,96 @@ public class Camera {
         public void dump() {}
         public java.lang.String flatten() { return null; }
         public java.lang.String get(java.lang.String p0) { return null; }
-        public java.lang.String getAntibanding() { return (java.lang.String) meglerProps.get("Antibanding"); }
-        public boolean getAutoExposureLock() { return (meglerProps.get("AutoExposureLock") instanceof Boolean ? (Boolean) meglerProps.get("AutoExposureLock") : false); }
-        public boolean getAutoWhiteBalanceLock() { return (meglerProps.get("AutoWhiteBalanceLock") instanceof Boolean ? (Boolean) meglerProps.get("AutoWhiteBalanceLock") : false); }
-        public java.lang.String getColorEffect() { return (java.lang.String) meglerProps.get("ColorEffect"); }
-        public int getExposureCompensation() { return (meglerProps.get("ExposureCompensation") instanceof Integer ? (Integer) meglerProps.get("ExposureCompensation") : 0); }
-        public float getExposureCompensationStep() { return (meglerProps.get("ExposureCompensationStep") instanceof Float ? (Float) meglerProps.get("ExposureCompensationStep") : 0f); }
-        public java.lang.String getFlashMode() { return (java.lang.String) meglerProps.get("FlashMode"); }
-        public float getFocalLength() { return (meglerProps.get("FocalLength") instanceof Float ? (Float) meglerProps.get("FocalLength") : 0f); }
-        public java.util.List getFocusAreas() { return (meglerProps.get("FocusAreas") != null ? (java.util.List) meglerProps.get("FocusAreas") : new java.util.ArrayList()); }
+        public java.lang.String getAntibanding() { return (java.lang.String) megletProps.get("Antibanding"); }
+        public boolean getAutoExposureLock() { return (megletProps.get("AutoExposureLock") instanceof Boolean ? (Boolean) megletProps.get("AutoExposureLock") : false); }
+        public boolean getAutoWhiteBalanceLock() { return (megletProps.get("AutoWhiteBalanceLock") instanceof Boolean ? (Boolean) megletProps.get("AutoWhiteBalanceLock") : false); }
+        public java.lang.String getColorEffect() { return (java.lang.String) megletProps.get("ColorEffect"); }
+        public int getExposureCompensation() { return (megletProps.get("ExposureCompensation") instanceof Integer ? (Integer) megletProps.get("ExposureCompensation") : 0); }
+        public float getExposureCompensationStep() { return (megletProps.get("ExposureCompensationStep") instanceof Float ? (Float) megletProps.get("ExposureCompensationStep") : 0f); }
+        public java.lang.String getFlashMode() { return (java.lang.String) megletProps.get("FlashMode"); }
+        public float getFocalLength() { return (megletProps.get("FocalLength") instanceof Float ? (Float) megletProps.get("FocalLength") : 0f); }
+        public java.util.List getFocusAreas() { return (megletProps.get("FocusAreas") != null ? (java.util.List) megletProps.get("FocusAreas") : new java.util.ArrayList()); }
         public void getFocusDistances(float[] p0) {}
-        public java.lang.String getFocusMode() { return (java.lang.String) meglerProps.get("FocusMode"); }
-        public float getHorizontalViewAngle() { return (meglerProps.get("HorizontalViewAngle") instanceof Float ? (Float) meglerProps.get("HorizontalViewAngle") : 0f); }
+        public java.lang.String getFocusMode() { return (java.lang.String) megletProps.get("FocusMode"); }
+        public float getHorizontalViewAngle() { return (megletProps.get("HorizontalViewAngle") instanceof Float ? (Float) megletProps.get("HorizontalViewAngle") : 0f); }
         public int getInt(java.lang.String p0) { return 0; }
-        public int getJpegQuality() { return (meglerProps.get("JpegQuality") instanceof Integer ? (Integer) meglerProps.get("JpegQuality") : 0); }
-        public int getJpegThumbnailQuality() { return (meglerProps.get("JpegThumbnailQuality") instanceof Integer ? (Integer) meglerProps.get("JpegThumbnailQuality") : 0); }
-        public android.hardware.Camera.Size getJpegThumbnailSize() { return (android.hardware.Camera.Size) meglerProps.get("JpegThumbnailSize"); }
-        public int getMaxExposureCompensation() { return (meglerProps.get("MaxExposureCompensation") instanceof Integer ? (Integer) meglerProps.get("MaxExposureCompensation") : 0); }
-        public int getMaxNumDetectedFaces() { return (meglerProps.get("MaxNumDetectedFaces") instanceof Integer ? (Integer) meglerProps.get("MaxNumDetectedFaces") : 0); }
-        public int getMaxNumFocusAreas() { return (meglerProps.get("MaxNumFocusAreas") instanceof Integer ? (Integer) meglerProps.get("MaxNumFocusAreas") : 0); }
-        public int getMaxNumMeteringAreas() { return (meglerProps.get("MaxNumMeteringAreas") instanceof Integer ? (Integer) meglerProps.get("MaxNumMeteringAreas") : 0); }
-        public int getMaxZoom() { return (meglerProps.get("MaxZoom") instanceof Integer ? (Integer) meglerProps.get("MaxZoom") : 0); }
-        public java.util.List getMeteringAreas() { return (meglerProps.get("MeteringAreas") != null ? (java.util.List) meglerProps.get("MeteringAreas") : new java.util.ArrayList()); }
-        public int getMinExposureCompensation() { return (meglerProps.get("MinExposureCompensation") instanceof Integer ? (Integer) meglerProps.get("MinExposureCompensation") : 0); }
-        public int getPictureFormat() { return (meglerProps.get("PictureFormat") instanceof Integer ? (Integer) meglerProps.get("PictureFormat") : 0); }
-        public android.hardware.Camera.Size getPictureSize() { return (android.hardware.Camera.Size) meglerProps.get("PictureSize"); }
-        public android.hardware.Camera.Size getPreferredPreviewSizeForVideo() { return (android.hardware.Camera.Size) meglerProps.get("PreferredPreviewSizeForVideo"); }
-        public int getPreviewFormat() { return (meglerProps.get("PreviewFormat") instanceof Integer ? (Integer) meglerProps.get("PreviewFormat") : 0); }
+        public int getJpegQuality() { return (megletProps.get("JpegQuality") instanceof Integer ? (Integer) megletProps.get("JpegQuality") : 0); }
+        public int getJpegThumbnailQuality() { return (megletProps.get("JpegThumbnailQuality") instanceof Integer ? (Integer) megletProps.get("JpegThumbnailQuality") : 0); }
+        public android.hardware.Camera.Size getJpegThumbnailSize() { return (android.hardware.Camera.Size) megletProps.get("JpegThumbnailSize"); }
+        public int getMaxExposureCompensation() { return (megletProps.get("MaxExposureCompensation") instanceof Integer ? (Integer) megletProps.get("MaxExposureCompensation") : 0); }
+        public int getMaxNumDetectedFaces() { return (megletProps.get("MaxNumDetectedFaces") instanceof Integer ? (Integer) megletProps.get("MaxNumDetectedFaces") : 0); }
+        public int getMaxNumFocusAreas() { return (megletProps.get("MaxNumFocusAreas") instanceof Integer ? (Integer) megletProps.get("MaxNumFocusAreas") : 0); }
+        public int getMaxNumMeteringAreas() { return (megletProps.get("MaxNumMeteringAreas") instanceof Integer ? (Integer) megletProps.get("MaxNumMeteringAreas") : 0); }
+        public int getMaxZoom() { return (megletProps.get("MaxZoom") instanceof Integer ? (Integer) megletProps.get("MaxZoom") : 0); }
+        public java.util.List getMeteringAreas() { return (megletProps.get("MeteringAreas") != null ? (java.util.List) megletProps.get("MeteringAreas") : new java.util.ArrayList()); }
+        public int getMinExposureCompensation() { return (megletProps.get("MinExposureCompensation") instanceof Integer ? (Integer) megletProps.get("MinExposureCompensation") : 0); }
+        public int getPictureFormat() { return (megletProps.get("PictureFormat") instanceof Integer ? (Integer) megletProps.get("PictureFormat") : 0); }
+        public android.hardware.Camera.Size getPictureSize() { return (android.hardware.Camera.Size) megletProps.get("PictureSize"); }
+        public android.hardware.Camera.Size getPreferredPreviewSizeForVideo() { return (android.hardware.Camera.Size) megletProps.get("PreferredPreviewSizeForVideo"); }
+        public int getPreviewFormat() { return (megletProps.get("PreviewFormat") instanceof Integer ? (Integer) megletProps.get("PreviewFormat") : 0); }
         public void getPreviewFpsRange(int[] p0) {}
-        public int getPreviewFrameRate() { return (meglerProps.get("PreviewFrameRate") instanceof Integer ? (Integer) meglerProps.get("PreviewFrameRate") : 0); }
-        public android.hardware.Camera.Size getPreviewSize() { return (android.hardware.Camera.Size) meglerProps.get("PreviewSize"); }
-        public java.lang.String getSceneMode() { return (java.lang.String) meglerProps.get("SceneMode"); }
-        public java.util.List getSupportedAntibanding() { return (meglerProps.get("SupportedAntibanding") != null ? (java.util.List) meglerProps.get("SupportedAntibanding") : new java.util.ArrayList()); }
-        public java.util.List getSupportedColorEffects() { return (meglerProps.get("SupportedColorEffects") != null ? (java.util.List) meglerProps.get("SupportedColorEffects") : new java.util.ArrayList()); }
-        public java.util.List getSupportedFlashModes() { return (meglerProps.get("SupportedFlashModes") != null ? (java.util.List) meglerProps.get("SupportedFlashModes") : new java.util.ArrayList()); }
-        public java.util.List getSupportedFocusModes() { return (meglerProps.get("SupportedFocusModes") != null ? (java.util.List) meglerProps.get("SupportedFocusModes") : new java.util.ArrayList()); }
-        public java.util.List getSupportedJpegThumbnailSizes() { return (meglerProps.get("SupportedJpegThumbnailSizes") != null ? (java.util.List) meglerProps.get("SupportedJpegThumbnailSizes") : new java.util.ArrayList()); }
-        public java.util.List getSupportedPictureFormats() { return (meglerProps.get("SupportedPictureFormats") != null ? (java.util.List) meglerProps.get("SupportedPictureFormats") : new java.util.ArrayList()); }
-        public java.util.List getSupportedPictureSizes() { return (meglerProps.get("SupportedPictureSizes") != null ? (java.util.List) meglerProps.get("SupportedPictureSizes") : new java.util.ArrayList()); }
-        public java.util.List getSupportedPreviewFormats() { return (meglerProps.get("SupportedPreviewFormats") != null ? (java.util.List) meglerProps.get("SupportedPreviewFormats") : new java.util.ArrayList()); }
-        public java.util.List getSupportedPreviewFpsRange() { return (meglerProps.get("SupportedPreviewFpsRange") != null ? (java.util.List) meglerProps.get("SupportedPreviewFpsRange") : new java.util.ArrayList()); }
-        public java.util.List getSupportedPreviewFrameRates() { return (meglerProps.get("SupportedPreviewFrameRates") != null ? (java.util.List) meglerProps.get("SupportedPreviewFrameRates") : new java.util.ArrayList()); }
-        public java.util.List getSupportedPreviewSizes() { return (meglerProps.get("SupportedPreviewSizes") != null ? (java.util.List) meglerProps.get("SupportedPreviewSizes") : new java.util.ArrayList()); }
-        public java.util.List getSupportedSceneModes() { return (meglerProps.get("SupportedSceneModes") != null ? (java.util.List) meglerProps.get("SupportedSceneModes") : new java.util.ArrayList()); }
-        public java.util.List getSupportedVideoSizes() { return (meglerProps.get("SupportedVideoSizes") != null ? (java.util.List) meglerProps.get("SupportedVideoSizes") : new java.util.ArrayList()); }
-        public java.util.List getSupportedWhiteBalance() { return (meglerProps.get("SupportedWhiteBalance") != null ? (java.util.List) meglerProps.get("SupportedWhiteBalance") : new java.util.ArrayList()); }
-        public float getVerticalViewAngle() { return (meglerProps.get("VerticalViewAngle") instanceof Float ? (Float) meglerProps.get("VerticalViewAngle") : 0f); }
-        public boolean getVideoStabilization() { return (meglerProps.get("VideoStabilization") instanceof Boolean ? (Boolean) meglerProps.get("VideoStabilization") : false); }
-        public java.lang.String getWhiteBalance() { return (java.lang.String) meglerProps.get("WhiteBalance"); }
-        public int getZoom() { return (meglerProps.get("Zoom") instanceof Integer ? (Integer) meglerProps.get("Zoom") : 0); }
-        public java.util.List getZoomRatios() { return (meglerProps.get("ZoomRatios") != null ? (java.util.List) meglerProps.get("ZoomRatios") : new java.util.ArrayList()); }
-        public boolean isAutoExposureLockSupported() { return (meglerProps.get("AutoExposureLockSupported") instanceof Boolean ? (Boolean) meglerProps.get("AutoExposureLockSupported") : false); }
-        public boolean isAutoWhiteBalanceLockSupported() { return (meglerProps.get("AutoWhiteBalanceLockSupported") instanceof Boolean ? (Boolean) meglerProps.get("AutoWhiteBalanceLockSupported") : false); }
-        public boolean isSmoothZoomSupported() { return (meglerProps.get("SmoothZoomSupported") instanceof Boolean ? (Boolean) meglerProps.get("SmoothZoomSupported") : false); }
-        public boolean isVideoSnapshotSupported() { return (meglerProps.get("VideoSnapshotSupported") instanceof Boolean ? (Boolean) meglerProps.get("VideoSnapshotSupported") : false); }
-        public boolean isVideoStabilizationSupported() { return (meglerProps.get("VideoStabilizationSupported") instanceof Boolean ? (Boolean) meglerProps.get("VideoStabilizationSupported") : false); }
-        public boolean isZoomSupported() { return (meglerProps.get("ZoomSupported") instanceof Boolean ? (Boolean) meglerProps.get("ZoomSupported") : false); }
+        public int getPreviewFrameRate() { return (megletProps.get("PreviewFrameRate") instanceof Integer ? (Integer) megletProps.get("PreviewFrameRate") : 0); }
+        public android.hardware.Camera.Size getPreviewSize() { return (android.hardware.Camera.Size) megletProps.get("PreviewSize"); }
+        public java.lang.String getSceneMode() { return (java.lang.String) megletProps.get("SceneMode"); }
+        public java.util.List getSupportedAntibanding() { return (megletProps.get("SupportedAntibanding") != null ? (java.util.List) megletProps.get("SupportedAntibanding") : new java.util.ArrayList()); }
+        public java.util.List getSupportedColorEffects() { return (megletProps.get("SupportedColorEffects") != null ? (java.util.List) megletProps.get("SupportedColorEffects") : new java.util.ArrayList()); }
+        public java.util.List getSupportedFlashModes() { return (megletProps.get("SupportedFlashModes") != null ? (java.util.List) megletProps.get("SupportedFlashModes") : new java.util.ArrayList()); }
+        public java.util.List getSupportedFocusModes() { return (megletProps.get("SupportedFocusModes") != null ? (java.util.List) megletProps.get("SupportedFocusModes") : new java.util.ArrayList()); }
+        public java.util.List getSupportedJpegThumbnailSizes() { return (megletProps.get("SupportedJpegThumbnailSizes") != null ? (java.util.List) megletProps.get("SupportedJpegThumbnailSizes") : new java.util.ArrayList()); }
+        public java.util.List getSupportedPictureFormats() { return (megletProps.get("SupportedPictureFormats") != null ? (java.util.List) megletProps.get("SupportedPictureFormats") : new java.util.ArrayList()); }
+        public java.util.List getSupportedPictureSizes() { return (megletProps.get("SupportedPictureSizes") != null ? (java.util.List) megletProps.get("SupportedPictureSizes") : new java.util.ArrayList()); }
+        public java.util.List getSupportedPreviewFormats() { return (megletProps.get("SupportedPreviewFormats") != null ? (java.util.List) megletProps.get("SupportedPreviewFormats") : new java.util.ArrayList()); }
+        public java.util.List getSupportedPreviewFpsRange() { return (megletProps.get("SupportedPreviewFpsRange") != null ? (java.util.List) megletProps.get("SupportedPreviewFpsRange") : new java.util.ArrayList()); }
+        public java.util.List getSupportedPreviewFrameRates() { return (megletProps.get("SupportedPreviewFrameRates") != null ? (java.util.List) megletProps.get("SupportedPreviewFrameRates") : new java.util.ArrayList()); }
+        public java.util.List getSupportedPreviewSizes() { return (megletProps.get("SupportedPreviewSizes") != null ? (java.util.List) megletProps.get("SupportedPreviewSizes") : new java.util.ArrayList()); }
+        public java.util.List getSupportedSceneModes() { return (megletProps.get("SupportedSceneModes") != null ? (java.util.List) megletProps.get("SupportedSceneModes") : new java.util.ArrayList()); }
+        public java.util.List getSupportedVideoSizes() { return (megletProps.get("SupportedVideoSizes") != null ? (java.util.List) megletProps.get("SupportedVideoSizes") : new java.util.ArrayList()); }
+        public java.util.List getSupportedWhiteBalance() { return (megletProps.get("SupportedWhiteBalance") != null ? (java.util.List) megletProps.get("SupportedWhiteBalance") : new java.util.ArrayList()); }
+        public float getVerticalViewAngle() { return (megletProps.get("VerticalViewAngle") instanceof Float ? (Float) megletProps.get("VerticalViewAngle") : 0f); }
+        public boolean getVideoStabilization() { return (megletProps.get("VideoStabilization") instanceof Boolean ? (Boolean) megletProps.get("VideoStabilization") : false); }
+        public java.lang.String getWhiteBalance() { return (java.lang.String) megletProps.get("WhiteBalance"); }
+        public int getZoom() { return (megletProps.get("Zoom") instanceof Integer ? (Integer) megletProps.get("Zoom") : 0); }
+        public java.util.List getZoomRatios() { return (megletProps.get("ZoomRatios") != null ? (java.util.List) megletProps.get("ZoomRatios") : new java.util.ArrayList()); }
+        public boolean isAutoExposureLockSupported() { return (megletProps.get("AutoExposureLockSupported") instanceof Boolean ? (Boolean) megletProps.get("AutoExposureLockSupported") : false); }
+        public boolean isAutoWhiteBalanceLockSupported() { return (megletProps.get("AutoWhiteBalanceLockSupported") instanceof Boolean ? (Boolean) megletProps.get("AutoWhiteBalanceLockSupported") : false); }
+        public boolean isSmoothZoomSupported() { return (megletProps.get("SmoothZoomSupported") instanceof Boolean ? (Boolean) megletProps.get("SmoothZoomSupported") : false); }
+        public boolean isVideoSnapshotSupported() { return (megletProps.get("VideoSnapshotSupported") instanceof Boolean ? (Boolean) megletProps.get("VideoSnapshotSupported") : false); }
+        public boolean isVideoStabilizationSupported() { return (megletProps.get("VideoStabilizationSupported") instanceof Boolean ? (Boolean) megletProps.get("VideoStabilizationSupported") : false); }
+        public boolean isZoomSupported() { return (megletProps.get("ZoomSupported") instanceof Boolean ? (Boolean) megletProps.get("ZoomSupported") : false); }
         public void remove(java.lang.String p0) {}
         public void removeGpsData() {}
         public boolean same(android.hardware.Camera.Parameters p0) { return false; }
         public void set(java.lang.String p0, int p1) {}
         public void set(java.lang.String p0, java.lang.String p1) {}
-        public void setAntibanding(java.lang.String p0) { meglerProps.put("Antibanding", p0); }
-        public void setAutoExposureLock(boolean p0) { meglerProps.put("AutoExposureLock", Boolean.valueOf(p0)); }
-        public void setAutoWhiteBalanceLock(boolean p0) { meglerProps.put("AutoWhiteBalanceLock", Boolean.valueOf(p0)); }
-        public void setColorEffect(java.lang.String p0) { meglerProps.put("ColorEffect", p0); }
-        public void setExposureCompensation(int p0) { meglerProps.put("ExposureCompensation", Integer.valueOf(p0)); }
-        public void setFlashMode(java.lang.String p0) { meglerProps.put("FlashMode", p0); }
-        public void setFocusAreas(java.util.List p0) { meglerProps.put("FocusAreas", p0); }
-        public void setFocusMode(java.lang.String p0) { meglerProps.put("FocusMode", p0); }
-        public void setGpsAltitude(double p0) { meglerProps.put("GpsAltitude", Double.valueOf(p0)); }
-        public void setGpsLatitude(double p0) { meglerProps.put("GpsLatitude", Double.valueOf(p0)); }
-        public void setGpsLongitude(double p0) { meglerProps.put("GpsLongitude", Double.valueOf(p0)); }
-        public void setGpsProcessingMethod(java.lang.String p0) { meglerProps.put("GpsProcessingMethod", p0); }
-        public void setGpsTimestamp(long p0) { meglerProps.put("GpsTimestamp", Long.valueOf(p0)); }
-        public void setJpegQuality(int p0) { meglerProps.put("JpegQuality", Integer.valueOf(p0)); }
-        public void setJpegThumbnailQuality(int p0) { meglerProps.put("JpegThumbnailQuality", Integer.valueOf(p0)); }
+        public void setAntibanding(java.lang.String p0) { megletProps.put("Antibanding", p0); }
+        public void setAutoExposureLock(boolean p0) { megletProps.put("AutoExposureLock", Boolean.valueOf(p0)); }
+        public void setAutoWhiteBalanceLock(boolean p0) { megletProps.put("AutoWhiteBalanceLock", Boolean.valueOf(p0)); }
+        public void setColorEffect(java.lang.String p0) { megletProps.put("ColorEffect", p0); }
+        public void setExposureCompensation(int p0) { megletProps.put("ExposureCompensation", Integer.valueOf(p0)); }
+        public void setFlashMode(java.lang.String p0) { megletProps.put("FlashMode", p0); }
+        public void setFocusAreas(java.util.List p0) { megletProps.put("FocusAreas", p0); }
+        public void setFocusMode(java.lang.String p0) { megletProps.put("FocusMode", p0); }
+        public void setGpsAltitude(double p0) { megletProps.put("GpsAltitude", Double.valueOf(p0)); }
+        public void setGpsLatitude(double p0) { megletProps.put("GpsLatitude", Double.valueOf(p0)); }
+        public void setGpsLongitude(double p0) { megletProps.put("GpsLongitude", Double.valueOf(p0)); }
+        public void setGpsProcessingMethod(java.lang.String p0) { megletProps.put("GpsProcessingMethod", p0); }
+        public void setGpsTimestamp(long p0) { megletProps.put("GpsTimestamp", Long.valueOf(p0)); }
+        public void setJpegQuality(int p0) { megletProps.put("JpegQuality", Integer.valueOf(p0)); }
+        public void setJpegThumbnailQuality(int p0) { megletProps.put("JpegThumbnailQuality", Integer.valueOf(p0)); }
         public void setJpegThumbnailSize(int p0, int p1) {}
-        public void setMeteringAreas(java.util.List p0) { meglerProps.put("MeteringAreas", p0); }
-        public void setPictureFormat(int p0) { meglerProps.put("PictureFormat", Integer.valueOf(p0)); }
+        public void setMeteringAreas(java.util.List p0) { megletProps.put("MeteringAreas", p0); }
+        public void setPictureFormat(int p0) { megletProps.put("PictureFormat", Integer.valueOf(p0)); }
         public void setPictureSize(int p0, int p1) {}
-        public void setPreviewFormat(int p0) { meglerProps.put("PreviewFormat", Integer.valueOf(p0)); }
+        public void setPreviewFormat(int p0) { megletProps.put("PreviewFormat", Integer.valueOf(p0)); }
         public void setPreviewFpsRange(int p0, int p1) {}
-        public void setPreviewFrameRate(int p0) { meglerProps.put("PreviewFrameRate", Integer.valueOf(p0)); }
+        public void setPreviewFrameRate(int p0) { megletProps.put("PreviewFrameRate", Integer.valueOf(p0)); }
         public void setPreviewSize(int p0, int p1) {}
-        public void setRecordingHint(boolean p0) { meglerProps.put("RecordingHint", Boolean.valueOf(p0)); }
-        public void setRotation(int p0) { meglerProps.put("Rotation", Integer.valueOf(p0)); }
-        public void setSceneMode(java.lang.String p0) { meglerProps.put("SceneMode", p0); }
-        public void setVideoStabilization(boolean p0) { meglerProps.put("VideoStabilization", Boolean.valueOf(p0)); }
-        public void setWhiteBalance(java.lang.String p0) { meglerProps.put("WhiteBalance", p0); }
-        public void setZoom(int p0) { meglerProps.put("Zoom", Integer.valueOf(p0)); }
+        public void setRecordingHint(boolean p0) { megletProps.put("RecordingHint", Boolean.valueOf(p0)); }
+        public void setRotation(int p0) { megletProps.put("Rotation", Integer.valueOf(p0)); }
+        public void setSceneMode(java.lang.String p0) { megletProps.put("SceneMode", p0); }
+        public void setVideoStabilization(boolean p0) { megletProps.put("VideoStabilization", Boolean.valueOf(p0)); }
+        public void setWhiteBalance(java.lang.String p0) { megletProps.put("WhiteBalance", p0); }
+        public void setZoom(int p0) { megletProps.put("Zoom", Integer.valueOf(p0)); }
         public void unflatten(java.lang.String p0) {}
         protected Parameters() {}
     }
@@ -267,7 +267,7 @@ public class Camera {
         void onShutter();
     }
     public static class Size {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public int height;
         public int width;
         public Size(android.hardware.Camera p0, int p1, int p2) {}

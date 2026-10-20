@@ -3,10 +3,10 @@ package android.text.method;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MultiTapKeyListener extends android.text.method.BaseKeyListener implements android.text.SpanWatcher {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public MultiTapKeyListener(android.text.method.TextKeyListener.Capitalize p0, boolean p1) { super(); }
     public static android.text.method.MultiTapKeyListener getInstance(boolean p0, android.text.method.TextKeyListener.Capitalize p1) { return new MultiTapKeyListener(); }
-    public int getInputType() { return (meglerProps.get("InputType") instanceof Integer ? (Integer) meglerProps.get("InputType") : 0); }
+    public int getInputType() { return (megletProps.get("InputType") instanceof Integer ? (Integer) megletProps.get("InputType") : 0); }
     public void onSpanAdded(android.text.Spannable p0, java.lang.Object p1, int p2, int p3) {}
     public void onSpanChanged(android.text.Spannable p0, java.lang.Object p1, int p2, int p3, int p4, int p5) {}
     public void onSpanRemoved(android.text.Spannable p0, java.lang.Object p1, int p2, int p3) {}

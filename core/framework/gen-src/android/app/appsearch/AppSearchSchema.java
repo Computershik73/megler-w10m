@@ -3,42 +3,42 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class AppSearchSchema extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
-    public java.lang.String getDescription() { return (java.lang.String) meglerProps.get("Description"); }
-    public java.util.List getParentTypes() { return (meglerProps.get("ParentTypes") != null ? (java.util.List) meglerProps.get("ParentTypes") : new java.util.ArrayList()); }
-    public java.util.List getProperties() { return (meglerProps.get("Properties") != null ? (java.util.List) meglerProps.get("Properties") : new java.util.ArrayList()); }
-    public java.lang.String getSchemaType() { return (java.lang.String) meglerProps.get("SchemaType"); }
+    public java.lang.String getDescription() { return (java.lang.String) megletProps.get("Description"); }
+    public java.util.List getParentTypes() { return (megletProps.get("ParentTypes") != null ? (java.util.List) megletProps.get("ParentTypes") : new java.util.ArrayList()); }
+    public java.util.List getProperties() { return (megletProps.get("Properties") != null ? (java.util.List) megletProps.get("Properties") : new java.util.ArrayList()); }
+    public java.lang.String getSchemaType() { return (java.lang.String) megletProps.get("SchemaType"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected AppSearchSchema() { super(); }
     public static final class BlobHandlePropertyConfig extends android.app.appsearch.AppSearchSchema.PropertyConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected BlobHandlePropertyConfig() { super(); }
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(java.lang.String p0) {}
-            public android.app.appsearch.AppSearchSchema.BlobHandlePropertyConfig build() { android.app.appsearch.AppSearchSchema.BlobHandlePropertyConfig x = new android.app.appsearch.AppSearchSchema.BlobHandlePropertyConfig(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.app.appsearch.AppSearchSchema.BlobHandlePropertyConfig.Builder setCardinality(int p0) { meglerProps.put("Cardinality", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.BlobHandlePropertyConfig.Builder setDescription(java.lang.String p0) { meglerProps.put("Description", p0); return this; }
+            public android.app.appsearch.AppSearchSchema.BlobHandlePropertyConfig build() { android.app.appsearch.AppSearchSchema.BlobHandlePropertyConfig x = new android.app.appsearch.AppSearchSchema.BlobHandlePropertyConfig(); x.megletProps.putAll(megletProps); return x; }
+            public android.app.appsearch.AppSearchSchema.BlobHandlePropertyConfig.Builder setCardinality(int p0) { megletProps.put("Cardinality", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.BlobHandlePropertyConfig.Builder setDescription(java.lang.String p0) { megletProps.put("Description", p0); return this; }
             Builder() { this((java.lang.String) null); }
         }
     }
     public static final class BooleanPropertyConfig extends android.app.appsearch.AppSearchSchema.PropertyConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-        public boolean isScoringEnabled() { return (meglerProps.get("ScoringEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ScoringEnabled") : false); }
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        public boolean isScoringEnabled() { return (megletProps.get("ScoringEnabled") instanceof Boolean ? (Boolean) megletProps.get("ScoringEnabled") : false); }
         protected BooleanPropertyConfig() { super(); }
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(java.lang.String p0) {}
-            public android.app.appsearch.AppSearchSchema.BooleanPropertyConfig build() { android.app.appsearch.AppSearchSchema.BooleanPropertyConfig x = new android.app.appsearch.AppSearchSchema.BooleanPropertyConfig(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.app.appsearch.AppSearchSchema.BooleanPropertyConfig.Builder setCardinality(int p0) { meglerProps.put("Cardinality", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.BooleanPropertyConfig.Builder setDescription(java.lang.String p0) { meglerProps.put("Description", p0); return this; }
-            public android.app.appsearch.AppSearchSchema.BooleanPropertyConfig.Builder setScoringEnabled(boolean p0) { meglerProps.put("ScoringEnabled", Boolean.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.BooleanPropertyConfig build() { android.app.appsearch.AppSearchSchema.BooleanPropertyConfig x = new android.app.appsearch.AppSearchSchema.BooleanPropertyConfig(); x.megletProps.putAll(megletProps); return x; }
+            public android.app.appsearch.AppSearchSchema.BooleanPropertyConfig.Builder setCardinality(int p0) { megletProps.put("Cardinality", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.BooleanPropertyConfig.Builder setDescription(java.lang.String p0) { megletProps.put("Description", p0); return this; }
+            public android.app.appsearch.AppSearchSchema.BooleanPropertyConfig.Builder setScoringEnabled(boolean p0) { megletProps.put("ScoringEnabled", Boolean.valueOf(p0)); return this; }
             Builder() { this((java.lang.String) null); }
         }
     }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.app.appsearch.AppSearchSchema p0) {}
         public Builder(java.lang.String p0) {}
         public android.app.appsearch.AppSearchSchema.Builder addParentType(java.lang.String p0) { return this; }
@@ -46,96 +46,96 @@ public abstract class AppSearchSchema extends android.app.appsearch.safeparcel.A
         public android.app.appsearch.AppSearchSchema build() { return null; }
         public android.app.appsearch.AppSearchSchema.Builder clearParentTypes() { return this; }
         public android.app.appsearch.AppSearchSchema.Builder clearProperties() { return this; }
-        public android.app.appsearch.AppSearchSchema.Builder setDescription(java.lang.String p0) { meglerProps.put("Description", p0); return this; }
-        public android.app.appsearch.AppSearchSchema.Builder setSchemaType(java.lang.String p0) { meglerProps.put("SchemaType", p0); return this; }
+        public android.app.appsearch.AppSearchSchema.Builder setDescription(java.lang.String p0) { megletProps.put("Description", p0); return this; }
+        public android.app.appsearch.AppSearchSchema.Builder setSchemaType(java.lang.String p0) { megletProps.put("SchemaType", p0); return this; }
         Builder() { this((android.app.appsearch.AppSearchSchema) null); }
     }
     public static final class BytesPropertyConfig extends android.app.appsearch.AppSearchSchema.PropertyConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected BytesPropertyConfig() { super(); }
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(java.lang.String p0) {}
-            public android.app.appsearch.AppSearchSchema.BytesPropertyConfig build() { android.app.appsearch.AppSearchSchema.BytesPropertyConfig x = new android.app.appsearch.AppSearchSchema.BytesPropertyConfig(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.app.appsearch.AppSearchSchema.BytesPropertyConfig.Builder setCardinality(int p0) { meglerProps.put("Cardinality", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.BytesPropertyConfig.Builder setDescription(java.lang.String p0) { meglerProps.put("Description", p0); return this; }
+            public android.app.appsearch.AppSearchSchema.BytesPropertyConfig build() { android.app.appsearch.AppSearchSchema.BytesPropertyConfig x = new android.app.appsearch.AppSearchSchema.BytesPropertyConfig(); x.megletProps.putAll(megletProps); return x; }
+            public android.app.appsearch.AppSearchSchema.BytesPropertyConfig.Builder setCardinality(int p0) { megletProps.put("Cardinality", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.BytesPropertyConfig.Builder setDescription(java.lang.String p0) { megletProps.put("Description", p0); return this; }
             Builder() { this((java.lang.String) null); }
         }
     }
     public static final class DocumentPropertyConfig extends android.app.appsearch.AppSearchSchema.PropertyConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-        public java.util.List getIndexableNestedProperties() { return (meglerProps.get("IndexableNestedProperties") != null ? (java.util.List) meglerProps.get("IndexableNestedProperties") : new java.util.ArrayList()); }
-        public java.lang.String getSchemaType() { return (java.lang.String) meglerProps.get("SchemaType"); }
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        public java.util.List getIndexableNestedProperties() { return (megletProps.get("IndexableNestedProperties") != null ? (java.util.List) megletProps.get("IndexableNestedProperties") : new java.util.ArrayList()); }
+        public java.lang.String getSchemaType() { return (java.lang.String) megletProps.get("SchemaType"); }
         public boolean shouldIndexNestedProperties() { return false; }
         protected DocumentPropertyConfig() { super(); }
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(java.lang.String p0, java.lang.String p1) {}
             public android.app.appsearch.AppSearchSchema.DocumentPropertyConfig.Builder addIndexableNestedProperties(java.util.Collection p0) { return this; }
             public android.app.appsearch.AppSearchSchema.DocumentPropertyConfig.Builder addIndexableNestedProperties(java.lang.String[] p0) { return this; }
             public android.app.appsearch.AppSearchSchema.DocumentPropertyConfig.Builder addIndexableNestedPropertyPaths(java.util.Collection p0) { return this; }
             public android.app.appsearch.AppSearchSchema.DocumentPropertyConfig.Builder addIndexableNestedPropertyPaths(android.app.appsearch.PropertyPath[] p0) { return this; }
-            public android.app.appsearch.AppSearchSchema.DocumentPropertyConfig build() { android.app.appsearch.AppSearchSchema.DocumentPropertyConfig x = new android.app.appsearch.AppSearchSchema.DocumentPropertyConfig(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.app.appsearch.AppSearchSchema.DocumentPropertyConfig.Builder setCardinality(int p0) { meglerProps.put("Cardinality", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.DocumentPropertyConfig.Builder setDescription(java.lang.String p0) { meglerProps.put("Description", p0); return this; }
-            public android.app.appsearch.AppSearchSchema.DocumentPropertyConfig.Builder setShouldIndexNestedProperties(boolean p0) { meglerProps.put("ShouldIndexNestedProperties", Boolean.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.DocumentPropertyConfig build() { android.app.appsearch.AppSearchSchema.DocumentPropertyConfig x = new android.app.appsearch.AppSearchSchema.DocumentPropertyConfig(); x.megletProps.putAll(megletProps); return x; }
+            public android.app.appsearch.AppSearchSchema.DocumentPropertyConfig.Builder setCardinality(int p0) { megletProps.put("Cardinality", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.DocumentPropertyConfig.Builder setDescription(java.lang.String p0) { megletProps.put("Description", p0); return this; }
+            public android.app.appsearch.AppSearchSchema.DocumentPropertyConfig.Builder setShouldIndexNestedProperties(boolean p0) { megletProps.put("ShouldIndexNestedProperties", Boolean.valueOf(p0)); return this; }
             Builder() { this((java.lang.String) null, (java.lang.String) null); }
         }
     }
     public static final class DoublePropertyConfig extends android.app.appsearch.AppSearchSchema.PropertyConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-        public boolean isScoringEnabled() { return (meglerProps.get("ScoringEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ScoringEnabled") : false); }
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        public boolean isScoringEnabled() { return (megletProps.get("ScoringEnabled") instanceof Boolean ? (Boolean) megletProps.get("ScoringEnabled") : false); }
         protected DoublePropertyConfig() { super(); }
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(java.lang.String p0) {}
-            public android.app.appsearch.AppSearchSchema.DoublePropertyConfig build() { android.app.appsearch.AppSearchSchema.DoublePropertyConfig x = new android.app.appsearch.AppSearchSchema.DoublePropertyConfig(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.app.appsearch.AppSearchSchema.DoublePropertyConfig.Builder setCardinality(int p0) { meglerProps.put("Cardinality", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.DoublePropertyConfig.Builder setDescription(java.lang.String p0) { meglerProps.put("Description", p0); return this; }
-            public android.app.appsearch.AppSearchSchema.DoublePropertyConfig.Builder setScoringEnabled(boolean p0) { meglerProps.put("ScoringEnabled", Boolean.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.DoublePropertyConfig build() { android.app.appsearch.AppSearchSchema.DoublePropertyConfig x = new android.app.appsearch.AppSearchSchema.DoublePropertyConfig(); x.megletProps.putAll(megletProps); return x; }
+            public android.app.appsearch.AppSearchSchema.DoublePropertyConfig.Builder setCardinality(int p0) { megletProps.put("Cardinality", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.DoublePropertyConfig.Builder setDescription(java.lang.String p0) { megletProps.put("Description", p0); return this; }
+            public android.app.appsearch.AppSearchSchema.DoublePropertyConfig.Builder setScoringEnabled(boolean p0) { megletProps.put("ScoringEnabled", Boolean.valueOf(p0)); return this; }
             Builder() { this((java.lang.String) null); }
         }
     }
     public static final class EmbeddingPropertyConfig extends android.app.appsearch.AppSearchSchema.PropertyConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int INDEXING_TYPE_NONE = 0;
         public static final int INDEXING_TYPE_SIMILARITY = 1;
         public static final int QUANTIZATION_TYPE_8_BIT = 1;
         public static int QUANTIZATION_TYPE_NONE;
-        public int getIndexingType() { return (meglerProps.get("IndexingType") instanceof Integer ? (Integer) meglerProps.get("IndexingType") : 0); }
-        public int getQuantizationType() { return (meglerProps.get("QuantizationType") instanceof Integer ? (Integer) meglerProps.get("QuantizationType") : 0); }
+        public int getIndexingType() { return (megletProps.get("IndexingType") instanceof Integer ? (Integer) megletProps.get("IndexingType") : 0); }
+        public int getQuantizationType() { return (megletProps.get("QuantizationType") instanceof Integer ? (Integer) megletProps.get("QuantizationType") : 0); }
         protected EmbeddingPropertyConfig() { super(); }
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(java.lang.String p0) {}
-            public android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig build() { android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig x = new android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig.Builder setCardinality(int p0) { meglerProps.put("Cardinality", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig.Builder setDescription(java.lang.String p0) { meglerProps.put("Description", p0); return this; }
-            public android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig.Builder setIndexingType(int p0) { meglerProps.put("IndexingType", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig.Builder setQuantizationType(int p0) { meglerProps.put("QuantizationType", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig build() { android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig x = new android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig(); x.megletProps.putAll(megletProps); return x; }
+            public android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig.Builder setCardinality(int p0) { megletProps.put("Cardinality", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig.Builder setDescription(java.lang.String p0) { megletProps.put("Description", p0); return this; }
+            public android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig.Builder setIndexingType(int p0) { megletProps.put("IndexingType", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.EmbeddingPropertyConfig.Builder setQuantizationType(int p0) { megletProps.put("QuantizationType", Integer.valueOf(p0)); return this; }
             Builder() { this((java.lang.String) null); }
         }
     }
     public static final class LongPropertyConfig extends android.app.appsearch.AppSearchSchema.PropertyConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int INDEXING_TYPE_NONE = 0;
         public static final int INDEXING_TYPE_RANGE = 1;
-        public int getIndexingType() { return (meglerProps.get("IndexingType") instanceof Integer ? (Integer) meglerProps.get("IndexingType") : 0); }
-        public boolean isScoringEnabled() { return (meglerProps.get("ScoringEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ScoringEnabled") : false); }
+        public int getIndexingType() { return (megletProps.get("IndexingType") instanceof Integer ? (Integer) megletProps.get("IndexingType") : 0); }
+        public boolean isScoringEnabled() { return (megletProps.get("ScoringEnabled") instanceof Boolean ? (Boolean) megletProps.get("ScoringEnabled") : false); }
         protected LongPropertyConfig() { super(); }
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(java.lang.String p0) {}
-            public android.app.appsearch.AppSearchSchema.LongPropertyConfig build() { android.app.appsearch.AppSearchSchema.LongPropertyConfig x = new android.app.appsearch.AppSearchSchema.LongPropertyConfig(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.app.appsearch.AppSearchSchema.LongPropertyConfig.Builder setCardinality(int p0) { meglerProps.put("Cardinality", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.LongPropertyConfig.Builder setDescription(java.lang.String p0) { meglerProps.put("Description", p0); return this; }
-            public android.app.appsearch.AppSearchSchema.LongPropertyConfig.Builder setIndexingType(int p0) { meglerProps.put("IndexingType", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.LongPropertyConfig.Builder setScoringEnabled(boolean p0) { meglerProps.put("ScoringEnabled", Boolean.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.LongPropertyConfig build() { android.app.appsearch.AppSearchSchema.LongPropertyConfig x = new android.app.appsearch.AppSearchSchema.LongPropertyConfig(); x.megletProps.putAll(megletProps); return x; }
+            public android.app.appsearch.AppSearchSchema.LongPropertyConfig.Builder setCardinality(int p0) { megletProps.put("Cardinality", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.LongPropertyConfig.Builder setDescription(java.lang.String p0) { megletProps.put("Description", p0); return this; }
+            public android.app.appsearch.AppSearchSchema.LongPropertyConfig.Builder setIndexingType(int p0) { megletProps.put("IndexingType", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.LongPropertyConfig.Builder setScoringEnabled(boolean p0) { megletProps.put("ScoringEnabled", Boolean.valueOf(p0)); return this; }
             Builder() { this((java.lang.String) null); }
         }
     }
     public static abstract class PropertyConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int CARDINALITY_OPTIONAL = 2;
         public static final int CARDINALITY_REPEATED = 1;
         public static final int CARDINALITY_REQUIRED = 3;
@@ -148,14 +148,14 @@ public abstract class AppSearchSchema extends android.app.appsearch.safeparcel.A
         public static final int DATA_TYPE_LONG = 2;
         public static final int DATA_TYPE_STRING = 1;
         public static android.app.appsearch.AppSearchSchema.PropertyConfig fromParcel(android.app.appsearch.safeparcel.PropertyConfigParcel p0) { return null; }
-        public int getCardinality() { return (meglerProps.get("Cardinality") instanceof Integer ? (Integer) meglerProps.get("Cardinality") : 0); }
-        public int getDataType() { return (meglerProps.get("DataType") instanceof Integer ? (Integer) meglerProps.get("DataType") : 0); }
-        public java.lang.String getDescription() { return (java.lang.String) meglerProps.get("Description"); }
-        public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
+        public int getCardinality() { return (megletProps.get("Cardinality") instanceof Integer ? (Integer) megletProps.get("Cardinality") : 0); }
+        public int getDataType() { return (megletProps.get("DataType") instanceof Integer ? (Integer) megletProps.get("DataType") : 0); }
+        public java.lang.String getDescription() { return (java.lang.String) megletProps.get("Description"); }
+        public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
         protected PropertyConfig() {}
     }
     public static final class StringPropertyConfig extends android.app.appsearch.AppSearchSchema.PropertyConfig {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int DELETE_PROPAGATION_TYPE_NONE = 0;
         public static final int DELETE_PROPAGATION_TYPE_PROPAGATE_FROM = 1;
         public static final int INDEXING_TYPE_EXACT_TERMS = 1;
@@ -167,21 +167,21 @@ public abstract class AppSearchSchema extends android.app.appsearch.safeparcel.A
         public static final int TOKENIZER_TYPE_PLAIN = 1;
         public static final int TOKENIZER_TYPE_RFC822 = 3;
         public static final int TOKENIZER_TYPE_VERBATIM = 2;
-        public int getDeletePropagationType() { return (meglerProps.get("DeletePropagationType") instanceof Integer ? (Integer) meglerProps.get("DeletePropagationType") : 0); }
-        public int getIndexingType() { return (meglerProps.get("IndexingType") instanceof Integer ? (Integer) meglerProps.get("IndexingType") : 0); }
-        public int getJoinableValueType() { return (meglerProps.get("JoinableValueType") instanceof Integer ? (Integer) meglerProps.get("JoinableValueType") : 0); }
-        public int getTokenizerType() { return (meglerProps.get("TokenizerType") instanceof Integer ? (Integer) meglerProps.get("TokenizerType") : 0); }
+        public int getDeletePropagationType() { return (megletProps.get("DeletePropagationType") instanceof Integer ? (Integer) megletProps.get("DeletePropagationType") : 0); }
+        public int getIndexingType() { return (megletProps.get("IndexingType") instanceof Integer ? (Integer) megletProps.get("IndexingType") : 0); }
+        public int getJoinableValueType() { return (megletProps.get("JoinableValueType") instanceof Integer ? (Integer) megletProps.get("JoinableValueType") : 0); }
+        public int getTokenizerType() { return (megletProps.get("TokenizerType") instanceof Integer ? (Integer) megletProps.get("TokenizerType") : 0); }
         protected StringPropertyConfig() { super(); }
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(java.lang.String p0) {}
-            public android.app.appsearch.AppSearchSchema.StringPropertyConfig build() { android.app.appsearch.AppSearchSchema.StringPropertyConfig x = new android.app.appsearch.AppSearchSchema.StringPropertyConfig(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.app.appsearch.AppSearchSchema.StringPropertyConfig.Builder setCardinality(int p0) { meglerProps.put("Cardinality", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.StringPropertyConfig.Builder setDeletePropagationType(int p0) { meglerProps.put("DeletePropagationType", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.StringPropertyConfig.Builder setDescription(java.lang.String p0) { meglerProps.put("Description", p0); return this; }
-            public android.app.appsearch.AppSearchSchema.StringPropertyConfig.Builder setIndexingType(int p0) { meglerProps.put("IndexingType", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.StringPropertyConfig.Builder setJoinableValueType(int p0) { meglerProps.put("JoinableValueType", Integer.valueOf(p0)); return this; }
-            public android.app.appsearch.AppSearchSchema.StringPropertyConfig.Builder setTokenizerType(int p0) { meglerProps.put("TokenizerType", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.StringPropertyConfig build() { android.app.appsearch.AppSearchSchema.StringPropertyConfig x = new android.app.appsearch.AppSearchSchema.StringPropertyConfig(); x.megletProps.putAll(megletProps); return x; }
+            public android.app.appsearch.AppSearchSchema.StringPropertyConfig.Builder setCardinality(int p0) { megletProps.put("Cardinality", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.StringPropertyConfig.Builder setDeletePropagationType(int p0) { megletProps.put("DeletePropagationType", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.StringPropertyConfig.Builder setDescription(java.lang.String p0) { megletProps.put("Description", p0); return this; }
+            public android.app.appsearch.AppSearchSchema.StringPropertyConfig.Builder setIndexingType(int p0) { megletProps.put("IndexingType", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.StringPropertyConfig.Builder setJoinableValueType(int p0) { megletProps.put("JoinableValueType", Integer.valueOf(p0)); return this; }
+            public android.app.appsearch.AppSearchSchema.StringPropertyConfig.Builder setTokenizerType(int p0) { megletProps.put("TokenizerType", Integer.valueOf(p0)); return this; }
             Builder() { this((java.lang.String) null); }
         }
     }

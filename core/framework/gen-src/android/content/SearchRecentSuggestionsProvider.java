@@ -3,7 +3,7 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SearchRecentSuggestionsProvider extends android.content.ContentProvider {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DATABASE_MODE_2LINES = 2;
     public static final int DATABASE_MODE_QUERIES = 1;
     public SearchRecentSuggestionsProvider() { super(); }

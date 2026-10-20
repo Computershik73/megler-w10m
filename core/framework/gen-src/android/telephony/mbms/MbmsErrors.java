@@ -3,7 +3,7 @@ package android.telephony.mbms;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MbmsErrors {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ERROR_MIDDLEWARE_LOST = 3;
     public static final int ERROR_MIDDLEWARE_NOT_BOUND = 2;
     public static final int ERROR_NO_UNIQUE_MIDDLEWARE = 1;
@@ -11,7 +11,7 @@ public class MbmsErrors {
     public static final int UNKNOWN = -1;
     protected MbmsErrors() {}
     public static class DownloadErrors {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ERROR_CANNOT_CHANGE_TEMP_FILE_ROOT = 401;
         public static final int ERROR_MALFORMED_SERVICE_ANNOUNCEMENT = 404;
         public static final int ERROR_UNKNOWN_DOWNLOAD_REQUEST = 402;
@@ -19,7 +19,7 @@ public class MbmsErrors {
         protected DownloadErrors() {}
     }
     public static class GeneralErrors {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ERROR_CARRIER_CHANGE_NOT_ALLOWED = 207;
         public static final int ERROR_IN_E911 = 204;
         public static final int ERROR_MIDDLEWARE_NOT_YET_READY = 201;
@@ -30,20 +30,20 @@ public class MbmsErrors {
         protected GeneralErrors() {}
     }
     public static class GroupCallErrors {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ERROR_DUPLICATE_START_GROUP_CALL = 502;
         public static final int ERROR_UNABLE_TO_START_SERVICE = 501;
         protected GroupCallErrors() {}
     }
     public static class InitializationErrors {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ERROR_APP_PERMISSIONS_NOT_GRANTED = 102;
         public static final int ERROR_DUPLICATE_INITIALIZE = 101;
         public static final int ERROR_UNABLE_TO_INITIALIZE = 103;
         protected InitializationErrors() {}
     }
     public static class StreamingErrors {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ERROR_CONCURRENT_SERVICE_LIMIT_REACHED = 301;
         public static final int ERROR_DUPLICATE_START_STREAM = 303;
         public static final int ERROR_UNABLE_TO_START_SERVICE = 302;

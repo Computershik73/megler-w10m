@@ -3,7 +3,7 @@ package android.service.controls.actions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ControlAction {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.service.controls.actions.ControlAction ERROR_ACTION;
     public static final int RESPONSE_CHALLENGE_ACK = 3;
     public static final int RESPONSE_CHALLENGE_PASSPHRASE = 5;
@@ -19,7 +19,7 @@ public abstract class ControlAction {
     public static android.service.controls.actions.ControlAction getErrorAction() { return null; }
     public static boolean isValidResponse(int p0) { return false; }
     public abstract int getActionType();
-    public java.lang.String getChallengeValue() { return (java.lang.String) meglerProps.get("ChallengeValue"); }
-    public java.lang.String getTemplateId() { return (java.lang.String) meglerProps.get("TemplateId"); }
+    public java.lang.String getChallengeValue() { return (java.lang.String) megletProps.get("ChallengeValue"); }
+    public java.lang.String getTemplateId() { return (java.lang.String) megletProps.get("TemplateId"); }
     protected ControlAction() {}
 }

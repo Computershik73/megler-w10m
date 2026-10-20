@@ -3,18 +3,18 @@ package android.adservices.measurement;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WebTriggerParams implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.net.Uri getRegistrationUri() { return (android.net.Uri) meglerProps.get("RegistrationUri"); }
-    public boolean isDebugKeyAllowed() { return (meglerProps.get("DebugKeyAllowed") instanceof Boolean ? (Boolean) meglerProps.get("DebugKeyAllowed") : false); }
+    public android.net.Uri getRegistrationUri() { return (android.net.Uri) megletProps.get("RegistrationUri"); }
+    public boolean isDebugKeyAllowed() { return (megletProps.get("DebugKeyAllowed") instanceof Boolean ? (Boolean) megletProps.get("DebugKeyAllowed") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected WebTriggerParams() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.net.Uri p0) {}
-        public android.adservices.measurement.WebTriggerParams build() { android.adservices.measurement.WebTriggerParams x = new android.adservices.measurement.WebTriggerParams(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.measurement.WebTriggerParams.Builder setDebugKeyAllowed(boolean p0) { meglerProps.put("DebugKeyAllowed", Boolean.valueOf(p0)); return this; }
+        public android.adservices.measurement.WebTriggerParams build() { android.adservices.measurement.WebTriggerParams x = new android.adservices.measurement.WebTriggerParams(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.measurement.WebTriggerParams.Builder setDebugKeyAllowed(boolean p0) { megletProps.put("DebugKeyAllowed", Boolean.valueOf(p0)); return this; }
         Builder() { this((android.net.Uri) null); }
     }
 }

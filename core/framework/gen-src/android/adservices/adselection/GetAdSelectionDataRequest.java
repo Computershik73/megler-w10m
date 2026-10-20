@@ -3,17 +3,17 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GetAdSelectionDataRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public android.net.Uri getCoordinatorOriginUri() { return (android.net.Uri) meglerProps.get("CoordinatorOriginUri"); }
-    public android.adservices.common.AdTechIdentifier getSeller() { return (android.adservices.common.AdTechIdentifier) meglerProps.get("Seller"); }
-    public android.adservices.adselection.SellerConfiguration getSellerConfiguration() { return (android.adservices.adselection.SellerConfiguration) meglerProps.get("SellerConfiguration"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public android.net.Uri getCoordinatorOriginUri() { return (android.net.Uri) megletProps.get("CoordinatorOriginUri"); }
+    public android.adservices.common.AdTechIdentifier getSeller() { return (android.adservices.common.AdTechIdentifier) megletProps.get("Seller"); }
+    public android.adservices.adselection.SellerConfiguration getSellerConfiguration() { return (android.adservices.adselection.SellerConfiguration) megletProps.get("SellerConfiguration"); }
     protected GetAdSelectionDataRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.adselection.GetAdSelectionDataRequest build() { android.adservices.adselection.GetAdSelectionDataRequest x = new android.adservices.adselection.GetAdSelectionDataRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.adselection.GetAdSelectionDataRequest.Builder setCoordinatorOriginUri(android.net.Uri p0) { meglerProps.put("CoordinatorOriginUri", p0); return this; }
-        public android.adservices.adselection.GetAdSelectionDataRequest.Builder setSeller(android.adservices.common.AdTechIdentifier p0) { meglerProps.put("Seller", p0); return this; }
-        public android.adservices.adselection.GetAdSelectionDataRequest.Builder setSellerConfiguration(android.adservices.adselection.SellerConfiguration p0) { meglerProps.put("SellerConfiguration", p0); return this; }
+        public android.adservices.adselection.GetAdSelectionDataRequest build() { android.adservices.adselection.GetAdSelectionDataRequest x = new android.adservices.adselection.GetAdSelectionDataRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.adselection.GetAdSelectionDataRequest.Builder setCoordinatorOriginUri(android.net.Uri p0) { megletProps.put("CoordinatorOriginUri", p0); return this; }
+        public android.adservices.adselection.GetAdSelectionDataRequest.Builder setSeller(android.adservices.common.AdTechIdentifier p0) { megletProps.put("Seller", p0); return this; }
+        public android.adservices.adselection.GetAdSelectionDataRequest.Builder setSellerConfiguration(android.adservices.adselection.SellerConfiguration p0) { megletProps.put("SellerConfiguration", p0); return this; }
     }
 }

@@ -3,7 +3,7 @@ package android.view.textclassifier;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TextLinks implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int APPLY_STRATEGY_IGNORE = 0;
     public static final int APPLY_STRATEGY_REPLACE = 1;
     public static android.os.Parcelable.Creator CREATOR;
@@ -14,69 +14,69 @@ public final class TextLinks implements android.os.Parcelable {
     public static final int STATUS_UNSUPPORTED_CHARACTER = 4;
     public int apply(android.text.Spannable p0, int p1, java.util.function.Function p2) { return 0; }
     public int describeContents() { return 0; }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-    public java.util.Collection getLinks() { return (meglerProps.get("Links") != null ? (java.util.Collection) meglerProps.get("Links") : new java.util.ArrayList()); }
-    public java.lang.CharSequence getText() { return (java.lang.CharSequence) meglerProps.get("Text"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public java.util.Collection getLinks() { return (megletProps.get("Links") != null ? (java.util.Collection) megletProps.get("Links") : new java.util.ArrayList()); }
+    public java.lang.CharSequence getText() { return (java.lang.CharSequence) megletProps.get("Text"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TextLinks() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0) {}
         public android.view.textclassifier.TextLinks.Builder addLink(int p0, int p1, java.util.Map p2) { return this; }
         public android.view.textclassifier.TextLinks.Builder addLink(int p0, int p1, java.util.Map p2, android.os.Bundle p3) { return this; }
-        public android.view.textclassifier.TextLinks build() { android.view.textclassifier.TextLinks x = new android.view.textclassifier.TextLinks(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.textclassifier.TextLinks build() { android.view.textclassifier.TextLinks x = new android.view.textclassifier.TextLinks(); x.megletProps.putAll(megletProps); return x; }
         public android.view.textclassifier.TextLinks.Builder clearTextLinks() { return this; }
-        public android.view.textclassifier.TextLinks.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
+        public android.view.textclassifier.TextLinks.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
         Builder() { this((java.lang.String) null); }
     }
     public static final class Request implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public int describeContents() { return 0; }
-        public java.lang.String getCallingPackageName() { return (java.lang.String) meglerProps.get("CallingPackageName"); }
-        public android.os.LocaleList getDefaultLocales() { return (android.os.LocaleList) meglerProps.get("DefaultLocales"); }
-        public android.view.textclassifier.TextClassifier.EntityConfig getEntityConfig() { return (android.view.textclassifier.TextClassifier.EntityConfig) meglerProps.get("EntityConfig"); }
-        public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-        public java.time.ZonedDateTime getReferenceTime() { return (java.time.ZonedDateTime) meglerProps.get("ReferenceTime"); }
-        public android.view.textclassifier.SystemTextClassifierMetadata getSystemTextClassifierMetadata() { return (android.view.textclassifier.SystemTextClassifierMetadata) meglerProps.get("SystemTextClassifierMetadata"); }
-        public java.lang.CharSequence getText() { return (java.lang.CharSequence) meglerProps.get("Text"); }
-        public boolean isLegacyFallback() { return (meglerProps.get("LegacyFallback") instanceof Boolean ? (Boolean) meglerProps.get("LegacyFallback") : false); }
-        public void setSystemTextClassifierMetadata(android.view.textclassifier.SystemTextClassifierMetadata p0) { meglerProps.put("SystemTextClassifierMetadata", p0); }
+        public java.lang.String getCallingPackageName() { return (java.lang.String) megletProps.get("CallingPackageName"); }
+        public android.os.LocaleList getDefaultLocales() { return (android.os.LocaleList) megletProps.get("DefaultLocales"); }
+        public android.view.textclassifier.TextClassifier.EntityConfig getEntityConfig() { return (android.view.textclassifier.TextClassifier.EntityConfig) megletProps.get("EntityConfig"); }
+        public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+        public java.time.ZonedDateTime getReferenceTime() { return (java.time.ZonedDateTime) megletProps.get("ReferenceTime"); }
+        public android.view.textclassifier.SystemTextClassifierMetadata getSystemTextClassifierMetadata() { return (android.view.textclassifier.SystemTextClassifierMetadata) megletProps.get("SystemTextClassifierMetadata"); }
+        public java.lang.CharSequence getText() { return (java.lang.CharSequence) megletProps.get("Text"); }
+        public boolean isLegacyFallback() { return (megletProps.get("LegacyFallback") instanceof Boolean ? (Boolean) megletProps.get("LegacyFallback") : false); }
+        public void setSystemTextClassifierMetadata(android.view.textclassifier.SystemTextClassifierMetadata p0) { megletProps.put("SystemTextClassifierMetadata", p0); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected Request() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(java.lang.CharSequence p0) {}
-            public android.view.textclassifier.TextLinks.Request build() { android.view.textclassifier.TextLinks.Request x = new android.view.textclassifier.TextLinks.Request(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.view.textclassifier.TextLinks.Request.Builder setDefaultLocales(android.os.LocaleList p0) { meglerProps.put("DefaultLocales", p0); return this; }
-            public android.view.textclassifier.TextLinks.Request.Builder setEntityConfig(android.view.textclassifier.TextClassifier.EntityConfig p0) { meglerProps.put("EntityConfig", p0); return this; }
-            public android.view.textclassifier.TextLinks.Request.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
-            public android.view.textclassifier.TextLinks.Request.Builder setLegacyFallback(boolean p0) { meglerProps.put("LegacyFallback", Boolean.valueOf(p0)); return this; }
-            public android.view.textclassifier.TextLinks.Request.Builder setReferenceTime(java.time.ZonedDateTime p0) { meglerProps.put("ReferenceTime", p0); return this; }
+            public android.view.textclassifier.TextLinks.Request build() { android.view.textclassifier.TextLinks.Request x = new android.view.textclassifier.TextLinks.Request(); x.megletProps.putAll(megletProps); return x; }
+            public android.view.textclassifier.TextLinks.Request.Builder setDefaultLocales(android.os.LocaleList p0) { megletProps.put("DefaultLocales", p0); return this; }
+            public android.view.textclassifier.TextLinks.Request.Builder setEntityConfig(android.view.textclassifier.TextClassifier.EntityConfig p0) { megletProps.put("EntityConfig", p0); return this; }
+            public android.view.textclassifier.TextLinks.Request.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+            public android.view.textclassifier.TextLinks.Request.Builder setLegacyFallback(boolean p0) { megletProps.put("LegacyFallback", Boolean.valueOf(p0)); return this; }
+            public android.view.textclassifier.TextLinks.Request.Builder setReferenceTime(java.time.ZonedDateTime p0) { megletProps.put("ReferenceTime", p0); return this; }
             Builder() { this((java.lang.CharSequence) null); }
         }
     }
     public static final class TextLink implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public int describeContents() { return 0; }
         public float getConfidenceScore(java.lang.String p0) { return 0f; }
-        public int getEnd() { return (meglerProps.get("End") instanceof Integer ? (Integer) meglerProps.get("End") : 0); }
+        public int getEnd() { return (megletProps.get("End") instanceof Integer ? (Integer) megletProps.get("End") : 0); }
         public java.lang.String getEntity(int p0) { return null; }
-        public int getEntityCount() { return (meglerProps.get("EntityCount") instanceof Integer ? (Integer) meglerProps.get("EntityCount") : 0); }
-        public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-        public int getStart() { return (meglerProps.get("Start") instanceof Integer ? (Integer) meglerProps.get("Start") : 0); }
+        public int getEntityCount() { return (megletProps.get("EntityCount") instanceof Integer ? (Integer) megletProps.get("EntityCount") : 0); }
+        public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+        public int getStart() { return (megletProps.get("Start") instanceof Integer ? (Integer) megletProps.get("Start") : 0); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected TextLink() {}
     }
     public static class TextLinkSpan extends android.text.style.ClickableSpan {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int INVOCATION_METHOD_KEYBOARD = 1;
         public static final int INVOCATION_METHOD_TOUCH = 0;
         public static final int INVOCATION_METHOD_UNSPECIFIED = -1;
         public TextLinkSpan(android.view.textclassifier.TextLinks.TextLink p0) { super(); }
-        public android.view.textclassifier.TextLinks.TextLink getTextLink() { return (android.view.textclassifier.TextLinks.TextLink) meglerProps.get("TextLink"); }
-        public java.lang.String getUrl() { return (java.lang.String) meglerProps.get("Url"); }
+        public android.view.textclassifier.TextLinks.TextLink getTextLink() { return (android.view.textclassifier.TextLinks.TextLink) megletProps.get("TextLink"); }
+        public java.lang.String getUrl() { return (java.lang.String) megletProps.get("Url"); }
         public void onClick(android.view.View p0) {}
         public void onClick(android.view.View p0, int p1) {}
         TextLinkSpan() { this((android.view.textclassifier.TextLinks.TextLink) null); }

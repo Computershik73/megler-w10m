@@ -3,7 +3,7 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PreferentialNetworkServiceConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.app.admin.PreferentialNetworkServiceConfig DEFAULT;
     public static final int PREFERENTIAL_NETWORK_ID_1 = 1;
@@ -13,23 +13,23 @@ public final class PreferentialNetworkServiceConfig implements android.os.Parcel
     public static final int PREFERENTIAL_NETWORK_ID_5 = 5;
     public int describeContents() { return 0; }
     public void dump(android.util.IndentingPrintWriter p0) {}
-    public int[] getExcludedUids() { return (int[]) meglerProps.get("ExcludedUids"); }
-    public int[] getIncludedUids() { return (int[]) meglerProps.get("IncludedUids"); }
-    public int getNetworkId() { return (meglerProps.get("NetworkId") instanceof Integer ? (Integer) meglerProps.get("NetworkId") : 0); }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
-    public boolean isFallbackToDefaultConnectionAllowed() { return (meglerProps.get("FallbackToDefaultConnectionAllowed") instanceof Boolean ? (Boolean) meglerProps.get("FallbackToDefaultConnectionAllowed") : false); }
+    public int[] getExcludedUids() { return (int[]) megletProps.get("ExcludedUids"); }
+    public int[] getIncludedUids() { return (int[]) megletProps.get("IncludedUids"); }
+    public int getNetworkId() { return (megletProps.get("NetworkId") instanceof Integer ? (Integer) megletProps.get("NetworkId") : 0); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
+    public boolean isFallbackToDefaultConnectionAllowed() { return (megletProps.get("FallbackToDefaultConnectionAllowed") instanceof Boolean ? (Boolean) megletProps.get("FallbackToDefaultConnectionAllowed") : false); }
     public boolean shouldBlockNonMatchingNetworks() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected PreferentialNetworkServiceConfig() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.app.admin.PreferentialNetworkServiceConfig build() { android.app.admin.PreferentialNetworkServiceConfig x = new android.app.admin.PreferentialNetworkServiceConfig(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.app.admin.PreferentialNetworkServiceConfig.Builder setEnabled(boolean p0) { meglerProps.put("Enabled", Boolean.valueOf(p0)); return this; }
-        public android.app.admin.PreferentialNetworkServiceConfig.Builder setExcludedUids(int[] p0) { meglerProps.put("ExcludedUids", p0); return this; }
-        public android.app.admin.PreferentialNetworkServiceConfig.Builder setFallbackToDefaultConnectionAllowed(boolean p0) { meglerProps.put("FallbackToDefaultConnectionAllowed", Boolean.valueOf(p0)); return this; }
-        public android.app.admin.PreferentialNetworkServiceConfig.Builder setIncludedUids(int[] p0) { meglerProps.put("IncludedUids", p0); return this; }
-        public android.app.admin.PreferentialNetworkServiceConfig.Builder setNetworkId(int p0) { meglerProps.put("NetworkId", Integer.valueOf(p0)); return this; }
-        public android.app.admin.PreferentialNetworkServiceConfig.Builder setShouldBlockNonMatchingNetworks(boolean p0) { meglerProps.put("ShouldBlockNonMatchingNetworks", Boolean.valueOf(p0)); return this; }
+        public android.app.admin.PreferentialNetworkServiceConfig build() { android.app.admin.PreferentialNetworkServiceConfig x = new android.app.admin.PreferentialNetworkServiceConfig(); x.megletProps.putAll(megletProps); return x; }
+        public android.app.admin.PreferentialNetworkServiceConfig.Builder setEnabled(boolean p0) { megletProps.put("Enabled", Boolean.valueOf(p0)); return this; }
+        public android.app.admin.PreferentialNetworkServiceConfig.Builder setExcludedUids(int[] p0) { megletProps.put("ExcludedUids", p0); return this; }
+        public android.app.admin.PreferentialNetworkServiceConfig.Builder setFallbackToDefaultConnectionAllowed(boolean p0) { megletProps.put("FallbackToDefaultConnectionAllowed", Boolean.valueOf(p0)); return this; }
+        public android.app.admin.PreferentialNetworkServiceConfig.Builder setIncludedUids(int[] p0) { megletProps.put("IncludedUids", p0); return this; }
+        public android.app.admin.PreferentialNetworkServiceConfig.Builder setNetworkId(int p0) { megletProps.put("NetworkId", Integer.valueOf(p0)); return this; }
+        public android.app.admin.PreferentialNetworkServiceConfig.Builder setShouldBlockNonMatchingNetworks(boolean p0) { megletProps.put("ShouldBlockNonMatchingNetworks", Boolean.valueOf(p0)); return this; }
     }
 }

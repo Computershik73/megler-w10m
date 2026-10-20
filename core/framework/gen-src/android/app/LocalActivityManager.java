@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LocalActivityManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public LocalActivityManager(android.app.Activity p0, boolean p1) {}
     public android.view.Window destroyActivity(java.lang.String p0, boolean p1) { return null; }
     public void dispatchCreate(android.os.Bundle p0) {}
@@ -13,8 +13,8 @@ public class LocalActivityManager {
     public java.util.HashMap dispatchRetainNonConfigurationInstance() { return null; }
     public void dispatchStop() {}
     public android.app.Activity getActivity(java.lang.String p0) { return null; }
-    public android.app.Activity getCurrentActivity() { return (android.app.Activity) meglerProps.get("CurrentActivity"); }
-    public java.lang.String getCurrentId() { return (java.lang.String) meglerProps.get("CurrentId"); }
+    public android.app.Activity getCurrentActivity() { return (android.app.Activity) megletProps.get("CurrentActivity"); }
+    public java.lang.String getCurrentId() { return (java.lang.String) megletProps.get("CurrentId"); }
     public void removeAllActivities() {}
     public android.os.Bundle saveInstanceState() { return null; }
     public android.view.Window startActivity(java.lang.String p0, android.content.Intent p1) { return null; }

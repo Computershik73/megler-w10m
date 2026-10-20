@@ -3,12 +3,12 @@ package android.view.contentcapture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ContentCaptureSessionId implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ContentCaptureSessionId(int p0) {}
     public int describeContents() { return 0; }
     public void dump(java.io.PrintWriter p0) {}
-    public int getValue() { return (meglerProps.get("Value") instanceof Integer ? (Integer) meglerProps.get("Value") : 0); }
+    public int getValue() { return (megletProps.get("Value") instanceof Integer ? (Integer) megletProps.get("Value") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ContentCaptureSessionId() { this((int) 0); }
 }

@@ -3,7 +3,7 @@ package android.telephony.euicc;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class EuiccManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_CONVERT_TO_EMBEDDED_SUBSCRIPTION = "android.telephony.euicc.action.CONVERT_TO_EMBEDDED_SUBSCRIPTION";
     public static final java.lang.String ACTION_DELETE_SUBSCRIPTION_PRIVILEGED = "android.telephony.euicc.action.DELETE_SUBSCRIPTION_PRIVILEGED";
     public static final java.lang.String ACTION_MANAGE_EMBEDDED_SUBSCRIPTIONS = "android.telephony.euicc.action.MANAGE_EMBEDDED_SUBSCRIPTIONS";
@@ -87,22 +87,22 @@ public class EuiccManager {
     public void downloadSubscription(android.telephony.euicc.DownloadableSubscription p0, boolean p1, android.app.PendingIntent p2) {}
     public void eraseSubscriptions(int p0, android.app.PendingIntent p1) {}
     public void eraseSubscriptions(android.app.PendingIntent p0) {}
-    public long getAvailableMemoryInBytes() { return (meglerProps.get("AvailableMemoryInBytes") instanceof Long ? (Long) meglerProps.get("AvailableMemoryInBytes") : 0L); }
+    public long getAvailableMemoryInBytes() { return (megletProps.get("AvailableMemoryInBytes") instanceof Long ? (Long) megletProps.get("AvailableMemoryInBytes") : 0L); }
     public void getDefaultDownloadableSubscriptionList(android.app.PendingIntent p0) {}
     public void getDownloadableSubscriptionMetadata(android.telephony.euicc.DownloadableSubscription p0, android.app.PendingIntent p1) {}
-    public java.lang.String getEid() { return (java.lang.String) meglerProps.get("Eid"); }
-    public android.telephony.euicc.EuiccInfo getEuiccInfo() { return (android.telephony.euicc.EuiccInfo) meglerProps.get("EuiccInfo"); }
-    public int getOtaStatus() { return (meglerProps.get("OtaStatus") instanceof Integer ? (Integer) meglerProps.get("OtaStatus") : 0); }
-    public java.util.List getSupportedCountries() { return (meglerProps.get("SupportedCountries") != null ? (java.util.List) meglerProps.get("SupportedCountries") : new java.util.ArrayList()); }
-    public java.util.List getUnsupportedCountries() { return (meglerProps.get("UnsupportedCountries") != null ? (java.util.List) meglerProps.get("UnsupportedCountries") : new java.util.ArrayList()); }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
+    public java.lang.String getEid() { return (java.lang.String) megletProps.get("Eid"); }
+    public android.telephony.euicc.EuiccInfo getEuiccInfo() { return (android.telephony.euicc.EuiccInfo) megletProps.get("EuiccInfo"); }
+    public int getOtaStatus() { return (megletProps.get("OtaStatus") instanceof Integer ? (Integer) megletProps.get("OtaStatus") : 0); }
+    public java.util.List getSupportedCountries() { return (megletProps.get("SupportedCountries") != null ? (java.util.List) megletProps.get("SupportedCountries") : new java.util.ArrayList()); }
+    public java.util.List getUnsupportedCountries() { return (megletProps.get("UnsupportedCountries") != null ? (java.util.List) megletProps.get("UnsupportedCountries") : new java.util.ArrayList()); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
     public boolean isPsimConversionSupported(int p0) { return false; }
     public boolean isSimPortAvailable(int p0) { return false; }
     public boolean isSupportedCountry(java.lang.String p0) { return false; }
     public void retainSubscriptionsForFactoryReset(android.app.PendingIntent p0) {}
-    public void setPsimConversionSupportedCarriers(java.util.Set p0) { meglerProps.put("PsimConversionSupportedCarriers", p0); }
-    public void setSupportedCountries(java.util.List p0) { meglerProps.put("SupportedCountries", p0); }
-    public void setUnsupportedCountries(java.util.List p0) { meglerProps.put("UnsupportedCountries", p0); }
+    public void setPsimConversionSupportedCarriers(java.util.Set p0) { megletProps.put("PsimConversionSupportedCarriers", p0); }
+    public void setSupportedCountries(java.util.List p0) { megletProps.put("SupportedCountries", p0); }
+    public void setUnsupportedCountries(java.util.List p0) { megletProps.put("UnsupportedCountries", p0); }
     public void startResolutionActivity(android.app.Activity p0, int p1, android.content.Intent p2, android.app.PendingIntent p3) {}
     public void switchToSubscription(int p0, int p1, android.app.PendingIntent p2) {}
     public void switchToSubscription(int p0, android.app.PendingIntent p1) {}

@@ -3,7 +3,7 @@ package android.service.wallpaper;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class WallpaperService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String SERVICE_INTERFACE = "android.service.wallpaper.WallpaperService";
     public static final java.lang.String SERVICE_META_DATA = "android.service.wallpaper";
     public static final long WEAROS_WALLPAPER_HANDLES_SCALING = 272527315L;
@@ -13,23 +13,23 @@ public abstract class WallpaperService extends android.app.Service {
     public android.service.wallpaper.WallpaperService.Engine onCreateEngine(android.app.wallpaper.WallpaperDescription p0) { return null; }
     public android.os.Looper onProvideEngineLooper() { return null; }
     public static class Engine {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Engine(android.service.wallpaper.WallpaperService p0) {}
         public Engine(android.service.wallpaper.WallpaperService p0, java.util.function.Supplier p1, android.os.Handler p2) {}
         public void addLocalColorsAreas(java.util.List p0) {}
         public void detach() {}
         public void doAmbientModeChanged(boolean p0, long p1) {}
         protected void dump(java.lang.String p0, java.io.FileDescriptor p1, java.io.PrintWriter p2, java.lang.String[] p3) {}
-        public int getDesiredMinimumHeight() { return (meglerProps.get("DesiredMinimumHeight") instanceof Integer ? (Integer) meglerProps.get("DesiredMinimumHeight") : 0); }
-        public int getDesiredMinimumWidth() { return (meglerProps.get("DesiredMinimumWidth") instanceof Integer ? (Integer) meglerProps.get("DesiredMinimumWidth") : 0); }
-        public android.content.Context getDisplayContext() { return (android.content.Context) meglerProps.get("DisplayContext"); }
-        public android.view.SurfaceControl getRenderingSurfaceControl() { return (android.view.SurfaceControl) meglerProps.get("RenderingSurfaceControl"); }
-        public android.view.SurfaceHolder getSurfaceHolder() { return (android.view.SurfaceHolder) meglerProps.get("SurfaceHolder"); }
-        public int getWallpaperFlags() { return (meglerProps.get("WallpaperFlags") instanceof Integer ? (Integer) meglerProps.get("WallpaperFlags") : 0); }
-        public float getZoom() { return (meglerProps.get("Zoom") instanceof Float ? (Float) meglerProps.get("Zoom") : 0f); }
-        public boolean isInAmbientMode() { return (meglerProps.get("InAmbientMode") instanceof Boolean ? (Boolean) meglerProps.get("InAmbientMode") : false); }
-        public boolean isPreview() { return (meglerProps.get("Preview") instanceof Boolean ? (Boolean) meglerProps.get("Preview") : false); }
-        public boolean isVisible() { return (meglerProps.get("Visible") instanceof Boolean ? (Boolean) meglerProps.get("Visible") : false); }
+        public int getDesiredMinimumHeight() { return (megletProps.get("DesiredMinimumHeight") instanceof Integer ? (Integer) megletProps.get("DesiredMinimumHeight") : 0); }
+        public int getDesiredMinimumWidth() { return (megletProps.get("DesiredMinimumWidth") instanceof Integer ? (Integer) megletProps.get("DesiredMinimumWidth") : 0); }
+        public android.content.Context getDisplayContext() { return (android.content.Context) megletProps.get("DisplayContext"); }
+        public android.view.SurfaceControl getRenderingSurfaceControl() { return (android.view.SurfaceControl) megletProps.get("RenderingSurfaceControl"); }
+        public android.view.SurfaceHolder getSurfaceHolder() { return (android.view.SurfaceHolder) megletProps.get("SurfaceHolder"); }
+        public int getWallpaperFlags() { return (megletProps.get("WallpaperFlags") instanceof Integer ? (Integer) megletProps.get("WallpaperFlags") : 0); }
+        public float getZoom() { return (megletProps.get("Zoom") instanceof Float ? (Float) megletProps.get("Zoom") : 0f); }
+        public boolean isInAmbientMode() { return (megletProps.get("InAmbientMode") instanceof Boolean ? (Boolean) megletProps.get("InAmbientMode") : false); }
+        public boolean isPreview() { return (megletProps.get("Preview") instanceof Boolean ? (Boolean) megletProps.get("Preview") : false); }
+        public boolean isVisible() { return (megletProps.get("Visible") instanceof Boolean ? (Boolean) megletProps.get("Visible") : false); }
         public void notifyColorsChanged() {}
         public void notifyLocalColorsChanged(java.util.List p0, java.util.List p1) {}
         public void onAmbientModeChanged(boolean p0, long p1) {}
@@ -52,12 +52,12 @@ public abstract class WallpaperService extends android.app.Service {
         public void onZoomChanged(float p0) {}
         public void removeLocalColorsAreas(java.util.List p0) {}
         public void reportEngineShown(boolean p0) {}
-        public void setCreated(boolean p0) { meglerProps.put("Created", Boolean.valueOf(p0)); }
-        public void setFixedSizeAllowed(boolean p0) { meglerProps.put("FixedSizeAllowed", Boolean.valueOf(p0)); }
-        public void setOffsetNotificationsEnabled(boolean p0) { meglerProps.put("OffsetNotificationsEnabled", Boolean.valueOf(p0)); }
-        public void setShowForAllUsers(boolean p0) { meglerProps.put("ShowForAllUsers", Boolean.valueOf(p0)); }
-        public void setTouchEventsEnabled(boolean p0) { meglerProps.put("TouchEventsEnabled", Boolean.valueOf(p0)); }
-        public void setZoom(float p0) { meglerProps.put("Zoom", Float.valueOf(p0)); }
+        public void setCreated(boolean p0) { megletProps.put("Created", Boolean.valueOf(p0)); }
+        public void setFixedSizeAllowed(boolean p0) { megletProps.put("FixedSizeAllowed", Boolean.valueOf(p0)); }
+        public void setOffsetNotificationsEnabled(boolean p0) { megletProps.put("OffsetNotificationsEnabled", Boolean.valueOf(p0)); }
+        public void setShowForAllUsers(boolean p0) { megletProps.put("ShowForAllUsers", Boolean.valueOf(p0)); }
+        public void setTouchEventsEnabled(boolean p0) { megletProps.put("TouchEventsEnabled", Boolean.valueOf(p0)); }
+        public void setZoom(float p0) { megletProps.put("Zoom", Float.valueOf(p0)); }
         public boolean shouldWaitForEngineShown() { return false; }
         public boolean shouldZoomOutWallpaper() { return false; }
         public boolean supportsLocalColorExtraction() { return false; }

@@ -3,7 +3,7 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AdResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int RESPONSE_TYPE_BUFFERING = 5;
     public static final int RESPONSE_TYPE_ERROR = 4;
@@ -12,9 +12,9 @@ public final class AdResponse implements android.os.Parcelable {
     public static final int RESPONSE_TYPE_STOPPED = 3;
     public AdResponse(int p0, int p1, long p2) {}
     public int describeContents() { return 0; }
-    public long getElapsedTimeMillis() { return (meglerProps.get("ElapsedTimeMillis") instanceof Long ? (Long) meglerProps.get("ElapsedTimeMillis") : 0L); }
-    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
-    public int getResponseType() { return (meglerProps.get("ResponseType") instanceof Integer ? (Integer) meglerProps.get("ResponseType") : 0); }
+    public long getElapsedTimeMillis() { return (megletProps.get("ElapsedTimeMillis") instanceof Long ? (Long) megletProps.get("ElapsedTimeMillis") : 0L); }
+    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
+    public int getResponseType() { return (megletProps.get("ResponseType") instanceof Integer ? (Integer) megletProps.get("ResponseType") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AdResponse() { this((int) 0, (int) 0, (long) 0L); }
 }

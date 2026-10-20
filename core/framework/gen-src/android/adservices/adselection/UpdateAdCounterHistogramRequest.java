@@ -3,22 +3,22 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class UpdateAdCounterHistogramRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String DISALLOW_AD_EVENT_TYPE_WIN_MESSAGE = "Win event types cannot be manually updated";
     public static final java.lang.String INVALID_AD_EVENT_TYPE_MESSAGE = "Ad event type must be one of AD_EVENT_TYPE_IMPRESSION, AD_EVENT_TYPE_VIEW, or AD_EVENT_TYPE_CLICK";
     public static final java.lang.String UNSET_AD_EVENT_TYPE_MESSAGE = "Ad event type must be set";
     public static final java.lang.String UNSET_CALLER_ADTECH_MESSAGE = "Caller ad tech must not be null";
-    public int getAdEventType() { return (meglerProps.get("AdEventType") instanceof Integer ? (Integer) meglerProps.get("AdEventType") : 0); }
-    public long getAdSelectionId() { return (meglerProps.get("AdSelectionId") instanceof Long ? (Long) meglerProps.get("AdSelectionId") : 0L); }
-    public android.adservices.common.AdTechIdentifier getCallerAdTech() { return (android.adservices.common.AdTechIdentifier) meglerProps.get("CallerAdTech"); }
+    public int getAdEventType() { return (megletProps.get("AdEventType") instanceof Integer ? (Integer) megletProps.get("AdEventType") : 0); }
+    public long getAdSelectionId() { return (megletProps.get("AdSelectionId") instanceof Long ? (Long) megletProps.get("AdSelectionId") : 0L); }
+    public android.adservices.common.AdTechIdentifier getCallerAdTech() { return (android.adservices.common.AdTechIdentifier) megletProps.get("CallerAdTech"); }
     protected UpdateAdCounterHistogramRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(long p0, int p1, android.adservices.common.AdTechIdentifier p2) {}
-        public android.adservices.adselection.UpdateAdCounterHistogramRequest build() { android.adservices.adselection.UpdateAdCounterHistogramRequest x = new android.adservices.adselection.UpdateAdCounterHistogramRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.adselection.UpdateAdCounterHistogramRequest.Builder setAdEventType(int p0) { meglerProps.put("AdEventType", Integer.valueOf(p0)); return this; }
-        public android.adservices.adselection.UpdateAdCounterHistogramRequest.Builder setAdSelectionId(long p0) { meglerProps.put("AdSelectionId", Long.valueOf(p0)); return this; }
-        public android.adservices.adselection.UpdateAdCounterHistogramRequest.Builder setCallerAdTech(android.adservices.common.AdTechIdentifier p0) { meglerProps.put("CallerAdTech", p0); return this; }
+        public android.adservices.adselection.UpdateAdCounterHistogramRequest build() { android.adservices.adselection.UpdateAdCounterHistogramRequest x = new android.adservices.adselection.UpdateAdCounterHistogramRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.adselection.UpdateAdCounterHistogramRequest.Builder setAdEventType(int p0) { megletProps.put("AdEventType", Integer.valueOf(p0)); return this; }
+        public android.adservices.adselection.UpdateAdCounterHistogramRequest.Builder setAdSelectionId(long p0) { megletProps.put("AdSelectionId", Long.valueOf(p0)); return this; }
+        public android.adservices.adselection.UpdateAdCounterHistogramRequest.Builder setCallerAdTech(android.adservices.common.AdTechIdentifier p0) { megletProps.put("CallerAdTech", p0); return this; }
         Builder() { this((long) 0L, (int) 0, (android.adservices.common.AdTechIdentifier) null); }
     }
 }

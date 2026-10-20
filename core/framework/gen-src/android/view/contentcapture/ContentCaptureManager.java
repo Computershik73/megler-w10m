@@ -3,7 +3,7 @@ package android.view.contentcapture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ContentCaptureManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DATA_SHARE_ERROR_CONCURRENT_REQUEST = 2;
     public static final int DATA_SHARE_ERROR_TIMEOUT_INTERRUPTED = 3;
     public static final int DATA_SHARE_ERROR_UNKNOWN = 1;
@@ -58,19 +58,19 @@ public final class ContentCaptureManager {
     public static void setTemporaryService(int p0, java.lang.String p1, int p2) {}
     public void addDumpable(android.app.Activity p0) {}
     public void flush(int p0) {}
-    public java.util.Set getContentCaptureConditions() { return (meglerProps.get("ContentCaptureConditions") != null ? (java.util.Set) meglerProps.get("ContentCaptureConditions") : new java.util.HashSet()); }
-    public boolean getFlushViewTreeAppearingEventDisabled() { return (meglerProps.get("FlushViewTreeAppearingEventDisabled") instanceof Boolean ? (Boolean) meglerProps.get("FlushViewTreeAppearingEventDisabled") : false); }
-    public android.view.contentcapture.ContentCaptureSession getMainContentCaptureSession() { return (android.view.contentcapture.ContentCaptureSession) meglerProps.get("MainContentCaptureSession"); }
-    public android.content.ComponentName getServiceComponentName() { return (android.content.ComponentName) meglerProps.get("ServiceComponentName"); }
-    public boolean isContentCaptureEnabled() { return (meglerProps.get("ContentCaptureEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ContentCaptureEnabled") : false); }
-    public boolean isContentCaptureFeatureEnabled() { return (meglerProps.get("ContentCaptureFeatureEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ContentCaptureFeatureEnabled") : false); }
+    public java.util.Set getContentCaptureConditions() { return (megletProps.get("ContentCaptureConditions") != null ? (java.util.Set) megletProps.get("ContentCaptureConditions") : new java.util.HashSet()); }
+    public boolean getFlushViewTreeAppearingEventDisabled() { return (megletProps.get("FlushViewTreeAppearingEventDisabled") instanceof Boolean ? (Boolean) megletProps.get("FlushViewTreeAppearingEventDisabled") : false); }
+    public android.view.contentcapture.ContentCaptureSession getMainContentCaptureSession() { return (android.view.contentcapture.ContentCaptureSession) megletProps.get("MainContentCaptureSession"); }
+    public android.content.ComponentName getServiceComponentName() { return (android.content.ComponentName) megletProps.get("ServiceComponentName"); }
+    public boolean isContentCaptureEnabled() { return (megletProps.get("ContentCaptureEnabled") instanceof Boolean ? (Boolean) megletProps.get("ContentCaptureEnabled") : false); }
+    public boolean isContentCaptureFeatureEnabled() { return (megletProps.get("ContentCaptureFeatureEnabled") instanceof Boolean ? (Boolean) megletProps.get("ContentCaptureFeatureEnabled") : false); }
     public void onActivityCreated(android.os.IBinder p0, android.os.IBinder p1, android.content.ComponentName p2) {}
     public void onActivityDestroyed() {}
     public void onActivityPaused() {}
     public void onActivityResumed() {}
     public void removeData(android.view.contentcapture.DataRemovalRequest p0) {}
-    public void setContentCaptureEnabled(boolean p0) { meglerProps.put("ContentCaptureEnabled", Boolean.valueOf(p0)); }
-    public void setFlushViewTreeAppearingEventDisabled(boolean p0) { meglerProps.put("FlushViewTreeAppearingEventDisabled", Boolean.valueOf(p0)); }
+    public void setContentCaptureEnabled(boolean p0) { megletProps.put("ContentCaptureEnabled", Boolean.valueOf(p0)); }
+    public void setFlushViewTreeAppearingEventDisabled(boolean p0) { megletProps.put("FlushViewTreeAppearingEventDisabled", Boolean.valueOf(p0)); }
     public void shareData(android.view.contentcapture.DataShareRequest p0, java.util.concurrent.Executor p1, android.view.contentcapture.DataShareWriteAdapter p2) {}
     public void updateWindowAttributes(android.view.WindowManager.LayoutParams p0) {}
     ContentCaptureManager() { this((android.content.Context) null, (android.view.contentcapture.IContentCaptureManager) null, (android.content.ContentCaptureOptions) null); }
@@ -78,10 +78,10 @@ public final class ContentCaptureManager {
         android.content.ComponentName contentCaptureClientGetComponentName();
     }
     public static class StrippedContext {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public StrippedContext(android.content.Context p0) {}
-        public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-        public int getUserId() { return (meglerProps.get("UserId") instanceof Integer ? (Integer) meglerProps.get("UserId") : 0); }
+        public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+        public int getUserId() { return (megletProps.get("UserId") instanceof Integer ? (Integer) megletProps.get("UserId") : 0); }
         StrippedContext() { this((android.content.Context) null); }
     }
 }

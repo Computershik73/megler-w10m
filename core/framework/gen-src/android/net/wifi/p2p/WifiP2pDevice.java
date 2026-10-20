@@ -3,7 +3,7 @@ package android.net.wifi.p2p;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiP2pDevice implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int AVAILABLE = 3;
     public static final int CONNECTED = 0;
     public static android.os.Parcelable.Creator CREATOR;
@@ -24,27 +24,27 @@ public class WifiP2pDevice implements android.os.Parcelable {
     public WifiP2pDevice(android.net.wifi.p2p.WifiP2pDevice p0) {}
     public WifiP2pDevice(java.lang.String p0) {}
     public int describeContents() { return 0; }
-    public android.net.MacAddress getInterfaceMacAddress() { return (android.net.MacAddress) meglerProps.get("InterfaceMacAddress"); }
-    public java.net.InetAddress getIpAddress() { return (java.net.InetAddress) meglerProps.get("IpAddress"); }
-    public int getPairingBootStrappingMethods() { return (meglerProps.get("PairingBootStrappingMethods") instanceof Integer ? (Integer) meglerProps.get("PairingBootStrappingMethods") : 0); }
-    public java.util.List getVendorData() { return (meglerProps.get("VendorData") != null ? (java.util.List) meglerProps.get("VendorData") : new java.util.ArrayList()); }
-    public java.util.List getVendorElements() { return (meglerProps.get("VendorElements") != null ? (java.util.List) meglerProps.get("VendorElements") : new java.util.ArrayList()); }
-    public android.net.wifi.p2p.WifiP2pWfdInfo getWfdInfo() { return (android.net.wifi.p2p.WifiP2pWfdInfo) meglerProps.get("WfdInfo"); }
-    public boolean isDeviceLimit() { return (meglerProps.get("DeviceLimit") instanceof Boolean ? (Boolean) meglerProps.get("DeviceLimit") : false); }
-    public boolean isGroupLimit() { return (meglerProps.get("GroupLimit") instanceof Boolean ? (Boolean) meglerProps.get("GroupLimit") : false); }
-    public boolean isGroupOwner() { return (meglerProps.get("GroupOwner") instanceof Boolean ? (Boolean) meglerProps.get("GroupOwner") : false); }
-    public boolean isInvitationCapable() { return (meglerProps.get("InvitationCapable") instanceof Boolean ? (Boolean) meglerProps.get("InvitationCapable") : false); }
-    public boolean isOpportunisticBootstrappingMethodSupported() { return (meglerProps.get("OpportunisticBootstrappingMethodSupported") instanceof Boolean ? (Boolean) meglerProps.get("OpportunisticBootstrappingMethodSupported") : false); }
-    public boolean isPassphraseDisplayBootstrappingMethodSupported() { return (meglerProps.get("PassphraseDisplayBootstrappingMethodSupported") instanceof Boolean ? (Boolean) meglerProps.get("PassphraseDisplayBootstrappingMethodSupported") : false); }
-    public boolean isPassphraseKeypadBootstrappingMethodSupported() { return (meglerProps.get("PassphraseKeypadBootstrappingMethodSupported") instanceof Boolean ? (Boolean) meglerProps.get("PassphraseKeypadBootstrappingMethodSupported") : false); }
-    public boolean isPinCodeDisplayBootstrappingMethodSupported() { return (meglerProps.get("PinCodeDisplayBootstrappingMethodSupported") instanceof Boolean ? (Boolean) meglerProps.get("PinCodeDisplayBootstrappingMethodSupported") : false); }
-    public boolean isPinCodeKeypadBootstrappingMethodSupported() { return (meglerProps.get("PinCodeKeypadBootstrappingMethodSupported") instanceof Boolean ? (Boolean) meglerProps.get("PinCodeKeypadBootstrappingMethodSupported") : false); }
-    public boolean isServiceDiscoveryCapable() { return (meglerProps.get("ServiceDiscoveryCapable") instanceof Boolean ? (Boolean) meglerProps.get("ServiceDiscoveryCapable") : false); }
-    public void setInterfaceMacAddress(android.net.MacAddress p0) { meglerProps.put("InterfaceMacAddress", p0); }
-    public void setIpAddress(java.net.InetAddress p0) { meglerProps.put("IpAddress", p0); }
-    public void setPairingBootStrappingMethods(int p0) { meglerProps.put("PairingBootStrappingMethods", Integer.valueOf(p0)); }
-    public void setVendorData(java.util.List p0) { meglerProps.put("VendorData", p0); }
-    public void setVendorElements(java.util.List p0) { meglerProps.put("VendorElements", p0); }
+    public android.net.MacAddress getInterfaceMacAddress() { return (android.net.MacAddress) megletProps.get("InterfaceMacAddress"); }
+    public java.net.InetAddress getIpAddress() { return (java.net.InetAddress) megletProps.get("IpAddress"); }
+    public int getPairingBootStrappingMethods() { return (megletProps.get("PairingBootStrappingMethods") instanceof Integer ? (Integer) megletProps.get("PairingBootStrappingMethods") : 0); }
+    public java.util.List getVendorData() { return (megletProps.get("VendorData") != null ? (java.util.List) megletProps.get("VendorData") : new java.util.ArrayList()); }
+    public java.util.List getVendorElements() { return (megletProps.get("VendorElements") != null ? (java.util.List) megletProps.get("VendorElements") : new java.util.ArrayList()); }
+    public android.net.wifi.p2p.WifiP2pWfdInfo getWfdInfo() { return (android.net.wifi.p2p.WifiP2pWfdInfo) megletProps.get("WfdInfo"); }
+    public boolean isDeviceLimit() { return (megletProps.get("DeviceLimit") instanceof Boolean ? (Boolean) megletProps.get("DeviceLimit") : false); }
+    public boolean isGroupLimit() { return (megletProps.get("GroupLimit") instanceof Boolean ? (Boolean) megletProps.get("GroupLimit") : false); }
+    public boolean isGroupOwner() { return (megletProps.get("GroupOwner") instanceof Boolean ? (Boolean) megletProps.get("GroupOwner") : false); }
+    public boolean isInvitationCapable() { return (megletProps.get("InvitationCapable") instanceof Boolean ? (Boolean) megletProps.get("InvitationCapable") : false); }
+    public boolean isOpportunisticBootstrappingMethodSupported() { return (megletProps.get("OpportunisticBootstrappingMethodSupported") instanceof Boolean ? (Boolean) megletProps.get("OpportunisticBootstrappingMethodSupported") : false); }
+    public boolean isPassphraseDisplayBootstrappingMethodSupported() { return (megletProps.get("PassphraseDisplayBootstrappingMethodSupported") instanceof Boolean ? (Boolean) megletProps.get("PassphraseDisplayBootstrappingMethodSupported") : false); }
+    public boolean isPassphraseKeypadBootstrappingMethodSupported() { return (megletProps.get("PassphraseKeypadBootstrappingMethodSupported") instanceof Boolean ? (Boolean) megletProps.get("PassphraseKeypadBootstrappingMethodSupported") : false); }
+    public boolean isPinCodeDisplayBootstrappingMethodSupported() { return (megletProps.get("PinCodeDisplayBootstrappingMethodSupported") instanceof Boolean ? (Boolean) megletProps.get("PinCodeDisplayBootstrappingMethodSupported") : false); }
+    public boolean isPinCodeKeypadBootstrappingMethodSupported() { return (megletProps.get("PinCodeKeypadBootstrappingMethodSupported") instanceof Boolean ? (Boolean) megletProps.get("PinCodeKeypadBootstrappingMethodSupported") : false); }
+    public boolean isServiceDiscoveryCapable() { return (megletProps.get("ServiceDiscoveryCapable") instanceof Boolean ? (Boolean) megletProps.get("ServiceDiscoveryCapable") : false); }
+    public void setInterfaceMacAddress(android.net.MacAddress p0) { megletProps.put("InterfaceMacAddress", p0); }
+    public void setIpAddress(java.net.InetAddress p0) { megletProps.put("IpAddress", p0); }
+    public void setPairingBootStrappingMethods(int p0) { megletProps.put("PairingBootStrappingMethods", Integer.valueOf(p0)); }
+    public void setVendorData(java.util.List p0) { megletProps.put("VendorData", p0); }
+    public void setVendorElements(java.util.List p0) { megletProps.put("VendorElements", p0); }
     public void update(android.net.wifi.p2p.WifiP2pDevice p0) {}
     public void updateSupplicantDetails(android.net.wifi.p2p.WifiP2pDevice p0) {}
     public boolean wpsDisplaySupported() { return false; }

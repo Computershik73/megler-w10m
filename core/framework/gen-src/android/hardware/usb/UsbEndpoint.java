@@ -3,17 +3,17 @@ package android.hardware.usb;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class UsbEndpoint implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public UsbEndpoint(int p0, int p1, int p2, int p3) {}
     public int describeContents() { return 0; }
-    public int getAddress() { return (meglerProps.get("Address") instanceof Integer ? (Integer) meglerProps.get("Address") : 0); }
-    public int getAttributes() { return (meglerProps.get("Attributes") instanceof Integer ? (Integer) meglerProps.get("Attributes") : 0); }
-    public int getDirection() { return (meglerProps.get("Direction") instanceof Integer ? (Integer) meglerProps.get("Direction") : 0); }
-    public int getEndpointNumber() { return (meglerProps.get("EndpointNumber") instanceof Integer ? (Integer) meglerProps.get("EndpointNumber") : 0); }
-    public int getInterval() { return (meglerProps.get("Interval") instanceof Integer ? (Integer) meglerProps.get("Interval") : 0); }
-    public int getMaxPacketSize() { return (meglerProps.get("MaxPacketSize") instanceof Integer ? (Integer) meglerProps.get("MaxPacketSize") : 0); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public int getAddress() { return (megletProps.get("Address") instanceof Integer ? (Integer) megletProps.get("Address") : 0); }
+    public int getAttributes() { return (megletProps.get("Attributes") instanceof Integer ? (Integer) megletProps.get("Attributes") : 0); }
+    public int getDirection() { return (megletProps.get("Direction") instanceof Integer ? (Integer) megletProps.get("Direction") : 0); }
+    public int getEndpointNumber() { return (megletProps.get("EndpointNumber") instanceof Integer ? (Integer) megletProps.get("EndpointNumber") : 0); }
+    public int getInterval() { return (megletProps.get("Interval") instanceof Integer ? (Integer) megletProps.get("Interval") : 0); }
+    public int getMaxPacketSize() { return (megletProps.get("MaxPacketSize") instanceof Integer ? (Integer) megletProps.get("MaxPacketSize") : 0); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     UsbEndpoint() { this((int) 0, (int) 0, (int) 0, (int) 0); }
 }

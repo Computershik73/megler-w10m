@@ -3,13 +3,13 @@ package android.view.contentcapture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DataShareRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public DataShareRequest(android.content.LocusId p0, java.lang.String p1) {}
     public int describeContents() { return 0; }
-    public android.content.LocusId getLocusId() { return (android.content.LocusId) meglerProps.get("LocusId"); }
-    public java.lang.String getMimeType() { return (java.lang.String) meglerProps.get("MimeType"); }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
+    public android.content.LocusId getLocusId() { return (android.content.LocusId) megletProps.get("LocusId"); }
+    public java.lang.String getMimeType() { return (java.lang.String) megletProps.get("MimeType"); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     DataShareRequest() { this((android.content.LocusId) null, (java.lang.String) null); }
 }

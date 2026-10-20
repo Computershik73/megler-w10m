@@ -3,7 +3,7 @@ package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiInfo implements android.net.TransportInfo, android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String DEFAULT_MAC_ADDRESS = "02:00:00:00:00:00";
     public static final int DPM_SECURITY_TYPE_UNKNOWN = -1;
@@ -45,119 +45,119 @@ public class WifiInfo implements android.net.TransportInfo, android.os.Parcelabl
     public int describeContents() { return 0; }
     public void enableApTidToLinkMappingNegotiationSupport(boolean p0) {}
     public android.net.wifi.MloLink getAffiliatedMloLink(int p0) { return null; }
-    public java.util.List getAffiliatedMloLinks() { return (meglerProps.get("AffiliatedMloLinks") != null ? (java.util.List) meglerProps.get("AffiliatedMloLinks") : new java.util.ArrayList()); }
-    public android.net.MacAddress getApMldMacAddress() { return (android.net.MacAddress) meglerProps.get("ApMldMacAddress"); }
-    public int getApMloLinkId() { return (meglerProps.get("ApMloLinkId") instanceof Integer ? (Integer) meglerProps.get("ApMloLinkId") : 0); }
-    public long getApplicableRedactions() { return (meglerProps.get("ApplicableRedactions") instanceof Long ? (Long) meglerProps.get("ApplicableRedactions") : 0L); }
-    public java.util.List getAssociatedMloLinks() { return (meglerProps.get("AssociatedMloLinks") != null ? (java.util.List) meglerProps.get("AssociatedMloLinks") : new java.util.ArrayList()); }
-    public java.lang.String getBSSID() { return (java.lang.String) meglerProps.get("BSSID"); }
-    public int getCurrentSecurityType() { return (meglerProps.get("CurrentSecurityType") instanceof Integer ? (Integer) meglerProps.get("CurrentSecurityType") : 0); }
-    public int getFrequency() { return (meglerProps.get("Frequency") instanceof Integer ? (Integer) meglerProps.get("Frequency") : 0); }
-    public boolean getHiddenSSID() { return (meglerProps.get("HiddenSSID") instanceof Boolean ? (Boolean) meglerProps.get("HiddenSSID") : false); }
-    public java.util.List getInformationElements() { return (meglerProps.get("InformationElements") != null ? (java.util.List) meglerProps.get("InformationElements") : new java.util.ArrayList()); }
-    public int getIpAddress() { return (meglerProps.get("IpAddress") instanceof Integer ? (Integer) meglerProps.get("IpAddress") : 0); }
-    public long getLastRssiUpdateMillis() { return (meglerProps.get("LastRssiUpdateMillis") instanceof Long ? (Long) meglerProps.get("LastRssiUpdateMillis") : 0L); }
-    public int getLinkSpeed() { return (meglerProps.get("LinkSpeed") instanceof Integer ? (Integer) meglerProps.get("LinkSpeed") : 0); }
-    public double getLostTxPacketsPerSecond() { return (meglerProps.get("LostTxPacketsPerSecond") instanceof Double ? (Double) meglerProps.get("LostTxPacketsPerSecond") : 0d); }
-    public java.lang.String getMacAddress() { return (java.lang.String) meglerProps.get("MacAddress"); }
-    public int getMaxSupportedRxLinkSpeedMbps() { return (meglerProps.get("MaxSupportedRxLinkSpeedMbps") instanceof Integer ? (Integer) meglerProps.get("MaxSupportedRxLinkSpeedMbps") : 0); }
-    public int getMaxSupportedTxLinkSpeedMbps() { return (meglerProps.get("MaxSupportedTxLinkSpeedMbps") instanceof Integer ? (Integer) meglerProps.get("MaxSupportedTxLinkSpeedMbps") : 0); }
-    public boolean getMeteredHint() { return (meglerProps.get("MeteredHint") instanceof Boolean ? (Boolean) meglerProps.get("MeteredHint") : false); }
-    public int getNetworkId() { return (meglerProps.get("NetworkId") instanceof Integer ? (Integer) meglerProps.get("NetworkId") : 0); }
-    public java.lang.String getNetworkKey() { return (java.lang.String) meglerProps.get("NetworkKey"); }
-    public java.lang.String getPasspointFqdn() { return (java.lang.String) meglerProps.get("PasspointFqdn"); }
-    public java.lang.String getPasspointProviderFriendlyName() { return (java.lang.String) meglerProps.get("PasspointProviderFriendlyName"); }
-    public java.lang.String getPasspointUniqueId() { return (java.lang.String) meglerProps.get("PasspointUniqueId"); }
-    public java.lang.String getRequestingPackageName() { return (java.lang.String) meglerProps.get("RequestingPackageName"); }
-    public double getRetriedTxPacketsPerSecond() { return (meglerProps.get("RetriedTxPacketsPerSecond") instanceof Double ? (Double) meglerProps.get("RetriedTxPacketsPerSecond") : 0d); }
-    public int getRssi() { return (meglerProps.get("Rssi") instanceof Integer ? (Integer) meglerProps.get("Rssi") : 0); }
-    public int getRxLinkSpeedMbps() { return (meglerProps.get("RxLinkSpeedMbps") instanceof Integer ? (Integer) meglerProps.get("RxLinkSpeedMbps") : 0); }
-    public java.lang.String getSSID() { return (java.lang.String) meglerProps.get("SSID"); }
-    public int getScore() { return (meglerProps.get("Score") instanceof Integer ? (Integer) meglerProps.get("Score") : 0); }
-    public int getSubscriptionId() { return (meglerProps.get("SubscriptionId") instanceof Integer ? (Integer) meglerProps.get("SubscriptionId") : 0); }
-    public double getSuccessfulRxPacketsPerSecond() { return (meglerProps.get("SuccessfulRxPacketsPerSecond") instanceof Double ? (Double) meglerProps.get("SuccessfulRxPacketsPerSecond") : 0d); }
-    public double getSuccessfulTxPacketsPerSecond() { return (meglerProps.get("SuccessfulTxPacketsPerSecond") instanceof Double ? (Double) meglerProps.get("SuccessfulTxPacketsPerSecond") : 0d); }
-    public android.net.wifi.SupplicantState getSupplicantState() { return (android.net.wifi.SupplicantState) meglerProps.get("SupplicantState"); }
-    public int getTxLinkSpeedMbps() { return (meglerProps.get("TxLinkSpeedMbps") instanceof Integer ? (Integer) meglerProps.get("TxLinkSpeedMbps") : 0); }
-    public java.util.List getVendorData() { return (meglerProps.get("VendorData") != null ? (java.util.List) meglerProps.get("VendorData") : new java.util.ArrayList()); }
-    public android.net.wifi.WifiSsid getWifiSsid() { return (android.net.wifi.WifiSsid) meglerProps.get("WifiSsid"); }
-    public int getWifiStandard() { return (meglerProps.get("WifiStandard") instanceof Integer ? (Integer) meglerProps.get("WifiStandard") : 0); }
+    public java.util.List getAffiliatedMloLinks() { return (megletProps.get("AffiliatedMloLinks") != null ? (java.util.List) megletProps.get("AffiliatedMloLinks") : new java.util.ArrayList()); }
+    public android.net.MacAddress getApMldMacAddress() { return (android.net.MacAddress) megletProps.get("ApMldMacAddress"); }
+    public int getApMloLinkId() { return (megletProps.get("ApMloLinkId") instanceof Integer ? (Integer) megletProps.get("ApMloLinkId") : 0); }
+    public long getApplicableRedactions() { return (megletProps.get("ApplicableRedactions") instanceof Long ? (Long) megletProps.get("ApplicableRedactions") : 0L); }
+    public java.util.List getAssociatedMloLinks() { return (megletProps.get("AssociatedMloLinks") != null ? (java.util.List) megletProps.get("AssociatedMloLinks") : new java.util.ArrayList()); }
+    public java.lang.String getBSSID() { return (java.lang.String) megletProps.get("BSSID"); }
+    public int getCurrentSecurityType() { return (megletProps.get("CurrentSecurityType") instanceof Integer ? (Integer) megletProps.get("CurrentSecurityType") : 0); }
+    public int getFrequency() { return (megletProps.get("Frequency") instanceof Integer ? (Integer) megletProps.get("Frequency") : 0); }
+    public boolean getHiddenSSID() { return (megletProps.get("HiddenSSID") instanceof Boolean ? (Boolean) megletProps.get("HiddenSSID") : false); }
+    public java.util.List getInformationElements() { return (megletProps.get("InformationElements") != null ? (java.util.List) megletProps.get("InformationElements") : new java.util.ArrayList()); }
+    public int getIpAddress() { return (megletProps.get("IpAddress") instanceof Integer ? (Integer) megletProps.get("IpAddress") : 0); }
+    public long getLastRssiUpdateMillis() { return (megletProps.get("LastRssiUpdateMillis") instanceof Long ? (Long) megletProps.get("LastRssiUpdateMillis") : 0L); }
+    public int getLinkSpeed() { return (megletProps.get("LinkSpeed") instanceof Integer ? (Integer) megletProps.get("LinkSpeed") : 0); }
+    public double getLostTxPacketsPerSecond() { return (megletProps.get("LostTxPacketsPerSecond") instanceof Double ? (Double) megletProps.get("LostTxPacketsPerSecond") : 0d); }
+    public java.lang.String getMacAddress() { return (java.lang.String) megletProps.get("MacAddress"); }
+    public int getMaxSupportedRxLinkSpeedMbps() { return (megletProps.get("MaxSupportedRxLinkSpeedMbps") instanceof Integer ? (Integer) megletProps.get("MaxSupportedRxLinkSpeedMbps") : 0); }
+    public int getMaxSupportedTxLinkSpeedMbps() { return (megletProps.get("MaxSupportedTxLinkSpeedMbps") instanceof Integer ? (Integer) megletProps.get("MaxSupportedTxLinkSpeedMbps") : 0); }
+    public boolean getMeteredHint() { return (megletProps.get("MeteredHint") instanceof Boolean ? (Boolean) megletProps.get("MeteredHint") : false); }
+    public int getNetworkId() { return (megletProps.get("NetworkId") instanceof Integer ? (Integer) megletProps.get("NetworkId") : 0); }
+    public java.lang.String getNetworkKey() { return (java.lang.String) megletProps.get("NetworkKey"); }
+    public java.lang.String getPasspointFqdn() { return (java.lang.String) megletProps.get("PasspointFqdn"); }
+    public java.lang.String getPasspointProviderFriendlyName() { return (java.lang.String) megletProps.get("PasspointProviderFriendlyName"); }
+    public java.lang.String getPasspointUniqueId() { return (java.lang.String) megletProps.get("PasspointUniqueId"); }
+    public java.lang.String getRequestingPackageName() { return (java.lang.String) megletProps.get("RequestingPackageName"); }
+    public double getRetriedTxPacketsPerSecond() { return (megletProps.get("RetriedTxPacketsPerSecond") instanceof Double ? (Double) megletProps.get("RetriedTxPacketsPerSecond") : 0d); }
+    public int getRssi() { return (megletProps.get("Rssi") instanceof Integer ? (Integer) megletProps.get("Rssi") : 0); }
+    public int getRxLinkSpeedMbps() { return (megletProps.get("RxLinkSpeedMbps") instanceof Integer ? (Integer) megletProps.get("RxLinkSpeedMbps") : 0); }
+    public java.lang.String getSSID() { return (java.lang.String) megletProps.get("SSID"); }
+    public int getScore() { return (megletProps.get("Score") instanceof Integer ? (Integer) megletProps.get("Score") : 0); }
+    public int getSubscriptionId() { return (megletProps.get("SubscriptionId") instanceof Integer ? (Integer) megletProps.get("SubscriptionId") : 0); }
+    public double getSuccessfulRxPacketsPerSecond() { return (megletProps.get("SuccessfulRxPacketsPerSecond") instanceof Double ? (Double) megletProps.get("SuccessfulRxPacketsPerSecond") : 0d); }
+    public double getSuccessfulTxPacketsPerSecond() { return (megletProps.get("SuccessfulTxPacketsPerSecond") instanceof Double ? (Double) megletProps.get("SuccessfulTxPacketsPerSecond") : 0d); }
+    public android.net.wifi.SupplicantState getSupplicantState() { return (android.net.wifi.SupplicantState) megletProps.get("SupplicantState"); }
+    public int getTxLinkSpeedMbps() { return (megletProps.get("TxLinkSpeedMbps") instanceof Integer ? (Integer) megletProps.get("TxLinkSpeedMbps") : 0); }
+    public java.util.List getVendorData() { return (megletProps.get("VendorData") != null ? (java.util.List) megletProps.get("VendorData") : new java.util.ArrayList()); }
+    public android.net.wifi.WifiSsid getWifiSsid() { return (android.net.wifi.WifiSsid) megletProps.get("WifiSsid"); }
+    public int getWifiStandard() { return (megletProps.get("WifiStandard") instanceof Integer ? (Integer) megletProps.get("WifiStandard") : 0); }
     public boolean hasRealMacAddress() { return false; }
-    public boolean is24GHz() { return (meglerProps.get("24GHz") instanceof Boolean ? (Boolean) meglerProps.get("24GHz") : false); }
-    public boolean is5GHz() { return (meglerProps.get("5GHz") instanceof Boolean ? (Boolean) meglerProps.get("5GHz") : false); }
-    public boolean is6GHz() { return (meglerProps.get("6GHz") instanceof Boolean ? (Boolean) meglerProps.get("6GHz") : false); }
-    public boolean isApTidToLinkMappingNegotiationSupported() { return (meglerProps.get("ApTidToLinkMappingNegotiationSupported") instanceof Boolean ? (Boolean) meglerProps.get("ApTidToLinkMappingNegotiationSupported") : false); }
-    public boolean isCarrierMerged() { return (meglerProps.get("CarrierMerged") instanceof Boolean ? (Boolean) meglerProps.get("CarrierMerged") : false); }
-    public boolean isEphemeral() { return (meglerProps.get("Ephemeral") instanceof Boolean ? (Boolean) meglerProps.get("Ephemeral") : false); }
-    public boolean isOemPaid() { return (meglerProps.get("OemPaid") instanceof Boolean ? (Boolean) meglerProps.get("OemPaid") : false); }
-    public boolean isOemPrivate() { return (meglerProps.get("OemPrivate") instanceof Boolean ? (Boolean) meglerProps.get("OemPrivate") : false); }
-    public boolean isOsuAp() { return (meglerProps.get("OsuAp") instanceof Boolean ? (Boolean) meglerProps.get("OsuAp") : false); }
-    public boolean isPasspointAp() { return (meglerProps.get("PasspointAp") instanceof Boolean ? (Boolean) meglerProps.get("PasspointAp") : false); }
-    public boolean isPrimary() { return (meglerProps.get("Primary") instanceof Boolean ? (Boolean) meglerProps.get("Primary") : false); }
-    public boolean isRestricted() { return (meglerProps.get("Restricted") instanceof Boolean ? (Boolean) meglerProps.get("Restricted") : false); }
-    public boolean isTrusted() { return (meglerProps.get("Trusted") instanceof Boolean ? (Boolean) meglerProps.get("Trusted") : false); }
-    public boolean isUsable() { return (meglerProps.get("Usable") instanceof Boolean ? (Boolean) meglerProps.get("Usable") : false); }
+    public boolean is24GHz() { return (megletProps.get("24GHz") instanceof Boolean ? (Boolean) megletProps.get("24GHz") : false); }
+    public boolean is5GHz() { return (megletProps.get("5GHz") instanceof Boolean ? (Boolean) megletProps.get("5GHz") : false); }
+    public boolean is6GHz() { return (megletProps.get("6GHz") instanceof Boolean ? (Boolean) megletProps.get("6GHz") : false); }
+    public boolean isApTidToLinkMappingNegotiationSupported() { return (megletProps.get("ApTidToLinkMappingNegotiationSupported") instanceof Boolean ? (Boolean) megletProps.get("ApTidToLinkMappingNegotiationSupported") : false); }
+    public boolean isCarrierMerged() { return (megletProps.get("CarrierMerged") instanceof Boolean ? (Boolean) megletProps.get("CarrierMerged") : false); }
+    public boolean isEphemeral() { return (megletProps.get("Ephemeral") instanceof Boolean ? (Boolean) megletProps.get("Ephemeral") : false); }
+    public boolean isOemPaid() { return (megletProps.get("OemPaid") instanceof Boolean ? (Boolean) megletProps.get("OemPaid") : false); }
+    public boolean isOemPrivate() { return (megletProps.get("OemPrivate") instanceof Boolean ? (Boolean) megletProps.get("OemPrivate") : false); }
+    public boolean isOsuAp() { return (megletProps.get("OsuAp") instanceof Boolean ? (Boolean) megletProps.get("OsuAp") : false); }
+    public boolean isPasspointAp() { return (megletProps.get("PasspointAp") instanceof Boolean ? (Boolean) megletProps.get("PasspointAp") : false); }
+    public boolean isPrimary() { return (megletProps.get("Primary") instanceof Boolean ? (Boolean) megletProps.get("Primary") : false); }
+    public boolean isRestricted() { return (megletProps.get("Restricted") instanceof Boolean ? (Boolean) megletProps.get("Restricted") : false); }
+    public boolean isTrusted() { return (megletProps.get("Trusted") instanceof Boolean ? (Boolean) megletProps.get("Trusted") : false); }
+    public boolean isUsable() { return (megletProps.get("Usable") instanceof Boolean ? (Boolean) megletProps.get("Usable") : false); }
     public android.net.wifi.WifiInfo makeCopy(long p0) { return this; }
     public void reset() {}
     public void resetMultiLinkInfo() {}
-    public void setAffiliatedMloLinks(java.util.List p0) { meglerProps.put("AffiliatedMloLinks", p0); }
-    public void setApMldMacAddress(android.net.MacAddress p0) { meglerProps.put("ApMldMacAddress", p0); }
-    public void setApMloLinkId(int p0) { meglerProps.put("ApMloLinkId", Integer.valueOf(p0)); }
-    public void setBSSID(java.lang.String p0) { meglerProps.put("BSSID", p0); }
-    public void setCarrierMerged(boolean p0) { meglerProps.put("CarrierMerged", Boolean.valueOf(p0)); }
-    public void setCurrentSecurityType(int p0) { meglerProps.put("CurrentSecurityType", Integer.valueOf(p0)); }
-    public void setEphemeral(boolean p0) { meglerProps.put("Ephemeral", Boolean.valueOf(p0)); }
-    public void setFQDN(java.lang.String p0) { meglerProps.put("FQDN", p0); }
-    public void setFrequency(int p0) { meglerProps.put("Frequency", Integer.valueOf(p0)); }
-    public void setHiddenSSID(boolean p0) { meglerProps.put("HiddenSSID", Boolean.valueOf(p0)); }
-    public void setInetAddress(java.net.InetAddress p0) { meglerProps.put("InetAddress", p0); }
-    public void setInformationElements(java.util.List p0) { meglerProps.put("InformationElements", p0); }
-    public void setIsPrimary(boolean p0) { meglerProps.put("IsPrimary", Boolean.valueOf(p0)); }
-    public void setLinkSpeed(int p0) { meglerProps.put("LinkSpeed", Integer.valueOf(p0)); }
-    public void setLostTxPacketsPerSecond(double p0) { meglerProps.put("LostTxPacketsPerSecond", Double.valueOf(p0)); }
-    public void setMacAddress(java.lang.String p0) { meglerProps.put("MacAddress", p0); }
-    public void setMaxSupportedRxLinkSpeedMbps(int p0) { meglerProps.put("MaxSupportedRxLinkSpeedMbps", Integer.valueOf(p0)); }
-    public void setMaxSupportedTxLinkSpeedMbps(int p0) { meglerProps.put("MaxSupportedTxLinkSpeedMbps", Integer.valueOf(p0)); }
-    public void setMeteredHint(boolean p0) { meglerProps.put("MeteredHint", Boolean.valueOf(p0)); }
-    public void setNetworkId(int p0) { meglerProps.put("NetworkId", Integer.valueOf(p0)); }
-    public void setNetworkKey(java.lang.String p0) { meglerProps.put("NetworkKey", p0); }
-    public void setOemPaid(boolean p0) { meglerProps.put("OemPaid", Boolean.valueOf(p0)); }
-    public void setOemPrivate(boolean p0) { meglerProps.put("OemPrivate", Boolean.valueOf(p0)); }
-    public void setOsuAp(boolean p0) { meglerProps.put("OsuAp", Boolean.valueOf(p0)); }
-    public void setPasspointUniqueId(java.lang.String p0) { meglerProps.put("PasspointUniqueId", p0); }
-    public void setProviderFriendlyName(java.lang.String p0) { meglerProps.put("ProviderFriendlyName", p0); }
-    public void setRequestingPackageName(java.lang.String p0) { meglerProps.put("RequestingPackageName", p0); }
-    public void setRestricted(boolean p0) { meglerProps.put("Restricted", Boolean.valueOf(p0)); }
-    public void setRetriedTxPacketsRate(double p0) { meglerProps.put("RetriedTxPacketsRate", Double.valueOf(p0)); }
-    public void setRssi(int p0) { meglerProps.put("Rssi", Integer.valueOf(p0)); }
-    public void setRxLinkSpeedMbps(int p0) { meglerProps.put("RxLinkSpeedMbps", Integer.valueOf(p0)); }
-    public void setSSID(android.net.wifi.WifiSsid p0) { meglerProps.put("SSID", p0); }
-    public void setScore(int p0) { meglerProps.put("Score", Integer.valueOf(p0)); }
-    public void setSubscriptionId(int p0) { meglerProps.put("SubscriptionId", Integer.valueOf(p0)); }
-    public void setSuccessfulRxPacketsPerSecond(double p0) { meglerProps.put("SuccessfulRxPacketsPerSecond", Double.valueOf(p0)); }
-    public void setSuccessfulTxPacketsPerSecond(double p0) { meglerProps.put("SuccessfulTxPacketsPerSecond", Double.valueOf(p0)); }
-    public void setSupplicantState(android.net.wifi.SupplicantState p0) { meglerProps.put("SupplicantState", p0); }
-    public void setTrusted(boolean p0) { meglerProps.put("Trusted", Boolean.valueOf(p0)); }
-    public void setTxLinkSpeedMbps(int p0) { meglerProps.put("TxLinkSpeedMbps", Integer.valueOf(p0)); }
-    public void setUsable(boolean p0) { meglerProps.put("Usable", Boolean.valueOf(p0)); }
-    public void setVendorData(java.util.List p0) { meglerProps.put("VendorData", p0); }
-    public void setWifiStandard(int p0) { meglerProps.put("WifiStandard", Integer.valueOf(p0)); }
+    public void setAffiliatedMloLinks(java.util.List p0) { megletProps.put("AffiliatedMloLinks", p0); }
+    public void setApMldMacAddress(android.net.MacAddress p0) { megletProps.put("ApMldMacAddress", p0); }
+    public void setApMloLinkId(int p0) { megletProps.put("ApMloLinkId", Integer.valueOf(p0)); }
+    public void setBSSID(java.lang.String p0) { megletProps.put("BSSID", p0); }
+    public void setCarrierMerged(boolean p0) { megletProps.put("CarrierMerged", Boolean.valueOf(p0)); }
+    public void setCurrentSecurityType(int p0) { megletProps.put("CurrentSecurityType", Integer.valueOf(p0)); }
+    public void setEphemeral(boolean p0) { megletProps.put("Ephemeral", Boolean.valueOf(p0)); }
+    public void setFQDN(java.lang.String p0) { megletProps.put("FQDN", p0); }
+    public void setFrequency(int p0) { megletProps.put("Frequency", Integer.valueOf(p0)); }
+    public void setHiddenSSID(boolean p0) { megletProps.put("HiddenSSID", Boolean.valueOf(p0)); }
+    public void setInetAddress(java.net.InetAddress p0) { megletProps.put("InetAddress", p0); }
+    public void setInformationElements(java.util.List p0) { megletProps.put("InformationElements", p0); }
+    public void setIsPrimary(boolean p0) { megletProps.put("IsPrimary", Boolean.valueOf(p0)); }
+    public void setLinkSpeed(int p0) { megletProps.put("LinkSpeed", Integer.valueOf(p0)); }
+    public void setLostTxPacketsPerSecond(double p0) { megletProps.put("LostTxPacketsPerSecond", Double.valueOf(p0)); }
+    public void setMacAddress(java.lang.String p0) { megletProps.put("MacAddress", p0); }
+    public void setMaxSupportedRxLinkSpeedMbps(int p0) { megletProps.put("MaxSupportedRxLinkSpeedMbps", Integer.valueOf(p0)); }
+    public void setMaxSupportedTxLinkSpeedMbps(int p0) { megletProps.put("MaxSupportedTxLinkSpeedMbps", Integer.valueOf(p0)); }
+    public void setMeteredHint(boolean p0) { megletProps.put("MeteredHint", Boolean.valueOf(p0)); }
+    public void setNetworkId(int p0) { megletProps.put("NetworkId", Integer.valueOf(p0)); }
+    public void setNetworkKey(java.lang.String p0) { megletProps.put("NetworkKey", p0); }
+    public void setOemPaid(boolean p0) { megletProps.put("OemPaid", Boolean.valueOf(p0)); }
+    public void setOemPrivate(boolean p0) { megletProps.put("OemPrivate", Boolean.valueOf(p0)); }
+    public void setOsuAp(boolean p0) { megletProps.put("OsuAp", Boolean.valueOf(p0)); }
+    public void setPasspointUniqueId(java.lang.String p0) { megletProps.put("PasspointUniqueId", p0); }
+    public void setProviderFriendlyName(java.lang.String p0) { megletProps.put("ProviderFriendlyName", p0); }
+    public void setRequestingPackageName(java.lang.String p0) { megletProps.put("RequestingPackageName", p0); }
+    public void setRestricted(boolean p0) { megletProps.put("Restricted", Boolean.valueOf(p0)); }
+    public void setRetriedTxPacketsRate(double p0) { megletProps.put("RetriedTxPacketsRate", Double.valueOf(p0)); }
+    public void setRssi(int p0) { megletProps.put("Rssi", Integer.valueOf(p0)); }
+    public void setRxLinkSpeedMbps(int p0) { megletProps.put("RxLinkSpeedMbps", Integer.valueOf(p0)); }
+    public void setSSID(android.net.wifi.WifiSsid p0) { megletProps.put("SSID", p0); }
+    public void setScore(int p0) { megletProps.put("Score", Integer.valueOf(p0)); }
+    public void setSubscriptionId(int p0) { megletProps.put("SubscriptionId", Integer.valueOf(p0)); }
+    public void setSuccessfulRxPacketsPerSecond(double p0) { megletProps.put("SuccessfulRxPacketsPerSecond", Double.valueOf(p0)); }
+    public void setSuccessfulTxPacketsPerSecond(double p0) { megletProps.put("SuccessfulTxPacketsPerSecond", Double.valueOf(p0)); }
+    public void setSupplicantState(android.net.wifi.SupplicantState p0) { megletProps.put("SupplicantState", p0); }
+    public void setTrusted(boolean p0) { megletProps.put("Trusted", Boolean.valueOf(p0)); }
+    public void setTxLinkSpeedMbps(int p0) { megletProps.put("TxLinkSpeedMbps", Integer.valueOf(p0)); }
+    public void setUsable(boolean p0) { megletProps.put("Usable", Boolean.valueOf(p0)); }
+    public void setVendorData(java.util.List p0) { megletProps.put("VendorData", p0); }
+    public void setWifiStandard(int p0) { megletProps.put("WifiStandard", Integer.valueOf(p0)); }
     public boolean updateMloLinkStaAddress(int p0, android.net.MacAddress p1) { return false; }
     public boolean updateMloLinkState(int p0, int p1) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.wifi.WifiInfo build() { android.net.wifi.WifiInfo x = new android.net.wifi.WifiInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.wifi.WifiInfo build() { android.net.wifi.WifiInfo x = new android.net.wifi.WifiInfo(); x.megletProps.putAll(megletProps); return x; }
         public android.net.wifi.WifiInfo.Builder enableApTidToLinkMappingNegotiationSupport(boolean p0) { return this; }
-        public android.net.wifi.WifiInfo.Builder setAffiliatedMloLinks(java.util.List p0) { meglerProps.put("AffiliatedMloLinks", p0); return this; }
-        public android.net.wifi.WifiInfo.Builder setApMldMacAddress(android.net.MacAddress p0) { meglerProps.put("ApMldMacAddress", p0); return this; }
-        public android.net.wifi.WifiInfo.Builder setApMloLinkId(int p0) { meglerProps.put("ApMloLinkId", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.WifiInfo.Builder setBssid(java.lang.String p0) { meglerProps.put("Bssid", p0); return this; }
-        public android.net.wifi.WifiInfo.Builder setCurrentSecurityType(int p0) { meglerProps.put("CurrentSecurityType", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.WifiInfo.Builder setNetworkId(int p0) { meglerProps.put("NetworkId", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.WifiInfo.Builder setRssi(int p0) { meglerProps.put("Rssi", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.WifiInfo.Builder setSsid(byte[] p0) { meglerProps.put("Ssid", p0); return this; }
-        public android.net.wifi.WifiInfo.Builder setSubscriptionId(int p0) { meglerProps.put("SubscriptionId", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.WifiInfo.Builder setAffiliatedMloLinks(java.util.List p0) { megletProps.put("AffiliatedMloLinks", p0); return this; }
+        public android.net.wifi.WifiInfo.Builder setApMldMacAddress(android.net.MacAddress p0) { megletProps.put("ApMldMacAddress", p0); return this; }
+        public android.net.wifi.WifiInfo.Builder setApMloLinkId(int p0) { megletProps.put("ApMloLinkId", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.WifiInfo.Builder setBssid(java.lang.String p0) { megletProps.put("Bssid", p0); return this; }
+        public android.net.wifi.WifiInfo.Builder setCurrentSecurityType(int p0) { megletProps.put("CurrentSecurityType", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.WifiInfo.Builder setNetworkId(int p0) { megletProps.put("NetworkId", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.WifiInfo.Builder setRssi(int p0) { megletProps.put("Rssi", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.WifiInfo.Builder setSsid(byte[] p0) { megletProps.put("Ssid", p0); return this; }
+        public android.net.wifi.WifiInfo.Builder setSubscriptionId(int p0) { megletProps.put("SubscriptionId", Integer.valueOf(p0)); return this; }
     }
 }

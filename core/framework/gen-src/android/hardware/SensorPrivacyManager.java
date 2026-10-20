@@ -3,7 +3,7 @@ package android.hardware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SensorPrivacyManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static java.lang.String EXTRA_ALL_SENSORS;
     public static java.lang.String EXTRA_NOTIFICATION_ID;
     public static java.lang.String EXTRA_SENSOR;
@@ -19,9 +19,9 @@ public final class SensorPrivacyManager {
     public void addSensorPrivacyListener(android.hardware.SensorPrivacyManager.OnSensorPrivacyChangedListener p0) {}
     public void addSensorPrivacyListener(java.util.concurrent.Executor p0, android.hardware.SensorPrivacyManager.OnSensorPrivacyChangedListener p1) {}
     public boolean areAnySensorPrivacyTogglesEnabled(int p0) { return false; }
-    public java.util.List getCameraPrivacyAllowlist() { return (meglerProps.get("CameraPrivacyAllowlist") != null ? (java.util.List) meglerProps.get("CameraPrivacyAllowlist") : new java.util.ArrayList()); }
+    public java.util.List getCameraPrivacyAllowlist() { return (megletProps.get("CameraPrivacyAllowlist") != null ? (java.util.List) megletProps.get("CameraPrivacyAllowlist") : new java.util.ArrayList()); }
     public int getSensorPrivacyState(int p0, int p1) { return 0; }
-    public boolean isAllSensorPrivacyEnabled() { return (meglerProps.get("AllSensorPrivacyEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AllSensorPrivacyEnabled") : false); }
+    public boolean isAllSensorPrivacyEnabled() { return (megletProps.get("AllSensorPrivacyEnabled") instanceof Boolean ? (Boolean) megletProps.get("AllSensorPrivacyEnabled") : false); }
     public boolean isCameraPrivacyEnabled(java.lang.String p0) { return false; }
     public boolean isSensorPrivacyEnabled(int p0) { return false; }
     public boolean isSensorPrivacyEnabled(int p0, int p1) { return false; }
@@ -29,8 +29,8 @@ public final class SensorPrivacyManager {
     public void removeSensorPrivacyListener(int p0, android.hardware.SensorPrivacyManager.OnSensorPrivacyChangedListener p1) {}
     public void removeSensorPrivacyListener(android.hardware.SensorPrivacyManager.OnSensorPrivacyChangedListener p0) {}
     public boolean requiresAuthentication() { return false; }
-    public void setAllSensorPrivacy(boolean p0) { meglerProps.put("AllSensorPrivacy", Boolean.valueOf(p0)); }
-    public void setCameraPrivacyAllowlist(java.util.List p0) { meglerProps.put("CameraPrivacyAllowlist", p0); }
+    public void setAllSensorPrivacy(boolean p0) { megletProps.put("AllSensorPrivacy", Boolean.valueOf(p0)); }
+    public void setCameraPrivacyAllowlist(java.util.List p0) { megletProps.put("CameraPrivacyAllowlist", p0); }
     public void setSensorPrivacy(int p0, int p1, boolean p2) {}
     public void setSensorPrivacy(int p0, int p1, boolean p2, int p3) {}
     public void setSensorPrivacy(int p0, boolean p1) {}
@@ -52,22 +52,22 @@ public final class SensorPrivacyManager {
         void onSensorPrivacyChanged(int p0, boolean p1);
         default void onSensorPrivacyChanged(android.hardware.SensorPrivacyManager.OnSensorPrivacyChangedListener.SensorPrivacyChangedParams p0) {}
         public static class SensorPrivacyChangedParams {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-            public int getSensor() { return (meglerProps.get("Sensor") instanceof Integer ? (Integer) meglerProps.get("Sensor") : 0); }
-            public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
-            public int getToggleType() { return (meglerProps.get("ToggleType") instanceof Integer ? (Integer) meglerProps.get("ToggleType") : 0); }
-            public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+            public int getSensor() { return (megletProps.get("Sensor") instanceof Integer ? (Integer) megletProps.get("Sensor") : 0); }
+            public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
+            public int getToggleType() { return (megletProps.get("ToggleType") instanceof Integer ? (Integer) megletProps.get("ToggleType") : 0); }
+            public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
             protected SensorPrivacyChangedParams() {}
         }
     }
     public static class Sensors {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int CAMERA = 2;
         public static final int MICROPHONE = 1;
         protected Sensors() {}
     }
     public static class Sources {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int DIALOG = 3;
         public static final int OTHER = 5;
         public static final int QS_TILE = 1;
@@ -77,7 +77,7 @@ public final class SensorPrivacyManager {
         protected Sources() {}
     }
     public static class StateTypes {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int DISABLED = 2;
         public static final int ENABLED = 1;
         public static final int ENABLED_EXCEPT_ALLOWLISTED_APPS = 3;

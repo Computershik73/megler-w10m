@@ -3,10 +3,10 @@ package android.media.metrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PlaybackSession implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public PlaybackSession(java.lang.String p0, android.media.metrics.MediaMetricsManager p1) {}
     public void close() {}
-    public android.media.metrics.LogSessionId getSessionId() { return (android.media.metrics.LogSessionId) meglerProps.get("SessionId"); }
+    public android.media.metrics.LogSessionId getSessionId() { return (android.media.metrics.LogSessionId) megletProps.get("SessionId"); }
     public void reportNetworkEvent(android.media.metrics.NetworkEvent p0) {}
     public void reportPlaybackErrorEvent(android.media.metrics.PlaybackErrorEvent p0) {}
     public void reportPlaybackMetrics(android.media.metrics.PlaybackMetrics p0) {}

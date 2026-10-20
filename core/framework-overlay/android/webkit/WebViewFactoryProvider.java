@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// megler-w10m overlay: AOSP's android/webkit/WebViewFactoryProvider.java at android-15.0.0_r36 (frameworks/base/core/java), in
+// Overlay: AOSP's android/webkit/WebViewFactoryProvider.java at android-15.0.0_r36 (frameworks/base/core/java), in
 // the place of the original's generated signature (tools/build-framework.sh; docs/JAVA.md, "The WebView"). It differs from
 // AOSP's in Android 15's flag useBEntryPoint, which is off on an Android 15 phone and is off here (its branches are the
 // "else" ones), and in the descriptions, which use String.format.

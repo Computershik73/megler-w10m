@@ -3,7 +3,7 @@ package android.adservices.exceptions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AdServicesException extends java.lang.Exception {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public AdServicesException() { super(); }
     public AdServicesException(java.lang.String p0) { super(); }
     public AdServicesException(java.lang.String p0, java.lang.Throwable p1) { super(); }

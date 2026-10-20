@@ -3,7 +3,7 @@ package android.app.usage;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ConfigurationStats implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int mActivationCount;
     public long mBeginTimeStamp;
@@ -14,11 +14,11 @@ public final class ConfigurationStats implements android.os.Parcelable {
     public ConfigurationStats() {}
     public ConfigurationStats(android.app.usage.ConfigurationStats p0) {}
     public int describeContents() { return 0; }
-    public int getActivationCount() { return (meglerProps.get("ActivationCount") instanceof Integer ? (Integer) meglerProps.get("ActivationCount") : 0); }
-    public android.content.res.Configuration getConfiguration() { return (android.content.res.Configuration) meglerProps.get("Configuration"); }
-    public long getFirstTimeStamp() { return (meglerProps.get("FirstTimeStamp") instanceof Long ? (Long) meglerProps.get("FirstTimeStamp") : 0L); }
-    public long getLastTimeActive() { return (meglerProps.get("LastTimeActive") instanceof Long ? (Long) meglerProps.get("LastTimeActive") : 0L); }
-    public long getLastTimeStamp() { return (meglerProps.get("LastTimeStamp") instanceof Long ? (Long) meglerProps.get("LastTimeStamp") : 0L); }
-    public long getTotalTimeActive() { return (meglerProps.get("TotalTimeActive") instanceof Long ? (Long) meglerProps.get("TotalTimeActive") : 0L); }
+    public int getActivationCount() { return (megletProps.get("ActivationCount") instanceof Integer ? (Integer) megletProps.get("ActivationCount") : 0); }
+    public android.content.res.Configuration getConfiguration() { return (android.content.res.Configuration) megletProps.get("Configuration"); }
+    public long getFirstTimeStamp() { return (megletProps.get("FirstTimeStamp") instanceof Long ? (Long) megletProps.get("FirstTimeStamp") : 0L); }
+    public long getLastTimeActive() { return (megletProps.get("LastTimeActive") instanceof Long ? (Long) megletProps.get("LastTimeActive") : 0L); }
+    public long getLastTimeStamp() { return (megletProps.get("LastTimeStamp") instanceof Long ? (Long) megletProps.get("LastTimeStamp") : 0L); }
+    public long getTotalTimeActive() { return (megletProps.get("TotalTimeActive") instanceof Long ? (Long) megletProps.get("TotalTimeActive") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

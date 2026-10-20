@@ -3,20 +3,20 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DistanceRecord extends android.health.connect.datatypes.IntervalRecord {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.health.connect.datatypes.AggregationType DISTANCE_TOTAL;
-    public android.health.connect.datatypes.units.Length getDistance() { return (android.health.connect.datatypes.units.Length) meglerProps.get("Distance"); }
+    public android.health.connect.datatypes.units.Length getDistance() { return (android.health.connect.datatypes.units.Length) megletProps.get("Distance"); }
     public android.health.connect.internal.datatypes.DistanceRecordInternal toRecordInternal() { return null; }
     protected DistanceRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, java.time.Instant p2, android.health.connect.datatypes.units.Length p3) {}
-        public android.health.connect.datatypes.DistanceRecord build() { android.health.connect.datatypes.DistanceRecord x = new android.health.connect.datatypes.DistanceRecord(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.datatypes.DistanceRecord build() { android.health.connect.datatypes.DistanceRecord x = new android.health.connect.datatypes.DistanceRecord(); x.megletProps.putAll(megletProps); return x; }
         public android.health.connect.datatypes.DistanceRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.DistanceRecord.Builder clearEndZoneOffset() { return this; }
         public android.health.connect.datatypes.DistanceRecord.Builder clearStartZoneOffset() { return this; }
-        public android.health.connect.datatypes.DistanceRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("EndZoneOffset", p0); return this; }
-        public android.health.connect.datatypes.DistanceRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("StartZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.DistanceRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { megletProps.put("EndZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.DistanceRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { megletProps.put("StartZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (java.time.Instant) null, (android.health.connect.datatypes.units.Length) null); }
     }
 }

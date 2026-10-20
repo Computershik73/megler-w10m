@@ -3,12 +3,12 @@ package android.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UnregisterCredentialDescriptionRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public UnregisterCredentialDescriptionRequest(android.credentials.CredentialDescription p0) {}
     public UnregisterCredentialDescriptionRequest(java.util.Set p0) {}
     public int describeContents() { return 0; }
-    public java.util.Set getCredentialDescriptions() { return (meglerProps.get("CredentialDescriptions") != null ? (java.util.Set) meglerProps.get("CredentialDescriptions") : new java.util.HashSet()); }
+    public java.util.Set getCredentialDescriptions() { return (megletProps.get("CredentialDescriptions") != null ? (java.util.Set) megletProps.get("CredentialDescriptions") : new java.util.HashSet()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     UnregisterCredentialDescriptionRequest() { this((android.credentials.CredentialDescription) null); }
 }

@@ -3,7 +3,7 @@ package android.adservices.measurement;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MeasurementManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int MEASUREMENT_API_STATE_DISABLED = 0;
     public static final int MEASUREMENT_API_STATE_ENABLED = 1;
     public static final java.lang.String MEASUREMENT_SERVICE = "measurement_service";

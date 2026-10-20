@@ -6,8 +6,8 @@
 // onTouchEvent's ACTION_DOWN sees no row, so a tap is no click. On Android the layout follows by itself: a window's first
 // traversal announces the touch mode to its listeners, AbsListView is one of them, and its onTouchModeChanged calls
 // layoutChildren when it has children. This framework has no such announcement, and a list of the same size as before is not
-// laid out again by anything else. And it happens here far more often than on Android: Activity.meglerStop takes the stopped
-// activity's window away (ViewRoot.remove, which detaches every view) and meglerResume adds it again, where Android keeps a
+// laid out again by anything else. And it happens here far more often than on Android: Activity.megletStop takes the stopped
+// activity's window away (ViewRoot.remove, which detaches every view) and megletResume adds it again, where Android keeps a
 // stopped activity's views attached. So every list was deaf once its activity had been covered by another one and come
 // back -- until something else happened to ask for a layout.
 //
@@ -107,16 +107,16 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         mTouchSlop = vc.getScaledTouchSlop(); mMinVelocity = vc.getScaledMinimumFlingVelocity(); mMaxVelocity = vc.getScaledMaximumFlingVelocity();
         mScroller = new OverScroller(c);
         mEdgeGlowTop = new EdgeEffect(c); mEdgeGlowBottom = new EdgeEffect(c);
-        TypedArray a = c.obtainStyledAttributes(attrs, megler.S.AbsListView, s, r);
+        TypedArray a = c.obtainStyledAttributes(attrs, meglet.S.AbsListView, s, r);
         Drawable sel = null;
-        try { sel = a.getDrawable(megler.S.AbsListView_listSelector); } catch (RuntimeException e) {}
+        try { sel = a.getDrawable(meglet.S.AbsListView_listSelector); } catch (RuntimeException e) {}
         if (sel != null) setSelector(sel);
-        mDrawSelectorOnTop = a.getBoolean(megler.S.AbsListView_drawSelectorOnTop, false);
-        setStackFromBottom(a.getBoolean(megler.S.AbsListView_stackFromBottom, false));
-        setTranscriptMode(a.getInt(megler.S.AbsListView_transcriptMode, TRANSCRIPT_MODE_DISABLED));
-        setCacheColorHint(a.getColor(megler.S.AbsListView_cacheColorHint, 0));
-        setChoiceMode(a.getInt(megler.S.AbsListView_choiceMode, CHOICE_MODE_NONE));
-        mTextFilterEnabled = a.getBoolean(megler.S.AbsListView_textFilterEnabled, false);
+        mDrawSelectorOnTop = a.getBoolean(meglet.S.AbsListView_drawSelectorOnTop, false);
+        setStackFromBottom(a.getBoolean(meglet.S.AbsListView_stackFromBottom, false));
+        setTranscriptMode(a.getInt(meglet.S.AbsListView_transcriptMode, TRANSCRIPT_MODE_DISABLED));
+        setCacheColorHint(a.getColor(meglet.S.AbsListView_cacheColorHint, 0));
+        setChoiceMode(a.getInt(meglet.S.AbsListView_choiceMode, CHOICE_MODE_NONE));
+        mTextFilterEnabled = a.getBoolean(meglet.S.AbsListView_textFilterEnabled, false);
         a.recycle();
     }
     // ---- adapter
@@ -269,23 +269,23 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         mInLayout = true;
         final int childCount = getChildCount();
         if (changed) for (int i = 0; i < childCount; i++) getChildAt(i).forceLayout();
-        // megler-w10m: the rows on the screen are kept for the positions they show while the data is unchanged (see the top of the file)
-        mMeglerLayoutPass = true;
-        try { layoutChildren(); } finally { mMeglerLayoutPass = false; meglerScrapActiveViews(); }
+        // Meglet: the rows on the screen are kept for the positions they show while the data is unchanged (see the top of the file)
+        mMegletLayoutPass = true;
+        try { layoutChildren(); } finally { mMegletLayoutPass = false; megletScrapActiveViews(); }
         mInLayout = false;
     }
-    /** megler-w10m: while layoutChildren runs from onLayout. */
-    private boolean mMeglerLayoutPass;
-    /** megler-w10m: Android's RecycleBin.mActiveViews: the rows layoutChildren took off the screen, by position, to be put back as they are. */
-    private final android.util.SparseArray<View> mMeglerActiveViews = new android.util.SparseArray<>();
+    /** Meglet: while layoutChildren runs from onLayout. */
+    private boolean mMegletLayoutPass;
+    /** Meglet: Android's RecycleBin.mActiveViews: the rows layoutChildren took off the screen, by position, to be put back as they are. */
+    private final android.util.SparseArray<View> mMegletActiveViews = new android.util.SparseArray<>();
     /** A row taken off by layoutChildren that the same pass did not put back: to the scrap heap, and out of the window, as the leftover scrap is. */
-    private void meglerScrapActiveViews() {
-        for (int i = 0; i < mMeglerActiveViews.size(); i++) {
-            View v = mMeglerActiveViews.valueAt(i);
-            mRecycler.addScrapView(v, mMeglerActiveViews.keyAt(i));
-            if (v.getParent() == null && v.isAttachedToWindow()) v.meglerDetach();
+    private void megletScrapActiveViews() {
+        for (int i = 0; i < mMegletActiveViews.size(); i++) {
+            View v = mMegletActiveViews.valueAt(i);
+            mRecycler.addScrapView(v, mMegletActiveViews.keyAt(i));
+            if (v.getParent() == null && v.isAttachedToWindow()) v.megletDetach();
         }
-        mMeglerActiveViews.clear();
+        mMegletActiveViews.clear();
     }
     @Override public void requestLayout() { if (!mBlockLayoutRequests && !mInLayout) super.requestLayout(); }
     /** Lay the visible items out again from the data (subclasses). */
@@ -308,10 +308,10 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
     /** Get (or make) the view for a position, from the recycler when one of its type is waiting. */
     View obtainView(int position, boolean[] outMetadata) {
         outMetadata[0] = false;
-        if (mMeglerLayoutPass && !mDataChanged) {
-            // megler-w10m: the row this position had before the layout, as it is: the adapter is not asked again (Android's getActiveView)
-            View active = mMeglerActiveViews.get(position);
-            if (active != null) { mMeglerActiveViews.remove(position); outMetadata[0] = true; return active; }
+        if (mMegletLayoutPass && !mDataChanged) {
+            // Meglet: the row this position had before the layout, as it is: the adapter is not asked again (Android's getActiveView)
+            View active = mMegletActiveViews.get(position);
+            if (active != null) { mMegletActiveViews.remove(position); outMetadata[0] = true; return active; }
         }
         final View scrapView = mRecycler.getScrapView(position);
         final View child = mAdapter.getView(position, scrapView, this);
@@ -380,7 +380,7 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         return false;
     }
     void offsetChildrenTopAndBottom(int offset) { final int count = getChildCount(); for (int i = 0; i < count; i++) getChildAt(i).offsetTopAndBottom(offset); }
-    void detachViewsFromParent(int start, int count) { for (int i = start + count - 1; i >= start; i--) { View v = getChildAt(i); detachViewFromParent(i); if (v.isAttachedToWindow()) v.meglerDetach(); } }
+    void detachViewsFromParent(int start, int count) { for (int i = start + count - 1; i >= start; i--) { View v = getChildAt(i); detachViewFromParent(i); if (v.isAttachedToWindow()) v.megletDetach(); } }
     public void scrollListBy(int y) { trackMotionScroll(-y, -y); }
     public boolean canScrollList(int direction) {
         final int childCount = getChildCount();
@@ -401,9 +401,9 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         if (child != null) {
             int target = offset >= 0 ? offset + mListPadding.top : (child.getTop() < mListPadding.top ? mListPadding.top : child.getBottom() > getHeight() - mListPadding.bottom ? getHeight() - mListPadding.bottom - child.getHeight() : child.getTop());
             smoothScrollBy(child.getTop() - target, 250);
-        } else setSelectionFromTopMegler(position, Math.max(0, offset));
+        } else setSelectionFromTopMeglet(position, Math.max(0, offset));
     }
-    void setSelectionFromTopMegler(int position, int y) { if (mAdapter == null) return; mFirstPosition = Math.max(0, Math.min(position, mItemCount - 1)); mSyncTop = y; mNeedSync = true; requestLayout(); }
+    void setSelectionFromTopMeglet(int position, int y) { if (mAdapter == null) return; mFirstPosition = Math.max(0, Math.min(position, mItemCount - 1)); mSyncTop = y; mNeedSync = true; requestLayout(); }
     private int mFlingLastY;
     private final Runnable mFlingRunnable = new Runnable() {
         @Override public void run() {
@@ -591,7 +591,7 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
     @Override protected boolean verifyDrawable(Drawable dr) { return mSelector == dr || super.verifyDrawable(dr); }
     @Override public void invalidateDrawable(Drawable d) { if (d == mSelector) { android.graphics.Rect b = d.getBounds(); invalidate(b.left, b.top, b.right, b.bottom); } else super.invalidateDrawable(d); }
     @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); if (mAdapter != null && mDataSetObserver == null) { mDataSetObserver = new AdapterDataSetObserver(); mAdapter.registerDataSetObserver(mDataSetObserver); mDataChanged = true; mOldItemCount = mItemCount; mItemCount = mAdapter.getCount();
-            // megler-w10m: see the top of this file. Without a layout after this, mDataChanged stays set and no touch finds a row.
+            // Meglet: see the top of this file. Without a layout after this, mDataChanged stays set and no touch finds a row.
             requestLayout();
         }
     }
@@ -599,7 +599,7 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
     @Override protected int computeVerticalScrollExtent() { final int count = getChildCount(); return count > 0 ? count * 100 : 0; }
     @Override protected int computeVerticalScrollOffset() { final int firstPosition = mFirstPosition, childCount = getChildCount(); if (firstPosition >= 0 && childCount > 0) { final View view = getChildAt(0); final int top = view.getTop(); int height = view.getHeight(); if (height > 0) return Math.max(firstPosition * 100 - (top * 100) / height, 0); } return 0; }
     @Override protected int computeVerticalScrollRange() { return Math.max(mItemCount * 100, 0); }
-    public void setSelectionFromTop(int position, int y) { setSelectionFromTopMegler(position, y); }
+    public void setSelectionFromTop(int position, int y) { setSelectionFromTopMeglet(position, y); }
     @Override public CharSequence getAccessibilityClassName() { return AbsListView.class.getName(); }
 
     /** Views off screen, by type, for adapters' convertView. */
@@ -627,8 +627,8 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         void addScrapView(View scrap, int position) {
             final LayoutParams lp = (LayoutParams) scrap.getLayoutParams();
             if (lp == null || mScrapViews == null) return;
-            // megler-w10m: a row layoutChildren takes off while the data is unchanged is kept for its position (Android's fillActiveViews)
-            if (mMeglerLayoutPass && !mDataChanged && position >= 0 && lp.viewType != ITEM_VIEW_TYPE_HEADER_OR_FOOTER) { mMeglerActiveViews.put(position, scrap); return; }
+            // Meglet: a row layoutChildren takes off while the data is unchanged is kept for its position (Android's fillActiveViews)
+            if (mMegletLayoutPass && !mDataChanged && position >= 0 && lp.viewType != ITEM_VIEW_TYPE_HEADER_OR_FOOTER) { mMegletActiveViews.put(position, scrap); return; }
             lp.scrappedFromPosition = position;
             final int viewType = lp.viewType;
             if (!shouldRecycleViewType(viewType)) { if (viewType != ITEM_VIEW_TYPE_HEADER_OR_FOOTER) { if (mSkippedScrap == null) mSkippedScrap = new ArrayList<>(); mSkippedScrap.add(scrap); } return; }
@@ -641,7 +641,7 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
         void reclaimScrapViews(List<View> views) { if (mScrapViews != null) for (ArrayList<View> l : mScrapViews) views.addAll(l); }
     }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
     public void afterTextChanged(android.text.Editable p0) {}
     public void beforeTextChanged(java.lang.CharSequence p0, int p1, int p2, int p3) {}
     public int getBottomEdgeEffectColor() { return 0; }
@@ -657,7 +657,7 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
     protected void internalSetPadding(int p0, int p1, int p2, int p3) {}
     public void invalidateViews() {}
     protected boolean isPaddingOffsetRequired() { return false; }
-    public boolean isSelectedChildViewEnabled() { return (meglerFill.get("SelectedChildViewEnabled") instanceof Boolean ? (Boolean) meglerFill.get("SelectedChildViewEnabled") : false); }
+    public boolean isSelectedChildViewEnabled() { return (megletFill.get("SelectedChildViewEnabled") instanceof Boolean ? (Boolean) megletFill.get("SelectedChildViewEnabled") : false); }
     protected boolean isVerticalScrollBarHidden() { return false; }
     protected void onDisplayHint(int p0) {}
     public void onFilterComplete(int p0) {}
@@ -677,12 +677,12 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
     public java.lang.Runnable setRemoteViewsAdapterAsync(android.content.Intent p0) { return null; }
     public void setRemoteViewsInteractionHandler(android.widget.RemoteViews.InteractionHandler p0) {}
     public void setScrollIndicators(android.view.View p0, android.view.View p1) {}
-    public void setSelectedChildViewEnabled(boolean p0) { meglerFill.put("SelectedChildViewEnabled", Boolean.valueOf(p0)); }
+    public void setSelectedChildViewEnabled(boolean p0) { megletFill.put("SelectedChildViewEnabled", Boolean.valueOf(p0)); }
     public boolean shouldDrawSelector() { return false; }
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static final class InspectionCompanion implements android.view.inspector.InspectionCompanion {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public InspectionCompanion() {}
         public void mapProperties(android.view.inspector.PropertyMapper p0) {}
         public void readProperties(android.widget.AbsListView p0, android.view.inspector.PropertyReader p1) {}

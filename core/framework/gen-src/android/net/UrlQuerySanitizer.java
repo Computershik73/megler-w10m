@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class UrlQuerySanitizer {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public UrlQuerySanitizer() {}
     public UrlQuerySanitizer(java.lang.String p0) {}
     public static android.net.UrlQuerySanitizer.ValueSanitizer getAllButNulAndAngleBracketsLegal() { return null; }
@@ -18,12 +18,12 @@ public class UrlQuerySanitizer {
     protected void addSanitizedEntry(java.lang.String p0, java.lang.String p1) {}
     protected void clear() {}
     protected int decodeHexDigit(char p0) { return 0; }
-    public boolean getAllowUnregisteredParamaters() { return (meglerProps.get("AllowUnregisteredParamaters") instanceof Boolean ? (Boolean) meglerProps.get("AllowUnregisteredParamaters") : false); }
+    public boolean getAllowUnregisteredParamaters() { return (megletProps.get("AllowUnregisteredParamaters") instanceof Boolean ? (Boolean) megletProps.get("AllowUnregisteredParamaters") : false); }
     public android.net.UrlQuerySanitizer.ValueSanitizer getEffectiveValueSanitizer(java.lang.String p0) { return null; }
-    public java.util.List getParameterList() { return (meglerProps.get("ParameterList") != null ? (java.util.List) meglerProps.get("ParameterList") : new java.util.ArrayList()); }
-    public java.util.Set getParameterSet() { return (meglerProps.get("ParameterSet") != null ? (java.util.Set) meglerProps.get("ParameterSet") : new java.util.HashSet()); }
-    public boolean getPreferFirstRepeatedParameter() { return (meglerProps.get("PreferFirstRepeatedParameter") instanceof Boolean ? (Boolean) meglerProps.get("PreferFirstRepeatedParameter") : false); }
-    public android.net.UrlQuerySanitizer.ValueSanitizer getUnregisteredParameterValueSanitizer() { return (android.net.UrlQuerySanitizer.ValueSanitizer) meglerProps.get("UnregisteredParameterValueSanitizer"); }
+    public java.util.List getParameterList() { return (megletProps.get("ParameterList") != null ? (java.util.List) megletProps.get("ParameterList") : new java.util.ArrayList()); }
+    public java.util.Set getParameterSet() { return (megletProps.get("ParameterSet") != null ? (java.util.Set) megletProps.get("ParameterSet") : new java.util.HashSet()); }
+    public boolean getPreferFirstRepeatedParameter() { return (megletProps.get("PreferFirstRepeatedParameter") instanceof Boolean ? (Boolean) megletProps.get("PreferFirstRepeatedParameter") : false); }
+    public android.net.UrlQuerySanitizer.ValueSanitizer getUnregisteredParameterValueSanitizer() { return (android.net.UrlQuerySanitizer.ValueSanitizer) megletProps.get("UnregisteredParameterValueSanitizer"); }
     public java.lang.String getValue(java.lang.String p0) { return null; }
     public android.net.UrlQuerySanitizer.ValueSanitizer getValueSanitizer(java.lang.String p0) { return null; }
     public boolean hasParameter(java.lang.String p0) { return false; }
@@ -33,12 +33,12 @@ public class UrlQuerySanitizer {
     public void parseUrl(java.lang.String p0) {}
     public void registerParameter(java.lang.String p0, android.net.UrlQuerySanitizer.ValueSanitizer p1) {}
     public void registerParameters(java.lang.String[] p0, android.net.UrlQuerySanitizer.ValueSanitizer p1) {}
-    public void setAllowUnregisteredParamaters(boolean p0) { meglerProps.put("AllowUnregisteredParamaters", Boolean.valueOf(p0)); }
-    public void setPreferFirstRepeatedParameter(boolean p0) { meglerProps.put("PreferFirstRepeatedParameter", Boolean.valueOf(p0)); }
-    public void setUnregisteredParameterValueSanitizer(android.net.UrlQuerySanitizer.ValueSanitizer p0) { meglerProps.put("UnregisteredParameterValueSanitizer", p0); }
+    public void setAllowUnregisteredParamaters(boolean p0) { megletProps.put("AllowUnregisteredParamaters", Boolean.valueOf(p0)); }
+    public void setPreferFirstRepeatedParameter(boolean p0) { megletProps.put("PreferFirstRepeatedParameter", Boolean.valueOf(p0)); }
+    public void setUnregisteredParameterValueSanitizer(android.net.UrlQuerySanitizer.ValueSanitizer p0) { megletProps.put("UnregisteredParameterValueSanitizer", p0); }
     public java.lang.String unescape(java.lang.String p0) { return null; }
     public static class IllegalCharacterValueSanitizer implements android.net.UrlQuerySanitizer.ValueSanitizer {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ALL_BUT_NUL_AND_ANGLE_BRACKETS_LEGAL = 1439;
         public static final int ALL_BUT_NUL_LEGAL = 1535;
         public static final int ALL_BUT_WHITESPACE_LEGAL = 1532;
@@ -66,7 +66,7 @@ public class UrlQuerySanitizer {
         IllegalCharacterValueSanitizer() { this((int) 0); }
     }
     public static class ParameterValuePair {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public java.lang.String mParameter;
         public java.lang.String mValue;
         public ParameterValuePair(android.net.UrlQuerySanitizer p0, java.lang.String p1, java.lang.String p2) {}

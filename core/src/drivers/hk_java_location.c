@@ -1,6 +1,6 @@
 /*
- * megler.LocationNative: the phone's location behind a Java app's android.location.LocationManager, over the shell's
- * (megler_location_host, core/include/megler.h). The Java side (framework-overlay/megler/LocationService.java) keeps the app's
+ * meglet.LocationNative: the phone's location behind a Java app's android.location.LocationManager, over the shell's
+ * (meglet_location_host, core/include/meglet.h). The Java side (framework-overlay/meglet/LocationService.java) keeps the app's
  * requests and delivers to its listeners; this only asks the host: whether the app may have the location, to start and
  * stop finding it, and the newest fix.
  *
@@ -15,11 +15,11 @@
 
 #define N(name) static void name(hk_jcall *c)
 
-static megler_location_host g_host;
+static meglet_location_host g_host;
 static hk_lock g_lock = HK_LOCK_INIT;
 static int g_said_access = -1;
 
-void hk_java_location_set_host(const megler_location_host *host)
+void hk_java_location_set_host(const meglet_location_host *host)
 {
     if (host) g_host = *host;
     else memset(&g_host, 0, sizeof(g_host));
@@ -29,17 +29,17 @@ void hk_java_location_set_host(const megler_location_host *host)
 static const char *access_name(int a)
 {
     switch (a) {
-    case MEGLER_LOCATION_ON: return "on: the app may have it";
-    case MEGLER_LOCATION_OFF: return "off: the phone's location is switched off in its settings";
-    case MEGLER_LOCATION_DENIED: return "denied: the user has not let Megler have the location";
-    case MEGLER_LOCATION_UNKNOWN: return "not asked yet";
+    case MEGLET_LOCATION_ON: return "on: the app may have it";
+    case MEGLET_LOCATION_OFF: return "off: the phone's location is switched off in its settings";
+    case MEGLET_LOCATION_DENIED: return "denied: the user has not let Meglet have the location";
+    case MEGLET_LOCATION_UNKNOWN: return "not asked yet";
     default: return "none: nothing finds where the phone is";
     }
 }
 
 int hk_jlocation_access(bool ask)
 {
-    int a = g_host.access ? g_host.access(g_host.user, ask) : MEGLER_LOCATION_NONE;
+    int a = g_host.access ? g_host.access(g_host.user, ask) : MEGLET_LOCATION_NONE;
     bool say;
     hk_lock_acquire(&g_lock);
     say = a != g_said_access;
@@ -62,7 +62,7 @@ void hk_jlocation_stop(void)
     hk_info("location: no longer followed");
 }
 
-bool hk_jlocation_last(megler_location *fix)
+bool hk_jlocation_last(meglet_location *fix)
 {
     memset(fix, 0, sizeof(*fix));
     return g_host.last && g_host.last(g_host.user, fix);
@@ -77,7 +77,7 @@ N(Location_stop) { hk_jlocation_stop(); }
 /* last(): the newest fix as {latitude, longitude, altitude, accuracy, altitude accuracy, speed, bearing, time ms, has, source}; null for none */
 N(Location_last)
 {
-    megler_location fix;
+    meglet_location fix;
     hk_jobj *a;
     c->ret.l = NULL;
     if (!hk_jlocation_last(&fix)) return;
@@ -99,10 +99,10 @@ N(Location_last)
 }
 
 static const hk_jhle k_location[] = {
-    { "megler/LocationNative", "access", NULL, Location_access },
-    { "megler/LocationNative", "start", NULL, Location_start },
-    { "megler/LocationNative", "stop", NULL, Location_stop },
-    { "megler/LocationNative", "last", NULL, Location_last },
+    { "meglet/LocationNative", "access", NULL, Location_access },
+    { "meglet/LocationNative", "start", NULL, Location_start },
+    { "meglet/LocationNative", "stop", NULL, Location_stop },
+    { "meglet/LocationNative", "last", NULL, Location_last },
     { NULL, NULL, NULL, NULL },
 };
 

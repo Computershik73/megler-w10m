@@ -3,7 +3,7 @@ package android.net.nsd;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NsdManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_NSD_STATE_CHANGED = "android.net.nsd.STATE_CHANGED";
     public static final int DAEMON_CLEANUP = 18;
     public static final int DAEMON_STARTUP = 19;

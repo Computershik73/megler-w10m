@@ -1,6 +1,6 @@
 package android.graphics.drawable;
 
-/** A StateListDrawable whose state changes would animate; Megler switches straight to the new state's drawable. */
+/** A StateListDrawable whose state changes would animate; Meglet switches straight to the new state's drawable. */
 public class AnimatedStateListDrawable extends StateListDrawable {
     public AnimatedStateListDrawable() { super(); }
     public void addState(int[] stateSet, Drawable d, int id) { addState(stateSet, d); }

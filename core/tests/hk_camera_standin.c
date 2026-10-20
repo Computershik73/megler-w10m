@@ -13,10 +13,10 @@ typedef struct camera {
     hk_thread *thread;
     volatile i32 quit;
     int width, height, fps;
-    megler_camera_frame_fn frame;
-    megler_camera_focus_fn done;
+    meglet_camera_frame_fn frame;
+    meglet_camera_focus_fn done;
     void *core;
-    int focus_mode;                    /* what is under way: MEGLER_CAMERA_FOCUS_ONCE or _MACRO until due, _CONTINUOUS until said */
+    int focus_mode;                    /* what is under way: MEGLET_CAMERA_FOCUS_ONCE or _MACRO until due, _CONTINUOUS until said */
     u64 focus_due;
     bool streaming;
 } camera;
@@ -47,12 +47,12 @@ static int count(void *user)
     return 2;
 }
 
-static bool info(void *user, int index, megler_camera_info *out)
+static bool info(void *user, int index, meglet_camera_info *out)
 {
     (void)user;
     if (index < 0 || index > 1) return false;
     memset(out, 0, sizeof(*out));
-    out->facing = index == 0 ? MEGLER_CAMERA_BACK : MEGLER_CAMERA_FRONT;
+    out->facing = index == 0 ? MEGLET_CAMERA_BACK : MEGLET_CAMERA_FRONT;
     out->orientation = index == 0 ? 90 : 270;
     out->focus = index == 0;
     out->light = index == 0;
@@ -60,21 +60,21 @@ static bool info(void *user, int index, megler_camera_info *out)
     return true;
 }
 
-static void *open_camera(void *user, int index, megler_camera_caps *caps, int *error)
+static void *open_camera(void *user, int index, meglet_camera_caps *caps, int *error)
 {
-    static const megler_camera_size back[] = { { 1280, 720, 15, 30 }, { 640, 480, 15, 30 }, { 320, 240, 15, 30 } };
-    static const megler_camera_size front[] = { { 640, 480, 15, 30 }, { 320, 240, 15, 30 } };
+    static const meglet_camera_size back[] = { { 1280, 720, 15, 30 }, { 640, 480, 15, 30 }, { 320, 240, 15, 30 } };
+    static const meglet_camera_size front[] = { { 640, 480, 15, 30 }, { 320, 240, 15, 30 } };
     camera *c;
     (void)user;
     memset(caps, 0, sizeof(*caps));
     if (index < 0 || index > 1) {
-        *error = MEGLER_CAMERA_FAILED;
+        *error = MEGLET_CAMERA_FAILED;
         hk_strlcpy(caps->why, "the stand-in has two cameras", sizeof(caps->why));
         return NULL;
     }
     hk_lock_acquire(&g_lock);
     if (g_refuse || g_open[index]) {
-        *error = g_refuse ? MEGLER_CAMERA_DENIED : MEGLER_CAMERA_BUSY;
+        *error = g_refuse ? MEGLET_CAMERA_DENIED : MEGLET_CAMERA_BUSY;
         hk_strlcpy(caps->why, g_refuse ? "the stand-in refuses, as Windows does when the user has said no" : "the stand-in's camera is open already",
                    sizeof(caps->why));
         hk_lock_release(&g_lock);
@@ -94,7 +94,7 @@ static void *open_camera(void *user, int index, megler_camera_caps *caps, int *e
     c = (camera *)hk_alloc(sizeof(*c));
     c->index = index;
     hk_lock_init(&c->lock);
-    *error = MEGLER_CAMERA_OK;
+    *error = MEGLET_CAMERA_OK;
     return c;
 }
 
@@ -137,7 +137,7 @@ static void stream(void *arg)
     u64 start = hk_time_monotonic_ns(), period = 1000000000ull / (u64)(c->fps > 0 ? c->fps : 30);
     i64 n = 0;
     while (!c->quit) {
-        megler_camera_frame f;
+        meglet_camera_frame f;
         u64 now = hk_time_monotonic_ns(), due = start + (u64)n * period;
         i32 number;
         if (now < due) {
@@ -173,7 +173,7 @@ static void stream(void *arg)
     free(uv);
 }
 
-static bool start(void *user, void *cam, int width, int height, int fps, megler_camera_frame_fn frame, void *core)
+static bool start(void *user, void *cam, int width, int height, int fps, meglet_camera_frame_fn frame, void *core)
 {
     camera *c = (camera *)cam;
     (void)user;
@@ -195,14 +195,14 @@ static bool start(void *user, void *cam, int width, int height, int fps, megler_
     return c->thread != NULL;
 }
 
-static bool focus(void *user, void *cam, int mode, megler_camera_focus_fn done, void *core);
+static bool focus(void *user, void *cam, int mode, meglet_camera_focus_fn done, void *core);
 
 static void stop(void *user, void *cam)
 {
     camera *c = (camera *)cam;
     (void)user;
     if (!c->streaming) return;
-    focus(user, cam, MEGLER_CAMERA_FOCUS_NONE, NULL, NULL);
+    focus(user, cam, MEGLET_CAMERA_FOCUS_NONE, NULL, NULL);
     hk_atomic_xchg(&c->quit, 1);
     hk_thread_join(c->thread);
     c->thread = NULL;
@@ -213,14 +213,14 @@ static void stop(void *user, void *cam)
     hk_lock_release(&g_lock);
 }
 
-static bool focus(void *user, void *cam, int mode, megler_camera_focus_fn done, void *core)
+static bool focus(void *user, void *cam, int mode, meglet_camera_focus_fn done, void *core)
 {
     camera *c = (camera *)cam;
     (void)user;
     if (!c->streaming) return false;
-    if (mode != MEGLER_CAMERA_FOCUS_NONE && c->index != 0) return false;
+    if (mode != MEGLET_CAMERA_FOCUS_NONE && c->index != 0) return false;
     hk_lock_acquire(&c->lock);
-    if (mode == MEGLER_CAMERA_FOCUS_NONE) {
+    if (mode == MEGLET_CAMERA_FOCUS_NONE) {
         if (c->focus_mode) {
             hk_lock_acquire(&g_lock);
             g_counts.cancelled++;
@@ -230,7 +230,7 @@ static bool focus(void *user, void *cam, int mode, megler_camera_focus_fn done, 
         c->done = NULL;
     } else {
         c->focus_mode = mode;
-        c->focus_due = hk_time_monotonic_ns() + (mode == MEGLER_CAMERA_FOCUS_CONTINUOUS ? 0 : 30000000ull);
+        c->focus_due = hk_time_monotonic_ns() + (mode == MEGLET_CAMERA_FOCUS_CONTINUOUS ? 0 : 30000000ull);
         c->done = done;
         c->core = core;
     }
@@ -260,8 +260,8 @@ static void close_camera(void *user, void *cam)
     free(c);
 }
 
-const megler_camera_host *hk_camera_standin(void)
+const meglet_camera_host *hk_camera_standin(void)
 {
-    static const megler_camera_host host = { NULL, count, info, open_camera, start, stop, focus, torch, close_camera };
+    static const meglet_camera_host host = { NULL, count, info, open_camera, start, stop, focus, torch, close_camera };
     return &host;
 }

@@ -3,15 +3,15 @@ package android.graphics.fonts;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FontVariationAxis {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public FontVariationAxis(java.lang.String p0, float p1) {}
     public static android.graphics.fonts.FontVariationAxis[] fromFontVariationSettings(java.lang.String p0) { return null; }
     public static java.util.List fromFontVariationSettingsForList(java.lang.String p0) { return new java.util.ArrayList(); }
     public static int makeTag(java.lang.String p0) { return 0; }
     public static java.lang.String toFontVariationSettings(java.util.List p0) { return null; }
     public static java.lang.String toFontVariationSettings(android.graphics.fonts.FontVariationAxis[] p0) { return null; }
-    public int getOpenTypeTagValue() { return (meglerProps.get("OpenTypeTagValue") instanceof Integer ? (Integer) meglerProps.get("OpenTypeTagValue") : 0); }
-    public float getStyleValue() { return (meglerProps.get("StyleValue") instanceof Float ? (Float) meglerProps.get("StyleValue") : 0f); }
-    public java.lang.String getTag() { return (java.lang.String) meglerProps.get("Tag"); }
+    public int getOpenTypeTagValue() { return (megletProps.get("OpenTypeTagValue") instanceof Integer ? (Integer) megletProps.get("OpenTypeTagValue") : 0); }
+    public float getStyleValue() { return (megletProps.get("StyleValue") instanceof Float ? (Float) megletProps.get("StyleValue") : 0f); }
+    public java.lang.String getTag() { return (java.lang.String) megletProps.get("Tag"); }
     FontVariationAxis() { this((java.lang.String) null, (float) 0f); }
 }

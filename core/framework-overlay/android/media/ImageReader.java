@@ -2,11 +2,11 @@
 // the generated stub, which had no images: getSurface() was null and acquireLatestImage() null.
 //
 // Why. CameraX analyses a camera's pictures through an ImageReader (ImageAnalysis, YUV_420_888): urent's QR scanner hands
-// each image to Huawei's ScanKit (MLFrame.fromMediaImage). The camera (android.hardware.camera2.impl.MeglerCameraDevice) writes
-// a picture into a buffer the reader gives it (meglerDequeue, NV21's bytes: the luma, then V and U interleaved) and queues it
-// (meglerQueue); the reader's listener hears of it, on its handler or executor, as on Android.
+// each image to Huawei's ScanKit (MLFrame.fromMediaImage). The camera (android.hardware.camera2.impl.MegletCameraDevice) writes
+// a picture into a buffer the reader gives it (megletDequeue, NV21's bytes: the luma, then V and U interleaved) and queues it
+// (megletQueue); the reader's listener hears of it, on its handler or executor, as on Android.
 //
-// What it is: Android's reader as an app sees it. Its surface is a Surface that names it (Surface.meglerImageReader, added by
+// What it is: Android's reader as an app sees it. Its surface is a Surface that names it (Surface.megletImageReader, added by
 // this overlay's Surface.java.members). An image is the reader's size, its timestamp the camera's, and YUV_420_888's three
 // planes over the NV21 buffer as Android's devices give them: Y with a pixel stride of 1, U and V with 2, every row stride
 // the width, V's buffer one byte before U's. At most maxImages are acquired and not yet closed (acquireNextImage and
@@ -28,12 +28,12 @@ import java.util.concurrent.Executor;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ImageReader implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     private final int mWidth, mHeight, mFormat, mMaxImages;
     private final long mUsage;
     private final Surface mSurface;
     private final Object mLock = new Object();
-    private final ArrayDeque<MeglerImage> mQueued = new ArrayDeque<>();
+    private final ArrayDeque<MegletImage> mQueued = new ArrayDeque<>();
     private final ArrayList<byte[]> mFree = new ArrayList<>();
     private int mAcquired, mDequeued;
     private OnImageAvailableListener mListener;
@@ -57,7 +57,7 @@ public class ImageReader implements java.lang.AutoCloseable {
         mMaxImages = maxImages;
         mUsage = usage;
         mSurface = new Surface();
-        mSurface.meglerImageReader = this;
+        mSurface.megletImageReader = this;
     }
 
     public int getWidth() { return mWidth; }
@@ -87,7 +87,7 @@ public class ImageReader implements java.lang.AutoCloseable {
 
     public android.media.Image acquireNextImage() {
         synchronized (mLock) {
-            MeglerImage image = mQueued.poll();
+            MegletImage image = mQueued.poll();
             if (image == null) return null;
             if (mAcquired >= mMaxImages) {
                 mQueued.addFirst(image);
@@ -130,18 +130,18 @@ public class ImageReader implements java.lang.AutoCloseable {
     public void discardFreeBuffers() { synchronized (mLock) { mFree.clear(); } }
     protected void finalize() {}
 
-    // ---- megler-w10m: the camera's side (android.hardware.camera2.impl.MeglerCameraDevice).
+    // ---- Meglet: the camera's side (android.hardware.camera2.impl.MegletCameraDevice).
 
     /**
      * A buffer for one picture of this reader's size in NV21 (width x height x 3 / 2 bytes), or null when the reader is
      * closed or its format takes no YUV picture. When every buffer is taken (images acquired and queued) the oldest queued
      * picture is dropped and its buffer given, as a camera that keeps streaming overwrites what was not read.
      */
-    public byte[] meglerDequeue() {
+    public byte[] megletDequeue() {
         synchronized (mLock) {
             if (mClosed || (mFormat != 35 && mFormat != 17)) return null;
             if (mAcquired + mQueued.size() + mDequeued >= mMaxImages + 1) {
-                MeglerImage oldest = mQueued.poll();
+                MegletImage oldest = mQueued.poll();
                 if (oldest == null) return null;
                 mDequeued++;
                 return oldest.mData;
@@ -156,29 +156,29 @@ public class ImageReader implements java.lang.AutoCloseable {
         }
     }
 
-    /** A buffer from meglerDequeue given back without a picture. */
-    public void meglerCancel(byte[] data) {
+    /** A buffer from megletDequeue given back without a picture. */
+    public void megletCancel(byte[] data) {
         synchronized (mLock) {
             mDequeued--;
             if (!mClosed) mFree.add(data);
         }
     }
 
-    /** A buffer from meglerDequeue filled with a picture taken at `timestamp`: queued, and the listener told. */
-    public void meglerQueue(byte[] data, long timestamp) {
+    /** A buffer from megletDequeue filled with a picture taken at `timestamp`: queued, and the listener told. */
+    public void megletQueue(byte[] data, long timestamp) {
         OnImageAvailableListener l;
         Executor e;
         synchronized (mLock) {
             mDequeued--;
             if (mClosed) return;
-            mQueued.add(new MeglerImage(this, data, timestamp));
+            mQueued.add(new MegletImage(this, data, timestamp));
             l = mListener;
             e = mListenerExecutor;
         }
         if (l != null && e != null) e.execute(() -> l.onImageAvailable(this));
     }
 
-    private void released(MeglerImage image) {
+    private void released(MegletImage image) {
         synchronized (mLock) {
             mAcquired--;
             if (!mClosed) mFree.add(image.mData);
@@ -186,14 +186,14 @@ public class ImageReader implements java.lang.AutoCloseable {
     }
 
     /** One picture: YUV_420_888's planes over NV21's bytes. */
-    private static final class MeglerImage extends Image {
+    private static final class MegletImage extends Image {
         private final ImageReader mReader;
         private final byte[] mData;
         private final long mTimestamp;
         private Plane[] mPlanes;
         private boolean mClosedImage;
 
-        MeglerImage(ImageReader reader, byte[] data, long timestamp) {
+        MegletImage(ImageReader reader, byte[] data, long timestamp) {
             mReader = reader;
             mData = data;
             mTimestamp = timestamp;
@@ -215,9 +215,9 @@ public class ImageReader implements java.lang.AutoCloseable {
             if (mPlanes == null) {
                 int w = mReader.mWidth, h = mReader.mHeight, luma = w * h, chroma = luma / 2;
                 mPlanes = new Plane[] {
-                    new MeglerPlane(ByteBuffer.wrap(mData, 0, luma).slice(), w, 1),
-                    new MeglerPlane(ByteBuffer.wrap(mData, luma + 1, chroma - 1).slice(), w, 2),   // U: the second of each pair
-                    new MeglerPlane(ByteBuffer.wrap(mData, luma, chroma - 1).slice(), w, 2),       // V: the first
+                    new MegletPlane(ByteBuffer.wrap(mData, 0, luma).slice(), w, 1),
+                    new MegletPlane(ByteBuffer.wrap(mData, luma + 1, chroma - 1).slice(), w, 2),   // U: the second of each pair
+                    new MegletPlane(ByteBuffer.wrap(mData, luma, chroma - 1).slice(), w, 2),       // V: the first
                 };
             }
             return mPlanes.clone();
@@ -231,11 +231,11 @@ public class ImageReader implements java.lang.AutoCloseable {
         }
     }
 
-    private static final class MeglerPlane extends Image.Plane {
+    private static final class MegletPlane extends Image.Plane {
         private final ByteBuffer mBuffer;
         private final int mRowStride, mPixelStride;
 
-        MeglerPlane(ByteBuffer buffer, int rowStride, int pixelStride) {
+        MegletPlane(ByteBuffer buffer, int rowStride, int pixelStride) {
             mBuffer = buffer;
             mRowStride = rowStride;
             mPixelStride = pixelStride;
@@ -247,13 +247,13 @@ public class ImageReader implements java.lang.AutoCloseable {
     }
 
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         private final int mWidth, mHeight;
         private int mFormat = 35, mMaxImages = 1;
         private long mUsage = 3L;
         public Builder(int width, int height) { mWidth = width; mHeight = height; }
         public android.media.ImageReader build() { return new ImageReader(mWidth, mHeight, mFormat, mMaxImages, mUsage); }
-        public android.media.ImageReader.Builder setDefaultDataSpace(int p0) { meglerProps.put("DefaultDataSpace", Integer.valueOf(p0)); return this; }
+        public android.media.ImageReader.Builder setDefaultDataSpace(int p0) { megletProps.put("DefaultDataSpace", Integer.valueOf(p0)); return this; }
         public android.media.ImageReader.Builder setDefaultHardwareBufferFormat(int p0) { mFormat = p0; return this; }
         public android.media.ImageReader.Builder setImageFormat(int p0) { mFormat = p0; return this; }
         public android.media.ImageReader.Builder setMaxImages(int p0) { mMaxImages = p0; return this; }
@@ -261,10 +261,10 @@ public class ImageReader implements java.lang.AutoCloseable {
         Builder() { this((int) 0, (int) 0); }
     }
     public static class ImagePlane extends android.media.Image.Plane {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-        public java.nio.ByteBuffer getBuffer() { return (java.nio.ByteBuffer) meglerProps.get("Buffer"); }
-        public int getPixelStride() { return (meglerProps.get("PixelStride") instanceof Integer ? (Integer) meglerProps.get("PixelStride") : 0); }
-        public int getRowStride() { return (meglerProps.get("RowStride") instanceof Integer ? (Integer) meglerProps.get("RowStride") : 0); }
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        public java.nio.ByteBuffer getBuffer() { return (java.nio.ByteBuffer) megletProps.get("Buffer"); }
+        public int getPixelStride() { return (megletProps.get("PixelStride") instanceof Integer ? (Integer) megletProps.get("PixelStride") : 0); }
+        public int getRowStride() { return (megletProps.get("RowStride") instanceof Integer ? (Integer) megletProps.get("RowStride") : 0); }
         protected ImagePlane() { super(); }
     }
     public interface OnImageAvailableListener {

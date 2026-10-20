@@ -16,7 +16,7 @@ for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/
 done
 [ -n "$VC" ] || { echo "no MSVC with ARM32 tools" >&2; exit 1; }
 SDK="/c/Program Files (x86)/Windows Kits/10"
-SDKV="${MEGLER_SDK_VERSION:-10.0.22621.0}"
+SDKV="${MEGLET_SDK_VERSION:-10.0.22621.0}"
 w() { cygpath -w "$1"; }
 export INCLUDE="$(w "$VC/include");$(w "$SDK/Include/$SDKV/ucrt");$(w "$SDK/Include/$SDKV/shared");$(w "$SDK/Include/$SDKV/um")"
 export MSYS2_ARG_CONV_EXCL="*" VSLANG=1033

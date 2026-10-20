@@ -3,7 +3,7 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TvContract {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_CHANNEL_BROWSABLE_REQUESTED = "android.media.tv.action.CHANNEL_BROWSABLE_REQUESTED";
     public static final java.lang.String ACTION_INITIALIZE_PROGRAMS = "android.media.tv.action.INITIALIZE_PROGRAMS";
     public static final java.lang.String ACTION_PREVIEW_PROGRAM_ADDED_TO_WATCH_NEXT = "android.media.tv.action.PREVIEW_PROGRAM_ADDED_TO_WATCH_NEXT";
@@ -68,7 +68,7 @@ public final class TvContract {
         java.lang.String COLUMN_PACKAGE_NAME = "package_name";
     }
     public static final class Channels implements android.media.tv.TvContract.BaseTvColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int BROADCAST_VISIBILITY_TYPE_INVISIBLE = 2;
         public static final int BROADCAST_VISIBILITY_TYPE_NUMERIC_SELECTABLE_ONLY = 1;
         public static final int BROADCAST_VISIBILITY_TYPE_VISIBLE = 0;
@@ -158,7 +158,7 @@ public final class TvContract {
         public static java.lang.String getVideoResolution(java.lang.String p0) { return null; }
         protected Channels() {}
         public static final class Logo {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "logo";
             protected Logo() {}
         }
@@ -216,7 +216,7 @@ public final class TvContract {
         int TYPE_TV_SERIES = 1;
     }
     public static final class PreviewPrograms implements android.media.tv.TvContract.BaseTvColumns, android.media.tv.TvContract.ProgramColumns, android.media.tv.TvContract.PreviewProgramColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String COLUMN_CHANNEL_ID = "channel_id";
         public static final java.lang.String COLUMN_WEIGHT = "weight";
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/preview_program";
@@ -255,7 +255,7 @@ public final class TvContract {
         int REVIEW_RATING_STYLE_THUMBS_UP_DOWN = 1;
     }
     public static final class Programs implements android.media.tv.TvContract.BaseTvColumns, android.media.tv.TvContract.ProgramColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String COLUMN_BROADCAST_GENRE = "broadcast_genre";
         public static final java.lang.String COLUMN_CHANNEL_ID = "channel_id";
         public static final java.lang.String COLUMN_END_TIME_UTC_MILLIS = "end_time_utc_millis";
@@ -273,7 +273,7 @@ public final class TvContract {
         public static android.net.Uri CONTENT_URI;
         protected Programs() {}
         public static final class Genres {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String ANIMAL_WILDLIFE = "ANIMAL_WILDLIFE";
             public static final java.lang.String ARTS = "ARTS";
             public static final java.lang.String COMEDY = "COMEDY";
@@ -298,7 +298,7 @@ public final class TvContract {
         }
     }
     public static final class RecordedPrograms implements android.media.tv.TvContract.BaseTvColumns, android.media.tv.TvContract.ProgramColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String COLUMN_BROADCAST_GENRE = "broadcast_genre";
         public static final java.lang.String COLUMN_CHANNEL_ID = "channel_id";
         public static final java.lang.String COLUMN_END_TIME_UTC_MILLIS = "end_time_utc_millis";
@@ -316,7 +316,7 @@ public final class TvContract {
         protected RecordedPrograms() {}
     }
     public static final class WatchNextPrograms implements android.media.tv.TvContract.BaseTvColumns, android.media.tv.TvContract.ProgramColumns, android.media.tv.TvContract.PreviewProgramColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String COLUMN_LAST_ENGAGEMENT_TIME_UTC_MILLIS = "last_engagement_time_utc_millis";
         public static final java.lang.String COLUMN_WATCH_NEXT_TYPE = "watch_next_type";
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/watch_next_program";
@@ -329,7 +329,7 @@ public final class TvContract {
         protected WatchNextPrograms() {}
     }
     public static final class WatchedPrograms implements android.media.tv.TvContract.BaseTvColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String COLUMN_CHANNEL_ID = "channel_id";
         public static final java.lang.String COLUMN_DESCRIPTION = "description";
         public static final java.lang.String COLUMN_END_TIME_UTC_MILLIS = "end_time_utc_millis";

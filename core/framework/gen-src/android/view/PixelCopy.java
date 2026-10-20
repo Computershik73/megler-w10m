@@ -3,7 +3,7 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PixelCopy {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ERROR_DESTINATION_INVALID = 5;
     public static final int ERROR_SOURCE_INVALID = 4;
     public static final int ERROR_SOURCE_NO_DATA = 3;
@@ -22,27 +22,27 @@ public final class PixelCopy {
         void onPixelCopyFinished(int p0);
     }
     public static final class Request {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-        public android.graphics.Bitmap getDestinationBitmap() { return (android.graphics.Bitmap) meglerProps.get("DestinationBitmap"); }
-        public android.graphics.Rect getSourceRect() { return (android.graphics.Rect) meglerProps.get("SourceRect"); }
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        public android.graphics.Bitmap getDestinationBitmap() { return (android.graphics.Bitmap) megletProps.get("DestinationBitmap"); }
+        public android.graphics.Rect getSourceRect() { return (android.graphics.Rect) megletProps.get("SourceRect"); }
         public void request(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
         protected Request() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static android.view.PixelCopy.Request.Builder ofSurface(android.view.Surface p0) { return new Builder(); }
             public static android.view.PixelCopy.Request.Builder ofSurface(android.view.SurfaceView p0) { return new Builder(); }
             public static android.view.PixelCopy.Request.Builder ofWindow(android.view.View p0) { return new Builder(); }
             public static android.view.PixelCopy.Request.Builder ofWindow(android.view.Window p0) { return new Builder(); }
-            public android.view.PixelCopy.Request build() { android.view.PixelCopy.Request x = new android.view.PixelCopy.Request(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.view.PixelCopy.Request.Builder setDestinationBitmap(android.graphics.Bitmap p0) { meglerProps.put("DestinationBitmap", p0); return this; }
-            public android.view.PixelCopy.Request.Builder setSourceRect(android.graphics.Rect p0) { meglerProps.put("SourceRect", p0); return this; }
+            public android.view.PixelCopy.Request build() { android.view.PixelCopy.Request x = new android.view.PixelCopy.Request(); x.megletProps.putAll(megletProps); return x; }
+            public android.view.PixelCopy.Request.Builder setDestinationBitmap(android.graphics.Bitmap p0) { megletProps.put("DestinationBitmap", p0); return this; }
+            public android.view.PixelCopy.Request.Builder setSourceRect(android.graphics.Rect p0) { megletProps.put("SourceRect", p0); return this; }
             protected Builder() {}
         }
     }
     public static final class Result {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-        public android.graphics.Bitmap getBitmap() { return (android.graphics.Bitmap) meglerProps.get("Bitmap"); }
-        public int getStatus() { return (meglerProps.get("Status") instanceof Integer ? (Integer) meglerProps.get("Status") : 0); }
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        public android.graphics.Bitmap getBitmap() { return (android.graphics.Bitmap) megletProps.get("Bitmap"); }
+        public int getStatus() { return (megletProps.get("Status") instanceof Integer ? (Integer) megletProps.get("Status") : 0); }
         protected Result() {}
     }
 }

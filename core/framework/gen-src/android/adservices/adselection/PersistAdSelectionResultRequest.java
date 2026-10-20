@@ -3,19 +3,19 @@ package android.adservices.adselection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PersistAdSelectionResultRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public long getAdSelectionDataId() { return (meglerProps.get("AdSelectionDataId") instanceof Long ? (Long) meglerProps.get("AdSelectionDataId") : 0L); }
-    public long getAdSelectionId() { return (meglerProps.get("AdSelectionId") instanceof Long ? (Long) meglerProps.get("AdSelectionId") : 0L); }
-    public byte[] getAdSelectionResult() { return (byte[]) meglerProps.get("AdSelectionResult"); }
-    public android.adservices.common.AdTechIdentifier getSeller() { return (android.adservices.common.AdTechIdentifier) meglerProps.get("Seller"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public long getAdSelectionDataId() { return (megletProps.get("AdSelectionDataId") instanceof Long ? (Long) megletProps.get("AdSelectionDataId") : 0L); }
+    public long getAdSelectionId() { return (megletProps.get("AdSelectionId") instanceof Long ? (Long) megletProps.get("AdSelectionId") : 0L); }
+    public byte[] getAdSelectionResult() { return (byte[]) megletProps.get("AdSelectionResult"); }
+    public android.adservices.common.AdTechIdentifier getSeller() { return (android.adservices.common.AdTechIdentifier) megletProps.get("Seller"); }
     protected PersistAdSelectionResultRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.adselection.PersistAdSelectionResultRequest build() { android.adservices.adselection.PersistAdSelectionResultRequest x = new android.adservices.adselection.PersistAdSelectionResultRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.adselection.PersistAdSelectionResultRequest.Builder setAdSelectionDataId(long p0) { meglerProps.put("AdSelectionDataId", Long.valueOf(p0)); return this; }
-        public android.adservices.adselection.PersistAdSelectionResultRequest.Builder setAdSelectionId(long p0) { meglerProps.put("AdSelectionId", Long.valueOf(p0)); return this; }
-        public android.adservices.adselection.PersistAdSelectionResultRequest.Builder setAdSelectionResult(byte[] p0) { meglerProps.put("AdSelectionResult", p0); return this; }
-        public android.adservices.adselection.PersistAdSelectionResultRequest.Builder setSeller(android.adservices.common.AdTechIdentifier p0) { meglerProps.put("Seller", p0); return this; }
+        public android.adservices.adselection.PersistAdSelectionResultRequest build() { android.adservices.adselection.PersistAdSelectionResultRequest x = new android.adservices.adselection.PersistAdSelectionResultRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.adselection.PersistAdSelectionResultRequest.Builder setAdSelectionDataId(long p0) { megletProps.put("AdSelectionDataId", Long.valueOf(p0)); return this; }
+        public android.adservices.adselection.PersistAdSelectionResultRequest.Builder setAdSelectionId(long p0) { megletProps.put("AdSelectionId", Long.valueOf(p0)); return this; }
+        public android.adservices.adselection.PersistAdSelectionResultRequest.Builder setAdSelectionResult(byte[] p0) { megletProps.put("AdSelectionResult", p0); return this; }
+        public android.adservices.adselection.PersistAdSelectionResultRequest.Builder setSeller(android.adservices.common.AdTechIdentifier p0) { megletProps.put("Seller", p0); return this; }
     }
 }

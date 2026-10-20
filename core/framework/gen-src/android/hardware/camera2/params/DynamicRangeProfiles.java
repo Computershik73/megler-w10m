@@ -3,7 +3,7 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DynamicRangeProfiles {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final long DOLBY_VISION_10B_HDR_OEM = 64L;
     public static final long DOLBY_VISION_10B_HDR_OEM_PO = 128L;
     public static final long DOLBY_VISION_10B_HDR_REF = 16L;
@@ -20,7 +20,7 @@ public final class DynamicRangeProfiles {
     public DynamicRangeProfiles(long[] p0) {}
     public static void checkProfileValue(long p0) {}
     public java.util.Set getProfileCaptureRequestConstraints(long p0) { return new java.util.HashSet(); }
-    public java.util.Set getSupportedProfiles() { return (meglerProps.get("SupportedProfiles") != null ? (java.util.Set) meglerProps.get("SupportedProfiles") : new java.util.HashSet()); }
+    public java.util.Set getSupportedProfiles() { return (megletProps.get("SupportedProfiles") != null ? (java.util.Set) megletProps.get("SupportedProfiles") : new java.util.HashSet()); }
     public boolean isExtraLatencyPresent(long p0) { return false; }
     DynamicRangeProfiles() { this((long[]) null); }
 }

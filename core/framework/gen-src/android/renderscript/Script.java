@@ -3,7 +3,7 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Script extends android.renderscript.BaseObj {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public void bindAllocation(android.renderscript.Allocation p0, int p1) {}
     protected android.renderscript.Script.FieldID createFieldID(int p0, android.renderscript.Element p1) { return null; }
     protected android.renderscript.Script.InvokeID createInvokeID(int p0) { return null; }
@@ -21,7 +21,7 @@ public class Script extends android.renderscript.BaseObj {
     protected void invoke(int p0) {}
     protected void invoke(int p0, android.renderscript.FieldPacker p1) {}
     protected void reduce(int p0, android.renderscript.Allocation[] p1, android.renderscript.Allocation p2, android.renderscript.Script.LaunchOptions p3) {}
-    public void setTimeZone(java.lang.String p0) { meglerProps.put("TimeZone", p0); }
+    public void setTimeZone(java.lang.String p0) { megletProps.put("TimeZone", p0); }
     public void setVar(int p0, double p1) {}
     public void setVar(int p0, float p1) {}
     public void setVar(int p0, int p1) {}
@@ -32,41 +32,41 @@ public class Script extends android.renderscript.BaseObj {
     public void setVar(int p0, boolean p1) {}
     protected Script() { super(); }
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected Builder() {}
     }
     public static class FieldBase {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected android.renderscript.Allocation mAllocation;
         protected android.renderscript.Element mElement;
         protected FieldBase() {}
-        public android.renderscript.Allocation getAllocation() { return (android.renderscript.Allocation) meglerProps.get("Allocation"); }
-        public android.renderscript.Element getElement() { return (android.renderscript.Element) meglerProps.get("Element"); }
-        public android.renderscript.Type getType() { return (android.renderscript.Type) meglerProps.get("Type"); }
+        public android.renderscript.Allocation getAllocation() { return (android.renderscript.Allocation) megletProps.get("Allocation"); }
+        public android.renderscript.Element getElement() { return (android.renderscript.Element) megletProps.get("Element"); }
+        public android.renderscript.Type getType() { return (android.renderscript.Type) megletProps.get("Type"); }
         protected void init(android.renderscript.RenderScript p0, int p1) {}
         protected void init(android.renderscript.RenderScript p0, int p1, int p2) {}
         public void updateAllocation() {}
     }
     public static final class FieldID extends android.renderscript.BaseObj {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected FieldID() { super(); }
     }
     public static final class InvokeID extends android.renderscript.BaseObj {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected InvokeID() { super(); }
     }
     public static abstract class KernelID extends android.renderscript.BaseObj {
         protected KernelID() { super(); }
     }
     public static final class LaunchOptions {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public LaunchOptions() {}
-        public int getXEnd() { return (meglerProps.get("XEnd") instanceof Integer ? (Integer) meglerProps.get("XEnd") : 0); }
-        public int getXStart() { return (meglerProps.get("XStart") instanceof Integer ? (Integer) meglerProps.get("XStart") : 0); }
-        public int getYEnd() { return (meglerProps.get("YEnd") instanceof Integer ? (Integer) meglerProps.get("YEnd") : 0); }
-        public int getYStart() { return (meglerProps.get("YStart") instanceof Integer ? (Integer) meglerProps.get("YStart") : 0); }
-        public int getZEnd() { return (meglerProps.get("ZEnd") instanceof Integer ? (Integer) meglerProps.get("ZEnd") : 0); }
-        public int getZStart() { return (meglerProps.get("ZStart") instanceof Integer ? (Integer) meglerProps.get("ZStart") : 0); }
+        public int getXEnd() { return (megletProps.get("XEnd") instanceof Integer ? (Integer) megletProps.get("XEnd") : 0); }
+        public int getXStart() { return (megletProps.get("XStart") instanceof Integer ? (Integer) megletProps.get("XStart") : 0); }
+        public int getYEnd() { return (megletProps.get("YEnd") instanceof Integer ? (Integer) megletProps.get("YEnd") : 0); }
+        public int getYStart() { return (megletProps.get("YStart") instanceof Integer ? (Integer) megletProps.get("YStart") : 0); }
+        public int getZEnd() { return (megletProps.get("ZEnd") instanceof Integer ? (Integer) megletProps.get("ZEnd") : 0); }
+        public int getZStart() { return (megletProps.get("ZStart") instanceof Integer ? (Integer) megletProps.get("ZStart") : 0); }
         public android.renderscript.Script.LaunchOptions setX(int p0, int p1) { return this; }
         public android.renderscript.Script.LaunchOptions setY(int p0, int p1) { return this; }
         public android.renderscript.Script.LaunchOptions setZ(int p0, int p1) { return this; }

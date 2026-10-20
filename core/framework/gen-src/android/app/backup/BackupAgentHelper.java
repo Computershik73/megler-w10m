@@ -3,10 +3,10 @@ package android.app.backup;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BackupAgentHelper extends android.app.backup.BackupAgent {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public BackupAgentHelper() { super(); }
     public void addHelper(java.lang.String p0, android.app.backup.BackupHelper p1) {}
-    public android.app.backup.BackupHelperDispatcher getDispatcher() { return (android.app.backup.BackupHelperDispatcher) meglerProps.get("Dispatcher"); }
+    public android.app.backup.BackupHelperDispatcher getDispatcher() { return (android.app.backup.BackupHelperDispatcher) megletProps.get("Dispatcher"); }
     public void onBackup(android.os.ParcelFileDescriptor p0, android.app.backup.BackupDataOutput p1, android.os.ParcelFileDescriptor p2) {}
     public void onRestore(android.app.backup.BackupDataInput p0, int p1, android.os.ParcelFileDescriptor p2) {}
 }

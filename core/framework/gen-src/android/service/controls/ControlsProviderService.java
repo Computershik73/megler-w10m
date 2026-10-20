@@ -3,7 +3,7 @@ package android.service.controls;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ControlsProviderService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_ADD_CONTROL = "android.service.controls.action.ADD_CONTROL";
     public static final java.lang.String CALLBACK_BUNDLE = "CALLBACK_BUNDLE";
     public static final java.lang.String CALLBACK_TOKEN = "CALLBACK_TOKEN";

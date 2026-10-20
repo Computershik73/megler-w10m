@@ -3,13 +3,13 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FontRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public FontRequest(java.lang.String p0, java.lang.String p1, java.lang.String p2) {}
     public FontRequest(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.util.List p3) {}
-    public java.util.List getCertificates() { return (meglerProps.get("Certificates") != null ? (java.util.List) meglerProps.get("Certificates") : new java.util.ArrayList()); }
-    public java.lang.String getIdentifier() { return (java.lang.String) meglerProps.get("Identifier"); }
-    public java.lang.String getProviderAuthority() { return (java.lang.String) meglerProps.get("ProviderAuthority"); }
-    public java.lang.String getProviderPackage() { return (java.lang.String) meglerProps.get("ProviderPackage"); }
-    public java.lang.String getQuery() { return (java.lang.String) meglerProps.get("Query"); }
+    public java.util.List getCertificates() { return (megletProps.get("Certificates") != null ? (java.util.List) megletProps.get("Certificates") : new java.util.ArrayList()); }
+    public java.lang.String getIdentifier() { return (java.lang.String) megletProps.get("Identifier"); }
+    public java.lang.String getProviderAuthority() { return (java.lang.String) megletProps.get("ProviderAuthority"); }
+    public java.lang.String getProviderPackage() { return (java.lang.String) megletProps.get("ProviderPackage"); }
+    public java.lang.String getQuery() { return (java.lang.String) megletProps.get("Query"); }
     FontRequest() { this((java.lang.String) null, (java.lang.String) null, (java.lang.String) null); }
 }

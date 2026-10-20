@@ -21,19 +21,19 @@
 # the class path of an app that asks for it.
 #
 # Needs a JDK and an Android SDK's build-tools (for d8.jar and dexdump):
-#   MEGLER_JAVA        java                      (C:\Program Files\Java\jdk1.8.0_202\bin\java.exe)
-#   MEGLER_BUILD_TOOLS the build-tools folder    (C:\Users\User\Documents\build-tools\29.0.3)
+#   MEGLET_JAVA        java                      (C:\Program Files\Java\jdk1.8.0_202\bin\java.exe)
+#   MEGLET_BUILD_TOOLS the build-tools folder    (C:\Users\User\Documents\build-tools\29.0.3)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/build/android9/system/framework"
 RAW="$ROOT/build/android9/raw"
 OUT="$ROOT/build/android9/boot"
-JAVA="${MEGLER_JAVA:-/c/Program Files/Java/jdk1.8.0_202/bin/java.exe}"
-BT="${MEGLER_BUILD_TOOLS:-/c/Users/User/Documents/build-tools/29.0.3}"
+JAVA="${MEGLET_JAVA:-/c/Program Files/Java/jdk1.8.0_202/bin/java.exe}"
+BT="${MEGLET_BUILD_TOOLS:-/c/Users/User/Documents/build-tools/29.0.3}"
 [ -d "$SRC" ] || { echo "no $SRC: run tools/android9-unpack.sh first" >&2; exit 1; }
-[ -x "$JAVA" ] || { echo "no java at $JAVA (set MEGLER_JAVA)" >&2; exit 1; }
-[ -f "$BT/lib/d8.jar" ] || { echo "no d8.jar in $BT/lib (set MEGLER_BUILD_TOOLS)" >&2; exit 1; }
+[ -x "$JAVA" ] || { echo "no java at $JAVA (set MEGLET_JAVA)" >&2; exit 1; }
+[ -f "$BT/lib/d8.jar" ] || { echo "no d8.jar in $BT/lib (set MEGLET_BUILD_TOOLS)" >&2; exit 1; }
 w() { cygpath -w "$1"; }
 
 rm -rf "$RAW" && mkdir -p "$RAW" "$OUT"

@@ -3,7 +3,7 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SignalingDataInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String CONTENT_ENCODING_BASE64 = "Base64";
     public static final java.lang.String CONTENT_ENCODING_UTF_8 = "UTF-8";
     public static android.os.Parcelable.Creator CREATOR;
@@ -11,11 +11,11 @@ public final class SignalingDataInfo implements android.os.Parcelable {
     public SignalingDataInfo(java.lang.String p0, java.lang.String p1, int p2, int p3) {}
     public SignalingDataInfo(java.lang.String p0, java.lang.String p1, int p2, int p3, java.lang.String p4) {}
     public int describeContents() { return 0; }
-    public java.lang.String getEncoding() { return (java.lang.String) meglerProps.get("Encoding"); }
-    public int getGroup() { return (meglerProps.get("Group") instanceof Integer ? (Integer) meglerProps.get("Group") : 0); }
-    public java.lang.String getSignalingDataType() { return (java.lang.String) meglerProps.get("SignalingDataType"); }
-    public java.lang.String getTable() { return (java.lang.String) meglerProps.get("Table"); }
-    public int getVersion() { return (meglerProps.get("Version") instanceof Integer ? (Integer) meglerProps.get("Version") : 0); }
+    public java.lang.String getEncoding() { return (java.lang.String) megletProps.get("Encoding"); }
+    public int getGroup() { return (megletProps.get("Group") instanceof Integer ? (Integer) megletProps.get("Group") : 0); }
+    public java.lang.String getSignalingDataType() { return (java.lang.String) megletProps.get("SignalingDataType"); }
+    public java.lang.String getTable() { return (java.lang.String) megletProps.get("Table"); }
+    public int getVersion() { return (megletProps.get("Version") instanceof Integer ? (Integer) megletProps.get("Version") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SignalingDataInfo() { this((java.lang.String) null, (java.lang.String) null, (int) 0, (int) 0); }
 }

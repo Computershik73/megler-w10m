@@ -3,14 +3,14 @@ package android.companion.virtual;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VirtualDeviceManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int LAUNCH_FAILURE_NO_ACTIVITY = 2;
     public static final int LAUNCH_FAILURE_PENDING_INTENT_CANCELED = 1;
     public static final int LAUNCH_SUCCESS = 0;
     public static final java.lang.String PERSISTENT_DEVICE_ID_DEFAULT = "default:0";
     public VirtualDeviceManager(android.companion.virtual.IVirtualDeviceManager p0, android.content.Context p1) {}
     public android.companion.virtual.VirtualDeviceManager.VirtualDevice createVirtualDevice(int p0, android.companion.virtual.VirtualDeviceParams p1) { return null; }
-    public java.util.Set getAllPersistentDeviceIds() { return (meglerProps.get("AllPersistentDeviceIds") != null ? (java.util.Set) meglerProps.get("AllPersistentDeviceIds") : new java.util.HashSet()); }
+    public java.util.Set getAllPersistentDeviceIds() { return (megletProps.get("AllPersistentDeviceIds") != null ? (java.util.Set) megletProps.get("AllPersistentDeviceIds") : new java.util.HashSet()); }
     public int getAudioPlaybackSessionId(int p0) { return 0; }
     public int getAudioRecordingSessionId(int p0) { return 0; }
     public int getDeviceIdForDisplayId(int p0) { return 0; }
@@ -18,7 +18,7 @@ public final class VirtualDeviceManager {
     public int getDevicePolicyForDisplayId(int p0, int p1) { return 0; }
     public java.lang.CharSequence getDisplayNameForPersistentDeviceId(java.lang.String p0) { return null; }
     public android.companion.virtual.VirtualDevice getVirtualDevice(int p0) { return null; }
-    public java.util.List getVirtualDevices() { return (meglerProps.get("VirtualDevices") != null ? (java.util.List) meglerProps.get("VirtualDevices") : new java.util.ArrayList()); }
+    public java.util.List getVirtualDevices() { return (megletProps.get("VirtualDevices") != null ? (java.util.List) megletProps.get("VirtualDevices") : new java.util.ArrayList()); }
     public boolean isValidVirtualDeviceId(int p0) { return false; }
     public boolean isVirtualDeviceOwnedMirrorDisplay(int p0) { return false; }
     public void playSoundEffect(int p0, int p1) {}
@@ -43,7 +43,7 @@ public final class VirtualDeviceManager {
         void onPlaySoundEffect(int p0);
     }
     public static class VirtualDevice implements java.lang.AutoCloseable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public VirtualDevice(android.content.Context p0, android.companion.virtual.IVirtualDevice p1) {}
         public void addActivityListener(java.util.concurrent.Executor p0, android.companion.virtual.VirtualDeviceManager.ActivityListener p1) {}
         public void addActivityPolicyExemption(android.companion.virtual.ActivityPolicyExemption p0) {}
@@ -65,9 +65,9 @@ public final class VirtualDeviceManager {
         public android.hardware.input.VirtualStylus createVirtualStylus(android.hardware.input.VirtualStylusConfig p0) { return null; }
         public android.hardware.input.VirtualTouchscreen createVirtualTouchscreen(android.hardware.display.VirtualDisplay p0, java.lang.String p1, int p2, int p3) { return null; }
         public android.hardware.input.VirtualTouchscreen createVirtualTouchscreen(android.hardware.input.VirtualTouchscreenConfig p0) { return null; }
-        public int getDeviceId() { return (meglerProps.get("DeviceId") instanceof Integer ? (Integer) meglerProps.get("DeviceId") : 0); }
-        public java.lang.String getPersistentDeviceId() { return (java.lang.String) meglerProps.get("PersistentDeviceId"); }
-        public java.util.List getVirtualSensorList() { return (meglerProps.get("VirtualSensorList") != null ? (java.util.List) meglerProps.get("VirtualSensorList") : new java.util.ArrayList()); }
+        public int getDeviceId() { return (megletProps.get("DeviceId") instanceof Integer ? (Integer) megletProps.get("DeviceId") : 0); }
+        public java.lang.String getPersistentDeviceId() { return (java.lang.String) megletProps.get("PersistentDeviceId"); }
+        public java.util.List getVirtualSensorList() { return (megletProps.get("VirtualSensorList") != null ? (java.util.List) megletProps.get("VirtualSensorList") : new java.util.ArrayList()); }
         public void goToSleep() {}
         public void launchPendingIntent(int p0, android.app.PendingIntent p1, java.util.concurrent.Executor p2, java.util.function.IntConsumer p3) {}
         public void registerIntentInterceptor(android.content.IntentFilter p0, java.util.concurrent.Executor p1, android.companion.virtual.VirtualDeviceManager.IntentInterceptorCallback p2) {}
@@ -79,7 +79,7 @@ public final class VirtualDeviceManager {
         public void setDevicePolicy(int p0, int p1, int p2) {}
         public void setDisplayImePolicy(int p0, int p1) {}
         public void setDisplayUiMode(int p0, int p1) {}
-        public void setShowPointerIcon(boolean p0) { meglerProps.put("ShowPointerIcon", Boolean.valueOf(p0)); }
+        public void setShowPointerIcon(boolean p0) { megletProps.put("ShowPointerIcon", Boolean.valueOf(p0)); }
         public void unregisterIntentInterceptor(android.companion.virtual.VirtualDeviceManager.IntentInterceptorCallback p0) {}
         public void wakeUp() {}
         VirtualDevice() { this((android.content.Context) null, (android.companion.virtual.IVirtualDevice) null); }

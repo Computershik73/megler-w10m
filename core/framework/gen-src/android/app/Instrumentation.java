@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Instrumentation {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final boolean DEBUG_START_ACTIVITY = false;
     public static final java.lang.String REPORT_KEY_IDENTIFIER = "id";
     public static final java.lang.String REPORT_KEY_STREAMRESULT = "stream";
@@ -46,18 +46,18 @@ public class Instrumentation {
     public android.app.Instrumentation.ActivityResult execStartActivityAsCaller(android.content.Context p0, android.os.IBinder p1, android.os.IBinder p2, android.app.Activity p3, android.content.Intent p4, int p5, android.os.Bundle p6, boolean p7, int p8) { return null; }
     public void execStartActivityFromAppTask(android.content.Context p0, android.os.IBinder p1, android.app.IAppTask p2, android.content.Intent p3, android.os.Bundle p4) {}
     public void finish(int p0, android.os.Bundle p1) {}
-    public android.os.Bundle getAllocCounts() { return (android.os.Bundle) meglerProps.get("AllocCounts"); }
-    public android.os.Bundle getBinderCounts() { return (android.os.Bundle) meglerProps.get("BinderCounts"); }
-    public android.content.ComponentName getComponentName() { return (android.content.ComponentName) meglerProps.get("ComponentName"); }
-    public android.content.Context getContext() { return (android.content.Context) meglerProps.get("Context"); }
-    public java.lang.String getProcessName() { return (java.lang.String) meglerProps.get("ProcessName"); }
-    public android.content.Context getTargetContext() { return (android.content.Context) meglerProps.get("TargetContext"); }
-    public android.app.UiAutomation getUiAutomation() { return (android.app.UiAutomation) meglerProps.get("UiAutomation"); }
+    public android.os.Bundle getAllocCounts() { return (android.os.Bundle) megletProps.get("AllocCounts"); }
+    public android.os.Bundle getBinderCounts() { return (android.os.Bundle) megletProps.get("BinderCounts"); }
+    public android.content.ComponentName getComponentName() { return (android.content.ComponentName) megletProps.get("ComponentName"); }
+    public android.content.Context getContext() { return (android.content.Context) megletProps.get("Context"); }
+    public java.lang.String getProcessName() { return (java.lang.String) megletProps.get("ProcessName"); }
+    public android.content.Context getTargetContext() { return (android.content.Context) megletProps.get("TargetContext"); }
+    public android.app.UiAutomation getUiAutomation() { return (android.app.UiAutomation) megletProps.get("UiAutomation"); }
     public android.app.UiAutomation getUiAutomation(int p0) { return null; }
     public boolean invokeContextMenuAction(android.app.Activity p0, int p1, int p2) { return false; }
     public boolean invokeMenuActionSync(android.app.Activity p0, int p1, int p2) { return false; }
-    public boolean isInstrumenting() { return (meglerProps.get("Instrumenting") instanceof Boolean ? (Boolean) meglerProps.get("Instrumenting") : false); }
-    public boolean isProfiling() { return (meglerProps.get("Profiling") instanceof Boolean ? (Boolean) meglerProps.get("Profiling") : false); }
+    public boolean isInstrumenting() { return (megletProps.get("Instrumenting") instanceof Boolean ? (Boolean) megletProps.get("Instrumenting") : false); }
+    public boolean isProfiling() { return (megletProps.get("Profiling") instanceof Boolean ? (Boolean) megletProps.get("Profiling") : false); }
     public android.app.Activity newActivity(java.lang.Class p0, android.content.Context p1, android.os.IBinder p2, android.app.Application p3, android.content.Intent p4, android.content.pm.ActivityInfo p5, java.lang.CharSequence p6, android.app.Activity p7, java.lang.String p8, java.lang.Object p9) { return null; }
     public android.app.Activity newActivity(java.lang.ClassLoader p0, java.lang.String p1, android.content.Intent p2) { return null; }
     public android.app.Application newApplication(java.lang.ClassLoader p0, java.lang.String p1, android.content.Context p2) { return null; }
@@ -76,7 +76,7 @@ public class Instrumentation {
     public void sendStringSync(java.lang.String p0) {}
     public void sendTrackballEventSync(android.view.MotionEvent p0) {}
     public void setAutomaticPerformanceSnapshots() {}
-    public void setInTouchMode(boolean p0) { meglerProps.put("InTouchMode", Boolean.valueOf(p0)); }
+    public void setInTouchMode(boolean p0) { megletProps.put("InTouchMode", Boolean.valueOf(p0)); }
     public void start() {}
     public android.app.Activity startActivitySync(android.content.Intent p0) { return null; }
     public android.app.Activity startActivitySync(android.content.Intent p0, android.os.Bundle p1) { return null; }
@@ -90,15 +90,15 @@ public class Instrumentation {
     public android.app.Activity waitForMonitor(android.app.Instrumentation.ActivityMonitor p0) { return null; }
     public android.app.Activity waitForMonitorWithTimeout(android.app.Instrumentation.ActivityMonitor p0, long p1) { return null; }
     public static class ActivityMonitor {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ActivityMonitor() {}
         public ActivityMonitor(android.content.IntentFilter p0, android.app.Instrumentation.ActivityResult p1, boolean p2) {}
         public ActivityMonitor(java.lang.String p0, android.app.Instrumentation.ActivityResult p1, boolean p2) {}
-        public android.content.IntentFilter getFilter() { return (android.content.IntentFilter) meglerProps.get("Filter"); }
-        public int getHits() { return (meglerProps.get("Hits") instanceof Integer ? (Integer) meglerProps.get("Hits") : 0); }
-        public android.app.Activity getLastActivity() { return (android.app.Activity) meglerProps.get("LastActivity"); }
-        public android.app.Instrumentation.ActivityResult getResult() { return (android.app.Instrumentation.ActivityResult) meglerProps.get("Result"); }
-        public boolean isBlocking() { return (meglerProps.get("Blocking") instanceof Boolean ? (Boolean) meglerProps.get("Blocking") : false); }
+        public android.content.IntentFilter getFilter() { return (android.content.IntentFilter) megletProps.get("Filter"); }
+        public int getHits() { return (megletProps.get("Hits") instanceof Integer ? (Integer) megletProps.get("Hits") : 0); }
+        public android.app.Activity getLastActivity() { return (android.app.Activity) megletProps.get("LastActivity"); }
+        public android.app.Instrumentation.ActivityResult getResult() { return (android.app.Instrumentation.ActivityResult) megletProps.get("Result"); }
+        public boolean isBlocking() { return (megletProps.get("Blocking") instanceof Boolean ? (Boolean) megletProps.get("Blocking") : false); }
         public android.app.Instrumentation.ActivityResult onStartActivity(android.content.Context p0, android.content.Intent p1, android.os.Bundle p2) { return null; }
         public android.app.Instrumentation.ActivityResult onStartActivity(android.content.Intent p0) { return null; }
         public void onStartActivityResult(int p0, android.os.Bundle p1) {}
@@ -106,10 +106,10 @@ public class Instrumentation {
         public android.app.Activity waitForActivityWithTimeout(long p0) { return null; }
     }
     public static final class ActivityResult {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ActivityResult(int p0, android.content.Intent p1) {}
-        public int getResultCode() { return (meglerProps.get("ResultCode") instanceof Integer ? (Integer) meglerProps.get("ResultCode") : 0); }
-        public android.content.Intent getResultData() { return (android.content.Intent) meglerProps.get("ResultData"); }
+        public int getResultCode() { return (megletProps.get("ResultCode") instanceof Integer ? (Integer) megletProps.get("ResultCode") : 0); }
+        public android.content.Intent getResultData() { return (android.content.Intent) megletProps.get("ResultData"); }
         ActivityResult() { this((int) 0, (android.content.Intent) null); }
     }
 }

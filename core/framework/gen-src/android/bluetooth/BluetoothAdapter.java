@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothAdapter {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_AUTO_ON_STATE_CHANGED = "android.bluetooth.action.AUTO_ON_STATE_CHANGED";
     public static final java.lang.String ACTION_BLE_ACL_CONNECTED = "android.bluetooth.adapter.action.BLE_ACL_CONNECTED";
     public static final java.lang.String ACTION_BLE_ACL_DISCONNECTED = "android.bluetooth.adapter.action.BLE_ACL_DISCONNECTED";
@@ -85,60 +85,60 @@ public final class BluetoothAdapter {
     protected void finalize() {}
     public void generateLocalOobData(int p0, java.util.concurrent.Executor p1, android.bluetooth.BluetoothAdapter.OobDataCallback p2) {}
     public java.util.List getActiveDevices(int p0) { return new java.util.ArrayList(); }
-    public java.lang.String getAddress() { return (java.lang.String) meglerProps.get("Address"); }
-    public android.content.AttributionSource getAttributionSource() { return (android.content.AttributionSource) meglerProps.get("AttributionSource"); }
-    public android.bluetooth.IBluetoothAdvertise getBluetoothAdvertise() { return (android.bluetooth.IBluetoothAdvertise) meglerProps.get("BluetoothAdvertise"); }
-    public android.bluetooth.IBluetoothGatt getBluetoothGatt() { return (android.bluetooth.IBluetoothGatt) meglerProps.get("BluetoothGatt"); }
-    public int getBluetoothHciSnoopLoggingMode() { return (meglerProps.get("BluetoothHciSnoopLoggingMode") instanceof Integer ? (Integer) meglerProps.get("BluetoothHciSnoopLoggingMode") : 0); }
-    public android.bluetooth.le.BluetoothLeAdvertiser getBluetoothLeAdvertiser() { return (android.bluetooth.le.BluetoothLeAdvertiser) meglerProps.get("BluetoothLeAdvertiser"); }
-    public android.bluetooth.le.BluetoothLeScanner getBluetoothLeScanner() { return (android.bluetooth.le.BluetoothLeScanner) meglerProps.get("BluetoothLeScanner"); }
-    public android.bluetooth.IBluetoothManager getBluetoothManager() { return (android.bluetooth.IBluetoothManager) meglerProps.get("BluetoothManager"); }
-    public android.bluetooth.IBluetoothScan getBluetoothScan() { return (android.bluetooth.IBluetoothScan) meglerProps.get("BluetoothScan"); }
-    public java.util.Set getBondedDevices() { return (meglerProps.get("BondedDevices") != null ? (java.util.Set) meglerProps.get("BondedDevices") : new java.util.HashSet()); }
-    public int getConnectionState() { return (meglerProps.get("ConnectionState") instanceof Integer ? (Integer) meglerProps.get("ConnectionState") : 0); }
-    public java.time.Duration getDiscoverableTimeout() { return (java.time.Duration) meglerProps.get("DiscoverableTimeout"); }
-    public long getDiscoveryEndMillis() { return (meglerProps.get("DiscoveryEndMillis") instanceof Long ? (Long) meglerProps.get("DiscoveryEndMillis") : 0L); }
-    public android.bluetooth.IDistanceMeasurement getDistanceMeasurement() { return (android.bluetooth.IDistanceMeasurement) meglerProps.get("DistanceMeasurement"); }
-    public android.bluetooth.le.DistanceMeasurementManager getDistanceMeasurementManager() { return (android.bluetooth.le.DistanceMeasurementManager) meglerProps.get("DistanceMeasurementManager"); }
-    public int getLeMaximumAdvertisingDataLength() { return (meglerProps.get("LeMaximumAdvertisingDataLength") instanceof Integer ? (Integer) meglerProps.get("LeMaximumAdvertisingDataLength") : 0); }
-    public int getLeState() { return (meglerProps.get("LeState") instanceof Integer ? (Integer) meglerProps.get("LeState") : 0); }
-    public int getMaxConnectedAudioDevices() { return (meglerProps.get("MaxConnectedAudioDevices") instanceof Integer ? (Integer) meglerProps.get("MaxConnectedAudioDevices") : 0); }
-    public java.util.List getMostRecentlyConnectedDevices() { return (meglerProps.get("MostRecentlyConnectedDevices") != null ? (java.util.List) meglerProps.get("MostRecentlyConnectedDevices") : new java.util.ArrayList()); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public int getNameLengthForAdvertise() { return (meglerProps.get("NameLengthForAdvertise") instanceof Integer ? (Integer) meglerProps.get("NameLengthForAdvertise") : 0); }
-    public int getOffloadedTransportDiscoveryDataScanSupported() { return (meglerProps.get("OffloadedTransportDiscoveryDataScanSupported") instanceof Integer ? (Integer) meglerProps.get("OffloadedTransportDiscoveryDataScanSupported") : 0); }
-    public android.bluetooth.le.PeriodicAdvertisingManager getPeriodicAdvertisingManager() { return (android.bluetooth.le.PeriodicAdvertisingManager) meglerProps.get("PeriodicAdvertisingManager"); }
+    public java.lang.String getAddress() { return (java.lang.String) megletProps.get("Address"); }
+    public android.content.AttributionSource getAttributionSource() { return (android.content.AttributionSource) megletProps.get("AttributionSource"); }
+    public android.bluetooth.IBluetoothAdvertise getBluetoothAdvertise() { return (android.bluetooth.IBluetoothAdvertise) megletProps.get("BluetoothAdvertise"); }
+    public android.bluetooth.IBluetoothGatt getBluetoothGatt() { return (android.bluetooth.IBluetoothGatt) megletProps.get("BluetoothGatt"); }
+    public int getBluetoothHciSnoopLoggingMode() { return (megletProps.get("BluetoothHciSnoopLoggingMode") instanceof Integer ? (Integer) megletProps.get("BluetoothHciSnoopLoggingMode") : 0); }
+    public android.bluetooth.le.BluetoothLeAdvertiser getBluetoothLeAdvertiser() { return (android.bluetooth.le.BluetoothLeAdvertiser) megletProps.get("BluetoothLeAdvertiser"); }
+    public android.bluetooth.le.BluetoothLeScanner getBluetoothLeScanner() { return (android.bluetooth.le.BluetoothLeScanner) megletProps.get("BluetoothLeScanner"); }
+    public android.bluetooth.IBluetoothManager getBluetoothManager() { return (android.bluetooth.IBluetoothManager) megletProps.get("BluetoothManager"); }
+    public android.bluetooth.IBluetoothScan getBluetoothScan() { return (android.bluetooth.IBluetoothScan) megletProps.get("BluetoothScan"); }
+    public java.util.Set getBondedDevices() { return (megletProps.get("BondedDevices") != null ? (java.util.Set) megletProps.get("BondedDevices") : new java.util.HashSet()); }
+    public int getConnectionState() { return (megletProps.get("ConnectionState") instanceof Integer ? (Integer) megletProps.get("ConnectionState") : 0); }
+    public java.time.Duration getDiscoverableTimeout() { return (java.time.Duration) megletProps.get("DiscoverableTimeout"); }
+    public long getDiscoveryEndMillis() { return (megletProps.get("DiscoveryEndMillis") instanceof Long ? (Long) megletProps.get("DiscoveryEndMillis") : 0L); }
+    public android.bluetooth.IDistanceMeasurement getDistanceMeasurement() { return (android.bluetooth.IDistanceMeasurement) megletProps.get("DistanceMeasurement"); }
+    public android.bluetooth.le.DistanceMeasurementManager getDistanceMeasurementManager() { return (android.bluetooth.le.DistanceMeasurementManager) megletProps.get("DistanceMeasurementManager"); }
+    public int getLeMaximumAdvertisingDataLength() { return (megletProps.get("LeMaximumAdvertisingDataLength") instanceof Integer ? (Integer) megletProps.get("LeMaximumAdvertisingDataLength") : 0); }
+    public int getLeState() { return (megletProps.get("LeState") instanceof Integer ? (Integer) megletProps.get("LeState") : 0); }
+    public int getMaxConnectedAudioDevices() { return (megletProps.get("MaxConnectedAudioDevices") instanceof Integer ? (Integer) megletProps.get("MaxConnectedAudioDevices") : 0); }
+    public java.util.List getMostRecentlyConnectedDevices() { return (megletProps.get("MostRecentlyConnectedDevices") != null ? (java.util.List) megletProps.get("MostRecentlyConnectedDevices") : new java.util.ArrayList()); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public int getNameLengthForAdvertise() { return (megletProps.get("NameLengthForAdvertise") instanceof Integer ? (Integer) megletProps.get("NameLengthForAdvertise") : 0); }
+    public int getOffloadedTransportDiscoveryDataScanSupported() { return (megletProps.get("OffloadedTransportDiscoveryDataScanSupported") instanceof Integer ? (Integer) megletProps.get("OffloadedTransportDiscoveryDataScanSupported") : 0); }
+    public android.bluetooth.le.PeriodicAdvertisingManager getPeriodicAdvertisingManager() { return (android.bluetooth.le.PeriodicAdvertisingManager) megletProps.get("PeriodicAdvertisingManager"); }
     public android.os.Bundle getPreferredAudioProfiles(android.bluetooth.BluetoothDevice p0) { return null; }
     public int getProfileConnectionState(int p0) { return 0; }
     public boolean getProfileProxy(android.content.Context p0, android.bluetooth.BluetoothProfile.ServiceListener p1, int p2) { return false; }
     public android.bluetooth.BluetoothDevice getRemoteDevice(java.lang.String p0) { return null; }
     public android.bluetooth.BluetoothDevice getRemoteDevice(byte[] p0) { return null; }
     public android.bluetooth.BluetoothDevice getRemoteLeDevice(java.lang.String p0, int p1) { return null; }
-    public int getScanMode() { return (meglerProps.get("ScanMode") instanceof Integer ? (Integer) meglerProps.get("ScanMode") : 0); }
-    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
-    public java.util.List getSupportedProfiles() { return (meglerProps.get("SupportedProfiles") != null ? (java.util.List) meglerProps.get("SupportedProfiles") : new java.util.ArrayList()); }
-    public android.os.ParcelUuid[] getUuids() { return (android.os.ParcelUuid[]) meglerProps.get("Uuids"); }
-    public java.util.List getUuidsList() { return (meglerProps.get("UuidsList") != null ? (java.util.List) meglerProps.get("UuidsList") : new java.util.ArrayList()); }
-    public boolean isAutoOnEnabled() { return (meglerProps.get("AutoOnEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AutoOnEnabled") : false); }
-    public boolean isAutoOnSupported() { return (meglerProps.get("AutoOnSupported") instanceof Boolean ? (Boolean) meglerProps.get("AutoOnSupported") : false); }
-    public boolean isBleScanAlwaysAvailable() { return (meglerProps.get("BleScanAlwaysAvailable") instanceof Boolean ? (Boolean) meglerProps.get("BleScanAlwaysAvailable") : false); }
-    public boolean isDiscovering() { return (meglerProps.get("Discovering") instanceof Boolean ? (Boolean) meglerProps.get("Discovering") : false); }
-    public int isDistanceMeasurementSupported() { return (meglerProps.get("DistanceMeasurementSupported") instanceof Integer ? (Integer) meglerProps.get("DistanceMeasurementSupported") : 0); }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
-    public boolean isHardwareTrackingFiltersAvailable() { return (meglerProps.get("HardwareTrackingFiltersAvailable") instanceof Boolean ? (Boolean) meglerProps.get("HardwareTrackingFiltersAvailable") : false); }
-    public boolean isLe2MPhySupported() { return (meglerProps.get("Le2MPhySupported") instanceof Boolean ? (Boolean) meglerProps.get("Le2MPhySupported") : false); }
-    public int isLeAudioBroadcastAssistantSupported() { return (meglerProps.get("LeAudioBroadcastAssistantSupported") instanceof Integer ? (Integer) meglerProps.get("LeAudioBroadcastAssistantSupported") : 0); }
-    public int isLeAudioBroadcastSourceSupported() { return (meglerProps.get("LeAudioBroadcastSourceSupported") instanceof Integer ? (Integer) meglerProps.get("LeAudioBroadcastSourceSupported") : 0); }
-    public int isLeAudioSupported() { return (meglerProps.get("LeAudioSupported") instanceof Integer ? (Integer) meglerProps.get("LeAudioSupported") : 0); }
-    public boolean isLeCocSocketOffloadSupported() { return (meglerProps.get("LeCocSocketOffloadSupported") instanceof Boolean ? (Boolean) meglerProps.get("LeCocSocketOffloadSupported") : false); }
-    public boolean isLeCodedPhySupported() { return (meglerProps.get("LeCodedPhySupported") instanceof Boolean ? (Boolean) meglerProps.get("LeCodedPhySupported") : false); }
-    public boolean isLeEnabled() { return (meglerProps.get("LeEnabled") instanceof Boolean ? (Boolean) meglerProps.get("LeEnabled") : false); }
-    public boolean isLeExtendedAdvertisingSupported() { return (meglerProps.get("LeExtendedAdvertisingSupported") instanceof Boolean ? (Boolean) meglerProps.get("LeExtendedAdvertisingSupported") : false); }
-    public boolean isLePeriodicAdvertisingSupported() { return (meglerProps.get("LePeriodicAdvertisingSupported") instanceof Boolean ? (Boolean) meglerProps.get("LePeriodicAdvertisingSupported") : false); }
-    public boolean isMultipleAdvertisementSupported() { return (meglerProps.get("MultipleAdvertisementSupported") instanceof Boolean ? (Boolean) meglerProps.get("MultipleAdvertisementSupported") : false); }
-    public boolean isOffloadedFilteringSupported() { return (meglerProps.get("OffloadedFilteringSupported") instanceof Boolean ? (Boolean) meglerProps.get("OffloadedFilteringSupported") : false); }
-    public boolean isOffloadedScanBatchingSupported() { return (meglerProps.get("OffloadedScanBatchingSupported") instanceof Boolean ? (Boolean) meglerProps.get("OffloadedScanBatchingSupported") : false); }
-    public boolean isRfcommSocketOffloadSupported() { return (meglerProps.get("RfcommSocketOffloadSupported") instanceof Boolean ? (Boolean) meglerProps.get("RfcommSocketOffloadSupported") : false); }
+    public int getScanMode() { return (megletProps.get("ScanMode") instanceof Integer ? (Integer) megletProps.get("ScanMode") : 0); }
+    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
+    public java.util.List getSupportedProfiles() { return (megletProps.get("SupportedProfiles") != null ? (java.util.List) megletProps.get("SupportedProfiles") : new java.util.ArrayList()); }
+    public android.os.ParcelUuid[] getUuids() { return (android.os.ParcelUuid[]) megletProps.get("Uuids"); }
+    public java.util.List getUuidsList() { return (megletProps.get("UuidsList") != null ? (java.util.List) megletProps.get("UuidsList") : new java.util.ArrayList()); }
+    public boolean isAutoOnEnabled() { return (megletProps.get("AutoOnEnabled") instanceof Boolean ? (Boolean) megletProps.get("AutoOnEnabled") : false); }
+    public boolean isAutoOnSupported() { return (megletProps.get("AutoOnSupported") instanceof Boolean ? (Boolean) megletProps.get("AutoOnSupported") : false); }
+    public boolean isBleScanAlwaysAvailable() { return (megletProps.get("BleScanAlwaysAvailable") instanceof Boolean ? (Boolean) megletProps.get("BleScanAlwaysAvailable") : false); }
+    public boolean isDiscovering() { return (megletProps.get("Discovering") instanceof Boolean ? (Boolean) megletProps.get("Discovering") : false); }
+    public int isDistanceMeasurementSupported() { return (megletProps.get("DistanceMeasurementSupported") instanceof Integer ? (Integer) megletProps.get("DistanceMeasurementSupported") : 0); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
+    public boolean isHardwareTrackingFiltersAvailable() { return (megletProps.get("HardwareTrackingFiltersAvailable") instanceof Boolean ? (Boolean) megletProps.get("HardwareTrackingFiltersAvailable") : false); }
+    public boolean isLe2MPhySupported() { return (megletProps.get("Le2MPhySupported") instanceof Boolean ? (Boolean) megletProps.get("Le2MPhySupported") : false); }
+    public int isLeAudioBroadcastAssistantSupported() { return (megletProps.get("LeAudioBroadcastAssistantSupported") instanceof Integer ? (Integer) megletProps.get("LeAudioBroadcastAssistantSupported") : 0); }
+    public int isLeAudioBroadcastSourceSupported() { return (megletProps.get("LeAudioBroadcastSourceSupported") instanceof Integer ? (Integer) megletProps.get("LeAudioBroadcastSourceSupported") : 0); }
+    public int isLeAudioSupported() { return (megletProps.get("LeAudioSupported") instanceof Integer ? (Integer) megletProps.get("LeAudioSupported") : 0); }
+    public boolean isLeCocSocketOffloadSupported() { return (megletProps.get("LeCocSocketOffloadSupported") instanceof Boolean ? (Boolean) megletProps.get("LeCocSocketOffloadSupported") : false); }
+    public boolean isLeCodedPhySupported() { return (megletProps.get("LeCodedPhySupported") instanceof Boolean ? (Boolean) megletProps.get("LeCodedPhySupported") : false); }
+    public boolean isLeEnabled() { return (megletProps.get("LeEnabled") instanceof Boolean ? (Boolean) megletProps.get("LeEnabled") : false); }
+    public boolean isLeExtendedAdvertisingSupported() { return (megletProps.get("LeExtendedAdvertisingSupported") instanceof Boolean ? (Boolean) megletProps.get("LeExtendedAdvertisingSupported") : false); }
+    public boolean isLePeriodicAdvertisingSupported() { return (megletProps.get("LePeriodicAdvertisingSupported") instanceof Boolean ? (Boolean) megletProps.get("LePeriodicAdvertisingSupported") : false); }
+    public boolean isMultipleAdvertisementSupported() { return (megletProps.get("MultipleAdvertisementSupported") instanceof Boolean ? (Boolean) megletProps.get("MultipleAdvertisementSupported") : false); }
+    public boolean isOffloadedFilteringSupported() { return (megletProps.get("OffloadedFilteringSupported") instanceof Boolean ? (Boolean) megletProps.get("OffloadedFilteringSupported") : false); }
+    public boolean isOffloadedScanBatchingSupported() { return (megletProps.get("OffloadedScanBatchingSupported") instanceof Boolean ? (Boolean) megletProps.get("OffloadedScanBatchingSupported") : false); }
+    public boolean isRfcommSocketOffloadSupported() { return (megletProps.get("RfcommSocketOffloadSupported") instanceof Boolean ? (Boolean) megletProps.get("RfcommSocketOffloadSupported") : false); }
     public android.bluetooth.BluetoothServerSocket listenUsingEncryptedRfcommWithServiceRecord(java.lang.String p0, java.util.UUID p1) { return null; }
     public android.bluetooth.BluetoothServerSocket listenUsingInsecureL2capChannel() { return null; }
     public android.bluetooth.BluetoothServerSocket listenUsingInsecureL2capOn(int p0) { return null; }
@@ -162,7 +162,7 @@ public final class BluetoothAdapter {
     public android.bluetooth.BluetoothSocket retrieveConnectedRfcommSocket(java.util.UUID p0) { return null; }
     public void sendBluetoothHciVendorSpecificCommand(int p0, byte[] p1) {}
     public boolean setActiveDevice(android.bluetooth.BluetoothDevice p0, int p1) { return false; }
-    public void setAutoOnEnabled(boolean p0) { meglerProps.put("AutoOnEnabled", Boolean.valueOf(p0)); }
+    public void setAutoOnEnabled(boolean p0) { megletProps.put("AutoOnEnabled", Boolean.valueOf(p0)); }
     public int setBluetoothHciSnoopLoggingMode(int p0) { return 0; }
     public int setDiscoverableTimeout(java.time.Duration p0) { return 0; }
     public boolean setName(java.lang.String p0) { return false; }
@@ -180,7 +180,7 @@ public final class BluetoothAdapter {
     public int unregisterPreferredAudioProfilesChangedCallback(android.bluetooth.BluetoothAdapter.PreferredAudioProfilesChangedCallback p0) { return 0; }
     protected BluetoothAdapter() {}
     public static abstract class BluetoothConnectionCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public BluetoothConnectionCallback() {}
         public static java.lang.String disconnectReasonToString(int p0) { return null; }
         public void onDeviceConnected(android.bluetooth.BluetoothDevice p0) {}

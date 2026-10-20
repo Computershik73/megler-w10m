@@ -3,7 +3,7 @@ package android.content.om;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class OverlayManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final long SELF_TARGETING_OVERLAY = 205919743L;
     public OverlayManager(android.content.Context p0) {}
     public OverlayManager(android.content.Context p0, android.content.om.IOverlayManager p1) {}

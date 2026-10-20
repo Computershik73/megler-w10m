@@ -8,7 +8,7 @@
  * Surface made from a SurfaceTexture, which it then draws from as an OpenGL
  * "external" texture.
  *
- * Here the file is decoded whole by the shell (megler_media_host: on a phone,
+ * Here the file is decoded whole by the shell (meglet_media_host: on a phone,
  * Windows' own H.264 and AAC decoders), and the two halves are a show put on
  * for the engine: the "compressed sample" the extractor hands out is a
  * ticket saying which file and which sample, and the codec that is given a
@@ -44,7 +44,7 @@
 #include "hk_egl.h"
 #include "hk_ndk.h"
 
-const char *megler_data_dir(void);
+const char *meglet_data_dir(void);
 
 #define AMEDIA_OK 0
 #define AMEDIA_ERROR_UNKNOWN (-10000)
@@ -226,24 +226,24 @@ static const char *g_AMediaFormat_toString(g_format *f)
 typedef struct g_media {
     volatile i32 refs;
     void *handle;
-    megler_media_info info;
+    meglet_media_info info;
     char *path;                        /* the copy of the file, deleted with the last reference */
     hk_lock lock;                      /* one read of the shell's decoder at a time */
 } g_media;
 
-static const megler_media_host *g_test_host;
-void hk_media_set_host(const struct megler_media_host *h) { g_test_host = h; }
+static const meglet_media_host *g_test_host;
+void hk_media_set_host(const struct meglet_media_host *h) { g_test_host = h; }
 
-static const megler_media_host *host(void)
+static const meglet_media_host *host(void)
 {
-    const megler_run_config *run = hk_run_config();
+    const meglet_run_config *run = hk_run_config();
     if (g_test_host) return g_test_host;
     return run ? &run->media : NULL;
 }
 
 static void media_release(g_media *m)
 {
-    const megler_media_host *h = host();
+    const meglet_media_host *h = host();
     int err = 0;
     if (!m || hk_atomic_add(&m->refs, -1) > 0) return;
     if (m->handle && h && h->close) h->close(h->user, m->handle);
@@ -258,8 +258,8 @@ typedef i32 (*source_read)(void *user, i64 offset, void *buffer, u32 size);
 static g_media *media_open(source_read read, void *user, i64 size)
 {
     static volatile i32 serial;
-    const megler_media_host *h = host();
-    const char *dir = megler_data_dir();
+    const meglet_media_host *h = host();
+    const char *dir = meglet_data_dir();
     char *folder, *path;
     hk_file *out;
     u8 *chunk;
@@ -357,7 +357,7 @@ typedef struct ticket {
 
 static i64 sample_time(const g_extractor *ex, const g_track *t, u64 index)
 {
-    const megler_media_info *in = &ex->media->info;
+    const meglet_media_info *in = &ex->media->info;
     if (t->video) return in->frame_rate_num > 0 ? (i64)(index * 1000000ull * (u64)in->frame_rate_den / (u64)in->frame_rate_num) : (i64)(index * 33333ull);
     return in->sample_rate > 0 ? (i64)(index * AUDIO_BLOCK * 1000000ull / (u64)in->sample_rate) : 0;
 }
@@ -395,7 +395,7 @@ static int g_AMediaExtractor_delete(g_extractor *ex)
 
 static int extractor_opened(g_extractor *ex, g_media *m)
 {
-    const megler_media_info *in;
+    const meglet_media_info *in;
     if (!m) return AMEDIA_ERROR_UNKNOWN;
     ex->media = m;
     in = &m->info;
@@ -543,7 +543,7 @@ static u8 g_AMediaExtractor_advance(g_extractor *ex)
 
 static int g_AMediaExtractor_seekTo(g_extractor *ex, i64 time_us, int mode)
 {
-    const megler_media_host *h = host();
+    const meglet_media_host *h = host();
     int i;
     (void)mode;
     if (!ex || !ex->media) return AMEDIA_ERROR_INVALID_OBJECT;
@@ -554,7 +554,7 @@ static int g_AMediaExtractor_seekTo(g_extractor *ex, i64 time_us, int mode)
     hk_lock_release(&ex->media->lock);
     for (i = 0; i < ex->ntracks; i++) {
         g_track *t = &ex->tracks[i];
-        const megler_media_info *in = &ex->media->info;
+        const meglet_media_info *in = &ex->media->info;
         if (t->video) t->index = in->frame_rate_den > 0 ? (u64)time_us * (u64)in->frame_rate_num / (u64)in->frame_rate_den / 1000000ull : 0;
         else t->index = (u64)time_us * (u64)in->sample_rate / 1000000ull / AUDIO_BLOCK;
     }
@@ -747,7 +747,7 @@ static void remove_left_over(const char *name, bool is_dir, void *user)
 void hk_media_install(void)
 {
     static bool done;
-    const char *dir = megler_data_dir();
+    const char *dir = meglet_data_dir();
     char *folder;
     int err = 0;
     if (done) return;
@@ -938,7 +938,7 @@ static int g_AMediaCodec_queueInputBuffer(g_codec *c, u32 index, i32 offset, u32
 static g_format *output_format(g_codec *c)
 {
     g_format *f = g_AMediaFormat_new();
-    const megler_media_info *in = c->media ? &c->media->info : NULL;
+    const meglet_media_info *in = c->media ? &c->media->info : NULL;
     if (c->video) {
         fmt_set_str(f, "mime", "video/raw");
         fmt_set_i32(f, "width", in ? in->width : 0);
@@ -959,7 +959,7 @@ static g_format *g_AMediaCodec_getOutputFormat(g_codec *c) { return c ? output_f
 
 static i32 g_AMediaCodec_dequeueOutputBuffer(g_codec *c, g_buffer_info *info, i64 timeout_us)
 {
-    const megler_media_host *h = host();
+    const meglet_media_host *h = host();
     out_slot *slot = NULL;
     i32 index = INFO_TRY_AGAIN_LATER, seen;
     int i, got;
@@ -1009,7 +1009,7 @@ static i32 g_AMediaCodec_dequeueOutputBuffer(g_codec *c, g_buffer_info *info, i6
     c->room++;
     hk_futex_wake(&c->room, true);
     {
-        const megler_media_info *in = &c->media->info;
+        const meglet_media_info *in = &c->media->info;
         u32 need = c->video ? (u32)in->width * (u32)in->height * 4 : (u32)AUDIO_BLOCK * (u32)in->channels * 2;
         i64 time_us = 0;
         if (slot->capacity < need) {

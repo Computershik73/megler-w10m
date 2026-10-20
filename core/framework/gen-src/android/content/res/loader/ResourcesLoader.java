@@ -3,15 +3,15 @@ package android.content.res.loader;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ResourcesLoader {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public ResourcesLoader() {}
     public void addProvider(android.content.res.loader.ResourcesProvider p0) {}
     public void clearProviders() {}
-    public java.util.List getApkAssets() { return (meglerProps.get("ApkAssets") != null ? (java.util.List) meglerProps.get("ApkAssets") : new java.util.ArrayList()); }
-    public java.util.List getProviders() { return (meglerProps.get("Providers") != null ? (java.util.List) meglerProps.get("Providers") : new java.util.ArrayList()); }
+    public java.util.List getApkAssets() { return (megletProps.get("ApkAssets") != null ? (java.util.List) megletProps.get("ApkAssets") : new java.util.ArrayList()); }
+    public java.util.List getProviders() { return (megletProps.get("Providers") != null ? (java.util.List) megletProps.get("Providers") : new java.util.ArrayList()); }
     public void registerOnProvidersChangedCallback(java.lang.Object p0, android.content.res.loader.ResourcesLoader.UpdateCallbacks p1) {}
     public void removeProvider(android.content.res.loader.ResourcesProvider p0) {}
-    public void setProviders(java.util.List p0) { meglerProps.put("Providers", p0); }
+    public void setProviders(java.util.List p0) { megletProps.put("Providers", p0); }
     public void unregisterOnProvidersChangedCallback(java.lang.Object p0) {}
     public interface UpdateCallbacks {
         void onLoaderUpdated(android.content.res.loader.ResourcesLoader p0);

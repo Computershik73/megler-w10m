@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CallAttributes implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int AUDIO_CALL = 1;
     public static final java.lang.String CALLER_PID_KEY = "CallerPid";
     public static final java.lang.String CALLER_UID_KEY = "CallerUid";
@@ -18,22 +18,22 @@ public final class CallAttributes implements android.os.Parcelable {
     public static final int SUPPORTS_VIDEO_CALLING = 16;
     public static final int VIDEO_CALL = 2;
     public int describeContents() { return 0; }
-    public android.net.Uri getAddress() { return (android.net.Uri) meglerProps.get("Address"); }
-    public int getCallCapabilities() { return (meglerProps.get("CallCapabilities") instanceof Integer ? (Integer) meglerProps.get("CallCapabilities") : 0); }
-    public int getCallType() { return (meglerProps.get("CallType") instanceof Integer ? (Integer) meglerProps.get("CallType") : 0); }
-    public int getDirection() { return (meglerProps.get("Direction") instanceof Integer ? (Integer) meglerProps.get("Direction") : 0); }
-    public java.lang.CharSequence getDisplayName() { return (java.lang.CharSequence) meglerProps.get("DisplayName"); }
-    public android.telecom.PhoneAccountHandle getPhoneAccountHandle() { return (android.telecom.PhoneAccountHandle) meglerProps.get("PhoneAccountHandle"); }
-    public boolean isLogExcluded() { return (meglerProps.get("LogExcluded") instanceof Boolean ? (Boolean) meglerProps.get("LogExcluded") : false); }
+    public android.net.Uri getAddress() { return (android.net.Uri) megletProps.get("Address"); }
+    public int getCallCapabilities() { return (megletProps.get("CallCapabilities") instanceof Integer ? (Integer) megletProps.get("CallCapabilities") : 0); }
+    public int getCallType() { return (megletProps.get("CallType") instanceof Integer ? (Integer) megletProps.get("CallType") : 0); }
+    public int getDirection() { return (megletProps.get("Direction") instanceof Integer ? (Integer) megletProps.get("Direction") : 0); }
+    public java.lang.CharSequence getDisplayName() { return (java.lang.CharSequence) megletProps.get("DisplayName"); }
+    public android.telecom.PhoneAccountHandle getPhoneAccountHandle() { return (android.telecom.PhoneAccountHandle) megletProps.get("PhoneAccountHandle"); }
+    public boolean isLogExcluded() { return (megletProps.get("LogExcluded") instanceof Boolean ? (Boolean) megletProps.get("LogExcluded") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected CallAttributes() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.telecom.PhoneAccountHandle p0, int p1, java.lang.CharSequence p2, android.net.Uri p3) {}
-        public android.telecom.CallAttributes build() { android.telecom.CallAttributes x = new android.telecom.CallAttributes(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.telecom.CallAttributes.Builder setCallCapabilities(int p0) { meglerProps.put("CallCapabilities", Integer.valueOf(p0)); return this; }
-        public android.telecom.CallAttributes.Builder setCallType(int p0) { meglerProps.put("CallType", Integer.valueOf(p0)); return this; }
-        public android.telecom.CallAttributes.Builder setLogExcluded(boolean p0) { meglerProps.put("LogExcluded", Boolean.valueOf(p0)); return this; }
+        public android.telecom.CallAttributes build() { android.telecom.CallAttributes x = new android.telecom.CallAttributes(); x.megletProps.putAll(megletProps); return x; }
+        public android.telecom.CallAttributes.Builder setCallCapabilities(int p0) { megletProps.put("CallCapabilities", Integer.valueOf(p0)); return this; }
+        public android.telecom.CallAttributes.Builder setCallType(int p0) { megletProps.put("CallType", Integer.valueOf(p0)); return this; }
+        public android.telecom.CallAttributes.Builder setLogExcluded(boolean p0) { megletProps.put("LogExcluded", Boolean.valueOf(p0)); return this; }
         Builder() { this((android.telecom.PhoneAccountHandle) null, (int) 0, (java.lang.CharSequence) null, (android.net.Uri) null); }
     }
 }

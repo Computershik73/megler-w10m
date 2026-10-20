@@ -17,8 +17,8 @@ public class AssetFileDescriptor implements Closeable {
     public long getStartOffset() { return start; }
     public long getLength() { return length; }
     public long getDeclaredLength() { return length; }
-    /** Megler's own: the asset this describes, for players that read it by name. */
-    public String meglerAssetName() { return asset; }
+    /** Meglet's own: the asset this describes, for players that read it by name. */
+    public String megletAssetName() { return asset; }
     public FileInputStream createInputStream() throws IOException { return new AutoCloseInputStream(this); }
     /* the descriptor of an asset stays open: SoundPool and MediaPlayer read it after the app has closed this (Android's dup it) */
     public void close() throws IOException { if (pfd != null) pfd.close(); }
@@ -60,7 +60,7 @@ public class AssetFileDescriptor implements Closeable {
         @Override public void reset() throws IOException { if (mark < 0) throw new IOException("no mark"); getChannel().position(mark); remaining = markRemaining; }
     }
     public static class AutoCloseOutputStream extends android.os.ParcelFileDescriptor.AutoCloseOutputStream {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public AutoCloseOutputStream(android.content.res.AssetFileDescriptor p0) { super((android.os.ParcelFileDescriptor) null); }
         public void write(int p0) {}
         public void write(byte[] p0) {}

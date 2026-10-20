@@ -3,12 +3,12 @@ package android.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GetCredentialResponse implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public GetCredentialResponse(android.credentials.Credential p0) {}
     public int describeContents() { return 0; }
-    public android.view.autofill.AutofillId getAutofillId() { return (android.view.autofill.AutofillId) meglerProps.get("AutofillId"); }
-    public android.credentials.Credential getCredential() { return (android.credentials.Credential) meglerProps.get("Credential"); }
+    public android.view.autofill.AutofillId getAutofillId() { return (android.view.autofill.AutofillId) megletProps.get("AutofillId"); }
+    public android.credentials.Credential getCredential() { return (android.credentials.Credential) megletProps.get("Credential"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     GetCredentialResponse() { this((android.credentials.Credential) null); }
 }

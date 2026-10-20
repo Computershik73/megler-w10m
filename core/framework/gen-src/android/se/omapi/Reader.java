@@ -3,11 +3,11 @@ package android.se.omapi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Reader {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public void closeSessions() {}
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public android.se.omapi.SEService getSEService() { return (android.se.omapi.SEService) meglerProps.get("SEService"); }
-    public boolean isSecureElementPresent() { return (meglerProps.get("SecureElementPresent") instanceof Boolean ? (Boolean) meglerProps.get("SecureElementPresent") : false); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public android.se.omapi.SEService getSEService() { return (android.se.omapi.SEService) megletProps.get("SEService"); }
+    public boolean isSecureElementPresent() { return (megletProps.get("SecureElementPresent") instanceof Boolean ? (Boolean) megletProps.get("SecureElementPresent") : false); }
     public android.se.omapi.Session openSession() { return null; }
     public boolean reset() { return false; }
     protected Reader() {}

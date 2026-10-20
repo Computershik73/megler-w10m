@@ -3,17 +3,17 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class GetByDocumentIdRequest extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String PROJECTION_SCHEMA_TYPE_WILDCARD = "*";
-    public java.util.Set getIds() { return (meglerProps.get("Ids") != null ? (java.util.Set) meglerProps.get("Ids") : new java.util.HashSet()); }
-    public java.lang.String getNamespace() { return (java.lang.String) meglerProps.get("Namespace"); }
-    public java.util.Map getProjectionPaths() { return (meglerProps.get("ProjectionPaths") != null ? (java.util.Map) meglerProps.get("ProjectionPaths") : new java.util.HashMap()); }
-    public java.util.Map getProjections() { return (meglerProps.get("Projections") != null ? (java.util.Map) meglerProps.get("Projections") : new java.util.HashMap()); }
+    public java.util.Set getIds() { return (megletProps.get("Ids") != null ? (java.util.Set) megletProps.get("Ids") : new java.util.HashSet()); }
+    public java.lang.String getNamespace() { return (java.lang.String) megletProps.get("Namespace"); }
+    public java.util.Map getProjectionPaths() { return (megletProps.get("ProjectionPaths") != null ? (java.util.Map) megletProps.get("ProjectionPaths") : new java.util.HashMap()); }
+    public java.util.Map getProjections() { return (megletProps.get("Projections") != null ? (java.util.Map) megletProps.get("Projections") : new java.util.HashMap()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected GetByDocumentIdRequest() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0) {}
         public android.app.appsearch.GetByDocumentIdRequest.Builder addIds(java.util.Collection p0) { return this; }
         public android.app.appsearch.GetByDocumentIdRequest.Builder addIds(java.lang.String[] p0) { return this; }

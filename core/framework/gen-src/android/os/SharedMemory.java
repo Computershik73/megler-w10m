@@ -3,17 +3,17 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SharedMemory implements android.os.Parcelable, java.io.Closeable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.os.SharedMemory create(java.lang.String p0, int p1) { return new SharedMemory(); }
     public static android.os.SharedMemory fromFileDescriptor(android.os.ParcelFileDescriptor p0) { return new SharedMemory(); }
     public static void unmap(java.nio.ByteBuffer p0) {}
     public void close() {}
     public int describeContents() { return 0; }
-    public int getFd() { return (meglerProps.get("Fd") instanceof Integer ? (Integer) meglerProps.get("Fd") : 0); }
-    public android.os.ParcelFileDescriptor getFdDup() { return (android.os.ParcelFileDescriptor) meglerProps.get("FdDup"); }
-    public java.io.FileDescriptor getFileDescriptor() { return (java.io.FileDescriptor) meglerProps.get("FileDescriptor"); }
-    public int getSize() { return (meglerProps.get("Size") instanceof Integer ? (Integer) meglerProps.get("Size") : 0); }
+    public int getFd() { return (megletProps.get("Fd") instanceof Integer ? (Integer) megletProps.get("Fd") : 0); }
+    public android.os.ParcelFileDescriptor getFdDup() { return (android.os.ParcelFileDescriptor) megletProps.get("FdDup"); }
+    public java.io.FileDescriptor getFileDescriptor() { return (java.io.FileDescriptor) megletProps.get("FileDescriptor"); }
+    public int getSize() { return (megletProps.get("Size") instanceof Integer ? (Integer) megletProps.get("Size") : 0); }
     public java.nio.ByteBuffer map(int p0, int p1, int p2) { return null; }
     public java.nio.ByteBuffer mapReadOnly() { return null; }
     public java.nio.ByteBuffer mapReadWrite() { return null; }

@@ -3,20 +3,20 @@ package android.accessibilityservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FingerprintGestureController {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int FINGERPRINT_GESTURE_SWIPE_DOWN = 8;
     public static final int FINGERPRINT_GESTURE_SWIPE_LEFT = 2;
     public static final int FINGERPRINT_GESTURE_SWIPE_RIGHT = 1;
     public static final int FINGERPRINT_GESTURE_SWIPE_UP = 4;
     public FingerprintGestureController(android.accessibilityservice.IAccessibilityServiceConnection p0) {}
-    public boolean isGestureDetectionAvailable() { return (meglerProps.get("GestureDetectionAvailable") instanceof Boolean ? (Boolean) meglerProps.get("GestureDetectionAvailable") : false); }
+    public boolean isGestureDetectionAvailable() { return (megletProps.get("GestureDetectionAvailable") instanceof Boolean ? (Boolean) megletProps.get("GestureDetectionAvailable") : false); }
     public void onGesture(int p0) {}
     public void onGestureDetectionActiveChanged(boolean p0) {}
     public void registerFingerprintGestureCallback(android.accessibilityservice.FingerprintGestureController.FingerprintGestureCallback p0, android.os.Handler p1) {}
     public void unregisterFingerprintGestureCallback(android.accessibilityservice.FingerprintGestureController.FingerprintGestureCallback p0) {}
     FingerprintGestureController() { this((android.accessibilityservice.IAccessibilityServiceConnection) null); }
     public static abstract class FingerprintGestureCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public FingerprintGestureCallback() {}
         public void onGestureDetected(int p0) {}
         public void onGestureDetectionAvailabilityChanged(boolean p0) {}

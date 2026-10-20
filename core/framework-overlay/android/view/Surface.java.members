@@ -1,4 +1,4 @@
-    // megler-w10m: members added to the original's android.view.Surface (tools/build-framework.sh, "X.java.members").
+    // Meglet: members added to the original's android.view.Surface (tools/build-framework.sh, "X.java.members").
     // The ImageReader whose surface this is (android.media.ImageReader, the overlay's): a camera given this surface as a
-    // target (android.hardware.camera2.impl.MeglerCameraDevice) writes its pictures into the reader's images.
-    public android.media.ImageReader meglerImageReader;
+    // target (android.hardware.camera2.impl.MegletCameraDevice) writes its pictures into the reader's images.
+    public android.media.ImageReader megletImageReader;

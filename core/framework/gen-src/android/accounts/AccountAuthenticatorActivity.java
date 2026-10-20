@@ -3,7 +3,7 @@ package android.accounts;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AccountAuthenticatorActivity extends android.app.Activity {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public AccountAuthenticatorActivity() { super(); }
-    public void setAccountAuthenticatorResult(android.os.Bundle p0) { meglerProps.put("AccountAuthenticatorResult", p0); }
+    public void setAccountAuthenticatorResult(android.os.Bundle p0) { megletProps.put("AccountAuthenticatorResult", p0); }
 }

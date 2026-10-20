@@ -3,11 +3,11 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RenderInput {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public RenderInput(int p0, int p1, android.adservices.ondevicepersonalization.RenderingConfig p2) {}
     public RenderInput(android.adservices.ondevicepersonalization.RenderInputParcel p0) {}
-    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
-    public android.adservices.ondevicepersonalization.RenderingConfig getRenderingConfig() { return (android.adservices.ondevicepersonalization.RenderingConfig) meglerProps.get("RenderingConfig"); }
-    public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
+    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
+    public android.adservices.ondevicepersonalization.RenderingConfig getRenderingConfig() { return (android.adservices.ondevicepersonalization.RenderingConfig) megletProps.get("RenderingConfig"); }
+    public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
     RenderInput() { this((android.adservices.ondevicepersonalization.RenderInputParcel) null); }
 }

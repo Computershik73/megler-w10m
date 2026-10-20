@@ -3,10 +3,10 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RuntimeShader extends android.graphics.Shader {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public RuntimeShader(java.lang.String p0) { super(); }
     protected long createNativeInstance(long p0, boolean p1) { return 0L; }
-    protected long getNativeShaderBuilder() { return (meglerProps.get("NativeShaderBuilder") instanceof Long ? (Long) meglerProps.get("NativeShaderBuilder") : 0L); }
+    protected long getNativeShaderBuilder() { return (megletProps.get("NativeShaderBuilder") instanceof Long ? (Long) megletProps.get("NativeShaderBuilder") : 0L); }
     public void setColorUniform(java.lang.String p0, int p1) {}
     public void setColorUniform(java.lang.String p0, long p1) {}
     public void setColorUniform(java.lang.String p0, android.graphics.Color p1) {}
@@ -24,6 +24,6 @@ public class RuntimeShader extends android.graphics.Shader {
     public void setIntUniform(java.lang.String p0, int p1, int p2, int p3) {}
     public void setIntUniform(java.lang.String p0, int p1, int p2, int p3, int p4) {}
     public void setIntUniform(java.lang.String p0, int[] p1) {}
-    public void setWorkingColorSpace(android.graphics.ColorSpace p0) { meglerProps.put("WorkingColorSpace", p0); }
+    public void setWorkingColorSpace(android.graphics.ColorSpace p0) { megletProps.put("WorkingColorSpace", p0); }
     RuntimeShader() { this((java.lang.String) null); }
 }

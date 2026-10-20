@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SocketKeepalive implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int BINDER_DIED = -10;
     public static final int DATA_RECEIVED = -2;
     public static final int ERROR_HARDWARE_ERROR = -31;
@@ -39,7 +39,7 @@ public abstract class SocketKeepalive implements java.lang.AutoCloseable {
     protected abstract void stopImpl();
     SocketKeepalive() { this((android.net.IConnectivityManager) null, (android.net.Network) null, (android.os.ParcelFileDescriptor) null, (java.util.concurrent.Executor) null, (android.net.SocketKeepalive.Callback) null); }
     public static class Callback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Callback() {}
         public void onDataReceived() {}
         public void onError(int p0) {}
@@ -49,14 +49,14 @@ public abstract class SocketKeepalive implements java.lang.AutoCloseable {
         public void onStopped() {}
     }
     public static class ErrorCodeException extends java.lang.Exception {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public int error;
         public ErrorCodeException(int p0) { super(); }
         public ErrorCodeException(int p0, java.lang.Throwable p1) { super(); }
         ErrorCodeException() { this((int) 0); }
     }
     public static class InvalidSocketException extends android.net.SocketKeepalive.ErrorCodeException {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public InvalidSocketException(int p0) { super(p0); }
         public InvalidSocketException(int p0, java.lang.Throwable p1) { super(p0, p1); }
         InvalidSocketException() { this((int) 0); }

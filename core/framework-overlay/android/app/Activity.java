@@ -21,7 +21,7 @@
 // the window after every onResume, so the window had focus and lost it to the activity it had started, which Android never
 // gives it: Asphalt 9's MainActivity starts its data installer from onResume, creates its native game only in
 // onActivityResult, and its onWindowFocusChanged calls into that game, which was not there yet (a read at 0x34, package
-// 262). meglerVisible, which AppRunner asks whether an activity below must be started again, says whether the activity was
+// 262). megletVisible, which AppRunner asks whether an activity below must be started again, says whether the activity was
 // started and not stopped, so that such an activity is not started twice. Everything else is the original's, unchanged.
 package android.app;
 
@@ -36,7 +36,7 @@ import android.view.*;
 import android.view.accessibility.AccessibilityEvent;
 import java.util.ArrayList;
 
-/** An activity, run by megler.AppRunner as ActivityThread runs one: attached to a base context, its lifecycle in order, its window on screen. */
+/** An activity, run by meglet.AppRunner as ActivityThread runs one: attached to a base context, its lifecycle in order, its window on screen. */
 public class Activity extends ContextThemeWrapper implements Window.Callback, KeyEvent.Callback, LayoutInflater.Factory2, View.OnCreateContextMenuListener,
         ComponentCallbacks2 {
     public static final int RESULT_OK = -1, RESULT_CANCELED = 0, RESULT_FIRST_USER = 1, DEFAULT_KEYS_DISABLE = 0, DEFAULT_KEYS_DIALER = 1,
@@ -61,17 +61,17 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     private FragmentManager mFragments;
     /* how far the platform fragments may go (FragmentManager's host states): created, activity created, started, resumed */
     private int mFragmentHost;
-    final int meglerFragmentHost() { return mFragmentHost; }
-    private void fragmentHost(int state) { mFragmentHost = state; if (mFragments != null) mFragments.meglerHostState(state); }
+    final int megletFragmentHost() { return mFragmentHost; }
+    private void fragmentHost(int state) { mFragmentHost = state; if (mFragments != null) mFragments.megletHostState(state); }
     private int mRequestedOrientation = -1;
-    private megler.Manifest.Component mInfo;
+    private meglet.Manifest.Component mInfo;
 
     public Activity() { super(null, 0); }
 
-    // ---- megler.AppRunner's side
+    // ---- meglet.AppRunner's side
     /** As Activity.attach: the base context, the window, the intent. */
     private boolean mAttaching;
-    public final void meglerAttach(Context base, Application app, Intent intent, megler.Manifest.Component info, Activity caller, int requestCode) {
+    public final void megletAttach(Context base, Application app, Intent intent, meglet.Manifest.Component info, Activity caller, int requestCode) {
         /* as Activity.attach: the window is made after attachBaseContext, so getWindow() is null in it (AppCompat's delegate
            installs itself into a window it finds there, reading the theme before the base context is set -- Todoist) */
         mAttaching = true;
@@ -82,17 +82,17 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         mCaller = caller;
         mRequestCode = requestCode;
         mComponent = new ComponentName(getPackageName(), getClass().getName());
-        int theme = info != null && info.theme != 0 ? info.theme : megler.ContextImpl.defaultTheme();
+        int theme = info != null && info.theme != 0 ? info.theme : meglet.ContextImpl.defaultTheme();
         setTheme(theme);
         if (info != null && info.label != 0) { try { mTitle = getResources().getText(info.label); } catch (Exception e) {} }
-        if (mTitle == null) mTitle = megler.AppRunner.appLabel(this);
+        if (mTitle == null) mTitle = meglet.AppRunner.appLabel(this);
         if (info != null && info.screenOrientation >= 0) mRequestedOrientation = info.screenOrientation;
     }
     /* API 29's pre / post lifecycle callbacks around each step: androidx.lifecycle's ReportFragment moves every ComponentActivity's
      * Lifecycle on them (ON_CREATE after onCreate, ON_PAUSE before onPause...), and Compose sets its content once that is CREATED */
     private interface Step { void on(Application.ActivityLifecycleCallbacks c); }
     private void each(Step s) { for (Application.ActivityLifecycleCallbacks c : callbacks()) s.on(c); }
-    public final void meglerCreate(Bundle state) {
+    public final void megletCreate(Bundle state) {
         // as Activity.attach: the activity is its inflater's private factory, after any the app sets (FragmentActivity makes
         // <fragment> and FragmentContainerView there)
         getLayoutInflater().setPrivateFactory(this);
@@ -112,15 +112,15 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         if (!mFinished) onPostCreate(state);            /* as ActivityThread: an activity that finished in onCreate goes no further */
         each(c -> c.onActivityPostCreated(this, state));
     }
-    public final void meglerStart() {
+    public final void megletStart() {
         each(c -> c.onActivityPreStarted(this));
         mCalled = false; onStart(); mStarted = true;
         fragmentHost(FragmentManager.HOST_STARTED);
         if (mLoaders != null) mLoaders.doStart();
         each(c -> c.onActivityPostStarted(this));
     }
-    public final void meglerRestart() { onRestart(); }
-    public final void meglerResume() {
+    public final void megletRestart() { onRestart(); }
+    public final void megletResume() {
         each(c -> c.onActivityPreResumed(this));
         mCalled = false;
         onResume();
@@ -131,14 +131,14 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         if (mVisibleFromClient && !mStartedActivity) makeVisible();
         mStartedActivity = false;
     }
-    public final void meglerPause() {
+    public final void megletPause() {
         each(c -> c.onActivityPrePaused(this));
         fragmentHost(FragmentManager.HOST_STARTED);            /* fragments pause before the activity, as performPause */
         mResumed = false; onPause();
         each(c -> c.onActivityPostPaused(this));
-        android.content.MeglerSharedPreferences.flushAll();      /* as QueuedWork after onPause */
+        android.content.MegletSharedPreferences.flushAll();      /* as QueuedWork after onPause */
     }
-    public final void meglerStop() {
+    public final void megletStop() {
         if (mStarted) {                                  /* one that finished in onCreate never started, and does not stop */
             each(c -> c.onActivityPreStopped(this));
             fragmentHost(FragmentManager.HOST_ACTIVITY_CREATED);
@@ -146,35 +146,35 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             if (mLoaders != null) mLoaders.doStop();
             each(c -> c.onActivityPostStopped(this));
         }
-        if (mWindow != null && mWindow.peekDecorView() != null) { megler.ViewRoot r = megler.ViewRoot.of(mWindow.peekDecorView()); if (r != null) r.remove(); }
+        if (mWindow != null && mWindow.peekDecorView() != null) { meglet.ViewRoot r = meglet.ViewRoot.of(mWindow.peekDecorView()); if (r != null) r.remove(); }
     }
-    public final void meglerDestroy() {
+    public final void megletDestroy() {
         each(c -> c.onActivityPreDestroyed(this));
         fragmentHost(FragmentManager.HOST_NONE);
         mDestroyed = true; onDestroy();
         if (mLoaders != null) mLoaders.doDestroy();
         each(c -> c.onActivityPostDestroyed(this));
-        if (mWindow != null) mWindow.meglerDestroy();
+        if (mWindow != null) mWindow.megletDestroy();
     }
-    public final void meglerBack() { onBackPressedMegler(); }
+    public final void megletBack() { onBackPressedMeglet(); }
     /* Whether it was started and not stopped since (AppRunner starts the activity below again when not); its window may be waiting (mStartedActivity). */
-    public final boolean meglerVisible() { return mStarted || windowShown(); }
-    private boolean windowShown() { return mWindow != null && mWindow.peekDecorView() != null && megler.ViewRoot.of(mWindow.peekDecorView()) != null; }
-    public final Activity meglerCaller() { return mCaller; }
-    public final int meglerRequestCode() { return mRequestCode; }
-    public final int meglerResultCode() { return mResultCode; }
-    public final Intent meglerResultData() { return mResultData; }
-    public final void meglerActivityResult(int request, int result, Intent data) { onActivityResult(request, result, data); }
+    public final boolean megletVisible() { return mStarted || windowShown(); }
+    private boolean windowShown() { return mWindow != null && mWindow.peekDecorView() != null && meglet.ViewRoot.of(mWindow.peekDecorView()) != null; }
+    public final Activity megletCaller() { return mCaller; }
+    public final int megletRequestCode() { return mRequestCode; }
+    public final int megletResultCode() { return mResultCode; }
+    public final Intent megletResultData() { return mResultData; }
+    public final void megletActivityResult(int request, int result, Intent data) { onActivityResult(request, result, data); }
     void makeVisible() {
         View decor = getWindow().getDecorView();
-        if (megler.ViewRoot.of(decor) == null) getWindowManager().addView(decor, getWindow().getAttributes());
+        if (meglet.ViewRoot.of(decor) == null) getWindowManager().addView(decor, getWindow().getAttributes());
         decor.setVisibility(View.VISIBLE);
     }
-    private void onBackPressedMegler() {
-        if (getWindow().meglerDispatchBack()) return;
+    private void onBackPressedMeglet() {
+        if (getWindow().megletDispatchBack()) return;
         KeyEvent down = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK), up = new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK);
-        if (!megler.ViewRoot.dispatchKey(down)) onKeyDown(KeyEvent.KEYCODE_BACK, down);
-        if (!megler.ViewRoot.dispatchKey(up)) onKeyUp(KeyEvent.KEYCODE_BACK, up);
+        if (!meglet.ViewRoot.dispatchKey(down)) onKeyDown(KeyEvent.KEYCODE_BACK, down);
+        if (!meglet.ViewRoot.dispatchKey(up)) onKeyUp(KeyEvent.KEYCODE_BACK, up);
     }
 
     // ---- lifecycle
@@ -196,11 +196,11 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     protected void onRestoreInstanceState(Bundle state) {}
     protected void onNewIntent(Intent i) {}
     /** A new intent for this activity (singleTop, or brought back by CLEAR_TOP): as Android, paused around onNewIntent when it is up. */
-    public void meglerNewIntent(Intent i) {
-        boolean up = isResumedMegler();
-        if (up) meglerPause();
+    public void megletNewIntent(Intent i) {
+        boolean up = isResumedMeglet();
+        if (up) megletPause();
         onNewIntent(i);
-        if (up) meglerResume();
+        if (up) megletResume();
     }
     protected void onActivityResult(int request, int result, Intent data) {}
     public void onActivityReenter(int result, Intent data) {}
@@ -222,13 +222,13 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public Object getLastNonConfigurationInstance() { return null; }
     private ArrayList<Application.ActivityLifecycleCallbacks> callbacks() {
         ArrayList<Application.ActivityLifecycleCallbacks> r = new ArrayList<>(mLifecycleCallbacks);
-        if (mApplication != null) r.addAll(mApplication.meglerLifecycleCallbacks());
+        if (mApplication != null) r.addAll(mApplication.megletLifecycleCallbacks());
         return r;
     }
     public void registerActivityLifecycleCallbacks(Application.ActivityLifecycleCallbacks c) { mLifecycleCallbacks.add(c); }
     public void unregisterActivityLifecycleCallbacks(Application.ActivityLifecycleCallbacks c) { mLifecycleCallbacks.remove(c); }
     public boolean isResumed() { return mResumed; }
-    public final boolean isResumedMegler() { return mResumed; }
+    public final boolean isResumedMeglet() { return mResumed; }
     public boolean isFinishing() { return mFinished; }
     public boolean isDestroyed() { return mDestroyed; }
     public boolean isChangingConfigurations() { return mChangingConfigurations; }
@@ -244,7 +244,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void setImmersive(boolean i) {}
     public boolean isLaunchedFromBubble() { return false; }
     public boolean isActivityTransitionRunning() { return false; }
-    public void recreate() { megler.AppRunner.recreate(this); }
+    public void recreate() { meglet.AppRunner.recreate(this); }
 
     // ---- the window
     public Window getWindow() {
@@ -252,10 +252,10 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         if (mWindow == null) {
             mWindow = new Window(this);
             mWindow.setCallback(this);
-            mWindow.meglerSetActivityWindow(true);
+            mWindow.megletSetActivityWindow(true);
             mWindow.setTitle(mTitle);
             if (mInfo != null && mInfo.windowSoftInputMode != 0) mWindow.setSoftInputMode(mInfo.windowSoftInputMode);
-            if (mRequestedOrientation >= 0) megler.Native.setOrientation(mRequestedOrientation);
+            if (mRequestedOrientation >= 0) meglet.Native.setOrientation(mRequestedOrientation);
         }
         return mWindow;
     }
@@ -278,7 +278,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     private void initWindowDecorActionBar() {
         Window w = getWindow();
         w.getDecorView();                  // the theme's features are the window's only once its decor is made: Android does the same
-        if (mActionBar == null && w.hasFeature(Window.FEATURE_ACTION_BAR) && !w.isFloating()) mActionBar = new megler.SimpleActionBar(this, (megler.DecorView) w.getDecorView());
+        if (mActionBar == null && w.hasFeature(Window.FEATURE_ACTION_BAR) && !w.isFloating()) mActionBar = new meglet.SimpleActionBar(this, (meglet.DecorView) w.getDecorView());
     }
     public <T extends View> T findViewById(int id) { return getWindow().findViewById(id); }
     public final <T extends View> T requireViewById(int id) { T v = findViewById(id); if (v == null) throw new IllegalArgumentException("ID does not reference a View inside this Activity"); return v; }
@@ -308,7 +308,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         if (v) makeVisible();
         else if (mWindow != null && mWindow.peekDecorView() != null) mWindow.peekDecorView().setVisibility(View.INVISIBLE);
     }
-    public void setRequestedOrientation(int o) { mRequestedOrientation = o; megler.Native.setOrientation(o); }
+    public void setRequestedOrientation(int o) { mRequestedOrientation = o; meglet.Native.setOrientation(o); }
     public int getRequestedOrientation() { return mRequestedOrientation; }
     public void setShowWhenLocked(boolean b) {}
     public void setTurnScreenOn(boolean b) {}
@@ -332,13 +332,13 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public boolean enterPictureInPictureMode(PictureInPictureParams p) { return false; }
     public void setPictureInPictureParams(PictureInPictureParams p) {}
     public android.window.OnBackInvokedDispatcher getOnBackInvokedDispatcher() { return getWindow().getOnBackInvokedDispatcher(); }
-    public android.window.SplashScreen getSplashScreen() { return megler.SplashScreens.of(this); }
-    public final boolean isTaskRootMegler() { return isTaskRoot(); }
+    public android.window.SplashScreen getSplashScreen() { return meglet.SplashScreens.of(this); }
+    public final boolean isTaskRootMeglet() { return isTaskRoot(); }
 
     // ---- intents and results
     public Intent getIntent() { return mIntent; }
     public void setIntent(Intent i) { mIntent = i; }
-    public final Application getApplication() { return mApplication != null ? mApplication : Application.meglerGet(); }
+    public final Application getApplication() { return mApplication != null ? mApplication : Application.megletGet(); }
     public ComponentName getComponentName() { return mComponent != null ? mComponent : new ComponentName(this, getClass()); }
     public String getLocalClassName() { String p = getPackageName(), c = getClass().getName(); return c.startsWith(p + ".") ? c.substring(p.length() + 1) : c; }
     public String getCallingPackage() { return mCaller != null ? getPackageName() : null; }
@@ -351,8 +351,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     @Override public void startActivity(Intent i, Bundle o) { startActivityForResult(i, -1, o); }
     public void startActivityForResult(Intent i, int request) { startActivityForResult(i, request, null); }
     public void startActivityForResult(Intent i, int request, Bundle o) {
-        if (request >= 0 && !windowShown() && megler.Manifest.resolve(i) != null) mStartedActivity = true;
-        megler.AppRunner.startActivity(this, i, request, o);
+        if (request >= 0 && !windowShown() && meglet.Manifest.resolve(i) != null) mStartedActivity = true;
+        meglet.AppRunner.startActivity(this, i, request, o);
     }
     public void startActivityFromChild(Activity child, Intent i, int request) { startActivityForResult(i, request); }
     public void startActivityFromFragment(Fragment f, Intent i, int request) { startActivityForResult(i, request); }
@@ -364,15 +364,15 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         if (mFinished) return;
         mFinished = true;
         // the app's last activity going ends the app: say where from, which is often all a log has to explain it
-        if (megler.AppRunner.top() == this && megler.AppRunner.stackSize() == 1) android.util.Log.i("Megler", "the last activity finishes", new Throwable("finish() called from"));
-        megler.AppRunner.finish(this);
+        if (meglet.AppRunner.top() == this && meglet.AppRunner.stackSize() == 1) android.util.Log.i("Meglet", "the last activity finishes", new Throwable("finish() called from"));
+        meglet.AppRunner.finish(this);
     }
-    public void finishAffinity() { megler.AppRunner.finishAffinity(this); }
+    public void finishAffinity() { meglet.AppRunner.finishAffinity(this); }
     public void finishAndRemoveTask() { finishAffinity(); }
     public void finishAfterTransition() { finish(); }
     public void finishActivity(int request) {}
     public void finishFromChild(Activity child) { finish(); }
-    public boolean moveTaskToBack(boolean nonRoot) { megler.Native.exit(); return true; }
+    public boolean moveTaskToBack(boolean nonRoot) { meglet.Native.exit(); return true; }
     public boolean navigateUpTo(Intent up) { finish(); return true; }
     public boolean navigateUpToFromChild(Activity child, Intent up) { return navigateUpTo(up); }
     public boolean onNavigateUp() { if (mInfo != null && mInfo.parentActivity != null) { finish(); return true; } return false; }
@@ -385,7 +385,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public boolean shouldShowRequestPermissionRationale(String p) { return false; }
     public SharedPreferences getPreferences(int mode) { return getSharedPreferences(getLocalClassName(), mode); }
     public void runOnUiThread(Runnable r) { if (Looper.myLooper() == Looper.getMainLooper()) r.run(); else mHandler.post(r); }
-    public final Cursor_ managedQueryMegler() { return null; }
+    public final Cursor_ managedQueryMeglet() { return null; }
     interface Cursor_ {}
     public FragmentManager getFragmentManager() { if (mFragments == null) mFragments = new FragmentManager(this); return mFragments; }
     public void onAttachFragment(Fragment f) {}
@@ -428,7 +428,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public boolean dispatchGenericMotionEvent(MotionEvent e) { if (getWindow().superDispatchGenericMotionEvent(e)) return true; return onGenericMotionEvent(e); }
     public boolean dispatchPopulateAccessibilityEvent(AccessibilityEvent e) { return false; }
     public boolean onTouchEvent(MotionEvent e) {
-        if (getWindow().shouldCloseOnTouchMegler() && e.getActionMasked() == MotionEvent.ACTION_DOWN) { finish(); return true; }
+        if (getWindow().shouldCloseOnTouchMeglet() && e.getActionMasked() == MotionEvent.ACTION_DOWN) { finish(); return true; }
         return false;
     }
     public boolean onTrackballEvent(MotionEvent e) { return false; }
@@ -488,7 +488,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public View onCreateView(String name, Context c, android.util.AttributeSet a) { return null; }
     public View onCreateView(View parent, String name, Context c, android.util.AttributeSet a) {
         if (!"fragment".equals(name)) return onCreateView(name, c, a);
-        return getFragmentManager().meglerInflateFragment(parent, c, a);
+        return getFragmentManager().megletInflateFragment(parent, c, a);
     }
     public void dump(String prefix, java.io.FileDescriptor fd, java.io.PrintWriter w, String[] args) {}
     static final class SuperNotCalledException extends android.util.AndroidRuntimeException { SuperNotCalledException(String s) { super(s); } }
@@ -497,7 +497,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         void onScreenCaptured();
     }
             // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-            private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
             public static final int DONT_FINISH_TASK_WITH_ACTIVITY = 0;
             public static final java.lang.String DUMP_ARG_AUTOFILL = "--autofill";
             public static final java.lang.String DUMP_ARG_CONTENT_CAPTURE = "--contentcapture";
@@ -528,21 +528,21 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public int getChangingConfigurations() { return 0; }
             public android.view.contentcapture.ContentCaptureManager.ContentCaptureClient getContentCaptureClient() { return null; }
             public android.transition.Scene getContentScene() { return null; }
-            public android.transition.TransitionManager getContentTransitionManager() { return (android.transition.TransitionManager) meglerFill.get("ContentTransitionManager"); }
+            public android.transition.TransitionManager getContentTransitionManager() { return (android.transition.TransitionManager) megletFill.get("ContentTransitionManager"); }
             public android.app.ComponentCaller getCurrentCaller() { return null; }
             public android.app.ComponentCaller getInitialCaller() { return null; }
             public int getLaunchedFromUid() { return 0; }
             public int getMaxNumPictureInPictureActions() { return 0; }
-            public android.media.session.MediaController getMediaController() { return (android.media.session.MediaController) meglerFill.get("MediaController"); }
+            public android.media.session.MediaController getMediaController() { return (android.media.session.MediaController) megletFill.get("MediaController"); }
             public int getNextAutofillId() { return 0; }
             public android.net.Uri getReferrer() { return null; }
             public android.view.SearchEvent getSearchEvent() { return null; }
             public android.os.IBinder getShareableActivityToken() { return null; }
             public android.app.VoiceInteractor getVoiceInteractor() { return null; }
             public boolean isBackgroundVisibleBehind() { return false; }
-            public boolean isHandoffEnabled() { return (meglerFill.get("HandoffEnabled") instanceof Boolean ? (Boolean) meglerFill.get("HandoffEnabled") : false); }
+            public boolean isHandoffEnabled() { return (megletFill.get("HandoffEnabled") instanceof Boolean ? (Boolean) megletFill.get("HandoffEnabled") : false); }
             public boolean isHandoffFullTaskRecreationAllowed() { return false; }
-            public boolean isOverlayWithDecorCaptionEnabled() { return (meglerFill.get("OverlayWithDecorCaptionEnabled") instanceof Boolean ? (Boolean) meglerFill.get("OverlayWithDecorCaptionEnabled") : false); }
+            public boolean isOverlayWithDecorCaptionEnabled() { return (megletFill.get("OverlayWithDecorCaptionEnabled") instanceof Boolean ? (Boolean) megletFill.get("OverlayWithDecorCaptionEnabled") : false); }
             public boolean isVisibleForAutofill() { return false; }
             public android.database.Cursor managedQuery(android.net.Uri p0, java.lang.String[] p1, java.lang.String p2, java.lang.String p3) { return null; }
             public android.database.Cursor managedQuery(android.net.Uri p0, java.lang.String[] p1, java.lang.String p2, java.lang.String[] p3, java.lang.String p4) { return null; }
@@ -577,15 +577,15 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public boolean requestVisibleBehind(boolean p0) { return false; }
             public void setActivityRecordInputSinkEnabled(boolean p0) {}
             public void setAllowCrossUidActivitySwitchFromBelow(boolean p0) {}
-            public void setContentTransitionManager(android.transition.TransitionManager p0) { meglerFill.put("ContentTransitionManager", p0); }
+            public void setContentTransitionManager(android.transition.TransitionManager p0) { megletFill.put("ContentTransitionManager", p0); }
             public void setFeatureDrawableAlpha(int p0, int p1) {}
             public void setFeatureDrawableUri(int p0, android.net.Uri p1) {}
             public void setFinishOnTouchOutside(boolean p0) {}
             public void setForceSendResultForMediaProjection() {}
             public void setHandoffEnabled(boolean p0, boolean p1) {}
             public void setIntent(android.content.Intent p0, android.app.ComponentCaller p1) {}
-            public void setMediaController(android.media.session.MediaController p0) { meglerFill.put("MediaController", p0); }
-            public void setOverlayWithDecorCaptionEnabled(boolean p0) { meglerFill.put("OverlayWithDecorCaptionEnabled", Boolean.valueOf(p0)); }
+            public void setMediaController(android.media.session.MediaController p0) { megletFill.put("MediaController", p0); }
+            public void setOverlayWithDecorCaptionEnabled(boolean p0) { megletFill.put("OverlayWithDecorCaptionEnabled", Boolean.valueOf(p0)); }
             public void setPersistent(boolean p0) {}
             public void setSecondaryProgress(int p0) {}
             public void setShouldDockBigOverlays(boolean p0) {}

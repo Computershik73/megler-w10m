@@ -3,7 +3,7 @@ package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WifiNetworkSpecifier extends android.net.NetworkSpecifier implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public android.util.Pair bssidPatternMatcher;
     public android.os.PatternMatcher ssidPatternMatcher;
@@ -15,29 +15,29 @@ public final class WifiNetworkSpecifier extends android.net.NetworkSpecifier imp
     public static boolean validateChannelFrequencyInMhz(int[] p0) { return false; }
     public boolean canBeSatisfiedBy(android.net.NetworkSpecifier p0) { return false; }
     public int describeContents() { return 0; }
-    public int getBand() { return (meglerProps.get("Band") instanceof Integer ? (Integer) meglerProps.get("Band") : 0); }
-    public int[] getPreferredChannelFrequenciesMhz() { return (int[]) meglerProps.get("PreferredChannelFrequenciesMhz"); }
-    public boolean isPreferSecondarySta() { return (meglerProps.get("PreferSecondarySta") instanceof Boolean ? (Boolean) meglerProps.get("PreferSecondarySta") : false); }
+    public int getBand() { return (megletProps.get("Band") instanceof Integer ? (Integer) megletProps.get("Band") : 0); }
+    public int[] getPreferredChannelFrequenciesMhz() { return (int[]) megletProps.get("PreferredChannelFrequenciesMhz"); }
+    public boolean isPreferSecondarySta() { return (megletProps.get("PreferSecondarySta") instanceof Boolean ? (Boolean) megletProps.get("PreferSecondarySta") : false); }
     public android.net.NetworkSpecifier redact() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.wifi.WifiNetworkSpecifier build() { android.net.wifi.WifiNetworkSpecifier x = new android.net.wifi.WifiNetworkSpecifier(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setBand(int p0) { meglerProps.put("Band", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setBssid(android.net.MacAddress p0) { meglerProps.put("Bssid", p0); return this; }
+        public android.net.wifi.WifiNetworkSpecifier build() { android.net.wifi.WifiNetworkSpecifier x = new android.net.wifi.WifiNetworkSpecifier(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setBand(int p0) { megletProps.put("Band", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setBssid(android.net.MacAddress p0) { megletProps.put("Bssid", p0); return this; }
         public android.net.wifi.WifiNetworkSpecifier.Builder setBssidPattern(android.net.MacAddress p0, android.net.MacAddress p1) { return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setIsEnhancedOpen(boolean p0) { meglerProps.put("IsEnhancedOpen", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setIsHiddenSsid(boolean p0) { meglerProps.put("IsHiddenSsid", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setPreferSecondarySta(boolean p0) { meglerProps.put("PreferSecondarySta", Boolean.valueOf(p0)); return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setPreferredChannelsFrequenciesMhz(int[] p0) { meglerProps.put("PreferredChannelsFrequenciesMhz", p0); return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setSsid(java.lang.String p0) { meglerProps.put("Ssid", p0); return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setSsidPattern(android.os.PatternMatcher p0) { meglerProps.put("SsidPattern", p0); return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setWpa2EnterpriseConfig(android.net.wifi.WifiEnterpriseConfig p0) { meglerProps.put("Wpa2EnterpriseConfig", p0); return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setWpa2Passphrase(java.lang.String p0) { meglerProps.put("Wpa2Passphrase", p0); return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setWpa3Enterprise192BitModeConfig(android.net.wifi.WifiEnterpriseConfig p0) { meglerProps.put("Wpa3Enterprise192BitModeConfig", p0); return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setWpa3EnterpriseConfig(android.net.wifi.WifiEnterpriseConfig p0) { meglerProps.put("Wpa3EnterpriseConfig", p0); return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setWpa3EnterpriseStandardModeConfig(android.net.wifi.WifiEnterpriseConfig p0) { meglerProps.put("Wpa3EnterpriseStandardModeConfig", p0); return this; }
-        public android.net.wifi.WifiNetworkSpecifier.Builder setWpa3Passphrase(java.lang.String p0) { meglerProps.put("Wpa3Passphrase", p0); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setIsEnhancedOpen(boolean p0) { megletProps.put("IsEnhancedOpen", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setIsHiddenSsid(boolean p0) { megletProps.put("IsHiddenSsid", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setPreferSecondarySta(boolean p0) { megletProps.put("PreferSecondarySta", Boolean.valueOf(p0)); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setPreferredChannelsFrequenciesMhz(int[] p0) { megletProps.put("PreferredChannelsFrequenciesMhz", p0); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setSsid(java.lang.String p0) { megletProps.put("Ssid", p0); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setSsidPattern(android.os.PatternMatcher p0) { megletProps.put("SsidPattern", p0); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setWpa2EnterpriseConfig(android.net.wifi.WifiEnterpriseConfig p0) { megletProps.put("Wpa2EnterpriseConfig", p0); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setWpa2Passphrase(java.lang.String p0) { megletProps.put("Wpa2Passphrase", p0); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setWpa3Enterprise192BitModeConfig(android.net.wifi.WifiEnterpriseConfig p0) { megletProps.put("Wpa3Enterprise192BitModeConfig", p0); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setWpa3EnterpriseConfig(android.net.wifi.WifiEnterpriseConfig p0) { megletProps.put("Wpa3EnterpriseConfig", p0); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setWpa3EnterpriseStandardModeConfig(android.net.wifi.WifiEnterpriseConfig p0) { megletProps.put("Wpa3EnterpriseStandardModeConfig", p0); return this; }
+        public android.net.wifi.WifiNetworkSpecifier.Builder setWpa3Passphrase(java.lang.String p0) { megletProps.put("Wpa3Passphrase", p0); return this; }
     }
 }

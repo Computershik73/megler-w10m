@@ -580,7 +580,7 @@ static void fmod_stop(hk_jcall *c)
 }
 static void fmod_running(hk_jcall *c) { c->ret.z = FM.running != 0; }
 
-#define AUDIO "megler/service/audio"
+#define AUDIO "meglet/service/audio"
 #define BUNDLE "android/os/Bundle"
 static const hk_jhle g_unity_java[] = {
     { "java/util/Locale", "toLanguageTag", NULL, locale_tag },
@@ -618,18 +618,18 @@ static const hk_jhle g_unity_java[] = {
     { "android/content/Intent", "setPackage", NULL, ret_self },
     { "android/content/Intent", "setAction", NULL, ret_self },
     { "android/content/pm/PackageManager", "queryIntentActivities", NULL, ret_null },
-    { "megler/service/display", "getDisplay", NULL, display_of },
-    { "megler/service/display", "getDisplays", NULL, display_all },
-    { "megler/service/display", "registerDisplayListener", NULL, ret_void },
-    { "megler/service/display", "unregisterDisplayListener", NULL, ret_void },
-    { "megler/service/input", "getInputDeviceIds", NULL, ret_empty_ints },
-    { "megler/service/input", "getInputDevice", NULL, ret_null },
-    { "megler/service/input", "registerInputDeviceListener", NULL, ret_void },
-    { "megler/service/input", "unregisterInputDeviceListener", NULL, ret_void },
-    { "megler/service/media_router", "getSelectedRoute", NULL, ret_null },
-    { "megler/service/media_router", "addCallback", NULL, ret_void },
-    { "megler/service/uimode", "getCurrentModeType", NULL, ret_one },         /* UI_MODE_TYPE_NORMAL */
-    { "megler/service/activity", "getMemoryClass", NULL, audio_max_volume },
+    { "meglet/service/display", "getDisplay", NULL, display_of },
+    { "meglet/service/display", "getDisplays", NULL, display_all },
+    { "meglet/service/display", "registerDisplayListener", NULL, ret_void },
+    { "meglet/service/display", "unregisterDisplayListener", NULL, ret_void },
+    { "meglet/service/input", "getInputDeviceIds", NULL, ret_empty_ints },
+    { "meglet/service/input", "getInputDevice", NULL, ret_null },
+    { "meglet/service/input", "registerInputDeviceListener", NULL, ret_void },
+    { "meglet/service/input", "unregisterInputDeviceListener", NULL, ret_void },
+    { "meglet/service/media_router", "getSelectedRoute", NULL, ret_null },
+    { "meglet/service/media_router", "addCallback", NULL, ret_void },
+    { "meglet/service/uimode", "getCurrentModeType", NULL, ret_one },         /* UI_MODE_TYPE_NORMAL */
+    { "meglet/service/activity", "getMemoryClass", NULL, audio_max_volume },
     { "android/view/InputDevice", "getDeviceIds", NULL, ret_empty_ints },
     { "android/view/InputDevice", "getDevice", NULL, ret_null },
     { "com/unity3d/player/HFPStatus", "requestHFPStat", NULL, ret_void },
@@ -1009,7 +1009,7 @@ static const hk_jhle g_unity_input[] = {
     { NULL, NULL, NULL, NULL },
 };
 
-static bool un_start(const megler_run_config *config, const hk_apk_info *info)
+static bool un_start(const meglet_run_config *config, const hk_apk_info *info)
 {
     char cls[220], *p;
     memset(&U, 0, sizeof(U));

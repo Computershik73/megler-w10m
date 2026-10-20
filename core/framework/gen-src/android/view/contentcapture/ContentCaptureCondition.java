@@ -3,14 +3,14 @@ package android.view.contentcapture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ContentCaptureCondition implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.view.contentcapture.ContentCaptureCondition CONDITION_ENABLE_EXPORTING_VIRTUAL_CHILDREN;
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_IS_REGEX = 2;
     public ContentCaptureCondition(android.content.LocusId p0, int p1) {}
     public int describeContents() { return 0; }
-    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
-    public android.content.LocusId getLocusId() { return (android.content.LocusId) meglerProps.get("LocusId"); }
+    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
+    public android.content.LocusId getLocusId() { return (android.content.LocusId) megletProps.get("LocusId"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ContentCaptureCondition() { this((android.content.LocusId) null, (int) 0); }
 }

@@ -31,7 +31,7 @@ public class MimeTypeMap {
     }
     private MimeTypeMap() {}
     /** As the platform's mime module does at boot: libcore's MimeMap (URLConnection.guessContentTypeFromName and friends) knows these. */
-    public static void meglerInstallDefault() {
+    public static void megletInstallDefault() {
         try {
             final libcore.content.type.MimeMap.Builder b = libcore.content.type.MimeMap.builder();
             HashMap<String, java.util.ArrayList<String>> byMime = new HashMap<>();

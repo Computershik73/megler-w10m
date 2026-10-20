@@ -3,7 +3,7 @@ package android.inputmethodservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class InputMethodService extends android.inputmethodservice.AbstractInputMethodService {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int BACK_DISPOSITION_ADJUST_NOTHING = 3;
     public static final int BACK_DISPOSITION_DEFAULT = 0;
     public static final int BACK_DISPOSITION_WILL_DISMISS = 2;
@@ -17,27 +17,27 @@ public class InputMethodService extends android.inputmethodservice.AbstractInput
     public boolean enableHardwareAcceleration() { return false; }
     public void finishConnectionlessStylusHandwriting(java.lang.CharSequence p0) {}
     public void finishStylusHandwriting() {}
-    public int getBackDisposition() { return (meglerProps.get("BackDisposition") instanceof Integer ? (Integer) meglerProps.get("BackDisposition") : 0); }
-    public int getCandidatesHiddenVisibility() { return (meglerProps.get("CandidatesHiddenVisibility") instanceof Integer ? (Integer) meglerProps.get("CandidatesHiddenVisibility") : 0); }
-    public android.view.inputmethod.InputBinding getCurrentInputBinding() { return (android.view.inputmethod.InputBinding) meglerProps.get("CurrentInputBinding"); }
-    public android.view.inputmethod.InputConnection getCurrentInputConnection() { return (android.view.inputmethod.InputConnection) meglerProps.get("CurrentInputConnection"); }
-    public android.view.inputmethod.EditorInfo getCurrentInputEditorInfo() { return (android.view.inputmethod.EditorInfo) meglerProps.get("CurrentInputEditorInfo"); }
-    public boolean getCurrentInputStarted() { return (meglerProps.get("CurrentInputStarted") instanceof Boolean ? (Boolean) meglerProps.get("CurrentInputStarted") : false); }
-    public int getInputMethodWindowRecommendedHeight() { return (meglerProps.get("InputMethodWindowRecommendedHeight") instanceof Integer ? (Integer) meglerProps.get("InputMethodWindowRecommendedHeight") : 0); }
-    public android.view.LayoutInflater getLayoutInflater() { return (android.view.LayoutInflater) meglerProps.get("LayoutInflater"); }
-    public int getMaxWidth() { return (meglerProps.get("MaxWidth") instanceof Integer ? (Integer) meglerProps.get("MaxWidth") : 0); }
-    public java.lang.Boolean getShouldShowImeWithHardKeyboardForTesting() { return (java.lang.Boolean) meglerProps.get("ShouldShowImeWithHardKeyboardForTesting"); }
-    public java.time.Duration getStylusHandwritingSessionTimeout() { return (java.time.Duration) meglerProps.get("StylusHandwritingSessionTimeout"); }
-    public android.view.Window getStylusHandwritingWindow() { return (android.view.Window) meglerProps.get("StylusHandwritingWindow"); }
+    public int getBackDisposition() { return (megletProps.get("BackDisposition") instanceof Integer ? (Integer) megletProps.get("BackDisposition") : 0); }
+    public int getCandidatesHiddenVisibility() { return (megletProps.get("CandidatesHiddenVisibility") instanceof Integer ? (Integer) megletProps.get("CandidatesHiddenVisibility") : 0); }
+    public android.view.inputmethod.InputBinding getCurrentInputBinding() { return (android.view.inputmethod.InputBinding) megletProps.get("CurrentInputBinding"); }
+    public android.view.inputmethod.InputConnection getCurrentInputConnection() { return (android.view.inputmethod.InputConnection) megletProps.get("CurrentInputConnection"); }
+    public android.view.inputmethod.EditorInfo getCurrentInputEditorInfo() { return (android.view.inputmethod.EditorInfo) megletProps.get("CurrentInputEditorInfo"); }
+    public boolean getCurrentInputStarted() { return (megletProps.get("CurrentInputStarted") instanceof Boolean ? (Boolean) megletProps.get("CurrentInputStarted") : false); }
+    public int getInputMethodWindowRecommendedHeight() { return (megletProps.get("InputMethodWindowRecommendedHeight") instanceof Integer ? (Integer) megletProps.get("InputMethodWindowRecommendedHeight") : 0); }
+    public android.view.LayoutInflater getLayoutInflater() { return (android.view.LayoutInflater) megletProps.get("LayoutInflater"); }
+    public int getMaxWidth() { return (megletProps.get("MaxWidth") instanceof Integer ? (Integer) megletProps.get("MaxWidth") : 0); }
+    public java.lang.Boolean getShouldShowImeWithHardKeyboardForTesting() { return (java.lang.Boolean) megletProps.get("ShouldShowImeWithHardKeyboardForTesting"); }
+    public java.time.Duration getStylusHandwritingSessionTimeout() { return (java.time.Duration) megletProps.get("StylusHandwritingSessionTimeout"); }
+    public android.view.Window getStylusHandwritingWindow() { return (android.view.Window) megletProps.get("StylusHandwritingWindow"); }
     public java.lang.CharSequence getTextForImeAction(int p0) { return null; }
-    public android.app.Dialog getWindow() { return (android.app.Dialog) meglerProps.get("Window"); }
+    public android.app.Dialog getWindow() { return (android.app.Dialog) megletProps.get("Window"); }
     public void hideStatusIcon() {}
     public void hideWindow() {}
-    public boolean isExtractViewShown() { return (meglerProps.get("ExtractViewShown") instanceof Boolean ? (Boolean) meglerProps.get("ExtractViewShown") : false); }
-    public boolean isFullscreenMode() { return (meglerProps.get("FullscreenMode") instanceof Boolean ? (Boolean) meglerProps.get("FullscreenMode") : false); }
-    public boolean isImeNavigationBarShownForTesting() { return (meglerProps.get("ImeNavigationBarShownForTesting") instanceof Boolean ? (Boolean) meglerProps.get("ImeNavigationBarShownForTesting") : false); }
-    public boolean isInputViewShown() { return (meglerProps.get("InputViewShown") instanceof Boolean ? (Boolean) meglerProps.get("InputViewShown") : false); }
-    public boolean isShowInputRequested() { return (meglerProps.get("ShowInputRequested") instanceof Boolean ? (Boolean) meglerProps.get("ShowInputRequested") : false); }
+    public boolean isExtractViewShown() { return (megletProps.get("ExtractViewShown") instanceof Boolean ? (Boolean) megletProps.get("ExtractViewShown") : false); }
+    public boolean isFullscreenMode() { return (megletProps.get("FullscreenMode") instanceof Boolean ? (Boolean) megletProps.get("FullscreenMode") : false); }
+    public boolean isImeNavigationBarShownForTesting() { return (megletProps.get("ImeNavigationBarShownForTesting") instanceof Boolean ? (Boolean) megletProps.get("ImeNavigationBarShownForTesting") : false); }
+    public boolean isInputViewShown() { return (megletProps.get("InputViewShown") instanceof Boolean ? (Boolean) megletProps.get("InputViewShown") : false); }
+    public boolean isShowInputRequested() { return (megletProps.get("ShowInputRequested") instanceof Boolean ? (Boolean) megletProps.get("ShowInputRequested") : false); }
     public void onAppPrivateCommand(java.lang.String p0, android.os.Bundle p1) {}
     public void onBindInput() {}
     public void onComputeInsets(android.inputmethodservice.InputMethodService.Insets p0) {}
@@ -98,14 +98,14 @@ public class InputMethodService extends android.inputmethodservice.AbstractInput
     public boolean sendDefaultEditorAction(boolean p0) { return false; }
     public void sendDownUpKeyEvents(int p0) {}
     public void sendKeyChar(char p0) {}
-    public void setBackDisposition(int p0) { meglerProps.put("BackDisposition", Integer.valueOf(p0)); }
-    public void setCandidatesView(android.view.View p0) { meglerProps.put("CandidatesView", p0); }
-    public void setCandidatesViewShown(boolean p0) { meglerProps.put("CandidatesViewShown", Boolean.valueOf(p0)); }
-    public void setExtractView(android.view.View p0) { meglerProps.put("ExtractView", p0); }
-    public void setExtractViewShown(boolean p0) { meglerProps.put("ExtractViewShown", Boolean.valueOf(p0)); }
-    public void setInputView(android.view.View p0) { meglerProps.put("InputView", p0); }
-    public void setStylusHandwritingRegion(android.graphics.Region p0) { meglerProps.put("StylusHandwritingRegion", p0); }
-    public void setStylusHandwritingSessionTimeout(java.time.Duration p0) { meglerProps.put("StylusHandwritingSessionTimeout", p0); }
+    public void setBackDisposition(int p0) { megletProps.put("BackDisposition", Integer.valueOf(p0)); }
+    public void setCandidatesView(android.view.View p0) { megletProps.put("CandidatesView", p0); }
+    public void setCandidatesViewShown(boolean p0) { megletProps.put("CandidatesViewShown", Boolean.valueOf(p0)); }
+    public void setExtractView(android.view.View p0) { megletProps.put("ExtractView", p0); }
+    public void setExtractViewShown(boolean p0) { megletProps.put("ExtractViewShown", Boolean.valueOf(p0)); }
+    public void setInputView(android.view.View p0) { megletProps.put("InputView", p0); }
+    public void setStylusHandwritingRegion(android.graphics.Region p0) { megletProps.put("StylusHandwritingRegion", p0); }
+    public void setStylusHandwritingSessionTimeout(java.time.Duration p0) { megletProps.put("StylusHandwritingSessionTimeout", p0); }
     public boolean shouldOfferSwitchingToNextInputMethod() { return false; }
     public void showStatusIcon(int p0) {}
     public void showWindow(boolean p0) {}
@@ -116,7 +116,7 @@ public class InputMethodService extends android.inputmethodservice.AbstractInput
     public void updateFullscreenMode() {}
     public void updateInputViewShown() {}
     public static class InputMethodImpl extends android.inputmethodservice.AbstractInputMethodService.AbstractInputMethodImpl {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public InputMethodImpl(android.inputmethodservice.InputMethodService p0) { super((android.inputmethodservice.AbstractInputMethodService) null); }
         public void attachToken(android.os.IBinder p0) {}
         public void bindInput(android.view.inputmethod.InputBinding p0) {}
@@ -130,7 +130,7 @@ public class InputMethodService extends android.inputmethodservice.AbstractInput
         public void onNavButtonFlagsChanged(int p0) {}
         public void removeStylusHandwritingWindow() {}
         public void restartInput(android.view.inputmethod.InputConnection p0, android.view.inputmethod.EditorInfo p1) {}
-        public void setStylusWindowIdleTimeoutForTest(long p0) { meglerProps.put("StylusWindowIdleTimeoutForTest", Long.valueOf(p0)); }
+        public void setStylusWindowIdleTimeoutForTest(long p0) { megletProps.put("StylusWindowIdleTimeoutForTest", Long.valueOf(p0)); }
         public void showSoftInput(int p0, android.os.ResultReceiver p1) {}
         public void showSoftInputWithToken(android.view.inputmethod.ImeTracker.Token p0) {}
         public void startInput(android.view.inputmethod.InputConnection p0, android.view.inputmethod.EditorInfo p1) {}
@@ -140,7 +140,7 @@ public class InputMethodService extends android.inputmethodservice.AbstractInput
         InputMethodImpl() { this((android.inputmethodservice.InputMethodService) null); }
     }
     public static abstract class InputMethodSessionImpl extends android.inputmethodservice.AbstractInputMethodService.AbstractInputMethodSessionImpl {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public InputMethodSessionImpl(android.inputmethodservice.InputMethodService p0) { super(); }
         public void appPrivateCommand(java.lang.String p0, android.os.Bundle p1) {}
         public void displayCompletions(android.view.inputmethod.CompletionInfo[] p0) {}
@@ -155,7 +155,7 @@ public class InputMethodService extends android.inputmethodservice.AbstractInput
         InputMethodSessionImpl() { this((android.inputmethodservice.InputMethodService) null); }
     }
     public static final class Insets {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int TOUCHABLE_INSETS_CONTENT = 1;
         public static final int TOUCHABLE_INSETS_FRAME = 0;
         public static final int TOUCHABLE_INSETS_REGION = 3;

@@ -3,12 +3,12 @@ package android.speech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class RecognitionService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String SERVICE_INTERFACE = "android.speech.RecognitionService";
     public static final java.lang.String SERVICE_META_DATA = "android.speech";
     public RecognitionService() { super(); }
     public android.content.Context createContext(android.content.ContextParams p0) { return null; }
-    public int getMaxConcurrentSessionsCount() { return (meglerProps.get("MaxConcurrentSessionsCount") instanceof Integer ? (Integer) meglerProps.get("MaxConcurrentSessionsCount") : 0); }
+    public int getMaxConcurrentSessionsCount() { return (megletProps.get("MaxConcurrentSessionsCount") instanceof Integer ? (Integer) megletProps.get("MaxConcurrentSessionsCount") : 0); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public void onBindInternal() {}
     protected abstract void onCancel(android.speech.RecognitionService.Callback p0);
@@ -20,14 +20,14 @@ public abstract class RecognitionService extends android.app.Service {
     public void onTriggerModelDownload(android.content.Intent p0, android.content.AttributionSource p1) {}
     public void onTriggerModelDownload(android.content.Intent p0, android.content.AttributionSource p1, android.speech.ModelDownloadListener p2) {}
     public static class Callback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public void beginningOfSpeech() {}
         public void bufferReceived(byte[] p0) {}
         public void endOfSegmentedSession() {}
         public void endOfSpeech() {}
         public void error(int p0) {}
-        public android.content.AttributionSource getCallingAttributionSource() { return (android.content.AttributionSource) meglerProps.get("CallingAttributionSource"); }
-        public int getCallingUid() { return (meglerProps.get("CallingUid") instanceof Integer ? (Integer) meglerProps.get("CallingUid") : 0); }
+        public android.content.AttributionSource getCallingAttributionSource() { return (android.content.AttributionSource) megletProps.get("CallingAttributionSource"); }
+        public int getCallingUid() { return (megletProps.get("CallingUid") instanceof Integer ? (Integer) megletProps.get("CallingUid") : 0); }
         public void languageDetection(android.os.Bundle p0) {}
         public void partialResults(android.os.Bundle p0) {}
         public void readyForSpeech(android.os.Bundle p0) {}
@@ -37,7 +37,7 @@ public abstract class RecognitionService extends android.app.Service {
         protected Callback() {}
     }
     public static class SupportCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public void onError(int p0) {}
         public void onSupportResult(android.speech.RecognitionSupport p0) {}
         protected SupportCallback() {}

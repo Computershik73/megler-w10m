@@ -3,10 +3,10 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Credentials {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public Credentials(int p0, int p1, int p2) {}
-    public int getGid() { return (meglerProps.get("Gid") instanceof Integer ? (Integer) meglerProps.get("Gid") : 0); }
-    public int getPid() { return (meglerProps.get("Pid") instanceof Integer ? (Integer) meglerProps.get("Pid") : 0); }
-    public int getUid() { return (meglerProps.get("Uid") instanceof Integer ? (Integer) meglerProps.get("Uid") : 0); }
+    public int getGid() { return (megletProps.get("Gid") instanceof Integer ? (Integer) megletProps.get("Gid") : 0); }
+    public int getPid() { return (megletProps.get("Pid") instanceof Integer ? (Integer) megletProps.get("Pid") : 0); }
+    public int getUid() { return (megletProps.get("Uid") instanceof Integer ? (Integer) megletProps.get("Uid") : 0); }
     Credentials() { this((int) 0, (int) 0, (int) 0); }
 }

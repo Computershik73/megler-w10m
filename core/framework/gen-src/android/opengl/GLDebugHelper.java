@@ -3,7 +3,7 @@ package android.opengl;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GLDebugHelper {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CONFIG_CHECK_GL_ERROR = 1;
     public static final int CONFIG_CHECK_THREAD = 2;
     public static final int CONFIG_LOG_ARGUMENT_NAMES = 4;

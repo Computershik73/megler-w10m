@@ -3,16 +3,16 @@ package android.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Highlights {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public android.graphics.Paint getPaint(int p0) { return null; }
     public int[] getRanges(int p0) { return null; }
-    public int getSize() { return (meglerProps.get("Size") instanceof Integer ? (Integer) meglerProps.get("Size") : 0); }
+    public int getSize() { return (megletProps.get("Size") instanceof Integer ? (Integer) megletProps.get("Size") : 0); }
     protected Highlights() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public android.text.Highlights.Builder addRange(android.graphics.Paint p0, int p1, int p2) { return this; }
         public android.text.Highlights.Builder addRanges(android.graphics.Paint p0, int[] p1) { return this; }
-        public android.text.Highlights build() { android.text.Highlights x = new android.text.Highlights(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.text.Highlights build() { android.text.Highlights x = new android.text.Highlights(); x.megletProps.putAll(megletProps); return x; }
     }
 }

@@ -3,22 +3,22 @@ package android.adservices.customaudience;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FetchAndJoinCustomAudienceRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.time.Instant getActivationTime() { return (java.time.Instant) meglerProps.get("ActivationTime"); }
-    public java.time.Instant getExpirationTime() { return (java.time.Instant) meglerProps.get("ExpirationTime"); }
-    public android.net.Uri getFetchUri() { return (android.net.Uri) meglerProps.get("FetchUri"); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public android.adservices.common.AdSelectionSignals getUserBiddingSignals() { return (android.adservices.common.AdSelectionSignals) meglerProps.get("UserBiddingSignals"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.time.Instant getActivationTime() { return (java.time.Instant) megletProps.get("ActivationTime"); }
+    public java.time.Instant getExpirationTime() { return (java.time.Instant) megletProps.get("ExpirationTime"); }
+    public android.net.Uri getFetchUri() { return (android.net.Uri) megletProps.get("FetchUri"); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public android.adservices.common.AdSelectionSignals getUserBiddingSignals() { return (android.adservices.common.AdSelectionSignals) megletProps.get("UserBiddingSignals"); }
     protected FetchAndJoinCustomAudienceRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.net.Uri p0) {}
-        public android.adservices.customaudience.FetchAndJoinCustomAudienceRequest build() { android.adservices.customaudience.FetchAndJoinCustomAudienceRequest x = new android.adservices.customaudience.FetchAndJoinCustomAudienceRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.customaudience.FetchAndJoinCustomAudienceRequest.Builder setActivationTime(java.time.Instant p0) { meglerProps.put("ActivationTime", p0); return this; }
-        public android.adservices.customaudience.FetchAndJoinCustomAudienceRequest.Builder setExpirationTime(java.time.Instant p0) { meglerProps.put("ExpirationTime", p0); return this; }
-        public android.adservices.customaudience.FetchAndJoinCustomAudienceRequest.Builder setFetchUri(android.net.Uri p0) { meglerProps.put("FetchUri", p0); return this; }
-        public android.adservices.customaudience.FetchAndJoinCustomAudienceRequest.Builder setName(java.lang.String p0) { meglerProps.put("Name", p0); return this; }
-        public android.adservices.customaudience.FetchAndJoinCustomAudienceRequest.Builder setUserBiddingSignals(android.adservices.common.AdSelectionSignals p0) { meglerProps.put("UserBiddingSignals", p0); return this; }
+        public android.adservices.customaudience.FetchAndJoinCustomAudienceRequest build() { android.adservices.customaudience.FetchAndJoinCustomAudienceRequest x = new android.adservices.customaudience.FetchAndJoinCustomAudienceRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.customaudience.FetchAndJoinCustomAudienceRequest.Builder setActivationTime(java.time.Instant p0) { megletProps.put("ActivationTime", p0); return this; }
+        public android.adservices.customaudience.FetchAndJoinCustomAudienceRequest.Builder setExpirationTime(java.time.Instant p0) { megletProps.put("ExpirationTime", p0); return this; }
+        public android.adservices.customaudience.FetchAndJoinCustomAudienceRequest.Builder setFetchUri(android.net.Uri p0) { megletProps.put("FetchUri", p0); return this; }
+        public android.adservices.customaudience.FetchAndJoinCustomAudienceRequest.Builder setName(java.lang.String p0) { megletProps.put("Name", p0); return this; }
+        public android.adservices.customaudience.FetchAndJoinCustomAudienceRequest.Builder setUserBiddingSignals(android.adservices.common.AdSelectionSignals p0) { megletProps.put("UserBiddingSignals", p0); return this; }
         Builder() { this((android.net.Uri) null); }
     }
 }

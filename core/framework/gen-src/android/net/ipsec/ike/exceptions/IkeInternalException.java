@@ -3,10 +3,10 @@ package android.net.ipsec.ike.exceptions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IkeInternalException extends android.net.ipsec.ike.exceptions.IkeNonProtocolException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public IkeInternalException(java.lang.String p0) { super(p0); }
     public IkeInternalException(java.lang.String p0, java.lang.Throwable p1) { super(p0, p1); }
     public IkeInternalException(java.lang.Throwable p0) { super(p0); }
-    public int getMetricsErrorCode() { return (meglerProps.get("MetricsErrorCode") instanceof Integer ? (Integer) meglerProps.get("MetricsErrorCode") : 0); }
+    public int getMetricsErrorCode() { return (megletProps.get("MetricsErrorCode") instanceof Integer ? (Integer) megletProps.get("MetricsErrorCode") : 0); }
     IkeInternalException() { this((java.lang.String) null); }
 }

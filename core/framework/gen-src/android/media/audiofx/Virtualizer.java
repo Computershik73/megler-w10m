@@ -3,7 +3,7 @@ package android.media.audiofx;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Virtualizer extends android.media.audiofx.AudioEffect {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int PARAM_FORCE_VIRTUALIZATION_MODE = 3;
     public static final int PARAM_STRENGTH = 1;
     public static final int PARAM_STRENGTH_SUPPORTED = 0;
@@ -16,19 +16,19 @@ public class Virtualizer extends android.media.audiofx.AudioEffect {
     public Virtualizer(int p0, int p1) { super((java.util.UUID) null, (android.media.AudioDeviceAttributes) null); }
     public boolean canVirtualize(int p0, int p1) { return false; }
     public boolean forceVirtualizationMode(int p0) { return false; }
-    public android.media.audiofx.Virtualizer.Settings getProperties() { return (android.media.audiofx.Virtualizer.Settings) meglerProps.get("Properties"); }
-    public short getRoundedStrength() { return (meglerProps.get("RoundedStrength") instanceof Short ? (Short) meglerProps.get("RoundedStrength") : (short) 0); }
+    public android.media.audiofx.Virtualizer.Settings getProperties() { return (android.media.audiofx.Virtualizer.Settings) megletProps.get("Properties"); }
+    public short getRoundedStrength() { return (megletProps.get("RoundedStrength") instanceof Short ? (Short) megletProps.get("RoundedStrength") : (short) 0); }
     public boolean getSpeakerAngles(int p0, int p1, int[] p2) { return false; }
-    public boolean getStrengthSupported() { return (meglerProps.get("StrengthSupported") instanceof Boolean ? (Boolean) meglerProps.get("StrengthSupported") : false); }
-    public int getVirtualizationMode() { return (meglerProps.get("VirtualizationMode") instanceof Integer ? (Integer) meglerProps.get("VirtualizationMode") : 0); }
-    public void setProperties(android.media.audiofx.Virtualizer.Settings p0) { meglerProps.put("Properties", p0); }
-    public void setStrength(short p0) { meglerProps.put("Strength", Short.valueOf(p0)); }
+    public boolean getStrengthSupported() { return (megletProps.get("StrengthSupported") instanceof Boolean ? (Boolean) megletProps.get("StrengthSupported") : false); }
+    public int getVirtualizationMode() { return (megletProps.get("VirtualizationMode") instanceof Integer ? (Integer) megletProps.get("VirtualizationMode") : 0); }
+    public void setProperties(android.media.audiofx.Virtualizer.Settings p0) { megletProps.put("Properties", p0); }
+    public void setStrength(short p0) { megletProps.put("Strength", Short.valueOf(p0)); }
     Virtualizer() { this((int) 0, (int) 0); }
     public interface OnParameterChangeListener {
         void onParameterChange(android.media.audiofx.Virtualizer p0, int p1, int p2, short p3);
     }
     public static class Settings {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public short strength;
         public Settings() {}
         public Settings(java.lang.String p0) {}

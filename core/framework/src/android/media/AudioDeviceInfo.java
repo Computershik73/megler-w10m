@@ -3,7 +3,7 @@ public final class AudioDeviceInfo {
     public static final int TYPE_UNKNOWN = 0, TYPE_BUILTIN_EARPIECE = 1, TYPE_BUILTIN_SPEAKER = 2, TYPE_WIRED_HEADSET = 3, TYPE_WIRED_HEADPHONES = 4, TYPE_BLUETOOTH_SCO = 7, TYPE_BLUETOOTH_A2DP = 8, TYPE_HDMI = 9, TYPE_USB_DEVICE = 11, TYPE_USB_HEADSET = 22, TYPE_BUILTIN_MIC = 15, TYPE_BLE_HEADSET = 26;
     private final int mType;
     private AudioDeviceInfo(int t) { mType = t; }
-    static AudioDeviceInfo meglerSpeaker() { return new AudioDeviceInfo(TYPE_BUILTIN_SPEAKER); }
+    static AudioDeviceInfo megletSpeaker() { return new AudioDeviceInfo(TYPE_BUILTIN_SPEAKER); }
     public int getId() { return mType; }
     public CharSequence getProductName() { return "iPhone"; }
     public String getAddress() { return ""; }

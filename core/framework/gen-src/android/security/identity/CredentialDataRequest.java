@@ -3,25 +3,25 @@ package android.security.identity;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CredentialDataRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.util.Map getDeviceSignedEntriesToRequest() { return (meglerProps.get("DeviceSignedEntriesToRequest") != null ? (java.util.Map) meglerProps.get("DeviceSignedEntriesToRequest") : new java.util.HashMap()); }
-    public java.util.Map getIssuerSignedEntriesToRequest() { return (meglerProps.get("IssuerSignedEntriesToRequest") != null ? (java.util.Map) meglerProps.get("IssuerSignedEntriesToRequest") : new java.util.HashMap()); }
-    public byte[] getReaderSignature() { return (byte[]) meglerProps.get("ReaderSignature"); }
-    public byte[] getRequestMessage() { return (byte[]) meglerProps.get("RequestMessage"); }
-    public boolean isAllowUsingExhaustedKeys() { return (meglerProps.get("AllowUsingExhaustedKeys") instanceof Boolean ? (Boolean) meglerProps.get("AllowUsingExhaustedKeys") : false); }
-    public boolean isAllowUsingExpiredKeys() { return (meglerProps.get("AllowUsingExpiredKeys") instanceof Boolean ? (Boolean) meglerProps.get("AllowUsingExpiredKeys") : false); }
-    public boolean isIncrementUseCount() { return (meglerProps.get("IncrementUseCount") instanceof Boolean ? (Boolean) meglerProps.get("IncrementUseCount") : false); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.util.Map getDeviceSignedEntriesToRequest() { return (megletProps.get("DeviceSignedEntriesToRequest") != null ? (java.util.Map) megletProps.get("DeviceSignedEntriesToRequest") : new java.util.HashMap()); }
+    public java.util.Map getIssuerSignedEntriesToRequest() { return (megletProps.get("IssuerSignedEntriesToRequest") != null ? (java.util.Map) megletProps.get("IssuerSignedEntriesToRequest") : new java.util.HashMap()); }
+    public byte[] getReaderSignature() { return (byte[]) megletProps.get("ReaderSignature"); }
+    public byte[] getRequestMessage() { return (byte[]) megletProps.get("RequestMessage"); }
+    public boolean isAllowUsingExhaustedKeys() { return (megletProps.get("AllowUsingExhaustedKeys") instanceof Boolean ? (Boolean) megletProps.get("AllowUsingExhaustedKeys") : false); }
+    public boolean isAllowUsingExpiredKeys() { return (megletProps.get("AllowUsingExpiredKeys") instanceof Boolean ? (Boolean) megletProps.get("AllowUsingExpiredKeys") : false); }
+    public boolean isIncrementUseCount() { return (megletProps.get("IncrementUseCount") instanceof Boolean ? (Boolean) megletProps.get("IncrementUseCount") : false); }
     protected CredentialDataRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.security.identity.CredentialDataRequest build() { android.security.identity.CredentialDataRequest x = new android.security.identity.CredentialDataRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.security.identity.CredentialDataRequest.Builder setAllowUsingExhaustedKeys(boolean p0) { meglerProps.put("AllowUsingExhaustedKeys", Boolean.valueOf(p0)); return this; }
-        public android.security.identity.CredentialDataRequest.Builder setAllowUsingExpiredKeys(boolean p0) { meglerProps.put("AllowUsingExpiredKeys", Boolean.valueOf(p0)); return this; }
-        public android.security.identity.CredentialDataRequest.Builder setDeviceSignedEntriesToRequest(java.util.Map p0) { meglerProps.put("DeviceSignedEntriesToRequest", p0); return this; }
-        public android.security.identity.CredentialDataRequest.Builder setIncrementUseCount(boolean p0) { meglerProps.put("IncrementUseCount", Boolean.valueOf(p0)); return this; }
-        public android.security.identity.CredentialDataRequest.Builder setIssuerSignedEntriesToRequest(java.util.Map p0) { meglerProps.put("IssuerSignedEntriesToRequest", p0); return this; }
-        public android.security.identity.CredentialDataRequest.Builder setReaderSignature(byte[] p0) { meglerProps.put("ReaderSignature", p0); return this; }
-        public android.security.identity.CredentialDataRequest.Builder setRequestMessage(byte[] p0) { meglerProps.put("RequestMessage", p0); return this; }
+        public android.security.identity.CredentialDataRequest build() { android.security.identity.CredentialDataRequest x = new android.security.identity.CredentialDataRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.security.identity.CredentialDataRequest.Builder setAllowUsingExhaustedKeys(boolean p0) { megletProps.put("AllowUsingExhaustedKeys", Boolean.valueOf(p0)); return this; }
+        public android.security.identity.CredentialDataRequest.Builder setAllowUsingExpiredKeys(boolean p0) { megletProps.put("AllowUsingExpiredKeys", Boolean.valueOf(p0)); return this; }
+        public android.security.identity.CredentialDataRequest.Builder setDeviceSignedEntriesToRequest(java.util.Map p0) { megletProps.put("DeviceSignedEntriesToRequest", p0); return this; }
+        public android.security.identity.CredentialDataRequest.Builder setIncrementUseCount(boolean p0) { megletProps.put("IncrementUseCount", Boolean.valueOf(p0)); return this; }
+        public android.security.identity.CredentialDataRequest.Builder setIssuerSignedEntriesToRequest(java.util.Map p0) { megletProps.put("IssuerSignedEntriesToRequest", p0); return this; }
+        public android.security.identity.CredentialDataRequest.Builder setReaderSignature(byte[] p0) { megletProps.put("ReaderSignature", p0); return this; }
+        public android.security.identity.CredentialDataRequest.Builder setRequestMessage(byte[] p0) { megletProps.put("RequestMessage", p0); return this; }
     }
 }

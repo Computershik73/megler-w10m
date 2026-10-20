@@ -3,13 +3,13 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RadioAccessSpecifier implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public RadioAccessSpecifier(int p0, int[] p1, int[] p2) {}
     public int describeContents() { return 0; }
-    public int[] getBands() { return (int[]) meglerProps.get("Bands"); }
-    public int[] getChannels() { return (int[]) meglerProps.get("Channels"); }
-    public int getRadioAccessNetwork() { return (meglerProps.get("RadioAccessNetwork") instanceof Integer ? (Integer) meglerProps.get("RadioAccessNetwork") : 0); }
+    public int[] getBands() { return (int[]) megletProps.get("Bands"); }
+    public int[] getChannels() { return (int[]) megletProps.get("Channels"); }
+    public int getRadioAccessNetwork() { return (megletProps.get("RadioAccessNetwork") instanceof Integer ? (Integer) megletProps.get("RadioAccessNetwork") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     RadioAccessSpecifier() { this((int) 0, (int[]) null, (int[]) null); }
 }

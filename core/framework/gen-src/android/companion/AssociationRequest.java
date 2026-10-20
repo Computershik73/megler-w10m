@@ -3,7 +3,7 @@ package android.companion;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AssociationRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String DEVICE_PROFILE_APP_STREAMING = "android.app.role.COMPANION_DEVICE_APP_STREAMING";
     public static final java.lang.String DEVICE_PROFILE_AUTOMOTIVE_PROJECTION = "android.app.role.SYSTEM_AUTOMOTIVE_PROJECTION";
@@ -16,42 +16,42 @@ public final class AssociationRequest implements android.os.Parcelable {
     public static final java.lang.String DEVICE_PROFILE_WATCH = "android.app.role.COMPANION_DEVICE_WATCH";
     public static final java.lang.String DEVICE_PROFILE_WEARABLE_SENSING = "android.companion.COMPANION_DEVICE_WEARABLE_SENSING";
     public int describeContents() { return 0; }
-    public android.companion.AssociatedDevice getAssociatedDevice() { return (android.companion.AssociatedDevice) meglerProps.get("AssociatedDevice"); }
-    public long getCreationTime() { return (meglerProps.get("CreationTime") instanceof Long ? (Long) meglerProps.get("CreationTime") : 0L); }
-    public java.util.List getDeviceFilters() { return (meglerProps.get("DeviceFilters") != null ? (java.util.List) meglerProps.get("DeviceFilters") : new java.util.ArrayList()); }
-    public android.graphics.drawable.Icon getDeviceIcon() { return (android.graphics.drawable.Icon) meglerProps.get("DeviceIcon"); }
-    public java.lang.String getDeviceProfile() { return (java.lang.String) meglerProps.get("DeviceProfile"); }
-    public java.lang.String getDeviceProfilePrivilegesDescription() { return (java.lang.String) meglerProps.get("DeviceProfilePrivilegesDescription"); }
-    public java.lang.CharSequence getDisplayName() { return (java.lang.CharSequence) meglerProps.get("DisplayName"); }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-    public java.util.List getRequestedPerms() { return (meglerProps.get("RequestedPerms") != null ? (java.util.List) meglerProps.get("RequestedPerms") : new java.util.ArrayList()); }
-    public int getUserId() { return (meglerProps.get("UserId") instanceof Integer ? (Integer) meglerProps.get("UserId") : 0); }
-    public boolean isForceConfirmation() { return (meglerProps.get("ForceConfirmation") instanceof Boolean ? (Boolean) meglerProps.get("ForceConfirmation") : false); }
-    public boolean isSelfManaged() { return (meglerProps.get("SelfManaged") instanceof Boolean ? (Boolean) meglerProps.get("SelfManaged") : false); }
-    public boolean isSingleDevice() { return (meglerProps.get("SingleDevice") instanceof Boolean ? (Boolean) meglerProps.get("SingleDevice") : false); }
-    public boolean isSkipPrompt() { return (meglerProps.get("SkipPrompt") instanceof Boolean ? (Boolean) meglerProps.get("SkipPrompt") : false); }
-    public boolean isSkipRoleGrant() { return (meglerProps.get("SkipRoleGrant") instanceof Boolean ? (Boolean) meglerProps.get("SkipRoleGrant") : false); }
-    public void setAssociatedDevice(android.companion.AssociatedDevice p0) { meglerProps.put("AssociatedDevice", p0); }
-    public void setDeviceIcon(android.graphics.drawable.Icon p0) { meglerProps.put("DeviceIcon", p0); }
-    public void setDeviceProfilePrivilegesDescription(java.lang.String p0) { meglerProps.put("DeviceProfilePrivilegesDescription", p0); }
-    public void setDisplayName(java.lang.CharSequence p0) { meglerProps.put("DisplayName", p0); }
-    public void setPackageName(java.lang.String p0) { meglerProps.put("PackageName", p0); }
-    public void setRequestedPerms(java.util.List p0) { meglerProps.put("RequestedPerms", p0); }
-    public void setSkipPrompt(boolean p0) { meglerProps.put("SkipPrompt", Boolean.valueOf(p0)); }
-    public void setUserId(int p0) { meglerProps.put("UserId", Integer.valueOf(p0)); }
+    public android.companion.AssociatedDevice getAssociatedDevice() { return (android.companion.AssociatedDevice) megletProps.get("AssociatedDevice"); }
+    public long getCreationTime() { return (megletProps.get("CreationTime") instanceof Long ? (Long) megletProps.get("CreationTime") : 0L); }
+    public java.util.List getDeviceFilters() { return (megletProps.get("DeviceFilters") != null ? (java.util.List) megletProps.get("DeviceFilters") : new java.util.ArrayList()); }
+    public android.graphics.drawable.Icon getDeviceIcon() { return (android.graphics.drawable.Icon) megletProps.get("DeviceIcon"); }
+    public java.lang.String getDeviceProfile() { return (java.lang.String) megletProps.get("DeviceProfile"); }
+    public java.lang.String getDeviceProfilePrivilegesDescription() { return (java.lang.String) megletProps.get("DeviceProfilePrivilegesDescription"); }
+    public java.lang.CharSequence getDisplayName() { return (java.lang.CharSequence) megletProps.get("DisplayName"); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    public java.util.List getRequestedPerms() { return (megletProps.get("RequestedPerms") != null ? (java.util.List) megletProps.get("RequestedPerms") : new java.util.ArrayList()); }
+    public int getUserId() { return (megletProps.get("UserId") instanceof Integer ? (Integer) megletProps.get("UserId") : 0); }
+    public boolean isForceConfirmation() { return (megletProps.get("ForceConfirmation") instanceof Boolean ? (Boolean) megletProps.get("ForceConfirmation") : false); }
+    public boolean isSelfManaged() { return (megletProps.get("SelfManaged") instanceof Boolean ? (Boolean) megletProps.get("SelfManaged") : false); }
+    public boolean isSingleDevice() { return (megletProps.get("SingleDevice") instanceof Boolean ? (Boolean) megletProps.get("SingleDevice") : false); }
+    public boolean isSkipPrompt() { return (megletProps.get("SkipPrompt") instanceof Boolean ? (Boolean) megletProps.get("SkipPrompt") : false); }
+    public boolean isSkipRoleGrant() { return (megletProps.get("SkipRoleGrant") instanceof Boolean ? (Boolean) megletProps.get("SkipRoleGrant") : false); }
+    public void setAssociatedDevice(android.companion.AssociatedDevice p0) { megletProps.put("AssociatedDevice", p0); }
+    public void setDeviceIcon(android.graphics.drawable.Icon p0) { megletProps.put("DeviceIcon", p0); }
+    public void setDeviceProfilePrivilegesDescription(java.lang.String p0) { megletProps.put("DeviceProfilePrivilegesDescription", p0); }
+    public void setDisplayName(java.lang.CharSequence p0) { megletProps.put("DisplayName", p0); }
+    public void setPackageName(java.lang.String p0) { megletProps.put("PackageName", p0); }
+    public void setRequestedPerms(java.util.List p0) { megletProps.put("RequestedPerms", p0); }
+    public void setSkipPrompt(boolean p0) { megletProps.put("SkipPrompt", Boolean.valueOf(p0)); }
+    public void setUserId(int p0) { megletProps.put("UserId", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected AssociationRequest() {}
     public static abstract class Builder extends android.provider.OneTimeUseBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() { super(); }
         public android.companion.AssociationRequest.Builder addDeviceFilter(android.companion.DeviceFilter p0) { return this; }
-        public android.companion.AssociationRequest build() { android.companion.AssociationRequest x = new android.companion.AssociationRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.companion.AssociationRequest.Builder setDeviceIcon(android.graphics.drawable.Icon p0) { meglerProps.put("DeviceIcon", p0); return this; }
-        public android.companion.AssociationRequest.Builder setDeviceProfile(java.lang.String p0) { meglerProps.put("DeviceProfile", p0); return this; }
-        public android.companion.AssociationRequest.Builder setDisplayName(java.lang.CharSequence p0) { meglerProps.put("DisplayName", p0); return this; }
-        public android.companion.AssociationRequest.Builder setForceConfirmation(boolean p0) { meglerProps.put("ForceConfirmation", Boolean.valueOf(p0)); return this; }
-        public android.companion.AssociationRequest.Builder setSelfManaged(boolean p0) { meglerProps.put("SelfManaged", Boolean.valueOf(p0)); return this; }
-        public android.companion.AssociationRequest.Builder setSingleDevice(boolean p0) { meglerProps.put("SingleDevice", Boolean.valueOf(p0)); return this; }
-        public android.companion.AssociationRequest.Builder setSkipRoleGrant(boolean p0) { meglerProps.put("SkipRoleGrant", Boolean.valueOf(p0)); return this; }
+        public android.companion.AssociationRequest build() { android.companion.AssociationRequest x = new android.companion.AssociationRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.companion.AssociationRequest.Builder setDeviceIcon(android.graphics.drawable.Icon p0) { megletProps.put("DeviceIcon", p0); return this; }
+        public android.companion.AssociationRequest.Builder setDeviceProfile(java.lang.String p0) { megletProps.put("DeviceProfile", p0); return this; }
+        public android.companion.AssociationRequest.Builder setDisplayName(java.lang.CharSequence p0) { megletProps.put("DisplayName", p0); return this; }
+        public android.companion.AssociationRequest.Builder setForceConfirmation(boolean p0) { megletProps.put("ForceConfirmation", Boolean.valueOf(p0)); return this; }
+        public android.companion.AssociationRequest.Builder setSelfManaged(boolean p0) { megletProps.put("SelfManaged", Boolean.valueOf(p0)); return this; }
+        public android.companion.AssociationRequest.Builder setSingleDevice(boolean p0) { megletProps.put("SingleDevice", Boolean.valueOf(p0)); return this; }
+        public android.companion.AssociationRequest.Builder setSkipRoleGrant(boolean p0) { megletProps.put("SkipRoleGrant", Boolean.valueOf(p0)); return this; }
     }
 }

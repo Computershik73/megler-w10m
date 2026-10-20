@@ -3,20 +3,20 @@ package android.hardware.lights;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class LightState implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public LightState(int p0) {}
     public LightState(int p0, int p1) {}
     public int describeContents() { return 0; }
-    public int getColor() { return (meglerProps.get("Color") instanceof Integer ? (Integer) meglerProps.get("Color") : 0); }
-    public int getPlayerId() { return (meglerProps.get("PlayerId") instanceof Integer ? (Integer) meglerProps.get("PlayerId") : 0); }
+    public int getColor() { return (megletProps.get("Color") instanceof Integer ? (Integer) megletProps.get("Color") : 0); }
+    public int getPlayerId() { return (megletProps.get("PlayerId") instanceof Integer ? (Integer) megletProps.get("PlayerId") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     LightState() { this((int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.hardware.lights.LightState build() { android.hardware.lights.LightState x = new android.hardware.lights.LightState(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.hardware.lights.LightState.Builder setColor(int p0) { meglerProps.put("Color", Integer.valueOf(p0)); return this; }
-        public android.hardware.lights.LightState.Builder setPlayerId(int p0) { meglerProps.put("PlayerId", Integer.valueOf(p0)); return this; }
+        public android.hardware.lights.LightState build() { android.hardware.lights.LightState x = new android.hardware.lights.LightState(); x.megletProps.putAll(megletProps); return x; }
+        public android.hardware.lights.LightState.Builder setColor(int p0) { megletProps.put("Color", Integer.valueOf(p0)); return this; }
+        public android.hardware.lights.LightState.Builder setPlayerId(int p0) { megletProps.put("PlayerId", Integer.valueOf(p0)); return this; }
     }
 }

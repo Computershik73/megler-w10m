@@ -3,7 +3,7 @@ package android.content.om;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class OverlayInfo implements android.content.om.CriticalOverlayInfo, android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String CATEGORY_THEME = "android.theme";
     public static android.os.Parcelable.Creator CREATOR;
     public static final int STATE_DISABLED = 2;
@@ -34,17 +34,17 @@ public final class OverlayInfo implements android.content.om.CriticalOverlayInfo
     public OverlayInfo(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String p3, java.lang.String p4, java.lang.String p5, int p6, int p7, int p8, boolean p9, boolean p10, java.util.List p11) {}
     public static java.lang.String stateToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public java.lang.String getBaseCodePath() { return (java.lang.String) meglerProps.get("BaseCodePath"); }
-    public java.lang.String getCategory() { return (java.lang.String) meglerProps.get("Category"); }
-    public java.util.List getConstraints() { return (meglerProps.get("Constraints") != null ? (java.util.List) meglerProps.get("Constraints") : new java.util.ArrayList()); }
-    public android.content.om.OverlayIdentifier getOverlayIdentifier() { return (android.content.om.OverlayIdentifier) meglerProps.get("OverlayIdentifier"); }
-    public java.lang.String getOverlayName() { return (java.lang.String) meglerProps.get("OverlayName"); }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-    public java.lang.String getTargetOverlayableName() { return (java.lang.String) meglerProps.get("TargetOverlayableName"); }
-    public java.lang.String getTargetPackageName() { return (java.lang.String) meglerProps.get("TargetPackageName"); }
-    public int getUserId() { return (meglerProps.get("UserId") instanceof Integer ? (Integer) meglerProps.get("UserId") : 0); }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
-    public boolean isFabricated() { return (meglerProps.get("Fabricated") instanceof Boolean ? (Boolean) meglerProps.get("Fabricated") : false); }
+    public java.lang.String getBaseCodePath() { return (java.lang.String) megletProps.get("BaseCodePath"); }
+    public java.lang.String getCategory() { return (java.lang.String) megletProps.get("Category"); }
+    public java.util.List getConstraints() { return (megletProps.get("Constraints") != null ? (java.util.List) megletProps.get("Constraints") : new java.util.ArrayList()); }
+    public android.content.om.OverlayIdentifier getOverlayIdentifier() { return (android.content.om.OverlayIdentifier) megletProps.get("OverlayIdentifier"); }
+    public java.lang.String getOverlayName() { return (java.lang.String) megletProps.get("OverlayName"); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    public java.lang.String getTargetOverlayableName() { return (java.lang.String) megletProps.get("TargetOverlayableName"); }
+    public java.lang.String getTargetPackageName() { return (java.lang.String) megletProps.get("TargetPackageName"); }
+    public int getUserId() { return (megletProps.get("UserId") instanceof Integer ? (Integer) megletProps.get("UserId") : 0); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
+    public boolean isFabricated() { return (megletProps.get("Fabricated") instanceof Boolean ? (Boolean) megletProps.get("Fabricated") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     OverlayInfo() { this((android.os.Parcel) null); }
 }

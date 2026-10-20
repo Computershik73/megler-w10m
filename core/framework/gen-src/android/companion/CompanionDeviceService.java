@@ -3,7 +3,7 @@ package android.companion;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CompanionDeviceService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String SERVICE_INTERFACE = "android.companion.CompanionDeviceService";
     public CompanionDeviceService() { super(); }
     public void attachSystemDataTransport(int p0, java.io.InputStream p1, java.io.OutputStream p2) {}

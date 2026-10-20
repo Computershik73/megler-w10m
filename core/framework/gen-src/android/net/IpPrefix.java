@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IpPrefix implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public IpPrefix(java.lang.String p0) {}
     public IpPrefix(java.net.InetAddress p0, int p1) {}
@@ -12,11 +12,11 @@ public final class IpPrefix implements android.os.Parcelable {
     public boolean contains(java.net.InetAddress p0) { return false; }
     public boolean containsPrefix(android.net.IpPrefix p0) { return false; }
     public int describeContents() { return 0; }
-    public java.net.InetAddress getAddress() { return (java.net.InetAddress) meglerProps.get("Address"); }
-    public int getPrefixLength() { return (meglerProps.get("PrefixLength") instanceof Integer ? (Integer) meglerProps.get("PrefixLength") : 0); }
-    public byte[] getRawAddress() { return (byte[]) meglerProps.get("RawAddress"); }
-    public boolean isIPv4() { return (meglerProps.get("IPv4") instanceof Boolean ? (Boolean) meglerProps.get("IPv4") : false); }
-    public boolean isIPv6() { return (meglerProps.get("IPv6") instanceof Boolean ? (Boolean) meglerProps.get("IPv6") : false); }
+    public java.net.InetAddress getAddress() { return (java.net.InetAddress) megletProps.get("Address"); }
+    public int getPrefixLength() { return (megletProps.get("PrefixLength") instanceof Integer ? (Integer) megletProps.get("PrefixLength") : 0); }
+    public byte[] getRawAddress() { return (byte[]) megletProps.get("RawAddress"); }
+    public boolean isIPv4() { return (megletProps.get("IPv4") instanceof Boolean ? (Boolean) megletProps.get("IPv4") : false); }
+    public boolean isIPv6() { return (megletProps.get("IPv6") instanceof Boolean ? (Boolean) megletProps.get("IPv6") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     IpPrefix() { this((java.lang.String) null); }
 }

@@ -3,59 +3,59 @@ package android.view.textclassifier;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ConversationActions implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ConversationActions(java.util.List p0, java.lang.String p1) {}
     public int describeContents() { return 0; }
-    public java.util.List getConversationActions() { return (meglerProps.get("ConversationActions") != null ? (java.util.List) meglerProps.get("ConversationActions") : new java.util.ArrayList()); }
-    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
+    public java.util.List getConversationActions() { return (megletProps.get("ConversationActions") != null ? (java.util.List) megletProps.get("ConversationActions") : new java.util.ArrayList()); }
+    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ConversationActions() { this((java.util.List) null, (java.lang.String) null); }
     public static final class Message implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public static android.app.Person PERSON_USER_OTHERS;
         public static android.app.Person PERSON_USER_SELF;
         public int describeContents() { return 0; }
-        public android.app.Person getAuthor() { return (android.app.Person) meglerProps.get("Author"); }
-        public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-        public java.time.ZonedDateTime getReferenceTime() { return (java.time.ZonedDateTime) meglerProps.get("ReferenceTime"); }
-        public java.lang.CharSequence getText() { return (java.lang.CharSequence) meglerProps.get("Text"); }
+        public android.app.Person getAuthor() { return (android.app.Person) megletProps.get("Author"); }
+        public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+        public java.time.ZonedDateTime getReferenceTime() { return (java.time.ZonedDateTime) megletProps.get("ReferenceTime"); }
+        public java.lang.CharSequence getText() { return (java.lang.CharSequence) megletProps.get("Text"); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected Message() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(android.app.Person p0) {}
-            public android.view.textclassifier.ConversationActions.Message build() { android.view.textclassifier.ConversationActions.Message x = new android.view.textclassifier.ConversationActions.Message(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.view.textclassifier.ConversationActions.Message.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
-            public android.view.textclassifier.ConversationActions.Message.Builder setReferenceTime(java.time.ZonedDateTime p0) { meglerProps.put("ReferenceTime", p0); return this; }
-            public android.view.textclassifier.ConversationActions.Message.Builder setText(java.lang.CharSequence p0) { meglerProps.put("Text", p0); return this; }
+            public android.view.textclassifier.ConversationActions.Message build() { android.view.textclassifier.ConversationActions.Message x = new android.view.textclassifier.ConversationActions.Message(); x.megletProps.putAll(megletProps); return x; }
+            public android.view.textclassifier.ConversationActions.Message.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+            public android.view.textclassifier.ConversationActions.Message.Builder setReferenceTime(java.time.ZonedDateTime p0) { megletProps.put("ReferenceTime", p0); return this; }
+            public android.view.textclassifier.ConversationActions.Message.Builder setText(java.lang.CharSequence p0) { megletProps.put("Text", p0); return this; }
             Builder() { this((android.app.Person) null); }
         }
     }
     public static final class Request implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public static final java.lang.String HINT_FOR_IN_APP = "in_app";
         public static final java.lang.String HINT_FOR_NOTIFICATION = "notification";
         public int describeContents() { return 0; }
-        public java.lang.String getCallingPackageName() { return (java.lang.String) meglerProps.get("CallingPackageName"); }
-        public java.util.List getConversation() { return (meglerProps.get("Conversation") != null ? (java.util.List) meglerProps.get("Conversation") : new java.util.ArrayList()); }
-        public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-        public java.util.List getHints() { return (meglerProps.get("Hints") != null ? (java.util.List) meglerProps.get("Hints") : new java.util.ArrayList()); }
-        public int getMaxSuggestions() { return (meglerProps.get("MaxSuggestions") instanceof Integer ? (Integer) meglerProps.get("MaxSuggestions") : 0); }
-        public android.view.textclassifier.SystemTextClassifierMetadata getSystemTextClassifierMetadata() { return (android.view.textclassifier.SystemTextClassifierMetadata) meglerProps.get("SystemTextClassifierMetadata"); }
-        public android.view.textclassifier.TextClassifier.EntityConfig getTypeConfig() { return (android.view.textclassifier.TextClassifier.EntityConfig) meglerProps.get("TypeConfig"); }
+        public java.lang.String getCallingPackageName() { return (java.lang.String) megletProps.get("CallingPackageName"); }
+        public java.util.List getConversation() { return (megletProps.get("Conversation") != null ? (java.util.List) megletProps.get("Conversation") : new java.util.ArrayList()); }
+        public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+        public java.util.List getHints() { return (megletProps.get("Hints") != null ? (java.util.List) megletProps.get("Hints") : new java.util.ArrayList()); }
+        public int getMaxSuggestions() { return (megletProps.get("MaxSuggestions") instanceof Integer ? (Integer) megletProps.get("MaxSuggestions") : 0); }
+        public android.view.textclassifier.SystemTextClassifierMetadata getSystemTextClassifierMetadata() { return (android.view.textclassifier.SystemTextClassifierMetadata) megletProps.get("SystemTextClassifierMetadata"); }
+        public android.view.textclassifier.TextClassifier.EntityConfig getTypeConfig() { return (android.view.textclassifier.TextClassifier.EntityConfig) megletProps.get("TypeConfig"); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected Request() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(java.util.List p0) {}
-            public android.view.textclassifier.ConversationActions.Request build() { android.view.textclassifier.ConversationActions.Request x = new android.view.textclassifier.ConversationActions.Request(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.view.textclassifier.ConversationActions.Request.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
-            public android.view.textclassifier.ConversationActions.Request.Builder setHints(java.util.List p0) { meglerProps.put("Hints", p0); return this; }
-            public android.view.textclassifier.ConversationActions.Request.Builder setMaxSuggestions(int p0) { meglerProps.put("MaxSuggestions", Integer.valueOf(p0)); return this; }
-            public android.view.textclassifier.ConversationActions.Request.Builder setTypeConfig(android.view.textclassifier.TextClassifier.EntityConfig p0) { meglerProps.put("TypeConfig", p0); return this; }
+            public android.view.textclassifier.ConversationActions.Request build() { android.view.textclassifier.ConversationActions.Request x = new android.view.textclassifier.ConversationActions.Request(); x.megletProps.putAll(megletProps); return x; }
+            public android.view.textclassifier.ConversationActions.Request.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+            public android.view.textclassifier.ConversationActions.Request.Builder setHints(java.util.List p0) { megletProps.put("Hints", p0); return this; }
+            public android.view.textclassifier.ConversationActions.Request.Builder setMaxSuggestions(int p0) { megletProps.put("MaxSuggestions", Integer.valueOf(p0)); return this; }
+            public android.view.textclassifier.ConversationActions.Request.Builder setTypeConfig(android.view.textclassifier.TextClassifier.EntityConfig p0) { megletProps.put("TypeConfig", p0); return this; }
             Builder() { this((java.util.List) null); }
         }
     }

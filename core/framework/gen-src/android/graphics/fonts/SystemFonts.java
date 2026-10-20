@@ -3,7 +3,7 @@ package android.graphics.fonts;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SystemFonts {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static java.lang.String LEGACY_FONTS_XML;
     public static final java.lang.String OEM_FONT_DIR = "/product/fonts/";
     public static java.lang.String SYSTEM_FONT_DIR;

@@ -3,10 +3,10 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MultiResolutionStreamInfo {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public MultiResolutionStreamInfo(int p0, int p1, java.lang.String p2) {}
-    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
-    public java.lang.String getPhysicalCameraId() { return (java.lang.String) meglerProps.get("PhysicalCameraId"); }
-    public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
+    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
+    public java.lang.String getPhysicalCameraId() { return (java.lang.String) megletProps.get("PhysicalCameraId"); }
+    public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
     MultiResolutionStreamInfo() { this((int) 0, (int) 0, (java.lang.String) null); }
 }

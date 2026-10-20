@@ -13,7 +13,7 @@
  * their answers were the recording host's, and the layout that came of them
  * is in the coordinates of what was drawn.
  *
- * Both machines are little-endian and megler_gfx_paint is nineteen words of
+ * Both machines are little-endian and meglet_gfx_paint is nineteen words of
  * four bytes on each, so the file is read as it was written.
  */
 #include <stdio.h>
@@ -42,7 +42,7 @@ typedef struct rcanvas {
 static hk_lock r_lock = HK_LOCK_INIT;
 static struct {
     FILE *file;
-    const megler_gfx_host *inner;
+    const meglet_gfx_host *inner;
     u8 *buf;
     size_t n, cap;
     rcanvas *canvases;
@@ -78,7 +78,7 @@ static void put_pixels(const void *px, int w, int h, int stride)
     int y;
     for (y = 0; y < h; y++) put((const u8 *)px + (size_t)y * (size_t)stride, (size_t)w * 4);
 }
-static void put_image(const megler_gfx_image *image)
+static void put_image(const meglet_gfx_image *image)
 {
     puti(image->width);
     puti(image->height);
@@ -255,7 +255,7 @@ static void r_draw_color(void *user, void *cv, uint32_t color, int blend)
 }
 
 /* What the three calls with a rectangle have in common. */
-static void put_shape(void *cv, float l, float t, float r, float b, const megler_gfx_paint *paint, void *shader)
+static void put_shape(void *cv, float l, float t, float r, float b, const meglet_gfx_paint *paint, void *shader)
 {
     put_id(cv);
     putf(l);
@@ -266,7 +266,7 @@ static void put_shape(void *cv, float l, float t, float r, float b, const megler
     put_id(shader);
 }
 
-static void r_draw_rect(void *user, void *cv, float l, float t, float r, float b, const megler_gfx_paint *paint, void *shader)
+static void r_draw_rect(void *user, void *cv, float l, float t, float r, float b, const meglet_gfx_paint *paint, void *shader)
 {
     (void)user;
     record_open();
@@ -275,7 +275,7 @@ static void r_draw_rect(void *user, void *cv, float l, float t, float r, float b
     INNER->draw_rect(INNER->user, cv, l, t, r, b, paint, shader);
 }
 
-static void r_draw_round_rect(void *user, void *cv, float l, float t, float r, float b, float rx, float ry, const megler_gfx_paint *paint, void *shader)
+static void r_draw_round_rect(void *user, void *cv, float l, float t, float r, float b, float rx, float ry, const meglet_gfx_paint *paint, void *shader)
 {
     (void)user;
     record_open();
@@ -286,7 +286,7 @@ static void r_draw_round_rect(void *user, void *cv, float l, float t, float r, f
     INNER->draw_round_rect(INNER->user, cv, l, t, r, b, rx, ry, paint, shader);
 }
 
-static void r_draw_oval(void *user, void *cv, float l, float t, float r, float b, const megler_gfx_paint *paint, void *shader)
+static void r_draw_oval(void *user, void *cv, float l, float t, float r, float b, const meglet_gfx_paint *paint, void *shader)
 {
     (void)user;
     record_open();
@@ -295,7 +295,7 @@ static void r_draw_oval(void *user, void *cv, float l, float t, float r, float b
     INNER->draw_oval(INNER->user, cv, l, t, r, b, paint, shader);
 }
 
-static void r_draw_path(void *user, void *cv, const float *path, int count, int fill, const megler_gfx_paint *paint, void *shader)
+static void r_draw_path(void *user, void *cv, const float *path, int count, int fill, const meglet_gfx_paint *paint, void *shader)
 {
     (void)user;
     record_open();
@@ -309,7 +309,7 @@ static void r_draw_path(void *user, void *cv, const float *path, int count, int 
     INNER->draw_path(INNER->user, cv, path, count, fill, paint, shader);
 }
 
-static void r_draw_bitmap(void *user, void *cv, const megler_gfx_image *image, const float *src, const float *dst, const megler_gfx_paint *paint)
+static void r_draw_bitmap(void *user, void *cv, const meglet_gfx_image *image, const float *src, const float *dst, const meglet_gfx_paint *paint)
 {
     (void)user;
     record_open();
@@ -322,7 +322,7 @@ static void r_draw_bitmap(void *user, void *cv, const megler_gfx_image *image, c
     INNER->draw_bitmap(INNER->user, cv, image, src, dst, paint);
 }
 
-static void r_draw_text(void *user, void *cv, const uint16_t *text, int count, float x, float y, const megler_gfx_paint *paint, void *typeface, void *shader)
+static void r_draw_text(void *user, void *cv, const uint16_t *text, int count, float x, float y, const meglet_gfx_paint *paint, void *typeface, void *shader)
 {
     (void)user;
     record_open();
@@ -430,7 +430,7 @@ static void *r_shader_sweep(void *user, float cx, float cy, const uint32_t *colo
     return shader;
 }
 
-static void *r_shader_bitmap(void *user, const megler_gfx_image *image, int tile)
+static void *r_shader_bitmap(void *user, const meglet_gfx_image *image, int tile)
 {
     void *shader = INNER->shader_bitmap(INNER->user, image, tile);
     (void)user;
@@ -490,7 +490,7 @@ void hk_gfx_record_log(int level, const char *line, void *user)
     (void)user;
     at = at ? strstr(at, " button=") : NULL;
     if (at && sscanf(at, " button=%d,%d,%dx%d", &g_button[0], &g_button[1], &g_button[2], &g_button[3]) == 4) hk_atomic_xchg(&g_have_button, 1);
-    if (strstr(line, "HelloTest") || strstr(line, "DemosTest") || level >= MEGLER_LOG_WARN) printf("    %s\n", line);
+    if (strstr(line, "HelloTest") || strstr(line, "DemosTest") || level >= MEGLET_LOG_WARN) printf("    %s\n", line);
 }
 
 static void rec_present(void *user, const void *pixels, int w, int h, int stride)
@@ -526,7 +526,7 @@ static void quiet(void)
 
 int hk_gfx_record_run(const char *which, const char *apk, const char *android_root, const char *record_file)
 {
-    static megler_run_config cfg;
+    static meglet_run_config cfg;
     int tries;
     i32 before;
     memset(&R, 0, sizeof(R));
@@ -576,8 +576,8 @@ int hk_gfx_record_run(const char *which, const char *apk, const char *android_ro
     cfg.gfx.shader_free = r_shader_free;
     cfg.gfx.image_decode = r_image_decode;
     printf("recording what the Java test app %s asks of the shell's drawing (%s on the Android root %s)\n", which, apk, android_root);
-    if (!megler_run(&cfg)) {
-        printf("  the app did not start: %s\n", megler_last_error());
+    if (!meglet_run(&cfg)) {
+        printf("  the app did not start: %s\n", meglet_last_error());
         fclose(R.file);
         return 1;
     }
@@ -587,16 +587,16 @@ int hk_gfx_record_run(const char *which, const char *apk, const char *android_ro
     if (!strcmp(which, "hello") && g_have_button && !g_exited) {
         /* The button pressed, where the app's own log says it is; the next picture has the new text and the wider green rectangle. */
         before = g_pictures;
-        megler_touch(0, 1, (float)(g_button[0] + g_button[2] / 2), (float)(g_button[1] + g_button[3] / 2));
+        meglet_touch(0, 1, (float)(g_button[0] + g_button[2] / 2), (float)(g_button[1] + g_button[3] / 2));
         hk_sleep_ns(60000000ull);
-        megler_touch(2, 1, (float)(g_button[0] + g_button[2] / 2), (float)(g_button[1] + g_button[3] / 2));
+        meglet_touch(2, 1, (float)(g_button[0] + g_button[2] / 2), (float)(g_button[1] + g_button[3] / 2));
         for (tries = 0; tries < 500 && g_pictures == before && !g_exited; tries++) hk_sleep_ns(10000000ull);
         quiet();
         printf("  the button at %d,%d pressed: %d pictures so far\n", g_button[0] + g_button[2] / 2, g_button[1] + g_button[3] / 2, (int)g_pictures);
     }
     if (!g_exited) {
-        megler_key(4, true);
-        megler_key(4, false);
+        meglet_key(4, true);
+        meglet_key(4, false);
     }
     for (tries = 0; tries < 3000 && !g_exited; tries++) hk_sleep_ns(10000000ull);
     /* The app's last calls (its canvases freed) may still be coming: the file is closed under the lock, and what comes after is not kept. */
@@ -650,7 +650,7 @@ static float *get_floats(reader *r, int n, float *into)
     memcpy(into, p, sizeof(float) * (size_t)n);
     return into;
 }
-static bool get_paint(reader *r, megler_gfx_paint *paint)
+static bool get_paint(reader *r, meglet_gfx_paint *paint)
 {
     const void *p = get(r, sizeof(*paint));
     if (!p) return false;
@@ -676,7 +676,7 @@ typedef struct pthing {
 } pthing;
 
 static struct {
-    const megler_gfx_host *h;
+    const meglet_gfx_host *h;
     pmem *mems;
     pcanvas *canvases;
     pthing *shaders, *faces;
@@ -736,7 +736,7 @@ static void thing_add(pthing **list, int *n, u64 id, void *host)
 }
 
 /* An image of a record as a host is handed one: its pixels copied to where they are aligned. The caller frees them. */
-static u32 *get_image(reader *r, megler_gfx_image *image)
+static u32 *get_image(reader *r, meglet_gfx_image *image)
 {
     u32 *px;
     const void *p;
@@ -782,9 +782,9 @@ static bool p_bytes_write(void *sink, const void *data, size_t size)
     return true;
 }
 
-int hk_gfx_replay_run(const char *record_file, const megler_gfx_host *host, bool same, const char *out_dir, const char *name, hk_test_sink sink, void *user, int *checks)
+int hk_gfx_replay_run(const char *record_file, const meglet_gfx_host *host, bool same, const char *out_dir, const char *name, hk_test_sink sink, void *user, int *checks)
 {
-    const megler_gfx_host *standin = hk_gfx_standin();
+    const meglet_gfx_host *standin = hk_gfx_standin();
     size_t size = 0;
     u8 *file = hk_file_read_all(record_file, &size);
     reader all;
@@ -810,8 +810,8 @@ int hk_gfx_replay_run(const char *record_file, const megler_gfx_host *host, bool
         u32 kind = get32(&all), length = get32(&all);
         const u8 *body = (const u8 *)get(&all, length);
         reader r;
-        megler_gfx_paint paint;
-        megler_gfx_image image;
+        meglet_gfx_paint paint;
+        meglet_gfx_image image;
         float f[8], l, t, rr, b;
         u64 id;
         void *cv;
@@ -1088,7 +1088,7 @@ int hk_gfx_replay_run(const char *record_file, const megler_gfx_host *host, bool
             if (out_dir) {
                 pbytes png = { NULL, 0 };
                 char *path = hk_sprintf("%s/%s-%d.png", out_dir, name, frames);
-                if (!standin->image_encode(standin->user, m->px, w, h, w * 4, MEGLER_GFX_PNG, 100, p_bytes_write, &png) || !hk_file_write_all(path, png.data, png.size))
+                if (!standin->image_encode(standin->user, m->px, w, h, w * 4, MEGLET_GFX_PNG, 100, p_bytes_write, &png) || !hk_file_write_all(path, png.data, png.size))
                     p_say("  (could not write %s)", path);
                 free(png.data);
                 free(path);

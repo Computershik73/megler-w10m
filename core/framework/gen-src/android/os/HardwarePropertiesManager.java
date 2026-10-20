@@ -3,7 +3,7 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class HardwarePropertiesManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DEVICE_TEMPERATURE_BATTERY = 2;
     public static final int DEVICE_TEMPERATURE_CPU = 0;
     public static final int DEVICE_TEMPERATURE_GPU = 1;
@@ -14,8 +14,8 @@ public class HardwarePropertiesManager {
     public static final int TEMPERATURE_THROTTLING_BELOW_VR_MIN = 3;
     public static final float UNDEFINED_TEMPERATURE = -3.4028234663852886e+38f;
     public HardwarePropertiesManager(android.content.Context p0, android.os.IHardwarePropertiesManager p1) {}
-    public android.os.CpuUsageInfo[] getCpuUsages() { return (android.os.CpuUsageInfo[]) meglerProps.get("CpuUsages"); }
+    public android.os.CpuUsageInfo[] getCpuUsages() { return (android.os.CpuUsageInfo[]) megletProps.get("CpuUsages"); }
     public float[] getDeviceTemperatures(int p0, int p1) { return null; }
-    public float[] getFanSpeeds() { return (float[]) meglerProps.get("FanSpeeds"); }
+    public float[] getFanSpeeds() { return (float[]) megletProps.get("FanSpeeds"); }
     HardwarePropertiesManager() { this((android.content.Context) null, (android.os.IHardwarePropertiesManager) null); }
 }

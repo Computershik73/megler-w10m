@@ -3,7 +3,7 @@ package android.hardware.usb;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class UsbDeviceConnection {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public UsbDeviceConnection(android.hardware.usb.UsbDevice p0) {}
     public int bulkTransfer(android.hardware.usb.UsbEndpoint p0, byte[] p1, int p2, int p3) { return 0; }
     public int bulkTransfer(android.hardware.usb.UsbEndpoint p0, byte[] p1, int p2, int p3, int p4) { return 0; }
@@ -12,10 +12,10 @@ public class UsbDeviceConnection {
     public int controlTransfer(int p0, int p1, int p2, int p3, byte[] p4, int p5, int p6) { return 0; }
     public int controlTransfer(int p0, int p1, int p2, int p3, byte[] p4, int p5, int p6, int p7) { return 0; }
     protected void finalize() {}
-    public android.content.Context getContext() { return (android.content.Context) meglerProps.get("Context"); }
-    public int getFileDescriptor() { return (meglerProps.get("FileDescriptor") instanceof Integer ? (Integer) meglerProps.get("FileDescriptor") : 0); }
-    public byte[] getRawDescriptors() { return (byte[]) meglerProps.get("RawDescriptors"); }
-    public java.lang.String getSerial() { return (java.lang.String) meglerProps.get("Serial"); }
+    public android.content.Context getContext() { return (android.content.Context) megletProps.get("Context"); }
+    public int getFileDescriptor() { return (megletProps.get("FileDescriptor") instanceof Integer ? (Integer) megletProps.get("FileDescriptor") : 0); }
+    public byte[] getRawDescriptors() { return (byte[]) megletProps.get("RawDescriptors"); }
+    public java.lang.String getSerial() { return (java.lang.String) megletProps.get("Serial"); }
     public boolean releaseInterface(android.hardware.usb.UsbInterface p0) { return false; }
     public android.hardware.usb.UsbRequest requestWait() { return null; }
     public android.hardware.usb.UsbRequest requestWait(long p0) { return null; }

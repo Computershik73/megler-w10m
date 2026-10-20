@@ -3,7 +3,7 @@ package android.hardware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SensorEventCallback implements android.hardware.SensorEventListener2 {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public SensorEventCallback() {}
     public void onAccuracyChanged(android.hardware.Sensor p0, int p1) {}
     public void onFlushCompleted(android.hardware.Sensor p0) {}

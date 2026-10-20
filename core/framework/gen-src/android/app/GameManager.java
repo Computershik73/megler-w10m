@@ -3,21 +3,21 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GameManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int GAME_MODE_BATTERY = 3;
     public static final int GAME_MODE_CUSTOM = 4;
     public static final int GAME_MODE_PERFORMANCE = 2;
     public static final int GAME_MODE_STANDARD = 1;
     public static final int GAME_MODE_UNSUPPORTED = 0;
     public int[] getAvailableGameModes(java.lang.String p0) { return null; }
-    public int getGameMode() { return (meglerProps.get("GameMode") instanceof Integer ? (Integer) meglerProps.get("GameMode") : 0); }
+    public int getGameMode() { return (megletProps.get("GameMode") instanceof Integer ? (Integer) megletProps.get("GameMode") : 0); }
     public int getGameMode(java.lang.String p0) { return 0; }
     public android.app.GameModeInfo getGameModeInfo(java.lang.String p0) { return null; }
     public boolean isAngleEnabled(java.lang.String p0) { return false; }
     public void notifyGraphicsEnvironmentSetup() {}
     public void setGameMode(java.lang.String p0, int p1) {}
-    public void setGameServiceProvider(java.lang.String p0) { meglerProps.put("GameServiceProvider", p0); }
-    public void setGameState(android.app.GameState p0) { meglerProps.put("GameState", p0); }
+    public void setGameServiceProvider(java.lang.String p0) { megletProps.put("GameServiceProvider", p0); }
+    public void setGameState(android.app.GameState p0) { megletProps.put("GameState", p0); }
     public void updateCustomGameModeConfiguration(java.lang.String p0, android.app.GameModeConfiguration p1) {}
     protected GameManager() {}
 }

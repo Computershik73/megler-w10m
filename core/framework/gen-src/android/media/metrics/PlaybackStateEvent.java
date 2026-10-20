@@ -3,7 +3,7 @@ package android.media.metrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PlaybackStateEvent extends android.media.metrics.Event implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int STATE_ABANDONED = 15;
     public static final int STATE_BUFFERING = 6;
@@ -22,17 +22,17 @@ public final class PlaybackStateEvent extends android.media.metrics.Event implem
     public static final int STATE_SUPPRESSED_BUFFERING = 10;
     public static java.lang.String stateToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) meglerProps.get("MetricsBundle"); }
-    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
-    public long getTimeSinceCreatedMillis() { return (meglerProps.get("TimeSinceCreatedMillis") instanceof Long ? (Long) meglerProps.get("TimeSinceCreatedMillis") : 0L); }
+    public android.os.Bundle getMetricsBundle() { return (android.os.Bundle) megletProps.get("MetricsBundle"); }
+    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
+    public long getTimeSinceCreatedMillis() { return (megletProps.get("TimeSinceCreatedMillis") instanceof Long ? (Long) megletProps.get("TimeSinceCreatedMillis") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected PlaybackStateEvent() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.media.metrics.PlaybackStateEvent build() { android.media.metrics.PlaybackStateEvent x = new android.media.metrics.PlaybackStateEvent(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.media.metrics.PlaybackStateEvent.Builder setMetricsBundle(android.os.Bundle p0) { meglerProps.put("MetricsBundle", p0); return this; }
-        public android.media.metrics.PlaybackStateEvent.Builder setState(int p0) { meglerProps.put("State", Integer.valueOf(p0)); return this; }
-        public android.media.metrics.PlaybackStateEvent.Builder setTimeSinceCreatedMillis(long p0) { meglerProps.put("TimeSinceCreatedMillis", Long.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackStateEvent build() { android.media.metrics.PlaybackStateEvent x = new android.media.metrics.PlaybackStateEvent(); x.megletProps.putAll(megletProps); return x; }
+        public android.media.metrics.PlaybackStateEvent.Builder setMetricsBundle(android.os.Bundle p0) { megletProps.put("MetricsBundle", p0); return this; }
+        public android.media.metrics.PlaybackStateEvent.Builder setState(int p0) { megletProps.put("State", Integer.valueOf(p0)); return this; }
+        public android.media.metrics.PlaybackStateEvent.Builder setTimeSinceCreatedMillis(long p0) { megletProps.put("TimeSinceCreatedMillis", Long.valueOf(p0)); return this; }
     }
 }

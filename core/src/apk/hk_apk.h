@@ -71,7 +71,7 @@ bool hk_apk_read_info(const char *apk_path, hk_apk_info *info);
  * The same for an app in several APKs: the base at apk_path and its splits, read as one app, as Android has it once the
  * splits are installed -- the base's manifest, the native libraries of every APK, the icon wherever the densest picture
  * of it is. A split that is another app's or no split at all is left out and noted. `record_dir`, when not NULL, is a
- * folder megler_bundle_unpack made, whose record says what of the bundle was left out: a bundle's splits for other
+ * folder meglet_bundle_unpack made, whose record says what of the bundle was left out: a bundle's splits for other
  * processors count as the app's ABIs. False only when the base cannot be read.
  */
 bool hk_apk_read_app(const char *apk_path, const char *const *splits, int nsplits, const char *record_dir, hk_apk_info *info);

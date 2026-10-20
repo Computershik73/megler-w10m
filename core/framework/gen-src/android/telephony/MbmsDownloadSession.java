@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MbmsDownloadSession implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String DEFAULT_TOP_LEVEL_TEMP_DIRECTORY = "androidMbmsTempFileRoot";
     public static final java.lang.String EXTRA_MBMS_COMPLETED_FILE_URI = "android.telephony.extra.MBMS_COMPLETED_FILE_URI";
     public static final java.lang.String EXTRA_MBMS_DOWNLOAD_REQUEST = "android.telephony.extra.MBMS_DOWNLOAD_REQUEST";
@@ -33,13 +33,13 @@ public class MbmsDownloadSession implements java.lang.AutoCloseable {
     public void cancelDownload(android.telephony.mbms.DownloadRequest p0) {}
     public void close() {}
     public void download(android.telephony.mbms.DownloadRequest p0) {}
-    public java.io.File getTempFileRootDirectory() { return (java.io.File) meglerProps.get("TempFileRootDirectory"); }
+    public java.io.File getTempFileRootDirectory() { return (java.io.File) megletProps.get("TempFileRootDirectory"); }
     public java.util.List listPendingDownloads() { return new java.util.ArrayList(); }
     public void removeProgressListener(android.telephony.mbms.DownloadRequest p0, android.telephony.mbms.DownloadProgressListener p1) {}
     public void removeStatusListener(android.telephony.mbms.DownloadRequest p0, android.telephony.mbms.DownloadStatusListener p1) {}
     public void requestDownloadState(android.telephony.mbms.DownloadRequest p0, android.telephony.mbms.FileInfo p1) {}
     public void requestUpdateFileServices(java.util.List p0) {}
     public void resetDownloadKnowledge(android.telephony.mbms.DownloadRequest p0) {}
-    public void setTempFileRootDirectory(java.io.File p0) { meglerProps.put("TempFileRootDirectory", p0); }
+    public void setTempFileRootDirectory(java.io.File p0) { megletProps.put("TempFileRootDirectory", p0); }
     protected MbmsDownloadSession() {}
 }

@@ -3,36 +3,36 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SearchableInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.app.SearchableInfo getActivityMetaData(android.content.Context p0, android.content.pm.ActivityInfo p1, int p2) { return new SearchableInfo(); }
     public boolean autoUrlDetect() { return false; }
     public int describeContents() { return 0; }
     public android.app.SearchableInfo.ActionKeyInfo findActionKey(int p0) { return null; }
     public android.content.Context getActivityContext(android.content.Context p0) { return null; }
-    public int getHintId() { return (meglerProps.get("HintId") instanceof Integer ? (Integer) meglerProps.get("HintId") : 0); }
-    public int getIconId() { return (meglerProps.get("IconId") instanceof Integer ? (Integer) meglerProps.get("IconId") : 0); }
-    public int getImeOptions() { return (meglerProps.get("ImeOptions") instanceof Integer ? (Integer) meglerProps.get("ImeOptions") : 0); }
-    public int getInputType() { return (meglerProps.get("InputType") instanceof Integer ? (Integer) meglerProps.get("InputType") : 0); }
-    public int getLabelId() { return (meglerProps.get("LabelId") instanceof Integer ? (Integer) meglerProps.get("LabelId") : 0); }
+    public int getHintId() { return (megletProps.get("HintId") instanceof Integer ? (Integer) megletProps.get("HintId") : 0); }
+    public int getIconId() { return (megletProps.get("IconId") instanceof Integer ? (Integer) megletProps.get("IconId") : 0); }
+    public int getImeOptions() { return (megletProps.get("ImeOptions") instanceof Integer ? (Integer) megletProps.get("ImeOptions") : 0); }
+    public int getInputType() { return (megletProps.get("InputType") instanceof Integer ? (Integer) megletProps.get("InputType") : 0); }
+    public int getLabelId() { return (megletProps.get("LabelId") instanceof Integer ? (Integer) megletProps.get("LabelId") : 0); }
     public android.content.Context getProviderContext(android.content.Context p0, android.content.Context p1) { return null; }
-    public android.content.ComponentName getSearchActivity() { return (android.content.ComponentName) meglerProps.get("SearchActivity"); }
-    public int getSearchButtonText() { return (meglerProps.get("SearchButtonText") instanceof Integer ? (Integer) meglerProps.get("SearchButtonText") : 0); }
-    public int getSettingsDescriptionId() { return (meglerProps.get("SettingsDescriptionId") instanceof Integer ? (Integer) meglerProps.get("SettingsDescriptionId") : 0); }
-    public java.lang.String getSuggestAuthority() { return (java.lang.String) meglerProps.get("SuggestAuthority"); }
-    public java.lang.String getSuggestIntentAction() { return (java.lang.String) meglerProps.get("SuggestIntentAction"); }
-    public java.lang.String getSuggestIntentData() { return (java.lang.String) meglerProps.get("SuggestIntentData"); }
-    public java.lang.String getSuggestPackage() { return (java.lang.String) meglerProps.get("SuggestPackage"); }
-    public java.lang.String getSuggestPath() { return (java.lang.String) meglerProps.get("SuggestPath"); }
-    public java.lang.String getSuggestSelection() { return (java.lang.String) meglerProps.get("SuggestSelection"); }
-    public int getSuggestThreshold() { return (meglerProps.get("SuggestThreshold") instanceof Integer ? (Integer) meglerProps.get("SuggestThreshold") : 0); }
-    public int getVoiceLanguageId() { return (meglerProps.get("VoiceLanguageId") instanceof Integer ? (Integer) meglerProps.get("VoiceLanguageId") : 0); }
-    public int getVoiceLanguageModeId() { return (meglerProps.get("VoiceLanguageModeId") instanceof Integer ? (Integer) meglerProps.get("VoiceLanguageModeId") : 0); }
-    public int getVoiceMaxResults() { return (meglerProps.get("VoiceMaxResults") instanceof Integer ? (Integer) meglerProps.get("VoiceMaxResults") : 0); }
-    public int getVoicePromptTextId() { return (meglerProps.get("VoicePromptTextId") instanceof Integer ? (Integer) meglerProps.get("VoicePromptTextId") : 0); }
-    public boolean getVoiceSearchEnabled() { return (meglerProps.get("VoiceSearchEnabled") instanceof Boolean ? (Boolean) meglerProps.get("VoiceSearchEnabled") : false); }
-    public boolean getVoiceSearchLaunchRecognizer() { return (meglerProps.get("VoiceSearchLaunchRecognizer") instanceof Boolean ? (Boolean) meglerProps.get("VoiceSearchLaunchRecognizer") : false); }
-    public boolean getVoiceSearchLaunchWebSearch() { return (meglerProps.get("VoiceSearchLaunchWebSearch") instanceof Boolean ? (Boolean) meglerProps.get("VoiceSearchLaunchWebSearch") : false); }
+    public android.content.ComponentName getSearchActivity() { return (android.content.ComponentName) megletProps.get("SearchActivity"); }
+    public int getSearchButtonText() { return (megletProps.get("SearchButtonText") instanceof Integer ? (Integer) megletProps.get("SearchButtonText") : 0); }
+    public int getSettingsDescriptionId() { return (megletProps.get("SettingsDescriptionId") instanceof Integer ? (Integer) megletProps.get("SettingsDescriptionId") : 0); }
+    public java.lang.String getSuggestAuthority() { return (java.lang.String) megletProps.get("SuggestAuthority"); }
+    public java.lang.String getSuggestIntentAction() { return (java.lang.String) megletProps.get("SuggestIntentAction"); }
+    public java.lang.String getSuggestIntentData() { return (java.lang.String) megletProps.get("SuggestIntentData"); }
+    public java.lang.String getSuggestPackage() { return (java.lang.String) megletProps.get("SuggestPackage"); }
+    public java.lang.String getSuggestPath() { return (java.lang.String) megletProps.get("SuggestPath"); }
+    public java.lang.String getSuggestSelection() { return (java.lang.String) megletProps.get("SuggestSelection"); }
+    public int getSuggestThreshold() { return (megletProps.get("SuggestThreshold") instanceof Integer ? (Integer) megletProps.get("SuggestThreshold") : 0); }
+    public int getVoiceLanguageId() { return (megletProps.get("VoiceLanguageId") instanceof Integer ? (Integer) megletProps.get("VoiceLanguageId") : 0); }
+    public int getVoiceLanguageModeId() { return (megletProps.get("VoiceLanguageModeId") instanceof Integer ? (Integer) megletProps.get("VoiceLanguageModeId") : 0); }
+    public int getVoiceMaxResults() { return (megletProps.get("VoiceMaxResults") instanceof Integer ? (Integer) megletProps.get("VoiceMaxResults") : 0); }
+    public int getVoicePromptTextId() { return (megletProps.get("VoicePromptTextId") instanceof Integer ? (Integer) megletProps.get("VoicePromptTextId") : 0); }
+    public boolean getVoiceSearchEnabled() { return (megletProps.get("VoiceSearchEnabled") instanceof Boolean ? (Boolean) megletProps.get("VoiceSearchEnabled") : false); }
+    public boolean getVoiceSearchLaunchRecognizer() { return (megletProps.get("VoiceSearchLaunchRecognizer") instanceof Boolean ? (Boolean) megletProps.get("VoiceSearchLaunchRecognizer") : false); }
+    public boolean getVoiceSearchLaunchWebSearch() { return (megletProps.get("VoiceSearchLaunchWebSearch") instanceof Boolean ? (Boolean) megletProps.get("VoiceSearchLaunchWebSearch") : false); }
     public boolean queryAfterZeroResults() { return false; }
     public boolean shouldIncludeInGlobalSearch() { return false; }
     public boolean shouldRewriteQueryFromData() { return false; }
@@ -42,13 +42,13 @@ public final class SearchableInfo implements android.os.Parcelable {
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SearchableInfo() {}
     public static class ActionKeyInfo implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public int describeContents() { return 0; }
-        public int getKeyCode() { return (meglerProps.get("KeyCode") instanceof Integer ? (Integer) meglerProps.get("KeyCode") : 0); }
-        public java.lang.String getQueryActionMsg() { return (java.lang.String) meglerProps.get("QueryActionMsg"); }
-        public java.lang.String getSuggestActionMsg() { return (java.lang.String) meglerProps.get("SuggestActionMsg"); }
-        public java.lang.String getSuggestActionMsgColumn() { return (java.lang.String) meglerProps.get("SuggestActionMsgColumn"); }
+        public int getKeyCode() { return (megletProps.get("KeyCode") instanceof Integer ? (Integer) megletProps.get("KeyCode") : 0); }
+        public java.lang.String getQueryActionMsg() { return (java.lang.String) megletProps.get("QueryActionMsg"); }
+        public java.lang.String getSuggestActionMsg() { return (java.lang.String) megletProps.get("SuggestActionMsg"); }
+        public java.lang.String getSuggestActionMsgColumn() { return (java.lang.String) megletProps.get("SuggestActionMsgColumn"); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected ActionKeyInfo() {}
     }

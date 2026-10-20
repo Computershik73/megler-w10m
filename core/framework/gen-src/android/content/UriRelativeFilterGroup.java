@@ -3,7 +3,7 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UriRelativeFilterGroup {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ACTION_ALLOW = 0;
     public static final int ACTION_BLOCK = 1;
     public UriRelativeFilterGroup(int p0) {}
@@ -14,8 +14,8 @@ public final class UriRelativeFilterGroup {
     public static java.util.List parcelsToGroups(java.util.List p0) { return new java.util.ArrayList(); }
     public void addUriRelativeFilter(android.content.UriRelativeFilter p0) {}
     public void dumpDebug(android.util.proto.ProtoOutputStream p0, long p1) {}
-    public int getAction() { return (meglerProps.get("Action") instanceof Integer ? (Integer) meglerProps.get("Action") : 0); }
-    public java.util.Collection getUriRelativeFilters() { return (meglerProps.get("UriRelativeFilters") != null ? (java.util.Collection) meglerProps.get("UriRelativeFilters") : new java.util.ArrayList()); }
+    public int getAction() { return (megletProps.get("Action") instanceof Integer ? (Integer) megletProps.get("Action") : 0); }
+    public java.util.Collection getUriRelativeFilters() { return (megletProps.get("UriRelativeFilters") != null ? (java.util.Collection) megletProps.get("UriRelativeFilters") : new java.util.ArrayList()); }
     public boolean matchData(android.net.Uri p0) { return false; }
     public android.content.UriRelativeFilterGroupParcel toParcel() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}

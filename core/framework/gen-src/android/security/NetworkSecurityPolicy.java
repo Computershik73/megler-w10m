@@ -3,13 +3,13 @@ package android.security;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class NetworkSecurityPolicy {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.security.net.config.ApplicationConfig getApplicationConfigForPackage(android.content.Context p0, java.lang.String p1) { return null; }
     public static android.security.NetworkSecurityPolicy getInstance() { return new NetworkSecurityPolicy(); }
     public void handleTrustStorageUpdate() {}
     public boolean isCertificateTransparencyVerificationRequired(java.lang.String p0) { return false; }
-    public boolean isCleartextTrafficPermitted() { return (meglerProps.get("CleartextTrafficPermitted") instanceof Boolean ? (Boolean) meglerProps.get("CleartextTrafficPermitted") : false); }
+    public boolean isCleartextTrafficPermitted() { return (megletProps.get("CleartextTrafficPermitted") instanceof Boolean ? (Boolean) megletProps.get("CleartextTrafficPermitted") : false); }
     public boolean isCleartextTrafficPermitted(java.lang.String p0) { return false; }
-    public void setCleartextTrafficPermitted(boolean p0) { meglerProps.put("CleartextTrafficPermitted", Boolean.valueOf(p0)); }
+    public void setCleartextTrafficPermitted(boolean p0) { megletProps.put("CleartextTrafficPermitted", Boolean.valueOf(p0)); }
     protected NetworkSecurityPolicy() {}
 }

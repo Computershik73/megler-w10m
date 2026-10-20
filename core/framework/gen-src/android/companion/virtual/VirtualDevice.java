@@ -3,16 +3,16 @@ package android.companion.virtual;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VirtualDevice implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public VirtualDevice(android.companion.virtual.IVirtualDevice p0, int p1, java.lang.String p2, java.lang.String p3) {}
     public VirtualDevice(android.companion.virtual.IVirtualDevice p0, int p1, java.lang.String p2, java.lang.String p3, java.lang.CharSequence p4) {}
     public int describeContents() { return 0; }
-    public int getDeviceId() { return (meglerProps.get("DeviceId") instanceof Integer ? (Integer) meglerProps.get("DeviceId") : 0); }
-    public int[] getDisplayIds() { return (int[]) meglerProps.get("DisplayIds"); }
-    public java.lang.CharSequence getDisplayName() { return (java.lang.CharSequence) meglerProps.get("DisplayName"); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public java.lang.String getPersistentDeviceId() { return (java.lang.String) meglerProps.get("PersistentDeviceId"); }
+    public int getDeviceId() { return (megletProps.get("DeviceId") instanceof Integer ? (Integer) megletProps.get("DeviceId") : 0); }
+    public int[] getDisplayIds() { return (int[]) megletProps.get("DisplayIds"); }
+    public java.lang.CharSequence getDisplayName() { return (java.lang.CharSequence) megletProps.get("DisplayName"); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public java.lang.String getPersistentDeviceId() { return (java.lang.String) megletProps.get("PersistentDeviceId"); }
     public boolean hasCustomAudioInputSupport() { return false; }
     public boolean hasCustomCameraSupport() { return false; }
     public boolean hasCustomSensorSupport() { return false; }

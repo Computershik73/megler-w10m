@@ -3,12 +3,12 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ParcelableColorSpace implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ParcelableColorSpace(android.graphics.ColorSpace p0) {}
     public static boolean isParcelable(android.graphics.ColorSpace p0) { return false; }
     public int describeContents() { return 0; }
-    public android.graphics.ColorSpace getColorSpace() { return (android.graphics.ColorSpace) meglerProps.get("ColorSpace"); }
+    public android.graphics.ColorSpace getColorSpace() { return (android.graphics.ColorSpace) megletProps.get("ColorSpace"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ParcelableColorSpace() { this((android.graphics.ColorSpace) null); }
 }

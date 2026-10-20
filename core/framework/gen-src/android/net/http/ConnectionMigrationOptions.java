@@ -3,21 +3,21 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ConnectionMigrationOptions {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int MIGRATION_OPTION_DISABLED = 2;
     public static final int MIGRATION_OPTION_ENABLED = 1;
     public static int MIGRATION_OPTION_UNSPECIFIED;
     public static android.net.http.ConnectionMigrationOptions.Builder builder() { return null; }
-    public int getAllowNonDefaultNetworkUsage() { return (meglerProps.get("AllowNonDefaultNetworkUsage") instanceof Integer ? (Integer) meglerProps.get("AllowNonDefaultNetworkUsage") : 0); }
-    public int getDefaultNetworkMigration() { return (meglerProps.get("DefaultNetworkMigration") instanceof Integer ? (Integer) meglerProps.get("DefaultNetworkMigration") : 0); }
-    public int getPathDegradationMigration() { return (meglerProps.get("PathDegradationMigration") instanceof Integer ? (Integer) meglerProps.get("PathDegradationMigration") : 0); }
+    public int getAllowNonDefaultNetworkUsage() { return (megletProps.get("AllowNonDefaultNetworkUsage") instanceof Integer ? (Integer) megletProps.get("AllowNonDefaultNetworkUsage") : 0); }
+    public int getDefaultNetworkMigration() { return (megletProps.get("DefaultNetworkMigration") instanceof Integer ? (Integer) megletProps.get("DefaultNetworkMigration") : 0); }
+    public int getPathDegradationMigration() { return (megletProps.get("PathDegradationMigration") instanceof Integer ? (Integer) megletProps.get("PathDegradationMigration") : 0); }
     protected ConnectionMigrationOptions() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.http.ConnectionMigrationOptions build() { android.net.http.ConnectionMigrationOptions x = new android.net.http.ConnectionMigrationOptions(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.net.http.ConnectionMigrationOptions.Builder setAllowNonDefaultNetworkUsage(int p0) { meglerProps.put("AllowNonDefaultNetworkUsage", Integer.valueOf(p0)); return this; }
-        public android.net.http.ConnectionMigrationOptions.Builder setDefaultNetworkMigration(int p0) { meglerProps.put("DefaultNetworkMigration", Integer.valueOf(p0)); return this; }
-        public android.net.http.ConnectionMigrationOptions.Builder setPathDegradationMigration(int p0) { meglerProps.put("PathDegradationMigration", Integer.valueOf(p0)); return this; }
+        public android.net.http.ConnectionMigrationOptions build() { android.net.http.ConnectionMigrationOptions x = new android.net.http.ConnectionMigrationOptions(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.http.ConnectionMigrationOptions.Builder setAllowNonDefaultNetworkUsage(int p0) { megletProps.put("AllowNonDefaultNetworkUsage", Integer.valueOf(p0)); return this; }
+        public android.net.http.ConnectionMigrationOptions.Builder setDefaultNetworkMigration(int p0) { megletProps.put("DefaultNetworkMigration", Integer.valueOf(p0)); return this; }
+        public android.net.http.ConnectionMigrationOptions.Builder setPathDegradationMigration(int p0) { megletProps.put("PathDegradationMigration", Integer.valueOf(p0)); return this; }
     }
 }

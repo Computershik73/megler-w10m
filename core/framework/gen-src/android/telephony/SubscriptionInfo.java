@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SubscriptionInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public SubscriptionInfo(int p0, java.lang.String p1, int p2, java.lang.CharSequence p3, java.lang.CharSequence p4, int p5, int p6, java.lang.String p7, int p8, android.graphics.Bitmap p9, java.lang.String p10, java.lang.String p11, java.lang.String p12, boolean p13, android.telephony.UiccAccessRule[] p14, java.lang.String p15) {}
     public SubscriptionInfo(int p0, java.lang.String p1, int p2, java.lang.CharSequence p3, java.lang.CharSequence p4, int p5, int p6, java.lang.String p7, int p8, android.graphics.Bitmap p9, java.lang.String p10, java.lang.String p11, java.lang.String p12, boolean p13, android.telephony.UiccAccessRule[] p14, java.lang.String p15, int p16, boolean p17, java.lang.String p18, boolean p19, int p20, int p21, int p22, java.lang.String p23, android.telephony.UiccAccessRule[] p24, boolean p25) {}
@@ -16,80 +16,80 @@ public class SubscriptionInfo implements android.os.Parcelable {
     public boolean canManageSubscription(android.content.Context p0, java.lang.String p1) { return false; }
     public android.graphics.Bitmap createIconBitmap(android.content.Context p0) { return null; }
     public int describeContents() { return 0; }
-    public java.util.List getAccessRules() { return (meglerProps.get("AccessRules") != null ? (java.util.List) meglerProps.get("AccessRules") : new java.util.ArrayList()); }
-    public int getCardId() { return (meglerProps.get("CardId") instanceof Integer ? (Integer) meglerProps.get("CardId") : 0); }
-    public java.lang.String getCardString() { return (java.lang.String) meglerProps.get("CardString"); }
-    public int getCarrierId() { return (meglerProps.get("CarrierId") instanceof Integer ? (Integer) meglerProps.get("CarrierId") : 0); }
-    public java.lang.CharSequence getCarrierName() { return (java.lang.CharSequence) meglerProps.get("CarrierName"); }
-    public java.lang.String getCountryIso() { return (java.lang.String) meglerProps.get("CountryIso"); }
-    public int getDataRoaming() { return (meglerProps.get("DataRoaming") instanceof Integer ? (Integer) meglerProps.get("DataRoaming") : 0); }
-    public java.lang.CharSequence getDisplayName() { return (java.lang.CharSequence) meglerProps.get("DisplayName"); }
-    public int getDisplayNameSource() { return (meglerProps.get("DisplayNameSource") instanceof Integer ? (Integer) meglerProps.get("DisplayNameSource") : 0); }
-    public java.util.List getEhplmns() { return (meglerProps.get("Ehplmns") != null ? (java.util.List) meglerProps.get("Ehplmns") : new java.util.ArrayList()); }
-    public java.lang.String getGroupOwner() { return (java.lang.String) meglerProps.get("GroupOwner"); }
-    public android.os.ParcelUuid getGroupUuid() { return (android.os.ParcelUuid) meglerProps.get("GroupUuid"); }
-    public java.util.List getHplmns() { return (meglerProps.get("Hplmns") != null ? (java.util.List) meglerProps.get("Hplmns") : new java.util.ArrayList()); }
-    public java.lang.String getIccId() { return (java.lang.String) meglerProps.get("IccId"); }
-    public int getIconTint() { return (meglerProps.get("IconTint") instanceof Integer ? (Integer) meglerProps.get("IconTint") : 0); }
-    public int getMcc() { return (meglerProps.get("Mcc") instanceof Integer ? (Integer) meglerProps.get("Mcc") : 0); }
-    public java.lang.String getMccString() { return (java.lang.String) meglerProps.get("MccString"); }
-    public int getMnc() { return (meglerProps.get("Mnc") instanceof Integer ? (Integer) meglerProps.get("Mnc") : 0); }
-    public java.lang.String getMncString() { return (java.lang.String) meglerProps.get("MncString"); }
-    public java.lang.String getNumber() { return (java.lang.String) meglerProps.get("Number"); }
-    public int getPortIndex() { return (meglerProps.get("PortIndex") instanceof Integer ? (Integer) meglerProps.get("PortIndex") : 0); }
-    public int getProfileClass() { return (meglerProps.get("ProfileClass") instanceof Integer ? (Integer) meglerProps.get("ProfileClass") : 0); }
-    public java.util.Set getServiceCapabilities() { return (meglerProps.get("ServiceCapabilities") != null ? (java.util.Set) meglerProps.get("ServiceCapabilities") : new java.util.HashSet()); }
-    public int getSimSlotIndex() { return (meglerProps.get("SimSlotIndex") instanceof Integer ? (Integer) meglerProps.get("SimSlotIndex") : 0); }
-    public int getSubscriptionId() { return (meglerProps.get("SubscriptionId") instanceof Integer ? (Integer) meglerProps.get("SubscriptionId") : 0); }
-    public int getSubscriptionType() { return (meglerProps.get("SubscriptionType") instanceof Integer ? (Integer) meglerProps.get("SubscriptionType") : 0); }
-    public int getTransferStatus() { return (meglerProps.get("TransferStatus") instanceof Integer ? (Integer) meglerProps.get("TransferStatus") : 0); }
-    public int getUsageSetting() { return (meglerProps.get("UsageSetting") instanceof Integer ? (Integer) meglerProps.get("UsageSetting") : 0); }
-    public boolean isActive() { return (meglerProps.get("Active") instanceof Boolean ? (Boolean) meglerProps.get("Active") : false); }
-    public boolean isEmbedded() { return (meglerProps.get("Embedded") instanceof Boolean ? (Boolean) meglerProps.get("Embedded") : false); }
-    public boolean isGroupDisabled() { return (meglerProps.get("GroupDisabled") instanceof Boolean ? (Boolean) meglerProps.get("GroupDisabled") : false); }
-    public boolean isOnlyNonTerrestrialNetwork() { return (meglerProps.get("OnlyNonTerrestrialNetwork") instanceof Boolean ? (Boolean) meglerProps.get("OnlyNonTerrestrialNetwork") : false); }
-    public boolean isOpportunistic() { return (meglerProps.get("Opportunistic") instanceof Boolean ? (Boolean) meglerProps.get("Opportunistic") : false); }
-    public boolean isSatelliteESOSSupported() { return (meglerProps.get("SatelliteESOSSupported") instanceof Boolean ? (Boolean) meglerProps.get("SatelliteESOSSupported") : false); }
+    public java.util.List getAccessRules() { return (megletProps.get("AccessRules") != null ? (java.util.List) megletProps.get("AccessRules") : new java.util.ArrayList()); }
+    public int getCardId() { return (megletProps.get("CardId") instanceof Integer ? (Integer) megletProps.get("CardId") : 0); }
+    public java.lang.String getCardString() { return (java.lang.String) megletProps.get("CardString"); }
+    public int getCarrierId() { return (megletProps.get("CarrierId") instanceof Integer ? (Integer) megletProps.get("CarrierId") : 0); }
+    public java.lang.CharSequence getCarrierName() { return (java.lang.CharSequence) megletProps.get("CarrierName"); }
+    public java.lang.String getCountryIso() { return (java.lang.String) megletProps.get("CountryIso"); }
+    public int getDataRoaming() { return (megletProps.get("DataRoaming") instanceof Integer ? (Integer) megletProps.get("DataRoaming") : 0); }
+    public java.lang.CharSequence getDisplayName() { return (java.lang.CharSequence) megletProps.get("DisplayName"); }
+    public int getDisplayNameSource() { return (megletProps.get("DisplayNameSource") instanceof Integer ? (Integer) megletProps.get("DisplayNameSource") : 0); }
+    public java.util.List getEhplmns() { return (megletProps.get("Ehplmns") != null ? (java.util.List) megletProps.get("Ehplmns") : new java.util.ArrayList()); }
+    public java.lang.String getGroupOwner() { return (java.lang.String) megletProps.get("GroupOwner"); }
+    public android.os.ParcelUuid getGroupUuid() { return (android.os.ParcelUuid) megletProps.get("GroupUuid"); }
+    public java.util.List getHplmns() { return (megletProps.get("Hplmns") != null ? (java.util.List) megletProps.get("Hplmns") : new java.util.ArrayList()); }
+    public java.lang.String getIccId() { return (java.lang.String) megletProps.get("IccId"); }
+    public int getIconTint() { return (megletProps.get("IconTint") instanceof Integer ? (Integer) megletProps.get("IconTint") : 0); }
+    public int getMcc() { return (megletProps.get("Mcc") instanceof Integer ? (Integer) megletProps.get("Mcc") : 0); }
+    public java.lang.String getMccString() { return (java.lang.String) megletProps.get("MccString"); }
+    public int getMnc() { return (megletProps.get("Mnc") instanceof Integer ? (Integer) megletProps.get("Mnc") : 0); }
+    public java.lang.String getMncString() { return (java.lang.String) megletProps.get("MncString"); }
+    public java.lang.String getNumber() { return (java.lang.String) megletProps.get("Number"); }
+    public int getPortIndex() { return (megletProps.get("PortIndex") instanceof Integer ? (Integer) megletProps.get("PortIndex") : 0); }
+    public int getProfileClass() { return (megletProps.get("ProfileClass") instanceof Integer ? (Integer) megletProps.get("ProfileClass") : 0); }
+    public java.util.Set getServiceCapabilities() { return (megletProps.get("ServiceCapabilities") != null ? (java.util.Set) megletProps.get("ServiceCapabilities") : new java.util.HashSet()); }
+    public int getSimSlotIndex() { return (megletProps.get("SimSlotIndex") instanceof Integer ? (Integer) megletProps.get("SimSlotIndex") : 0); }
+    public int getSubscriptionId() { return (megletProps.get("SubscriptionId") instanceof Integer ? (Integer) megletProps.get("SubscriptionId") : 0); }
+    public int getSubscriptionType() { return (megletProps.get("SubscriptionType") instanceof Integer ? (Integer) megletProps.get("SubscriptionType") : 0); }
+    public int getTransferStatus() { return (megletProps.get("TransferStatus") instanceof Integer ? (Integer) megletProps.get("TransferStatus") : 0); }
+    public int getUsageSetting() { return (megletProps.get("UsageSetting") instanceof Integer ? (Integer) megletProps.get("UsageSetting") : 0); }
+    public boolean isActive() { return (megletProps.get("Active") instanceof Boolean ? (Boolean) megletProps.get("Active") : false); }
+    public boolean isEmbedded() { return (megletProps.get("Embedded") instanceof Boolean ? (Boolean) megletProps.get("Embedded") : false); }
+    public boolean isGroupDisabled() { return (megletProps.get("GroupDisabled") instanceof Boolean ? (Boolean) megletProps.get("GroupDisabled") : false); }
+    public boolean isOnlyNonTerrestrialNetwork() { return (megletProps.get("OnlyNonTerrestrialNetwork") instanceof Boolean ? (Boolean) megletProps.get("OnlyNonTerrestrialNetwork") : false); }
+    public boolean isOpportunistic() { return (megletProps.get("Opportunistic") instanceof Boolean ? (Boolean) megletProps.get("Opportunistic") : false); }
+    public boolean isSatelliteESOSSupported() { return (megletProps.get("SatelliteESOSSupported") instanceof Boolean ? (Boolean) megletProps.get("SatelliteESOSSupported") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SubscriptionInfo() { this((int) 0, (java.lang.String) null, (int) 0, (java.lang.CharSequence) null, (java.lang.CharSequence) null, (int) 0, (int) 0, (java.lang.String) null, (int) 0, (android.graphics.Bitmap) null, (java.lang.String) null, (java.lang.String) null, (java.lang.String) null, (boolean) false, (android.telephony.UiccAccessRule[]) null, (java.lang.String) null); }
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.telephony.SubscriptionInfo p0) {}
-        public android.telephony.SubscriptionInfo build() { android.telephony.SubscriptionInfo x = new android.telephony.SubscriptionInfo(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.telephony.SubscriptionInfo.Builder setCardId(int p0) { meglerProps.put("CardId", Integer.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setCardString(java.lang.String p0) { meglerProps.put("CardString", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setCarrierConfigAccessRules(android.telephony.UiccAccessRule[] p0) { meglerProps.put("CarrierConfigAccessRules", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setCarrierId(int p0) { meglerProps.put("CarrierId", Integer.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setCarrierName(java.lang.CharSequence p0) { meglerProps.put("CarrierName", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setCountryIso(java.lang.String p0) { meglerProps.put("CountryIso", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setDataRoaming(int p0) { meglerProps.put("DataRoaming", Integer.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setDisplayName(java.lang.CharSequence p0) { meglerProps.put("DisplayName", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setDisplayNameSource(int p0) { meglerProps.put("DisplayNameSource", Integer.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setEhplmns(java.lang.String[] p0) { meglerProps.put("Ehplmns", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setEmbedded(boolean p0) { meglerProps.put("Embedded", Boolean.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setGroupDisabled(boolean p0) { meglerProps.put("GroupDisabled", Boolean.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setGroupOwner(java.lang.String p0) { meglerProps.put("GroupOwner", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setGroupUuid(java.lang.String p0) { meglerProps.put("GroupUuid", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setHplmns(java.lang.String[] p0) { meglerProps.put("Hplmns", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setIccId(java.lang.String p0) { meglerProps.put("IccId", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setIcon(android.graphics.Bitmap p0) { meglerProps.put("Icon", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setIconTint(int p0) { meglerProps.put("IconTint", Integer.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setId(int p0) { meglerProps.put("Id", Integer.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setMcc(java.lang.String p0) { meglerProps.put("Mcc", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setMnc(java.lang.String p0) { meglerProps.put("Mnc", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setNativeAccessRules(android.telephony.UiccAccessRule[] p0) { meglerProps.put("NativeAccessRules", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setNumber(java.lang.String p0) { meglerProps.put("Number", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setOnlyNonTerrestrialNetwork(boolean p0) { meglerProps.put("OnlyNonTerrestrialNetwork", Boolean.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setOpportunistic(boolean p0) { meglerProps.put("Opportunistic", Boolean.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setPortIndex(int p0) { meglerProps.put("PortIndex", Integer.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setProfileClass(int p0) { meglerProps.put("ProfileClass", Integer.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setSatelliteESOSSupported(boolean p0) { meglerProps.put("SatelliteESOSSupported", Boolean.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setServiceCapabilities(java.util.Set p0) { meglerProps.put("ServiceCapabilities", p0); return this; }
-        public android.telephony.SubscriptionInfo.Builder setSimSlotIndex(int p0) { meglerProps.put("SimSlotIndex", Integer.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setTransferStatus(int p0) { meglerProps.put("TransferStatus", Integer.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setType(int p0) { meglerProps.put("Type", Integer.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setUiccApplicationsEnabled(boolean p0) { meglerProps.put("UiccApplicationsEnabled", Boolean.valueOf(p0)); return this; }
-        public android.telephony.SubscriptionInfo.Builder setUsageSetting(int p0) { meglerProps.put("UsageSetting", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo build() { android.telephony.SubscriptionInfo x = new android.telephony.SubscriptionInfo(); x.megletProps.putAll(megletProps); return x; }
+        public android.telephony.SubscriptionInfo.Builder setCardId(int p0) { megletProps.put("CardId", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setCardString(java.lang.String p0) { megletProps.put("CardString", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setCarrierConfigAccessRules(android.telephony.UiccAccessRule[] p0) { megletProps.put("CarrierConfigAccessRules", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setCarrierId(int p0) { megletProps.put("CarrierId", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setCarrierName(java.lang.CharSequence p0) { megletProps.put("CarrierName", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setCountryIso(java.lang.String p0) { megletProps.put("CountryIso", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setDataRoaming(int p0) { megletProps.put("DataRoaming", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setDisplayName(java.lang.CharSequence p0) { megletProps.put("DisplayName", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setDisplayNameSource(int p0) { megletProps.put("DisplayNameSource", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setEhplmns(java.lang.String[] p0) { megletProps.put("Ehplmns", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setEmbedded(boolean p0) { megletProps.put("Embedded", Boolean.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setGroupDisabled(boolean p0) { megletProps.put("GroupDisabled", Boolean.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setGroupOwner(java.lang.String p0) { megletProps.put("GroupOwner", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setGroupUuid(java.lang.String p0) { megletProps.put("GroupUuid", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setHplmns(java.lang.String[] p0) { megletProps.put("Hplmns", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setIccId(java.lang.String p0) { megletProps.put("IccId", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setIcon(android.graphics.Bitmap p0) { megletProps.put("Icon", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setIconTint(int p0) { megletProps.put("IconTint", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setId(int p0) { megletProps.put("Id", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setMcc(java.lang.String p0) { megletProps.put("Mcc", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setMnc(java.lang.String p0) { megletProps.put("Mnc", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setNativeAccessRules(android.telephony.UiccAccessRule[] p0) { megletProps.put("NativeAccessRules", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setNumber(java.lang.String p0) { megletProps.put("Number", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setOnlyNonTerrestrialNetwork(boolean p0) { megletProps.put("OnlyNonTerrestrialNetwork", Boolean.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setOpportunistic(boolean p0) { megletProps.put("Opportunistic", Boolean.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setPortIndex(int p0) { megletProps.put("PortIndex", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setProfileClass(int p0) { megletProps.put("ProfileClass", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setSatelliteESOSSupported(boolean p0) { megletProps.put("SatelliteESOSSupported", Boolean.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setServiceCapabilities(java.util.Set p0) { megletProps.put("ServiceCapabilities", p0); return this; }
+        public android.telephony.SubscriptionInfo.Builder setSimSlotIndex(int p0) { megletProps.put("SimSlotIndex", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setTransferStatus(int p0) { megletProps.put("TransferStatus", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setType(int p0) { megletProps.put("Type", Integer.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setUiccApplicationsEnabled(boolean p0) { megletProps.put("UiccApplicationsEnabled", Boolean.valueOf(p0)); return this; }
+        public android.telephony.SubscriptionInfo.Builder setUsageSetting(int p0) { megletProps.put("UsageSetting", Integer.valueOf(p0)); return this; }
     }
 }

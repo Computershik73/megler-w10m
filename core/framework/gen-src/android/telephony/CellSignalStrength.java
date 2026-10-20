@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CellSignalStrength {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int NUM_SIGNAL_STRENGTH_BINS = 5;
     protected static final int NUM_SIGNAL_STRENGTH_THRESHOLDS = 4;
     public static final int SIGNAL_STRENGTH_GOOD = 3;

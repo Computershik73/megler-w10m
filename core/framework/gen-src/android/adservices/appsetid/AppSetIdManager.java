@@ -3,7 +3,7 @@ package android.adservices.appsetid;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AppSetIdManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String APPSETID_SERVICE = "appsetid_service";
     public AppSetIdManager(android.content.Context p0) {}
     public static android.adservices.appsetid.AppSetIdManager get(android.content.Context p0) { return new AppSetIdManager(); }

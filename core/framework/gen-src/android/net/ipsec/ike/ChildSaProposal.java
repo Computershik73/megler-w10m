@@ -3,21 +3,21 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ChildSaProposal extends android.net.ipsec.ike.SaProposal {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.net.ipsec.ike.ChildSaProposal fromPersistableBundle(android.os.PersistableBundle p0) { return new ChildSaProposal(); }
     public static java.util.Set getSupportedEncryptionAlgorithms() { return new java.util.HashSet(); }
     public static java.util.Set getSupportedIntegrityAlgorithms() { return new java.util.HashSet(); }
     public android.net.ipsec.ike.ChildSaProposal getCopyWithAdditionalDhTransform(int p0) { return this; }
-    public android.net.ipsec.ike.ChildSaProposal getCopyWithoutDhTransform() { return (android.net.ipsec.ike.ChildSaProposal) meglerProps.get("CopyWithoutDhTransform"); }
+    public android.net.ipsec.ike.ChildSaProposal getCopyWithoutDhTransform() { return (android.net.ipsec.ike.ChildSaProposal) megletProps.get("CopyWithoutDhTransform"); }
     public boolean isNegotiatedFrom(android.net.ipsec.ike.SaProposal p0) { return false; }
     public boolean isNegotiatedFromExceptDhGroup(android.net.ipsec.ike.SaProposal p0) { return false; }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     public static final class Builder extends android.net.ipsec.ike.SaProposal.Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() { super(); }
         public android.net.ipsec.ike.ChildSaProposal.Builder addDhGroup(int p0) { return this; }
         public android.net.ipsec.ike.ChildSaProposal.Builder addEncryptionAlgorithm(int p0, int p1) { return this; }
         public android.net.ipsec.ike.ChildSaProposal.Builder addIntegrityAlgorithm(int p0) { return this; }
-        public android.net.ipsec.ike.ChildSaProposal build() { android.net.ipsec.ike.ChildSaProposal x = new android.net.ipsec.ike.ChildSaProposal(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.ipsec.ike.ChildSaProposal build() { android.net.ipsec.ike.ChildSaProposal x = new android.net.ipsec.ike.ChildSaProposal(); x.megletProps.putAll(megletProps); return x; }
     }
 }

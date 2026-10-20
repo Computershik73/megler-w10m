@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class VpnManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_VPN_MANAGER_EVENT = "android.net.action.VPN_MANAGER_EVENT";
     public static final java.lang.String CATEGORY_EVENT_ALWAYS_ON_STATE_CHANGED = "android.net.category.EVENT_ALWAYS_ON_STATE_CHANGED";
     public static final java.lang.String CATEGORY_EVENT_DEACTIVATED_BY_USER = "android.net.category.EVENT_DEACTIVATED_BY_USER";
@@ -37,7 +37,7 @@ public class VpnManager {
     public java.lang.String getAlwaysOnVpnPackageForUser(int p0) { return null; }
     public java.util.List getAppExclusionList(int p0, java.lang.String p1) { return new java.util.ArrayList(); }
     public byte[] getFromVpnProfileStore(java.lang.String p0) { return null; }
-    public android.net.VpnProfileState getProvisionedVpnProfileState() { return (android.net.VpnProfileState) meglerProps.get("ProvisionedVpnProfileState"); }
+    public android.net.VpnProfileState getProvisionedVpnProfileState() { return (android.net.VpnProfileState) megletProps.get("ProvisionedVpnProfileState"); }
     public java.util.List getVpnLockdownAllowlist(int p0) { return new java.util.ArrayList(); }
     public boolean isAlwaysOnVpnPackageSupportedForUser(int p0, java.lang.String p1) { return false; }
     public boolean isVpnLockdownEnabled(int p0) { return false; }

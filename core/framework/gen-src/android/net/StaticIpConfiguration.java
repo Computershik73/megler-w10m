@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class StaticIpConfiguration implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public java.util.ArrayList dnsServers;
     public java.lang.String domains;
@@ -15,20 +15,20 @@ public final class StaticIpConfiguration implements android.os.Parcelable {
     public void addDnsServer(java.net.InetAddress p0) {}
     public void clear() {}
     public int describeContents() { return 0; }
-    public java.util.List getDnsServers() { return (meglerProps.get("DnsServers") != null ? (java.util.List) meglerProps.get("DnsServers") : new java.util.ArrayList()); }
-    public java.lang.String getDomains() { return (java.lang.String) meglerProps.get("Domains"); }
-    public java.net.InetAddress getGateway() { return (java.net.InetAddress) meglerProps.get("Gateway"); }
-    public android.net.LinkAddress getIpAddress() { return (android.net.LinkAddress) meglerProps.get("IpAddress"); }
+    public java.util.List getDnsServers() { return (megletProps.get("DnsServers") != null ? (java.util.List) megletProps.get("DnsServers") : new java.util.ArrayList()); }
+    public java.lang.String getDomains() { return (java.lang.String) megletProps.get("Domains"); }
+    public java.net.InetAddress getGateway() { return (java.net.InetAddress) megletProps.get("Gateway"); }
+    public android.net.LinkAddress getIpAddress() { return (android.net.LinkAddress) megletProps.get("IpAddress"); }
     public java.util.List getRoutes(java.lang.String p0) { return new java.util.ArrayList(); }
     public android.net.LinkProperties toLinkProperties(java.lang.String p0) { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.StaticIpConfiguration build() { android.net.StaticIpConfiguration x = new android.net.StaticIpConfiguration(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.net.StaticIpConfiguration.Builder setDnsServers(java.lang.Iterable p0) { meglerProps.put("DnsServers", p0); return this; }
-        public android.net.StaticIpConfiguration.Builder setDomains(java.lang.String p0) { meglerProps.put("Domains", p0); return this; }
-        public android.net.StaticIpConfiguration.Builder setGateway(java.net.InetAddress p0) { meglerProps.put("Gateway", p0); return this; }
-        public android.net.StaticIpConfiguration.Builder setIpAddress(android.net.LinkAddress p0) { meglerProps.put("IpAddress", p0); return this; }
+        public android.net.StaticIpConfiguration build() { android.net.StaticIpConfiguration x = new android.net.StaticIpConfiguration(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.StaticIpConfiguration.Builder setDnsServers(java.lang.Iterable p0) { megletProps.put("DnsServers", p0); return this; }
+        public android.net.StaticIpConfiguration.Builder setDomains(java.lang.String p0) { megletProps.put("Domains", p0); return this; }
+        public android.net.StaticIpConfiguration.Builder setGateway(java.net.InetAddress p0) { megletProps.put("Gateway", p0); return this; }
+        public android.net.StaticIpConfiguration.Builder setIpAddress(android.net.LinkAddress p0) { megletProps.put("IpAddress", p0); return this; }
     }
 }

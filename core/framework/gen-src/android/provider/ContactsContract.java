@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ContactsContract {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String AUTHORITY = "com.android.contacts";
     public static android.net.Uri AUTHORITY_URI = android.net.Uri.parse("content://com.android.contacts");
     public static final java.lang.String CALLER_IS_SYNCADAPTER = "caller_is_syncadapter";
@@ -19,7 +19,7 @@ public final class ContactsContract {
     public ContactsContract() {}
     public static boolean isProfileId(long p0) { return false; }
     public static final class AggregationExceptions implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/aggregation_exception";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/aggregation_exception";
         public static android.net.Uri CONTENT_URI;
@@ -32,7 +32,7 @@ public final class ContactsContract {
         protected AggregationExceptions() {}
     }
     public static final class Authorization {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String AUTHORIZATION_METHOD = "authorize";
         public static final java.lang.String KEY_AUTHORIZED_URI = "authorized_uri";
         public static final java.lang.String KEY_URI_TO_AUTHORIZE = "uri_to_authorize";
@@ -45,14 +45,14 @@ public final class ContactsContract {
         java.lang.String SYNC4 = "sync4";
     }
     public static final class CommonDataKinds {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String PACKAGE_COMMON = "common";
         protected CommonDataKinds() {}
         public interface BaseTypes {
             int TYPE_CUSTOM = 0;
         }
         public static final class Callable implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.CommonDataKinds.CommonColumns, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_FILTER_URI = android.net.Uri.parse("content://com.android.contacts/data/callables/filter");
             public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://com.android.contacts/data/callables");
             public static android.net.Uri ENTERPRISE_CONTENT_FILTER_URI;
@@ -64,14 +64,14 @@ public final class ContactsContract {
             java.lang.String TYPE = "data2";
         }
         public static final class Contactables implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.CommonDataKinds.CommonColumns, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_FILTER_URI;
             public static android.net.Uri CONTENT_URI;
             public static final java.lang.String VISIBLE_CONTACTS_ONLY = "visible_contacts_only";
             public Contactables() {}
         }
         public static final class Email implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.CommonDataKinds.CommonColumns, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String ADDRESS = "data1";
             public static android.net.Uri CONTENT_FILTER_URI = android.net.Uri.parse("content://com.android.contacts/data/emails/filter");
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/email_v2";
@@ -90,7 +90,7 @@ public final class ContactsContract {
             protected Email() {}
         }
         public static final class Event implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.CommonDataKinds.CommonColumns, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/contact_event";
             public static final java.lang.String START_DATE = "data1";
             public static final int TYPE_ANNIVERSARY = 1;
@@ -101,21 +101,21 @@ public final class ContactsContract {
             protected Event() {}
         }
         public static final class GroupMembership implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/group_membership";
             public static final java.lang.String GROUP_ROW_ID = "data1";
             public static final java.lang.String GROUP_SOURCE_ID = "group_sourceid";
             protected GroupMembership() {}
         }
         public static final class Identity implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/identity";
             public static final java.lang.String IDENTITY = "data1";
             public static final java.lang.String NAMESPACE = "data2";
             protected Identity() {}
         }
         public static final class Im implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.CommonDataKinds.CommonColumns, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/im";
             public static final java.lang.String CUSTOM_PROTOCOL = "data6";
             public static final java.lang.String PROTOCOL = "data5";
@@ -139,7 +139,7 @@ public final class ContactsContract {
             protected Im() {}
         }
         public static final class Nickname implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.CommonDataKinds.CommonColumns, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/nickname";
             public static final java.lang.String NAME = "data1";
             public static final int TYPE_DEFAULT = 1;
@@ -151,13 +151,13 @@ public final class ContactsContract {
             protected Nickname() {}
         }
         public static final class Note implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/note";
             public static final java.lang.String NOTE = "data1";
             protected Note() {}
         }
         public static final class Organization implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.CommonDataKinds.CommonColumns, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String COMPANY = "data1";
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/organization";
             public static final java.lang.String DEPARTMENT = "data5";
@@ -174,7 +174,7 @@ public final class ContactsContract {
             protected Organization() {}
         }
         public static final class Phone implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.CommonDataKinds.CommonColumns, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static android.net.Uri CONTENT_FILTER_URI = android.net.Uri.parse("content://com.android.contacts/data/phones/filter");
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/phone_v2";
             public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/phone_v2";
@@ -212,14 +212,14 @@ public final class ContactsContract {
             protected Phone() {}
         }
         public static final class Photo implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/photo";
             public static final java.lang.String PHOTO = "data15";
             public static final java.lang.String PHOTO_FILE_ID = "data14";
             protected Photo() {}
         }
         public static final class Relation implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.CommonDataKinds.CommonColumns, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/relation";
             public static final java.lang.String NAME = "data1";
             public static final int TYPE_ASSISTANT = 1;
@@ -241,7 +241,7 @@ public final class ContactsContract {
             protected Relation() {}
         }
         public static final class SipAddress implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.CommonDataKinds.CommonColumns, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/sip_address";
             public static final java.lang.String SIP_ADDRESS = "data1";
             public static final int TYPE_HOME = 1;
@@ -252,7 +252,7 @@ public final class ContactsContract {
             protected SipAddress() {}
         }
         public static final class StructuredName implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/name";
             public static final java.lang.String DISPLAY_NAME = "data1";
             public static final java.lang.String FAMILY_NAME = "data3";
@@ -268,7 +268,7 @@ public final class ContactsContract {
             protected StructuredName() {}
         }
         public static final class StructuredPostal implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.CommonDataKinds.CommonColumns, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CITY = "data7";
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/postal-address_v2";
             public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/postal-address_v2";
@@ -288,7 +288,7 @@ public final class ContactsContract {
             protected StructuredPostal() {}
         }
         public static final class Website implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.CommonDataKinds.CommonColumns, android.provider.ContactsContract.ContactCounts {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/website";
             public static final int TYPE_BLOG = 2;
             public static final int TYPE_FTP = 6;
@@ -337,7 +337,7 @@ public final class ContactsContract {
         java.lang.String CONTACT_STATUS_TIMESTAMP = "contact_status_ts";
     }
     public static class Contacts implements android.provider.BaseColumns, android.provider.ContactsContract.ContactsColumns, android.provider.ContactsContract.ContactOptionsColumns, android.provider.ContactsContract.ContactNameColumns, android.provider.ContactsContract.ContactStatusColumns, android.provider.ContactsContract.ContactCounts {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_FILTER_URI = android.net.Uri.parse("content://com.android.contacts/contacts/filter");
         public static android.net.Uri CONTENT_FREQUENT_URI = android.net.Uri.parse("content://com.android.contacts/contacts/frequent");
         public static android.net.Uri CONTENT_GROUP_URI = android.net.Uri.parse("content://com.android.contacts/contacts/group");
@@ -366,34 +366,34 @@ public final class ContactsContract {
         public static java.io.InputStream openContactPhotoInputStream(android.content.ContentResolver p0, android.net.Uri p1, boolean p2) { return null; }
         protected Contacts() {}
         public static final class AggregationSuggestions implements android.provider.BaseColumns, android.provider.ContactsContract.ContactsColumns, android.provider.ContactsContract.ContactOptionsColumns, android.provider.ContactsContract.ContactStatusColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "suggestions";
             public static final java.lang.String PARAMETER_MATCH_NAME = "name";
             public static android.provider.ContactsContract.Contacts.AggregationSuggestions.Builder builder() { return null; }
             protected AggregationSuggestions() {}
             public static final class Builder {
-                private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+                private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
                 public Builder() {}
                 public android.provider.ContactsContract.Contacts.AggregationSuggestions.Builder addNameParameter(java.lang.String p0) { return this; }
                 public android.net.Uri build() { return null; }
-                public android.provider.ContactsContract.Contacts.AggregationSuggestions.Builder setContactId(long p0) { meglerProps.put("ContactId", Long.valueOf(p0)); return this; }
-                public android.provider.ContactsContract.Contacts.AggregationSuggestions.Builder setLimit(int p0) { meglerProps.put("Limit", Integer.valueOf(p0)); return this; }
+                public android.provider.ContactsContract.Contacts.AggregationSuggestions.Builder setContactId(long p0) { megletProps.put("ContactId", Long.valueOf(p0)); return this; }
+                public android.provider.ContactsContract.Contacts.AggregationSuggestions.Builder setLimit(int p0) { megletProps.put("Limit", Integer.valueOf(p0)); return this; }
             }
         }
         public static final class Data implements android.provider.BaseColumns, android.provider.ContactsContract.DataColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "data";
             protected Data() {}
         }
         public static final class Entity implements android.provider.BaseColumns, android.provider.ContactsContract.ContactsColumns, android.provider.ContactsContract.ContactNameColumns, android.provider.ContactsContract.RawContactsColumns, android.provider.ContactsContract.BaseSyncColumns, android.provider.ContactsContract.SyncColumns, android.provider.ContactsContract.DataColumns, android.provider.ContactsContract.StatusColumns, android.provider.ContactsContract.ContactOptionsColumns, android.provider.ContactsContract.ContactStatusColumns, android.provider.ContactsContract.DataUsageStatColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "entities";
             public static final java.lang.String DATA_ID = "data_id";
             public static final java.lang.String RAW_CONTACT_ID = "raw_contact_id";
             protected Entity() {}
         }
         public static final class Photo implements android.provider.BaseColumns, android.provider.ContactsContract.DataColumnsWithJoins {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "photo";
             public static final java.lang.String DISPLAY_PHOTO = "display_photo";
             public static final java.lang.String PHOTO = "data15";
@@ -401,7 +401,7 @@ public final class ContactsContract {
             protected Photo() {}
         }
         public static final class StreamItems implements android.provider.ContactsContract.StreamItemsColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "stream_items";
             protected StreamItems() {}
         }
@@ -421,7 +421,7 @@ public final class ContactsContract {
         java.lang.String PHOTO_URI = "photo_uri";
     }
     public static final class Data implements android.provider.ContactsContract.DataColumnsWithJoins, android.provider.ContactsContract.ContactCounts {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/data";
         public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://com.android.contacts/data");
         public static final java.lang.String VISIBLE_CONTACTS_ONLY = "visible_contacts_only";
@@ -465,7 +465,7 @@ public final class ContactsContract {
     public interface DataColumnsWithJoins extends android.provider.BaseColumns, android.provider.ContactsContract.DataColumns, android.provider.ContactsContract.StatusColumns, android.provider.ContactsContract.RawContactsColumns, android.provider.ContactsContract.ContactsColumns, android.provider.ContactsContract.ContactNameColumns, android.provider.ContactsContract.ContactOptionsColumns, android.provider.ContactsContract.ContactStatusColumns, android.provider.ContactsContract.DataUsageStatColumns {
     }
     public static final class DataUsageFeedback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.net.Uri DELETE_USAGE_URI;
         public static android.net.Uri FEEDBACK_URI;
         public static final java.lang.String USAGE_TYPE = "type";
@@ -483,7 +483,7 @@ public final class ContactsContract {
         java.lang.String TIMES_USED = "times_used";
     }
     public static final class DeletedContacts implements android.provider.ContactsContract.DeletedContactsColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_URI;
         public static final long DAYS_KEPT_MILLISECONDS = 2592000000L;
         protected DeletedContacts() {}
@@ -493,7 +493,7 @@ public final class ContactsContract {
         java.lang.String CONTACT_ID = "contact_id";
     }
     public static final class Directory implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String ACCOUNT_NAME = "accountName";
         public static final java.lang.String ACCOUNT_TYPE = "accountType";
         public static final java.lang.String CALLER_PACKAGE_PARAM_KEY = "callerPackage";
@@ -540,7 +540,7 @@ public final class ContactsContract {
         int UNDEFINED = 0;
     }
     public static final class DisplayPhoto {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_MAX_DIMENSIONS_URI;
         public static android.net.Uri CONTENT_URI;
         public static final java.lang.String DISPLAY_MAX_DIM = "display_max_dim";
@@ -556,7 +556,7 @@ public final class ContactsContract {
         int WESTERN = 1;
     }
     public static final class Groups implements android.provider.BaseColumns, android.provider.ContactsContract.GroupsColumns, android.provider.ContactsContract.SyncColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/group";
         public static android.net.Uri CONTENT_SUMMARY_URI = android.net.Uri.parse("content://com.android.contacts/groups_summary");
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/group";
@@ -584,7 +584,7 @@ public final class ContactsContract {
         java.lang.String TITLE_RES = "title_res";
     }
     public static final class Intents {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String ACTION_GET_MULTIPLE_PHONES = "com.android.contacts.action.GET_MULTIPLE_PHONES";
         public static final java.lang.String ACTION_PROFILE_CHANGED = "android.provider.Contacts.PROFILE_CHANGED";
         public static final java.lang.String ACTION_VOICE_SEND_MESSAGE_TO_CONTACTS = "android.provider.action.VOICE_SEND_MESSAGE_TO_CONTACTS";
@@ -611,7 +611,7 @@ public final class ContactsContract {
         public static final java.lang.String SHOW_OR_CREATE_CONTACT = "com.android.contacts.action.SHOW_OR_CREATE_CONTACT";
         public Intents() {}
         public static final class Insert {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String ACTION = "android.intent.action.INSERT";
             public static final java.lang.String COMPANY = "company";
             public static final java.lang.String DATA = "data";
@@ -646,7 +646,7 @@ public final class ContactsContract {
         }
     }
     public static final class MetadataSync implements android.provider.BaseColumns, android.provider.ContactsContract.MetadataSyncColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/contact_metadata";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/contact_metadata";
         public static android.net.Uri CONTENT_URI;
@@ -663,7 +663,7 @@ public final class ContactsContract {
         java.lang.String RAW_CONTACT_BACKUP_ID = "raw_contact_backup_id";
     }
     public static final class MetadataSyncState implements android.provider.BaseColumns, android.provider.ContactsContract.MetadataSyncStateColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/contact_metadata_sync_state";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/contact_metadata_sync_state";
         public static android.net.Uri CONTENT_URI;
@@ -676,7 +676,7 @@ public final class ContactsContract {
         java.lang.String STATE = "state";
     }
     public static final class PhoneLookup implements android.provider.BaseColumns, android.provider.ContactsContract.PhoneLookupColumns, android.provider.ContactsContract.ContactsColumns, android.provider.ContactsContract.ContactOptionsColumns, android.provider.ContactsContract.ContactNameColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_FILTER_URI = android.net.Uri.parse("content://com.android.contacts/phone_lookup");
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/phone_lookup";
         public static android.net.Uri ENTERPRISE_CONTENT_FILTER_URI = android.net.Uri.parse("content://com.android.contacts/phone_lookup_enterprise");
@@ -698,7 +698,7 @@ public final class ContactsContract {
         int UNDEFINED = 0;
     }
     public static final class PhotoFiles implements android.provider.BaseColumns, android.provider.ContactsContract.PhotoFilesColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected PhotoFiles() {}
     }
     public interface PhotoFilesColumns {
@@ -707,7 +707,7 @@ public final class ContactsContract {
         java.lang.String WIDTH = "width";
     }
     public static final class PinnedPositions {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int DEMOTED = -1;
         public static final java.lang.String UNDEMOTE_METHOD = "undemote";
         public static int UNPINNED;
@@ -716,7 +716,7 @@ public final class ContactsContract {
         public static void undemote(android.content.ContentResolver p0, long p1) {}
     }
     public static final class Presence extends android.provider.ContactsContract.StatusUpdates {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Presence() { super(); }
     }
     public interface PresenceColumns {
@@ -727,7 +727,7 @@ public final class ContactsContract {
         java.lang.String PROTOCOL = "protocol";
     }
     public static final class Profile implements android.provider.BaseColumns, android.provider.ContactsContract.ContactsColumns, android.provider.ContactsContract.ContactOptionsColumns, android.provider.ContactsContract.ContactNameColumns, android.provider.ContactsContract.ContactStatusColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.net.Uri CONTENT_RAW_CONTACTS_URI = android.net.Uri.parse("content://com.android.contacts/profile/raw_contacts");
         public static android.net.Uri CONTENT_URI = android.net.Uri.parse("content://com.android.contacts/profile");
         public static android.net.Uri CONTENT_VCARD_URI = android.net.Uri.parse("content://com.android.contacts/profile/as_vcard");
@@ -735,7 +735,7 @@ public final class ContactsContract {
         protected Profile() {}
     }
     public static final class ProfileSyncState implements android.provider.SyncStateContract.Columns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_DIRECTORY = "syncstate";
         public static android.net.Uri CONTENT_URI;
         public static byte[] get(android.content.ContentProviderClient p0, android.accounts.Account p1) { return null; }
@@ -745,7 +745,7 @@ public final class ContactsContract {
         protected ProfileSyncState() {}
     }
     public static final class ProviderStatus {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/provider_status";
         public static android.net.Uri CONTENT_URI;
         public static final java.lang.String DATABASE_CREATION_TIMESTAMP = "database_creation_timestamp";
@@ -756,7 +756,7 @@ public final class ContactsContract {
         protected ProviderStatus() {}
     }
     public static final class QuickContact {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String ACTION_QUICK_CONTACT = "android.provider.action.QUICK_CONTACT";
         public static final java.lang.String EXTRA_EXCLUDE_MIMES = "android.provider.extra.EXCLUDE_MIMES";
         public static final java.lang.String EXTRA_MODE = "android.provider.extra.MODE";
@@ -776,7 +776,7 @@ public final class ContactsContract {
         public static void showQuickContact(android.content.Context p0, android.view.View p1, android.net.Uri p2, java.lang.String[] p3, java.lang.String p4) {}
     }
     public static final class RawContacts implements android.provider.BaseColumns, android.provider.ContactsContract.RawContactsColumns, android.provider.ContactsContract.ContactOptionsColumns, android.provider.ContactsContract.ContactNameColumns, android.provider.ContactsContract.SyncColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int AGGREGATION_MODE_DEFAULT = 0;
         public static final int AGGREGATION_MODE_DISABLED = 3;
         public static final int AGGREGATION_MODE_IMMEDIATE = 1;
@@ -790,12 +790,12 @@ public final class ContactsContract {
         public static android.content.EntityIterator newEntityIterator(android.database.Cursor p0) { return null; }
         protected RawContacts() {}
         public static final class Data implements android.provider.BaseColumns, android.provider.ContactsContract.DataColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "data";
             protected Data() {}
         }
         public static final class DefaultAccount {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String ACTION_MOVE_CONTACTS_TO_DEFAULT_ACCOUNT = "android.provider.action.MOVE_CONTACTS_TO_DEFAULT_ACCOUNT";
             public static final java.lang.String GET_NUMBER_OF_MOVABLE_LOCAL_CONTACTS_METHOD = "getNumberOfMovableLocalContacts";
             public static final java.lang.String GET_NUMBER_OF_MOVABLE_SIM_CONTACTS_METHOD = "getNumberOfMovableSimContacts";
@@ -817,7 +817,7 @@ public final class ContactsContract {
             public static void setDefaultAccountForNewContacts(android.content.ContentResolver p0, android.provider.ContactsContract.RawContacts.DefaultAccount.DefaultAccountAndState p1) {}
             protected DefaultAccount() {}
             public static final class DefaultAccountAndState {
-                private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+                private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
                 public static final int DEFAULT_ACCOUNT_STATE_CLOUD = 3;
                 public static final int DEFAULT_ACCOUNT_STATE_LOCAL = 2;
                 public static final int DEFAULT_ACCOUNT_STATE_NOT_SET = 1;
@@ -827,24 +827,24 @@ public final class ContactsContract {
                 public static android.provider.ContactsContract.RawContacts.DefaultAccount.DefaultAccountAndState ofLocal() { return new DefaultAccountAndState(); }
                 public static android.provider.ContactsContract.RawContacts.DefaultAccount.DefaultAccountAndState ofNotSet() { return new DefaultAccountAndState(); }
                 public static android.provider.ContactsContract.RawContacts.DefaultAccount.DefaultAccountAndState ofSim(android.accounts.Account p0) { return new DefaultAccountAndState(); }
-                public android.accounts.Account getAccount() { return (android.accounts.Account) meglerProps.get("Account"); }
-                public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
+                public android.accounts.Account getAccount() { return (android.accounts.Account) megletProps.get("Account"); }
+                public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
                 protected DefaultAccountAndState() {}
             }
         }
         public static final class DisplayPhoto {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "display_photo";
             protected DisplayPhoto() {}
         }
         public static final class Entity implements android.provider.BaseColumns, android.provider.ContactsContract.DataColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "entity";
             public static final java.lang.String DATA_ID = "data_id";
             protected Entity() {}
         }
         public static final class StreamItems implements android.provider.BaseColumns, android.provider.ContactsContract.StreamItemsColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "stream_items";
             protected StreamItems() {}
         }
@@ -861,7 +861,7 @@ public final class ContactsContract {
         java.lang.String RAW_CONTACT_IS_USER_PROFILE = "raw_contact_is_user_profile";
     }
     public static final class RawContactsEntity implements android.provider.BaseColumns, android.provider.ContactsContract.DataColumns, android.provider.ContactsContract.RawContactsColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/raw_contact_entity";
         public static android.net.Uri CONTENT_URI;
         public static android.net.Uri CORP_CONTENT_URI;
@@ -872,14 +872,14 @@ public final class ContactsContract {
         protected RawContactsEntity() {}
     }
     public static class SearchSnippets {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String DEFERRED_SNIPPETING_KEY = "deferred_snippeting";
         public static final java.lang.String SNIPPET = "snippet";
         public static final java.lang.String SNIPPET_ARGS_PARAM_KEY = "snippet_args";
         public SearchSnippets() {}
     }
     public static final class Settings implements android.provider.ContactsContract.SettingsColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String ACTION_SET_DEFAULT_ACCOUNT = "android.provider.action.SET_DEFAULT_ACCOUNT";
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/setting";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/setting";
@@ -898,7 +898,7 @@ public final class ContactsContract {
         public static void setDefaultAccount(android.content.ContentResolver p0, android.accounts.Account p1) {}
         protected Settings() {}
         public static final class AccountAttributes {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final long ATTRIBUTE_DATA_ORIGIN_CLOUD = 4L;
             public static final long ATTRIBUTE_DATA_ORIGIN_LOCAL = 1L;
             public static final long ATTRIBUTE_DATA_ORIGIN_SIM = 2L;
@@ -922,7 +922,7 @@ public final class ContactsContract {
         java.lang.String UNGROUPED_WITH_PHONES = "summ_phones";
     }
     public static final class SimAccount implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ADN_EF_TYPE = 1;
         public static android.os.Parcelable.Creator CREATOR;
         public static final int FDN_EF_TYPE = 2;
@@ -931,15 +931,15 @@ public final class ContactsContract {
         public SimAccount(java.lang.String p0, java.lang.String p1, int p2, int p3) {}
         public static java.util.Set getValidEfTypes() { return new java.util.HashSet(); }
         public int describeContents() { return 0; }
-        public java.lang.String getAccountName() { return (java.lang.String) meglerProps.get("AccountName"); }
-        public java.lang.String getAccountType() { return (java.lang.String) meglerProps.get("AccountType"); }
-        public int getEfType() { return (meglerProps.get("EfType") instanceof Integer ? (Integer) meglerProps.get("EfType") : 0); }
-        public int getSimSlotIndex() { return (meglerProps.get("SimSlotIndex") instanceof Integer ? (Integer) meglerProps.get("SimSlotIndex") : 0); }
+        public java.lang.String getAccountName() { return (java.lang.String) megletProps.get("AccountName"); }
+        public java.lang.String getAccountType() { return (java.lang.String) megletProps.get("AccountType"); }
+        public int getEfType() { return (megletProps.get("EfType") instanceof Integer ? (Integer) megletProps.get("EfType") : 0); }
+        public int getSimSlotIndex() { return (megletProps.get("SimSlotIndex") instanceof Integer ? (Integer) megletProps.get("SimSlotIndex") : 0); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         SimAccount() { this((java.lang.String) null, (java.lang.String) null, (int) 0, (int) 0); }
     }
     public static final class SimContacts {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String ACTION_SIM_ACCOUNTS_CHANGED = "android.provider.action.SIM_ACCOUNTS_CHANGED";
         public static final java.lang.String ADD_SIM_ACCOUNT_METHOD = "addSimAccount";
         public static final java.lang.String KEY_ACCOUNT_NAME = "key_sim_account_name";
@@ -975,7 +975,7 @@ public final class ContactsContract {
         java.lang.String STATUS_TIMESTAMP = "status_ts";
     }
     public static class StatusUpdates implements android.provider.ContactsContract.StatusColumns, android.provider.ContactsContract.PresenceColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/status-update";
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/status-update";
         public static android.net.Uri CONTENT_URI;
@@ -985,7 +985,7 @@ public final class ContactsContract {
         protected StatusUpdates() {}
     }
     public static final class StreamItemPhotos implements android.provider.BaseColumns, android.provider.ContactsContract.StreamItemPhotosColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String PHOTO = "photo";
         protected StreamItemPhotos() {}
     }
@@ -1000,7 +1000,7 @@ public final class ContactsContract {
         java.lang.String SYNC4 = "stream_item_photo_sync4";
     }
     public static final class StreamItems implements android.provider.BaseColumns, android.provider.ContactsContract.StreamItemsColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/stream_item";
         public static android.net.Uri CONTENT_LIMIT_URI;
         public static android.net.Uri CONTENT_PHOTO_URI;
@@ -1009,7 +1009,7 @@ public final class ContactsContract {
         public static final java.lang.String MAX_ITEMS = "max_items";
         protected StreamItems() {}
         public static final class StreamItemPhotos implements android.provider.BaseColumns, android.provider.ContactsContract.StreamItemPhotosColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_DIRECTORY = "photo";
             public static final java.lang.String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/stream_item_photo";
             public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/stream_item_photo";
@@ -1043,7 +1043,7 @@ public final class ContactsContract {
         java.lang.String VERSION = "version";
     }
     public static final class SyncState implements android.provider.SyncStateContract.Columns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_DIRECTORY = "syncstate";
         public static android.net.Uri CONTENT_URI;
         public static byte[] get(android.content.ContentProviderClient p0, android.accounts.Account p1) { return null; }

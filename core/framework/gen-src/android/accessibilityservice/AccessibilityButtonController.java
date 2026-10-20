@@ -3,14 +3,14 @@ package android.accessibilityservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AccessibilityButtonController {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public boolean isAccessibilityButtonAvailable() { return (meglerProps.get("AccessibilityButtonAvailable") instanceof Boolean ? (Boolean) meglerProps.get("AccessibilityButtonAvailable") : false); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public boolean isAccessibilityButtonAvailable() { return (megletProps.get("AccessibilityButtonAvailable") instanceof Boolean ? (Boolean) megletProps.get("AccessibilityButtonAvailable") : false); }
     public void registerAccessibilityButtonCallback(android.accessibilityservice.AccessibilityButtonController.AccessibilityButtonCallback p0) {}
     public void registerAccessibilityButtonCallback(android.accessibilityservice.AccessibilityButtonController.AccessibilityButtonCallback p0, android.os.Handler p1) {}
     public void unregisterAccessibilityButtonCallback(android.accessibilityservice.AccessibilityButtonController.AccessibilityButtonCallback p0) {}
     protected AccessibilityButtonController() {}
     public static abstract class AccessibilityButtonCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public AccessibilityButtonCallback() {}
         public void onAvailabilityChanged(android.accessibilityservice.AccessibilityButtonController p0, boolean p1) {}
         public void onClicked(android.accessibilityservice.AccessibilityButtonController p0) {}

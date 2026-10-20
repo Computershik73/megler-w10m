@@ -3,68 +3,68 @@ package android.net.wifi.hotspot2.pps;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Credential implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public Credential() {}
     public Credential(android.net.wifi.hotspot2.pps.Credential p0) {}
     public static boolean isX509CertificateEquals(java.security.cert.X509Certificate p0, java.security.cert.X509Certificate p1) { return false; }
     public int describeContents() { return 0; }
-    public java.security.cert.X509Certificate getCaCertificate() { return (java.security.cert.X509Certificate) meglerProps.get("CaCertificate"); }
-    public java.security.cert.X509Certificate[] getCaCertificates() { return (java.security.cert.X509Certificate[]) meglerProps.get("CaCertificates"); }
-    public android.net.wifi.hotspot2.pps.Credential.CertificateCredential getCertCredential() { return (android.net.wifi.hotspot2.pps.Credential.CertificateCredential) meglerProps.get("CertCredential"); }
-    public boolean getCheckAaaServerCertStatus() { return (meglerProps.get("CheckAaaServerCertStatus") instanceof Boolean ? (Boolean) meglerProps.get("CheckAaaServerCertStatus") : false); }
-    public java.security.cert.X509Certificate[] getClientCertificateChain() { return (java.security.cert.X509Certificate[]) meglerProps.get("ClientCertificateChain"); }
-    public java.security.PrivateKey getClientPrivateKey() { return (java.security.PrivateKey) meglerProps.get("ClientPrivateKey"); }
-    public long getCreationTimeInMillis() { return (meglerProps.get("CreationTimeInMillis") instanceof Long ? (Long) meglerProps.get("CreationTimeInMillis") : 0L); }
-    public long getExpirationTimeInMillis() { return (meglerProps.get("ExpirationTimeInMillis") instanceof Long ? (Long) meglerProps.get("ExpirationTimeInMillis") : 0L); }
-    public int getMinimumTlsVersion() { return (meglerProps.get("MinimumTlsVersion") instanceof Integer ? (Integer) meglerProps.get("MinimumTlsVersion") : 0); }
-    public java.lang.String getRealm() { return (java.lang.String) meglerProps.get("Realm"); }
-    public android.net.wifi.hotspot2.pps.Credential.SimCredential getSimCredential() { return (android.net.wifi.hotspot2.pps.Credential.SimCredential) meglerProps.get("SimCredential"); }
-    public int getUniqueId() { return (meglerProps.get("UniqueId") instanceof Integer ? (Integer) meglerProps.get("UniqueId") : 0); }
-    public android.net.wifi.hotspot2.pps.Credential.UserCredential getUserCredential() { return (android.net.wifi.hotspot2.pps.Credential.UserCredential) meglerProps.get("UserCredential"); }
-    public void setCaCertificate(java.security.cert.X509Certificate p0) { meglerProps.put("CaCertificate", p0); }
-    public void setCaCertificates(java.security.cert.X509Certificate[] p0) { meglerProps.put("CaCertificates", p0); }
-    public void setCertCredential(android.net.wifi.hotspot2.pps.Credential.CertificateCredential p0) { meglerProps.put("CertCredential", p0); }
-    public void setCheckAaaServerCertStatus(boolean p0) { meglerProps.put("CheckAaaServerCertStatus", Boolean.valueOf(p0)); }
-    public void setClientCertificateChain(java.security.cert.X509Certificate[] p0) { meglerProps.put("ClientCertificateChain", p0); }
-    public void setClientPrivateKey(java.security.PrivateKey p0) { meglerProps.put("ClientPrivateKey", p0); }
-    public void setCreationTimeInMillis(long p0) { meglerProps.put("CreationTimeInMillis", Long.valueOf(p0)); }
-    public void setExpirationTimeInMillis(long p0) { meglerProps.put("ExpirationTimeInMillis", Long.valueOf(p0)); }
-    public void setMinimumTlsVersion(int p0) { meglerProps.put("MinimumTlsVersion", Integer.valueOf(p0)); }
-    public void setRealm(java.lang.String p0) { meglerProps.put("Realm", p0); }
-    public void setSimCredential(android.net.wifi.hotspot2.pps.Credential.SimCredential p0) { meglerProps.put("SimCredential", p0); }
-    public void setUserCredential(android.net.wifi.hotspot2.pps.Credential.UserCredential p0) { meglerProps.put("UserCredential", p0); }
+    public java.security.cert.X509Certificate getCaCertificate() { return (java.security.cert.X509Certificate) megletProps.get("CaCertificate"); }
+    public java.security.cert.X509Certificate[] getCaCertificates() { return (java.security.cert.X509Certificate[]) megletProps.get("CaCertificates"); }
+    public android.net.wifi.hotspot2.pps.Credential.CertificateCredential getCertCredential() { return (android.net.wifi.hotspot2.pps.Credential.CertificateCredential) megletProps.get("CertCredential"); }
+    public boolean getCheckAaaServerCertStatus() { return (megletProps.get("CheckAaaServerCertStatus") instanceof Boolean ? (Boolean) megletProps.get("CheckAaaServerCertStatus") : false); }
+    public java.security.cert.X509Certificate[] getClientCertificateChain() { return (java.security.cert.X509Certificate[]) megletProps.get("ClientCertificateChain"); }
+    public java.security.PrivateKey getClientPrivateKey() { return (java.security.PrivateKey) megletProps.get("ClientPrivateKey"); }
+    public long getCreationTimeInMillis() { return (megletProps.get("CreationTimeInMillis") instanceof Long ? (Long) megletProps.get("CreationTimeInMillis") : 0L); }
+    public long getExpirationTimeInMillis() { return (megletProps.get("ExpirationTimeInMillis") instanceof Long ? (Long) megletProps.get("ExpirationTimeInMillis") : 0L); }
+    public int getMinimumTlsVersion() { return (megletProps.get("MinimumTlsVersion") instanceof Integer ? (Integer) megletProps.get("MinimumTlsVersion") : 0); }
+    public java.lang.String getRealm() { return (java.lang.String) megletProps.get("Realm"); }
+    public android.net.wifi.hotspot2.pps.Credential.SimCredential getSimCredential() { return (android.net.wifi.hotspot2.pps.Credential.SimCredential) megletProps.get("SimCredential"); }
+    public int getUniqueId() { return (megletProps.get("UniqueId") instanceof Integer ? (Integer) megletProps.get("UniqueId") : 0); }
+    public android.net.wifi.hotspot2.pps.Credential.UserCredential getUserCredential() { return (android.net.wifi.hotspot2.pps.Credential.UserCredential) megletProps.get("UserCredential"); }
+    public void setCaCertificate(java.security.cert.X509Certificate p0) { megletProps.put("CaCertificate", p0); }
+    public void setCaCertificates(java.security.cert.X509Certificate[] p0) { megletProps.put("CaCertificates", p0); }
+    public void setCertCredential(android.net.wifi.hotspot2.pps.Credential.CertificateCredential p0) { megletProps.put("CertCredential", p0); }
+    public void setCheckAaaServerCertStatus(boolean p0) { megletProps.put("CheckAaaServerCertStatus", Boolean.valueOf(p0)); }
+    public void setClientCertificateChain(java.security.cert.X509Certificate[] p0) { megletProps.put("ClientCertificateChain", p0); }
+    public void setClientPrivateKey(java.security.PrivateKey p0) { megletProps.put("ClientPrivateKey", p0); }
+    public void setCreationTimeInMillis(long p0) { megletProps.put("CreationTimeInMillis", Long.valueOf(p0)); }
+    public void setExpirationTimeInMillis(long p0) { megletProps.put("ExpirationTimeInMillis", Long.valueOf(p0)); }
+    public void setMinimumTlsVersion(int p0) { megletProps.put("MinimumTlsVersion", Integer.valueOf(p0)); }
+    public void setRealm(java.lang.String p0) { megletProps.put("Realm", p0); }
+    public void setSimCredential(android.net.wifi.hotspot2.pps.Credential.SimCredential p0) { megletProps.put("SimCredential", p0); }
+    public void setUserCredential(android.net.wifi.hotspot2.pps.Credential.UserCredential p0) { megletProps.put("UserCredential", p0); }
     public boolean validate() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class CertificateCredential implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CERT_TYPE_X509V3 = "x509v3";
         public static android.os.Parcelable.Creator CREATOR;
         public CertificateCredential() {}
         public CertificateCredential(android.net.wifi.hotspot2.pps.Credential.CertificateCredential p0) {}
         public int describeContents() { return 0; }
-        public byte[] getCertSha256Fingerprint() { return (byte[]) meglerProps.get("CertSha256Fingerprint"); }
-        public java.lang.String getCertType() { return (java.lang.String) meglerProps.get("CertType"); }
-        public void setCertSha256Fingerprint(byte[] p0) { meglerProps.put("CertSha256Fingerprint", p0); }
-        public void setCertType(java.lang.String p0) { meglerProps.put("CertType", p0); }
+        public byte[] getCertSha256Fingerprint() { return (byte[]) megletProps.get("CertSha256Fingerprint"); }
+        public java.lang.String getCertType() { return (java.lang.String) megletProps.get("CertType"); }
+        public void setCertSha256Fingerprint(byte[] p0) { megletProps.put("CertSha256Fingerprint", p0); }
+        public void setCertType(java.lang.String p0) { megletProps.put("CertType", p0); }
         public boolean validate() { return false; }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
     }
     public static final class SimCredential implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public SimCredential() {}
         public SimCredential(android.net.wifi.hotspot2.pps.Credential.SimCredential p0) {}
         public int describeContents() { return 0; }
-        public int getEapType() { return (meglerProps.get("EapType") instanceof Integer ? (Integer) meglerProps.get("EapType") : 0); }
-        public java.lang.String getImsi() { return (java.lang.String) meglerProps.get("Imsi"); }
-        public void setEapType(int p0) { meglerProps.put("EapType", Integer.valueOf(p0)); }
-        public void setImsi(java.lang.String p0) { meglerProps.put("Imsi", p0); }
+        public int getEapType() { return (megletProps.get("EapType") instanceof Integer ? (Integer) megletProps.get("EapType") : 0); }
+        public java.lang.String getImsi() { return (java.lang.String) megletProps.get("Imsi"); }
+        public void setEapType(int p0) { megletProps.put("EapType", Integer.valueOf(p0)); }
+        public void setImsi(java.lang.String p0) { megletProps.put("Imsi", p0); }
         public boolean validate() { return false; }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
     }
     public static final class UserCredential implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String AUTH_METHOD_MSCHAP = "MS-CHAP";
         public static final java.lang.String AUTH_METHOD_MSCHAPV2 = "MS-CHAP-V2";
         public static final java.lang.String AUTH_METHOD_PAP = "PAP";
@@ -72,21 +72,21 @@ public final class Credential implements android.os.Parcelable {
         public UserCredential() {}
         public UserCredential(android.net.wifi.hotspot2.pps.Credential.UserCredential p0) {}
         public int describeContents() { return 0; }
-        public boolean getAbleToShare() { return (meglerProps.get("AbleToShare") instanceof Boolean ? (Boolean) meglerProps.get("AbleToShare") : false); }
-        public int getEapType() { return (meglerProps.get("EapType") instanceof Integer ? (Integer) meglerProps.get("EapType") : 0); }
-        public boolean getMachineManaged() { return (meglerProps.get("MachineManaged") instanceof Boolean ? (Boolean) meglerProps.get("MachineManaged") : false); }
-        public java.lang.String getNonEapInnerMethod() { return (java.lang.String) meglerProps.get("NonEapInnerMethod"); }
-        public java.lang.String getPassword() { return (java.lang.String) meglerProps.get("Password"); }
-        public java.lang.String getSoftTokenApp() { return (java.lang.String) meglerProps.get("SoftTokenApp"); }
-        public int getUniqueId() { return (meglerProps.get("UniqueId") instanceof Integer ? (Integer) meglerProps.get("UniqueId") : 0); }
-        public java.lang.String getUsername() { return (java.lang.String) meglerProps.get("Username"); }
-        public void setAbleToShare(boolean p0) { meglerProps.put("AbleToShare", Boolean.valueOf(p0)); }
-        public void setEapType(int p0) { meglerProps.put("EapType", Integer.valueOf(p0)); }
-        public void setMachineManaged(boolean p0) { meglerProps.put("MachineManaged", Boolean.valueOf(p0)); }
-        public void setNonEapInnerMethod(java.lang.String p0) { meglerProps.put("NonEapInnerMethod", p0); }
-        public void setPassword(java.lang.String p0) { meglerProps.put("Password", p0); }
-        public void setSoftTokenApp(java.lang.String p0) { meglerProps.put("SoftTokenApp", p0); }
-        public void setUsername(java.lang.String p0) { meglerProps.put("Username", p0); }
+        public boolean getAbleToShare() { return (megletProps.get("AbleToShare") instanceof Boolean ? (Boolean) megletProps.get("AbleToShare") : false); }
+        public int getEapType() { return (megletProps.get("EapType") instanceof Integer ? (Integer) megletProps.get("EapType") : 0); }
+        public boolean getMachineManaged() { return (megletProps.get("MachineManaged") instanceof Boolean ? (Boolean) megletProps.get("MachineManaged") : false); }
+        public java.lang.String getNonEapInnerMethod() { return (java.lang.String) megletProps.get("NonEapInnerMethod"); }
+        public java.lang.String getPassword() { return (java.lang.String) megletProps.get("Password"); }
+        public java.lang.String getSoftTokenApp() { return (java.lang.String) megletProps.get("SoftTokenApp"); }
+        public int getUniqueId() { return (megletProps.get("UniqueId") instanceof Integer ? (Integer) megletProps.get("UniqueId") : 0); }
+        public java.lang.String getUsername() { return (java.lang.String) megletProps.get("Username"); }
+        public void setAbleToShare(boolean p0) { megletProps.put("AbleToShare", Boolean.valueOf(p0)); }
+        public void setEapType(int p0) { megletProps.put("EapType", Integer.valueOf(p0)); }
+        public void setMachineManaged(boolean p0) { megletProps.put("MachineManaged", Boolean.valueOf(p0)); }
+        public void setNonEapInnerMethod(java.lang.String p0) { megletProps.put("NonEapInnerMethod", p0); }
+        public void setPassword(java.lang.String p0) { megletProps.put("Password", p0); }
+        public void setSoftTokenApp(java.lang.String p0) { megletProps.put("SoftTokenApp", p0); }
+        public void setUsername(java.lang.String p0) { megletProps.put("Username", p0); }
         public boolean validate() { return false; }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
     }

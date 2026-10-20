@@ -3,14 +3,14 @@ package android.preference;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RingtonePreference extends android.preference.Preference implements android.preference.PreferenceManager.OnActivityResultListener {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public RingtonePreference(android.content.Context p0) { super(p0); }
     public RingtonePreference(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public RingtonePreference(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
     public RingtonePreference(android.content.Context p0, android.util.AttributeSet p1, int p2, int p3) { super(p0, p1, p2, p3); }
-    public int getRingtoneType() { return (meglerProps.get("RingtoneType") instanceof Integer ? (Integer) meglerProps.get("RingtoneType") : 0); }
-    public boolean getShowDefault() { return (meglerProps.get("ShowDefault") instanceof Boolean ? (Boolean) meglerProps.get("ShowDefault") : false); }
-    public boolean getShowSilent() { return (meglerProps.get("ShowSilent") instanceof Boolean ? (Boolean) meglerProps.get("ShowSilent") : false); }
+    public int getRingtoneType() { return (megletProps.get("RingtoneType") instanceof Integer ? (Integer) megletProps.get("RingtoneType") : 0); }
+    public boolean getShowDefault() { return (megletProps.get("ShowDefault") instanceof Boolean ? (Boolean) megletProps.get("ShowDefault") : false); }
+    public boolean getShowSilent() { return (megletProps.get("ShowSilent") instanceof Boolean ? (Boolean) megletProps.get("ShowSilent") : false); }
     public boolean onActivityResult(int p0, int p1, android.content.Intent p2) { return false; }
     public void onAttachedToHierarchy(android.preference.PreferenceManager p0) {}
     public void onClick() {}
@@ -19,8 +19,8 @@ public class RingtonePreference extends android.preference.Preference implements
     protected android.net.Uri onRestoreRingtone() { return null; }
     protected void onSaveRingtone(android.net.Uri p0) {}
     public void onSetInitialValue(boolean p0, java.lang.Object p1) {}
-    public void setRingtoneType(int p0) { meglerProps.put("RingtoneType", Integer.valueOf(p0)); }
-    public void setShowDefault(boolean p0) { meglerProps.put("ShowDefault", Boolean.valueOf(p0)); }
-    public void setShowSilent(boolean p0) { meglerProps.put("ShowSilent", Boolean.valueOf(p0)); }
+    public void setRingtoneType(int p0) { megletProps.put("RingtoneType", Integer.valueOf(p0)); }
+    public void setShowDefault(boolean p0) { megletProps.put("ShowDefault", Boolean.valueOf(p0)); }
+    public void setShowSilent(boolean p0) { megletProps.put("ShowSilent", Boolean.valueOf(p0)); }
     RingtonePreference() { this((android.content.Context) null); }
 }

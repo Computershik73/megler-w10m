@@ -3,15 +3,15 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PowerMonitor implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int POWER_MONITOR_TYPE_CONSUMER = 0;
     public static final int POWER_MONITOR_TYPE_MEASUREMENT = 1;
     public int index;
     public PowerMonitor(int p0, int p1, java.lang.String p2) {}
     public int describeContents() { return 0; }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PowerMonitor() { this((int) 0, (int) 0, (java.lang.String) null); }
 }

@@ -3,13 +3,13 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SectionRequest extends android.media.tv.BroadcastInfoRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public SectionRequest(int p0, int p1, int p2, int p3, int p4) { super(); }
     public int describeContents() { return 0; }
-    public int getTableId() { return (meglerProps.get("TableId") instanceof Integer ? (Integer) meglerProps.get("TableId") : 0); }
-    public int getTsPid() { return (meglerProps.get("TsPid") instanceof Integer ? (Integer) meglerProps.get("TsPid") : 0); }
-    public int getVersion() { return (meglerProps.get("Version") instanceof Integer ? (Integer) meglerProps.get("Version") : 0); }
+    public int getTableId() { return (megletProps.get("TableId") instanceof Integer ? (Integer) megletProps.get("TableId") : 0); }
+    public int getTsPid() { return (megletProps.get("TsPid") instanceof Integer ? (Integer) megletProps.get("TsPid") : 0); }
+    public int getVersion() { return (megletProps.get("Version") instanceof Integer ? (Integer) megletProps.get("Version") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SectionRequest() { this((int) 0, (int) 0, (int) 0, (int) 0, (int) 0); }
 }

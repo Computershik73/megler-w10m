@@ -3,7 +3,7 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PackagePolicy implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int PACKAGE_POLICY_ALLOWLIST = 3;
     public static final int PACKAGE_POLICY_ALLOWLIST_AND_SYSTEM = 2;
@@ -11,8 +11,8 @@ public final class PackagePolicy implements android.os.Parcelable {
     public PackagePolicy(int p0) {}
     public PackagePolicy(int p0, java.util.Set p1) {}
     public int describeContents() { return 0; }
-    public java.util.Set getPackageNames() { return (meglerProps.get("PackageNames") != null ? (java.util.Set) meglerProps.get("PackageNames") : new java.util.HashSet()); }
-    public int getPolicyType() { return (meglerProps.get("PolicyType") instanceof Integer ? (Integer) meglerProps.get("PolicyType") : 0); }
+    public java.util.Set getPackageNames() { return (megletProps.get("PackageNames") != null ? (java.util.Set) megletProps.get("PackageNames") : new java.util.HashSet()); }
+    public int getPolicyType() { return (megletProps.get("PolicyType") instanceof Integer ? (Integer) megletProps.get("PolicyType") : 0); }
     public boolean isPackageAllowed(java.lang.String p0, java.util.Set p1) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PackagePolicy() { this((int) 0); }

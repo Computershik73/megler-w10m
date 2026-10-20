@@ -3,7 +3,7 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MotionPredictor {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public MotionPredictor(android.content.Context p0) {}
     public MotionPredictor(boolean p0, int p1) {}
     public boolean isPredictionAvailable(int p0, int p1) { return false; }

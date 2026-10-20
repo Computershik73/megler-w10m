@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SearchManager implements android.content.DialogInterface.OnDismissListener, android.content.DialogInterface.OnCancelListener {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_KEY = "action_key";
     public static final java.lang.String ACTION_MSG = "action_msg";
     public static final java.lang.String APP_DATA = "app_data";
@@ -60,19 +60,19 @@ public class SearchManager implements android.content.DialogInterface.OnDismissL
     public static final java.lang.String SUGGEST_URI_PATH_SHORTCUT = "search_suggest_shortcut";
     public static final java.lang.String USER_QUERY = "user_query";
     public android.content.Intent getAssistIntent(boolean p0) { return null; }
-    public java.util.List getGlobalSearchActivities() { return (meglerProps.get("GlobalSearchActivities") != null ? (java.util.List) meglerProps.get("GlobalSearchActivities") : new java.util.ArrayList()); }
-    public android.content.ComponentName getGlobalSearchActivity() { return (android.content.ComponentName) meglerProps.get("GlobalSearchActivity"); }
+    public java.util.List getGlobalSearchActivities() { return (megletProps.get("GlobalSearchActivities") != null ? (java.util.List) megletProps.get("GlobalSearchActivities") : new java.util.ArrayList()); }
+    public android.content.ComponentName getGlobalSearchActivity() { return (android.content.ComponentName) megletProps.get("GlobalSearchActivity"); }
     public android.app.SearchableInfo getSearchableInfo(android.content.ComponentName p0) { return null; }
-    public java.util.List getSearchablesInGlobalSearch() { return (meglerProps.get("SearchablesInGlobalSearch") != null ? (java.util.List) meglerProps.get("SearchablesInGlobalSearch") : new java.util.ArrayList()); }
+    public java.util.List getSearchablesInGlobalSearch() { return (megletProps.get("SearchablesInGlobalSearch") != null ? (java.util.List) megletProps.get("SearchablesInGlobalSearch") : new java.util.ArrayList()); }
     public android.database.Cursor getSuggestions(android.app.SearchableInfo p0, java.lang.String p1) { return null; }
     public android.database.Cursor getSuggestions(android.app.SearchableInfo p0, java.lang.String p1, int p2) { return null; }
-    public android.content.ComponentName getWebSearchActivity() { return (android.content.ComponentName) meglerProps.get("WebSearchActivity"); }
-    public boolean isVisible() { return (meglerProps.get("Visible") instanceof Boolean ? (Boolean) meglerProps.get("Visible") : false); }
+    public android.content.ComponentName getWebSearchActivity() { return (android.content.ComponentName) megletProps.get("WebSearchActivity"); }
+    public boolean isVisible() { return (megletProps.get("Visible") instanceof Boolean ? (Boolean) megletProps.get("Visible") : false); }
     public void launchAssist(android.os.Bundle p0) {}
     public void onCancel(android.content.DialogInterface p0) {}
     public void onDismiss(android.content.DialogInterface p0) {}
-    public void setOnCancelListener(android.app.SearchManager.OnCancelListener p0) { meglerProps.put("OnCancelListener", p0); }
-    public void setOnDismissListener(android.app.SearchManager.OnDismissListener p0) { meglerProps.put("OnDismissListener", p0); }
+    public void setOnCancelListener(android.app.SearchManager.OnCancelListener p0) { megletProps.put("OnCancelListener", p0); }
+    public void setOnDismissListener(android.app.SearchManager.OnDismissListener p0) { megletProps.put("OnDismissListener", p0); }
     public void startSearch(java.lang.String p0, boolean p1, android.content.ComponentName p2, android.os.Bundle p3, boolean p4) {}
     public void startSearch(java.lang.String p0, boolean p1, android.content.ComponentName p2, android.os.Bundle p3, boolean p4, android.graphics.Rect p5) {}
     public void stopSearch() {}

@@ -1,4 +1,4 @@
-// megler-w10m overlay: android.app.compat.CompatChanges, Android's system API for whether a compatibility change is on for an
+// Overlay: android.app.compat.CompatChanges, Android's system API for whether a compatibility change is on for an
 // app, new to the original's framework (tools/build-framework.sh).
 //
 // Why. The WebView's code asks it, on Android 13 and later, whether WebSettings' simplified dark mode (change 214741472) is
@@ -21,7 +21,7 @@ public final class CompatChanges {
     };
 
     public static boolean isChangeEnabled(long changeId) {
-        for (long[] c : ENABLED_SINCE) if (c[0] == changeId) return megler.Manifest.targetSdk >= c[1];
+        for (long[] c : ENABLED_SINCE) if (c[0] == changeId) return meglet.Manifest.targetSdk >= c[1];
         return true;
     }
 

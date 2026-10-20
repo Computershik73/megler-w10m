@@ -3,7 +3,7 @@ package android.text.style;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TtsSpan implements android.text.ParcelableSpan {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ANIMACY_ANIMATE = "android.animate";
     public static final java.lang.String ANIMACY_INANIMATE = "android.inanimate";
     public static final java.lang.String ARG_ANIMACY = "android.arg.animacy";
@@ -89,152 +89,152 @@ public class TtsSpan implements android.text.ParcelableSpan {
     public TtsSpan(android.os.Parcel p0) {}
     public TtsSpan(java.lang.String p0, android.os.PersistableBundle p1) {}
     public int describeContents() { return 0; }
-    public android.os.PersistableBundle getArgs() { return (android.os.PersistableBundle) meglerProps.get("Args"); }
-    public int getSpanTypeId() { return (meglerProps.get("SpanTypeId") instanceof Integer ? (Integer) meglerProps.get("SpanTypeId") : 0); }
-    public int getSpanTypeIdInternal() { return (meglerProps.get("SpanTypeIdInternal") instanceof Integer ? (Integer) meglerProps.get("SpanTypeIdInternal") : 0); }
-    public java.lang.String getType() { return (java.lang.String) meglerProps.get("Type"); }
+    public android.os.PersistableBundle getArgs() { return (android.os.PersistableBundle) megletProps.get("Args"); }
+    public int getSpanTypeId() { return (megletProps.get("SpanTypeId") instanceof Integer ? (Integer) megletProps.get("SpanTypeId") : 0); }
+    public int getSpanTypeIdInternal() { return (megletProps.get("SpanTypeIdInternal") instanceof Integer ? (Integer) megletProps.get("SpanTypeIdInternal") : 0); }
+    public java.lang.String getType() { return (java.lang.String) megletProps.get("Type"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public void writeToParcelInternal(android.os.Parcel p0, int p1) {}
     TtsSpan() { this((android.os.Parcel) null); }
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0) {}
-        public android.text.style.TtsSpan build() { android.text.style.TtsSpan x = new android.text.style.TtsSpan(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.text.style.TtsSpan build() { android.text.style.TtsSpan x = new android.text.style.TtsSpan(); x.megletProps.putAll(megletProps); return x; }
         public android.text.style.TtsSpan.Builder setIntArgument(java.lang.String p0, int p1) { return this; }
         public android.text.style.TtsSpan.Builder setLongArgument(java.lang.String p0, long p1) { return this; }
         public android.text.style.TtsSpan.Builder setStringArgument(java.lang.String p0, java.lang.String p1) { return this; }
         Builder() { this((java.lang.String) null); }
     }
     public static class CardinalBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public CardinalBuilder() { super((java.lang.String) null); }
         public CardinalBuilder(long p0) { super((java.lang.String) null); }
         public CardinalBuilder(java.lang.String p0) { super(p0); }
-        public android.text.style.TtsSpan.CardinalBuilder setNumber(long p0) { meglerProps.put("Number", Long.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.CardinalBuilder setNumber(java.lang.String p0) { meglerProps.put("Number", p0); return this; }
+        public android.text.style.TtsSpan.CardinalBuilder setNumber(long p0) { megletProps.put("Number", Long.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.CardinalBuilder setNumber(java.lang.String p0) { megletProps.put("Number", p0); return this; }
     }
     public static class DateBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public DateBuilder() { super((java.lang.String) null); }
         public DateBuilder(java.lang.Integer p0, java.lang.Integer p1, java.lang.Integer p2, java.lang.Integer p3) { super((java.lang.String) null); }
-        public android.text.style.TtsSpan.DateBuilder setDay(int p0) { meglerProps.put("Day", Integer.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.DateBuilder setMonth(int p0) { meglerProps.put("Month", Integer.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.DateBuilder setWeekday(int p0) { meglerProps.put("Weekday", Integer.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.DateBuilder setYear(int p0) { meglerProps.put("Year", Integer.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.DateBuilder setDay(int p0) { megletProps.put("Day", Integer.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.DateBuilder setMonth(int p0) { megletProps.put("Month", Integer.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.DateBuilder setWeekday(int p0) { megletProps.put("Weekday", Integer.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.DateBuilder setYear(int p0) { megletProps.put("Year", Integer.valueOf(p0)); return this; }
     }
     public static class DecimalBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public DecimalBuilder() { super((java.lang.String) null); }
         public DecimalBuilder(double p0, int p1, int p2) { super((java.lang.String) null); }
         public DecimalBuilder(java.lang.String p0, java.lang.String p1) { super((java.lang.String) null); }
         public android.text.style.TtsSpan.DecimalBuilder setArgumentsFromDouble(double p0, int p1, int p2) { return this; }
-        public android.text.style.TtsSpan.DecimalBuilder setFractionalPart(java.lang.String p0) { meglerProps.put("FractionalPart", p0); return this; }
-        public android.text.style.TtsSpan.DecimalBuilder setIntegerPart(long p0) { meglerProps.put("IntegerPart", Long.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.DecimalBuilder setIntegerPart(java.lang.String p0) { meglerProps.put("IntegerPart", p0); return this; }
+        public android.text.style.TtsSpan.DecimalBuilder setFractionalPart(java.lang.String p0) { megletProps.put("FractionalPart", p0); return this; }
+        public android.text.style.TtsSpan.DecimalBuilder setIntegerPart(long p0) { megletProps.put("IntegerPart", Long.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.DecimalBuilder setIntegerPart(java.lang.String p0) { megletProps.put("IntegerPart", p0); return this; }
     }
     public static class DigitsBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public DigitsBuilder() { super((java.lang.String) null); }
         public DigitsBuilder(java.lang.String p0) { super(p0); }
-        public android.text.style.TtsSpan.DigitsBuilder setDigits(java.lang.String p0) { meglerProps.put("Digits", p0); return this; }
+        public android.text.style.TtsSpan.DigitsBuilder setDigits(java.lang.String p0) { megletProps.put("Digits", p0); return this; }
     }
     public static class DurationBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public DurationBuilder() { super((java.lang.String) null); }
-        public android.text.style.TtsSpan.DurationBuilder setHours(int p0) { meglerProps.put("Hours", Integer.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.DurationBuilder setMinutes(int p0) { meglerProps.put("Minutes", Integer.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.DurationBuilder setSeconds(int p0) { meglerProps.put("Seconds", Integer.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.DurationBuilder setHours(int p0) { megletProps.put("Hours", Integer.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.DurationBuilder setMinutes(int p0) { megletProps.put("Minutes", Integer.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.DurationBuilder setSeconds(int p0) { megletProps.put("Seconds", Integer.valueOf(p0)); return this; }
     }
     public static class ElectronicBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ElectronicBuilder() { super((java.lang.String) null); }
-        public android.text.style.TtsSpan.ElectronicBuilder setDomain(java.lang.String p0) { meglerProps.put("Domain", p0); return this; }
+        public android.text.style.TtsSpan.ElectronicBuilder setDomain(java.lang.String p0) { megletProps.put("Domain", p0); return this; }
         public android.text.style.TtsSpan.ElectronicBuilder setEmailArguments(java.lang.String p0, java.lang.String p1) { return this; }
-        public android.text.style.TtsSpan.ElectronicBuilder setFragmentId(java.lang.String p0) { meglerProps.put("FragmentId", p0); return this; }
-        public android.text.style.TtsSpan.ElectronicBuilder setPassword(java.lang.String p0) { meglerProps.put("Password", p0); return this; }
-        public android.text.style.TtsSpan.ElectronicBuilder setPath(java.lang.String p0) { meglerProps.put("Path", p0); return this; }
-        public android.text.style.TtsSpan.ElectronicBuilder setPort(int p0) { meglerProps.put("Port", Integer.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.ElectronicBuilder setProtocol(java.lang.String p0) { meglerProps.put("Protocol", p0); return this; }
-        public android.text.style.TtsSpan.ElectronicBuilder setQueryString(java.lang.String p0) { meglerProps.put("QueryString", p0); return this; }
-        public android.text.style.TtsSpan.ElectronicBuilder setUsername(java.lang.String p0) { meglerProps.put("Username", p0); return this; }
+        public android.text.style.TtsSpan.ElectronicBuilder setFragmentId(java.lang.String p0) { megletProps.put("FragmentId", p0); return this; }
+        public android.text.style.TtsSpan.ElectronicBuilder setPassword(java.lang.String p0) { megletProps.put("Password", p0); return this; }
+        public android.text.style.TtsSpan.ElectronicBuilder setPath(java.lang.String p0) { megletProps.put("Path", p0); return this; }
+        public android.text.style.TtsSpan.ElectronicBuilder setPort(int p0) { megletProps.put("Port", Integer.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.ElectronicBuilder setProtocol(java.lang.String p0) { megletProps.put("Protocol", p0); return this; }
+        public android.text.style.TtsSpan.ElectronicBuilder setQueryString(java.lang.String p0) { megletProps.put("QueryString", p0); return this; }
+        public android.text.style.TtsSpan.ElectronicBuilder setUsername(java.lang.String p0) { megletProps.put("Username", p0); return this; }
     }
     public static class FractionBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public FractionBuilder() { super((java.lang.String) null); }
         public FractionBuilder(long p0, long p1, long p2) { super((java.lang.String) null); }
-        public android.text.style.TtsSpan.FractionBuilder setDenominator(long p0) { meglerProps.put("Denominator", Long.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.FractionBuilder setDenominator(java.lang.String p0) { meglerProps.put("Denominator", p0); return this; }
-        public android.text.style.TtsSpan.FractionBuilder setIntegerPart(long p0) { meglerProps.put("IntegerPart", Long.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.FractionBuilder setIntegerPart(java.lang.String p0) { meglerProps.put("IntegerPart", p0); return this; }
-        public android.text.style.TtsSpan.FractionBuilder setNumerator(long p0) { meglerProps.put("Numerator", Long.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.FractionBuilder setNumerator(java.lang.String p0) { meglerProps.put("Numerator", p0); return this; }
+        public android.text.style.TtsSpan.FractionBuilder setDenominator(long p0) { megletProps.put("Denominator", Long.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.FractionBuilder setDenominator(java.lang.String p0) { megletProps.put("Denominator", p0); return this; }
+        public android.text.style.TtsSpan.FractionBuilder setIntegerPart(long p0) { megletProps.put("IntegerPart", Long.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.FractionBuilder setIntegerPart(java.lang.String p0) { megletProps.put("IntegerPart", p0); return this; }
+        public android.text.style.TtsSpan.FractionBuilder setNumerator(long p0) { megletProps.put("Numerator", Long.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.FractionBuilder setNumerator(java.lang.String p0) { megletProps.put("Numerator", p0); return this; }
     }
     public static class MeasureBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public MeasureBuilder() { super((java.lang.String) null); }
-        public android.text.style.TtsSpan.MeasureBuilder setDenominator(long p0) { meglerProps.put("Denominator", Long.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.MeasureBuilder setDenominator(java.lang.String p0) { meglerProps.put("Denominator", p0); return this; }
-        public android.text.style.TtsSpan.MeasureBuilder setFractionalPart(java.lang.String p0) { meglerProps.put("FractionalPart", p0); return this; }
-        public android.text.style.TtsSpan.MeasureBuilder setIntegerPart(long p0) { meglerProps.put("IntegerPart", Long.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.MeasureBuilder setIntegerPart(java.lang.String p0) { meglerProps.put("IntegerPart", p0); return this; }
-        public android.text.style.TtsSpan.MeasureBuilder setNumber(long p0) { meglerProps.put("Number", Long.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.MeasureBuilder setNumber(java.lang.String p0) { meglerProps.put("Number", p0); return this; }
-        public android.text.style.TtsSpan.MeasureBuilder setNumerator(long p0) { meglerProps.put("Numerator", Long.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.MeasureBuilder setNumerator(java.lang.String p0) { meglerProps.put("Numerator", p0); return this; }
-        public android.text.style.TtsSpan.MeasureBuilder setUnit(java.lang.String p0) { meglerProps.put("Unit", p0); return this; }
+        public android.text.style.TtsSpan.MeasureBuilder setDenominator(long p0) { megletProps.put("Denominator", Long.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.MeasureBuilder setDenominator(java.lang.String p0) { megletProps.put("Denominator", p0); return this; }
+        public android.text.style.TtsSpan.MeasureBuilder setFractionalPart(java.lang.String p0) { megletProps.put("FractionalPart", p0); return this; }
+        public android.text.style.TtsSpan.MeasureBuilder setIntegerPart(long p0) { megletProps.put("IntegerPart", Long.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.MeasureBuilder setIntegerPart(java.lang.String p0) { megletProps.put("IntegerPart", p0); return this; }
+        public android.text.style.TtsSpan.MeasureBuilder setNumber(long p0) { megletProps.put("Number", Long.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.MeasureBuilder setNumber(java.lang.String p0) { megletProps.put("Number", p0); return this; }
+        public android.text.style.TtsSpan.MeasureBuilder setNumerator(long p0) { megletProps.put("Numerator", Long.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.MeasureBuilder setNumerator(java.lang.String p0) { megletProps.put("Numerator", p0); return this; }
+        public android.text.style.TtsSpan.MeasureBuilder setUnit(java.lang.String p0) { megletProps.put("Unit", p0); return this; }
     }
     public static class MoneyBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public MoneyBuilder() { super((java.lang.String) null); }
-        public android.text.style.TtsSpan.MoneyBuilder setCurrency(java.lang.String p0) { meglerProps.put("Currency", p0); return this; }
-        public android.text.style.TtsSpan.MoneyBuilder setFractionalPart(java.lang.String p0) { meglerProps.put("FractionalPart", p0); return this; }
-        public android.text.style.TtsSpan.MoneyBuilder setIntegerPart(long p0) { meglerProps.put("IntegerPart", Long.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.MoneyBuilder setIntegerPart(java.lang.String p0) { meglerProps.put("IntegerPart", p0); return this; }
-        public android.text.style.TtsSpan.MoneyBuilder setQuantity(java.lang.String p0) { meglerProps.put("Quantity", p0); return this; }
+        public android.text.style.TtsSpan.MoneyBuilder setCurrency(java.lang.String p0) { megletProps.put("Currency", p0); return this; }
+        public android.text.style.TtsSpan.MoneyBuilder setFractionalPart(java.lang.String p0) { megletProps.put("FractionalPart", p0); return this; }
+        public android.text.style.TtsSpan.MoneyBuilder setIntegerPart(long p0) { megletProps.put("IntegerPart", Long.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.MoneyBuilder setIntegerPart(java.lang.String p0) { megletProps.put("IntegerPart", p0); return this; }
+        public android.text.style.TtsSpan.MoneyBuilder setQuantity(java.lang.String p0) { megletProps.put("Quantity", p0); return this; }
     }
     public static class OrdinalBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public OrdinalBuilder() { super((java.lang.String) null); }
         public OrdinalBuilder(long p0) { super((java.lang.String) null); }
         public OrdinalBuilder(java.lang.String p0) { super(p0); }
-        public android.text.style.TtsSpan.OrdinalBuilder setNumber(long p0) { meglerProps.put("Number", Long.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.OrdinalBuilder setNumber(java.lang.String p0) { meglerProps.put("Number", p0); return this; }
+        public android.text.style.TtsSpan.OrdinalBuilder setNumber(long p0) { megletProps.put("Number", Long.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.OrdinalBuilder setNumber(java.lang.String p0) { megletProps.put("Number", p0); return this; }
     }
     public static class SemioticClassBuilder extends android.text.style.TtsSpan.Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public SemioticClassBuilder(java.lang.String p0) { super(p0); }
-        public android.text.style.TtsSpan.SemioticClassBuilder setAnimacy(java.lang.String p0) { meglerProps.put("Animacy", p0); return this; }
-        public android.text.style.TtsSpan.SemioticClassBuilder setCase(java.lang.String p0) { meglerProps.put("Case", p0); return this; }
-        public android.text.style.TtsSpan.SemioticClassBuilder setGender(java.lang.String p0) { meglerProps.put("Gender", p0); return this; }
-        public android.text.style.TtsSpan.SemioticClassBuilder setMultiplicity(java.lang.String p0) { meglerProps.put("Multiplicity", p0); return this; }
+        public android.text.style.TtsSpan.SemioticClassBuilder setAnimacy(java.lang.String p0) { megletProps.put("Animacy", p0); return this; }
+        public android.text.style.TtsSpan.SemioticClassBuilder setCase(java.lang.String p0) { megletProps.put("Case", p0); return this; }
+        public android.text.style.TtsSpan.SemioticClassBuilder setGender(java.lang.String p0) { megletProps.put("Gender", p0); return this; }
+        public android.text.style.TtsSpan.SemioticClassBuilder setMultiplicity(java.lang.String p0) { megletProps.put("Multiplicity", p0); return this; }
         SemioticClassBuilder() { this((java.lang.String) null); }
     }
     public static class TelephoneBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public TelephoneBuilder() { super((java.lang.String) null); }
         public TelephoneBuilder(java.lang.String p0) { super(p0); }
-        public android.text.style.TtsSpan.TelephoneBuilder setCountryCode(java.lang.String p0) { meglerProps.put("CountryCode", p0); return this; }
-        public android.text.style.TtsSpan.TelephoneBuilder setExtension(java.lang.String p0) { meglerProps.put("Extension", p0); return this; }
-        public android.text.style.TtsSpan.TelephoneBuilder setNumberParts(java.lang.String p0) { meglerProps.put("NumberParts", p0); return this; }
+        public android.text.style.TtsSpan.TelephoneBuilder setCountryCode(java.lang.String p0) { megletProps.put("CountryCode", p0); return this; }
+        public android.text.style.TtsSpan.TelephoneBuilder setExtension(java.lang.String p0) { megletProps.put("Extension", p0); return this; }
+        public android.text.style.TtsSpan.TelephoneBuilder setNumberParts(java.lang.String p0) { megletProps.put("NumberParts", p0); return this; }
     }
     public static class TextBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public TextBuilder() { super((java.lang.String) null); }
         public TextBuilder(java.lang.String p0) { super(p0); }
-        public android.text.style.TtsSpan.TextBuilder setText(java.lang.String p0) { meglerProps.put("Text", p0); return this; }
+        public android.text.style.TtsSpan.TextBuilder setText(java.lang.String p0) { megletProps.put("Text", p0); return this; }
     }
     public static class TimeBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public TimeBuilder() { super((java.lang.String) null); }
         public TimeBuilder(int p0, int p1) { super((java.lang.String) null); }
-        public android.text.style.TtsSpan.TimeBuilder setHours(int p0) { meglerProps.put("Hours", Integer.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.TimeBuilder setMinutes(int p0) { meglerProps.put("Minutes", Integer.valueOf(p0)); return this; }
-        public android.text.style.TtsSpan.TimeBuilder setSeconds(int p0) { meglerProps.put("Seconds", Integer.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.TimeBuilder setHours(int p0) { megletProps.put("Hours", Integer.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.TimeBuilder setMinutes(int p0) { megletProps.put("Minutes", Integer.valueOf(p0)); return this; }
+        public android.text.style.TtsSpan.TimeBuilder setSeconds(int p0) { megletProps.put("Seconds", Integer.valueOf(p0)); return this; }
     }
     public static class VerbatimBuilder extends android.text.style.TtsSpan.SemioticClassBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public VerbatimBuilder() { super((java.lang.String) null); }
         public VerbatimBuilder(java.lang.String p0) { super(p0); }
-        public android.text.style.TtsSpan.VerbatimBuilder setVerbatim(java.lang.String p0) { meglerProps.put("Verbatim", p0); return this; }
+        public android.text.style.TtsSpan.VerbatimBuilder setVerbatim(java.lang.String p0) { megletProps.put("Verbatim", p0); return this; }
     }
 }

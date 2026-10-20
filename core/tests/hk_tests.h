@@ -47,14 +47,14 @@ void hk_dvm_tests_bench(const char *fixtures, const char *android_root, int ms);
 /*
  * Runs an APK for `milliseconds` with a stand-in for OpenGL ES, touches it and
  * presses Back, printing what happened. Only where guest code can run (an
- * ARM32 host); megler_init first. Returns 0 if the app started and ended cleanly.
+ * ARM32 host); meglet_init first. Returns 0 if the app started and ended cleanly.
  */
 int hk_tests_smoke_run(const char *apk, int milliseconds);
 
 /*
  * Starts one of the Java test apps (`which`: "hello" or "demos") through
- * megler_run on an Android root, with a stand-in for the shell's drawing, and
- * checks what it logs and draws (hk_java_tests.c). megler_init first, with
+ * meglet_run on an Android root, with a stand-in for the shell's drawing, and
+ * checks what it logs and draws (hk_java_tests.c). meglet_init first, with
  * hk_java_tests_log as the log's sink. Returns the number of failed checks.
  */
 int hk_tests_java_run(const char *which, const char *apk, const char *android_root, const char *picture_dir, int verbose);
@@ -66,7 +66,7 @@ void hk_java_tests_log(int level, const char *line, void *user);
 
 /*
  * Bundles of split APKs (hk_bundle_tests.c): the test app's .apks and .xapk out of `java_dir` (build/guest/java), unpacked
- * under `scratch`, and the real bundles in `real_dir` where it is not NULL. megler_init first: the expansion files go to its
+ * under `scratch`, and the real bundles in `real_dir` where it is not NULL. meglet_init first: the expansion files go to its
  * data folder. Returns the number of failed checks.
  */
 int hk_bundle_tests_run(const char *java_dir, const char *scratch, const char *real_dir);

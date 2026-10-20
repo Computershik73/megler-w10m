@@ -3,18 +3,18 @@ package android.bluetooth.le;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PeriodicAdvertisingParameters implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public boolean getIncludeTxPower() { return (meglerProps.get("IncludeTxPower") instanceof Boolean ? (Boolean) meglerProps.get("IncludeTxPower") : false); }
-    public int getInterval() { return (meglerProps.get("Interval") instanceof Integer ? (Integer) meglerProps.get("Interval") : 0); }
+    public boolean getIncludeTxPower() { return (megletProps.get("IncludeTxPower") instanceof Boolean ? (Boolean) megletProps.get("IncludeTxPower") : false); }
+    public int getInterval() { return (megletProps.get("Interval") instanceof Integer ? (Integer) megletProps.get("Interval") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected PeriodicAdvertisingParameters() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.bluetooth.le.PeriodicAdvertisingParameters build() { android.bluetooth.le.PeriodicAdvertisingParameters x = new android.bluetooth.le.PeriodicAdvertisingParameters(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.bluetooth.le.PeriodicAdvertisingParameters.Builder setIncludeTxPower(boolean p0) { meglerProps.put("IncludeTxPower", Boolean.valueOf(p0)); return this; }
-        public android.bluetooth.le.PeriodicAdvertisingParameters.Builder setInterval(int p0) { meglerProps.put("Interval", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.PeriodicAdvertisingParameters build() { android.bluetooth.le.PeriodicAdvertisingParameters x = new android.bluetooth.le.PeriodicAdvertisingParameters(); x.megletProps.putAll(megletProps); return x; }
+        public android.bluetooth.le.PeriodicAdvertisingParameters.Builder setIncludeTxPower(boolean p0) { megletProps.put("IncludeTxPower", Boolean.valueOf(p0)); return this; }
+        public android.bluetooth.le.PeriodicAdvertisingParameters.Builder setInterval(int p0) { megletProps.put("Interval", Integer.valueOf(p0)); return this; }
     }
 }

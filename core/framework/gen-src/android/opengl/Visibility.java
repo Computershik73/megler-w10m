@@ -3,7 +3,7 @@ package android.opengl;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Visibility {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public Visibility() {}
     public static void computeBoundingSphere(float[] p0, int p1, int p2, float[] p3, int p4) {}
     public static int frustumCullSpheres(float[] p0, int p1, float[] p2, int p3, int p4, int[] p5, int p6, int p7) { return 0; }

@@ -3,7 +3,7 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class FileObserver {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ACCESS = 1;
     public static final int ALL_EVENTS = 4095;
     public static final int ATTRIB = 4;

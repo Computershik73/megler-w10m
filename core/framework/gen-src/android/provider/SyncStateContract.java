@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SyncStateContract {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public SyncStateContract() {}
     public interface Columns extends android.provider.BaseColumns {
         java.lang.String ACCOUNT_NAME = "account_name";
@@ -11,12 +11,12 @@ public class SyncStateContract {
         java.lang.String DATA = "data";
     }
     public static class Constants implements android.provider.SyncStateContract.Columns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_DIRECTORY = "syncstate";
         public Constants() {}
     }
     public static final class Helpers {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Helpers() {}
         public static byte[] get(android.content.ContentProviderClient p0, android.net.Uri p1, android.accounts.Account p2) { return null; }
         public static android.util.Pair getWithUri(android.content.ContentProviderClient p0, android.net.Uri p1, android.accounts.Account p2) { return null; }

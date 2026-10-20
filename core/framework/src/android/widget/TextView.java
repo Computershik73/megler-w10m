@@ -82,8 +82,8 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         mTextPaint.density = getResources().getDisplayMetrics().density;
         mTextPaint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 14, getResources().getDisplayMetrics()));
         // text appearance from the theme, then the style's own, then the attributes in the XML
-        TypedArray ta = c.obtainStyledAttributes(attrs, megler.S.TextView, defStyleAttr, defStyleRes);
-        int appearance = ta.getResourceId(megler.S.TextView_textAppearance, -1);
+        TypedArray ta = c.obtainStyledAttributes(attrs, meglet.S.TextView, defStyleAttr, defStyleRes);
+        int appearance = ta.getResourceId(meglet.S.TextView_textAppearance, -1);
         if (appearance == -1) { TypedValue v = new TypedValue(); if (c.getTheme().resolveAttribute(android.R.attr.textAppearance, v, true) && v.resourceId != 0) appearance = v.resourceId; }
         if (appearance != -1 && appearance != 0) applyTextAppearance(getContext(), appearance);   // not the overridable setter: a subclass is not constructed yet
         CharSequence text = "", hint = null;
@@ -96,69 +96,69 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         for (int i = 0, n = ta.getIndexCount(); i < n; i++) {
             int at = ta.getIndex(i);
             switch (at) {
-            case megler.S.TextView_text: text = ta.getText(at); break;
-            case megler.S.TextView_hint: hint = ta.getText(at); break;
-            case megler.S.TextView_textSize: setRawTextSize(ta.getDimensionPixelSize(at, (int) mTextPaint.getTextSize())); break;
-            case megler.S.TextView_textColor: mTextColor = ta.getColorStateList(at); break;
-            case megler.S.TextView_textColorHint: mHintTextColor = ta.getColorStateList(at); break;
-            case megler.S.TextView_textColorLink: mLinkTextColor = ta.getColorStateList(at); break;
-            case megler.S.TextView_textStyle: styleIndex = ta.getInt(at, -1); break;
-            case megler.S.TextView_typeface: typefaceIndex = ta.getInt(at, -1); break;
-            case megler.S.TextView_fontFamily: { Typeface tf = null; try { tf = ta.getFont(at); } catch (Exception e) {} if (tf != null) mTextPaint.setTypeface(tf); else family = ta.getString(at); break; }
-            case megler.S.TextView_textFontWeight: weight = ta.getInt(at, -1); break;
-            case megler.S.TextView_gravity: mGravity = ta.getInt(at, mGravity); break;
-            case megler.S.TextView_singleLine: singleLine = ta.getBoolean(at, false); break;
-            case megler.S.TextView_maxLines: maxLines = ta.getInt(at, -1); break;
-            case megler.S.TextView_minLines: minLines = ta.getInt(at, -1); break;
-            case megler.S.TextView_lines: lines = ta.getInt(at, -1); break;
-            case megler.S.TextView_ellipsize: ellipsize = ta.getInt(at, -1); break;
-            case megler.S.TextView_inputType: inputType = ta.getInt(at, EditorInfo.TYPE_NULL); break;
-            case megler.S.TextView_imeOptions: mImeOptions = ta.getInt(at, mImeOptions); break;
-            case megler.S.TextView_imeActionLabel: mImeActionLabel = ta.getText(at); break;
-            case megler.S.TextView_imeActionId: mImeActionId = ta.getInt(at, 0); break;
-            case megler.S.TextView_privateImeOptions: mPrivateImeOptions = ta.getString(at); break;
-            case megler.S.TextView_drawableLeft: dl = ta.getDrawable(at); break;
-            case megler.S.TextView_drawableTop: dt = ta.getDrawable(at); break;
-            case megler.S.TextView_drawableRight: dr = ta.getDrawable(at); break;
-            case megler.S.TextView_drawableBottom: db = ta.getDrawable(at); break;
-            case megler.S.TextView_drawableStart: ds = ta.getDrawable(at); break;
-            case megler.S.TextView_drawableEnd: de = ta.getDrawable(at); break;
-            case megler.S.TextView_drawablePadding: mDrawablePadding = ta.getDimensionPixelSize(at, 0); break;
-            case megler.S.TextView_drawableTint: mDrawableTint = ta.getColorStateList(at); break;
-            case megler.S.TextView_lineSpacingExtra: mSpacingAdd = ta.getDimensionPixelSize(at, 0); break;
-            case megler.S.TextView_lineSpacingMultiplier: mSpacingMult = ta.getFloat(at, 1); break;
-            case megler.S.TextView_lineHeight: mLineHeight = ta.getDimensionPixelSize(at, -1); break;
-            case megler.S.TextView_includeFontPadding: mIncludePad = ta.getBoolean(at, true); break;
-            case megler.S.TextView_textAllCaps: mAllCaps = ta.getBoolean(at, false); break;
-            case megler.S.TextView_letterSpacing: setLetterSpacing(ta.getFloat(at, 0)); break;
-            case megler.S.TextView_shadowColor: mShadowColor = ta.getInt(at, 0); break;
-            case megler.S.TextView_shadowDx: mShadowDx = ta.getFloat(at, 0); break;
-            case megler.S.TextView_shadowDy: mShadowDy = ta.getFloat(at, 0); break;
-            case megler.S.TextView_shadowRadius: mShadowRadius = ta.getFloat(at, 0); break;
-            case megler.S.TextView_maxWidth: mMaxWidth = ta.getDimensionPixelSize(at, Integer.MAX_VALUE); mMaxWidthMode = PIXELS; break;
-            case megler.S.TextView_minWidth: mMinWidth = ta.getDimensionPixelSize(at, 0); mMinWidthMode = PIXELS; break;
-            case megler.S.TextView_maxHeight: mMaximum = ta.getDimensionPixelSize(at, Integer.MAX_VALUE); mMaxMode = PIXELS; break;
-            case megler.S.TextView_minHeight: mMinimum = ta.getDimensionPixelSize(at, 0); mMinMode = PIXELS; break;
-            case megler.S.TextView_ems: ems = ta.getInt(at, -1); break;
-            case megler.S.TextView_maxEms: maxEms = ta.getInt(at, -1); break;
-            case megler.S.TextView_minEms: minEms = ta.getInt(at, -1); break;
-            case megler.S.TextView_editable: editable = ta.getBoolean(at, false); break;
-            case megler.S.TextView_password: password = ta.getBoolean(at, false); break;
-            case megler.S.TextView_digits: digits = ta.getString(at); break;
-            case megler.S.TextView_numeric: numeric = ta.getInt(at, 0); hasNumeric = true; break;
-            case megler.S.TextView_phoneNumber: phone = ta.getBoolean(at, false); break;
-            case megler.S.TextView_autoLink: mAutoLinkMask = ta.getInt(at, 0); break;
-            case megler.S.TextView_linksClickable: mLinksClickable = ta.getBoolean(at, true); break;
-            case megler.S.TextView_textIsSelectable: mTextIsSelectable = ta.getBoolean(at, false); break;
-            case megler.S.TextView_cursorVisible: mCursorVisible = ta.getBoolean(at, true); break;
-            case megler.S.TextView_selectAllOnFocus: mSelectAllOnFocus = ta.getBoolean(at, false); break;
-            case megler.S.TextView_scrollHorizontally: mHorizontallyScrolling = ta.getBoolean(at, false); break;
-            case megler.S.TextView_maxLength: maxLength = ta.getInt(at, -1); break;
-            case megler.S.TextView_breakStrategy: mBreakStrategy = ta.getInt(at, 0); break;
-            case megler.S.TextView_autoSizeTextType: mAutoSizeType = ta.getInt(at, 0); break;
-            case megler.S.TextView_textScaleX: mTextPaint.setTextScaleX(ta.getFloat(at, 1)); break;
-            case megler.S.TextView_freezesText: mFreezesText = ta.getBoolean(at, false); break;
-            case megler.S.TextView_textCursorDrawable: try { mCursorDrawable = ta.getDrawable(at); } catch (Exception e) {} break;
+            case meglet.S.TextView_text: text = ta.getText(at); break;
+            case meglet.S.TextView_hint: hint = ta.getText(at); break;
+            case meglet.S.TextView_textSize: setRawTextSize(ta.getDimensionPixelSize(at, (int) mTextPaint.getTextSize())); break;
+            case meglet.S.TextView_textColor: mTextColor = ta.getColorStateList(at); break;
+            case meglet.S.TextView_textColorHint: mHintTextColor = ta.getColorStateList(at); break;
+            case meglet.S.TextView_textColorLink: mLinkTextColor = ta.getColorStateList(at); break;
+            case meglet.S.TextView_textStyle: styleIndex = ta.getInt(at, -1); break;
+            case meglet.S.TextView_typeface: typefaceIndex = ta.getInt(at, -1); break;
+            case meglet.S.TextView_fontFamily: { Typeface tf = null; try { tf = ta.getFont(at); } catch (Exception e) {} if (tf != null) mTextPaint.setTypeface(tf); else family = ta.getString(at); break; }
+            case meglet.S.TextView_textFontWeight: weight = ta.getInt(at, -1); break;
+            case meglet.S.TextView_gravity: mGravity = ta.getInt(at, mGravity); break;
+            case meglet.S.TextView_singleLine: singleLine = ta.getBoolean(at, false); break;
+            case meglet.S.TextView_maxLines: maxLines = ta.getInt(at, -1); break;
+            case meglet.S.TextView_minLines: minLines = ta.getInt(at, -1); break;
+            case meglet.S.TextView_lines: lines = ta.getInt(at, -1); break;
+            case meglet.S.TextView_ellipsize: ellipsize = ta.getInt(at, -1); break;
+            case meglet.S.TextView_inputType: inputType = ta.getInt(at, EditorInfo.TYPE_NULL); break;
+            case meglet.S.TextView_imeOptions: mImeOptions = ta.getInt(at, mImeOptions); break;
+            case meglet.S.TextView_imeActionLabel: mImeActionLabel = ta.getText(at); break;
+            case meglet.S.TextView_imeActionId: mImeActionId = ta.getInt(at, 0); break;
+            case meglet.S.TextView_privateImeOptions: mPrivateImeOptions = ta.getString(at); break;
+            case meglet.S.TextView_drawableLeft: dl = ta.getDrawable(at); break;
+            case meglet.S.TextView_drawableTop: dt = ta.getDrawable(at); break;
+            case meglet.S.TextView_drawableRight: dr = ta.getDrawable(at); break;
+            case meglet.S.TextView_drawableBottom: db = ta.getDrawable(at); break;
+            case meglet.S.TextView_drawableStart: ds = ta.getDrawable(at); break;
+            case meglet.S.TextView_drawableEnd: de = ta.getDrawable(at); break;
+            case meglet.S.TextView_drawablePadding: mDrawablePadding = ta.getDimensionPixelSize(at, 0); break;
+            case meglet.S.TextView_drawableTint: mDrawableTint = ta.getColorStateList(at); break;
+            case meglet.S.TextView_lineSpacingExtra: mSpacingAdd = ta.getDimensionPixelSize(at, 0); break;
+            case meglet.S.TextView_lineSpacingMultiplier: mSpacingMult = ta.getFloat(at, 1); break;
+            case meglet.S.TextView_lineHeight: mLineHeight = ta.getDimensionPixelSize(at, -1); break;
+            case meglet.S.TextView_includeFontPadding: mIncludePad = ta.getBoolean(at, true); break;
+            case meglet.S.TextView_textAllCaps: mAllCaps = ta.getBoolean(at, false); break;
+            case meglet.S.TextView_letterSpacing: setLetterSpacing(ta.getFloat(at, 0)); break;
+            case meglet.S.TextView_shadowColor: mShadowColor = ta.getInt(at, 0); break;
+            case meglet.S.TextView_shadowDx: mShadowDx = ta.getFloat(at, 0); break;
+            case meglet.S.TextView_shadowDy: mShadowDy = ta.getFloat(at, 0); break;
+            case meglet.S.TextView_shadowRadius: mShadowRadius = ta.getFloat(at, 0); break;
+            case meglet.S.TextView_maxWidth: mMaxWidth = ta.getDimensionPixelSize(at, Integer.MAX_VALUE); mMaxWidthMode = PIXELS; break;
+            case meglet.S.TextView_minWidth: mMinWidth = ta.getDimensionPixelSize(at, 0); mMinWidthMode = PIXELS; break;
+            case meglet.S.TextView_maxHeight: mMaximum = ta.getDimensionPixelSize(at, Integer.MAX_VALUE); mMaxMode = PIXELS; break;
+            case meglet.S.TextView_minHeight: mMinimum = ta.getDimensionPixelSize(at, 0); mMinMode = PIXELS; break;
+            case meglet.S.TextView_ems: ems = ta.getInt(at, -1); break;
+            case meglet.S.TextView_maxEms: maxEms = ta.getInt(at, -1); break;
+            case meglet.S.TextView_minEms: minEms = ta.getInt(at, -1); break;
+            case meglet.S.TextView_editable: editable = ta.getBoolean(at, false); break;
+            case meglet.S.TextView_password: password = ta.getBoolean(at, false); break;
+            case meglet.S.TextView_digits: digits = ta.getString(at); break;
+            case meglet.S.TextView_numeric: numeric = ta.getInt(at, 0); hasNumeric = true; break;
+            case meglet.S.TextView_phoneNumber: phone = ta.getBoolean(at, false); break;
+            case meglet.S.TextView_autoLink: mAutoLinkMask = ta.getInt(at, 0); break;
+            case meglet.S.TextView_linksClickable: mLinksClickable = ta.getBoolean(at, true); break;
+            case meglet.S.TextView_textIsSelectable: mTextIsSelectable = ta.getBoolean(at, false); break;
+            case meglet.S.TextView_cursorVisible: mCursorVisible = ta.getBoolean(at, true); break;
+            case meglet.S.TextView_selectAllOnFocus: mSelectAllOnFocus = ta.getBoolean(at, false); break;
+            case meglet.S.TextView_scrollHorizontally: mHorizontallyScrolling = ta.getBoolean(at, false); break;
+            case meglet.S.TextView_maxLength: maxLength = ta.getInt(at, -1); break;
+            case meglet.S.TextView_breakStrategy: mBreakStrategy = ta.getInt(at, 0); break;
+            case meglet.S.TextView_autoSizeTextType: mAutoSizeType = ta.getInt(at, 0); break;
+            case meglet.S.TextView_textScaleX: mTextPaint.setTextScaleX(ta.getFloat(at, 1)); break;
+            case meglet.S.TextView_freezesText: mFreezesText = ta.getBoolean(at, false); break;
+            case meglet.S.TextView_textCursorDrawable: try { mCursorDrawable = ta.getDrawable(at); } catch (Exception e) {} break;
             }
         }
         ta.recycle();
@@ -225,25 +225,25 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public void setTextAppearance(int resId) { setTextAppearance(getContext(), resId); }
     @Deprecated public void setTextAppearance(Context c, int resId) { applyTextAppearance(c, resId); }
     private void applyTextAppearance(Context c, int resId) {
-        TypedArray a = c.obtainStyledAttributes(resId, megler.S.TextAppearance);
-        ColorStateList col = a.getColorStateList(megler.S.TextAppearance_textColor);
+        TypedArray a = c.obtainStyledAttributes(resId, meglet.S.TextAppearance);
+        ColorStateList col = a.getColorStateList(meglet.S.TextAppearance_textColor);
         if (col != null) mTextColor = col;
-        ColorStateList hint = a.getColorStateList(megler.S.TextAppearance_textColorHint);
+        ColorStateList hint = a.getColorStateList(meglet.S.TextAppearance_textColorHint);
         if (hint != null) mHintTextColor = hint;
-        ColorStateList link = a.getColorStateList(megler.S.TextAppearance_textColorLink);
+        ColorStateList link = a.getColorStateList(meglet.S.TextAppearance_textColorLink);
         if (link != null) mLinkTextColor = link;
-        int size = a.getDimensionPixelSize(megler.S.TextAppearance_textSize, 0);
+        int size = a.getDimensionPixelSize(meglet.S.TextAppearance_textSize, 0);
         if (size != 0) setRawTextSize(size);
-        String family = a.getString(megler.S.TextAppearance_fontFamily);
+        String family = a.getString(meglet.S.TextAppearance_fontFamily);
         Typeface font = null;
-        try { if (a.peekValue(megler.S.TextAppearance_fontFamily) != null && a.peekValue(megler.S.TextAppearance_fontFamily).resourceId != 0) font = a.getFont(megler.S.TextAppearance_fontFamily); } catch (Exception e) {}
-        int tfi = a.getInt(megler.S.TextAppearance_typeface, -1), st = a.getInt(megler.S.TextAppearance_textStyle, -1), w = a.getInt(megler.S.TextAppearance_textFontWeight, -1);
+        try { if (a.peekValue(meglet.S.TextAppearance_fontFamily) != null && a.peekValue(meglet.S.TextAppearance_fontFamily).resourceId != 0) font = a.getFont(meglet.S.TextAppearance_fontFamily); } catch (Exception e) {}
+        int tfi = a.getInt(meglet.S.TextAppearance_typeface, -1), st = a.getInt(meglet.S.TextAppearance_textStyle, -1), w = a.getInt(meglet.S.TextAppearance_textFontWeight, -1);
         if (font != null) mTextPaint.setTypeface(font);
         else if (family != null || tfi >= 0 || st >= 0 || w >= 0) setTypefaceFromAttrs(font == null ? family : null, tfi, st >= 0 ? st : 0, w);
-        if (a.hasValue(megler.S.TextAppearance_textAllCaps)) setAllCaps(a.getBoolean(megler.S.TextAppearance_textAllCaps, false));
-        if (a.hasValue(megler.S.TextAppearance_letterSpacing)) setLetterSpacing(a.getFloat(megler.S.TextAppearance_letterSpacing, 0));
-        if (a.hasValue(megler.S.TextAppearance_shadowColor)) { mShadowColor = a.getInt(megler.S.TextAppearance_shadowColor, 0); mShadowRadius = a.getFloat(megler.S.TextAppearance_shadowRadius, 0); mShadowDx = a.getFloat(megler.S.TextAppearance_shadowDx, 0); mShadowDy = a.getFloat(megler.S.TextAppearance_shadowDy, 0); if (mShadowRadius > 0) mTextPaint.setShadowLayer(mShadowRadius, mShadowDx, mShadowDy, mShadowColor); }
-        int hl = a.getColor(megler.S.TextAppearance_textColorHighlight, 0);
+        if (a.hasValue(meglet.S.TextAppearance_textAllCaps)) setAllCaps(a.getBoolean(meglet.S.TextAppearance_textAllCaps, false));
+        if (a.hasValue(meglet.S.TextAppearance_letterSpacing)) setLetterSpacing(a.getFloat(meglet.S.TextAppearance_letterSpacing, 0));
+        if (a.hasValue(meglet.S.TextAppearance_shadowColor)) { mShadowColor = a.getInt(meglet.S.TextAppearance_shadowColor, 0); mShadowRadius = a.getFloat(meglet.S.TextAppearance_shadowRadius, 0); mShadowDx = a.getFloat(meglet.S.TextAppearance_shadowDx, 0); mShadowDy = a.getFloat(meglet.S.TextAppearance_shadowDy, 0); if (mShadowRadius > 0) mTextPaint.setShadowLayer(mShadowRadius, mShadowDx, mShadowDy, mShadowColor); }
+        int hl = a.getColor(meglet.S.TextAppearance_textColorHighlight, 0);
         if (hl != 0) mHighlightColor = hl;
         a.recycle();
         updateTextColors();
@@ -366,7 +366,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         sendOnTextChanged(text, 0, oldLen, text.length());
         onTextChanged(text, 0, oldLen, text.length());
         sendAfterTextChanged(text instanceof Editable ? (Editable) text : null);
-        if (megler.InputMethods.focused() == this) megler.InputMethods.restart(this);
+        if (meglet.InputMethods.focused() == this) meglet.InputMethods.restart(this);
     }
     /** Edits to an Editable buffer, as they happen: relayout and the watchers' callbacks. */
     private final class ChangeWatcher implements TextWatcher, SpanWatcher {
@@ -801,7 +801,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         if (action == EditorInfo.IME_ACTION_NEXT) { View v = focusSearch(FOCUS_FORWARD); if (v != null && v.requestFocus(FOCUS_FORWARD)) return; }
         if (action == EditorInfo.IME_ACTION_PREVIOUS) { View v = focusSearch(FOCUS_BACKWARD); if (v != null && v.requestFocus(FOCUS_BACKWARD)) return; }
         if (action == EditorInfo.IME_ACTION_DONE || action == EditorInfo.IME_ACTION_GO || action == EditorInfo.IME_ACTION_SEND || action == EditorInfo.IME_ACTION_SEARCH || action == EditorInfo.IME_ACTION_NEXT) {
-            megler.InputMethods.hide();
+            meglet.InputMethods.hide();
             if (action != EditorInfo.IME_ACTION_DONE) {
                 long t = android.os.SystemClock.uptimeMillis();
                 // the enter key the action stands for, as Android sends it to a single-line field
@@ -823,7 +823,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
             if (!(mText instanceof Editable)) setText(mText, BufferType.EDITABLE);
             if (!multi && !mSingleLine && (type & EditorInfo.TYPE_MASK_CLASS) != EditorInfo.TYPE_CLASS_TEXT) applySingleLine(true, false);
         }
-        megler.InputMethods.restart(this);
+        meglet.InputMethods.restart(this);
     }
     public void setRawInputType(int type) { mInputType = type; }
     public int getInputType() { return mInputType; }
@@ -844,7 +844,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public boolean getShowSoftInputOnFocus() { return true; }
     public void setCustomSelectionActionModeCallback(ActionMode.Callback cb) {}
     public void setCustomInsertionActionModeCallback(ActionMode.Callback cb) {}
-    public boolean isInputMethodTarget() { return megler.InputMethods.focused() == this; }
+    public boolean isInputMethodTarget() { return meglet.InputMethods.focused() == this; }
     public boolean didTouchFocusSelect() { return false; }
     public void beginBatchEdit() {}
     public void endBatchEdit() {}
@@ -895,7 +895,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
             if (mMovement != null) handled |= mMovement.onTouchEvent(this, (Spannable) mText, e);
             if (a == MotionEvent.ACTION_UP && isFocused() && onCheckIsTextEditor()) {
                 if (!(mMovement instanceof ArrowKeyMovementMethod)) { int off = getOffsetForPosition(e.getX(), e.getY()); if (off >= 0) Selection.setSelection((Spannable) mText, off); }
-                megler.InputMethods.show(this);
+                meglet.InputMethods.show(this);
                 handled = true;
             }
             if (handled) return true;
@@ -904,7 +904,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     }
     @Override public boolean performClick() {
         boolean r = super.performClick();
-        if (onCheckIsTextEditor()) { if (!isFocused()) requestFocus(); megler.InputMethods.show(this); }
+        if (onCheckIsTextEditor()) { if (!isFocused()) requestFocus(); meglet.InputMethods.show(this); }
         return r;
     }
     @Override public boolean performLongClick() {
@@ -932,7 +932,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     }
     @Override public CharSequence getAccessibilityClassName() { return TextView.class.getName(); }
     public static int getTextColor(Context c, TypedArray a, int def) { return def; }
-    public void setRawTextSizeMegler(float s) { setRawTextSize(s); }
+    public void setRawTextSizeMeglet(float s) { setRawTextSize(s); }
     public int getMarqueeRepeatLimit() { return 0; }
     public boolean bringPointIntoView(int offset) { return false; }
     public boolean moveCursorToVisibleOffset() { return false; }
@@ -944,13 +944,13 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public void setTextMetricsParams(android.text.PrecomputedText.Params p) {}
     public android.text.PrecomputedText.Params getTextMetricsParams() { return new android.text.PrecomputedText.Params.Builder(getPaint()).build(); }
     public void setPrecomputedText(Object p) { setText(String.valueOf(p)); }
-    public float getLineSpacingExtraMegler() { return mSpacingAdd; }
-    public void setEnabled(boolean e) { super.setEnabled(e); if (!e && megler.InputMethods.focused() == this) megler.InputMethods.hide(); }
+    public float getLineSpacingExtraMeglet() { return mSpacingAdd; }
+    public void setEnabled(boolean e) { super.setEnabled(e); if (!e && meglet.InputMethods.focused() == this) meglet.InputMethods.hide(); }
     public boolean extractText(ExtractedTextRequest r, ExtractedText out) { out.text = mText; out.selectionStart = getSelectionStart(); out.selectionEnd = getSelectionEnd(); return true; }
     public void setExtractedText(ExtractedText t) { setText(t.text); }
-    public void setTextAppearanceMegler(int r) { setTextAppearance(r); }
+    public void setTextAppearanceMeglet(int r) { setTextAppearance(r); }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
     public static final long BORINGLAYOUT_FALLBACK_LINESPACING = 210923482L;
     public static final int PROCESS_TEXT_REQUEST_CODE = 100;
     public static final long STATICLAYOUT_FALLBACK_LINESPACING = 37756858L;
@@ -980,17 +980,17 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public java.lang.String[] getAutofillHints() { return null; }
     public android.view.autofill.AutofillValue getAutofillValue() { return null; }
     protected int getBottomPaddingOffset() { return 0; }
-    public android.graphics.BlendMode getCompoundDrawableTintBlendMode() { return (android.graphics.BlendMode) meglerFill.get("CompoundDrawableTintBlendMode"); }
+    public android.graphics.BlendMode getCompoundDrawableTintBlendMode() { return (android.graphics.BlendMode) megletFill.get("CompoundDrawableTintBlendMode"); }
     public android.view.inputmethod.CursorAnchorInfo getCursorAnchorInfo(int p0, android.view.inputmethod.CursorAnchorInfo.Builder p1, android.graphics.Matrix p2) { return null; }
     public android.view.ActionMode.Callback getCustomInsertionActionModeCallback() { return null; }
     public android.view.ActionMode.Callback getCustomSelectionActionModeCallback() { return null; }
     protected int getFadeHeight(boolean p0) { return 0; }
     protected int getFadeTop(boolean p0) { return 0; }
     public void getFocusedRect(android.graphics.Rect p0) {}
-    public int getFocusedSearchResultHighlightColor() { return (meglerFill.get("FocusedSearchResultHighlightColor") instanceof Integer ? (Integer) meglerFill.get("FocusedSearchResultHighlightColor") : 0); }
-    public int getFocusedSearchResultIndex() { return (meglerFill.get("FocusedSearchResultIndex") instanceof Integer ? (Integer) meglerFill.get("FocusedSearchResultIndex") : 0); }
+    public int getFocusedSearchResultHighlightColor() { return (megletFill.get("FocusedSearchResultHighlightColor") instanceof Integer ? (Integer) megletFill.get("FocusedSearchResultHighlightColor") : 0); }
+    public int getFocusedSearchResultIndex() { return (megletFill.get("FocusedSearchResultIndex") instanceof Integer ? (Integer) megletFill.get("FocusedSearchResultIndex") : 0); }
     public java.lang.String getFontVariationSettings() { return null; }
-    public android.text.Highlights getHighlights() { return (android.text.Highlights) meglerFill.get("Highlights"); }
+    public android.text.Highlights getHighlights() { return (android.text.Highlights) megletFill.get("Highlights"); }
     public int getHorizontalOffsetForDrawables() { return 0; }
     public boolean getHorizontallyScrolling() { return false; }
     public android.os.LocaleList getImeHintLocales() { return null; }
@@ -1000,26 +1000,26 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public int getLineAtCoordinate(float p0) { return 0; }
     public int getLineBreakStyle() { return 0; }
     public int getLineBreakWordStyle() { return 0; }
-    public android.graphics.Paint.FontMetrics getMinimumFontMetrics() { return (android.graphics.Paint.FontMetrics) meglerFill.get("MinimumFontMetrics"); }
+    public android.graphics.Paint.FontMetrics getMinimumFontMetrics() { return (android.graphics.Paint.FontMetrics) megletFill.get("MinimumFontMetrics"); }
     protected float getRightFadingEdgeStrength() { return 0f; }
     protected int getRightPaddingOffset() { return 0; }
     public float getScaledTextSize() { return 0f; }
-    public int getSearchResultHighlightColor() { return (meglerFill.get("SearchResultHighlightColor") instanceof Integer ? (Integer) meglerFill.get("SearchResultHighlightColor") : 0); }
-    public int[] getSearchResultHighlights() { return (int[]) meglerFill.get("SearchResultHighlights"); }
+    public int getSearchResultHighlightColor() { return (megletFill.get("SearchResultHighlightColor") instanceof Integer ? (Integer) megletFill.get("SearchResultHighlightColor") : 0); }
+    public int[] getSearchResultHighlights() { return (int[]) megletFill.get("SearchResultHighlights"); }
     public java.lang.String getSelectedText() { return null; }
     public void getSelection(int p0, int p1, android.text.Layout.SelectionRectangleConsumer p2) {}
-    public boolean getShiftDrawingOffsetForStartOverhang() { return (meglerFill.get("ShiftDrawingOffsetForStartOverhang") instanceof Boolean ? (Boolean) meglerFill.get("ShiftDrawingOffsetForStartOverhang") : false); }
+    public boolean getShiftDrawingOffsetForStartOverhang() { return (megletFill.get("ShiftDrawingOffsetForStartOverhang") instanceof Boolean ? (Boolean) megletFill.get("ShiftDrawingOffsetForStartOverhang") : false); }
     public java.util.Locale getSpellCheckerLocale() { return null; }
     public android.view.inputmethod.TextBoundsInfo getTextBoundsInfo(android.graphics.RectF p0) { return null; }
     public android.text.TextDirectionHeuristic getTextDirectionHeuristic() { return null; }
     public android.os.LocaleList getTextLocales() { return null; }
     public android.graphics.drawable.Drawable getTextSelectHandle() { return null; }
-    public android.graphics.drawable.Drawable getTextSelectHandleLeft() { return (android.graphics.drawable.Drawable) meglerFill.get("TextSelectHandleLeft"); }
-    public android.graphics.drawable.Drawable getTextSelectHandleRight() { return (android.graphics.drawable.Drawable) meglerFill.get("TextSelectHandleRight"); }
+    public android.graphics.drawable.Drawable getTextSelectHandleLeft() { return (android.graphics.drawable.Drawable) megletFill.get("TextSelectHandleLeft"); }
+    public android.graphics.drawable.Drawable getTextSelectHandleRight() { return (android.graphics.drawable.Drawable) megletFill.get("TextSelectHandleRight"); }
     public java.util.Locale getTextServicesLocale() { return null; }
     protected int getTopPaddingOffset() { return 0; }
     public int getTypefaceStyle() { return 0; }
-    public boolean getUseBoundsForWidth() { return (meglerFill.get("UseBoundsForWidth") instanceof Boolean ? (Boolean) meglerFill.get("UseBoundsForWidth") : false); }
+    public boolean getUseBoundsForWidth() { return (megletFill.get("UseBoundsForWidth") instanceof Boolean ? (Boolean) megletFill.get("UseBoundsForWidth") : false); }
     public android.text.method.WordIterator getWordIterator() { return null; }
     public boolean handleBackInTextActionModeIfNeeded(android.view.KeyEvent p0) { return false; }
     public boolean handleClick(android.view.textclassifier.TextLinks.TextLinkSpan p0) { return false; }
@@ -1030,7 +1030,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public boolean isAnyPasswordInputType() { return false; }
     public boolean isAutoHandwritingEnabled() { return false; }
     public boolean isCursorVisibleFromAttr() { return false; }
-    public boolean isLocalePreferredLineHeightForMinimumUsed() { return (meglerFill.get("LocalePreferredLineHeightForMinimumUsed") instanceof Boolean ? (Boolean) meglerFill.get("LocalePreferredLineHeightForMinimumUsed") : false); }
+    public boolean isLocalePreferredLineHeightForMinimumUsed() { return (megletFill.get("LocalePreferredLineHeightForMinimumUsed") instanceof Boolean ? (Boolean) megletFill.get("LocalePreferredLineHeightForMinimumUsed") : false); }
     public boolean isOffsetMappingAvailable() { return false; }
     protected boolean isPaddingOffsetRequired() { return false; }
     public boolean isPositionVisible(float p0, float p1) { return false; }
@@ -1073,25 +1073,25 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     protected void resetResolvedDrawables() {}
     public void sendAccessibilityEventInternal(int p0) {}
     public void setAccessibilitySelection(int p0, int p1) {}
-    public void setCompoundDrawableTintBlendMode(android.graphics.BlendMode p0) { meglerFill.put("CompoundDrawableTintBlendMode", p0); }
+    public void setCompoundDrawableTintBlendMode(android.graphics.BlendMode p0) { megletFill.put("CompoundDrawableTintBlendMode", p0); }
     public void setEnforceImePolicyUser(android.os.UserHandle p0) {}
     public void setExtracting(android.view.inputmethod.ExtractedTextRequest p0) {}
-    public void setFocusedSearchResultHighlightColor(int p0) { meglerFill.put("FocusedSearchResultHighlightColor", Integer.valueOf(p0)); }
-    public void setFocusedSearchResultIndex(int p0) { meglerFill.put("FocusedSearchResultIndex", Integer.valueOf(p0)); }
-    public void setHighlights(android.text.Highlights p0) { meglerFill.put("Highlights", p0); }
+    public void setFocusedSearchResultHighlightColor(int p0) { megletFill.put("FocusedSearchResultHighlightColor", Integer.valueOf(p0)); }
+    public void setFocusedSearchResultIndex(int p0) { megletFill.put("FocusedSearchResultIndex", Integer.valueOf(p0)); }
+    public void setHighlights(android.text.Highlights p0) { megletFill.put("Highlights", p0); }
     public void setImeConsumesInput(boolean p0) {}
     public void setInputExtras(int p0) {}
-    public void setLocalePreferredLineHeightForMinimumUsed(boolean p0) { meglerFill.put("LocalePreferredLineHeightForMinimumUsed", Boolean.valueOf(p0)); }
-    public void setMinimumFontMetrics(android.graphics.Paint.FontMetrics p0) { meglerFill.put("MinimumFontMetrics", p0); }
+    public void setLocalePreferredLineHeightForMinimumUsed(boolean p0) { megletFill.put("LocalePreferredLineHeightForMinimumUsed", Boolean.valueOf(p0)); }
+    public void setMinimumFontMetrics(android.graphics.Paint.FontMetrics p0) { megletFill.put("MinimumFontMetrics", p0); }
     public void setScroller(android.widget.Scroller p0) {}
-    public void setSearchResultHighlightColor(int p0) { meglerFill.put("SearchResultHighlightColor", Integer.valueOf(p0)); }
-    public void setSearchResultHighlights(int[] p0) { meglerFill.put("SearchResultHighlights", p0); }
-    public void setShiftDrawingOffsetForStartOverhang(boolean p0) { meglerFill.put("ShiftDrawingOffsetForStartOverhang", Boolean.valueOf(p0)); }
+    public void setSearchResultHighlightColor(int p0) { megletFill.put("SearchResultHighlightColor", Integer.valueOf(p0)); }
+    public void setSearchResultHighlights(int[] p0) { megletFill.put("SearchResultHighlights", p0); }
+    public void setShiftDrawingOffsetForStartOverhang(boolean p0) { megletFill.put("ShiftDrawingOffsetForStartOverhang", Boolean.valueOf(p0)); }
     public java.lang.Runnable setTextAsync(java.lang.CharSequence p0) { return null; }
     public void setTextOperationUser(android.os.UserHandle p0) {}
-    public void setTextSelectHandleLeft(int p0) { meglerFill.put("TextSelectHandleLeft", Integer.valueOf(p0)); }
-    public void setTextSelectHandleRight(int p0) { meglerFill.put("TextSelectHandleRight", Integer.valueOf(p0)); }
-    public void setUseBoundsForWidth(boolean p0) { meglerFill.put("UseBoundsForWidth", Boolean.valueOf(p0)); }
+    public void setTextSelectHandleLeft(int p0) { megletFill.put("TextSelectHandleLeft", Integer.valueOf(p0)); }
+    public void setTextSelectHandleRight(int p0) { megletFill.put("TextSelectHandleRight", Integer.valueOf(p0)); }
+    public void setUseBoundsForWidth(boolean p0) { megletFill.put("UseBoundsForWidth", Boolean.valueOf(p0)); }
     public boolean shouldTrackHandwritingArea() { return false; }
     public boolean showUIForTouchScreen() { return false; }
     protected void startMarquee() {}
@@ -1103,7 +1103,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static final class InspectionCompanion implements android.view.inspector.InspectionCompanion {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public InspectionCompanion() {}
         public void mapProperties(android.view.inspector.PropertyMapper p0) {}
         public void readProperties(android.widget.TextView p0, android.view.inspector.PropertyReader p1) {}

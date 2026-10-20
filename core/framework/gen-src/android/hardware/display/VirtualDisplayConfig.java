@@ -3,26 +3,26 @@ package android.hardware.display;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VirtualDisplayConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.hardware.display.IBrightnessListener getBrightnessListener() { return (android.hardware.display.IBrightnessListener) meglerProps.get("BrightnessListener"); }
-    public float getDefaultBrightness() { return (meglerProps.get("DefaultBrightness") instanceof Float ? (Float) meglerProps.get("DefaultBrightness") : 0f); }
-    public int getDensityDpi() { return (meglerProps.get("DensityDpi") instanceof Integer ? (Integer) meglerProps.get("DensityDpi") : 0); }
-    public float getDimBrightness() { return (meglerProps.get("DimBrightness") instanceof Float ? (Float) meglerProps.get("DimBrightness") : 0f); }
-    public java.util.Set getDisplayCategories() { return (meglerProps.get("DisplayCategories") != null ? (java.util.Set) meglerProps.get("DisplayCategories") : new java.util.HashSet()); }
-    public android.view.DisplayCutout getDisplayCutout() { return (android.view.DisplayCutout) meglerProps.get("DisplayCutout"); }
-    public int getDisplayIdToMirror() { return (meglerProps.get("DisplayIdToMirror") instanceof Integer ? (Integer) meglerProps.get("DisplayIdToMirror") : 0); }
-    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
-    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public float getRequestedRefreshRate() { return (meglerProps.get("RequestedRefreshRate") instanceof Float ? (Float) meglerProps.get("RequestedRefreshRate") : 0f); }
-    public android.view.Surface getSurface() { return (android.view.Surface) meglerProps.get("Surface"); }
-    public java.lang.String getUniqueId() { return (java.lang.String) meglerProps.get("UniqueId"); }
-    public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
-    public boolean isHomeSupported() { return (meglerProps.get("HomeSupported") instanceof Boolean ? (Boolean) meglerProps.get("HomeSupported") : false); }
-    public boolean isIgnoreActivitySizeRestrictions() { return (meglerProps.get("IgnoreActivitySizeRestrictions") instanceof Boolean ? (Boolean) meglerProps.get("IgnoreActivitySizeRestrictions") : false); }
-    public boolean isWindowManagerMirroringEnabled() { return (meglerProps.get("WindowManagerMirroringEnabled") instanceof Boolean ? (Boolean) meglerProps.get("WindowManagerMirroringEnabled") : false); }
+    public android.hardware.display.IBrightnessListener getBrightnessListener() { return (android.hardware.display.IBrightnessListener) megletProps.get("BrightnessListener"); }
+    public float getDefaultBrightness() { return (megletProps.get("DefaultBrightness") instanceof Float ? (Float) megletProps.get("DefaultBrightness") : 0f); }
+    public int getDensityDpi() { return (megletProps.get("DensityDpi") instanceof Integer ? (Integer) megletProps.get("DensityDpi") : 0); }
+    public float getDimBrightness() { return (megletProps.get("DimBrightness") instanceof Float ? (Float) megletProps.get("DimBrightness") : 0f); }
+    public java.util.Set getDisplayCategories() { return (megletProps.get("DisplayCategories") != null ? (java.util.Set) megletProps.get("DisplayCategories") : new java.util.HashSet()); }
+    public android.view.DisplayCutout getDisplayCutout() { return (android.view.DisplayCutout) megletProps.get("DisplayCutout"); }
+    public int getDisplayIdToMirror() { return (megletProps.get("DisplayIdToMirror") instanceof Integer ? (Integer) megletProps.get("DisplayIdToMirror") : 0); }
+    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
+    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public float getRequestedRefreshRate() { return (megletProps.get("RequestedRefreshRate") instanceof Float ? (Float) megletProps.get("RequestedRefreshRate") : 0f); }
+    public android.view.Surface getSurface() { return (android.view.Surface) megletProps.get("Surface"); }
+    public java.lang.String getUniqueId() { return (java.lang.String) megletProps.get("UniqueId"); }
+    public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
+    public boolean isHomeSupported() { return (megletProps.get("HomeSupported") instanceof Boolean ? (Boolean) megletProps.get("HomeSupported") : false); }
+    public boolean isIgnoreActivitySizeRestrictions() { return (megletProps.get("IgnoreActivitySizeRestrictions") instanceof Boolean ? (Boolean) megletProps.get("IgnoreActivitySizeRestrictions") : false); }
+    public boolean isWindowManagerMirroringEnabled() { return (megletProps.get("WindowManagerMirroringEnabled") instanceof Boolean ? (Boolean) megletProps.get("WindowManagerMirroringEnabled") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected VirtualDisplayConfig() {}
     public interface BrightnessListener {

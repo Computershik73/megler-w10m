@@ -5,5 +5,5 @@ public final class WindowMetrics {
     public WindowMetrics(android.graphics.Rect bounds, WindowInsets insets, float density) { this(bounds, insets); }
     public android.graphics.Rect getBounds() { return mBounds; }
     public WindowInsets getWindowInsets() { return mInsets; }
-    public float getDensity() { return megler.Native.density(); }
+    public float getDensity() { return meglet.Native.density(); }
 }

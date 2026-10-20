@@ -3,8 +3,8 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ReadRecordsRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected ReadRecordsRequest(java.lang.Class p0) {}
-    public java.lang.Class getRecordType() { return (java.lang.Class) meglerProps.get("RecordType"); }
+    public java.lang.Class getRecordType() { return (java.lang.Class) megletProps.get("RecordType"); }
     ReadRecordsRequest() { this((java.lang.Class) null); }
 }

@@ -3,26 +3,26 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RouteListingPreference implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_TRANSFER_MEDIA = "android.media.action.TRANSFER_MEDIA";
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String EXTRA_ROUTE_ID = "android.media.extra.ROUTE_ID";
     public int describeContents() { return 0; }
-    public java.util.List getItems() { return (meglerProps.get("Items") != null ? (java.util.List) meglerProps.get("Items") : new java.util.ArrayList()); }
-    public android.content.ComponentName getLinkedItemComponentName() { return (android.content.ComponentName) meglerProps.get("LinkedItemComponentName"); }
-    public boolean getUseSystemOrdering() { return (meglerProps.get("UseSystemOrdering") instanceof Boolean ? (Boolean) meglerProps.get("UseSystemOrdering") : false); }
+    public java.util.List getItems() { return (megletProps.get("Items") != null ? (java.util.List) megletProps.get("Items") : new java.util.ArrayList()); }
+    public android.content.ComponentName getLinkedItemComponentName() { return (android.content.ComponentName) megletProps.get("LinkedItemComponentName"); }
+    public boolean getUseSystemOrdering() { return (megletProps.get("UseSystemOrdering") instanceof Boolean ? (Boolean) megletProps.get("UseSystemOrdering") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected RouteListingPreference() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.media.RouteListingPreference build() { android.media.RouteListingPreference x = new android.media.RouteListingPreference(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.media.RouteListingPreference.Builder setItems(java.util.List p0) { meglerProps.put("Items", p0); return this; }
-        public android.media.RouteListingPreference.Builder setLinkedItemComponentName(android.content.ComponentName p0) { meglerProps.put("LinkedItemComponentName", p0); return this; }
-        public android.media.RouteListingPreference.Builder setUseSystemOrdering(boolean p0) { meglerProps.put("UseSystemOrdering", Boolean.valueOf(p0)); return this; }
+        public android.media.RouteListingPreference build() { android.media.RouteListingPreference x = new android.media.RouteListingPreference(); x.megletProps.putAll(megletProps); return x; }
+        public android.media.RouteListingPreference.Builder setItems(java.util.List p0) { megletProps.put("Items", p0); return this; }
+        public android.media.RouteListingPreference.Builder setLinkedItemComponentName(android.content.ComponentName p0) { megletProps.put("LinkedItemComponentName", p0); return this; }
+        public android.media.RouteListingPreference.Builder setUseSystemOrdering(boolean p0) { megletProps.put("UseSystemOrdering", Boolean.valueOf(p0)); return this; }
     }
     public static final class Item implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public static final int FLAG_ONGOING_SESSION = 1;
         public static final int FLAG_ONGOING_SESSION_MANAGED = 2;
@@ -40,21 +40,21 @@ public final class RouteListingPreference implements android.os.Parcelable {
         public static final int SUBTEXT_TRACK_UNSUPPORTED = 7;
         public static final int SUBTEXT_UNAUTHORIZED = 6;
         public int describeContents() { return 0; }
-        public java.lang.CharSequence getCustomSubtextMessage() { return (java.lang.CharSequence) meglerProps.get("CustomSubtextMessage"); }
-        public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
-        public java.lang.String getRouteId() { return (java.lang.String) meglerProps.get("RouteId"); }
-        public int getSelectionBehavior() { return (meglerProps.get("SelectionBehavior") instanceof Integer ? (Integer) meglerProps.get("SelectionBehavior") : 0); }
-        public int getSubText() { return (meglerProps.get("SubText") instanceof Integer ? (Integer) meglerProps.get("SubText") : 0); }
+        public java.lang.CharSequence getCustomSubtextMessage() { return (java.lang.CharSequence) megletProps.get("CustomSubtextMessage"); }
+        public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
+        public java.lang.String getRouteId() { return (java.lang.String) megletProps.get("RouteId"); }
+        public int getSelectionBehavior() { return (megletProps.get("SelectionBehavior") instanceof Integer ? (Integer) megletProps.get("SelectionBehavior") : 0); }
+        public int getSubText() { return (megletProps.get("SubText") instanceof Integer ? (Integer) megletProps.get("SubText") : 0); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected Item() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(java.lang.String p0) {}
-            public android.media.RouteListingPreference.Item build() { android.media.RouteListingPreference.Item x = new android.media.RouteListingPreference.Item(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.media.RouteListingPreference.Item.Builder setCustomSubtextMessage(java.lang.CharSequence p0) { meglerProps.put("CustomSubtextMessage", p0); return this; }
-            public android.media.RouteListingPreference.Item.Builder setFlags(int p0) { meglerProps.put("Flags", Integer.valueOf(p0)); return this; }
-            public android.media.RouteListingPreference.Item.Builder setSelectionBehavior(int p0) { meglerProps.put("SelectionBehavior", Integer.valueOf(p0)); return this; }
-            public android.media.RouteListingPreference.Item.Builder setSubText(int p0) { meglerProps.put("SubText", Integer.valueOf(p0)); return this; }
+            public android.media.RouteListingPreference.Item build() { android.media.RouteListingPreference.Item x = new android.media.RouteListingPreference.Item(); x.megletProps.putAll(megletProps); return x; }
+            public android.media.RouteListingPreference.Item.Builder setCustomSubtextMessage(java.lang.CharSequence p0) { megletProps.put("CustomSubtextMessage", p0); return this; }
+            public android.media.RouteListingPreference.Item.Builder setFlags(int p0) { megletProps.put("Flags", Integer.valueOf(p0)); return this; }
+            public android.media.RouteListingPreference.Item.Builder setSelectionBehavior(int p0) { megletProps.put("SelectionBehavior", Integer.valueOf(p0)); return this; }
+            public android.media.RouteListingPreference.Item.Builder setSubText(int p0) { megletProps.put("SubText", Integer.valueOf(p0)); return this; }
             Builder() { this((java.lang.String) null); }
         }
     }

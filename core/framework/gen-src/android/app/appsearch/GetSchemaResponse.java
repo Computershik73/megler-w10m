@@ -3,19 +3,19 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class GetSchemaResponse extends android.app.appsearch.safeparcel.AbstractSafeParcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
-    public java.util.Map getPubliclyVisibleSchemas() { return (meglerProps.get("PubliclyVisibleSchemas") != null ? (java.util.Map) meglerProps.get("PubliclyVisibleSchemas") : new java.util.HashMap()); }
-    public java.util.Map getRequiredPermissionsForSchemaTypeVisibility() { return (meglerProps.get("RequiredPermissionsForSchemaTypeVisibility") != null ? (java.util.Map) meglerProps.get("RequiredPermissionsForSchemaTypeVisibility") : new java.util.HashMap()); }
-    public java.util.Set getSchemaTypesNotDisplayedBySystem() { return (meglerProps.get("SchemaTypesNotDisplayedBySystem") != null ? (java.util.Set) meglerProps.get("SchemaTypesNotDisplayedBySystem") : new java.util.HashSet()); }
-    public java.util.Map getSchemaTypesVisibleToConfigs() { return (meglerProps.get("SchemaTypesVisibleToConfigs") != null ? (java.util.Map) meglerProps.get("SchemaTypesVisibleToConfigs") : new java.util.HashMap()); }
-    public java.util.Map getSchemaTypesVisibleToPackages() { return (meglerProps.get("SchemaTypesVisibleToPackages") != null ? (java.util.Map) meglerProps.get("SchemaTypesVisibleToPackages") : new java.util.HashMap()); }
-    public java.util.Set getSchemas() { return (meglerProps.get("Schemas") != null ? (java.util.Set) meglerProps.get("Schemas") : new java.util.HashSet()); }
-    public int getVersion() { return (meglerProps.get("Version") instanceof Integer ? (Integer) meglerProps.get("Version") : 0); }
+    public java.util.Map getPubliclyVisibleSchemas() { return (megletProps.get("PubliclyVisibleSchemas") != null ? (java.util.Map) megletProps.get("PubliclyVisibleSchemas") : new java.util.HashMap()); }
+    public java.util.Map getRequiredPermissionsForSchemaTypeVisibility() { return (megletProps.get("RequiredPermissionsForSchemaTypeVisibility") != null ? (java.util.Map) megletProps.get("RequiredPermissionsForSchemaTypeVisibility") : new java.util.HashMap()); }
+    public java.util.Set getSchemaTypesNotDisplayedBySystem() { return (megletProps.get("SchemaTypesNotDisplayedBySystem") != null ? (java.util.Set) megletProps.get("SchemaTypesNotDisplayedBySystem") : new java.util.HashSet()); }
+    public java.util.Map getSchemaTypesVisibleToConfigs() { return (megletProps.get("SchemaTypesVisibleToConfigs") != null ? (java.util.Map) megletProps.get("SchemaTypesVisibleToConfigs") : new java.util.HashMap()); }
+    public java.util.Map getSchemaTypesVisibleToPackages() { return (megletProps.get("SchemaTypesVisibleToPackages") != null ? (java.util.Map) megletProps.get("SchemaTypesVisibleToPackages") : new java.util.HashMap()); }
+    public java.util.Set getSchemas() { return (megletProps.get("Schemas") != null ? (java.util.Set) megletProps.get("Schemas") : new java.util.HashSet()); }
+    public int getVersion() { return (megletProps.get("Version") instanceof Integer ? (Integer) megletProps.get("Version") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected GetSchemaResponse() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.app.appsearch.GetSchemaResponse p0) {}
         public android.app.appsearch.GetSchemaResponse.Builder addSchema(android.app.appsearch.AppSearchSchema p0) { return this; }
@@ -31,7 +31,7 @@ public abstract class GetSchemaResponse extends android.app.appsearch.safeparcel
         public android.app.appsearch.GetSchemaResponse.Builder setRequiredPermissionsForSchemaTypeVisibility(java.lang.String p0, java.util.Set p1) { return this; }
         public android.app.appsearch.GetSchemaResponse.Builder setSchemaTypeVisibleToConfigs(java.lang.String p0, java.util.Set p1) { return this; }
         public android.app.appsearch.GetSchemaResponse.Builder setSchemaTypeVisibleToPackages(java.lang.String p0, java.util.Set p1) { return this; }
-        public android.app.appsearch.GetSchemaResponse.Builder setVersion(int p0) { meglerProps.put("Version", Integer.valueOf(p0)); return this; }
-        public android.app.appsearch.GetSchemaResponse.Builder setVisibilitySettingSupported(boolean p0) { meglerProps.put("VisibilitySettingSupported", Boolean.valueOf(p0)); return this; }
+        public android.app.appsearch.GetSchemaResponse.Builder setVersion(int p0) { megletProps.put("Version", Integer.valueOf(p0)); return this; }
+        public android.app.appsearch.GetSchemaResponse.Builder setVisibilitySettingSupported(boolean p0) { megletProps.put("VisibilitySettingSupported", Boolean.valueOf(p0)); return this; }
     }
 }

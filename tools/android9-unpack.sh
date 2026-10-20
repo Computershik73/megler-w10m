@@ -47,7 +47,7 @@ take() { "$DEBUGFS" -R "dump $1 $2" "$IMG" 2> /dev/null; [ -s "$2" ] || { echo "
 names() { "$DEBUGFS" -R "ls -l $1" "$IMG" 2> /dev/null | awk '$2 ~ /^10/ {print $NF}'; }
 
 # The families /system/etc/fonts.xml gives a name to: sans-serif, sans-serif-condensed, serif, monospace, serif-monospace,
-# casual, cursive, sans-serif-smallcaps. (app/Megler/player/GfxHost.cpp has the same list.)
+# casual, cursive, sans-serif-smallcaps. (app/Meglet/player/GfxHost.cpp has the same list.)
 for f in $(names /system/fonts); do
   case "$f" in
     Roboto-*.ttf|RobotoCondensed-*.ttf|NotoSerif-Regular.ttf|NotoSerif-Bold.ttf|NotoSerif-Italic.ttf|NotoSerif-BoldItalic.ttf|DroidSansMono.ttf|CutiveMono.ttf|ComingSoon.ttf|DancingScript-*.ttf|CarroisGothicSC-Regular.ttf)

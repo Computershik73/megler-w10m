@@ -3,8 +3,8 @@ package android.service.controls.templates;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class StatelessTemplate extends android.service.controls.templates.ControlTemplate {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public StatelessTemplate(java.lang.String p0) { super(); }
-    public int getTemplateType() { return (meglerProps.get("TemplateType") instanceof Integer ? (Integer) meglerProps.get("TemplateType") : 0); }
+    public int getTemplateType() { return (megletProps.get("TemplateType") instanceof Integer ? (Integer) megletProps.get("TemplateType") : 0); }
     StatelessTemplate() { this((java.lang.String) null); }
 }

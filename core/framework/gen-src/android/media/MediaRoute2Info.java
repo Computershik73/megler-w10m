@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaRoute2Info implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CONNECTION_STATE_CONNECTED = 2;
     public static final int CONNECTION_STATE_CONNECTING = 1;
     public static final int CONNECTION_STATE_DISCONNECTED = 0;
@@ -56,33 +56,33 @@ public final class MediaRoute2Info implements android.os.Parcelable {
     public static final int TYPE_WIRED_HEADSET = 3;
     public int describeContents() { return 0; }
     public void dump(java.io.PrintWriter p0, java.lang.String p1) {}
-    public java.lang.String getAddress() { return (java.lang.String) meglerProps.get("Address"); }
-    public java.lang.String getClientPackageName() { return (java.lang.String) meglerProps.get("ClientPackageName"); }
-    public int getConnectionState() { return (meglerProps.get("ConnectionState") instanceof Integer ? (Integer) meglerProps.get("ConnectionState") : 0); }
-    public java.util.Set getDeduplicationIds() { return (meglerProps.get("DeduplicationIds") != null ? (java.util.Set) meglerProps.get("DeduplicationIds") : new java.util.HashSet()); }
-    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) meglerProps.get("Description"); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-    public java.util.List getFeatures() { return (meglerProps.get("Features") != null ? (java.util.List) meglerProps.get("Features") : new java.util.ArrayList()); }
-    public android.net.Uri getIconUri() { return (android.net.Uri) meglerProps.get("IconUri"); }
-    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
-    public java.lang.CharSequence getName() { return (java.lang.CharSequence) meglerProps.get("Name"); }
-    public java.lang.String getOriginalId() { return (java.lang.String) meglerProps.get("OriginalId"); }
-    public java.lang.String getProviderId() { return (java.lang.String) meglerProps.get("ProviderId"); }
-    public java.lang.String getProviderPackageName() { return (java.lang.String) meglerProps.get("ProviderPackageName"); }
-    public java.util.List getRequiredPermissions() { return (meglerProps.get("RequiredPermissions") != null ? (java.util.List) meglerProps.get("RequiredPermissions") : new java.util.ArrayList()); }
-    public int getSuitabilityStatus() { return (meglerProps.get("SuitabilityStatus") instanceof Integer ? (Integer) meglerProps.get("SuitabilityStatus") : 0); }
-    public int getSupportedRoutingTypes() { return (meglerProps.get("SupportedRoutingTypes") instanceof Integer ? (Integer) meglerProps.get("SupportedRoutingTypes") : 0); }
-    public java.util.Set getTemporaryVisibilityPackages() { return (meglerProps.get("TemporaryVisibilityPackages") != null ? (java.util.Set) meglerProps.get("TemporaryVisibilityPackages") : new java.util.HashSet()); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
-    public int getVolume() { return (meglerProps.get("Volume") instanceof Integer ? (Integer) meglerProps.get("Volume") : 0); }
-    public int getVolumeHandling() { return (meglerProps.get("VolumeHandling") instanceof Integer ? (Integer) meglerProps.get("VolumeHandling") : 0); }
-    public int getVolumeMax() { return (meglerProps.get("VolumeMax") instanceof Integer ? (Integer) meglerProps.get("VolumeMax") : 0); }
+    public java.lang.String getAddress() { return (java.lang.String) megletProps.get("Address"); }
+    public java.lang.String getClientPackageName() { return (java.lang.String) megletProps.get("ClientPackageName"); }
+    public int getConnectionState() { return (megletProps.get("ConnectionState") instanceof Integer ? (Integer) megletProps.get("ConnectionState") : 0); }
+    public java.util.Set getDeduplicationIds() { return (megletProps.get("DeduplicationIds") != null ? (java.util.Set) megletProps.get("DeduplicationIds") : new java.util.HashSet()); }
+    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) megletProps.get("Description"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public java.util.List getFeatures() { return (megletProps.get("Features") != null ? (java.util.List) megletProps.get("Features") : new java.util.ArrayList()); }
+    public android.net.Uri getIconUri() { return (android.net.Uri) megletProps.get("IconUri"); }
+    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
+    public java.lang.CharSequence getName() { return (java.lang.CharSequence) megletProps.get("Name"); }
+    public java.lang.String getOriginalId() { return (java.lang.String) megletProps.get("OriginalId"); }
+    public java.lang.String getProviderId() { return (java.lang.String) megletProps.get("ProviderId"); }
+    public java.lang.String getProviderPackageName() { return (java.lang.String) megletProps.get("ProviderPackageName"); }
+    public java.util.List getRequiredPermissions() { return (megletProps.get("RequiredPermissions") != null ? (java.util.List) megletProps.get("RequiredPermissions") : new java.util.ArrayList()); }
+    public int getSuitabilityStatus() { return (megletProps.get("SuitabilityStatus") instanceof Integer ? (Integer) megletProps.get("SuitabilityStatus") : 0); }
+    public int getSupportedRoutingTypes() { return (megletProps.get("SupportedRoutingTypes") instanceof Integer ? (Integer) megletProps.get("SupportedRoutingTypes") : 0); }
+    public java.util.Set getTemporaryVisibilityPackages() { return (megletProps.get("TemporaryVisibilityPackages") != null ? (java.util.Set) megletProps.get("TemporaryVisibilityPackages") : new java.util.HashSet()); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public int getVolume() { return (megletProps.get("Volume") instanceof Integer ? (Integer) megletProps.get("Volume") : 0); }
+    public int getVolumeHandling() { return (megletProps.get("VolumeHandling") instanceof Integer ? (Integer) megletProps.get("VolumeHandling") : 0); }
+    public int getVolumeMax() { return (megletProps.get("VolumeMax") instanceof Integer ? (Integer) megletProps.get("VolumeMax") : 0); }
     public boolean hasAllFeatures(java.util.Collection p0) { return false; }
     public boolean hasAnyFeatures(java.util.Collection p0) { return false; }
-    public boolean isPublic() { return (meglerProps.get("Public") instanceof Boolean ? (Boolean) meglerProps.get("Public") : false); }
-    public boolean isSystemRoute() { return (meglerProps.get("SystemRoute") instanceof Boolean ? (Boolean) meglerProps.get("SystemRoute") : false); }
-    public boolean isSystemRouteType() { return (meglerProps.get("SystemRouteType") instanceof Boolean ? (Boolean) meglerProps.get("SystemRouteType") : false); }
-    public boolean isValid() { return (meglerProps.get("Valid") instanceof Boolean ? (Boolean) meglerProps.get("Valid") : false); }
+    public boolean isPublic() { return (megletProps.get("Public") instanceof Boolean ? (Boolean) megletProps.get("Public") : false); }
+    public boolean isSystemRoute() { return (megletProps.get("SystemRoute") instanceof Boolean ? (Boolean) megletProps.get("SystemRoute") : false); }
+    public boolean isSystemRouteType() { return (megletProps.get("SystemRouteType") instanceof Boolean ? (Boolean) megletProps.get("SystemRouteType") : false); }
+    public boolean isValid() { return (megletProps.get("Valid") instanceof Boolean ? (Boolean) megletProps.get("Valid") : false); }
     public boolean isVisibleTo(java.lang.String p0) { return false; }
     public boolean isVisibleTo(java.lang.String p0, boolean p1) { return false; }
     public boolean supportsRemoteRouting() { return false; }
@@ -90,36 +90,36 @@ public final class MediaRoute2Info implements android.os.Parcelable {
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected MediaRoute2Info() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.media.MediaRoute2Info p0) {}
         public Builder(java.lang.String p0, android.media.MediaRoute2Info p1) {}
         public Builder(java.lang.String p0, java.lang.CharSequence p1) {}
         public android.media.MediaRoute2Info.Builder addFeature(java.lang.String p0) { return this; }
         public android.media.MediaRoute2Info.Builder addFeatures(java.util.Collection p0) { return this; }
-        public android.media.MediaRoute2Info build() { android.media.MediaRoute2Info x = new android.media.MediaRoute2Info(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.MediaRoute2Info build() { android.media.MediaRoute2Info x = new android.media.MediaRoute2Info(); x.megletProps.putAll(megletProps); return x; }
         public android.media.MediaRoute2Info.Builder clearFeatures() { return this; }
-        public android.media.MediaRoute2Info.Builder setAddress(java.lang.String p0) { meglerProps.put("Address", p0); return this; }
-        public android.media.MediaRoute2Info.Builder setClientPackageName(java.lang.String p0) { meglerProps.put("ClientPackageName", p0); return this; }
-        public android.media.MediaRoute2Info.Builder setConnectionState(int p0) { meglerProps.put("ConnectionState", Integer.valueOf(p0)); return this; }
-        public android.media.MediaRoute2Info.Builder setDeduplicationIds(java.util.Set p0) { meglerProps.put("DeduplicationIds", p0); return this; }
-        public android.media.MediaRoute2Info.Builder setDescription(java.lang.CharSequence p0) { meglerProps.put("Description", p0); return this; }
-        public android.media.MediaRoute2Info.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
-        public android.media.MediaRoute2Info.Builder setIconUri(android.net.Uri p0) { meglerProps.put("IconUri", p0); return this; }
-        public android.media.MediaRoute2Info.Builder setProviderId(java.lang.String p0) { meglerProps.put("ProviderId", p0); return this; }
-        public android.media.MediaRoute2Info.Builder setProviderPackageName(java.lang.String p0) { meglerProps.put("ProviderPackageName", p0); return this; }
-        public android.media.MediaRoute2Info.Builder setRequiredPermissions(java.util.List p0) { meglerProps.put("RequiredPermissions", p0); return this; }
-        public android.media.MediaRoute2Info.Builder setRequiredPermissions(java.util.Set p0) { meglerProps.put("RequiredPermissions", p0); return this; }
-        public android.media.MediaRoute2Info.Builder setSuitabilityStatus(int p0) { meglerProps.put("SuitabilityStatus", Integer.valueOf(p0)); return this; }
-        public android.media.MediaRoute2Info.Builder setSupportedRoutingTypes(int p0) { meglerProps.put("SupportedRoutingTypes", Integer.valueOf(p0)); return this; }
-        public android.media.MediaRoute2Info.Builder setSystemRoute(boolean p0) { meglerProps.put("SystemRoute", Boolean.valueOf(p0)); return this; }
-        public android.media.MediaRoute2Info.Builder setTemporaryAllowedPackages(java.util.Set p0) { meglerProps.put("TemporaryAllowedPackages", p0); return this; }
-        public android.media.MediaRoute2Info.Builder setType(int p0) { meglerProps.put("Type", Integer.valueOf(p0)); return this; }
+        public android.media.MediaRoute2Info.Builder setAddress(java.lang.String p0) { megletProps.put("Address", p0); return this; }
+        public android.media.MediaRoute2Info.Builder setClientPackageName(java.lang.String p0) { megletProps.put("ClientPackageName", p0); return this; }
+        public android.media.MediaRoute2Info.Builder setConnectionState(int p0) { megletProps.put("ConnectionState", Integer.valueOf(p0)); return this; }
+        public android.media.MediaRoute2Info.Builder setDeduplicationIds(java.util.Set p0) { megletProps.put("DeduplicationIds", p0); return this; }
+        public android.media.MediaRoute2Info.Builder setDescription(java.lang.CharSequence p0) { megletProps.put("Description", p0); return this; }
+        public android.media.MediaRoute2Info.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+        public android.media.MediaRoute2Info.Builder setIconUri(android.net.Uri p0) { megletProps.put("IconUri", p0); return this; }
+        public android.media.MediaRoute2Info.Builder setProviderId(java.lang.String p0) { megletProps.put("ProviderId", p0); return this; }
+        public android.media.MediaRoute2Info.Builder setProviderPackageName(java.lang.String p0) { megletProps.put("ProviderPackageName", p0); return this; }
+        public android.media.MediaRoute2Info.Builder setRequiredPermissions(java.util.List p0) { megletProps.put("RequiredPermissions", p0); return this; }
+        public android.media.MediaRoute2Info.Builder setRequiredPermissions(java.util.Set p0) { megletProps.put("RequiredPermissions", p0); return this; }
+        public android.media.MediaRoute2Info.Builder setSuitabilityStatus(int p0) { megletProps.put("SuitabilityStatus", Integer.valueOf(p0)); return this; }
+        public android.media.MediaRoute2Info.Builder setSupportedRoutingTypes(int p0) { megletProps.put("SupportedRoutingTypes", Integer.valueOf(p0)); return this; }
+        public android.media.MediaRoute2Info.Builder setSystemRoute(boolean p0) { megletProps.put("SystemRoute", Boolean.valueOf(p0)); return this; }
+        public android.media.MediaRoute2Info.Builder setTemporaryAllowedPackages(java.util.Set p0) { megletProps.put("TemporaryAllowedPackages", p0); return this; }
+        public android.media.MediaRoute2Info.Builder setType(int p0) { megletProps.put("Type", Integer.valueOf(p0)); return this; }
         public android.media.MediaRoute2Info.Builder setVisibilityPublic() { return this; }
-        public android.media.MediaRoute2Info.Builder setVisibilityRestricted(java.util.Set p0) { meglerProps.put("VisibilityRestricted", p0); return this; }
+        public android.media.MediaRoute2Info.Builder setVisibilityRestricted(java.util.Set p0) { megletProps.put("VisibilityRestricted", p0); return this; }
         public android.media.MediaRoute2Info.Builder setVisibilityRestricted(java.util.Set p0, boolean p1) { return this; }
-        public android.media.MediaRoute2Info.Builder setVolume(int p0) { meglerProps.put("Volume", Integer.valueOf(p0)); return this; }
-        public android.media.MediaRoute2Info.Builder setVolumeHandling(int p0) { meglerProps.put("VolumeHandling", Integer.valueOf(p0)); return this; }
-        public android.media.MediaRoute2Info.Builder setVolumeMax(int p0) { meglerProps.put("VolumeMax", Integer.valueOf(p0)); return this; }
+        public android.media.MediaRoute2Info.Builder setVolume(int p0) { megletProps.put("Volume", Integer.valueOf(p0)); return this; }
+        public android.media.MediaRoute2Info.Builder setVolumeHandling(int p0) { megletProps.put("VolumeHandling", Integer.valueOf(p0)); return this; }
+        public android.media.MediaRoute2Info.Builder setVolumeMax(int p0) { megletProps.put("VolumeMax", Integer.valueOf(p0)); return this; }
         Builder() { this((android.media.MediaRoute2Info) null); }
     }
 }

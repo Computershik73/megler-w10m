@@ -3,13 +3,13 @@ package android.bluetooth.le;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TransportDiscoveryData implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TransportDiscoveryData(int p0, java.util.List p1) {}
     public TransportDiscoveryData(byte[] p0) {}
     public int describeContents() { return 0; }
-    public java.util.List getTransportBlocks() { return (meglerProps.get("TransportBlocks") != null ? (java.util.List) meglerProps.get("TransportBlocks") : new java.util.ArrayList()); }
-    public int getTransportDataType() { return (meglerProps.get("TransportDataType") instanceof Integer ? (Integer) meglerProps.get("TransportDataType") : 0); }
+    public java.util.List getTransportBlocks() { return (megletProps.get("TransportBlocks") != null ? (java.util.List) megletProps.get("TransportBlocks") : new java.util.ArrayList()); }
+    public int getTransportDataType() { return (megletProps.get("TransportDataType") instanceof Integer ? (Integer) megletProps.get("TransportDataType") : 0); }
     public byte[] toByteArray() { return null; }
     public int totalBytes() { return 0; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}

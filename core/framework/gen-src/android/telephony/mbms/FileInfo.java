@@ -3,12 +3,12 @@ package android.telephony.mbms;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FileInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public FileInfo(android.net.Uri p0, java.lang.String p1) {}
     public int describeContents() { return 0; }
-    public java.lang.String getMimeType() { return (java.lang.String) meglerProps.get("MimeType"); }
-    public android.net.Uri getUri() { return (android.net.Uri) meglerProps.get("Uri"); }
+    public java.lang.String getMimeType() { return (java.lang.String) megletProps.get("MimeType"); }
+    public android.net.Uri getUri() { return (android.net.Uri) megletProps.get("Uri"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     FileInfo() { this((android.net.Uri) null, (java.lang.String) null); }
 }

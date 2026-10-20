@@ -3,11 +3,11 @@ package android.media.effect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class Effect {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public Effect() {}
     public abstract void apply(int p0, int p1, int p2, int p3);
     public abstract java.lang.String getName();
     public abstract void release();
     public abstract void setParameter(java.lang.String p0, java.lang.Object p1);
-    public void setUpdateListener(android.media.effect.EffectUpdateListener p0) { meglerProps.put("UpdateListener", p0); }
+    public void setUpdateListener(android.media.effect.EffectUpdateListener p0) { megletProps.put("UpdateListener", p0); }
 }

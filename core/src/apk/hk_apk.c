@@ -8,7 +8,7 @@
 
 #include <stdio.h>
 
-#include "../../include/megler.h"
+#include "../../include/meglet.h"
 #include "../bionic/hk_bionic.h"
 #include "../drivers/hk_driver.h"
 #include "../hk_core.h"
@@ -1081,7 +1081,7 @@ static void lib_report_one(const hk_zip_entry *e, void *user)
     hk_jraw(j, "}");
 }
 
-/* The report of an app in one or more APKs (megler.h): the base, its splits, and the folder with a bundle's record, if any. */
+/* The report of an app in one or more APKs (meglet.h): the base, its splits, and the folder with a bundle's record, if any. */
 static char *report(const char *apk_path, char *const *splits, int nsplits, const char *record_dir)
 {
     hk_apk_info *info = (hk_apk_info *)hk_alloc(sizeof(*info));
@@ -1208,9 +1208,9 @@ static char *report(const char *apk_path, char *const *splits, int nsplits, cons
     return j.s;
 }
 
-char *megler_apk_report(const char *apk_path) { return report(apk_path, NULL, 0, NULL); }
+char *meglet_apk_report(const char *apk_path) { return report(apk_path, NULL, 0, NULL); }
 
-char *megler_apk_report_splits(const char *apk_path, const char *splits_dir)
+char *meglet_apk_report_splits(const char *apk_path, const char *splits_dir)
 {
     char **splits = NULL, *out;
     int n = hk_apk_list_splits(splits_dir, &splits);
@@ -1280,7 +1280,7 @@ static u8 *icon_drawn(const char *apk_path, char *const *splits, int nsplits, co
 
 u8 *hk_apk_icon_draw(const char *apk_path, const char *path, size_t *size) { return icon_drawn(apk_path, NULL, 0, path, size); }
 
-bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_t **data, size_t *size)
+bool meglet_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_t **data, size_t *size)
 {
     hk_apk_info *info = (hk_apk_info *)hk_alloc(sizeof(*info));
     char **splits = NULL;
@@ -1304,7 +1304,7 @@ bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_
             }
         }
     }
-    /* None in the APKs: the icon the bundle came with, which megler_bundle_unpack keeps beside the splits. */
+    /* None in the APKs: the icon the bundle came with, which meglet_bundle_unpack keeps beside the splits. */
     if (!bytes && splits_dir && splits_dir[0]) {
         char *own = hk_sprintf("%s/%s", splits_dir, HK_BUNDLE_ICON);
         size_t got = 0;
@@ -1322,4 +1322,4 @@ bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_
     return bytes != NULL;
 }
 
-bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size) { return megler_apk_icon_splits(apk_path, NULL, data, size); }
+bool meglet_apk_icon(const char *apk_path, uint8_t **data, size_t *size) { return meglet_apk_icon_splits(apk_path, NULL, data, size); }

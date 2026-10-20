@@ -1,6 +1,6 @@
 package android.graphics;
 
-/** Pixels in native memory (megler.Gfx): premultiplied RGBA, rows top first. Every config is kept as ARGB_8888. */
+/** Pixels in native memory (meglet.Gfx): premultiplied RGBA, rows top first. Every config is kept as ARGB_8888. */
 public final class Bitmap implements android.os.Parcelable {
     public static final int DENSITY_NONE = 0;
     public enum Config { ALPHA_8, RGB_565, ARGB_4444, ARGB_8888, RGBA_F16, HARDWARE, RGBA_1010102
@@ -25,14 +25,14 @@ public final class Bitmap implements android.os.Parcelable {
 
     Bitmap(long nat, int w, int h, Config c, boolean mutable) { mNative = nat; mWidth = w; mHeight = h; mConfig = c == null ? Config.ARGB_8888 : c; mMutable = mutable; }
     /** The native bitmap. */
-    public long meglerNative() { return mNative; }
+    public long megletNative() { return mNative; }
     /** Changes each time it is drawn into, for caches. */
     public int getGenerationId() { return mGeneration; }
-    void meglerTouched() { mGeneration++; }
+    void megletTouched() { mGeneration++; }
 
     public static Bitmap createBitmap(int w, int h, Config c) {
         if (w <= 0 || h <= 0) throw new IllegalArgumentException("width and height must be > 0");
-        long n = megler.Gfx.bmNew(w, h);
+        long n = meglet.Gfx.bmNew(w, h);
         if (n == 0) throw new OutOfMemoryError("Bitmap " + w + "x" + h);
         return new Bitmap(n, w, h, c, true);
     }
@@ -55,7 +55,7 @@ public final class Bitmap implements android.os.Parcelable {
         Canvas cv = new Canvas(b);
         if (p.getWidth() > 0 && p.getHeight() > 0 && (w != p.getWidth() || h != p.getHeight())) cv.scale(w / (float) p.getWidth(), h / (float) p.getHeight());
         p.draw(cv);
-        cv.meglerRelease();
+        cv.megletRelease();
         return b;
     }
     public static Bitmap createBitmap(android.util.DisplayMetrics d, int[] colors, int w, int h, Config c) { return createBitmap(colors, w, h, c); }
@@ -63,7 +63,7 @@ public final class Bitmap implements android.os.Parcelable {
     public static Bitmap createBitmap(Bitmap src, int x, int y, int w, int h) { return createBitmap(src, x, y, w, h, null, false); }
     public static Bitmap createBitmap(Bitmap src, int x, int y, int w, int h, Matrix m, boolean filter) {
         if (x < 0 || y < 0 || x + w > src.mWidth || y + h > src.mHeight || w <= 0 || h <= 0) throw new IllegalArgumentException("x + width must be <= bitmap.width()");
-        long n = megler.Gfx.bmCopy(src.mNative, x, y, w, h, m == null || m.isIdentity() ? null : m.meglerAffine(), filter);
+        long n = meglet.Gfx.bmCopy(src.mNative, x, y, w, h, m == null || m.isIdentity() ? null : m.megletAffine(), filter);
         if (n == 0) throw new OutOfMemoryError();
         float[] wh = { w, h };
         int nw = w, nh = h;
@@ -114,34 +114,34 @@ public final class Bitmap implements android.os.Parcelable {
     public void prepareToDraw() {}
     public boolean sameAs(Bitmap o) { if (o == null || o.mWidth != mWidth || o.mHeight != mHeight) return false; int[] a = new int[mWidth * mHeight], b = new int[a.length]; getPixels(a, 0, mWidth, 0, 0, mWidth, mHeight); o.getPixels(b, 0, mWidth, 0, 0, mWidth, mHeight); return java.util.Arrays.equals(a, b); }
 
-    public void recycle() { if (!mRecycled && mNative != 0) { megler.Gfx.bmFree(mNative); mNative = 0; mRecycled = true; } }
+    public void recycle() { if (!mRecycled && mNative != 0) { meglet.Gfx.bmFree(mNative); mNative = 0; mRecycled = true; } }
     @Override protected void finalize() throws Throwable { recycle(); super.finalize(); }
 
-    public void eraseColor(int c) { megler.Gfx.bmErase(mNative, c); mGeneration++; }
+    public void eraseColor(int c) { meglet.Gfx.bmErase(mNative, c); mGeneration++; }
     public void eraseColor(long c) { eraseColor(Color.toArgb(c)); }
-    public int getPixel(int x, int y) { return megler.Gfx.bmGetPixel(mNative, x, y); }
-    public void setPixel(int x, int y, int c) { megler.Gfx.bmSetPixel(mNative, x, y, c); mGeneration++; }
-    public void getPixels(int[] px, int offset, int stride, int x, int y, int w, int h) { if (w > 0 && h > 0) megler.Gfx.bmPixels(mNative, px, offset, stride, x, y, w, h, false); }
-    public void setPixels(int[] px, int offset, int stride, int x, int y, int w, int h) { if (w > 0 && h > 0) megler.Gfx.bmPixels(mNative, px, offset, stride, x, y, w, h, true); mGeneration++; }
+    public int getPixel(int x, int y) { return meglet.Gfx.bmGetPixel(mNative, x, y); }
+    public void setPixel(int x, int y, int c) { meglet.Gfx.bmSetPixel(mNative, x, y, c); mGeneration++; }
+    public void getPixels(int[] px, int offset, int stride, int x, int y, int w, int h) { if (w > 0 && h > 0) meglet.Gfx.bmPixels(mNative, px, offset, stride, x, y, w, h, false); }
+    public void setPixels(int[] px, int offset, int stride, int x, int y, int w, int h) { if (w > 0 && h > 0) meglet.Gfx.bmPixels(mNative, px, offset, stride, x, y, w, h, true); mGeneration++; }
     private static java.lang.reflect.Field sAddress;
     /** A direct buffer's memory, for copying pixels straight into it (0 when it is not a direct one). */
-    static long meglerAddress(java.nio.Buffer b) {
+    static long megletAddress(java.nio.Buffer b) {
         if (!b.isDirect()) return 0;
         try { if (sAddress == null) { sAddress = java.nio.Buffer.class.getDeclaredField("address"); sAddress.setAccessible(true); } return sAddress.getLong(b); } catch (Exception e) { return 0; }
     }
-    /** Megler: premultiplied RGBA rows (top first) from native memory as the pixels. */
-    public void meglerSetRgba(long addr) { if (addr != 0) { megler.Gfx.bmRaw(mNative, addr, true); mGeneration++; } }
-    /** Megler: the raw (premultiplied RGBA, top row first) pixels into a buffer at its position. */
-    public void meglerCopyRgba(java.nio.ByteBuffer dst) {
-        long a = meglerAddress(dst);
-        if (a != 0 && dst.remaining() >= mWidth * mHeight * 4) { megler.Gfx.bmRaw(mNative, a + dst.position(), false); return; }
+    /** Meglet: premultiplied RGBA rows (top first) from native memory as the pixels. */
+    public void megletSetRgba(long addr) { if (addr != 0) { meglet.Gfx.bmRaw(mNative, addr, true); mGeneration++; } }
+    /** Meglet: the raw (premultiplied RGBA, top row first) pixels into a buffer at its position. */
+    public void megletCopyRgba(java.nio.ByteBuffer dst) {
+        long a = megletAddress(dst);
+        if (a != 0 && dst.remaining() >= mWidth * mHeight * 4) { meglet.Gfx.bmRaw(mNative, a + dst.position(), false); return; }
         copyPixelsToBuffer(dst);
     }
     public void copyPixelsToBuffer(java.nio.Buffer dst) {
-        long addr = meglerAddress(dst);
+        long addr = megletAddress(dst);
         if (addr != 0 && getConfig() != Config.RGB_565 && dst.remaining() * (dst instanceof java.nio.ByteBuffer ? 1 : dst instanceof java.nio.ShortBuffer ? 2 : 4) >= mWidth * mHeight * 4) {
             int unit = dst instanceof java.nio.ByteBuffer ? 1 : dst instanceof java.nio.ShortBuffer ? 2 : 4;
-            megler.Gfx.bmRaw(mNative, addr + (long) dst.position() * unit, false);
+            meglet.Gfx.bmRaw(mNative, addr + (long) dst.position() * unit, false);
             dst.position(dst.position() + mWidth * mHeight * 4 / unit);
             return;
         }
@@ -154,10 +154,10 @@ public final class Bitmap implements android.os.Parcelable {
         if (b != null) b.put(tmp); else if (dst instanceof java.nio.IntBuffer) { java.nio.ByteBuffer.wrap(tmp).order(java.nio.ByteOrder.nativeOrder()).asIntBuffer().get(new int[0]); }
     }
     public void copyPixelsFromBuffer(java.nio.Buffer src) {
-        long addr = meglerAddress(src);
+        long addr = megletAddress(src);
         int unit = src instanceof java.nio.ByteBuffer ? 1 : src instanceof java.nio.ShortBuffer ? 2 : 4;
         if (addr != 0 && getConfig() != Config.RGB_565 && src.remaining() * unit >= mWidth * mHeight * 4) {
-            megler.Gfx.bmRaw(mNative, addr + (long) src.position() * unit, true);
+            meglet.Gfx.bmRaw(mNative, addr + (long) src.position() * unit, true);
             src.position(src.position() + mWidth * mHeight * 4 / unit);
             mGeneration++;
             return;
@@ -173,7 +173,7 @@ public final class Bitmap implements android.os.Parcelable {
         setPixels(px, 0, mWidth, 0, 0, mWidth, mHeight);
     }
     public boolean compress(CompressFormat fmt, int quality, java.io.OutputStream out) {
-        byte[] d = megler.Gfx.bmCompress(mNative, fmt == CompressFormat.JPEG ? 0 : 1, quality);
+        byte[] d = meglet.Gfx.bmCompress(mNative, fmt == CompressFormat.JPEG ? 0 : 1, quality);
         if (d == null) return false;
         try { out.write(d); return true; } catch (java.io.IOException e) { return false; }
     }
@@ -181,7 +181,7 @@ public final class Bitmap implements android.os.Parcelable {
     public Bitmap asShared() { return this; }
     public int describeContents() { return 0; }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static void dumpAll(android.util.proto.ProtoOutputStream p0, java.lang.String p1) {}
     public static void dumpAll(java.lang.String p0) {}
@@ -190,7 +190,7 @@ public final class Bitmap implements android.os.Parcelable {
     public static android.graphics.Bitmap wrapHardwareBuffer(android.hardware.HardwareBuffer p0, android.graphics.ColorSpace p1) { return null; }
     public android.graphics.Bitmap createAshmemBitmap() { return this; }
     public android.graphics.Color getColor(int p0, int p1) { return null; }
-    public android.graphics.Gainmap getGainmap() { return (android.graphics.Gainmap) meglerFill.get("Gainmap"); }
+    public android.graphics.Gainmap getGainmap() { return (android.graphics.Gainmap) megletFill.get("Gainmap"); }
     public android.hardware.HardwareBuffer getHardwareBuffer() { return null; }
     public long getNativeInstance() { return 0L; }
     public android.graphics.NinePatch.InsetStruct getNinePatchInsets() { return null; }
@@ -198,6 +198,6 @@ public final class Bitmap implements android.os.Parcelable {
     public android.os.SharedMemory getSharedMemory() { return null; }
     public boolean hasGainmap() { return false; }
     public void setColorSpace(android.graphics.ColorSpace p0) {}
-    public void setGainmap(android.graphics.Gainmap p0) { meglerFill.put("Gainmap", p0); }
+    public void setGainmap(android.graphics.Gainmap p0) { megletFill.put("Gainmap", p0); }
     // ---- end of generated members
 }

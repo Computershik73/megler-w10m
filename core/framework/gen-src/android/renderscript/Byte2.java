@@ -3,7 +3,7 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Byte2 {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public byte x;
     public byte y;
     public Byte2() {}

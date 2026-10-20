@@ -3,18 +3,18 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DevicePolicyResources {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String UNDEFINED = "UNDEFINED";
     protected DevicePolicyResources() {}
     public static final class Drawables {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String WORK_PROFILE_ICON = "WORK_PROFILE_ICON";
         public static final java.lang.String WORK_PROFILE_ICON_BADGE = "WORK_PROFILE_ICON_BADGE";
         public static final java.lang.String WORK_PROFILE_OFF_ICON = "WORK_PROFILE_OFF_ICON";
         public static final java.lang.String WORK_PROFILE_USER_ICON = "WORK_PROFILE_USER_ICON";
         protected Drawables() {}
         public static final class Source {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String HOME_WIDGET = "HOME_WIDGET";
             public static final java.lang.String LAUNCHER_OFF_BUTTON = "LAUNCHER_OFF_BUTTON";
             public static final java.lang.String NOTIFICATION = "NOTIFICATION";
@@ -24,7 +24,7 @@ public final class DevicePolicyResources {
             protected Source() {}
         }
         public static final class Style {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String OUTLINE = "OUTLINE";
             public static final java.lang.String SOLID_COLORED = "SOLID_COLORED";
             public static final java.lang.String SOLID_NOT_COLORED = "SOLID_NOT_COLORED";
@@ -32,10 +32,10 @@ public final class DevicePolicyResources {
         }
     }
     public static final class Strings {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected Strings() {}
         public static final class Core {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CANT_ADD_ACCOUNT_MESSAGE = "Core.CANT_ADD_ACCOUNT_MESSAGE";
             public static final java.lang.String FORWARD_INTENT_TO_PERSONAL = "Core.FORWARD_INTENT_TO_PERSONAL";
             public static final java.lang.String FORWARD_INTENT_TO_WORK = "Core.FORWARD_INTENT_TO_WORK";
@@ -92,13 +92,13 @@ public final class DevicePolicyResources {
             protected Core() {}
         }
         public static final class DefaultAppSettings {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String HOME_MISSING_WORK_PROFILE_SUPPORT_MESSAGE = "DefaultAppSettings.HOME_MISSING_WORK_PROFILE_SUPPORT_MESSAGE";
             public static final java.lang.String WORK_PROFILE_DEFAULT_APPS_TITLE = "DefaultAppSettings.WORK_PROFILE_DEFAULT_APPS_TITLE";
             protected DefaultAppSettings() {}
         }
         public static final class PermissionSettings {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String BACKGROUND_ACCESS_DISABLED_BY_ADMIN_MESSAGE = "PermissionSettings.BACKGROUND_ACCESS_DISABLED_BY_ADMIN_MESSAGE";
             public static final java.lang.String BACKGROUND_ACCESS_ENABLED_BY_ADMIN_MESSAGE = "PermissionSettings.BACKGROUND_ACCESS_ENABLED_BY_ADMIN_MESSAGE";
             public static final java.lang.String FOREGROUND_ACCESS_ENABLED_BY_ADMIN_MESSAGE = "PermissionSettings.FOREGROUND_ACCESS_ENABLED_BY_ADMIN_MESSAGE";
@@ -106,7 +106,7 @@ public final class DevicePolicyResources {
             protected PermissionSettings() {}
         }
         public static final class Settings {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String ACCESSIBILITY_CATEGORY_CLONE = "Settings.ACCESSIBILITY_CATEGORY_CLONE";
             public static final java.lang.String ACCESSIBILITY_CATEGORY_PERSONAL = "Settings.ACCESSIBILITY_CATEGORY_PERSONAL";
             public static final java.lang.String ACCESSIBILITY_CATEGORY_WORK = "Settings.ACCESSIBILITY_CATEGORY_WORK";
@@ -291,7 +291,7 @@ public final class DevicePolicyResources {
             protected Settings() {}
         }
         public static final class SystemUi {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String BIOMETRIC_DIALOG_WORK_LOCK_FAILED_ATTEMPTS = "SystemUi.BIOMETRIC_DIALOG_WORK_LOCK_FAILED_ATTEMPTS";
             public static final java.lang.String BIOMETRIC_DIALOG_WORK_PASSWORD_LAST_ATTEMPT = "SystemUi.BIOMETRIC_DIALOG_WORK_PASSWORD_LAST_ATTEMPT";
             public static final java.lang.String BIOMETRIC_DIALOG_WORK_PATTERN_LAST_ATTEMPT = "SystemUi.BIOMETRIC_DIALOG_WORK_PATTERN_LAST_ATTEMPT";
@@ -336,7 +336,7 @@ public final class DevicePolicyResources {
             protected SystemUi() {}
         }
         public static final class Telecomm {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String NOTIFICATION_MISSED_WORK_CALL_TITLE = "Telecomm.NOTIFICATION_MISSED_WORK_CALL_TITLE";
             protected Telecomm() {}
         }

@@ -5,8 +5,8 @@
 // Why. VK mp3 mod signs in only by a QR code now, which it scans with the old camera API (budiyev's code-scanner over ZXing:
 // open, the parameters, a preview on a SurfaceView, preview frames in callback buffers, autofocus), and so do most scanners.
 //
-// What it is: Android 9's class as an app sees it, over the phone's cameras (megler.CameraNative: core/src/drivers/
-// hk_java_camera.c over the shell's megler_camera_host, Windows.Media.Capture on a phone). Parameters are Android's: a map of
+// What it is: Android 9's class as an app sees it, over the phone's cameras (meglet.CameraNative: core/src/drivers/
+// hk_java_camera.c over the shell's meglet_camera_host, Windows.Media.Capture on a phone). Parameters are Android's: a map of
 // keys and values, flatten and unflatten with Android's keys, and every getter and setter reading and writing those keys,
 // so that code reading get("preview-size-values") works; what a camera's driver ("the HAL") would offer is made here from
 // what the shell says the camera does, and setParameters refuses what it does not offer, as a HAL does. CameraInfo, Size,
@@ -68,7 +68,7 @@ public class Camera {
     private static final int CAMERA_HAL_API_VERSION_NORMAL_CONNECT = -2;
     private static final int EACCES = 13, ENODEV = 19;
 
-    private volatile long mNative;             // megler.CameraNative's handle; 0 once released
+    private volatile long mNative;             // meglet.CameraNative's handle; 0 once released
     private int mCameraId;
     private boolean mFront;
     private int mOrientation;
@@ -96,14 +96,14 @@ public class Camera {
     private Preview mPreview;
     private boolean mTorch;
 
-    public static int getNumberOfCameras() { return megler.CameraNative.count(); }
+    public static int getNumberOfCameras() { return meglet.CameraNative.count(); }
     /** @hide */
     public static int getNumberOfCameras(android.content.Context context) { return getNumberOfCameras(); }
 
     public static void getCameraInfo(int cameraId, CameraInfo cameraInfo) {
         if (cameraId >= getNumberOfCameras()) throw new RuntimeException("Unknown camera ID");
         int[] v = new int[4];
-        if (cameraId < 0 || !megler.CameraNative.info(cameraId, v)) throw new RuntimeException("Fail to get camera info");
+        if (cameraId < 0 || !meglet.CameraNative.info(cameraId, v)) throw new RuntimeException("Fail to get camera info");
         cameraInfo.facing = v[0];
         cameraInfo.orientation = v[1];
         cameraInfo.canDisableShutterSound = true;
@@ -160,17 +160,17 @@ public class Camera {
         // Every way a connection fails is EACCES to the app on Android 9 (its native_setup answers it whenever the service
         // gives no camera): a refused permission, a camera another app has, a number that is no camera. The log says which.
         int[] info = new int[4];
-        if (cameraId < 0 || !megler.CameraNative.info(cameraId, info)) {
+        if (cameraId < 0 || !meglet.CameraNative.info(cameraId, info)) {
             Log.e(TAG, "There is no camera " + cameraId + " (" + getNumberOfCameras() + " cameras)");
             return -EACCES;
         }
-        long h = megler.CameraNative.open(cameraId);
+        long h = meglet.CameraNative.open(cameraId);
         if (h == 0) return -EACCES;
         mNative = h;
         mCameraId = cameraId;
         mFront = info[0] == CameraInfo.CAMERA_FACING_FRONT;
         mOrientation = info[1];
-        mCaps = megler.CameraNative.caps(h);
+        mCaps = meglet.CameraNative.caps(h);
         mParams = new Parameters();
         mParams.unflatten(defaults());
         return 0;
@@ -197,7 +197,7 @@ public class Camera {
             mSurface = null;
             mTexture = null;
         }
-        if (h != 0) megler.CameraNative.close(h);
+        if (h != 0) meglet.CameraNative.close(h);
         mFaceDetectionRunning = false;
     }
 
@@ -241,7 +241,7 @@ public class Camera {
         // A camera may run anywhere in the range: here at its slow end, but not below 15 frames a second unless the range's top
         // is. A scanner's usual (15000,30000) is then 15 a second, half the pictures to copy into the app's Java and to show.
         int rate = Math.max(fps[0], Math.min(fps[1], 15000));
-        if (size == null || !megler.CameraNative.start(h, size.width, size.height, Math.max(1, (rate + 999) / 1000))) throw new RuntimeException("startPreview failed");
+        if (size == null || !meglet.CameraNative.start(h, size.width, size.height, Math.max(1, (rate + 999) / 1000))) throw new RuntimeException("startPreview failed");
         synchronized (mLock) { mFrameInFlight = false; }
         mPreview = new Preview(h, format);
         mPreview.start();
@@ -256,7 +256,7 @@ public class Camera {
         mPreview = null;
         if (p != null) {
             p.finish();
-            megler.CameraNative.stop(p.h);
+            meglet.CameraNative.stop(p.h);
             mTorch = false;
         }
         mFaceDetectionRunning = false;
@@ -324,7 +324,7 @@ public class Camera {
         if (mPreview == null) throw new RuntimeException("autoFocus failed");
         int mode = focusModeOf(mParams.getFocusMode());
         // A camera that does not focus answers at once, in focus, as Android's do.
-        if (mode == megler.CameraNative.FOCUS_NONE || !megler.CameraNative.focus(h, mode)) focusDone(true);
+        if (mode == meglet.CameraNative.FOCUS_NONE || !meglet.CameraNative.focus(h, mode)) focusDone(true);
     }
 
     public final void cancelAutoFocus() {
@@ -336,7 +336,7 @@ public class Camera {
         if (h != 0 && mPreview != null) {
             int mode = focusModeOf(mParams.getFocusMode());
             // Continuous focus goes on (Android: "resumes continuous focus"); a pass of focusing is stopped.
-            if (mode != megler.CameraNative.FOCUS_CONTINUOUS) megler.CameraNative.focus(h, megler.CameraNative.FOCUS_NONE);
+            if (mode != meglet.CameraNative.FOCUS_CONTINUOUS) meglet.CameraNative.focus(h, meglet.CameraNative.FOCUS_NONE);
         }
         if (mEventHandler != null) mEventHandler.removeMessages(CAMERA_MSG_FOCUS);
     }
@@ -346,7 +346,7 @@ public class Camera {
     public final void takePicture(ShutterCallback shutter, PictureCallback raw, PictureCallback jpeg) { takePicture(shutter, raw, null, jpeg); }
     public final void takePicture(ShutterCallback shutter, PictureCallback raw, PictureCallback postview, PictureCallback jpeg) {
         handle();
-        Log.w(TAG, "takePicture: pictures are not taken here (megler-w10m has the preview and its frames only)");
+        Log.w(TAG, "takePicture: pictures are not taken here (Meglet has the preview and its frames only)");
         throw new RuntimeException("takePicture failed");
     }
 
@@ -424,22 +424,22 @@ public class Camera {
     private static boolean same(String a, String b) { return a == null ? b == null : a.equals(b); }
 
     private static int focusModeOf(String mode) {
-        if (Parameters.FOCUS_MODE_AUTO.equals(mode)) return megler.CameraNative.FOCUS_ONCE;
-        if (Parameters.FOCUS_MODE_MACRO.equals(mode)) return megler.CameraNative.FOCUS_MACRO;
-        if (Parameters.FOCUS_MODE_CONTINUOUS_PICTURE.equals(mode) || Parameters.FOCUS_MODE_CONTINUOUS_VIDEO.equals(mode)) return megler.CameraNative.FOCUS_CONTINUOUS;
-        return megler.CameraNative.FOCUS_NONE;
+        if (Parameters.FOCUS_MODE_AUTO.equals(mode)) return meglet.CameraNative.FOCUS_ONCE;
+        if (Parameters.FOCUS_MODE_MACRO.equals(mode)) return meglet.CameraNative.FOCUS_MACRO;
+        if (Parameters.FOCUS_MODE_CONTINUOUS_PICTURE.equals(mode) || Parameters.FOCUS_MODE_CONTINUOUS_VIDEO.equals(mode)) return meglet.CameraNative.FOCUS_CONTINUOUS;
+        return meglet.CameraNative.FOCUS_NONE;
     }
 
     /** Continuous focus starts with its mode; a pass of focusing waits for autoFocus. */
     private void applyFocusMode(long h) {
         int mode = focusModeOf(mParams.getFocusMode());
-        megler.CameraNative.focus(h, mode == megler.CameraNative.FOCUS_CONTINUOUS ? mode : megler.CameraNative.FOCUS_NONE);
+        meglet.CameraNative.focus(h, mode == meglet.CameraNative.FOCUS_CONTINUOUS ? mode : meglet.CameraNative.FOCUS_NONE);
     }
 
     private void applyFlashMode(long h) {
         boolean on = Parameters.FLASH_MODE_TORCH.equals(mParams.getFlashMode());
         if (on != mTorch) {
-            megler.CameraNative.torch(h, on);
+            meglet.CameraNative.torch(h, on);
             mTorch = on;
         }
     }
@@ -602,11 +602,11 @@ public class Camera {
 
         @Override public void run() {
             while (mRun) {
-                int news = megler.CameraNative.waitNews(h, 100);
+                int news = meglet.CameraNative.waitNews(h, 100);
                 if (!mRun) break;
-                if ((news & megler.CameraNative.NEWS_FOCUSED) != 0) focusDone(true);
-                else if ((news & megler.CameraNative.NEWS_NOT_FOCUSED) != 0) focusDone(false);
-                if ((news & megler.CameraNative.NEWS_FRAME) != 0) {
+                if ((news & meglet.CameraNative.NEWS_FOCUSED) != 0) focusDone(true);
+                else if ((news & meglet.CameraNative.NEWS_NOT_FOCUSED) != 0) focusDone(false);
+                if ((news & meglet.CameraNative.NEWS_FRAME) != 0) {
                     mFrames++;
                     try {
                         show();
@@ -615,7 +615,7 @@ public class Camera {
                     }
                     deliver();
                 }
-                if ((news & megler.CameraNative.NEWS_GONE) != 0) {
+                if ((news & meglet.CameraNative.NEWS_GONE) != 0) {
                     Log.e(TAG, "camera " + mCameraId + " stopped: it was taken away or is gone");
                     if (mEventHandler != null) mEventHandler.obtainMessage(CAMERA_MSG_ERROR, CAMERA_ERROR_UNKNOWN, 0).sendToTarget();
                     break;
@@ -641,18 +641,18 @@ public class Camera {
                 texture = mTexture;
             }
             if (holder == null && surface == null && texture == null) return;
-            android.view.SurfaceView view = surface != null ? surface.meglerView : null;
+            android.view.SurfaceView view = surface != null ? surface.megletView : null;
             // A SurfaceView whose window has not yet shown the last picture is not given another: the window would draw only the latest.
-            if (view != null && !view.meglerFrameDrawn()) return;
-            int size = megler.CameraNative.frameSize(h), fw = size >>> 16, fh = size & 0xffff, rot = mDisplayOrientation;
+            if (view != null && !view.megletFrameDrawn()) return;
+            int size = meglet.CameraNative.frameSize(h), fw = size >>> 16, fh = size & 0xffff, rot = mDisplayOrientation;
             if (fw <= 0 || fh <= 0) return;
             Bitmap b = bitmap(rot % 180 == 0 ? fw : fh, rot % 180 == 0 ? fh : fw);
-            if (!megler.CameraNative.render(h, b, rot, mFront)) return;
+            if (!meglet.CameraNative.render(h, b, rot, mFront)) return;
             boolean posted;
             if (view != null) {
-                posted = view.meglerPostBitmap(b);
+                posted = view.megletPostBitmap(b);
             } else if (texture != null) {
-                posted = texture.meglerPostBitmap(b);
+                posted = texture.megletPostBitmap(b);
             } else {
                 // Any other surface: the picture drawn into its canvas, scaled.
                 Canvas c = holder != null ? holder.lockCanvas() : surface.lockCanvas(null);
@@ -673,8 +673,8 @@ public class Camera {
         private void deliver() {
             PreviewCallback cb;
             byte[] data = null;
-            int size = megler.CameraNative.frameSize(h);
-            int bytes = megler.CameraNative.frameBytes(size >>> 16, size & 0xffff, format);
+            int size = meglet.CameraNative.frameSize(h);
+            int bytes = meglet.CameraNative.frameBytes(size >>> 16, size & 0xffff, format);
             if (bytes <= 0) return;
             synchronized (mLock) {
                 cb = mPreviewCallback;
@@ -695,7 +695,7 @@ public class Camera {
                     data = new byte[bytes];
                 }
             }
-            if (data != null && megler.CameraNative.copyFrame(h, data, format) < 0) return;
+            if (data != null && meglet.CameraNative.copyFrame(h, data, format) < 0) return;
             if (mEventHandler != null) mEventHandler.obtainMessage(CAMERA_MSG_PREVIEW_FRAME, data).sendToTarget();
         }
     }

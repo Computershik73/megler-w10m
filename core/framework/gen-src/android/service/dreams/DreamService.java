@@ -3,7 +3,7 @@ package android.service.dreams;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DreamService extends android.app.Service implements android.view.Window.Callback {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String BUNDLE_KEY_ATTACH_ERROR = "android.service.dream.DreamService.attach_error";
     public static final boolean DEFAULT_SHOW_COMPLICATIONS = false;
     public static final int DREAM_CATEGORY_DEFAULT = 0;
@@ -28,18 +28,18 @@ public class DreamService extends android.app.Service implements android.view.Wi
     protected void dumpOnHandler(java.io.FileDescriptor p0, java.io.PrintWriter p1, java.lang.String[] p2) {}
     public android.view.View findViewById(int p0) { return null; }
     public void finish() {}
-    public android.app.Activity getActivity() { return (android.app.Activity) meglerProps.get("Activity"); }
-    public float getDozeScreenBrightness() { return (meglerProps.get("DozeScreenBrightness") instanceof Float ? (Float) meglerProps.get("DozeScreenBrightness") : 0f); }
-    public int getDozeScreenState() { return (meglerProps.get("DozeScreenState") instanceof Integer ? (Integer) meglerProps.get("DozeScreenState") : 0); }
-    public boolean getRedirectWake() { return (meglerProps.get("RedirectWake") instanceof Boolean ? (Boolean) meglerProps.get("RedirectWake") : false); }
-    public boolean getUseNormalBrightnessForDoze() { return (meglerProps.get("UseNormalBrightnessForDoze") instanceof Boolean ? (Boolean) meglerProps.get("UseNormalBrightnessForDoze") : false); }
-    public android.view.Window getWindow() { return (android.view.Window) meglerProps.get("Window"); }
-    public android.view.WindowManager getWindowManager() { return (android.view.WindowManager) meglerProps.get("WindowManager"); }
-    public boolean isDozing() { return (meglerProps.get("Dozing") instanceof Boolean ? (Boolean) meglerProps.get("Dozing") : false); }
-    public boolean isFullscreen() { return (meglerProps.get("Fullscreen") instanceof Boolean ? (Boolean) meglerProps.get("Fullscreen") : false); }
-    public boolean isInteractive() { return (meglerProps.get("Interactive") instanceof Boolean ? (Boolean) meglerProps.get("Interactive") : false); }
-    public boolean isScreenBright() { return (meglerProps.get("ScreenBright") instanceof Boolean ? (Boolean) meglerProps.get("ScreenBright") : false); }
-    public boolean isWindowless() { return (meglerProps.get("Windowless") instanceof Boolean ? (Boolean) meglerProps.get("Windowless") : false); }
+    public android.app.Activity getActivity() { return (android.app.Activity) megletProps.get("Activity"); }
+    public float getDozeScreenBrightness() { return (megletProps.get("DozeScreenBrightness") instanceof Float ? (Float) megletProps.get("DozeScreenBrightness") : 0f); }
+    public int getDozeScreenState() { return (megletProps.get("DozeScreenState") instanceof Integer ? (Integer) megletProps.get("DozeScreenState") : 0); }
+    public boolean getRedirectWake() { return (megletProps.get("RedirectWake") instanceof Boolean ? (Boolean) megletProps.get("RedirectWake") : false); }
+    public boolean getUseNormalBrightnessForDoze() { return (megletProps.get("UseNormalBrightnessForDoze") instanceof Boolean ? (Boolean) megletProps.get("UseNormalBrightnessForDoze") : false); }
+    public android.view.Window getWindow() { return (android.view.Window) megletProps.get("Window"); }
+    public android.view.WindowManager getWindowManager() { return (android.view.WindowManager) megletProps.get("WindowManager"); }
+    public boolean isDozing() { return (megletProps.get("Dozing") instanceof Boolean ? (Boolean) megletProps.get("Dozing") : false); }
+    public boolean isFullscreen() { return (megletProps.get("Fullscreen") instanceof Boolean ? (Boolean) megletProps.get("Fullscreen") : false); }
+    public boolean isInteractive() { return (megletProps.get("Interactive") instanceof Boolean ? (Boolean) megletProps.get("Interactive") : false); }
+    public boolean isScreenBright() { return (megletProps.get("ScreenBright") instanceof Boolean ? (Boolean) megletProps.get("ScreenBright") : false); }
+    public boolean isWindowless() { return (megletProps.get("Windowless") instanceof Boolean ? (Boolean) megletProps.get("Windowless") : false); }
     public void onActionModeFinished(android.view.ActionMode p0) {}
     public void onActionModeStarted(android.view.ActionMode p0) {}
     public void onAttachedToWindow() {}
@@ -62,30 +62,30 @@ public class DreamService extends android.app.Service implements android.view.Wi
     public android.view.ActionMode onWindowStartingActionMode(android.view.ActionMode.Callback p0) { return null; }
     public android.view.ActionMode onWindowStartingActionMode(android.view.ActionMode.Callback p0, int p1) { return null; }
     public android.view.View requireViewById(int p0) { return null; }
-    public void setContentView(int p0) { meglerProps.put("ContentView", Integer.valueOf(p0)); }
-    public void setContentView(android.view.View p0) { meglerProps.put("ContentView", p0); }
+    public void setContentView(int p0) { megletProps.put("ContentView", Integer.valueOf(p0)); }
+    public void setContentView(android.view.View p0) { megletProps.put("ContentView", p0); }
     public void setContentView(android.view.View p0, android.view.ViewGroup.LayoutParams p1) {}
-    public void setDebug(boolean p0) { meglerProps.put("Debug", Boolean.valueOf(p0)); }
-    public void setDozeScreenBrightness(float p0) { meglerProps.put("DozeScreenBrightness", Float.valueOf(p0)); }
-    public void setDozeScreenState(int p0) { meglerProps.put("DozeScreenState", Integer.valueOf(p0)); }
+    public void setDebug(boolean p0) { megletProps.put("Debug", Boolean.valueOf(p0)); }
+    public void setDozeScreenBrightness(float p0) { megletProps.put("DozeScreenBrightness", Float.valueOf(p0)); }
+    public void setDozeScreenState(int p0) { megletProps.put("DozeScreenState", Integer.valueOf(p0)); }
     public void setDozeScreenState(int p0, int p1, boolean p2) {}
-    public void setFullscreen(boolean p0) { meglerProps.put("Fullscreen", Boolean.valueOf(p0)); }
-    public void setInteractive(boolean p0) { meglerProps.put("Interactive", Boolean.valueOf(p0)); }
-    public void setScreenBright(boolean p0) { meglerProps.put("ScreenBright", Boolean.valueOf(p0)); }
-    public void setScreenBrightness(float p0) { meglerProps.put("ScreenBrightness", Float.valueOf(p0)); }
-    public void setWindowless(boolean p0) { meglerProps.put("Windowless", Boolean.valueOf(p0)); }
+    public void setFullscreen(boolean p0) { megletProps.put("Fullscreen", Boolean.valueOf(p0)); }
+    public void setInteractive(boolean p0) { megletProps.put("Interactive", Boolean.valueOf(p0)); }
+    public void setScreenBright(boolean p0) { megletProps.put("ScreenBright", Boolean.valueOf(p0)); }
+    public void setScreenBrightness(float p0) { megletProps.put("ScreenBrightness", Float.valueOf(p0)); }
+    public void setWindowless(boolean p0) { megletProps.put("Windowless", Boolean.valueOf(p0)); }
     public void startDozing() {}
     public void stopDozing() {}
     public void wakeUp() {}
     public static final class DreamActivityCallbacks extends android.os.Binder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public DreamActivityCallbacks(android.os.IBinder p0, java.lang.ref.WeakReference p1) { super(); }
         public void onActivityCreated(android.service.dreams.DreamActivity p0) {}
         public void onActivityDestroyed() {}
         DreamActivityCallbacks() { this((android.os.IBinder) null, (java.lang.ref.WeakReference) null); }
     }
     public static final class DreamMetadata {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public int dreamCategory;
         public android.graphics.drawable.Drawable previewImage;
         public android.content.ComponentName settingsActivity;

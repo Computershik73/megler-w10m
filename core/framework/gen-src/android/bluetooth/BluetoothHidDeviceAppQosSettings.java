@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothHidDeviceAppQosSettings implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int MAX = -1;
     public static final int SERVICE_BEST_EFFORT = 1;
@@ -11,12 +11,12 @@ public final class BluetoothHidDeviceAppQosSettings implements android.os.Parcel
     public static int SERVICE_NO_TRAFFIC;
     public BluetoothHidDeviceAppQosSettings(int p0, int p1, int p2, int p3, int p4, int p5) {}
     public int describeContents() { return 0; }
-    public int getDelayVariation() { return (meglerProps.get("DelayVariation") instanceof Integer ? (Integer) meglerProps.get("DelayVariation") : 0); }
-    public int getLatency() { return (meglerProps.get("Latency") instanceof Integer ? (Integer) meglerProps.get("Latency") : 0); }
-    public int getPeakBandwidth() { return (meglerProps.get("PeakBandwidth") instanceof Integer ? (Integer) meglerProps.get("PeakBandwidth") : 0); }
-    public int getServiceType() { return (meglerProps.get("ServiceType") instanceof Integer ? (Integer) meglerProps.get("ServiceType") : 0); }
-    public int getTokenBucketSize() { return (meglerProps.get("TokenBucketSize") instanceof Integer ? (Integer) meglerProps.get("TokenBucketSize") : 0); }
-    public int getTokenRate() { return (meglerProps.get("TokenRate") instanceof Integer ? (Integer) meglerProps.get("TokenRate") : 0); }
+    public int getDelayVariation() { return (megletProps.get("DelayVariation") instanceof Integer ? (Integer) megletProps.get("DelayVariation") : 0); }
+    public int getLatency() { return (megletProps.get("Latency") instanceof Integer ? (Integer) megletProps.get("Latency") : 0); }
+    public int getPeakBandwidth() { return (megletProps.get("PeakBandwidth") instanceof Integer ? (Integer) megletProps.get("PeakBandwidth") : 0); }
+    public int getServiceType() { return (megletProps.get("ServiceType") instanceof Integer ? (Integer) megletProps.get("ServiceType") : 0); }
+    public int getTokenBucketSize() { return (megletProps.get("TokenBucketSize") instanceof Integer ? (Integer) megletProps.get("TokenBucketSize") : 0); }
+    public int getTokenRate() { return (megletProps.get("TokenRate") instanceof Integer ? (Integer) megletProps.get("TokenRate") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     BluetoothHidDeviceAppQosSettings() { this((int) 0, (int) 0, (int) 0, (int) 0, (int) 0, (int) 0); }
 }

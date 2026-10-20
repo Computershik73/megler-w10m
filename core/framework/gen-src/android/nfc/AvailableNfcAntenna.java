@@ -3,12 +3,12 @@ package android.nfc;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AvailableNfcAntenna implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AvailableNfcAntenna(int p0, int p1) {}
     public int describeContents() { return 0; }
-    public int getLocationX() { return (meglerProps.get("LocationX") instanceof Integer ? (Integer) meglerProps.get("LocationX") : 0); }
-    public int getLocationY() { return (meglerProps.get("LocationY") instanceof Integer ? (Integer) meglerProps.get("LocationY") : 0); }
+    public int getLocationX() { return (megletProps.get("LocationX") instanceof Integer ? (Integer) megletProps.get("LocationX") : 0); }
+    public int getLocationY() { return (megletProps.get("LocationY") instanceof Integer ? (Integer) megletProps.get("LocationY") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AvailableNfcAntenna() { this((int) 0, (int) 0); }
 }

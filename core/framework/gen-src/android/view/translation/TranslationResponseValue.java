@@ -3,7 +3,7 @@ package android.view.translation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TranslationResponseValue implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String EXTRA_DEFINITIONS = "android.view.translation.extra.DEFINITIONS";
     public static final int STATUS_ERROR = 1;
@@ -11,23 +11,23 @@ public final class TranslationResponseValue implements android.os.Parcelable {
     public static android.view.translation.TranslationResponseValue forError() { return new TranslationResponseValue(); }
     public static java.lang.String statusToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-    public int getStatusCode() { return (meglerProps.get("StatusCode") instanceof Integer ? (Integer) meglerProps.get("StatusCode") : 0); }
-    public java.lang.CharSequence getText() { return (java.lang.CharSequence) meglerProps.get("Text"); }
-    public java.lang.CharSequence getTransliteration() { return (java.lang.CharSequence) meglerProps.get("Transliteration"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public int getStatusCode() { return (megletProps.get("StatusCode") instanceof Integer ? (Integer) megletProps.get("StatusCode") : 0); }
+    public java.lang.CharSequence getText() { return (java.lang.CharSequence) megletProps.get("Text"); }
+    public java.lang.CharSequence getTransliteration() { return (java.lang.CharSequence) megletProps.get("Transliteration"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TranslationResponseValue() {}
     public static abstract class BaseBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected BaseBuilder() {}
     }
     public static final class Builder extends android.view.translation.TranslationResponseValue.BaseBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(int p0) { super(); }
-        public android.view.translation.TranslationResponseValue build() { android.view.translation.TranslationResponseValue x = new android.view.translation.TranslationResponseValue(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.view.translation.TranslationResponseValue.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
-        public android.view.translation.TranslationResponseValue.Builder setText(java.lang.CharSequence p0) { meglerProps.put("Text", p0); return this; }
-        public android.view.translation.TranslationResponseValue.Builder setTransliteration(java.lang.CharSequence p0) { meglerProps.put("Transliteration", p0); return this; }
+        public android.view.translation.TranslationResponseValue build() { android.view.translation.TranslationResponseValue x = new android.view.translation.TranslationResponseValue(); x.megletProps.putAll(megletProps); return x; }
+        public android.view.translation.TranslationResponseValue.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+        public android.view.translation.TranslationResponseValue.Builder setText(java.lang.CharSequence p0) { megletProps.put("Text", p0); return this; }
+        public android.view.translation.TranslationResponseValue.Builder setTransliteration(java.lang.CharSequence p0) { megletProps.put("Transliteration", p0); return this; }
         Builder() { this((int) 0); }
     }
 }

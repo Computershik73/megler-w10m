@@ -3,7 +3,7 @@ package android.drm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DrmEvent {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String DRM_INFO_OBJECT = "drm_info_object";
     public static final java.lang.String DRM_INFO_STATUS_OBJECT = "drm_info_status_object";
     public static final int TYPE_ALL_RIGHTS_REMOVED = 1001;
@@ -11,8 +11,8 @@ public class DrmEvent {
     protected DrmEvent(int p0, int p1, java.lang.String p2) {}
     protected DrmEvent(int p0, int p1, java.lang.String p2, java.util.HashMap p3) {}
     public java.lang.Object getAttribute(java.lang.String p0) { return null; }
-    public java.lang.String getMessage() { return (java.lang.String) meglerProps.get("Message"); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
-    public int getUniqueId() { return (meglerProps.get("UniqueId") instanceof Integer ? (Integer) meglerProps.get("UniqueId") : 0); }
+    public java.lang.String getMessage() { return (java.lang.String) megletProps.get("Message"); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public int getUniqueId() { return (megletProps.get("UniqueId") instanceof Integer ? (Integer) megletProps.get("UniqueId") : 0); }
     DrmEvent() { this((int) 0, (int) 0, (java.lang.String) null); }
 }

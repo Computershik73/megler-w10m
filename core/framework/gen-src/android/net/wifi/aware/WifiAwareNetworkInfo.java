@@ -3,15 +3,15 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WifiAwareNetworkInfo implements android.net.TransportInfo, android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public WifiAwareNetworkInfo() {}
     public WifiAwareNetworkInfo(java.net.Inet6Address p0) {}
     public WifiAwareNetworkInfo(java.net.Inet6Address p0, int p1, int p2, java.util.List p3) {}
     public int describeContents() { return 0; }
-    public java.util.List getChannelInfoList() { return (meglerProps.get("ChannelInfoList") != null ? (java.util.List) meglerProps.get("ChannelInfoList") : new java.util.ArrayList()); }
-    public java.net.Inet6Address getPeerIpv6Addr() { return (java.net.Inet6Address) meglerProps.get("PeerIpv6Addr"); }
-    public int getPort() { return (meglerProps.get("Port") instanceof Integer ? (Integer) meglerProps.get("Port") : 0); }
-    public int getTransportProtocol() { return (meglerProps.get("TransportProtocol") instanceof Integer ? (Integer) meglerProps.get("TransportProtocol") : 0); }
+    public java.util.List getChannelInfoList() { return (megletProps.get("ChannelInfoList") != null ? (java.util.List) megletProps.get("ChannelInfoList") : new java.util.ArrayList()); }
+    public java.net.Inet6Address getPeerIpv6Addr() { return (java.net.Inet6Address) megletProps.get("PeerIpv6Addr"); }
+    public int getPort() { return (megletProps.get("Port") instanceof Integer ? (Integer) megletProps.get("Port") : 0); }
+    public int getTransportProtocol() { return (megletProps.get("TransportProtocol") instanceof Integer ? (Integer) megletProps.get("TransportProtocol") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

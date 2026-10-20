@@ -3,10 +3,10 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IsolatedServiceException extends java.lang.Exception {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public IsolatedServiceException(int p0) { super(); }
     public IsolatedServiceException(int p0, java.lang.String p1, java.lang.Throwable p2) { super(); }
     public IsolatedServiceException(int p0, java.lang.Throwable p1) { super(); }
-    public int getErrorCode() { return (meglerProps.get("ErrorCode") instanceof Integer ? (Integer) meglerProps.get("ErrorCode") : 0); }
+    public int getErrorCode() { return (megletProps.get("ErrorCode") instanceof Integer ? (Integer) megletProps.get("ErrorCode") : 0); }
     IsolatedServiceException() { this((int) 0); }
 }

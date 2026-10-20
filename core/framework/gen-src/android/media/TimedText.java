@@ -3,28 +3,28 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TimedText {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public TimedText(android.os.Parcel p0) {}
     public TimedText(java.lang.String p0, android.graphics.Rect p1) {}
-    public android.graphics.Rect getBounds() { return (android.graphics.Rect) meglerProps.get("Bounds"); }
-    public java.lang.String getText() { return (java.lang.String) meglerProps.get("Text"); }
+    public android.graphics.Rect getBounds() { return (android.graphics.Rect) megletProps.get("Bounds"); }
+    public java.lang.String getText() { return (java.lang.String) megletProps.get("Text"); }
     TimedText() { this((android.os.Parcel) null); }
     public static final class CharPos {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public int endChar;
         public int startChar;
         public CharPos(int p0, int p1) {}
         CharPos() { this((int) 0, (int) 0); }
     }
     public static final class Font {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public int ID;
         public java.lang.String name;
         public Font(int p0, java.lang.String p1) {}
         Font() { this((int) 0, (java.lang.String) null); }
     }
     public static final class HyperText {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public java.lang.String URL;
         public java.lang.String altString;
         public int endChar;
@@ -33,14 +33,14 @@ public final class TimedText {
         HyperText() { this((int) 0, (int) 0, (java.lang.String) null, (java.lang.String) null); }
     }
     public static final class Justification {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public int horizontalJustification;
         public int verticalJustification;
         public Justification(int p0, int p1) {}
         Justification() { this((int) 0, (int) 0); }
     }
     public static final class Karaoke {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public int endChar;
         public int endTimeMs;
         public int startChar;
@@ -49,7 +49,7 @@ public final class TimedText {
         Karaoke() { this((int) 0, (int) 0, (int) 0, (int) 0); }
     }
     public static final class Style {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public int colorRGBA;
         public int endChar;
         public int fontID;

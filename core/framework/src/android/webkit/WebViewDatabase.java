@@ -2,10 +2,10 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class WebViewDatabase {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected static final java.lang.String LOGTAG = "webviewdatabase";
     public WebViewDatabase() {}
-    public static android.webkit.WebViewDatabase getInstance(android.content.Context p0) { synchronized (WebViewDatabase.class) { if (sInstance == null) sInstance = new Megler(); return sInstance; } }
+    public static android.webkit.WebViewDatabase getInstance(android.content.Context p0) { synchronized (WebViewDatabase.class) { if (sInstance == null) sInstance = new Meglet(); return sInstance; } }
     public abstract void clearFormData();
     public abstract void clearHttpAuthUsernamePassword();
     public abstract void clearUsernamePassword();
@@ -14,7 +14,7 @@ public abstract class WebViewDatabase {
     public abstract boolean hasHttpAuthUsernamePassword();
     public abstract boolean hasUsernamePassword();
     public abstract void setHttpAuthUsernamePassword(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String p3);
-    static final class Megler extends WebViewDatabase {
+    static final class Meglet extends WebViewDatabase {
         public void clearFormData() {}
         public void clearHttpAuthUsernamePassword() {}
         public void clearUsernamePassword() {}

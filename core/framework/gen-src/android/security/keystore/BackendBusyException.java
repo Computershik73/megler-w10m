@@ -3,10 +3,10 @@ package android.security.keystore;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BackendBusyException extends java.security.ProviderException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public BackendBusyException(long p0) { super(); }
     public BackendBusyException(long p0, java.lang.String p1) { super(); }
     public BackendBusyException(long p0, java.lang.String p1, java.lang.Throwable p2) { super(); }
-    public long getBackOffHintMillis() { return (meglerProps.get("BackOffHintMillis") instanceof Long ? (Long) meglerProps.get("BackOffHintMillis") : 0L); }
+    public long getBackOffHintMillis() { return (megletProps.get("BackOffHintMillis") instanceof Long ? (Long) megletProps.get("BackOffHintMillis") : 0L); }
     BackendBusyException() { this((long) 0L); }
 }

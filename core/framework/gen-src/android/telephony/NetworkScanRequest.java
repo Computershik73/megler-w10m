@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NetworkScanRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int MAX_BANDS = 8;
     public static final int MAX_CHANNELS = 32;
@@ -19,13 +19,13 @@ public final class NetworkScanRequest implements android.os.Parcelable {
     public static final int SCAN_TYPE_PERIODIC = 1;
     public NetworkScanRequest(int p0, android.telephony.RadioAccessSpecifier[] p1, int p2, int p3, boolean p4, int p5, java.util.ArrayList p6) {}
     public int describeContents() { return 0; }
-    public boolean getIncrementalResults() { return (meglerProps.get("IncrementalResults") instanceof Boolean ? (Boolean) meglerProps.get("IncrementalResults") : false); }
-    public int getIncrementalResultsPeriodicity() { return (meglerProps.get("IncrementalResultsPeriodicity") instanceof Integer ? (Integer) meglerProps.get("IncrementalResultsPeriodicity") : 0); }
-    public int getMaxSearchTime() { return (meglerProps.get("MaxSearchTime") instanceof Integer ? (Integer) meglerProps.get("MaxSearchTime") : 0); }
-    public java.util.ArrayList getPlmns() { return (meglerProps.get("Plmns") != null ? (java.util.ArrayList) meglerProps.get("Plmns") : new java.util.ArrayList()); }
-    public int getScanType() { return (meglerProps.get("ScanType") instanceof Integer ? (Integer) meglerProps.get("ScanType") : 0); }
-    public int getSearchPeriodicity() { return (meglerProps.get("SearchPeriodicity") instanceof Integer ? (Integer) meglerProps.get("SearchPeriodicity") : 0); }
-    public android.telephony.RadioAccessSpecifier[] getSpecifiers() { return (android.telephony.RadioAccessSpecifier[]) meglerProps.get("Specifiers"); }
+    public boolean getIncrementalResults() { return (megletProps.get("IncrementalResults") instanceof Boolean ? (Boolean) megletProps.get("IncrementalResults") : false); }
+    public int getIncrementalResultsPeriodicity() { return (megletProps.get("IncrementalResultsPeriodicity") instanceof Integer ? (Integer) megletProps.get("IncrementalResultsPeriodicity") : 0); }
+    public int getMaxSearchTime() { return (megletProps.get("MaxSearchTime") instanceof Integer ? (Integer) megletProps.get("MaxSearchTime") : 0); }
+    public java.util.ArrayList getPlmns() { return (megletProps.get("Plmns") != null ? (java.util.ArrayList) megletProps.get("Plmns") : new java.util.ArrayList()); }
+    public int getScanType() { return (megletProps.get("ScanType") instanceof Integer ? (Integer) megletProps.get("ScanType") : 0); }
+    public int getSearchPeriodicity() { return (megletProps.get("SearchPeriodicity") instanceof Integer ? (Integer) megletProps.get("SearchPeriodicity") : 0); }
+    public android.telephony.RadioAccessSpecifier[] getSpecifiers() { return (android.telephony.RadioAccessSpecifier[]) megletProps.get("Specifiers"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     NetworkScanRequest() { this((int) 0, (android.telephony.RadioAccessSpecifier[]) null, (int) 0, (int) 0, (boolean) false, (int) 0, (java.util.ArrayList) null); }
 }

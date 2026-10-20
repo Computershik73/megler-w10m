@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Ikev2VpnProfile extends android.net.PlatformVpnProfile {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static java.util.List DEFAULT_ALGORITHMS;
     public static final java.lang.String PREFIX_INLINE = "INLINE:";
     public static final java.lang.String PREFIX_KEYSTORE_ALIAS = "KEYSTORE_ALIAS:";
@@ -11,42 +11,42 @@ public final class Ikev2VpnProfile extends android.net.PlatformVpnProfile {
     public static java.lang.String encodeForIpsecSecret(byte[] p0) { return null; }
     public static boolean hasAeadAlgorithms(java.util.List p0) { return false; }
     public static boolean hasNormalModeAlgorithms(java.util.List p0) { return false; }
-    public java.util.List getAllowedAlgorithms() { return (meglerProps.get("AllowedAlgorithms") != null ? (java.util.List) meglerProps.get("AllowedAlgorithms") : new java.util.ArrayList()); }
-    public android.net.ipsec.ike.IkeTunnelConnectionParams getIkeTunnelConnectionParams() { return (android.net.ipsec.ike.IkeTunnelConnectionParams) meglerProps.get("IkeTunnelConnectionParams"); }
-    public int getMaxMtu() { return (meglerProps.get("MaxMtu") instanceof Integer ? (Integer) meglerProps.get("MaxMtu") : 0); }
-    public java.lang.String getPassword() { return (java.lang.String) meglerProps.get("Password"); }
-    public byte[] getPresharedKey() { return (byte[]) meglerProps.get("PresharedKey"); }
-    public android.net.ProxyInfo getProxyInfo() { return (android.net.ProxyInfo) meglerProps.get("ProxyInfo"); }
-    public java.security.PrivateKey getRsaPrivateKey() { return (java.security.PrivateKey) meglerProps.get("RsaPrivateKey"); }
-    public java.lang.String getServerAddr() { return (java.lang.String) meglerProps.get("ServerAddr"); }
-    public java.security.cert.X509Certificate getServerRootCaCert() { return (java.security.cert.X509Certificate) meglerProps.get("ServerRootCaCert"); }
-    public java.security.cert.X509Certificate getUserCert() { return (java.security.cert.X509Certificate) meglerProps.get("UserCert"); }
-    public java.lang.String getUserIdentity() { return (java.lang.String) meglerProps.get("UserIdentity"); }
-    public java.lang.String getUsername() { return (java.lang.String) meglerProps.get("Username"); }
-    public boolean isAutomaticIpVersionSelectionEnabled() { return (meglerProps.get("AutomaticIpVersionSelectionEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AutomaticIpVersionSelectionEnabled") : false); }
-    public boolean isAutomaticNattKeepaliveTimerEnabled() { return (meglerProps.get("AutomaticNattKeepaliveTimerEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AutomaticNattKeepaliveTimerEnabled") : false); }
-    public boolean isBypassable() { return (meglerProps.get("Bypassable") instanceof Boolean ? (Boolean) meglerProps.get("Bypassable") : false); }
-    public boolean isMetered() { return (meglerProps.get("Metered") instanceof Boolean ? (Boolean) meglerProps.get("Metered") : false); }
-    public boolean isRestrictedToTestNetworks() { return (meglerProps.get("RestrictedToTestNetworks") instanceof Boolean ? (Boolean) meglerProps.get("RestrictedToTestNetworks") : false); }
+    public java.util.List getAllowedAlgorithms() { return (megletProps.get("AllowedAlgorithms") != null ? (java.util.List) megletProps.get("AllowedAlgorithms") : new java.util.ArrayList()); }
+    public android.net.ipsec.ike.IkeTunnelConnectionParams getIkeTunnelConnectionParams() { return (android.net.ipsec.ike.IkeTunnelConnectionParams) megletProps.get("IkeTunnelConnectionParams"); }
+    public int getMaxMtu() { return (megletProps.get("MaxMtu") instanceof Integer ? (Integer) megletProps.get("MaxMtu") : 0); }
+    public java.lang.String getPassword() { return (java.lang.String) megletProps.get("Password"); }
+    public byte[] getPresharedKey() { return (byte[]) megletProps.get("PresharedKey"); }
+    public android.net.ProxyInfo getProxyInfo() { return (android.net.ProxyInfo) megletProps.get("ProxyInfo"); }
+    public java.security.PrivateKey getRsaPrivateKey() { return (java.security.PrivateKey) megletProps.get("RsaPrivateKey"); }
+    public java.lang.String getServerAddr() { return (java.lang.String) megletProps.get("ServerAddr"); }
+    public java.security.cert.X509Certificate getServerRootCaCert() { return (java.security.cert.X509Certificate) megletProps.get("ServerRootCaCert"); }
+    public java.security.cert.X509Certificate getUserCert() { return (java.security.cert.X509Certificate) megletProps.get("UserCert"); }
+    public java.lang.String getUserIdentity() { return (java.lang.String) megletProps.get("UserIdentity"); }
+    public java.lang.String getUsername() { return (java.lang.String) megletProps.get("Username"); }
+    public boolean isAutomaticIpVersionSelectionEnabled() { return (megletProps.get("AutomaticIpVersionSelectionEnabled") instanceof Boolean ? (Boolean) megletProps.get("AutomaticIpVersionSelectionEnabled") : false); }
+    public boolean isAutomaticNattKeepaliveTimerEnabled() { return (megletProps.get("AutomaticNattKeepaliveTimerEnabled") instanceof Boolean ? (Boolean) megletProps.get("AutomaticNattKeepaliveTimerEnabled") : false); }
+    public boolean isBypassable() { return (megletProps.get("Bypassable") instanceof Boolean ? (Boolean) megletProps.get("Bypassable") : false); }
+    public boolean isMetered() { return (megletProps.get("Metered") instanceof Boolean ? (Boolean) megletProps.get("Metered") : false); }
+    public boolean isRestrictedToTestNetworks() { return (megletProps.get("RestrictedToTestNetworks") instanceof Boolean ? (Boolean) megletProps.get("RestrictedToTestNetworks") : false); }
     protected Ikev2VpnProfile() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.net.ipsec.ike.IkeTunnelConnectionParams p0) {}
         public Builder(java.lang.String p0, java.lang.String p1) {}
-        public android.net.Ikev2VpnProfile build() { android.net.Ikev2VpnProfile x = new android.net.Ikev2VpnProfile(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.Ikev2VpnProfile build() { android.net.Ikev2VpnProfile x = new android.net.Ikev2VpnProfile(); x.megletProps.putAll(megletProps); return x; }
         public android.net.Ikev2VpnProfile.Builder restrictToTestNetworks() { return this; }
-        public android.net.Ikev2VpnProfile.Builder setAllowedAlgorithms(java.util.List p0) { meglerProps.put("AllowedAlgorithms", p0); return this; }
+        public android.net.Ikev2VpnProfile.Builder setAllowedAlgorithms(java.util.List p0) { megletProps.put("AllowedAlgorithms", p0); return this; }
         public android.net.Ikev2VpnProfile.Builder setAuthDigitalSignature(java.security.cert.X509Certificate p0, java.security.PrivateKey p1, java.security.cert.X509Certificate p2) { return this; }
-        public android.net.Ikev2VpnProfile.Builder setAuthPsk(byte[] p0) { meglerProps.put("AuthPsk", p0); return this; }
+        public android.net.Ikev2VpnProfile.Builder setAuthPsk(byte[] p0) { megletProps.put("AuthPsk", p0); return this; }
         public android.net.Ikev2VpnProfile.Builder setAuthUsernamePassword(java.lang.String p0, java.lang.String p1, java.security.cert.X509Certificate p2) { return this; }
-        public android.net.Ikev2VpnProfile.Builder setAutomaticIpVersionSelectionEnabled(boolean p0) { meglerProps.put("AutomaticIpVersionSelectionEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.Ikev2VpnProfile.Builder setAutomaticNattKeepaliveTimerEnabled(boolean p0) { meglerProps.put("AutomaticNattKeepaliveTimerEnabled", Boolean.valueOf(p0)); return this; }
-        public android.net.Ikev2VpnProfile.Builder setBypassable(boolean p0) { meglerProps.put("Bypassable", Boolean.valueOf(p0)); return this; }
-        public android.net.Ikev2VpnProfile.Builder setLocalRoutesExcluded(boolean p0) { meglerProps.put("LocalRoutesExcluded", Boolean.valueOf(p0)); return this; }
-        public android.net.Ikev2VpnProfile.Builder setMaxMtu(int p0) { meglerProps.put("MaxMtu", Integer.valueOf(p0)); return this; }
-        public android.net.Ikev2VpnProfile.Builder setMetered(boolean p0) { meglerProps.put("Metered", Boolean.valueOf(p0)); return this; }
-        public android.net.Ikev2VpnProfile.Builder setProxy(android.net.ProxyInfo p0) { meglerProps.put("Proxy", p0); return this; }
-        public android.net.Ikev2VpnProfile.Builder setRequiresInternetValidation(boolean p0) { meglerProps.put("RequiresInternetValidation", Boolean.valueOf(p0)); return this; }
+        public android.net.Ikev2VpnProfile.Builder setAutomaticIpVersionSelectionEnabled(boolean p0) { megletProps.put("AutomaticIpVersionSelectionEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.Ikev2VpnProfile.Builder setAutomaticNattKeepaliveTimerEnabled(boolean p0) { megletProps.put("AutomaticNattKeepaliveTimerEnabled", Boolean.valueOf(p0)); return this; }
+        public android.net.Ikev2VpnProfile.Builder setBypassable(boolean p0) { megletProps.put("Bypassable", Boolean.valueOf(p0)); return this; }
+        public android.net.Ikev2VpnProfile.Builder setLocalRoutesExcluded(boolean p0) { megletProps.put("LocalRoutesExcluded", Boolean.valueOf(p0)); return this; }
+        public android.net.Ikev2VpnProfile.Builder setMaxMtu(int p0) { megletProps.put("MaxMtu", Integer.valueOf(p0)); return this; }
+        public android.net.Ikev2VpnProfile.Builder setMetered(boolean p0) { megletProps.put("Metered", Boolean.valueOf(p0)); return this; }
+        public android.net.Ikev2VpnProfile.Builder setProxy(android.net.ProxyInfo p0) { megletProps.put("Proxy", p0); return this; }
+        public android.net.Ikev2VpnProfile.Builder setRequiresInternetValidation(boolean p0) { megletProps.put("RequiresInternetValidation", Boolean.valueOf(p0)); return this; }
         Builder() { this((android.net.ipsec.ike.IkeTunnelConnectionParams) null); }
     }
 }

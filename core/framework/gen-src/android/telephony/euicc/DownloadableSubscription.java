@@ -3,30 +3,30 @@ package android.telephony.euicc;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DownloadableSubscription implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public java.lang.String encodedActivationCode;
     public static android.telephony.euicc.DownloadableSubscription forActivationCode(java.lang.String p0) { return new DownloadableSubscription(); }
     public int describeContents() { return 0; }
-    public java.util.List getAccessRules() { return (meglerProps.get("AccessRules") != null ? (java.util.List) meglerProps.get("AccessRules") : new java.util.ArrayList()); }
-    public java.lang.String getCarrierName() { return (java.lang.String) meglerProps.get("CarrierName"); }
-    public java.lang.String getConfirmationCode() { return (java.lang.String) meglerProps.get("ConfirmationCode"); }
-    public java.lang.String getEncodedActivationCode() { return (java.lang.String) meglerProps.get("EncodedActivationCode"); }
-    public void setAccessRules(java.util.List p0) { meglerProps.put("AccessRules", p0); }
-    public void setAccessRules(android.telephony.UiccAccessRule[] p0) { meglerProps.put("AccessRules", p0); }
-    public void setCarrierName(java.lang.String p0) { meglerProps.put("CarrierName", p0); }
-    public void setConfirmationCode(java.lang.String p0) { meglerProps.put("ConfirmationCode", p0); }
+    public java.util.List getAccessRules() { return (megletProps.get("AccessRules") != null ? (java.util.List) megletProps.get("AccessRules") : new java.util.ArrayList()); }
+    public java.lang.String getCarrierName() { return (java.lang.String) megletProps.get("CarrierName"); }
+    public java.lang.String getConfirmationCode() { return (java.lang.String) megletProps.get("ConfirmationCode"); }
+    public java.lang.String getEncodedActivationCode() { return (java.lang.String) megletProps.get("EncodedActivationCode"); }
+    public void setAccessRules(java.util.List p0) { megletProps.put("AccessRules", p0); }
+    public void setAccessRules(android.telephony.UiccAccessRule[] p0) { megletProps.put("AccessRules", p0); }
+    public void setCarrierName(java.lang.String p0) { megletProps.put("CarrierName", p0); }
+    public void setConfirmationCode(java.lang.String p0) { megletProps.put("ConfirmationCode", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected DownloadableSubscription() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.telephony.euicc.DownloadableSubscription p0) {}
         public Builder(java.lang.String p0) {}
-        public android.telephony.euicc.DownloadableSubscription build() { android.telephony.euicc.DownloadableSubscription x = new android.telephony.euicc.DownloadableSubscription(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.telephony.euicc.DownloadableSubscription.Builder setAccessRules(java.util.List p0) { meglerProps.put("AccessRules", p0); return this; }
-        public android.telephony.euicc.DownloadableSubscription.Builder setCarrierName(java.lang.String p0) { meglerProps.put("CarrierName", p0); return this; }
-        public android.telephony.euicc.DownloadableSubscription.Builder setConfirmationCode(java.lang.String p0) { meglerProps.put("ConfirmationCode", p0); return this; }
-        public android.telephony.euicc.DownloadableSubscription.Builder setEncodedActivationCode(java.lang.String p0) { meglerProps.put("EncodedActivationCode", p0); return this; }
+        public android.telephony.euicc.DownloadableSubscription build() { android.telephony.euicc.DownloadableSubscription x = new android.telephony.euicc.DownloadableSubscription(); x.megletProps.putAll(megletProps); return x; }
+        public android.telephony.euicc.DownloadableSubscription.Builder setAccessRules(java.util.List p0) { megletProps.put("AccessRules", p0); return this; }
+        public android.telephony.euicc.DownloadableSubscription.Builder setCarrierName(java.lang.String p0) { megletProps.put("CarrierName", p0); return this; }
+        public android.telephony.euicc.DownloadableSubscription.Builder setConfirmationCode(java.lang.String p0) { megletProps.put("ConfirmationCode", p0); return this; }
+        public android.telephony.euicc.DownloadableSubscription.Builder setEncodedActivationCode(java.lang.String p0) { megletProps.put("EncodedActivationCode", p0); return this; }
     }
 }

@@ -3,13 +3,13 @@ package android.telephony.data;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NetworkSlicingConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public NetworkSlicingConfig() {}
     public NetworkSlicingConfig(android.os.Parcel p0) {}
     public NetworkSlicingConfig(java.util.List p0, java.util.List p1) {}
     public int describeContents() { return 0; }
-    public java.util.List getSliceInfo() { return (meglerProps.get("SliceInfo") != null ? (java.util.List) meglerProps.get("SliceInfo") : new java.util.ArrayList()); }
-    public java.util.List getUrspRules() { return (meglerProps.get("UrspRules") != null ? (java.util.List) meglerProps.get("UrspRules") : new java.util.ArrayList()); }
+    public java.util.List getSliceInfo() { return (megletProps.get("SliceInfo") != null ? (java.util.List) megletProps.get("SliceInfo") : new java.util.ArrayList()); }
+    public java.util.List getUrspRules() { return (megletProps.get("UrspRules") != null ? (java.util.List) megletProps.get("UrspRules") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

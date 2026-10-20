@@ -3,7 +3,7 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CallEndpoint implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int ENDPOINT_OPERATION_FAILED = 1;
     public static final int ENDPOINT_OPERATION_SUCCESS = 0;
@@ -18,9 +18,9 @@ public final class CallEndpoint implements android.os.Parcelable {
     public CallEndpoint(java.lang.CharSequence p0, int p1, android.os.ParcelUuid p2) {}
     public static java.lang.String endpointTypeToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public java.lang.CharSequence getEndpointName() { return (java.lang.CharSequence) meglerProps.get("EndpointName"); }
-    public int getEndpointType() { return (meglerProps.get("EndpointType") instanceof Integer ? (Integer) meglerProps.get("EndpointType") : 0); }
-    public android.os.ParcelUuid getIdentifier() { return (android.os.ParcelUuid) meglerProps.get("Identifier"); }
+    public java.lang.CharSequence getEndpointName() { return (java.lang.CharSequence) megletProps.get("EndpointName"); }
+    public int getEndpointType() { return (megletProps.get("EndpointType") instanceof Integer ? (Integer) megletProps.get("EndpointType") : 0); }
+    public android.os.ParcelUuid getIdentifier() { return (android.os.ParcelUuid) megletProps.get("Identifier"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     CallEndpoint() { this((android.telecom.CallEndpoint) null); }
 }

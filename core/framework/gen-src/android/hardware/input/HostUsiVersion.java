@@ -3,13 +3,13 @@ package android.hardware.input;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class HostUsiVersion implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public HostUsiVersion(int p0, int p1) {}
     public int describeContents() { return 0; }
-    public int getMajorVersion() { return (meglerProps.get("MajorVersion") instanceof Integer ? (Integer) meglerProps.get("MajorVersion") : 0); }
-    public int getMinorVersion() { return (meglerProps.get("MinorVersion") instanceof Integer ? (Integer) meglerProps.get("MinorVersion") : 0); }
-    public boolean isValid() { return (meglerProps.get("Valid") instanceof Boolean ? (Boolean) meglerProps.get("Valid") : false); }
+    public int getMajorVersion() { return (megletProps.get("MajorVersion") instanceof Integer ? (Integer) megletProps.get("MajorVersion") : 0); }
+    public int getMinorVersion() { return (megletProps.get("MinorVersion") instanceof Integer ? (Integer) megletProps.get("MinorVersion") : 0); }
+    public boolean isValid() { return (megletProps.get("Valid") instanceof Boolean ? (Boolean) megletProps.get("Valid") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     HostUsiVersion() { this((int) 0, (int) 0); }
 }

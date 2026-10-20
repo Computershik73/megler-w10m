@@ -3,30 +3,30 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EventLogRecord implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.content.ContentValues getData() { return (android.content.ContentValues) meglerProps.get("Data"); }
-    public android.adservices.ondevicepersonalization.RequestLogRecord getRequestLogRecord() { return (android.adservices.ondevicepersonalization.RequestLogRecord) meglerProps.get("RequestLogRecord"); }
-    public int getRowIndex() { return (meglerProps.get("RowIndex") instanceof Integer ? (Integer) meglerProps.get("RowIndex") : 0); }
-    public java.time.Instant getTime() { return (java.time.Instant) meglerProps.get("Time"); }
-    public long getTimeMillis() { return (meglerProps.get("TimeMillis") instanceof Long ? (Long) meglerProps.get("TimeMillis") : 0L); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public android.content.ContentValues getData() { return (android.content.ContentValues) megletProps.get("Data"); }
+    public android.adservices.ondevicepersonalization.RequestLogRecord getRequestLogRecord() { return (android.adservices.ondevicepersonalization.RequestLogRecord) megletProps.get("RequestLogRecord"); }
+    public int getRowIndex() { return (megletProps.get("RowIndex") instanceof Integer ? (Integer) megletProps.get("RowIndex") : 0); }
+    public java.time.Instant getTime() { return (java.time.Instant) megletProps.get("Time"); }
+    public long getTimeMillis() { return (megletProps.get("TimeMillis") instanceof Long ? (Long) megletProps.get("TimeMillis") : 0L); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected EventLogRecord() {}
     public static abstract class BaseBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public abstract android.adservices.ondevicepersonalization.EventLogRecord.Builder setTimeMillis(long p0);
         protected BaseBuilder() {}
     }
     public static final class Builder extends android.adservices.ondevicepersonalization.EventLogRecord.BaseBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() { super(); }
-        public android.adservices.ondevicepersonalization.EventLogRecord build() { android.adservices.ondevicepersonalization.EventLogRecord x = new android.adservices.ondevicepersonalization.EventLogRecord(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.ondevicepersonalization.EventLogRecord.Builder setData(android.content.ContentValues p0) { meglerProps.put("Data", p0); return this; }
-        public android.adservices.ondevicepersonalization.EventLogRecord.Builder setRequestLogRecord(android.adservices.ondevicepersonalization.RequestLogRecord p0) { meglerProps.put("RequestLogRecord", p0); return this; }
-        public android.adservices.ondevicepersonalization.EventLogRecord.Builder setRowIndex(int p0) { meglerProps.put("RowIndex", Integer.valueOf(p0)); return this; }
-        public android.adservices.ondevicepersonalization.EventLogRecord.Builder setTimeMillis(long p0) { meglerProps.put("TimeMillis", Long.valueOf(p0)); return this; }
-        public android.adservices.ondevicepersonalization.EventLogRecord.Builder setType(int p0) { meglerProps.put("Type", Integer.valueOf(p0)); return this; }
+        public android.adservices.ondevicepersonalization.EventLogRecord build() { android.adservices.ondevicepersonalization.EventLogRecord x = new android.adservices.ondevicepersonalization.EventLogRecord(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.ondevicepersonalization.EventLogRecord.Builder setData(android.content.ContentValues p0) { megletProps.put("Data", p0); return this; }
+        public android.adservices.ondevicepersonalization.EventLogRecord.Builder setRequestLogRecord(android.adservices.ondevicepersonalization.RequestLogRecord p0) { megletProps.put("RequestLogRecord", p0); return this; }
+        public android.adservices.ondevicepersonalization.EventLogRecord.Builder setRowIndex(int p0) { megletProps.put("RowIndex", Integer.valueOf(p0)); return this; }
+        public android.adservices.ondevicepersonalization.EventLogRecord.Builder setTimeMillis(long p0) { megletProps.put("TimeMillis", Long.valueOf(p0)); return this; }
+        public android.adservices.ondevicepersonalization.EventLogRecord.Builder setType(int p0) { megletProps.put("Type", Integer.valueOf(p0)); return this; }
     }
 }

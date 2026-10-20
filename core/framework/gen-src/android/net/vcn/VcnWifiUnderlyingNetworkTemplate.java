@@ -3,20 +3,20 @@ package android.net.vcn;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VcnWifiUnderlyingNetworkTemplate extends android.net.vcn.VcnUnderlyingNetworkTemplate {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.net.vcn.VcnWifiUnderlyingNetworkTemplate fromPersistableBundle(android.os.PersistableBundle p0) { return new VcnWifiUnderlyingNetworkTemplate(); }
-    public java.util.Map getCapabilitiesMatchCriteria() { return (meglerProps.get("CapabilitiesMatchCriteria") != null ? (java.util.Map) meglerProps.get("CapabilitiesMatchCriteria") : new java.util.HashMap()); }
-    public java.util.Set getSsids() { return (meglerProps.get("Ssids") != null ? (java.util.Set) meglerProps.get("Ssids") : new java.util.HashSet()); }
+    public java.util.Map getCapabilitiesMatchCriteria() { return (megletProps.get("CapabilitiesMatchCriteria") != null ? (java.util.Map) megletProps.get("CapabilitiesMatchCriteria") : new java.util.HashMap()); }
+    public java.util.Set getSsids() { return (megletProps.get("Ssids") != null ? (java.util.Set) megletProps.get("Ssids") : new java.util.HashSet()); }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     public void validate() {}
     protected VcnWifiUnderlyingNetworkTemplate() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.vcn.VcnWifiUnderlyingNetworkTemplate build() { android.net.vcn.VcnWifiUnderlyingNetworkTemplate x = new android.net.vcn.VcnWifiUnderlyingNetworkTemplate(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.net.vcn.VcnWifiUnderlyingNetworkTemplate.Builder setMetered(int p0) { meglerProps.put("Metered", Integer.valueOf(p0)); return this; }
+        public android.net.vcn.VcnWifiUnderlyingNetworkTemplate build() { android.net.vcn.VcnWifiUnderlyingNetworkTemplate x = new android.net.vcn.VcnWifiUnderlyingNetworkTemplate(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.vcn.VcnWifiUnderlyingNetworkTemplate.Builder setMetered(int p0) { megletProps.put("Metered", Integer.valueOf(p0)); return this; }
         public android.net.vcn.VcnWifiUnderlyingNetworkTemplate.Builder setMinDownstreamBandwidthKbps(int p0, int p1) { return this; }
         public android.net.vcn.VcnWifiUnderlyingNetworkTemplate.Builder setMinUpstreamBandwidthKbps(int p0, int p1) { return this; }
-        public android.net.vcn.VcnWifiUnderlyingNetworkTemplate.Builder setSsids(java.util.Set p0) { meglerProps.put("Ssids", p0); return this; }
+        public android.net.vcn.VcnWifiUnderlyingNetworkTemplate.Builder setSsids(java.util.Set p0) { megletProps.put("Ssids", p0); return this; }
     }
 }

@@ -1,19 +1,19 @@
-    // megler-w10m: members added to the original's android.graphics.Canvas (tools/build-framework.sh, "X.java.members").
+    // Meglet: members added to the original's android.graphics.Canvas (tools/build-framework.sh, "X.java.members").
     // A canvas that records: a RenderNode's (RecordingCanvas) or a Picture's, over the core's recording canvas
-    // (megler.Gfx.cvRecord), which writes down what it is given instead of drawing it (android/graphics/RenderNode.java says
+    // (meglet.Gfx.cvRecord), which writes down what it is given instead of drawing it (android/graphics/RenderNode.java says
     // why). It has no bitmap; its subclasses say its size. And what RenderNode and Picture need of a canvas they are drawn
     // on: whether it records, and the generation of the bitmap it draws into moved on, as any drawing call moves it.
-    private boolean mMeglerRecording;
-    /** Megler: a canvas over a recording canvas of the core's (megler.Gfx.cvRecord), whose native half it frees as any other. */
-    Canvas(long recording, boolean records) { mNative = recording; mMeglerRecording = records; }
-    /** Megler: whether what is drawn on this canvas is written down (a RenderNode's or a Picture's) rather than drawn. */
-    boolean meglerRecords() { return mMeglerRecording; }
-    /** Megler: something was drawn through this canvas by a native call of another class's (a node, a picture). */
-    void meglerDrawn() { touched(); }
+    private boolean mMegletRecording;
+    /** Meglet: a canvas over a recording canvas of the core's (meglet.Gfx.cvRecord), whose native half it frees as any other. */
+    Canvas(long recording, boolean records) { mNative = recording; mMegletRecording = records; }
+    /** Meglet: whether what is drawn on this canvas is written down (a RenderNode's or a Picture's) rather than drawn. */
+    boolean megletRecords() { return mMegletRecording; }
+    /** Meglet: something was drawn through this canvas by a native call of another class's (a node, a picture). */
+    void megletDrawn() { touched(); }
     /**
-     * Megler: a layer over l, t, r, b put onto what is under it blurred, at `alpha`, when restored (megler.Gfx.cvSaveLayerBlur): how a
+     * Meglet: a layer over l, t, r, b put onto what is under it blurred, at `alpha`, when restored (meglet.Gfx.cvSaveLayerBlur): how a
      * view with a blur RenderEffect is drawn (android.view.View.drawFromParent). Returns the count to restore to, as saveLayer.
      */
-    public int meglerSaveLayerBlur(float l, float t, float r, float b, int alpha, float radiusX, float radiusY, boolean clamp) {
-        return mNative == 0 ? 1 : megler.Gfx.cvSaveLayerBlur(mNative, l, t, r, b, Math.max(0, Math.min(255, alpha)), radiusX, radiusY, clamp);
+    public int megletSaveLayerBlur(float l, float t, float r, float b, int alpha, float radiusX, float radiusY, boolean clamp) {
+        return mNative == 0 ? 1 : meglet.Gfx.cvSaveLayerBlur(mNative, l, t, r, b, Math.max(0, Math.min(255, alpha)), radiusX, radiusY, clamp);
     }

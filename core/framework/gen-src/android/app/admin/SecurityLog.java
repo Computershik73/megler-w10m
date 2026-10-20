@@ -3,7 +3,7 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SecurityLog {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int LEVEL_ERROR = 3;
     public static final int LEVEL_INFO = 1;
     public static final int LEVEL_WARNING = 2;
@@ -64,20 +64,20 @@ public class SecurityLog {
     public static void setLoggingEnabledProperty(boolean p0) {}
     public static int writeEvent(int p0, java.lang.Object[] p1) { return 0; }
     public static final class SecurityEvent implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public SecurityEvent(long p0, byte[] p1) {}
         public int describeContents() { return 0; }
         public boolean eventEquals(android.app.admin.SecurityLog.SecurityEvent p0) { return false; }
-        public java.lang.Object getData() { return (java.lang.Object) meglerProps.get("Data"); }
-        public long getId() { return (meglerProps.get("Id") instanceof Long ? (Long) meglerProps.get("Id") : 0L); }
+        public java.lang.Object getData() { return (java.lang.Object) megletProps.get("Data"); }
+        public long getId() { return (megletProps.get("Id") instanceof Long ? (Long) megletProps.get("Id") : 0L); }
         public int getIntegerData(int p0) { return 0; }
-        public int getLogLevel() { return (meglerProps.get("LogLevel") instanceof Integer ? (Integer) meglerProps.get("LogLevel") : 0); }
+        public int getLogLevel() { return (megletProps.get("LogLevel") instanceof Integer ? (Integer) megletProps.get("LogLevel") : 0); }
         public java.lang.String getStringData(int p0) { return null; }
-        public int getTag() { return (meglerProps.get("Tag") instanceof Integer ? (Integer) meglerProps.get("Tag") : 0); }
-        public long getTimeNanos() { return (meglerProps.get("TimeNanos") instanceof Long ? (Long) meglerProps.get("TimeNanos") : 0L); }
+        public int getTag() { return (megletProps.get("Tag") instanceof Integer ? (Integer) megletProps.get("Tag") : 0); }
+        public long getTimeNanos() { return (megletProps.get("TimeNanos") instanceof Long ? (Long) megletProps.get("TimeNanos") : 0L); }
         public android.app.admin.SecurityLog.SecurityEvent redact(int p0) { return this; }
-        public void setId(long p0) { meglerProps.put("Id", Long.valueOf(p0)); }
+        public void setId(long p0) { megletProps.put("Id", Long.valueOf(p0)); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         SecurityEvent() { this((long) 0L, (byte[]) null); }
     }

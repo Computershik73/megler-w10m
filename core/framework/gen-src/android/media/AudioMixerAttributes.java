@@ -3,20 +3,20 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AudioMixerAttributes implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int MIXER_BEHAVIOR_BIT_PERFECT = 1;
     public static int MIXER_BEHAVIOR_DEFAULT;
     public int describeContents() { return 0; }
-    public android.media.AudioFormat getFormat() { return (android.media.AudioFormat) meglerProps.get("Format"); }
-    public int getMixerBehavior() { return (meglerProps.get("MixerBehavior") instanceof Integer ? (Integer) meglerProps.get("MixerBehavior") : 0); }
+    public android.media.AudioFormat getFormat() { return (android.media.AudioFormat) megletProps.get("Format"); }
+    public int getMixerBehavior() { return (megletProps.get("MixerBehavior") instanceof Integer ? (Integer) megletProps.get("MixerBehavior") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected AudioMixerAttributes() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.media.AudioFormat p0) {}
-        public android.media.AudioMixerAttributes build() { android.media.AudioMixerAttributes x = new android.media.AudioMixerAttributes(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.media.AudioMixerAttributes.Builder setMixerBehavior(int p0) { meglerProps.put("MixerBehavior", Integer.valueOf(p0)); return this; }
+        public android.media.AudioMixerAttributes build() { android.media.AudioMixerAttributes x = new android.media.AudioMixerAttributes(); x.megletProps.putAll(megletProps); return x; }
+        public android.media.AudioMixerAttributes.Builder setMixerBehavior(int p0) { megletProps.put("MixerBehavior", Integer.valueOf(p0)); return this; }
         Builder() { this((android.media.AudioFormat) null); }
     }
 }

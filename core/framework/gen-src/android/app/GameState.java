@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GameState implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int MODE_CONTENT = 4;
     public static final int MODE_GAMEPLAY_INTERRUPTIBLE = 2;
@@ -13,10 +13,10 @@ public final class GameState implements android.os.Parcelable {
     public GameState(boolean p0, int p1) {}
     public GameState(boolean p0, int p1, int p2, int p3) {}
     public int describeContents() { return 0; }
-    public int getLabel() { return (meglerProps.get("Label") instanceof Integer ? (Integer) meglerProps.get("Label") : 0); }
-    public int getMode() { return (meglerProps.get("Mode") instanceof Integer ? (Integer) meglerProps.get("Mode") : 0); }
-    public int getQuality() { return (meglerProps.get("Quality") instanceof Integer ? (Integer) meglerProps.get("Quality") : 0); }
-    public boolean isLoading() { return (meglerProps.get("Loading") instanceof Boolean ? (Boolean) meglerProps.get("Loading") : false); }
+    public int getLabel() { return (megletProps.get("Label") instanceof Integer ? (Integer) megletProps.get("Label") : 0); }
+    public int getMode() { return (megletProps.get("Mode") instanceof Integer ? (Integer) megletProps.get("Mode") : 0); }
+    public int getQuality() { return (megletProps.get("Quality") instanceof Integer ? (Integer) megletProps.get("Quality") : 0); }
+    public boolean isLoading() { return (megletProps.get("Loading") instanceof Boolean ? (Boolean) megletProps.get("Loading") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     GameState() { this((boolean) false, (int) 0); }
 }

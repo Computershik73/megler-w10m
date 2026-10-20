@@ -3,7 +3,7 @@ package android.printservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class PrintService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_CAN_SELECT_PRINTER = "android.printservice.extra.CAN_SELECT_PRINTER";
     public static final java.lang.String EXTRA_PRINTER_INFO = "android.intent.extra.print.EXTRA_PRINTER_INFO";
     public static final java.lang.String EXTRA_PRINT_DOCUMENT_INFO = "android.printservice.extra.PRINT_DOCUMENT_INFO";
@@ -13,7 +13,7 @@ public abstract class PrintService extends android.app.Service {
     public static final java.lang.String SERVICE_META_DATA = "android.printservice";
     public PrintService() { super(); }
     public android.print.PrinterId generatePrinterId(java.lang.String p0) { return null; }
-    public java.util.List getActivePrintJobs() { return (meglerProps.get("ActivePrintJobs") != null ? (java.util.List) meglerProps.get("ActivePrintJobs") : new java.util.ArrayList()); }
+    public java.util.List getActivePrintJobs() { return (megletProps.get("ActivePrintJobs") != null ? (java.util.List) megletProps.get("ActivePrintJobs") : new java.util.ArrayList()); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     protected void onConnected() {}
     protected abstract android.printservice.PrinterDiscoverySession onCreatePrinterDiscoverySession();

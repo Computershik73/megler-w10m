@@ -3,16 +3,16 @@ package android.hardware.lights;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class LightsRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.util.List getLightStates() { return (meglerProps.get("LightStates") != null ? (java.util.List) meglerProps.get("LightStates") : new java.util.ArrayList()); }
-    public java.util.List getLights() { return (meglerProps.get("Lights") != null ? (java.util.List) meglerProps.get("Lights") : new java.util.ArrayList()); }
-    public java.util.Map getLightsAndStates() { return (meglerProps.get("LightsAndStates") != null ? (java.util.Map) meglerProps.get("LightsAndStates") : new java.util.HashMap()); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.util.List getLightStates() { return (megletProps.get("LightStates") != null ? (java.util.List) megletProps.get("LightStates") : new java.util.ArrayList()); }
+    public java.util.List getLights() { return (megletProps.get("Lights") != null ? (java.util.List) megletProps.get("Lights") : new java.util.ArrayList()); }
+    public java.util.Map getLightsAndStates() { return (megletProps.get("LightsAndStates") != null ? (java.util.Map) megletProps.get("LightsAndStates") : new java.util.HashMap()); }
     protected LightsRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public android.hardware.lights.LightsRequest.Builder addLight(android.hardware.lights.Light p0, android.hardware.lights.LightState p1) { return this; }
-        public android.hardware.lights.LightsRequest build() { android.hardware.lights.LightsRequest x = new android.hardware.lights.LightsRequest(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.hardware.lights.LightsRequest build() { android.hardware.lights.LightsRequest x = new android.hardware.lights.LightsRequest(); x.megletProps.putAll(megletProps); return x; }
         public android.hardware.lights.LightsRequest.Builder clearLight(android.hardware.lights.Light p0) { return this; }
         public android.hardware.lights.LightsRequest.Builder setLight(android.hardware.lights.Light p0, android.hardware.lights.LightState p1) { return this; }
     }

@@ -22,7 +22,7 @@ public class BoringLayout extends Layout implements TextUtils.EllipsizeCallback 
         if (text instanceof Spanned && ((Spanned) text).getSpans(0, text.length(), android.text.style.ParagraphStyle.class).length > 0) return null;
         Metrics m = metrics != null ? metrics : new Metrics();
         paint.getFontMetricsInt(m);
-        m.width = (int) Math.ceil(megler.TextRuns.measure(text, 0, text.length(), paint));
+        m.width = (int) Math.ceil(meglet.TextRuns.measure(text, 0, text.length(), paint));
         return m;
     }
     public static Metrics isBoring(CharSequence text, TextPaint paint, TextDirectionHeuristic d, Metrics m) { return isBoring(text, paint, m); }

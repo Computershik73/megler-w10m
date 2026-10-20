@@ -3,15 +3,15 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FieldClassification {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public FieldClassification(java.util.ArrayList p0) {}
-    public java.util.List getMatches() { return (meglerProps.get("Matches") != null ? (java.util.List) meglerProps.get("Matches") : new java.util.ArrayList()); }
+    public java.util.List getMatches() { return (megletProps.get("Matches") != null ? (java.util.List) megletProps.get("Matches") : new java.util.ArrayList()); }
     FieldClassification() { this((java.util.ArrayList) null); }
     public static final class Match {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Match(java.lang.String p0, float p1) {}
-        public java.lang.String getCategoryId() { return (java.lang.String) meglerProps.get("CategoryId"); }
-        public float getScore() { return (meglerProps.get("Score") instanceof Float ? (Float) meglerProps.get("Score") : 0f); }
+        public java.lang.String getCategoryId() { return (java.lang.String) megletProps.get("CategoryId"); }
+        public float getScore() { return (megletProps.get("Score") instanceof Float ? (Float) megletProps.get("Score") : 0f); }
         Match() { this((java.lang.String) null, (float) 0f); }
     }
 }

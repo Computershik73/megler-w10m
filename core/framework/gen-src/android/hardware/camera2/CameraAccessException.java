@@ -3,7 +3,7 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CameraAccessException extends android.util.AndroidException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CAMERA_DEPRECATED_HAL = 1000;
     public static final int CAMERA_DISABLED = 1;
     public static final int CAMERA_DISCONNECTED = 2;
@@ -15,6 +15,6 @@ public class CameraAccessException extends android.util.AndroidException {
     public CameraAccessException(int p0, java.lang.String p1, java.lang.Throwable p2) { super(); }
     public CameraAccessException(int p0, java.lang.Throwable p1) { super(); }
     public static java.lang.String getDefaultMessage(int p0) { return null; }
-    public int getReason() { return (meglerProps.get("Reason") instanceof Integer ? (Integer) meglerProps.get("Reason") : 0); }
+    public int getReason() { return (megletProps.get("Reason") instanceof Integer ? (Integer) megletProps.get("Reason") : 0); }
     CameraAccessException() { this((int) 0); }
 }

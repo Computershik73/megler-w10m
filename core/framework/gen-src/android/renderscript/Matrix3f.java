@@ -3,11 +3,11 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Matrix3f {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public Matrix3f() {}
     public Matrix3f(float[] p0) {}
     public float get(int p0, int p1) { return 0f; }
-    public float[] getArray() { return (float[]) meglerProps.get("Array"); }
+    public float[] getArray() { return (float[]) megletProps.get("Array"); }
     public void load(android.renderscript.Matrix3f p0) {}
     public void loadIdentity() {}
     public void loadMultiply(android.renderscript.Matrix3f p0, android.renderscript.Matrix3f p1) {}

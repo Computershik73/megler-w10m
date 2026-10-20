@@ -25,7 +25,7 @@ public final class PreferenceScreen extends PreferenceGroup implements AdapterVi
     final class Adapter extends BaseAdapter {
         final ArrayList<Preference> rows = new ArrayList<>();
         Adapter() { rebuild(); }
-        void rebuild() { rows.clear(); meglerFlatten(rows); }
+        void rebuild() { rows.clear(); megletFlatten(rows); }
         public int getCount() { return rows.size(); }
         public Object getItem(int i) { return rows.get(i); }
         public long getItemId(int i) { return i; }
@@ -65,7 +65,7 @@ public final class PreferenceScreen extends PreferenceGroup implements AdapterVi
     public void onDismiss(DialogInterface d) { mDialog = null; }
 
     /** A preference changed how it looks, or a group what it holds: the screens showing it redraw. */
-    static void meglerRefresh(Preference p) {
+    static void megletRefresh(Preference p) {
         for (Preference q = p; q != null; q = q.getParent()) {
             if (q instanceof PreferenceScreen) {
                 PreferenceScreen s = (PreferenceScreen) q;

@@ -3,13 +3,13 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PerformanceHintManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.PerformanceHintManager create() { return new PerformanceHintManager(); }
     public android.os.PerformanceHintManager.Session createHintSession(int[] p0, long p1) { return null; }
-    public long getPreferredUpdateRateNanos() { return (meglerProps.get("PreferredUpdateRateNanos") instanceof Long ? (Long) meglerProps.get("PreferredUpdateRateNanos") : 0L); }
+    public long getPreferredUpdateRateNanos() { return (megletProps.get("PreferredUpdateRateNanos") instanceof Long ? (Long) megletProps.get("PreferredUpdateRateNanos") : 0L); }
     protected PerformanceHintManager() {}
     public static class Session implements java.io.Closeable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int CPU_LOAD_DOWN = 1;
         public static final int CPU_LOAD_RESET = 2;
         public static final int CPU_LOAD_RESUME = 3;
@@ -21,12 +21,12 @@ public final class PerformanceHintManager {
         public Session(long p0) {}
         public void close() {}
         protected void finalize() {}
-        public int[] getThreadIds() { return (int[]) meglerProps.get("ThreadIds"); }
+        public int[] getThreadIds() { return (int[]) megletProps.get("ThreadIds"); }
         public void reportActualWorkDuration(long p0) {}
         public void reportActualWorkDuration(android.os.WorkDuration p0) {}
         public void sendHint(int p0) {}
-        public void setPreferPowerEfficiency(boolean p0) { meglerProps.put("PreferPowerEfficiency", Boolean.valueOf(p0)); }
-        public void setThreads(int[] p0) { meglerProps.put("Threads", p0); }
+        public void setPreferPowerEfficiency(boolean p0) { megletProps.put("PreferPowerEfficiency", Boolean.valueOf(p0)); }
+        public void setThreads(int[] p0) { megletProps.put("Threads", p0); }
         public void updateTargetWorkDuration(long p0) {}
         Session() { this((long) 0L); }
     }

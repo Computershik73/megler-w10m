@@ -48,11 +48,11 @@ u32 hk_gl_standin_pixel(int x, int y);
 /*
  * A surface by what eglQuerySurfacePointerANGLE gave as its texture's shared handle (EGL_ANGLE_surface_d3d_texture_2d_share_handle,
  * which the stand-in lists): its memory, R, G, B, A, rows bottom first, and its size. For a test's shell that composes the
- * window from the surfaces' frames (megler_gfx_host.gl_frame).
+ * window from the surfaces' frames (meglet_gfx_host.gl_frame).
  *
  * Every surface has a keyed mutex, as every pbuffer of gecko-w10m's ANGLE does (EGL_DXGI_KEYED_MUTEX_ANGLE through
  * eglQuerySurfacePointerANGLE), released with key 0 when it is made. The stand-in clears, draws into and reads a surface only
- * while its own "device" holds that mutex (the core's hk_egl_keyed_mutex, through the provider's name meglerKeyedMutexANGLE),
+ * while its own "device" holds that mutex (the core's hk_egl_keyed_mutex, through the provider's name megletKeyedMutexANGLE),
  * and otherwise drops what is asked, as Direct3D does: a core that never acquires it gets no frames. A test's shell takes it
  * with hk_gl_standin_keyed before it copies a frame and gives it back after, as the shell's AcquireSync and ReleaseSync do;
  * false when it is held by the other side.

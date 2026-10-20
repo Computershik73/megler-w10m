@@ -3,7 +3,7 @@ package android.media.audiofx;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AudioEffect {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION = "android.media.action.CLOSE_AUDIO_EFFECT_CONTROL_SESSION";
     public static final java.lang.String ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL = "android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL";
     public static final java.lang.String ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION = "android.media.action.OPEN_AUDIO_EFFECT_CONTROL_SESSION";
@@ -67,9 +67,9 @@ public class AudioEffect {
     public void checkStatus(int p0) {}
     public int command(int p0, byte[] p1, byte[] p2) { return 0; }
     protected void finalize() {}
-    public android.media.audiofx.AudioEffect.Descriptor getDescriptor() { return (android.media.audiofx.AudioEffect.Descriptor) meglerProps.get("Descriptor"); }
-    public boolean getEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
-    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
+    public android.media.audiofx.AudioEffect.Descriptor getDescriptor() { return (android.media.audiofx.AudioEffect.Descriptor) megletProps.get("Descriptor"); }
+    public boolean getEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
+    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
     public int getParameter(int p0, byte[] p1) { return 0; }
     public int getParameter(int p0, int[] p1) { return 0; }
     public int getParameter(int p0, short[] p1) { return 0; }
@@ -79,8 +79,8 @@ public class AudioEffect {
     public int getParameter(int[] p0, short[] p1) { return 0; }
     public boolean hasControl() { return false; }
     public void release() {}
-    public void setControlStatusListener(android.media.audiofx.AudioEffect.OnControlStatusChangeListener p0) { meglerProps.put("ControlStatusListener", p0); }
-    public void setEnableStatusListener(android.media.audiofx.AudioEffect.OnEnableStatusChangeListener p0) { meglerProps.put("EnableStatusListener", p0); }
+    public void setControlStatusListener(android.media.audiofx.AudioEffect.OnControlStatusChangeListener p0) { megletProps.put("ControlStatusListener", p0); }
+    public void setEnableStatusListener(android.media.audiofx.AudioEffect.OnEnableStatusChangeListener p0) { megletProps.put("EnableStatusListener", p0); }
     public int setEnabled(boolean p0) { return 0; }
     public int setParameter(int p0, int p1) { return 0; }
     public int setParameter(int p0, short p1) { return 0; }
@@ -89,10 +89,10 @@ public class AudioEffect {
     public int setParameter(int[] p0, byte[] p1) { return 0; }
     public int setParameter(int[] p0, int[] p1) { return 0; }
     public int setParameter(int[] p0, short[] p1) { return 0; }
-    public void setParameterListener(android.media.audiofx.AudioEffect.OnParameterChangeListener p0) { meglerProps.put("ParameterListener", p0); }
+    public void setParameterListener(android.media.audiofx.AudioEffect.OnParameterChangeListener p0) { megletProps.put("ParameterListener", p0); }
     AudioEffect() { this((java.util.UUID) null, (android.media.AudioDeviceAttributes) null); }
     public static class Descriptor {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public java.lang.String connectMode;
         public java.lang.String implementor;
         public java.lang.String name;
@@ -104,7 +104,7 @@ public class AudioEffect {
         public void writeToParcel(android.os.Parcel p0) {}
     }
     public static class NativeEventHandler extends android.os.Handler {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public NativeEventHandler(android.media.audiofx.AudioEffect p0, android.media.audiofx.AudioEffect p1, android.os.Looper p2) { super(); }
         public void handleMessage(android.os.Message p0) {}
         NativeEventHandler() { this((android.media.audiofx.AudioEffect) null, (android.media.audiofx.AudioEffect) null, (android.os.Looper) null); }

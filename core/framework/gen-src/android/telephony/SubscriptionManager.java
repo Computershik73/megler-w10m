@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SubscriptionManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACCESS_RULES = "access_rules";
     public static final java.lang.String ACCESS_RULES_FROM_CARRIER_CONFIGS = "access_rules_from_carrier_configs";
     public static final java.lang.String ACTION_DEFAULT_SMS_SUBSCRIPTION_CHANGED = "android.telephony.action.DEFAULT_SMS_SUBSCRIPTION_CHANGED";
@@ -198,31 +198,31 @@ public class SubscriptionManager {
     public boolean canManageSubscriptionAsUser(android.telephony.SubscriptionInfo p0, java.lang.String p1, android.os.UserHandle p2) { return false; }
     public android.telephony.SubscriptionManager createForAllUserProfiles() { return this; }
     public android.os.ParcelUuid createSubscriptionGroup(java.util.List p0) { return null; }
-    public java.util.List getAccessibleSubscriptionInfoList() { return (meglerProps.get("AccessibleSubscriptionInfoList") != null ? (java.util.List) meglerProps.get("AccessibleSubscriptionInfoList") : new java.util.ArrayList()); }
-    public int[] getActiveSubscriptionIdList() { return (int[]) meglerProps.get("ActiveSubscriptionIdList"); }
+    public java.util.List getAccessibleSubscriptionInfoList() { return (megletProps.get("AccessibleSubscriptionInfoList") != null ? (java.util.List) megletProps.get("AccessibleSubscriptionInfoList") : new java.util.ArrayList()); }
+    public int[] getActiveSubscriptionIdList() { return (int[]) megletProps.get("ActiveSubscriptionIdList"); }
     public int[] getActiveSubscriptionIdList(boolean p0) { return null; }
     public android.telephony.SubscriptionInfo getActiveSubscriptionInfo(int p0) { return null; }
-    public int getActiveSubscriptionInfoCount() { return (meglerProps.get("ActiveSubscriptionInfoCount") instanceof Integer ? (Integer) meglerProps.get("ActiveSubscriptionInfoCount") : 0); }
-    public int getActiveSubscriptionInfoCountMax() { return (meglerProps.get("ActiveSubscriptionInfoCountMax") instanceof Integer ? (Integer) meglerProps.get("ActiveSubscriptionInfoCountMax") : 0); }
+    public int getActiveSubscriptionInfoCount() { return (megletProps.get("ActiveSubscriptionInfoCount") instanceof Integer ? (Integer) megletProps.get("ActiveSubscriptionInfoCount") : 0); }
+    public int getActiveSubscriptionInfoCountMax() { return (megletProps.get("ActiveSubscriptionInfoCountMax") instanceof Integer ? (Integer) megletProps.get("ActiveSubscriptionInfoCountMax") : 0); }
     public android.telephony.SubscriptionInfo getActiveSubscriptionInfoForIcc(java.lang.String p0) { return null; }
     public android.telephony.SubscriptionInfo getActiveSubscriptionInfoForSimSlotIndex(int p0) { return null; }
-    public java.util.List getActiveSubscriptionInfoList() { return (meglerProps.get("ActiveSubscriptionInfoList") != null ? (java.util.List) meglerProps.get("ActiveSubscriptionInfoList") : new java.util.ArrayList()); }
+    public java.util.List getActiveSubscriptionInfoList() { return (megletProps.get("ActiveSubscriptionInfoList") != null ? (java.util.List) megletProps.get("ActiveSubscriptionInfoList") : new java.util.ArrayList()); }
     public java.util.List getActiveSubscriptionInfoList(boolean p0) { return new java.util.ArrayList(); }
-    public byte[] getAllSimSpecificSettingsForBackup() { return (byte[]) meglerProps.get("AllSimSpecificSettingsForBackup"); }
-    public java.util.List getAllSubscriptionInfoList() { return (meglerProps.get("AllSubscriptionInfoList") != null ? (java.util.List) meglerProps.get("AllSubscriptionInfoList") : new java.util.ArrayList()); }
-    public java.util.List getAvailableSubscriptionInfoList() { return (meglerProps.get("AvailableSubscriptionInfoList") != null ? (java.util.List) meglerProps.get("AvailableSubscriptionInfoList") : new java.util.ArrayList()); }
-    public int[] getCompleteActiveSubscriptionIdList() { return (int[]) meglerProps.get("CompleteActiveSubscriptionIdList"); }
-    public java.util.List getCompleteActiveSubscriptionInfoList() { return (meglerProps.get("CompleteActiveSubscriptionInfoList") != null ? (java.util.List) meglerProps.get("CompleteActiveSubscriptionInfoList") : new java.util.ArrayList()); }
-    public android.telephony.SubscriptionInfo getDefaultDataSubscriptionInfo() { return (android.telephony.SubscriptionInfo) meglerProps.get("DefaultDataSubscriptionInfo"); }
-    public android.telephony.SubscriptionInfo getDefaultVoiceSubscriptionInfo() { return (android.telephony.SubscriptionInfo) meglerProps.get("DefaultVoiceSubscriptionInfo"); }
+    public byte[] getAllSimSpecificSettingsForBackup() { return (byte[]) megletProps.get("AllSimSpecificSettingsForBackup"); }
+    public java.util.List getAllSubscriptionInfoList() { return (megletProps.get("AllSubscriptionInfoList") != null ? (java.util.List) megletProps.get("AllSubscriptionInfoList") : new java.util.ArrayList()); }
+    public java.util.List getAvailableSubscriptionInfoList() { return (megletProps.get("AvailableSubscriptionInfoList") != null ? (java.util.List) megletProps.get("AvailableSubscriptionInfoList") : new java.util.ArrayList()); }
+    public int[] getCompleteActiveSubscriptionIdList() { return (int[]) megletProps.get("CompleteActiveSubscriptionIdList"); }
+    public java.util.List getCompleteActiveSubscriptionInfoList() { return (megletProps.get("CompleteActiveSubscriptionInfoList") != null ? (java.util.List) megletProps.get("CompleteActiveSubscriptionInfoList") : new java.util.ArrayList()); }
+    public android.telephony.SubscriptionInfo getDefaultDataSubscriptionInfo() { return (android.telephony.SubscriptionInfo) megletProps.get("DefaultDataSubscriptionInfo"); }
+    public android.telephony.SubscriptionInfo getDefaultVoiceSubscriptionInfo() { return (android.telephony.SubscriptionInfo) megletProps.get("DefaultVoiceSubscriptionInfo"); }
     public java.util.List getDeviceToDeviceStatusSharingContacts(int p0) { return new java.util.ArrayList(); }
     public int getDeviceToDeviceStatusSharingPreference(int p0) { return 0; }
     public int getEnabledSubscriptionId(int p0) { return 0; }
-    public java.util.List getOpportunisticSubscriptions() { return (meglerProps.get("OpportunisticSubscriptions") != null ? (java.util.List) meglerProps.get("OpportunisticSubscriptions") : new java.util.ArrayList()); }
+    public java.util.List getOpportunisticSubscriptions() { return (megletProps.get("OpportunisticSubscriptions") != null ? (java.util.List) megletProps.get("OpportunisticSubscriptions") : new java.util.ArrayList()); }
     public java.lang.String getPhoneNumber(int p0) { return null; }
     public java.lang.String getPhoneNumber(int p0, int p1) { return null; }
-    public int getPreferredDataSubscriptionId() { return (meglerProps.get("PreferredDataSubscriptionId") instanceof Integer ? (Integer) meglerProps.get("PreferredDataSubscriptionId") : 0); }
-    public java.util.List getSelectableSubscriptionInfoList() { return (meglerProps.get("SelectableSubscriptionInfoList") != null ? (java.util.List) meglerProps.get("SelectableSubscriptionInfoList") : new java.util.ArrayList()); }
+    public int getPreferredDataSubscriptionId() { return (megletProps.get("PreferredDataSubscriptionId") instanceof Integer ? (Integer) megletProps.get("PreferredDataSubscriptionId") : 0); }
+    public java.util.List getSelectableSubscriptionInfoList() { return (megletProps.get("SelectableSubscriptionInfoList") != null ? (java.util.List) megletProps.get("SelectableSubscriptionInfoList") : new java.util.ArrayList()); }
     public int[] getSubscriptionIds(int p0) { return null; }
     public java.util.List getSubscriptionInfoListAssociatedWithUser(android.os.UserHandle p0) { return new java.util.ArrayList(); }
     public java.util.List getSubscriptionPlans(int p0) { return new java.util.ArrayList(); }
@@ -244,10 +244,10 @@ public class SubscriptionManager {
     public void restoreAllSimSpecificSettingsFromBackup(byte[] p0) {}
     public void setCarrierPhoneNumber(int p0, java.lang.String p1) {}
     public int setDataRoaming(int p0, int p1) { return 0; }
-    public void setDefaultDataSubId(int p0) { meglerProps.put("DefaultDataSubId", Integer.valueOf(p0)); }
-    public void setDefaultSmsSubId(int p0) { meglerProps.put("DefaultSmsSubId", Integer.valueOf(p0)); }
-    public void setDefaultVoiceSubId(int p0) { meglerProps.put("DefaultVoiceSubId", Integer.valueOf(p0)); }
-    public void setDefaultVoiceSubscriptionId(int p0) { meglerProps.put("DefaultVoiceSubscriptionId", Integer.valueOf(p0)); }
+    public void setDefaultDataSubId(int p0) { megletProps.put("DefaultDataSubId", Integer.valueOf(p0)); }
+    public void setDefaultSmsSubId(int p0) { megletProps.put("DefaultSmsSubId", Integer.valueOf(p0)); }
+    public void setDefaultVoiceSubId(int p0) { megletProps.put("DefaultVoiceSubId", Integer.valueOf(p0)); }
+    public void setDefaultVoiceSubscriptionId(int p0) { megletProps.put("DefaultVoiceSubscriptionId", Integer.valueOf(p0)); }
     public void setDeviceToDeviceStatusSharingContacts(int p0, java.util.List p1) {}
     public void setDeviceToDeviceStatusSharingPreference(int p0, int p1) {}
     public int setDisplayName(java.lang.String p0, int p1, int p2) { return 0; }
@@ -269,15 +269,15 @@ public class SubscriptionManager {
     public void switchToSubscription(int p0, android.app.PendingIntent p1) {}
     SubscriptionManager() { this((android.content.Context) null); }
     public static class OnOpportunisticSubscriptionsChangedListener {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public OnOpportunisticSubscriptionsChangedListener() {}
         public void onOpportunisticSubscriptionsChanged() {}
     }
     public static class OnSubscriptionsChangedListener {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public OnSubscriptionsChangedListener() {}
         public OnSubscriptionsChangedListener(android.os.Looper p0) {}
-        public android.os.Looper getCreatorLooper() { return (android.os.Looper) meglerProps.get("CreatorLooper"); }
+        public android.os.Looper getCreatorLooper() { return (android.os.Looper) megletProps.get("CreatorLooper"); }
         public void onAddListenerFailed() {}
         public void onSubscriptionsChanged() {}
     }

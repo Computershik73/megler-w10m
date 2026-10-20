@@ -3,23 +3,23 @@ package android.graphics.pdf.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PdfPageGotoLinkContent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public PdfPageGotoLinkContent(java.util.List p0, android.graphics.pdf.content.PdfPageGotoLinkContent.Destination p1) {}
     public int describeContents() { return 0; }
-    public java.util.List getBounds() { return (meglerProps.get("Bounds") != null ? (java.util.List) meglerProps.get("Bounds") : new java.util.ArrayList()); }
-    public android.graphics.pdf.content.PdfPageGotoLinkContent.Destination getDestination() { return (android.graphics.pdf.content.PdfPageGotoLinkContent.Destination) meglerProps.get("Destination"); }
+    public java.util.List getBounds() { return (megletProps.get("Bounds") != null ? (java.util.List) megletProps.get("Bounds") : new java.util.ArrayList()); }
+    public android.graphics.pdf.content.PdfPageGotoLinkContent.Destination getDestination() { return (android.graphics.pdf.content.PdfPageGotoLinkContent.Destination) megletProps.get("Destination"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PdfPageGotoLinkContent() { this((java.util.List) null, (android.graphics.pdf.content.PdfPageGotoLinkContent.Destination) null); }
     public static final class Destination implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public Destination(int p0, float p1, float p2, float p3) {}
         public int describeContents() { return 0; }
-        public int getPageNumber() { return (meglerProps.get("PageNumber") instanceof Integer ? (Integer) meglerProps.get("PageNumber") : 0); }
-        public float getXCoordinate() { return (meglerProps.get("XCoordinate") instanceof Float ? (Float) meglerProps.get("XCoordinate") : 0f); }
-        public float getYCoordinate() { return (meglerProps.get("YCoordinate") instanceof Float ? (Float) meglerProps.get("YCoordinate") : 0f); }
-        public float getZoom() { return (meglerProps.get("Zoom") instanceof Float ? (Float) meglerProps.get("Zoom") : 0f); }
+        public int getPageNumber() { return (megletProps.get("PageNumber") instanceof Integer ? (Integer) megletProps.get("PageNumber") : 0); }
+        public float getXCoordinate() { return (megletProps.get("XCoordinate") instanceof Float ? (Float) megletProps.get("XCoordinate") : 0f); }
+        public float getYCoordinate() { return (megletProps.get("YCoordinate") instanceof Float ? (Float) megletProps.get("YCoordinate") : 0f); }
+        public float getZoom() { return (megletProps.get("Zoom") instanceof Float ? (Float) megletProps.get("Zoom") : 0f); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         Destination() { this((int) 0, (float) 0f, (float) 0f, (float) 0f); }
     }

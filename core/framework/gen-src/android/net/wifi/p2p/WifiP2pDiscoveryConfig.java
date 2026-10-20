@@ -3,20 +3,20 @@ package android.net.wifi.p2p;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WifiP2pDiscoveryConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public int getFrequencyMhz() { return (meglerProps.get("FrequencyMhz") instanceof Integer ? (Integer) meglerProps.get("FrequencyMhz") : 0); }
-    public int getScanType() { return (meglerProps.get("ScanType") instanceof Integer ? (Integer) meglerProps.get("ScanType") : 0); }
-    public java.util.List getVendorData() { return (meglerProps.get("VendorData") != null ? (java.util.List) meglerProps.get("VendorData") : new java.util.ArrayList()); }
+    public int getFrequencyMhz() { return (megletProps.get("FrequencyMhz") instanceof Integer ? (Integer) megletProps.get("FrequencyMhz") : 0); }
+    public int getScanType() { return (megletProps.get("ScanType") instanceof Integer ? (Integer) megletProps.get("ScanType") : 0); }
+    public java.util.List getVendorData() { return (megletProps.get("VendorData") != null ? (java.util.List) megletProps.get("VendorData") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected WifiP2pDiscoveryConfig() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(int p0) {}
-        public android.net.wifi.p2p.WifiP2pDiscoveryConfig build() { android.net.wifi.p2p.WifiP2pDiscoveryConfig x = new android.net.wifi.p2p.WifiP2pDiscoveryConfig(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.net.wifi.p2p.WifiP2pDiscoveryConfig.Builder setFrequencyMhz(int p0) { meglerProps.put("FrequencyMhz", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.p2p.WifiP2pDiscoveryConfig.Builder setVendorData(java.util.List p0) { meglerProps.put("VendorData", p0); return this; }
+        public android.net.wifi.p2p.WifiP2pDiscoveryConfig build() { android.net.wifi.p2p.WifiP2pDiscoveryConfig x = new android.net.wifi.p2p.WifiP2pDiscoveryConfig(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.wifi.p2p.WifiP2pDiscoveryConfig.Builder setFrequencyMhz(int p0) { megletProps.put("FrequencyMhz", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.p2p.WifiP2pDiscoveryConfig.Builder setVendorData(java.util.List p0) { megletProps.put("VendorData", p0); return this; }
         Builder() { this((int) 0); }
     }
 }

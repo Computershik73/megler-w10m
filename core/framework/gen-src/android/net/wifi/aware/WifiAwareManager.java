@@ -3,7 +3,7 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiAwareManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_WIFI_AWARE_RESOURCE_CHANGED = "android.net.wifi.aware.action.WIFI_AWARE_RESOURCE_CHANGED";
     public static final java.lang.String ACTION_WIFI_AWARE_STATE_CHANGED = "android.net.wifi.aware.action.WIFI_AWARE_STATE_CHANGED";
     public static final java.lang.String EXTRA_AWARE_RESOURCES = "android.net.wifi.aware.extra.AWARE_RESOURCES";
@@ -28,17 +28,17 @@ public class WifiAwareManager {
     public android.net.NetworkSpecifier createNetworkSpecifier(int p0, int p1, byte[] p2, byte[] p3, java.lang.String p4) { return null; }
     public void disconnect(int p0, android.os.Binder p1) {}
     public void enableInstantCommunicationMode(boolean p0) {}
-    public android.net.wifi.aware.AwareResources getAvailableAwareResources() { return (android.net.wifi.aware.AwareResources) meglerProps.get("AvailableAwareResources"); }
-    public android.net.wifi.aware.Characteristics getCharacteristics() { return (android.net.wifi.aware.Characteristics) meglerProps.get("Characteristics"); }
+    public android.net.wifi.aware.AwareResources getAvailableAwareResources() { return (android.net.wifi.aware.AwareResources) megletProps.get("AvailableAwareResources"); }
+    public android.net.wifi.aware.Characteristics getCharacteristics() { return (android.net.wifi.aware.Characteristics) megletProps.get("Characteristics"); }
     public void getMasterPreference(int p0, android.os.Binder p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) {}
     public void getPairedDevices(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public void initiateBootStrappingSetupRequest(int p0, int p1, android.net.wifi.aware.PeerHandle p2, int p3) {}
     public void initiateNanPairingSetupRequest(int p0, int p1, android.net.wifi.aware.PeerHandle p2, java.lang.String p3, java.lang.String p4, int p5) {}
-    public boolean isAvailable() { return (meglerProps.get("Available") instanceof Boolean ? (Boolean) meglerProps.get("Available") : false); }
-    public boolean isDeviceAttached() { return (meglerProps.get("DeviceAttached") instanceof Boolean ? (Boolean) meglerProps.get("DeviceAttached") : false); }
-    public boolean isInstantCommunicationModeEnabled() { return (meglerProps.get("InstantCommunicationModeEnabled") instanceof Boolean ? (Boolean) meglerProps.get("InstantCommunicationModeEnabled") : false); }
+    public boolean isAvailable() { return (megletProps.get("Available") instanceof Boolean ? (Boolean) megletProps.get("Available") : false); }
+    public boolean isDeviceAttached() { return (megletProps.get("DeviceAttached") instanceof Boolean ? (Boolean) megletProps.get("DeviceAttached") : false); }
+    public boolean isInstantCommunicationModeEnabled() { return (megletProps.get("InstantCommunicationModeEnabled") instanceof Boolean ? (Boolean) megletProps.get("InstantCommunicationModeEnabled") : false); }
     public void isOpportunisticModeEnabled(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-    public boolean isSetChannelOnDataPathSupported() { return (meglerProps.get("SetChannelOnDataPathSupported") instanceof Boolean ? (Boolean) meglerProps.get("SetChannelOnDataPathSupported") : false); }
+    public boolean isSetChannelOnDataPathSupported() { return (megletProps.get("SetChannelOnDataPathSupported") instanceof Boolean ? (Boolean) megletProps.get("SetChannelOnDataPathSupported") : false); }
     public void publish(int p0, android.os.Looper p1, android.net.wifi.aware.PublishConfig p2, android.net.wifi.aware.DiscoverySessionCallback p3) {}
     public void removePairedDevice(java.lang.String p0) {}
     public void requestMacAddresses(int p0, int[] p1, android.net.wifi.aware.IWifiAwareMacAddressProvider p2) {}
@@ -46,9 +46,9 @@ public class WifiAwareManager {
     public void responseNanPairingSetupRequest(int p0, int p1, android.net.wifi.aware.PeerHandle p2, int p3, java.lang.String p4, java.lang.String p5, boolean p6, int p7) {}
     public void resume(int p0, int p1) {}
     public void sendMessage(int p0, int p1, android.net.wifi.aware.PeerHandle p2, byte[] p3, int p4, int p5) {}
-    public void setAwareParams(android.net.wifi.aware.AwareParams p0) { meglerProps.put("AwareParams", p0); }
+    public void setAwareParams(android.net.wifi.aware.AwareParams p0) { megletProps.put("AwareParams", p0); }
     public void setMasterPreference(int p0, android.os.Binder p1, int p2) {}
-    public void setOpportunisticModeEnabled(boolean p0) { meglerProps.put("OpportunisticModeEnabled", Boolean.valueOf(p0)); }
+    public void setOpportunisticModeEnabled(boolean p0) { megletProps.put("OpportunisticModeEnabled", Boolean.valueOf(p0)); }
     public void subscribe(int p0, android.os.Looper p1, android.net.wifi.aware.SubscribeConfig p2, android.net.wifi.aware.DiscoverySessionCallback p3) {}
     public void suspend(int p0, int p1) {}
     public void terminateSession(int p0, int p1) {}

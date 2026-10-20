@@ -3,7 +3,7 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ResourceCursorTreeAdapter extends android.widget.CursorTreeAdapter {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public ResourceCursorTreeAdapter(android.content.Context p0, android.database.Cursor p1, int p2, int p3) { super((android.database.Cursor) null, (android.content.Context) null); }
     public ResourceCursorTreeAdapter(android.content.Context p0, android.database.Cursor p1, int p2, int p3, int p4) { super((android.database.Cursor) null, (android.content.Context) null); }
     public ResourceCursorTreeAdapter(android.content.Context p0, android.database.Cursor p1, int p2, int p3, int p4, int p5) { super((android.database.Cursor) null, (android.content.Context) null); }

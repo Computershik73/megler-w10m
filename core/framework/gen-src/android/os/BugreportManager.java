@@ -3,7 +3,7 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BugreportManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public BugreportManager(android.content.Context p0, android.os.IDumpstate p1) {}
     public void cancelBugreport() {}
     public void preDumpUiData() {}
@@ -13,7 +13,7 @@ public final class BugreportManager {
     public void startConnectivityBugreport(android.os.ParcelFileDescriptor p0, java.util.concurrent.Executor p1, android.os.BugreportManager.BugreportCallback p2) {}
     BugreportManager() { this((android.content.Context) null, (android.os.IDumpstate) null); }
     public static abstract class BugreportCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int BUGREPORT_ERROR_ANOTHER_REPORT_IN_PROGRESS = 5;
         public static final int BUGREPORT_ERROR_INVALID_INPUT = 1;
         public static final int BUGREPORT_ERROR_NO_BUGREPORT_TO_RETRIEVE = 6;

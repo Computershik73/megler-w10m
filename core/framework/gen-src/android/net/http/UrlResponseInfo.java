@@ -3,7 +3,7 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class UrlResponseInfo {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public UrlResponseInfo() {}
     public abstract android.net.http.HeaderBlock getHeaders();
     public abstract int getHttpStatusCode();

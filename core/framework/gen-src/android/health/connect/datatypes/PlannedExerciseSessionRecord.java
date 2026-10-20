@@ -3,37 +3,37 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PlannedExerciseSessionRecord extends android.health.connect.datatypes.IntervalRecord {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.util.List getBlocks() { return (meglerProps.get("Blocks") != null ? (java.util.List) meglerProps.get("Blocks") : new java.util.ArrayList()); }
-    public java.lang.String getCompletedExerciseSessionId() { return (java.lang.String) meglerProps.get("CompletedExerciseSessionId"); }
-    public java.time.Duration getDuration() { return (java.time.Duration) meglerProps.get("Duration"); }
-    public int getExerciseType() { return (meglerProps.get("ExerciseType") instanceof Integer ? (Integer) meglerProps.get("ExerciseType") : 0); }
-    public java.lang.CharSequence getNotes() { return (java.lang.CharSequence) meglerProps.get("Notes"); }
-    public java.time.LocalDate getStartDate() { return (java.time.LocalDate) meglerProps.get("StartDate"); }
-    public java.lang.CharSequence getTitle() { return (java.lang.CharSequence) meglerProps.get("Title"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.util.List getBlocks() { return (megletProps.get("Blocks") != null ? (java.util.List) megletProps.get("Blocks") : new java.util.ArrayList()); }
+    public java.lang.String getCompletedExerciseSessionId() { return (java.lang.String) megletProps.get("CompletedExerciseSessionId"); }
+    public java.time.Duration getDuration() { return (java.time.Duration) megletProps.get("Duration"); }
+    public int getExerciseType() { return (megletProps.get("ExerciseType") instanceof Integer ? (Integer) megletProps.get("ExerciseType") : 0); }
+    public java.lang.CharSequence getNotes() { return (java.lang.CharSequence) megletProps.get("Notes"); }
+    public java.time.LocalDate getStartDate() { return (java.time.LocalDate) megletProps.get("StartDate"); }
+    public java.lang.CharSequence getTitle() { return (java.lang.CharSequence) megletProps.get("Title"); }
     public boolean hasExplicitTime() { return false; }
     public android.health.connect.internal.datatypes.PlannedExerciseSessionRecordInternal toRecordInternal() { return null; }
     protected PlannedExerciseSessionRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, int p1, java.time.Instant p2, java.time.Instant p3) {}
         public Builder(android.health.connect.datatypes.Metadata p0, int p1, java.time.LocalDate p2, java.time.Duration p3) {}
         public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder addBlock(android.health.connect.datatypes.PlannedExerciseBlock p0) { return this; }
-        public android.health.connect.datatypes.PlannedExerciseSessionRecord build() { android.health.connect.datatypes.PlannedExerciseSessionRecord x = new android.health.connect.datatypes.PlannedExerciseSessionRecord(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.datatypes.PlannedExerciseSessionRecord build() { android.health.connect.datatypes.PlannedExerciseSessionRecord x = new android.health.connect.datatypes.PlannedExerciseSessionRecord(); x.megletProps.putAll(megletProps); return x; }
         public android.health.connect.datatypes.PlannedExerciseSessionRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder clearBlocks() { return this; }
         public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder clearEndZoneOffset() { return this; }
         public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder clearStartZoneOffset() { return this; }
-        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setBlocks(java.util.List p0) { meglerProps.put("Blocks", p0); return this; }
-        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setCompletedExerciseSessionId(java.lang.String p0) { meglerProps.put("CompletedExerciseSessionId", p0); return this; }
-        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setEndTime(java.time.Instant p0) { meglerProps.put("EndTime", p0); return this; }
-        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("EndZoneOffset", p0); return this; }
-        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setExerciseType(int p0) { meglerProps.put("ExerciseType", Integer.valueOf(p0)); return this; }
-        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setMetadata(android.health.connect.datatypes.Metadata p0) { meglerProps.put("Metadata", p0); return this; }
-        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setNotes(java.lang.CharSequence p0) { meglerProps.put("Notes", p0); return this; }
-        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setStartTime(java.time.Instant p0) { meglerProps.put("StartTime", p0); return this; }
-        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("StartZoneOffset", p0); return this; }
-        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setTitle(java.lang.CharSequence p0) { meglerProps.put("Title", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setBlocks(java.util.List p0) { megletProps.put("Blocks", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setCompletedExerciseSessionId(java.lang.String p0) { megletProps.put("CompletedExerciseSessionId", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setEndTime(java.time.Instant p0) { megletProps.put("EndTime", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setEndZoneOffset(java.time.ZoneOffset p0) { megletProps.put("EndZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setExerciseType(int p0) { megletProps.put("ExerciseType", Integer.valueOf(p0)); return this; }
+        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setMetadata(android.health.connect.datatypes.Metadata p0) { megletProps.put("Metadata", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setNotes(java.lang.CharSequence p0) { megletProps.put("Notes", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setStartTime(java.time.Instant p0) { megletProps.put("StartTime", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setStartZoneOffset(java.time.ZoneOffset p0) { megletProps.put("StartZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.PlannedExerciseSessionRecord.Builder setTitle(java.lang.CharSequence p0) { megletProps.put("Title", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (int) 0, (java.time.Instant) null, (java.time.Instant) null); }
     }
 }

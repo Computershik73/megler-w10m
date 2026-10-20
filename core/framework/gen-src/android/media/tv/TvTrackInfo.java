@@ -3,7 +3,7 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TvTrackInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String EXTRA_BUNDLE_KEY_COMPONENT_TAG = "component_tag";
     public static final java.lang.String EXTRA_BUNDLE_KEY_PID = "pid";
@@ -11,44 +11,44 @@ public final class TvTrackInfo implements android.os.Parcelable {
     public static final int TYPE_SUBTITLE = 2;
     public static final int TYPE_VIDEO = 1;
     public int describeContents() { return 0; }
-    public int getAudioChannelCount() { return (meglerProps.get("AudioChannelCount") instanceof Integer ? (Integer) meglerProps.get("AudioChannelCount") : 0); }
-    public int getAudioSampleRate() { return (meglerProps.get("AudioSampleRate") instanceof Integer ? (Integer) meglerProps.get("AudioSampleRate") : 0); }
-    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) meglerProps.get("Description"); }
-    public java.lang.String getEncoding() { return (java.lang.String) meglerProps.get("Encoding"); }
-    public android.os.Bundle getExtra() { return (android.os.Bundle) meglerProps.get("Extra"); }
-    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
-    public java.lang.String getLanguage() { return (java.lang.String) meglerProps.get("Language"); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
-    public byte getVideoActiveFormatDescription() { return (meglerProps.get("VideoActiveFormatDescription") instanceof Byte ? (Byte) meglerProps.get("VideoActiveFormatDescription") : (byte) 0); }
-    public float getVideoFrameRate() { return (meglerProps.get("VideoFrameRate") instanceof Float ? (Float) meglerProps.get("VideoFrameRate") : 0f); }
-    public int getVideoHeight() { return (meglerProps.get("VideoHeight") instanceof Integer ? (Integer) meglerProps.get("VideoHeight") : 0); }
-    public float getVideoPixelAspectRatio() { return (meglerProps.get("VideoPixelAspectRatio") instanceof Float ? (Float) meglerProps.get("VideoPixelAspectRatio") : 0f); }
-    public int getVideoWidth() { return (meglerProps.get("VideoWidth") instanceof Integer ? (Integer) meglerProps.get("VideoWidth") : 0); }
-    public boolean isAudioDescription() { return (meglerProps.get("AudioDescription") instanceof Boolean ? (Boolean) meglerProps.get("AudioDescription") : false); }
-    public boolean isEncrypted() { return (meglerProps.get("Encrypted") instanceof Boolean ? (Boolean) meglerProps.get("Encrypted") : false); }
-    public boolean isHardOfHearing() { return (meglerProps.get("HardOfHearing") instanceof Boolean ? (Boolean) meglerProps.get("HardOfHearing") : false); }
-    public boolean isSpokenSubtitle() { return (meglerProps.get("SpokenSubtitle") instanceof Boolean ? (Boolean) meglerProps.get("SpokenSubtitle") : false); }
+    public int getAudioChannelCount() { return (megletProps.get("AudioChannelCount") instanceof Integer ? (Integer) megletProps.get("AudioChannelCount") : 0); }
+    public int getAudioSampleRate() { return (megletProps.get("AudioSampleRate") instanceof Integer ? (Integer) megletProps.get("AudioSampleRate") : 0); }
+    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) megletProps.get("Description"); }
+    public java.lang.String getEncoding() { return (java.lang.String) megletProps.get("Encoding"); }
+    public android.os.Bundle getExtra() { return (android.os.Bundle) megletProps.get("Extra"); }
+    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
+    public java.lang.String getLanguage() { return (java.lang.String) megletProps.get("Language"); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public byte getVideoActiveFormatDescription() { return (megletProps.get("VideoActiveFormatDescription") instanceof Byte ? (Byte) megletProps.get("VideoActiveFormatDescription") : (byte) 0); }
+    public float getVideoFrameRate() { return (megletProps.get("VideoFrameRate") instanceof Float ? (Float) megletProps.get("VideoFrameRate") : 0f); }
+    public int getVideoHeight() { return (megletProps.get("VideoHeight") instanceof Integer ? (Integer) megletProps.get("VideoHeight") : 0); }
+    public float getVideoPixelAspectRatio() { return (megletProps.get("VideoPixelAspectRatio") instanceof Float ? (Float) megletProps.get("VideoPixelAspectRatio") : 0f); }
+    public int getVideoWidth() { return (megletProps.get("VideoWidth") instanceof Integer ? (Integer) megletProps.get("VideoWidth") : 0); }
+    public boolean isAudioDescription() { return (megletProps.get("AudioDescription") instanceof Boolean ? (Boolean) megletProps.get("AudioDescription") : false); }
+    public boolean isEncrypted() { return (megletProps.get("Encrypted") instanceof Boolean ? (Boolean) megletProps.get("Encrypted") : false); }
+    public boolean isHardOfHearing() { return (megletProps.get("HardOfHearing") instanceof Boolean ? (Boolean) megletProps.get("HardOfHearing") : false); }
+    public boolean isSpokenSubtitle() { return (megletProps.get("SpokenSubtitle") instanceof Boolean ? (Boolean) megletProps.get("SpokenSubtitle") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TvTrackInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(int p0, java.lang.String p1) {}
-        public android.media.tv.TvTrackInfo build() { android.media.tv.TvTrackInfo x = new android.media.tv.TvTrackInfo(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.media.tv.TvTrackInfo.Builder setAudioChannelCount(int p0) { meglerProps.put("AudioChannelCount", Integer.valueOf(p0)); return this; }
-        public android.media.tv.TvTrackInfo.Builder setAudioDescription(boolean p0) { meglerProps.put("AudioDescription", Boolean.valueOf(p0)); return this; }
-        public android.media.tv.TvTrackInfo.Builder setAudioSampleRate(int p0) { meglerProps.put("AudioSampleRate", Integer.valueOf(p0)); return this; }
-        public android.media.tv.TvTrackInfo.Builder setDescription(java.lang.CharSequence p0) { meglerProps.put("Description", p0); return this; }
-        public android.media.tv.TvTrackInfo.Builder setEncoding(java.lang.String p0) { meglerProps.put("Encoding", p0); return this; }
-        public android.media.tv.TvTrackInfo.Builder setEncrypted(boolean p0) { meglerProps.put("Encrypted", Boolean.valueOf(p0)); return this; }
-        public android.media.tv.TvTrackInfo.Builder setExtra(android.os.Bundle p0) { meglerProps.put("Extra", p0); return this; }
-        public android.media.tv.TvTrackInfo.Builder setHardOfHearing(boolean p0) { meglerProps.put("HardOfHearing", Boolean.valueOf(p0)); return this; }
-        public android.media.tv.TvTrackInfo.Builder setLanguage(java.lang.String p0) { meglerProps.put("Language", p0); return this; }
-        public android.media.tv.TvTrackInfo.Builder setSpokenSubtitle(boolean p0) { meglerProps.put("SpokenSubtitle", Boolean.valueOf(p0)); return this; }
-        public android.media.tv.TvTrackInfo.Builder setVideoActiveFormatDescription(byte p0) { meglerProps.put("VideoActiveFormatDescription", Byte.valueOf(p0)); return this; }
-        public android.media.tv.TvTrackInfo.Builder setVideoFrameRate(float p0) { meglerProps.put("VideoFrameRate", Float.valueOf(p0)); return this; }
-        public android.media.tv.TvTrackInfo.Builder setVideoHeight(int p0) { meglerProps.put("VideoHeight", Integer.valueOf(p0)); return this; }
-        public android.media.tv.TvTrackInfo.Builder setVideoPixelAspectRatio(float p0) { meglerProps.put("VideoPixelAspectRatio", Float.valueOf(p0)); return this; }
-        public android.media.tv.TvTrackInfo.Builder setVideoWidth(int p0) { meglerProps.put("VideoWidth", Integer.valueOf(p0)); return this; }
+        public android.media.tv.TvTrackInfo build() { android.media.tv.TvTrackInfo x = new android.media.tv.TvTrackInfo(); x.megletProps.putAll(megletProps); return x; }
+        public android.media.tv.TvTrackInfo.Builder setAudioChannelCount(int p0) { megletProps.put("AudioChannelCount", Integer.valueOf(p0)); return this; }
+        public android.media.tv.TvTrackInfo.Builder setAudioDescription(boolean p0) { megletProps.put("AudioDescription", Boolean.valueOf(p0)); return this; }
+        public android.media.tv.TvTrackInfo.Builder setAudioSampleRate(int p0) { megletProps.put("AudioSampleRate", Integer.valueOf(p0)); return this; }
+        public android.media.tv.TvTrackInfo.Builder setDescription(java.lang.CharSequence p0) { megletProps.put("Description", p0); return this; }
+        public android.media.tv.TvTrackInfo.Builder setEncoding(java.lang.String p0) { megletProps.put("Encoding", p0); return this; }
+        public android.media.tv.TvTrackInfo.Builder setEncrypted(boolean p0) { megletProps.put("Encrypted", Boolean.valueOf(p0)); return this; }
+        public android.media.tv.TvTrackInfo.Builder setExtra(android.os.Bundle p0) { megletProps.put("Extra", p0); return this; }
+        public android.media.tv.TvTrackInfo.Builder setHardOfHearing(boolean p0) { megletProps.put("HardOfHearing", Boolean.valueOf(p0)); return this; }
+        public android.media.tv.TvTrackInfo.Builder setLanguage(java.lang.String p0) { megletProps.put("Language", p0); return this; }
+        public android.media.tv.TvTrackInfo.Builder setSpokenSubtitle(boolean p0) { megletProps.put("SpokenSubtitle", Boolean.valueOf(p0)); return this; }
+        public android.media.tv.TvTrackInfo.Builder setVideoActiveFormatDescription(byte p0) { megletProps.put("VideoActiveFormatDescription", Byte.valueOf(p0)); return this; }
+        public android.media.tv.TvTrackInfo.Builder setVideoFrameRate(float p0) { megletProps.put("VideoFrameRate", Float.valueOf(p0)); return this; }
+        public android.media.tv.TvTrackInfo.Builder setVideoHeight(int p0) { megletProps.put("VideoHeight", Integer.valueOf(p0)); return this; }
+        public android.media.tv.TvTrackInfo.Builder setVideoPixelAspectRatio(float p0) { megletProps.put("VideoPixelAspectRatio", Float.valueOf(p0)); return this; }
+        public android.media.tv.TvTrackInfo.Builder setVideoWidth(int p0) { megletProps.put("VideoWidth", Integer.valueOf(p0)); return this; }
         Builder() { this((int) 0, (java.lang.String) null); }
     }
 }

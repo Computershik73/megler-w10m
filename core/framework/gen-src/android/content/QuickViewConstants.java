@@ -3,7 +3,7 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class QuickViewConstants {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String FEATURE_DELETE = "android:delete";
     public static final java.lang.String FEATURE_DOWNLOAD = "android:download";
     public static final java.lang.String FEATURE_EDIT = "android:edit";

@@ -3,7 +3,7 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PolicyUpdateResult {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int RESULT_FAILURE_CONFLICTING_ADMIN_POLICY = 1;
     public static final int RESULT_FAILURE_HARDWARE_LIMITATION = 4;
     public static final int RESULT_FAILURE_STORAGE_LIMIT_REACHED = 3;
@@ -11,6 +11,6 @@ public final class PolicyUpdateResult {
     public static final int RESULT_POLICY_CLEARED = 2;
     public static int RESULT_POLICY_SET;
     public PolicyUpdateResult(int p0) {}
-    public int getResultCode() { return (meglerProps.get("ResultCode") instanceof Integer ? (Integer) meglerProps.get("ResultCode") : 0); }
+    public int getResultCode() { return (megletProps.get("ResultCode") instanceof Integer ? (Integer) megletProps.get("ResultCode") : 0); }
     PolicyUpdateResult() { this((int) 0); }
 }

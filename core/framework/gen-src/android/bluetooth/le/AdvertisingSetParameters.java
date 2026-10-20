@@ -3,7 +3,7 @@ package android.bluetooth.le;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AdvertisingSetParameters implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ADDRESS_TYPE_DEFAULT = -1;
     public static final int ADDRESS_TYPE_PUBLIC = 0;
     public static final int ADDRESS_TYPE_RANDOM = 1;
@@ -21,41 +21,41 @@ public final class AdvertisingSetParameters implements android.os.Parcelable {
     public static final int TX_POWER_MIN = -127;
     public static final int TX_POWER_ULTRA_LOW = -21;
     public int describeContents() { return 0; }
-    public int getInterval() { return (meglerProps.get("Interval") instanceof Integer ? (Integer) meglerProps.get("Interval") : 0); }
-    public int getOwnAddressType() { return (meglerProps.get("OwnAddressType") instanceof Integer ? (Integer) meglerProps.get("OwnAddressType") : 0); }
-    public java.lang.String getPeerAddress() { return (java.lang.String) meglerProps.get("PeerAddress"); }
-    public int getPeerAddressType() { return (meglerProps.get("PeerAddressType") instanceof Integer ? (Integer) meglerProps.get("PeerAddressType") : 0); }
-    public int getPrimaryPhy() { return (meglerProps.get("PrimaryPhy") instanceof Integer ? (Integer) meglerProps.get("PrimaryPhy") : 0); }
-    public int getSecondaryPhy() { return (meglerProps.get("SecondaryPhy") instanceof Integer ? (Integer) meglerProps.get("SecondaryPhy") : 0); }
-    public int getTxPowerLevel() { return (meglerProps.get("TxPowerLevel") instanceof Integer ? (Integer) meglerProps.get("TxPowerLevel") : 0); }
+    public int getInterval() { return (megletProps.get("Interval") instanceof Integer ? (Integer) megletProps.get("Interval") : 0); }
+    public int getOwnAddressType() { return (megletProps.get("OwnAddressType") instanceof Integer ? (Integer) megletProps.get("OwnAddressType") : 0); }
+    public java.lang.String getPeerAddress() { return (java.lang.String) megletProps.get("PeerAddress"); }
+    public int getPeerAddressType() { return (megletProps.get("PeerAddressType") instanceof Integer ? (Integer) megletProps.get("PeerAddressType") : 0); }
+    public int getPrimaryPhy() { return (megletProps.get("PrimaryPhy") instanceof Integer ? (Integer) megletProps.get("PrimaryPhy") : 0); }
+    public int getSecondaryPhy() { return (megletProps.get("SecondaryPhy") instanceof Integer ? (Integer) megletProps.get("SecondaryPhy") : 0); }
+    public int getTxPowerLevel() { return (megletProps.get("TxPowerLevel") instanceof Integer ? (Integer) megletProps.get("TxPowerLevel") : 0); }
     public boolean includeTxPower() { return false; }
-    public boolean isAnonymous() { return (meglerProps.get("Anonymous") instanceof Boolean ? (Boolean) meglerProps.get("Anonymous") : false); }
-    public boolean isConnectable() { return (meglerProps.get("Connectable") instanceof Boolean ? (Boolean) meglerProps.get("Connectable") : false); }
-    public boolean isDirected() { return (meglerProps.get("Directed") instanceof Boolean ? (Boolean) meglerProps.get("Directed") : false); }
-    public boolean isDiscoverable() { return (meglerProps.get("Discoverable") instanceof Boolean ? (Boolean) meglerProps.get("Discoverable") : false); }
-    public boolean isHighDutyCycle() { return (meglerProps.get("HighDutyCycle") instanceof Boolean ? (Boolean) meglerProps.get("HighDutyCycle") : false); }
-    public boolean isLegacy() { return (meglerProps.get("Legacy") instanceof Boolean ? (Boolean) meglerProps.get("Legacy") : false); }
-    public boolean isScannable() { return (meglerProps.get("Scannable") instanceof Boolean ? (Boolean) meglerProps.get("Scannable") : false); }
+    public boolean isAnonymous() { return (megletProps.get("Anonymous") instanceof Boolean ? (Boolean) megletProps.get("Anonymous") : false); }
+    public boolean isConnectable() { return (megletProps.get("Connectable") instanceof Boolean ? (Boolean) megletProps.get("Connectable") : false); }
+    public boolean isDirected() { return (megletProps.get("Directed") instanceof Boolean ? (Boolean) megletProps.get("Directed") : false); }
+    public boolean isDiscoverable() { return (megletProps.get("Discoverable") instanceof Boolean ? (Boolean) megletProps.get("Discoverable") : false); }
+    public boolean isHighDutyCycle() { return (megletProps.get("HighDutyCycle") instanceof Boolean ? (Boolean) megletProps.get("HighDutyCycle") : false); }
+    public boolean isLegacy() { return (megletProps.get("Legacy") instanceof Boolean ? (Boolean) megletProps.get("Legacy") : false); }
+    public boolean isScannable() { return (megletProps.get("Scannable") instanceof Boolean ? (Boolean) megletProps.get("Scannable") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected AdvertisingSetParameters() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.bluetooth.le.AdvertisingSetParameters build() { android.bluetooth.le.AdvertisingSetParameters x = new android.bluetooth.le.AdvertisingSetParameters(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setAnonymous(boolean p0) { meglerProps.put("Anonymous", Boolean.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setConnectable(boolean p0) { meglerProps.put("Connectable", Boolean.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setDirected(boolean p0) { meglerProps.put("Directed", Boolean.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setDiscoverable(boolean p0) { meglerProps.put("Discoverable", Boolean.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setHighDutyCycle(boolean p0) { meglerProps.put("HighDutyCycle", Boolean.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setIncludeTxPower(boolean p0) { meglerProps.put("IncludeTxPower", Boolean.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setInterval(int p0) { meglerProps.put("Interval", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setLegacyMode(boolean p0) { meglerProps.put("LegacyMode", Boolean.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setOwnAddressType(int p0) { meglerProps.put("OwnAddressType", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setPeerAddress(java.lang.String p0) { meglerProps.put("PeerAddress", p0); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setPeerAddressType(int p0) { meglerProps.put("PeerAddressType", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setPrimaryPhy(int p0) { meglerProps.put("PrimaryPhy", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setScannable(boolean p0) { meglerProps.put("Scannable", Boolean.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setSecondaryPhy(int p0) { meglerProps.put("SecondaryPhy", Integer.valueOf(p0)); return this; }
-        public android.bluetooth.le.AdvertisingSetParameters.Builder setTxPowerLevel(int p0) { meglerProps.put("TxPowerLevel", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters build() { android.bluetooth.le.AdvertisingSetParameters x = new android.bluetooth.le.AdvertisingSetParameters(); x.megletProps.putAll(megletProps); return x; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setAnonymous(boolean p0) { megletProps.put("Anonymous", Boolean.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setConnectable(boolean p0) { megletProps.put("Connectable", Boolean.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setDirected(boolean p0) { megletProps.put("Directed", Boolean.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setDiscoverable(boolean p0) { megletProps.put("Discoverable", Boolean.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setHighDutyCycle(boolean p0) { megletProps.put("HighDutyCycle", Boolean.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setIncludeTxPower(boolean p0) { megletProps.put("IncludeTxPower", Boolean.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setInterval(int p0) { megletProps.put("Interval", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setLegacyMode(boolean p0) { megletProps.put("LegacyMode", Boolean.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setOwnAddressType(int p0) { megletProps.put("OwnAddressType", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setPeerAddress(java.lang.String p0) { megletProps.put("PeerAddress", p0); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setPeerAddressType(int p0) { megletProps.put("PeerAddressType", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setPrimaryPhy(int p0) { megletProps.put("PrimaryPhy", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setScannable(boolean p0) { megletProps.put("Scannable", Boolean.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setSecondaryPhy(int p0) { megletProps.put("SecondaryPhy", Integer.valueOf(p0)); return this; }
+        public android.bluetooth.le.AdvertisingSetParameters.Builder setTxPowerLevel(int p0) { megletProps.put("TxPowerLevel", Integer.valueOf(p0)); return this; }
     }
 }

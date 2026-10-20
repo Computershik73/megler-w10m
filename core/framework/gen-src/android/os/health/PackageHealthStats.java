@@ -3,7 +3,7 @@ package android.os.health;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PackageHealthStats {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.health.HealthKeys.Constants CONSTANTS;
     public static final int MEASUREMENTS_WAKEUP_ALARMS_COUNT = 40002;
     public static final int STATS_SERVICES = 40001;

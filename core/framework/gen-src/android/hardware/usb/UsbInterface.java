@@ -3,19 +3,19 @@ package android.hardware.usb;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class UsbInterface implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public UsbInterface(int p0, int p1, java.lang.String p2, int p3, int p4, int p5) {}
     public int describeContents() { return 0; }
-    public int getAlternateSetting() { return (meglerProps.get("AlternateSetting") instanceof Integer ? (Integer) meglerProps.get("AlternateSetting") : 0); }
+    public int getAlternateSetting() { return (megletProps.get("AlternateSetting") instanceof Integer ? (Integer) megletProps.get("AlternateSetting") : 0); }
     public android.hardware.usb.UsbEndpoint getEndpoint(int p0) { return null; }
-    public int getEndpointCount() { return (meglerProps.get("EndpointCount") instanceof Integer ? (Integer) meglerProps.get("EndpointCount") : 0); }
-    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
-    public int getInterfaceClass() { return (meglerProps.get("InterfaceClass") instanceof Integer ? (Integer) meglerProps.get("InterfaceClass") : 0); }
-    public int getInterfaceProtocol() { return (meglerProps.get("InterfaceProtocol") instanceof Integer ? (Integer) meglerProps.get("InterfaceProtocol") : 0); }
-    public int getInterfaceSubclass() { return (meglerProps.get("InterfaceSubclass") instanceof Integer ? (Integer) meglerProps.get("InterfaceSubclass") : 0); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public void setEndpoints(android.os.Parcelable[] p0) { meglerProps.put("Endpoints", p0); }
+    public int getEndpointCount() { return (megletProps.get("EndpointCount") instanceof Integer ? (Integer) megletProps.get("EndpointCount") : 0); }
+    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
+    public int getInterfaceClass() { return (megletProps.get("InterfaceClass") instanceof Integer ? (Integer) megletProps.get("InterfaceClass") : 0); }
+    public int getInterfaceProtocol() { return (megletProps.get("InterfaceProtocol") instanceof Integer ? (Integer) megletProps.get("InterfaceProtocol") : 0); }
+    public int getInterfaceSubclass() { return (megletProps.get("InterfaceSubclass") instanceof Integer ? (Integer) megletProps.get("InterfaceSubclass") : 0); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public void setEndpoints(android.os.Parcelable[] p0) { megletProps.put("Endpoints", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     UsbInterface() { this((int) 0, (int) 0, (java.lang.String) null, (int) 0, (int) 0, (int) 0); }
 }

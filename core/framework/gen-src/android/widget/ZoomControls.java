@@ -3,17 +3,17 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ZoomControls extends android.widget.LinearLayout {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public ZoomControls(android.content.Context p0) { super(p0); }
     public ZoomControls(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public boolean hasFocus() { return false; }
     public void hide() {}
     public boolean onTouchEvent(android.view.MotionEvent p0) { return false; }
-    public void setIsZoomInEnabled(boolean p0) { meglerProps.put("IsZoomInEnabled", Boolean.valueOf(p0)); }
-    public void setIsZoomOutEnabled(boolean p0) { meglerProps.put("IsZoomOutEnabled", Boolean.valueOf(p0)); }
-    public void setOnZoomInClickListener(android.view.View.OnClickListener p0) { meglerProps.put("OnZoomInClickListener", p0); }
-    public void setOnZoomOutClickListener(android.view.View.OnClickListener p0) { meglerProps.put("OnZoomOutClickListener", p0); }
-    public void setZoomSpeed(long p0) { meglerProps.put("ZoomSpeed", Long.valueOf(p0)); }
+    public void setIsZoomInEnabled(boolean p0) { megletProps.put("IsZoomInEnabled", Boolean.valueOf(p0)); }
+    public void setIsZoomOutEnabled(boolean p0) { megletProps.put("IsZoomOutEnabled", Boolean.valueOf(p0)); }
+    public void setOnZoomInClickListener(android.view.View.OnClickListener p0) { megletProps.put("OnZoomInClickListener", p0); }
+    public void setOnZoomOutClickListener(android.view.View.OnClickListener p0) { megletProps.put("OnZoomOutClickListener", p0); }
+    public void setZoomSpeed(long p0) { megletProps.put("ZoomSpeed", Long.valueOf(p0)); }
     public void show() {}
     ZoomControls() { this((android.content.Context) null); }
 }

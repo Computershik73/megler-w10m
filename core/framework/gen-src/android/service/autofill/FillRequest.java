@@ -3,7 +3,7 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FillRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_COMPATIBILITY_MODE_REQUEST = 2;
     public static final int FLAG_IME_SHOWING = 128;
@@ -19,13 +19,13 @@ public final class FillRequest implements android.os.Parcelable {
     public FillRequest(int p0, java.util.List p1, java.util.List p2, android.os.Bundle p3, int p4, android.view.inputmethod.InlineSuggestionsRequest p5, android.content.IntentSender p6) {}
     public static java.lang.String requestFlagsToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public android.os.Bundle getClientState() { return (android.os.Bundle) meglerProps.get("ClientState"); }
-    public android.content.IntentSender getDelayedFillIntentSender() { return (android.content.IntentSender) meglerProps.get("DelayedFillIntentSender"); }
-    public java.util.List getFillContexts() { return (meglerProps.get("FillContexts") != null ? (java.util.List) meglerProps.get("FillContexts") : new java.util.ArrayList()); }
-    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
-    public java.util.List getHints() { return (meglerProps.get("Hints") != null ? (java.util.List) meglerProps.get("Hints") : new java.util.ArrayList()); }
-    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
-    public android.view.inputmethod.InlineSuggestionsRequest getInlineSuggestionsRequest() { return (android.view.inputmethod.InlineSuggestionsRequest) meglerProps.get("InlineSuggestionsRequest"); }
+    public android.os.Bundle getClientState() { return (android.os.Bundle) megletProps.get("ClientState"); }
+    public android.content.IntentSender getDelayedFillIntentSender() { return (android.content.IntentSender) megletProps.get("DelayedFillIntentSender"); }
+    public java.util.List getFillContexts() { return (megletProps.get("FillContexts") != null ? (java.util.List) megletProps.get("FillContexts") : new java.util.ArrayList()); }
+    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
+    public java.util.List getHints() { return (megletProps.get("Hints") != null ? (java.util.List) megletProps.get("Hints") : new java.util.ArrayList()); }
+    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
+    public android.view.inputmethod.InlineSuggestionsRequest getInlineSuggestionsRequest() { return (android.view.inputmethod.InlineSuggestionsRequest) megletProps.get("InlineSuggestionsRequest"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     FillRequest() { this((int) 0, (java.util.List) null, (java.util.List) null, (android.os.Bundle) null, (int) 0, (android.view.inputmethod.InlineSuggestionsRequest) null, (android.content.IntentSender) null); }
 }

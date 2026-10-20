@@ -3,7 +3,7 @@ package android.nfc;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NdefRecord implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static byte[] RTD_ALTERNATIVE_CARRIER;
     public static byte[] RTD_ANDROID_APP;
@@ -31,10 +31,10 @@ public final class NdefRecord implements android.os.Parcelable {
     public static android.nfc.NdefRecord createUri(java.lang.String p0) { return new NdefRecord(); }
     public int describeContents() { return 0; }
     public void dumpDebug(android.util.proto.ProtoOutputStream p0) {}
-    public byte[] getId() { return (byte[]) meglerProps.get("Id"); }
-    public byte[] getPayload() { return (byte[]) meglerProps.get("Payload"); }
-    public short getTnf() { return (meglerProps.get("Tnf") instanceof Short ? (Short) meglerProps.get("Tnf") : (short) 0); }
-    public byte[] getType() { return (byte[]) meglerProps.get("Type"); }
+    public byte[] getId() { return (byte[]) megletProps.get("Id"); }
+    public byte[] getPayload() { return (byte[]) megletProps.get("Payload"); }
+    public short getTnf() { return (megletProps.get("Tnf") instanceof Short ? (Short) megletProps.get("Tnf") : (short) 0); }
+    public byte[] getType() { return (byte[]) megletProps.get("Type"); }
     public byte[] toByteArray() { return null; }
     public java.lang.String toMimeType() { return null; }
     public android.net.Uri toUri() { return null; }

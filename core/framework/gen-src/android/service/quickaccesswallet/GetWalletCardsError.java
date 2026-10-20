@@ -3,12 +3,12 @@ package android.service.quickaccesswallet;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GetWalletCardsError implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public GetWalletCardsError(android.graphics.drawable.Icon p0, java.lang.CharSequence p1) {}
     public int describeContents() { return 0; }
-    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) meglerProps.get("Icon"); }
-    public java.lang.CharSequence getMessage() { return (java.lang.CharSequence) meglerProps.get("Message"); }
+    public android.graphics.drawable.Icon getIcon() { return (android.graphics.drawable.Icon) megletProps.get("Icon"); }
+    public java.lang.CharSequence getMessage() { return (java.lang.CharSequence) megletProps.get("Message"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     GetWalletCardsError() { this((android.graphics.drawable.Icon) null, (java.lang.CharSequence) null); }
 }

@@ -1,6 +1,6 @@
 // Overlay of core/framework/src/android/content/pm/ConfigurationInfo.java (tools/build-framework.sh).
 // It differs in one statement: the OpenGL ES version the device offers (ActivityManager.getDeviceConfigurationInfo) is the
-// one this process can make a context of (megler.EGLNative.glesVersion: 3.0 where ANGLE's display has it, 2.0 at Direct3D's
+// one this process can make a context of (meglet.EGLNative.glesVersion: 3.0 where ANGLE's display has it, 2.0 at Direct3D's
 // feature level 9_3), not 3.2, which the original says for its ANGLE on iOS. An app that believes 3.2 asks for 3.1's
 // functions, which ANGLE on these phones does not have; AIDA64 shows the version on its Display page.
 package android.content.pm;
@@ -29,10 +29,10 @@ public class ConfigurationInfo implements android.os.Parcelable {
         }
         public ConfigurationInfo[] newArray(int size) { return new ConfigurationInfo[size]; }
     };
-    /** Megler's device. */
-    public static ConfigurationInfo meglerDevice() {
+    /** Meglet's device. */
+    public static ConfigurationInfo megletDevice() {
         ConfigurationInfo c = new ConfigurationInfo();
-        c.reqGlEsVersion = megler.EGLNative.glesVersion();
+        c.reqGlEsVersion = meglet.EGLNative.glesVersion();
         c.reqTouchScreen = android.content.res.Configuration.TOUCHSCREEN_FINGER;
         c.reqKeyboardType = android.content.res.Configuration.KEYBOARD_NOKEYS;
         c.reqNavigation = android.content.res.Configuration.NAVIGATION_NONAV;

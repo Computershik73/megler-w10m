@@ -1,19 +1,19 @@
-    // megler-w10m: a member added to the original's android.graphics.SurfaceTexture (tools/build-framework.sh, "X.java.members").
+    // Meglet: a member added to the original's android.graphics.SurfaceTexture (tools/build-framework.sh, "X.java.members").
     // The camera's preview on a texture (android.hardware.Camera.setPreviewTexture, the overlay's) hands over each picture as
-    // a whole bitmap of its own, which becomes the front buffer as it is, as a posted canvas's bitmap does in meglerPost: the
+    // a whole bitmap of its own, which becomes the front buffer as it is, as a posted canvas's bitmap does in megletPost: the
     // TextureView showing the texture draws it and the listener hears of it on its handler. Drawn into a canvas of the
     // texture's first, it would be drawn twice and, on the graphics processor, read back once a picture.
     /** A frame that is a whole bitmap: the front buffer from now on. The producer does not write into it while it is. False when released or locked. */
-    public boolean meglerPostBitmap(Bitmap b) {
+    public boolean megletPostBitmap(Bitmap b) {
         synchronized (mLock) {
             if (mReleased || mLocked || b == null) return false;
             mFront = b;
-            if (mBackCanvas != null) mBackCanvas.meglerRelease();
+            if (mBackCanvas != null) mBackCanvas.megletRelease();
             mBack = null;
             mBackCanvas = null;
             mTimestamp = System.nanoTime();
         }
-        android.view.View v = meglerView;
+        android.view.View v = megletView;
         if (v != null) v.postInvalidate();
         OnFrameAvailableListener l = mListener;
         android.os.Handler h = mHandler;

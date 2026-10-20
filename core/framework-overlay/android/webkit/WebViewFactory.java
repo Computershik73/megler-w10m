@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// megler-w10m overlay: AOSP's android/webkit/WebViewFactory.java at android-15.0.0_r36 (frameworks/base/core/java), in the
+// Overlay: AOSP's android/webkit/WebViewFactory.java at android-15.0.0_r36 (frameworks/base/core/java), in the
 // place of the original's generated signature (tools/build-framework.sh; docs/JAVA.md, "The WebView").
 //
 // It differs from AOSP's in where the WebView package comes from and how it is loaded. On Android the system's
@@ -68,9 +68,9 @@ public final class WebViewFactory {
 
     private static final boolean DEBUG = false;
 
-    /** megler-w10m: the WebView package, where Android's own image has it: the Android root is mounted at /system. */
+    /** Meglet: the WebView package, where Android's own image has it: the Android root is mounted at /system. */
     static final String WEBVIEW_APK = "/system/app/webview/webview.apk";
-    /** megler-w10m: the processor's library folder in an APK whose native libraries are used from it, not extracted. */
+    /** Meglet: the processor's library folder in an APK whose native libraries are used from it, not extracted. */
     static final String WEBVIEW_ABI = "armeabi-v7a";
 
     // Cache the factory both for efficiency, and ensure any one process gets all webviews from the
@@ -190,7 +190,7 @@ public final class WebViewFactory {
         public MissingWebViewPackageException(Exception e) { super(e); }
     }
 
-    /** megler-w10m: a WebView is supported when the Android root has the WebView package. */
+    /** Meglet: a WebView is supported when the Android root has the WebView package. */
     static boolean isWebViewSupported() {
         // No lock; this is a benign race as Boolean's state is final.
         if (sWebViewSupported == null) {
@@ -254,7 +254,7 @@ public final class WebViewFactory {
     }
 
     /**
-     * megler-w10m: the WebView package of the Android root, whether or not it is loaded (WebView.getCurrentWebViewPackage asks
+     * Meglet: the WebView package of the Android root, whether or not it is loaded (WebView.getCurrentWebViewPackage asks
      * the update service for this on Android); null when there is none.
      */
     static PackageInfo getCurrentWebViewPackage() {
@@ -350,7 +350,7 @@ public final class WebViewFactory {
     }
 
     /**
-     * megler-w10m: the WebView package's PackageInfo, read from its manifest, as the package manager would describe an installed
+     * Meglet: the WebView package's PackageInfo, read from its manifest, as the package manager would describe an installed
      * system package: what WebViewFactory and the WebView's own code read of it (its name, version, target SDK, the meta-data
      * that names its library, where its APK and libraries are). The APK is added to the app's AssetManager first, as
      * getProviderClass adds it on Android, so that its manifest is read through it.
@@ -422,7 +422,7 @@ public final class WebViewFactory {
         return out.toByteArray();
     }
 
-    /** megler-w10m: "apk!/lib/<abi>", where a library of an APK whose libraries are not extracted is looked for. */
+    /** Meglet: "apk!/lib/<abi>", where a library of an APK whose libraries are not extracted is looked for. */
     static String getWebViewNativeLibraryPath() {
         return WEBVIEW_APK + "!/lib/" + WEBVIEW_ABI;
     }
@@ -483,7 +483,7 @@ public final class WebViewFactory {
     }
 
     /**
-     * megler-w10m: the WebView's class loader, which Android's LoadedApk makes for the package: a PathClassLoader over its APK
+     * Meglet: the WebView's class loader, which Android's LoadedApk makes for the package: a PathClassLoader over its APK
      * with the APK's library folder as its native path. And the app's loader is given that native path too (see the top).
      */
     private static ClassLoader makeClassLoader(Application app) throws MissingWebViewPackageException {
@@ -511,14 +511,14 @@ public final class WebViewFactory {
      * Currently, this means allocating address space to load the real JNI library later.
      */
     public static void prepareWebViewInZygote() {
-        // megler-w10m: there is no zygote; WebViewLibraryLoader reserves the address space when it loads the library.
+        // Meglet: there is no zygote; WebViewLibraryLoader reserves the address space when it loads the library.
     }
 
     /**
      * @hide
      */
     public static int onWebViewProviderChanged(PackageInfo packageInfo) {
-        // megler-w10m: there is no system server to call this; the WebView package is the Android root's.
+        // Meglet: there is no system server to call this; the WebView package is the Android root's.
         return 0;
     }
 }

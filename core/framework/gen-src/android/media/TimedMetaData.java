@@ -3,9 +3,9 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TimedMetaData {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public TimedMetaData(long p0, byte[] p1) {}
-    public byte[] getMetaData() { return (byte[]) meglerProps.get("MetaData"); }
-    public long getTimestamp() { return (meglerProps.get("Timestamp") instanceof Long ? (Long) meglerProps.get("Timestamp") : 0L); }
+    public byte[] getMetaData() { return (byte[]) megletProps.get("MetaData"); }
+    public long getTimestamp() { return (megletProps.get("Timestamp") instanceof Long ? (Long) megletProps.get("Timestamp") : 0L); }
     TimedMetaData() { this((long) 0L, (byte[]) null); }
 }

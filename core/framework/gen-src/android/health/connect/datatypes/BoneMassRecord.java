@@ -3,17 +3,17 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BoneMassRecord extends android.health.connect.datatypes.InstantRecord {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public android.health.connect.datatypes.units.Mass getMass() { return (android.health.connect.datatypes.units.Mass) meglerProps.get("Mass"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public android.health.connect.datatypes.units.Mass getMass() { return (android.health.connect.datatypes.units.Mass) megletProps.get("Mass"); }
     public android.health.connect.internal.datatypes.BoneMassRecordInternal toRecordInternal() { return null; }
     protected BoneMassRecord() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.health.connect.datatypes.Metadata p0, java.time.Instant p1, android.health.connect.datatypes.units.Mass p2) {}
-        public android.health.connect.datatypes.BoneMassRecord build() { android.health.connect.datatypes.BoneMassRecord x = new android.health.connect.datatypes.BoneMassRecord(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.health.connect.datatypes.BoneMassRecord build() { android.health.connect.datatypes.BoneMassRecord x = new android.health.connect.datatypes.BoneMassRecord(); x.megletProps.putAll(megletProps); return x; }
         public android.health.connect.datatypes.BoneMassRecord buildWithoutValidation() { return null; }
         public android.health.connect.datatypes.BoneMassRecord.Builder clearZoneOffset() { return this; }
-        public android.health.connect.datatypes.BoneMassRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { meglerProps.put("ZoneOffset", p0); return this; }
+        public android.health.connect.datatypes.BoneMassRecord.Builder setZoneOffset(java.time.ZoneOffset p0) { megletProps.put("ZoneOffset", p0); return this; }
         Builder() { this((android.health.connect.datatypes.Metadata) null, (java.time.Instant) null, (android.health.connect.datatypes.units.Mass) null); }
     }
 }

@@ -3,10 +3,10 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SyncContext {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public SyncContext(android.content.ISyncContext p0) {}
-    public android.os.IBinder getSyncContextBinder() { return (android.os.IBinder) meglerProps.get("SyncContextBinder"); }
+    public android.os.IBinder getSyncContextBinder() { return (android.os.IBinder) megletProps.get("SyncContextBinder"); }
     public void onFinished(android.content.SyncResult p0) {}
-    public void setStatusText(java.lang.String p0) { meglerProps.put("StatusText", p0); }
+    public void setStatusText(java.lang.String p0) { megletProps.put("StatusText", p0); }
     SyncContext() { this((android.content.ISyncContext) null); }
 }

@@ -3,23 +3,23 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ChildSessionConfiguration {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public ChildSessionConfiguration(java.util.List p0, java.util.List p1) {}
-    public java.util.List getInboundTrafficSelectors() { return (meglerProps.get("InboundTrafficSelectors") != null ? (java.util.List) meglerProps.get("InboundTrafficSelectors") : new java.util.ArrayList()); }
-    public java.util.List getInternalAddresses() { return (meglerProps.get("InternalAddresses") != null ? (java.util.List) meglerProps.get("InternalAddresses") : new java.util.ArrayList()); }
-    public java.util.List getInternalDhcpServers() { return (meglerProps.get("InternalDhcpServers") != null ? (java.util.List) meglerProps.get("InternalDhcpServers") : new java.util.ArrayList()); }
-    public java.util.List getInternalDnsServers() { return (meglerProps.get("InternalDnsServers") != null ? (java.util.List) meglerProps.get("InternalDnsServers") : new java.util.ArrayList()); }
-    public java.util.List getInternalSubnets() { return (meglerProps.get("InternalSubnets") != null ? (java.util.List) meglerProps.get("InternalSubnets") : new java.util.ArrayList()); }
-    public java.util.List getOutboundTrafficSelectors() { return (meglerProps.get("OutboundTrafficSelectors") != null ? (java.util.List) meglerProps.get("OutboundTrafficSelectors") : new java.util.ArrayList()); }
+    public java.util.List getInboundTrafficSelectors() { return (megletProps.get("InboundTrafficSelectors") != null ? (java.util.List) megletProps.get("InboundTrafficSelectors") : new java.util.ArrayList()); }
+    public java.util.List getInternalAddresses() { return (megletProps.get("InternalAddresses") != null ? (java.util.List) megletProps.get("InternalAddresses") : new java.util.ArrayList()); }
+    public java.util.List getInternalDhcpServers() { return (megletProps.get("InternalDhcpServers") != null ? (java.util.List) megletProps.get("InternalDhcpServers") : new java.util.ArrayList()); }
+    public java.util.List getInternalDnsServers() { return (megletProps.get("InternalDnsServers") != null ? (java.util.List) megletProps.get("InternalDnsServers") : new java.util.ArrayList()); }
+    public java.util.List getInternalSubnets() { return (megletProps.get("InternalSubnets") != null ? (java.util.List) megletProps.get("InternalSubnets") : new java.util.ArrayList()); }
+    public java.util.List getOutboundTrafficSelectors() { return (megletProps.get("OutboundTrafficSelectors") != null ? (java.util.List) megletProps.get("OutboundTrafficSelectors") : new java.util.ArrayList()); }
     ChildSessionConfiguration() { this((java.util.List) null, (java.util.List) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(java.util.List p0, java.util.List p1) {}
         public android.net.ipsec.ike.ChildSessionConfiguration.Builder addInternalAddress(android.net.LinkAddress p0) { return this; }
         public android.net.ipsec.ike.ChildSessionConfiguration.Builder addInternalDhcpServer(java.net.InetAddress p0) { return this; }
         public android.net.ipsec.ike.ChildSessionConfiguration.Builder addInternalDnsServer(java.net.InetAddress p0) { return this; }
         public android.net.ipsec.ike.ChildSessionConfiguration.Builder addInternalSubnet(android.net.IpPrefix p0) { return this; }
-        public android.net.ipsec.ike.ChildSessionConfiguration build() { android.net.ipsec.ike.ChildSessionConfiguration x = new android.net.ipsec.ike.ChildSessionConfiguration(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.net.ipsec.ike.ChildSessionConfiguration build() { android.net.ipsec.ike.ChildSessionConfiguration x = new android.net.ipsec.ike.ChildSessionConfiguration(); x.megletProps.putAll(megletProps); return x; }
         public android.net.ipsec.ike.ChildSessionConfiguration.Builder clearInternalAddresses() { return this; }
         public android.net.ipsec.ike.ChildSessionConfiguration.Builder clearInternalDhcpServers() { return this; }
         public android.net.ipsec.ike.ChildSessionConfiguration.Builder clearInternalDnsServers() { return this; }

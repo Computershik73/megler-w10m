@@ -3,21 +3,21 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UiccCardInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public UiccCardInfo(boolean p0, int p1, java.lang.String p2, int p3, boolean p4, boolean p5, java.util.List p6) {}
     public android.telephony.UiccCardInfo createSensitiveInfoSanitizedCopy(boolean p0) { return this; }
     public int describeContents() { return 0; }
-    public int getCardId() { return (meglerProps.get("CardId") instanceof Integer ? (Integer) meglerProps.get("CardId") : 0); }
-    public java.lang.String getEid() { return (java.lang.String) meglerProps.get("Eid"); }
-    public java.lang.String getIccId() { return (java.lang.String) meglerProps.get("IccId"); }
-    public int getPhysicalSlotIndex() { return (meglerProps.get("PhysicalSlotIndex") instanceof Integer ? (Integer) meglerProps.get("PhysicalSlotIndex") : 0); }
-    public java.util.Collection getPorts() { return (meglerProps.get("Ports") != null ? (java.util.Collection) meglerProps.get("Ports") : new java.util.ArrayList()); }
-    public int getSlotIndex() { return (meglerProps.get("SlotIndex") instanceof Integer ? (Integer) meglerProps.get("SlotIndex") : 0); }
-    public boolean isEuicc() { return (meglerProps.get("Euicc") instanceof Boolean ? (Boolean) meglerProps.get("Euicc") : false); }
-    public boolean isMultipleEnabledProfilesSupported() { return (meglerProps.get("MultipleEnabledProfilesSupported") instanceof Boolean ? (Boolean) meglerProps.get("MultipleEnabledProfilesSupported") : false); }
-    public boolean isRemovable() { return (meglerProps.get("Removable") instanceof Boolean ? (Boolean) meglerProps.get("Removable") : false); }
-    public void setIccIdAccessRestricted(boolean p0) { meglerProps.put("IccIdAccessRestricted", Boolean.valueOf(p0)); }
+    public int getCardId() { return (megletProps.get("CardId") instanceof Integer ? (Integer) megletProps.get("CardId") : 0); }
+    public java.lang.String getEid() { return (java.lang.String) megletProps.get("Eid"); }
+    public java.lang.String getIccId() { return (java.lang.String) megletProps.get("IccId"); }
+    public int getPhysicalSlotIndex() { return (megletProps.get("PhysicalSlotIndex") instanceof Integer ? (Integer) megletProps.get("PhysicalSlotIndex") : 0); }
+    public java.util.Collection getPorts() { return (megletProps.get("Ports") != null ? (java.util.Collection) megletProps.get("Ports") : new java.util.ArrayList()); }
+    public int getSlotIndex() { return (megletProps.get("SlotIndex") instanceof Integer ? (Integer) megletProps.get("SlotIndex") : 0); }
+    public boolean isEuicc() { return (megletProps.get("Euicc") instanceof Boolean ? (Boolean) megletProps.get("Euicc") : false); }
+    public boolean isMultipleEnabledProfilesSupported() { return (megletProps.get("MultipleEnabledProfilesSupported") instanceof Boolean ? (Boolean) megletProps.get("MultipleEnabledProfilesSupported") : false); }
+    public boolean isRemovable() { return (megletProps.get("Removable") instanceof Boolean ? (Boolean) megletProps.get("Removable") : false); }
+    public void setIccIdAccessRestricted(boolean p0) { megletProps.put("IccIdAccessRestricted", Boolean.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     UiccCardInfo() { this((boolean) false, (int) 0, (java.lang.String) null, (int) 0, (boolean) false, (boolean) false, (java.util.List) null); }
 }

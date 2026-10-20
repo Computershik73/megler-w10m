@@ -3,7 +3,7 @@ package android.text.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Rfc822Tokenizer implements android.widget.MultiAutoCompleteTextView.Tokenizer {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public Rfc822Tokenizer() {}
     public static void tokenize(java.lang.CharSequence p0, java.util.Collection p1) {}
     public static android.text.util.Rfc822Token[] tokenize(java.lang.CharSequence p0) { return null; }

@@ -3,7 +3,7 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WebViewFragment extends android.app.Fragment {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public WebViewFragment() { super(); }
-    public android.webkit.WebView getWebView() { return (android.webkit.WebView) meglerProps.get("WebView"); }
+    public android.webkit.WebView getWebView() { return (android.webkit.WebView) megletProps.get("WebView"); }
 }

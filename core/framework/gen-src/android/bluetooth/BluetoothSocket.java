@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothSocket implements java.io.Closeable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int MAX_RFCOMM_CHANNEL = 30;
     public static final int TYPE_L2CAP = 3;
     public static final int TYPE_LE = 4;
@@ -12,18 +12,18 @@ public final class BluetoothSocket implements java.io.Closeable {
     public void close() {}
     public void connect() {}
     protected void finalize() {}
-    public int getConnectionType() { return (meglerProps.get("ConnectionType") instanceof Integer ? (Integer) meglerProps.get("ConnectionType") : 0); }
-    public java.io.InputStream getInputStream() { return (java.io.InputStream) meglerProps.get("InputStream"); }
-    public int getL2capLocalChannelId() { return (meglerProps.get("L2capLocalChannelId") instanceof Integer ? (Integer) meglerProps.get("L2capLocalChannelId") : 0); }
-    public int getL2capRemoteChannelId() { return (meglerProps.get("L2capRemoteChannelId") instanceof Integer ? (Integer) meglerProps.get("L2capRemoteChannelId") : 0); }
-    public int getMaxReceivePacketSize() { return (meglerProps.get("MaxReceivePacketSize") instanceof Integer ? (Integer) meglerProps.get("MaxReceivePacketSize") : 0); }
-    public int getMaxTransmitPacketSize() { return (meglerProps.get("MaxTransmitPacketSize") instanceof Integer ? (Integer) meglerProps.get("MaxTransmitPacketSize") : 0); }
-    public java.io.OutputStream getOutputStream() { return (java.io.OutputStream) meglerProps.get("OutputStream"); }
-    public android.os.ParcelFileDescriptor getParcelFileDescriptor() { return (android.os.ParcelFileDescriptor) meglerProps.get("ParcelFileDescriptor"); }
-    public android.bluetooth.BluetoothDevice getRemoteDevice() { return (android.bluetooth.BluetoothDevice) meglerProps.get("RemoteDevice"); }
-    public long getSocketId() { return (meglerProps.get("SocketId") instanceof Long ? (Long) meglerProps.get("SocketId") : 0L); }
-    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
+    public int getConnectionType() { return (megletProps.get("ConnectionType") instanceof Integer ? (Integer) megletProps.get("ConnectionType") : 0); }
+    public java.io.InputStream getInputStream() { return (java.io.InputStream) megletProps.get("InputStream"); }
+    public int getL2capLocalChannelId() { return (megletProps.get("L2capLocalChannelId") instanceof Integer ? (Integer) megletProps.get("L2capLocalChannelId") : 0); }
+    public int getL2capRemoteChannelId() { return (megletProps.get("L2capRemoteChannelId") instanceof Integer ? (Integer) megletProps.get("L2capRemoteChannelId") : 0); }
+    public int getMaxReceivePacketSize() { return (megletProps.get("MaxReceivePacketSize") instanceof Integer ? (Integer) megletProps.get("MaxReceivePacketSize") : 0); }
+    public int getMaxTransmitPacketSize() { return (megletProps.get("MaxTransmitPacketSize") instanceof Integer ? (Integer) megletProps.get("MaxTransmitPacketSize") : 0); }
+    public java.io.OutputStream getOutputStream() { return (java.io.OutputStream) megletProps.get("OutputStream"); }
+    public android.os.ParcelFileDescriptor getParcelFileDescriptor() { return (android.os.ParcelFileDescriptor) megletProps.get("ParcelFileDescriptor"); }
+    public android.bluetooth.BluetoothDevice getRemoteDevice() { return (android.bluetooth.BluetoothDevice) megletProps.get("RemoteDevice"); }
+    public long getSocketId() { return (megletProps.get("SocketId") instanceof Long ? (Long) megletProps.get("SocketId") : 0L); }
+    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
     public void requestMaximumTxDataLength() {}
-    public void setExcludeSdp(boolean p0) { meglerProps.put("ExcludeSdp", Boolean.valueOf(p0)); }
+    public void setExcludeSdp(boolean p0) { megletProps.put("ExcludeSdp", Boolean.valueOf(p0)); }
     protected BluetoothSocket() {}
 }

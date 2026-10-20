@@ -3,7 +3,7 @@ package android.graphics.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LineBreaker {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int BREAK_STRATEGY_BALANCED = 2;
     public static final int BREAK_STRATEGY_HIGH_QUALITY = 1;
     public static final int BREAK_STRATEGY_SIMPLE = 0;
@@ -14,40 +14,40 @@ public class LineBreaker {
     public static final int JUSTIFICATION_MODE_INTER_WORD = 1;
     public static int JUSTIFICATION_MODE_NONE;
     public android.graphics.text.LineBreaker.Result computeLineBreaks(android.graphics.text.MeasuredText p0, android.graphics.text.LineBreaker.ParagraphConstraints p1, int p2) { return null; }
-    public int getBreakStrategy() { return (meglerProps.get("BreakStrategy") instanceof Integer ? (Integer) meglerProps.get("BreakStrategy") : 0); }
-    public int getHyphenationFrequency() { return (meglerProps.get("HyphenationFrequency") instanceof Integer ? (Integer) meglerProps.get("HyphenationFrequency") : 0); }
-    public int[] getIndents() { return (int[]) meglerProps.get("Indents"); }
-    public int getJustificationMode() { return (meglerProps.get("JustificationMode") instanceof Integer ? (Integer) meglerProps.get("JustificationMode") : 0); }
-    public boolean getUseBoundsForWidth() { return (meglerProps.get("UseBoundsForWidth") instanceof Boolean ? (Boolean) meglerProps.get("UseBoundsForWidth") : false); }
+    public int getBreakStrategy() { return (megletProps.get("BreakStrategy") instanceof Integer ? (Integer) megletProps.get("BreakStrategy") : 0); }
+    public int getHyphenationFrequency() { return (megletProps.get("HyphenationFrequency") instanceof Integer ? (Integer) megletProps.get("HyphenationFrequency") : 0); }
+    public int[] getIndents() { return (int[]) megletProps.get("Indents"); }
+    public int getJustificationMode() { return (megletProps.get("JustificationMode") instanceof Integer ? (Integer) megletProps.get("JustificationMode") : 0); }
+    public boolean getUseBoundsForWidth() { return (megletProps.get("UseBoundsForWidth") instanceof Boolean ? (Boolean) megletProps.get("UseBoundsForWidth") : false); }
     protected LineBreaker() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.graphics.text.LineBreaker build() { android.graphics.text.LineBreaker x = new android.graphics.text.LineBreaker(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.graphics.text.LineBreaker.Builder setBreakStrategy(int p0) { meglerProps.put("BreakStrategy", Integer.valueOf(p0)); return this; }
-        public android.graphics.text.LineBreaker.Builder setHyphenationFrequency(int p0) { meglerProps.put("HyphenationFrequency", Integer.valueOf(p0)); return this; }
-        public android.graphics.text.LineBreaker.Builder setIndents(int[] p0) { meglerProps.put("Indents", p0); return this; }
-        public android.graphics.text.LineBreaker.Builder setJustificationMode(int p0) { meglerProps.put("JustificationMode", Integer.valueOf(p0)); return this; }
-        public android.graphics.text.LineBreaker.Builder setUseBoundsForWidth(boolean p0) { meglerProps.put("UseBoundsForWidth", Boolean.valueOf(p0)); return this; }
+        public android.graphics.text.LineBreaker build() { android.graphics.text.LineBreaker x = new android.graphics.text.LineBreaker(); x.megletProps.putAll(megletProps); return x; }
+        public android.graphics.text.LineBreaker.Builder setBreakStrategy(int p0) { megletProps.put("BreakStrategy", Integer.valueOf(p0)); return this; }
+        public android.graphics.text.LineBreaker.Builder setHyphenationFrequency(int p0) { megletProps.put("HyphenationFrequency", Integer.valueOf(p0)); return this; }
+        public android.graphics.text.LineBreaker.Builder setIndents(int[] p0) { megletProps.put("Indents", p0); return this; }
+        public android.graphics.text.LineBreaker.Builder setJustificationMode(int p0) { megletProps.put("JustificationMode", Integer.valueOf(p0)); return this; }
+        public android.graphics.text.LineBreaker.Builder setUseBoundsForWidth(boolean p0) { megletProps.put("UseBoundsForWidth", Boolean.valueOf(p0)); return this; }
     }
     public static class ParagraphConstraints {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ParagraphConstraints() {}
-        public float getDefaultTabStop() { return (meglerProps.get("DefaultTabStop") instanceof Float ? (Float) meglerProps.get("DefaultTabStop") : 0f); }
-        public float getFirstWidth() { return (meglerProps.get("FirstWidth") instanceof Float ? (Float) meglerProps.get("FirstWidth") : 0f); }
-        public int getFirstWidthLineCount() { return (meglerProps.get("FirstWidthLineCount") instanceof Integer ? (Integer) meglerProps.get("FirstWidthLineCount") : 0); }
-        public float[] getTabStops() { return (float[]) meglerProps.get("TabStops"); }
-        public float getWidth() { return (meglerProps.get("Width") instanceof Float ? (Float) meglerProps.get("Width") : 0f); }
+        public float getDefaultTabStop() { return (megletProps.get("DefaultTabStop") instanceof Float ? (Float) megletProps.get("DefaultTabStop") : 0f); }
+        public float getFirstWidth() { return (megletProps.get("FirstWidth") instanceof Float ? (Float) megletProps.get("FirstWidth") : 0f); }
+        public int getFirstWidthLineCount() { return (megletProps.get("FirstWidthLineCount") instanceof Integer ? (Integer) megletProps.get("FirstWidthLineCount") : 0); }
+        public float[] getTabStops() { return (float[]) megletProps.get("TabStops"); }
+        public float getWidth() { return (megletProps.get("Width") instanceof Float ? (Float) megletProps.get("Width") : 0f); }
         public void setIndent(float p0, int p1) {}
         public void setTabStops(float[] p0, float p1) {}
-        public void setWidth(float p0) { meglerProps.put("Width", Float.valueOf(p0)); }
+        public void setWidth(float p0) { megletProps.put("Width", Float.valueOf(p0)); }
     }
     public static class Result {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public int getEndLineHyphenEdit(int p0) { return 0; }
         public float getLineAscent(int p0) { return 0f; }
         public int getLineBreakOffset(int p0) { return 0; }
-        public int getLineCount() { return (meglerProps.get("LineCount") instanceof Integer ? (Integer) meglerProps.get("LineCount") : 0); }
+        public int getLineCount() { return (megletProps.get("LineCount") instanceof Integer ? (Integer) megletProps.get("LineCount") : 0); }
         public float getLineDescent(int p0) { return 0f; }
         public float getLineWidth(int p0) { return 0f; }
         public int getStartLineHyphenEdit(int p0) { return 0; }

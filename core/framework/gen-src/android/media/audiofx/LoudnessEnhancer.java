@@ -3,20 +3,20 @@ package android.media.audiofx;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LoudnessEnhancer extends android.media.audiofx.AudioEffect {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int PARAM_TARGET_GAIN_MB = 0;
     public LoudnessEnhancer(int p0) { super((java.util.UUID) null, (android.media.AudioDeviceAttributes) null); }
     public LoudnessEnhancer(int p0, int p1) { super((java.util.UUID) null, (android.media.AudioDeviceAttributes) null); }
-    public android.media.audiofx.LoudnessEnhancer.Settings getProperties() { return (android.media.audiofx.LoudnessEnhancer.Settings) meglerProps.get("Properties"); }
-    public float getTargetGain() { return (meglerProps.get("TargetGain") instanceof Float ? (Float) meglerProps.get("TargetGain") : 0f); }
-    public void setProperties(android.media.audiofx.LoudnessEnhancer.Settings p0) { meglerProps.put("Properties", p0); }
-    public void setTargetGain(int p0) { meglerProps.put("TargetGain", Integer.valueOf(p0)); }
+    public android.media.audiofx.LoudnessEnhancer.Settings getProperties() { return (android.media.audiofx.LoudnessEnhancer.Settings) megletProps.get("Properties"); }
+    public float getTargetGain() { return (megletProps.get("TargetGain") instanceof Float ? (Float) megletProps.get("TargetGain") : 0f); }
+    public void setProperties(android.media.audiofx.LoudnessEnhancer.Settings p0) { megletProps.put("Properties", p0); }
+    public void setTargetGain(int p0) { megletProps.put("TargetGain", Integer.valueOf(p0)); }
     LoudnessEnhancer() { this((int) 0); }
     public interface OnParameterChangeListener {
         void onParameterChange(android.media.audiofx.LoudnessEnhancer p0, int p1, int p2);
     }
     public static class Settings {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public int targetGainmB;
         public Settings() {}
         public Settings(java.lang.String p0) {}

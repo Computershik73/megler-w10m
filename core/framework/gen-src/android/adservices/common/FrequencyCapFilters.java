@@ -3,7 +3,7 @@ package android.adservices.common;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FrequencyCapFilters implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int AD_EVENT_TYPE_CLICK = 3;
     public static final int AD_EVENT_TYPE_IMPRESSION = 1;
     public static final int AD_EVENT_TYPE_INVALID = -1;
@@ -22,21 +22,21 @@ public final class FrequencyCapFilters implements android.os.Parcelable {
     public static final java.lang.String WIN_EVENTS_FIELD_NAME = "win";
     public static android.adservices.common.FrequencyCapFilters fromJson(org.json.JSONObject p0) { return new FrequencyCapFilters(); }
     public int describeContents() { return 0; }
-    public java.util.List getKeyedFrequencyCapsForClickEvents() { return (meglerProps.get("KeyedFrequencyCapsForClickEvents") != null ? (java.util.List) meglerProps.get("KeyedFrequencyCapsForClickEvents") : new java.util.ArrayList()); }
-    public java.util.List getKeyedFrequencyCapsForImpressionEvents() { return (meglerProps.get("KeyedFrequencyCapsForImpressionEvents") != null ? (java.util.List) meglerProps.get("KeyedFrequencyCapsForImpressionEvents") : new java.util.ArrayList()); }
-    public java.util.List getKeyedFrequencyCapsForViewEvents() { return (meglerProps.get("KeyedFrequencyCapsForViewEvents") != null ? (java.util.List) meglerProps.get("KeyedFrequencyCapsForViewEvents") : new java.util.ArrayList()); }
-    public java.util.List getKeyedFrequencyCapsForWinEvents() { return (meglerProps.get("KeyedFrequencyCapsForWinEvents") != null ? (java.util.List) meglerProps.get("KeyedFrequencyCapsForWinEvents") : new java.util.ArrayList()); }
-    public int getSizeInBytes() { return (meglerProps.get("SizeInBytes") instanceof Integer ? (Integer) meglerProps.get("SizeInBytes") : 0); }
+    public java.util.List getKeyedFrequencyCapsForClickEvents() { return (megletProps.get("KeyedFrequencyCapsForClickEvents") != null ? (java.util.List) megletProps.get("KeyedFrequencyCapsForClickEvents") : new java.util.ArrayList()); }
+    public java.util.List getKeyedFrequencyCapsForImpressionEvents() { return (megletProps.get("KeyedFrequencyCapsForImpressionEvents") != null ? (java.util.List) megletProps.get("KeyedFrequencyCapsForImpressionEvents") : new java.util.ArrayList()); }
+    public java.util.List getKeyedFrequencyCapsForViewEvents() { return (megletProps.get("KeyedFrequencyCapsForViewEvents") != null ? (java.util.List) megletProps.get("KeyedFrequencyCapsForViewEvents") : new java.util.ArrayList()); }
+    public java.util.List getKeyedFrequencyCapsForWinEvents() { return (megletProps.get("KeyedFrequencyCapsForWinEvents") != null ? (java.util.List) megletProps.get("KeyedFrequencyCapsForWinEvents") : new java.util.ArrayList()); }
+    public int getSizeInBytes() { return (megletProps.get("SizeInBytes") instanceof Integer ? (Integer) megletProps.get("SizeInBytes") : 0); }
     public org.json.JSONObject toJson() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected FrequencyCapFilters() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.common.FrequencyCapFilters build() { android.adservices.common.FrequencyCapFilters x = new android.adservices.common.FrequencyCapFilters(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.common.FrequencyCapFilters.Builder setKeyedFrequencyCapsForClickEvents(java.util.List p0) { meglerProps.put("KeyedFrequencyCapsForClickEvents", p0); return this; }
-        public android.adservices.common.FrequencyCapFilters.Builder setKeyedFrequencyCapsForImpressionEvents(java.util.List p0) { meglerProps.put("KeyedFrequencyCapsForImpressionEvents", p0); return this; }
-        public android.adservices.common.FrequencyCapFilters.Builder setKeyedFrequencyCapsForViewEvents(java.util.List p0) { meglerProps.put("KeyedFrequencyCapsForViewEvents", p0); return this; }
-        public android.adservices.common.FrequencyCapFilters.Builder setKeyedFrequencyCapsForWinEvents(java.util.List p0) { meglerProps.put("KeyedFrequencyCapsForWinEvents", p0); return this; }
+        public android.adservices.common.FrequencyCapFilters build() { android.adservices.common.FrequencyCapFilters x = new android.adservices.common.FrequencyCapFilters(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.common.FrequencyCapFilters.Builder setKeyedFrequencyCapsForClickEvents(java.util.List p0) { megletProps.put("KeyedFrequencyCapsForClickEvents", p0); return this; }
+        public android.adservices.common.FrequencyCapFilters.Builder setKeyedFrequencyCapsForImpressionEvents(java.util.List p0) { megletProps.put("KeyedFrequencyCapsForImpressionEvents", p0); return this; }
+        public android.adservices.common.FrequencyCapFilters.Builder setKeyedFrequencyCapsForViewEvents(java.util.List p0) { megletProps.put("KeyedFrequencyCapsForViewEvents", p0); return this; }
+        public android.adservices.common.FrequencyCapFilters.Builder setKeyedFrequencyCapsForWinEvents(java.util.List p0) { megletProps.put("KeyedFrequencyCapsForWinEvents", p0); return this; }
     }
 }

@@ -9,7 +9,7 @@
 // had no frame yet. AIDA64's main screen has a GLSurfaceView over the whole content area (720 x 1182), which it uses to ask
 // the GPU its name; its renderer never starts here (OpenGL from Java is not there yet), so it never draws -- and the list
 // of pages behind it, laid out and answering taps, was wiped from the window by the hole. Here the hole is cleared when an
-// EGL surface is made on the view (meglerSetGL), the first moment the framework knows the surface will be drawn, and never
+// EGL surface is made on the view (megletSetGL), the first moment the framework knows the surface will be drawn, and never
 // for a software surface: its frames are drawn into the window where it stands. The size: Android's surface has its
 // size before surfaceCreated is called, and lockCanvas works there; the original set it after, and a canvas asked for in
 // surfaceCreated was null (a frame drawn there was never drawn). And, for the window the core composes of the views and the
@@ -17,9 +17,9 @@
 // (EGLNative.place), and that its surface is gone when it is (EGLNative.forget, where the original hid every view's) -- said
 // for every surface, EGL or not, since native code's windows of it (ANativeWindow_fromSurface) are no longer valid from then on.
 // And a frame that is a whole bitmap already, which the camera's preview posts (android.hardware.Camera, the overlay's):
-// meglerPostBitmap makes it the front buffer as it is, without drawing it into a canvas of the surface's, which on the
+// megletPostBitmap makes it the front buffer as it is, without drawing it into a canvas of the surface's, which on the
 // graphics processor would cost a canvas's read-back for every picture; onDraw scales it to the view as it does any frame.
-// meglerFrameDrawn says whether the window has drawn the last one, so that a camera faster than the window skips pictures
+// megletFrameDrawn says whether the window has drawn the last one, so that a camera faster than the window skips pictures
 // the window would never show.
 // Everything else is the original's, unchanged.
 package android.view;
@@ -65,7 +65,7 @@ public class SurfaceView extends View {
         super(c, a, s, r);
         setWillNotDraw(false);
         mClear.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
-        mSurface.meglerView = this;
+        mSurface.megletView = this;
         mSurface.mProducer = new Surface.Producer() {
             public Canvas lock(Rect d) { return SurfaceView.this.lock(d); }
             public void post(Canvas c) { SurfaceView.this.post(c); }
@@ -75,9 +75,9 @@ public class SurfaceView extends View {
     public SurfaceHolder getHolder() { return mHolder; }
     private volatile boolean mGL;
     /** The size an EGL window surface on this view gets: the fixed size, else the view's. */
-    public int[] meglerSurfaceSize() { int w = mSurfaceW > 0 ? mSurfaceW : getWidth(), h = mSurfaceH > 0 ? mSurfaceH : getHeight(); return new int[] { w > 0 ? w : megler.Native.screenWidth(), h > 0 ? h : megler.Native.screenHeight() }; }
+    public int[] megletSurfaceSize() { int w = mSurfaceW > 0 ? mSurfaceW : getWidth(), h = mSurfaceH > 0 ? mSurfaceH : getHeight(); return new int[] { w > 0 ? w : meglet.Native.screenWidth(), h > 0 ? h : meglet.Native.screenHeight() }; }
     /** EGL draws on this view: it keeps its area clear for the frame under the window. */
-    public void meglerSetGL(boolean gl) { mGL = gl; postInvalidate(); }
+    public void megletSetGL(boolean gl) { mGL = gl; postInvalidate(); }
     public void setZOrderOnTop(boolean onTop) { mZOnTop = onTop; }
     public void setZOrderMediaOverlay(boolean o) {}
     public void setSecure(boolean s) {}
@@ -118,7 +118,7 @@ public class SurfaceView extends View {
         for (SurfaceHolder.Callback c : callbacks()) c.surfaceDestroyed(mHolder);
         // Told whether or not EGL drew on it: the windows native code has of the surface go with it (core/src/drivers/hk_java_ndk.c).
         mGL = false;
-        megler.EGLNative.forget(this);
+        meglet.EGLNative.forget(this);
         synchronized (mLock) { mCreated = false; mHasFrame = false; mLock.notifyAll(); }
     }
     /** Software drawing: a canvas on the back buffer (kept from the last frame, as Android's is). */
@@ -129,7 +129,7 @@ public class SurfaceView extends View {
             int w = mSurfaceW, h = mSurfaceH;
             if (w <= 0 || h <= 0) return null;
             if (mBack == null || mBack.getWidth() != w || mBack.getHeight() != h) {
-                if (mBackCanvas != null) mBackCanvas.meglerRelease();
+                if (mBackCanvas != null) mBackCanvas.megletRelease();
                 mBack = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
                 mBackCanvas = new Canvas(mBack);
                 if (mFront != null) mBackCanvas.drawBitmap(mFront, 0, 0, null);
@@ -137,20 +137,20 @@ public class SurfaceView extends View {
             mLocked = true;
             int save = mBackCanvas.save();
             if (dirty != null) { mBackCanvas.clipRect(dirty); }
-            mSaveMegler = save;
+            mSaveMeglet = save;
             return mBackCanvas;
         }
     }
-    private int mSaveMegler;
+    private int mSaveMeglet;
     private void post(Canvas c) {
         synchronized (mLock) {
             if (!mLocked) throw new IllegalStateException("Surface was not locked");
-            mBackCanvas.restoreToCount(mSaveMegler);
+            mBackCanvas.restoreToCount(mSaveMeglet);
             // swap: the posted buffer becomes the front, the next lock draws on a copy of it
             Bitmap f = mFront;
             mFront = mBack;
-            if (f != null && f.getWidth() == mFront.getWidth() && f.getHeight() == mFront.getHeight()) { mBackCanvas.meglerRelease(); mBack = f; mBackCanvas = new Canvas(mBack); mBackCanvas.drawBitmap(mFront, 0, 0, null); }
-            else { mBack = null; if (mBackCanvas != null) mBackCanvas.meglerRelease(); mBackCanvas = null; }
+            if (f != null && f.getWidth() == mFront.getWidth() && f.getHeight() == mFront.getHeight()) { mBackCanvas.megletRelease(); mBack = f; mBackCanvas = new Canvas(mBack); mBackCanvas.drawBitmap(mFront, 0, 0, null); }
+            else { mBack = null; if (mBackCanvas != null) mBackCanvas.megletRelease(); mBackCanvas = null; }
             mHasFrame = true;
             mLocked = false;
             mLock.notifyAll();
@@ -162,11 +162,11 @@ public class SurfaceView extends View {
      * next lockCanvas starts from a copy of it. The producer must not write into it again while it is the front. False when
      * there is no surface, or a canvas of it is locked.
      */
-    public boolean meglerPostBitmap(Bitmap b) {
+    public boolean megletPostBitmap(Bitmap b) {
         synchronized (mLock) {
             if (!mCreated || mLocked || b == null) return false;
             mFront = b;
-            if (mBackCanvas != null) mBackCanvas.meglerRelease();
+            if (mBackCanvas != null) mBackCanvas.megletRelease();
             mBack = null;
             mBackCanvas = null;
             mHasFrame = true;
@@ -176,7 +176,7 @@ public class SurfaceView extends View {
         return true;
     }
     /** Whether the window has drawn the last frame posted as a bitmap (true when none waits). */
-    public boolean meglerFrameDrawn() { synchronized (mLock) { return mDrawn || !mCreated; } }
+    public boolean megletFrameDrawn() { synchronized (mLock) { return mDrawn || !mCreated; } }
     @Override public void draw(Canvas c) {
         super.draw(c);
     }
@@ -196,33 +196,33 @@ public class SurfaceView extends View {
             c.drawRect(0, 0, getWidth(), getHeight(), mClear);
             // And the core is told where the hole is, as this picture of the views has it: the frame goes there.
             getLocationOnScreen(mPlace);
-            megler.EGLNative.place(this, mPlace[0], mPlace[1], getWidth(), getHeight());
+            meglet.EGLNative.place(this, mPlace[0], mPlace[1], getWidth(), getHeight());
         }
     }
     private final int[] mPlace = new int[2];
     @Override public boolean gatherTransparentRegion(Region r) { return true; }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
     public static final int SURFACE_LIFECYCLE_DEFAULT = 0;
     public static final int SURFACE_LIFECYCLE_FOLLOWS_ATTACHMENT = 2;
     public static final int SURFACE_LIFECYCLE_FOLLOWS_VISIBILITY = 1;
     public void applyTransactionToFrame(android.view.SurfaceControl.Transaction p0) {}
     public void clearChildSurfacePackage() {}
     public android.view.SurfaceControlViewHost.SurfacePackage getChildSurfacePackage() { return null; }
-    public int getCompositionOrder() { return (meglerFill.get("CompositionOrder") instanceof Integer ? (Integer) meglerFill.get("CompositionOrder") : 0); }
-    public float getCornerRadius() { return (meglerFill.get("CornerRadius") instanceof Float ? (Float) meglerFill.get("CornerRadius") : 0f); }
+    public int getCompositionOrder() { return (megletFill.get("CompositionOrder") instanceof Integer ? (Integer) megletFill.get("CompositionOrder") : 0); }
+    public float getCornerRadius() { return (megletFill.get("CornerRadius") instanceof Float ? (Float) megletFill.get("CornerRadius") : 0f); }
     public java.lang.String getName() { return null; }
     public android.view.SurfaceControl getRenderingSurfaceControl() { return null; }
     public android.graphics.Rect getSurfaceRenderPosition() { return null; }
     public boolean isFixedSize() { return false; }
-    public boolean isZOrderedOnTop() { return (meglerFill.get("ZOrderedOnTop") instanceof Boolean ? (Boolean) meglerFill.get("ZOrderedOnTop") : false); }
+    public boolean isZOrderedOnTop() { return (megletFill.get("ZOrderedOnTop") instanceof Boolean ? (Boolean) megletFill.get("ZOrderedOnTop") : false); }
     public void onInitializeAccessibilityNodeInfoInternal(android.view.accessibility.AccessibilityNodeInfo p0) {}
     protected void onProvideStructure(android.view.ViewStructure p0, int p1, int p2) {}
     protected boolean onSetAlpha(int p0) { return false; }
     protected void onSetSurfacePositionAndScale(android.view.SurfaceControl.Transaction p0, android.view.SurfaceControl p1, int p2, int p3, float p4, float p5) {}
     public void requestUpdateSurfacePositionAndScale() {}
-    public void setCompositionOrder(int p0) { meglerFill.put("CompositionOrder", Integer.valueOf(p0)); }
-    public void setCornerRadius(float p0) { meglerFill.put("CornerRadius", Float.valueOf(p0)); }
+    public void setCompositionOrder(int p0) { megletFill.put("CompositionOrder", Integer.valueOf(p0)); }
+    public void setCornerRadius(float p0) { megletFill.put("CornerRadius", Float.valueOf(p0)); }
     public void setDesiredHdrHeadroom(float p0) {}
     public void setEnableSurfaceClipping(boolean p0) {}
     public void setResizeBackgroundColor(int p0) {}

@@ -3,7 +3,7 @@ package android.net.wifi.aware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DiscoverySessionCallback {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public DiscoverySessionCallback() {}
     public void onBootstrappingFailed(android.net.wifi.aware.PeerHandle p0) {}
     public void onBootstrappingSucceeded(android.net.wifi.aware.PeerHandle p0, int p1) {}

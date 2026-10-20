@@ -36,7 +36,7 @@ static const char *utf(hk_jobj *s) { return J(169, const char *(*)(ENV, hk_jobj 
 static void thing_answer(hk_jcall *c) { c->ret.i = c->self ? 42 + c->args[0].i : -1; }
 
 static const hk_jhle k_thing[] = {
-    { "megler/test/Thing", "answer", "(I)I", thing_answer },
+    { "meglet/test/Thing", "answer", "(I)I", thing_answer },
     { NULL, NULL, NULL, NULL },
 };
 
@@ -231,10 +231,10 @@ static void test_env(void)
 
     /* A class no DEX file defines: the layer's own, implemented in C as before, and its objects are objects bytecode can hold. */
     hk_jni_register(k_thing);
-    thing_c = find("megler/test/Thing");
-    thing = hk_jni_new_object("megler/test/Thing");
-    CHECK(thing_c && thing && thing->dvm && thing_c->dvm && thing_c == hk_jni_class_object("megler/test/Thing"));
-    CHECK_STR(hk_jni_class_name(thing), "megler/test/Thing");
+    thing_c = find("meglet/test/Thing");
+    thing = hk_jni_new_object("meglet/test/Thing");
+    CHECK(thing_c && thing && thing->dvm && thing_c->dvm && thing_c == hk_jni_class_object("meglet/test/Thing"));
+    CHECK_STR(hk_jni_class_name(thing), "meglet/test/Thing");
     m = method(thing_c, "answer", "(I)I");
     v[0].j = 0;
     v[0].i = 8;
@@ -248,14 +248,14 @@ static void test_env(void)
     v[0].l = thing;
     CHECK_STR(utf(J(116, hk_jobj *(*)(ENV, hk_jobj *, void *, const hk_jvalue *))(E, find("t/Shapes"),
                                                                                   smethod(find("t/Shapes"), "className", "(Ljava/lang/Object;)Ljava/lang/String;"), v)),
-              "megler.test.Thing");
+              "meglet.test.Thing");
     CHECK_INT(scall_int(find("t/Shapes"), smethod(find("t/Shapes"), "what", "(Ljava/lang/Object;)I"), v), 0);
     a = hk_jni_new_object_array("java/lang/Object", 1);
     J(174, void (*)(ENV, hk_jobj *, i32, hk_jobj *))(E, a, 0, thing);
     CHECK(a->u.oarr.v[0] == thing && !check());
-    a = hk_jni_new_object_array("megler/test/Thing", 3);
+    a = hk_jni_new_object_array("meglet/test/Thing", 3);
     CHECK(a && a->dvm);
-    CHECK_STR(hk_jni_class_name(a), "[Lmegler/test/Thing;");
+    CHECK_STR(hk_jni_class_name(a), "[Lmeglet/test/Thing;");
     (void)n;
 }
 

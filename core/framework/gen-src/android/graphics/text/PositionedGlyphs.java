@@ -3,12 +3,12 @@ package android.graphics.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PositionedGlyphs {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final float NO_OVERRIDE = 1.401298464324817e-45f;
     public PositionedGlyphs(long p0, float p1, float p2) {}
-    public float getAdvance() { return (meglerProps.get("Advance") instanceof Float ? (Float) meglerProps.get("Advance") : 0f); }
-    public float getAscent() { return (meglerProps.get("Ascent") instanceof Float ? (Float) meglerProps.get("Ascent") : 0f); }
-    public float getDescent() { return (meglerProps.get("Descent") instanceof Float ? (Float) meglerProps.get("Descent") : 0f); }
+    public float getAdvance() { return (megletProps.get("Advance") instanceof Float ? (Float) megletProps.get("Advance") : 0f); }
+    public float getAscent() { return (megletProps.get("Ascent") instanceof Float ? (Float) megletProps.get("Ascent") : 0f); }
+    public float getDescent() { return (megletProps.get("Descent") instanceof Float ? (Float) megletProps.get("Descent") : 0f); }
     public boolean getFakeBold(int p0) { return false; }
     public boolean getFakeItalic(int p0) { return false; }
     public android.graphics.fonts.Font getFont(int p0) { return null; }
@@ -16,8 +16,8 @@ public final class PositionedGlyphs {
     public float getGlyphX(int p0) { return 0f; }
     public float getGlyphY(int p0) { return 0f; }
     public float getItalicOverride(int p0) { return 0f; }
-    public float getOffsetX() { return (meglerProps.get("OffsetX") instanceof Float ? (Float) meglerProps.get("OffsetX") : 0f); }
-    public float getOffsetY() { return (meglerProps.get("OffsetY") instanceof Float ? (Float) meglerProps.get("OffsetY") : 0f); }
+    public float getOffsetX() { return (megletProps.get("OffsetX") instanceof Float ? (Float) megletProps.get("OffsetX") : 0f); }
+    public float getOffsetY() { return (megletProps.get("OffsetY") instanceof Float ? (Float) megletProps.get("OffsetY") : 0f); }
     public float getWeightOverride(int p0) { return 0f; }
     public int glyphCount() { return 0; }
     PositionedGlyphs() { this((long) 0L, (float) 0f, (float) 0f); }

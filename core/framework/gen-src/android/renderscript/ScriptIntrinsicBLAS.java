@@ -3,7 +3,7 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ScriptIntrinsicBLAS extends android.renderscript.ScriptIntrinsic {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CONJ_TRANSPOSE = 113;
     public static final int LEFT = 141;
     public static final int LOWER = 122;

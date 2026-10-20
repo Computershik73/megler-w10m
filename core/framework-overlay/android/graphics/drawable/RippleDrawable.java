@@ -1,5 +1,5 @@
 // Overlay of core/framework/src/android/graphics/drawable/RippleDrawable.java (tools/build-framework.sh).
-// It differs by one method, meglerSetMask, through which the inflater says that the ripple has a mask (megler/ResInflate.java,
+// It differs by one method, megletSetMask, through which the inflater says that the ripple has a mask (meglet/ResInflate.java,
 // also in the overlay). Everything else is the original's, unchanged.
 //
 // Why. Android's commonest ripple is one with nothing in it but a mask -- item_background_material, which is
@@ -25,8 +25,8 @@ public class RippleDrawable extends LayerDrawable {
         super(content != null ? new Drawable[] { content } : new Drawable[0]);
         mColor = color; mMask = mask;
     }
-    /** megler-w10m: the mask layer of a ripple inflated from XML, which bounds it. See the top of the file. */
-    public void meglerSetMask(Drawable mask) { mMask = mask; }
+    /** Meglet: the mask layer of a ripple inflated from XML, which bounds it. See the top of the file. */
+    public void megletSetMask(Drawable mask) { mMask = mask; }
     public void setColor(ColorStateList c) { mColor = c; invalidateSelf(); }
     public void setRadius(int r) {}
     public int getRadius() { return RADIUS_AUTO; }

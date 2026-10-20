@@ -3,7 +3,7 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DelegatedAdminReceiver extends android.content.BroadcastReceiver {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public DelegatedAdminReceiver() { super(); }
     public java.lang.String onChoosePrivateKeyAlias(android.content.Context p0, android.content.Intent p1, int p2, android.net.Uri p3, java.lang.String p4) { return null; }
     public void onNetworkLogsAvailable(android.content.Context p0, android.content.Intent p1, long p2, int p3) {}

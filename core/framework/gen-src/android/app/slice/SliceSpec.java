@@ -3,14 +3,14 @@ package android.app.slice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SliceSpec implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public SliceSpec(android.os.Parcel p0) {}
     public SliceSpec(java.lang.String p0, int p1) {}
     public boolean canRender(android.app.slice.SliceSpec p0) { return false; }
     public int describeContents() { return 0; }
-    public int getRevision() { return (meglerProps.get("Revision") instanceof Integer ? (Integer) meglerProps.get("Revision") : 0); }
-    public java.lang.String getType() { return (java.lang.String) meglerProps.get("Type"); }
+    public int getRevision() { return (megletProps.get("Revision") instanceof Integer ? (Integer) megletProps.get("Revision") : 0); }
+    public java.lang.String getType() { return (java.lang.String) megletProps.get("Type"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SliceSpec() { this((android.os.Parcel) null); }
 }

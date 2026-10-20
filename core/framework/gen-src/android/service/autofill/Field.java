@@ -3,18 +3,18 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Field {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public android.service.autofill.Dataset.DatasetFieldFilter getDatasetFieldFilter() { return (android.service.autofill.Dataset.DatasetFieldFilter) meglerProps.get("DatasetFieldFilter"); }
-    public java.util.regex.Pattern getFilter() { return (java.util.regex.Pattern) meglerProps.get("Filter"); }
-    public android.service.autofill.Presentations getPresentations() { return (android.service.autofill.Presentations) meglerProps.get("Presentations"); }
-    public android.view.autofill.AutofillValue getValue() { return (android.view.autofill.AutofillValue) meglerProps.get("Value"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public android.service.autofill.Dataset.DatasetFieldFilter getDatasetFieldFilter() { return (android.service.autofill.Dataset.DatasetFieldFilter) megletProps.get("DatasetFieldFilter"); }
+    public java.util.regex.Pattern getFilter() { return (java.util.regex.Pattern) megletProps.get("Filter"); }
+    public android.service.autofill.Presentations getPresentations() { return (android.service.autofill.Presentations) megletProps.get("Presentations"); }
+    public android.view.autofill.AutofillValue getValue() { return (android.view.autofill.AutofillValue) megletProps.get("Value"); }
     protected Field() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.service.autofill.Field build() { android.service.autofill.Field x = new android.service.autofill.Field(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.service.autofill.Field.Builder setFilter(java.util.regex.Pattern p0) { meglerProps.put("Filter", p0); return this; }
-        public android.service.autofill.Field.Builder setPresentations(android.service.autofill.Presentations p0) { meglerProps.put("Presentations", p0); return this; }
-        public android.service.autofill.Field.Builder setValue(android.view.autofill.AutofillValue p0) { meglerProps.put("Value", p0); return this; }
+        public android.service.autofill.Field build() { android.service.autofill.Field x = new android.service.autofill.Field(); x.megletProps.putAll(megletProps); return x; }
+        public android.service.autofill.Field.Builder setFilter(java.util.regex.Pattern p0) { megletProps.put("Filter", p0); return this; }
+        public android.service.autofill.Field.Builder setPresentations(android.service.autofill.Presentations p0) { megletProps.put("Presentations", p0); return this; }
+        public android.service.autofill.Field.Builder setValue(android.view.autofill.AutofillValue p0) { megletProps.put("Value", p0); return this; }
     }
 }

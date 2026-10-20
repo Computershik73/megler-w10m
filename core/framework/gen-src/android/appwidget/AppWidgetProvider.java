@@ -3,7 +3,7 @@ package android.appwidget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AppWidgetProvider extends android.content.BroadcastReceiver {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public AppWidgetProvider() { super(); }
     public void onAppWidgetOptionsChanged(android.content.Context p0, android.appwidget.AppWidgetManager p1, int p2, android.os.Bundle p3) {}
     public void onDeleted(android.content.Context p0, int[] p1) {}

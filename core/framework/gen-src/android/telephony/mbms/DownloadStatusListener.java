@@ -3,7 +3,7 @@ package android.telephony.mbms;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DownloadStatusListener {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public DownloadStatusListener() {}
     public void onStatusUpdated(android.telephony.mbms.DownloadRequest p0, android.telephony.mbms.FileInfo p1, int p2) {}
 }

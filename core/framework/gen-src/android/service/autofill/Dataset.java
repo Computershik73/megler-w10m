@@ -3,7 +3,7 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Dataset implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int PICK_REASON_NO_PCC = 1;
     public static final int PICK_REASON_PCC_DETECTION_ONLY = 4;
@@ -14,40 +14,40 @@ public final class Dataset implements android.os.Parcelable {
     public Dataset(android.service.autofill.Dataset p0, java.util.ArrayList p1) {}
     public Dataset(java.util.ArrayList p0, java.util.ArrayList p1, java.util.ArrayList p2, java.util.ArrayList p3, java.util.ArrayList p4, java.util.ArrayList p5, java.util.ArrayList p6, java.util.ArrayList p7, android.content.ClipData p8, android.widget.RemoteViews p9, android.widget.RemoteViews p10, android.service.autofill.InlinePresentation p11, android.service.autofill.InlinePresentation p12, java.lang.String p13, android.content.IntentSender p14) {}
     public int describeContents() { return 0; }
-    public android.content.IntentSender getAuthentication() { return (android.content.IntentSender) meglerProps.get("Authentication"); }
-    public java.util.ArrayList getAutofillDatatypes() { return (meglerProps.get("AutofillDatatypes") != null ? (java.util.ArrayList) meglerProps.get("AutofillDatatypes") : new java.util.ArrayList()); }
-    public android.content.Intent getCredentialFillInIntent() { return (android.content.Intent) meglerProps.get("CredentialFillInIntent"); }
-    public int getEligibleReason() { return (meglerProps.get("EligibleReason") instanceof Integer ? (Integer) meglerProps.get("EligibleReason") : 0); }
-    public android.content.ClipData getFieldContent() { return (android.content.ClipData) meglerProps.get("FieldContent"); }
+    public android.content.IntentSender getAuthentication() { return (android.content.IntentSender) megletProps.get("Authentication"); }
+    public java.util.ArrayList getAutofillDatatypes() { return (megletProps.get("AutofillDatatypes") != null ? (java.util.ArrayList) megletProps.get("AutofillDatatypes") : new java.util.ArrayList()); }
+    public android.content.Intent getCredentialFillInIntent() { return (android.content.Intent) megletProps.get("CredentialFillInIntent"); }
+    public int getEligibleReason() { return (megletProps.get("EligibleReason") instanceof Integer ? (Integer) megletProps.get("EligibleReason") : 0); }
+    public android.content.ClipData getFieldContent() { return (android.content.ClipData) megletProps.get("FieldContent"); }
     public android.widget.RemoteViews getFieldDialogPresentation(int p0) { return null; }
-    public java.util.ArrayList getFieldIds() { return (meglerProps.get("FieldIds") != null ? (java.util.ArrayList) meglerProps.get("FieldIds") : new java.util.ArrayList()); }
+    public java.util.ArrayList getFieldIds() { return (megletProps.get("FieldIds") != null ? (java.util.ArrayList) megletProps.get("FieldIds") : new java.util.ArrayList()); }
     public android.service.autofill.InlinePresentation getFieldInlinePresentation(int p0) { return null; }
     public android.service.autofill.InlinePresentation getFieldInlineTooltipPresentation(int p0) { return null; }
     public android.widget.RemoteViews getFieldPresentation(int p0) { return null; }
-    public java.util.ArrayList getFieldValues() { return (meglerProps.get("FieldValues") != null ? (java.util.ArrayList) meglerProps.get("FieldValues") : new java.util.ArrayList()); }
+    public java.util.ArrayList getFieldValues() { return (megletProps.get("FieldValues") != null ? (java.util.ArrayList) megletProps.get("FieldValues") : new java.util.ArrayList()); }
     public android.service.autofill.Dataset.DatasetFieldFilter getFilter(int p0) { return null; }
-    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
-    public boolean isEmpty() { return (meglerProps.get("Empty") instanceof Boolean ? (Boolean) meglerProps.get("Empty") : false); }
-    public void setCredentialFillInIntent(android.content.Intent p0) { meglerProps.put("CredentialFillInIntent", p0); }
-    public void setEligibleReasonReason(int p0) { meglerProps.put("EligibleReasonReason", Integer.valueOf(p0)); }
+    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
+    public boolean isEmpty() { return (megletProps.get("Empty") instanceof Boolean ? (Boolean) megletProps.get("Empty") : false); }
+    public void setCredentialFillInIntent(android.content.Intent p0) { megletProps.put("CredentialFillInIntent", p0); }
+    public void setEligibleReasonReason(int p0) { megletProps.put("EligibleReasonReason", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     Dataset() { this((android.service.autofill.Dataset) null, (java.util.ArrayList) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.service.autofill.InlinePresentation p0) {}
         public Builder(android.service.autofill.Presentations p0) {}
         public Builder(android.widget.RemoteViews p0) {}
-        public android.service.autofill.Dataset build() { android.service.autofill.Dataset x = new android.service.autofill.Dataset(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.service.autofill.Dataset.Builder setAuthentication(android.content.IntentSender p0) { meglerProps.put("Authentication", p0); return this; }
+        public android.service.autofill.Dataset build() { android.service.autofill.Dataset x = new android.service.autofill.Dataset(); x.megletProps.putAll(megletProps); return x; }
+        public android.service.autofill.Dataset.Builder setAuthentication(android.content.IntentSender p0) { megletProps.put("Authentication", p0); return this; }
         public android.service.autofill.Dataset.Builder setContent(android.view.autofill.AutofillId p0, android.content.ClipData p1) { return this; }
-        public android.service.autofill.Dataset.Builder setCredentialFillInIntent(android.content.Intent p0) { meglerProps.put("CredentialFillInIntent", p0); return this; }
+        public android.service.autofill.Dataset.Builder setCredentialFillInIntent(android.content.Intent p0) { megletProps.put("CredentialFillInIntent", p0); return this; }
         public android.service.autofill.Dataset.Builder setField(android.view.autofill.AutofillId p0, android.service.autofill.Field p1) { return this; }
         public android.service.autofill.Dataset.Builder setField(java.lang.String p0, android.service.autofill.Field p1) { return this; }
-        public android.service.autofill.Dataset.Builder setFieldForAllHints(android.service.autofill.Field p0) { meglerProps.put("FieldForAllHints", p0); return this; }
+        public android.service.autofill.Dataset.Builder setFieldForAllHints(android.service.autofill.Field p0) { megletProps.put("FieldForAllHints", p0); return this; }
         public android.service.autofill.Dataset.Builder setFieldInlinePresentation(android.view.autofill.AutofillId p0, android.view.autofill.AutofillValue p1, java.util.regex.Pattern p2, android.service.autofill.InlinePresentation p3) { return this; }
-        public android.service.autofill.Dataset.Builder setId(java.lang.String p0) { meglerProps.put("Id", p0); return this; }
-        public android.service.autofill.Dataset.Builder setInlinePresentation(android.service.autofill.InlinePresentation p0) { meglerProps.put("InlinePresentation", p0); return this; }
+        public android.service.autofill.Dataset.Builder setId(java.lang.String p0) { megletProps.put("Id", p0); return this; }
+        public android.service.autofill.Dataset.Builder setInlinePresentation(android.service.autofill.InlinePresentation p0) { megletProps.put("InlinePresentation", p0); return this; }
         public android.service.autofill.Dataset.Builder setInlinePresentation(android.service.autofill.InlinePresentation p0, android.service.autofill.InlinePresentation p1) { return this; }
         public android.service.autofill.Dataset.Builder setValue(android.view.autofill.AutofillId p0, android.view.autofill.AutofillValue p1) { return this; }
         public android.service.autofill.Dataset.Builder setValue(android.view.autofill.AutofillId p0, android.view.autofill.AutofillValue p1, android.widget.RemoteViews p2) { return this; }
@@ -59,11 +59,11 @@ public final class Dataset implements android.os.Parcelable {
         public android.service.autofill.Dataset.Builder setValue(android.view.autofill.AutofillId p0, android.view.autofill.AutofillValue p1, java.util.regex.Pattern p2, android.widget.RemoteViews p3, android.service.autofill.InlinePresentation p4, android.service.autofill.InlinePresentation p5) { return this; }
     }
     public static final class DatasetFieldFilter implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public java.util.regex.Pattern pattern;
         public int describeContents() { return 0; }
-        public java.util.regex.Pattern getPattern() { return (java.util.regex.Pattern) meglerProps.get("Pattern"); }
+        public java.util.regex.Pattern getPattern() { return (java.util.regex.Pattern) megletProps.get("Pattern"); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected DatasetFieldFilter() {}
     }

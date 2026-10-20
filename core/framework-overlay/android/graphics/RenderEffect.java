@@ -2,7 +2,7 @@
 // of the generated stub, whose effects were all empty ones.
 //
 // What it is: an effect that knows the blur it amounts to. Only blur is drawn: a view with such an effect is drawn into a
-// layer that the shell puts onto the picture blurred (android.view.View.drawFromParent, overlaid; megler.h, save_layer_blur).
+// layer that the shell puts onto the picture blurred (android.view.View.drawFromParent, overlaid; meglet.h, save_layer_blur).
 // A blur whose input is a blur, or two chained, is one blur of both, as two Gaussians make one: their standard deviations
 // (0.57735 * radius + 0.5, as Skia takes a radius) add as squares. Every other kind -- a bitmap, a colour filter, an offset,
 // a shader, a runtime shader, a blend -- is drawn as if it were not there, the blurs of its inputs still drawn.
@@ -24,11 +24,11 @@ public final class RenderEffect {
 
     protected RenderEffect() { this(0, 0, false); }
 
-    /** Megler: the radii of the blur the effect amounts to (0 for none), and whether its edge is clamped. */
-    public float meglerBlurX() { return mBlurX; }
-    public float meglerBlurY() { return mBlurY; }
-    public boolean meglerClamp() { return mClamp; }
-    public boolean meglerBlurs() { return mBlurX > 0 || mBlurY > 0; }
+    /** Meglet: the radii of the blur the effect amounts to (0 for none), and whether its edge is clamped. */
+    public float megletBlurX() { return mBlurX; }
+    public float megletBlurY() { return mBlurY; }
+    public boolean megletClamp() { return mClamp; }
+    public boolean megletBlurs() { return mBlurX > 0 || mBlurY > 0; }
 
     private static float sigma(float radius) { return radius > 0 ? 0.57735f * radius + 0.5f : 0; }
     private static float radius(float sigma) { return sigma > 0.5f ? (sigma - 0.5f) / 0.57735f : 0; }

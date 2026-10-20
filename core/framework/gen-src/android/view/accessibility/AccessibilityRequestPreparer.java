@@ -3,10 +3,10 @@ package android.view.accessibility;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class AccessibilityRequestPreparer {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int REQUEST_TYPE_EXTRA_DATA = 1;
     public AccessibilityRequestPreparer(android.view.View p0, int p1) {}
-    public android.view.View getView() { return (android.view.View) meglerProps.get("View"); }
+    public android.view.View getView() { return (android.view.View) megletProps.get("View"); }
     public abstract void onPrepareExtraData(int p0, java.lang.String p1, android.os.Bundle p2, android.os.Message p3);
     AccessibilityRequestPreparer() { this((android.view.View) null, (int) 0); }
 }

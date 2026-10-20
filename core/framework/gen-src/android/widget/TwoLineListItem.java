@@ -3,13 +3,13 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TwoLineListItem extends android.widget.RelativeLayout {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public TwoLineListItem(android.content.Context p0) { super(p0); }
     public TwoLineListItem(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public TwoLineListItem(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
     public TwoLineListItem(android.content.Context p0, android.util.AttributeSet p1, int p2, int p3) { super(p0, p1, p2, p3); }
-    public android.widget.TextView getText1() { return (android.widget.TextView) meglerProps.get("Text1"); }
-    public android.widget.TextView getText2() { return (android.widget.TextView) meglerProps.get("Text2"); }
+    public android.widget.TextView getText1() { return (android.widget.TextView) megletProps.get("Text1"); }
+    public android.widget.TextView getText2() { return (android.widget.TextView) megletProps.get("Text2"); }
     public void onFinishInflate() {}
     TwoLineListItem() { this((android.content.Context) null); }
 }

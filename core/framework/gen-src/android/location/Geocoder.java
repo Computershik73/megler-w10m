@@ -3,7 +3,7 @@ package android.location;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Geocoder {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public Geocoder(android.content.Context p0) {}
     public Geocoder(android.content.Context p0, java.util.Locale p1) {}
     public static boolean isPresent() { return false; }

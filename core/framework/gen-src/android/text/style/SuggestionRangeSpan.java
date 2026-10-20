@@ -3,15 +3,15 @@ package android.text.style;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SuggestionRangeSpan extends android.text.style.CharacterStyle implements android.text.ParcelableSpan {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public SuggestionRangeSpan() { super(); }
     public SuggestionRangeSpan(android.os.Parcel p0) { super(); }
     public int describeContents() { return 0; }
-    public int getBackgroundColor() { return (meglerProps.get("BackgroundColor") instanceof Integer ? (Integer) meglerProps.get("BackgroundColor") : 0); }
-    public int getSpanTypeId() { return (meglerProps.get("SpanTypeId") instanceof Integer ? (Integer) meglerProps.get("SpanTypeId") : 0); }
-    public int getSpanTypeIdInternal() { return (meglerProps.get("SpanTypeIdInternal") instanceof Integer ? (Integer) meglerProps.get("SpanTypeIdInternal") : 0); }
-    public void setBackgroundColor(int p0) { meglerProps.put("BackgroundColor", Integer.valueOf(p0)); }
+    public int getBackgroundColor() { return (megletProps.get("BackgroundColor") instanceof Integer ? (Integer) megletProps.get("BackgroundColor") : 0); }
+    public int getSpanTypeId() { return (megletProps.get("SpanTypeId") instanceof Integer ? (Integer) megletProps.get("SpanTypeId") : 0); }
+    public int getSpanTypeIdInternal() { return (megletProps.get("SpanTypeIdInternal") instanceof Integer ? (Integer) megletProps.get("SpanTypeIdInternal") : 0); }
+    public void setBackgroundColor(int p0) { megletProps.put("BackgroundColor", Integer.valueOf(p0)); }
     public void updateDrawState(android.text.TextPaint p0) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public void writeToParcelInternal(android.os.Parcel p0, int p1) {}

@@ -3,15 +3,15 @@ package android.telephony.gsm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GsmCellLocation extends android.telephony.CellLocation {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public GsmCellLocation() { super(); }
     public GsmCellLocation(android.os.Bundle p0) { super(); }
     public void fillInNotifierBundle(android.os.Bundle p0) {}
-    public int getCid() { return (meglerProps.get("Cid") instanceof Integer ? (Integer) meglerProps.get("Cid") : 0); }
-    public int getLac() { return (meglerProps.get("Lac") instanceof Integer ? (Integer) meglerProps.get("Lac") : 0); }
-    public int getPsc() { return (meglerProps.get("Psc") instanceof Integer ? (Integer) meglerProps.get("Psc") : 0); }
-    public boolean isEmpty() { return (meglerProps.get("Empty") instanceof Boolean ? (Boolean) meglerProps.get("Empty") : false); }
+    public int getCid() { return (megletProps.get("Cid") instanceof Integer ? (Integer) megletProps.get("Cid") : 0); }
+    public int getLac() { return (megletProps.get("Lac") instanceof Integer ? (Integer) megletProps.get("Lac") : 0); }
+    public int getPsc() { return (megletProps.get("Psc") instanceof Integer ? (Integer) megletProps.get("Psc") : 0); }
+    public boolean isEmpty() { return (megletProps.get("Empty") instanceof Boolean ? (Boolean) megletProps.get("Empty") : false); }
     public void setLacAndCid(int p0, int p1) {}
-    public void setPsc(int p0) { meglerProps.put("Psc", Integer.valueOf(p0)); }
+    public void setPsc(int p0) { megletProps.put("Psc", Integer.valueOf(p0)); }
     public void setStateInvalid() {}
 }

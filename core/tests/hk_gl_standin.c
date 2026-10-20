@@ -138,7 +138,7 @@ static const char *e_QueryString(void *d, int name)
     (void)d;
     return name == 0x3055 ? "EGL_KHR_no_config_context EGL_KHR_surfaceless_context EGL_KHR_create_context EGL_ANGLE_query_surface_pointer "
                             "EGL_ANGLE_surface_d3d_texture_2d_share_handle EGL_KHR_image_base EGL_KHR_gl_texture_2D_image"
-           : name == 0x3053 ? "Megler (stand-in)"
+           : name == 0x3053 ? "Meglet (stand-in)"
                             : "1.5 (stand-in)";
 }
 /*
@@ -1051,7 +1051,7 @@ static const u8 *g_GetString(u32 name)
 {
     if (!t_ctx) return NULL;
     switch (name) {
-    case GL_VENDOR: return (const u8 *)"Megler";
+    case GL_VENDOR: return (const u8 *)"Meglet";
     case GL_RENDERER: return (const u8 *)"stand-in for OpenGL ES";
     case GL_VERSION: return (const u8 *)(t_ctx->version >= 3 ? "OpenGL ES 3.0 (stand-in)" : "OpenGL ES 2.0 (stand-in)");
     case GL_SHADING_LANGUAGE_VERSION: return (const u8 *)"OpenGL ES GLSL ES 1.00 (stand-in)";
@@ -1199,7 +1199,7 @@ void *hk_gl_standin(const char *name)
         { "eglDestroyContext", (void *)e_DestroyContext }, { "eglCreatePbufferSurface", (void *)e_CreatePbuffer },
         { "eglDestroySurface", (void *)e_DestroySurface }, { "eglMakeCurrent", (void *)e_MakeCurrent }, { "eglGetCurrentContext", (void *)e_GetCurrentContext },
         { "eglSwapBuffers", (void *)e_SwapBuffers }, { "eglSwapInterval", (void *)e_SwapInterval }, { "eglQuerySurface", (void *)e_QuerySurface },
-        { "eglQuerySurfacePointerANGLE", (void *)e_QuerySurfacePointer }, { "meglerKeyedMutexANGLE", (void *)e_KeyedMutex },
+        { "eglQuerySurfacePointerANGLE", (void *)e_QuerySurfacePointer }, { "megletKeyedMutexANGLE", (void *)e_KeyedMutex },
         { "eglBindAPI", (void *)e_BindAPI }, { "eglReleaseThread", (void *)e_True }, { "eglWaitClient", (void *)e_True },
         { "eglGetConfigs", (void *)e_GetConfigs }, { "eglGetCurrentSurface", (void *)e_GetCurrentSurface },
         { "eglGetCurrentDisplay", (void *)e_GetCurrentDisplay }, { "eglCreateWindowSurface", (void *)e_CreateWindowSurface },

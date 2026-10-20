@@ -3,7 +3,7 @@ package android.telephony.ims;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ImsRcsManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_SHOW_CAPABILITY_DISCOVERY_OPT_IN = "android.telephony.ims.action.SHOW_CAPABILITY_DISCOVERY_OPT_IN";
     public static final int CAPABILITY_TYPE_MAX = 3;
     public static final int CAPABILITY_TYPE_NONE = 0;
@@ -13,7 +13,7 @@ public class ImsRcsManager {
     public void addOnAvailabilityChangedListener(java.util.concurrent.Executor p0, android.telephony.ims.ImsRcsManager.OnAvailabilityChangedListener p1) {}
     public void getRegistrationState(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public void getRegistrationTransportType(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-    public android.telephony.ims.RcsUceAdapter getUceAdapter() { return (android.telephony.ims.RcsUceAdapter) meglerProps.get("UceAdapter"); }
+    public android.telephony.ims.RcsUceAdapter getUceAdapter() { return (android.telephony.ims.RcsUceAdapter) megletProps.get("UceAdapter"); }
     public boolean isAvailable(int p0, int p1) { return false; }
     public boolean isCapable(int p0, int p1) { return false; }
     public void registerImsRegistrationCallback(java.util.concurrent.Executor p0, android.telephony.ims.RegistrationManager.RegistrationCallback p1) {}

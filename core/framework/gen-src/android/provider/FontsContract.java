@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class FontsContract {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.graphics.Typeface buildTypeface(android.content.Context p0, android.os.CancellationSignal p1, android.provider.FontsContract.FontInfo[] p2) { return null; }
     public static android.provider.FontsContract.FontFamilyResult fetchFonts(android.content.Context p0, android.os.CancellationSignal p1, android.provider.FontRequest p2) { return null; }
     public static android.provider.FontsContract.FontInfo[] getFontFromProvider(android.content.Context p0, android.provider.FontRequest p1, java.lang.String p2, android.os.CancellationSignal p3) { return null; }
@@ -13,7 +13,7 @@ public class FontsContract {
     public static void setApplicationContextForResources(android.content.Context p0) {}
     protected FontsContract() {}
     public static final class Columns implements android.provider.BaseColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String FILE_ID = "file_id";
         public static final java.lang.String ITALIC = "font_italic";
         public static final java.lang.String RESULT_CODE = "result_code";
@@ -27,29 +27,29 @@ public class FontsContract {
         protected Columns() {}
     }
     public static class FontFamilyResult {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int STATUS_OK = 0;
         public static final int STATUS_REJECTED = 3;
         public static final int STATUS_UNEXPECTED_DATA_PROVIDED = 2;
         public static final int STATUS_WRONG_CERTIFICATES = 1;
         public FontFamilyResult(int p0, android.provider.FontsContract.FontInfo[] p1) {}
-        public android.provider.FontsContract.FontInfo[] getFonts() { return (android.provider.FontsContract.FontInfo[]) meglerProps.get("Fonts"); }
-        public int getStatusCode() { return (meglerProps.get("StatusCode") instanceof Integer ? (Integer) meglerProps.get("StatusCode") : 0); }
+        public android.provider.FontsContract.FontInfo[] getFonts() { return (android.provider.FontsContract.FontInfo[]) megletProps.get("Fonts"); }
+        public int getStatusCode() { return (megletProps.get("StatusCode") instanceof Integer ? (Integer) megletProps.get("StatusCode") : 0); }
         FontFamilyResult() { this((int) 0, (android.provider.FontsContract.FontInfo[]) null); }
     }
     public static class FontInfo {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public FontInfo(android.net.Uri p0, int p1, android.graphics.fonts.FontVariationAxis[] p2, int p3, boolean p4, int p5) {}
-        public android.graphics.fonts.FontVariationAxis[] getAxes() { return (android.graphics.fonts.FontVariationAxis[]) meglerProps.get("Axes"); }
-        public int getResultCode() { return (meglerProps.get("ResultCode") instanceof Integer ? (Integer) meglerProps.get("ResultCode") : 0); }
-        public int getTtcIndex() { return (meglerProps.get("TtcIndex") instanceof Integer ? (Integer) meglerProps.get("TtcIndex") : 0); }
-        public android.net.Uri getUri() { return (android.net.Uri) meglerProps.get("Uri"); }
-        public int getWeight() { return (meglerProps.get("Weight") instanceof Integer ? (Integer) meglerProps.get("Weight") : 0); }
-        public boolean isItalic() { return (meglerProps.get("Italic") instanceof Boolean ? (Boolean) meglerProps.get("Italic") : false); }
+        public android.graphics.fonts.FontVariationAxis[] getAxes() { return (android.graphics.fonts.FontVariationAxis[]) megletProps.get("Axes"); }
+        public int getResultCode() { return (megletProps.get("ResultCode") instanceof Integer ? (Integer) megletProps.get("ResultCode") : 0); }
+        public int getTtcIndex() { return (megletProps.get("TtcIndex") instanceof Integer ? (Integer) megletProps.get("TtcIndex") : 0); }
+        public android.net.Uri getUri() { return (android.net.Uri) megletProps.get("Uri"); }
+        public int getWeight() { return (megletProps.get("Weight") instanceof Integer ? (Integer) megletProps.get("Weight") : 0); }
+        public boolean isItalic() { return (megletProps.get("Italic") instanceof Boolean ? (Boolean) megletProps.get("Italic") : false); }
         FontInfo() { this((android.net.Uri) null, (int) 0, (android.graphics.fonts.FontVariationAxis[]) null, (int) 0, (boolean) false, (int) 0); }
     }
     public static class FontRequestCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int FAIL_REASON_FONT_LOAD_ERROR = -3;
         public static final int FAIL_REASON_FONT_NOT_FOUND = 1;
         public static final int FAIL_REASON_FONT_UNAVAILABLE = 2;

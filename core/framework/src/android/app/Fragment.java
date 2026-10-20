@@ -20,7 +20,7 @@ public class Fragment implements android.content.ComponentCallbacks2, View.OnCre
     ViewGroup mContainer;
     int mFragmentId, mContainerId;
     String mTag;
-    boolean mMeglerActivityCreated;
+    boolean mMegletActivityCreated;
     boolean mAdded, mRemoving, mDetached, mHidden, mResumed, mStarted, mInLayout, mRetainInstance, mHasMenu = false, mMenuVisible = true, mUserVisibleHint = true, mCalled;
     Fragment mTarget;
     int mTargetRequestCode;

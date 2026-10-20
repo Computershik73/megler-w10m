@@ -1,14 +1,14 @@
 /*
  * A shell's drawing, looked at and checked (hk_gfx_scenes.h).
  *
- * Everything goes through the megler_gfx_host struct as the core's side of
- * megler.Gfx (src/drivers/hk_java_gfx.c) uses it: the whole matrix is set for
+ * Everything goes through the meglet_gfx_host struct as the core's side of
+ * meglet.Gfx (src/drivers/hk_java_gfx.c) uses it: the whole matrix is set for
  * every change, flush comes before the pixels are read and touched after
  * they were written, arcs and lines arrive as paths, every save is restored
  * before a canvas is freed.
  *
  * Two kinds of scene. The first kind is drawn twice, by the host and by the
- * stand-in (hk_gfx_standin.c), with only what the stand-in does as megler.h
+ * stand-in (hk_gfx_standin.c), with only what the stand-in does as meglet.h
  * says, and the two pictures are compared: a pixel whose eight neighbours
  * in the stand-in's picture are all the same colour is inside a shape (or
  * outside all of them) and has to be that colour in the host's picture too,
@@ -32,7 +32,7 @@
 static int t_checks, t_failed;
 static hk_test_sink t_sink;
 static void *t_sink_user;
-static const megler_gfx_host *H, *S;
+static const meglet_gfx_host *H, *S;
 static const hk_gfx_scenes_config *t_config;
 static bool t_smooth = true;           /* whether the paints of a scene ask for smoothed edges */
 
@@ -87,11 +87,11 @@ typedef struct pic {
     u32 *px;                           /* a pixel is the word 0xAARRGGBB, premultiplied; in memory B, G, R, A */
     int w, h;
     void *cv;
-    const megler_gfx_host *g;
+    const meglet_gfx_host *g;
     float m[6];                        /* the matrix, kept here as the core keeps it */
 } pic;
 
-static void pic_make(pic *p, const megler_gfx_host *g, int w, int h)
+static void pic_make(pic *p, const meglet_gfx_host *g, int w, int h)
 {
     memset(p, 0, sizeof(*p));
     p->g = g;
@@ -126,7 +126,7 @@ static void pic_done(pic *p)
 
 static u32 at(const pic *p, int x, int y) { return x >= 0 && y >= 0 && x < p->w && y < p->h ? p->px[y * p->w + x] : 0; }
 
-static void image_of(const pic *p, megler_gfx_image *out)
+static void image_of(const pic *p, meglet_gfx_image *out)
 {
     static u32 next_id;
     out->pixels = p->px;
@@ -195,7 +195,7 @@ static saved save_layer_blur(pic *p, const float *bounds, float radius, bool cla
     saved s;
     memcpy(s.m, p->m, sizeof(s.m));
     if (p->g->save_layer_blur) p->g->save_layer_blur(p->g->user, p->cv, bounds, 255, radius, radius, clamp);
-    else p->g->save_layer(p->g->user, p->cv, bounds, 255, MEGLER_GFX_BLEND_SRC_OVER);
+    else p->g->save_layer(p->g->user, p->cv, bounds, 255, MEGLET_GFX_BLEND_SRC_OVER);
     return s;
 }
 
@@ -207,70 +207,70 @@ static void restore(pic *p, saved s)
 
 /* ---- drawing, as short as the scenes want it */
 
-static megler_gfx_paint paint_of(u32 color)
+static meglet_gfx_paint paint_of(u32 color)
 {
-    megler_gfx_paint p;
+    meglet_gfx_paint p;
     memset(&p, 0, sizeof(p));
     p.color = color;
-    p.flags = t_smooth ? MEGLER_GFX_ANTI_ALIAS : 0;
+    p.flags = t_smooth ? MEGLET_GFX_ANTI_ALIAS : 0;
     p.miter_limit = 4;
     p.text_size = 12;
     p.text_scale_x = 1;
-    p.blend = MEGLER_GFX_BLEND_SRC_OVER;
+    p.blend = MEGLET_GFX_BLEND_SRC_OVER;
     p.filter_mode = -1;
     return p;
 }
 
-static megler_gfx_paint stroke_of(u32 color, float width)
+static meglet_gfx_paint stroke_of(u32 color, float width)
 {
-    megler_gfx_paint p = paint_of(color);
-    p.style = MEGLER_GFX_STROKE;
+    meglet_gfx_paint p = paint_of(color);
+    p.style = MEGLET_GFX_STROKE;
     p.stroke_width = width;
     return p;
 }
 
 static void color(pic *p, u32 c, int blend) { p->g->draw_color(p->g->user, p->cv, c, blend); }
-static void rect(pic *p, float l, float t, float r, float b, const megler_gfx_paint *paint, void *shader)
+static void rect(pic *p, float l, float t, float r, float b, const meglet_gfx_paint *paint, void *shader)
 {
     p->g->draw_rect(p->g->user, p->cv, l, t, r, b, paint, shader);
 }
 static void fill(pic *p, float l, float t, float r, float b, u32 c)
 {
-    megler_gfx_paint paint = paint_of(c);
+    meglet_gfx_paint paint = paint_of(c);
     rect(p, l, t, r, b, &paint, NULL);
 }
-static void round_rect(pic *p, float l, float t, float r, float b, float rx, float ry, const megler_gfx_paint *paint, void *shader)
+static void round_rect(pic *p, float l, float t, float r, float b, float rx, float ry, const meglet_gfx_paint *paint, void *shader)
 {
     p->g->draw_round_rect(p->g->user, p->cv, l, t, r, b, rx, ry, paint, shader);
 }
-static void oval(pic *p, float l, float t, float r, float b, const megler_gfx_paint *paint, void *shader)
+static void oval(pic *p, float l, float t, float r, float b, const meglet_gfx_paint *paint, void *shader)
 {
     p->g->draw_oval(p->g->user, p->cv, l, t, r, b, paint, shader);
 }
-static void path(pic *p, const float *v, int n, int rule, const megler_gfx_paint *paint, void *shader)
+static void path(pic *p, const float *v, int n, int rule, const meglet_gfx_paint *paint, void *shader)
 {
     p->g->draw_path(p->g->user, p->cv, v, n, rule, paint, shader);
 }
-static void line(pic *p, float x0, float y0, float x1, float y1, const megler_gfx_paint *paint)
+static void line(pic *p, float x0, float y0, float x1, float y1, const meglet_gfx_paint *paint)
 {
     float v[6];
-    megler_gfx_paint stroked = *paint;
-    v[0] = MEGLER_GFX_PATH_MOVE;
+    meglet_gfx_paint stroked = *paint;
+    v[0] = MEGLET_GFX_PATH_MOVE;
     v[1] = x0;
     v[2] = y0;
-    v[3] = MEGLER_GFX_PATH_LINE;
+    v[3] = MEGLET_GFX_PATH_LINE;
     v[4] = x1;
     v[5] = y1;
-    stroked.style = MEGLER_GFX_STROKE;
-    path(p, v, 6, MEGLER_GFX_WINDING, &stroked, NULL);
+    stroked.style = MEGLET_GFX_STROKE;
+    path(p, v, 6, MEGLET_GFX_WINDING, &stroked, NULL);
 }
 static void clip_rect(pic *p, float l, float t, float r, float b, int op) { p->g->clip_rect(p->g->user, p->cv, l, t, r, b, op); }
 static void clip_path(pic *p, const float *v, int n, int rule, int op) { p->g->clip_path(p->g->user, p->cv, v, n, rule, op); }
 
 /* A part of one picture onto a rectangle of another. The source has been settled by the caller, as the core settles it. */
-static void bitmap(pic *p, const pic *from, float sl, float st, float sr, float sb, float dl, float dt, float dr, float db, const megler_gfx_paint *paint)
+static void bitmap(pic *p, const pic *from, float sl, float st, float sr, float sb, float dl, float dt, float dr, float db, const meglet_gfx_paint *paint)
 {
-    megler_gfx_image image;
+    meglet_gfx_image image;
     float src[4], dst[4];
     image_of(from, &image);
     src[0] = sl;
@@ -295,12 +295,12 @@ static int units(const char *ascii, u16 *out, int cap)
     return n;
 }
 
-static void text16(pic *p, const u16 *t, int n, float x, float y, const megler_gfx_paint *paint, void *face, void *shader)
+static void text16(pic *p, const u16 *t, int n, float x, float y, const meglet_gfx_paint *paint, void *face, void *shader)
 {
     p->g->draw_text(p->g->user, p->cv, t, n, x, y, paint, face, shader);
 }
 
-static void text(pic *p, const char *ascii, float x, float y, const megler_gfx_paint *paint, void *face)
+static void text(pic *p, const char *ascii, float x, float y, const meglet_gfx_paint *paint, void *face)
 {
     u16 t[256];
     int n = units(ascii, t, 256);
@@ -310,8 +310,8 @@ static void text(pic *p, const char *ascii, float x, float y, const megler_gfx_p
 /* A small black label, in the default face: what a part of a scene is. */
 static void label(pic *p, const char *ascii, float x, float y)
 {
-    megler_gfx_paint paint = paint_of(0xFF202020u);
-    paint.flags = MEGLER_GFX_ANTI_ALIAS;
+    meglet_gfx_paint paint = paint_of(0xFF202020u);
+    paint.flags = MEGLET_GFX_ANTI_ALIAS;
     paint.text_size = 11;
     text(p, ascii, x, y, &paint, NULL);
 }
@@ -335,14 +335,14 @@ static void pb_move(pathbuf *b, float x, float y)
     float xy[2];
     xy[0] = x;
     xy[1] = y;
-    pb_verb(b, MEGLER_GFX_PATH_MOVE, xy, 2);
+    pb_verb(b, MEGLET_GFX_PATH_MOVE, xy, 2);
 }
 static void pb_line(pathbuf *b, float x, float y)
 {
     float xy[2];
     xy[0] = x;
     xy[1] = y;
-    pb_verb(b, MEGLER_GFX_PATH_LINE, xy, 2);
+    pb_verb(b, MEGLET_GFX_PATH_LINE, xy, 2);
 }
 static void pb_quad(pathbuf *b, float cx, float cy, float x, float y)
 {
@@ -351,7 +351,7 @@ static void pb_quad(pathbuf *b, float cx, float cy, float x, float y)
     xy[1] = cy;
     xy[2] = x;
     xy[3] = y;
-    pb_verb(b, MEGLER_GFX_PATH_QUAD, xy, 4);
+    pb_verb(b, MEGLET_GFX_PATH_QUAD, xy, 4);
 }
 static void pb_cubic(pathbuf *b, float ax, float ay, float bx, float by, float x, float y)
 {
@@ -362,9 +362,9 @@ static void pb_cubic(pathbuf *b, float ax, float ay, float bx, float by, float x
     xy[3] = by;
     xy[4] = x;
     xy[5] = y;
-    pb_verb(b, MEGLER_GFX_PATH_CUBIC, xy, 6);
+    pb_verb(b, MEGLET_GFX_PATH_CUBIC, xy, 6);
 }
-static void pb_close(pathbuf *b) { pb_verb(b, MEGLER_GFX_PATH_CLOSE, NULL, 0); }
+static void pb_close(pathbuf *b) { pb_verb(b, MEGLET_GFX_PATH_CLOSE, NULL, 0); }
 
 /*
  * An arc of the oval in a rectangle, as Android's Path.arcTo means it:
@@ -446,7 +446,7 @@ static void keep(const char *name, pic *p)
         memset(&png, 0, sizeof(png));
         if (t_config->bmp) {
             if (!hk_gfx_write_bmp(file, p->px, p->w, p->h, p->w * 4)) say("  (could not write %s)", file);
-        } else if (!S->image_encode(S->user, p->px, p->w, p->h, p->w * 4, MEGLER_GFX_PNG, 100, bytes_write, &png) || !hk_file_write_all(file, png.data, png.size)) {
+        } else if (!S->image_encode(S->user, p->px, p->w, p->h, p->w * 4, MEGLET_GFX_PNG, 100, bytes_write, &png) || !hk_file_write_all(file, png.data, png.size)) {
             say("  (could not write %s)", file);
         }
         free(png.data);
@@ -564,12 +564,12 @@ static void both(const char *name, scene_fn scene, int w, int h, bool smooth, bo
     t_smooth = true;
 }
 
-/* ------------------------------------- scenes the stand-in draws as megler.h says */
+/* ------------------------------------- scenes the stand-in draws as meglet.h says */
 
 static void scene_fills(pic *p)
 {
-    megler_gfx_paint clear = paint_of(0xFF000000u);
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    meglet_gfx_paint clear = paint_of(0xFF000000u);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     fill(p, 20, 20, 180, 120, 0xFFE02020u);
     fill(p, 100, 60, 260, 160, 0x800000FFu);
     fill(p, 60.3f, 140.7f, 200.6f, 220.2f, 0xC000A040u);
@@ -579,7 +579,7 @@ static void scene_fills(pic *p)
     /* Half transparent red on white. */
     fill(p, 300, 20, 380, 100, 0x80FF0000u);
     /* A hole to nothing, and half transparent colours on nothing and on each other. */
-    clear.blend = MEGLER_GFX_BLEND_CLEAR;
+    clear.blend = MEGLET_GFX_BLEND_CLEAR;
     rect(p, 290, 130, 470, 310, &clear, NULL);
     fill(p, 300, 140, 400, 240, 0x80FF0000u);
     fill(p, 350, 190, 460, 300, 0x8000FF00u);
@@ -589,20 +589,20 @@ static void scene_fills(pic *p)
 
 static void scene_corners(pic *p)
 {
-    megler_gfx_paint half = paint_of(0x80FFFFFFu);
-    color(p, 0xFF808080u, MEGLER_GFX_BLEND_SRC);
+    meglet_gfx_paint half = paint_of(0x80FFFFFFu);
+    color(p, 0xFF808080u, MEGLET_GFX_BLEND_SRC);
     fill(p, 0, 0, 8, 8, 0xFFFF0000u);
     fill(p, (float)p->w - 8, 0, (float)p->w, 8, 0xFF00FF00u);
     fill(p, 0, (float)p->h - 8, 8, (float)p->h, 0xFF0000FFu);
-    half.blend = MEGLER_GFX_BLEND_SRC;
+    half.blend = MEGLET_GFX_BLEND_SRC;
     rect(p, (float)p->w - 8, (float)p->h - 8, (float)p->w, (float)p->h, &half, NULL);
 }
 
 static void scene_shapes(pic *p)
 {
-    megler_gfx_paint a = paint_of(0xFF2060C0u), b = paint_of(0xB0E08020u), c = paint_of(0xFF208040u), s = stroke_of(0xFF000000u, 6);
+    meglet_gfx_paint a = paint_of(0xFF2060C0u), b = paint_of(0xB0E08020u), c = paint_of(0xFF208040u), s = stroke_of(0xFF000000u, 6);
     pathbuf star, dome, tri;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     round_rect(p, 20, 20, 180, 110, 24, 16, &a, NULL);
     round_rect(p, 110.5f, 60.25f, 250, 140, 40, 40, &b, NULL);
     oval(p, 270, 20, 460, 120, &c, NULL);
@@ -612,14 +612,14 @@ static void scene_shapes(pic *p)
     pb_line(&tri, 150, 170);
     pb_line(&tri, 60, 250);
     pb_close(&tri);
-    path(p, tri.v, tri.n, MEGLER_GFX_WINDING, &a, NULL);
+    path(p, tri.v, tri.n, MEGLET_GFX_WINDING, &a, NULL);
     /* The same star by both rules. */
     memset(&star, 0, sizeof(star));
     pb_star(&star, 230, 220, 70);
-    path(p, star.v, star.n, MEGLER_GFX_WINDING, &c, NULL);
+    path(p, star.v, star.n, MEGLET_GFX_WINDING, &c, NULL);
     memset(&star, 0, sizeof(star));
     pb_star(&star, 390, 220, 70);
-    path(p, star.v, star.n, MEGLER_GFX_EVEN_ODD, &c, NULL);
+    path(p, star.v, star.n, MEGLET_GFX_EVEN_ODD, &c, NULL);
     /* Curves: a quadratic dome and a cubic wave, each closed by a line. */
     memset(&dome, 0, sizeof(dome));
     pb_move(&dome, 20, 340);
@@ -630,7 +630,7 @@ static void scene_shapes(pic *p)
     pb_line(&dome, 360, 345);
     pb_line(&dome, 180, 345);
     pb_close(&dome);
-    path(p, dome.v, dome.n, MEGLER_GFX_WINDING, &b, NULL);
+    path(p, dome.v, dome.n, MEGLET_GFX_WINDING, &b, NULL);
     /* Outlines of curved shapes: the stand-in's are within a pixel. */
     oval(p, 380, 280, 460, 340, &s, NULL);
     s.stroke_width = 4;
@@ -640,9 +640,9 @@ static void scene_shapes(pic *p)
 
 static void scene_strokes_square(pic *p)
 {
-    megler_gfx_paint s = stroke_of(0xFF000000u, 1), both_ways = paint_of(0x80C02020u), hair = stroke_of(0xFF0000C0u, 0), cap = stroke_of(0xFF207020u, 8);
+    meglet_gfx_paint s = stroke_of(0xFF000000u, 1), both_ways = paint_of(0x80C02020u), hair = stroke_of(0xFF0000C0u, 0), cap = stroke_of(0xFF207020u, 8);
     int i;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     /* Frames of several widths, on whole and on half coordinates. */
     for (i = 0; i < 5; i++) {
         s.stroke_width = (float)(i + 1);
@@ -653,13 +653,13 @@ static void scene_strokes_square(pic *p)
     s.color = 0x802020C0u;
     rect(p, 390, 30, 450, 130, &s, NULL);
     /* Filled and stroked in a half transparent colour: every pixel of it once. */
-    both_ways.style = MEGLER_GFX_FILL_AND_STROKE;
+    both_ways.style = MEGLET_GFX_FILL_AND_STROKE;
     both_ways.stroke_width = 10;
     rect(p, 30, 170, 130, 250, &both_ways, NULL);
     /* Lines: flat ends, and square ones half a width longer. */
     line(p, 170, 170, 300, 170, &cap);
     line(p, 170, 190, 300, 190, &cap);
-    cap.cap = MEGLER_GFX_CAP_SQUARE;
+    cap.cap = MEGLET_GFX_CAP_SQUARE;
     line(p, 170, 210, 300, 210, &cap);
     line(p, 330, 160, 330, 250, &cap);
     cap.stroke_width = 3;
@@ -679,47 +679,47 @@ static void scene_strokes_square(pic *p)
 static void scene_clips_rect(pic *p)
 {
     saved a, b;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     /* A clip under a matrix stays where it was when the matrix changes. */
     a = save(p);
     translate(p, 30, 20);
     scale(p, 2, 2);
-    clip_rect(p, 0, 0, 60, 40, MEGLER_GFX_CLIP_INTERSECT);
+    clip_rect(p, 0, 0, 60, 40, MEGLET_GFX_CLIP_INTERSECT);
     matrix_reset(p);
-    color(p, 0xFFE02020u, MEGLER_GFX_BLEND_SRC_OVER);
+    color(p, 0xFFE02020u, MEGLET_GFX_BLEND_SRC_OVER);
     /* Inside it, a second one that can only take away, and a colour by another mode. */
     b = save(p);
-    clip_rect(p, 0, 0, 90.4f, 60.6f, MEGLER_GFX_CLIP_INTERSECT);
-    color(p, 0x800000FFu, MEGLER_GFX_BLEND_SRC_OVER);
+    clip_rect(p, 0, 0, 90.4f, 60.6f, MEGLET_GFX_CLIP_INTERSECT);
+    color(p, 0x800000FFu, MEGLET_GFX_BLEND_SRC_OVER);
     restore(p, b);
     fill(p, 100, 70, 400, 400, 0xFF20A020u);
     restore(p, a);
     /* A rectangle cut out of the clip, and another out of what is left. */
     a = save(p);
-    clip_rect(p, 200, 20, 440, 140, MEGLER_GFX_CLIP_INTERSECT);
-    clip_rect(p, 240, 40, 300, 100, MEGLER_GFX_CLIP_DIFFERENCE);
-    clip_rect(p, 280, 80, 400, 120, MEGLER_GFX_CLIP_DIFFERENCE);
-    color(p, 0xC02060C0u, MEGLER_GFX_BLEND_SRC_OVER);
+    clip_rect(p, 200, 20, 440, 140, MEGLET_GFX_CLIP_INTERSECT);
+    clip_rect(p, 240, 40, 300, 100, MEGLET_GFX_CLIP_DIFFERENCE);
+    clip_rect(p, 280, 80, 400, 120, MEGLET_GFX_CLIP_DIFFERENCE);
+    color(p, 0xC02060C0u, MEGLET_GFX_BLEND_SRC_OVER);
     fill(p, 0, 0, 480, 60, 0x80F0C020u);
     restore(p, a);
     /* A quarter turn keeps rectangles upright: x' = 300 - y, y' = 180 + x. */
     a = save(p);
     matrix_set(p, 0, -1, 300, 1, 0, 180);
-    clip_rect(p, 10, 20, 150, 100, MEGLER_GFX_CLIP_INTERSECT);
+    clip_rect(p, 10, 20, 150, 100, MEGLET_GFX_CLIP_INTERSECT);
     fill(p, 0, 0, 80, 300, 0xFF8040C0u);
     fill(p, 60, 40, 200, 60, 0x8000C0C0u);
     restore(p, a);
     /* Saves nest; a clip to nothing draws nothing. */
     a = save(p);
-    clip_rect(p, 320, 180, 460, 340, MEGLER_GFX_CLIP_INTERSECT);
+    clip_rect(p, 320, 180, 460, 340, MEGLET_GFX_CLIP_INTERSECT);
     b = save(p);
-    clip_rect(p, 340, 200, 380, 240, MEGLER_GFX_CLIP_INTERSECT);
-    color(p, 0xFF000000u, MEGLER_GFX_BLEND_SRC);
+    clip_rect(p, 340, 200, 380, 240, MEGLET_GFX_CLIP_INTERSECT);
+    color(p, 0xFF000000u, MEGLET_GFX_BLEND_SRC);
     restore(p, b);
     b = save(p);
-    clip_rect(p, 0, 0, 10, 10, MEGLER_GFX_CLIP_INTERSECT);
+    clip_rect(p, 0, 0, 10, 10, MEGLET_GFX_CLIP_INTERSECT);
     restore(p, b);
-    color(p, 0x60FF8000u, MEGLER_GFX_BLEND_SRC_OVER);
+    color(p, 0x60FF8000u, MEGLET_GFX_BLEND_SRC_OVER);
     restore(p, a);
     fill(p, 10, 300, 300, 350, 0x40000000u);
 }
@@ -731,7 +731,7 @@ static void scene_blends(pic *p)
     int i;
     for (i = 0; i < 16; i++) {
         float x = 10.0f + 118 * (float)(i % 4), y = 8.0f + 88 * (float)(i / 4);
-        megler_gfx_paint src = paint_of(0xA0F08020u);
+        meglet_gfx_paint src = paint_of(0xA0F08020u);
         fill(p, x, y, x + 70, y + 55, 0xC02060E0u);
         fill(p, x + 5, y + 5, x + 30, y + 20, 0xFF10C040u);
         src.blend = modes[i];
@@ -740,7 +740,7 @@ static void scene_blends(pic *p)
 }
 
 /* A picture of four by four pixels, every one another colour, some of them partly transparent. */
-static void small_picture(pic *s, const megler_gfx_host *g)
+static void small_picture(pic *s, const meglet_gfx_host *g)
 {
     static const u32 colours[16] = { 0xFFFF0000u, 0xFF00FF00u, 0xFF0000FFu, 0xFFFFFF00u, 0xFF00FFFFu, 0xFFFF00FFu, 0xFF000000u, 0xFFFFFFFFu,
                                      0x80FF0000u, 0x8000FF00u, 0x800000FFu, 0x40FFFFFFu, 0xC0804020u, 0x00000000u, 0xFF808080u, 0xFF204060u };
@@ -756,11 +756,11 @@ static void small_picture(pic *s, const megler_gfx_host *g)
 static void scene_bitmaps_nearest(pic *p)
 {
     pic s;
-    megler_gfx_paint plain = paint_of(0xFF000000u), faint = paint_of(0x80000000u), tint = paint_of(0xFF000000u), out = paint_of(0xFF000000u), copy = paint_of(0xC0000000u);
+    meglet_gfx_paint plain = paint_of(0xFF000000u), faint = paint_of(0x80000000u), tint = paint_of(0xFF000000u), out = paint_of(0xFF000000u), copy = paint_of(0xC0000000u);
     saved a;
     small_picture(&s, p->g);
     plain.flags = faint.flags = tint.flags = out.flags = copy.flags = 0;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     fill(p, 0, 180, 480, 360, 0xFF406080u);
     /* Eight times the size; a part of it sixteen times; its own size. */
     bitmap(p, &s, 0, 0, 4, 4, 16, 16, 48, 48, &plain);
@@ -769,10 +769,10 @@ static void scene_bitmaps_nearest(pic *p)
     bitmap(p, &s, 0, 0, 4, 4, 130, 10, 250, 130, &plain);
     /* With the paint's alpha; tinted (SRC_IN: the picture's shape in the filter's colour). */
     bitmap(p, &s, 0, 0, 4, 4, 260, 10, 340, 90, &faint);
-    tint.filter_mode = MEGLER_GFX_BLEND_SRC_IN;
+    tint.filter_mode = MEGLET_GFX_BLEND_SRC_IN;
     tint.filter_color = 0xFFC02080u;
     bitmap(p, &s, 0, 0, 4, 4, 350, 10, 430, 90, &tint);
-    tint.filter_mode = MEGLER_GFX_BLEND_MODULATE;
+    tint.filter_mode = MEGLET_GFX_BLEND_MODULATE;
     tint.filter_color = 0xFF80FF80u;
     bitmap(p, &s, 0, 0, 4, 4, 260, 96, 340, 176, &tint);
     /* Through a matrix: larger and moved; turned a quarter. */
@@ -786,11 +786,11 @@ static void scene_bitmaps_nearest(pic *p)
     bitmap(p, &s, 0, 0, 4, 4, 0, 0, 120, 100, &plain);
     restore(p, a);
     /* By other transfer modes: what is there is cut away by the picture's alpha; the picture replaces what is there, its alpha too. */
-    out.blend = MEGLER_GFX_BLEND_DST_OUT;
+    out.blend = MEGLET_GFX_BLEND_DST_OUT;
     bitmap(p, &s, 0, 0, 4, 4, 240, 200, 340, 300, &out);
-    copy.blend = MEGLER_GFX_BLEND_SRC;
+    copy.blend = MEGLET_GFX_BLEND_SRC;
     bitmap(p, &s, 0, 0, 4, 4, 360, 200, 460, 300, &copy);
-    copy.blend = MEGLER_GFX_BLEND_DST_IN;
+    copy.blend = MEGLET_GFX_BLEND_DST_IN;
     copy.color = 0xFF000000u;
     bitmap(p, &s, 2, 0, 4, 2, 240, 310, 340, 350, &copy);
     pic_done(&s);
@@ -800,29 +800,29 @@ static void scene_layer_alpha(pic *p)
 {
     float bounds[4] = { 40, 30, 200, 150 };
     saved a, b;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     fill(p, 0, 90, 480, 120, 0xFF000000u);
     /* What is drawn in a layer comes out fainter by the layer's alpha; the bounds clip. */
-    a = save_layer(p, bounds, 128, MEGLER_GFX_BLEND_SRC_OVER);
+    a = save_layer(p, bounds, 128, MEGLET_GFX_BLEND_SRC_OVER);
     fill(p, 0, 0, 120, 400, 0xFFE02020u);
     fill(p, 120, 0, 480, 100, 0xFF2020E0u);
     restore(p, a);
     /* Without bounds: the whole clip. */
     a = save(p);
-    clip_rect(p, 220, 30, 460, 150, MEGLER_GFX_CLIP_INTERSECT);
-    b = save_layer(p, NULL, 64, MEGLER_GFX_BLEND_SRC_OVER);
+    clip_rect(p, 220, 30, 460, 150, MEGLET_GFX_CLIP_INTERSECT);
+    b = save_layer(p, NULL, 64, MEGLET_GFX_BLEND_SRC_OVER);
     fill(p, 240, 0, 330, 400, 0xFF20A020u);
     fill(p, 330, 60, 480, 400, 0xFF000000u);
     restore(p, b);
     restore(p, a);
     /* A layer in a layer: the alphas multiply. */
-    a = save_layer(p, NULL, 128, MEGLER_GFX_BLEND_SRC_OVER);
+    a = save_layer(p, NULL, 128, MEGLET_GFX_BLEND_SRC_OVER);
     fill(p, 40, 180, 140, 330, 0xFFC08020u);
     bounds[0] = 160;
     bounds[1] = 180;
     bounds[2] = 300;
     bounds[3] = 330;
-    b = save_layer(p, bounds, 128, MEGLER_GFX_BLEND_SRC_OVER);
+    b = save_layer(p, bounds, 128, MEGLET_GFX_BLEND_SRC_OVER);
     fill(p, 0, 0, 480, 250, 0xFF8020C0u);
     restore(p, b);
     fill(p, 320, 180, 440, 330, 0x80202020u);
@@ -850,7 +850,7 @@ static void chequer(pic *p, float l, float t, float r, float b)
     int ix, iy;
     bool smooth = t_smooth;
     t_smooth = false;
-    clip_rect(p, l, t, r, b, MEGLER_GFX_CLIP_INTERSECT);
+    clip_rect(p, l, t, r, b, MEGLET_GFX_CLIP_INTERSECT);
     for (iy = 0; (float)iy * 10 + t < b; iy++)
         for (ix = 0; (float)ix * 10 + l < r; ix++)
             fill(p, l + (float)ix * 10, t + (float)iy * 10, l + (float)ix * 10 + 10, t + (float)iy * 10 + 10, (ix + iy) & 1 ? 0xFFB8B8B8u : 0xFFE8E8E8u);
@@ -861,10 +861,10 @@ static void chequer(pic *p, float l, float t, float r, float b)
 static void scene_strokes(pic *p)
 {
     static const char *const caps[3] = { "butt", "round", "square" }, *const joins[3] = { "miter", "round", "bevel" };
-    megler_gfx_paint guide = stroke_of(0xFFE00000u, 0), s;
+    meglet_gfx_paint guide = stroke_of(0xFFE00000u, 0), s;
     pathbuf v;
     int i;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     /* The three caps on a line from x = 50 to x = 170: the guides are the line's two ends. */
     for (i = 0; i < 3; i++) {
         float y = 30.0f + 34 * (float)i;
@@ -887,7 +887,7 @@ static void scene_strokes(pic *p)
         pb_move(&v, x, 296);
         pb_line(&v, x + 90, 266);
         pb_line(&v, x, 236);
-        path(p, v.v, v.n, MEGLER_GFX_WINDING, &s, NULL);
+        path(p, v.v, v.n, MEGLET_GFX_WINDING, &s, NULL);
         label(p, joins[i], x + 30, 222);
     }
     /* The miter limit, 4: a corner of 30 degrees is still a miter (its tip is 3.86 widths long), one of 28 degrees is cut off (4.13). */
@@ -899,24 +899,24 @@ static void scene_strokes(pic *p)
         pb_move(&v, x - 90 * (float)cos(half), y - 90 * (float)sin(half));
         pb_line(&v, x, y);
         pb_line(&v, x - 90 * (float)cos(half), y + 90 * (float)sin(half));
-        path(p, v.v, v.n, MEGLER_GFX_WINDING, &s, NULL);
+        path(p, v.v, v.n, MEGLET_GFX_WINDING, &s, NULL);
         label(p, i ? "28 deg: bevel" : "30 deg: miter", 400, y + 22);
     }
     /* A curve with round ends; a closed figure, whose every corner is a join; a hairline through a matrix. */
     s = stroke_of(0xFFC04020u, 9);
-    s.cap = MEGLER_GFX_CAP_ROUND;
+    s.cap = MEGLET_GFX_CAP_ROUND;
     memset(&v, 0, sizeof(v));
     pb_move(&v, 30, 330);
     pb_cubic(&v, 90, 270, 130, 390, 200, 320);
-    path(p, v.v, v.n, MEGLER_GFX_WINDING, &s, NULL);
+    path(p, v.v, v.n, MEGLET_GFX_WINDING, &s, NULL);
     s = stroke_of(0xFF000000u, 5);
-    s.join = MEGLER_GFX_JOIN_ROUND;
+    s.join = MEGLET_GFX_JOIN_ROUND;
     memset(&v, 0, sizeof(v));
     pb_move(&v, 250, 340);
     pb_line(&v, 300, 290);
     pb_line(&v, 350, 340);
     pb_close(&v);
-    path(p, v.v, v.n, MEGLER_GFX_WINDING, &s, NULL);
+    path(p, v.v, v.n, MEGLET_GFX_WINDING, &s, NULL);
     matrix_set(p, 4, 0.5f, 380, -0.5f, 4, 300);
     s = stroke_of(0xFF0000C0u, 0);
     oval(p, 0, 0, 20, 10, &s, NULL);
@@ -940,10 +940,10 @@ static void check_strokes(pic *p)
 
 static void scene_arcs(pic *p)
 {
-    megler_gfx_paint a = paint_of(0xFF2060C0u), s = stroke_of(0xFF000000u, 3), b = paint_of(0xA0E08020u);
+    meglet_gfx_paint a = paint_of(0xFF2060C0u), s = stroke_of(0xFF000000u, 3), b = paint_of(0xA0E08020u);
     pathbuf v;
     int i;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     /* drawArc with the centre: wedges of 60, 135 and 300 degrees. */
     for (i = 0; i < 3; i++) {
         static const float sweeps[3] = { 60, 135, 300 };
@@ -952,23 +952,23 @@ static void scene_arcs(pic *p)
         pb_move(&v, x + 60, 70);
         pb_arc(&v, x, 10, x + 120, 130, -30, sweeps[i], false);
         pb_close(&v);
-        path(p, v.v, v.n, MEGLER_GFX_WINDING, i == 1 ? &b : &a, NULL);
-        path(p, v.v, v.n, MEGLER_GFX_WINDING, &s, NULL);
+        path(p, v.v, v.n, MEGLET_GFX_WINDING, i == 1 ? &b : &a, NULL);
+        path(p, v.v, v.n, MEGLET_GFX_WINDING, &s, NULL);
     }
     /* drawArc without it: the arc alone, stroked, with each cap; counter-clockwise too. */
     for (i = 0; i < 3; i++) {
-        megler_gfx_paint arc = stroke_of(0xFFC02040u, 12);
+        meglet_gfx_paint arc = stroke_of(0xFFC02040u, 12);
         float x = 20.0f + 150 * (float)i;
         arc.cap = i;
         memset(&v, 0, sizeof(v));
         pb_arc(&v, x, 150, x + 120, 230, 200, i == 2 ? -220.0f : 140.0f, true);
-        path(p, v.v, v.n, MEGLER_GFX_WINDING, &arc, NULL);
+        path(p, v.v, v.n, MEGLET_GFX_WINDING, &arc, NULL);
     }
     /* A whole turn; ovals and round rectangles, filled and outlined. */
     memset(&v, 0, sizeof(v));
     pb_arc(&v, 30, 250, 130, 340, 0, 360, true);
     pb_close(&v);
-    path(p, v.v, v.n, MEGLER_GFX_WINDING, &b, NULL);
+    path(p, v.v, v.n, MEGLET_GFX_WINDING, &b, NULL);
     oval(p, 160, 250, 300, 340, &a, NULL);
     oval(p, 160, 250, 300, 340, &s, NULL);
     round_rect(p, 320, 250, 460, 340, 45, 20, &b, NULL);
@@ -979,13 +979,13 @@ static void scene_arcs(pic *p)
 
 static void scene_paths(pic *p)
 {
-    megler_gfx_paint a = paint_of(0xFF208040u), s = stroke_of(0xFF000000u, 2), both_ways = paint_of(0x90C020A0u);
+    meglet_gfx_paint a = paint_of(0xFF208040u), s = stroke_of(0xFF000000u, 2), both_ways = paint_of(0x90C020A0u);
     pathbuf v;
     int i;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     for (i = 0; i < 2; i++) {
         float x = 20.0f + 230 * (float)i;
-        int rule = i ? MEGLER_GFX_EVEN_ODD : MEGLER_GFX_WINDING;
+        int rule = i ? MEGLET_GFX_EVEN_ODD : MEGLET_GFX_WINDING;
         /*
          * Three squares, one in another: two the same way round and the innermost the other way. The outline winds round the
          * rings once and twice and round the innermost once, so winding fills all of it; a ray crosses one, two and three sides,
@@ -1024,9 +1024,9 @@ static void scene_paths(pic *p)
     pb_move(&v, 400, 40);
     pb_line(&v, 460, 60);
     pb_line(&v, 410, 120);
-    path(p, v.v, v.n, MEGLER_GFX_WINDING, &both_ways, NULL);
+    path(p, v.v, v.n, MEGLET_GFX_WINDING, &both_ways, NULL);
     s.stroke_width = 4;
-    path(p, v.v, v.n, MEGLER_GFX_WINDING, &s, NULL);
+    path(p, v.v, v.n, MEGLET_GFX_WINDING, &s, NULL);
 }
 
 static void check_paths(pic *p)
@@ -1051,36 +1051,36 @@ static void scene_clips(pic *p)
 {
     saved a, b;
     pathbuf v;
-    megler_gfx_paint band = paint_of(0xFFE0A020u);
+    meglet_gfx_paint band = paint_of(0xFFE0A020u);
     int i;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     /* A rectangle clip under a turned matrix is the turned rectangle, not its box. */
     a = save(p);
     translate(p, 110, 90);
     rotate(p, 25);
-    clip_rect(p, -80, -50, 80, 50, MEGLER_GFX_CLIP_INTERSECT);
+    clip_rect(p, -80, -50, 80, 50, MEGLET_GFX_CLIP_INTERSECT);
     matrix_reset(p);
-    color(p, 0xFF2060C0u, MEGLER_GFX_BLEND_SRC_OVER);
+    color(p, 0xFF2060C0u, MEGLET_GFX_BLEND_SRC_OVER);
     for (i = 0; i < 12; i++) fill(p, 0, 12.0f + 20 * (float)i, 480, 18.0f + 20 * (float)i, 0xFFFFFFFFu);
     restore(p, a);
     label(p, "clipRect, turned 25 deg", 20, 190);
     /* A clip by a path: a circle. */
     a = save(p);
     circle_path(&v, 340, 90, 75);
-    clip_path(p, v.v, v.n, MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_INTERSECT);
-    color(p, 0xFF208040u, MEGLER_GFX_BLEND_SRC_OVER);
+    clip_path(p, v.v, v.n, MEGLET_GFX_WINDING, MEGLET_GFX_CLIP_INTERSECT);
+    color(p, 0xFF208040u, MEGLET_GFX_BLEND_SRC_OVER);
     for (i = 0; i < 12; i++) rect(p, 250.0f + 20 * (float)i, 0, 258.0f + 20 * (float)i, 200, &band, NULL);
     restore(p, a);
     label(p, "clipPath", 320, 190);
     /* A circle cut out of a rectangle; then a rectangle inside that, and back out of it. */
     a = save(p);
-    clip_rect(p, 30, 210, 210, 340, MEGLER_GFX_CLIP_INTERSECT);
+    clip_rect(p, 30, 210, 210, 340, MEGLET_GFX_CLIP_INTERSECT);
     circle_path(&v, 120, 275, 50);
-    clip_path(p, v.v, v.n, MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_DIFFERENCE);
-    color(p, 0xFFC02040u, MEGLER_GFX_BLEND_SRC_OVER);
+    clip_path(p, v.v, v.n, MEGLET_GFX_WINDING, MEGLET_GFX_CLIP_DIFFERENCE);
+    color(p, 0xFFC02040u, MEGLET_GFX_BLEND_SRC_OVER);
     b = save(p);
-    clip_rect(p, 30, 210, 90, 340, MEGLER_GFX_CLIP_INTERSECT);
-    color(p, 0xFF000000u, MEGLER_GFX_BLEND_SRC_OVER);
+    clip_rect(p, 30, 210, 90, 340, MEGLET_GFX_CLIP_INTERSECT);
+    color(p, 0xFF000000u, MEGLET_GFX_BLEND_SRC_OVER);
     restore(p, b);
     fill(p, 150, 300, 480, 320, 0xFF2020E0u);
     restore(p, a);
@@ -1088,12 +1088,12 @@ static void scene_clips(pic *p)
     /* A star by even-odd, inside a circle; and a drawing by another transfer mode through such a clip. */
     a = save(p);
     circle_path(&v, 350, 275, 70);
-    clip_path(p, v.v, v.n, MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_INTERSECT);
+    clip_path(p, v.v, v.n, MEGLET_GFX_WINDING, MEGLET_GFX_CLIP_INTERSECT);
     memset(&v, 0, sizeof(v));
     pb_star(&v, 350, 275, 90);
-    clip_path(p, v.v, v.n, MEGLER_GFX_EVEN_ODD, MEGLER_GFX_CLIP_INTERSECT);
-    color(p, 0xFF8040C0u, MEGLER_GFX_BLEND_SRC_OVER);
-    band.blend = MEGLER_GFX_BLEND_CLEAR;
+    clip_path(p, v.v, v.n, MEGLET_GFX_EVEN_ODD, MEGLET_GFX_CLIP_INTERSECT);
+    color(p, 0xFF8040C0u, MEGLET_GFX_BLEND_SRC_OVER);
+    band.blend = MEGLET_GFX_BLEND_CLEAR;
     rect(p, 0, 268, 480, 282, &band, NULL);
     restore(p, a);
     fill(p, 440, 330, 470, 350, 0xFF000000u);
@@ -1126,11 +1126,11 @@ static void check_clips(pic *p)
 static void scene_layers(pic *p)
 {
     float bounds[4];
-    megler_gfx_paint red = paint_of(0xFFE02020u), blue = paint_of(0xFF2040E0u), mask = paint_of(0xFF000000u), faint;
+    meglet_gfx_paint red = paint_of(0xFFE02020u), blue = paint_of(0xFF2040E0u), mask = paint_of(0xFF000000u), faint;
     saved a;
     pathbuf v;
     int i;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     chequer(p, 0, 0, 480, 360);
     /* Two discs at half strength: drawn one by one each lets the other show through; in a layer the pair is one picture, faded once. */
     faint = red;
@@ -1138,7 +1138,7 @@ static void scene_layers(pic *p)
     oval(p, 20, 20, 110, 110, &faint, NULL);
     faint.color = 0x802040E0u;
     oval(p, 70, 20, 160, 110, &faint, NULL);
-    a = save_layer(p, NULL, 128, MEGLER_GFX_BLEND_SRC_OVER);
+    a = save_layer(p, NULL, 128, MEGLET_GFX_BLEND_SRC_OVER);
     oval(p, 190, 20, 280, 110, &red, NULL);
     oval(p, 240, 20, 330, 110, &blue, NULL);
     restore(p, a);
@@ -1148,12 +1148,12 @@ static void scene_layers(pic *p)
     bounds[1] = 15;
     bounds[2] = 465;
     bounds[3] = 115;
-    a = save_layer(p, bounds, 255, MEGLER_GFX_BLEND_SRC_OVER);
+    a = save_layer(p, bounds, 255, MEGLET_GFX_BLEND_SRC_OVER);
     circle_path(&v, 407, 65, 45);
-    path(p, v.v, v.n, MEGLER_GFX_WINDING, &mask, NULL);
+    path(p, v.v, v.n, MEGLET_GFX_WINDING, &mask, NULL);
     for (i = 0; i < 6; i++) {
-        megler_gfx_paint stripe = paint_of(i & 1 ? 0xFF20A060u : 0xFFE0C020u);
-        stripe.blend = MEGLER_GFX_BLEND_SRC_IN;
+        meglet_gfx_paint stripe = paint_of(i & 1 ? 0xFF20A060u : 0xFFE0C020u);
+        stripe.blend = MEGLET_GFX_BLEND_SRC_IN;
         rect(p, 350.0f + 20 * (float)i, 15, 370.0f + 20 * (float)i, 115, &stripe, NULL);
     }
     restore(p, a);
@@ -1164,7 +1164,7 @@ static void scene_layers(pic *p)
     bounds[1] = 150;
     bounds[2] = 160;
     bounds[3] = 250;
-    a = save_layer(p, bounds, 255, MEGLER_GFX_BLEND_DST_OUT);
+    a = save_layer(p, bounds, 255, MEGLET_GFX_BLEND_DST_OUT);
     oval(p, 50, 165, 130, 235, &red, NULL);
     restore(p, a);
     label(p, "layer by DST_OUT", 30, 268);
@@ -1172,7 +1172,7 @@ static void scene_layers(pic *p)
     fill(p, 180, 150, 320, 250, 0xFF303030u);
     bounds[0] = 180;
     bounds[2] = 320;
-    a = save_layer(p, bounds, 255, MEGLER_GFX_BLEND_DST_IN);
+    a = save_layer(p, bounds, 255, MEGLET_GFX_BLEND_DST_IN);
     oval(p, 210, 165, 290, 235, &red, NULL);
     restore(p, a);
     label(p, "layer by DST_IN", 195, 268);
@@ -1185,11 +1185,11 @@ static void scene_layers(pic *p)
     bounds[2] = 55;
     bounds[3] = 45;
     {
-        saved outer = save_layer(p, bounds, 102, MEGLER_GFX_BLEND_SRC_OVER), inner;
+        saved outer = save_layer(p, bounds, 102, MEGLET_GFX_BLEND_SRC_OVER), inner;
         fill(p, -55, -45, 55, 45, 0xFF2040E0u);
         circle_path(&v, 0, 0, 35);
-        clip_path(p, v.v, v.n, MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_INTERSECT);
-        inner = save_layer(p, NULL, 255, MEGLER_GFX_BLEND_SRC_OVER);
+        clip_path(p, v.v, v.n, MEGLET_GFX_WINDING, MEGLET_GFX_CLIP_INTERSECT);
+        inner = save_layer(p, NULL, 255, MEGLET_GFX_BLEND_SRC_OVER);
         fill(p, -55, -45, 55, 0, 0xFFFFFFFFu);
         fill(p, -55, 0, 55, 45, 0xFFE02020u);
         restore(p, inner);
@@ -1198,8 +1198,8 @@ static void scene_layers(pic *p)
     restore(p, a);
     label(p, "nested, turned, 40%", 345, 268);
     /* A DST layer is thrown away. */
-    a = save_layer(p, NULL, 255, MEGLER_GFX_BLEND_DST);
-    color(p, 0xFF00FF00u, MEGLER_GFX_BLEND_SRC);
+    a = save_layer(p, NULL, 255, MEGLET_GFX_BLEND_DST);
+    color(p, 0xFF00FF00u, MEGLET_GFX_BLEND_SRC);
     restore(p, a);
 }
 
@@ -1244,9 +1244,9 @@ static void scene_matrices(pic *p)
     pic s;
     int i;
     small_picture(&s, p->g);
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     for (i = 0; i < 6; i++) {
-        megler_gfx_paint a = paint_of(0xFF2060C0u), o = stroke_of(0xFF000000u, 2), t = paint_of(0xFFC02020u), b = paint_of(0xFF000000u);
+        meglet_gfx_paint a = paint_of(0xFF2060C0u), o = stroke_of(0xFF000000u, 2), t = paint_of(0xFFC02020u), b = paint_of(0xFF000000u);
         float x = 30.0f + 160 * (float)(i % 3), y = 40.0f + 170 * (float)(i / 3);
         saved sv = save(p);
         translate(p, x, y);
@@ -1277,7 +1277,7 @@ static void scene_matrices(pic *p)
 }
 
 /* A picture like the ones Android stretches: corners, sides and a middle, each its own colour, eight pixels to a piece. */
-static void nine_picture(pic *s, const megler_gfx_host *g)
+static void nine_picture(pic *s, const meglet_gfx_host *g)
 {
     static const u32 colours[9] = { 0xFFC02020u, 0xFF20A020u, 0xFF2020C0u, 0xFFC0A020u, 0xFFF0F0F0u, 0xFF20A0C0u, 0xFFA020C0u, 0xFF606060u, 0xFF000000u };
     int x, y;
@@ -1288,7 +1288,7 @@ static void nine_picture(pic *s, const megler_gfx_host *g)
 }
 
 /* The nine pieces of it onto a rectangle, each stretched its own way, as NinePatch.draw does it: a dozen drawBitmap calls of one bitmap. */
-static void nine_draw(pic *p, const pic *s, float l, float t, float r, float b, const megler_gfx_paint *paint)
+static void nine_draw(pic *p, const pic *s, float l, float t, float r, float b, const meglet_gfx_paint *paint)
 {
     float sx[4] = { 0, 8, 16, 24 }, sy[4] = { 0, 8, 16, 24 }, dx[4], dy[4];
     int i, j;
@@ -1305,9 +1305,9 @@ static void nine_draw(pic *p, const pic *s, float l, float t, float r, float b, 
 }
 
 /* A picture with something of everything in it, to be stretched and turned: 64 by 64. */
-static void photo_picture(pic *s, const megler_gfx_host *g)
+static void photo_picture(pic *s, const meglet_gfx_host *g)
 {
-    megler_gfx_paint a;
+    meglet_gfx_paint a;
     int x, y;
     pic_make(s, g, 64, 64);
     for (y = 0; y < 64; y++)
@@ -1328,15 +1328,15 @@ static void photo_picture(pic *s, const megler_gfx_host *g)
 static void scene_bitmaps(pic *p)
 {
     pic photo, nine, small;
-    megler_gfx_paint smooth = paint_of(0xFF000000u), rough = paint_of(0xFF000000u), faint, tint;
+    meglet_gfx_paint smooth = paint_of(0xFF000000u), rough = paint_of(0xFF000000u), faint, tint;
     saved a;
     int i;
     photo_picture(&photo, p->g);
     nine_picture(&nine, p->g);
     small_picture(&small, p->g);
-    smooth.flags = MEGLER_GFX_ANTI_ALIAS | MEGLER_GFX_FILTER_BITMAP;
+    smooth.flags = MEGLET_GFX_ANTI_ALIAS | MEGLET_GFX_FILTER_BITMAP;
     rough.flags = 0;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     chequer(p, 300, 0, 480, 130);
     /* Its own size; half as large again, smooth and not. */
     bitmap(p, &photo, 0, 0, 64, 64, 10, 10, 74, 74, &rough);
@@ -1367,7 +1367,7 @@ static void scene_bitmaps(pic *p)
     bitmap(p, &photo, 8.5f, 8.5f, 30.5f, 30.5f, 300, 270, 366, 336, &smooth);
     /* Tinted, as icons are: the picture's shape in a colour (SRC_IN), its colours darkened by one (MODULATE), a colour laid over it (SRC_ATOP), under it (DST_OVER). */
     for (i = 0; i < 4; i++) {
-        static const int modes[4] = { MEGLER_GFX_BLEND_SRC_IN, MEGLER_GFX_BLEND_MODULATE, MEGLER_GFX_BLEND_SRC_ATOP, MEGLER_GFX_BLEND_DST_OVER };
+        static const int modes[4] = { MEGLET_GFX_BLEND_SRC_IN, MEGLET_GFX_BLEND_MODULATE, MEGLET_GFX_BLEND_SRC_ATOP, MEGLET_GFX_BLEND_DST_OVER };
         static const u32 colours[4] = { 0xFF2060C0u, 0xFFFFA040u, 0x80FF0000u, 0xFF208040u };
         tint = rough;
         tint.filter_mode = modes[i];
@@ -1404,7 +1404,7 @@ static void check_bitmaps(pic *p)
     CHECK(at(p, 15, 265) == 0xFF2060C0u && at(p, 62, 280) == 0xFF2060C0u);
 }
 
-static void *linear(const megler_gfx_host *g, float x0, float y0, float x1, float y1, const u32 *colours, const float *positions, int n, int tile)
+static void *linear(const meglet_gfx_host *g, float x0, float y0, float x1, float y1, const u32 *colours, const float *positions, int n, int tile)
 {
     return g->shader_linear(g->user, x0, y0, x1, y1, colours, positions, n, tile);
 }
@@ -1415,16 +1415,16 @@ static void scene_shaders(pic *p)
                      wheel[5] = { 0xFFFF0000u, 0xFF00FF00u, 0xFF0000FFu, 0xFFFFFF00u, 0xFFFF0000u }, hard[4] = { 0xFF000000u, 0xFF000000u, 0xFFFFFFFFu, 0xFFFFFFFFu };
     static const float ends[2] = { 0, 1 }, thirds[3] = { 0, 0.3f, 1 }, quarters[5] = { 0, 0.25f, 0.5f, 0.75f, 1 }, steps[4] = { 0, 0.5f, 0.5f, 1 };
     static const char *const tiles[3] = { "clamp", "repeat", "mirror" };
-    const megler_gfx_host *g = p->g;
-    megler_gfx_paint paint = paint_of(0xFF000000u), s;
-    megler_gfx_image image;
+    const meglet_gfx_host *g = p->g;
+    meglet_gfx_paint paint = paint_of(0xFF000000u), s;
+    meglet_gfx_image image;
     void *sh;
     pic small;
     int i;
     float turn[6] = { 0.8f, -0.6f, 0, 0.6f, 0.8f, 0 };
     small_picture(&small, g);
     image_of(&small, &image);
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     for (i = 0; i < 3; i++) {
         float x = 10.0f + 118 * (float)i;
         /* Along a line from x + 30 to x + 70: what is before and after it is the tile mode's. */
@@ -1463,13 +1463,13 @@ static void scene_shaders(pic *p)
     g->shader_free(g->user, sh);
     /* A gradient through nothing, over a chequered ground; a sudden step; one turned by its own matrix; one that moves with the canvas's. */
     chequer(p, 10, 260, 150, 300);
-    sh = linear(g, 10, 0, 150, 0, glass, NULL, 3, MEGLER_GFX_TILE_CLAMP);
+    sh = linear(g, 10, 0, 150, 0, glass, NULL, 3, MEGLET_GFX_TILE_CLAMP);
     rect(p, 10, 260, 150, 300, &paint, sh);
     g->shader_free(g->user, sh);
-    sh = linear(g, 160, 0, 240, 0, hard, steps, 4, MEGLER_GFX_TILE_CLAMP);
+    sh = linear(g, 160, 0, 240, 0, hard, steps, 4, MEGLET_GFX_TILE_CLAMP);
     rect(p, 160, 260, 240, 300, &paint, sh);
     g->shader_free(g->user, sh);
-    sh = linear(g, 0, 0, 20, 0, two, ends, 2, MEGLER_GFX_TILE_MIRROR);
+    sh = linear(g, 0, 0, 20, 0, two, ends, 2, MEGLET_GFX_TILE_MIRROR);
     turn[2] = 250;
     turn[5] = 260;
     g->shader_matrix(g->user, sh, turn);
@@ -1484,7 +1484,7 @@ static void scene_shaders(pic *p)
     }
     g->shader_free(g->user, sh);
     /* The paint's alpha multiplies a shader; and text is filled with one like any shape. */
-    sh = linear(g, 10, 0, 150, 0, three, thirds, 3, MEGLER_GFX_TILE_CLAMP);
+    sh = linear(g, 10, 0, 150, 0, three, thirds, 3, MEGLET_GFX_TILE_CLAMP);
     paint.color = 0x60000000u;
     rect(p, 10, 310, 150, 322, &paint, sh);
     paint.color = 0xFF000000u;
@@ -1535,17 +1535,17 @@ static void check_shaders(pic *p)
     {
         static const u32 two[2] = { 0xFFFF0000u, 0x0000FF00u };
         static const float ends[2] = { 0, 1 };
-        megler_gfx_paint paint = paint_of(0xFF000000u);
-        void *sh = linear(H, 0, 0, 64, 0, two, ends, 2, MEGLER_GFX_TILE_CLAMP);
+        meglet_gfx_paint paint = paint_of(0xFF000000u);
+        void *sh = linear(H, 0, 0, 64, 0, two, ends, 2, MEGLET_GFX_TILE_CLAMP);
         rect(&q, 0, 0, 64, 4, &paint, sh);
         H->shader_free(H->user, sh);
         settle(&q);
         CHECK(apart(at(&q, 32, 2), premultiplied(between(two[0], two[1], 32.5 / 64))) <= 3);
         CHECK(apart(at(&q, 0, 2), premultiplied(between(two[0], two[1], 0.5 / 64))) <= 3 && apart(at(&q, 63, 2), premultiplied(between(two[0], two[1], 63.5 / 64))) <= 3);
         /* The paint's alpha multiplies a shader's colours. */
-        color(&q, 0, MEGLER_GFX_BLEND_CLEAR);
+        color(&q, 0, MEGLET_GFX_BLEND_CLEAR);
         paint.color = 0x80000000u;
-        sh = linear(H, 0, 0, 64, 0, two, ends, 2, MEGLER_GFX_TILE_CLAMP);
+        sh = linear(H, 0, 0, 64, 0, two, ends, 2, MEGLET_GFX_TILE_CLAMP);
         rect(&q, 0, 0, 64, 4, &paint, sh);
         H->shader_free(H->user, sh);
         settle(&q);
@@ -1562,30 +1562,30 @@ static void scene_blend_modes(pic *p)
     static const u32 fade[2] = { 0xFFF0C020u, 0x40F04020u };
     static const float ends[2] = { 0, 1 };
     int i;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     chequer(p, 0, 0, (float)p->w, (float)p->h);
     for (i = 0; i < 18; i++) {
         float x = 8.0f + 106 * (float)(i % 6), y = 8.0f + 116 * (float)(i / 6), bounds[4];
-        megler_gfx_paint dst = paint_of(0xE02060C0u), src = paint_of(0xFF000000u);
+        meglet_gfx_paint dst = paint_of(0xE02060C0u), src = paint_of(0xFF000000u);
         saved layer;
         void *sh;
         bounds[0] = x;
         bounds[1] = y;
         bounds[2] = x + 98;
         bounds[3] = y + 92;
-        layer = save_layer(p, bounds, 255, MEGLER_GFX_BLEND_SRC_OVER);
+        layer = save_layer(p, bounds, 255, MEGLET_GFX_BLEND_SRC_OVER);
         oval(p, x + 4, y + 4, x + 68, y + 68, &dst, NULL);
-        sh = linear(p->g, x + 30, 0, x + 94, 0, fade, ends, 2, MEGLER_GFX_TILE_CLAMP);
+        sh = linear(p->g, x + 30, 0, x + 94, 0, fade, ends, 2, MEGLET_GFX_TILE_CLAMP);
         src.blend = i;
         /* (DST is never a paint's: the core does not make the call.) */
-        if (i != MEGLER_GFX_BLEND_DST) rect(p, x + 30, y + 28, x + 94, y + 88, &src, sh);
+        if (i != MEGLET_GFX_BLEND_DST) rect(p, x + 30, y + 28, x + 94, y + 88, &src, sh);
         p->g->shader_free(p->g->user, sh);
         restore(p, layer);
         label(p, names[i], x + 4, y + 106);
     }
 }
 
-/* One channel of S on D by megler.h's table, in numbers between 0 and 1: written from the table, not from any implementation. */
+/* One channel of S on D by meglet.h's table, in numbers between 0 and 1: written from the table, not from any implementation. */
 static double table_channel(int mode, double s, double d, double sa, double da)
 {
     double both = s * (1 - da) + d * (1 - sa);
@@ -1625,34 +1625,34 @@ static u32 table_pixel(int mode, u32 s, u32 d)
     return out;
 }
 
-/* The eighteen modes on known colours, against megler.h's table: a shape in a colour, a bitmap, a shader, a layer, drawColor. */
+/* The eighteen modes on known colours, against meglet.h's table: a shape in a colour, a bitmap, a shader, a layer, drawColor. */
 static void check_blend_table(void)
 {
     static const u32 pairs[4][2] = { { 0xA0F08020u, 0xC02060E0u }, { 0xFF3090F0u, 0x80C04010u }, { 0x40FFFFFFu, 0xFF102030u }, { 0xC0406080u, 0x00000000u } };
     static const float ends[2] = { 0, 1 };
     pic p, s;
     int mode, k, how, worst = 0, wrong = 0;
-    say("  the eighteen transfer modes against megler.h's table, drawn seven ways each on four pairs of colours, and as colour filters");
+    say("  the eighteen transfer modes against meglet.h's table, drawn seven ways each on four pairs of colours, and as colour filters");
     pic_make(&p, H, 8, 8);
     pic_make(&s, H, 2, 2);
     for (mode = 0; mode < 18; mode++)
         for (k = 0; k < 4; k++)
             for (how = 0; how < 8; how++) {
                 u32 src = pairs[k][0], dst = pairs[k][1], want = table_pixel(mode, premultiplied(src), premultiplied(dst)), got;
-                megler_gfx_paint paint = paint_of(src);
+                meglet_gfx_paint paint = paint_of(src);
                 int d;
-                if (mode == MEGLER_GFX_BLEND_DST && how != 3 && how != 5 && how != 7) continue;
+                if (mode == MEGLET_GFX_BLEND_DST && how != 3 && how != 5 && how != 7) continue;
                 if (how == 5) {
                     /* A colour filter by the mode, of the source's colour, on a shader that is the destination's colour all
                        along, drawn by SRC: each colour C of the shader becomes the mode of S = the filter's colour and D = C
-                       (megler.h, THE PAINT), which is the table's pixel again. */
+                       (meglet.h, THE PAINT), which is the table's pixel again. */
                     u32 two[2];
                     void *sh;
                     two[0] = two[1] = dst;
-                    sh = linear(H, 0, 0, 8, 0, two, ends, 2, MEGLER_GFX_TILE_CLAMP);
-                    color(&p, 0xFF808080u, MEGLER_GFX_BLEND_SRC);
+                    sh = linear(H, 0, 0, 8, 0, two, ends, 2, MEGLET_GFX_TILE_CLAMP);
+                    color(&p, 0xFF808080u, MEGLET_GFX_BLEND_SRC);
                     paint = paint_of(0xFF000000u);
-                    paint.blend = MEGLER_GFX_BLEND_SRC;
+                    paint.blend = MEGLET_GFX_BLEND_SRC;
                     paint.filter_mode = mode;
                     paint.filter_color = src;
                     rect(&p, 2, 2, 6, 6, &paint, sh);
@@ -1668,7 +1668,7 @@ static void check_blend_table(void)
                     if (at(&p, 0, 0) != 0xFF808080u || at(&p, 7, 7) != 0xFF808080u) wrong++;
                     continue;
                 }
-                color(&p, dst, MEGLER_GFX_BLEND_SRC);
+                color(&p, dst, MEGLET_GFX_BLEND_SRC);
                 paint.blend = mode;
                 if (how == 0) {
                     rect(&p, 2, 2, 6, 6, &paint, NULL);
@@ -1684,35 +1684,35 @@ static void check_blend_table(void)
                     u32 two[2];
                     void *sh;
                     two[0] = two[1] = src | 0xFF000000u;
-                    sh = linear(H, 0, 0, 8, 0, two, ends, 2, MEGLER_GFX_TILE_CLAMP);
+                    sh = linear(H, 0, 0, 8, 0, two, ends, 2, MEGLET_GFX_TILE_CLAMP);
                     rect(&p, 2, 2, 6, 6, &paint, sh);
                     H->shader_free(H->user, sh);
                 } else if (how == 3) {
                     /* A layer that holds the colour opaque and is put on at the colour's alpha by the mode. */
                     float bounds[4] = { 2, 2, 6, 6 };
                     saved layer = save_layer(&p, bounds, (int)(src >> 24), mode);
-                    color(&p, src | 0xFF000000u, MEGLER_GFX_BLEND_SRC);
+                    color(&p, src | 0xFF000000u, MEGLET_GFX_BLEND_SRC);
                     restore(&p, layer);
-                    if (mode == MEGLER_GFX_BLEND_DST) want = premultiplied(dst);
+                    if (mode == MEGLET_GFX_BLEND_DST) want = premultiplied(dst);
                 } else if (how == 4) {
                     saved clip = save(&p);
-                    clip_rect(&p, 2, 2, 6, 6, MEGLER_GFX_CLIP_INTERSECT);
+                    clip_rect(&p, 2, 2, 6, 6, MEGLET_GFX_CLIP_INTERSECT);
                     color(&p, src, mode);
                     restore(&p, clip);
                 } else {
                     /* The last two again under a clip that is a path, whose edge is smoothed: a pixel well inside it is
                        covered whole, and gets the table's colour as well. */
-                    static const float square[] = { MEGLER_GFX_PATH_MOVE, 2, 2, MEGLER_GFX_PATH_LINE, 6, 2, MEGLER_GFX_PATH_LINE, 6, 6, MEGLER_GFX_PATH_LINE, 2, 6,
-                                                    MEGLER_GFX_PATH_CLOSE };
+                    static const float square[] = { MEGLET_GFX_PATH_MOVE, 2, 2, MEGLET_GFX_PATH_LINE, 6, 2, MEGLET_GFX_PATH_LINE, 6, 6, MEGLET_GFX_PATH_LINE, 2, 6,
+                                                    MEGLET_GFX_PATH_CLOSE };
                     saved clip = save(&p);
-                    clip_path(&p, square, (int)HK_COUNT(square), MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_INTERSECT);
+                    clip_path(&p, square, (int)HK_COUNT(square), MEGLET_GFX_WINDING, MEGLET_GFX_CLIP_INTERSECT);
                     if (how == 6) {
                         color(&p, src, mode);
                     } else {
                         saved layer = save_layer(&p, NULL, (int)(src >> 24), mode);
-                        color(&p, src | 0xFF000000u, MEGLER_GFX_BLEND_SRC);
+                        color(&p, src | 0xFF000000u, MEGLET_GFX_BLEND_SRC);
                         restore(&p, layer);
-                        if (mode == MEGLER_GFX_BLEND_DST) want = premultiplied(dst);
+                        if (mode == MEGLET_GFX_BLEND_DST) want = premultiplied(dst);
                     }
                     restore(&p, clip);
                 }
@@ -1741,12 +1741,12 @@ static const u16 k_cyrillic[] = { 0x041F, 0x0440, 0x0438, 0x0432, 0x0435, 0x0442
 static const u16 k_cjk[] = { 0x65E5, 0x672C, 0x8A9E, ' ', 0x4E2D, 0x6587, ' ', 0xD55C, 0xAD6D, 0xC5B4 };
 static const u16 k_emoji[] = { 'o', 'k', ' ', 0xD83D, 0xDE00, ' ', 0x2764, ' ', 0xD83D, 0xDC4D, ' ', 0xD83C, 0xDF0D };
 
-static float measure(const u16 *t, int n, const megler_gfx_paint *paint, void *face) { return H->text_measure(H->user, t, n, paint, face); }
+static float measure(const u16 *t, int n, const meglet_gfx_paint *paint, void *face) { return H->text_measure(H->user, t, n, paint, face); }
 
 /* A run with what the measuring functions say about it drawn in: the baseline, the advance width as a bracket under it, the ink's box. */
-static void text_marked(pic *p, const u16 *t, int n, float x, float y, const megler_gfx_paint *paint, void *face)
+static void text_marked(pic *p, const u16 *t, int n, float x, float y, const meglet_gfx_paint *paint, void *face)
 {
-    megler_gfx_paint base = stroke_of(0xFFE04040u, 0), bracket = stroke_of(0xFF2040E0u, 0), ink = stroke_of(0x8020A040u, 0);
+    meglet_gfx_paint base = stroke_of(0xFFE04040u, 0), bracket = stroke_of(0xFF2040E0u, 0), ink = stroke_of(0x8020A040u, 0);
     float width = measure(t, n, paint, face), box[4] = { 0, 0, 0, 0 }, drop = paint->text_size * 0.3f + 3;
     base.flags = bracket.flags = ink.flags = 0;
     p->g->text_bounds(p->g->user, t, n, paint, face, box);
@@ -1764,15 +1764,15 @@ static char t_face_file[260];
 static void scene_text(pic *p)
 {
     static const float sizes[4] = { 12, 18, 28, 44 };
-    const megler_gfx_host *g = p->g;
-    megler_gfx_paint paint = paint_of(0xFF101010u);
+    const meglet_gfx_host *g = p->g;
+    meglet_gfx_paint paint = paint_of(0xFF101010u);
     void *bold = g->typeface_derive(g->user, NULL, 700, false), *italic = g->typeface_derive(g->user, NULL, 400, true), *both_ways = g->typeface_derive(g->user, NULL, 700, true);
-    void *serif = g->typeface_create(g->user, "serif", MEGLER_GFX_SERIF, 400, false), *mono = g->typeface_create(g->user, "monospace", MEGLER_GFX_MONOSPACE, 400, false);
-    void *light = g->typeface_create(g->user, "sans-serif-light", MEGLER_GFX_SANS, 300, false);
+    void *serif = g->typeface_create(g->user, "serif", MEGLET_GFX_SERIF, 400, false), *mono = g->typeface_create(g->user, "monospace", MEGLET_GFX_MONOSPACE, 400, false);
+    void *light = g->typeface_create(g->user, "sans-serif-light", MEGLET_GFX_SANS, 300, false);
     float y = 8;
     u16 t[96];
     int i, n;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     for (i = 0; i < 4; i++) {
         paint.text_size = sizes[i];
         y += sizes[i] * 1.5f + 4;
@@ -1808,7 +1808,7 @@ static void scene_text(pic *p)
     }
     /* Breaking: a sentence, the width it has to fit in (the grey bar), and where the two ways of breaking end the first line. */
     {
-        megler_gfx_paint bar = paint_of(0xFFD0D0D0u), by_words = stroke_of(0xFF20A040u, 0), by_chars = stroke_of(0xFFE04040u, 0);
+        meglet_gfx_paint bar = paint_of(0xFFD0D0D0u), by_words = stroke_of(0xFF20A040u, 0), by_chars = stroke_of(0xFFE04040u, 0);
         float width = 250, x = 12;
         int w, c;
         y += 40;
@@ -1828,12 +1828,12 @@ static void scene_text(pic *p)
 static void scene_text_styles(pic *p)
 {
     static const u32 fade[3] = { 0xFFE02020u, 0xFFE0C020u, 0xFF2040E0u };
-    const megler_gfx_host *g = p->g;
-    megler_gfx_paint paint = paint_of(0xFF101010u), guide = stroke_of(0xFFE04040u, 0), other;
+    const meglet_gfx_host *g = p->g;
+    meglet_gfx_paint paint = paint_of(0xFF101010u), guide = stroke_of(0xFFE04040u, 0), other;
     void *sh;
     u16 t[64];
     int n, i;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     paint.text_size = 22;
     guide.flags = 0;
     /* The paint's three changes to a run: wider and narrower, slanted, spaced. */
@@ -1855,24 +1855,24 @@ static void scene_text_styles(pic *p)
     /* Thickened, outlined, both; filled by a shader. */
     n = units("Fake bold", t, 64);
     other = paint;
-    other.flags |= MEGLER_GFX_FAKE_BOLD;
+    other.flags |= MEGLET_GFX_FAKE_BOLD;
     text_marked(p, t, n, 200, 72, &other, NULL);
     n = units("plain", t, 64);
     text_marked(p, t, n, 330, 72, &paint, NULL);
     other = paint;
     other.text_size = 40;
-    other.style = MEGLER_GFX_STROKE;
+    other.style = MEGLET_GFX_STROKE;
     other.stroke_width = 1.5f;
     n = units("Stroke", t, 64);
     text16(p, t, n, 12, 124, &other, NULL, NULL);
-    other.style = MEGLER_GFX_FILL_AND_STROKE;
+    other.style = MEGLET_GFX_FILL_AND_STROKE;
     other.stroke_width = 3;
     other.color = 0x80C02060u;
     n = units("Both", t, 64);
     text16(p, t, n, 150, 124, &other, NULL, NULL);
     other = paint;
     other.text_size = 40;
-    sh = linear(g, 260, 0, 460, 0, fade, NULL, 3, MEGLER_GFX_TILE_CLAMP);
+    sh = linear(g, 260, 0, 460, 0, fade, NULL, 3, MEGLET_GFX_TILE_CLAMP);
     n = units("Shader", t, 64);
     text16(p, t, n, 260, 124, &other, NULL, sh);
     g->shader_free(g->user, sh);
@@ -1964,8 +1964,8 @@ static void check_text(void)
     static const u16 words[] = { 'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd', ' ', 'f', 'o', 'o' }, lines[] = { 'a', 'b', '\n', 'c', 'd' };
     static const u16 pair[] = { 'a', 0xD83D, 0xDE00, 'b' }, blank[] = { ' ', ' ', ' ' }, odd[] = { 'a', 0xD83D, 'b', '\t', 0x0007, 'c', 0xDE00 };
     static const u16 many[] = { 'T', 'h', 'e', ' ', 'q', 'u', 'i', 'c', 'k', ' ', 'b', 'r', 'o', 'w', 'n', ' ', 'f', 'o', 'x', ' ', 'j', 'u', 'm', 'p', 's' };
-    megler_gfx_paint paint = paint_of(0xFF000000u), other;
-    void *bold = H->typeface_derive(H->user, NULL, 700, false), *mono = H->typeface_create(H->user, "monospace", MEGLER_GFX_MONOSPACE, 400, false);
+    meglet_gfx_paint paint = paint_of(0xFF000000u), other;
+    void *bold = H->typeface_derive(H->user, NULL, 700, false), *mono = H->typeface_create(H->user, "monospace", MEGLET_GFX_MONOSPACE, 400, false);
     void *faces[4];
     float m[5], widths[32], box[4], sum, w, spacing;
     int i, k, f, n, sizes_bad = 0, sums_bad = 0, breaks_bad = 0;
@@ -2062,10 +2062,10 @@ static void check_text(void)
             other.text_size = 32;
             if (way == 1) other.text_scale_x = 1.5f;
             if (way == 2) other.text_skew_x = -0.25f;
-            if (way == 3) other.text_align = MEGLER_GFX_ALIGN_CENTER;
-            if (way == 4) other.text_align = MEGLER_GFX_ALIGN_RIGHT;
+            if (way == 3) other.text_align = MEGLET_GFX_ALIGN_CENTER;
+            if (way == 4) other.text_align = MEGLET_GFX_ALIGN_RIGHT;
             if (way >= 3) x = 160;
-            color(&p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+            color(&p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
             text16(&p, k_latin, 9, x, y, &other, NULL, NULL);
             settle(&p);
             H->text_bounds(H->user, k_latin, 9, &other, NULL, box);
@@ -2081,7 +2081,7 @@ static void check_text(void)
         other = paint;
         other.flags = 0;
         other.text_size = 24;
-        color(&p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        color(&p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
         text16(&p, k_latin, 9, 10, 60, &other, NULL, NULL);
         settle(&p);
         for (i = 0, k = 0, n = 0; i < p.w * p.h; i++) {
@@ -2109,7 +2109,7 @@ static void check_text(void)
             if (f && !face) continue;
             other = paint;
             other.text_size = 224;
-            color(&p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+            color(&p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
             a = save(&p);
             scale(&p, s, s);
             text16(&p, letter, 1, x, y, &other, face, NULL);
@@ -2259,9 +2259,9 @@ static void images_make(void)
     memset(&t_png, 0, sizeof(t_png));
     memset(&t_jpeg_good, 0, sizeof(t_jpeg_good));
     memset(&t_jpeg_poor, 0, sizeof(t_jpeg_poor));
-    S->image_encode(S->user, p.px, p.w, p.h, p.w * 4, MEGLER_GFX_PNG, 100, bytes_write, &t_png);
-    H->image_encode(H->user, p.px, p.w, p.h, p.w * 4, MEGLER_GFX_JPEG, 95, bytes_write, &t_jpeg_good);
-    H->image_encode(H->user, p.px, p.w, p.h, p.w * 4, MEGLER_GFX_JPEG, 5, bytes_write, &t_jpeg_poor);
+    S->image_encode(S->user, p.px, p.w, p.h, p.w * 4, MEGLET_GFX_PNG, 100, bytes_write, &t_png);
+    H->image_encode(H->user, p.px, p.w, p.h, p.w * 4, MEGLET_GFX_JPEG, 95, bytes_write, &t_jpeg_good);
+    H->image_encode(H->user, p.px, p.w, p.h, p.w * 4, MEGLET_GFX_JPEG, 5, bytes_write, &t_jpeg_poor);
     pic_done(&p);
     t_gif_size = gif_make(t_gif);
     t_jpeg_file = NULL;
@@ -2277,11 +2277,11 @@ static void images_make(void)
 
 static void scene_images(pic *p)
 {
-    megler_gfx_paint smooth = paint_of(0xFF000000u), rough = paint_of(0xFF000000u);
+    meglet_gfx_paint smooth = paint_of(0xFF000000u), rough = paint_of(0xFF000000u);
     pic d;
-    smooth.flags = MEGLER_GFX_ANTI_ALIAS | MEGLER_GFX_FILTER_BITMAP;
+    smooth.flags = MEGLET_GFX_ANTI_ALIAS | MEGLET_GFX_FILTER_BITMAP;
     rough.flags = 0;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     chequer(p, 330, 10, 460, 140);
     if (decode(t_png.data, t_png.size, 1, &d)) {
         bitmap(p, &d, 0, 0, (float)d.w, (float)d.h, 10, 10, 138, 138, &rough);
@@ -2340,7 +2340,7 @@ static void check_images(void)
     wrote(&p);
     /* Written by the host and read by the host: what it was. */
     memset(&file, 0, sizeof(file));
-    CHECK(H->image_encode(H->user, p.px, p.w, p.h, p.w * 4, MEGLER_GFX_PNG, 100, bytes_write, &file));
+    CHECK(H->image_encode(H->user, p.px, p.w, p.h, p.w * 4, MEGLET_GFX_PNG, 100, bytes_write, &file));
     CHECK(file.size > 8 && memcmp(file.data, "\x89PNG\r\n\x1a\n", 8) == 0);
     CHECK(H->image_size(H->user, file.data, file.size, &w, &h) && w == 37 && h == 23);
     CHECK(decode(file.data, file.size, 1, &back));
@@ -2358,7 +2358,7 @@ static void check_images(void)
     free(file.data);
     /* Written by the stand-in and read by the host. */
     memset(&file, 0, sizeof(file));
-    CHECK(S->image_encode(S->user, p.px, p.w, p.h, p.w * 4, MEGLER_GFX_PNG, 100, bytes_write, &file));
+    CHECK(S->image_encode(S->user, p.px, p.w, p.h, p.w * 4, MEGLET_GFX_PNG, 100, bytes_write, &file));
     CHECK(decode(file.data, file.size, 1, &back));
     if (back.px) {
         CHECK(memcmp(back.px, p.px, sizeof(u32) * (size_t)(p.w * p.h)) == 0);
@@ -2392,7 +2392,7 @@ static void check_images(void)
         u32 half[64];
         for (i = 0; i < 64; i++) half[i] = premultiplied(0x80FF8040u);
         memset(&file, 0, sizeof(file));
-        CHECK(H->image_encode(H->user, half, 8, 8, 32, MEGLER_GFX_JPEG, 100, bytes_write, &file));
+        CHECK(H->image_encode(H->user, half, 8, 8, 32, MEGLET_GFX_JPEG, 100, bytes_write, &file));
         if (decode(file.data, file.size, 1, &back)) {
             CHECK(apart(back.px[27], 0xFF804020u) <= 4);
             pic_done(&back);
@@ -2424,7 +2424,7 @@ static void check_images(void)
         u32 striped[64], small[16];
         for (i = 0; i < 64; i++) striped[i] = (i % 8) < 4 ? 0xFFFF0000u : 0x00000000u;
         memset(&file, 0, sizeof(file));
-        S->image_encode(S->user, striped, 8, 8, 32, MEGLER_GFX_PNG, 100, bytes_write, &file);
+        S->image_encode(S->user, striped, 8, 8, 32, MEGLET_GFX_PNG, 100, bytes_write, &file);
         CHECK(H->image_decode(H->user, file.data, file.size, small, 4, 4, 16));
         CHECK(small[0] == 0xFFFF0000u && small[3] == 0 && small[13] == 0xFFFF0000u);
         /* An odd reduction mixes the two: what is left of the red is red at less strength, never a darker red (the colour stays multiplied by its alpha). */
@@ -2450,14 +2450,14 @@ static void check_images(void)
 static void scene_shadows_filters(pic *p)
 {
     static const u32 fade[2] = { 0xFFFFFFFFu, 0xFF000000u };
-    const megler_gfx_host *g = p->g;
-    megler_gfx_paint shape = paint_of(0xFFF0F0F0u), paint;
+    const meglet_gfx_host *g = p->g;
+    meglet_gfx_paint shape = paint_of(0xFFF0F0F0u), paint;
     pic small, photo;
     void *sh;
     int i;
     small_picture(&small, g);
     photo_picture(&photo, g);
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     fill(p, 0, 0, 480, 150, 0xFFD8E0E8u);
     /* A card: a white rounded rectangle with a soft shadow under it, as buttons and dialogs have. */
     for (i = 0; i < 3; i++) {
@@ -2472,7 +2472,7 @@ static void scene_shadows_filters(pic *p)
     /* A shadow keeps to the clip, and a stroke throws one too. */
     {
         saved a = save(p);
-        clip_rect(p, 20, 165, 150, 235, MEGLER_GFX_CLIP_INTERSECT);
+        clip_rect(p, 20, 165, 150, 235, MEGLET_GFX_CLIP_INTERSECT);
         paint = paint_of(0xFF2060C0u);
         paint.shadow_radius = 8;
         paint.shadow_dx = 10;
@@ -2488,23 +2488,23 @@ static void scene_shadows_filters(pic *p)
         oval(p, 170, 170, 250, 230, &paint, NULL);
     }
     /* Colour filters on a shader: a gradient from white to black as the strength of a colour (SRC_IN keeps the filter's colour at the gradient's alpha -- all of it; MODULATE darkens it). */
-    sh = linear(g, 280, 0, 460, 0, fade, NULL, 2, MEGLER_GFX_TILE_CLAMP);
+    sh = linear(g, 280, 0, 460, 0, fade, NULL, 2, MEGLET_GFX_TILE_CLAMP);
     paint = paint_of(0xFF000000u);
     rect(p, 280, 165, 460, 185, &paint, sh);
-    paint.filter_mode = MEGLER_GFX_BLEND_MODULATE;
+    paint.filter_mode = MEGLET_GFX_BLEND_MODULATE;
     paint.filter_color = 0xFFE08020u;
     rect(p, 280, 190, 460, 210, &paint, sh);
-    paint.filter_mode = MEGLER_GFX_BLEND_SCREEN;
+    paint.filter_mode = MEGLET_GFX_BLEND_SCREEN;
     paint.filter_color = 0xFF2040C0u;
     rect(p, 280, 215, 460, 235, &paint, sh);
     g->shader_free(g->user, sh);
     label(p, "a gradient; MODULATE, SCREEN filters", 280, 250);
     /* A photo with each of several filters. */
     for (i = 0; i < 6; i++) {
-        static const int modes[6] = { -1, MEGLER_GFX_BLEND_MODULATE, MEGLER_GFX_BLEND_SCREEN, MEGLER_GFX_BLEND_SRC_ATOP, MEGLER_GFX_BLEND_DARKEN, MEGLER_GFX_BLEND_OVERLAY };
+        static const int modes[6] = { -1, MEGLET_GFX_BLEND_MODULATE, MEGLET_GFX_BLEND_SCREEN, MEGLET_GFX_BLEND_SRC_ATOP, MEGLET_GFX_BLEND_DARKEN, MEGLET_GFX_BLEND_OVERLAY };
         static const u32 colours[6] = { 0, 0xFFFFC080u, 0xFF203060u, 0x8020C040u, 0xFF808080u, 0xFFC04040u };
         paint = paint_of(0xFF000000u);
-        paint.flags |= MEGLER_GFX_FILTER_BITMAP;
+        paint.flags |= MEGLET_GFX_FILTER_BITMAP;
         paint.filter_mode = modes[i];
         paint.filter_color = colours[i];
         bitmap(p, &photo, 0, 0, 64, 64, 14.0f + 78 * (float)i, 265, 78.0f + 78 * (float)i, 329, &paint);
@@ -2524,7 +2524,7 @@ static void scene_layer_blur(pic *p)
 {
     float bounds[4] = { 20, 20, 160, 160 };
     saved a;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     a = save_layer_blur(p, bounds, 20, false);
     fill(p, 60, 60, 120, 120, 0xFFE02020u);
     restore(p, a);
@@ -2572,7 +2572,7 @@ static void check_shadows(pic *p)
 static void check_memory(void)
 {
     pic a, b;
-    megler_gfx_paint half = paint_of(0x80FF0000u);
+    meglet_gfx_paint half = paint_of(0x80FF0000u);
     void *second;
     int i;
     say("  the memory: row and channel order, flush and touched, two canvases on one bitmap, a canvas on memory with a picture in it");
@@ -2587,12 +2587,12 @@ static void check_memory(void)
     CHECK(((const u8 *)a.px)[0] == 0 && ((const u8 *)a.px)[1] == 0 && ((const u8 *)a.px)[2] == 255 && ((const u8 *)a.px)[3] == 255);
     CHECK_HEX(a.px[24 * 64 + 32], 0xFF808080u);
     /* Half transparent red on white: the colour is multiplied by its alpha once, and the result is opaque. */
-    color(&a, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(&a, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     rect(&a, 8, 8, 40, 40, &half, NULL);
     settle(&a);
     CHECK_HEX(at(&a, 20, 20), 0xFFFF7F7Fu);
     /* ... on nothing, and on itself. */
-    color(&a, 0, MEGLER_GFX_BLEND_CLEAR);
+    color(&a, 0, MEGLET_GFX_BLEND_CLEAR);
     rect(&a, 8, 8, 40, 40, &half, NULL);
     settle(&a);
     CHECK_HEX(at(&a, 20, 20), 0x80800000u);
@@ -2612,7 +2612,7 @@ static void check_memory(void)
     second = H->canvas_new(H->user, a.px, a.w, a.h, a.w * 4);
     CHECK(second != NULL);
     if (second) {
-        megler_gfx_paint green = paint_of(0xFF00FF00u);
+        meglet_gfx_paint green = paint_of(0xFF00FF00u);
         H->draw_rect(H->user, second, 40, 0, 64, 20, &green, NULL);
         H->flush(H->user, second);
         wrote(&a);
@@ -2629,9 +2629,9 @@ static void check_memory(void)
     }
     /* A bitmap drawn onto itself: its memory is the source and the target at once. */
     {
-        megler_gfx_paint plain = paint_of(0xFF000000u);
+        meglet_gfx_paint plain = paint_of(0xFF000000u);
         plain.flags = 0;
-        color(&a, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        color(&a, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
         fill(&a, 0, 0, 16, 16, 0xFFC02020u);
         settle(&a);
         bitmap(&a, &a, 0, 0, 16, 16, 32, 16, 64, 48, &plain);
@@ -2663,33 +2663,33 @@ static void check_memory(void)
 /* ------------------------------------------ values no caller should pass */
 
 /*
- * The core checks what it hands on (megler.h, "THE PAINT"), so a host should
+ * The core checks what it hands on (meglet.h, "THE PAINT"), so a host should
  * never see these. One that did must still not fall over, nor leave a canvas
  * unable to draw: numbers that are none, an enumeration out of range, a path
  * that ends in the middle, a bitmap that is not there.
  */
 static void check_odd_values(void)
 {
-    static const float broken[] = { MEGLER_GFX_PATH_MOVE, 2, 2, MEGLER_GFX_PATH_LINE, 9, 2, MEGLER_GFX_PATH_CUBIC, 3, 3, 4 };
-    static const float unknown[] = { MEGLER_GFX_PATH_MOVE, 2, 2, 17, 5, 5, MEGLER_GFX_PATH_LINE, 9, 9 };
+    static const float broken[] = { MEGLET_GFX_PATH_MOVE, 2, 2, MEGLET_GFX_PATH_LINE, 9, 2, MEGLET_GFX_PATH_CUBIC, 3, 3, 4 };
+    static const float unknown[] = { MEGLET_GFX_PATH_MOVE, 2, 2, 17, 5, 5, MEGLET_GFX_PATH_LINE, 9, 9 };
     static const u32 one_colour[1] = { 0xFF00FF00u };
     static const u16 letters[] = { 'o', 'd', 'd' };
     float nan = (float)sqrt(-1.0), huge = 1.0e30f, bounds[4], m[6];
-    megler_gfx_paint paint = paint_of(0xFFFF0000u), odd;
-    megler_gfx_image image;
+    meglet_gfx_paint paint = paint_of(0xFFFF0000u), odd;
+    meglet_gfx_image image;
     void *sh;
     pic p, s;
     say("  values no caller should pass: numbers that are none, enumerations out of range, paths cut short");
     pic_make(&p, H, 32, 32);
     small_picture(&s, H);
-    color(&p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(&p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     rect(&p, nan, 0, 10, 10, &paint, NULL);
     rect(&p, 0, 0, huge, huge * 10, &paint, NULL);
     oval(&p, 0, nan, 10, 10, &paint, NULL);
     round_rect(&p, 0, 0, 10, 10, nan, 2, &paint, NULL);
-    clip_rect(&p, nan, 0, 10, 10, MEGLER_GFX_CLIP_INTERSECT);
-    path(&p, NULL, 12, MEGLER_GFX_WINDING, &paint, NULL);
-    path(&p, broken, -3, MEGLER_GFX_WINDING, &paint, NULL);
+    clip_rect(&p, nan, 0, 10, 10, MEGLET_GFX_CLIP_INTERSECT);
+    path(&p, NULL, 12, MEGLET_GFX_WINDING, &paint, NULL);
+    path(&p, broken, -3, MEGLET_GFX_WINDING, &paint, NULL);
     m[0] = nan;
     m[1] = m[2] = m[3] = m[5] = 0;
     m[4] = 1;
@@ -2715,8 +2715,8 @@ static void check_odd_values(void)
     /* A path that goes wrong is its good part: here one line, which filled is nothing and stroked is a line. */
     odd = stroke_of(0xFF0000FFu, 2);
     odd.flags = 0;
-    path(&p, broken, (int)HK_COUNT(broken), MEGLER_GFX_WINDING, &odd, NULL);
-    path(&p, unknown, (int)HK_COUNT(unknown), MEGLER_GFX_WINDING, &odd, NULL);
+    path(&p, broken, (int)HK_COUNT(broken), MEGLET_GFX_WINDING, &odd, NULL);
+    path(&p, unknown, (int)HK_COUNT(unknown), MEGLET_GFX_WINDING, &odd, NULL);
     settle(&p);
     CHECK(at(&p, 5, 2) == 0xFF0000FFu && at(&p, 5, 5) == 0xFFFFFFFFu);
     /* Enumerations out of range are taken as the plainest thing: a filled shape, laid over, with no filter. */
@@ -2744,7 +2744,7 @@ static void check_odd_values(void)
     bounds[0] = nan;
     {
         saved layer = save_layer(&p, bounds, 300, 99);
-        color(&p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        color(&p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
         restore(&p, layer);
     }
     settle(&p);
@@ -2757,7 +2757,7 @@ static void check_odd_values(void)
     rect(&p, 0, 0, 8, 8, &paint, sh);
     H->shader_matrix(H->user, sh, m);
     H->shader_free(H->user, sh);
-    sh = H->shader_radial(H->user, 4, 4, -1, one_colour, NULL, 1, MEGLER_GFX_TILE_CLAMP);
+    sh = H->shader_radial(H->user, 4, 4, -1, one_colour, NULL, 1, MEGLET_GFX_TILE_CLAMP);
     rect(&p, 8, 0, 16, 8, &paint, sh);
     H->shader_free(H->user, sh);
     CHECK(H->shader_linear(H->user, nan, 0, 10, 0, one_colour, NULL, 1, 0) == NULL);
@@ -2769,7 +2769,7 @@ static void check_odd_values(void)
     CHECK_HEX(at(&p, 12, 4), 0xFF00FF00u);
     /* Images and fonts that are nothing. */
     CHECK(!H->image_decode(H->user, "x", 1, p.px, 1, 1, 4) && !H->image_decode(H->user, NULL, 100, p.px, 1, 1, 4));
-    CHECK(!H->image_encode(H->user, NULL, 4, 4, 16, MEGLER_GFX_PNG, 100, bytes_write, NULL) && !H->image_encode(H->user, p.px, 0, 4, 16, MEGLER_GFX_PNG, 100, bytes_write, NULL));
+    CHECK(!H->image_encode(H->user, NULL, 4, 4, 16, MEGLET_GFX_PNG, 100, bytes_write, NULL) && !H->image_encode(H->user, p.px, 0, 4, 16, MEGLET_GFX_PNG, 100, bytes_write, NULL));
     CHECK(H->typeface_from_data(H->user, NULL, 100) == NULL && H->typeface_from_data(H->user, "tiny", 4) == NULL);
     H->bitmap_gone(H->user, 0);
     /* After all of it the canvas draws as before. */
@@ -2805,22 +2805,22 @@ static void worker_draw(pic *p, int round)
 {
     static const u32 two[2] = { 0xFFE02020u, 0xFF2040E0u };
     static const float ends[2] = { 0, 1 };
-    megler_gfx_paint a = paint_of(0xC02060C0u), t = paint_of(0xFF000000u);
-    void *sh = linear(p->g, 0, 0, 100, 0, two, ends, 2, MEGLER_GFX_TILE_MIRROR);
+    meglet_gfx_paint a = paint_of(0xC02060C0u), t = paint_of(0xFF000000u);
+    void *sh = linear(p->g, 0, 0, 100, 0, two, ends, 2, MEGLET_GFX_TILE_MIRROR);
     pathbuf v;
     saved s;
     u16 line_of[40];
     char words[40];
     pic d;
-    color(p, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+    color(p, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
     rect(p, 10, 10, 150, 60, &a, sh);
     memset(&v, 0, sizeof(v));
     pb_star(&v, 80, 110, 60);
-    path(p, v.v, v.n, MEGLER_GFX_EVEN_ODD, &a, NULL);
-    s = save_layer(p, NULL, 128, MEGLER_GFX_BLEND_SRC_OVER);
+    path(p, v.v, v.n, MEGLET_GFX_EVEN_ODD, &a, NULL);
+    s = save_layer(p, NULL, 128, MEGLET_GFX_BLEND_SRC_OVER);
     circle_path(&v, 100, 100, 50);
-    clip_path(p, v.v, v.n, MEGLER_GFX_WINDING, MEGLER_GFX_CLIP_INTERSECT);
-    color(p, 0xFF208040u, MEGLER_GFX_BLEND_SRC_OVER);
+    clip_path(p, v.v, v.n, MEGLET_GFX_WINDING, MEGLET_GFX_CLIP_INTERSECT);
+    color(p, 0xFF208040u, MEGLET_GFX_BLEND_SRC_OVER);
     restore(p, s);
     snprintf(words, sizeof(words), "Thread text %d", round % 7);
     t.text_size = 14.0f + (float)(round % 5);
@@ -2881,12 +2881,12 @@ static void measure_costs(void)
 {
     static u32 small_memory[64 * 64];
     pic screen, photo, large;
-    megler_gfx_paint opaque = paint_of(0xFF2060C0u), faint = paint_of(0x802060C0u), words = paint_of(0xFF000000u), plain = paint_of(0xFF000000u);
+    meglet_gfx_paint opaque = paint_of(0xFF2060C0u), faint = paint_of(0x802060C0u), words = paint_of(0xFF000000u), plain = paint_of(0xFF000000u);
     u16 t[40];
     char line_of[40];
     float bounds[4] = { 100, 100, 300, 300 };
     double made, erased, rects, rounded, flushed, flushedPart, first, again, drawn, copied, shared, kept, layered, composed, strip, written;
-    megler_gfx_image same;
+    meglet_gfx_image same;
     u64 from;
     int i, n;
     say("  what things cost here (a phone's processor is several times slower):");
@@ -2899,11 +2899,11 @@ static void measure_costs(void)
     pic_make(&screen, H, 720, 1280);
     photo_picture(&photo, H);
     pic_make(&large, H, 512, 512);
-    color(&large, 0xFF8040C0u, MEGLER_GFX_BLEND_SRC);
+    color(&large, 0xFF8040C0u, MEGLET_GFX_BLEND_SRC);
     settle(&large);
     from = hk_time_monotonic_ns();
     for (i = 0; i < 50; i++) {
-        color(&screen, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        color(&screen, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
         settle(&screen);
     }
     erased = microseconds(from, 50);
@@ -2926,7 +2926,7 @@ static void measure_costs(void)
        of the 720 x 1280 open. */
     {
         saved part = save(&screen);
-        clip_rect(&screen, 10, 10, 210, 110, MEGLER_GFX_CLIP_INTERSECT);
+        clip_rect(&screen, 10, 10, 210, 110, MEGLET_GFX_CLIP_INTERSECT);
         from = hk_time_monotonic_ns();
         for (i = 0; i < 500; i++) {
             rect(&screen, 10, 10, 50, 50, &opaque, NULL);
@@ -2953,7 +2953,7 @@ static void measure_costs(void)
     }
     settle(&screen);
     drawn = microseconds(from, 500);
-    plain.flags = MEGLER_GFX_FILTER_BITMAP;
+    plain.flags = MEGLET_GFX_FILTER_BITMAP;
     from = hk_time_monotonic_ns();
     for (i = 0; i < 1000; i++) bitmap(&screen, &photo, 0, 0, 64, 64, (float)(i % 10) * 70, (float)(i % 17) * 70, (float)(i % 10) * 70 + 64, (float)(i % 17) * 70 + 64, &plain);
     settle(&screen);
@@ -2977,13 +2977,13 @@ static void measure_costs(void)
        720 x 1280 picture redrawn -- its background, eight rectangles, two lines of text -- and flushed, which is when a host
        that draws elsewhere than in the memory puts the strip there. */
     {
-        megler_gfx_paint bar = paint_of(0xFFE0E0E0u), caret = paint_of(0xFF2060C0u);
+        meglet_gfx_paint bar = paint_of(0xFFE0E0E0u), caret = paint_of(0xFF2060C0u);
         from = hk_time_monotonic_ns();
         for (i = 0; i < 100; i++) {
             saved part = save(&screen);
             int k;
-            clip_rect(&screen, 0, 600, 720, 664, MEGLER_GFX_CLIP_INTERSECT);
-            color(&screen, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+            clip_rect(&screen, 0, 600, 720, 664, MEGLET_GFX_CLIP_INTERSECT);
+            color(&screen, 0xFFFFFFFFu, MEGLET_GFX_BLEND_SRC);
             for (k = 0; k < 7; k++) rect(&screen, (float)(k * 100 + 10), 610, (float)(k * 100 + 90), 612, &bar, NULL);
             if (i & 1) rect(&screen, 300, 614, 302, 650, &caret, NULL);
             text16(&screen, t, units("A line of text in a field", t, 40), 20, 640, &words, NULL, NULL);
@@ -3005,13 +3005,13 @@ static void measure_costs(void)
     written = microseconds(from, 50);
     from = hk_time_monotonic_ns();
     for (i = 0; i < 200; i++) {
-        saved layer = save_layer(&screen, bounds, 128, MEGLER_GFX_BLEND_SRC_OVER);
+        saved layer = save_layer(&screen, bounds, 128, MEGLET_GFX_BLEND_SRC_OVER);
         rect(&screen, 120, 120, 280, 280, &opaque, NULL);
         restore(&screen, layer);
     }
     settle(&screen);
     layered = microseconds(from, 200);
-    faint.blend = MEGLER_GFX_BLEND_XOR;
+    faint.blend = MEGLET_GFX_BLEND_XOR;
     from = hk_time_monotonic_ns();
     for (i = 0; i < 500; i++) oval(&screen, 300, 300, 400, 400, &faint, NULL);
     settle(&screen);
@@ -3060,11 +3060,11 @@ static void write_sheet(void)
         pic_done(&sheet);
         return;
     }
-    color(&sheet, 0xFF404040u, MEGLER_GFX_BLEND_SRC);
+    color(&sheet, 0xFF404040u, MEGLET_GFX_BLEND_SRC);
     settle(&sheet);
     for (i = 0; i < t_nsheet; i++) {
         int ox = (i % columns) * cell_w + 5, oy = (i / columns) * cell_h + 5, w = t_sheet[i].w / 2, h = t_sheet[i].h / 2;
-        megler_gfx_paint white = paint_of(0xFFFFFFFFu);
+        meglet_gfx_paint white = paint_of(0xFFFFFFFFu);
         if (w > cell_w - 10) w = cell_w - 10;
         if (h > cell_h - 30) h = cell_h - 30;
         /* Each pixel of the sheet is the mean of four of the picture, over a mid grey where the picture is transparent. */
@@ -3103,7 +3103,7 @@ int hk_gfx_scenes_run(const hk_gfx_scenes_config *config, hk_test_sink sink, voi
     t_nsheet = 0;
     H = config->host;
     S = hk_gfx_standin();
-    say("a shell's drawing, through megler_gfx_host: scenes drawn, compared with the stand-in's where it can draw them, and checked");
+    say("a shell's drawing, through meglet_gfx_host: scenes drawn, compared with the stand-in's where it can draw them, and checked");
     CHECK(H->canvas_new && H->canvas_free && H->flush && H->touched && H->save && H->save_layer && H->restore && H->set_matrix && H->clip_rect && H->clip_path);
     CHECK(H->draw_color && H->draw_rect && H->draw_round_rect && H->draw_oval && H->draw_path && H->draw_bitmap && H->draw_text);
     CHECK(H->text_measure && H->text_metrics && H->text_bounds && H->text_break && H->text_widths && H->typeface_create && H->typeface_derive && H->typeface_from_data);

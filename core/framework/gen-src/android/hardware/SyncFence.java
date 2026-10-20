@@ -3,7 +3,7 @@ package android.hardware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SyncFence implements java.lang.AutoCloseable, android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final long SIGNAL_TIME_INVALID = -1L;
     public static final long SIGNAL_TIME_PENDING = 9223372036854775807L;
@@ -16,11 +16,11 @@ public final class SyncFence implements java.lang.AutoCloseable, android.os.Parc
     public boolean awaitForever() { return false; }
     public void close() {}
     public int describeContents() { return 0; }
-    public android.os.ParcelFileDescriptor getFdDup() { return (android.os.ParcelFileDescriptor) meglerProps.get("FdDup"); }
-    public java.lang.Object getLock() { return (java.lang.Object) meglerProps.get("Lock"); }
-    public long getNativeFence() { return (meglerProps.get("NativeFence") instanceof Long ? (Long) meglerProps.get("NativeFence") : 0L); }
-    public long getSignalTime() { return (meglerProps.get("SignalTime") instanceof Long ? (Long) meglerProps.get("SignalTime") : 0L); }
-    public boolean isValid() { return (meglerProps.get("Valid") instanceof Boolean ? (Boolean) meglerProps.get("Valid") : false); }
+    public android.os.ParcelFileDescriptor getFdDup() { return (android.os.ParcelFileDescriptor) megletProps.get("FdDup"); }
+    public java.lang.Object getLock() { return (java.lang.Object) megletProps.get("Lock"); }
+    public long getNativeFence() { return (megletProps.get("NativeFence") instanceof Long ? (Long) megletProps.get("NativeFence") : 0L); }
+    public long getSignalTime() { return (megletProps.get("SignalTime") instanceof Long ? (Long) megletProps.get("SignalTime") : 0L); }
+    public boolean isValid() { return (megletProps.get("Valid") instanceof Boolean ? (Boolean) megletProps.get("Valid") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SyncFence() { this((long) 0L); }
 }

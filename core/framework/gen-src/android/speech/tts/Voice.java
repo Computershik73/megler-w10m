@@ -3,7 +3,7 @@ package android.speech.tts;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Voice implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int LATENCY_HIGH = 400;
     public static final int LATENCY_LOW = 200;
@@ -17,12 +17,12 @@ public class Voice implements android.os.Parcelable {
     public static final int QUALITY_VERY_LOW = 100;
     public Voice(java.lang.String p0, java.util.Locale p1, int p2, int p3, boolean p4, java.util.Set p5) {}
     public int describeContents() { return 0; }
-    public java.util.Set getFeatures() { return (meglerProps.get("Features") != null ? (java.util.Set) meglerProps.get("Features") : new java.util.HashSet()); }
-    public int getLatency() { return (meglerProps.get("Latency") instanceof Integer ? (Integer) meglerProps.get("Latency") : 0); }
-    public java.util.Locale getLocale() { return (java.util.Locale) meglerProps.get("Locale"); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public int getQuality() { return (meglerProps.get("Quality") instanceof Integer ? (Integer) meglerProps.get("Quality") : 0); }
-    public boolean isNetworkConnectionRequired() { return (meglerProps.get("NetworkConnectionRequired") instanceof Boolean ? (Boolean) meglerProps.get("NetworkConnectionRequired") : false); }
+    public java.util.Set getFeatures() { return (megletProps.get("Features") != null ? (java.util.Set) megletProps.get("Features") : new java.util.HashSet()); }
+    public int getLatency() { return (megletProps.get("Latency") instanceof Integer ? (Integer) megletProps.get("Latency") : 0); }
+    public java.util.Locale getLocale() { return (java.util.Locale) megletProps.get("Locale"); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public int getQuality() { return (megletProps.get("Quality") instanceof Integer ? (Integer) megletProps.get("Quality") : 0); }
+    public boolean isNetworkConnectionRequired() { return (megletProps.get("NetworkConnectionRequired") instanceof Boolean ? (Boolean) megletProps.get("NetworkConnectionRequired") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     Voice() { this((java.lang.String) null, (java.util.Locale) null, (int) 0, (int) 0, (boolean) false, (java.util.Set) null); }
 }

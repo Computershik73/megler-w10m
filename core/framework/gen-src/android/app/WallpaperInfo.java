@@ -3,18 +3,18 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WallpaperInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public WallpaperInfo(android.content.Context p0, android.content.pm.ResolveInfo p1) {}
     public int describeContents() { return 0; }
     public void dump(android.util.Printer p0, java.lang.String p1) {}
-    public android.content.ComponentName getComponent() { return (android.content.ComponentName) meglerProps.get("Component"); }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-    public android.content.pm.ServiceInfo getServiceInfo() { return (android.content.pm.ServiceInfo) meglerProps.get("ServiceInfo"); }
-    public java.lang.String getServiceName() { return (java.lang.String) meglerProps.get("ServiceName"); }
-    public java.lang.String getSettingsActivity() { return (java.lang.String) meglerProps.get("SettingsActivity"); }
-    public android.net.Uri getSettingsSliceUri() { return (android.net.Uri) meglerProps.get("SettingsSliceUri"); }
-    public boolean getShowMetadataInPreview() { return (meglerProps.get("ShowMetadataInPreview") instanceof Boolean ? (Boolean) meglerProps.get("ShowMetadataInPreview") : false); }
+    public android.content.ComponentName getComponent() { return (android.content.ComponentName) megletProps.get("Component"); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    public android.content.pm.ServiceInfo getServiceInfo() { return (android.content.pm.ServiceInfo) megletProps.get("ServiceInfo"); }
+    public java.lang.String getServiceName() { return (java.lang.String) megletProps.get("ServiceName"); }
+    public java.lang.String getSettingsActivity() { return (java.lang.String) megletProps.get("SettingsActivity"); }
+    public android.net.Uri getSettingsSliceUri() { return (android.net.Uri) megletProps.get("SettingsSliceUri"); }
+    public boolean getShowMetadataInPreview() { return (megletProps.get("ShowMetadataInPreview") instanceof Boolean ? (Boolean) megletProps.get("ShowMetadataInPreview") : false); }
     public java.lang.CharSequence loadAuthor(android.content.pm.PackageManager p0) { return null; }
     public java.lang.CharSequence loadContextDescription(android.content.pm.PackageManager p0) { return null; }
     public android.net.Uri loadContextUri(android.content.pm.PackageManager p0) { return null; }

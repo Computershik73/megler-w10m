@@ -3,7 +3,7 @@ package android.security.keystore;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class KeyPermanentlyInvalidatedException extends java.security.InvalidKeyException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public KeyPermanentlyInvalidatedException() { super(); }
     public KeyPermanentlyInvalidatedException(java.lang.String p0) { super(); }
     public KeyPermanentlyInvalidatedException(java.lang.String p0, java.lang.Throwable p1) { super(); }

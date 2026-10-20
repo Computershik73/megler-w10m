@@ -3,7 +3,7 @@ package android.drm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DrmConvertedStatus {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int STATUS_ERROR = 3;
     public static final int STATUS_INPUTDATA_ERROR = 2;
     public static final int STATUS_OK = 1;

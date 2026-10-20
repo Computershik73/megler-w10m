@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TelephonyDisplayInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO = 2;
     public static final int OVERRIDE_NETWORK_TYPE_LTE_CA = 1;
@@ -17,11 +17,11 @@ public final class TelephonyDisplayInfo implements android.os.Parcelable {
     public TelephonyDisplayInfo(android.os.Parcel p0) {}
     public static java.lang.String overrideNetworkTypeToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public int getNetworkType() { return (meglerProps.get("NetworkType") instanceof Integer ? (Integer) meglerProps.get("NetworkType") : 0); }
-    public int getOverrideNetworkType() { return (meglerProps.get("OverrideNetworkType") instanceof Integer ? (Integer) meglerProps.get("OverrideNetworkType") : 0); }
-    public boolean isNtn() { return (meglerProps.get("Ntn") instanceof Boolean ? (Boolean) meglerProps.get("Ntn") : false); }
-    public boolean isRoaming() { return (meglerProps.get("Roaming") instanceof Boolean ? (Boolean) meglerProps.get("Roaming") : false); }
-    public boolean isSatelliteConstrainedData() { return (meglerProps.get("SatelliteConstrainedData") instanceof Boolean ? (Boolean) meglerProps.get("SatelliteConstrainedData") : false); }
+    public int getNetworkType() { return (megletProps.get("NetworkType") instanceof Integer ? (Integer) megletProps.get("NetworkType") : 0); }
+    public int getOverrideNetworkType() { return (megletProps.get("OverrideNetworkType") instanceof Integer ? (Integer) megletProps.get("OverrideNetworkType") : 0); }
+    public boolean isNtn() { return (megletProps.get("Ntn") instanceof Boolean ? (Boolean) megletProps.get("Ntn") : false); }
+    public boolean isRoaming() { return (megletProps.get("Roaming") instanceof Boolean ? (Boolean) megletProps.get("Roaming") : false); }
+    public boolean isSatelliteConstrainedData() { return (megletProps.get("SatelliteConstrainedData") instanceof Boolean ? (Boolean) megletProps.get("SatelliteConstrainedData") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TelephonyDisplayInfo() { this((android.os.Parcel) null); }
 }

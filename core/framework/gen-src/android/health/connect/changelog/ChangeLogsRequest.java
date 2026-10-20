@@ -3,18 +3,18 @@ package android.health.connect.changelog;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ChangeLogsRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public int getPageSize() { return (meglerProps.get("PageSize") instanceof Integer ? (Integer) meglerProps.get("PageSize") : 0); }
-    public java.lang.String getToken() { return (java.lang.String) meglerProps.get("Token"); }
+    public int getPageSize() { return (megletProps.get("PageSize") instanceof Integer ? (Integer) megletProps.get("PageSize") : 0); }
+    public java.lang.String getToken() { return (java.lang.String) megletProps.get("Token"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected ChangeLogsRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0) {}
-        public android.health.connect.changelog.ChangeLogsRequest build() { android.health.connect.changelog.ChangeLogsRequest x = new android.health.connect.changelog.ChangeLogsRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.health.connect.changelog.ChangeLogsRequest.Builder setPageSize(int p0) { meglerProps.put("PageSize", Integer.valueOf(p0)); return this; }
+        public android.health.connect.changelog.ChangeLogsRequest build() { android.health.connect.changelog.ChangeLogsRequest x = new android.health.connect.changelog.ChangeLogsRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.changelog.ChangeLogsRequest.Builder setPageSize(int p0) { megletProps.put("PageSize", Integer.valueOf(p0)); return this; }
         Builder() { this((java.lang.String) null); }
     }
 }

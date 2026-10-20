@@ -3,13 +3,13 @@ package android.window;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TrustedPresentationThresholds implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TrustedPresentationThresholds(float p0, float p1, int p2) {}
     public int describeContents() { return 0; }
-    public float getMinAlpha() { return (meglerProps.get("MinAlpha") instanceof Float ? (Float) meglerProps.get("MinAlpha") : 0f); }
-    public float getMinFractionRendered() { return (meglerProps.get("MinFractionRendered") instanceof Float ? (Float) meglerProps.get("MinFractionRendered") : 0f); }
-    public int getStabilityRequirementMillis() { return (meglerProps.get("StabilityRequirementMillis") instanceof Integer ? (Integer) meglerProps.get("StabilityRequirementMillis") : 0); }
+    public float getMinAlpha() { return (megletProps.get("MinAlpha") instanceof Float ? (Float) megletProps.get("MinAlpha") : 0f); }
+    public float getMinFractionRendered() { return (megletProps.get("MinFractionRendered") instanceof Float ? (Float) megletProps.get("MinFractionRendered") : 0f); }
+    public int getStabilityRequirementMillis() { return (megletProps.get("StabilityRequirementMillis") instanceof Integer ? (Integer) megletProps.get("StabilityRequirementMillis") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TrustedPresentationThresholds() { this((float) 0f, (float) 0f, (int) 0); }
 }

@@ -3,7 +3,7 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class StreamConfigurationMap {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int HAL_DATASPACE_ARBITRARY = 1;
     public static final int HAL_DATASPACE_DEPTH = 4096;
     public static final int HAL_DATASPACE_DYNAMIC_DEPTH = 4098;
@@ -21,13 +21,13 @@ public final class StreamConfigurationMap {
     public static int imageFormatToPublic(int p0) { return 0; }
     public static boolean isOutputSupportedFor(java.lang.Class p0) { return false; }
     public android.util.Size[] getHighResolutionOutputSizes(int p0) { return null; }
-    public android.util.Range[] getHighSpeedVideoFpsRanges() { return (android.util.Range[]) meglerProps.get("HighSpeedVideoFpsRanges"); }
+    public android.util.Range[] getHighSpeedVideoFpsRanges() { return (android.util.Range[]) megletProps.get("HighSpeedVideoFpsRanges"); }
     public android.util.Range[] getHighSpeedVideoFpsRangesFor(android.util.Size p0) { return null; }
-    public android.util.Size[] getHighSpeedVideoSizes() { return (android.util.Size[]) meglerProps.get("HighSpeedVideoSizes"); }
+    public android.util.Size[] getHighSpeedVideoSizes() { return (android.util.Size[]) megletProps.get("HighSpeedVideoSizes"); }
     public android.util.Size[] getHighSpeedVideoSizesFor(android.util.Range p0) { return null; }
-    public int[] getInputFormats() { return (int[]) meglerProps.get("InputFormats"); }
+    public int[] getInputFormats() { return (int[]) megletProps.get("InputFormats"); }
     public android.util.Size[] getInputSizes(int p0) { return null; }
-    public int[] getOutputFormats() { return (int[]) meglerProps.get("OutputFormats"); }
+    public int[] getOutputFormats() { return (int[]) megletProps.get("OutputFormats"); }
     public long getOutputMinFrameDuration(int p0, android.util.Size p1) { return 0L; }
     public long getOutputMinFrameDuration(java.lang.Class p0, android.util.Size p1) { return 0L; }
     public android.util.Size[] getOutputSizes(int p0) { return null; }

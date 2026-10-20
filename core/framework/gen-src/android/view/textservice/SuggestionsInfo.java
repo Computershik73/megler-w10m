@@ -3,7 +3,7 @@ package android.view.textservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SuggestionsInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int RESULT_ATTR_DONT_SHOW_UI_FOR_SUGGESTIONS = 16;
     public static final int RESULT_ATTR_HAS_RECOMMENDED_SUGGESTIONS = 4;
@@ -14,11 +14,11 @@ public final class SuggestionsInfo implements android.os.Parcelable {
     public SuggestionsInfo(int p0, java.lang.String[] p1, int p2, int p3) {}
     public SuggestionsInfo(android.os.Parcel p0) {}
     public int describeContents() { return 0; }
-    public int getCookie() { return (meglerProps.get("Cookie") instanceof Integer ? (Integer) meglerProps.get("Cookie") : 0); }
-    public int getSequence() { return (meglerProps.get("Sequence") instanceof Integer ? (Integer) meglerProps.get("Sequence") : 0); }
+    public int getCookie() { return (megletProps.get("Cookie") instanceof Integer ? (Integer) megletProps.get("Cookie") : 0); }
+    public int getSequence() { return (megletProps.get("Sequence") instanceof Integer ? (Integer) megletProps.get("Sequence") : 0); }
     public java.lang.String getSuggestionAt(int p0) { return null; }
-    public int getSuggestionsAttributes() { return (meglerProps.get("SuggestionsAttributes") instanceof Integer ? (Integer) meglerProps.get("SuggestionsAttributes") : 0); }
-    public int getSuggestionsCount() { return (meglerProps.get("SuggestionsCount") instanceof Integer ? (Integer) meglerProps.get("SuggestionsCount") : 0); }
+    public int getSuggestionsAttributes() { return (megletProps.get("SuggestionsAttributes") instanceof Integer ? (Integer) megletProps.get("SuggestionsAttributes") : 0); }
+    public int getSuggestionsCount() { return (megletProps.get("SuggestionsCount") instanceof Integer ? (Integer) megletProps.get("SuggestionsCount") : 0); }
     public void setCookieAndSequence(int p0, int p1) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     SuggestionsInfo() { this((android.os.Parcel) null); }

@@ -3,7 +3,7 @@ package android.opengl;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GLES31Ext {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int GL_BLEND_ADVANCED_COHERENT_KHR = 37509;
     public static final int GL_BUFFER_KHR = 33504;
     public static final int GL_CLAMP_TO_BORDER_EXT = 33069;

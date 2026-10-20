@@ -3,7 +3,7 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TextBoundsInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_CHARACTER_LINEFEED = 2;
     public static final int FLAG_CHARACTER_PUNCTUATION = 4;
@@ -14,30 +14,30 @@ public final class TextBoundsInfo implements android.os.Parcelable {
     public int getCharacterBidiLevel(int p0) { return 0; }
     public void getCharacterBounds(int p0, android.graphics.RectF p1) {}
     public int getCharacterFlags(int p0) { return 0; }
-    public int getEndIndex() { return (meglerProps.get("EndIndex") instanceof Integer ? (Integer) meglerProps.get("EndIndex") : 0); }
-    public android.text.SegmentFinder getGraphemeSegmentFinder() { return (android.text.SegmentFinder) meglerProps.get("GraphemeSegmentFinder"); }
-    public android.text.SegmentFinder getLineSegmentFinder() { return (android.text.SegmentFinder) meglerProps.get("LineSegmentFinder"); }
+    public int getEndIndex() { return (megletProps.get("EndIndex") instanceof Integer ? (Integer) megletProps.get("EndIndex") : 0); }
+    public android.text.SegmentFinder getGraphemeSegmentFinder() { return (android.text.SegmentFinder) megletProps.get("GraphemeSegmentFinder"); }
+    public android.text.SegmentFinder getLineSegmentFinder() { return (android.text.SegmentFinder) megletProps.get("LineSegmentFinder"); }
     public void getMatrix(android.graphics.Matrix p0) {}
     public int getOffsetForPosition(float p0, float p1) { return 0; }
     public int[] getRangeForRect(android.graphics.RectF p0, android.text.SegmentFinder p1, android.text.Layout.TextInclusionStrategy p2) { return null; }
-    public int getStartIndex() { return (meglerProps.get("StartIndex") instanceof Integer ? (Integer) meglerProps.get("StartIndex") : 0); }
-    public android.text.SegmentFinder getWordSegmentFinder() { return (android.text.SegmentFinder) meglerProps.get("WordSegmentFinder"); }
+    public int getStartIndex() { return (megletProps.get("StartIndex") instanceof Integer ? (Integer) megletProps.get("StartIndex") : 0); }
+    public android.text.SegmentFinder getWordSegmentFinder() { return (android.text.SegmentFinder) megletProps.get("WordSegmentFinder"); }
     public android.os.Bundle toBundle() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected TextBoundsInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(int p0, int p1) {}
-        public android.view.inputmethod.TextBoundsInfo build() { android.view.inputmethod.TextBoundsInfo x = new android.view.inputmethod.TextBoundsInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.view.inputmethod.TextBoundsInfo build() { android.view.inputmethod.TextBoundsInfo x = new android.view.inputmethod.TextBoundsInfo(); x.megletProps.putAll(megletProps); return x; }
         public android.view.inputmethod.TextBoundsInfo.Builder clear() { return this; }
-        public android.view.inputmethod.TextBoundsInfo.Builder setCharacterBidiLevel(int[] p0) { meglerProps.put("CharacterBidiLevel", p0); return this; }
-        public android.view.inputmethod.TextBoundsInfo.Builder setCharacterBounds(float[] p0) { meglerProps.put("CharacterBounds", p0); return this; }
-        public android.view.inputmethod.TextBoundsInfo.Builder setCharacterFlags(int[] p0) { meglerProps.put("CharacterFlags", p0); return this; }
-        public android.view.inputmethod.TextBoundsInfo.Builder setGraphemeSegmentFinder(android.text.SegmentFinder p0) { meglerProps.put("GraphemeSegmentFinder", p0); return this; }
-        public android.view.inputmethod.TextBoundsInfo.Builder setLineSegmentFinder(android.text.SegmentFinder p0) { meglerProps.put("LineSegmentFinder", p0); return this; }
-        public android.view.inputmethod.TextBoundsInfo.Builder setMatrix(android.graphics.Matrix p0) { meglerProps.put("Matrix", p0); return this; }
+        public android.view.inputmethod.TextBoundsInfo.Builder setCharacterBidiLevel(int[] p0) { megletProps.put("CharacterBidiLevel", p0); return this; }
+        public android.view.inputmethod.TextBoundsInfo.Builder setCharacterBounds(float[] p0) { megletProps.put("CharacterBounds", p0); return this; }
+        public android.view.inputmethod.TextBoundsInfo.Builder setCharacterFlags(int[] p0) { megletProps.put("CharacterFlags", p0); return this; }
+        public android.view.inputmethod.TextBoundsInfo.Builder setGraphemeSegmentFinder(android.text.SegmentFinder p0) { megletProps.put("GraphemeSegmentFinder", p0); return this; }
+        public android.view.inputmethod.TextBoundsInfo.Builder setLineSegmentFinder(android.text.SegmentFinder p0) { megletProps.put("LineSegmentFinder", p0); return this; }
+        public android.view.inputmethod.TextBoundsInfo.Builder setMatrix(android.graphics.Matrix p0) { megletProps.put("Matrix", p0); return this; }
         public android.view.inputmethod.TextBoundsInfo.Builder setStartAndEnd(int p0, int p1) { return this; }
-        public android.view.inputmethod.TextBoundsInfo.Builder setWordSegmentFinder(android.text.SegmentFinder p0) { meglerProps.put("WordSegmentFinder", p0); return this; }
+        public android.view.inputmethod.TextBoundsInfo.Builder setWordSegmentFinder(android.text.SegmentFinder p0) { megletProps.put("WordSegmentFinder", p0); return this; }
         Builder() { this((int) 0, (int) 0); }
     }
 }

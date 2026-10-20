@@ -8,41 +8,41 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LauncherActivityInfo {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static boolean isVisible(java.lang.CharSequence p0) { return false; }
-    private android.content.Context meglerContext;
-    private ActivityInfo meglerActivity;
-    private android.os.UserHandle meglerUser;
+    private android.content.Context megletContext;
+    private ActivityInfo megletActivity;
+    private android.os.UserHandle megletUser;
     /** Android has LauncherActivityInfo(Context, LauncherActivityInfoInternal); this is its equivalent here: the activity, and whose it is. */
-    LauncherActivityInfo(android.content.Context c, ActivityInfo a, android.os.UserHandle u) { meglerContext = c; meglerActivity = a; meglerUser = u; }
-    public android.content.pm.ActivityInfo getActivityInfo() { return meglerActivity; }
+    LauncherActivityInfo(android.content.Context c, ActivityInfo a, android.os.UserHandle u) { megletContext = c; megletActivity = a; megletUser = u; }
+    public android.content.pm.ActivityInfo getActivityInfo() { return megletActivity; }
     public int getApplicationFlags() { ApplicationInfo a = getApplicationInfo(); return a != null ? a.flags : 0; }
     public android.content.pm.ApplicationInfo getApplicationInfo() {
-        if (meglerActivity == null) return null;
-        if (meglerActivity.applicationInfo != null) return meglerActivity.applicationInfo;
-        try { return meglerContext.getPackageManager().getApplicationInfo(meglerActivity.packageName, 0); } catch (Exception e) { return null; }
+        if (megletActivity == null) return null;
+        if (megletActivity.applicationInfo != null) return megletActivity.applicationInfo;
+        try { return megletContext.getPackageManager().getApplicationInfo(megletActivity.packageName, 0); } catch (Exception e) { return null; }
     }
     public android.graphics.drawable.Drawable getBadgedIcon(int p0) { return getIcon(p0); }
-    public android.content.ComponentName getComponentName() { return meglerActivity != null ? new android.content.ComponentName(meglerActivity.packageName, meglerActivity.name) : null; }
+    public android.content.ComponentName getComponentName() { return megletActivity != null ? new android.content.ComponentName(megletActivity.packageName, megletActivity.name) : null; }
     public long getFirstInstallTime() {
-        try { return meglerContext.getPackageManager().getPackageInfo(meglerActivity.packageName, 0).firstInstallTime; } catch (Exception e) { return 0L; }
+        try { return megletContext.getPackageManager().getPackageInfo(megletActivity.packageName, 0).firstInstallTime; } catch (Exception e) { return 0L; }
     }
     /** The activity's icon, or its application's when it has none of its own, as Android answers. */
     public android.graphics.drawable.Drawable getIcon(int p0) {
-        android.graphics.drawable.Drawable d = meglerActivity != null ? meglerActivity.loadIcon(meglerContext.getPackageManager()) : null;
-        if (d == null) { ApplicationInfo a = getApplicationInfo(); if (a != null) d = a.loadIcon(meglerContext.getPackageManager()); }
+        android.graphics.drawable.Drawable d = megletActivity != null ? megletActivity.loadIcon(megletContext.getPackageManager()) : null;
+        if (d == null) { ApplicationInfo a = getApplicationInfo(); if (a != null) d = a.loadIcon(megletContext.getPackageManager()); }
         return d;
     }
     /** The activity's label, or its application's when it has none of its own, as Android answers. */
     public java.lang.CharSequence getLabel() {
         java.lang.CharSequence l = null;
-        if (meglerActivity != null && (meglerActivity.labelRes != 0 || meglerActivity.nonLocalizedLabel != null)) l = meglerActivity.loadLabel(meglerContext.getPackageManager());
-        if (l == null || l.length() == 0) { ApplicationInfo a = getApplicationInfo(); if (a != null) l = a.loadLabel(meglerContext.getPackageManager()); }
-        return l != null ? l : (meglerActivity != null ? meglerActivity.name : "");
+        if (megletActivity != null && (megletActivity.labelRes != 0 || megletActivity.nonLocalizedLabel != null)) l = megletActivity.loadLabel(megletContext.getPackageManager());
+        if (l == null || l.length() == 0) { ApplicationInfo a = getApplicationInfo(); if (a != null) l = a.loadLabel(megletContext.getPackageManager()); }
+        return l != null ? l : (megletActivity != null ? megletActivity.name : "");
     }
-    public float getLoadingProgress() { return (meglerProps.get("LoadingProgress") instanceof Float ? (Float) meglerProps.get("LoadingProgress") : 0f); }
-    public java.lang.String getName() { return meglerActivity != null ? meglerActivity.name : null; }
-    public android.os.UserHandle getUser() { return meglerUser; }
+    public float getLoadingProgress() { return (megletProps.get("LoadingProgress") instanceof Float ? (Float) megletProps.get("LoadingProgress") : 0f); }
+    public java.lang.String getName() { return megletActivity != null ? megletActivity.name : null; }
+    public android.os.UserHandle getUser() { return megletUser; }
     public boolean supportsMultiInstance() { return false; }
     protected LauncherActivityInfo() {}
 }

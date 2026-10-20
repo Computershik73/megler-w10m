@@ -3,12 +3,12 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ScriptIntrinsicLUT extends android.renderscript.ScriptIntrinsic {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.renderscript.ScriptIntrinsicLUT create(android.renderscript.RenderScript p0, android.renderscript.Element p1) { return new ScriptIntrinsicLUT(); }
     public void destroy() {}
     public void forEach(android.renderscript.Allocation p0, android.renderscript.Allocation p1) {}
     public void forEach(android.renderscript.Allocation p0, android.renderscript.Allocation p1, android.renderscript.Script.LaunchOptions p2) {}
-    public android.renderscript.Script.KernelID getKernelID() { return (android.renderscript.Script.KernelID) meglerProps.get("KernelID"); }
+    public android.renderscript.Script.KernelID getKernelID() { return (android.renderscript.Script.KernelID) megletProps.get("KernelID"); }
     public void setAlpha(int p0, int p1) {}
     public void setBlue(int p0, int p1) {}
     public void setGreen(int p0, int p1) {}

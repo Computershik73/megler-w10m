@@ -3,11 +3,11 @@ package android.service.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Action implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public Action(android.app.slice.Slice p0) {}
     public int describeContents() { return 0; }
-    public android.app.slice.Slice getSlice() { return (android.app.slice.Slice) meglerProps.get("Slice"); }
+    public android.app.slice.Slice getSlice() { return (android.app.slice.Slice) megletProps.get("Slice"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     Action() { this((android.app.slice.Slice) null); }
 }

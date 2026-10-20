@@ -3,14 +3,14 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CellInfoNr extends android.telephony.CellInfo {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public CellInfoNr() { super(); }
     public CellInfoNr(int p0, boolean p1, long p2, android.telephony.CellIdentityNr p3, android.telephony.CellSignalStrengthNr p4) { super(); }
     protected static android.telephony.CellInfoNr createFromParcelBody(android.os.Parcel p0) { return new CellInfoNr(); }
-    public android.telephony.CellIdentity getCellIdentity() { return (android.telephony.CellIdentity) meglerProps.get("CellIdentity"); }
-    public android.telephony.CellSignalStrength getCellSignalStrength() { return (android.telephony.CellSignalStrength) meglerProps.get("CellSignalStrength"); }
+    public android.telephony.CellIdentity getCellIdentity() { return (android.telephony.CellIdentity) megletProps.get("CellIdentity"); }
+    public android.telephony.CellSignalStrength getCellSignalStrength() { return (android.telephony.CellSignalStrength) megletProps.get("CellSignalStrength"); }
     public android.telephony.CellInfo sanitizeLocationInfo() { return null; }
-    public void setCellIdentity(android.telephony.CellIdentityNr p0) { meglerProps.put("CellIdentity", p0); }
+    public void setCellIdentity(android.telephony.CellIdentityNr p0) { megletProps.put("CellIdentity", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

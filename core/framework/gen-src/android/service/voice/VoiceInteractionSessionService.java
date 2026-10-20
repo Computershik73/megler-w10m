@@ -3,7 +3,7 @@ package android.service.voice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class VoiceInteractionSessionService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public VoiceInteractionSessionService() { super(); }
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
     public abstract android.service.voice.VoiceInteractionSession onNewSession(android.os.Bundle p0);

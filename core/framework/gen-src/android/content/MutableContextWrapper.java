@@ -3,8 +3,8 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MutableContextWrapper extends android.content.ContextWrapper {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public MutableContextWrapper(android.content.Context p0) { super(p0); }
-    public void setBaseContext(android.content.Context p0) { meglerProps.put("BaseContext", p0); }
+    public void setBaseContext(android.content.Context p0) { megletProps.put("BaseContext", p0); }
     MutableContextWrapper() { this((android.content.Context) null); }
 }

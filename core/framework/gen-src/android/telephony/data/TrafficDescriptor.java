@@ -3,31 +3,31 @@ package android.telephony.data;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TrafficDescriptor implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TrafficDescriptor(java.lang.String p0, byte[] p1) {}
     public int describeContents() { return 0; }
-    public java.lang.String getDataNetworkName() { return (java.lang.String) meglerProps.get("DataNetworkName"); }
-    public byte[] getOsAppId() { return (byte[]) meglerProps.get("OsAppId"); }
+    public java.lang.String getDataNetworkName() { return (java.lang.String) megletProps.get("DataNetworkName"); }
+    public byte[] getOsAppId() { return (byte[]) megletProps.get("OsAppId"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TrafficDescriptor() { this((java.lang.String) null, (byte[]) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.telephony.data.TrafficDescriptor build() { android.telephony.data.TrafficDescriptor x = new android.telephony.data.TrafficDescriptor(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.telephony.data.TrafficDescriptor.Builder setDataNetworkName(java.lang.String p0) { meglerProps.put("DataNetworkName", p0); return this; }
-        public android.telephony.data.TrafficDescriptor.Builder setOsAppId(byte[] p0) { meglerProps.put("OsAppId", p0); return this; }
+        public android.telephony.data.TrafficDescriptor build() { android.telephony.data.TrafficDescriptor x = new android.telephony.data.TrafficDescriptor(); x.megletProps.putAll(megletProps); return x; }
+        public android.telephony.data.TrafficDescriptor.Builder setDataNetworkName(java.lang.String p0) { megletProps.put("DataNetworkName", p0); return this; }
+        public android.telephony.data.TrafficDescriptor.Builder setOsAppId(byte[] p0) { megletProps.put("OsAppId", p0); return this; }
     }
     public static final class OsAppId {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static java.util.UUID ANDROID_OS_ID;
         public OsAppId(java.util.UUID p0, java.lang.String p1) {}
         public OsAppId(java.util.UUID p0, java.lang.String p1, int p2) {}
         public OsAppId(byte[] p0) {}
-        public java.lang.String getAppId() { return (java.lang.String) meglerProps.get("AppId"); }
-        public byte[] getBytes() { return (byte[]) meglerProps.get("Bytes"); }
-        public int getDifferentiator() { return (meglerProps.get("Differentiator") instanceof Integer ? (Integer) meglerProps.get("Differentiator") : 0); }
-        public java.util.UUID getOsId() { return (java.util.UUID) meglerProps.get("OsId"); }
+        public java.lang.String getAppId() { return (java.lang.String) megletProps.get("AppId"); }
+        public byte[] getBytes() { return (byte[]) megletProps.get("Bytes"); }
+        public int getDifferentiator() { return (megletProps.get("Differentiator") instanceof Integer ? (Integer) megletProps.get("Differentiator") : 0); }
+        public java.util.UUID getOsId() { return (java.util.UUID) megletProps.get("OsId"); }
         OsAppId() { this((byte[]) null); }
     }
 }

@@ -3,7 +3,7 @@ package android.media;
 import java.nio.ByteBuffer;
 
 /**
- * PCM playback through Megler's mixer. Streaming tracks block on write while the mixer's ring is full (as Android's do); static tracks
+ * PCM playback through Meglet's mixer. Streaming tracks block on write while the mixer's ring is full (as Android's do); static tracks
  * keep what was written and play it from a thread of their own, looping when asked.
  */
 public class AudioTrack implements AudioRouting {
@@ -35,7 +35,7 @@ public class AudioTrack implements AudioRouting {
         mChannels = AudioFormat.channelCount(channelConfig);
         mEncoding = audioFormat == AudioFormat.ENCODING_DEFAULT ? AudioFormat.ENCODING_PCM_16BIT : audioFormat;
         mMode = mode; mBufferBytes = bufferSizeInBytes; mSession = sessionId;
-        if (mode == MODE_STREAM) { mId = megler.Audio.trackOpen(mRate, mChannels); mState = mId >= 0 ? STATE_INITIALIZED : STATE_UNINITIALIZED; }
+        if (mode == MODE_STREAM) { mId = meglet.Audio.trackOpen(mRate, mChannels); mState = mId >= 0 ? STATE_INITIALIZED : STATE_UNINITIALIZED; }
         else { mStatic = new byte[Math.max(0, bufferSizeInBytes)]; mState = STATE_NO_STATIC_DATA; }
     }
     public AudioTrack(AudioAttributes attributes, AudioFormat format, int bufferSizeInBytes, int mode, int sessionId) {
@@ -95,8 +95,8 @@ public class AudioTrack implements AudioRouting {
     private static final boolean TRACE = System.getenv("TL_MEDIA_TRACE") != null;
     private long mTraceAt; private long mWritten;
     public int getPlaybackHeadPosition() {
-        int p = mId >= 0 ? (int) (megler.Audio.trackPosition(mId) - mBase) : 0;
-        if (TRACE && System.currentTimeMillis() - mTraceAt > 1000) { mTraceAt = System.currentTimeMillis(); android.util.Log.d("AudioTrack", "track " + mId + " (" + mRate + " Hz, encoding " + mEncoding + ", " + (mPlayState == PLAYSTATE_PLAYING ? "playing" : "paused") + ") at frame " + p + ", " + mWritten + " bytes written, pending " + (mId >= 0 ? megler.Audio.trackPending(mId) : -1)); }
+        int p = mId >= 0 ? (int) (meglet.Audio.trackPosition(mId) - mBase) : 0;
+        if (TRACE && System.currentTimeMillis() - mTraceAt > 1000) { mTraceAt = System.currentTimeMillis(); android.util.Log.d("AudioTrack", "track " + mId + " (" + mRate + " Hz, encoding " + mEncoding + ", " + (mPlayState == PLAYSTATE_PLAYING ? "playing" : "paused") + ") at frame " + p + ", " + mWritten + " bytes written, pending " + (mId >= 0 ? meglet.Audio.trackPending(mId) : -1)); }
         return p;
     }
     public boolean getTimestamp(AudioTimestamp ts) { if (mId < 0) return false; ts.framePosition = getPlaybackHeadPosition(); ts.nanoTime = System.nanoTime(); return true; }
@@ -104,7 +104,7 @@ public class AudioTrack implements AudioRouting {
     public int reloadStaticData() { return SUCCESS; }
     public int setStereoVolume(float l, float r) { mL = l; mR = r; applyVolume(); return SUCCESS; }
     public int setVolume(float v) { mVolume = v; applyVolume(); return SUCCESS; }
-    private void applyVolume() { if (mId >= 0) megler.Audio.trackVolume(mId, Math.max(0, Math.min(1, mVolume * mL)), Math.max(0, Math.min(1, mVolume * mR))); }
+    private void applyVolume() { if (mId >= 0) meglet.Audio.trackVolume(mId, Math.max(0, Math.min(1, mVolume * mL)), Math.max(0, Math.min(1, mVolume * mR))); }
     public int setAuxEffectSendLevel(float l) { return SUCCESS; }
     public int attachAuxEffect(int id) { return SUCCESS; }
     public int setPresentation(AudioPresentation p) { return SUCCESS; }
@@ -112,29 +112,29 @@ public class AudioTrack implements AudioRouting {
         if (mState == STATE_UNINITIALIZED) throw new IllegalStateException("play() called on uninitialized AudioTrack.");
         mPlayState = PLAYSTATE_PLAYING;
         if (mMode == MODE_STATIC) { startStatic(); return; }
-        megler.Audio.trackPlay(mId, true);
+        meglet.Audio.trackPlay(mId, true);
     }
-    public void pause() { if (mPlayState == PLAYSTATE_PLAYING) { mPlayState = PLAYSTATE_PAUSED; if (mId >= 0) megler.Audio.trackPlay(mId, false); } }
+    public void pause() { if (mPlayState == PLAYSTATE_PLAYING) { mPlayState = PLAYSTATE_PAUSED; if (mId >= 0) meglet.Audio.trackPlay(mId, false); } }
     public void stop() {
         if (mState == STATE_UNINITIALIZED) throw new IllegalStateException("stop() called on uninitialized AudioTrack.");
         mPlayState = PLAYSTATE_STOPPED;
         if (mStaticThread != null) { mStaticThread.interrupt(); mStaticThread = null; }
-        if (mId >= 0) { megler.Audio.trackFlush(mId); megler.Audio.trackPlay(mId, false); mBase = megler.Audio.trackPosition(mId); }
+        if (mId >= 0) { meglet.Audio.trackFlush(mId); meglet.Audio.trackPlay(mId, false); mBase = meglet.Audio.trackPosition(mId); }
     }
-    public void flush() { if (mId >= 0 && mMode == MODE_STREAM) megler.Audio.trackFlush(mId); }
-    public void release() { stop0(); if (mId >= 0) { megler.Audio.trackClose(mId); mId = -1; } mState = STATE_UNINITIALIZED; }
+    public void flush() { if (mId >= 0 && mMode == MODE_STREAM) meglet.Audio.trackFlush(mId); }
+    public void release() { stop0(); if (mId >= 0) { meglet.Audio.trackClose(mId); mId = -1; } mState = STATE_UNINITIALIZED; }
     private void stop0() { try { if (mState != STATE_UNINITIALIZED) stop(); } catch (IllegalStateException e) {} }
     @Override protected void finalize() throws Throwable { try { release(); } finally { super.finalize(); } }
     private void startStatic() {
         if (mStaticThread != null) return;
-        if (mId < 0) { mId = megler.Audio.trackOpen(mRate, mChannels); applyVolume(); }
-        megler.Audio.trackPlay(mId, true);
+        if (mId < 0) { mId = meglet.Audio.trackOpen(mRate, mChannels); applyVolume(); }
+        meglet.Audio.trackPlay(mId, true);
         final byte[] data = mStatic; final int len = mStaticLen; final int loops = mLoopCount;
         mStaticThread = new Thread(() -> {
             int left = loops;
             do {
                 int off = 0;
-                while (off < len && !Thread.currentThread().isInterrupted()) { int w = megler.Audio.trackWriteBytes(mId, data, off, len - off, mEncoding, true); if (w <= 0) break; off += w; }
+                while (off < len && !Thread.currentThread().isInterrupted()) { int w = meglet.Audio.trackWriteBytes(mId, data, off, len - off, mEncoding, true); if (w <= 0) break; off += w; }
                 if (left > 0) left--;
             } while ((left != 0) && !Thread.currentThread().isInterrupted());
         }, "AudioTrack static");
@@ -153,19 +153,19 @@ public class AudioTrack implements AudioRouting {
         if (mState == STATE_UNINITIALIZED || mEncoding == AudioFormat.ENCODING_PCM_FLOAT) return ERROR_INVALID_OPERATION;
         if (data == null || off < 0 || size < 0 || off + size > data.length) return ERROR_BAD_VALUE;
         if (mMode == MODE_STATIC) return writeStatic(data, off, size);
-        return megler.Audio.trackWriteBytes(mId, data, off, size, mEncoding, mode == WRITE_BLOCKING);
+        return meglet.Audio.trackWriteBytes(mId, data, off, size, mEncoding, mode == WRITE_BLOCKING);
     }
     public int write(short[] data, int off, int size) { return write(data, off, size, WRITE_BLOCKING); }
     public int write(short[] data, int off, int size, int mode) {
         if (mState == STATE_UNINITIALIZED || mEncoding != AudioFormat.ENCODING_PCM_16BIT) return ERROR_INVALID_OPERATION;
         if (data == null || off < 0 || size < 0 || off + size > data.length) return ERROR_BAD_VALUE;
         if (mMode == MODE_STATIC) { byte[] b = new byte[size * 2]; for (int i = 0; i < size; i++) { b[2 * i] = (byte) data[off + i]; b[2 * i + 1] = (byte) (data[off + i] >> 8); } return writeStatic(b, 0, b.length) / 2; }
-        return megler.Audio.trackWrite(mId, data, off, size, mode == WRITE_BLOCKING);
+        return meglet.Audio.trackWrite(mId, data, off, size, mode == WRITE_BLOCKING);
     }
     public int write(float[] data, int off, int size, int mode) {
         if (mState == STATE_UNINITIALIZED || mEncoding != AudioFormat.ENCODING_PCM_FLOAT) return ERROR_INVALID_OPERATION;
         if (data == null || off < 0 || size < 0 || off + size > data.length) return ERROR_BAD_VALUE;
-        return megler.Audio.trackWriteFloat(mId, data, off, size, mode == WRITE_BLOCKING);
+        return meglet.Audio.trackWriteFloat(mId, data, off, size, mode == WRITE_BLOCKING);
     }
     public int write(ByteBuffer data, int size, int mode) {
         if (data == null || size < 0 || size > data.remaining()) return ERROR_BAD_VALUE;
@@ -186,7 +186,7 @@ public class AudioTrack implements AudioRouting {
         return w;
     }
     public int write(ByteBuffer data, int size, int mode, long ts) { return write(data, size, mode); }
-    public AudioDeviceInfo getRoutedDevice() { return AudioDeviceInfo.meglerSpeaker(); }
+    public AudioDeviceInfo getRoutedDevice() { return AudioDeviceInfo.megletSpeaker(); }
     public boolean setPreferredDevice(AudioDeviceInfo d) { return true; }
     public AudioDeviceInfo getPreferredDevice() { return null; }
     public void addOnRoutingChangedListener(AudioRouting.OnRoutingChangedListener l, android.os.Handler h) {}
@@ -194,7 +194,7 @@ public class AudioTrack implements AudioRouting {
     public void registerStreamEventCallback(java.util.concurrent.Executor e, StreamEventCallback cb) {}
     public void unregisterStreamEventCallback(StreamEventCallback cb) {}
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
     public static final int DUAL_MONO_MODE_LL = 2;
     public static final int DUAL_MONO_MODE_LR = 1;
     public static final int DUAL_MONO_MODE_OFF = 0;
@@ -214,22 +214,22 @@ public class AudioTrack implements AudioRouting {
     public void addOnCodecFormatChangedListener(java.util.concurrent.Executor p0, android.media.AudioTrack.OnCodecFormatChangedListener p1) {}
     public android.media.VolumeShaper createVolumeShaper(android.media.VolumeShaper.Configuration p0) { return null; }
     public android.media.AudioAttributes getAudioAttributes() { return null; }
-    public float getAudioDescriptionMixLeveldB() { return (meglerFill.get("AudioDescriptionMixLeveldB") instanceof Float ? (Float) meglerFill.get("AudioDescriptionMixLeveldB") : 0f); }
-    public int getDualMonoMode() { return (meglerFill.get("DualMonoMode") instanceof Integer ? (Integer) meglerFill.get("DualMonoMode") : 0); }
+    public float getAudioDescriptionMixLeveldB() { return (megletFill.get("AudioDescriptionMixLeveldB") instanceof Float ? (Float) megletFill.get("AudioDescriptionMixLeveldB") : 0f); }
+    public int getDualMonoMode() { return (megletFill.get("DualMonoMode") instanceof Integer ? (Integer) megletFill.get("DualMonoMode") : 0); }
     public int getLatency() { return 0; }
-    public android.media.metrics.LogSessionId getLogSessionId() { Object v = meglerFill.get("LogSessionId"); return v != null ? (android.media.metrics.LogSessionId) v : android.media.metrics.LogSessionId.LOG_SESSION_ID_NONE; }
+    public android.media.metrics.LogSessionId getLogSessionId() { Object v = megletFill.get("LogSessionId"); return v != null ? (android.media.metrics.LogSessionId) v : android.media.metrics.LogSessionId.LOG_SESSION_ID_NONE; }
     public android.os.PersistableBundle getMetrics() { return null; }
     protected int getNativeFrameCount() { return 0; }
     public int getOffloadDelay() { return 0; }
     public int getOffloadPadding() { return 0; }
     public java.util.List getRoutedDevices() { return new java.util.ArrayList(); }
-    public int getStartThresholdInFrames() { return (meglerFill.get("StartThresholdInFrames") instanceof Integer ? (Integer) meglerFill.get("StartThresholdInFrames") : 0); }
+    public int getStartThresholdInFrames() { return (megletFill.get("StartThresholdInFrames") instanceof Integer ? (Integer) megletFill.get("StartThresholdInFrames") : 0); }
     public int getTimestampWithStatus(android.media.AudioTimestamp p0) { return 0; }
     public void native_release() {}
     public void removeOnCodecFormatChangedListener(android.media.AudioTrack.OnCodecFormatChangedListener p0) {}
     public boolean setAudioDescriptionMixLeveldB(float p0) { return false; }
     public boolean setDualMonoMode(int p0) { return false; }
-    public void setLogSessionId(android.media.metrics.LogSessionId p0) { meglerFill.put("LogSessionId", p0); }
+    public void setLogSessionId(android.media.metrics.LogSessionId p0) { megletFill.put("LogSessionId", p0); }
     public void setOffloadDelayPadding(int p0, int p1) {}
     public void setOffloadEndOfStream() {}
     public int setPlaybackHeadPosition(int p0) { return 0; }
@@ -238,7 +238,7 @@ public class AudioTrack implements AudioRouting {
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static final class MetricsConstants {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String ATTRIBUTES = "android.media.audiotrack.attributes";
         public static final java.lang.String CHANNELMASK = "android.media.audiorecord.channelmask";
         public static final java.lang.String CHANNEL_MASK = "android.media.audiotrack.channelMask";
@@ -256,11 +256,11 @@ public class AudioTrack implements AudioRouting {
         void onCodecFormatChanged(android.media.AudioTrack p0, android.media.AudioMetadataReadMap p1);
     }
     public static class TunerConfiguration {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static int CONTENT_ID_NONE;
         public TunerConfiguration(int p0, int p1) {}
-        public int getContentId() { return (meglerProps.get("ContentId") instanceof Integer ? (Integer) meglerProps.get("ContentId") : 0); }
-        public int getSyncId() { return (meglerProps.get("SyncId") instanceof Integer ? (Integer) meglerProps.get("SyncId") : 0); }
+        public int getContentId() { return (megletProps.get("ContentId") instanceof Integer ? (Integer) megletProps.get("ContentId") : 0); }
+        public int getSyncId() { return (megletProps.get("SyncId") instanceof Integer ? (Integer) megletProps.get("SyncId") : 0); }
         TunerConfiguration() { this((int) 0, (int) 0); }
     }
     // ---- end of generated nested classes

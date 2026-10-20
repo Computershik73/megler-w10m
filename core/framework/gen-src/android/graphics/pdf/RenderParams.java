@@ -3,7 +3,7 @@ package android.graphics.pdf;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RenderParams {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int FLAG_RENDER_FREETEXT_ANNOTATIONS = 16;
     public static final int FLAG_RENDER_HIGHLIGHT_ANNOTATIONS = 4;
     public static final int FLAG_RENDER_STAMP_ANNOTATIONS = 8;
@@ -13,18 +13,18 @@ public final class RenderParams {
     public static final int RENDER_FORM_CONTENT_ENABLED = 1;
     public static final int RENDER_MODE_FOR_DISPLAY = 1;
     public static final int RENDER_MODE_FOR_PRINT = 2;
-    public int getRenderAnnotations() { return (meglerProps.get("RenderAnnotations") instanceof Integer ? (Integer) meglerProps.get("RenderAnnotations") : 0); }
-    public int getRenderFlags() { return (meglerProps.get("RenderFlags") instanceof Integer ? (Integer) meglerProps.get("RenderFlags") : 0); }
-    public int getRenderFormContentMode() { return (meglerProps.get("RenderFormContentMode") instanceof Integer ? (Integer) meglerProps.get("RenderFormContentMode") : 0); }
-    public int getRenderMode() { return (meglerProps.get("RenderMode") instanceof Integer ? (Integer) meglerProps.get("RenderMode") : 0); }
+    public int getRenderAnnotations() { return (megletProps.get("RenderAnnotations") instanceof Integer ? (Integer) megletProps.get("RenderAnnotations") : 0); }
+    public int getRenderFlags() { return (megletProps.get("RenderFlags") instanceof Integer ? (Integer) megletProps.get("RenderFlags") : 0); }
+    public int getRenderFormContentMode() { return (megletProps.get("RenderFormContentMode") instanceof Integer ? (Integer) megletProps.get("RenderFormContentMode") : 0); }
+    public int getRenderMode() { return (megletProps.get("RenderMode") instanceof Integer ? (Integer) megletProps.get("RenderMode") : 0); }
     protected RenderParams() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(int p0) {}
-        public android.graphics.pdf.RenderParams build() { android.graphics.pdf.RenderParams x = new android.graphics.pdf.RenderParams(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.graphics.pdf.RenderParams.Builder setRenderFlags(int p0) { meglerProps.put("RenderFlags", Integer.valueOf(p0)); return this; }
+        public android.graphics.pdf.RenderParams build() { android.graphics.pdf.RenderParams x = new android.graphics.pdf.RenderParams(); x.megletProps.putAll(megletProps); return x; }
+        public android.graphics.pdf.RenderParams.Builder setRenderFlags(int p0) { megletProps.put("RenderFlags", Integer.valueOf(p0)); return this; }
         public android.graphics.pdf.RenderParams.Builder setRenderFlags(int p0, int p1) { return this; }
-        public android.graphics.pdf.RenderParams.Builder setRenderFormContentMode(int p0) { meglerProps.put("RenderFormContentMode", Integer.valueOf(p0)); return this; }
+        public android.graphics.pdf.RenderParams.Builder setRenderFormContentMode(int p0) { megletProps.put("RenderFormContentMode", Integer.valueOf(p0)); return this; }
         Builder() { this((int) 0); }
     }
 }

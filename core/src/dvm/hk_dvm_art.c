@@ -656,7 +656,7 @@ static const char *g_providers_name, *g_timezone_name, *g_vmruntime_name, *g_con
 /* Android 9 already negotiates ALPN, but its Platform bridge predates the
  * public SSLParameters API. Keep every original transfer (SNI, cipher order,
  * endpoint identification, etc.) and also transfer application protocols.
- * The additional public methods live in megler-libcore.dex. */
+ * The additional public methods live in meglet-libcore.dex. */
 static hk_dvm_method g_ssl_parameters_original[4];
 
 static void ssl_parameters_bridge(hk_jcall *c, int index)
@@ -758,7 +758,7 @@ static void before_init(hk_dvm_class *c)
         hk_dvm_clear_pending();
         return;
     }
-    set_security(props.l, "security.provider.1", "megler.security.RuntimeProvider");
+    set_security(props.l, "security.provider.1", "meglet.security.RuntimeProvider");
     set_security(props.l, "security.provider.2", "sun.security.provider.CertPathProvider");
     set_security(props.l, "security.provider.3", "com.android.org.bouncycastle.jce.provider.BouncyCastleProvider");
     set_security(props.l, "security.provider.4", NULL);
@@ -794,7 +794,7 @@ static void give_timezone_getter(void)
 {
     hk_jvalue arg;
     arg.j = 0;
-    arg.l = hk_dvm_new("megler/runtime/PhoneTimeZone", "()V", NULL);
+    arg.l = hk_dvm_new("meglet/runtime/PhoneTimeZone", "()V", NULL);
     if (!arg.l || !hk_dvm_call_static("org/apache/harmony/luni/internal/util/TimezoneGetter", "setInstance", "(Lorg/apache/harmony/luni/internal/util/TimezoneGetter;)V", &arg, NULL)) {
         hk_warn("java: libcore was not given the phone's time zone (%s); an app's times are GMT", hk_dvm_pending() ? hk_dvm_class_of(hk_dvm_pending())->name : "no getter");
         hk_dvm_clear_pending();
@@ -1406,8 +1406,8 @@ static const hk_jhle k_art[] = {
     { "java/lang/Class", "getEnclosingMethodNative", NULL, Class_null },
     { "java/lang/Class", "getEnclosingConstructorNative", NULL, Class_null },
     { "java/lang/Class", "getInnerClassName", NULL, Class_null },
-    { "megler/security/SystemRandom", "engineNextBytes", NULL, SystemRandom_engineNextBytes },
-    { "megler/runtime/PhoneTimeZone", "getId", NULL, PhoneTimeZone_getId },
+    { "meglet/security/SystemRandom", "engineNextBytes", NULL, SystemRandom_engineNextBytes },
+    { "meglet/runtime/PhoneTimeZone", "getId", NULL, PhoneTimeZone_getId },
     { "dalvik/system/DexFile", "openDexFileNative", NULL, DexFile_openDexFileNative },
     { "dalvik/system/DexFile", "createCookieWithArray", NULL, DexFile_createCookieWithArray },
     { "dalvik/system/DexFile", "createCookieWithDirectBuffer", NULL, DexFile_createCookieWithDirectBuffer },
@@ -1468,7 +1468,7 @@ bool hk_dvm_art_start(void)
     g_dvm.libcore = true;
     g_dvm.fill_mirror = fill_mirror;
     /* The runtime's own three classes, after libcore's on the boot class path (this is before the runtime counts as running: they are boot classes). */
-    hk_dvm_add_dex(k_dvm_art_dex, k_dvm_art_dex_size, "megler-runtime.dex");
+    hk_dvm_add_dex(k_dvm_art_dex, k_dvm_art_dex_size, "meglet-runtime.dex");
     g_providers_name = hk_dvm_intern("sun/security/jca/Providers");
     g_timezone_name = hk_dvm_intern("java/util/TimeZone");
     g_vmruntime_name = hk_dvm_intern("dalvik/system/VMRuntime");

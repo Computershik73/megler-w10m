@@ -32,7 +32,7 @@ public class ContextThemeWrapper extends android.content.ContextWrapper {
     @Override public int getThemeResId() { return mThemeResource; }
     @Override public Resources.Theme getTheme() {
         if (mTheme != null) return mTheme;
-        if (mThemeResource == 0) mThemeResource = megler.ContextImpl.defaultTheme();
+        if (mThemeResource == 0) mThemeResource = meglet.ContextImpl.defaultTheme();
         initializeTheme();
         return mTheme;
     }

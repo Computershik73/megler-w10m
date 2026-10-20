@@ -3,7 +3,7 @@ package android.gesture;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GestureOverlayView extends android.widget.FrameLayout {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int GESTURE_STROKE_TYPE_MULTIPLE = 1;
     public static final int GESTURE_STROKE_TYPE_SINGLE = 0;
     public static final int ORIENTATION_HORIZONTAL = 0;
@@ -20,24 +20,24 @@ public class GestureOverlayView extends android.widget.FrameLayout {
     public void clear(boolean p0) {}
     public boolean dispatchTouchEvent(android.view.MotionEvent p0) { return false; }
     public void draw(android.graphics.Canvas p0) {}
-    public java.util.ArrayList getCurrentStroke() { return (meglerProps.get("CurrentStroke") != null ? (java.util.ArrayList) meglerProps.get("CurrentStroke") : new java.util.ArrayList()); }
-    public long getFadeOffset() { return (meglerProps.get("FadeOffset") instanceof Long ? (Long) meglerProps.get("FadeOffset") : 0L); }
-    public android.gesture.Gesture getGesture() { return (android.gesture.Gesture) meglerProps.get("Gesture"); }
-    public int getGestureColor() { return (meglerProps.get("GestureColor") instanceof Integer ? (Integer) meglerProps.get("GestureColor") : 0); }
-    public android.graphics.Paint getGesturePaint() { return (android.graphics.Paint) meglerProps.get("GesturePaint"); }
-    public android.graphics.Path getGesturePath() { return (android.graphics.Path) meglerProps.get("GesturePath"); }
+    public java.util.ArrayList getCurrentStroke() { return (megletProps.get("CurrentStroke") != null ? (java.util.ArrayList) megletProps.get("CurrentStroke") : new java.util.ArrayList()); }
+    public long getFadeOffset() { return (megletProps.get("FadeOffset") instanceof Long ? (Long) megletProps.get("FadeOffset") : 0L); }
+    public android.gesture.Gesture getGesture() { return (android.gesture.Gesture) megletProps.get("Gesture"); }
+    public int getGestureColor() { return (megletProps.get("GestureColor") instanceof Integer ? (Integer) megletProps.get("GestureColor") : 0); }
+    public android.graphics.Paint getGesturePaint() { return (android.graphics.Paint) megletProps.get("GesturePaint"); }
+    public android.graphics.Path getGesturePath() { return (android.graphics.Path) megletProps.get("GesturePath"); }
     public android.graphics.Path getGesturePath(android.graphics.Path p0) { return null; }
-    public float getGestureStrokeAngleThreshold() { return (meglerProps.get("GestureStrokeAngleThreshold") instanceof Float ? (Float) meglerProps.get("GestureStrokeAngleThreshold") : 0f); }
-    public float getGestureStrokeLengthThreshold() { return (meglerProps.get("GestureStrokeLengthThreshold") instanceof Float ? (Float) meglerProps.get("GestureStrokeLengthThreshold") : 0f); }
-    public float getGestureStrokeSquarenessTreshold() { return (meglerProps.get("GestureStrokeSquarenessTreshold") instanceof Float ? (Float) meglerProps.get("GestureStrokeSquarenessTreshold") : 0f); }
-    public int getGestureStrokeType() { return (meglerProps.get("GestureStrokeType") instanceof Integer ? (Integer) meglerProps.get("GestureStrokeType") : 0); }
-    public float getGestureStrokeWidth() { return (meglerProps.get("GestureStrokeWidth") instanceof Float ? (Float) meglerProps.get("GestureStrokeWidth") : 0f); }
-    public int getOrientation() { return (meglerProps.get("Orientation") instanceof Integer ? (Integer) meglerProps.get("Orientation") : 0); }
-    public int getUncertainGestureColor() { return (meglerProps.get("UncertainGestureColor") instanceof Integer ? (Integer) meglerProps.get("UncertainGestureColor") : 0); }
-    public boolean isEventsInterceptionEnabled() { return (meglerProps.get("EventsInterceptionEnabled") instanceof Boolean ? (Boolean) meglerProps.get("EventsInterceptionEnabled") : false); }
-    public boolean isFadeEnabled() { return (meglerProps.get("FadeEnabled") instanceof Boolean ? (Boolean) meglerProps.get("FadeEnabled") : false); }
-    public boolean isGestureVisible() { return (meglerProps.get("GestureVisible") instanceof Boolean ? (Boolean) meglerProps.get("GestureVisible") : false); }
-    public boolean isGesturing() { return (meglerProps.get("Gesturing") instanceof Boolean ? (Boolean) meglerProps.get("Gesturing") : false); }
+    public float getGestureStrokeAngleThreshold() { return (megletProps.get("GestureStrokeAngleThreshold") instanceof Float ? (Float) megletProps.get("GestureStrokeAngleThreshold") : 0f); }
+    public float getGestureStrokeLengthThreshold() { return (megletProps.get("GestureStrokeLengthThreshold") instanceof Float ? (Float) megletProps.get("GestureStrokeLengthThreshold") : 0f); }
+    public float getGestureStrokeSquarenessTreshold() { return (megletProps.get("GestureStrokeSquarenessTreshold") instanceof Float ? (Float) megletProps.get("GestureStrokeSquarenessTreshold") : 0f); }
+    public int getGestureStrokeType() { return (megletProps.get("GestureStrokeType") instanceof Integer ? (Integer) megletProps.get("GestureStrokeType") : 0); }
+    public float getGestureStrokeWidth() { return (megletProps.get("GestureStrokeWidth") instanceof Float ? (Float) megletProps.get("GestureStrokeWidth") : 0f); }
+    public int getOrientation() { return (megletProps.get("Orientation") instanceof Integer ? (Integer) megletProps.get("Orientation") : 0); }
+    public int getUncertainGestureColor() { return (megletProps.get("UncertainGestureColor") instanceof Integer ? (Integer) megletProps.get("UncertainGestureColor") : 0); }
+    public boolean isEventsInterceptionEnabled() { return (megletProps.get("EventsInterceptionEnabled") instanceof Boolean ? (Boolean) megletProps.get("EventsInterceptionEnabled") : false); }
+    public boolean isFadeEnabled() { return (megletProps.get("FadeEnabled") instanceof Boolean ? (Boolean) megletProps.get("FadeEnabled") : false); }
+    public boolean isGestureVisible() { return (megletProps.get("GestureVisible") instanceof Boolean ? (Boolean) megletProps.get("GestureVisible") : false); }
+    public boolean isGesturing() { return (megletProps.get("Gesturing") instanceof Boolean ? (Boolean) megletProps.get("Gesturing") : false); }
     public void onDetachedFromWindow() {}
     public void removeAllOnGestureListeners() {}
     public void removeAllOnGesturePerformedListeners() {}
@@ -45,19 +45,19 @@ public class GestureOverlayView extends android.widget.FrameLayout {
     public void removeOnGestureListener(android.gesture.GestureOverlayView.OnGestureListener p0) {}
     public void removeOnGesturePerformedListener(android.gesture.GestureOverlayView.OnGesturePerformedListener p0) {}
     public void removeOnGesturingListener(android.gesture.GestureOverlayView.OnGesturingListener p0) {}
-    public void setEventsInterceptionEnabled(boolean p0) { meglerProps.put("EventsInterceptionEnabled", Boolean.valueOf(p0)); }
-    public void setFadeEnabled(boolean p0) { meglerProps.put("FadeEnabled", Boolean.valueOf(p0)); }
-    public void setFadeOffset(long p0) { meglerProps.put("FadeOffset", Long.valueOf(p0)); }
-    public void setGesture(android.gesture.Gesture p0) { meglerProps.put("Gesture", p0); }
-    public void setGestureColor(int p0) { meglerProps.put("GestureColor", Integer.valueOf(p0)); }
-    public void setGestureStrokeAngleThreshold(float p0) { meglerProps.put("GestureStrokeAngleThreshold", Float.valueOf(p0)); }
-    public void setGestureStrokeLengthThreshold(float p0) { meglerProps.put("GestureStrokeLengthThreshold", Float.valueOf(p0)); }
-    public void setGestureStrokeSquarenessTreshold(float p0) { meglerProps.put("GestureStrokeSquarenessTreshold", Float.valueOf(p0)); }
-    public void setGestureStrokeType(int p0) { meglerProps.put("GestureStrokeType", Integer.valueOf(p0)); }
-    public void setGestureStrokeWidth(float p0) { meglerProps.put("GestureStrokeWidth", Float.valueOf(p0)); }
-    public void setGestureVisible(boolean p0) { meglerProps.put("GestureVisible", Boolean.valueOf(p0)); }
-    public void setOrientation(int p0) { meglerProps.put("Orientation", Integer.valueOf(p0)); }
-    public void setUncertainGestureColor(int p0) { meglerProps.put("UncertainGestureColor", Integer.valueOf(p0)); }
+    public void setEventsInterceptionEnabled(boolean p0) { megletProps.put("EventsInterceptionEnabled", Boolean.valueOf(p0)); }
+    public void setFadeEnabled(boolean p0) { megletProps.put("FadeEnabled", Boolean.valueOf(p0)); }
+    public void setFadeOffset(long p0) { megletProps.put("FadeOffset", Long.valueOf(p0)); }
+    public void setGesture(android.gesture.Gesture p0) { megletProps.put("Gesture", p0); }
+    public void setGestureColor(int p0) { megletProps.put("GestureColor", Integer.valueOf(p0)); }
+    public void setGestureStrokeAngleThreshold(float p0) { megletProps.put("GestureStrokeAngleThreshold", Float.valueOf(p0)); }
+    public void setGestureStrokeLengthThreshold(float p0) { megletProps.put("GestureStrokeLengthThreshold", Float.valueOf(p0)); }
+    public void setGestureStrokeSquarenessTreshold(float p0) { megletProps.put("GestureStrokeSquarenessTreshold", Float.valueOf(p0)); }
+    public void setGestureStrokeType(int p0) { megletProps.put("GestureStrokeType", Integer.valueOf(p0)); }
+    public void setGestureStrokeWidth(float p0) { megletProps.put("GestureStrokeWidth", Float.valueOf(p0)); }
+    public void setGestureVisible(boolean p0) { megletProps.put("GestureVisible", Boolean.valueOf(p0)); }
+    public void setOrientation(int p0) { megletProps.put("Orientation", Integer.valueOf(p0)); }
+    public void setUncertainGestureColor(int p0) { megletProps.put("UncertainGestureColor", Integer.valueOf(p0)); }
     GestureOverlayView() { this((android.content.Context) null); }
     public interface OnGestureListener {
         void onGesture(android.gesture.GestureOverlayView p0, android.view.MotionEvent p1);

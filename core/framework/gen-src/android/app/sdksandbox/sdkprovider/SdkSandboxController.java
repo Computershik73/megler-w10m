@@ -3,14 +3,14 @@ package android.app.sdksandbox.sdkprovider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SdkSandboxController {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String CLIENT_SHARED_PREFERENCES_NAME = "com.android.sdksandbox.client_sharedpreferences";
     public static final java.lang.String SDK_SANDBOX_CONTROLLER_SERVICE = "sdk_sandbox_controller_service";
     public SdkSandboxController(android.content.Context p0) {}
-    public java.util.List getAppOwnedSdkSandboxInterfaces() { return (meglerProps.get("AppOwnedSdkSandboxInterfaces") != null ? (java.util.List) meglerProps.get("AppOwnedSdkSandboxInterfaces") : new java.util.ArrayList()); }
-    public java.lang.String getClientPackageName() { return (java.lang.String) meglerProps.get("ClientPackageName"); }
-    public android.content.SharedPreferences getClientSharedPreferences() { return (android.content.SharedPreferences) meglerProps.get("ClientSharedPreferences"); }
-    public java.util.List getSandboxedSdks() { return (meglerProps.get("SandboxedSdks") != null ? (java.util.List) meglerProps.get("SandboxedSdks") : new java.util.ArrayList()); }
+    public java.util.List getAppOwnedSdkSandboxInterfaces() { return (megletProps.get("AppOwnedSdkSandboxInterfaces") != null ? (java.util.List) megletProps.get("AppOwnedSdkSandboxInterfaces") : new java.util.ArrayList()); }
+    public java.lang.String getClientPackageName() { return (java.lang.String) megletProps.get("ClientPackageName"); }
+    public android.content.SharedPreferences getClientSharedPreferences() { return (android.content.SharedPreferences) megletProps.get("ClientSharedPreferences"); }
+    public java.util.List getSandboxedSdks() { return (megletProps.get("SandboxedSdks") != null ? (java.util.List) megletProps.get("SandboxedSdks") : new java.util.ArrayList()); }
     public android.app.sdksandbox.sdkprovider.SdkSandboxController initialize(android.content.Context p0) { return this; }
     public void loadSdk(java.lang.String p0, android.os.Bundle p1, java.util.concurrent.Executor p2, android.os.OutcomeReceiver p3) {}
     public android.os.IBinder registerSdkSandboxActivityHandler(android.app.sdksandbox.sdkprovider.SdkSandboxActivityHandler p0) { return null; }
@@ -19,7 +19,7 @@ public class SdkSandboxController {
     public void unregisterSdkSandboxClientImportanceListener(android.app.sdksandbox.sdkprovider.SdkSandboxClientImportanceListener p0) {}
     SdkSandboxController() { this((android.content.Context) null); }
     public static class SdkSandboxClientImportanceListenerProxy {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public android.app.sdksandbox.sdkprovider.SdkSandboxClientImportanceListener listener;
         public void onForegroundImportanceChanged(boolean p0) {}
         protected SdkSandboxClientImportanceListenerProxy() {}

@@ -3,11 +3,11 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaRouteActionProvider extends android.view.ActionProvider {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public MediaRouteActionProvider(android.content.Context p0) { super(p0); }
-    public boolean isVisible() { return (meglerProps.get("Visible") instanceof Boolean ? (Boolean) meglerProps.get("Visible") : false); }
+    public boolean isVisible() { return (megletProps.get("Visible") instanceof Boolean ? (Boolean) megletProps.get("Visible") : false); }
     public android.view.View onCreateActionView() { return null; }
-    public void setExtendedSettingsClickListener(android.view.View.OnClickListener p0) { meglerProps.put("ExtendedSettingsClickListener", p0); }
-    public void setRouteTypes(int p0) { meglerProps.put("RouteTypes", Integer.valueOf(p0)); }
+    public void setExtendedSettingsClickListener(android.view.View.OnClickListener p0) { megletProps.put("ExtendedSettingsClickListener", p0); }
+    public void setRouteTypes(int p0) { megletProps.put("RouteTypes", Integer.valueOf(p0)); }
     MediaRouteActionProvider() { this((android.content.Context) null); }
 }

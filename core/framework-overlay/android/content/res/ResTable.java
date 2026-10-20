@@ -91,14 +91,14 @@ public final class ResTable {
         int specFlagsOff = -1, specCount;
         ResTable specSrc;
         final ArrayList<TypeChunk> configs = new ArrayList<>();
-        HashMap<String, Integer> names;     /* megler-w10m: entry name -> id for this type alone, made on first use (see the top of the file) */
+        HashMap<String, Integer> names;     /* Meglet: entry name -> id for this type alone, made on first use (see the top of the file) */
     }
     public static final class Package {
         public int id;
         public String name;
         StringPool typeStrings, keyStrings;
         final Type[] types = new Type[256];
-        // megler-w10m: the names are indexed type by type now (Type.names); the original's one map for the package is gone.
+        // Meglet: the names are indexed type by type now (Type.names); the original's one map for the package is gone.
         final HashMap<Integer, Integer> dynamic = new HashMap<>();
     }
 
@@ -108,7 +108,7 @@ public final class ResTable {
     final Package[] byId = new Package[256];
 
     public ResTable(byte[] data) { this(data, 0); }
-    /** megler-w10m: the package id a shared library's package (id 0 in the file) is given; 0 for any other table. */
+    /** Meglet: the package id a shared library's package (id 0 in the file) is given; 0 for any other table. */
     final int dynamicId;
     /** A shared library's table: its package, id 0 in the file, is given dynamicId (see the top of the file). */
     public ResTable(byte[] data, int dynamicId) {
@@ -224,8 +224,8 @@ public final class ResTable {
         public boolean complex() { return (flags & 1) != 0; }
     }
 
-    /** Megler debugging: what the table has for an id's package and type. */
-    public String meglerDescribe(int id) {
+    /** Meglet debugging: what the table has for an id's package and type. */
+    public String megletDescribe(int id) {
         Package p = byId[(id >>> 24) & 255];
         if (p == null) return "no package " + (id >>> 24) + " (" + packages.size() + " packages)";
         Type t = p.types[(id >>> 16) & 255];
@@ -282,7 +282,7 @@ public final class ResTable {
         if (v.type == TYPE_REFERENCE || v.type == TYPE_ATTRIBUTE) v.data = en.src.dynamic(v.data);
         return true;
     }
-    /** megler-w10m: an id read from a shared library's table that names package 0, its own, with the package id it was given. */
+    /** Meglet: an id read from a shared library's table that names package 0, its own, with the package id it was given. */
     int dynamic(int id) { return dynamicId != 0 && id != 0 && (id >>> 24) == 0 ? id | (dynamicId << 24) : id; }
 
     /** A bag's parent and its items (attr id -> value), parents' items first, then its own. */
@@ -321,7 +321,7 @@ public final class ResTable {
         }
         return null;
     }
-    /** The id of the resource of that type and name, or 0. megler-w10m: rewritten, see the top of the file. */
+    /** The id of the resource of that type and name, or 0. Meglet: rewritten, see the top of the file. */
     public int identifier(String pkgName, String type, String name) {
         if (type == null || name == null) return 0;
         for (Package p : packages) {

@@ -3,33 +3,33 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Ringtone {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public Ringtone(android.content.Context p0, boolean p1) {}
     public static java.lang.String getTitle(android.content.Context p0, android.net.Uri p1, boolean p2, boolean p3) { return null; }
     public boolean createLocalMediaPlayer() { return false; }
     protected void finalize() {}
-    public android.media.AudioAttributes getAudioAttributes() { return (android.media.AudioAttributes) meglerProps.get("AudioAttributes"); }
-    public int getStreamType() { return (meglerProps.get("StreamType") instanceof Integer ? (Integer) meglerProps.get("StreamType") : 0); }
+    public android.media.AudioAttributes getAudioAttributes() { return (android.media.AudioAttributes) megletProps.get("AudioAttributes"); }
+    public int getStreamType() { return (megletProps.get("StreamType") instanceof Integer ? (Integer) megletProps.get("StreamType") : 0); }
     public java.lang.String getTitle(android.content.Context p0) { return null; }
-    public android.net.Uri getUri() { return (android.net.Uri) meglerProps.get("Uri"); }
-    public android.os.VibrationEffect getVibrationEffect() { return (android.os.VibrationEffect) meglerProps.get("VibrationEffect"); }
-    public float getVolume() { return (meglerProps.get("Volume") instanceof Float ? (Float) meglerProps.get("Volume") : 0f); }
+    public android.net.Uri getUri() { return (android.net.Uri) megletProps.get("Uri"); }
+    public android.os.VibrationEffect getVibrationEffect() { return (android.os.VibrationEffect) megletProps.get("VibrationEffect"); }
+    public float getVolume() { return (megletProps.get("Volume") instanceof Float ? (Float) megletProps.get("Volume") : 0f); }
     public boolean hasHapticChannels() { return false; }
     public boolean hasLocalPlayer() { return false; }
-    public boolean isHapticGeneratorEnabled() { return (meglerProps.get("HapticGeneratorEnabled") instanceof Boolean ? (Boolean) meglerProps.get("HapticGeneratorEnabled") : false); }
-    public boolean isLooping() { return (meglerProps.get("Looping") instanceof Boolean ? (Boolean) meglerProps.get("Looping") : false); }
-    public boolean isPlaying() { return (meglerProps.get("Playing") instanceof Boolean ? (Boolean) meglerProps.get("Playing") : false); }
+    public boolean isHapticGeneratorEnabled() { return (megletProps.get("HapticGeneratorEnabled") instanceof Boolean ? (Boolean) megletProps.get("HapticGeneratorEnabled") : false); }
+    public boolean isLooping() { return (megletProps.get("Looping") instanceof Boolean ? (Boolean) megletProps.get("Looping") : false); }
+    public boolean isPlaying() { return (megletProps.get("Playing") instanceof Boolean ? (Boolean) megletProps.get("Playing") : false); }
     public void play() {}
     public boolean preferBuiltinDevice(boolean p0) { return false; }
-    public void setAudioAttributes(android.media.AudioAttributes p0) { meglerProps.put("AudioAttributes", p0); }
-    public void setAudioAttributesField(android.media.AudioAttributes p0) { meglerProps.put("AudioAttributesField", p0); }
+    public void setAudioAttributes(android.media.AudioAttributes p0) { megletProps.put("AudioAttributes", p0); }
+    public void setAudioAttributesField(android.media.AudioAttributes p0) { megletProps.put("AudioAttributesField", p0); }
     public boolean setHapticGeneratorEnabled(boolean p0) { return false; }
-    public void setLooping(boolean p0) { meglerProps.put("Looping", Boolean.valueOf(p0)); }
-    public void setStreamType(int p0) { meglerProps.put("StreamType", Integer.valueOf(p0)); }
-    public void setUri(android.net.Uri p0) { meglerProps.put("Uri", p0); }
+    public void setLooping(boolean p0) { megletProps.put("Looping", Boolean.valueOf(p0)); }
+    public void setStreamType(int p0) { megletProps.put("StreamType", Integer.valueOf(p0)); }
+    public void setUri(android.net.Uri p0) { megletProps.put("Uri", p0); }
     public void setUri(android.net.Uri p0, android.media.VolumeShaper.Configuration p1) {}
-    public void setVolume(float p0) { meglerProps.put("Volume", Float.valueOf(p0)); }
-    public void setVolumeShaperConfig(android.media.VolumeShaper.Configuration p0) { meglerProps.put("VolumeShaperConfig", p0); }
+    public void setVolume(float p0) { megletProps.put("Volume", Float.valueOf(p0)); }
+    public void setVolumeShaperConfig(android.media.VolumeShaper.Configuration p0) { megletProps.put("VolumeShaperConfig", p0); }
     public void stop() {}
     Ringtone() { this((android.content.Context) null, (boolean) false); }
 }

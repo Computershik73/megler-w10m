@@ -3,10 +3,10 @@ package android.adservices.topics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EncryptedTopic {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public EncryptedTopic(byte[] p0, java.lang.String p1, byte[] p2) {}
-    public byte[] getEncapsulatedKey() { return (byte[]) meglerProps.get("EncapsulatedKey"); }
-    public byte[] getEncryptedTopic() { return (byte[]) meglerProps.get("EncryptedTopic"); }
-    public java.lang.String getKeyIdentifier() { return (java.lang.String) meglerProps.get("KeyIdentifier"); }
+    public byte[] getEncapsulatedKey() { return (byte[]) megletProps.get("EncapsulatedKey"); }
+    public byte[] getEncryptedTopic() { return (byte[]) megletProps.get("EncryptedTopic"); }
+    public java.lang.String getKeyIdentifier() { return (java.lang.String) megletProps.get("KeyIdentifier"); }
     EncryptedTopic() { this((byte[]) null, (java.lang.String) null, (byte[]) null); }
 }

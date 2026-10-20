@@ -3,7 +3,7 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FillCallback {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public FillCallback(android.service.autofill.IFillCallback p0, int p1) {}
     public void onFailure(java.lang.CharSequence p0) {}
     public void onSuccess(android.service.autofill.FillResponse p0) {}

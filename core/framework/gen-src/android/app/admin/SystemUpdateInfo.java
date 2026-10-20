@@ -3,7 +3,7 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SystemUpdateInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int SECURITY_PATCH_STATE_FALSE = 1;
     public static final int SECURITY_PATCH_STATE_TRUE = 2;
@@ -11,8 +11,8 @@ public final class SystemUpdateInfo implements android.os.Parcelable {
     public static android.app.admin.SystemUpdateInfo of(long p0) { return new SystemUpdateInfo(); }
     public static android.app.admin.SystemUpdateInfo of(long p0, boolean p1) { return new SystemUpdateInfo(); }
     public int describeContents() { return 0; }
-    public long getReceivedTime() { return (meglerProps.get("ReceivedTime") instanceof Long ? (Long) meglerProps.get("ReceivedTime") : 0L); }
-    public int getSecurityPatchState() { return (meglerProps.get("SecurityPatchState") instanceof Integer ? (Integer) meglerProps.get("SecurityPatchState") : 0); }
+    public long getReceivedTime() { return (megletProps.get("ReceivedTime") instanceof Long ? (Long) megletProps.get("ReceivedTime") : 0L); }
+    public int getSecurityPatchState() { return (megletProps.get("SecurityPatchState") instanceof Integer ? (Integer) megletProps.get("SecurityPatchState") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SystemUpdateInfo() {}
 }

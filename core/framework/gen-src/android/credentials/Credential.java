@@ -3,13 +3,13 @@ package android.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Credential implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String TYPE_PASSWORD_CREDENTIAL = "android.credentials.TYPE_PASSWORD_CREDENTIAL";
     public Credential(java.lang.String p0, android.os.Bundle p1) {}
     public int describeContents() { return 0; }
-    public android.os.Bundle getData() { return (android.os.Bundle) meglerProps.get("Data"); }
-    public java.lang.String getType() { return (java.lang.String) meglerProps.get("Type"); }
+    public android.os.Bundle getData() { return (android.os.Bundle) megletProps.get("Data"); }
+    public java.lang.String getType() { return (java.lang.String) megletProps.get("Type"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     Credential() { this((java.lang.String) null, (android.os.Bundle) null); }
 }

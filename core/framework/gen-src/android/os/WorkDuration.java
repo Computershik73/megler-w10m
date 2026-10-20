@@ -3,15 +3,15 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WorkDuration {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public WorkDuration() {}
     public WorkDuration(long p0, long p1, long p2, long p3) {}
-    public long getActualCpuDurationNanos() { return (meglerProps.get("ActualCpuDurationNanos") instanceof Long ? (Long) meglerProps.get("ActualCpuDurationNanos") : 0L); }
-    public long getActualGpuDurationNanos() { return (meglerProps.get("ActualGpuDurationNanos") instanceof Long ? (Long) meglerProps.get("ActualGpuDurationNanos") : 0L); }
-    public long getActualTotalDurationNanos() { return (meglerProps.get("ActualTotalDurationNanos") instanceof Long ? (Long) meglerProps.get("ActualTotalDurationNanos") : 0L); }
-    public long getWorkPeriodStartTimestampNanos() { return (meglerProps.get("WorkPeriodStartTimestampNanos") instanceof Long ? (Long) meglerProps.get("WorkPeriodStartTimestampNanos") : 0L); }
-    public void setActualCpuDurationNanos(long p0) { meglerProps.put("ActualCpuDurationNanos", Long.valueOf(p0)); }
-    public void setActualGpuDurationNanos(long p0) { meglerProps.put("ActualGpuDurationNanos", Long.valueOf(p0)); }
-    public void setActualTotalDurationNanos(long p0) { meglerProps.put("ActualTotalDurationNanos", Long.valueOf(p0)); }
-    public void setWorkPeriodStartTimestampNanos(long p0) { meglerProps.put("WorkPeriodStartTimestampNanos", Long.valueOf(p0)); }
+    public long getActualCpuDurationNanos() { return (megletProps.get("ActualCpuDurationNanos") instanceof Long ? (Long) megletProps.get("ActualCpuDurationNanos") : 0L); }
+    public long getActualGpuDurationNanos() { return (megletProps.get("ActualGpuDurationNanos") instanceof Long ? (Long) megletProps.get("ActualGpuDurationNanos") : 0L); }
+    public long getActualTotalDurationNanos() { return (megletProps.get("ActualTotalDurationNanos") instanceof Long ? (Long) megletProps.get("ActualTotalDurationNanos") : 0L); }
+    public long getWorkPeriodStartTimestampNanos() { return (megletProps.get("WorkPeriodStartTimestampNanos") instanceof Long ? (Long) megletProps.get("WorkPeriodStartTimestampNanos") : 0L); }
+    public void setActualCpuDurationNanos(long p0) { megletProps.put("ActualCpuDurationNanos", Long.valueOf(p0)); }
+    public void setActualGpuDurationNanos(long p0) { megletProps.put("ActualGpuDurationNanos", Long.valueOf(p0)); }
+    public void setActualTotalDurationNanos(long p0) { megletProps.put("ActualTotalDurationNanos", Long.valueOf(p0)); }
+    public void setWorkPeriodStartTimestampNanos(long p0) { megletProps.put("WorkPeriodStartTimestampNanos", Long.valueOf(p0)); }
 }

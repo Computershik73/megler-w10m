@@ -3,9 +3,9 @@ package android.net.ipsec.ike.exceptions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IkeNetworkLostException extends android.net.ipsec.ike.exceptions.IkeNonProtocolException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public IkeNetworkLostException(android.net.Network p0) { super(); }
-    public int getMetricsErrorCode() { return (meglerProps.get("MetricsErrorCode") instanceof Integer ? (Integer) meglerProps.get("MetricsErrorCode") : 0); }
-    public android.net.Network getNetwork() { return (android.net.Network) meglerProps.get("Network"); }
+    public int getMetricsErrorCode() { return (megletProps.get("MetricsErrorCode") instanceof Integer ? (Integer) megletProps.get("MetricsErrorCode") : 0); }
+    public android.net.Network getNetwork() { return (android.net.Network) megletProps.get("Network"); }
     IkeNetworkLostException() { this((android.net.Network) null); }
 }

@@ -3,7 +3,7 @@ package android.net.http;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SslError {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int SSL_DATE_INVALID = 4;
     public static final int SSL_EXPIRED = 1;
     public static final int SSL_IDMISMATCH = 2;
@@ -17,9 +17,9 @@ public class SslError {
     public SslError(int p0, java.security.cert.X509Certificate p1, java.lang.String p2) {}
     public static android.net.http.SslError SslErrorFromChromiumErrorCode(int p0, android.net.http.SslCertificate p1, java.lang.String p2) { return new SslError(); }
     public boolean addError(int p0) { return false; }
-    public android.net.http.SslCertificate getCertificate() { return (android.net.http.SslCertificate) meglerProps.get("Certificate"); }
-    public int getPrimaryError() { return (meglerProps.get("PrimaryError") instanceof Integer ? (Integer) meglerProps.get("PrimaryError") : 0); }
-    public java.lang.String getUrl() { return (java.lang.String) meglerProps.get("Url"); }
+    public android.net.http.SslCertificate getCertificate() { return (android.net.http.SslCertificate) megletProps.get("Certificate"); }
+    public int getPrimaryError() { return (megletProps.get("PrimaryError") instanceof Integer ? (Integer) megletProps.get("PrimaryError") : 0); }
+    public java.lang.String getUrl() { return (java.lang.String) megletProps.get("Url"); }
     public boolean hasError(int p0) { return false; }
     SslError() { this((int) 0, (android.net.http.SslCertificate) null); }
 }

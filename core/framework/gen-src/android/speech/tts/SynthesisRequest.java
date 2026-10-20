@@ -3,18 +3,18 @@ package android.speech.tts;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SynthesisRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public SynthesisRequest(java.lang.CharSequence p0, android.os.Bundle p1) {}
     public SynthesisRequest(java.lang.String p0, android.os.Bundle p1) {}
-    public int getCallerUid() { return (meglerProps.get("CallerUid") instanceof Integer ? (Integer) meglerProps.get("CallerUid") : 0); }
-    public java.lang.CharSequence getCharSequenceText() { return (java.lang.CharSequence) meglerProps.get("CharSequenceText"); }
-    public java.lang.String getCountry() { return (java.lang.String) meglerProps.get("Country"); }
-    public java.lang.String getLanguage() { return (java.lang.String) meglerProps.get("Language"); }
-    public android.os.Bundle getParams() { return (android.os.Bundle) meglerProps.get("Params"); }
-    public int getPitch() { return (meglerProps.get("Pitch") instanceof Integer ? (Integer) meglerProps.get("Pitch") : 0); }
-    public int getSpeechRate() { return (meglerProps.get("SpeechRate") instanceof Integer ? (Integer) meglerProps.get("SpeechRate") : 0); }
-    public java.lang.String getText() { return (java.lang.String) meglerProps.get("Text"); }
-    public java.lang.String getVariant() { return (java.lang.String) meglerProps.get("Variant"); }
-    public java.lang.String getVoiceName() { return (java.lang.String) meglerProps.get("VoiceName"); }
+    public int getCallerUid() { return (megletProps.get("CallerUid") instanceof Integer ? (Integer) megletProps.get("CallerUid") : 0); }
+    public java.lang.CharSequence getCharSequenceText() { return (java.lang.CharSequence) megletProps.get("CharSequenceText"); }
+    public java.lang.String getCountry() { return (java.lang.String) megletProps.get("Country"); }
+    public java.lang.String getLanguage() { return (java.lang.String) megletProps.get("Language"); }
+    public android.os.Bundle getParams() { return (android.os.Bundle) megletProps.get("Params"); }
+    public int getPitch() { return (megletProps.get("Pitch") instanceof Integer ? (Integer) megletProps.get("Pitch") : 0); }
+    public int getSpeechRate() { return (megletProps.get("SpeechRate") instanceof Integer ? (Integer) megletProps.get("SpeechRate") : 0); }
+    public java.lang.String getText() { return (java.lang.String) megletProps.get("Text"); }
+    public java.lang.String getVariant() { return (java.lang.String) megletProps.get("Variant"); }
+    public java.lang.String getVoiceName() { return (java.lang.String) megletProps.get("VoiceName"); }
     SynthesisRequest() { this((java.lang.CharSequence) null, (android.os.Bundle) null); }
 }

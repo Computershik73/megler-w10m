@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CellInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CONNECTION_NONE = 0;
     public static final int CONNECTION_PRIMARY_SERVING = 1;
     public static final int CONNECTION_SECONDARY_SERVING = 2;
@@ -28,16 +28,16 @@ public abstract class CellInfo implements android.os.Parcelable {
     protected CellInfo(android.os.Parcel p0) {}
     protected CellInfo(android.telephony.CellInfo p0) {}
     public int describeContents() { return 0; }
-    public int getCellConnectionStatus() { return (meglerProps.get("CellConnectionStatus") instanceof Integer ? (Integer) meglerProps.get("CellConnectionStatus") : 0); }
+    public int getCellConnectionStatus() { return (megletProps.get("CellConnectionStatus") instanceof Integer ? (Integer) megletProps.get("CellConnectionStatus") : 0); }
     public abstract android.telephony.CellIdentity getCellIdentity();
     public abstract android.telephony.CellSignalStrength getCellSignalStrength();
-    public long getTimeStamp() { return (meglerProps.get("TimeStamp") instanceof Long ? (Long) meglerProps.get("TimeStamp") : 0L); }
-    public long getTimestampMillis() { return (meglerProps.get("TimestampMillis") instanceof Long ? (Long) meglerProps.get("TimestampMillis") : 0L); }
-    public boolean isRegistered() { return (meglerProps.get("Registered") instanceof Boolean ? (Boolean) meglerProps.get("Registered") : false); }
+    public long getTimeStamp() { return (megletProps.get("TimeStamp") instanceof Long ? (Long) megletProps.get("TimeStamp") : 0L); }
+    public long getTimestampMillis() { return (megletProps.get("TimestampMillis") instanceof Long ? (Long) megletProps.get("TimestampMillis") : 0L); }
+    public boolean isRegistered() { return (megletProps.get("Registered") instanceof Boolean ? (Boolean) megletProps.get("Registered") : false); }
     public android.telephony.CellInfo sanitizeLocationInfo() { return this; }
-    public void setCellConnectionStatus(int p0) { meglerProps.put("CellConnectionStatus", Integer.valueOf(p0)); }
-    public void setRegistered(boolean p0) { meglerProps.put("Registered", Boolean.valueOf(p0)); }
-    public void setTimeStamp(long p0) { meglerProps.put("TimeStamp", Long.valueOf(p0)); }
+    public void setCellConnectionStatus(int p0) { megletProps.put("CellConnectionStatus", Integer.valueOf(p0)); }
+    public void setRegistered(boolean p0) { megletProps.put("Registered", Boolean.valueOf(p0)); }
+    public void setTimeStamp(long p0) { megletProps.put("TimeStamp", Long.valueOf(p0)); }
     public abstract void writeToParcel(android.os.Parcel p0, int p1);
     protected void writeToParcel(android.os.Parcel p0, int p1, int p2) {}
 }

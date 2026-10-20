@@ -3,8 +3,8 @@ package android.printservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PrintDocument {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public android.os.ParcelFileDescriptor getData() { return (android.os.ParcelFileDescriptor) meglerProps.get("Data"); }
-    public android.print.PrintDocumentInfo getInfo() { return (android.print.PrintDocumentInfo) meglerProps.get("Info"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public android.os.ParcelFileDescriptor getData() { return (android.os.ParcelFileDescriptor) megletProps.get("Data"); }
+    public android.print.PrintDocumentInfo getInfo() { return (android.print.PrintDocumentInfo) megletProps.get("Info"); }
     protected PrintDocument() {}
 }

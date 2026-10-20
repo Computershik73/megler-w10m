@@ -1,4 +1,4 @@
-r"""List a folder of Megler's on the phone, with everything under it.
+r"""List a folder of Meglet's on the phone, with everything under it.
 
     python tools/phone-tree.py "LocalState/apps/<package>" [--depth 6]
 

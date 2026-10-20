@@ -3,17 +3,17 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BatchUpdates implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public java.util.ArrayList getTransformations() { return (meglerProps.get("Transformations") != null ? (java.util.ArrayList) meglerProps.get("Transformations") : new java.util.ArrayList()); }
-    public android.widget.RemoteViews getUpdates() { return (android.widget.RemoteViews) meglerProps.get("Updates"); }
+    public java.util.ArrayList getTransformations() { return (megletProps.get("Transformations") != null ? (java.util.ArrayList) megletProps.get("Transformations") : new java.util.ArrayList()); }
+    public android.widget.RemoteViews getUpdates() { return (android.widget.RemoteViews) megletProps.get("Updates"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected BatchUpdates() {}
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.service.autofill.BatchUpdates build() { android.service.autofill.BatchUpdates x = new android.service.autofill.BatchUpdates(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.service.autofill.BatchUpdates build() { android.service.autofill.BatchUpdates x = new android.service.autofill.BatchUpdates(); x.megletProps.putAll(megletProps); return x; }
         public android.service.autofill.BatchUpdates.Builder transformChild(int p0, android.service.autofill.Transformation p1) { return this; }
         public android.service.autofill.BatchUpdates.Builder updateTemplate(android.widget.RemoteViews p0) { return this; }
     }

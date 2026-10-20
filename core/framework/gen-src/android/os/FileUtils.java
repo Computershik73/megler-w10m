@@ -3,7 +3,7 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FileUtils {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int S_IRGRP = 32;
     public static final int S_IROTH = 4;
     public static final int S_IRUSR = 256;
@@ -85,12 +85,12 @@ public final class FileUtils {
     public static java.lang.String trimFilename(java.lang.String p0, int p1) { return null; }
     protected FileUtils() {}
     public static class MemoryPipe extends java.lang.Thread implements java.lang.AutoCloseable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.FileUtils.MemoryPipe createSink(byte[] p0) { return new MemoryPipe(); }
         public static android.os.FileUtils.MemoryPipe createSource(byte[] p0) { return new MemoryPipe(); }
         public void close() {}
-        public java.io.FileDescriptor getFD() { return (java.io.FileDescriptor) meglerProps.get("FD"); }
-        public java.io.FileDescriptor getInternalFD() { return (java.io.FileDescriptor) meglerProps.get("InternalFD"); }
+        public java.io.FileDescriptor getFD() { return (java.io.FileDescriptor) megletProps.get("FD"); }
+        public java.io.FileDescriptor getInternalFD() { return (java.io.FileDescriptor) megletProps.get("InternalFD"); }
         public void run() {}
         protected MemoryPipe() { super(); }
     }

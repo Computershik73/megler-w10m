@@ -3,15 +3,15 @@ package android.adservices.topics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GetTopicsRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.lang.String getAdsSdkName() { return (java.lang.String) meglerProps.get("AdsSdkName"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.lang.String getAdsSdkName() { return (java.lang.String) megletProps.get("AdsSdkName"); }
     public boolean shouldRecordObservation() { return false; }
     protected GetTopicsRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.topics.GetTopicsRequest build() { android.adservices.topics.GetTopicsRequest x = new android.adservices.topics.GetTopicsRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.topics.GetTopicsRequest.Builder setAdsSdkName(java.lang.String p0) { meglerProps.put("AdsSdkName", p0); return this; }
-        public android.adservices.topics.GetTopicsRequest.Builder setShouldRecordObservation(boolean p0) { meglerProps.put("ShouldRecordObservation", Boolean.valueOf(p0)); return this; }
+        public android.adservices.topics.GetTopicsRequest build() { android.adservices.topics.GetTopicsRequest x = new android.adservices.topics.GetTopicsRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.topics.GetTopicsRequest.Builder setAdsSdkName(java.lang.String p0) { megletProps.put("AdsSdkName", p0); return this; }
+        public android.adservices.topics.GetTopicsRequest.Builder setShouldRecordObservation(boolean p0) { megletProps.put("ShouldRecordObservation", Boolean.valueOf(p0)); return this; }
     }
 }

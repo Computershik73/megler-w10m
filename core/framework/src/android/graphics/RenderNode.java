@@ -42,7 +42,7 @@ public final class RenderNode {
     public RecordingCanvas start(int width, int height) { return beginRecording(width, height); }
     public void endRecording() {
         if (mCanvas == null) throw new IllegalStateException("No recording in progress, forgot to call #beginRecording()?");
-        mCanvas.meglerRelease();
+        mCanvas.megletRelease();
         mCanvas = null;
         mHasDisplayList = true;
     }
@@ -60,8 +60,8 @@ public final class RenderNode {
     public void setIsTextureView() {}
     public void registerVectorDrawableAnimator(android.view.NativeVectorDrawableAnimator a) {}
 
-    /** Megler: the node drawn on a canvas, as drawRenderNode does it. */
-    void meglerDraw(Canvas c) {
+    /** Meglet: the node drawn on a canvas, as drawRenderNode does it. */
+    void megletDraw(Canvas c) {
         if (!mHasDisplayList || mBitmap == null || mAlpha <= 0f) return;
         int save = c.save();
         c.translate(mLeft, mTop);

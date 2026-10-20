@@ -3,11 +3,11 @@ package android.hardware.biometrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PromptContentItemPlainText implements android.hardware.biometrics.PromptContentItemParcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public PromptContentItemPlainText(java.lang.String p0) {}
     public int describeContents() { return 0; }
-    public java.lang.String getText() { return (java.lang.String) meglerProps.get("Text"); }
+    public java.lang.String getText() { return (java.lang.String) megletProps.get("Text"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PromptContentItemPlainText() { this((java.lang.String) null); }
 }

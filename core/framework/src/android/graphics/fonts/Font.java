@@ -16,8 +16,8 @@ public final class Font {
     Font(byte[] data, File file, FontStyle style, int ttc, String variation) { mData = data; mFile = file; mStyle = style; mTtc = ttc; mVariation = variation; }
     public Font(long p0) { this(null, null, new FontStyle(), 0, null); }
 
-    /** Megler: the font file's bytes. */
-    public byte[] meglerData() { return mData; }
+    /** Meglet: the font file's bytes. */
+    public byte[] megletData() { return mData; }
     public ByteBuffer getBuffer() { return mData != null ? ByteBuffer.wrap(mData).asReadOnlyBuffer() : null; }
     public File getFile() { return mFile; }
     public FontStyle getStyle() { return mStyle; }
@@ -36,7 +36,7 @@ public final class Font {
     /** The face this font draws with, in its style. */
     synchronized android.graphics.Typeface face() {
         if (mFace == null) {
-            android.graphics.Typeface t = android.graphics.Typeface.meglerFromData(mData);
+            android.graphics.Typeface t = android.graphics.Typeface.megletFromData(mData);
             boolean italic = mStyle.getSlant() == FontStyle.FONT_SLANT_ITALIC;
             mFace = mStyle.getWeight() != FontStyle.FONT_WEIGHT_NORMAL || italic ? android.graphics.Typeface.create(t, mStyle.getWeight(), italic) : t;
         }
@@ -66,7 +66,7 @@ public final class Font {
         }
         public Builder(android.content.res.AssetManager am, String path) { this(am, path, true, 0); }
         public Builder(android.content.res.AssetManager am, String path, boolean isAsset, int cookie) {
-            mData = megler.Native.readAsset(path);
+            mData = meglet.Native.readAsset(path);
             if (mData == null) mError = new IOException("Font asset not found " + path);
         }
         public Builder(android.content.res.Resources res, int id) {
@@ -74,13 +74,13 @@ public final class Font {
             res.getValue(id, v, true);
             String file = v.string == null ? null : v.string.toString();
             if (file == null || file.endsWith(".xml")) { mError = new IOException("Font resource " + Integer.toHexString(id) + " is not a font file"); return; }
-            mData = res.meglerFile(file, id);
+            mData = res.megletFile(file, id);
             if (mData == null) mError = new IOException("Font resource " + Integer.toHexString(id) + " not found");
         }
         public Builder(Font f) { mData = f.mData; mFile = f.mFile; mWeight = f.mStyle.getWeight(); mSlant = f.mStyle.getSlant(); mTtc = f.mTtc; mVariation = f.mVariation; }
 
         public static ByteBuffer createBuffer(android.content.res.AssetManager am, String path, boolean isAsset, int cookie) {
-            byte[] d = megler.Native.readAsset(path); return d == null ? null : ByteBuffer.wrap(d);
+            byte[] d = meglet.Native.readAsset(path); return d == null ? null : ByteBuffer.wrap(d);
         }
         public Builder setWeight(int w) { mWeight = w; return this; }
         public Builder setSlant(int s) { mSlant = s; return this; }
@@ -89,7 +89,7 @@ public final class Font {
         public Builder setFontVariationSettings(FontVariationAxis[] axes) { mVariation = axes == null ? null : FontVariationAxis.toFontVariationSettings(axes); return this; }
         public Font build() throws IOException {
             if (mError != null) throw mError;
-            if (mData == null || android.graphics.Typeface.meglerFromData(mData) == android.graphics.Typeface.DEFAULT) throw new IOException("Failed to read font contents");
+            if (mData == null || android.graphics.Typeface.megletFromData(mData) == android.graphics.Typeface.DEFAULT) throw new IOException("Failed to read font contents");
             return new Font(mData, mFile, new FontStyle(mWeight > 0 ? mWeight : 400, mSlant >= 0 ? mSlant : 0), mTtc, mVariation);
         }
     }

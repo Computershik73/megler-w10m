@@ -5,7 +5,7 @@
  *
  * The APKs are the test apps of core/tests/app (tools/build-test-app.sh):
  * ordinary Android apps with no native code. Each is started through
- * megler_run as the shell would start it, with a stand-in for the shell's
+ * meglet_run as the shell would start it, with a stand-in for the shell's
  * drawing (hk_gfx_standin.c) and a window host that keeps each picture it is
  * handed.
  *
@@ -42,7 +42,7 @@
  * second time with every camera refused, as Windows refuses one the user said no to.
  *
  * `splits` is an app in several APKs (core/tests/app/splits): what it is given is a bundle of them, an .apks or an .xapk,
- * which is unpacked as the shell unpacks one (megler_bundle_unpack, for this screen's density and English and Russian) and
+ * which is unpacked as the shell unpacks one (meglet_bundle_unpack, for this screen's density and English and Russian) and
  * started from the base and the folder of splits that come out. The app's native library, its pictures for each density,
  * its strings for each language, more code and an asset pack are all in its splits; it says in the log whether each was
  * found, and what Android would tell it of its splits. Checked besides: the picture only a split has, in the window; and
@@ -60,7 +60,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../include/megler.h"
+#include "../include/meglet.h"
 #include "../src/apk/hk_apk.h"
 #include "../src/bionic/hk_bionic.h"
 #include "../src/drivers/hk_driver.h"
@@ -79,7 +79,7 @@
 #include "hk_gl_standin.h"
 #include "hk_tests.h"
 
-const char *megler_data_dir(void);
+const char *meglet_data_dir(void);
 
 static int g_checks, g_failed;
 static bool running(void);
@@ -118,8 +118,8 @@ void hk_java_tests_log(int level, const char *line, void *user)
     hk_lock_acquire(&g_log_lock);
     if (g_nlines < MAX_LINES) g_lines[g_nlines++] = hk_strdup(line);
     hk_lock_release(&g_log_lock);
-    if (g_verbose || level >= MEGLER_LOG_WARN) {
-        printf("%s%s\n", level >= MEGLER_LOG_ERROR ? "E " : level == MEGLER_LOG_WARN ? "W " : "  ", line);
+    if (g_verbose || level >= MEGLET_LOG_WARN) {
+        printf("%s%s\n", level >= MEGLET_LOG_ERROR ? "E " : level == MEGLET_LOG_WARN ? "W " : "  ", line);
         fflush(stdout);
     }
 }
@@ -187,7 +187,7 @@ static struct {
     /* Pictures that came as a part (present_pixels_part), and pixels outside the part they said had changed that had changed. */
     i32 parts;
     long stale;
-    /* Pictures shown from a canvas, unflushed (megler_gfx_host.present), as a shell that draws elsewhere than in memory shows them. */
+    /* Pictures shown from a canvas, unflushed (meglet_gfx_host.present), as a shell that draws elsewhere than in memory shows them. */
     volatile i32 from_canvas;
 } W = { HK_LOCK_INIT, NULL, 0, 0, 0, 0, NULL, 0, 0, 0 };
 
@@ -247,12 +247,12 @@ static void present_pixels_part(void *user, const void *pixels, int width, int h
 }
 
 /*
- * megler_gfx_host.present, as a shell that draws on a graphics processor has it: the window's picture shown from the canvas that
+ * meglet_gfx_host.present, as a shell that draws on a graphics processor has it: the window's picture shown from the canvas that
  * drew it, which the layer has not flushed. The stand-in's canvas draws straight into the memory, which is its picture, so that
  * is shown, the same way as a picture handed over by present_pixels(_part): the same checks hold for both.
  */
 /*
- * megler_gfx_host.gl_frame and gl_place, as a shell that composes the window on its graphics processor has them: each layer's
+ * meglet_gfx_host.gl_frame and gl_place, as a shell that composes the window on its graphics processor has them: each layer's
  * place and last frame kept, the views' picture as `present` last showed it kept, and the window composed of the two -- the
  * frames at their places, scaled to them, opaque, the views' premultiplied colours over them -- whenever either changes,
  * then shown as a picture handed to present_pixels is. The frames come out of the GL stand-in's surfaces by their "shared
@@ -420,7 +420,7 @@ static void write_picture(const char *name)
  * Twenty turns of an idle loop are 160 ms, which outlasts what the framework delays by itself after a touch (a pressed
  * state held for 64 ms, a tap recognised after 100).
  */
-/* When megler_run was called, and whether settle() has said what the start cost. */
+/* When meglet_run was called, and whether settle() has said what the start cost. */
 static u64 g_start_ns;
 static bool g_start_said;
 
@@ -447,7 +447,7 @@ static void settle(void)
     }
     /*
      * The first time after the start: what the start cost, as a measure of the interpreter on real code -- the instructions
-     * every thread executed, and the time from megler_run to the last picture before the app came to rest.
+     * every thread executed, and the time from meglet_run to the last picture before the app came to rest.
      */
     if (g_start_ns && !g_start_said) {
         g_start_said = true;
@@ -458,14 +458,14 @@ static void settle(void)
 
 static void tap(int x, int y)
 {
-    megler_touch(0, 1, (float)x, (float)y);
+    meglet_touch(0, 1, (float)x, (float)y);
     hk_sleep_ns(60000000ull);
-    megler_touch(2, 1, (float)x, (float)y);
+    meglet_touch(2, 1, (float)x, (float)y);
 }
 
 /*
  * The shell's keyboard, played by the test: what the app asked of it is counted and kept, and the test types by calling
- * what a shell calls (megler_text_commit, megler_text_key, megler_keyboard_closed, megler_keyboard_height). Both of the host's
+ * what a shell calls (meglet_text_commit, meglet_text_key, meglet_keyboard_closed, meglet_keyboard_height). Both of the host's
  * functions are called on the app's main thread.
  */
 static struct {
@@ -510,7 +510,7 @@ static bool g_camera_app;
 static volatile i32 g_exited;
 static int g_status;
 static char g_reason[1600];
-/* Started by the test itself, past megler_run: see start(). */
+/* Started by the test itself, past meglet_run: see start(). */
 static bool g_direct;
 /* `splits`: the folder of splits the bundle was unpacked into, which the app is started with; and whether it was an .xapk. */
 static char *g_splits_dir;
@@ -522,7 +522,7 @@ static bool running(void)
     const char *reason = NULL;
     if (!g_direct) {
         int tries;
-        if (megler_running()) return true;
+        if (meglet_running()) return true;
         /*
          * The core says "not running" a moment before it tells the shell why (hk_run_ended: the flag, a line in the log, then
          * on_exit), so the end is there to read only when on_exit has been through. The crash test once read the status and the
@@ -548,7 +548,7 @@ static void on_exit_cb(void *user, int status, const char *reason)
 
 static const char *g_android_root;
 
-/* The bars the app asked away, in order (megler_system_bars_host.wanted, on the app's main thread): ",0,1" and so on. */
+/* The bars the app asked away, in order (meglet_system_bars_host.wanted, on the app's main thread): ",0,1" and so on. */
 static char g_bars_heard[128];
 static hk_lock g_bars_lock = HK_LOCK_INIT;
 
@@ -564,7 +564,7 @@ static void bars_wanted(void *user, int bars)
 
 static bool start(const char *apk, const char *android_root)
 {
-    static megler_run_config cfg;
+    static meglet_run_config cfg;
     g_android_root = android_root;
     memset(&cfg, 0, sizeof(cfg));
     cfg.apk_path = apk;
@@ -594,28 +594,28 @@ static bool start(const char *apk, const char *android_root)
     if (g_verbose >= 2 && hk_bionic_find("setenv")) ((int (*)(const char *, const char *, int))hk_bionic_find("setenv"))("TL_TOUCH_LOG", "1", 1);
     /* And every window's views with their frames, every three seconds while it lays out: verbose 3. */
     if (g_verbose >= 3 && hk_bionic_find("setenv")) ((int (*)(const char *, const char *, int))hk_bionic_find("setenv"))("TL_VIEW_DUMP", "1", 1);
-    say("a Java app through megler_run (%s on the Android root %s)", apk, android_root);
+    say("a Java app through meglet_run (%s on the Android root %s)", apk, android_root);
     {
         /* What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. */
-        char *report = g_splits_dir ? megler_apk_report_splits(apk, g_splits_dir) : megler_apk_report(apk);
+        char *report = g_splits_dir ? meglet_apk_report_splits(apk, g_splits_dir) : meglet_apk_report(apk);
         CHECK(report && strstr(report, "\"engine\":\"java\"") && strstr(report, "\"runnable\":true"));
         /* The app whose launcher entries are aliases, the first one disabled: what is started is what the enabled one stands for. */
-        if (g_crash_app) CHECK(report && strstr(report, "\"activity\":\"megler.test.crash.First\""));
+        if (g_crash_app) CHECK(report && strstr(report, "\"activity\":\"meglet.test.crash.First\""));
         if (!g_any_app) CHECK(report && strstr(report, g_portrait ? "\"orientation\":\"portrait\"" : "\"orientation\":\"unspecified\""));
-        megler_free(report);
+        meglet_free(report);
     }
     g_start_ns = hk_time_monotonic_ns();
-    if (megler_run(&cfg)) return true;
+    if (meglet_run(&cfg)) return true;
 #if !HK_HOST_ARM32
     {
         /*
-         * megler_run refuses every app on a host that cannot run guest code. A Java app with no native library needs none, so
-         * here the driver is started as megler_run would have started it: the APK read, the app's folders named, the driver's start.
+         * meglet_run refuses every app on a host that cannot run guest code. A Java app with no native library needs none, so
+         * here the driver is started as meglet_run would have started it: the APK read, the app's folders named, the driver's start.
          */
         static hk_apk_info info;
-        say("  (megler_run: %s -- the Java driver is started directly)", megler_last_error());
+        say("  (meglet_run: %s -- the Java driver is started directly)", meglet_last_error());
         if (hk_apk_read_info(apk, &info) && !strcmp(info.engine, "java")) {
-            hk_run_files(megler_data_dir(), megler_storage_dir(), info.package, &cfg.storage);
+            hk_run_files(meglet_data_dir(), meglet_storage_dir(), info.package, &cfg.storage);
             g_direct = hk_driver_java.start(&cfg, &info);
             if (g_direct) return true;
         }
@@ -623,7 +623,7 @@ static bool start(const char *apk, const char *android_root)
 #endif
     g_checks++;
     g_failed++;
-    say("  FAIL: not started: %s", megler_last_error());
+    say("  FAIL: not started: %s", meglet_last_error());
     return false;
 }
 
@@ -631,8 +631,8 @@ static bool start(const char *apk, const char *android_root)
 static void back_and_end(const char *destroyed_line, int *at)
 {
     int tries;
-    megler_key(4, true);
-    megler_key(4, false);
+    meglet_key(4, true);
+    meglet_key(4, false);
     expect_line(destroyed_line, at, 30);
     for (tries = 0; tries < 3000 && running(); tries++) hk_sleep_ns(10000000ull);
     CHECK(g_exited);
@@ -713,7 +713,7 @@ static int run_hello(void)
     memset(text, 0, sizeof(text));
 
     /* The start, in Android's order: the Application first, then the activity's three steps, the views found by their ids in between. */
-    expect_line("I/HelloTest: App.onCreate package=megler.test.hello", &at, 120);
+    expect_line("I/HelloTest: App.onCreate package=meglet.test.hello", &at, 120);
     /* Its class loader: a PathClassLoader over the APK, the one loader of all its classes, which finds the APK's other files too; the system's classes name Android's boot loader. */
     expect_line("I/HelloTest: loader=dalvik.system.PathClassLoader same=true manifest=true loads=true missing=true system=java.lang.BootClassLoader apk=true", &at, 60);
     expect_line("I/HelloTest: onCreate app=1 state=none", &at, 60);
@@ -731,7 +731,7 @@ static int run_hello(void)
         char want[200];
         snprintf(want, sizeof(want), "I/HelloTest: launcher padding=Rect(%d, %d - %d, %d)", 8 * dp, 8 * dp, 8 * dp, 8 * dp);
         CHECK(find_line(want, 0) >= 0);
-        CHECK(find_line("I/HelloTest: launcher activities=1 first=megler.test.hello.MainActivity label=Hello icon=true resolved=true", 0) >= 0);
+        CHECK(find_line("I/HelloTest: launcher activities=1 first=meglet.test.hello.MainActivity label=Hello icon=true resolved=true", 0) >= 0);
     }
     /* A row of no fixed width shares what its weighted, widthless children asked for equally among them, as Android does for an app written for Android 7 or later. */
     CHECK(find_line("I/HelloTest: row unlimited=140:70+70 exact=200:100+100", 0) >= 0);
@@ -841,14 +841,14 @@ static int run_hello(void)
         (unsigned)(c1.dvm.object_bytes >> 10), (unsigned)(c1.dvm.meta_bytes >> 10));
 
     /* The shell hides the app and shows it again. */
-    megler_set_paused(true);
+    meglet_set_paused(true);
     expect_line("I/HelloTest: onPause draws=true", &at, 30);
-    megler_set_paused(false);
+    meglet_set_paused(false);
     expect_line("I/HelloTest: onResume", &at, 30);
 
     /* Back: down in order, and out. */
-    megler_key(4, true);
-    megler_key(4, false);
+    meglet_key(4, true);
+    meglet_key(4, false);
     expect_line("I/HelloTest: onPause", &at, 30);
     expect_line("I/HelloTest: onStop", &at, 30);
     at--;
@@ -878,10 +878,10 @@ static void type_into_fields(const int row[4], int *at)
     i32 shown, hidden;
     memset(name, 0, sizeof(name));
     say("the keyboard: text typed into the demos app's fields");
-    /* Typed while no field has the focus: it goes nowhere, and the framework's log says so (megler.InputMethods in the overlay). */
-    megler_text_commit("x");
+    /* Typed while no field has the focus: it goes nowhere, and the framework's log says so (meglet.InputMethods in the overlay). */
+    meglet_text_commit("x");
     expect_line("java: the first thing the keyboard sent (text) reached the core and waits for the app's main thread", at, 30);
-    expect_line("I/Megler: keyboard: the first thing the keyboard sent, typed text (1 character), finds no view with the focus: it goes nowhere", at, 30);
+    expect_line("I/Meglet: keyboard: the first thing the keyboard sent, typed text (1 character), finds no view with the focus: it goes nowhere", at, 30);
     tap(row[0] + row[2] / 2, row[1] + row[3] * 7 + row[3] / 2);
     expect_line("I/DemoTest: list: clicked row 7 \"typing\"", at, 30);
     expect_line("I/DemoTest: typing: created", at, 30);
@@ -894,92 +894,92 @@ static void type_into_fields(const int row[4], int *at)
     /* A touch of the first field: the keyboard is asked for, for a line of text whose Enter is Done, on the app's main thread and not on this one. */
     shown = K.shown;
     tap(name[0] + 60, name[1] + name[3] / 2);
-    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT && K.flags == 0 && K.enter == MEGLER_ENTER_DONE);
+    CHECK(shown_times(shown + 1) && K.kind == MEGLET_KEYBOARD_TEXT && K.flags == 0 && K.enter == MEGLET_ENTER_DONE);
     CHECK(K.thread != 0 && K.thread != hk_thread_self_id());
     settle();
     CHECK(count_colour(name, 0x102030) == 0);
     /* The keyboard comes up and says how much it covers before anything is typed, as a phone's shell does. */
-    megler_keyboard_height(g_screen_h * 2 / 5);
+    meglet_keyboard_height(g_screen_h * 2 / 5);
     settle();
     /* Text, as the keyboard commits it. */
-    megler_text_commit("Hello");
+    meglet_text_commit("Hello");
     expect_line("I/DemoTest: typing: name=\"Hello\" cursor=5", at, 30);
     /* The log's next word on it: once it reaches a field, which one and what the text's length did; the text itself is not there. */
-    expect_line("I/Megler: keyboard: typed text (5 characters) now goes to android.widget.EditText, which has the focus and an input connection; "
+    expect_line("I/Meglet: keyboard: typed text (5 characters) now goes to android.widget.EditText, which has the focus and an input connection; "
                 "its text was 0 characters long and is 5 now", at, 30);
     settle();
     write_picture("demos-8-typed");
     typed = count_colour(name, 0x102030);
     CHECK(typed > 0);
     /* Backspace: one letter fewer, in the text and in the picture (the stand-in draws a box a letter). */
-    megler_text_key(MEGLER_TEXT_BACKSPACE);
+    meglet_text_key(MEGLET_TEXT_BACKSPACE);
     expect_line("I/DemoTest: typing: name=\"Hell\" cursor=4", at, 30);
     settle();
     fewer = count_colour(name, 0x102030);
     say("  the field's own pixels: %d of the text's colour for \"Hello\", %d for \"Hell\"", typed, fewer);
     CHECK(fewer > 0 && fewer * 5 == typed * 4);
     /* The cursor keys, which go as keys, between two pieces of text: everything arrives in the order it was sent. */
-    megler_text_key(MEGLER_TEXT_LEFT);
-    megler_text_key(MEGLER_TEXT_LEFT);
-    megler_text_commit("X");
+    meglet_text_key(MEGLET_TEXT_LEFT);
+    meglet_text_key(MEGLET_TEXT_LEFT);
+    meglet_text_commit("X");
     expect_line("I/DemoTest: typing: name=\"HeXll\" cursor=3", at, 30);
-    megler_text_key(MEGLER_TEXT_HOME);
-    megler_text_commit("\xD0\x81\xD0\xB6");                     /* two Cyrillic letters, UTF-8 */
+    meglet_text_key(MEGLET_TEXT_HOME);
+    meglet_text_commit("\xD0\x81\xD0\xB6");                     /* two Cyrillic letters, UTF-8 */
     expect_line("I/DemoTest: typing: name=\"\xD0\x81\xD0\xB6HeXll\" cursor=2", at, 30);
-    megler_text_key(MEGLER_TEXT_END);
-    megler_text_key(MEGLER_TEXT_DELETE);                              /* nothing after the end to delete */
-    megler_text_commit("!");
+    meglet_text_key(MEGLET_TEXT_END);
+    meglet_text_key(MEGLET_TEXT_DELETE);                              /* nothing after the end to delete */
+    meglet_text_commit("!");
     expect_line("I/DemoTest: typing: name=\"\xD0\x81\xD0\xB6HeXll!\" cursor=8", at, 30);
-    megler_text_key(MEGLER_TEXT_HOME);
-    megler_text_key(MEGLER_TEXT_DELETE);
+    meglet_text_key(MEGLET_TEXT_HOME);
+    meglet_text_key(MEGLET_TEXT_DELETE);
     expect_line("I/DemoTest: typing: name=\"\xD0\xB6HeXll!\" cursor=0", at, 30);
     /* Enter in a field of one line is the field's action: IME_ACTION_DONE, 6. */
-    megler_text_key(MEGLER_TEXT_ENTER);
+    meglet_text_key(MEGLET_TEXT_ENTER);
     expect_line("I/DemoTest: typing: action name 6", at, 30);
     /* Done put the keyboard away: the shell says it covers nothing now. */
-    megler_keyboard_height(0);
+    meglet_keyboard_height(0);
     settle();
 
     /* Another field: asked again, for a number with a decimal point, whose Enter is Next. */
     shown = K.shown;
     tap(number[0] + 60, number[1] + number[3] / 2);
-    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_NUMBER && K.flags == MEGLER_KEYBOARD_F_DECIMAL && K.enter == MEGLER_ENTER_NEXT);
-    megler_text_commit("4");
-    megler_text_commit("2.5");
+    CHECK(shown_times(shown + 1) && K.kind == MEGLET_KEYBOARD_NUMBER && K.flags == MEGLET_KEYBOARD_F_DECIMAL && K.enter == MEGLET_ENTER_NEXT);
+    meglet_text_commit("4");
+    meglet_text_commit("2.5");
     expect_line("I/DemoTest: typing: number=\"42.5\"", at, 30);
     /* A password. */
     shown = K.shown;
     tap(secret[0] + 60, secret[1] + secret[3] / 2);
-    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_PASSWORD);
-    megler_text_commit("pw");
+    CHECK(shown_times(shown + 1) && K.kind == MEGLET_KEYBOARD_PASSWORD);
+    meglet_text_commit("pw");
     expect_line("I/DemoTest: typing: secret=\"pw\"", at, 30);
     /* A note of several lines: Enter is a new line there, and the keyboard is told so. */
     shown = K.shown;
     tap(note[0] + 60, note[1] + 30);
-    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT && K.flags == (MEGLER_KEYBOARD_F_MULTILINE | MEGLER_KEYBOARD_F_CAP_SENTENCES) && K.enter == MEGLER_ENTER_NEWLINE);
-    megler_text_commit("one");
-    megler_text_key(MEGLER_TEXT_ENTER);
-    megler_text_commit("two");
+    CHECK(shown_times(shown + 1) && K.kind == MEGLET_KEYBOARD_TEXT && K.flags == (MEGLET_KEYBOARD_F_MULTILINE | MEGLET_KEYBOARD_F_CAP_SENTENCES) && K.enter == MEGLET_ENTER_NEWLINE);
+    meglet_text_commit("one");
+    meglet_text_key(MEGLET_TEXT_ENTER);
+    meglet_text_commit("two");
     expect_line("I/DemoTest: typing: note=\"one|two\" cursor=7", at, 30);
     settle();
     write_picture("demos-9-fields");
 
     /* The keyboard says how much of the surface it covers, then that the user put it away: the app goes on, and the next touch of a field asks again. */
     hidden = K.hidden;
-    megler_keyboard_height(g_screen_h * 2 / 5);
+    meglet_keyboard_height(g_screen_h * 2 / 5);
     hk_sleep_ns(300000000ull);
-    megler_keyboard_closed();
-    megler_keyboard_height(0);
+    meglet_keyboard_closed();
+    meglet_keyboard_height(0);
     hk_sleep_ns(300000000ull);
     settle();
     CHECK(running() && K.hidden == hidden);
     shown = K.shown;
     tap(name[0] + 60, name[1] + name[3] / 2);
-    CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT);
+    CHECK(shown_times(shown + 1) && K.kind == MEGLET_KEYBOARD_TEXT);
     settle();
     /* Back: the screen goes, and with it the field that wanted the keyboard. */
-    megler_key(4, true);
-    megler_key(4, false);
+    meglet_key(4, true);
+    meglet_key(4, false);
     expect_line("I/DemoTest: typing: destroyed name=\"\xD0\xB6HeXll!\"", at, 30);
     settle();
     CHECK(K.hidden > hidden);
@@ -1032,7 +1032,7 @@ static void keyboard_and_dialogs(const int row[4], int *at)
         shown = K.shown;
         tap(field0[0] + 30, field0[1] + field0[3] / 2);
         CHECK(shown_times(shown + 1));
-        megler_keyboard_height(kbd);
+        meglet_keyboard_height(kbd);
         settle();
         line = last_line(want, *at);
         CHECK(rect_in(line_at(line), "field", field) && rect_in(line_at(line), "window", window));
@@ -1045,21 +1045,21 @@ static void keyboard_and_dialogs(const int row[4], int *at)
             CHECK(window[3] <= space && abs(window[1] - (space - window[3]) / 2) <= 1);
         }
         /* The keyboard put away by the user: the dialog goes back where it was. Back then closes it, and the next one comes. */
-        megler_keyboard_closed();
-        megler_keyboard_height(0);
+        meglet_keyboard_closed();
+        meglet_keyboard_height(0);
         settle();
         line = last_line(want, *at);
         CHECK(rect_in(line_at(line), "field", field) && rect_in(line_at(line), "window", window));
         CHECK(field[1] == field0[1] && window[1] == window0[1] && window[3] == window0[3]);
-        megler_key(4, true);
-        megler_key(4, false);
+        meglet_key(4, true);
+        meglet_key(4, false);
         snprintf(want, sizeof(want), "I/DemoTest: keyboard: %s closed", tags[k]);
         expect_line(want, at, 30);
     }
     expect_line("I/DemoTest: keyboard: all shown", at, 30);
     settle();
-    megler_key(4, true);
-    megler_key(4, false);
+    meglet_key(4, true);
+    meglet_key(4, false);
     settle();
 }
 
@@ -1197,20 +1197,20 @@ static int run_demos(void)
         profile_begin("scroll");
         hk_dvm_count_instructions(true);
         cost_now(&c0);
-        megler_touch(0, 1, (float)x, (float)y0);
+        meglet_touch(0, 1, (float)x, (float)y0);
         for (k = 1; k <= 20; k++) {
             hk_sleep_ns(16000000ull);
-            megler_touch(1, 1, (float)x, (float)(y0 - travel * k / 20));
+            meglet_touch(1, 1, (float)x, (float)(y0 - travel * k / 20));
         }
         for (k = 19; k >= 0; k--) {
             hk_sleep_ns(16000000ull);
-            megler_touch(1, 1, (float)x, (float)(y0 - travel * k / 20));
+            meglet_touch(1, 1, (float)x, (float)(y0 - travel * k / 20));
         }
         /* (Held still before it is let go, so that it is not flung.) */
         hk_sleep_ns(150000000ull);
-        megler_touch(1, 1, (float)x, (float)y0);
+        meglet_touch(1, 1, (float)x, (float)y0);
         hk_sleep_ns(150000000ull);
-        megler_touch(2, 1, (float)x, (float)y0);
+        meglet_touch(2, 1, (float)x, (float)y0);
         settle();
         cost_now(&c1);
         hk_dvm_count_instructions(false);
@@ -1312,12 +1312,12 @@ static int run_demos(void)
     expect_line("I/DemoTest: list: clicked row 5 \"toast\"", &at, 30);
     expect_line("I/DemoTest: row 5 done", &at, 30);
     /* A touch that moves down the list and comes up elsewhere is a scroll that has nowhere to go, not a click. */
-    megler_touch(0, 1, (float)(row[0] + 100), (float)(row[1] + row[3] * 2 + 10));
+    meglet_touch(0, 1, (float)(row[0] + 100), (float)(row[1] + row[3] * 2 + 10));
     for (i = 1; i <= 8; i++) {
         hk_sleep_ns(20000000ull);
-        megler_touch(1, 1, (float)(row[0] + 100), (float)(row[1] + row[3] * 2 + 10 + 12 * (int)i));
+        meglet_touch(1, 1, (float)(row[0] + 100), (float)(row[1] + row[3] * 2 + 10 + 12 * (int)i));
     }
-    megler_touch(2, 1, (float)(row[0] + 100), (float)(row[1] + row[3] * 4 + 10));
+    meglet_touch(2, 1, (float)(row[0] + 100), (float)(row[1] + row[3] * 4 + 10));
     hk_sleep_ns(500000000ull);
     CHECK(find_line("list: clicked row", at + 1) < 0);
     {
@@ -1336,7 +1336,7 @@ static int run_demos(void)
         settle();
         free(list);
         list = snapshot();
-        megler_touch(0, 1, (float)(row[0] + 60), (float)(row[1] + row[3] * 6 + row[3] / 2));
+        meglet_touch(0, 1, (float)(row[0] + 60), (float)(row[1] + row[3] * 6 + row[3] / 2));
         hk_sleep_ns(400000000ull);
         settle();
         write_picture("demos-7-row-held");
@@ -1346,7 +1346,7 @@ static int run_demos(void)
         say("  a row held down: %d of its %d pixels show it; %d and %d pixels of the rows two above and two below changed", in, held[2] * held[3], out_above, out_below);
         CHECK(in > held[2] * held[3] / 2);
         CHECK(out_above == 0 && out_below == 0);
-        megler_touch(2, 1, (float)(row[0] + 60), (float)(row[1] + row[3] * 6 + row[3] / 2));
+        meglet_touch(2, 1, (float)(row[0] + 60), (float)(row[1] + row[3] * 6 + row[3] / 2));
         expect_line("I/DemoTest: list: clicked row 6 \"seven\"", &at, 30);
         settle();
     }
@@ -1553,22 +1553,22 @@ static const char k_split_names[] = "I/SplitsTest: split-names config.armeabi_v7
  */
 static bool unpack_bundle(const char *bundle, char **apk)
 {
-    char *dir = hk_sprintf("%s/library", megler_data_dir()), *json;
+    char *dir = hk_sprintf("%s/library", meglet_data_dir()), *json;
     size_t n = strlen(bundle);
     hk_path_mkdirs(dir);
     *apk = hk_sprintf("%s/splits.apk", dir);
     g_splits_dir = hk_sprintf("%s/splits.apk.splits", dir);
     g_xapk = n > 5 && !strcmp(bundle + n - 5, ".xapk");
     say("a bundle unpacked as the shell unpacks one: %s, for %d dpi, in English and Russian", bundle, g_screen_dpi);
-    json = megler_bundle_unpack(bundle, *apk, g_splits_dir, g_screen_dpi, "en,ru", NULL, NULL);
+    json = meglet_bundle_unpack(bundle, *apk, g_splits_dir, g_screen_dpi, "en,ru", NULL, NULL);
     say("  %s", json ? json : "(nothing)");
     CHECK(json && strstr(json, "\"ok\":true"));
     free(dir);
     if (!json || !strstr(json, "\"ok\":true")) {
-        megler_free(json);
+        meglet_free(json);
         return false;
     }
-    megler_free(json);
+    meglet_free(json);
     return true;
 }
 
@@ -1588,12 +1588,12 @@ static int run_splits(void)
     snprintf(want, sizeof(want), "I/SplitsTest: done ok=%d failed=0", (int)HK_COUNT(steps));
     expect_line(want, &at, 30);
     /* The expansion file is there after the .xapk, and not after the .apks, which has none. */
-    CHECK(find_line(g_xapk ? "I/SplitsTest: obb present in /storage/emulated/0/Android/obb/megler.test.splits" : "I/SplitsTest: obb absent", 0) >= 0);
+    CHECK(find_line(g_xapk ? "I/SplitsTest: obb present in /storage/emulated/0/Android/obb/meglet.test.splits" : "I/SplitsTest: obb absent", 0) >= 0);
     /* The library came out of the split, which the core says when it places it for the class loader; the split is mounted beside the base. */
     CHECK(find_line("run: the app is in 8 APKs, its base and the splits config.armeabi_v7a, config.en, config.mdpi, config.ru, config.xxhdpi, extra, pack", 0) >= 0);
-    CHECK(find_line("java: the app's 1 native library (armeabi-v7a) is in /data/data/megler.test.splits/lib", 0) >= 0);
+    CHECK(find_line("java: the app's 1 native library (armeabi-v7a) is in /data/data/meglet.test.splits/lib", 0) >= 0);
     CHECK(find_line("I/SplitsLib: answer from the split's library", 0) >= 0);
-    CHECK(find_line("/data/app/megler.test.splits-1/split_config.armeabi_v7a.apk", 0) >= 0);
+    CHECK(find_line("/data/app/meglet.test.splits-1/split_config.armeabi_v7a.apk", 0) >= 0);
     /* The picture only the density split has, drawn in the window: magenta all over its middle. */
     layout = wait_line("I/SplitsTest: layout picture=", 0, 30);
     CHECK(layout >= 0 && rect_in(line_at(layout), "picture", pic));
@@ -1638,7 +1638,7 @@ static int count_lines(const char *text)
 }
 
 /*
- * The battery changing under the app, as the shell reports it (megler_set_battery). The app has a receiver registered for the
+ * The battery changing under the app, as the shell reports it (meglet_set_battery). The app has a receiver registered for the
  * battery's broadcasts, which has heard the battery once already, when it was registered. It must hear each change once, on the
  * main thread: not the same battery reported again, not a voltage or a temperature that changed alone; and that the charger was
  * connected or taken away when it was, before the battery's own news, which is Android's order. `on_battery`: the app was
@@ -1646,40 +1646,40 @@ static int count_lines(const char *text)
  */
 static void battery_changes(bool on_battery)
 {
-    static const megler_battery charging = { 80, 2, 2, 0, INT_MIN, true }, discharging = { 79, 3, 0, 3900, 312, true }, warmer = { 79, 3, 0, 3890, 320, true },
+    static const meglet_battery charging = { 80, 2, 2, 0, INT_MIN, true }, discharging = { 79, 3, 0, 3900, 312, true }, warmer = { 79, 3, 0, 3890, 320, true },
                               lower = { 78, 3, 0, 3890, 320, true };
     int heard, power;
     CHECK(wait_line("I/DataTest: battery-heard 1 ", 0, 30) >= 0);
     /* On a USB charger at 80: the voltage is not said and is made of the level, the temperature is not said and is 25.0. */
-    megler_set_battery(&charging);
+    meglet_set_battery(&charging);
     heard = wait_line("I/DataTest: battery-heard 2 level=80/100 status=2 plugged=2 health=2 voltage=4040 temperature=250 present=true technology=Li-ion", 0, 30);
     power = find_line("I/DataTest: power-heard android.intent.action.ACTION_POWER_CONNECTED", 0);
     CHECK(heard >= 0 && (on_battery ? power >= 0 && power < heard : power < 0));
     /* The same again is no news; off the charger and one lower is, and so is the charger's going. */
-    megler_set_battery(&charging);
-    megler_set_battery(&discharging);
+    meglet_set_battery(&charging);
+    meglet_set_battery(&discharging);
     heard = wait_line("I/DataTest: battery-heard 3 level=79/100 status=3 plugged=0 health=2 voltage=3900 temperature=312 present=true technology=Li-ion", 0, 30);
     power = find_line("I/DataTest: power-heard android.intent.action.ACTION_POWER_DISCONNECTED", 0);
     CHECK(heard >= 0 && power >= 0 && power < heard);
     /* Warmer and a little less voltage at the same level is not broadcast; the next change carries both. */
-    megler_set_battery(&warmer);
-    megler_set_battery(&lower);
+    meglet_set_battery(&warmer);
+    meglet_set_battery(&lower);
     CHECK(wait_line("I/DataTest: battery-heard 4 level=78/100 status=3 plugged=0 health=2 voltage=3890 temperature=320 present=true technology=Li-ion", 0, 30) >= 0);
     /* Four in all, the first being the one every receiver gets when it registers, and nothing came anywhere but on the main thread. */
     CHECK(count_lines("I/DataTest: battery-heard ") == 4 && count_lines("I/DataTest: power-heard ") == (on_battery ? 2 : 1) && count_lines("OFF THE MAIN THREAD") == 0);
 }
 
 /*
- * The phone's bars, as the shell has them. Said to cover 60 pixels at the top and 90 at the bottom (megler_set_insets), they
+ * The phone's bars, as the shell has them. Said to cover 60 pixels at the top and 90 at the bottom (meglet_set_insets), they
  * keep the app's content off them: its decor moves it down by 60 and shortens it by 150. Then the app hides and shows them
  * -- the status bar by its window's WindowInsetsController, both by its decor's system UI flags -- and the shell is asked
- * each time (megler_system_bars_host): nothing hidden at the first frame, then the status bar, nothing, both, nothing.
+ * each time (meglet_system_bars_host): nothing hidden at the first frame, then the status bar, nothing, both, nothing.
  */
 static void bars_and_insets(void)
 {
     char heard[sizeof(g_bars_heard)];
     int tries;
-    megler_set_insets(0, 60, 0, 90);
+    meglet_set_insets(0, 60, 0, 90);
     CHECK(wait_line("I/DataTest: bars-insets moved=60 shrunk=150", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: bars-step 4", 0, 30) >= 0);
     for (tries = 0; tries < 100; tries++) {
@@ -1692,7 +1692,7 @@ static void bars_and_insets(void)
     say("  the bars the app asked away: %s", heard);
     CHECK(!strcmp(heard, ",0,1,0,3,0"));
     CHECK(find_line("I/DataTest: bars hide FAILED", 0) < 0 && find_line("I/DataTest: bars show FAILED", 0) < 0);
-    megler_set_insets(0, 0, 0, 0);
+    meglet_set_insets(0, 0, 0, 0);
 }
 
 static int run_data(void)
@@ -1763,7 +1763,7 @@ static int run_data(void)
         bool there = hk_path_stat(crypto, &st, NULL) && !st.is_dir, with = HK_HOST_ARM32 && there;
         free(crypto);
         say("  TLS: %s", with ? "conscrypt's (its library is in the Android root)" : "the runtime's stand-in, which has none");
-        CHECK(find_line(with ? "I/DataTest: tls-is conscrypt provider=com.android.org.conscrypt.OpenSSLProvider" : "I/DataTest: tls-is none provider=megler.security.RuntimeProvider", 0) >= 0);
+        CHECK(find_line(with ? "I/DataTest: tls-is conscrypt provider=com.android.org.conscrypt.OpenSSLProvider" : "I/DataTest: tls-is none provider=meglet.security.RuntimeProvider", 0) >= 0);
     }
     /* What requestPermissions asked comes back by a message of its own, after the method that asked has returned. */
     expect_line("I/DataTest: permission-result ok after done=true", &at, 30);
@@ -1800,14 +1800,14 @@ static int run_data(void)
         if (frame >= 0) say("  %s", strstr(line_at(frame), "insets-frame "));
     }
     /*
-     * The time zone the app has is the one the shell named before the start (megler_set_timezone, below): in the first run a zone with
+     * The time zone the app has is the one the shell named before the start (meglet_set_timezone, below): in the first run a zone with
      * summer time, whose winter's noon by Greenwich is 13:00 and whose summer's is 14:00; in the second a name no tzdata has, which is
      * GMT and a line in the log, and breaks nothing.
      */
     CHECK(find_line(run == 2 && want == 2 ? "I/DataTest: timezone is GMT winter=2023-01-15 12:00 +0000 summer=2023-07-15 12:00 +0000"
                                            : "I/DataTest: timezone is Europe/Berlin winter=2023-01-15 13:00 +0100 summer=2023-07-15 14:00 +0200", 0) >= 0);
     if (run == 2 && want == 2) CHECK(find_line("java: the phone's time zone is given as \"Nowhere/At_All\", which the Android root's tzdata does not have", 0) >= 0);
-    /* And the language and region are the ones named before the start (megler_set_locale, below): English (United States) in the first run, Russian (Russia) in the second. */
+    /* And the language and region are the ones named before the start (meglet_set_locale, below): English (United States) in the first run, Russian (Russia) in the second. */
     CHECK(find_line(run == 2 && want == 2 ? "I/DataTest: locale is ru-RU network=ru sim=ru config=ru-RU" : "I/DataTest: locale is en-US network=us sim=us config=en-US", 0) >= 0);
     /* A popup list that wraps its content has room for all its rows, inside what the list and the popup's background keep clear. */
     expect_line("I/DataTest: popup ok rows=3", &at, 30);
@@ -1853,7 +1853,7 @@ static int run_data(void)
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);
     /* An empty list of decoders is the answer, not a gap: the codecs step asked, and nothing said the class was missing. */
-    CHECK(find_line("megler/MediaCodecNative is not there yet", 0) < 0);
+    CHECK(find_line("meglet/MediaCodecNative is not there yet", 0) < 0);
     for (i = 0; i < g_nlines; i++)
         if (strstr(g_lines[i], "/DataTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);
     settle();
@@ -1908,7 +1908,7 @@ static int run_gc(void)
 
 /*
  * `crash`: an activity whose onCreate throws and nothing catches it. The app ends, as it would on Android; what is
- * checked is that the shell is told why in one sentence, the same one in on_exit's reason and in megler_last_error.
+ * checked is that the shell is told why in one sentence, the same one in on_exit's reason and in meglet_last_error.
  */
 static int run_crash(void)
 {
@@ -1938,13 +1938,13 @@ static int run_crash(void)
     for (tries = 0; tries < 3000 && running(); tries++) hk_sleep_ns(10000000ull);
     CHECK(g_exited && g_status == -1);
     say("  the app's end, as the shell is told it: %s", g_reason);
-    CHECK(strstr(g_reason, "java.lang.IllegalStateException: thrown in onCreate") && strstr(g_reason, "(in megler.test.crash.Second.onCreate)"));
+    CHECK(strstr(g_reason, "java.lang.IllegalStateException: thrown in onCreate") && strstr(g_reason, "(in meglet.test.crash.Second.onCreate)"));
     /* Of its causes the innermost is named, cut short, and the one in between is not: the sentence fits a dialog whatever the app threw. */
-    CHECK(strstr(g_reason, "thrown in onCreate, caused by java.io.IOException: the innermost cause, which says what went wrong, at length: xxx") && strstr(g_reason, "xxx... (in megler.test"));
+    CHECK(strstr(g_reason, "thrown in onCreate, caused by java.io.IOException: the innermost cause, which says what went wrong, at length: xxx") && strstr(g_reason, "xxx... (in meglet.test"));
     CHECK(!strstr(g_reason, "a cause in between") && !strchr(g_reason, '\n') && strlen(g_reason) < 440);
-    CHECK(!strcmp(megler_last_error(), g_reason));
+    CHECK(!strcmp(meglet_last_error(), g_reason));
     /* The framework's own word for it, as Android's log has it, and the stack. */
-    CHECK(find_line("E/Looper: uncaught exception on main", 0) >= 0 && find_line("\tat megler.test.crash.Second.onCreate(Second.java:", 0) >= 0);
+    CHECK(find_line("E/Looper: uncaught exception on main", 0) >= 0 && find_line("\tat meglet.test.crash.Second.onCreate(Second.java:", 0) >= 0);
     CHECK(find_line("java: the main thread ended with java.lang.IllegalStateException: thrown in onCreate", 0) >= 0);
     return g_failed;
 }
@@ -1977,11 +1977,11 @@ static int run_gl(void)
     CHECK(!strcmp(hk_gl_standin_app_features_off(), "allowTranslateUniformBlockToStructuredBuffer"));
     CHECK(find_line("egl: asking ANGLE for a display as Direct3D 11, without its allowTranslateUniformBlockToStructuredBuffer", 0) >= 0);
     /* (The app logs the strings just after that line, on the same thread: waited for too, not looked for at once.) */
-    CHECK(wait_line("I/GlTest: egl14 strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=3", 0, 30) >= 0);
+    CHECK(wait_line("I/GlTest: egl14 strings vendor=Meglet renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=3", 0, 30) >= 0);
     /* The renderer, on the GL thread with its context current: created, changed, drawn, in that order. */
     expect_line("I/GlTest: created 1 thread=GLThread ", &at, 120);
     CHECK(strstr(line_at(at), "current=true version=2 config=8/16") != NULL);
-    expect_line("I/GlTest: strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=3 gl10=Megler", &at, 30);
+    expect_line("I/GlTest: strings vendor=Meglet renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=3 gl10=Meglet", &at, 30);
     expect_line("I/GlTest: program linked=1 position=0 color=0 log=stand-in: program", &at, 30);
     expect_line("I/GlTest: changed ", &at, 30);
     expect_line("I/GlTest: first frame on GLThread", &at, 30);
@@ -1998,7 +1998,7 @@ static int run_gl(void)
     expect_line("I/GlTest: when-dirty idle frames=0", &at, 60);
     expect_line("I/GlTest: request-render frames=1", &at, 60);
     expect_line("I/GlTest: event on GLThread ", &at, 60);
-    CHECK(strstr(line_at(at), "current=true vendor=Megler") != NULL);
+    CHECK(strstr(line_at(at), "current=true vendor=Meglet") != NULL);
     /* EGL10 and GL10 from the app's own thread on the bottom SurfaceView: a 565 configuration found by exact match, a version-1 context. */
     line = wait_line("I/GlTest: egl10 configs=6 exact565=true made=true surface=", 0, 60);
     snprintf(text, sizeof(text), "surface=%dx%d egl=1.4", egl[2], egl[3]);
@@ -2032,14 +2032,14 @@ static int run_gl(void)
     CHECK(pixel(gl[0] + gl[2] / 2, gl[1] + gl[3] * 7 / 12) == 0xFFFF00);
     CHECK(pixel(label[0] + 2, label[1] + 2) == 0xFF00FF);
     /* Paused: no frames. Resumed: the context made again (it was not to be kept), onSurfaceCreated and onSurfaceChanged again, a frame. */
-    megler_set_paused(true);
+    meglet_set_paused(true);
     expect_line("I/GlTest: onPause", &at, 30);
     hk_sleep_ns(300000000ull);
     hk_java_gl_get_stats(&st0);
     hk_sleep_ns(500000000ull);
     hk_java_gl_get_stats(&st1);
     CHECK(st1.swaps == st0.swaps);
-    megler_set_paused(false);
+    meglet_set_paused(false);
     expect_line("I/GlTest: onResume", &at, 30);
     expect_line("I/GlTest: created 2 thread=GLThread ", &at, 60);
     expect_line("I/GlTest: changed ", &at, 30);
@@ -2118,7 +2118,7 @@ static int run_camera(void)
     expect_line("I/CameraTest: onCreate", &at, 120);
     if (g_script_count && !strcmp(g_script[0], "denied")) {
         expect_line("I/CameraTest: denied ok", &at, 120);
-        CHECK(find_line("camera: camera 0 could not be opened: the user or the system refused Megler the camera: the stand-in refuses", 0) >= 0);
+        CHECK(find_line("camera: camera 0 could not be opened: the user or the system refused Meglet the camera: the stand-in refuses", 0) >= 0);
         CHECK(find_line("I/CameraTest: open refused java.lang.RuntimeException: Fail to connect to camera service cameras=2", 0) >= 0);
         expect_line("I/CameraTest: done ok=1 failed=0", &at, 60);
         back_and_end("I/CameraTest: onDestroy", &at);
@@ -2175,7 +2175,7 @@ static int run_camera(void)
 /*
  * The script: "tap:X,Y", "drag:X,Y,X2,Y2", "wait:MILLISECONDS", "back", "key:CODE", in the order given. After each the app is waited for
  * until it is still (a minute at most) and its picture written as app-N. And the keyboard's part, as a phone's shell plays it:
- * "type:TEXT" (megler_text_commit), "textkey:N" (megler_text_key, MEGLER_TEXT_*), "kbd:PIXELS" (megler_keyboard_height).
+ * "type:TEXT" (meglet_text_commit), "textkey:N" (meglet_text_key, MEGLET_TEXT_*), "kbd:PIXELS" (meglet_keyboard_height).
  */
 static int run_app(void)
 {
@@ -2197,32 +2197,32 @@ static int run_app(void)
             hk_sleep_ns(300000000ull);
         } else if (sscanf(s, "drag:%d,%d,%d,%d", &x, &y, &x2, &y2) == 4) {
             /* A finger put down, moved in twelve steps and held a moment before it is lifted, so that what it dragged is not flung on. */
-            megler_touch(0, 1, (float)x, (float)y);
+            meglet_touch(0, 1, (float)x, (float)y);
             for (k = 1; k <= 12; k++) {
                 hk_sleep_ns(30000000ull);
-                megler_touch(1, 1, (float)(x + (x2 - x) * k / 12), (float)(y + (y2 - y) * k / 12));
+                meglet_touch(1, 1, (float)(x + (x2 - x) * k / 12), (float)(y + (y2 - y) * k / 12));
             }
             hk_sleep_ns(400000000ull);
-            megler_touch(2, 1, (float)x2, (float)y2);
+            meglet_touch(2, 1, (float)x2, (float)y2);
             hk_sleep_ns(300000000ull);
         } else if (sscanf(s, "wait:%d", &ms) == 1) {
             hk_sleep_ns((u64)ms * 1000000ull);
         } else if (!strcmp(s, "back")) {
-            megler_key(4, true);
-            megler_key(4, false);
+            meglet_key(4, true);
+            meglet_key(4, false);
             hk_sleep_ns(300000000ull);
         } else if (sscanf(s, "key:%d", &code) == 1) {
-            megler_key(code, true);
-            megler_key(code, false);
+            meglet_key(code, true);
+            meglet_key(code, false);
             hk_sleep_ns(300000000ull);
         } else if (!strncmp(s, "type:", 5)) {
-            megler_text_commit(s + 5);
+            meglet_text_commit(s + 5);
             hk_sleep_ns(300000000ull);
         } else if (sscanf(s, "textkey:%d", &code) == 1) {
-            megler_text_key(code);
+            meglet_text_key(code);
             hk_sleep_ns(300000000ull);
         } else if (sscanf(s, "kbd:%d", &code) == 1) {
-            megler_keyboard_height(code);
+            meglet_keyboard_height(code);
             hk_sleep_ns(300000000ull);
         } else {
             say("  (the script's \"%s\" is not understood)", s);
@@ -2298,7 +2298,7 @@ static int run_webview(void)
     CHECK(wait_line("I/WebViewTest: input-focused ok", 0, 120) >= 0);
     CHECK(shown_times(shown + 1));
     say("  the keyboard was asked for: kind %d, flags %d, enter %d", (int)K.kind, (int)K.flags, (int)K.enter);
-    megler_text_commit("hello");
+    meglet_text_commit("hello");
     CHECK(wait_line("I/WebViewTest: input ok value=hello", 0, 120) >= 0);
     settle();
     write_picture("webview-2");
@@ -2325,13 +2325,13 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_any_app = !strcmp(which, "app");
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
-    /* The camera app's second run: every camera refused, as Windows refuses Megler the camera when the user has said no. */
+    /* The camera app's second run: every camera refused, as Windows refuses Meglet the camera when the user has said no. */
     hk_camera_standin_refuse(g_camera_app && g_script_count && !strcmp(g_script[0], "denied"));
     /* The shell does not compose the window ("readback"): the core reads the GL frames back and composes it, as before. */
     GL.refuse = g_script_count && !strcmp(g_script[0], "readback");
     /* natives runs with the flag trace-surfaces on (a file in the data folder's flags, as on the phone): natives_windows checks what it says. */
     if (!strcmp(which, "natives")) {
-        char *flags = hk_sprintf("%s/flags", megler_data_dir()), *flag = hk_sprintf("%s/flags/trace-surfaces", megler_data_dir());
+        char *flags = hk_sprintf("%s/flags", meglet_data_dir()), *flag = hk_sprintf("%s/flags/trace-surfaces", meglet_data_dir());
         FILE *f;
         hk_path_mkdirs(flags);
         f = fopen(flag, "w");
@@ -2342,12 +2342,12 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
     /* The data app's second run is on another battery than the one the core has when nobody has said: what the app then reads is what was set here. */
     if (!strcmp(which, "data") && g_script_count && !strcmp(g_script[0], "run:2")) hk_battery_set(&k_battery_run2);
     /* And in a time zone the shell names, as it must, before the app starts: one with summer time, and in the second run a name that is no zone's. */
-    if (!strcmp(which, "data")) megler_set_timezone(g_script_count && !strcmp(g_script[0], "run:2") ? "Nowhere/At_All" : "Europe/Berlin");
+    if (!strcmp(which, "data")) meglet_set_timezone(g_script_count && !strcmp(g_script[0], "run:2") ? "Nowhere/At_All" : "Europe/Berlin");
     /* And in the language and region the shell names, likewise before the start: English (United States), and in the second run Russian (Russia). */
-    if (!strcmp(which, "data")) megler_set_locale(g_script_count && !strcmp(g_script[0], "run:2") ? "ru-RU" : "en-US");
+    if (!strcmp(which, "data")) meglet_set_locale(g_script_count && !strcmp(g_script[0], "run:2") ? "ru-RU" : "en-US");
     /* For an app that is not a test's, HK_JAVA_TIMEZONE names the zone it is started in: a real app as on a phone that has one. */
-    if (!strcmp(which, "app") && getenv("HK_JAVA_TIMEZONE")) megler_set_timezone(getenv("HK_JAVA_TIMEZONE"));
-    /* The test apps' frames drawn in part are each checked against the whole screen drawn again (megler.ViewRoot.checkPart). */
+    if (!strcmp(which, "app") && getenv("HK_JAVA_TIMEZONE")) meglet_set_timezone(getenv("HK_JAVA_TIMEZONE"));
+    /* The test apps' frames drawn in part are each checked against the whole screen drawn again (meglet.ViewRoot.checkPart). */
     hk_java_check_partial(!g_any_app);
     /*
      * And the collector runs often under the test apps (every 2 MB made) with its poison on: an object freed while something
@@ -2396,7 +2396,7 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
         else run_hello();
         if (running()) {
             if (g_direct) hk_driver_java.stop();
-            else megler_stop();
+            else meglet_stop();
             hk_sleep_ns(500000000ull);
         }
     }
@@ -2417,7 +2417,7 @@ int hk_tests_java_run(const char *which, const char *apk, const char *android_ro
         if (st.dropped || GL.unlocked) say("  %d clears, draws or reads of a surface whose keyed mutex was not held, dropped; %d frames the shell could not take", (int)st.dropped, (int)GL.unlocked);
         if (!g_any_app) CHECK(st.dropped == 0 && GL.unlocked == 0);
     }
-    /* An app that shows pictures and composes no OpenGL frames has them shown from its canvas (megler_gfx_host.present). */
+    /* An app that shows pictures and composes no OpenGL frames has them shown from its canvas (meglet_gfx_host.present). */
     if (W.pictures > 0 && count_lines("java: the app draws with EGL on a view") == 0) CHECK(W.from_canvas > 0);
     if (!g_any_app) CHECK(count_lines("a frame drawn in part missed") == 0);
     say("%d checks, %d failed", g_checks, g_failed);

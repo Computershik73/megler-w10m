@@ -3,13 +3,13 @@ package android.os;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PowerMonitorReadings {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ENERGY_UNAVAILABLE = -1;
     public static final int GRANULARITY_FINE = 1;
     public static int GRANULARITY_UNSPECIFIED;
     public PowerMonitorReadings(android.os.PowerMonitor[] p0, long[] p1, long[] p2, int p3) {}
     public long getConsumedEnergy(android.os.PowerMonitor p0) { return 0L; }
-    public int getGranularity() { return (meglerProps.get("Granularity") instanceof Integer ? (Integer) meglerProps.get("Granularity") : 0); }
+    public int getGranularity() { return (megletProps.get("Granularity") instanceof Integer ? (Integer) megletProps.get("Granularity") : 0); }
     public long getTimestampMillis(android.os.PowerMonitor p0) { return 0L; }
     PowerMonitorReadings() { this((android.os.PowerMonitor[]) null, (long[]) null, (long[]) null, (int) 0); }
 }

@@ -3,11 +3,11 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class CameraOfflineSession extends android.hardware.camera2.CameraCaptureSession {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public CameraOfflineSession() { super(); }
     public abstract void close();
     public static abstract class CameraOfflineSessionCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static int STATUS_INTERNAL_ERROR;
         public CameraOfflineSessionCallback() {}
         public abstract void onClosed(android.hardware.camera2.CameraOfflineSession p0);

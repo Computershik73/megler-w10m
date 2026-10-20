@@ -3,7 +3,7 @@ package android.app.usage;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class EventStats implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public long mBeginTimeStamp;
     public int mCount;
@@ -15,11 +15,11 @@ public final class EventStats implements android.os.Parcelable {
     public EventStats(android.app.usage.EventStats p0) {}
     public void add(android.app.usage.EventStats p0) {}
     public int describeContents() { return 0; }
-    public int getCount() { return (meglerProps.get("Count") instanceof Integer ? (Integer) meglerProps.get("Count") : 0); }
-    public int getEventType() { return (meglerProps.get("EventType") instanceof Integer ? (Integer) meglerProps.get("EventType") : 0); }
-    public long getFirstTimeStamp() { return (meglerProps.get("FirstTimeStamp") instanceof Long ? (Long) meglerProps.get("FirstTimeStamp") : 0L); }
-    public long getLastEventTime() { return (meglerProps.get("LastEventTime") instanceof Long ? (Long) meglerProps.get("LastEventTime") : 0L); }
-    public long getLastTimeStamp() { return (meglerProps.get("LastTimeStamp") instanceof Long ? (Long) meglerProps.get("LastTimeStamp") : 0L); }
-    public long getTotalTime() { return (meglerProps.get("TotalTime") instanceof Long ? (Long) meglerProps.get("TotalTime") : 0L); }
+    public int getCount() { return (megletProps.get("Count") instanceof Integer ? (Integer) megletProps.get("Count") : 0); }
+    public int getEventType() { return (megletProps.get("EventType") instanceof Integer ? (Integer) megletProps.get("EventType") : 0); }
+    public long getFirstTimeStamp() { return (megletProps.get("FirstTimeStamp") instanceof Long ? (Long) megletProps.get("FirstTimeStamp") : 0L); }
+    public long getLastEventTime() { return (megletProps.get("LastEventTime") instanceof Long ? (Long) megletProps.get("LastEventTime") : 0L); }
+    public long getLastTimeStamp() { return (megletProps.get("LastTimeStamp") instanceof Long ? (Long) megletProps.get("LastTimeStamp") : 0L); }
+    public long getTotalTime() { return (megletProps.get("TotalTime") instanceof Long ? (Long) megletProps.get("TotalTime") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

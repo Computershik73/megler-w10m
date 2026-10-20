@@ -11,20 +11,20 @@
 # a JDK nor d8 (tools/build-dvm-fixtures.sh only copies them). This script is for when
 # the Java source changes, and needs both:
 #
-#   MEGLER_JDK          a JDK's folder (default: C:\Program Files\Java\jdk1.8.0_202)
-#   MEGLER_ANDROID_SDK  an Android SDK with build-tools 29.0.3 and platforms/android-29
+#   MEGLET_JDK          a JDK's folder (default: C:\Program Files\Java\jdk1.8.0_202)
+#   MEGLET_ANDROID_SDK  an Android SDK with build-tools 29.0.3 and platforms/android-29
 #                          (default: the user's Documents folder, where this PC has one)
 #
 # d8 is run with --min-api 26, so interfaces keep their default and static methods;
 # lambdas it always turns into classes. Nothing is downloaded.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-JDK="${MEGLER_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
-SDK="${MEGLER_ANDROID_SDK:-$USERPROFILE/Documents}"
+JDK="${MEGLET_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
+SDK="${MEGLET_ANDROID_SDK:-$USERPROFILE/Documents}"
 D8="$SDK/build-tools/29.0.3/lib/d8.jar"
 LIB="$SDK/platforms/android-29/android.jar"
-[ -f "$JDK/bin/javac.exe" ] || [ -f "$JDK/bin/javac" ] || { echo "no javac in $JDK (set MEGLER_JDK)" >&2; exit 1; }
-[ -f "$D8" ] && [ -f "$LIB" ] || { echo "no build-tools/29.0.3/lib/d8.jar or platforms/android-29/android.jar in $SDK (set MEGLER_ANDROID_SDK)" >&2; exit 1; }
+[ -f "$JDK/bin/javac.exe" ] || [ -f "$JDK/bin/javac" ] || { echo "no javac in $JDK (set MEGLET_JDK)" >&2; exit 1; }
+[ -f "$D8" ] && [ -f "$LIB" ] || { echo "no build-tools/29.0.3/lib/d8.jar or platforms/android-29/android.jar in $SDK (set MEGLET_ANDROID_SDK)" >&2; exit 1; }
 w() { cygpath -w "$1"; }
 export MSYS2_ARG_CONV_EXCL="*"
 SRC="$ROOT/core/tests/dvm/d8"

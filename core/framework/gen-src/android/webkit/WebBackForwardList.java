@@ -3,7 +3,7 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class WebBackForwardList implements java.lang.Cloneable, java.io.Serializable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public WebBackForwardList() {}
     protected abstract android.webkit.WebBackForwardList clone();
     public abstract int getCurrentIndex();

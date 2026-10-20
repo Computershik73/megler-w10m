@@ -3,7 +3,7 @@ package android.media.tv.ad;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TvAdView extends android.view.ViewGroup {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ERROR_KEY_ERROR_CODE = "error_code";
     public static final java.lang.String ERROR_KEY_METHOD_NAME = "method_name";
     public TvAdView(android.content.Context p0) { super(p0); }
@@ -12,8 +12,8 @@ public class TvAdView extends android.view.ViewGroup {
     public void clearCallback() {}
     public void clearOnUnhandledInputEventListener() {}
     public boolean dispatchUnhandledInputEvent(android.view.InputEvent p0) { return false; }
-    public android.media.tv.ad.TvAdManager.Session getAdSession() { return (android.media.tv.ad.TvAdManager.Session) meglerProps.get("AdSession"); }
-    public android.media.tv.ad.TvAdView.OnUnhandledInputEventListener getOnUnhandledInputEventListener() { return (android.media.tv.ad.TvAdView.OnUnhandledInputEventListener) meglerProps.get("OnUnhandledInputEventListener"); }
+    public android.media.tv.ad.TvAdManager.Session getAdSession() { return (android.media.tv.ad.TvAdManager.Session) megletProps.get("AdSession"); }
+    public android.media.tv.ad.TvAdView.OnUnhandledInputEventListener getOnUnhandledInputEventListener() { return (android.media.tv.ad.TvAdView.OnUnhandledInputEventListener) megletProps.get("OnUnhandledInputEventListener"); }
     public void notifyError(java.lang.String p0, android.os.Bundle p1) {}
     public void notifyTvMessage(int p0, android.os.Bundle p1) {}
     public void onLayout(boolean p0, int p1, int p2, int p3, int p4) {}
@@ -27,10 +27,10 @@ public class TvAdView extends android.view.ViewGroup {
     public void sendSigningResult(java.lang.String p0, byte[] p1) {}
     public void sendTrackInfoList(java.util.List p0) {}
     public void setCallback(java.util.concurrent.Executor p0, android.media.tv.ad.TvAdView.TvAdCallback p1) {}
-    public void setOnUnhandledInputEventListener(android.media.tv.ad.TvAdView.OnUnhandledInputEventListener p0) { meglerProps.put("OnUnhandledInputEventListener", p0); }
+    public void setOnUnhandledInputEventListener(android.media.tv.ad.TvAdView.OnUnhandledInputEventListener p0) { megletProps.put("OnUnhandledInputEventListener", p0); }
     public boolean setTvView(android.media.tv.TvView p0) { return false; }
-    public void setZOrderMediaOverlay(boolean p0) { meglerProps.put("ZOrderMediaOverlay", Boolean.valueOf(p0)); }
-    public void setZOrderOnTop(boolean p0) { meglerProps.put("ZOrderOnTop", Boolean.valueOf(p0)); }
+    public void setZOrderMediaOverlay(boolean p0) { megletProps.put("ZOrderMediaOverlay", Boolean.valueOf(p0)); }
+    public void setZOrderOnTop(boolean p0) { megletProps.put("ZOrderOnTop", Boolean.valueOf(p0)); }
     public void startAdService() {}
     public void stopAdService() {}
     TvAdView() { this((android.content.Context) null); }
@@ -38,7 +38,7 @@ public class TvAdView extends android.view.ViewGroup {
         boolean onUnhandledInputEvent(android.view.InputEvent p0);
     }
     public static abstract class TvAdCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public TvAdCallback() {}
         public void onRequestCurrentChannelUri(java.lang.String p0) {}
         public void onRequestCurrentTvInputId(java.lang.String p0) {}

@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothLeAudio implements android.bluetooth.BluetoothProfile, java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_LE_AUDIO_ACTIVE_DEVICE_CHANGED = "android.bluetooth.action.LE_AUDIO_ACTIVE_DEVICE_CHANGED";
     public static final java.lang.String ACTION_LE_AUDIO_CONNECTION_STATE_CHANGED = "android.bluetooth.action.LE_AUDIO_CONNECTION_STATE_CHANGED";
     public static final int AUDIO_LOCATION_BACK_CENTER = 256;
@@ -65,12 +65,12 @@ public final class BluetoothLeAudio implements android.bluetooth.BluetoothProfil
     public boolean connect(android.bluetooth.BluetoothDevice p0) { return false; }
     public boolean disconnect(android.bluetooth.BluetoothDevice p0) { return false; }
     protected void finalize() {}
-    public java.util.List getActiveDevices() { return (meglerProps.get("ActiveDevices") != null ? (java.util.List) meglerProps.get("ActiveDevices") : new java.util.ArrayList()); }
-    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) meglerProps.get("Adapter"); }
+    public java.util.List getActiveDevices() { return (megletProps.get("ActiveDevices") != null ? (java.util.List) megletProps.get("ActiveDevices") : new java.util.ArrayList()); }
+    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) megletProps.get("Adapter"); }
     public int getAudioLocation(android.bluetooth.BluetoothDevice p0) { return 0; }
-    public int getBroadcastToUnicastFallbackGroup() { return (meglerProps.get("BroadcastToUnicastFallbackGroup") instanceof Integer ? (Integer) meglerProps.get("BroadcastToUnicastFallbackGroup") : 0); }
+    public int getBroadcastToUnicastFallbackGroup() { return (megletProps.get("BroadcastToUnicastFallbackGroup") instanceof Integer ? (Integer) megletProps.get("BroadcastToUnicastFallbackGroup") : 0); }
     public android.bluetooth.BluetoothLeAudioCodecStatus getCodecStatus(int p0) { return null; }
-    public java.util.List getConnectedDevices() { return (meglerProps.get("ConnectedDevices") != null ? (java.util.List) meglerProps.get("ConnectedDevices") : new java.util.ArrayList()); }
+    public java.util.List getConnectedDevices() { return (megletProps.get("ConnectedDevices") != null ? (java.util.List) megletProps.get("ConnectedDevices") : new java.util.ArrayList()); }
     public android.bluetooth.BluetoothDevice getConnectedGroupLeadDevice(int p0) { return null; }
     public int getConnectionPolicy(android.bluetooth.BluetoothDevice p0) { return 0; }
     public int getConnectionState(android.bluetooth.BluetoothDevice p0) { return 0; }
@@ -83,10 +83,10 @@ public final class BluetoothLeAudio implements android.bluetooth.BluetoothProfil
     public void onServiceDisconnected() {}
     public void registerCallback(java.util.concurrent.Executor p0, android.bluetooth.BluetoothLeAudio.Callback p1) {}
     public boolean setActiveDevice(android.bluetooth.BluetoothDevice p0) { return false; }
-    public void setBroadcastToUnicastFallbackGroup(int p0) { meglerProps.put("BroadcastToUnicastFallbackGroup", Integer.valueOf(p0)); }
+    public void setBroadcastToUnicastFallbackGroup(int p0) { megletProps.put("BroadcastToUnicastFallbackGroup", Integer.valueOf(p0)); }
     public void setCodecConfigPreference(int p0, android.bluetooth.BluetoothLeAudioCodecConfig p1, android.bluetooth.BluetoothLeAudioCodecConfig p2) {}
     public boolean setConnectionPolicy(android.bluetooth.BluetoothDevice p0, int p1) { return false; }
-    public void setVolume(int p0) { meglerProps.put("Volume", Integer.valueOf(p0)); }
+    public void setVolume(int p0) { megletProps.put("Volume", Integer.valueOf(p0)); }
     public void unregisterCallback(android.bluetooth.BluetoothLeAudio.Callback p0) {}
     protected BluetoothLeAudio() {}
     public interface Callback {

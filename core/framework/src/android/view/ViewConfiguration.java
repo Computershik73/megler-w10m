@@ -3,7 +3,7 @@ package android.view;
 public class ViewConfiguration {
     private final float d;
     private ViewConfiguration(float density) { d = density; }
-    public static ViewConfiguration get(android.content.Context c) { return new ViewConfiguration(megler.Native.density()); }
+    public static ViewConfiguration get(android.content.Context c) { return new ViewConfiguration(meglet.Native.density()); }
     public static int getScrollBarSize() { return 4; }
     public int getScaledScrollBarSize() { return (int) (4 * d + 0.5f); }
     public static int getScrollBarFadeDuration() { return 250; }

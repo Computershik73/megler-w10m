@@ -3,7 +3,7 @@ package android.printservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CustomPrinterIconCallback {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public boolean onCustomPrinterIconLoaded(android.graphics.drawable.Icon p0) { return false; }
     protected CustomPrinterIconCallback() {}
 }

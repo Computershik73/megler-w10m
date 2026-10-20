@@ -3,7 +3,7 @@ package android.telephony.data;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ApnSetting implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int AUTH_TYPE_CHAP = 2;
     public static final int AUTH_TYPE_NONE = 0;
     public static final int AUTH_TYPE_PAP = 1;
@@ -82,93 +82,93 @@ public class ApnSetting implements android.os.Parcelable {
     public boolean canSupportNetworkType(int p0) { return false; }
     public int describeContents() { return 0; }
     public boolean equals(java.lang.Object p0, boolean p1) { return false; }
-    public java.lang.String getApnName() { return (java.lang.String) meglerProps.get("ApnName"); }
-    public int getApnSetId() { return (meglerProps.get("ApnSetId") instanceof Integer ? (Integer) meglerProps.get("ApnSetId") : 0); }
-    public int getApnTypeBitmask() { return (meglerProps.get("ApnTypeBitmask") instanceof Integer ? (Integer) meglerProps.get("ApnTypeBitmask") : 0); }
-    public java.util.List getApnTypes() { return (meglerProps.get("ApnTypes") != null ? (java.util.List) meglerProps.get("ApnTypes") : new java.util.ArrayList()); }
-    public int getAuthType() { return (meglerProps.get("AuthType") instanceof Integer ? (Integer) meglerProps.get("AuthType") : 0); }
-    public int getCarrierId() { return (meglerProps.get("CarrierId") instanceof Integer ? (Integer) meglerProps.get("CarrierId") : 0); }
-    public int getEditedStatus() { return (meglerProps.get("EditedStatus") instanceof Integer ? (Integer) meglerProps.get("EditedStatus") : 0); }
-    public java.lang.String getEntryName() { return (java.lang.String) meglerProps.get("EntryName"); }
-    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
-    public int getInfrastructureBitmask() { return (meglerProps.get("InfrastructureBitmask") instanceof Integer ? (Integer) meglerProps.get("InfrastructureBitmask") : 0); }
-    public long getLingeringNetworkTypeBitmask() { return (meglerProps.get("LingeringNetworkTypeBitmask") instanceof Long ? (Long) meglerProps.get("LingeringNetworkTypeBitmask") : 0L); }
-    public int getMaxConns() { return (meglerProps.get("MaxConns") instanceof Integer ? (Integer) meglerProps.get("MaxConns") : 0); }
-    public int getMaxConnsTime() { return (meglerProps.get("MaxConnsTime") instanceof Integer ? (Integer) meglerProps.get("MaxConnsTime") : 0); }
-    public java.net.InetAddress getMmsProxyAddress() { return (java.net.InetAddress) meglerProps.get("MmsProxyAddress"); }
-    public java.lang.String getMmsProxyAddressAsString() { return (java.lang.String) meglerProps.get("MmsProxyAddressAsString"); }
-    public int getMmsProxyPort() { return (meglerProps.get("MmsProxyPort") instanceof Integer ? (Integer) meglerProps.get("MmsProxyPort") : 0); }
-    public android.net.Uri getMmsc() { return (android.net.Uri) meglerProps.get("Mmsc"); }
-    public int getMtuV4() { return (meglerProps.get("MtuV4") instanceof Integer ? (Integer) meglerProps.get("MtuV4") : 0); }
-    public int getMtuV6() { return (meglerProps.get("MtuV6") instanceof Integer ? (Integer) meglerProps.get("MtuV6") : 0); }
-    public java.lang.String getMvnoMatchData() { return (java.lang.String) meglerProps.get("MvnoMatchData"); }
-    public int getMvnoType() { return (meglerProps.get("MvnoType") instanceof Integer ? (Integer) meglerProps.get("MvnoType") : 0); }
-    public int getNetworkTypeBitmask() { return (meglerProps.get("NetworkTypeBitmask") instanceof Integer ? (Integer) meglerProps.get("NetworkTypeBitmask") : 0); }
-    public java.lang.String getOperatorNumeric() { return (java.lang.String) meglerProps.get("OperatorNumeric"); }
-    public java.lang.String getPassword() { return (java.lang.String) meglerProps.get("Password"); }
-    public boolean getPermanentFailed() { return (meglerProps.get("PermanentFailed") instanceof Boolean ? (Boolean) meglerProps.get("PermanentFailed") : false); }
-    public int getProfileId() { return (meglerProps.get("ProfileId") instanceof Integer ? (Integer) meglerProps.get("ProfileId") : 0); }
-    public int getProtocol() { return (meglerProps.get("Protocol") instanceof Integer ? (Integer) meglerProps.get("Protocol") : 0); }
-    public java.net.InetAddress getProxyAddress() { return (java.net.InetAddress) meglerProps.get("ProxyAddress"); }
-    public java.lang.String getProxyAddressAsString() { return (java.lang.String) meglerProps.get("ProxyAddressAsString"); }
-    public int getProxyPort() { return (meglerProps.get("ProxyPort") instanceof Integer ? (Integer) meglerProps.get("ProxyPort") : 0); }
-    public int getRoamingProtocol() { return (meglerProps.get("RoamingProtocol") instanceof Integer ? (Integer) meglerProps.get("RoamingProtocol") : 0); }
-    public int getSkip464Xlat() { return (meglerProps.get("Skip464Xlat") instanceof Integer ? (Integer) meglerProps.get("Skip464Xlat") : 0); }
-    public java.lang.String getUser() { return (java.lang.String) meglerProps.get("User"); }
-    public int getWaitTime() { return (meglerProps.get("WaitTime") instanceof Integer ? (Integer) meglerProps.get("WaitTime") : 0); }
+    public java.lang.String getApnName() { return (java.lang.String) megletProps.get("ApnName"); }
+    public int getApnSetId() { return (megletProps.get("ApnSetId") instanceof Integer ? (Integer) megletProps.get("ApnSetId") : 0); }
+    public int getApnTypeBitmask() { return (megletProps.get("ApnTypeBitmask") instanceof Integer ? (Integer) megletProps.get("ApnTypeBitmask") : 0); }
+    public java.util.List getApnTypes() { return (megletProps.get("ApnTypes") != null ? (java.util.List) megletProps.get("ApnTypes") : new java.util.ArrayList()); }
+    public int getAuthType() { return (megletProps.get("AuthType") instanceof Integer ? (Integer) megletProps.get("AuthType") : 0); }
+    public int getCarrierId() { return (megletProps.get("CarrierId") instanceof Integer ? (Integer) megletProps.get("CarrierId") : 0); }
+    public int getEditedStatus() { return (megletProps.get("EditedStatus") instanceof Integer ? (Integer) megletProps.get("EditedStatus") : 0); }
+    public java.lang.String getEntryName() { return (java.lang.String) megletProps.get("EntryName"); }
+    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
+    public int getInfrastructureBitmask() { return (megletProps.get("InfrastructureBitmask") instanceof Integer ? (Integer) megletProps.get("InfrastructureBitmask") : 0); }
+    public long getLingeringNetworkTypeBitmask() { return (megletProps.get("LingeringNetworkTypeBitmask") instanceof Long ? (Long) megletProps.get("LingeringNetworkTypeBitmask") : 0L); }
+    public int getMaxConns() { return (megletProps.get("MaxConns") instanceof Integer ? (Integer) megletProps.get("MaxConns") : 0); }
+    public int getMaxConnsTime() { return (megletProps.get("MaxConnsTime") instanceof Integer ? (Integer) megletProps.get("MaxConnsTime") : 0); }
+    public java.net.InetAddress getMmsProxyAddress() { return (java.net.InetAddress) megletProps.get("MmsProxyAddress"); }
+    public java.lang.String getMmsProxyAddressAsString() { return (java.lang.String) megletProps.get("MmsProxyAddressAsString"); }
+    public int getMmsProxyPort() { return (megletProps.get("MmsProxyPort") instanceof Integer ? (Integer) megletProps.get("MmsProxyPort") : 0); }
+    public android.net.Uri getMmsc() { return (android.net.Uri) megletProps.get("Mmsc"); }
+    public int getMtuV4() { return (megletProps.get("MtuV4") instanceof Integer ? (Integer) megletProps.get("MtuV4") : 0); }
+    public int getMtuV6() { return (megletProps.get("MtuV6") instanceof Integer ? (Integer) megletProps.get("MtuV6") : 0); }
+    public java.lang.String getMvnoMatchData() { return (java.lang.String) megletProps.get("MvnoMatchData"); }
+    public int getMvnoType() { return (megletProps.get("MvnoType") instanceof Integer ? (Integer) megletProps.get("MvnoType") : 0); }
+    public int getNetworkTypeBitmask() { return (megletProps.get("NetworkTypeBitmask") instanceof Integer ? (Integer) megletProps.get("NetworkTypeBitmask") : 0); }
+    public java.lang.String getOperatorNumeric() { return (java.lang.String) megletProps.get("OperatorNumeric"); }
+    public java.lang.String getPassword() { return (java.lang.String) megletProps.get("Password"); }
+    public boolean getPermanentFailed() { return (megletProps.get("PermanentFailed") instanceof Boolean ? (Boolean) megletProps.get("PermanentFailed") : false); }
+    public int getProfileId() { return (megletProps.get("ProfileId") instanceof Integer ? (Integer) megletProps.get("ProfileId") : 0); }
+    public int getProtocol() { return (megletProps.get("Protocol") instanceof Integer ? (Integer) megletProps.get("Protocol") : 0); }
+    public java.net.InetAddress getProxyAddress() { return (java.net.InetAddress) megletProps.get("ProxyAddress"); }
+    public java.lang.String getProxyAddressAsString() { return (java.lang.String) megletProps.get("ProxyAddressAsString"); }
+    public int getProxyPort() { return (megletProps.get("ProxyPort") instanceof Integer ? (Integer) megletProps.get("ProxyPort") : 0); }
+    public int getRoamingProtocol() { return (megletProps.get("RoamingProtocol") instanceof Integer ? (Integer) megletProps.get("RoamingProtocol") : 0); }
+    public int getSkip464Xlat() { return (megletProps.get("Skip464Xlat") instanceof Integer ? (Integer) megletProps.get("Skip464Xlat") : 0); }
+    public java.lang.String getUser() { return (java.lang.String) megletProps.get("User"); }
+    public int getWaitTime() { return (megletProps.get("WaitTime") instanceof Integer ? (Integer) megletProps.get("WaitTime") : 0); }
     public boolean hasMvnoParams() { return false; }
-    public boolean isAlwaysOn() { return (meglerProps.get("AlwaysOn") instanceof Boolean ? (Boolean) meglerProps.get("AlwaysOn") : false); }
-    public boolean isEmergencyApn() { return (meglerProps.get("EmergencyApn") instanceof Boolean ? (Boolean) meglerProps.get("EmergencyApn") : false); }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
-    public boolean isEsimBootstrapProvisioning() { return (meglerProps.get("EsimBootstrapProvisioning") instanceof Boolean ? (Boolean) meglerProps.get("EsimBootstrapProvisioning") : false); }
+    public boolean isAlwaysOn() { return (megletProps.get("AlwaysOn") instanceof Boolean ? (Boolean) megletProps.get("AlwaysOn") : false); }
+    public boolean isEmergencyApn() { return (megletProps.get("EmergencyApn") instanceof Boolean ? (Boolean) megletProps.get("EmergencyApn") : false); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
+    public boolean isEsimBootstrapProvisioning() { return (megletProps.get("EsimBootstrapProvisioning") instanceof Boolean ? (Boolean) megletProps.get("EsimBootstrapProvisioning") : false); }
     public boolean isForInfrastructure(int p0) { return false; }
-    public boolean isPersistent() { return (meglerProps.get("Persistent") instanceof Boolean ? (Boolean) meglerProps.get("Persistent") : false); }
-    public void setPermanentFailed(boolean p0) { meglerProps.put("PermanentFailed", Boolean.valueOf(p0)); }
+    public boolean isPersistent() { return (megletProps.get("Persistent") instanceof Boolean ? (Boolean) megletProps.get("Persistent") : false); }
+    public void setPermanentFailed(boolean p0) { megletProps.put("PermanentFailed", Boolean.valueOf(p0)); }
     public boolean similar(android.telephony.data.ApnSetting p0) { return false; }
     public android.content.ContentValues toContentValues() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected ApnSetting() {}
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.telephony.data.ApnSetting build() { android.telephony.data.ApnSetting x = new android.telephony.data.ApnSetting(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.telephony.data.ApnSetting build() { android.telephony.data.ApnSetting x = new android.telephony.data.ApnSetting(); x.megletProps.putAll(megletProps); return x; }
         public android.telephony.data.ApnSetting buildWithoutCheck() { return null; }
-        public android.telephony.data.ApnSetting.Builder setAlwaysOn(boolean p0) { meglerProps.put("AlwaysOn", Boolean.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setApnName(java.lang.String p0) { meglerProps.put("ApnName", p0); return this; }
-        public android.telephony.data.ApnSetting.Builder setApnSetId(int p0) { meglerProps.put("ApnSetId", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setApnTypeBitmask(int p0) { meglerProps.put("ApnTypeBitmask", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setAuthType(int p0) { meglerProps.put("AuthType", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setCarrierEnabled(boolean p0) { meglerProps.put("CarrierEnabled", Boolean.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setCarrierId(int p0) { meglerProps.put("CarrierId", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setEditedStatus(int p0) { meglerProps.put("EditedStatus", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setEntryName(java.lang.String p0) { meglerProps.put("EntryName", p0); return this; }
-        public android.telephony.data.ApnSetting.Builder setEsimBootstrapProvisioning(boolean p0) { meglerProps.put("EsimBootstrapProvisioning", Boolean.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setId(int p0) { meglerProps.put("Id", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setInfrastructureBitmask(int p0) { meglerProps.put("InfrastructureBitmask", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setLingeringNetworkTypeBitmask(long p0) { meglerProps.put("LingeringNetworkTypeBitmask", Long.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setMaxConns(int p0) { meglerProps.put("MaxConns", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setMaxConnsTime(int p0) { meglerProps.put("MaxConnsTime", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setMmsProxyAddress(java.lang.String p0) { meglerProps.put("MmsProxyAddress", p0); return this; }
-        public android.telephony.data.ApnSetting.Builder setMmsProxyAddress(java.net.InetAddress p0) { meglerProps.put("MmsProxyAddress", p0); return this; }
-        public android.telephony.data.ApnSetting.Builder setMmsProxyPort(int p0) { meglerProps.put("MmsProxyPort", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setMmsc(android.net.Uri p0) { meglerProps.put("Mmsc", p0); return this; }
-        public android.telephony.data.ApnSetting.Builder setModemCognitive(boolean p0) { meglerProps.put("ModemCognitive", Boolean.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setMtuV4(int p0) { meglerProps.put("MtuV4", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setMtuV6(int p0) { meglerProps.put("MtuV6", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setMvnoMatchData(java.lang.String p0) { meglerProps.put("MvnoMatchData", p0); return this; }
-        public android.telephony.data.ApnSetting.Builder setMvnoType(int p0) { meglerProps.put("MvnoType", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setNetworkTypeBitmask(int p0) { meglerProps.put("NetworkTypeBitmask", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setOperatorNumeric(java.lang.String p0) { meglerProps.put("OperatorNumeric", p0); return this; }
-        public android.telephony.data.ApnSetting.Builder setPassword(java.lang.String p0) { meglerProps.put("Password", p0); return this; }
-        public android.telephony.data.ApnSetting.Builder setPersistent(boolean p0) { meglerProps.put("Persistent", Boolean.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setProfileId(int p0) { meglerProps.put("ProfileId", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setProtocol(int p0) { meglerProps.put("Protocol", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setProxyAddress(java.lang.String p0) { meglerProps.put("ProxyAddress", p0); return this; }
-        public android.telephony.data.ApnSetting.Builder setProxyAddress(java.net.InetAddress p0) { meglerProps.put("ProxyAddress", p0); return this; }
-        public android.telephony.data.ApnSetting.Builder setProxyPort(int p0) { meglerProps.put("ProxyPort", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setRoamingProtocol(int p0) { meglerProps.put("RoamingProtocol", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setSkip464Xlat(int p0) { meglerProps.put("Skip464Xlat", Integer.valueOf(p0)); return this; }
-        public android.telephony.data.ApnSetting.Builder setUser(java.lang.String p0) { meglerProps.put("User", p0); return this; }
-        public android.telephony.data.ApnSetting.Builder setWaitTime(int p0) { meglerProps.put("WaitTime", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setAlwaysOn(boolean p0) { megletProps.put("AlwaysOn", Boolean.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setApnName(java.lang.String p0) { megletProps.put("ApnName", p0); return this; }
+        public android.telephony.data.ApnSetting.Builder setApnSetId(int p0) { megletProps.put("ApnSetId", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setApnTypeBitmask(int p0) { megletProps.put("ApnTypeBitmask", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setAuthType(int p0) { megletProps.put("AuthType", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setCarrierEnabled(boolean p0) { megletProps.put("CarrierEnabled", Boolean.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setCarrierId(int p0) { megletProps.put("CarrierId", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setEditedStatus(int p0) { megletProps.put("EditedStatus", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setEntryName(java.lang.String p0) { megletProps.put("EntryName", p0); return this; }
+        public android.telephony.data.ApnSetting.Builder setEsimBootstrapProvisioning(boolean p0) { megletProps.put("EsimBootstrapProvisioning", Boolean.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setId(int p0) { megletProps.put("Id", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setInfrastructureBitmask(int p0) { megletProps.put("InfrastructureBitmask", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setLingeringNetworkTypeBitmask(long p0) { megletProps.put("LingeringNetworkTypeBitmask", Long.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setMaxConns(int p0) { megletProps.put("MaxConns", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setMaxConnsTime(int p0) { megletProps.put("MaxConnsTime", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setMmsProxyAddress(java.lang.String p0) { megletProps.put("MmsProxyAddress", p0); return this; }
+        public android.telephony.data.ApnSetting.Builder setMmsProxyAddress(java.net.InetAddress p0) { megletProps.put("MmsProxyAddress", p0); return this; }
+        public android.telephony.data.ApnSetting.Builder setMmsProxyPort(int p0) { megletProps.put("MmsProxyPort", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setMmsc(android.net.Uri p0) { megletProps.put("Mmsc", p0); return this; }
+        public android.telephony.data.ApnSetting.Builder setModemCognitive(boolean p0) { megletProps.put("ModemCognitive", Boolean.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setMtuV4(int p0) { megletProps.put("MtuV4", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setMtuV6(int p0) { megletProps.put("MtuV6", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setMvnoMatchData(java.lang.String p0) { megletProps.put("MvnoMatchData", p0); return this; }
+        public android.telephony.data.ApnSetting.Builder setMvnoType(int p0) { megletProps.put("MvnoType", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setNetworkTypeBitmask(int p0) { megletProps.put("NetworkTypeBitmask", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setOperatorNumeric(java.lang.String p0) { megletProps.put("OperatorNumeric", p0); return this; }
+        public android.telephony.data.ApnSetting.Builder setPassword(java.lang.String p0) { megletProps.put("Password", p0); return this; }
+        public android.telephony.data.ApnSetting.Builder setPersistent(boolean p0) { megletProps.put("Persistent", Boolean.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setProfileId(int p0) { megletProps.put("ProfileId", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setProtocol(int p0) { megletProps.put("Protocol", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setProxyAddress(java.lang.String p0) { megletProps.put("ProxyAddress", p0); return this; }
+        public android.telephony.data.ApnSetting.Builder setProxyAddress(java.net.InetAddress p0) { megletProps.put("ProxyAddress", p0); return this; }
+        public android.telephony.data.ApnSetting.Builder setProxyPort(int p0) { megletProps.put("ProxyPort", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setRoamingProtocol(int p0) { megletProps.put("RoamingProtocol", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setSkip464Xlat(int p0) { megletProps.put("Skip464Xlat", Integer.valueOf(p0)); return this; }
+        public android.telephony.data.ApnSetting.Builder setUser(java.lang.String p0) { megletProps.put("User", p0); return this; }
+        public android.telephony.data.ApnSetting.Builder setWaitTime(int p0) { megletProps.put("WaitTime", Integer.valueOf(p0)); return this; }
     }
 }

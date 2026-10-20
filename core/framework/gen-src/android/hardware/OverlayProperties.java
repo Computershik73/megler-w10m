@@ -3,13 +3,13 @@ package android.hardware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class OverlayProperties implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.hardware.OverlayProperties getDefault() { return new OverlayProperties(); }
     public int describeContents() { return 0; }
-    public android.hardware.LutProperties[] getLutProperties() { return (android.hardware.LutProperties[]) meglerProps.get("LutProperties"); }
+    public android.hardware.LutProperties[] getLutProperties() { return (android.hardware.LutProperties[]) megletProps.get("LutProperties"); }
     public boolean isCombinationSupported(int p0, int p1) { return false; }
-    public boolean isMixedColorSpacesSupported() { return (meglerProps.get("MixedColorSpacesSupported") instanceof Boolean ? (Boolean) meglerProps.get("MixedColorSpacesSupported") : false); }
+    public boolean isMixedColorSpacesSupported() { return (megletProps.get("MixedColorSpacesSupported") instanceof Boolean ? (Boolean) megletProps.get("MixedColorSpacesSupported") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected OverlayProperties() {}
 }

@@ -3,7 +3,7 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RegionIterator {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public RegionIterator(android.graphics.Region p0) {}
     protected void finalize() {}
     public boolean next(android.graphics.Rect p0) { return false; }

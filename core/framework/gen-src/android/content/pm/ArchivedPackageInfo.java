@@ -3,26 +3,26 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ArchivedPackageInfo {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public ArchivedPackageInfo(android.content.pm.ArchivedPackageParcel p0) {}
     public ArchivedPackageInfo(java.lang.String p0, android.content.pm.SigningInfo p1, java.util.List p2) {}
-    public java.lang.String getDefaultToDeviceProtectedStorage() { return (java.lang.String) meglerProps.get("DefaultToDeviceProtectedStorage"); }
-    public java.util.List getLauncherActivities() { return (meglerProps.get("LauncherActivities") != null ? (java.util.List) meglerProps.get("LauncherActivities") : new java.util.ArrayList()); }
-    public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-    public java.lang.String getRequestLegacyExternalStorage() { return (java.lang.String) meglerProps.get("RequestLegacyExternalStorage"); }
-    public android.content.pm.SigningInfo getSigningInfo() { return (android.content.pm.SigningInfo) meglerProps.get("SigningInfo"); }
-    public int getTargetSdkVersion() { return (meglerProps.get("TargetSdkVersion") instanceof Integer ? (Integer) meglerProps.get("TargetSdkVersion") : 0); }
-    public java.lang.String getUserDataFragile() { return (java.lang.String) meglerProps.get("UserDataFragile"); }
-    public int getVersionCode() { return (meglerProps.get("VersionCode") instanceof Integer ? (Integer) meglerProps.get("VersionCode") : 0); }
-    public int getVersionCodeMajor() { return (meglerProps.get("VersionCodeMajor") instanceof Integer ? (Integer) meglerProps.get("VersionCodeMajor") : 0); }
-    public android.content.pm.ArchivedPackageInfo setDefaultToDeviceProtectedStorage(java.lang.String p0) { meglerProps.put("DefaultToDeviceProtectedStorage", p0); return this; }
-    public android.content.pm.ArchivedPackageInfo setLauncherActivities(java.util.List p0) { meglerProps.put("LauncherActivities", p0); return this; }
-    public android.content.pm.ArchivedPackageInfo setPackageName(java.lang.String p0) { meglerProps.put("PackageName", p0); return this; }
-    public android.content.pm.ArchivedPackageInfo setRequestLegacyExternalStorage(java.lang.String p0) { meglerProps.put("RequestLegacyExternalStorage", p0); return this; }
-    public android.content.pm.ArchivedPackageInfo setSigningInfo(android.content.pm.SigningInfo p0) { meglerProps.put("SigningInfo", p0); return this; }
-    public android.content.pm.ArchivedPackageInfo setTargetSdkVersion(int p0) { meglerProps.put("TargetSdkVersion", Integer.valueOf(p0)); return this; }
-    public android.content.pm.ArchivedPackageInfo setUserDataFragile(java.lang.String p0) { meglerProps.put("UserDataFragile", p0); return this; }
-    public android.content.pm.ArchivedPackageInfo setVersionCode(int p0) { meglerProps.put("VersionCode", Integer.valueOf(p0)); return this; }
-    public android.content.pm.ArchivedPackageInfo setVersionCodeMajor(int p0) { meglerProps.put("VersionCodeMajor", Integer.valueOf(p0)); return this; }
+    public java.lang.String getDefaultToDeviceProtectedStorage() { return (java.lang.String) megletProps.get("DefaultToDeviceProtectedStorage"); }
+    public java.util.List getLauncherActivities() { return (megletProps.get("LauncherActivities") != null ? (java.util.List) megletProps.get("LauncherActivities") : new java.util.ArrayList()); }
+    public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+    public java.lang.String getRequestLegacyExternalStorage() { return (java.lang.String) megletProps.get("RequestLegacyExternalStorage"); }
+    public android.content.pm.SigningInfo getSigningInfo() { return (android.content.pm.SigningInfo) megletProps.get("SigningInfo"); }
+    public int getTargetSdkVersion() { return (megletProps.get("TargetSdkVersion") instanceof Integer ? (Integer) megletProps.get("TargetSdkVersion") : 0); }
+    public java.lang.String getUserDataFragile() { return (java.lang.String) megletProps.get("UserDataFragile"); }
+    public int getVersionCode() { return (megletProps.get("VersionCode") instanceof Integer ? (Integer) megletProps.get("VersionCode") : 0); }
+    public int getVersionCodeMajor() { return (megletProps.get("VersionCodeMajor") instanceof Integer ? (Integer) megletProps.get("VersionCodeMajor") : 0); }
+    public android.content.pm.ArchivedPackageInfo setDefaultToDeviceProtectedStorage(java.lang.String p0) { megletProps.put("DefaultToDeviceProtectedStorage", p0); return this; }
+    public android.content.pm.ArchivedPackageInfo setLauncherActivities(java.util.List p0) { megletProps.put("LauncherActivities", p0); return this; }
+    public android.content.pm.ArchivedPackageInfo setPackageName(java.lang.String p0) { megletProps.put("PackageName", p0); return this; }
+    public android.content.pm.ArchivedPackageInfo setRequestLegacyExternalStorage(java.lang.String p0) { megletProps.put("RequestLegacyExternalStorage", p0); return this; }
+    public android.content.pm.ArchivedPackageInfo setSigningInfo(android.content.pm.SigningInfo p0) { megletProps.put("SigningInfo", p0); return this; }
+    public android.content.pm.ArchivedPackageInfo setTargetSdkVersion(int p0) { megletProps.put("TargetSdkVersion", Integer.valueOf(p0)); return this; }
+    public android.content.pm.ArchivedPackageInfo setUserDataFragile(java.lang.String p0) { megletProps.put("UserDataFragile", p0); return this; }
+    public android.content.pm.ArchivedPackageInfo setVersionCode(int p0) { megletProps.put("VersionCode", Integer.valueOf(p0)); return this; }
+    public android.content.pm.ArchivedPackageInfo setVersionCodeMajor(int p0) { megletProps.put("VersionCodeMajor", Integer.valueOf(p0)); return this; }
     ArchivedPackageInfo() { this((android.content.pm.ArchivedPackageParcel) null); }
 }

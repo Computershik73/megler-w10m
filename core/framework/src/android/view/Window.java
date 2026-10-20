@@ -5,7 +5,7 @@ import android.content.res.TypedArray;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 
-/** A window, as PhoneWindow is: the decor (megler.DecorView) holding the content, its look from the theme, its events to the callback. */
+/** A window, as PhoneWindow is: the decor (meglet.DecorView) holding the content, its look from the theme, its events to the callback. */
 public class Window {
     public static final int FEATURE_OPTIONS_PANEL = 0, FEATURE_NO_TITLE = 1, FEATURE_PROGRESS = 2, FEATURE_LEFT_ICON = 3, FEATURE_RIGHT_ICON = 4,
         FEATURE_INDETERMINATE_PROGRESS = 5, FEATURE_CONTEXT_MENU = 6, FEATURE_CUSTOM_TITLE = 7, FEATURE_ACTION_BAR = 8, FEATURE_ACTION_BAR_OVERLAY = 9,
@@ -46,7 +46,7 @@ public class Window {
     private final Context mContext;
     private Callback mCallback;
     private final WindowManager.LayoutParams mAttrs = new WindowManager.LayoutParams();
-    private megler.DecorView mDecor;
+    private meglet.DecorView mDecor;
     private ViewGroup mContentParent;
     private int mFeatures, mLocalFeatures;
     private WindowManager mWindowManager;
@@ -64,45 +64,45 @@ public class Window {
         if (mStyled) return;
         mStyled = true;
         Context c = mContext;
-        TypedArray a = c.obtainStyledAttributes(megler.S.Window);
-        mFloating = a.getBoolean(megler.S.Window_windowIsFloating, false);
-        if (a.getBoolean(megler.S.Window_windowNoTitle, false)) mFeatures |= 1 << FEATURE_NO_TITLE;
-        else if (a.getBoolean(megler.S.Window_windowActionBar, false) && (mFeatures & (1 << FEATURE_NO_TITLE)) == 0) mFeatures |= 1 << FEATURE_ACTION_BAR;
-        if (a.getBoolean(megler.S.Window_windowFullscreen, false)) mAttrs.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN;
-        if (a.getBoolean(megler.S.Window_windowTranslucentStatus, false)) mAttrs.flags |= WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS;
-        if (a.getBoolean(megler.S.Window_windowTranslucentNavigation, false)) mAttrs.flags |= WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION;
-        if (a.getBoolean(megler.S.Window_windowDrawsSystemBarBackgrounds, false)) mAttrs.flags |= WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS;
-        if (!mStatusBarColorSet) mStatusBarColor = a.getColor(megler.S.Window_statusBarColor, 0xFF000000);
-        if (!mNavigationBarColorSet) mNavigationBarColor = a.getColor(megler.S.Window_navigationBarColor, 0xFF000000);
-        if (!mBackgroundSet) mBackground = a.getDrawable(megler.S.Window_windowBackground);
+        TypedArray a = c.obtainStyledAttributes(meglet.S.Window);
+        mFloating = a.getBoolean(meglet.S.Window_windowIsFloating, false);
+        if (a.getBoolean(meglet.S.Window_windowNoTitle, false)) mFeatures |= 1 << FEATURE_NO_TITLE;
+        else if (a.getBoolean(meglet.S.Window_windowActionBar, false) && (mFeatures & (1 << FEATURE_NO_TITLE)) == 0) mFeatures |= 1 << FEATURE_ACTION_BAR;
+        if (a.getBoolean(meglet.S.Window_windowFullscreen, false)) mAttrs.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN;
+        if (a.getBoolean(meglet.S.Window_windowTranslucentStatus, false)) mAttrs.flags |= WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS;
+        if (a.getBoolean(meglet.S.Window_windowTranslucentNavigation, false)) mAttrs.flags |= WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION;
+        if (a.getBoolean(meglet.S.Window_windowDrawsSystemBarBackgrounds, false)) mAttrs.flags |= WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS;
+        if (!mStatusBarColorSet) mStatusBarColor = a.getColor(meglet.S.Window_statusBarColor, 0xFF000000);
+        if (!mNavigationBarColorSet) mNavigationBarColor = a.getColor(meglet.S.Window_navigationBarColor, 0xFF000000);
+        if (!mBackgroundSet) mBackground = a.getDrawable(meglet.S.Window_windowBackground);
         if (System.getenv("TL_VIEW_DUMP") != null) {
-            android.util.TypedValue tv = a.peekValue(megler.S.Window_windowBackground), r = new android.util.TypedValue();
+            android.util.TypedValue tv = a.peekValue(meglet.S.Window_windowBackground), r = new android.util.TypedValue();
             boolean ok = c.getTheme().resolveAttribute(android.R.attr.windowBackground, r, false);
             android.util.Log.d("ViewDump", "window background " + (tv == null ? "none" : "type=0x" + Integer.toHexString(tv.type) + " data=0x" + Integer.toHexString(tv.data)) + " theme(" + c.getTheme() + ") says " + (ok ? "type=0x" + Integer.toHexString(r.type) + " data=0x" + Integer.toHexString(r.data) : "nothing") + " -> " + mBackground + "; context " + c.getClass().getName());
         }
-        mDefaultSoftInput = a.getInt(megler.S.Window_windowSoftInputMode, 0);
+        mDefaultSoftInput = a.getInt(meglet.S.Window_windowSoftInputMode, 0);
         if (!mSoftInputSet) mAttrs.softInputMode = mDefaultSoftInput;
-        mAttrs.layoutInDisplayCutoutMode = a.getInt(megler.S.Window_windowLayoutInDisplayCutoutMode, 0);
+        mAttrs.layoutInDisplayCutoutMode = a.getInt(meglet.S.Window_windowLayoutInDisplayCutoutMode, 0);
         if (mFloating) {
             if (!mLayoutSet) { mAttrs.width = WindowManager.LayoutParams.WRAP_CONTENT; mAttrs.height = WindowManager.LayoutParams.WRAP_CONTENT; }
             if (!mGravitySet) mAttrs.gravity = Gravity.CENTER;
-            if (a.getBoolean(megler.S.Window_backgroundDimEnabled, true)) { mAttrs.flags |= WindowManager.LayoutParams.FLAG_DIM_BEHIND; mAttrs.dimAmount = a.getFloat(megler.S.Window_backgroundDimAmount, 0.6f); }
+            if (a.getBoolean(meglet.S.Window_backgroundDimEnabled, true)) { mAttrs.flags |= WindowManager.LayoutParams.FLAG_DIM_BEHIND; mAttrs.dimAmount = a.getFloat(meglet.S.Window_backgroundDimAmount, 0.6f); }
         }
         a.recycle();
     }
     private boolean mStatusBarColorSet, mNavigationBarColorSet, mBackgroundSet, mSoftInputSet, mLayoutSet, mGravitySet;
     public final Context getContext() { return mContext; }
-    public final TypedArray getWindowStyle() { return mContext.obtainStyledAttributes(megler.S.Window); }
+    public final TypedArray getWindowStyle() { return mContext.obtainStyledAttributes(meglet.S.Window); }
     public void setCallback(Callback cb) { mCallback = cb; }
     public final Callback getCallback() { return mCallback; }
-    public void meglerSetActivityWindow(boolean a) { mIsActivityWindow = a; if (a) mAttrs.type = WindowManager.LayoutParams.TYPE_BASE_APPLICATION; }
-    public boolean meglerIsActivityWindow() { return mIsActivityWindow; }
+    public void megletSetActivityWindow(boolean a) { mIsActivityWindow = a; if (a) mAttrs.type = WindowManager.LayoutParams.TYPE_BASE_APPLICATION; }
+    public boolean megletIsActivityWindow() { return mIsActivityWindow; }
     public void setWindowManager(WindowManager wm, android.os.IBinder token, String name) { setWindowManager(wm, token, name, false); }
     public void setWindowManager(WindowManager wm, android.os.IBinder token, String name, boolean hw) { mWindowManager = wm; mAttrs.token = token; }
     public WindowManager getWindowManager() { if (mWindowManager == null) mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE); return mWindowManager; }
     public final WindowManager.LayoutParams getAttributes() { ensureStyle(); return mAttrs; }
     public void setAttributes(WindowManager.LayoutParams a) { mAttrs.copyFrom(a); dispatchAttrs(); }
-    private void dispatchAttrs() { if (mCallback != null) mCallback.onWindowAttributesChanged(mAttrs); if (mDecor != null) { megler.ViewRoot r = megler.ViewRoot.of(mDecor); if (r != null) r.setLayoutParams(mAttrs); mDecor.requestApplyInsets(); } }
+    private void dispatchAttrs() { if (mCallback != null) mCallback.onWindowAttributesChanged(mAttrs); if (mDecor != null) { meglet.ViewRoot r = meglet.ViewRoot.of(mDecor); if (r != null) r.setLayoutParams(mAttrs); mDecor.requestApplyInsets(); } }
     public void addFlags(int f) { setFlags(f, f); }
     public void clearFlags(int f) { setFlags(0, f); }
     public void setFlags(int f, int mask) { mAttrs.flags = (mAttrs.flags & ~mask) | (f & mask); dispatchAttrs(); }
@@ -124,13 +124,13 @@ public class Window {
     public void setHideOverlayWindows(boolean b) {}
     public void setFrameRateBoostOnTouchEnabled(boolean b) {}
     public boolean requestFeature(int f) {
-        if (mContentParent != null && f != FEATURE_NO_TITLE) throw new AndroidRuntimeExceptionMegler("requestFeature() must be called before adding content");
+        if (mContentParent != null && f != FEATURE_NO_TITLE) throw new AndroidRuntimeExceptionMeglet("requestFeature() must be called before adding content");
         if (f == FEATURE_NO_TITLE) mFeatures &= ~(1 << FEATURE_ACTION_BAR);
         if (f == FEATURE_ACTION_BAR) mFeatures &= ~(1 << FEATURE_NO_TITLE);
         mFeatures |= 1 << f;
         return true;
     }
-    static final class AndroidRuntimeExceptionMegler extends android.util.AndroidRuntimeException { AndroidRuntimeExceptionMegler(String s) { super(s); } }
+    static final class AndroidRuntimeExceptionMeglet extends android.util.AndroidRuntimeException { AndroidRuntimeExceptionMeglet(String s) { super(s); } }
     public boolean hasFeature(int f) { return (mFeatures & (1 << f)) != 0; }
     protected final int getFeatures() { return mFeatures; }
     public final int getLocalFeatures() { return mFeatures; }
@@ -141,7 +141,7 @@ public class Window {
     public boolean isActive() { return mActive; }
     public void makeActive() { mActive = true; }
     public final boolean isDestroyed() { return mDestroyed; }
-    public void meglerDestroy() { mDestroyed = true; }
+    public void megletDestroy() { mDestroyed = true; }
     public boolean isWideColorGamut() { return false; }
 
     // ---- the decor
@@ -149,7 +149,7 @@ public class Window {
     public View peekDecorView() { return mDecor; }
     private void installDecor() {
         ensureStyle();
-        mDecor = new megler.DecorView(mContext, this);
+        mDecor = new meglet.DecorView(mContext, this);
         mDecor.setId(View.NO_ID);
         if (mBackground != null) mDecor.setWindowBackground(mBackground);
         mContentParent = mDecor.makeContent(hasFeature(FEATURE_ACTION_BAR) && !mFloating, mTitle != null ? mTitle : mContext instanceof android.app.Activity ? ((android.app.Activity) mContext).getTitle() : null);
@@ -189,7 +189,7 @@ public class Window {
     public boolean isStatusBarContrastEnforced() { return false; }
     public boolean isNavigationBarContrastEnforced() { return false; }
     public void setDecorFitsSystemWindows(boolean f) { mDecorFits = f; if (mDecor != null) mDecor.requestApplyInsets(); }
-    public boolean meglerDecorFits() {
+    public boolean megletDecorFits() {
         if (!mDecorFits) return false;
         int f = mAttrs.flags;
         if ((f & (WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)) != 0) return false;
@@ -197,8 +197,8 @@ public class Window {
         if ((sys & (View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)) != 0) return false;
         return true;
     }
-    public boolean meglerFullscreen() { return (mAttrs.flags & WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0; }
-    public WindowInsetsController getInsetsController() { View d = getDecorView(); WindowInsetsController c = d.getWindowInsetsController(); return c != null ? c : megler.DecorView.fallbackInsetsController(); }
+    public boolean megletFullscreen() { return (mAttrs.flags & WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0; }
+    public WindowInsetsController getInsetsController() { View d = getDecorView(); WindowInsetsController c = d.getWindowInsetsController(); return c != null ? c : meglet.DecorView.fallbackInsetsController(); }
     public void setLocalFocus(boolean f, boolean inTouch) {}
     public void injectInputEvent(InputEvent e) {}
     public void takeKeyEvents(boolean b) {}
@@ -225,7 +225,7 @@ public class Window {
     public void setLogo(int r) {}
     public void setDefaultLogo(int r) {}
     public void setCloseOnTouchOutside(boolean c) { if (mDecor != null) mDecor.setCloseOnTouchOutside(c); }
-    public boolean shouldCloseOnTouchMegler() { return mDecor != null && mDecor.closeOnTouchOutside(); }
+    public boolean shouldCloseOnTouchMeglet() { return mDecor != null && mDecor.closeOnTouchOutside(); }
     public void setAllowEnterTransitionOverlap(boolean b) {}
     public void setAllowReturnTransitionOverlap(boolean b) {}
     public void setEnterTransition(android.transition.Transition t) {}
@@ -247,12 +247,12 @@ public class Window {
     public android.transition.Scene getContentScene() { return null; }
     public void addOnFrameMetricsAvailableListener(OnFrameMetricsAvailableListener l, android.os.Handler h) {}
     public void removeOnFrameMetricsAvailableListener(OnFrameMetricsAvailableListener l) {}
-    private megler.BackDispatcher mBackDispatcher;
-    public android.window.OnBackInvokedDispatcher getOnBackInvokedDispatcher() { if (mBackDispatcher == null) mBackDispatcher = new megler.BackDispatcher(); return mBackDispatcher; }
-    public boolean meglerDispatchBack() { return mBackDispatcher != null && mBackDispatcher.dispatch(); }
+    private meglet.BackDispatcher mBackDispatcher;
+    public android.window.OnBackInvokedDispatcher getOnBackInvokedDispatcher() { if (mBackDispatcher == null) mBackDispatcher = new meglet.BackDispatcher(); return mBackDispatcher; }
+    public boolean megletDispatchBack() { return mBackDispatcher != null && mBackDispatcher.dispatch(); }
     public void setRestrictedCaptionAreaListener(OnRestrictedCaptionAreaChangedListener l) {}
     public void setSystemGestureExclusionRects(java.util.List<android.graphics.Rect> r) {}
-    public android.view.WindowInsets getRootWindowInsetsMegler() { return mDecor == null ? null : mDecor.getRootWindowInsets(); }
+    public android.view.WindowInsets getRootWindowInsetsMeglet() { return mDecor == null ? null : mDecor.getRootWindowInsets(); }
     public void restoreHierarchyState(Bundle b) {}
     public Bundle saveHierarchyState() { return new Bundle(); }
     public android.media.session.MediaController getMediaController() { return null; }
@@ -264,7 +264,7 @@ public class Window {
     public boolean superDispatchTrackballEvent(MotionEvent e) { return false; }
     public boolean superDispatchGenericMotionEvent(MotionEvent e) { return mDecor != null && mDecor.superDispatchGenericMotionEvent(e); }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
     protected static final int DEFAULT_FEATURES = 65;
     public static final int FEATURE_MAX = 13;
     public static final int PROGRESS_END = 10000;
@@ -284,22 +284,22 @@ public class Window {
     public void dispatchOnWindowSwipeDismissed() {}
     protected void dispatchWindowAttributesChanged(android.view.WindowManager.LayoutParams p0) {}
     public int getColorMode() { return 0; }
-    public android.view.Window getContainer() { return (android.view.Window) meglerFill.get("Container"); }
-    public float getDesiredHdrHeadroom() { return (meglerFill.get("DesiredHdrHeadroom") instanceof Float ? (Float) meglerFill.get("DesiredHdrHeadroom") : 0f); }
+    public android.view.Window getContainer() { return (android.view.Window) megletFill.get("Container"); }
+    public float getDesiredHdrHeadroom() { return (megletFill.get("DesiredHdrHeadroom") instanceof Float ? (Float) megletFill.get("DesiredHdrHeadroom") : 0f); }
     protected int getForcedWindowFlags() { return 0; }
     public boolean getFrameRateBoostOnTouchEnabled() { return false; }
     public android.view.View getNavigationBarBackgroundView() { return null; }
     public int getNavigationBarDividerColor() { return 0; }
     public android.view.AttachedSurfaceControl getRootSurfaceControl() { return null; }
     public android.view.View getStatusBarBackgroundView() { return null; }
-    public int getSystemBarAppearance() { return (meglerFill.get("SystemBarAppearance") instanceof Integer ? (Integer) meglerFill.get("SystemBarAppearance") : 0); }
+    public int getSystemBarAppearance() { return (megletFill.get("SystemBarAppearance") instanceof Integer ? (Integer) megletFill.get("SystemBarAppearance") : 0); }
     public java.util.List getSystemGestureExclusionRects() { return new java.util.ArrayList(); }
-    public android.view.Window.WindowControllerCallback getWindowControllerCallback() { return (android.view.Window.WindowControllerCallback) meglerFill.get("WindowControllerCallback"); }
+    public android.view.Window.WindowControllerCallback getWindowControllerCallback() { return (android.view.Window.WindowControllerCallback) megletFill.get("WindowControllerCallback"); }
     public boolean hasChildren() { return false; }
     protected boolean hasSoftInputMode() { return false; }
     protected boolean haveDimAmount() { return false; }
-    public boolean isFrameRatePowerSavingsBalanced() { return (meglerFill.get("FrameRatePowerSavingsBalanced") instanceof Boolean ? (Boolean) meglerFill.get("FrameRatePowerSavingsBalanced") : false); }
-    public boolean isOverlayWithDecorCaptionEnabled() { return (meglerFill.get("OverlayWithDecorCaptionEnabled") instanceof Boolean ? (Boolean) meglerFill.get("OverlayWithDecorCaptionEnabled") : false); }
+    public boolean isFrameRatePowerSavingsBalanced() { return (megletFill.get("FrameRatePowerSavingsBalanced") instanceof Boolean ? (Boolean) megletFill.get("FrameRatePowerSavingsBalanced") : false); }
+    public boolean isOverlayWithDecorCaptionEnabled() { return (megletFill.get("OverlayWithDecorCaptionEnabled") instanceof Boolean ? (Boolean) megletFill.get("OverlayWithDecorCaptionEnabled") : false); }
     public void notifyRestrictedCaptionAreaCallback(int p0, int p1, int p2, int p3) {}
     protected void onActive() {}
     protected void onDestroy() {}
@@ -308,22 +308,22 @@ public class Window {
     public void registerScrollCaptureCallback(android.view.ScrollCaptureCallback p0) {}
     protected void removeFeature(int p0) {}
     public void setCloseOnTouchOutsideIfNotSet(boolean p0) {}
-    public void setContainer(android.view.Window p0) { meglerFill.put("Container", p0); }
+    public void setContainer(android.view.Window p0) { megletFill.put("Container", p0); }
     public void setDecorCallback(android.view.Window.DecorCallback p0) {}
     public void setDecorCaptionShade(int p0) {}
     protected void setDefaultWindowFormat(int p0) {}
-    public void setDesiredHdrHeadroom(float p0) { meglerFill.put("DesiredHdrHeadroom", Float.valueOf(p0)); }
+    public void setDesiredHdrHeadroom(float p0) { megletFill.put("DesiredHdrHeadroom", Float.valueOf(p0)); }
     public void setFeatureDrawableAlpha(int p0, int p1) {}
     public void setFeatureDrawableUri(int p0, android.net.Uri p1) {}
-    public void setFrameRatePowerSavingsBalanced(boolean p0) { meglerFill.put("FrameRatePowerSavingsBalanced", Boolean.valueOf(p0)); }
+    public void setFrameRatePowerSavingsBalanced(boolean p0) { megletFill.put("FrameRatePowerSavingsBalanced", Boolean.valueOf(p0)); }
     public void setOnWindowDismissedCallback(android.view.Window.OnWindowDismissedCallback p0) {}
     public void setOnWindowSwipeDismissedCallback(android.view.Window.OnWindowSwipeDismissedCallback p0) {}
-    public void setOverlayWithDecorCaptionEnabled(boolean p0) { meglerFill.put("OverlayWithDecorCaptionEnabled", Boolean.valueOf(p0)); }
+    public void setOverlayWithDecorCaptionEnabled(boolean p0) { megletFill.put("OverlayWithDecorCaptionEnabled", Boolean.valueOf(p0)); }
     public void setResizingCaptionDrawable(android.graphics.drawable.Drawable p0) {}
-    public void setSystemBarAppearance(int p0) { meglerFill.put("SystemBarAppearance", Integer.valueOf(p0)); }
+    public void setSystemBarAppearance(int p0) { megletFill.put("SystemBarAppearance", Integer.valueOf(p0)); }
     public void setTheme(int p0) {}
     public void setUiOptions(int p0, int p1) {}
-    public void setWindowControllerCallback(android.view.Window.WindowControllerCallback p0) { meglerFill.put("WindowControllerCallback", p0); }
+    public void setWindowControllerCallback(android.view.Window.WindowControllerCallback p0) { megletFill.put("WindowControllerCallback", p0); }
     public void setWindowManager(android.view.WindowManager p0, android.os.IBinder p1, java.lang.String p2, boolean p3, boolean p4) {}
     public boolean shouldCloseOnTouch(android.content.Context p0, android.view.MotionEvent p1) { return false; }
     public boolean shouldCloseOnTouchOutside() { return false; }

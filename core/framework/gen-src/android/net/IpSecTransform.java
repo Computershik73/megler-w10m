@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IpSecTransform implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ENCAP_ESPINUDP = 2;
     public static final int ENCAP_ESPINUDP_NON_IKE = 1;
     public static final int ENCAP_NONE = 0;
@@ -12,22 +12,22 @@ public final class IpSecTransform implements java.lang.AutoCloseable {
     public IpSecTransform(android.content.Context p0, android.net.IpSecConfig p1) {}
     public void close() {}
     protected void finalize() {}
-    public int getResourceId() { return (meglerProps.get("ResourceId") instanceof Integer ? (Integer) meglerProps.get("ResourceId") : 0); }
+    public int getResourceId() { return (megletProps.get("ResourceId") instanceof Integer ? (Integer) megletProps.get("ResourceId") : 0); }
     public void requestIpSecTransformState(java.util.concurrent.Executor p0, android.os.OutcomeReceiver p1) {}
     IpSecTransform() { this((android.content.Context) null, (android.net.IpSecConfig) null); }
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.content.Context p0) {}
         public android.net.IpSecTransform buildTransportModeTransform(java.net.InetAddress p0, android.net.IpSecManager.SecurityParameterIndex p1) { return null; }
         public android.net.IpSecTransform buildTunnelModeTransform(java.net.InetAddress p0, android.net.IpSecManager.SecurityParameterIndex p1) { return null; }
-        public android.net.IpSecTransform.Builder setAuthenticatedEncryption(android.net.IpSecAlgorithm p0) { meglerProps.put("AuthenticatedEncryption", p0); return this; }
-        public android.net.IpSecTransform.Builder setAuthentication(android.net.IpSecAlgorithm p0) { meglerProps.put("Authentication", p0); return this; }
-        public android.net.IpSecTransform.Builder setEncryption(android.net.IpSecAlgorithm p0) { meglerProps.put("Encryption", p0); return this; }
+        public android.net.IpSecTransform.Builder setAuthenticatedEncryption(android.net.IpSecAlgorithm p0) { megletProps.put("AuthenticatedEncryption", p0); return this; }
+        public android.net.IpSecTransform.Builder setAuthentication(android.net.IpSecAlgorithm p0) { megletProps.put("Authentication", p0); return this; }
+        public android.net.IpSecTransform.Builder setEncryption(android.net.IpSecAlgorithm p0) { megletProps.put("Encryption", p0); return this; }
         public android.net.IpSecTransform.Builder setIpv4Encapsulation(android.net.IpSecManager.UdpEncapsulationSocket p0, int p1) { return this; }
         Builder() { this((android.content.Context) null); }
     }
     public static class NattKeepaliveCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ERROR_HARDWARE_ERROR = 3;
         public static final int ERROR_HARDWARE_UNSUPPORTED = 2;
         public static final int ERROR_INVALID_NETWORK = 1;

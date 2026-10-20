@@ -3,11 +3,11 @@ package android.net.ipsec.ike.exceptions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InvalidSelectorsException extends android.net.ipsec.ike.exceptions.IkeProtocolException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public InvalidSelectorsException(int p0, byte[] p1) { super(p0, p1); }
-    public byte[] getIpSecPacketInfo() { return (byte[]) meglerProps.get("IpSecPacketInfo"); }
-    public int getIpSecSpi() { return (meglerProps.get("IpSecSpi") instanceof Integer ? (Integer) meglerProps.get("IpSecSpi") : 0); }
-    public int getMetricsErrorCode() { return (meglerProps.get("MetricsErrorCode") instanceof Integer ? (Integer) meglerProps.get("MetricsErrorCode") : 0); }
+    public byte[] getIpSecPacketInfo() { return (byte[]) megletProps.get("IpSecPacketInfo"); }
+    public int getIpSecSpi() { return (megletProps.get("IpSecSpi") instanceof Integer ? (Integer) megletProps.get("IpSecSpi") : 0); }
+    public int getMetricsErrorCode() { return (megletProps.get("MetricsErrorCode") instanceof Integer ? (Integer) megletProps.get("MetricsErrorCode") : 0); }
     public boolean isValidDataLength(int p0) { return false; }
     InvalidSelectorsException() { this((int) 0, (byte[]) null); }
 }

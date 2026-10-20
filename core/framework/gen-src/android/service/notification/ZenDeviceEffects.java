@@ -3,7 +3,7 @@ package android.service.notification;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ZenDeviceEffects implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FIELD_BRIGHTNESS_CAP = 4096;
     public static final int FIELD_DIM_WALLPAPER = 4;
@@ -20,8 +20,8 @@ public final class ZenDeviceEffects implements android.os.Parcelable {
     public static final int FIELD_SUPPRESS_AMBIENT_DISPLAY = 2;
     public static java.lang.String fieldsToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public java.lang.Float getBrightnessCap() { return (java.lang.Float) meglerProps.get("BrightnessCap"); }
-    public java.util.Set getExtraEffects() { return (meglerProps.get("ExtraEffects") != null ? (java.util.Set) meglerProps.get("ExtraEffects") : new java.util.HashSet()); }
+    public java.lang.Float getBrightnessCap() { return (java.lang.Float) megletProps.get("BrightnessCap"); }
+    public java.util.Set getExtraEffects() { return (megletProps.get("ExtraEffects") != null ? (java.util.Set) megletProps.get("ExtraEffects") : new java.util.HashSet()); }
     public boolean hasEffects() { return false; }
     public boolean shouldDimWallpaper() { return false; }
     public boolean shouldDisableAutoBrightness() { return false; }
@@ -38,25 +38,25 @@ public final class ZenDeviceEffects implements android.os.Parcelable {
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected ZenDeviceEffects() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.service.notification.ZenDeviceEffects p0) {}
         public android.service.notification.ZenDeviceEffects.Builder add(android.service.notification.ZenDeviceEffects p0) { return this; }
         public android.service.notification.ZenDeviceEffects.Builder addExtraEffect(java.lang.String p0) { return this; }
         public android.service.notification.ZenDeviceEffects.Builder addExtraEffects(java.util.Set p0) { return this; }
-        public android.service.notification.ZenDeviceEffects build() { android.service.notification.ZenDeviceEffects x = new android.service.notification.ZenDeviceEffects(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.service.notification.ZenDeviceEffects.Builder setBrightnessCap(java.lang.Float p0) { meglerProps.put("BrightnessCap", p0); return this; }
-        public android.service.notification.ZenDeviceEffects.Builder setExtraEffects(java.util.Set p0) { meglerProps.put("ExtraEffects", p0); return this; }
-        public android.service.notification.ZenDeviceEffects.Builder setShouldDimWallpaper(boolean p0) { meglerProps.put("ShouldDimWallpaper", Boolean.valueOf(p0)); return this; }
-        public android.service.notification.ZenDeviceEffects.Builder setShouldDisableAutoBrightness(boolean p0) { meglerProps.put("ShouldDisableAutoBrightness", Boolean.valueOf(p0)); return this; }
-        public android.service.notification.ZenDeviceEffects.Builder setShouldDisableTapToWake(boolean p0) { meglerProps.put("ShouldDisableTapToWake", Boolean.valueOf(p0)); return this; }
-        public android.service.notification.ZenDeviceEffects.Builder setShouldDisableTiltToWake(boolean p0) { meglerProps.put("ShouldDisableTiltToWake", Boolean.valueOf(p0)); return this; }
-        public android.service.notification.ZenDeviceEffects.Builder setShouldDisableTouch(boolean p0) { meglerProps.put("ShouldDisableTouch", Boolean.valueOf(p0)); return this; }
-        public android.service.notification.ZenDeviceEffects.Builder setShouldDisplayGrayscale(boolean p0) { meglerProps.put("ShouldDisplayGrayscale", Boolean.valueOf(p0)); return this; }
-        public android.service.notification.ZenDeviceEffects.Builder setShouldMaximizeDoze(boolean p0) { meglerProps.put("ShouldMaximizeDoze", Boolean.valueOf(p0)); return this; }
-        public android.service.notification.ZenDeviceEffects.Builder setShouldMinimizeRadioUsage(boolean p0) { meglerProps.put("ShouldMinimizeRadioUsage", Boolean.valueOf(p0)); return this; }
-        public android.service.notification.ZenDeviceEffects.Builder setShouldSuppressAmbientDisplay(boolean p0) { meglerProps.put("ShouldSuppressAmbientDisplay", Boolean.valueOf(p0)); return this; }
-        public android.service.notification.ZenDeviceEffects.Builder setShouldUseNightLight(boolean p0) { meglerProps.put("ShouldUseNightLight", Boolean.valueOf(p0)); return this; }
-        public android.service.notification.ZenDeviceEffects.Builder setShouldUseNightMode(boolean p0) { meglerProps.put("ShouldUseNightMode", Boolean.valueOf(p0)); return this; }
+        public android.service.notification.ZenDeviceEffects build() { android.service.notification.ZenDeviceEffects x = new android.service.notification.ZenDeviceEffects(); x.megletProps.putAll(megletProps); return x; }
+        public android.service.notification.ZenDeviceEffects.Builder setBrightnessCap(java.lang.Float p0) { megletProps.put("BrightnessCap", p0); return this; }
+        public android.service.notification.ZenDeviceEffects.Builder setExtraEffects(java.util.Set p0) { megletProps.put("ExtraEffects", p0); return this; }
+        public android.service.notification.ZenDeviceEffects.Builder setShouldDimWallpaper(boolean p0) { megletProps.put("ShouldDimWallpaper", Boolean.valueOf(p0)); return this; }
+        public android.service.notification.ZenDeviceEffects.Builder setShouldDisableAutoBrightness(boolean p0) { megletProps.put("ShouldDisableAutoBrightness", Boolean.valueOf(p0)); return this; }
+        public android.service.notification.ZenDeviceEffects.Builder setShouldDisableTapToWake(boolean p0) { megletProps.put("ShouldDisableTapToWake", Boolean.valueOf(p0)); return this; }
+        public android.service.notification.ZenDeviceEffects.Builder setShouldDisableTiltToWake(boolean p0) { megletProps.put("ShouldDisableTiltToWake", Boolean.valueOf(p0)); return this; }
+        public android.service.notification.ZenDeviceEffects.Builder setShouldDisableTouch(boolean p0) { megletProps.put("ShouldDisableTouch", Boolean.valueOf(p0)); return this; }
+        public android.service.notification.ZenDeviceEffects.Builder setShouldDisplayGrayscale(boolean p0) { megletProps.put("ShouldDisplayGrayscale", Boolean.valueOf(p0)); return this; }
+        public android.service.notification.ZenDeviceEffects.Builder setShouldMaximizeDoze(boolean p0) { megletProps.put("ShouldMaximizeDoze", Boolean.valueOf(p0)); return this; }
+        public android.service.notification.ZenDeviceEffects.Builder setShouldMinimizeRadioUsage(boolean p0) { megletProps.put("ShouldMinimizeRadioUsage", Boolean.valueOf(p0)); return this; }
+        public android.service.notification.ZenDeviceEffects.Builder setShouldSuppressAmbientDisplay(boolean p0) { megletProps.put("ShouldSuppressAmbientDisplay", Boolean.valueOf(p0)); return this; }
+        public android.service.notification.ZenDeviceEffects.Builder setShouldUseNightLight(boolean p0) { megletProps.put("ShouldUseNightLight", Boolean.valueOf(p0)); return this; }
+        public android.service.notification.ZenDeviceEffects.Builder setShouldUseNightMode(boolean p0) { megletProps.put("ShouldUseNightMode", Boolean.valueOf(p0)); return this; }
     }
 }

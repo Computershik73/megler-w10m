@@ -3,7 +3,7 @@ package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiEnterpriseConfig implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ALTSUBJECT_MATCH_KEY = "altsubject_match";
     public static final java.lang.String ANON_IDENTITY_KEY = "anonymous_identity";
     public static final java.lang.String CA_CERT_ALIAS_DELIMITER = " ";
@@ -66,87 +66,87 @@ public class WifiEnterpriseConfig implements android.os.Parcelable {
     public void copyFromExternal(android.net.wifi.WifiEnterpriseConfig p0, java.lang.String p1) {}
     public int describeContents() { return 0; }
     public void enableTrustOnFirstUse(boolean p0) {}
-    public java.lang.String getAltSubjectMatch() { return (java.lang.String) meglerProps.get("AltSubjectMatch"); }
-    public java.lang.String getAnonymousIdentity() { return (java.lang.String) meglerProps.get("AnonymousIdentity"); }
-    public java.security.cert.X509Certificate getCaCertificate() { return (java.security.cert.X509Certificate) meglerProps.get("CaCertificate"); }
-    public java.lang.String getCaCertificateAlias() { return (java.lang.String) meglerProps.get("CaCertificateAlias"); }
-    public java.lang.String[] getCaCertificateAliases() { return (java.lang.String[]) meglerProps.get("CaCertificateAliases"); }
-    public java.security.cert.X509Certificate[] getCaCertificates() { return (java.security.cert.X509Certificate[]) meglerProps.get("CaCertificates"); }
-    public java.lang.String getCaPath() { return (java.lang.String) meglerProps.get("CaPath"); }
-    public java.security.cert.X509Certificate getClientCertificate() { return (java.security.cert.X509Certificate) meglerProps.get("ClientCertificate"); }
-    public java.lang.String getClientCertificateAlias() { return (java.lang.String) meglerProps.get("ClientCertificateAlias"); }
-    public java.security.cert.X509Certificate[] getClientCertificateChain() { return (java.security.cert.X509Certificate[]) meglerProps.get("ClientCertificateChain"); }
-    public java.lang.String getClientKeyPairAlias() { return (java.lang.String) meglerProps.get("ClientKeyPairAlias"); }
-    public java.lang.String getClientKeyPairAliasInternal() { return (java.lang.String) meglerProps.get("ClientKeyPairAliasInternal"); }
-    public java.security.PrivateKey getClientPrivateKey() { return (java.security.PrivateKey) meglerProps.get("ClientPrivateKey"); }
-    public java.lang.String getDecoratedIdentityPrefix() { return (java.lang.String) meglerProps.get("DecoratedIdentityPrefix"); }
-    public java.lang.String getDomainSuffixMatch() { return (java.lang.String) meglerProps.get("DomainSuffixMatch"); }
-    public int getEapMethod() { return (meglerProps.get("EapMethod") instanceof Integer ? (Integer) meglerProps.get("EapMethod") : 0); }
+    public java.lang.String getAltSubjectMatch() { return (java.lang.String) megletProps.get("AltSubjectMatch"); }
+    public java.lang.String getAnonymousIdentity() { return (java.lang.String) megletProps.get("AnonymousIdentity"); }
+    public java.security.cert.X509Certificate getCaCertificate() { return (java.security.cert.X509Certificate) megletProps.get("CaCertificate"); }
+    public java.lang.String getCaCertificateAlias() { return (java.lang.String) megletProps.get("CaCertificateAlias"); }
+    public java.lang.String[] getCaCertificateAliases() { return (java.lang.String[]) megletProps.get("CaCertificateAliases"); }
+    public java.security.cert.X509Certificate[] getCaCertificates() { return (java.security.cert.X509Certificate[]) megletProps.get("CaCertificates"); }
+    public java.lang.String getCaPath() { return (java.lang.String) megletProps.get("CaPath"); }
+    public java.security.cert.X509Certificate getClientCertificate() { return (java.security.cert.X509Certificate) megletProps.get("ClientCertificate"); }
+    public java.lang.String getClientCertificateAlias() { return (java.lang.String) megletProps.get("ClientCertificateAlias"); }
+    public java.security.cert.X509Certificate[] getClientCertificateChain() { return (java.security.cert.X509Certificate[]) megletProps.get("ClientCertificateChain"); }
+    public java.lang.String getClientKeyPairAlias() { return (java.lang.String) megletProps.get("ClientKeyPairAlias"); }
+    public java.lang.String getClientKeyPairAliasInternal() { return (java.lang.String) megletProps.get("ClientKeyPairAliasInternal"); }
+    public java.security.PrivateKey getClientPrivateKey() { return (java.security.PrivateKey) megletProps.get("ClientPrivateKey"); }
+    public java.lang.String getDecoratedIdentityPrefix() { return (java.lang.String) megletProps.get("DecoratedIdentityPrefix"); }
+    public java.lang.String getDomainSuffixMatch() { return (java.lang.String) megletProps.get("DomainSuffixMatch"); }
+    public int getEapMethod() { return (megletProps.get("EapMethod") instanceof Integer ? (Integer) megletProps.get("EapMethod") : 0); }
     public java.lang.String getFieldValue(java.lang.String p0) { return null; }
-    public java.lang.String getIdentity() { return (java.lang.String) meglerProps.get("Identity"); }
+    public java.lang.String getIdentity() { return (java.lang.String) megletProps.get("Identity"); }
     public java.lang.String getKeyId(android.net.wifi.WifiEnterpriseConfig p0) { return null; }
-    public int getMinimumTlsVersion() { return (meglerProps.get("MinimumTlsVersion") instanceof Integer ? (Integer) meglerProps.get("MinimumTlsVersion") : 0); }
-    public int getOcsp() { return (meglerProps.get("Ocsp") instanceof Integer ? (Integer) meglerProps.get("Ocsp") : 0); }
-    public java.lang.String getPassword() { return (java.lang.String) meglerProps.get("Password"); }
-    public int getPhase2Method() { return (meglerProps.get("Phase2Method") instanceof Integer ? (Integer) meglerProps.get("Phase2Method") : 0); }
-    public java.lang.String getPlmn() { return (java.lang.String) meglerProps.get("Plmn"); }
-    public java.lang.String getRealm() { return (java.lang.String) meglerProps.get("Realm"); }
-    public long getSelectedRcoi() { return (meglerProps.get("SelectedRcoi") instanceof Long ? (Long) meglerProps.get("SelectedRcoi") : 0L); }
-    public boolean getStrictConservativePeerMode() { return (meglerProps.get("StrictConservativePeerMode") instanceof Boolean ? (Boolean) meglerProps.get("StrictConservativePeerMode") : false); }
-    public java.lang.String getSubjectMatch() { return (java.lang.String) meglerProps.get("SubjectMatch"); }
-    public int getTofuConnectionState() { return (meglerProps.get("TofuConnectionState") instanceof Integer ? (Integer) meglerProps.get("TofuConnectionState") : 0); }
-    public int getTofuDialogState() { return (meglerProps.get("TofuDialogState") instanceof Integer ? (Integer) meglerProps.get("TofuDialogState") : 0); }
-    public java.lang.String getWapiCertSuite() { return (java.lang.String) meglerProps.get("WapiCertSuite"); }
+    public int getMinimumTlsVersion() { return (megletProps.get("MinimumTlsVersion") instanceof Integer ? (Integer) megletProps.get("MinimumTlsVersion") : 0); }
+    public int getOcsp() { return (megletProps.get("Ocsp") instanceof Integer ? (Integer) megletProps.get("Ocsp") : 0); }
+    public java.lang.String getPassword() { return (java.lang.String) megletProps.get("Password"); }
+    public int getPhase2Method() { return (megletProps.get("Phase2Method") instanceof Integer ? (Integer) megletProps.get("Phase2Method") : 0); }
+    public java.lang.String getPlmn() { return (java.lang.String) megletProps.get("Plmn"); }
+    public java.lang.String getRealm() { return (java.lang.String) megletProps.get("Realm"); }
+    public long getSelectedRcoi() { return (megletProps.get("SelectedRcoi") instanceof Long ? (Long) megletProps.get("SelectedRcoi") : 0L); }
+    public boolean getStrictConservativePeerMode() { return (megletProps.get("StrictConservativePeerMode") instanceof Boolean ? (Boolean) megletProps.get("StrictConservativePeerMode") : false); }
+    public java.lang.String getSubjectMatch() { return (java.lang.String) megletProps.get("SubjectMatch"); }
+    public int getTofuConnectionState() { return (megletProps.get("TofuConnectionState") instanceof Integer ? (Integer) megletProps.get("TofuConnectionState") : 0); }
+    public int getTofuDialogState() { return (megletProps.get("TofuDialogState") instanceof Integer ? (Integer) megletProps.get("TofuDialogState") : 0); }
+    public java.lang.String getWapiCertSuite() { return (java.lang.String) megletProps.get("WapiCertSuite"); }
     public boolean hasCaCertificate() { return false; }
     public void initIsAppInstalledCaCert(boolean p0) {}
     public void initIsAppInstalledDeviceKeyAndCert(boolean p0) {}
-    public boolean isAppInstalledCaCert() { return (meglerProps.get("AppInstalledCaCert") instanceof Boolean ? (Boolean) meglerProps.get("AppInstalledCaCert") : false); }
-    public boolean isAppInstalledDeviceKeyAndCert() { return (meglerProps.get("AppInstalledDeviceKeyAndCert") instanceof Boolean ? (Boolean) meglerProps.get("AppInstalledDeviceKeyAndCert") : false); }
-    public boolean isAuthenticationSimBased() { return (meglerProps.get("AuthenticationSimBased") instanceof Boolean ? (Boolean) meglerProps.get("AuthenticationSimBased") : false); }
-    public boolean isEapMethodServerCertUsed() { return (meglerProps.get("EapMethodServerCertUsed") instanceof Boolean ? (Boolean) meglerProps.get("EapMethodServerCertUsed") : false); }
-    public boolean isMandatoryParameterSetForServerCertValidation() { return (meglerProps.get("MandatoryParameterSetForServerCertValidation") instanceof Boolean ? (Boolean) meglerProps.get("MandatoryParameterSetForServerCertValidation") : false); }
-    public boolean isServerCertValidationEnabled() { return (meglerProps.get("ServerCertValidationEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ServerCertValidationEnabled") : false); }
-    public boolean isTrustOnFirstUseEnabled() { return (meglerProps.get("TrustOnFirstUseEnabled") instanceof Boolean ? (Boolean) meglerProps.get("TrustOnFirstUseEnabled") : false); }
-    public boolean isUserApproveNoCaCert() { return (meglerProps.get("UserApproveNoCaCert") instanceof Boolean ? (Boolean) meglerProps.get("UserApproveNoCaCert") : false); }
+    public boolean isAppInstalledCaCert() { return (megletProps.get("AppInstalledCaCert") instanceof Boolean ? (Boolean) megletProps.get("AppInstalledCaCert") : false); }
+    public boolean isAppInstalledDeviceKeyAndCert() { return (megletProps.get("AppInstalledDeviceKeyAndCert") instanceof Boolean ? (Boolean) megletProps.get("AppInstalledDeviceKeyAndCert") : false); }
+    public boolean isAuthenticationSimBased() { return (megletProps.get("AuthenticationSimBased") instanceof Boolean ? (Boolean) megletProps.get("AuthenticationSimBased") : false); }
+    public boolean isEapMethodServerCertUsed() { return (megletProps.get("EapMethodServerCertUsed") instanceof Boolean ? (Boolean) megletProps.get("EapMethodServerCertUsed") : false); }
+    public boolean isMandatoryParameterSetForServerCertValidation() { return (megletProps.get("MandatoryParameterSetForServerCertValidation") instanceof Boolean ? (Boolean) megletProps.get("MandatoryParameterSetForServerCertValidation") : false); }
+    public boolean isServerCertValidationEnabled() { return (megletProps.get("ServerCertValidationEnabled") instanceof Boolean ? (Boolean) megletProps.get("ServerCertValidationEnabled") : false); }
+    public boolean isTrustOnFirstUseEnabled() { return (megletProps.get("TrustOnFirstUseEnabled") instanceof Boolean ? (Boolean) megletProps.get("TrustOnFirstUseEnabled") : false); }
+    public boolean isUserApproveNoCaCert() { return (megletProps.get("UserApproveNoCaCert") instanceof Boolean ? (Boolean) megletProps.get("UserApproveNoCaCert") : false); }
     public void loadFromSupplicant(android.net.wifi.WifiEnterpriseConfig.SupplicantLoader p0) {}
     public void resetCaCertificate() {}
     public void resetClientKeyEntry() {}
     public boolean saveToSupplicant(android.net.wifi.WifiEnterpriseConfig.SupplicantSaver p0) { return false; }
-    public void setAltSubjectMatch(java.lang.String p0) { meglerProps.put("AltSubjectMatch", p0); }
-    public void setAnonymousIdentity(java.lang.String p0) { meglerProps.put("AnonymousIdentity", p0); }
-    public void setCaCertificate(java.security.cert.X509Certificate p0) { meglerProps.put("CaCertificate", p0); }
-    public void setCaCertificateAlias(java.lang.String p0) { meglerProps.put("CaCertificateAlias", p0); }
-    public void setCaCertificateAliases(java.lang.String[] p0) { meglerProps.put("CaCertificateAliases", p0); }
-    public void setCaCertificateForTrustOnFirstUse(java.security.cert.X509Certificate p0) { meglerProps.put("CaCertificateForTrustOnFirstUse", p0); }
-    public void setCaCertificates(java.security.cert.X509Certificate[] p0) { meglerProps.put("CaCertificates", p0); }
-    public void setCaPath(java.lang.String p0) { meglerProps.put("CaPath", p0); }
-    public void setClientCertificateAlias(java.lang.String p0) { meglerProps.put("ClientCertificateAlias", p0); }
+    public void setAltSubjectMatch(java.lang.String p0) { megletProps.put("AltSubjectMatch", p0); }
+    public void setAnonymousIdentity(java.lang.String p0) { megletProps.put("AnonymousIdentity", p0); }
+    public void setCaCertificate(java.security.cert.X509Certificate p0) { megletProps.put("CaCertificate", p0); }
+    public void setCaCertificateAlias(java.lang.String p0) { megletProps.put("CaCertificateAlias", p0); }
+    public void setCaCertificateAliases(java.lang.String[] p0) { megletProps.put("CaCertificateAliases", p0); }
+    public void setCaCertificateForTrustOnFirstUse(java.security.cert.X509Certificate p0) { megletProps.put("CaCertificateForTrustOnFirstUse", p0); }
+    public void setCaCertificates(java.security.cert.X509Certificate[] p0) { megletProps.put("CaCertificates", p0); }
+    public void setCaPath(java.lang.String p0) { megletProps.put("CaPath", p0); }
+    public void setClientCertificateAlias(java.lang.String p0) { megletProps.put("ClientCertificateAlias", p0); }
     public void setClientKeyEntry(java.security.PrivateKey p0, java.security.cert.X509Certificate p1) {}
     public void setClientKeyEntryWithCertificateChain(java.security.PrivateKey p0, java.security.cert.X509Certificate[] p1) {}
-    public void setClientKeyPairAlias(java.lang.String p0) { meglerProps.put("ClientKeyPairAlias", p0); }
-    public void setDecoratedIdentityPrefix(java.lang.String p0) { meglerProps.put("DecoratedIdentityPrefix", p0); }
-    public void setDomainSuffixMatch(java.lang.String p0) { meglerProps.put("DomainSuffixMatch", p0); }
-    public void setEapMethod(int p0) { meglerProps.put("EapMethod", Integer.valueOf(p0)); }
+    public void setClientKeyPairAlias(java.lang.String p0) { megletProps.put("ClientKeyPairAlias", p0); }
+    public void setDecoratedIdentityPrefix(java.lang.String p0) { megletProps.put("DecoratedIdentityPrefix", p0); }
+    public void setDomainSuffixMatch(java.lang.String p0) { megletProps.put("DomainSuffixMatch", p0); }
+    public void setEapMethod(int p0) { megletProps.put("EapMethod", Integer.valueOf(p0)); }
     public void setFieldValue(java.lang.String p0, java.lang.String p1) {}
-    public void setIdentity(java.lang.String p0) { meglerProps.put("Identity", p0); }
-    public void setMinimumTlsVersion(int p0) { meglerProps.put("MinimumTlsVersion", Integer.valueOf(p0)); }
-    public void setOcsp(int p0) { meglerProps.put("Ocsp", Integer.valueOf(p0)); }
-    public void setPassword(java.lang.String p0) { meglerProps.put("Password", p0); }
-    public void setPhase2Method(int p0) { meglerProps.put("Phase2Method", Integer.valueOf(p0)); }
-    public void setPlmn(java.lang.String p0) { meglerProps.put("Plmn", p0); }
-    public void setRealm(java.lang.String p0) { meglerProps.put("Realm", p0); }
-    public void setSelectedRcoi(long p0) { meglerProps.put("SelectedRcoi", Long.valueOf(p0)); }
-    public void setServerCertificateHash(java.lang.String p0) { meglerProps.put("ServerCertificateHash", p0); }
-    public void setStrictConservativePeerMode(boolean p0) { meglerProps.put("StrictConservativePeerMode", Boolean.valueOf(p0)); }
-    public void setSubjectMatch(java.lang.String p0) { meglerProps.put("SubjectMatch", p0); }
-    public void setTofuConnectionState(int p0) { meglerProps.put("TofuConnectionState", Integer.valueOf(p0)); }
-    public void setTofuDialogApproved(boolean p0) { meglerProps.put("TofuDialogApproved", Boolean.valueOf(p0)); }
-    public void setTofuDialogState(int p0) { meglerProps.put("TofuDialogState", Integer.valueOf(p0)); }
-    public void setUserApproveNoCaCert(boolean p0) { meglerProps.put("UserApproveNoCaCert", Boolean.valueOf(p0)); }
-    public void setWapiCertSuite(java.lang.String p0) { meglerProps.put("WapiCertSuite", p0); }
+    public void setIdentity(java.lang.String p0) { megletProps.put("Identity", p0); }
+    public void setMinimumTlsVersion(int p0) { megletProps.put("MinimumTlsVersion", Integer.valueOf(p0)); }
+    public void setOcsp(int p0) { megletProps.put("Ocsp", Integer.valueOf(p0)); }
+    public void setPassword(java.lang.String p0) { megletProps.put("Password", p0); }
+    public void setPhase2Method(int p0) { megletProps.put("Phase2Method", Integer.valueOf(p0)); }
+    public void setPlmn(java.lang.String p0) { megletProps.put("Plmn", p0); }
+    public void setRealm(java.lang.String p0) { megletProps.put("Realm", p0); }
+    public void setSelectedRcoi(long p0) { megletProps.put("SelectedRcoi", Long.valueOf(p0)); }
+    public void setServerCertificateHash(java.lang.String p0) { megletProps.put("ServerCertificateHash", p0); }
+    public void setStrictConservativePeerMode(boolean p0) { megletProps.put("StrictConservativePeerMode", Boolean.valueOf(p0)); }
+    public void setSubjectMatch(java.lang.String p0) { megletProps.put("SubjectMatch", p0); }
+    public void setTofuConnectionState(int p0) { megletProps.put("TofuConnectionState", Integer.valueOf(p0)); }
+    public void setTofuDialogApproved(boolean p0) { megletProps.put("TofuDialogApproved", Boolean.valueOf(p0)); }
+    public void setTofuDialogState(int p0) { megletProps.put("TofuDialogState", Integer.valueOf(p0)); }
+    public void setUserApproveNoCaCert(boolean p0) { megletProps.put("UserApproveNoCaCert", Boolean.valueOf(p0)); }
+    public void setWapiCertSuite(java.lang.String p0) { megletProps.put("WapiCertSuite", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Eap {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int AKA = 5;
         public static final int AKA_PRIME = 6;
         public static final int NONE = -1;
@@ -161,7 +161,7 @@ public class WifiEnterpriseConfig implements android.os.Parcelable {
         protected Eap() {}
     }
     public static final class Phase2 {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int AKA = 6;
         public static final int AKA_PRIME = 7;
         public static final int GTC = 4;

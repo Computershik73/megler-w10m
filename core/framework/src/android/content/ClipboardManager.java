@@ -8,12 +8,12 @@ public class ClipboardManager extends android.text.ClipboardManager {
     public ClipboardManager() {}
     public void setPrimaryClip(ClipData c) {
         mLocal = c;
-        if (c != null && c.getItemCount() > 0) { CharSequence t = c.getItemAt(0).coerceToText(null); megler.Native.setClipboard(t == null ? "" : t.toString()); }
+        if (c != null && c.getItemCount() > 0) { CharSequence t = c.getItemAt(0).coerceToText(null); meglet.Native.setClipboard(t == null ? "" : t.toString()); }
         for (OnPrimaryClipChangedListener l : new java.util.ArrayList<>(mListeners)) l.onPrimaryClipChanged();
     }
-    public void clearPrimaryClip() { mLocal = null; megler.Native.setClipboard(""); }
+    public void clearPrimaryClip() { mLocal = null; meglet.Native.setClipboard(""); }
     public ClipData getPrimaryClip() {
-        String t = megler.Native.getClipboard();
+        String t = meglet.Native.getClipboard();
         if (t == null || t.isEmpty()) return mLocal;
         if (mLocal != null && mLocal.getItemCount() > 0 && t.equals(String.valueOf(mLocal.getItemAt(0).coerceToText(null)))) return mLocal;
         return ClipData.newPlainText("", t);

@@ -3,7 +3,7 @@ package android.media.audiofx;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class HapticGenerator extends android.media.audiofx.AudioEffect implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.media.audiofx.HapticGenerator create(int p0) { return new HapticGenerator(); }
     public static boolean isAvailable() { return false; }
     public void close() {}

@@ -3,12 +3,12 @@ package android.content;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class AbstractThreadedSyncAdapter {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int LOG_SYNC_DETAILS = 2743;
     public AbstractThreadedSyncAdapter(android.content.Context p0, boolean p1) {}
     public AbstractThreadedSyncAdapter(android.content.Context p0, boolean p1, boolean p2) {}
-    public android.content.Context getContext() { return (android.content.Context) meglerProps.get("Context"); }
-    public android.os.IBinder getSyncAdapterBinder() { return (android.os.IBinder) meglerProps.get("SyncAdapterBinder"); }
+    public android.content.Context getContext() { return (android.content.Context) megletProps.get("Context"); }
+    public android.os.IBinder getSyncAdapterBinder() { return (android.os.IBinder) megletProps.get("SyncAdapterBinder"); }
     public abstract void onPerformSync(android.accounts.Account p0, android.os.Bundle p1, java.lang.String p2, android.content.ContentProviderClient p3, android.content.SyncResult p4);
     public void onSecurityException(android.accounts.Account p0, android.os.Bundle p1, java.lang.String p2, android.content.SyncResult p3) {}
     public void onSyncCanceled() {}

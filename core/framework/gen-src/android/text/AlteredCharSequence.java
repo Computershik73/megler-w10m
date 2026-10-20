@@ -3,7 +3,7 @@ package android.text;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AlteredCharSequence implements java.lang.CharSequence, android.text.GetChars {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.text.AlteredCharSequence make(java.lang.CharSequence p0, char[] p1, int p2, int p3) { return new AlteredCharSequence(); }
     public char charAt(int p0) { return '\0'; }
     public void getChars(int p0, int p1, char[] p2, int p3) {}

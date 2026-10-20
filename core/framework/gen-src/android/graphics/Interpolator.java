@@ -3,12 +3,12 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Interpolator {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public Interpolator(int p0) {}
     public Interpolator(int p0, int p1) {}
     protected void finalize() {}
-    public int getKeyFrameCount() { return (meglerProps.get("KeyFrameCount") instanceof Integer ? (Integer) meglerProps.get("KeyFrameCount") : 0); }
-    public int getValueCount() { return (meglerProps.get("ValueCount") instanceof Integer ? (Integer) meglerProps.get("ValueCount") : 0); }
+    public int getKeyFrameCount() { return (megletProps.get("KeyFrameCount") instanceof Integer ? (Integer) megletProps.get("KeyFrameCount") : 0); }
+    public int getValueCount() { return (megletProps.get("ValueCount") instanceof Integer ? (Integer) megletProps.get("ValueCount") : 0); }
     public void reset(int p0) {}
     public void reset(int p0, int p1) {}
     public void setKeyFrame(int p0, int p1, float[] p2) {}

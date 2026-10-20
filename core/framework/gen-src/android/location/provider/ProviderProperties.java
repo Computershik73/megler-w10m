@@ -3,7 +3,7 @@ package android.location.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ProviderProperties implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ACCURACY_COARSE = 2;
     public static final int ACCURACY_FINE = 1;
     public static android.os.Parcelable.Creator CREATOR;
@@ -11,8 +11,8 @@ public final class ProviderProperties implements android.os.Parcelable {
     public static final int POWER_USAGE_LOW = 1;
     public static final int POWER_USAGE_MEDIUM = 2;
     public int describeContents() { return 0; }
-    public int getAccuracy() { return (meglerProps.get("Accuracy") instanceof Integer ? (Integer) meglerProps.get("Accuracy") : 0); }
-    public int getPowerUsage() { return (meglerProps.get("PowerUsage") instanceof Integer ? (Integer) meglerProps.get("PowerUsage") : 0); }
+    public int getAccuracy() { return (megletProps.get("Accuracy") instanceof Integer ? (Integer) megletProps.get("Accuracy") : 0); }
+    public int getPowerUsage() { return (megletProps.get("PowerUsage") instanceof Integer ? (Integer) megletProps.get("PowerUsage") : 0); }
     public boolean hasAltitudeSupport() { return false; }
     public boolean hasBearingSupport() { return false; }
     public boolean hasCellRequirement() { return false; }
@@ -23,18 +23,18 @@ public final class ProviderProperties implements android.os.Parcelable {
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected ProviderProperties() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.location.provider.ProviderProperties p0) {}
-        public android.location.provider.ProviderProperties build() { android.location.provider.ProviderProperties x = new android.location.provider.ProviderProperties(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.location.provider.ProviderProperties.Builder setAccuracy(int p0) { meglerProps.put("Accuracy", Integer.valueOf(p0)); return this; }
-        public android.location.provider.ProviderProperties.Builder setHasAltitudeSupport(boolean p0) { meglerProps.put("HasAltitudeSupport", Boolean.valueOf(p0)); return this; }
-        public android.location.provider.ProviderProperties.Builder setHasBearingSupport(boolean p0) { meglerProps.put("HasBearingSupport", Boolean.valueOf(p0)); return this; }
-        public android.location.provider.ProviderProperties.Builder setHasCellRequirement(boolean p0) { meglerProps.put("HasCellRequirement", Boolean.valueOf(p0)); return this; }
-        public android.location.provider.ProviderProperties.Builder setHasMonetaryCost(boolean p0) { meglerProps.put("HasMonetaryCost", Boolean.valueOf(p0)); return this; }
-        public android.location.provider.ProviderProperties.Builder setHasNetworkRequirement(boolean p0) { meglerProps.put("HasNetworkRequirement", Boolean.valueOf(p0)); return this; }
-        public android.location.provider.ProviderProperties.Builder setHasSatelliteRequirement(boolean p0) { meglerProps.put("HasSatelliteRequirement", Boolean.valueOf(p0)); return this; }
-        public android.location.provider.ProviderProperties.Builder setHasSpeedSupport(boolean p0) { meglerProps.put("HasSpeedSupport", Boolean.valueOf(p0)); return this; }
-        public android.location.provider.ProviderProperties.Builder setPowerUsage(int p0) { meglerProps.put("PowerUsage", Integer.valueOf(p0)); return this; }
+        public android.location.provider.ProviderProperties build() { android.location.provider.ProviderProperties x = new android.location.provider.ProviderProperties(); x.megletProps.putAll(megletProps); return x; }
+        public android.location.provider.ProviderProperties.Builder setAccuracy(int p0) { megletProps.put("Accuracy", Integer.valueOf(p0)); return this; }
+        public android.location.provider.ProviderProperties.Builder setHasAltitudeSupport(boolean p0) { megletProps.put("HasAltitudeSupport", Boolean.valueOf(p0)); return this; }
+        public android.location.provider.ProviderProperties.Builder setHasBearingSupport(boolean p0) { megletProps.put("HasBearingSupport", Boolean.valueOf(p0)); return this; }
+        public android.location.provider.ProviderProperties.Builder setHasCellRequirement(boolean p0) { megletProps.put("HasCellRequirement", Boolean.valueOf(p0)); return this; }
+        public android.location.provider.ProviderProperties.Builder setHasMonetaryCost(boolean p0) { megletProps.put("HasMonetaryCost", Boolean.valueOf(p0)); return this; }
+        public android.location.provider.ProviderProperties.Builder setHasNetworkRequirement(boolean p0) { megletProps.put("HasNetworkRequirement", Boolean.valueOf(p0)); return this; }
+        public android.location.provider.ProviderProperties.Builder setHasSatelliteRequirement(boolean p0) { megletProps.put("HasSatelliteRequirement", Boolean.valueOf(p0)); return this; }
+        public android.location.provider.ProviderProperties.Builder setHasSpeedSupport(boolean p0) { megletProps.put("HasSpeedSupport", Boolean.valueOf(p0)); return this; }
+        public android.location.provider.ProviderProperties.Builder setPowerUsage(int p0) { megletProps.put("PowerUsage", Integer.valueOf(p0)); return this; }
     }
 }

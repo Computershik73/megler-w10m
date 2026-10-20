@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaStore {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACCESS_MEDIA_OWNER_PACKAGE_NAME_PERMISSION = "com.android.providers.media.permission.ACCESS_MEDIA_OWNER_PACKAGE_NAME";
     public static final java.lang.String ACCESS_OEM_METADATA_PERMISSION = "com.android.providers.media.permission.ACCESS_OEM_METADATA";
     public static final java.lang.String ACTION_IMAGE_CAPTURE = "android.media.action.IMAGE_CAPTURE";
@@ -246,7 +246,7 @@ public final class MediaStore {
     public static java.lang.String trashFile(android.content.ContentResolver p0, java.lang.String p1) { return null; }
     public static void waitForIdle(android.content.ContentResolver p0) {}
     public static final class Audio {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Audio() {}
         public static java.lang.String keyFor(java.lang.String p0) { return null; }
         public interface AlbumColumns {
@@ -263,7 +263,7 @@ public final class MediaStore {
             java.lang.String NUMBER_OF_SONGS_FOR_ARTIST = "numsongs_by_artist";
         }
         public static final class Albums implements android.provider.BaseColumns, android.provider.MediaStore.Audio.AlbumColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/albums";
             public static final java.lang.String DEFAULT_SORT_ORDER = "album_key";
             public static final java.lang.String ENTRY_CONTENT_TYPE = "vnd.android.cursor.item/album";
@@ -279,7 +279,7 @@ public final class MediaStore {
             java.lang.String NUMBER_OF_TRACKS = "number_of_tracks";
         }
         public static final class Artists implements android.provider.BaseColumns, android.provider.MediaStore.Audio.ArtistColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/artists";
             public static final java.lang.String DEFAULT_SORT_ORDER = "artist_key";
             public static final java.lang.String ENTRY_CONTENT_TYPE = "vnd.android.cursor.item/artist";
@@ -288,7 +288,7 @@ public final class MediaStore {
             public Artists() {}
             public static android.net.Uri getContentUri(java.lang.String p0) { return android.net.Uri.parse("content://media/" + p0 + "/audio/artists"); }
             public static final class Albums implements android.provider.BaseColumns, android.provider.MediaStore.Audio.AlbumColumns {
-                private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+                private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
                 public Albums() {}
                 public static android.net.Uri getContentUri(java.lang.String p0, long p1) { return android.net.Uri.parse("content://media/" + p0 + "/audio/artists/" + p1 + "/albums"); }
             }
@@ -322,7 +322,7 @@ public final class MediaStore {
             java.lang.String YEAR = "year";
         }
         public static final class Genres implements android.provider.BaseColumns, android.provider.MediaStore.Audio.GenresColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/genre";
             public static final java.lang.String DEFAULT_SORT_ORDER = "name";
             public static final java.lang.String ENTRY_CONTENT_TYPE = "vnd.android.cursor.item/genre";
@@ -332,7 +332,7 @@ public final class MediaStore {
             public static android.net.Uri getContentUri(java.lang.String p0) { return android.net.Uri.parse("content://media/" + p0 + "/audio/genres"); }
             public static android.net.Uri getContentUriForAudioId(java.lang.String p0, int p1) { return null; }
             public static final class Members implements android.provider.MediaStore.Audio.AudioColumns {
-                private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+                private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
                 public static final java.lang.String AUDIO_ID = "audio_id";
                 public static final java.lang.String CONTENT_DIRECTORY = "members";
                 public static final java.lang.String DEFAULT_SORT_ORDER = "title_key";
@@ -345,7 +345,7 @@ public final class MediaStore {
             java.lang.String NAME = "name";
         }
         public static final class Media implements android.provider.MediaStore.Audio.AudioColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/audio";
             public static final java.lang.String DEFAULT_SORT_ORDER = "title_key";
             public static final java.lang.String ENTRY_CONTENT_TYPE = "vnd.android.cursor.item/audio";
@@ -359,7 +359,7 @@ public final class MediaStore {
             public static android.net.Uri getContentUriForPath(java.lang.String p0) { return getContentUri("external"); }
         }
         public static final class Playlists implements android.provider.BaseColumns, android.provider.MediaStore.Audio.PlaylistsColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/playlist";
             public static final java.lang.String DEFAULT_SORT_ORDER = "name";
             public static final java.lang.String ENTRY_CONTENT_TYPE = "vnd.android.cursor.item/playlist";
@@ -368,7 +368,7 @@ public final class MediaStore {
             public Playlists() {}
             public static android.net.Uri getContentUri(java.lang.String p0) { return android.net.Uri.parse("content://media/" + p0 + "/audio/playlists"); }
             public static final class Members implements android.provider.MediaStore.Audio.AudioColumns {
-                private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+                private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
                 public static final java.lang.String AUDIO_ID = "audio_id";
                 public static final java.lang.String CONTENT_DIRECTORY = "members";
                 public static final java.lang.String DEFAULT_SORT_ORDER = "play_order";
@@ -387,12 +387,12 @@ public final class MediaStore {
             java.lang.String NAME = "name";
         }
         public static final class Radio {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String ENTRY_CONTENT_TYPE = "vnd.android.cursor.item/radio";
             protected Radio() {}
         }
         public static class Thumbnails implements android.provider.BaseColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String ALBUM_ID = "album_id";
             public static final java.lang.String DATA = "_data";
             public Thumbnails() {}
@@ -404,7 +404,7 @@ public final class MediaStore {
         java.lang.String REFERER_URI = "referer_uri";
     }
     public static final class Downloads implements android.provider.MediaStore.DownloadColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/download";
         public static final android.net.Uri EXTERNAL_CONTENT_URI = getContentUri("external");
         public static final android.net.Uri INTERNAL_CONTENT_URI = getContentUri("internal");
@@ -414,7 +414,7 @@ public final class MediaStore {
         protected Downloads() {}
     }
     public static final class Files {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final android.net.Uri EXTERNAL_CONTENT_URI = getContentUri("external");
         public static final java.lang.String TABLE = "files";
         public Files() {}
@@ -460,7 +460,7 @@ public final class MediaStore {
         }
     }
     public static final class Images {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Images() {}
         public interface ImageColumns extends android.provider.MediaStore.MediaColumns {
             java.lang.String BUCKET_DISPLAY_NAME = "bucket_display_name";
@@ -480,7 +480,7 @@ public final class MediaStore {
             java.lang.String SCENE_CAPTURE_TYPE = "scene_capture_type";
         }
         public static final class Media implements android.provider.MediaStore.Images.ImageColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/image";
             public static final java.lang.String DEFAULT_SORT_ORDER = "bucket_display_name";
             public static final android.net.Uri EXTERNAL_CONTENT_URI = getContentUri("external");
@@ -496,7 +496,7 @@ public final class MediaStore {
             public static android.database.Cursor query(android.content.ContentResolver p0, android.net.Uri p1, java.lang.String[] p2, java.lang.String p3, java.lang.String[] p4, java.lang.String p5) { return null; }
         }
         public static class Thumbnails implements android.provider.BaseColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String DATA = "_data";
             public static final java.lang.String DEFAULT_SORT_ORDER = "image_id ASC";
             public static final android.net.Uri EXTERNAL_CONTENT_URI = getContentUri("external");
@@ -572,7 +572,7 @@ public final class MediaStore {
         java.lang.String YEAR = "year";
     }
     public static class PickerMediaColumns {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String DATA = "_data";
         public static final java.lang.String DATE_TAKEN = "datetaken";
         public static final java.lang.String DISPLAY_NAME = "_display_name";
@@ -585,7 +585,7 @@ public final class MediaStore {
         protected PickerMediaColumns() {}
     }
     public static class ThumbnailConstants {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int FULL_SCREEN_KIND = 2;
         public static android.util.Size FULL_SCREEN_SIZE;
         public static final int MICRO_KIND = 3;
@@ -596,12 +596,12 @@ public final class MediaStore {
         public static android.util.Size getKindSize(int p0) { return null; }
     }
     public static final class Video {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String DEFAULT_SORT_ORDER = "_display_name";
         public Video() {}
         public static android.database.Cursor query(android.content.ContentResolver p0, android.net.Uri p1, java.lang.String[] p2) { return p0.query(p1, p2, null, null, null); }
         public static final class Media implements android.provider.MediaStore.Video.VideoColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String CONTENT_TYPE = "vnd.android.cursor.dir/video";
             public static final java.lang.String DEFAULT_SORT_ORDER = "title";
             public static final android.net.Uri EXTERNAL_CONTENT_URI = getContentUri("external");
@@ -611,7 +611,7 @@ public final class MediaStore {
             public static android.net.Uri getContentUri(java.lang.String p0, long p1) { return android.content.ContentUris.withAppendedId(getContentUri(p0), p1); }
         }
         public static class Thumbnails implements android.provider.BaseColumns {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public static final java.lang.String DATA = "_data";
             public static final java.lang.String DEFAULT_SORT_ORDER = "video_id ASC";
             public static final android.net.Uri EXTERNAL_CONTENT_URI = getContentUri("external");

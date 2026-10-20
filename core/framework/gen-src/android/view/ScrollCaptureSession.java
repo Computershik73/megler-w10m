@@ -3,10 +3,10 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class ScrollCaptureSession {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public ScrollCaptureSession(android.view.Surface p0, android.graphics.Rect p1, android.graphics.Point p2) {}
-    public android.graphics.Point getPositionInWindow() { return (android.graphics.Point) meglerProps.get("PositionInWindow"); }
-    public android.graphics.Rect getScrollBounds() { return (android.graphics.Rect) meglerProps.get("ScrollBounds"); }
-    public android.view.Surface getSurface() { return (android.view.Surface) meglerProps.get("Surface"); }
+    public android.graphics.Point getPositionInWindow() { return (android.graphics.Point) megletProps.get("PositionInWindow"); }
+    public android.graphics.Rect getScrollBounds() { return (android.graphics.Rect) megletProps.get("ScrollBounds"); }
+    public android.view.Surface getSurface() { return (android.view.Surface) megletProps.get("Surface"); }
     ScrollCaptureSession() { this((android.view.Surface) null, (android.graphics.Rect) null, (android.graphics.Point) null); }
 }

@@ -3,14 +3,14 @@ package android.graphics.pdf.models.selection;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PageSelection implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public PageSelection(int p0, android.graphics.pdf.models.selection.SelectionBoundary p1, android.graphics.pdf.models.selection.SelectionBoundary p2, java.util.List p3) {}
     public int describeContents() { return 0; }
-    public int getPage() { return (meglerProps.get("Page") instanceof Integer ? (Integer) meglerProps.get("Page") : 0); }
-    public java.util.List getSelectedTextContents() { return (meglerProps.get("SelectedTextContents") != null ? (java.util.List) meglerProps.get("SelectedTextContents") : new java.util.ArrayList()); }
-    public android.graphics.pdf.models.selection.SelectionBoundary getStart() { return (android.graphics.pdf.models.selection.SelectionBoundary) meglerProps.get("Start"); }
-    public android.graphics.pdf.models.selection.SelectionBoundary getStop() { return (android.graphics.pdf.models.selection.SelectionBoundary) meglerProps.get("Stop"); }
+    public int getPage() { return (megletProps.get("Page") instanceof Integer ? (Integer) megletProps.get("Page") : 0); }
+    public java.util.List getSelectedTextContents() { return (megletProps.get("SelectedTextContents") != null ? (java.util.List) megletProps.get("SelectedTextContents") : new java.util.ArrayList()); }
+    public android.graphics.pdf.models.selection.SelectionBoundary getStart() { return (android.graphics.pdf.models.selection.SelectionBoundary) megletProps.get("Start"); }
+    public android.graphics.pdf.models.selection.SelectionBoundary getStop() { return (android.graphics.pdf.models.selection.SelectionBoundary) megletProps.get("Stop"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PageSelection() { this((int) 0, (android.graphics.pdf.models.selection.SelectionBoundary) null, (android.graphics.pdf.models.selection.SelectionBoundary) null, (java.util.List) null); }
 }

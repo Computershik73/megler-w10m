@@ -3,12 +3,12 @@ package android.health.connect;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AggregateRecordsGroupedByDurationResponse {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public AggregateRecordsGroupedByDurationResponse(java.time.Instant p0, java.time.Instant p1, java.util.Map p2) {}
     public java.lang.Object get(android.health.connect.datatypes.AggregationType p0) { return null; }
     public java.util.Set getDataOrigins(android.health.connect.datatypes.AggregationType p0) { return new java.util.HashSet(); }
-    public java.time.Instant getEndTime() { return (java.time.Instant) meglerProps.get("EndTime"); }
-    public java.time.Instant getStartTime() { return (java.time.Instant) meglerProps.get("StartTime"); }
+    public java.time.Instant getEndTime() { return (java.time.Instant) megletProps.get("EndTime"); }
+    public java.time.Instant getStartTime() { return (java.time.Instant) megletProps.get("StartTime"); }
     public java.time.ZoneOffset getZoneOffset(android.health.connect.datatypes.AggregationType p0) { return null; }
     AggregateRecordsGroupedByDurationResponse() { this((java.time.Instant) null, (java.time.Instant) null, (java.util.Map) null); }
 }

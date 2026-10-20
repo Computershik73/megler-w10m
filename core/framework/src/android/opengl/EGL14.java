@@ -4,7 +4,7 @@ import java.util.IdentityHashMap;
 import javax.microedition.khronos.egl.EGL10;
 
 /**
- * EGL 1.4 for Java: the same EGL as EGL10's (javax.microedition.khronos.egl, Megler's contexts and surfaces from megler.EGLNative),
+ * EGL 1.4 for Java: the same EGL as EGL10's (javax.microedition.khronos.egl, Meglet's contexts and surfaces from meglet.EGLNative),
  * with android.opengl handles. Each EGL10 object gets one handle object for as long as it lives.
  */
 public class EGL14 {
@@ -135,15 +135,15 @@ public class EGL14 {
         if (h == null) {
             long id = sNext; sNext += 8;
             h = kind == EGLContext.class ? new EGLContext(id) : kind == EGLSurface.class ? new EGLSurface(id) : kind == EGLDisplay.class ? new EGLDisplay(id) : new EGLConfig(id);
-            h.megler = o; sHandles.put(o, h);
+            h.meglet = o; sHandles.put(o, h);
         }
         return kind.cast(h);
     }
-    private static synchronized void forget(EGLObjectHandle h) { if (h != null && h.megler != null) sHandles.remove(h.megler); }
-    private static javax.microedition.khronos.egl.EGLDisplay d(EGLDisplay x) { return x != null && x.megler != null ? (javax.microedition.khronos.egl.EGLDisplay) x.megler : E.eglGetDisplay(EGL10.EGL_DEFAULT_DISPLAY); }
-    private static javax.microedition.khronos.egl.EGLConfig c(EGLConfig x) { return x != null ? (javax.microedition.khronos.egl.EGLConfig) x.megler : null; }
-    private static javax.microedition.khronos.egl.EGLContext ctx(EGLContext x) { return x != null && x.megler != null ? (javax.microedition.khronos.egl.EGLContext) x.megler : EGL10.EGL_NO_CONTEXT; }
-    private static javax.microedition.khronos.egl.EGLSurface s(EGLSurface x) { return x != null && x.megler != null ? (javax.microedition.khronos.egl.EGLSurface) x.megler : EGL10.EGL_NO_SURFACE; }
+    private static synchronized void forget(EGLObjectHandle h) { if (h != null && h.meglet != null) sHandles.remove(h.meglet); }
+    private static javax.microedition.khronos.egl.EGLDisplay d(EGLDisplay x) { return x != null && x.meglet != null ? (javax.microedition.khronos.egl.EGLDisplay) x.meglet : E.eglGetDisplay(EGL10.EGL_DEFAULT_DISPLAY); }
+    private static javax.microedition.khronos.egl.EGLConfig c(EGLConfig x) { return x != null ? (javax.microedition.khronos.egl.EGLConfig) x.meglet : null; }
+    private static javax.microedition.khronos.egl.EGLContext ctx(EGLContext x) { return x != null && x.meglet != null ? (javax.microedition.khronos.egl.EGLContext) x.meglet : EGL10.EGL_NO_CONTEXT; }
+    private static javax.microedition.khronos.egl.EGLSurface s(EGLSurface x) { return x != null && x.meglet != null ? (javax.microedition.khronos.egl.EGLSurface) x.meglet : EGL10.EGL_NO_SURFACE; }
     private static int[] tail(int[] a, int off) { if (a == null) return null; int[] r = new int[a.length - off]; System.arraycopy(a, off, r, 0, r.length); return r; }
 
     public static int eglGetError() { return E.eglGetError(); }

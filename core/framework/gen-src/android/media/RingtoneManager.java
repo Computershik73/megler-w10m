@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class RingtoneManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_RINGTONE_PICKER = "android.intent.action.RINGTONE_PICKER";
     public static final java.lang.String EXTRA_RINGTONE_AUDIO_ATTRIBUTES_FLAGS = "android.intent.extra.ringtone.AUDIO_ATTRIBUTES_FLAGS";
     public static final java.lang.String EXTRA_RINGTONE_DEFAULT_URI = "android.intent.extra.ringtone.DEFAULT_URI";
@@ -43,17 +43,17 @@ public class RingtoneManager {
     public static android.content.res.AssetFileDescriptor openDefaultRingtoneUri(android.content.Context p0, android.net.Uri p1) { return null; }
     public static void setActualDefaultRingtoneUri(android.content.Context p0, int p1, android.net.Uri p2) {}
     public android.net.Uri addCustomExternalRingtone(android.net.Uri p0, int p1) { return null; }
-    public android.database.Cursor getCursor() { return (android.database.Cursor) meglerProps.get("Cursor"); }
-    public boolean getIncludeDrm() { return (meglerProps.get("IncludeDrm") instanceof Boolean ? (Boolean) meglerProps.get("IncludeDrm") : false); }
+    public android.database.Cursor getCursor() { return (android.database.Cursor) megletProps.get("Cursor"); }
+    public boolean getIncludeDrm() { return (megletProps.get("IncludeDrm") instanceof Boolean ? (Boolean) megletProps.get("IncludeDrm") : false); }
     public android.media.Ringtone getRingtone(int p0) { return null; }
     public int getRingtonePosition(android.net.Uri p0) { return 0; }
     public android.net.Uri getRingtoneUri(int p0) { return null; }
-    public boolean getStopPreviousRingtone() { return (meglerProps.get("StopPreviousRingtone") instanceof Boolean ? (Boolean) meglerProps.get("StopPreviousRingtone") : false); }
+    public boolean getStopPreviousRingtone() { return (megletProps.get("StopPreviousRingtone") instanceof Boolean ? (Boolean) megletProps.get("StopPreviousRingtone") : false); }
     public boolean hasHapticChannels(int p0) { return false; }
     public int inferStreamType() { return 0; }
-    public void setIncludeDrm(boolean p0) { meglerProps.put("IncludeDrm", Boolean.valueOf(p0)); }
-    public void setStopPreviousRingtone(boolean p0) { meglerProps.put("StopPreviousRingtone", Boolean.valueOf(p0)); }
-    public void setType(int p0) { meglerProps.put("Type", Integer.valueOf(p0)); }
+    public void setIncludeDrm(boolean p0) { megletProps.put("IncludeDrm", Boolean.valueOf(p0)); }
+    public void setStopPreviousRingtone(boolean p0) { megletProps.put("StopPreviousRingtone", Boolean.valueOf(p0)); }
+    public void setType(int p0) { megletProps.put("Type", Integer.valueOf(p0)); }
     public void stopPreviousRingtone() {}
     RingtoneManager() { this((android.app.Activity) null); }
 }

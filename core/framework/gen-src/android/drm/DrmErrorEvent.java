@@ -3,7 +3,7 @@ package android.drm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DrmErrorEvent extends android.drm.DrmEvent {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int TYPE_ACQUIRE_DRM_INFO_FAILED = 2008;
     public static final int TYPE_NOT_SUPPORTED = 2003;
     public static final int TYPE_NO_INTERNET_CONNECTION = 2005;

@@ -3,7 +3,7 @@ package android.media.tv.interactive;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class TvInteractiveAppView extends android.view.ViewGroup {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String BI_INTERACTIVE_APP_KEY_ALIAS = "alias";
     public static final java.lang.String BI_INTERACTIVE_APP_KEY_CERTIFICATE = "certificate";
     public static final java.lang.String BI_INTERACTIVE_APP_KEY_HTTP_ADDITIONAL_HEADERS = "http_additional_headers";
@@ -18,8 +18,8 @@ public class TvInteractiveAppView extends android.view.ViewGroup {
     public void createBiInteractiveApp(android.net.Uri p0, android.os.Bundle p1) {}
     public void destroyBiInteractiveApp(java.lang.String p0) {}
     public boolean dispatchUnhandledInputEvent(android.view.InputEvent p0) { return false; }
-    public android.media.tv.interactive.TvInteractiveAppManager.Session getInteractiveAppSession() { return (android.media.tv.interactive.TvInteractiveAppManager.Session) meglerProps.get("InteractiveAppSession"); }
-    public android.media.tv.interactive.TvInteractiveAppView.OnUnhandledInputEventListener getOnUnhandledInputEventListener() { return (android.media.tv.interactive.TvInteractiveAppView.OnUnhandledInputEventListener) meglerProps.get("OnUnhandledInputEventListener"); }
+    public android.media.tv.interactive.TvInteractiveAppManager.Session getInteractiveAppSession() { return (android.media.tv.interactive.TvInteractiveAppManager.Session) megletProps.get("InteractiveAppSession"); }
+    public android.media.tv.interactive.TvInteractiveAppView.OnUnhandledInputEventListener getOnUnhandledInputEventListener() { return (android.media.tv.interactive.TvInteractiveAppView.OnUnhandledInputEventListener) megletProps.get("OnUnhandledInputEventListener"); }
     public void notifyError(java.lang.String p0, android.os.Bundle p1) {}
     public void notifyRecordingConnectionFailed(java.lang.String p0, java.lang.String p1) {}
     public void notifyRecordingDisconnected(java.lang.String p0, java.lang.String p1) {}
@@ -54,10 +54,10 @@ public class TvInteractiveAppView extends android.view.ViewGroup {
     public void sendTvRecordingInfoList(java.util.List p0) {}
     public void setCallback(java.util.concurrent.Executor p0, android.media.tv.interactive.TvInteractiveAppView.TvInteractiveAppCallback p1) {}
     public void setOnUnhandledInputEventListener(java.util.concurrent.Executor p0, android.media.tv.interactive.TvInteractiveAppView.OnUnhandledInputEventListener p1) {}
-    public void setTeletextAppEnabled(boolean p0) { meglerProps.put("TeletextAppEnabled", Boolean.valueOf(p0)); }
+    public void setTeletextAppEnabled(boolean p0) { megletProps.put("TeletextAppEnabled", Boolean.valueOf(p0)); }
     public int setTvView(android.media.tv.TvView p0) { return 0; }
-    public void setZOrderMediaOverlay(boolean p0) { meglerProps.put("ZOrderMediaOverlay", Boolean.valueOf(p0)); }
-    public void setZOrderOnTop(boolean p0) { meglerProps.put("ZOrderOnTop", Boolean.valueOf(p0)); }
+    public void setZOrderMediaOverlay(boolean p0) { megletProps.put("ZOrderMediaOverlay", Boolean.valueOf(p0)); }
+    public void setZOrderOnTop(boolean p0) { megletProps.put("ZOrderOnTop", Boolean.valueOf(p0)); }
     public void startInteractiveApp() {}
     public void stopInteractiveApp() {}
     TvInteractiveAppView() { this((android.content.Context) null); }
@@ -65,7 +65,7 @@ public class TvInteractiveAppView extends android.view.ViewGroup {
         boolean onUnhandledInputEvent(android.view.InputEvent p0);
     }
     public static abstract class TvInteractiveAppCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public TvInteractiveAppCallback() {}
         public void onBiInteractiveAppCreated(java.lang.String p0, android.net.Uri p1, java.lang.String p2) {}
         public void onPlaybackCommandRequest(java.lang.String p0, java.lang.String p1, android.os.Bundle p2) {}

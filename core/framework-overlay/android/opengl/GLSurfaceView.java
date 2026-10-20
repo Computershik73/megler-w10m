@@ -1,12 +1,12 @@
 // Overlay of core/framework/src/android/opengl/GLSurfaceView.java (tools/build-framework.sh).
-// The renderer runs on a GL thread of the layer's own, as in the original (megler.Native.startGL), but that thread is
-// core/src/drivers/hk_java_gl.c here, and what it does each turn this class decides in meglerFrame: the queued events,
+// The renderer runs on a GL thread of the layer's own, as in the original (meglet.Native.startGL), but that thread is
+// core/src/drivers/hk_java_gl.c here, and what it does each turn this class decides in megletFrame: the queued events,
 // then end, no surface, paused, draw, or nothing to draw. What differs from the original, which drew on one render thread
 // that also put the views on the screen:
 //  - the surface's life as Android's GLThread follows it: its size from surfaceChanged (a fixed size included), its going
 //    in surfaceDestroyed, onPause and onResume, and the view leaving its window, which ends the thread (a new one is
 //    started when it comes back); setPreserveEGLContextOnPause is kept and asked;
-//  - every change wakes the thread (megler.Native.requestRender), which otherwise waits when it has nothing to draw;
+//  - every change wakes the thread (meglet.Native.requestRender), which otherwise waits when it has nothing to draw;
 //  - the configuration onSurfaceCreated is given is what the app's EGLConfigChooser chooses, or one of the sizes it asked
 //    for, and the GL10 is what the app's GLWrapper makes of it;
 //  - setRenderer twice is the IllegalStateException Android throws, queueEvent(null) its IllegalArgumentException.
@@ -20,7 +20,7 @@ import javax.microedition.khronos.egl.EGLDisplay;
 import javax.microedition.khronos.egl.EGLSurface;
 import javax.microedition.khronos.opengles.GL10;
 
-/** The renderer runs on Megler's GL thread (core/src/drivers/hk_java_gl.c), which owns the EGL context and a surface the view's size. */
+/** The renderer runs on Meglet's GL thread (core/src/drivers/hk_java_gl.c), which owns the EGL context and a surface the view's size. */
 public class GLSurfaceView extends android.view.SurfaceView implements android.view.SurfaceHolder.Callback2 {
     public static final int RENDERMODE_WHEN_DIRTY = 0, RENDERMODE_CONTINUOUSLY = 1, DEBUG_CHECK_GL_ERROR = 1, DEBUG_LOG_GL_CALLS = 2;
     public interface Renderer { void onSurfaceCreated(GL10 gl, EGLConfig config); void onSurfaceChanged(GL10 gl, int w, int h); void onDrawFrame(GL10 gl); }
@@ -29,7 +29,7 @@ public class GLSurfaceView extends android.view.SurfaceView implements android.v
     public interface EGLWindowSurfaceFactory { EGLSurface createWindowSurface(EGL10 egl, EGLDisplay d, EGLConfig c, Object w); void destroySurface(EGL10 egl, EGLDisplay d, EGLSurface s); }
     public interface GLWrapper { javax.microedition.khronos.opengles.GL wrap(javax.microedition.khronos.opengles.GL gl); }
 
-    /* What meglerFrame answers, with the surface's width and height above it: as hk_java_gl.c reads it. */
+    /* What megletFrame answers, with the surface's width and height above it: as hk_java_gl.c reads it. */
     private static final int FRAME_DRAW = 1, FRAME_EXIT = 2, FRAME_NO_SURFACE = 4, FRAME_PAUSED = 8, FRAME_PRESERVE = 16;
 
     private Renderer renderer;
@@ -81,7 +81,7 @@ public class GLSurfaceView extends android.view.SurfaceView implements android.v
     @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); if (renderer != null && !started) start(); }
     /* As Android's: the GL thread ends when the view leaves its window, and its context goes with it. */
     @Override protected void onDetachedFromWindow() { if (started) { exit = true; started = false; wake(); } super.onDetachedFromWindow(); }
-    private static void wake() { megler.Native.requestRender(); }
+    private static void wake() { meglet.Native.requestRender(); }
     private void start() {
         if (renderer == null || started) return;
         started = true;
@@ -95,7 +95,7 @@ public class GLSurfaceView extends android.view.SurfaceView implements android.v
                 EGLConfig[] cfg = new EGLConfig[1];
                 egl.eglChooseConfig(d, null, cfg, 1, new int[1]);
                 EGLContext probe = contextFactory.createContext(egl, d, cfg[0]);
-                version = Math.max(1, EGLContext.meglerRequestedVersion());
+                version = Math.max(1, EGLContext.megletRequestedVersion());
                 // made off the render thread, that is a real context of its own: the render thread makes the one the app draws with
                 if (probe != null && probe != EGL10.EGL_NO_CONTEXT) try { contextFactory.destroyContext(egl, d, probe); } catch (RuntimeException e) { }
             } catch (RuntimeException e) {
@@ -103,18 +103,18 @@ public class GLSurfaceView extends android.view.SurfaceView implements android.v
                 version = 2;
             }
         }
-        megler.Native.startGL(this, renderer, version);
+        meglet.Native.startGL(this, renderer, version);
     }
 
-    private static MeglerGL10 sGL;
+    private static MegletGL10 sGL;
     /** @hide The GL10 object EGLContext.getGL() hands out. */
-    public static synchronized javax.microedition.khronos.opengles.GL meglerGL() { if (sGL == null) sGL = new MeglerGL10(); return sGL; }
+    public static synchronized javax.microedition.khronos.opengles.GL megletGL() { if (sGL == null) sGL = new MegletGL10(); return sGL; }
 
     /** @hide The GL thread, once: the GL10 the renderer is handed, as the app's GLWrapper makes it. */
-    public final javax.microedition.khronos.opengles.GL meglerRendererGL() { javax.microedition.khronos.opengles.GL gl = meglerGL(); return wrapper != null ? wrapper.wrap(gl) : gl; }
+    public final javax.microedition.khronos.opengles.GL megletRendererGL() { javax.microedition.khronos.opengles.GL gl = megletGL(); return wrapper != null ? wrapper.wrap(gl) : gl; }
 
     /** @hide The GL thread, once a context is made: the configuration onSurfaceCreated is given. */
-    public final EGLConfig meglerConfig() {
+    public final EGLConfig megletConfig() {
         EGL10 egl = (EGL10) EGLContext.getEGL();
         EGLDisplay d = egl.eglGetDisplay(EGL10.EGL_DEFAULT_DISPLAY);
         if (configChooser != null) {
@@ -137,7 +137,7 @@ public class GLSurfaceView extends android.view.SurfaceView implements android.v
     }
 
     /** @hide The GL thread, each turn: the queued events, then what to do and the surface's size (hk_java_gl.c reads it). */
-    public final long meglerFrame() {
+    public final long megletFrame() {
         Integer mine = threadGeneration.get();
         if (mine == null) threadGeneration.set(mine = generation);
         if (exit || mine != generation) return FRAME_EXIT;

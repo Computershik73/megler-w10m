@@ -1,6 +1,6 @@
-# megler.security.SystemRandom: random bytes from the system's source (hk_random in the host layer: BCryptGenRandom, /dev/urandom).
+# meglet.security.SystemRandom: random bytes from the system's source (hk_random in the host layer: BCryptGenRandom, /dev/urandom).
 # It is named SHA1PRNG because that is the name Android's own goes by, and code asks for it by name; there is no SHA-1 in it.
-.class public final Lmegler/security/SystemRandom;
+.class public final Lmeglet/security/SystemRandom;
 .super Ljava/security/SecureRandomSpi;
 
 .method public constructor <init>()V
@@ -21,6 +21,6 @@
 .method protected engineGenerateSeed(I)[B
     .registers 3
     new-array v0, p1, [B
-    invoke-virtual {p0, v0}, Lmegler/security/SystemRandom;->engineNextBytes([B)V
+    invoke-virtual {p0, v0}, Lmeglet/security/SystemRandom;->engineNextBytes([B)V
     return-object v0
 .end method

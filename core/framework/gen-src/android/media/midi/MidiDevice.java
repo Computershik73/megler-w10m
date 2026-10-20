@@ -3,16 +3,16 @@ package android.media.midi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MidiDevice implements java.io.Closeable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public void close() {}
     public android.media.midi.MidiDevice.MidiConnection connectPorts(android.media.midi.MidiInputPort p0, int p1) { return null; }
     protected void finalize() {}
-    public android.media.midi.MidiDeviceInfo getInfo() { return (android.media.midi.MidiDeviceInfo) meglerProps.get("Info"); }
+    public android.media.midi.MidiDeviceInfo getInfo() { return (android.media.midi.MidiDeviceInfo) megletProps.get("Info"); }
     public android.media.midi.MidiInputPort openInputPort(int p0) { return null; }
     public android.media.midi.MidiOutputPort openOutputPort(int p0) { return null; }
     protected MidiDevice() {}
     public static class MidiConnection implements java.io.Closeable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public void close() {}
         protected void finalize() {}
         protected MidiConnection() {}

@@ -3,7 +3,7 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DisplayShape implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.view.DisplayShape NONE;
     public java.lang.String mDisplayShapeSpec;
@@ -12,10 +12,10 @@ public final class DisplayShape implements android.os.Parcelable {
     public static android.view.DisplayShape fromSpecString(java.lang.String p0, float p1, int p2, int p3) { return new DisplayShape(); }
     public static java.lang.String getSpecString(android.content.res.Resources p0, java.lang.String p1) { return null; }
     public int describeContents() { return 0; }
-    public android.graphics.Path getPath() { return (android.graphics.Path) meglerProps.get("Path"); }
+    public android.graphics.Path getPath() { return (android.graphics.Path) megletProps.get("Path"); }
     public android.view.DisplayShape setOffset(int p0, int p1) { return this; }
-    public android.view.DisplayShape setRotation(int p0) { meglerProps.put("Rotation", Integer.valueOf(p0)); return this; }
-    public android.view.DisplayShape setScale(float p0) { meglerProps.put("Scale", Float.valueOf(p0)); return this; }
+    public android.view.DisplayShape setRotation(int p0) { megletProps.put("Rotation", Integer.valueOf(p0)); return this; }
+    public android.view.DisplayShape setScale(float p0) { megletProps.put("Scale", Float.valueOf(p0)); return this; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected DisplayShape() {}
 }

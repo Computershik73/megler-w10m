@@ -25,16 +25,16 @@
 // (docs/JAVA.md, "What an AlertDialog cost").
 //
 // And shared libraries: the resources of an APK added with AssetManager.addAssetPathAsSharedLibrary -- Android's WebView --
-// are a table of their own (meglerAddLibrary), whose package is given the next package id from 0x02, as Android's
+// are a table of their own (megletAddLibrary), whose package is given the next package id from 0x02, as Android's
 // AssetManager2 gives a dynamic package; an id of that package is looked up there (table), its files are read out of that
 // APK (apkOf), and getIdentifier finds its names when asked for that package. The original knew two tables, the app's and
 // the platform's, and every id that was not the platform's went to the app's.
 //
-// And Android 12's system colours (android.R.color.system_*, 0x0106001d to 0x010600d1: megler.SystemColors), which Android 9's
+// And Android 12's system colours (android.R.color.system_*, 0x0106001d to 0x010600d1: meglet.SystemColors), which Android 9's
 // resources do not have: Material 3 asks for them by number once SDK_INT is 31 or more, and Android 9 has colours of its own
 // under most of those numbers and nothing under some. getColor and getColorStateList give Material You's colours when the
 // app's code asks (by Context.getColor, ContextCompat, Compose's colorResource); when a resource's reference is being
-// resolved (a theme's attribute, an XML of the platform's: TypedArray, megler.ResInflate), the number means what Android 9's
+// resolved (a theme's attribute, an XML of the platform's: TypedArray, meglet.ResInflate), the number means what Android 9's
 // resources mean by it, as before. And getValue gives one where Android 9 has nothing under such a number at all: Aurora
 // Store's first screen ended on "Resource ID #0x1060091", which is a watch's colour in Android 9.
 //
@@ -57,7 +57,7 @@ import java.util.HashMap;
 
 /**
  * The app's resources: its resources.arsc and the platform's (framework-res, package 0x01), looked up for the device's configuration.
- * Files (layouts, drawables, raw) are read out of the APK they belong to. Drawable and colour inflation is in megler.ResInflate.
+ * Files (layouts, drawables, raw) are read out of the APK they belong to. Drawable and colour inflation is in meglet.ResInflate.
  */
 public class Resources {
     public static final int ID_NULL = 0;
@@ -72,7 +72,7 @@ public class Resources {
 
     private final AssetManager mAssets;
     private final DisplayMetrics mMetrics = new DisplayMetrics();
-    private final Configuration mConfig = Configuration.meglerDevice();
+    private final Configuration mConfig = Configuration.megletDevice();
     private ResTable.Config mCfg;
     private final HashMap<Integer, Drawable.ConstantState> mDrawableCache = new HashMap<>();
     /** The platform's preloaded drawables, by layout direction (LTR, RTL), and colour drawables: empty, for apps to fill (see above). Not final: apps set them. */
@@ -106,17 +106,17 @@ public class Resources {
     private static void loadTables() {
         synchronized (sLock) {
             if (sApp == null) {
-                byte[] d = megler.Native.readApkFile(0, "resources.arsc");
+                byte[] d = meglet.Native.readApkFile(0, "resources.arsc");
                 sApp = d != null ? new ResTable(d) : new ResTable(emptyTable());
                 // a Play install's split APKs (config.xxhdpi, config.en, feature splits) carry their own tables for the same package
                 for (int k = 2; k < 12; k++) {
-                    byte[] sd = megler.Native.readApkFile(k, "resources.arsc");
+                    byte[] sd = meglet.Native.readApkFile(k, "resources.arsc");
                     if (sd == null) continue;
                     try { sApp.merge(new ResTable(sd)); } catch (RuntimeException e) { android.util.Log.w("Resources", "split " + k + "'s resources.arsc: " + e); }
                 }
             }
             if (sFramework == null) {
-                byte[] d = megler.Native.readApkFile(1, "resources.arsc");
+                byte[] d = meglet.Native.readApkFile(1, "resources.arsc");
                 sFramework = d != null ? new ResTable(d) : new ResTable(emptyTable());
             }
         }
@@ -124,20 +124,20 @@ public class Resources {
     private static byte[] emptyTable() { return new byte[] { 2, 0, 12, 0, 12, 0, 0, 0, 0, 0, 0, 0 }; }
     static ResTable table(int id) { int p = id >>> 24; if (p == 1) return sFramework; ResTable lib = sLibs[p]; return lib != null ? lib : sApp; }
 
-    // ---- megler-w10m: shared libraries (see the top of the file)
+    // ---- Meglet: shared libraries (see the top of the file)
     /** The tables of shared libraries by the package id each was given, and the core's number of each one's APK. */
     private static final ResTable[] sLibs = new ResTable[256];
     private static final int[] sLibApks = new int[256];
     private static int sNextLibraryId = 0x02;
     /**
-     * Reads the resources.arsc of the APK the core has as number `apk` (megler.Native.addApk) as a shared library: its package
+     * Reads the resources.arsc of the APK the core has as number `apk` (meglet.Native.addApk) as a shared library: its package
      * (id 0 in the table, a dynamic one) is given the next free package id from 0x02 on, which is put in id[0], and its name in
      * name[0]. id[0] stays 0 when the APK has no resources. AssetManager.addAssetPathAsSharedLibrary calls this.
      */
-    static void meglerAddLibrary(int apk, int[] id, String[] name) {
+    static void megletAddLibrary(int apk, int[] id, String[] name) {
         synchronized (sLock) {
             loadTables();
-            byte[] d = megler.Native.readApkFile(apk, "resources.arsc");
+            byte[] d = meglet.Native.readApkFile(apk, "resources.arsc");
             if (d == null || sNextLibraryId >= 0x7f) return;
             ResTable t = new ResTable(d, sNextLibraryId);
             if (t.packages.isEmpty()) return;
@@ -169,11 +169,11 @@ public class Resources {
         mDrawableCache.clear(); mColorCache.clear();
     }
     public final void flushLayoutCache() {}
-    public ResTable.Config meglerConfig() { return mCfg; }
+    public ResTable.Config megletConfig() { return mCfg; }
 
     // ---- raw lookups
     /** The entry's value, references followed (when resolveRefs), into out; false when there is none. */
-    public boolean meglerValue(int id, TypedValue out, boolean resolveRefs) {
+    public boolean megletValue(int id, TypedValue out, boolean resolveRefs) {
         for (int depth = 0; depth < 20; depth++) {
             ResTable t = table(id);
             ResTable.Entry e = t.find(id, mCfg);
@@ -191,14 +191,14 @@ public class Resources {
         return false;
     }
     public void getValue(int id, TypedValue out, boolean resolveRefs) throws NotFoundException {
-        if (meglerValue(id, out, resolveRefs)) return;
-        if (megler.SystemColors.has(id)) { systemColor(id, out); return; }
+        if (megletValue(id, out, resolveRefs)) return;
+        if (meglet.SystemColors.has(id)) { systemColor(id, out); return; }
         throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id));
     }
-    /** One of Android 12's system colours (megler.SystemColors), as a value. */
+    /** One of Android 12's system colours (meglet.SystemColors), as a value. */
     private static void systemColor(int id, TypedValue out) {
         out.type = TypedValue.TYPE_INT_COLOR_ARGB8;
-        out.data = megler.SystemColors.color(id);
+        out.data = meglet.SystemColors.color(id);
         out.string = null;
         out.resourceId = id;
         out.assetCookie = 1;
@@ -206,13 +206,13 @@ public class Resources {
         out.density = 0;
     }
     /** Whether the colour is asked for by the resolution of a resource -- a theme's attribute, a reference in an XML (TypedArray,
-     *  megler.ResInflate, a colour state list) -- rather than by the app's code: then a platform number means Android 9's. */
+     *  meglet.ResInflate, a colour state list) -- rather than by the app's code: then a platform number means Android 9's. */
     private static boolean fromResources() {
         StackTraceElement[] stack = new Throwable().getStackTrace();
         for (int i = 1; i < stack.length && i < 8; i++) {
             String c = stack[i].getClassName();
             if (c.equals("android.content.res.Resources")) continue;
-            return c.equals("android.content.res.TypedArray") || c.startsWith("megler.Res") || c.equals("android.content.res.ColorStateList");
+            return c.equals("android.content.res.TypedArray") || c.startsWith("meglet.Res") || c.equals("android.content.res.ColorStateList");
         }
         return false;
     }
@@ -220,7 +220,7 @@ public class Resources {
     public void getValue(String name, TypedValue out, boolean resolveRefs) { int id = getIdentifier(name, "string", null); getValue(id, out, resolveRefs); }
 
     /** A bag (style, array, plurals, attr): its items with parents' first; null when the id is not a bag. */
-    public Bag meglerBag(int id) {
+    public Bag megletBag(int id) {
         if (id == 0) return null;
         HashMap<Integer, Bag> cache = bagCache();
         Bag cached = cache.get(id);
@@ -231,7 +231,7 @@ public class Resources {
         Bag b = new Bag();
         int parent = t.bagParent(e);
         if (parent != 0 && parent != id) {
-            Bag pb = meglerBag(parent);
+            Bag pb = megletBag(parent);
             if (pb != null) { for (int i = 0; i < pb.n; i++) b.put(pb.keys[i], pb.types[i], pb.data[i], pb.strings[i], pb.dens[i]); }
         }
         int n = t.bagCount(e);
@@ -248,7 +248,7 @@ public class Resources {
     /** A bag's items, keyed by attribute (or array index). */
     public static final class Bag {
         public int n; public int[] keys = new int[8], types = new int[8], data = new int[8], dens = new int[8]; public CharSequence[] strings = new CharSequence[8];
-        // megler-w10m: where each key is in the arrays (its index + 1; 0 for an empty place), found by hashing, so that put and
+        // Meglet: where each key is in the arrays (its index + 1; 0 for an empty place), found by hashing, so that put and
         // indexOf do not walk the arrays. See the top of the file.
         private int[] slots = new int[16];
         /** The index of a key, or -(place + 1) of the empty place it would take. */
@@ -293,7 +293,7 @@ public class Resources {
         return id;
     }
     public String getResourceName(int id) { String t = getResourceTypeName(id), e = getResourceEntryName(id); return getResourcePackageName(id) + ":" + t + "/" + e; }
-    public String getResourcePackageName(int id) { ResTable.Package p = table(id).pkg(id); if (p == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return (id >>> 24) == 0x7f ? megler.Native.packageName() : p.name; }
+    public String getResourcePackageName(int id) { ResTable.Package p = table(id).pkg(id); if (p == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return (id >>> 24) == 0x7f ? meglet.Native.packageName() : p.name; }
     public String getResourceTypeName(int id) { String s = table(id).typeName(id); if (s == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return s; }
     public String getResourceEntryName(int id) { String s = table(id).keyName(id, mCfg); if (s == null) throw new NotFoundException("Unable to find resource ID #0x" + Integer.toHexString(id)); return s; }
 
@@ -310,7 +310,7 @@ public class Resources {
     public String getString(int id) { return getText(id).toString(); }
     public String getString(int id, Object... args) { return String.format(mConfig.locale, getString(id), args); }
     public CharSequence getQuantityText(int id, int quantity) {
-        Bag b = meglerBag(id);
+        Bag b = megletBag(id);
         if (b == null) return getText(id);
         int key = quantity == 1 ? 0x01000006 : quantity == 0 ? 0x01000005 : 0x01000004;
         int i = b.indexOf(key);
@@ -327,7 +327,7 @@ public class Resources {
     public String getQuantityString(int id, int quantity) { return getQuantityText(id, quantity).toString(); }
     public String getQuantityString(int id, int quantity, Object... args) { return String.format(mConfig.locale, getQuantityString(id, quantity), args); }
     public CharSequence[] getTextArray(int id) {
-        Bag b = meglerBag(id);
+        Bag b = megletBag(id);
         if (b == null) throw new NotFoundException("Text array resource ID #0x" + Integer.toHexString(id));
         CharSequence[] r = new CharSequence[b.n];
         for (int i = 0; i < b.n; i++) r[i] = itemText(b, i);
@@ -335,20 +335,20 @@ public class Resources {
     }
     public String[] getStringArray(int id) { CharSequence[] t = getTextArray(id); String[] r = new String[t.length]; for (int i = 0; i < t.length; i++) r[i] = t[i] == null ? null : t[i].toString(); return r; }
     public int[] getIntArray(int id) {
-        Bag b = meglerBag(id);
+        Bag b = megletBag(id);
         if (b == null) throw new NotFoundException("Int array resource ID #0x" + Integer.toHexString(id));
         int[] r = new int[b.n];
         for (int i = 0; i < b.n; i++) { if (b.types[i] == TypedValue.TYPE_REFERENCE) { TypedValue v = value(b.data[i]); r[i] = v.data; } else r[i] = b.data[i]; }
         return r;
     }
     public TypedArray obtainTypedArray(int id) {
-        Bag b = meglerBag(id);
+        Bag b = megletBag(id);
         if (b == null) throw new NotFoundException("Array resource ID #0x" + Integer.toHexString(id));
         TypedArray a = new TypedArray(this, null, b.n);
         for (int i = 0; i < b.n; i++) {
             TypedValue v = new TypedValue();
             v.type = b.types[i]; v.data = b.data[i]; v.string = b.strings[i]; v.density = b.dens[i];
-            if (v.type == TypedValue.TYPE_REFERENCE && v.data != 0) { int ref = v.data; if (meglerValue(ref, v, true)) { if (v.type == TypedValue.TYPE_NULL) { v.type = TypedValue.TYPE_REFERENCE; v.data = ref; } } }
+            if (v.type == TypedValue.TYPE_REFERENCE && v.data != 0) { int ref = v.data; if (megletValue(ref, v, true)) { if (v.type == TypedValue.TYPE_NULL) { v.type = TypedValue.TYPE_REFERENCE; v.data = ref; } } }
             a.set(i, v);
         }
         return a;
@@ -362,7 +362,7 @@ public class Resources {
     public float getFraction(int id, int base, int pbase) { TypedValue v = value(id); if (v.type == TypedValue.TYPE_FRACTION) return TypedValue.complexToFraction(v.data, base, pbase); throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " is not a fraction"); }
     @Deprecated public int getColor(int id) { return getColor(id, null); }
     public int getColor(int id, Theme theme) {
-        if (megler.SystemColors.has(id) && !fromResources()) return megler.SystemColors.color(id);
+        if (meglet.SystemColors.has(id) && !fromResources()) return meglet.SystemColors.color(id);
         TypedValue v = new TypedValue();
         getValue(id, v, true);
         if (v.type >= TypedValue.TYPE_FIRST_INT && v.type <= TypedValue.TYPE_LAST_INT) return v.data;
@@ -372,7 +372,7 @@ public class Resources {
     }
     @Deprecated public ColorStateList getColorStateList(int id) { return getColorStateList(id, null); }
     public ColorStateList getColorStateList(int id, Theme theme) {
-        if (megler.SystemColors.has(id) && !fromResources()) return ColorStateList.valueOf(megler.SystemColors.color(id));
+        if (meglet.SystemColors.has(id) && !fromResources()) return ColorStateList.valueOf(meglet.SystemColors.color(id));
         TypedValue v = new TypedValue();
         getValue(id, v, true);
         if (v.type >= TypedValue.TYPE_FIRST_COLOR_INT && v.type <= TypedValue.TYPE_LAST_COLOR_INT) return ColorStateList.valueOf(v.data);
@@ -387,8 +387,8 @@ public class Resources {
         if (c != null) return c;
         String file = v.string.toString();
         try {
-            XmlResourceParser p = meglerXml(file, (v.resourceId != 0 ? v.resourceId : id));
-            c = megler.ResInflate.colorStateList(this, p, theme);
+            XmlResourceParser p = megletXml(file, (v.resourceId != 0 ? v.resourceId : id));
+            c = meglet.ResInflate.colorStateList(this, p, theme);
         } catch (Exception e) {
             throw new NotFoundException("File " + file + " from color state list resource ID #0x" + Integer.toHexString(id), e);
         }
@@ -408,7 +408,7 @@ public class Resources {
     /** A drawable value: a colour, an image file, or a drawable XML file. */
     public Drawable loadDrawable(TypedValue v, int id, Theme theme) {
         if (v.type >= TypedValue.TYPE_FIRST_COLOR_INT && v.type <= TypedValue.TYPE_LAST_COLOR_INT) {
-            Drawable p = meglerPreloaded(sPreloadedColorDrawables, v.data, theme);
+            Drawable p = megletPreloaded(sPreloadedColorDrawables, v.data, theme);
             return p != null ? p : new android.graphics.drawable.ColorDrawable(v.data);
         }
         if (v.type == TypedValue.TYPE_ATTRIBUTE && theme != null) { TypedValue r = new TypedValue(); if (theme.resolveAttribute(v.data, r, true)) return loadDrawable(r, r.resourceId, theme); }
@@ -422,14 +422,14 @@ public class Resources {
         android.util.LongSparseArray<Drawable.ConstantState>[] preloaded = sPreloadedDrawables;
         int dir = mConfig.getLayoutDirection();
         if (preloaded != null && dir >= 0 && dir < preloaded.length) {
-            Drawable p = meglerPreloaded(preloaded[dir], (((long) v.assetCookie) << 32) | v.data, theme);
+            Drawable p = megletPreloaded(preloaded[dir], (((long) v.assetCookie) << 32) | v.data, theme);
             if (p != null) return p;
         }
         String file = v.string.toString();
         Drawable d;
         try {
-            if (file.endsWith(".xml")) d = megler.ResInflate.drawable(this, meglerXml(file, rid), theme);
-            else d = megler.ResInflate.image(this, meglerFile(file, rid), file, v.density);
+            if (file.endsWith(".xml")) d = meglet.ResInflate.drawable(this, megletXml(file, rid), theme);
+            else d = meglet.ResInflate.image(this, megletFile(file, rid), file, v.density);
         } catch (NotFoundException e) { throw e; }
         catch (Exception e) {
             NotFoundException n = new NotFoundException("File " + file + " from drawable resource ID #0x" + Integer.toHexString(id));
@@ -440,7 +440,7 @@ public class Resources {
         return d;
     }
     /** A preloaded drawable of that key, made for these resources and given the theme, as ResourcesImpl.loadDrawable does; null when there is none. */
-    private Drawable meglerPreloaded(android.util.LongSparseArray<Drawable.ConstantState> preloaded, long key, Theme theme) {
+    private Drawable megletPreloaded(android.util.LongSparseArray<Drawable.ConstantState> preloaded, long key, Theme theme) {
         Object o = preloaded != null ? preloaded.get(key) : null;
         if (!(o instanceof Drawable.ConstantState)) return null;
         Drawable d = ((Drawable.ConstantState) o).newDrawable(this);
@@ -450,25 +450,25 @@ public class Resources {
         }
         return d;
     }
-    public Drawable meglerInflateDrawable(org.xmlpull.v1.XmlPullParser p, Theme t) throws org.xmlpull.v1.XmlPullParserException, java.io.IOException {
-        return megler.ResInflate.drawable(this, p, t);
+    public Drawable megletInflateDrawable(org.xmlpull.v1.XmlPullParser p, Theme t) throws org.xmlpull.v1.XmlPullParserException, java.io.IOException {
+        return meglet.ResInflate.drawable(this, p, t);
     }
     public android.graphics.Movie getMovie(int id) { return null; }
 
     // ---- files
     /** The bytes of a file in the APK that holds resource id (res/...). */
-    public byte[] meglerFile(String path, int id) {
-        byte[] d = megler.Native.readApkFile(apkOf(id), path);
+    public byte[] megletFile(String path, int id) {
+        byte[] d = meglet.Native.readApkFile(apkOf(id), path);
         if (d == null && apkOf(id) == 0) {
             // a split APK may hold it
-            for (int k = 2; k < 12 && d == null; k++) d = megler.Native.readApkFile(k, path);
+            for (int k = 2; k < 12 && d == null; k++) d = meglet.Native.readApkFile(k, path);
         }
         if (d == null) throw new NotFoundException("File " + path + " not found (resource ID #0x" + Integer.toHexString(id) + ")");
         return d;
     }
-    public XmlResourceParser meglerXml(String path, int id) {
+    public XmlResourceParser megletXml(String path, int id) {
         try {
-            XmlBlock.Parser p = new XmlBlock(meglerFile(path, id), path).newParser();
+            XmlBlock.Parser p = new XmlBlock(megletFile(path, id), path).newParser();
             p.mRes = this;
             return p;
         } catch (org.xmlpull.v1.XmlPullParserException e) { throw new NotFoundException(e.getMessage()); }
@@ -480,47 +480,47 @@ public class Resources {
         TypedValue v = new TypedValue();
         getValue(id, v, true);
         if (v.type != TypedValue.TYPE_STRING) throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " type #0x" + Integer.toHexString(v.type) + " is not valid");
-        return meglerXml(v.string.toString(), v.resourceId != 0 ? v.resourceId : id);
+        return megletXml(v.string.toString(), v.resourceId != 0 ? v.resourceId : id);
     }
     public InputStream openRawResource(int id) { TypedValue v = new TypedValue(); return openRawResource(id, v); }
     public InputStream openRawResource(int id, TypedValue v) {
         getValue(id, v, true);
         if (v.type != TypedValue.TYPE_STRING) throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " is not a file");
-        return new ByteArrayInputStream(meglerFile(v.string.toString(), v.resourceId != 0 ? v.resourceId : id));
+        return new ByteArrayInputStream(megletFile(v.string.toString(), v.resourceId != 0 ? v.resourceId : id));
     }
     public AssetFileDescriptor openRawResourceFd(int id) {
         TypedValue v = new TypedValue();
         getValue(id, v, true);
         String path = v.string.toString();
-        long fdoff = megler.Native.apkFileFd(apkOf(id), path);
+        long fdoff = meglet.Native.apkFileFd(apkOf(id), path);
         if (fdoff == -1) throw new NotFoundException("File " + path + " is compressed and cannot be opened as a file descriptor");
         java.io.FileDescriptor fd = new java.io.FileDescriptor();
         try { java.lang.reflect.Field f = java.io.FileDescriptor.class.getDeclaredField("descriptor"); f.setAccessible(true); f.setInt(fd, (int) (fdoff >>> 40)); } catch (Exception e) {}
-        return new AssetFileDescriptor(path, fd, fdoff & 0xFFFFFFFFFFL, megler.Native.apkFileLength(apkOf(id), path));
+        return new AssetFileDescriptor(path, fd, fdoff & 0xFFFFFFFFFFL, meglet.Native.apkFileLength(apkOf(id), path));
     }
     /** The density a drawable resource's image was made for. */
-    public int meglerDrawableDensity(int id) { TypedValue v = new TypedValue(); return meglerValue(id, v, true) ? (v.density == 0 ? 160 : v.density == 0xffff ? mMetrics.densityDpi : v.density) : 160; }
+    public int megletDrawableDensity(int id) { TypedValue v = new TypedValue(); return megletValue(id, v, true) ? (v.density == 0 ? 160 : v.density == 0xffff ? mMetrics.densityDpi : v.density) : 160; }
     public Typeface getFont(int id) {
         Typeface t = mFontCache.get(id);
         if (t != null) return t;
         TypedValue v = new TypedValue();
         getValue(id, v, true);
         String file = v.string == null ? "" : v.string.toString();
-        if (file.endsWith(".xml")) t = megler.ResInflate.fontFamily(this, meglerXml(file, id));
-        else t = Typeface.meglerFromData(meglerFile(file, id));
+        if (file.endsWith(".xml")) t = meglet.ResInflate.fontFamily(this, megletXml(file, id));
+        else t = Typeface.megletFromData(megletFile(file, id));
         mFontCache.put(id, t);
         return t;
     }
 
-    // ---- animations (megler.ResInflate)
-    public android.view.animation.Animation meglerLoadAnimation(int id) { return megler.ResInflate.animation(this, getAnimation(id)); }
-    public android.view.animation.Interpolator meglerLoadInterpolator(int id) { return megler.ResInflate.interpolator(this, getAnimation(id)); }
-    public android.animation.Animator meglerLoadAnimator(int id) { return megler.ResInflate.animator(this, getAnimation(id)); }
+    // ---- animations (meglet.ResInflate)
+    public android.view.animation.Animation megletLoadAnimation(int id) { return meglet.ResInflate.animation(this, getAnimation(id)); }
+    public android.view.animation.Interpolator megletLoadInterpolator(int id) { return meglet.ResInflate.interpolator(this, getAnimation(id)); }
+    public android.animation.Animator megletLoadAnimator(int id) { return meglet.ResInflate.animator(this, getAnimation(id)); }
 
     // ---- themes and attributes
     public final Theme newTheme() { return new Theme(); }
     public TypedArray obtainAttributes(android.util.AttributeSet set, int[] attrs) { return new Theme().obtainStyledAttributes(set, attrs, 0, 0, false); }
-    public int getConfigurationChangesMegler() { return 0; }
+    public int getConfigurationChangesMeglet() { return 0; }
 
     /** A theme: attribute values from the styles applied to it, each later style overriding (or not, without force). */
     public final class Theme {
@@ -531,7 +531,7 @@ public class Resources {
         public Resources getResources() { return Resources.this; }
         public void applyStyle(int resId, boolean force) {
             if (resId == 0) return;
-            Bag b = meglerBag(resId);
+            Bag b = megletBag(resId);
             if (b == null) return;
             mApplied.add(new int[] { resId, force ? 1 : 0 });
             for (int i = 0; i < b.n; i++) {
@@ -546,13 +546,13 @@ public class Resources {
         public void rebase() {}
         @Override public String toString() {
             String probe = System.getenv("TL_RES_PROBE");
-            if (probe != null) for (String x : probe.split(",")) { int id = (int) Long.parseLong(x.replace("0x", ""), 16); ResTable t = table(id); ResTable.Entry e = t.find(id, mCfg); android.util.Log.d("ResProbe", x + ": " + t.meglerDescribe(id) + " table " + (t == sFramework ? "framework" : "app") + " entry " + (e == null ? "null" : "complex=" + e.complex() + " parent=0x" + Integer.toHexString(e.complex() ? t.bagParent(e) : 0) + " count=" + (e.complex() ? t.bagCount(e) : 0)) + " bag " + (meglerBag(id) == null ? "null" : meglerBag(id).n)); } StringBuilder b = new StringBuilder("Theme{"); for (int[] a : mApplied) { Bag g = meglerBag(a[0]); b.append("0x").append(Integer.toHexString(a[0])).append('(').append(g == null ? "missing" : g.n + " attrs").append(") "); } return b.append(mAttrs.size()).append(" attrs}").toString(); }
+            if (probe != null) for (String x : probe.split(",")) { int id = (int) Long.parseLong(x.replace("0x", ""), 16); ResTable t = table(id); ResTable.Entry e = t.find(id, mCfg); android.util.Log.d("ResProbe", x + ": " + t.megletDescribe(id) + " table " + (t == sFramework ? "framework" : "app") + " entry " + (e == null ? "null" : "complex=" + e.complex() + " parent=0x" + Integer.toHexString(e.complex() ? t.bagParent(e) : 0) + " count=" + (e.complex() ? t.bagCount(e) : 0)) + " bag " + (megletBag(id) == null ? "null" : megletBag(id).n)); } StringBuilder b = new StringBuilder("Theme{"); for (int[] a : mApplied) { Bag g = megletBag(a[0]); b.append("0x").append(Integer.toHexString(a[0])).append('(').append(g == null ? "missing" : g.n + " attrs").append(") "); } return b.append(mAttrs.size()).append(" attrs}").toString(); }
         public int getChangingConfigurations() { return 0; }
         public int[] getAttributeResolutionStack(int defStyleAttr, int defStyleRes, int explicitStyleRes) { return new int[0]; }
         public int getExplicitStyle(android.util.AttributeSet set) { return set == null ? 0 : set.getStyleAttribute(); }
         public void dump(int priority, String tag, String prefix) {}
         public Drawable getDrawable(int id) { return Resources.this.getDrawable(id, this); }
-        public int meglerKey() { return mKey; }
+        public int megletKey() { return mKey; }
         /** The attribute's value in this theme, attributes followed, and references when resolveRefs. */
         public boolean resolveAttribute(int attr, TypedValue out, boolean resolveRefs) {
             TypedValue v = mAttrs.get(attr);
@@ -562,7 +562,7 @@ public class Resources {
             out.resourceId = 0;
             if (resolveRefs && out.type == TypedValue.TYPE_REFERENCE && out.data != 0) {
                 int ref = out.data;
-                if (meglerValue(ref, out, true)) {
+                if (megletValue(ref, out, true)) {
                     if (out.type == TypedValue.TYPE_NULL) { out.type = TypedValue.TYPE_REFERENCE; out.data = ref; out.resourceId = ref; }
                 } else { out.type = TypedValue.TYPE_REFERENCE; out.data = ref; out.resourceId = ref; }
             } else if (out.type == TypedValue.TYPE_REFERENCE) out.resourceId = out.data;
@@ -585,14 +585,14 @@ public class Resources {
             Bag xmlStyle = null, defStyle = null;
             if (set != null) {
                 int st = set.getStyleAttribute();
-                if (st != 0 && xp != null && xp.meglerStyleIsAttr()) { TypedValue r = new TypedValue(); st = useTheme && resolveAttribute(st, r, false) && r.type == TypedValue.TYPE_REFERENCE ? r.data : 0; }
-                if (st != 0) xmlStyle = meglerBag(st);
+                if (st != 0 && xp != null && xp.megletStyleIsAttr()) { TypedValue r = new TypedValue(); st = useTheme && resolveAttribute(st, r, false) && r.type == TypedValue.TYPE_REFERENCE ? r.data : 0; }
+                if (st != 0) xmlStyle = megletBag(st);
             }
             if (useTheme && defStyleAttr != 0) {
                 TypedValue v = new TypedValue();
-                if (resolveAttribute(defStyleAttr, v, false) && (v.type == TypedValue.TYPE_REFERENCE)) defStyle = meglerBag(v.data);
+                if (resolveAttribute(defStyleAttr, v, false) && (v.type == TypedValue.TYPE_REFERENCE)) defStyle = megletBag(v.data);
             }
-            if (defStyle == null && defStyleRes != 0) defStyle = meglerBag(defStyleRes);
+            if (defStyle == null && defStyleRes != 0) defStyle = megletBag(defStyleRes);
             // the XML's attributes by resource id
             int[] xmlIdx = null;
             if (set != null) {
@@ -639,7 +639,7 @@ public class Resources {
                 if (v.type == TypedValue.TYPE_REFERENCE && v.data != 0) {
                     int ref = v.data;
                     TypedValue r = new TypedValue();
-                    if (meglerValue(ref, r, true)) {
+                    if (megletValue(ref, r, true)) {
                         if (r.type == TypedValue.TYPE_NULL) { v.resourceId = ref; }
                         else if (r.type == TypedValue.TYPE_ATTRIBUTE && useTheme) { TypedValue t2 = new TypedValue(); if (resolveAttribute(r.data, t2, true)) { v.setTo(t2); v.resourceId = t2.resourceId != 0 ? t2.resourceId : ref; } }
                         else { v.setTo(r); v.resourceId = r.resourceId != 0 ? r.resourceId : ref; }
@@ -690,7 +690,7 @@ public class Resources {
     // ---- end of generated members
     // ---- generated by tools/compat/genstubs.py: the platform's nested classes this class does not write
     public static class AssetManagerUpdateHandler implements android.content.res.Resources.UpdateCallbacks {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public AssetManagerUpdateHandler(android.content.res.Resources p0) {}
         public void onLoaderUpdated(android.content.res.loader.ResourcesLoader p0) {}
         public void onLoadersChanged(android.content.res.Resources p0, java.util.List p1) {}

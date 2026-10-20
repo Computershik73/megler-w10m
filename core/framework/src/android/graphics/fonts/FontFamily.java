@@ -14,7 +14,7 @@ public final class FontFamily {
     public long getNativePtr() { return 0L; }
 
     /** The font closest to a style. */
-    public Font meglerClosest(FontStyle s) {
+    public Font megletClosest(FontStyle s) {
         Font best = null; int score = Integer.MAX_VALUE;
         for (Font f : mFonts) { int k = f.getStyle().getMatchScore(s); if (k < score) { score = k; best = f; } }
         return best;

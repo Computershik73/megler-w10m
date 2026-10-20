@@ -19,10 +19,10 @@ extern "C" {
  * the stream's. The host is set for the codec while the tests run and taken away after. Returns the number of failed
  * checks and adds the number made to *checks.
  */
-struct megler_codec_host;
-int hk_codec_tests_run(const char *streams, const struct megler_codec_host *host, hk_test_sink sink, void *user, int *checks);
+struct meglet_codec_host;
+int hk_codec_tests_run(const char *streams, const struct meglet_codec_host *host, hk_test_sink sink, void *user, int *checks);
 /* Only the tests of H.265, Main and Main 10 (`how` says in their names what is different about the host this time). */
-int hk_codec_tests_h265_run(const char *streams, const struct megler_codec_host *host, const char *how, hk_test_sink sink, void *user, int *checks);
+int hk_codec_tests_h265_run(const char *streams, const struct meglet_codec_host *host, const char *how, hk_test_sink sink, void *user, int *checks);
 
 /*
  * How fast the host's picture decoders are, with the core's codec over them as MediaCodec has it: the streams
@@ -33,7 +33,7 @@ int hk_codec_tests_h265_run(const char *streams, const struct megler_codec_host 
  * every picture came out, in order, at the stream's size. Returns the number of failed checks and adds the number made
  * to *checks.
  */
-int hk_codec_speed_run(const char *streams, const struct megler_codec_host *host, hk_test_sink sink, void *user, int *checks);
+int hk_codec_speed_run(const char *streams, const struct meglet_codec_host *host, hk_test_sink sink, void *user, int *checks);
 
 #ifdef __cplusplus
 }

@@ -3,7 +3,7 @@ package android.hardware.fingerprint;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class FingerprintManager implements android.hardware.biometrics.BiometricAuthenticator, android.hardware.biometrics.BiometricFingerprintConstants {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ENROLL_ENROLL = 2;
     public static final int ENROLL_FIND_SENSOR = 1;
     public static final int SENSOR_ID_ANY = -1;
@@ -23,19 +23,19 @@ public class FingerprintManager implements android.hardware.biometrics.Biometric
     public void enroll(byte[] p0, android.os.CancellationSignal p1, int p2, android.hardware.fingerprint.FingerprintManager.EnrollmentCallback p3, int p4, android.hardware.fingerprint.FingerprintEnrollOptions p5) {}
     public void generateChallenge(int p0, int p1, android.hardware.fingerprint.FingerprintManager.GenerateChallengeCallback p2) {}
     public void generateChallenge(int p0, android.hardware.fingerprint.FingerprintManager.GenerateChallengeCallback p1) {}
-    public int getEnrollStageCount() { return (meglerProps.get("EnrollStageCount") instanceof Integer ? (Integer) meglerProps.get("EnrollStageCount") : 0); }
+    public int getEnrollStageCount() { return (megletProps.get("EnrollStageCount") instanceof Integer ? (Integer) megletProps.get("EnrollStageCount") : 0); }
     public float getEnrollStageThreshold(int p0) { return 0f; }
-    public java.util.List getEnrolledFingerprints() { return (meglerProps.get("EnrolledFingerprints") != null ? (java.util.List) meglerProps.get("EnrolledFingerprints") : new java.util.ArrayList()); }
+    public java.util.List getEnrolledFingerprints() { return (megletProps.get("EnrolledFingerprints") != null ? (java.util.List) megletProps.get("EnrolledFingerprints") : new java.util.ArrayList()); }
     public java.util.List getEnrolledFingerprints(int p0) { return new java.util.ArrayList(); }
     public int getLockoutModeForUser(int p0, int p1) { return 0; }
-    public java.util.List getSensorProperties() { return (meglerProps.get("SensorProperties") != null ? (java.util.List) meglerProps.get("SensorProperties") : new java.util.ArrayList()); }
-    public java.util.List getSensorPropertiesInternal() { return (meglerProps.get("SensorPropertiesInternal") != null ? (java.util.List) meglerProps.get("SensorPropertiesInternal") : new java.util.ArrayList()); }
+    public java.util.List getSensorProperties() { return (megletProps.get("SensorProperties") != null ? (java.util.List) megletProps.get("SensorProperties") : new java.util.ArrayList()); }
+    public java.util.List getSensorPropertiesInternal() { return (megletProps.get("SensorPropertiesInternal") != null ? (java.util.List) megletProps.get("SensorPropertiesInternal") : new java.util.ArrayList()); }
     public boolean hasEnrolledFingerprints() { return false; }
     public boolean hasEnrolledFingerprints(int p0) { return false; }
     public boolean hasEnrolledTemplates() { return false; }
     public boolean hasEnrolledTemplates(int p0) { return false; }
-    public boolean isHardwareDetected() { return (meglerProps.get("HardwareDetected") instanceof Boolean ? (Boolean) meglerProps.get("HardwareDetected") : false); }
-    public boolean isPowerbuttonFps() { return (meglerProps.get("PowerbuttonFps") instanceof Boolean ? (Boolean) meglerProps.get("PowerbuttonFps") : false); }
+    public boolean isHardwareDetected() { return (megletProps.get("HardwareDetected") instanceof Boolean ? (Boolean) megletProps.get("HardwareDetected") : false); }
+    public boolean isPowerbuttonFps() { return (megletProps.get("PowerbuttonFps") instanceof Boolean ? (Boolean) megletProps.get("PowerbuttonFps") : false); }
     public void onPointerDown(long p0, int p1, int p2, float p3, float p4, float p5, float p6, float p7, long p8, long p9, boolean p10) {}
     public void onPointerDown(long p0, int p1, int p2, int p3, float p4, float p5) {}
     public void onPointerUp(long p0, int p1) {}
@@ -50,10 +50,10 @@ public class FingerprintManager implements android.hardware.biometrics.Biometric
     public void revokeChallenge(int p0, long p1) {}
     public void scheduleWatchdog() {}
     public void setIgnoreDisplayTouches(long p0, int p1, boolean p2) {}
-    public void setUdfpsOverlayController(android.hardware.fingerprint.IUdfpsOverlayController p0) { meglerProps.put("UdfpsOverlayController", p0); }
+    public void setUdfpsOverlayController(android.hardware.fingerprint.IUdfpsOverlayController p0) { megletProps.put("UdfpsOverlayController", p0); }
     FingerprintManager() { this((android.content.Context) null, (android.hardware.fingerprint.IFingerprintService) null); }
     public static abstract class AuthenticationCallback extends android.hardware.biometrics.BiometricAuthenticator.AuthenticationCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public AuthenticationCallback() { super(); }
         public void onAuthenticationAcquired(int p0) {}
         public void onAuthenticationError(int p0, java.lang.CharSequence p1) {}
@@ -64,29 +64,29 @@ public class FingerprintManager implements android.hardware.biometrics.Biometric
         public void onUdfpsPointerUp(int p0) {}
     }
     public static class AuthenticationResult {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public AuthenticationResult(android.hardware.fingerprint.FingerprintManager.CryptoObject p0, android.hardware.fingerprint.Fingerprint p1, int p2, boolean p3) {}
-        public android.hardware.fingerprint.FingerprintManager.CryptoObject getCryptoObject() { return (android.hardware.fingerprint.FingerprintManager.CryptoObject) meglerProps.get("CryptoObject"); }
-        public android.hardware.fingerprint.Fingerprint getFingerprint() { return (android.hardware.fingerprint.Fingerprint) meglerProps.get("Fingerprint"); }
-        public int getUserId() { return (meglerProps.get("UserId") instanceof Integer ? (Integer) meglerProps.get("UserId") : 0); }
-        public boolean isStrongBiometric() { return (meglerProps.get("StrongBiometric") instanceof Boolean ? (Boolean) meglerProps.get("StrongBiometric") : false); }
+        public android.hardware.fingerprint.FingerprintManager.CryptoObject getCryptoObject() { return (android.hardware.fingerprint.FingerprintManager.CryptoObject) megletProps.get("CryptoObject"); }
+        public android.hardware.fingerprint.Fingerprint getFingerprint() { return (android.hardware.fingerprint.Fingerprint) megletProps.get("Fingerprint"); }
+        public int getUserId() { return (megletProps.get("UserId") instanceof Integer ? (Integer) megletProps.get("UserId") : 0); }
+        public boolean isStrongBiometric() { return (megletProps.get("StrongBiometric") instanceof Boolean ? (Boolean) megletProps.get("StrongBiometric") : false); }
         AuthenticationResult() { this((android.hardware.fingerprint.FingerprintManager.CryptoObject) null, (android.hardware.fingerprint.Fingerprint) null, (int) 0, (boolean) false); }
     }
     public static abstract class CryptoObject extends android.hardware.biometrics.CryptoObject {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public CryptoObject(java.security.Signature p0) { super(); }
         public CryptoObject(javax.crypto.Cipher p0) { super(); }
         public CryptoObject(javax.crypto.Mac p0) { super(); }
-        public javax.crypto.Cipher getCipher() { return (javax.crypto.Cipher) meglerProps.get("Cipher"); }
-        public android.security.identity.IdentityCredential getIdentityCredential() { return (android.security.identity.IdentityCredential) meglerProps.get("IdentityCredential"); }
-        public javax.crypto.KeyAgreement getKeyAgreement() { return (javax.crypto.KeyAgreement) meglerProps.get("KeyAgreement"); }
-        public javax.crypto.Mac getMac() { return (javax.crypto.Mac) meglerProps.get("Mac"); }
-        public android.security.identity.PresentationSession getPresentationSession() { return (android.security.identity.PresentationSession) meglerProps.get("PresentationSession"); }
-        public java.security.Signature getSignature() { return (java.security.Signature) meglerProps.get("Signature"); }
+        public javax.crypto.Cipher getCipher() { return (javax.crypto.Cipher) megletProps.get("Cipher"); }
+        public android.security.identity.IdentityCredential getIdentityCredential() { return (android.security.identity.IdentityCredential) megletProps.get("IdentityCredential"); }
+        public javax.crypto.KeyAgreement getKeyAgreement() { return (javax.crypto.KeyAgreement) megletProps.get("KeyAgreement"); }
+        public javax.crypto.Mac getMac() { return (javax.crypto.Mac) megletProps.get("Mac"); }
+        public android.security.identity.PresentationSession getPresentationSession() { return (android.security.identity.PresentationSession) megletProps.get("PresentationSession"); }
+        public java.security.Signature getSignature() { return (java.security.Signature) megletProps.get("Signature"); }
         CryptoObject() { this((java.security.Signature) null); }
     }
     public static abstract class EnrollmentCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public EnrollmentCallback() {}
         public void onAcquired(boolean p0) {}
         public void onEnrollmentError(int p0, java.lang.CharSequence p1) {}
@@ -104,12 +104,12 @@ public class FingerprintManager implements android.hardware.biometrics.Biometric
         void onChallengeGenerated(int p0, int p1, long p2);
     }
     public static abstract class LockoutResetCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public LockoutResetCallback() {}
         public void onLockoutReset(int p0) {}
     }
     public static abstract class RemovalCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public RemovalCallback() {}
         public void onRemovalError(android.hardware.fingerprint.Fingerprint p0, int p1, java.lang.CharSequence p2) {}
         public void onRemovalSucceeded(android.hardware.fingerprint.Fingerprint p0, int p1) {}

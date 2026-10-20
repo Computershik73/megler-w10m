@@ -3,7 +3,7 @@ package android.view.accessibility;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AccessibilityEvent extends android.view.accessibility.AccessibilityRecord implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CONTENT_CHANGE_TYPE_CHECKED = 8192;
     public static final int CONTENT_CHANGE_TYPE_CONTENT_DESCRIPTION = 4;
     public static final int CONTENT_CHANGE_TYPE_CONTENT_INVALID = 1024;
@@ -81,28 +81,28 @@ public final class AccessibilityEvent extends android.view.accessibility.Accessi
     public void appendRecord(android.view.accessibility.AccessibilityRecord p0) {}
     protected void clear() {}
     public int describeContents() { return 0; }
-    public int getAction() { return (meglerProps.get("Action") instanceof Integer ? (Integer) meglerProps.get("Action") : 0); }
-    public int getContentChangeTypes() { return (meglerProps.get("ContentChangeTypes") instanceof Integer ? (Integer) meglerProps.get("ContentChangeTypes") : 0); }
-    public long getEventTime() { return (meglerProps.get("EventTime") instanceof Long ? (Long) meglerProps.get("EventTime") : 0L); }
-    public int getEventType() { return (meglerProps.get("EventType") instanceof Integer ? (Integer) meglerProps.get("EventType") : 0); }
-    public int getMovementGranularity() { return (meglerProps.get("MovementGranularity") instanceof Integer ? (Integer) meglerProps.get("MovementGranularity") : 0); }
-    public java.lang.CharSequence getPackageName() { return (java.lang.CharSequence) meglerProps.get("PackageName"); }
+    public int getAction() { return (megletProps.get("Action") instanceof Integer ? (Integer) megletProps.get("Action") : 0); }
+    public int getContentChangeTypes() { return (megletProps.get("ContentChangeTypes") instanceof Integer ? (Integer) megletProps.get("ContentChangeTypes") : 0); }
+    public long getEventTime() { return (megletProps.get("EventTime") instanceof Long ? (Long) megletProps.get("EventTime") : 0L); }
+    public int getEventType() { return (megletProps.get("EventType") instanceof Integer ? (Integer) megletProps.get("EventType") : 0); }
+    public int getMovementGranularity() { return (megletProps.get("MovementGranularity") instanceof Integer ? (Integer) megletProps.get("MovementGranularity") : 0); }
+    public java.lang.CharSequence getPackageName() { return (java.lang.CharSequence) megletProps.get("PackageName"); }
     public android.view.accessibility.AccessibilityRecord getRecord(int p0) { return null; }
-    public int getRecordCount() { return (meglerProps.get("RecordCount") instanceof Integer ? (Integer) meglerProps.get("RecordCount") : 0); }
-    public int getSpeechStateChangeTypes() { return (meglerProps.get("SpeechStateChangeTypes") instanceof Integer ? (Integer) meglerProps.get("SpeechStateChangeTypes") : 0); }
-    public int getWindowChanges() { return (meglerProps.get("WindowChanges") instanceof Integer ? (Integer) meglerProps.get("WindowChanges") : 0); }
+    public int getRecordCount() { return (megletProps.get("RecordCount") instanceof Integer ? (Integer) megletProps.get("RecordCount") : 0); }
+    public int getSpeechStateChangeTypes() { return (megletProps.get("SpeechStateChangeTypes") instanceof Integer ? (Integer) megletProps.get("SpeechStateChangeTypes") : 0); }
+    public int getWindowChanges() { return (megletProps.get("WindowChanges") instanceof Integer ? (Integer) megletProps.get("WindowChanges") : 0); }
     public void initFromParcel(android.os.Parcel p0) {}
-    public boolean isAccessibilityDataSensitive() { return (meglerProps.get("AccessibilityDataSensitive") instanceof Boolean ? (Boolean) meglerProps.get("AccessibilityDataSensitive") : false); }
+    public boolean isAccessibilityDataSensitive() { return (megletProps.get("AccessibilityDataSensitive") instanceof Boolean ? (Boolean) megletProps.get("AccessibilityDataSensitive") : false); }
     public void recycle() {}
-    public void setAccessibilityDataSensitive(boolean p0) { meglerProps.put("AccessibilityDataSensitive", Boolean.valueOf(p0)); }
-    public void setAction(int p0) { meglerProps.put("Action", Integer.valueOf(p0)); }
-    public void setContentChangeTypes(int p0) { meglerProps.put("ContentChangeTypes", Integer.valueOf(p0)); }
-    public void setEventTime(long p0) { meglerProps.put("EventTime", Long.valueOf(p0)); }
-    public void setEventType(int p0) { meglerProps.put("EventType", Integer.valueOf(p0)); }
-    public void setMovementGranularity(int p0) { meglerProps.put("MovementGranularity", Integer.valueOf(p0)); }
-    public void setPackageName(java.lang.CharSequence p0) { meglerProps.put("PackageName", p0); }
-    public void setSealed(boolean p0) { meglerProps.put("Sealed", Boolean.valueOf(p0)); }
-    public void setSpeechStateChangeTypes(int p0) { meglerProps.put("SpeechStateChangeTypes", Integer.valueOf(p0)); }
-    public void setWindowChanges(int p0) { meglerProps.put("WindowChanges", Integer.valueOf(p0)); }
+    public void setAccessibilityDataSensitive(boolean p0) { megletProps.put("AccessibilityDataSensitive", Boolean.valueOf(p0)); }
+    public void setAction(int p0) { megletProps.put("Action", Integer.valueOf(p0)); }
+    public void setContentChangeTypes(int p0) { megletProps.put("ContentChangeTypes", Integer.valueOf(p0)); }
+    public void setEventTime(long p0) { megletProps.put("EventTime", Long.valueOf(p0)); }
+    public void setEventType(int p0) { megletProps.put("EventType", Integer.valueOf(p0)); }
+    public void setMovementGranularity(int p0) { megletProps.put("MovementGranularity", Integer.valueOf(p0)); }
+    public void setPackageName(java.lang.CharSequence p0) { megletProps.put("PackageName", p0); }
+    public void setSealed(boolean p0) { megletProps.put("Sealed", Boolean.valueOf(p0)); }
+    public void setSpeechStateChangeTypes(int p0) { megletProps.put("SpeechStateChangeTypes", Integer.valueOf(p0)); }
+    public void setWindowChanges(int p0) { megletProps.put("WindowChanges", Integer.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

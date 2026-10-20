@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MbmsGroupCallSession implements java.lang.AutoCloseable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String MBMS_GROUP_CALL_SERVICE_ACTION = "android.telephony.action.EmbmsGroupCall";
     public static final java.lang.String MBMS_GROUP_CALL_SERVICE_OVERRIDE_METADATA = "mbms-group-call-service-override";
     public static android.telephony.MbmsGroupCallSession create(android.content.Context p0, int p1, java.util.concurrent.Executor p2, android.telephony.mbms.MbmsGroupCallSessionCallback p3) { return new MbmsGroupCallSession(); }

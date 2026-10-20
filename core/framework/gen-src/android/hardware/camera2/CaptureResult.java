@@ -3,7 +3,7 @@ package android.hardware.camera2;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CaptureResult extends android.hardware.camera2.CameraMetadata {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.hardware.camera2.CaptureResult.Key BLACK_LEVEL_LOCK;
     public static android.hardware.camera2.CaptureResult.Key COLOR_CORRECTION_ABERRATION_MODE;
     public static android.hardware.camera2.CaptureResult.Key COLOR_CORRECTION_COLOR_TEMPERATURE;
@@ -134,32 +134,32 @@ public class CaptureResult extends android.hardware.camera2.CameraMetadata {
     public CaptureResult(java.lang.String p0, android.hardware.camera2.impl.CameraMetadataNative p1, android.hardware.camera2.CaptureRequest p2, android.hardware.camera2.impl.CaptureResultExtras p3) { super(); }
     public void dumpToLog() {}
     public java.lang.Object get(android.hardware.camera2.CaptureResult.Key p0) { return null; }
-    public java.lang.String getCameraId() { return (java.lang.String) meglerProps.get("CameraId"); }
-    public long getFrameNumber() { return (meglerProps.get("FrameNumber") instanceof Long ? (Long) meglerProps.get("FrameNumber") : 0L); }
-    public java.lang.Class getKeyClass() { return (java.lang.Class) meglerProps.get("KeyClass"); }
-    public java.util.List getKeys() { return (meglerProps.get("Keys") != null ? (java.util.List) meglerProps.get("Keys") : new java.util.ArrayList()); }
-    public android.hardware.camera2.impl.CameraMetadataNative getNativeCopy() { return (android.hardware.camera2.impl.CameraMetadataNative) meglerProps.get("NativeCopy"); }
+    public java.lang.String getCameraId() { return (java.lang.String) megletProps.get("CameraId"); }
+    public long getFrameNumber() { return (megletProps.get("FrameNumber") instanceof Long ? (Long) megletProps.get("FrameNumber") : 0L); }
+    public java.lang.Class getKeyClass() { return (java.lang.Class) megletProps.get("KeyClass"); }
+    public java.util.List getKeys() { return (megletProps.get("Keys") != null ? (java.util.List) megletProps.get("Keys") : new java.util.ArrayList()); }
+    public android.hardware.camera2.impl.CameraMetadataNative getNativeCopy() { return (android.hardware.camera2.impl.CameraMetadataNative) megletProps.get("NativeCopy"); }
     protected java.lang.Object getProtected(android.hardware.camera2.CaptureResult.Key p0) { return null; }
     public java.lang.Object getProtected(java.lang.Object p0) { return null; }
-    public android.hardware.camera2.CaptureRequest getRequest() { return (android.hardware.camera2.CaptureRequest) meglerProps.get("Request"); }
-    public int getSequenceId() { return (meglerProps.get("SequenceId") instanceof Integer ? (Integer) meglerProps.get("SequenceId") : 0); }
+    public android.hardware.camera2.CaptureRequest getRequest() { return (android.hardware.camera2.CaptureRequest) megletProps.get("Request"); }
+    public int getSequenceId() { return (megletProps.get("SequenceId") instanceof Integer ? (Integer) megletProps.get("SequenceId") : 0); }
     CaptureResult() { this((android.hardware.camera2.impl.CameraMetadataNative) null, (int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.hardware.camera2.CaptureResult p0) {}
-        public android.hardware.camera2.CaptureResult build() { android.hardware.camera2.CaptureResult x = new android.hardware.camera2.CaptureResult(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.hardware.camera2.CaptureResult build() { android.hardware.camera2.CaptureResult x = new android.hardware.camera2.CaptureResult(); x.megletProps.putAll(megletProps); return x; }
         public android.hardware.camera2.CaptureResult.Builder set(android.hardware.camera2.CaptureResult.Key p0, java.lang.Object p1) { return this; }
     }
     public static final class Key {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Key(java.lang.String p0, android.hardware.camera2.utils.TypeReference p1) {}
         public Key(java.lang.String p0, java.lang.Class p1) {}
         public Key(java.lang.String p0, java.lang.Class p1, long p2) {}
         public Key(java.lang.String p0, java.lang.String p1, java.lang.Class p2) {}
-        public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-        public android.hardware.camera2.impl.CameraMetadataNative.Key getNativeKey() { return (android.hardware.camera2.impl.CameraMetadataNative.Key) meglerProps.get("NativeKey"); }
-        public long getVendorId() { return (meglerProps.get("VendorId") instanceof Long ? (Long) meglerProps.get("VendorId") : 0L); }
+        public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+        public android.hardware.camera2.impl.CameraMetadataNative.Key getNativeKey() { return (android.hardware.camera2.impl.CameraMetadataNative.Key) megletProps.get("NativeKey"); }
+        public long getVendorId() { return (megletProps.get("VendorId") instanceof Long ? (Long) megletProps.get("VendorId") : 0L); }
         Key() { this((java.lang.String) null, (android.hardware.camera2.utils.TypeReference) null); }
     }
 }

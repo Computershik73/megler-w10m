@@ -34,7 +34,7 @@ class LegacyErrorStrings {
      * If the code is unknown, we'll return a generic error message.
      */
     static String getString(int errorCode, Context context) {
-        // megler-w10m: the string is looked up by its name in the Android root's framework-res.apk.
+        // Meglet: the string is looked up by its name in the Android root's framework-res.apk.
         return context.getText(context.getResources().getIdentifier(getResource(errorCode), "string", "android")).toString();
     }
 

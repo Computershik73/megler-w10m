@@ -3,7 +3,7 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WebStorage {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public WebStorage() {}
     public static android.webkit.WebStorage getInstance() { return new WebStorage(); }
     public void deleteAllData() {}
@@ -13,11 +13,11 @@ public class WebStorage {
     public void getUsageForOrigin(java.lang.String p0, android.webkit.ValueCallback p1) {}
     public void setQuotaForOrigin(java.lang.String p0, long p1) {}
     public static class Origin {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected Origin(java.lang.String p0, long p1, long p2) {}
-        public java.lang.String getOrigin() { return (java.lang.String) meglerProps.get("Origin"); }
-        public long getQuota() { return (meglerProps.get("Quota") instanceof Long ? (Long) meglerProps.get("Quota") : 0L); }
-        public long getUsage() { return (meglerProps.get("Usage") instanceof Long ? (Long) meglerProps.get("Usage") : 0L); }
+        public java.lang.String getOrigin() { return (java.lang.String) megletProps.get("Origin"); }
+        public long getQuota() { return (megletProps.get("Quota") instanceof Long ? (Long) megletProps.get("Quota") : 0L); }
+        public long getUsage() { return (megletProps.get("Usage") instanceof Long ? (Long) megletProps.get("Usage") : 0L); }
         Origin() { this((java.lang.String) null, (long) 0L, (long) 0L); }
     }
     public interface QuotaUpdater {

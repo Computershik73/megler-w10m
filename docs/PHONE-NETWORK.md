@@ -11,13 +11,13 @@ The build 221 sweep reproduced the same failure in both applications:
 - VK mp3 mod 190 (`build.apk`, package `com.vkmp3mod.android`):
   `Android10Platform.enableSessionTickets` → `configureTlsExtensions` →
   `RealConnection.connectTls`. The login request also reached this failure.
-  Log: `build/phone/codex-sweep-221/26-build/megler.log`.
+  Log: `build/phone/codex-sweep-221/26-build/meglet.log`.
 - Spotify 9.1.90.2270: the networking dispatcher died with the same missing
   class, twice. Its obfuscated stack starts at `p.b04.a` / `p.a04.d`.
   Log: the `19-Spotify_*` directory in that sweep.
 - F-Droid, MX Player and fgcos.scanwords had the same missing class.
 
-Megler reports SDK 34, so OkHttp selects Android's newer TLS adapter. The
+Meglet reports SDK 34, so OkHttp selects Android's newer TLS adapter. The
 framework lacked the Android 10 socket helpers; Android 9's core library
 also lacked public ALPN methods on SSLParameters and SSLSocket. These calls
 failed before the application could complete its HTTPS request. The generic
@@ -68,7 +68,7 @@ Spotify also survives the user's touch/keyboard interaction, and the user
 confirmed that its "no network" message no longer appears.
 
 VK now receives an anonymous authorization response and advances to the
-server's CAPTCHA challenge. The challenge page is blank because `megler.Web`
+server's CAPTCHA challenge. The challenge page is blank because `meglet.Web`
 is still registered as `Absent` in `core/src/drivers/hk_java.c`; the Windows
 shell has no WebView host. This is a separate, unresolved blocker to completing
 that login flow. Do not bypass the challenge or describe VK login as fixed.

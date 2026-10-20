@@ -7,8 +7,8 @@
  * goes to 127.0.0.1 or ::1 and back: nothing here needs a network beyond the
  * machine, and nothing here knows which host it runs on.
  *
- * The same file has the check a phone runs (hk_net_check_run, megler_net_check
- * in megler.h), which also goes out to the internet, and which the tests run
+ * The same file has the check a phone runs (hk_net_check_run, meglet_net_check
+ * in meglet.h), which also goes out to the internet, and which the tests run
  * without that part.
  */
 #include "hk_net_tests.h"
@@ -614,7 +614,7 @@ static void test_udp(void)
  */
 static void test_ping(void)
 {
-    u8 req[12] = { 8, 0, 0, 0, 0, 0, 0, 7, 'h', 'u', 's', 'k' }, reply[64], sa[16], from[28];
+    u8 req[14] = { 8, 0, 0, 0, 0, 0, 0, 7, 'm', 'e', 'g', 'l', 'e', 't' }, reply[64], sa[16], from[28];
     i32 tv[2] = { 2, 0 };
     u32 len, from_len;
     int s = N.socket(AF_INET_, SOCK_DGRAM_, 1 /* IPPROTO_ICMP */), n;
@@ -636,7 +636,7 @@ static void test_ping(void)
     from_len = sizeof(from);
     n = N.recvfrom(s, reply, sizeof(reply), 0, from, &from_len);
     CHECK_INT(n, sizeof(req));
-    CHECK(reply[0] == 0 && reply[1] == 0 && ((reply[4] << 8) | reply[5]) == id && reply[6] == 0 && reply[7] == 7 && !memcmp(reply + 8, "megler", 4));
+    CHECK(reply[0] == 0 && reply[1] == 0 && ((reply[4] << 8) | reply[5]) == id && reply[6] == 0 && reply[7] == 7 && !memcmp(reply + 8, "meglet", 6));
     CHECK(from_len == 16 && !memcmp(from + 4, k_lo4, 4));
     req[0] = 13;
     CHECK(N.sendto(s, req, sizeof(req), 0, sa, sa4(sa, k_lo4, 0)) == -1 && err() == GE_INVAL);
@@ -964,7 +964,7 @@ static void test_unix(void)
     /* A name in the abstract space, listened on and connected to. */
     memset(sa, 0, sizeof(sa));
     hk_wr16(sa, AF_UNIX_);
-    memcpy(sa + 3, "megler-net-test", 13);
+    memcpy(sa + 3, "meglet-net-test", 13);
     l = N.socket(AF_UNIX_, SOCK_STREAM_, 0);
     CHECK(N.bind(l, sa, 2 + 1 + 13) == 0 && N.listen(l, 4) == 0);
     s = N.socket(AF_UNIX_, SOCK_STREAM_, 0);
@@ -973,7 +973,7 @@ static void test_unix(void)
     c = N.accept(l, NULL, NULL);
     CHECK(c >= 0 && N.write(s, "hi", 2) == 2 && N.read(c, buf, 2) == 2 && !memcmp(buf, "hi", 2));
     len = sizeof(sa);
-    CHECK(N.getpeername(s, sa, &len) == 0 && len == 2 + 1 + 13 && !memcmp(sa + 3, "megler-net-test", 13));
+    CHECK(N.getpeername(s, sa, &len) == 0 && len == 2 + 1 + 13 && !memcmp(sa + 3, "meglet-net-test", 13));
     N.close(c);
     N.close(s);
     N.close(l);
@@ -1189,7 +1189,7 @@ static void test_interrupted(void)
 /* ------------------------------------------------- the check for a phone
  *
  * The network as an app finds it, through the C library, a line for every
- * step: hk_net_check_run, which a phone runs (megler_net_check in megler.h), and
+ * step: hk_net_check_run, which a phone runs (meglet_net_check in meglet.h), and
  * the tests run here without its part that goes to the internet.
  */
 
@@ -1319,7 +1319,7 @@ static void check_internet(const char *host, const char *path)
     if (res) N.freeaddrinfo(res);
     STEP(s >= 0, "a TCP connection to %s, port 80", host);
     if (s < 0) return;
-    snprintf(request, sizeof(request), "HEAD %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: Megler\r\nConnection: close\r\n\r\n", path, host);
+    snprintf(request, sizeof(request), "HEAD %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: Meglet\r\nConnection: close\r\n\r\n", path, host);
     t0 = now_ms();
     STEP(N.send(s, request, (u32)strlen(request), 0) == (i32)strlen(request), "a HEAD request for %s sent", path);
     r = read_line(s, line, sizeof(line), 10000);
@@ -1343,7 +1343,7 @@ static void serve_main(void *arg)
     c = N.accept(j->listener, NULL, NULL);
     if (c < 0) return;
     if (read_line(c, line, sizeof(line), 5000) > 0 && !strncmp(line, "HEAD / HTTP/1.", 14)) {
-        static const char answer[] = "HTTP/1.0 200 OK\r\nServer: megler-net-check\r\n\r\n";
+        static const char answer[] = "HTTP/1.0 200 OK\r\nServer: meglet-net-check\r\n\r\n";
         /* The request read through to its blank line first: a socket closed with something unread in it is reset, and its answer lost. */
         while (read_line(c, line, sizeof(line), 5000) > 0) { }
         j->result = N.send(c, answer, sizeof(answer) - 1, 0) == (i32)(sizeof(answer) - 1) ? 0 : -1;

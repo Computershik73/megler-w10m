@@ -3,7 +3,7 @@ package android.nfc.tech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class NfcBarcode extends android.nfc.tech.BasicTagTechnology {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_BARCODE_TYPE = "barcodetype";
     public static final int TYPE_KOVIO = 1;
     public static final int TYPE_UNKNOWN = -1;
@@ -11,10 +11,10 @@ public abstract class NfcBarcode extends android.nfc.tech.BasicTagTechnology {
     public static android.nfc.tech.NfcBarcode get(android.nfc.Tag p0) { return null; }
     public void close() {}
     public void connect() {}
-    public byte[] getBarcode() { return (byte[]) meglerProps.get("Barcode"); }
-    public android.nfc.Tag getTag() { return (android.nfc.Tag) meglerProps.get("Tag"); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
-    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
+    public byte[] getBarcode() { return (byte[]) megletProps.get("Barcode"); }
+    public android.nfc.Tag getTag() { return (android.nfc.Tag) megletProps.get("Tag"); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
+    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
     public void reconnect() {}
     NfcBarcode() { this((android.nfc.Tag) null); }
 }

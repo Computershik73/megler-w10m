@@ -3,7 +3,7 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PermissionGroupInfo extends android.content.pm.PackageItemInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FLAG_PERSONAL_INFO = 1;
     public int backgroundRequestDetailResourceId;

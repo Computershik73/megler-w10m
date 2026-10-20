@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PreciseDataConnectionState implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int NETWORK_VALIDATION_FAILURE = 4;
     public static final int NETWORK_VALIDATION_IN_PROGRESS = 2;
@@ -13,35 +13,35 @@ public final class PreciseDataConnectionState implements android.os.Parcelable {
     public PreciseDataConnectionState(int p0, int p1, int p2, java.lang.String p3, android.net.LinkProperties p4, int p5) {}
     public static java.lang.String networkValidationStatusToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public android.telephony.data.ApnSetting getApnSetting() { return (android.telephony.data.ApnSetting) meglerProps.get("ApnSetting"); }
-    public java.lang.String getDataConnectionApn() { return (java.lang.String) meglerProps.get("DataConnectionApn"); }
-    public int getDataConnectionApnTypeBitMask() { return (meglerProps.get("DataConnectionApnTypeBitMask") instanceof Integer ? (Integer) meglerProps.get("DataConnectionApnTypeBitMask") : 0); }
-    public int getDataConnectionFailCause() { return (meglerProps.get("DataConnectionFailCause") instanceof Integer ? (Integer) meglerProps.get("DataConnectionFailCause") : 0); }
-    public int getDataConnectionState() { return (meglerProps.get("DataConnectionState") instanceof Integer ? (Integer) meglerProps.get("DataConnectionState") : 0); }
-    public android.telephony.data.Qos getDefaultQos() { return (android.telephony.data.Qos) meglerProps.get("DefaultQos"); }
-    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
-    public int getLastCauseCode() { return (meglerProps.get("LastCauseCode") instanceof Integer ? (Integer) meglerProps.get("LastCauseCode") : 0); }
-    public android.net.LinkProperties getLinkProperties() { return (android.net.LinkProperties) meglerProps.get("LinkProperties"); }
-    public int getNetId() { return (meglerProps.get("NetId") instanceof Integer ? (Integer) meglerProps.get("NetId") : 0); }
-    public int getNetworkType() { return (meglerProps.get("NetworkType") instanceof Integer ? (Integer) meglerProps.get("NetworkType") : 0); }
-    public int getNetworkValidationStatus() { return (meglerProps.get("NetworkValidationStatus") instanceof Integer ? (Integer) meglerProps.get("NetworkValidationStatus") : 0); }
-    public int getState() { return (meglerProps.get("State") instanceof Integer ? (Integer) meglerProps.get("State") : 0); }
-    public int getTransportType() { return (meglerProps.get("TransportType") instanceof Integer ? (Integer) meglerProps.get("TransportType") : 0); }
+    public android.telephony.data.ApnSetting getApnSetting() { return (android.telephony.data.ApnSetting) megletProps.get("ApnSetting"); }
+    public java.lang.String getDataConnectionApn() { return (java.lang.String) megletProps.get("DataConnectionApn"); }
+    public int getDataConnectionApnTypeBitMask() { return (megletProps.get("DataConnectionApnTypeBitMask") instanceof Integer ? (Integer) megletProps.get("DataConnectionApnTypeBitMask") : 0); }
+    public int getDataConnectionFailCause() { return (megletProps.get("DataConnectionFailCause") instanceof Integer ? (Integer) megletProps.get("DataConnectionFailCause") : 0); }
+    public int getDataConnectionState() { return (megletProps.get("DataConnectionState") instanceof Integer ? (Integer) megletProps.get("DataConnectionState") : 0); }
+    public android.telephony.data.Qos getDefaultQos() { return (android.telephony.data.Qos) megletProps.get("DefaultQos"); }
+    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
+    public int getLastCauseCode() { return (megletProps.get("LastCauseCode") instanceof Integer ? (Integer) megletProps.get("LastCauseCode") : 0); }
+    public android.net.LinkProperties getLinkProperties() { return (android.net.LinkProperties) megletProps.get("LinkProperties"); }
+    public int getNetId() { return (megletProps.get("NetId") instanceof Integer ? (Integer) megletProps.get("NetId") : 0); }
+    public int getNetworkType() { return (megletProps.get("NetworkType") instanceof Integer ? (Integer) megletProps.get("NetworkType") : 0); }
+    public int getNetworkValidationStatus() { return (megletProps.get("NetworkValidationStatus") instanceof Integer ? (Integer) megletProps.get("NetworkValidationStatus") : 0); }
+    public int getState() { return (megletProps.get("State") instanceof Integer ? (Integer) megletProps.get("State") : 0); }
+    public int getTransportType() { return (megletProps.get("TransportType") instanceof Integer ? (Integer) megletProps.get("TransportType") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     PreciseDataConnectionState() { this((int) 0, (int) 0, (int) 0, (java.lang.String) null, (android.net.LinkProperties) null, (int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.telephony.PreciseDataConnectionState build() { android.telephony.PreciseDataConnectionState x = new android.telephony.PreciseDataConnectionState(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.telephony.PreciseDataConnectionState.Builder setApnSetting(android.telephony.data.ApnSetting p0) { meglerProps.put("ApnSetting", p0); return this; }
-        public android.telephony.PreciseDataConnectionState.Builder setDefaultQos(android.telephony.data.Qos p0) { meglerProps.put("DefaultQos", p0); return this; }
-        public android.telephony.PreciseDataConnectionState.Builder setFailCause(int p0) { meglerProps.put("FailCause", Integer.valueOf(p0)); return this; }
-        public android.telephony.PreciseDataConnectionState.Builder setId(int p0) { meglerProps.put("Id", Integer.valueOf(p0)); return this; }
-        public android.telephony.PreciseDataConnectionState.Builder setLinkProperties(android.net.LinkProperties p0) { meglerProps.put("LinkProperties", p0); return this; }
-        public android.telephony.PreciseDataConnectionState.Builder setNetworkAgentId(int p0) { meglerProps.put("NetworkAgentId", Integer.valueOf(p0)); return this; }
-        public android.telephony.PreciseDataConnectionState.Builder setNetworkType(int p0) { meglerProps.put("NetworkType", Integer.valueOf(p0)); return this; }
-        public android.telephony.PreciseDataConnectionState.Builder setNetworkValidationStatus(int p0) { meglerProps.put("NetworkValidationStatus", Integer.valueOf(p0)); return this; }
-        public android.telephony.PreciseDataConnectionState.Builder setState(int p0) { meglerProps.put("State", Integer.valueOf(p0)); return this; }
-        public android.telephony.PreciseDataConnectionState.Builder setTransportType(int p0) { meglerProps.put("TransportType", Integer.valueOf(p0)); return this; }
+        public android.telephony.PreciseDataConnectionState build() { android.telephony.PreciseDataConnectionState x = new android.telephony.PreciseDataConnectionState(); x.megletProps.putAll(megletProps); return x; }
+        public android.telephony.PreciseDataConnectionState.Builder setApnSetting(android.telephony.data.ApnSetting p0) { megletProps.put("ApnSetting", p0); return this; }
+        public android.telephony.PreciseDataConnectionState.Builder setDefaultQos(android.telephony.data.Qos p0) { megletProps.put("DefaultQos", p0); return this; }
+        public android.telephony.PreciseDataConnectionState.Builder setFailCause(int p0) { megletProps.put("FailCause", Integer.valueOf(p0)); return this; }
+        public android.telephony.PreciseDataConnectionState.Builder setId(int p0) { megletProps.put("Id", Integer.valueOf(p0)); return this; }
+        public android.telephony.PreciseDataConnectionState.Builder setLinkProperties(android.net.LinkProperties p0) { megletProps.put("LinkProperties", p0); return this; }
+        public android.telephony.PreciseDataConnectionState.Builder setNetworkAgentId(int p0) { megletProps.put("NetworkAgentId", Integer.valueOf(p0)); return this; }
+        public android.telephony.PreciseDataConnectionState.Builder setNetworkType(int p0) { megletProps.put("NetworkType", Integer.valueOf(p0)); return this; }
+        public android.telephony.PreciseDataConnectionState.Builder setNetworkValidationStatus(int p0) { megletProps.put("NetworkValidationStatus", Integer.valueOf(p0)); return this; }
+        public android.telephony.PreciseDataConnectionState.Builder setState(int p0) { megletProps.put("State", Integer.valueOf(p0)); return this; }
+        public android.telephony.PreciseDataConnectionState.Builder setTransportType(int p0) { megletProps.put("TransportType", Integer.valueOf(p0)); return this; }
     }
 }

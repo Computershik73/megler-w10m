@@ -3,22 +3,22 @@ package android.nfc.tech;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class IsoDep extends android.nfc.tech.BasicTagTechnology {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_HIST_BYTES = "histbytes";
     public static final java.lang.String EXTRA_HI_LAYER_RESP = "hiresp";
     public IsoDep(android.nfc.Tag p0) { super(); }
     public static android.nfc.tech.IsoDep get(android.nfc.Tag p0) { return null; }
     public void close() {}
     public void connect() {}
-    public byte[] getHiLayerResponse() { return (byte[]) meglerProps.get("HiLayerResponse"); }
-    public byte[] getHistoricalBytes() { return (byte[]) meglerProps.get("HistoricalBytes"); }
-    public int getMaxTransceiveLength() { return (meglerProps.get("MaxTransceiveLength") instanceof Integer ? (Integer) meglerProps.get("MaxTransceiveLength") : 0); }
-    public android.nfc.Tag getTag() { return (android.nfc.Tag) meglerProps.get("Tag"); }
-    public int getTimeout() { return (meglerProps.get("Timeout") instanceof Integer ? (Integer) meglerProps.get("Timeout") : 0); }
-    public boolean isConnected() { return (meglerProps.get("Connected") instanceof Boolean ? (Boolean) meglerProps.get("Connected") : false); }
-    public boolean isExtendedLengthApduSupported() { return (meglerProps.get("ExtendedLengthApduSupported") instanceof Boolean ? (Boolean) meglerProps.get("ExtendedLengthApduSupported") : false); }
+    public byte[] getHiLayerResponse() { return (byte[]) megletProps.get("HiLayerResponse"); }
+    public byte[] getHistoricalBytes() { return (byte[]) megletProps.get("HistoricalBytes"); }
+    public int getMaxTransceiveLength() { return (megletProps.get("MaxTransceiveLength") instanceof Integer ? (Integer) megletProps.get("MaxTransceiveLength") : 0); }
+    public android.nfc.Tag getTag() { return (android.nfc.Tag) megletProps.get("Tag"); }
+    public int getTimeout() { return (megletProps.get("Timeout") instanceof Integer ? (Integer) megletProps.get("Timeout") : 0); }
+    public boolean isConnected() { return (megletProps.get("Connected") instanceof Boolean ? (Boolean) megletProps.get("Connected") : false); }
+    public boolean isExtendedLengthApduSupported() { return (megletProps.get("ExtendedLengthApduSupported") instanceof Boolean ? (Boolean) megletProps.get("ExtendedLengthApduSupported") : false); }
     public void reconnect() {}
-    public void setTimeout(int p0) { meglerProps.put("Timeout", Integer.valueOf(p0)); }
+    public void setTimeout(int p0) { megletProps.put("Timeout", Integer.valueOf(p0)); }
     public byte[] transceive(byte[] p0) { return null; }
     IsoDep() { this((android.nfc.Tag) null); }
 }

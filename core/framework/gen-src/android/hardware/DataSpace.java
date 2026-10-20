@@ -3,7 +3,7 @@ package android.hardware;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DataSpace {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DATASPACE_ADOBE_RGB = 151715840;
     public static final int DATASPACE_BT2020 = 147193856;
     public static final int DATASPACE_BT2020_HLG = 168165376;

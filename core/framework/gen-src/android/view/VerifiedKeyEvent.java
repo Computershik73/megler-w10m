@@ -3,18 +3,18 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class VerifiedKeyEvent extends android.view.VerifiedInputEvent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public VerifiedKeyEvent(int p0, long p1, int p2, int p3, int p4, long p5, int p6, int p7, int p8, int p9, int p10) { super((android.os.Parcel) null, (int) 0); }
     public int describeContents() { return 0; }
-    public int getAction() { return (meglerProps.get("Action") instanceof Integer ? (Integer) meglerProps.get("Action") : 0); }
-    public long getDownTimeNanos() { return (meglerProps.get("DownTimeNanos") instanceof Long ? (Long) meglerProps.get("DownTimeNanos") : 0L); }
+    public int getAction() { return (megletProps.get("Action") instanceof Integer ? (Integer) megletProps.get("Action") : 0); }
+    public long getDownTimeNanos() { return (megletProps.get("DownTimeNanos") instanceof Long ? (Long) megletProps.get("DownTimeNanos") : 0L); }
     public java.lang.Boolean getFlag(int p0) { return null; }
-    public int getFlags() { return (meglerProps.get("Flags") instanceof Integer ? (Integer) meglerProps.get("Flags") : 0); }
-    public int getKeyCode() { return (meglerProps.get("KeyCode") instanceof Integer ? (Integer) meglerProps.get("KeyCode") : 0); }
-    public int getMetaState() { return (meglerProps.get("MetaState") instanceof Integer ? (Integer) meglerProps.get("MetaState") : 0); }
-    public int getRepeatCount() { return (meglerProps.get("RepeatCount") instanceof Integer ? (Integer) meglerProps.get("RepeatCount") : 0); }
-    public int getScanCode() { return (meglerProps.get("ScanCode") instanceof Integer ? (Integer) meglerProps.get("ScanCode") : 0); }
+    public int getFlags() { return (megletProps.get("Flags") instanceof Integer ? (Integer) megletProps.get("Flags") : 0); }
+    public int getKeyCode() { return (megletProps.get("KeyCode") instanceof Integer ? (Integer) megletProps.get("KeyCode") : 0); }
+    public int getMetaState() { return (megletProps.get("MetaState") instanceof Integer ? (Integer) megletProps.get("MetaState") : 0); }
+    public int getRepeatCount() { return (megletProps.get("RepeatCount") instanceof Integer ? (Integer) megletProps.get("RepeatCount") : 0); }
+    public int getScanCode() { return (megletProps.get("ScanCode") instanceof Integer ? (Integer) megletProps.get("ScanCode") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     VerifiedKeyEvent() { this((int) 0, (long) 0L, (int) 0, (int) 0, (int) 0, (long) 0L, (int) 0, (int) 0, (int) 0, (int) 0, (int) 0); }
 }

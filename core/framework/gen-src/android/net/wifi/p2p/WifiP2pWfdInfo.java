@@ -3,7 +3,7 @@ package android.net.wifi.p2p;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WifiP2pWfdInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int DEVICE_INFO_AUDIO_ONLY_SUPPORT_AT_SOURCE = 2048;
     public static final int DEVICE_INFO_AUDIO_UNSUPPORTED_AT_PRIMARY_SINK = 1024;
@@ -27,29 +27,29 @@ public final class WifiP2pWfdInfo implements android.os.Parcelable {
     public WifiP2pWfdInfo(int p0, int p1, int p2) {}
     public WifiP2pWfdInfo(android.net.wifi.p2p.WifiP2pWfdInfo p0) {}
     public int describeContents() { return 0; }
-    public int getControlPort() { return (meglerProps.get("ControlPort") instanceof Integer ? (Integer) meglerProps.get("ControlPort") : 0); }
-    public int getDeviceInfo() { return (meglerProps.get("DeviceInfo") instanceof Integer ? (Integer) meglerProps.get("DeviceInfo") : 0); }
-    public java.lang.String getDeviceInfoHex() { return (java.lang.String) meglerProps.get("DeviceInfoHex"); }
-    public int getDeviceType() { return (meglerProps.get("DeviceType") instanceof Integer ? (Integer) meglerProps.get("DeviceType") : 0); }
-    public int getMaxThroughput() { return (meglerProps.get("MaxThroughput") instanceof Integer ? (Integer) meglerProps.get("MaxThroughput") : 0); }
-    public int getR2DeviceInfo() { return (meglerProps.get("R2DeviceInfo") instanceof Integer ? (Integer) meglerProps.get("R2DeviceInfo") : 0); }
-    public java.lang.String getR2DeviceInfoHex() { return (java.lang.String) meglerProps.get("R2DeviceInfoHex"); }
-    public int getR2DeviceType() { return (meglerProps.get("R2DeviceType") instanceof Integer ? (Integer) meglerProps.get("R2DeviceType") : 0); }
-    public boolean isContentProtectionSupported() { return (meglerProps.get("ContentProtectionSupported") instanceof Boolean ? (Boolean) meglerProps.get("ContentProtectionSupported") : false); }
-    public boolean isCoupledSinkSupportedAtSink() { return (meglerProps.get("CoupledSinkSupportedAtSink") instanceof Boolean ? (Boolean) meglerProps.get("CoupledSinkSupportedAtSink") : false); }
-    public boolean isCoupledSinkSupportedAtSource() { return (meglerProps.get("CoupledSinkSupportedAtSource") instanceof Boolean ? (Boolean) meglerProps.get("CoupledSinkSupportedAtSource") : false); }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
-    public boolean isR2Supported() { return (meglerProps.get("R2Supported") instanceof Boolean ? (Boolean) meglerProps.get("R2Supported") : false); }
-    public boolean isSessionAvailable() { return (meglerProps.get("SessionAvailable") instanceof Boolean ? (Boolean) meglerProps.get("SessionAvailable") : false); }
-    public void setContentProtectionSupported(boolean p0) { meglerProps.put("ContentProtectionSupported", Boolean.valueOf(p0)); }
-    public void setControlPort(int p0) { meglerProps.put("ControlPort", Integer.valueOf(p0)); }
-    public void setCoupledSinkSupportAtSink(boolean p0) { meglerProps.put("CoupledSinkSupportAtSink", Boolean.valueOf(p0)); }
-    public void setCoupledSinkSupportAtSource(boolean p0) { meglerProps.put("CoupledSinkSupportAtSource", Boolean.valueOf(p0)); }
+    public int getControlPort() { return (megletProps.get("ControlPort") instanceof Integer ? (Integer) megletProps.get("ControlPort") : 0); }
+    public int getDeviceInfo() { return (megletProps.get("DeviceInfo") instanceof Integer ? (Integer) megletProps.get("DeviceInfo") : 0); }
+    public java.lang.String getDeviceInfoHex() { return (java.lang.String) megletProps.get("DeviceInfoHex"); }
+    public int getDeviceType() { return (megletProps.get("DeviceType") instanceof Integer ? (Integer) megletProps.get("DeviceType") : 0); }
+    public int getMaxThroughput() { return (megletProps.get("MaxThroughput") instanceof Integer ? (Integer) megletProps.get("MaxThroughput") : 0); }
+    public int getR2DeviceInfo() { return (megletProps.get("R2DeviceInfo") instanceof Integer ? (Integer) megletProps.get("R2DeviceInfo") : 0); }
+    public java.lang.String getR2DeviceInfoHex() { return (java.lang.String) megletProps.get("R2DeviceInfoHex"); }
+    public int getR2DeviceType() { return (megletProps.get("R2DeviceType") instanceof Integer ? (Integer) megletProps.get("R2DeviceType") : 0); }
+    public boolean isContentProtectionSupported() { return (megletProps.get("ContentProtectionSupported") instanceof Boolean ? (Boolean) megletProps.get("ContentProtectionSupported") : false); }
+    public boolean isCoupledSinkSupportedAtSink() { return (megletProps.get("CoupledSinkSupportedAtSink") instanceof Boolean ? (Boolean) megletProps.get("CoupledSinkSupportedAtSink") : false); }
+    public boolean isCoupledSinkSupportedAtSource() { return (megletProps.get("CoupledSinkSupportedAtSource") instanceof Boolean ? (Boolean) megletProps.get("CoupledSinkSupportedAtSource") : false); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
+    public boolean isR2Supported() { return (megletProps.get("R2Supported") instanceof Boolean ? (Boolean) megletProps.get("R2Supported") : false); }
+    public boolean isSessionAvailable() { return (megletProps.get("SessionAvailable") instanceof Boolean ? (Boolean) megletProps.get("SessionAvailable") : false); }
+    public void setContentProtectionSupported(boolean p0) { megletProps.put("ContentProtectionSupported", Boolean.valueOf(p0)); }
+    public void setControlPort(int p0) { megletProps.put("ControlPort", Integer.valueOf(p0)); }
+    public void setCoupledSinkSupportAtSink(boolean p0) { megletProps.put("CoupledSinkSupportAtSink", Boolean.valueOf(p0)); }
+    public void setCoupledSinkSupportAtSource(boolean p0) { megletProps.put("CoupledSinkSupportAtSource", Boolean.valueOf(p0)); }
     public boolean setDeviceType(int p0) { return false; }
-    public void setEnabled(boolean p0) { meglerProps.put("Enabled", Boolean.valueOf(p0)); }
-    public void setMaxThroughput(int p0) { meglerProps.put("MaxThroughput", Integer.valueOf(p0)); }
-    public void setR2DeviceInfo(int p0) { meglerProps.put("R2DeviceInfo", Integer.valueOf(p0)); }
+    public void setEnabled(boolean p0) { megletProps.put("Enabled", Boolean.valueOf(p0)); }
+    public void setMaxThroughput(int p0) { megletProps.put("MaxThroughput", Integer.valueOf(p0)); }
+    public void setR2DeviceInfo(int p0) { megletProps.put("R2DeviceInfo", Integer.valueOf(p0)); }
     public boolean setR2DeviceType(int p0) { return false; }
-    public void setSessionAvailable(boolean p0) { meglerProps.put("SessionAvailable", Boolean.valueOf(p0)); }
+    public void setSessionAvailable(boolean p0) { megletProps.put("SessionAvailable", Boolean.valueOf(p0)); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

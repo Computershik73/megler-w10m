@@ -3,19 +3,19 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DeleteGesture extends android.view.inputmethod.PreviewableHandwritingGesture implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.graphics.RectF getDeletionArea() { return (android.graphics.RectF) meglerProps.get("DeletionArea"); }
-    public int getGranularity() { return (meglerProps.get("Granularity") instanceof Integer ? (Integer) meglerProps.get("Granularity") : 0); }
+    public android.graphics.RectF getDeletionArea() { return (android.graphics.RectF) megletProps.get("DeletionArea"); }
+    public int getGranularity() { return (megletProps.get("Granularity") instanceof Integer ? (Integer) megletProps.get("Granularity") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected DeleteGesture() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.view.inputmethod.DeleteGesture build() { android.view.inputmethod.DeleteGesture x = new android.view.inputmethod.DeleteGesture(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.view.inputmethod.DeleteGesture.Builder setDeletionArea(android.graphics.RectF p0) { meglerProps.put("DeletionArea", p0); return this; }
-        public android.view.inputmethod.DeleteGesture.Builder setFallbackText(java.lang.String p0) { meglerProps.put("FallbackText", p0); return this; }
-        public android.view.inputmethod.DeleteGesture.Builder setGranularity(int p0) { meglerProps.put("Granularity", Integer.valueOf(p0)); return this; }
+        public android.view.inputmethod.DeleteGesture build() { android.view.inputmethod.DeleteGesture x = new android.view.inputmethod.DeleteGesture(); x.megletProps.putAll(megletProps); return x; }
+        public android.view.inputmethod.DeleteGesture.Builder setDeletionArea(android.graphics.RectF p0) { megletProps.put("DeletionArea", p0); return this; }
+        public android.view.inputmethod.DeleteGesture.Builder setFallbackText(java.lang.String p0) { megletProps.put("FallbackText", p0); return this; }
+        public android.view.inputmethod.DeleteGesture.Builder setGranularity(int p0) { megletProps.put("Granularity", Integer.valueOf(p0)); return this; }
     }
 }

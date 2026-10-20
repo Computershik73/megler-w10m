@@ -3,13 +3,13 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InputConfiguration {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public InputConfiguration(int p0, int p1, int p2) {}
     public InputConfiguration(int p0, int p1, int p2, boolean p3) {}
     public InputConfiguration(java.util.Collection p0, int p1) {}
-    public int getFormat() { return (meglerProps.get("Format") instanceof Integer ? (Integer) meglerProps.get("Format") : 0); }
-    public int getHeight() { return (meglerProps.get("Height") instanceof Integer ? (Integer) meglerProps.get("Height") : 0); }
-    public int getWidth() { return (meglerProps.get("Width") instanceof Integer ? (Integer) meglerProps.get("Width") : 0); }
-    public boolean isMultiResolution() { return (meglerProps.get("MultiResolution") instanceof Boolean ? (Boolean) meglerProps.get("MultiResolution") : false); }
+    public int getFormat() { return (megletProps.get("Format") instanceof Integer ? (Integer) megletProps.get("Format") : 0); }
+    public int getHeight() { return (megletProps.get("Height") instanceof Integer ? (Integer) megletProps.get("Height") : 0); }
+    public int getWidth() { return (megletProps.get("Width") instanceof Integer ? (Integer) megletProps.get("Width") : 0); }
+    public boolean isMultiResolution() { return (megletProps.get("MultiResolution") instanceof Boolean ? (Boolean) megletProps.get("MultiResolution") : false); }
     InputConfiguration() { this((java.util.Collection) null, (int) 0); }
 }

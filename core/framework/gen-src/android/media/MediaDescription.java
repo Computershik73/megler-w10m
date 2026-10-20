@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MediaDescription implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final long BT_FOLDER_TYPE_ALBUMS = 2L;
     public static final long BT_FOLDER_TYPE_ARTISTS = 3L;
     public static final long BT_FOLDER_TYPE_GENRES = 4L;
@@ -14,27 +14,27 @@ public class MediaDescription implements android.os.Parcelable {
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String EXTRA_BT_FOLDER_TYPE = "android.media.extra.BT_FOLDER_TYPE";
     public int describeContents() { return 0; }
-    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) meglerProps.get("Description"); }
-    public android.os.Bundle getExtras() { return (android.os.Bundle) meglerProps.get("Extras"); }
-    public android.graphics.Bitmap getIconBitmap() { return (android.graphics.Bitmap) meglerProps.get("IconBitmap"); }
-    public android.net.Uri getIconUri() { return (android.net.Uri) meglerProps.get("IconUri"); }
-    public java.lang.String getMediaId() { return (java.lang.String) meglerProps.get("MediaId"); }
-    public android.net.Uri getMediaUri() { return (android.net.Uri) meglerProps.get("MediaUri"); }
-    public java.lang.CharSequence getSubtitle() { return (java.lang.CharSequence) meglerProps.get("Subtitle"); }
-    public java.lang.CharSequence getTitle() { return (java.lang.CharSequence) meglerProps.get("Title"); }
+    public java.lang.CharSequence getDescription() { return (java.lang.CharSequence) megletProps.get("Description"); }
+    public android.os.Bundle getExtras() { return (android.os.Bundle) megletProps.get("Extras"); }
+    public android.graphics.Bitmap getIconBitmap() { return (android.graphics.Bitmap) megletProps.get("IconBitmap"); }
+    public android.net.Uri getIconUri() { return (android.net.Uri) megletProps.get("IconUri"); }
+    public java.lang.String getMediaId() { return (java.lang.String) megletProps.get("MediaId"); }
+    public android.net.Uri getMediaUri() { return (android.net.Uri) megletProps.get("MediaUri"); }
+    public java.lang.CharSequence getSubtitle() { return (java.lang.CharSequence) megletProps.get("Subtitle"); }
+    public java.lang.CharSequence getTitle() { return (java.lang.CharSequence) megletProps.get("Title"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected MediaDescription() {}
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.media.MediaDescription build() { android.media.MediaDescription x = new android.media.MediaDescription(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.media.MediaDescription.Builder setDescription(java.lang.CharSequence p0) { meglerProps.put("Description", p0); return this; }
-        public android.media.MediaDescription.Builder setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); return this; }
-        public android.media.MediaDescription.Builder setIconBitmap(android.graphics.Bitmap p0) { meglerProps.put("IconBitmap", p0); return this; }
-        public android.media.MediaDescription.Builder setIconUri(android.net.Uri p0) { meglerProps.put("IconUri", p0); return this; }
-        public android.media.MediaDescription.Builder setMediaId(java.lang.String p0) { meglerProps.put("MediaId", p0); return this; }
-        public android.media.MediaDescription.Builder setMediaUri(android.net.Uri p0) { meglerProps.put("MediaUri", p0); return this; }
-        public android.media.MediaDescription.Builder setSubtitle(java.lang.CharSequence p0) { meglerProps.put("Subtitle", p0); return this; }
-        public android.media.MediaDescription.Builder setTitle(java.lang.CharSequence p0) { meglerProps.put("Title", p0); return this; }
+        public android.media.MediaDescription build() { android.media.MediaDescription x = new android.media.MediaDescription(); x.megletProps.putAll(megletProps); return x; }
+        public android.media.MediaDescription.Builder setDescription(java.lang.CharSequence p0) { megletProps.put("Description", p0); return this; }
+        public android.media.MediaDescription.Builder setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); return this; }
+        public android.media.MediaDescription.Builder setIconBitmap(android.graphics.Bitmap p0) { megletProps.put("IconBitmap", p0); return this; }
+        public android.media.MediaDescription.Builder setIconUri(android.net.Uri p0) { megletProps.put("IconUri", p0); return this; }
+        public android.media.MediaDescription.Builder setMediaId(java.lang.String p0) { megletProps.put("MediaId", p0); return this; }
+        public android.media.MediaDescription.Builder setMediaUri(android.net.Uri p0) { megletProps.put("MediaUri", p0); return this; }
+        public android.media.MediaDescription.Builder setSubtitle(java.lang.CharSequence p0) { megletProps.put("Subtitle", p0); return this; }
+        public android.media.MediaDescription.Builder setTitle(java.lang.CharSequence p0) { megletProps.put("Title", p0); return this; }
     }
 }

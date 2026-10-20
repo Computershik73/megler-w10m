@@ -51,7 +51,7 @@ public class PreferenceManager {
     }
 
     public SharedPreferences getSharedPreferences() {
-        if (mPrefs == null) mPrefs = (mContext != null ? mContext : android.app.Application.meglerGet()).getSharedPreferences(mName, mMode);
+        if (mPrefs == null) mPrefs = (mContext != null ? mContext : android.app.Application.megletGet()).getSharedPreferences(mName, mMode);
         return mPrefs;
     }
     public void setSharedPreferencesName(String name) { mName = name; mPrefs = null; }
@@ -69,13 +69,13 @@ public class PreferenceManager {
         return s;
     }
     public Preference findPreference(CharSequence key) { return mScreen != null ? mScreen.findPreference(key) : null; }
-    PreferenceScreen meglerScreen() { return mScreen; }
-    boolean meglerSetScreen(PreferenceScreen s) { if (s == mScreen) return false; mScreen = s; return true; }
-    void meglerSetTreeClickListener(OnPreferenceTreeClickListener l) { mTreeClick = l; }
-    boolean meglerTreeClick(PreferenceScreen screen, Preference p) { return mTreeClick != null && mTreeClick.onPreferenceTreeClick(screen, p); }
+    PreferenceScreen megletScreen() { return mScreen; }
+    boolean megletSetScreen(PreferenceScreen s) { if (s == mScreen) return false; mScreen = s; return true; }
+    void megletSetTreeClickListener(OnPreferenceTreeClickListener l) { mTreeClick = l; }
+    boolean megletTreeClick(PreferenceScreen screen, Preference p) { return mTreeClick != null && mTreeClick.onPreferenceTreeClick(screen, p); }
     public void registerOnActivityStopListener(OnActivityStopListener l) { if (!mStopListeners.contains(l)) mStopListeners.add(l); }
     public void unregisterOnActivityStopListener(OnActivityStopListener l) { mStopListeners.remove(l); }
-    void meglerActivityStop() { for (OnActivityStopListener l : new ArrayList<>(mStopListeners)) l.onActivityStop(); }
+    void megletActivityStop() { for (OnActivityStopListener l : new ArrayList<>(mStopListeners)) l.onActivityStop(); }
 
     /* ---- a preferences file (res/xml): <PreferenceScreen>, <PreferenceCategory>, the platform's preference tags by name, an app's
        own by class name, <intent> and <extra> inside them */

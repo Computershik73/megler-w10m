@@ -3,21 +3,21 @@ package android.service.carrier;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class CarrierIdentifier implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public CarrierIdentifier(android.os.Parcel p0) {}
     public CarrierIdentifier(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String p3, java.lang.String p4, java.lang.String p5) {}
     public CarrierIdentifier(java.lang.String p0, java.lang.String p1, java.lang.String p2, java.lang.String p3, java.lang.String p4, java.lang.String p5, int p6, int p7) {}
     public CarrierIdentifier(byte[] p0, java.lang.String p1, java.lang.String p2) {}
     public int describeContents() { return 0; }
-    public int getCarrierId() { return (meglerProps.get("CarrierId") instanceof Integer ? (Integer) meglerProps.get("CarrierId") : 0); }
-    public java.lang.String getGid1() { return (java.lang.String) meglerProps.get("Gid1"); }
-    public java.lang.String getGid2() { return (java.lang.String) meglerProps.get("Gid2"); }
-    public java.lang.String getImsi() { return (java.lang.String) meglerProps.get("Imsi"); }
-    public java.lang.String getMcc() { return (java.lang.String) meglerProps.get("Mcc"); }
-    public java.lang.String getMnc() { return (java.lang.String) meglerProps.get("Mnc"); }
-    public int getSpecificCarrierId() { return (meglerProps.get("SpecificCarrierId") instanceof Integer ? (Integer) meglerProps.get("SpecificCarrierId") : 0); }
-    public java.lang.String getSpn() { return (java.lang.String) meglerProps.get("Spn"); }
+    public int getCarrierId() { return (megletProps.get("CarrierId") instanceof Integer ? (Integer) megletProps.get("CarrierId") : 0); }
+    public java.lang.String getGid1() { return (java.lang.String) megletProps.get("Gid1"); }
+    public java.lang.String getGid2() { return (java.lang.String) megletProps.get("Gid2"); }
+    public java.lang.String getImsi() { return (java.lang.String) megletProps.get("Imsi"); }
+    public java.lang.String getMcc() { return (java.lang.String) megletProps.get("Mcc"); }
+    public java.lang.String getMnc() { return (java.lang.String) megletProps.get("Mnc"); }
+    public int getSpecificCarrierId() { return (megletProps.get("SpecificCarrierId") instanceof Integer ? (Integer) megletProps.get("SpecificCarrierId") : 0); }
+    public java.lang.String getSpn() { return (java.lang.String) megletProps.get("Spn"); }
     public void readFromParcel(android.os.Parcel p0) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     CarrierIdentifier() { this((android.os.Parcel) null); }

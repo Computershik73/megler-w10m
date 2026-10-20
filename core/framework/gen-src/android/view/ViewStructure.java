@@ -3,7 +3,7 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ViewStructure {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String EXTRA_ACTIVE_CHILDREN_IDS = "android.view.ViewStructure.extra.ACTIVE_CHILDREN_IDS";
     public static final java.lang.String EXTRA_CONTAINS_SECURE_LAYERS = "android.view.ViewStructure.extra.CONTAINS_SECURE_LAYERS";
     public static final java.lang.String EXTRA_FIRST_ACTIVE_POSITION = "android.view.ViewStructure.extra.FIRST_ACTIVE_POSITION";
@@ -18,8 +18,8 @@ public abstract class ViewStructure {
     public abstract int getChildCount();
     public abstract android.os.Bundle getExtras();
     public abstract java.lang.CharSequence getHint();
-    public android.os.OutcomeReceiver getPendingCredentialCallback() { return (android.os.OutcomeReceiver) meglerProps.get("PendingCredentialCallback"); }
-    public android.credentials.GetCredentialRequest getPendingCredentialRequest() { return (android.credentials.GetCredentialRequest) meglerProps.get("PendingCredentialRequest"); }
+    public android.os.OutcomeReceiver getPendingCredentialCallback() { return (android.os.OutcomeReceiver) megletProps.get("PendingCredentialCallback"); }
+    public android.credentials.GetCredentialRequest getPendingCredentialRequest() { return (android.credentials.GetCredentialRequest) megletProps.get("PendingCredentialRequest"); }
     public abstract android.graphics.Rect getTempRect();
     public abstract java.lang.CharSequence getText();
     public abstract int getTextSelectionEnd();
@@ -51,36 +51,36 @@ public abstract class ViewStructure {
     public abstract void setFocusable(boolean p0);
     public abstract void setFocused(boolean p0);
     public abstract void setHint(java.lang.CharSequence p0);
-    public void setHintIdEntry(java.lang.String p0) { meglerProps.put("HintIdEntry", p0); }
+    public void setHintIdEntry(java.lang.String p0) { megletProps.put("HintIdEntry", p0); }
     public abstract void setHtmlInfo(android.view.ViewStructure.HtmlInfo p0);
     public abstract void setId(int p0, java.lang.String p1, java.lang.String p2, java.lang.String p3);
-    public void setImportantForAutofill(int p0) { meglerProps.put("ImportantForAutofill", Integer.valueOf(p0)); }
+    public void setImportantForAutofill(int p0) { megletProps.put("ImportantForAutofill", Integer.valueOf(p0)); }
     public abstract void setInputType(int p0);
-    public void setIsCredential(boolean p0) { meglerProps.put("IsCredential", Boolean.valueOf(p0)); }
+    public void setIsCredential(boolean p0) { megletProps.put("IsCredential", Boolean.valueOf(p0)); }
     public abstract void setLocaleList(android.os.LocaleList p0);
     public abstract void setLongClickable(boolean p0);
-    public void setMaxTextEms(int p0) { meglerProps.put("MaxTextEms", Integer.valueOf(p0)); }
-    public void setMaxTextLength(int p0) { meglerProps.put("MaxTextLength", Integer.valueOf(p0)); }
-    public void setMinTextEms(int p0) { meglerProps.put("MinTextEms", Integer.valueOf(p0)); }
+    public void setMaxTextEms(int p0) { megletProps.put("MaxTextEms", Integer.valueOf(p0)); }
+    public void setMaxTextLength(int p0) { megletProps.put("MaxTextLength", Integer.valueOf(p0)); }
+    public void setMinTextEms(int p0) { megletProps.put("MinTextEms", Integer.valueOf(p0)); }
     public abstract void setOpaque(boolean p0);
     public void setPendingCredentialRequest(android.credentials.GetCredentialRequest p0, android.os.OutcomeReceiver p1) {}
-    public void setReceiveContentMimeTypes(java.lang.String[] p0) { meglerProps.put("ReceiveContentMimeTypes", p0); }
+    public void setReceiveContentMimeTypes(java.lang.String[] p0) { megletProps.put("ReceiveContentMimeTypes", p0); }
     public abstract void setSelected(boolean p0);
     public abstract void setText(java.lang.CharSequence p0);
     public abstract void setText(java.lang.CharSequence p0, int p1, int p2);
-    public void setTextIdEntry(java.lang.String p0) { meglerProps.put("TextIdEntry", p0); }
+    public void setTextIdEntry(java.lang.String p0) { megletProps.put("TextIdEntry", p0); }
     public abstract void setTextLines(int[] p0, int[] p1);
     public abstract void setTextStyle(float p0, int p1, int p2, int p3);
     public abstract void setTransformation(android.graphics.Matrix p0);
     public abstract void setVisibility(int p0);
     public abstract void setWebDomain(java.lang.String p0);
     public static abstract class HtmlInfo {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public HtmlInfo() {}
         public abstract java.util.List getAttributes();
         public abstract java.lang.String getTag();
         public static abstract class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder() {}
             public abstract android.view.ViewStructure.HtmlInfo.Builder addAttribute(java.lang.String p0, java.lang.String p1);
             public abstract android.view.ViewStructure.HtmlInfo build();

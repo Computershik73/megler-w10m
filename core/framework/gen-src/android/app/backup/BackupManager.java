@@ -3,7 +3,7 @@ package android.app.backup;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class BackupManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ERROR_AGENT_FAILURE = -1003;
     public static final int ERROR_BACKUP_CANCELLED = -2003;
     public static final int ERROR_BACKUP_NOT_ALLOWED = -2001;
@@ -30,16 +30,16 @@ public class BackupManager {
     public long getAvailableRestoreToken(java.lang.String p0) { return 0L; }
     public android.app.backup.BackupRestoreEventLogger getBackupRestoreEventLogger(android.app.backup.BackupAgent p0) { return null; }
     public android.content.Intent getConfigurationIntent(java.lang.String p0) { return null; }
-    public java.lang.String getCurrentTransport() { return (java.lang.String) meglerProps.get("CurrentTransport"); }
-    public android.content.ComponentName getCurrentTransportComponent() { return (android.content.ComponentName) meglerProps.get("CurrentTransportComponent"); }
+    public java.lang.String getCurrentTransport() { return (java.lang.String) megletProps.get("CurrentTransport"); }
+    public android.content.ComponentName getCurrentTransportComponent() { return (android.content.ComponentName) megletProps.get("CurrentTransportComponent"); }
     public android.content.Intent getDataManagementIntent(java.lang.String p0) { return null; }
     public java.lang.CharSequence getDataManagementIntentLabel(java.lang.String p0) { return null; }
     public java.lang.String getDataManagementLabel(java.lang.String p0) { return null; }
-    public android.app.backup.BackupRestoreEventLogger getDelayedRestoreLogger() { return (android.app.backup.BackupRestoreEventLogger) meglerProps.get("DelayedRestoreLogger"); }
+    public android.app.backup.BackupRestoreEventLogger getDelayedRestoreLogger() { return (android.app.backup.BackupRestoreEventLogger) megletProps.get("DelayedRestoreLogger"); }
     public java.lang.String getDestinationString(java.lang.String p0) { return null; }
     public android.os.UserHandle getUserForAncestralSerialNumber(long p0) { return null; }
     public boolean isAppEligibleForBackup(java.lang.String p0) { return false; }
-    public boolean isBackupEnabled() { return (meglerProps.get("BackupEnabled") instanceof Boolean ? (Boolean) meglerProps.get("BackupEnabled") : false); }
+    public boolean isBackupEnabled() { return (megletProps.get("BackupEnabled") instanceof Boolean ? (Boolean) megletProps.get("BackupEnabled") : false); }
     public boolean isBackupServiceActive(android.os.UserHandle p0) { return false; }
     public java.lang.String[] listAllTransports() { return null; }
     public void reportDelayedRestoreResult(android.app.backup.BackupRestoreEventLogger p0) {}
@@ -49,10 +49,10 @@ public class BackupManager {
     public int requestRestore(android.app.backup.RestoreObserver p0, android.app.backup.BackupManagerMonitor p1) { return 0; }
     public java.lang.String selectBackupTransport(java.lang.String p0) { return null; }
     public void selectBackupTransport(android.content.ComponentName p0, android.app.backup.SelectBackupTransportCallback p1) {}
-    public void setAncestralSerialNumber(long p0) { meglerProps.put("AncestralSerialNumber", Long.valueOf(p0)); }
-    public void setAutoRestore(boolean p0) { meglerProps.put("AutoRestore", Boolean.valueOf(p0)); }
-    public void setBackupEnabled(boolean p0) { meglerProps.put("BackupEnabled", Boolean.valueOf(p0)); }
-    public void setFrameworkSchedulingEnabled(boolean p0) { meglerProps.put("FrameworkSchedulingEnabled", Boolean.valueOf(p0)); }
+    public void setAncestralSerialNumber(long p0) { megletProps.put("AncestralSerialNumber", Long.valueOf(p0)); }
+    public void setAutoRestore(boolean p0) { megletProps.put("AutoRestore", Boolean.valueOf(p0)); }
+    public void setBackupEnabled(boolean p0) { megletProps.put("BackupEnabled", Boolean.valueOf(p0)); }
+    public void setFrameworkSchedulingEnabled(boolean p0) { megletProps.put("FrameworkSchedulingEnabled", Boolean.valueOf(p0)); }
     public void updateTransportAttributes(android.content.ComponentName p0, java.lang.String p1, android.content.Intent p2, java.lang.String p3, android.content.Intent p4, java.lang.CharSequence p5) {}
     public void updateTransportAttributes(android.content.ComponentName p0, java.lang.String p1, android.content.Intent p2, java.lang.String p3, android.content.Intent p4, java.lang.String p5) {}
     BackupManager() { this((android.content.Context) null); }

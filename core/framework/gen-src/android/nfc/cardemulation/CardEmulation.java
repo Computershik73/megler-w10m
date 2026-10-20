@@ -3,7 +3,7 @@ package android.nfc.cardemulation;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CardEmulation {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_CHANGE_DEFAULT = "android.nfc.cardemulation.action.ACTION_CHANGE_DEFAULT";
     public static final java.lang.String CATEGORY_OTHER = "other";
     public static final java.lang.String CATEGORY_PAYMENT = "payment";
@@ -42,13 +42,13 @@ public final class CardEmulation {
     public static java.lang.String validatePollingLoopFilter(java.lang.String p0) { return null; }
     public static java.lang.String validatePollingLoopPatternFilter(java.lang.String p0) { return null; }
     public boolean categoryAllowsForegroundPreference(java.lang.String p0) { return false; }
-    public java.util.List getAidsForPreferredPaymentService() { return (meglerProps.get("AidsForPreferredPaymentService") != null ? (java.util.List) meglerProps.get("AidsForPreferredPaymentService") : new java.util.ArrayList()); }
+    public java.util.List getAidsForPreferredPaymentService() { return (megletProps.get("AidsForPreferredPaymentService") != null ? (java.util.List) megletProps.get("AidsForPreferredPaymentService") : new java.util.ArrayList()); }
     public java.util.List getAidsForService(android.content.ComponentName p0, java.lang.String p1) { return new java.util.ArrayList(); }
-    public int getDefaultNfcSubscriptionId() { return (meglerProps.get("DefaultNfcSubscriptionId") instanceof Integer ? (Integer) meglerProps.get("DefaultNfcSubscriptionId") : 0); }
-    public java.lang.CharSequence getDescriptionForPreferredPaymentService() { return (java.lang.CharSequence) meglerProps.get("DescriptionForPreferredPaymentService"); }
+    public int getDefaultNfcSubscriptionId() { return (megletProps.get("DefaultNfcSubscriptionId") instanceof Integer ? (Integer) megletProps.get("DefaultNfcSubscriptionId") : 0); }
+    public java.lang.CharSequence getDescriptionForPreferredPaymentService() { return (java.lang.CharSequence) megletProps.get("DescriptionForPreferredPaymentService"); }
     public java.util.List getPollingLoopFiltersForService(android.content.ComponentName p0) { return new java.util.ArrayList(); }
     public java.util.List getPollingLoopPatternFiltersForService(android.content.ComponentName p0) { return new java.util.ArrayList(); }
-    public java.lang.String getRouteDestinationForPreferredPaymentService() { return (java.lang.String) meglerProps.get("RouteDestinationForPreferredPaymentService"); }
+    public java.lang.String getRouteDestinationForPreferredPaymentService() { return (java.lang.String) megletProps.get("RouteDestinationForPreferredPaymentService"); }
     public int getSelectionModeForCategory(java.lang.String p0) { return 0; }
     public java.util.List getServices(java.lang.String p0) { return new java.util.ArrayList(); }
     public java.util.List getServices(java.lang.String p0, int p1) { return new java.util.ArrayList(); }
@@ -56,7 +56,7 @@ public final class CardEmulation {
     public boolean isDefaultServiceForCategory(android.content.ComponentName p0, java.lang.String p1) { return false; }
     public boolean isDeviceScreenOnRequiredForService(android.content.ComponentName p0) { return false; }
     public boolean isDeviceUnlockRequiredForService(android.content.ComponentName p0) { return false; }
-    public boolean isEuiccSupported() { return (meglerProps.get("EuiccSupported") instanceof Boolean ? (Boolean) meglerProps.get("EuiccSupported") : false); }
+    public boolean isEuiccSupported() { return (megletProps.get("EuiccSupported") instanceof Boolean ? (Boolean) megletProps.get("EuiccSupported") : false); }
     public void overrideRoutingTable(android.app.Activity p0, int p1, int p2) {}
     public void recoverRoutingTable(android.app.Activity p0) {}
     public boolean registerAidsForService(android.content.ComponentName p0, java.lang.String p1, java.util.List p2) { return false; }

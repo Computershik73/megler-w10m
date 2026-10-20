@@ -3,7 +3,7 @@ package android.mtp;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class MtpEvent {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int EVENT_CANCEL_TRANSACTION = 16385;
     public static final int EVENT_CAPTURE_COMPLETE = 16397;
     public static final int EVENT_DEVICE_INFO_CHANGED = 16392;
@@ -22,15 +22,15 @@ public class MtpEvent {
     public static final int EVENT_STORE_REMOVED = 16389;
     public static final int EVENT_UNDEFINED = 16384;
     public static final int EVENT_UNREPORTED_STATUS = 16398;
-    public int getDevicePropCode() { return (meglerProps.get("DevicePropCode") instanceof Integer ? (Integer) meglerProps.get("DevicePropCode") : 0); }
-    public int getEventCode() { return (meglerProps.get("EventCode") instanceof Integer ? (Integer) meglerProps.get("EventCode") : 0); }
-    public int getObjectFormatCode() { return (meglerProps.get("ObjectFormatCode") instanceof Integer ? (Integer) meglerProps.get("ObjectFormatCode") : 0); }
-    public int getObjectHandle() { return (meglerProps.get("ObjectHandle") instanceof Integer ? (Integer) meglerProps.get("ObjectHandle") : 0); }
-    public int getObjectPropCode() { return (meglerProps.get("ObjectPropCode") instanceof Integer ? (Integer) meglerProps.get("ObjectPropCode") : 0); }
-    public int getParameter1() { return (meglerProps.get("Parameter1") instanceof Integer ? (Integer) meglerProps.get("Parameter1") : 0); }
-    public int getParameter2() { return (meglerProps.get("Parameter2") instanceof Integer ? (Integer) meglerProps.get("Parameter2") : 0); }
-    public int getParameter3() { return (meglerProps.get("Parameter3") instanceof Integer ? (Integer) meglerProps.get("Parameter3") : 0); }
-    public int getStorageId() { return (meglerProps.get("StorageId") instanceof Integer ? (Integer) meglerProps.get("StorageId") : 0); }
-    public int getTransactionId() { return (meglerProps.get("TransactionId") instanceof Integer ? (Integer) meglerProps.get("TransactionId") : 0); }
+    public int getDevicePropCode() { return (megletProps.get("DevicePropCode") instanceof Integer ? (Integer) megletProps.get("DevicePropCode") : 0); }
+    public int getEventCode() { return (megletProps.get("EventCode") instanceof Integer ? (Integer) megletProps.get("EventCode") : 0); }
+    public int getObjectFormatCode() { return (megletProps.get("ObjectFormatCode") instanceof Integer ? (Integer) megletProps.get("ObjectFormatCode") : 0); }
+    public int getObjectHandle() { return (megletProps.get("ObjectHandle") instanceof Integer ? (Integer) megletProps.get("ObjectHandle") : 0); }
+    public int getObjectPropCode() { return (megletProps.get("ObjectPropCode") instanceof Integer ? (Integer) megletProps.get("ObjectPropCode") : 0); }
+    public int getParameter1() { return (megletProps.get("Parameter1") instanceof Integer ? (Integer) megletProps.get("Parameter1") : 0); }
+    public int getParameter2() { return (megletProps.get("Parameter2") instanceof Integer ? (Integer) megletProps.get("Parameter2") : 0); }
+    public int getParameter3() { return (megletProps.get("Parameter3") instanceof Integer ? (Integer) megletProps.get("Parameter3") : 0); }
+    public int getStorageId() { return (megletProps.get("StorageId") instanceof Integer ? (Integer) megletProps.get("StorageId") : 0); }
+    public int getTransactionId() { return (megletProps.get("TransactionId") instanceof Integer ? (Integer) megletProps.get("TransactionId") : 0); }
     protected MtpEvent() {}
 }

@@ -457,7 +457,7 @@ static char *synthetic(const char *g, size_t *size)
         tb_add(&t, "cpu  100 0 100 10000 0 0 0 0 0 0\n");
         for (i = 0; i < cpus; i++) tb_add(&t, "cpu%d 100 0 100 10000 0 0 0 0 0 0\n", i);
     } else if (!strcmp(g, "/proc/version")) {
-        tb_add(&t, "Linux version 4.4.0-megler (megler@w10m) #1 SMP PREEMPT\n");
+        tb_add(&t, "Linux version 4.4.0-meglet (meglet@w10m) #1 SMP PREEMPT\n");
     } else if (!strcmp(g, "/sys/devices/system/cpu/possible") || !strcmp(g, "/sys/devices/system/cpu/present") ||
                !strcmp(g, "/sys/devices/system/cpu/online")) {
         if (cpus > 1) tb_add(&t, "0-%d\n", cpus - 1);
@@ -1613,7 +1613,7 @@ static int g_faccessat(int dirfd, const char *path, int mode, int flags)
 
 /*
  * statfs / statvfs. Every path is on one volume as far as an app can tell:
- * the one Megler keeps its data on, whose real size and free room are the
+ * the one Meglet keeps its data on, whose real size and free room are the
  * answer wherever the path is -- in the app's own folders, in the shared
  * storage, in a link to one of the phone's folders (which is on that volume
  * unless the user keeps the library on a memory card; nobody can be asked

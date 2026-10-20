@@ -3,7 +3,7 @@ package android.app.usage;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class UsageEvents implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int HIDE_LOCUS_EVENTS = 8;
     public static final int HIDE_SHORTCUT_EVENTS = 2;
@@ -23,7 +23,7 @@ public final class UsageEvents implements android.os.Parcelable {
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     UsageEvents() { this((android.os.Parcel) null); }
     public static final class Event {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ACTIVITY_DESTROYED = 24;
         public static final int ACTIVITY_PAUSED = 2;
         public static final int ACTIVITY_RESUMED = 1;
@@ -90,25 +90,25 @@ public final class UsageEvents implements android.os.Parcelable {
         public Event() {}
         public Event(int p0, long p1) {}
         public Event(android.app.usage.UsageEvents.Event p0) {}
-        public int getAppStandbyBucket() { return (meglerProps.get("AppStandbyBucket") instanceof Integer ? (Integer) meglerProps.get("AppStandbyBucket") : 0); }
-        public java.lang.String getClassName() { return (java.lang.String) meglerProps.get("ClassName"); }
-        public android.content.res.Configuration getConfiguration() { return (android.content.res.Configuration) meglerProps.get("Configuration"); }
-        public int getEventType() { return (meglerProps.get("EventType") instanceof Integer ? (Integer) meglerProps.get("EventType") : 0); }
-        public android.os.PersistableBundle getExtras() { return (android.os.PersistableBundle) meglerProps.get("Extras"); }
-        public int getInstanceId() { return (meglerProps.get("InstanceId") instanceof Integer ? (Integer) meglerProps.get("InstanceId") : 0); }
-        public java.lang.String getLocusId() { return (java.lang.String) meglerProps.get("LocusId"); }
-        public java.lang.String getNotificationChannelId() { return (java.lang.String) meglerProps.get("NotificationChannelId"); }
-        public android.app.usage.UsageEvents.Event getObfuscatedIfInstantApp() { return (android.app.usage.UsageEvents.Event) meglerProps.get("ObfuscatedIfInstantApp"); }
-        public android.app.usage.UsageEvents.Event getObfuscatedNotificationEvent() { return (android.app.usage.UsageEvents.Event) meglerProps.get("ObfuscatedNotificationEvent"); }
-        public java.lang.String getPackageName() { return (java.lang.String) meglerProps.get("PackageName"); }
-        public java.lang.String getShortcutId() { return (java.lang.String) meglerProps.get("ShortcutId"); }
-        public int getStandbyReason() { return (meglerProps.get("StandbyReason") instanceof Integer ? (Integer) meglerProps.get("StandbyReason") : 0); }
-        public java.lang.String getTaskRootClassName() { return (java.lang.String) meglerProps.get("TaskRootClassName"); }
-        public java.lang.String getTaskRootPackageName() { return (java.lang.String) meglerProps.get("TaskRootPackageName"); }
-        public long getTimeStamp() { return (meglerProps.get("TimeStamp") instanceof Long ? (Long) meglerProps.get("TimeStamp") : 0L); }
-        public boolean isInstantApp() { return (meglerProps.get("InstantApp") instanceof Boolean ? (Boolean) meglerProps.get("InstantApp") : false); }
+        public int getAppStandbyBucket() { return (megletProps.get("AppStandbyBucket") instanceof Integer ? (Integer) megletProps.get("AppStandbyBucket") : 0); }
+        public java.lang.String getClassName() { return (java.lang.String) megletProps.get("ClassName"); }
+        public android.content.res.Configuration getConfiguration() { return (android.content.res.Configuration) megletProps.get("Configuration"); }
+        public int getEventType() { return (megletProps.get("EventType") instanceof Integer ? (Integer) megletProps.get("EventType") : 0); }
+        public android.os.PersistableBundle getExtras() { return (android.os.PersistableBundle) megletProps.get("Extras"); }
+        public int getInstanceId() { return (megletProps.get("InstanceId") instanceof Integer ? (Integer) megletProps.get("InstanceId") : 0); }
+        public java.lang.String getLocusId() { return (java.lang.String) megletProps.get("LocusId"); }
+        public java.lang.String getNotificationChannelId() { return (java.lang.String) megletProps.get("NotificationChannelId"); }
+        public android.app.usage.UsageEvents.Event getObfuscatedIfInstantApp() { return (android.app.usage.UsageEvents.Event) megletProps.get("ObfuscatedIfInstantApp"); }
+        public android.app.usage.UsageEvents.Event getObfuscatedNotificationEvent() { return (android.app.usage.UsageEvents.Event) megletProps.get("ObfuscatedNotificationEvent"); }
+        public java.lang.String getPackageName() { return (java.lang.String) megletProps.get("PackageName"); }
+        public java.lang.String getShortcutId() { return (java.lang.String) megletProps.get("ShortcutId"); }
+        public int getStandbyReason() { return (megletProps.get("StandbyReason") instanceof Integer ? (Integer) megletProps.get("StandbyReason") : 0); }
+        public java.lang.String getTaskRootClassName() { return (java.lang.String) megletProps.get("TaskRootClassName"); }
+        public java.lang.String getTaskRootPackageName() { return (java.lang.String) megletProps.get("TaskRootPackageName"); }
+        public long getTimeStamp() { return (megletProps.get("TimeStamp") instanceof Long ? (Long) megletProps.get("TimeStamp") : 0L); }
+        public boolean isInstantApp() { return (megletProps.get("InstantApp") instanceof Boolean ? (Boolean) megletProps.get("InstantApp") : false); }
         public static class UserInteractionEventExtrasToken {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public int mActionToken;
             public int mCategoryToken;
             public byte[] mTokenizedExtras;

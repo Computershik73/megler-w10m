@@ -3,7 +3,7 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WallpaperManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_CHANGE_LIVE_WALLPAPER = "android.service.wallpaper.CHANGE_LIVE_WALLPAPER";
     public static final java.lang.String ACTION_CROP_AND_SET_WALLPAPER = "android.service.wallpaper.CROP_AND_SET_WALLPAPER";
     public static final java.lang.String ACTION_LIVE_WALLPAPER_CHOOSER = "android.service.wallpaper.LIVE_WALLPAPER_CHOOSER";
@@ -47,7 +47,7 @@ public class WallpaperManager {
     public void clearWallpaper(int p0, int p1) {}
     public void clearWallpaperOffsets(android.os.IBinder p0) {}
     public void forgetLoadedWallpaper() {}
-    public android.graphics.Bitmap getBitmap() { return (android.graphics.Bitmap) meglerProps.get("Bitmap"); }
+    public android.graphics.Bitmap getBitmap() { return (android.graphics.Bitmap) megletProps.get("Bitmap"); }
     public android.graphics.Bitmap getBitmap(boolean p0) { return null; }
     public android.graphics.Bitmap getBitmap(boolean p0, int p1) { return null; }
     public android.graphics.Bitmap getBitmapAsUser(int p0, boolean p1) { return null; }
@@ -56,40 +56,40 @@ public class WallpaperManager {
     public android.util.SparseArray getBitmapCrops(int p0) { return null; }
     public java.util.List getBitmapCrops(android.graphics.Point p0, java.util.List p1, java.util.Map p2) { return new java.util.ArrayList(); }
     public java.util.List getBitmapCrops(java.util.List p0, int p1, boolean p2) { return new java.util.ArrayList(); }
-    public android.graphics.drawable.Drawable getBuiltInDrawable() { return (android.graphics.drawable.Drawable) meglerProps.get("BuiltInDrawable"); }
+    public android.graphics.drawable.Drawable getBuiltInDrawable() { return (android.graphics.drawable.Drawable) megletProps.get("BuiltInDrawable"); }
     public android.graphics.drawable.Drawable getBuiltInDrawable(int p0) { return null; }
     public android.graphics.drawable.Drawable getBuiltInDrawable(int p0, int p1, boolean p2, float p3, float p4) { return null; }
     public android.graphics.drawable.Drawable getBuiltInDrawable(int p0, int p1, boolean p2, float p3, float p4, int p5) { return null; }
-    public android.app.WallpaperManager.ColorManagementProxy getColorManagementProxy() { return (android.app.WallpaperManager.ColorManagementProxy) meglerProps.get("ColorManagementProxy"); }
+    public android.app.WallpaperManager.ColorManagementProxy getColorManagementProxy() { return (android.app.WallpaperManager.ColorManagementProxy) megletProps.get("ColorManagementProxy"); }
     public android.content.Intent getCropAndSetWallpaperIntent(android.net.Uri p0) { return null; }
-    public int getDesiredMinimumHeight() { return (meglerProps.get("DesiredMinimumHeight") instanceof Integer ? (Integer) meglerProps.get("DesiredMinimumHeight") : 0); }
-    public int getDesiredMinimumWidth() { return (meglerProps.get("DesiredMinimumWidth") instanceof Integer ? (Integer) meglerProps.get("DesiredMinimumWidth") : 0); }
-    public android.graphics.drawable.Drawable getDrawable() { return (android.graphics.drawable.Drawable) meglerProps.get("Drawable"); }
+    public int getDesiredMinimumHeight() { return (megletProps.get("DesiredMinimumHeight") instanceof Integer ? (Integer) megletProps.get("DesiredMinimumHeight") : 0); }
+    public int getDesiredMinimumWidth() { return (megletProps.get("DesiredMinimumWidth") instanceof Integer ? (Integer) megletProps.get("DesiredMinimumWidth") : 0); }
+    public android.graphics.drawable.Drawable getDrawable() { return (android.graphics.drawable.Drawable) megletProps.get("Drawable"); }
     public android.graphics.drawable.Drawable getDrawable(int p0) { return null; }
-    public android.graphics.drawable.Drawable getFastDrawable() { return (android.graphics.drawable.Drawable) meglerProps.get("FastDrawable"); }
+    public android.graphics.drawable.Drawable getFastDrawable() { return (android.graphics.drawable.Drawable) megletProps.get("FastDrawable"); }
     public android.graphics.drawable.Drawable getFastDrawable(int p0) { return null; }
-    public android.app.IWallpaperManager getIWallpaperManager() { return (android.app.IWallpaperManager) meglerProps.get("IWallpaperManager"); }
+    public android.app.IWallpaperManager getIWallpaperManager() { return (android.app.IWallpaperManager) megletProps.get("IWallpaperManager"); }
     public android.app.WallpaperColors getWallpaperColors(int p0) { return null; }
     public android.app.WallpaperColors getWallpaperColors(int p0, int p1) { return null; }
     public android.app.WallpaperColors getWallpaperColors(android.graphics.Bitmap p0, java.util.Map p1) { return null; }
-    public float getWallpaperDimAmount() { return (meglerProps.get("WallpaperDimAmount") instanceof Float ? (Float) meglerProps.get("WallpaperDimAmount") : 0f); }
+    public float getWallpaperDimAmount() { return (megletProps.get("WallpaperDimAmount") instanceof Float ? (Float) megletProps.get("WallpaperDimAmount") : 0f); }
     public android.os.ParcelFileDescriptor getWallpaperFile(int p0) { return null; }
     public android.os.ParcelFileDescriptor getWallpaperFile(int p0, int p1) { return null; }
     public android.os.ParcelFileDescriptor getWallpaperFile(int p0, boolean p1) { return null; }
     public int getWallpaperId(int p0) { return 0; }
     public int getWallpaperIdForUser(int p0, int p1) { return 0; }
-    public android.app.WallpaperInfo getWallpaperInfo() { return (android.app.WallpaperInfo) meglerProps.get("WallpaperInfo"); }
+    public android.app.WallpaperInfo getWallpaperInfo() { return (android.app.WallpaperInfo) megletProps.get("WallpaperInfo"); }
     public android.app.WallpaperInfo getWallpaperInfo(int p0) { return null; }
     public android.app.WallpaperInfo getWallpaperInfo(int p0, int p1) { return null; }
-    public android.os.ParcelFileDescriptor getWallpaperInfoFile() { return (android.os.ParcelFileDescriptor) meglerProps.get("WallpaperInfoFile"); }
+    public android.os.ParcelFileDescriptor getWallpaperInfoFile() { return (android.os.ParcelFileDescriptor) megletProps.get("WallpaperInfoFile"); }
     public android.app.WallpaperInfo getWallpaperInfoForUser(int p0) { return null; }
     public android.app.wallpaper.WallpaperInstance getWallpaperInstance(int p0) { return null; }
     public android.app.wallpaper.WallpaperInstance getWallpaperInstance(int p0, boolean p1) { return null; }
     public boolean hasResourceWallpaper(int p0) { return false; }
-    public boolean isLockscreenLiveWallpaperEnabled() { return (meglerProps.get("LockscreenLiveWallpaperEnabled") instanceof Boolean ? (Boolean) meglerProps.get("LockscreenLiveWallpaperEnabled") : false); }
-    public boolean isSetWallpaperAllowed() { return (meglerProps.get("SetWallpaperAllowed") instanceof Boolean ? (Boolean) meglerProps.get("SetWallpaperAllowed") : false); }
+    public boolean isLockscreenLiveWallpaperEnabled() { return (megletProps.get("LockscreenLiveWallpaperEnabled") instanceof Boolean ? (Boolean) megletProps.get("LockscreenLiveWallpaperEnabled") : false); }
+    public boolean isSetWallpaperAllowed() { return (megletProps.get("SetWallpaperAllowed") instanceof Boolean ? (Boolean) megletProps.get("SetWallpaperAllowed") : false); }
     public boolean isWallpaperBackupEligible(int p0) { return false; }
-    public boolean isWallpaperSupported() { return (meglerProps.get("WallpaperSupported") instanceof Boolean ? (Boolean) meglerProps.get("WallpaperSupported") : false); }
+    public boolean isWallpaperSupported() { return (megletProps.get("WallpaperSupported") instanceof Boolean ? (Boolean) megletProps.get("WallpaperSupported") : false); }
     public boolean lockScreenWallpaperExists() { return false; }
     public android.graphics.Rect peekBitmapDimensions() { return null; }
     public android.graphics.Rect peekBitmapDimensions(int p0) { return null; }
@@ -106,16 +106,16 @@ public class WallpaperManager {
     public int setBitmap(android.graphics.Bitmap p0, android.graphics.Rect p1, boolean p2) { return 0; }
     public int setBitmap(android.graphics.Bitmap p0, android.graphics.Rect p1, boolean p2, int p3) { return 0; }
     public int setBitmap(android.graphics.Bitmap p0, android.graphics.Rect p1, boolean p2, int p3, int p4) { return 0; }
-    public void setBitmap(android.graphics.Bitmap p0) { meglerProps.put("Bitmap", p0); }
+    public void setBitmap(android.graphics.Bitmap p0) { megletProps.put("Bitmap", p0); }
     public int setBitmapWithCrops(android.graphics.Bitmap p0, java.util.Map p1, boolean p2, int p3) { return 0; }
     public int setBitmapWithDescription(android.graphics.Bitmap p0, android.app.wallpaper.WallpaperDescription p1, boolean p2, int p3) { return 0; }
     public void setDisplayOffset(android.os.IBinder p0, int p1, int p2) {}
-    public void setDisplayPadding(android.graphics.Rect p0) { meglerProps.put("DisplayPadding", p0); }
+    public void setDisplayPadding(android.graphics.Rect p0) { megletProps.put("DisplayPadding", p0); }
     public int setResource(int p0, int p1) { return 0; }
-    public void setResource(int p0) { meglerProps.put("Resource", Integer.valueOf(p0)); }
+    public void setResource(int p0) { megletProps.put("Resource", Integer.valueOf(p0)); }
     public int setStream(java.io.InputStream p0, android.graphics.Rect p1, boolean p2) { return 0; }
     public int setStream(java.io.InputStream p0, android.graphics.Rect p1, boolean p2, int p3) { return 0; }
-    public void setStream(java.io.InputStream p0) { meglerProps.put("Stream", p0); }
+    public void setStream(java.io.InputStream p0) { megletProps.put("Stream", p0); }
     public int setStreamWithCrops(java.io.InputStream p0, android.util.SparseArray p1, boolean p2, int p3) { return 0; }
     public int setStreamWithCrops(java.io.InputStream p0, java.util.Map p1, boolean p2, int p3) { return 0; }
     public int setStreamWithDescription(java.io.InputStream p0, android.app.wallpaper.WallpaperDescription p1, boolean p2, int p3) { return 0; }
@@ -125,7 +125,7 @@ public class WallpaperManager {
     public boolean setWallpaperComponentWithDescription(android.app.wallpaper.WallpaperDescription p0, int p1, int p2) { return false; }
     public boolean setWallpaperComponentWithFlags(android.content.ComponentName p0, int p1) { return false; }
     public boolean setWallpaperComponentWithFlags(android.content.ComponentName p0, int p1, int p2) { return false; }
-    public void setWallpaperDimAmount(float p0) { meglerProps.put("WallpaperDimAmount", Float.valueOf(p0)); }
+    public void setWallpaperDimAmount(float p0) { megletProps.put("WallpaperDimAmount", Float.valueOf(p0)); }
     public void setWallpaperOffsetSteps(float p0, float p1) {}
     public void setWallpaperOffsets(android.os.IBinder p0, float p1, float p2) {}
     public void setWallpaperZoomOut(android.os.IBinder p0, float p1) {}
@@ -134,9 +134,9 @@ public class WallpaperManager {
     public boolean wallpaperSupportsWcg(int p0) { return false; }
     protected WallpaperManager() {}
     public static class ColorManagementProxy {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ColorManagementProxy(android.content.Context p0) {}
-        public java.util.Set getSupportedColorSpaces() { return (meglerProps.get("SupportedColorSpaces") != null ? (java.util.Set) meglerProps.get("SupportedColorSpaces") : new java.util.HashSet()); }
+        public java.util.Set getSupportedColorSpaces() { return (megletProps.get("SupportedColorSpaces") != null ? (java.util.Set) megletProps.get("SupportedColorSpaces") : new java.util.HashSet()); }
         ColorManagementProxy() { this((android.content.Context) null); }
     }
     public interface LocalWallpaperColorConsumer {

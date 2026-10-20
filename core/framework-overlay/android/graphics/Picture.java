@@ -1,5 +1,5 @@
 // Overlay of core/framework/src/android/graphics/Picture.java (tools/build-framework.sh).
-// It differs in what a picture is: a display list the core records (megler.Gfx.cvRecord) and draws again where the picture is
+// It differs in what a picture is: a display list the core records (meglet.Gfx.cvRecord) and draws again where the picture is
 // drawn, as Android's is, in place of a bitmap of its size (android/graphics/RenderNode.java says why). What was the
 // original's beyond that, its size and requiresHardwareAcceleration, is kept; and as Android has them:
 //   - draw() ends a recording still open, and draws the list on any canvas, without a clip (the original's bitmap
@@ -18,7 +18,7 @@ public class Picture {
     /** A Picture's canvas: it writes to the picture's list, and says the size the recording was begun with. */
     private static final class PictureCanvas extends Canvas {
         private final int mWidth, mHeight;
-        PictureCanvas(int width, int height) { super(megler.Gfx.cvRecord(width, height), true); mWidth = width; mHeight = height; }
+        PictureCanvas(int width, int height) { super(meglet.Gfx.cvRecord(width, height), true); mWidth = width; mHeight = height; }
         @Override public int getWidth() { return mWidth; }
         @Override public int getHeight() { return mHeight; }
     }
@@ -32,10 +32,10 @@ public class Picture {
     }
     public void endRecording() {
         if (mCanvas == null) return;
-        long list = megler.Gfx.cvEndRecord(mCanvas.meglerNative());
-        mCanvas.meglerRelease();
+        long list = meglet.Gfx.cvEndRecord(mCanvas.megletNative());
+        mCanvas.megletRelease();
         mCanvas = null;
-        if (mList != 0) megler.Gfx.dlFree(mList);
+        if (mList != 0) meglet.Gfx.dlFree(mList);
         mList = list;
     }
     public int getWidth() { return w; }
@@ -43,20 +43,20 @@ public class Picture {
     public boolean requiresHardwareAcceleration() { return false; }
     public void draw(Canvas c) {
         endRecording();
-        long cv = c.meglerNative();
+        long cv = c.megletNative();
         if (mList == 0 || cv == 0) return;
-        // Nodes the list draws are drawn with their properties as they are now (RenderNode.meglerDraw says why).
-        if (!c.meglerRecords()) RenderNode.meglerSync();
-        megler.Gfx.cvDrawList(cv, mList);
-        c.meglerDrawn();
+        // Nodes the list draws are drawn with their properties as they are now (RenderNode.megletDraw says why).
+        if (!c.megletRecords()) RenderNode.megletSync();
+        meglet.Gfx.cvDrawList(cv, mList);
+        c.megletDrawn();
     }
     public void close() {
         endRecording();
-        if (mList != 0) megler.Gfx.dlFree(mList);
+        if (mList != 0) meglet.Gfx.dlFree(mList);
         mList = 0;
     }
     @Override protected void finalize() throws Throwable {
-        if (mList != 0) megler.Gfx.dlFree(mList);
+        if (mList != 0) meglet.Gfx.dlFree(mList);
         mList = 0;
         super.finalize();
     }
@@ -71,10 +71,10 @@ public class Picture {
         w = p0.w;
         h = p0.h;
         if (p0.mList == 0) return;
-        long rc = megler.Gfx.cvRecord(w, h);
-        megler.Gfx.cvDrawList(rc, p0.mList);
-        mList = megler.Gfx.cvEndRecord(rc);
-        megler.Gfx.cvFree(rc);
+        long rc = meglet.Gfx.cvRecord(w, h);
+        meglet.Gfx.cvDrawList(rc, p0.mList);
+        mList = meglet.Gfx.cvEndRecord(rc);
+        meglet.Gfx.cvFree(rc);
     }
     public static android.graphics.Picture createFromStream(java.io.InputStream p0) { return null; }
     public void writeToStream(java.io.OutputStream p0) {}

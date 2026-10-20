@@ -3,14 +3,14 @@ package android.telecom;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class GatewayInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public GatewayInfo(java.lang.String p0, android.net.Uri p1, android.net.Uri p2) {}
     public int describeContents() { return 0; }
-    public android.net.Uri getGatewayAddress() { return (android.net.Uri) meglerProps.get("GatewayAddress"); }
-    public java.lang.String getGatewayProviderPackageName() { return (java.lang.String) meglerProps.get("GatewayProviderPackageName"); }
-    public android.net.Uri getOriginalAddress() { return (android.net.Uri) meglerProps.get("OriginalAddress"); }
-    public boolean isEmpty() { return (meglerProps.get("Empty") instanceof Boolean ? (Boolean) meglerProps.get("Empty") : false); }
+    public android.net.Uri getGatewayAddress() { return (android.net.Uri) megletProps.get("GatewayAddress"); }
+    public java.lang.String getGatewayProviderPackageName() { return (java.lang.String) megletProps.get("GatewayProviderPackageName"); }
+    public android.net.Uri getOriginalAddress() { return (android.net.Uri) megletProps.get("OriginalAddress"); }
+    public boolean isEmpty() { return (megletProps.get("Empty") instanceof Boolean ? (Boolean) megletProps.get("Empty") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     GatewayInfo() { this((java.lang.String) null, (android.net.Uri) null, (android.net.Uri) null); }
 }

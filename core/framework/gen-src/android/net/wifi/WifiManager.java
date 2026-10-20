@@ -3,7 +3,7 @@ package android.net.wifi;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_DISMISS_DIALOG = "android.net.wifi.action.DISMISS_DIALOG";
     public static final java.lang.String ACTION_LAUNCH_DIALOG = "android.net.wifi.action.LAUNCH_DIALOG";
     public static final java.lang.String ACTION_LINK_CONFIGURATION_CHANGED = "android.net.wifi.LINK_CONFIGURATION_CHANGED";
@@ -374,18 +374,18 @@ public class WifiManager {
     public java.util.List getAllMatchingWifiConfigs(java.util.List p0) { return new java.util.ArrayList(); }
     public java.util.List getAllowedChannels(int p0, int p1) { return new java.util.ArrayList(); }
     public void getAutojoinDisallowedSecurityTypes(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-    public java.util.List getAvailableAdvancedProtectionFeatures() { return (meglerProps.get("AvailableAdvancedProtectionFeatures") != null ? (java.util.List) meglerProps.get("AvailableAdvancedProtectionFeatures") : new java.util.ArrayList()); }
+    public java.util.List getAvailableAdvancedProtectionFeatures() { return (megletProps.get("AvailableAdvancedProtectionFeatures") != null ? (java.util.List) megletProps.get("AvailableAdvancedProtectionFeatures") : new java.util.ArrayList()); }
     public void getBssidBlocklist(java.util.List p0, java.util.concurrent.Executor p1, java.util.function.Consumer p2) {}
-    public java.util.List getCallerConfiguredNetworks() { return (meglerProps.get("CallerConfiguredNetworks") != null ? (java.util.List) meglerProps.get("CallerConfiguredNetworks") : new java.util.ArrayList()); }
+    public java.util.List getCallerConfiguredNetworks() { return (megletProps.get("CallerConfiguredNetworks") != null ? (java.util.List) megletProps.get("CallerConfiguredNetworks") : new java.util.ArrayList()); }
     public void getChannelData(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-    public java.util.List getConfiguredNetworks() { return (meglerProps.get("ConfiguredNetworks") != null ? (java.util.List) meglerProps.get("ConfiguredNetworks") : new java.util.ArrayList()); }
-    public android.net.wifi.WifiInfo getConnectionInfo() { return (android.net.wifi.WifiInfo) meglerProps.get("ConnectionInfo"); }
-    public java.lang.String getCountryCode() { return (java.lang.String) meglerProps.get("CountryCode"); }
-    public android.net.Network getCurrentNetwork() { return (android.net.Network) meglerProps.get("CurrentNetwork"); }
-    public java.lang.String getCurrentNetworkWpsNfcConfigurationToken() { return (java.lang.String) meglerProps.get("CurrentNetworkWpsNfcConfigurationToken"); }
-    public android.net.DhcpInfo getDhcpInfo() { return (android.net.DhcpInfo) meglerProps.get("DhcpInfo"); }
-    public boolean getEnableAutoJoinWhenAssociated() { return (meglerProps.get("EnableAutoJoinWhenAssociated") instanceof Boolean ? (Boolean) meglerProps.get("EnableAutoJoinWhenAssociated") : false); }
-    public java.lang.String[] getFactoryMacAddresses() { return (java.lang.String[]) meglerProps.get("FactoryMacAddresses"); }
+    public java.util.List getConfiguredNetworks() { return (megletProps.get("ConfiguredNetworks") != null ? (java.util.List) megletProps.get("ConfiguredNetworks") : new java.util.ArrayList()); }
+    public android.net.wifi.WifiInfo getConnectionInfo() { return (android.net.wifi.WifiInfo) megletProps.get("ConnectionInfo"); }
+    public java.lang.String getCountryCode() { return (java.lang.String) megletProps.get("CountryCode"); }
+    public android.net.Network getCurrentNetwork() { return (android.net.Network) megletProps.get("CurrentNetwork"); }
+    public java.lang.String getCurrentNetworkWpsNfcConfigurationToken() { return (java.lang.String) megletProps.get("CurrentNetworkWpsNfcConfigurationToken"); }
+    public android.net.DhcpInfo getDhcpInfo() { return (android.net.DhcpInfo) megletProps.get("DhcpInfo"); }
+    public boolean getEnableAutoJoinWhenAssociated() { return (megletProps.get("EnableAutoJoinWhenAssociated") instanceof Boolean ? (Boolean) megletProps.get("EnableAutoJoinWhenAssociated") : false); }
+    public java.lang.String[] getFactoryMacAddresses() { return (java.lang.String[]) megletProps.get("FactoryMacAddresses"); }
     public void getLastCallerInfoForApi(int p0, java.util.concurrent.Executor p1, java.util.function.BiConsumer p2) {}
     public void getLinkLayerStatsPollingInterval(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public java.util.Map getMatchingOsuProviders(java.util.List p0) { return new java.util.HashMap(); }
@@ -393,97 +393,97 @@ public class WifiManager {
     public java.util.Map getMatchingScanResults(java.util.List p0, java.util.List p1) { return new java.util.HashMap(); }
     public void getMaxMloAssociationLinkCount(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public void getMaxMloStrLinkCount(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-    public int getMaxNumberOfChannelsPerNetworkSpecifierRequest() { return (meglerProps.get("MaxNumberOfChannelsPerNetworkSpecifierRequest") instanceof Integer ? (Integer) meglerProps.get("MaxNumberOfChannelsPerNetworkSpecifierRequest") : 0); }
-    public int getMaxNumberOfNetworkSuggestionsPerApp() { return (meglerProps.get("MaxNumberOfNetworkSuggestionsPerApp") instanceof Integer ? (Integer) meglerProps.get("MaxNumberOfNetworkSuggestionsPerApp") : 0); }
-    public int getMaxSignalLevel() { return (meglerProps.get("MaxSignalLevel") instanceof Integer ? (Integer) meglerProps.get("MaxSignalLevel") : 0); }
+    public int getMaxNumberOfChannelsPerNetworkSpecifierRequest() { return (megletProps.get("MaxNumberOfChannelsPerNetworkSpecifierRequest") instanceof Integer ? (Integer) megletProps.get("MaxNumberOfChannelsPerNetworkSpecifierRequest") : 0); }
+    public int getMaxNumberOfNetworkSuggestionsPerApp() { return (megletProps.get("MaxNumberOfNetworkSuggestionsPerApp") instanceof Integer ? (Integer) megletProps.get("MaxNumberOfNetworkSuggestionsPerApp") : 0); }
+    public int getMaxSignalLevel() { return (megletProps.get("MaxSignalLevel") instanceof Integer ? (Integer) megletProps.get("MaxSignalLevel") : 0); }
     public void getMaxSupportedConcurrentTdlsSessions(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public void getMloMode(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public void getNetworkSelectionConfig(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-    public java.util.List getNetworkSuggestions() { return (meglerProps.get("NetworkSuggestions") != null ? (java.util.List) meglerProps.get("NetworkSuggestions") : new java.util.ArrayList()); }
+    public java.util.List getNetworkSuggestions() { return (megletProps.get("NetworkSuggestions") != null ? (java.util.List) megletProps.get("NetworkSuggestions") : new java.util.ArrayList()); }
     public void getNumberOfEnabledTdlsSessions(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-    public java.util.Set getOemPrivilegedWifiAdminPackages() { return (meglerProps.get("OemPrivilegedWifiAdminPackages") != null ? (java.util.Set) meglerProps.get("OemPrivilegedWifiAdminPackages") : new java.util.HashSet()); }
-    public java.util.List getPasspointConfigurations() { return (meglerProps.get("PasspointConfigurations") != null ? (java.util.List) meglerProps.get("PasspointConfigurations") : new java.util.ArrayList()); }
+    public java.util.Set getOemPrivilegedWifiAdminPackages() { return (megletProps.get("OemPrivilegedWifiAdminPackages") != null ? (java.util.Set) megletProps.get("OemPrivilegedWifiAdminPackages") : new java.util.HashSet()); }
+    public java.util.List getPasspointConfigurations() { return (megletProps.get("PasspointConfigurations") != null ? (java.util.List) megletProps.get("PasspointConfigurations") : new java.util.ArrayList()); }
     public void getPerSsidRoamingModes(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-    public java.util.List getPrivilegedConfiguredNetworks() { return (meglerProps.get("PrivilegedConfiguredNetworks") != null ? (java.util.List) meglerProps.get("PrivilegedConfiguredNetworks") : new java.util.ArrayList()); }
-    public android.net.wifi.WifiConfiguration getPrivilegedConnectedNetwork() { return (android.net.wifi.WifiConfiguration) meglerProps.get("PrivilegedConnectedNetwork"); }
-    public java.util.List getScanResults() { return (meglerProps.get("ScanResults") != null ? (java.util.List) meglerProps.get("ScanResults") : new java.util.ArrayList()); }
-    public android.net.wifi.SoftApConfiguration getSoftApConfiguration() { return (android.net.wifi.SoftApConfiguration) meglerProps.get("SoftApConfiguration"); }
-    public java.util.Set getSsidsAllowlist() { return (meglerProps.get("SsidsAllowlist") != null ? (java.util.Set) meglerProps.get("SsidsAllowlist") : new java.util.HashSet()); }
-    public int getStaConcurrencyForMultiInternetMode() { return (meglerProps.get("StaConcurrencyForMultiInternetMode") instanceof Integer ? (Integer) meglerProps.get("StaConcurrencyForMultiInternetMode") : 0); }
+    public java.util.List getPrivilegedConfiguredNetworks() { return (megletProps.get("PrivilegedConfiguredNetworks") != null ? (java.util.List) megletProps.get("PrivilegedConfiguredNetworks") : new java.util.ArrayList()); }
+    public android.net.wifi.WifiConfiguration getPrivilegedConnectedNetwork() { return (android.net.wifi.WifiConfiguration) megletProps.get("PrivilegedConnectedNetwork"); }
+    public java.util.List getScanResults() { return (megletProps.get("ScanResults") != null ? (java.util.List) megletProps.get("ScanResults") : new java.util.ArrayList()); }
+    public android.net.wifi.SoftApConfiguration getSoftApConfiguration() { return (android.net.wifi.SoftApConfiguration) megletProps.get("SoftApConfiguration"); }
+    public java.util.Set getSsidsAllowlist() { return (megletProps.get("SsidsAllowlist") != null ? (java.util.Set) megletProps.get("SsidsAllowlist") : new java.util.HashSet()); }
+    public int getStaConcurrencyForMultiInternetMode() { return (megletProps.get("StaConcurrencyForMultiInternetMode") instanceof Integer ? (Integer) megletProps.get("StaConcurrencyForMultiInternetMode") : 0); }
     public void getStatsTwtSession(int p0, java.util.concurrent.Executor p1, java.util.function.Consumer p2) {}
     public void getSupportedInterfaceNames(java.util.concurrent.Executor p0, android.os.OutcomeReceiver p1) {}
     public void getSupportedSimultaneousBandCombinations(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public void getTwtCapabilities(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public java.util.List getUsableChannels(int p0, int p1) { return new java.util.ArrayList(); }
-    public int getVerboseLoggingLevel() { return (meglerProps.get("VerboseLoggingLevel") instanceof Integer ? (Integer) meglerProps.get("VerboseLoggingLevel") : 0); }
+    public int getVerboseLoggingLevel() { return (megletProps.get("VerboseLoggingLevel") instanceof Integer ? (Integer) megletProps.get("VerboseLoggingLevel") : 0); }
     public void getWifiActivityEnergyInfoAsync(java.util.concurrent.Executor p0, android.net.wifi.WifiManager.OnWifiActivityEnergyInfoListener p1) {}
-    public android.net.wifi.WifiConfiguration getWifiApConfiguration() { return (android.net.wifi.WifiConfiguration) meglerProps.get("WifiApConfiguration"); }
-    public int getWifiApState() { return (meglerProps.get("WifiApState") instanceof Integer ? (Integer) meglerProps.get("WifiApState") : 0); }
+    public android.net.wifi.WifiConfiguration getWifiApConfiguration() { return (android.net.wifi.WifiConfiguration) megletProps.get("WifiApConfiguration"); }
+    public int getWifiApState() { return (megletProps.get("WifiApState") instanceof Integer ? (Integer) megletProps.get("WifiApState") : 0); }
     public java.util.List getWifiConfigForMatchedNetworkSuggestionsSharedWithUser(java.util.List p0) { return new java.util.ArrayList(); }
-    public int getWifiState() { return (meglerProps.get("WifiState") instanceof Integer ? (Integer) meglerProps.get("WifiState") : 0); }
+    public int getWifiState() { return (megletProps.get("WifiState") instanceof Integer ? (Integer) megletProps.get("WifiState") : 0); }
     public boolean initializeMulticastFiltering() { return false; }
-    public boolean is24GHzBandSupported() { return (meglerProps.get("24GHzBandSupported") instanceof Boolean ? (Boolean) meglerProps.get("24GHzBandSupported") : false); }
-    public boolean is5GHzBandSupported() { return (meglerProps.get("5GHzBandSupported") instanceof Boolean ? (Boolean) meglerProps.get("5GHzBandSupported") : false); }
-    public boolean is60GHzBandSupported() { return (meglerProps.get("60GHzBandSupported") instanceof Boolean ? (Boolean) meglerProps.get("60GHzBandSupported") : false); }
-    public boolean is6GHzBandSupported() { return (meglerProps.get("6GHzBandSupported") instanceof Boolean ? (Boolean) meglerProps.get("6GHzBandSupported") : false); }
-    public boolean isAggressiveRoamingModeSupported() { return (meglerProps.get("AggressiveRoamingModeSupported") instanceof Boolean ? (Boolean) meglerProps.get("AggressiveRoamingModeSupported") : false); }
-    public boolean isApMacRandomizationSupported() { return (meglerProps.get("ApMacRandomizationSupported") instanceof Boolean ? (Boolean) meglerProps.get("ApMacRandomizationSupported") : false); }
-    public boolean isAutoWakeupEnabled() { return (meglerProps.get("AutoWakeupEnabled") instanceof Boolean ? (Boolean) meglerProps.get("AutoWakeupEnabled") : false); }
-    public boolean isBridgedApConcurrencySupported() { return (meglerProps.get("BridgedApConcurrencySupported") instanceof Boolean ? (Boolean) meglerProps.get("BridgedApConcurrencySupported") : false); }
+    public boolean is24GHzBandSupported() { return (megletProps.get("24GHzBandSupported") instanceof Boolean ? (Boolean) megletProps.get("24GHzBandSupported") : false); }
+    public boolean is5GHzBandSupported() { return (megletProps.get("5GHzBandSupported") instanceof Boolean ? (Boolean) megletProps.get("5GHzBandSupported") : false); }
+    public boolean is60GHzBandSupported() { return (megletProps.get("60GHzBandSupported") instanceof Boolean ? (Boolean) megletProps.get("60GHzBandSupported") : false); }
+    public boolean is6GHzBandSupported() { return (megletProps.get("6GHzBandSupported") instanceof Boolean ? (Boolean) megletProps.get("6GHzBandSupported") : false); }
+    public boolean isAggressiveRoamingModeSupported() { return (megletProps.get("AggressiveRoamingModeSupported") instanceof Boolean ? (Boolean) megletProps.get("AggressiveRoamingModeSupported") : false); }
+    public boolean isApMacRandomizationSupported() { return (megletProps.get("ApMacRandomizationSupported") instanceof Boolean ? (Boolean) megletProps.get("ApMacRandomizationSupported") : false); }
+    public boolean isAutoWakeupEnabled() { return (megletProps.get("AutoWakeupEnabled") instanceof Boolean ? (Boolean) megletProps.get("AutoWakeupEnabled") : false); }
+    public boolean isBridgedApConcurrencySupported() { return (megletProps.get("BridgedApConcurrencySupported") instanceof Boolean ? (Boolean) megletProps.get("BridgedApConcurrencySupported") : false); }
     public boolean isCarrierNetworkOffloadEnabled(int p0, boolean p1) { return false; }
-    public boolean isConnectedMacRandomizationSupported() { return (meglerProps.get("ConnectedMacRandomizationSupported") instanceof Boolean ? (Boolean) meglerProps.get("ConnectedMacRandomizationSupported") : false); }
-    public boolean isD2dSupportedWhenInfraStaDisabled() { return (meglerProps.get("D2dSupportedWhenInfraStaDisabled") instanceof Boolean ? (Boolean) meglerProps.get("D2dSupportedWhenInfraStaDisabled") : false); }
-    public boolean isDecoratedIdentitySupported() { return (meglerProps.get("DecoratedIdentitySupported") instanceof Boolean ? (Boolean) meglerProps.get("DecoratedIdentitySupported") : false); }
-    public boolean isDefaultCoexAlgorithmEnabled() { return (meglerProps.get("DefaultCoexAlgorithmEnabled") instanceof Boolean ? (Boolean) meglerProps.get("DefaultCoexAlgorithmEnabled") : false); }
-    public boolean isDeviceToApRttSupported() { return (meglerProps.get("DeviceToApRttSupported") instanceof Boolean ? (Boolean) meglerProps.get("DeviceToApRttSupported") : false); }
-    public boolean isDeviceToDeviceRttSupported() { return (meglerProps.get("DeviceToDeviceRttSupported") instanceof Boolean ? (Boolean) meglerProps.get("DeviceToDeviceRttSupported") : false); }
-    public boolean isDualBandSimultaneousSupported() { return (meglerProps.get("DualBandSimultaneousSupported") instanceof Boolean ? (Boolean) meglerProps.get("DualBandSimultaneousSupported") : false); }
-    public boolean isEasyConnectDppAkmSupported() { return (meglerProps.get("EasyConnectDppAkmSupported") instanceof Boolean ? (Boolean) meglerProps.get("EasyConnectDppAkmSupported") : false); }
-    public boolean isEasyConnectEnrolleeResponderModeSupported() { return (meglerProps.get("EasyConnectEnrolleeResponderModeSupported") instanceof Boolean ? (Boolean) meglerProps.get("EasyConnectEnrolleeResponderModeSupported") : false); }
-    public boolean isEasyConnectSupported() { return (meglerProps.get("EasyConnectSupported") instanceof Boolean ? (Boolean) meglerProps.get("EasyConnectSupported") : false); }
-    public boolean isEnhancedOpenSupported() { return (meglerProps.get("EnhancedOpenSupported") instanceof Boolean ? (Boolean) meglerProps.get("EnhancedOpenSupported") : false); }
-    public boolean isEnhancedPowerReportingSupported() { return (meglerProps.get("EnhancedPowerReportingSupported") instanceof Boolean ? (Boolean) meglerProps.get("EnhancedPowerReportingSupported") : false); }
-    public boolean isLowLatencyModeSupported() { return (meglerProps.get("LowLatencyModeSupported") instanceof Boolean ? (Boolean) meglerProps.get("LowLatencyModeSupported") : false); }
-    public boolean isMakeBeforeBreakWifiSwitchingSupported() { return (meglerProps.get("MakeBeforeBreakWifiSwitchingSupported") instanceof Boolean ? (Boolean) meglerProps.get("MakeBeforeBreakWifiSwitchingSupported") : false); }
-    public boolean isMulticastEnabled() { return (meglerProps.get("MulticastEnabled") instanceof Boolean ? (Boolean) meglerProps.get("MulticastEnabled") : false); }
-    public boolean isOffChannelTdlsSupported() { return (meglerProps.get("OffChannelTdlsSupported") instanceof Boolean ? (Boolean) meglerProps.get("OffChannelTdlsSupported") : false); }
+    public boolean isConnectedMacRandomizationSupported() { return (megletProps.get("ConnectedMacRandomizationSupported") instanceof Boolean ? (Boolean) megletProps.get("ConnectedMacRandomizationSupported") : false); }
+    public boolean isD2dSupportedWhenInfraStaDisabled() { return (megletProps.get("D2dSupportedWhenInfraStaDisabled") instanceof Boolean ? (Boolean) megletProps.get("D2dSupportedWhenInfraStaDisabled") : false); }
+    public boolean isDecoratedIdentitySupported() { return (megletProps.get("DecoratedIdentitySupported") instanceof Boolean ? (Boolean) megletProps.get("DecoratedIdentitySupported") : false); }
+    public boolean isDefaultCoexAlgorithmEnabled() { return (megletProps.get("DefaultCoexAlgorithmEnabled") instanceof Boolean ? (Boolean) megletProps.get("DefaultCoexAlgorithmEnabled") : false); }
+    public boolean isDeviceToApRttSupported() { return (megletProps.get("DeviceToApRttSupported") instanceof Boolean ? (Boolean) megletProps.get("DeviceToApRttSupported") : false); }
+    public boolean isDeviceToDeviceRttSupported() { return (megletProps.get("DeviceToDeviceRttSupported") instanceof Boolean ? (Boolean) megletProps.get("DeviceToDeviceRttSupported") : false); }
+    public boolean isDualBandSimultaneousSupported() { return (megletProps.get("DualBandSimultaneousSupported") instanceof Boolean ? (Boolean) megletProps.get("DualBandSimultaneousSupported") : false); }
+    public boolean isEasyConnectDppAkmSupported() { return (megletProps.get("EasyConnectDppAkmSupported") instanceof Boolean ? (Boolean) megletProps.get("EasyConnectDppAkmSupported") : false); }
+    public boolean isEasyConnectEnrolleeResponderModeSupported() { return (megletProps.get("EasyConnectEnrolleeResponderModeSupported") instanceof Boolean ? (Boolean) megletProps.get("EasyConnectEnrolleeResponderModeSupported") : false); }
+    public boolean isEasyConnectSupported() { return (megletProps.get("EasyConnectSupported") instanceof Boolean ? (Boolean) megletProps.get("EasyConnectSupported") : false); }
+    public boolean isEnhancedOpenSupported() { return (megletProps.get("EnhancedOpenSupported") instanceof Boolean ? (Boolean) megletProps.get("EnhancedOpenSupported") : false); }
+    public boolean isEnhancedPowerReportingSupported() { return (megletProps.get("EnhancedPowerReportingSupported") instanceof Boolean ? (Boolean) megletProps.get("EnhancedPowerReportingSupported") : false); }
+    public boolean isLowLatencyModeSupported() { return (megletProps.get("LowLatencyModeSupported") instanceof Boolean ? (Boolean) megletProps.get("LowLatencyModeSupported") : false); }
+    public boolean isMakeBeforeBreakWifiSwitchingSupported() { return (megletProps.get("MakeBeforeBreakWifiSwitchingSupported") instanceof Boolean ? (Boolean) megletProps.get("MakeBeforeBreakWifiSwitchingSupported") : false); }
+    public boolean isMulticastEnabled() { return (megletProps.get("MulticastEnabled") instanceof Boolean ? (Boolean) megletProps.get("MulticastEnabled") : false); }
+    public boolean isOffChannelTdlsSupported() { return (megletProps.get("OffChannelTdlsSupported") instanceof Boolean ? (Boolean) megletProps.get("OffChannelTdlsSupported") : false); }
     public void isOpenNetworkNotifierEnabled(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-    public boolean isP2pSupported() { return (meglerProps.get("P2pSupported") instanceof Boolean ? (Boolean) meglerProps.get("P2pSupported") : false); }
-    public boolean isPasspointSupported() { return (meglerProps.get("PasspointSupported") instanceof Boolean ? (Boolean) meglerProps.get("PasspointSupported") : false); }
-    public boolean isPasspointTermsAndConditionsSupported() { return (meglerProps.get("PasspointTermsAndConditionsSupported") instanceof Boolean ? (Boolean) meglerProps.get("PasspointTermsAndConditionsSupported") : false); }
-    public boolean isPortableHotspotSupported() { return (meglerProps.get("PortableHotspotSupported") instanceof Boolean ? (Boolean) meglerProps.get("PortableHotspotSupported") : false); }
-    public boolean isPreferredNetworkOffloadSupported() { return (meglerProps.get("PreferredNetworkOffloadSupported") instanceof Boolean ? (Boolean) meglerProps.get("PreferredNetworkOffloadSupported") : false); }
-    public boolean isScanAlwaysAvailable() { return (meglerProps.get("ScanAlwaysAvailable") instanceof Boolean ? (Boolean) meglerProps.get("ScanAlwaysAvailable") : false); }
-    public boolean isScanThrottleEnabled() { return (meglerProps.get("ScanThrottleEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ScanThrottleEnabled") : false); }
-    public boolean isStaApConcurrencySupported() { return (meglerProps.get("StaApConcurrencySupported") instanceof Boolean ? (Boolean) meglerProps.get("StaApConcurrencySupported") : false); }
-    public boolean isStaBridgedApConcurrencySupported() { return (meglerProps.get("StaBridgedApConcurrencySupported") instanceof Boolean ? (Boolean) meglerProps.get("StaBridgedApConcurrencySupported") : false); }
-    public boolean isStaConcurrencyForLocalOnlyConnectionsSupported() { return (meglerProps.get("StaConcurrencyForLocalOnlyConnectionsSupported") instanceof Boolean ? (Boolean) meglerProps.get("StaConcurrencyForLocalOnlyConnectionsSupported") : false); }
-    public boolean isStaConcurrencyForMultiInternetSupported() { return (meglerProps.get("StaConcurrencyForMultiInternetSupported") instanceof Boolean ? (Boolean) meglerProps.get("StaConcurrencyForMultiInternetSupported") : false); }
-    public boolean isStaConcurrencyForRestrictedConnectionsSupported() { return (meglerProps.get("StaConcurrencyForRestrictedConnectionsSupported") instanceof Boolean ? (Boolean) meglerProps.get("StaConcurrencyForRestrictedConnectionsSupported") : false); }
+    public boolean isP2pSupported() { return (megletProps.get("P2pSupported") instanceof Boolean ? (Boolean) megletProps.get("P2pSupported") : false); }
+    public boolean isPasspointSupported() { return (megletProps.get("PasspointSupported") instanceof Boolean ? (Boolean) megletProps.get("PasspointSupported") : false); }
+    public boolean isPasspointTermsAndConditionsSupported() { return (megletProps.get("PasspointTermsAndConditionsSupported") instanceof Boolean ? (Boolean) megletProps.get("PasspointTermsAndConditionsSupported") : false); }
+    public boolean isPortableHotspotSupported() { return (megletProps.get("PortableHotspotSupported") instanceof Boolean ? (Boolean) megletProps.get("PortableHotspotSupported") : false); }
+    public boolean isPreferredNetworkOffloadSupported() { return (megletProps.get("PreferredNetworkOffloadSupported") instanceof Boolean ? (Boolean) megletProps.get("PreferredNetworkOffloadSupported") : false); }
+    public boolean isScanAlwaysAvailable() { return (megletProps.get("ScanAlwaysAvailable") instanceof Boolean ? (Boolean) megletProps.get("ScanAlwaysAvailable") : false); }
+    public boolean isScanThrottleEnabled() { return (megletProps.get("ScanThrottleEnabled") instanceof Boolean ? (Boolean) megletProps.get("ScanThrottleEnabled") : false); }
+    public boolean isStaApConcurrencySupported() { return (megletProps.get("StaApConcurrencySupported") instanceof Boolean ? (Boolean) megletProps.get("StaApConcurrencySupported") : false); }
+    public boolean isStaBridgedApConcurrencySupported() { return (megletProps.get("StaBridgedApConcurrencySupported") instanceof Boolean ? (Boolean) megletProps.get("StaBridgedApConcurrencySupported") : false); }
+    public boolean isStaConcurrencyForLocalOnlyConnectionsSupported() { return (megletProps.get("StaConcurrencyForLocalOnlyConnectionsSupported") instanceof Boolean ? (Boolean) megletProps.get("StaConcurrencyForLocalOnlyConnectionsSupported") : false); }
+    public boolean isStaConcurrencyForMultiInternetSupported() { return (megletProps.get("StaConcurrencyForMultiInternetSupported") instanceof Boolean ? (Boolean) megletProps.get("StaConcurrencyForMultiInternetSupported") : false); }
+    public boolean isStaConcurrencyForRestrictedConnectionsSupported() { return (megletProps.get("StaConcurrencyForRestrictedConnectionsSupported") instanceof Boolean ? (Boolean) megletProps.get("StaConcurrencyForRestrictedConnectionsSupported") : false); }
     public void isTdlsOperationCurrentlyAvailable(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
-    public boolean isTdlsSupported() { return (meglerProps.get("TdlsSupported") instanceof Boolean ? (Boolean) meglerProps.get("TdlsSupported") : false); }
-    public boolean isThirdPartyAppEnablingWifiConfirmationDialogEnabled() { return (meglerProps.get("ThirdPartyAppEnablingWifiConfirmationDialogEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ThirdPartyAppEnablingWifiConfirmationDialogEnabled") : false); }
-    public boolean isTidToLinkMappingNegotiationSupported() { return (meglerProps.get("TidToLinkMappingNegotiationSupported") instanceof Boolean ? (Boolean) meglerProps.get("TidToLinkMappingNegotiationSupported") : false); }
-    public boolean isTlsMinimumVersionSupported() { return (meglerProps.get("TlsMinimumVersionSupported") instanceof Boolean ? (Boolean) meglerProps.get("TlsMinimumVersionSupported") : false); }
-    public boolean isTlsV13Supported() { return (meglerProps.get("TlsV13Supported") instanceof Boolean ? (Boolean) meglerProps.get("TlsV13Supported") : false); }
-    public boolean isTrustOnFirstUseSupported() { return (meglerProps.get("TrustOnFirstUseSupported") instanceof Boolean ? (Boolean) meglerProps.get("TrustOnFirstUseSupported") : false); }
-    public boolean isUsdPublisherSupported() { return (meglerProps.get("UsdPublisherSupported") instanceof Boolean ? (Boolean) meglerProps.get("UsdPublisherSupported") : false); }
-    public boolean isUsdSubscriberSupported() { return (meglerProps.get("UsdSubscriberSupported") instanceof Boolean ? (Boolean) meglerProps.get("UsdSubscriberSupported") : false); }
-    public boolean isVerboseLoggingEnabled() { return (meglerProps.get("VerboseLoggingEnabled") instanceof Boolean ? (Boolean) meglerProps.get("VerboseLoggingEnabled") : false); }
-    public boolean isWapiSupported() { return (meglerProps.get("WapiSupported") instanceof Boolean ? (Boolean) meglerProps.get("WapiSupported") : false); }
-    public boolean isWepSupported() { return (meglerProps.get("WepSupported") instanceof Boolean ? (Boolean) meglerProps.get("WepSupported") : false); }
-    public boolean isWifiApEnabled() { return (meglerProps.get("WifiApEnabled") instanceof Boolean ? (Boolean) meglerProps.get("WifiApEnabled") : false); }
-    public boolean isWifiAwareSupported() { return (meglerProps.get("WifiAwareSupported") instanceof Boolean ? (Boolean) meglerProps.get("WifiAwareSupported") : false); }
-    public boolean isWifiDisplayR2Supported() { return (meglerProps.get("WifiDisplayR2Supported") instanceof Boolean ? (Boolean) meglerProps.get("WifiDisplayR2Supported") : false); }
-    public boolean isWifiEnabled() { return (meglerProps.get("WifiEnabled") instanceof Boolean ? (Boolean) meglerProps.get("WifiEnabled") : false); }
-    public boolean isWifiPasspointEnabled() { return (meglerProps.get("WifiPasspointEnabled") instanceof Boolean ? (Boolean) meglerProps.get("WifiPasspointEnabled") : false); }
-    public boolean isWifiScannerSupported() { return (meglerProps.get("WifiScannerSupported") instanceof Boolean ? (Boolean) meglerProps.get("WifiScannerSupported") : false); }
+    public boolean isTdlsSupported() { return (megletProps.get("TdlsSupported") instanceof Boolean ? (Boolean) megletProps.get("TdlsSupported") : false); }
+    public boolean isThirdPartyAppEnablingWifiConfirmationDialogEnabled() { return (megletProps.get("ThirdPartyAppEnablingWifiConfirmationDialogEnabled") instanceof Boolean ? (Boolean) megletProps.get("ThirdPartyAppEnablingWifiConfirmationDialogEnabled") : false); }
+    public boolean isTidToLinkMappingNegotiationSupported() { return (megletProps.get("TidToLinkMappingNegotiationSupported") instanceof Boolean ? (Boolean) megletProps.get("TidToLinkMappingNegotiationSupported") : false); }
+    public boolean isTlsMinimumVersionSupported() { return (megletProps.get("TlsMinimumVersionSupported") instanceof Boolean ? (Boolean) megletProps.get("TlsMinimumVersionSupported") : false); }
+    public boolean isTlsV13Supported() { return (megletProps.get("TlsV13Supported") instanceof Boolean ? (Boolean) megletProps.get("TlsV13Supported") : false); }
+    public boolean isTrustOnFirstUseSupported() { return (megletProps.get("TrustOnFirstUseSupported") instanceof Boolean ? (Boolean) megletProps.get("TrustOnFirstUseSupported") : false); }
+    public boolean isUsdPublisherSupported() { return (megletProps.get("UsdPublisherSupported") instanceof Boolean ? (Boolean) megletProps.get("UsdPublisherSupported") : false); }
+    public boolean isUsdSubscriberSupported() { return (megletProps.get("UsdSubscriberSupported") instanceof Boolean ? (Boolean) megletProps.get("UsdSubscriberSupported") : false); }
+    public boolean isVerboseLoggingEnabled() { return (megletProps.get("VerboseLoggingEnabled") instanceof Boolean ? (Boolean) megletProps.get("VerboseLoggingEnabled") : false); }
+    public boolean isWapiSupported() { return (megletProps.get("WapiSupported") instanceof Boolean ? (Boolean) megletProps.get("WapiSupported") : false); }
+    public boolean isWepSupported() { return (megletProps.get("WepSupported") instanceof Boolean ? (Boolean) megletProps.get("WepSupported") : false); }
+    public boolean isWifiApEnabled() { return (megletProps.get("WifiApEnabled") instanceof Boolean ? (Boolean) megletProps.get("WifiApEnabled") : false); }
+    public boolean isWifiAwareSupported() { return (megletProps.get("WifiAwareSupported") instanceof Boolean ? (Boolean) megletProps.get("WifiAwareSupported") : false); }
+    public boolean isWifiDisplayR2Supported() { return (megletProps.get("WifiDisplayR2Supported") instanceof Boolean ? (Boolean) megletProps.get("WifiDisplayR2Supported") : false); }
+    public boolean isWifiEnabled() { return (megletProps.get("WifiEnabled") instanceof Boolean ? (Boolean) megletProps.get("WifiEnabled") : false); }
+    public boolean isWifiPasspointEnabled() { return (megletProps.get("WifiPasspointEnabled") instanceof Boolean ? (Boolean) megletProps.get("WifiPasspointEnabled") : false); }
+    public boolean isWifiScannerSupported() { return (megletProps.get("WifiScannerSupported") instanceof Boolean ? (Boolean) megletProps.get("WifiScannerSupported") : false); }
     public boolean isWifiStandardSupported(int p0) { return false; }
-    public boolean isWpa3SaeH2eSupported() { return (meglerProps.get("Wpa3SaeH2eSupported") instanceof Boolean ? (Boolean) meglerProps.get("Wpa3SaeH2eSupported") : false); }
-    public boolean isWpa3SaePublicKeySupported() { return (meglerProps.get("Wpa3SaePublicKeySupported") instanceof Boolean ? (Boolean) meglerProps.get("Wpa3SaePublicKeySupported") : false); }
-    public boolean isWpa3SaeSupported() { return (meglerProps.get("Wpa3SaeSupported") instanceof Boolean ? (Boolean) meglerProps.get("Wpa3SaeSupported") : false); }
-    public boolean isWpa3SuiteBSupported() { return (meglerProps.get("Wpa3SuiteBSupported") instanceof Boolean ? (Boolean) meglerProps.get("Wpa3SuiteBSupported") : false); }
-    public boolean isWpaPersonalSupported() { return (meglerProps.get("WpaPersonalSupported") instanceof Boolean ? (Boolean) meglerProps.get("WpaPersonalSupported") : false); }
+    public boolean isWpa3SaeH2eSupported() { return (megletProps.get("Wpa3SaeH2eSupported") instanceof Boolean ? (Boolean) megletProps.get("Wpa3SaeH2eSupported") : false); }
+    public boolean isWpa3SaePublicKeySupported() { return (megletProps.get("Wpa3SaePublicKeySupported") instanceof Boolean ? (Boolean) megletProps.get("Wpa3SaePublicKeySupported") : false); }
+    public boolean isWpa3SaeSupported() { return (megletProps.get("Wpa3SaeSupported") instanceof Boolean ? (Boolean) megletProps.get("Wpa3SaeSupported") : false); }
+    public boolean isWpa3SuiteBSupported() { return (megletProps.get("Wpa3SuiteBSupported") instanceof Boolean ? (Boolean) megletProps.get("Wpa3SuiteBSupported") : false); }
+    public boolean isWpaPersonalSupported() { return (megletProps.get("WpaPersonalSupported") instanceof Boolean ? (Boolean) megletProps.get("WpaPersonalSupported") : false); }
     public int matchProviderWithCurrentNetwork(java.lang.String p0) { return 0; }
     public void notifyMinimumRequiredWifiSecurityLevelChanged(int p0) {}
     public void notifyWifiSsidPolicyChanged(android.app.admin.WifiSsidPolicy p0) {}
@@ -538,47 +538,47 @@ public class WifiManager {
     public void retrieveWifiBackupData(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public void save(android.net.wifi.WifiConfiguration p0, android.net.wifi.WifiManager.ActionListener p1) {}
     public boolean saveConfiguration() { return false; }
-    public void setAutoWakeupEnabled(boolean p0) { meglerProps.put("AutoWakeupEnabled", Boolean.valueOf(p0)); }
-    public void setAutojoinDisallowedSecurityTypes(int[] p0) { meglerProps.put("AutojoinDisallowedSecurityTypes", p0); }
+    public void setAutoWakeupEnabled(boolean p0) { megletProps.put("AutoWakeupEnabled", Boolean.valueOf(p0)); }
+    public void setAutojoinDisallowedSecurityTypes(int[] p0) { megletProps.put("AutojoinDisallowedSecurityTypes", p0); }
     public void setCarrierNetworkOffloadEnabled(int p0, boolean p1, boolean p2) {}
     public void setCoexUnsafeChannels(java.util.List p0, int p1) {}
-    public void setD2dAllowedWhenInfraStaDisabled(boolean p0) { meglerProps.put("D2dAllowedWhenInfraStaDisabled", Boolean.valueOf(p0)); }
-    public void setDefaultCountryCode(java.lang.String p0) { meglerProps.put("DefaultCountryCode", p0); }
-    public void setDeviceMobilityState(int p0) { meglerProps.put("DeviceMobilityState", Integer.valueOf(p0)); }
-    public void setEmergencyScanRequestInProgress(boolean p0) { meglerProps.put("EmergencyScanRequestInProgress", Boolean.valueOf(p0)); }
+    public void setD2dAllowedWhenInfraStaDisabled(boolean p0) { megletProps.put("D2dAllowedWhenInfraStaDisabled", Boolean.valueOf(p0)); }
+    public void setDefaultCountryCode(java.lang.String p0) { megletProps.put("DefaultCountryCode", p0); }
+    public void setDeviceMobilityState(int p0) { megletProps.put("DeviceMobilityState", Integer.valueOf(p0)); }
+    public void setEmergencyScanRequestInProgress(boolean p0) { megletProps.put("EmergencyScanRequestInProgress", Boolean.valueOf(p0)); }
     public boolean setEnableAutoJoinWhenAssociated(boolean p0) { return false; }
     public void setExternalPnoScanRequest(java.util.List p0, int[] p1, java.util.concurrent.Executor p2, android.net.wifi.WifiManager.PnoScanResultsCallback p3) {}
-    public void setLinkLayerStatsPollingInterval(int p0) { meglerProps.put("LinkLayerStatsPollingInterval", Integer.valueOf(p0)); }
+    public void setLinkLayerStatsPollingInterval(int p0) { megletProps.put("LinkLayerStatsPollingInterval", Integer.valueOf(p0)); }
     public void setMacRandomizationSettingPasspointEnabled(java.lang.String p0, boolean p1) {}
     public void setMloMode(int p0, java.util.concurrent.Executor p1, java.util.function.Consumer p2) {}
-    public void setNetworkSelectionConfig(android.net.wifi.WifiNetworkSelectionConfig p0) { meglerProps.put("NetworkSelectionConfig", p0); }
-    public void setOneShotScreenOnConnectivityScanDelayMillis(int p0) { meglerProps.put("OneShotScreenOnConnectivityScanDelayMillis", Integer.valueOf(p0)); }
-    public void setOpenNetworkNotifierEnabled(boolean p0) { meglerProps.put("OpenNetworkNotifierEnabled", Boolean.valueOf(p0)); }
-    public void setOverrideCountryCode(java.lang.String p0) { meglerProps.put("OverrideCountryCode", p0); }
+    public void setNetworkSelectionConfig(android.net.wifi.WifiNetworkSelectionConfig p0) { megletProps.put("NetworkSelectionConfig", p0); }
+    public void setOneShotScreenOnConnectivityScanDelayMillis(int p0) { megletProps.put("OneShotScreenOnConnectivityScanDelayMillis", Integer.valueOf(p0)); }
+    public void setOpenNetworkNotifierEnabled(boolean p0) { megletProps.put("OpenNetworkNotifierEnabled", Boolean.valueOf(p0)); }
+    public void setOverrideCountryCode(java.lang.String p0) { megletProps.put("OverrideCountryCode", p0); }
     public void setPasspointMeteredOverride(java.lang.String p0, int p1) {}
     public void setPerSsidRoamingMode(android.net.wifi.WifiSsid p0, int p1) {}
     public void setPnoScanEnabled(boolean p0, boolean p1) {}
-    public void setPnoScanState(int p0) { meglerProps.put("PnoScanState", Integer.valueOf(p0)); }
-    public void setScanAlwaysAvailable(boolean p0) { meglerProps.put("ScanAlwaysAvailable", Boolean.valueOf(p0)); }
-    public void setScanThrottleEnabled(boolean p0) { meglerProps.put("ScanThrottleEnabled", Boolean.valueOf(p0)); }
-    public void setScreenOffScanSchedule(android.net.wifi.WifiManager.ScreenOffScanSchedule p0) { meglerProps.put("ScreenOffScanSchedule", p0); }
-    public void setScreenOnScanSchedule(java.util.List p0) { meglerProps.put("ScreenOnScanSchedule", p0); }
-    public void setSendDhcpHostnameRestriction(int p0) { meglerProps.put("SendDhcpHostnameRestriction", Integer.valueOf(p0)); }
+    public void setPnoScanState(int p0) { megletProps.put("PnoScanState", Integer.valueOf(p0)); }
+    public void setScanAlwaysAvailable(boolean p0) { megletProps.put("ScanAlwaysAvailable", Boolean.valueOf(p0)); }
+    public void setScanThrottleEnabled(boolean p0) { megletProps.put("ScanThrottleEnabled", Boolean.valueOf(p0)); }
+    public void setScreenOffScanSchedule(android.net.wifi.WifiManager.ScreenOffScanSchedule p0) { megletProps.put("ScreenOffScanSchedule", p0); }
+    public void setScreenOnScanSchedule(java.util.List p0) { megletProps.put("ScreenOnScanSchedule", p0); }
+    public void setSendDhcpHostnameRestriction(int p0) { megletProps.put("SendDhcpHostnameRestriction", Integer.valueOf(p0)); }
     public boolean setSoftApConfiguration(android.net.wifi.SoftApConfiguration p0) { return false; }
-    public void setSsidsAllowlist(java.util.Set p0) { meglerProps.put("SsidsAllowlist", p0); }
+    public void setSsidsAllowlist(java.util.Set p0) { megletProps.put("SsidsAllowlist", p0); }
     public boolean setStaConcurrencyForMultiInternetMode(int p0) { return false; }
     public void setTdlsEnabled(java.net.InetAddress p0, boolean p1) {}
     public void setTdlsEnabled(java.net.InetAddress p0, boolean p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) {}
     public void setTdlsEnabledWithMacAddress(java.lang.String p0, boolean p1) {}
     public void setTdlsEnabledWithMacAddress(java.lang.String p0, boolean p1, java.util.concurrent.Executor p2, java.util.function.Consumer p3) {}
-    public void setThirdPartyAppEnablingWifiConfirmationDialogEnabled(boolean p0) { meglerProps.put("ThirdPartyAppEnablingWifiConfirmationDialogEnabled", Boolean.valueOf(p0)); }
-    public void setVerboseLoggingEnabled(boolean p0) { meglerProps.put("VerboseLoggingEnabled", Boolean.valueOf(p0)); }
-    public void setVerboseLoggingLevel(int p0) { meglerProps.put("VerboseLoggingLevel", Integer.valueOf(p0)); }
-    public void setWepAllowed(boolean p0) { meglerProps.put("WepAllowed", Boolean.valueOf(p0)); }
+    public void setThirdPartyAppEnablingWifiConfirmationDialogEnabled(boolean p0) { megletProps.put("ThirdPartyAppEnablingWifiConfirmationDialogEnabled", Boolean.valueOf(p0)); }
+    public void setVerboseLoggingEnabled(boolean p0) { megletProps.put("VerboseLoggingEnabled", Boolean.valueOf(p0)); }
+    public void setVerboseLoggingLevel(int p0) { megletProps.put("VerboseLoggingLevel", Integer.valueOf(p0)); }
+    public void setWepAllowed(boolean p0) { megletProps.put("WepAllowed", Boolean.valueOf(p0)); }
     public boolean setWifiApConfiguration(android.net.wifi.WifiConfiguration p0) { return false; }
     public boolean setWifiConnectedNetworkScorer(java.util.concurrent.Executor p0, android.net.wifi.WifiManager.WifiConnectedNetworkScorer p1) { return false; }
     public boolean setWifiEnabled(boolean p0) { return false; }
-    public void setWifiPasspointEnabled(boolean p0) { meglerProps.put("WifiPasspointEnabled", Boolean.valueOf(p0)); }
+    public void setWifiPasspointEnabled(boolean p0) { megletProps.put("WifiPasspointEnabled", Boolean.valueOf(p0)); }
     public boolean setWifiScoringEnabled(boolean p0) { return false; }
     public void setupTwtSession(android.net.wifi.twt.TwtRequest p0, java.util.concurrent.Executor p1, android.net.wifi.twt.TwtSessionCallback p2) {}
     public void startEasyConnectAsConfiguratorInitiator(java.lang.String p0, int p1, int p2, java.util.concurrent.Executor p3, android.net.wifi.EasyConnectStatusCallback p4) {}
@@ -629,7 +629,7 @@ public class WifiManager {
         void onCountryCodeInactive();
     }
     public static final class AddNetworkResult implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public static final int STATUS_ADD_PASSPOINT_FAILURE = 3;
         public static final int STATUS_ADD_WIFI_CONFIG_FAILURE = 4;
@@ -650,22 +650,22 @@ public class WifiManager {
         AddNetworkResult() { this((int) 0, (int) 0); }
     }
     public static abstract class CoexCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public CoexCallback() {}
         public abstract void onCoexUnsafeChannelsChanged(java.util.List p0, int p1);
     }
     public static class InterfaceCreationImpact {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public InterfaceCreationImpact(int p0, java.util.Set p1) {}
-        public int getInterfaceType() { return (meglerProps.get("InterfaceType") instanceof Integer ? (Integer) meglerProps.get("InterfaceType") : 0); }
-        public java.util.Set getPackages() { return (meglerProps.get("Packages") != null ? (java.util.Set) meglerProps.get("Packages") : new java.util.HashSet()); }
+        public int getInterfaceType() { return (megletProps.get("InterfaceType") instanceof Integer ? (Integer) megletProps.get("InterfaceType") : 0); }
+        public java.util.Set getPackages() { return (megletProps.get("Packages") != null ? (java.util.Set) megletProps.get("Packages") : new java.util.HashSet()); }
         InterfaceCreationImpact() { this((int) 0, (java.util.Set) null); }
     }
     public interface LocalOnlyConnectionFailureListener {
         void onConnectionFailed(android.net.wifi.WifiNetworkSpecifier p0, int p1);
     }
     public static class LocalOnlyHotspotCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ERROR_GENERIC = 2;
         public static final int ERROR_INCOMPATIBLE_MODE = 3;
         public static final int ERROR_NO_CHANNEL = 1;
@@ -677,30 +677,30 @@ public class WifiManager {
         public void onStopped() {}
     }
     public static class LocalOnlyHotspotObserver {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public LocalOnlyHotspotObserver() {}
         public void onRegistered(android.net.wifi.WifiManager.LocalOnlyHotspotSubscription p0) {}
         public void onStarted(android.net.wifi.SoftApConfiguration p0) {}
         public void onStopped() {}
     }
     public static class LocalOnlyHotspotReservation implements java.lang.AutoCloseable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public LocalOnlyHotspotReservation(android.net.wifi.WifiManager p0, android.net.wifi.SoftApConfiguration p1) {}
         public void close() {}
         protected void finalize() {}
-        public android.net.wifi.SoftApConfiguration getSoftApConfiguration() { return (android.net.wifi.SoftApConfiguration) meglerProps.get("SoftApConfiguration"); }
-        public android.net.wifi.WifiConfiguration getWifiConfiguration() { return (android.net.wifi.WifiConfiguration) meglerProps.get("WifiConfiguration"); }
+        public android.net.wifi.SoftApConfiguration getSoftApConfiguration() { return (android.net.wifi.SoftApConfiguration) megletProps.get("SoftApConfiguration"); }
+        public android.net.wifi.WifiConfiguration getWifiConfiguration() { return (android.net.wifi.WifiConfiguration) megletProps.get("WifiConfiguration"); }
         LocalOnlyHotspotReservation() { this((android.net.wifi.WifiManager) null, (android.net.wifi.SoftApConfiguration) null); }
     }
     public static class LocalOnlyHotspotSubscription implements java.lang.AutoCloseable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public LocalOnlyHotspotSubscription(android.net.wifi.WifiManager p0) {}
         public void close() {}
         protected void finalize() {}
         LocalOnlyHotspotSubscription() { this((android.net.wifi.WifiManager) null); }
     }
     public static class MulticastLock {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         /* nothing to hold the radio awake for here: counted, as the platform's, so isHeld answers */
         private int count; private boolean counted = true;
         public synchronized void acquire() { count = counted ? count + 1 : 1; }
@@ -745,7 +745,7 @@ public class WifiManager {
         void onRestrictionStopped();
     }
     public static abstract class ScanResultsCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ScanResultsCallback() {}
         public abstract void onScanResultsAvailable();
     }
@@ -757,27 +757,27 @@ public class WifiManager {
         void triggerUpdateOfWifiUsabilityStats(int p0);
     }
     public static class ScreenOffScanSchedule {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-        public java.time.Duration getMovingScanInterval() { return (java.time.Duration) meglerProps.get("MovingScanInterval"); }
-        public int getScanIterations() { return (meglerProps.get("ScanIterations") instanceof Integer ? (Integer) meglerProps.get("ScanIterations") : 0); }
-        public int getScanMultiplier() { return (meglerProps.get("ScanMultiplier") instanceof Integer ? (Integer) meglerProps.get("ScanMultiplier") : 0); }
-        public java.time.Duration getStationaryScanInterval() { return (java.time.Duration) meglerProps.get("StationaryScanInterval"); }
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        public java.time.Duration getMovingScanInterval() { return (java.time.Duration) megletProps.get("MovingScanInterval"); }
+        public int getScanIterations() { return (megletProps.get("ScanIterations") instanceof Integer ? (Integer) megletProps.get("ScanIterations") : 0); }
+        public int getScanMultiplier() { return (megletProps.get("ScanMultiplier") instanceof Integer ? (Integer) megletProps.get("ScanMultiplier") : 0); }
+        public java.time.Duration getStationaryScanInterval() { return (java.time.Duration) megletProps.get("StationaryScanInterval"); }
         protected ScreenOffScanSchedule() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder() {}
-            public android.net.wifi.WifiManager.ScreenOffScanSchedule build() { android.net.wifi.WifiManager.ScreenOffScanSchedule x = new android.net.wifi.WifiManager.ScreenOffScanSchedule(); x.meglerProps.putAll(meglerProps); return x; }
-            public android.net.wifi.WifiManager.ScreenOffScanSchedule.Builder setMovingScanInterval(java.time.Duration p0) { meglerProps.put("MovingScanInterval", p0); return this; }
-            public android.net.wifi.WifiManager.ScreenOffScanSchedule.Builder setScanIterations(int p0) { meglerProps.put("ScanIterations", Integer.valueOf(p0)); return this; }
-            public android.net.wifi.WifiManager.ScreenOffScanSchedule.Builder setScanMultiplier(int p0) { meglerProps.put("ScanMultiplier", Integer.valueOf(p0)); return this; }
-            public android.net.wifi.WifiManager.ScreenOffScanSchedule.Builder setStationaryScanInterval(java.time.Duration p0) { meglerProps.put("StationaryScanInterval", p0); return this; }
+            public android.net.wifi.WifiManager.ScreenOffScanSchedule build() { android.net.wifi.WifiManager.ScreenOffScanSchedule x = new android.net.wifi.WifiManager.ScreenOffScanSchedule(); x.megletProps.putAll(megletProps); return x; }
+            public android.net.wifi.WifiManager.ScreenOffScanSchedule.Builder setMovingScanInterval(java.time.Duration p0) { megletProps.put("MovingScanInterval", p0); return this; }
+            public android.net.wifi.WifiManager.ScreenOffScanSchedule.Builder setScanIterations(int p0) { megletProps.put("ScanIterations", Integer.valueOf(p0)); return this; }
+            public android.net.wifi.WifiManager.ScreenOffScanSchedule.Builder setScanMultiplier(int p0) { megletProps.put("ScanMultiplier", Integer.valueOf(p0)); return this; }
+            public android.net.wifi.WifiManager.ScreenOffScanSchedule.Builder setStationaryScanInterval(java.time.Duration p0) { megletProps.put("StationaryScanInterval", p0); return this; }
         }
     }
     public static class ScreenOnScanSchedule {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ScreenOnScanSchedule(java.time.Duration p0, int p1) {}
-        public java.time.Duration getScanInterval() { return (java.time.Duration) meglerProps.get("ScanInterval"); }
-        public int getScanType() { return (meglerProps.get("ScanType") instanceof Integer ? (Integer) meglerProps.get("ScanType") : 0); }
+        public java.time.Duration getScanInterval() { return (java.time.Duration) megletProps.get("ScanInterval"); }
+        public int getScanType() { return (megletProps.get("ScanType") instanceof Integer ? (Integer) megletProps.get("ScanType") : 0); }
         ScreenOnScanSchedule() { this((java.time.Duration) null, (int) 0); }
     }
     public interface SoftApCallback {
@@ -792,7 +792,7 @@ public class WifiManager {
         default void onStateChanged(android.net.wifi.SoftApState p0) {}
     }
     public static abstract class SubsystemRestartTrackingCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public SubsystemRestartTrackingCallback() {}
         public abstract void onSubsystemRestarted();
         public abstract void onSubsystemRestarting();
@@ -819,7 +819,7 @@ public class WifiManager {
         void onStop(int p0);
     }
     public static class WifiLock {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         /* nothing to hold the radio awake for here: counted, as the platform's, so isHeld answers */
         private int count; private boolean counted = true;
         public synchronized void acquire() { count = counted ? count + 1 : 1; }
@@ -827,7 +827,7 @@ public class WifiManager {
         public synchronized boolean isHeld() { return count > 0; }
         public synchronized void release() { if (count > 0) count = counted ? count - 1 : 0; else if (counted) throw new RuntimeException("WifiLock under-locked"); }
         public synchronized void setReferenceCounted(boolean p0) { counted = p0; }
-        public void setWorkSource(android.os.WorkSource p0) { meglerProps.put("WorkSource", p0); }
+        public void setWorkSource(android.os.WorkSource p0) { megletProps.put("WorkSource", p0); }
         protected WifiLock() {}
     }
     public interface WifiLowLatencyLockListener {
@@ -856,7 +856,7 @@ public class WifiManager {
         void onWifiVerboseLoggingStatusChanged(boolean p0);
     }
     public static abstract class WpsCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public WpsCallback() {}
         public abstract void onFailed(int p0);
         public abstract void onStarted(java.lang.String p0);

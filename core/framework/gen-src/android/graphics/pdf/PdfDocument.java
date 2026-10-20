@@ -3,29 +3,29 @@ package android.graphics.pdf;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PdfDocument {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public PdfDocument() {}
     public void close() {}
     protected void finalize() {}
     public void finishPage(android.graphics.pdf.PdfDocument.Page p0) {}
-    public java.util.List getPages() { return (meglerProps.get("Pages") != null ? (java.util.List) meglerProps.get("Pages") : new java.util.ArrayList()); }
+    public java.util.List getPages() { return (megletProps.get("Pages") != null ? (java.util.List) megletProps.get("Pages") : new java.util.ArrayList()); }
     public android.graphics.pdf.PdfDocument.Page startPage(android.graphics.pdf.PdfDocument.PageInfo p0) { return null; }
     public void writeTo(java.io.OutputStream p0) {}
     public static abstract class Page {
         protected Page() {}
     }
     public static final class PageInfo {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-        public android.graphics.Rect getContentRect() { return (android.graphics.Rect) meglerProps.get("ContentRect"); }
-        public int getPageHeight() { return (meglerProps.get("PageHeight") instanceof Integer ? (Integer) meglerProps.get("PageHeight") : 0); }
-        public int getPageNumber() { return (meglerProps.get("PageNumber") instanceof Integer ? (Integer) meglerProps.get("PageNumber") : 0); }
-        public int getPageWidth() { return (meglerProps.get("PageWidth") instanceof Integer ? (Integer) meglerProps.get("PageWidth") : 0); }
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+        public android.graphics.Rect getContentRect() { return (android.graphics.Rect) megletProps.get("ContentRect"); }
+        public int getPageHeight() { return (megletProps.get("PageHeight") instanceof Integer ? (Integer) megletProps.get("PageHeight") : 0); }
+        public int getPageNumber() { return (megletProps.get("PageNumber") instanceof Integer ? (Integer) megletProps.get("PageNumber") : 0); }
+        public int getPageWidth() { return (megletProps.get("PageWidth") instanceof Integer ? (Integer) megletProps.get("PageWidth") : 0); }
         protected PageInfo() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(int p0, int p1, int p2) {}
             public android.graphics.pdf.PdfDocument.PageInfo create() { return new android.graphics.pdf.PdfDocument.PageInfo(); }
-            public android.graphics.pdf.PdfDocument.PageInfo.Builder setContentRect(android.graphics.Rect p0) { meglerProps.put("ContentRect", p0); return this; }
+            public android.graphics.pdf.PdfDocument.PageInfo.Builder setContentRect(android.graphics.Rect p0) { megletProps.put("ContentRect", p0); return this; }
             Builder() { this((int) 0, (int) 0, (int) 0); }
         }
     }

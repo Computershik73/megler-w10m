@@ -3,27 +3,27 @@ package android.printservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PrintJob {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public boolean block(java.lang.String p0) { return false; }
     public boolean cancel() { return false; }
     public boolean complete() { return false; }
     public boolean fail(java.lang.String p0) { return false; }
     public int getAdvancedIntOption(java.lang.String p0) { return 0; }
     public java.lang.String getAdvancedStringOption(java.lang.String p0) { return null; }
-    public android.printservice.PrintDocument getDocument() { return (android.printservice.PrintDocument) meglerProps.get("Document"); }
-    public android.print.PrintJobId getId() { return (android.print.PrintJobId) meglerProps.get("Id"); }
-    public android.print.PrintJobInfo getInfo() { return (android.print.PrintJobInfo) meglerProps.get("Info"); }
-    public java.lang.String getTag() { return (java.lang.String) meglerProps.get("Tag"); }
+    public android.printservice.PrintDocument getDocument() { return (android.printservice.PrintDocument) megletProps.get("Document"); }
+    public android.print.PrintJobId getId() { return (android.print.PrintJobId) megletProps.get("Id"); }
+    public android.print.PrintJobInfo getInfo() { return (android.print.PrintJobInfo) megletProps.get("Info"); }
+    public java.lang.String getTag() { return (java.lang.String) megletProps.get("Tag"); }
     public boolean hasAdvancedOption(java.lang.String p0) { return false; }
-    public boolean isBlocked() { return (meglerProps.get("Blocked") instanceof Boolean ? (Boolean) meglerProps.get("Blocked") : false); }
-    public boolean isCancelled() { return (meglerProps.get("Cancelled") instanceof Boolean ? (Boolean) meglerProps.get("Cancelled") : false); }
-    public boolean isCompleted() { return (meglerProps.get("Completed") instanceof Boolean ? (Boolean) meglerProps.get("Completed") : false); }
-    public boolean isFailed() { return (meglerProps.get("Failed") instanceof Boolean ? (Boolean) meglerProps.get("Failed") : false); }
-    public boolean isQueued() { return (meglerProps.get("Queued") instanceof Boolean ? (Boolean) meglerProps.get("Queued") : false); }
-    public boolean isStarted() { return (meglerProps.get("Started") instanceof Boolean ? (Boolean) meglerProps.get("Started") : false); }
-    public void setProgress(float p0) { meglerProps.put("Progress", Float.valueOf(p0)); }
-    public void setStatus(int p0) { meglerProps.put("Status", Integer.valueOf(p0)); }
-    public void setStatus(java.lang.CharSequence p0) { meglerProps.put("Status", p0); }
+    public boolean isBlocked() { return (megletProps.get("Blocked") instanceof Boolean ? (Boolean) megletProps.get("Blocked") : false); }
+    public boolean isCancelled() { return (megletProps.get("Cancelled") instanceof Boolean ? (Boolean) megletProps.get("Cancelled") : false); }
+    public boolean isCompleted() { return (megletProps.get("Completed") instanceof Boolean ? (Boolean) megletProps.get("Completed") : false); }
+    public boolean isFailed() { return (megletProps.get("Failed") instanceof Boolean ? (Boolean) megletProps.get("Failed") : false); }
+    public boolean isQueued() { return (megletProps.get("Queued") instanceof Boolean ? (Boolean) megletProps.get("Queued") : false); }
+    public boolean isStarted() { return (megletProps.get("Started") instanceof Boolean ? (Boolean) megletProps.get("Started") : false); }
+    public void setProgress(float p0) { megletProps.put("Progress", Float.valueOf(p0)); }
+    public void setStatus(int p0) { megletProps.put("Status", Integer.valueOf(p0)); }
+    public void setStatus(java.lang.CharSequence p0) { megletProps.put("Status", p0); }
     public boolean setTag(java.lang.String p0) { return false; }
     public boolean start() { return false; }
     protected PrintJob() {}

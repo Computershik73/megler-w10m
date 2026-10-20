@@ -3,11 +3,11 @@ package android.service.autofill;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SavedDatasetsInfo {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String TYPE_OTHER = "other";
     public static final java.lang.String TYPE_PASSWORDS = "passwords";
     public SavedDatasetsInfo(java.lang.String p0, int p1) {}
-    public int getCount() { return (meglerProps.get("Count") instanceof Integer ? (Integer) meglerProps.get("Count") : 0); }
-    public java.lang.String getType() { return (java.lang.String) meglerProps.get("Type"); }
+    public int getCount() { return (megletProps.get("Count") instanceof Integer ? (Integer) megletProps.get("Count") : 0); }
+    public java.lang.String getType() { return (java.lang.String) megletProps.get("Type"); }
     SavedDatasetsInfo() { this((java.lang.String) null, (int) 0); }
 }

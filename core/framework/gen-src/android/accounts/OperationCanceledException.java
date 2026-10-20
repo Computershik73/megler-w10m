@@ -3,7 +3,7 @@ package android.accounts;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class OperationCanceledException extends android.accounts.AccountsException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public OperationCanceledException() { super(); }
     public OperationCanceledException(java.lang.String p0) { super(p0); }
     public OperationCanceledException(java.lang.String p0, java.lang.Throwable p1) { super(p0, p1); }

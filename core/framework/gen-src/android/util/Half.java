@@ -3,7 +3,7 @@ package android.util;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Half extends java.lang.Number implements java.lang.Comparable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final short EPSILON = (short) 5120;
     public static final short LOWEST_VALUE = (short) -1025;
     public static final int MAX_EXPONENT = 15;
@@ -61,7 +61,7 @@ public final class Half extends java.lang.Number implements java.lang.Comparable
     public float floatValue() { return 0f; }
     public short halfValue() { return (short) 0; }
     public int intValue() { return 0; }
-    public boolean isNaN() { return (meglerProps.get("NaN") instanceof Boolean ? (Boolean) meglerProps.get("NaN") : false); }
+    public boolean isNaN() { return (megletProps.get("NaN") instanceof Boolean ? (Boolean) megletProps.get("NaN") : false); }
     public long longValue() { return 0L; }
     public short shortValue() { return (short) 0; }
     Half() { this((double) 0d); }

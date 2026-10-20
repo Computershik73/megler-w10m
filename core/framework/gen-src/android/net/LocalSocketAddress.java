@@ -3,11 +3,11 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class LocalSocketAddress {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public LocalSocketAddress(java.lang.String p0) {}
     public LocalSocketAddress(java.lang.String p0, android.net.LocalSocketAddress.Namespace p1) {}
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public android.net.LocalSocketAddress.Namespace getNamespace() { return (android.net.LocalSocketAddress.Namespace) meglerProps.get("Namespace"); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public android.net.LocalSocketAddress.Namespace getNamespace() { return (android.net.LocalSocketAddress.Namespace) megletProps.get("Namespace"); }
     LocalSocketAddress() { this((java.lang.String) null); }
     public enum Namespace {
         ABSTRACT, FILESYSTEM, RESERVED;

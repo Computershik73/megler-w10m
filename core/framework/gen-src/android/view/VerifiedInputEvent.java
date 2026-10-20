@@ -3,17 +3,17 @@ package android.view;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class VerifiedInputEvent implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     protected static final int VERIFIED_KEY = 1;
     protected static final int VERIFIED_MOTION = 2;
     protected VerifiedInputEvent(int p0, int p1, long p2, int p3, int p4) {}
     protected VerifiedInputEvent(android.os.Parcel p0, int p1) {}
     public int describeContents() { return 0; }
-    public int getDeviceId() { return (meglerProps.get("DeviceId") instanceof Integer ? (Integer) meglerProps.get("DeviceId") : 0); }
-    public int getDisplayId() { return (meglerProps.get("DisplayId") instanceof Integer ? (Integer) meglerProps.get("DisplayId") : 0); }
-    public long getEventTimeNanos() { return (meglerProps.get("EventTimeNanos") instanceof Long ? (Long) meglerProps.get("EventTimeNanos") : 0L); }
-    public int getSource() { return (meglerProps.get("Source") instanceof Integer ? (Integer) meglerProps.get("Source") : 0); }
+    public int getDeviceId() { return (megletProps.get("DeviceId") instanceof Integer ? (Integer) megletProps.get("DeviceId") : 0); }
+    public int getDisplayId() { return (megletProps.get("DisplayId") instanceof Integer ? (Integer) megletProps.get("DisplayId") : 0); }
+    public long getEventTimeNanos() { return (megletProps.get("EventTimeNanos") instanceof Long ? (Long) megletProps.get("EventTimeNanos") : 0L); }
+    public int getSource() { return (megletProps.get("Source") instanceof Integer ? (Integer) megletProps.get("Source") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     VerifiedInputEvent() { this((android.os.Parcel) null, (int) 0); }
 }

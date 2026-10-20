@@ -3,7 +3,7 @@ package android.media.tv;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TvRecordingInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int FRIDAY = 32;
     public static final int MONDAY = 2;
@@ -17,22 +17,22 @@ public final class TvRecordingInfo implements android.os.Parcelable {
     public static final int WEDNESDAY = 8;
     public TvRecordingInfo(java.lang.String p0, long p1, long p2, int p3, java.lang.String p4, java.lang.String p5, long p6, long p7, android.net.Uri p8, android.net.Uri p9, java.util.List p10, android.net.Uri p11, long p12, long p13) {}
     public int describeContents() { return 0; }
-    public android.net.Uri getChannelUri() { return (android.net.Uri) meglerProps.get("ChannelUri"); }
-    public java.util.List getContentRatings() { return (meglerProps.get("ContentRatings") != null ? (java.util.List) meglerProps.get("ContentRatings") : new java.util.ArrayList()); }
-    public java.lang.String getDescription() { return (java.lang.String) meglerProps.get("Description"); }
-    public long getEndPaddingMillis() { return (meglerProps.get("EndPaddingMillis") instanceof Long ? (Long) meglerProps.get("EndPaddingMillis") : 0L); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public android.net.Uri getProgramUri() { return (android.net.Uri) meglerProps.get("ProgramUri"); }
-    public long getRecordingDurationMillis() { return (meglerProps.get("RecordingDurationMillis") instanceof Long ? (Long) meglerProps.get("RecordingDurationMillis") : 0L); }
-    public java.lang.String getRecordingId() { return (java.lang.String) meglerProps.get("RecordingId"); }
-    public long getRecordingStartTimeMillis() { return (meglerProps.get("RecordingStartTimeMillis") instanceof Long ? (Long) meglerProps.get("RecordingStartTimeMillis") : 0L); }
-    public android.net.Uri getRecordingUri() { return (android.net.Uri) meglerProps.get("RecordingUri"); }
-    public int getRepeatDays() { return (meglerProps.get("RepeatDays") instanceof Integer ? (Integer) meglerProps.get("RepeatDays") : 0); }
-    public long getScheduledDurationMillis() { return (meglerProps.get("ScheduledDurationMillis") instanceof Long ? (Long) meglerProps.get("ScheduledDurationMillis") : 0L); }
-    public long getScheduledStartTimeMillis() { return (meglerProps.get("ScheduledStartTimeMillis") instanceof Long ? (Long) meglerProps.get("ScheduledStartTimeMillis") : 0L); }
-    public long getStartPaddingMillis() { return (meglerProps.get("StartPaddingMillis") instanceof Long ? (Long) meglerProps.get("StartPaddingMillis") : 0L); }
-    public void setDescription(java.lang.String p0) { meglerProps.put("Description", p0); }
-    public void setName(java.lang.String p0) { meglerProps.put("Name", p0); }
+    public android.net.Uri getChannelUri() { return (android.net.Uri) megletProps.get("ChannelUri"); }
+    public java.util.List getContentRatings() { return (megletProps.get("ContentRatings") != null ? (java.util.List) megletProps.get("ContentRatings") : new java.util.ArrayList()); }
+    public java.lang.String getDescription() { return (java.lang.String) megletProps.get("Description"); }
+    public long getEndPaddingMillis() { return (megletProps.get("EndPaddingMillis") instanceof Long ? (Long) megletProps.get("EndPaddingMillis") : 0L); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public android.net.Uri getProgramUri() { return (android.net.Uri) megletProps.get("ProgramUri"); }
+    public long getRecordingDurationMillis() { return (megletProps.get("RecordingDurationMillis") instanceof Long ? (Long) megletProps.get("RecordingDurationMillis") : 0L); }
+    public java.lang.String getRecordingId() { return (java.lang.String) megletProps.get("RecordingId"); }
+    public long getRecordingStartTimeMillis() { return (megletProps.get("RecordingStartTimeMillis") instanceof Long ? (Long) megletProps.get("RecordingStartTimeMillis") : 0L); }
+    public android.net.Uri getRecordingUri() { return (android.net.Uri) megletProps.get("RecordingUri"); }
+    public int getRepeatDays() { return (megletProps.get("RepeatDays") instanceof Integer ? (Integer) megletProps.get("RepeatDays") : 0); }
+    public long getScheduledDurationMillis() { return (megletProps.get("ScheduledDurationMillis") instanceof Long ? (Long) megletProps.get("ScheduledDurationMillis") : 0L); }
+    public long getScheduledStartTimeMillis() { return (megletProps.get("ScheduledStartTimeMillis") instanceof Long ? (Long) megletProps.get("ScheduledStartTimeMillis") : 0L); }
+    public long getStartPaddingMillis() { return (megletProps.get("StartPaddingMillis") instanceof Long ? (Long) megletProps.get("StartPaddingMillis") : 0L); }
+    public void setDescription(java.lang.String p0) { megletProps.put("Description", p0); }
+    public void setName(java.lang.String p0) { megletProps.put("Name", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TvRecordingInfo() { this((java.lang.String) null, (long) 0L, (long) 0L, (int) 0, (java.lang.String) null, (java.lang.String) null, (long) 0L, (long) 0L, (android.net.Uri) null, (android.net.Uri) null, (java.util.List) null, (android.net.Uri) null, (long) 0L, (long) 0L); }
 }

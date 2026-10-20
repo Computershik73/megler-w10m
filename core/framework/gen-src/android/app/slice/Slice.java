@@ -3,7 +3,7 @@ package android.app.slice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Slice implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String EXTRA_RANGE_VALUE = "android.app.slice.extra.RANGE_VALUE";
     public static final java.lang.String EXTRA_TOGGLE_STATE = "android.app.slice.extra.TOGGLE_STATE";
@@ -39,16 +39,16 @@ public final class Slice implements android.os.Parcelable {
     public static final java.lang.String SUBTYPE_VALUE = "value";
     protected Slice(android.os.Parcel p0) {}
     public int describeContents() { return 0; }
-    public java.util.List getHints() { return (meglerProps.get("Hints") != null ? (java.util.List) meglerProps.get("Hints") : new java.util.ArrayList()); }
-    public java.util.List getItems() { return (meglerProps.get("Items") != null ? (java.util.List) meglerProps.get("Items") : new java.util.ArrayList()); }
-    public android.app.slice.SliceSpec getSpec() { return (android.app.slice.SliceSpec) meglerProps.get("Spec"); }
-    public android.net.Uri getUri() { return (android.net.Uri) meglerProps.get("Uri"); }
+    public java.util.List getHints() { return (megletProps.get("Hints") != null ? (java.util.List) megletProps.get("Hints") : new java.util.ArrayList()); }
+    public java.util.List getItems() { return (megletProps.get("Items") != null ? (java.util.List) megletProps.get("Items") : new java.util.ArrayList()); }
+    public android.app.slice.SliceSpec getSpec() { return (android.app.slice.SliceSpec) megletProps.get("Spec"); }
+    public android.net.Uri getUri() { return (android.net.Uri) megletProps.get("Uri"); }
     public boolean hasHint(java.lang.String p0) { return false; }
-    public boolean isCallerNeeded() { return (meglerProps.get("CallerNeeded") instanceof Boolean ? (Boolean) meglerProps.get("CallerNeeded") : false); }
+    public boolean isCallerNeeded() { return (megletProps.get("CallerNeeded") instanceof Boolean ? (Boolean) megletProps.get("CallerNeeded") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     Slice() { this((android.os.Parcel) null); }
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.app.slice.Slice.Builder p0) {}
         public Builder(android.net.Uri p0, android.app.slice.SliceSpec p1) {}
         public android.app.slice.Slice.Builder addAction(android.app.PendingIntent p0, android.app.slice.Slice p1, java.lang.String p2) { return this; }
@@ -60,8 +60,8 @@ public final class Slice implements android.os.Parcelable {
         public android.app.slice.Slice.Builder addRemoteInput(android.app.RemoteInput p0, java.lang.String p1, java.util.List p2) { return this; }
         public android.app.slice.Slice.Builder addSubSlice(android.app.slice.Slice p0, java.lang.String p1) { return this; }
         public android.app.slice.Slice.Builder addText(java.lang.CharSequence p0, java.lang.String p1, java.util.List p2) { return this; }
-        public android.app.slice.Slice build() { android.app.slice.Slice x = new android.app.slice.Slice(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.app.slice.Slice.Builder setCallerNeeded(boolean p0) { meglerProps.put("CallerNeeded", Boolean.valueOf(p0)); return this; }
+        public android.app.slice.Slice build() { android.app.slice.Slice x = new android.app.slice.Slice(); x.megletProps.putAll(megletProps); return x; }
+        public android.app.slice.Slice.Builder setCallerNeeded(boolean p0) { megletProps.put("CallerNeeded", Boolean.valueOf(p0)); return this; }
         Builder() { this((android.app.slice.Slice.Builder) null); }
     }
 }

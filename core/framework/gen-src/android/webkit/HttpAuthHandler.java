@@ -3,7 +3,7 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class HttpAuthHandler extends android.os.Handler {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public HttpAuthHandler() { super(); }
     public void cancel() {}
     public void proceed(java.lang.String p0, java.lang.String p1) {}

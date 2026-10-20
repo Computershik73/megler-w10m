@@ -3,9 +3,9 @@ package android.os.strictmode;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class Violation extends java.lang.Throwable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public java.lang.Throwable fillInStackTrace() { return null; }
     public java.lang.Throwable initCause(java.lang.Throwable p0) { return null; }
-    public void setStackTrace(java.lang.StackTraceElement[] p0) { meglerProps.put("StackTrace", p0); }
+    public void setStackTrace(java.lang.StackTraceElement[] p0) { megletProps.put("StackTrace", p0); }
     protected Violation() { super(); }
 }

@@ -21,14 +21,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MODE="${1:-both}"
 MS="${2:-300}"
 bash "$ROOT/tools/dvm-android-root.sh" > /dev/null
-# The interpreter's loop first in the program's code, where nothing else moves it (tools/build-tests.sh, MEGLER_TESTS_ORDER).
+# The interpreter's loop first in the program's code, where nothing else moves it (tools/build-tests.sh, MEGLET_TESTS_ORDER).
 mkdir -p "$ROOT/build/tests-win-o2"
 ORDER="$ROOT/build/tests-win-o2/order.txt"
 echo hk_dvm_interpret > "$ORDER"
 if [ "$MODE" = profile ]; then
   ITEM="$2"
   FUNC="${3:-hk_dvm_interpret}"
-  MEGLER_TESTS_OPT=/O2 MEGLER_TESTS_OUT="$ROOT/build/tests-win-o2" MEGLER_TESTS_MAP=1 MEGLER_TESTS_ORDER="$ORDER" bash "$ROOT/tools/build-tests.sh" win --no-run --no-libcore > /dev/null
+  MEGLET_TESTS_OPT=/O2 MEGLET_TESTS_OUT="$ROOT/build/tests-win-o2" MEGLET_TESTS_MAP=1 MEGLET_TESTS_ORDER="$ORDER" bash "$ROOT/tools/build-tests.sh" win --no-run --no-libcore > /dev/null
   OUTF="$ROOT/build/tests-win-o2/samples-$ITEM.txt"
   HK_BENCH_PROFILE="$ITEM" HK_BENCH_PROFILE_OUT="$(cygpath -w "$OUTF")" "$ROOT/build/tests-win-o2/hk_tests.exe" --dvm-bench \
     "$(cygpath -w "$ROOT/build/guest/armeabi-v7a/dvm")" "$(cygpath -w "$ROOT/build/android9/root")" 200 | grep -E "samples|$ITEM" || true
@@ -39,13 +39,13 @@ if [ "$MODE" = profile ]; then
   exit 0
 fi
 if [ "$MODE" = win ] || [ "$MODE" = both ]; then
-  MEGLER_TESTS_OPT=/O2 MEGLER_TESTS_OUT="$ROOT/build/tests-win-o2" MEGLER_TESTS_ORDER="$ORDER" bash "$ROOT/tools/build-tests.sh" win --no-run --no-libcore > /dev/null
+  MEGLET_TESTS_OPT=/O2 MEGLET_TESTS_OUT="$ROOT/build/tests-win-o2" MEGLET_TESTS_ORDER="$ORDER" bash "$ROOT/tools/build-tests.sh" win --no-run --no-libcore > /dev/null
   echo "== x64, /O2"
   "$ROOT/build/tests-win-o2/hk_tests.exe" --dvm-bench "$(cygpath -w "$ROOT/build/guest/armeabi-v7a/dvm")" "$(cygpath -w "$ROOT/build/android9/root")" "$MS"
 fi
 if [ "$MODE" = arm ] || [ "$MODE" = both ]; then
   bash "$ROOT/tools/build-tests.sh" arm --no-run > /dev/null
-  WB="${MEGLER_WSL_BUILD:-~/megler-w10m-build}"
+  WB="${MEGLET_WSL_BUILD:-~/meglet-build}"
   WROOT="/mnt/${ROOT:1:1}${ROOT:2}"
   echo "== qemu-arm, gcc -O1"
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$WROOT/build/android9/root/.' $WB/android-root/ && qemu-arm -L /usr/arm-linux-gnueabihf $WB/hk_tests --dvm-bench '$WROOT/build/guest/armeabi-v7a/dvm' $WB/android-root $MS 2>&1"

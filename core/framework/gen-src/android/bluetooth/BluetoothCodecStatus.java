@@ -3,23 +3,23 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothCodecStatus implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String EXTRA_CODEC_STATUS = "android.bluetooth.extra.CODEC_STATUS";
     public BluetoothCodecStatus(android.bluetooth.BluetoothCodecConfig p0, java.util.List p1, java.util.List p2) {}
     public int describeContents() { return 0; }
-    public android.bluetooth.BluetoothCodecConfig getCodecConfig() { return (android.bluetooth.BluetoothCodecConfig) meglerProps.get("CodecConfig"); }
-    public java.util.List getCodecsLocalCapabilities() { return (meglerProps.get("CodecsLocalCapabilities") != null ? (java.util.List) meglerProps.get("CodecsLocalCapabilities") : new java.util.ArrayList()); }
-    public java.util.List getCodecsSelectableCapabilities() { return (meglerProps.get("CodecsSelectableCapabilities") != null ? (java.util.List) meglerProps.get("CodecsSelectableCapabilities") : new java.util.ArrayList()); }
+    public android.bluetooth.BluetoothCodecConfig getCodecConfig() { return (android.bluetooth.BluetoothCodecConfig) megletProps.get("CodecConfig"); }
+    public java.util.List getCodecsLocalCapabilities() { return (megletProps.get("CodecsLocalCapabilities") != null ? (java.util.List) megletProps.get("CodecsLocalCapabilities") : new java.util.ArrayList()); }
+    public java.util.List getCodecsSelectableCapabilities() { return (megletProps.get("CodecsSelectableCapabilities") != null ? (java.util.List) megletProps.get("CodecsSelectableCapabilities") : new java.util.ArrayList()); }
     public boolean isCodecConfigSelectable(android.bluetooth.BluetoothCodecConfig p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     BluetoothCodecStatus() { this((android.bluetooth.BluetoothCodecConfig) null, (java.util.List) null, (java.util.List) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.bluetooth.BluetoothCodecStatus build() { android.bluetooth.BluetoothCodecStatus x = new android.bluetooth.BluetoothCodecStatus(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.bluetooth.BluetoothCodecStatus.Builder setCodecConfig(android.bluetooth.BluetoothCodecConfig p0) { meglerProps.put("CodecConfig", p0); return this; }
-        public android.bluetooth.BluetoothCodecStatus.Builder setCodecsLocalCapabilities(java.util.List p0) { meglerProps.put("CodecsLocalCapabilities", p0); return this; }
-        public android.bluetooth.BluetoothCodecStatus.Builder setCodecsSelectableCapabilities(java.util.List p0) { meglerProps.put("CodecsSelectableCapabilities", p0); return this; }
+        public android.bluetooth.BluetoothCodecStatus build() { android.bluetooth.BluetoothCodecStatus x = new android.bluetooth.BluetoothCodecStatus(); x.megletProps.putAll(megletProps); return x; }
+        public android.bluetooth.BluetoothCodecStatus.Builder setCodecConfig(android.bluetooth.BluetoothCodecConfig p0) { megletProps.put("CodecConfig", p0); return this; }
+        public android.bluetooth.BluetoothCodecStatus.Builder setCodecsLocalCapabilities(java.util.List p0) { megletProps.put("CodecsLocalCapabilities", p0); return this; }
+        public android.bluetooth.BluetoothCodecStatus.Builder setCodecsSelectableCapabilities(java.util.List p0) { megletProps.put("CodecsSelectableCapabilities", p0); return this; }
     }
 }

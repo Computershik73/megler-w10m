@@ -3,7 +3,7 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaMetadata implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String METADATA_KEY_ALBUM = "android.media.metadata.ALBUM";
     public static final java.lang.String METADATA_KEY_ALBUM_ART = "android.media.metadata.ALBUM_ART";
@@ -38,9 +38,9 @@ public final class MediaMetadata implements android.os.Parcelable {
     public boolean containsKey(java.lang.String p0) { return false; }
     public int describeContents() { return 0; }
     public android.graphics.Bitmap getBitmap(java.lang.String p0) { return null; }
-    public int getBitmapDimensionLimit() { return (meglerProps.get("BitmapDimensionLimit") instanceof Integer ? (Integer) meglerProps.get("BitmapDimensionLimit") : 0); }
-    public android.media.MediaDescription getDescription() { return (android.media.MediaDescription) meglerProps.get("Description"); }
-    public java.lang.String getDescriptionString() { return (java.lang.String) meglerProps.get("DescriptionString"); }
+    public int getBitmapDimensionLimit() { return (megletProps.get("BitmapDimensionLimit") instanceof Integer ? (Integer) megletProps.get("BitmapDimensionLimit") : 0); }
+    public android.media.MediaDescription getDescription() { return (android.media.MediaDescription) megletProps.get("Description"); }
+    public java.lang.String getDescriptionString() { return (java.lang.String) megletProps.get("DescriptionString"); }
     public long getLong(java.lang.String p0) { return 0L; }
     public android.media.Rating getRating(java.lang.String p0) { return null; }
     public java.lang.String getString(java.lang.String p0) { return null; }
@@ -50,15 +50,15 @@ public final class MediaMetadata implements android.os.Parcelable {
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected MediaMetadata() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.media.MediaMetadata p0) {}
-        public android.media.MediaMetadata build() { android.media.MediaMetadata x = new android.media.MediaMetadata(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.media.MediaMetadata build() { android.media.MediaMetadata x = new android.media.MediaMetadata(); x.megletProps.putAll(megletProps); return x; }
         public android.media.MediaMetadata.Builder putBitmap(java.lang.String p0, android.graphics.Bitmap p1) { return this; }
         public android.media.MediaMetadata.Builder putLong(java.lang.String p0, long p1) { return this; }
         public android.media.MediaMetadata.Builder putRating(java.lang.String p0, android.media.Rating p1) { return this; }
         public android.media.MediaMetadata.Builder putString(java.lang.String p0, java.lang.String p1) { return this; }
         public android.media.MediaMetadata.Builder putText(java.lang.String p0, java.lang.CharSequence p1) { return this; }
-        public android.media.MediaMetadata.Builder setBitmapDimensionLimit(int p0) { meglerProps.put("BitmapDimensionLimit", Integer.valueOf(p0)); return this; }
+        public android.media.MediaMetadata.Builder setBitmapDimensionLimit(int p0) { megletProps.put("BitmapDimensionLimit", Integer.valueOf(p0)); return this; }
     }
 }

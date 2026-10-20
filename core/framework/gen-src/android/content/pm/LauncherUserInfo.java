@@ -3,20 +3,20 @@ package android.content.pm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class LauncherUserInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String PRIVATE_SPACE_ENTRYPOINT_HIDDEN = "private_space_entrypoint_hidden";
     public int describeContents() { return 0; }
-    public android.os.Bundle getUserConfig() { return (android.os.Bundle) meglerProps.get("UserConfig"); }
-    public int getUserSerialNumber() { return (meglerProps.get("UserSerialNumber") instanceof Integer ? (Integer) meglerProps.get("UserSerialNumber") : 0); }
-    public java.lang.String getUserType() { return (java.lang.String) meglerProps.get("UserType"); }
+    public android.os.Bundle getUserConfig() { return (android.os.Bundle) megletProps.get("UserConfig"); }
+    public int getUserSerialNumber() { return (megletProps.get("UserSerialNumber") instanceof Integer ? (Integer) megletProps.get("UserSerialNumber") : 0); }
+    public java.lang.String getUserType() { return (java.lang.String) megletProps.get("UserType"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected LauncherUserInfo() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(java.lang.String p0, int p1) {}
         public Builder(java.lang.String p0, int p1, android.os.Bundle p2) {}
-        public android.content.pm.LauncherUserInfo build() { android.content.pm.LauncherUserInfo x = new android.content.pm.LauncherUserInfo(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.content.pm.LauncherUserInfo build() { android.content.pm.LauncherUserInfo x = new android.content.pm.LauncherUserInfo(); x.megletProps.putAll(megletProps); return x; }
         Builder() { this((java.lang.String) null, (int) 0); }
     }
 }

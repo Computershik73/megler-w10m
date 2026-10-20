@@ -3,18 +3,18 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class TelephonyNetworkSpecifier extends android.net.NetworkSpecifier implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public TelephonyNetworkSpecifier(int p0) { super(); }
     public boolean canBeSatisfiedBy(android.net.NetworkSpecifier p0) { return false; }
     public int describeContents() { return 0; }
-    public int getSubscriptionId() { return (meglerProps.get("SubscriptionId") instanceof Integer ? (Integer) meglerProps.get("SubscriptionId") : 0); }
+    public int getSubscriptionId() { return (megletProps.get("SubscriptionId") instanceof Integer ? (Integer) megletProps.get("SubscriptionId") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     TelephonyNetworkSpecifier() { this((int) 0); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.TelephonyNetworkSpecifier build() { android.net.TelephonyNetworkSpecifier x = new android.net.TelephonyNetworkSpecifier(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.net.TelephonyNetworkSpecifier.Builder setSubscriptionId(int p0) { meglerProps.put("SubscriptionId", Integer.valueOf(p0)); return this; }
+        public android.net.TelephonyNetworkSpecifier build() { android.net.TelephonyNetworkSpecifier x = new android.net.TelephonyNetworkSpecifier(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.TelephonyNetworkSpecifier.Builder setSubscriptionId(int p0) { megletProps.put("SubscriptionId", Integer.valueOf(p0)); return this; }
     }
 }

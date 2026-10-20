@@ -3,13 +3,13 @@ package android.nfc;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NfcEvent {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public android.nfc.NfcAdapter nfcAdapter;
     public int peerLlcpMajorVersion;
     public int peerLlcpMinorVersion;
     public NfcEvent(android.nfc.NfcAdapter p0, byte p1) {}
-    public android.nfc.NfcAdapter getNfcAdapter() { return (android.nfc.NfcAdapter) meglerProps.get("NfcAdapter"); }
-    public int getPeerLlcpMajorVersion() { return (meglerProps.get("PeerLlcpMajorVersion") instanceof Integer ? (Integer) meglerProps.get("PeerLlcpMajorVersion") : 0); }
-    public int getPeerLlcpMinorVersion() { return (meglerProps.get("PeerLlcpMinorVersion") instanceof Integer ? (Integer) meglerProps.get("PeerLlcpMinorVersion") : 0); }
+    public android.nfc.NfcAdapter getNfcAdapter() { return (android.nfc.NfcAdapter) megletProps.get("NfcAdapter"); }
+    public int getPeerLlcpMajorVersion() { return (megletProps.get("PeerLlcpMajorVersion") instanceof Integer ? (Integer) megletProps.get("PeerLlcpMajorVersion") : 0); }
+    public int getPeerLlcpMinorVersion() { return (megletProps.get("PeerLlcpMinorVersion") instanceof Integer ? (Integer) megletProps.get("PeerLlcpMinorVersion") : 0); }
     NfcEvent() { this((android.nfc.NfcAdapter) null, (byte) (byte) 0); }
 }

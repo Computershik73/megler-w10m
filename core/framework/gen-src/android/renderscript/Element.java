@@ -3,7 +3,7 @@ package android.renderscript;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class Element extends android.renderscript.BaseObj {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.renderscript.Element ALLOCATION(android.renderscript.RenderScript p0) { return new Element(); }
     public static android.renderscript.Element A_8(android.renderscript.RenderScript p0) { return new Element(); }
     public static android.renderscript.Element BOOLEAN(android.renderscript.RenderScript p0) { return new Element(); }
@@ -73,20 +73,20 @@ public class Element extends android.renderscript.BaseObj {
     public static android.renderscript.Element YUV(android.renderscript.RenderScript p0) { return new Element(); }
     public static android.renderscript.Element createPixel(android.renderscript.RenderScript p0, android.renderscript.Element.DataType p1, android.renderscript.Element.DataKind p2) { return new Element(); }
     public static android.renderscript.Element createVector(android.renderscript.RenderScript p0, android.renderscript.Element.DataType p1, int p2) { return new Element(); }
-    public int getBytesSize() { return (meglerProps.get("BytesSize") instanceof Integer ? (Integer) meglerProps.get("BytesSize") : 0); }
-    public android.renderscript.Element.DataKind getDataKind() { return (android.renderscript.Element.DataKind) meglerProps.get("DataKind"); }
-    public android.renderscript.Element.DataType getDataType() { return (android.renderscript.Element.DataType) meglerProps.get("DataType"); }
+    public int getBytesSize() { return (megletProps.get("BytesSize") instanceof Integer ? (Integer) megletProps.get("BytesSize") : 0); }
+    public android.renderscript.Element.DataKind getDataKind() { return (android.renderscript.Element.DataKind) megletProps.get("DataKind"); }
+    public android.renderscript.Element.DataType getDataType() { return (android.renderscript.Element.DataType) megletProps.get("DataType"); }
     public android.renderscript.Element getSubElement(int p0) { return this; }
     public int getSubElementArraySize(int p0) { return 0; }
-    public int getSubElementCount() { return (meglerProps.get("SubElementCount") instanceof Integer ? (Integer) meglerProps.get("SubElementCount") : 0); }
+    public int getSubElementCount() { return (megletProps.get("SubElementCount") instanceof Integer ? (Integer) megletProps.get("SubElementCount") : 0); }
     public java.lang.String getSubElementName(int p0) { return null; }
     public int getSubElementOffsetBytes(int p0) { return 0; }
-    public int getVectorSize() { return (meglerProps.get("VectorSize") instanceof Integer ? (Integer) meglerProps.get("VectorSize") : 0); }
+    public int getVectorSize() { return (megletProps.get("VectorSize") instanceof Integer ? (Integer) megletProps.get("VectorSize") : 0); }
     public boolean isCompatible(android.renderscript.Element p0) { return false; }
-    public boolean isComplex() { return (meglerProps.get("Complex") instanceof Boolean ? (Boolean) meglerProps.get("Complex") : false); }
+    public boolean isComplex() { return (megletProps.get("Complex") instanceof Boolean ? (Boolean) megletProps.get("Complex") : false); }
     protected Element() { super(); }
     public static class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.renderscript.RenderScript p0) {}
         public android.renderscript.Element.Builder add(android.renderscript.Element p0, java.lang.String p1) { return this; }
         public android.renderscript.Element.Builder add(android.renderscript.Element p0, java.lang.String p1, int p2) { return this; }

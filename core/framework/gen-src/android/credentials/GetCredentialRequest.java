@@ -3,23 +3,23 @@ package android.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class GetCredentialRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public boolean alwaysSendAppInfoToProvider() { return false; }
     public int describeContents() { return 0; }
-    public java.util.List getCredentialOptions() { return (meglerProps.get("CredentialOptions") != null ? (java.util.List) meglerProps.get("CredentialOptions") : new java.util.ArrayList()); }
-    public android.os.Bundle getData() { return (android.os.Bundle) meglerProps.get("Data"); }
-    public java.lang.String getOrigin() { return (java.lang.String) meglerProps.get("Origin"); }
+    public java.util.List getCredentialOptions() { return (megletProps.get("CredentialOptions") != null ? (java.util.List) megletProps.get("CredentialOptions") : new java.util.ArrayList()); }
+    public android.os.Bundle getData() { return (android.os.Bundle) megletProps.get("Data"); }
+    public java.lang.String getOrigin() { return (java.lang.String) megletProps.get("Origin"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected GetCredentialRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder(android.os.Bundle p0) {}
         public android.credentials.GetCredentialRequest.Builder addCredentialOption(android.credentials.CredentialOption p0) { return this; }
-        public android.credentials.GetCredentialRequest build() { android.credentials.GetCredentialRequest x = new android.credentials.GetCredentialRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.credentials.GetCredentialRequest.Builder setAlwaysSendAppInfoToProvider(boolean p0) { meglerProps.put("AlwaysSendAppInfoToProvider", Boolean.valueOf(p0)); return this; }
-        public android.credentials.GetCredentialRequest.Builder setCredentialOptions(java.util.List p0) { meglerProps.put("CredentialOptions", p0); return this; }
-        public android.credentials.GetCredentialRequest.Builder setOrigin(java.lang.String p0) { meglerProps.put("Origin", p0); return this; }
+        public android.credentials.GetCredentialRequest build() { android.credentials.GetCredentialRequest x = new android.credentials.GetCredentialRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.credentials.GetCredentialRequest.Builder setAlwaysSendAppInfoToProvider(boolean p0) { megletProps.put("AlwaysSendAppInfoToProvider", Boolean.valueOf(p0)); return this; }
+        public android.credentials.GetCredentialRequest.Builder setCredentialOptions(java.util.List p0) { megletProps.put("CredentialOptions", p0); return this; }
+        public android.credentials.GetCredentialRequest.Builder setOrigin(java.lang.String p0) { megletProps.put("Origin", p0); return this; }
         Builder() { this((android.os.Bundle) null); }
     }
 }

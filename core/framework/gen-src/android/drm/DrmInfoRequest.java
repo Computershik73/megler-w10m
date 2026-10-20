@@ -3,7 +3,7 @@ package android.drm;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class DrmInfoRequest {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACCOUNT_ID = "account_id";
     public static final java.lang.String SUBSCRIPTION_ID = "subscription_id";
     public static final int TYPE_REGISTRATION_INFO = 1;
@@ -12,8 +12,8 @@ public class DrmInfoRequest {
     public static final int TYPE_UNREGISTRATION_INFO = 2;
     public DrmInfoRequest(int p0, java.lang.String p1) {}
     public java.lang.Object get(java.lang.String p0) { return null; }
-    public int getInfoType() { return (meglerProps.get("InfoType") instanceof Integer ? (Integer) meglerProps.get("InfoType") : 0); }
-    public java.lang.String getMimeType() { return (java.lang.String) meglerProps.get("MimeType"); }
+    public int getInfoType() { return (megletProps.get("InfoType") instanceof Integer ? (Integer) megletProps.get("InfoType") : 0); }
+    public java.lang.String getMimeType() { return (java.lang.String) megletProps.get("MimeType"); }
     public java.util.Iterator iterator() { return null; }
     public java.util.Iterator keyIterator() { return null; }
     public void put(java.lang.String p0, java.lang.Object p1) {}

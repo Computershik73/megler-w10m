@@ -3,7 +3,7 @@ package android.net;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IpConfiguration implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public android.net.ProxyInfo httpProxy;
     public android.net.IpConfiguration.IpAssignment ipAssignment;
@@ -13,21 +13,21 @@ public final class IpConfiguration implements android.os.Parcelable {
     public IpConfiguration(android.net.IpConfiguration.IpAssignment p0, android.net.IpConfiguration.ProxySettings p1, android.net.StaticIpConfiguration p2, android.net.ProxyInfo p3) {}
     public IpConfiguration(android.net.IpConfiguration p0) {}
     public int describeContents() { return 0; }
-    public android.net.ProxyInfo getHttpProxy() { return (android.net.ProxyInfo) meglerProps.get("HttpProxy"); }
-    public android.net.IpConfiguration.IpAssignment getIpAssignment() { return (android.net.IpConfiguration.IpAssignment) meglerProps.get("IpAssignment"); }
-    public android.net.IpConfiguration.ProxySettings getProxySettings() { return (android.net.IpConfiguration.ProxySettings) meglerProps.get("ProxySettings"); }
-    public android.net.StaticIpConfiguration getStaticIpConfiguration() { return (android.net.StaticIpConfiguration) meglerProps.get("StaticIpConfiguration"); }
-    public void setHttpProxy(android.net.ProxyInfo p0) { meglerProps.put("HttpProxy", p0); }
-    public void setIpAssignment(android.net.IpConfiguration.IpAssignment p0) { meglerProps.put("IpAssignment", p0); }
-    public void setProxySettings(android.net.IpConfiguration.ProxySettings p0) { meglerProps.put("ProxySettings", p0); }
-    public void setStaticIpConfiguration(android.net.StaticIpConfiguration p0) { meglerProps.put("StaticIpConfiguration", p0); }
+    public android.net.ProxyInfo getHttpProxy() { return (android.net.ProxyInfo) megletProps.get("HttpProxy"); }
+    public android.net.IpConfiguration.IpAssignment getIpAssignment() { return (android.net.IpConfiguration.IpAssignment) megletProps.get("IpAssignment"); }
+    public android.net.IpConfiguration.ProxySettings getProxySettings() { return (android.net.IpConfiguration.ProxySettings) megletProps.get("ProxySettings"); }
+    public android.net.StaticIpConfiguration getStaticIpConfiguration() { return (android.net.StaticIpConfiguration) megletProps.get("StaticIpConfiguration"); }
+    public void setHttpProxy(android.net.ProxyInfo p0) { megletProps.put("HttpProxy", p0); }
+    public void setIpAssignment(android.net.IpConfiguration.IpAssignment p0) { megletProps.put("IpAssignment", p0); }
+    public void setProxySettings(android.net.IpConfiguration.ProxySettings p0) { megletProps.put("ProxySettings", p0); }
+    public void setStaticIpConfiguration(android.net.StaticIpConfiguration p0) { megletProps.put("StaticIpConfiguration", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.net.IpConfiguration build() { android.net.IpConfiguration x = new android.net.IpConfiguration(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.net.IpConfiguration.Builder setHttpProxy(android.net.ProxyInfo p0) { meglerProps.put("HttpProxy", p0); return this; }
-        public android.net.IpConfiguration.Builder setStaticIpConfiguration(android.net.StaticIpConfiguration p0) { meglerProps.put("StaticIpConfiguration", p0); return this; }
+        public android.net.IpConfiguration build() { android.net.IpConfiguration x = new android.net.IpConfiguration(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.IpConfiguration.Builder setHttpProxy(android.net.ProxyInfo p0) { megletProps.put("HttpProxy", p0); return this; }
+        public android.net.IpConfiguration.Builder setStaticIpConfiguration(android.net.StaticIpConfiguration p0) { megletProps.put("StaticIpConfiguration", p0); return this; }
     }
     public enum IpAssignment {
         DHCP, STATIC, UNASSIGNED;

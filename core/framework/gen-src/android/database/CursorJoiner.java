@@ -3,7 +3,7 @@ package android.database;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CursorJoiner implements java.util.Iterator, java.lang.Iterable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public CursorJoiner(android.database.Cursor p0, java.lang.String[] p1, android.database.Cursor p2, java.lang.String[] p3) {}
     public boolean hasNext() { return false; }
     public java.util.Iterator iterator() { return null; }

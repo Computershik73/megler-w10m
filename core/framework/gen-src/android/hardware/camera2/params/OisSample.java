@@ -3,10 +3,10 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class OisSample {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public OisSample(long p0, float p1, float p2) {}
-    public long getTimestamp() { return (meglerProps.get("Timestamp") instanceof Long ? (Long) meglerProps.get("Timestamp") : 0L); }
-    public float getXshift() { return (meglerProps.get("Xshift") instanceof Float ? (Float) meglerProps.get("Xshift") : 0f); }
-    public float getYshift() { return (meglerProps.get("Yshift") instanceof Float ? (Float) meglerProps.get("Yshift") : 0f); }
+    public long getTimestamp() { return (megletProps.get("Timestamp") instanceof Long ? (Long) megletProps.get("Timestamp") : 0L); }
+    public float getXshift() { return (megletProps.get("Xshift") instanceof Float ? (Float) megletProps.get("Xshift") : 0f); }
+    public float getYshift() { return (megletProps.get("Yshift") instanceof Float ? (Float) megletProps.get("Yshift") : 0f); }
     OisSample() { this((long) 0L, (float) 0f, (float) 0f); }
 }

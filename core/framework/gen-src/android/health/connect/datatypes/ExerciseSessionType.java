@@ -3,7 +3,7 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ExerciseSessionType {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int EXERCISE_SESSION_TYPE_BADMINTON = 1;
     public static final int EXERCISE_SESSION_TYPE_BASEBALL = 2;
     public static final int EXERCISE_SESSION_TYPE_BASKETBALL = 3;

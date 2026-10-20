@@ -3,7 +3,7 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class Migrator {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public Migrator() {}
     public abstract android.app.appsearch.GenericDocument onDowngrade(int p0, int p1, android.app.appsearch.GenericDocument p2);
     public abstract android.app.appsearch.GenericDocument onUpgrade(int p0, int p1, android.app.appsearch.GenericDocument p2);

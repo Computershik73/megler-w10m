@@ -3,35 +3,35 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ExerciseRoute implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public ExerciseRoute(java.util.List p0) {}
     public int describeContents() { return 0; }
-    public java.util.List getRouteLocations() { return (meglerProps.get("RouteLocations") != null ? (java.util.List) meglerProps.get("RouteLocations") : new java.util.ArrayList()); }
+    public java.util.List getRouteLocations() { return (megletProps.get("RouteLocations") != null ? (java.util.List) megletProps.get("RouteLocations") : new java.util.ArrayList()); }
     public android.health.connect.internal.datatypes.ExerciseRouteInternal toRouteInternal() { return null; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ExerciseRoute() { this((java.util.List) null); }
     public static final class Location implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public int describeContents() { return 0; }
-        public android.health.connect.datatypes.units.Length getAltitude() { return (android.health.connect.datatypes.units.Length) meglerProps.get("Altitude"); }
-        public android.health.connect.datatypes.units.Length getHorizontalAccuracy() { return (android.health.connect.datatypes.units.Length) meglerProps.get("HorizontalAccuracy"); }
-        public double getLatitude() { return (meglerProps.get("Latitude") instanceof Double ? (Double) meglerProps.get("Latitude") : 0d); }
-        public double getLongitude() { return (meglerProps.get("Longitude") instanceof Double ? (Double) meglerProps.get("Longitude") : 0d); }
-        public java.time.Instant getTime() { return (java.time.Instant) meglerProps.get("Time"); }
-        public android.health.connect.datatypes.units.Length getVerticalAccuracy() { return (android.health.connect.datatypes.units.Length) meglerProps.get("VerticalAccuracy"); }
+        public android.health.connect.datatypes.units.Length getAltitude() { return (android.health.connect.datatypes.units.Length) megletProps.get("Altitude"); }
+        public android.health.connect.datatypes.units.Length getHorizontalAccuracy() { return (android.health.connect.datatypes.units.Length) megletProps.get("HorizontalAccuracy"); }
+        public double getLatitude() { return (megletProps.get("Latitude") instanceof Double ? (Double) megletProps.get("Latitude") : 0d); }
+        public double getLongitude() { return (megletProps.get("Longitude") instanceof Double ? (Double) megletProps.get("Longitude") : 0d); }
+        public java.time.Instant getTime() { return (java.time.Instant) megletProps.get("Time"); }
+        public android.health.connect.datatypes.units.Length getVerticalAccuracy() { return (android.health.connect.datatypes.units.Length) megletProps.get("VerticalAccuracy"); }
         public android.health.connect.internal.datatypes.ExerciseRouteInternal.LocationInternal toExerciseRouteLocationInternal() { return null; }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         protected Location() {}
         public static final class Builder {
-            private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+            private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
             public Builder(java.time.Instant p0, double p1, double p2) {}
-            public android.health.connect.datatypes.ExerciseRoute.Location build() { android.health.connect.datatypes.ExerciseRoute.Location x = new android.health.connect.datatypes.ExerciseRoute.Location(); x.meglerProps.putAll(meglerProps); return x; }
+            public android.health.connect.datatypes.ExerciseRoute.Location build() { android.health.connect.datatypes.ExerciseRoute.Location x = new android.health.connect.datatypes.ExerciseRoute.Location(); x.megletProps.putAll(megletProps); return x; }
             public android.health.connect.datatypes.ExerciseRoute.Location buildWithoutValidation() { return null; }
-            public android.health.connect.datatypes.ExerciseRoute.Location.Builder setAltitude(android.health.connect.datatypes.units.Length p0) { meglerProps.put("Altitude", p0); return this; }
-            public android.health.connect.datatypes.ExerciseRoute.Location.Builder setHorizontalAccuracy(android.health.connect.datatypes.units.Length p0) { meglerProps.put("HorizontalAccuracy", p0); return this; }
-            public android.health.connect.datatypes.ExerciseRoute.Location.Builder setVerticalAccuracy(android.health.connect.datatypes.units.Length p0) { meglerProps.put("VerticalAccuracy", p0); return this; }
+            public android.health.connect.datatypes.ExerciseRoute.Location.Builder setAltitude(android.health.connect.datatypes.units.Length p0) { megletProps.put("Altitude", p0); return this; }
+            public android.health.connect.datatypes.ExerciseRoute.Location.Builder setHorizontalAccuracy(android.health.connect.datatypes.units.Length p0) { megletProps.put("HorizontalAccuracy", p0); return this; }
+            public android.health.connect.datatypes.ExerciseRoute.Location.Builder setVerticalAccuracy(android.health.connect.datatypes.units.Length p0) { megletProps.put("VerticalAccuracy", p0); return this; }
             Builder() { this((java.time.Instant) null, (double) 0d, (double) 0d); }
         }
     }

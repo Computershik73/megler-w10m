@@ -1,6 +1,6 @@
-# Megler's changes to ANGLE
+# Meglet's changes to ANGLE
 
-Megler's package uses gecko-w10m's ANGLE (`libEGL.dll`, `libGLESv2.dll`, built by
+Meglet's package uses gecko-w10m's ANGLE (`libEGL.dll`, `libGLESv2.dll`, built by
 gecko-w10m as part of Firefox) with the changes here. Each is a patch against
 ANGLE's tree as gecko-w10m has it (`engine/firefox/third_party/angle`), paths
 relative to that tree. `tools/build-angle.py` applies them to copies of the

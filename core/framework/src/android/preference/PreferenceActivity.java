@@ -38,7 +38,7 @@ public abstract class PreferenceActivity extends ListActivity implements Prefere
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         mManager = new PreferenceManager(this, 100);
-        mManager.meglerSetTreeClickListener(this);
+        mManager.megletSetTreeClickListener(this);
         String frag = getIntent() != null ? getIntent().getStringExtra(EXTRA_SHOW_FRAGMENT) : null;
         if (frag == null) {
             java.util.ArrayList<Header> headers = new java.util.ArrayList<>();
@@ -47,7 +47,7 @@ public abstract class PreferenceActivity extends ListActivity implements Prefere
         }
         if (frag != null) switchToHeader(frag, getIntent() != null ? getIntent().getBundleExtra(EXTRA_SHOW_FRAGMENT_ARGUMENTS) : null);
     }
-    @Override protected void onStop() { super.onStop(); if (mManager != null) mManager.meglerActivityStop(); }
+    @Override protected void onStop() { super.onStop(); if (mManager != null) mManager.megletActivityStop(); }
     public void onBuildHeaders(java.util.List<Header> target) {}
     public void loadHeadersFromResource(int resId, java.util.List<Header> target) {}
     public boolean onIsMultiPane() { return false; }
@@ -62,8 +62,8 @@ public abstract class PreferenceActivity extends ListActivity implements Prefere
     public boolean onPreferenceStartFragment(PreferenceFragment caller, Preference pref) { switchToHeader(pref.getFragment(), pref.getExtras()); return true; }
 
     @Deprecated public PreferenceManager getPreferenceManager() { return mManager; }
-    @Deprecated public void setPreferenceScreen(PreferenceScreen s) { if (mManager.meglerSetScreen(s) && s != null) s.bind(getListView()); }
-    @Deprecated public PreferenceScreen getPreferenceScreen() { return mManager.meglerScreen(); }
+    @Deprecated public void setPreferenceScreen(PreferenceScreen s) { if (mManager.megletSetScreen(s) && s != null) s.bind(getListView()); }
+    @Deprecated public PreferenceScreen getPreferenceScreen() { return mManager.megletScreen(); }
     @Deprecated public void addPreferencesFromResource(int resId) { setPreferenceScreen(mManager.inflateFromResource(this, resId, getPreferenceScreen())); }
     @Deprecated public void addPreferencesFromIntent(android.content.Intent i) {}
     @Deprecated public Preference findPreference(CharSequence key) { return mManager.findPreference(key); }

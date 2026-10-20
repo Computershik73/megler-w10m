@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class BluetoothHealthCallback {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public BluetoothHealthCallback() {}
     public void onHealthAppConfigurationStatusChange(android.bluetooth.BluetoothHealthAppConfiguration p0, int p1) {}
     public void onHealthChannelStateChange(android.bluetooth.BluetoothHealthAppConfiguration p0, android.bluetooth.BluetoothDevice p1, int p2, int p3, android.os.ParcelFileDescriptor p4, int p5) {}

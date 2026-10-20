@@ -3,9 +3,9 @@ package android.hardware.camera2.params;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class LensIntrinsicsSample {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public LensIntrinsicsSample(long p0, float[] p1) {}
-    public float[] getLensIntrinsics() { return (float[]) meglerProps.get("LensIntrinsics"); }
-    public long getTimestampNanos() { return (meglerProps.get("TimestampNanos") instanceof Long ? (Long) meglerProps.get("TimestampNanos") : 0L); }
+    public float[] getLensIntrinsics() { return (float[]) megletProps.get("LensIntrinsics"); }
+    public long getTimestampNanos() { return (megletProps.get("TimestampNanos") instanceof Long ? (Long) megletProps.get("TimestampNanos") : 0L); }
     LensIntrinsicsSample() { this((long) 0L, (float[]) null); }
 }

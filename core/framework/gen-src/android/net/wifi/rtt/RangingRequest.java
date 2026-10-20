@@ -3,7 +3,7 @@ package android.net.wifi.rtt;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class RangingRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int SECURITY_MODE_OPEN = 0;
     public static final int SECURITY_MODE_OPPORTUNISTIC = 1;
@@ -17,14 +17,14 @@ public final class RangingRequest implements android.os.Parcelable {
     public static int getMinRttBurstSize() { return 0; }
     public int describeContents() { return 0; }
     public void enforceValidity(boolean p0) {}
-    public int getRttBurstSize() { return (meglerProps.get("RttBurstSize") instanceof Integer ? (Integer) meglerProps.get("RttBurstSize") : 0); }
-    public java.util.List getRttResponders() { return (meglerProps.get("RttResponders") != null ? (java.util.List) meglerProps.get("RttResponders") : new java.util.ArrayList()); }
-    public int getSecurityMode() { return (meglerProps.get("SecurityMode") instanceof Integer ? (Integer) meglerProps.get("SecurityMode") : 0); }
-    public java.util.List getVendorData() { return (meglerProps.get("VendorData") != null ? (java.util.List) meglerProps.get("VendorData") : new java.util.ArrayList()); }
+    public int getRttBurstSize() { return (megletProps.get("RttBurstSize") instanceof Integer ? (Integer) megletProps.get("RttBurstSize") : 0); }
+    public java.util.List getRttResponders() { return (megletProps.get("RttResponders") != null ? (java.util.List) megletProps.get("RttResponders") : new java.util.ArrayList()); }
+    public int getSecurityMode() { return (megletProps.get("SecurityMode") instanceof Integer ? (Integer) megletProps.get("SecurityMode") : 0); }
+    public java.util.List getVendorData() { return (megletProps.get("VendorData") != null ? (java.util.List) megletProps.get("VendorData") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected RangingRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public android.net.wifi.rtt.RangingRequest.Builder addAccessPoint(android.net.wifi.ScanResult p0) { return this; }
         public android.net.wifi.rtt.RangingRequest.Builder addAccessPoints(java.util.List p0) { return this; }
@@ -34,9 +34,9 @@ public final class RangingRequest implements android.os.Parcelable {
         public android.net.wifi.rtt.RangingRequest.Builder addResponders(java.util.List p0) { return this; }
         public android.net.wifi.rtt.RangingRequest.Builder addWifiAwarePeer(android.net.MacAddress p0) { return this; }
         public android.net.wifi.rtt.RangingRequest.Builder addWifiAwarePeer(android.net.wifi.aware.PeerHandle p0) { return this; }
-        public android.net.wifi.rtt.RangingRequest build() { android.net.wifi.rtt.RangingRequest x = new android.net.wifi.rtt.RangingRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.net.wifi.rtt.RangingRequest.Builder setRttBurstSize(int p0) { meglerProps.put("RttBurstSize", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingRequest.Builder setSecurityMode(int p0) { meglerProps.put("SecurityMode", Integer.valueOf(p0)); return this; }
-        public android.net.wifi.rtt.RangingRequest.Builder setVendorData(java.util.List p0) { meglerProps.put("VendorData", p0); return this; }
+        public android.net.wifi.rtt.RangingRequest build() { android.net.wifi.rtt.RangingRequest x = new android.net.wifi.rtt.RangingRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.net.wifi.rtt.RangingRequest.Builder setRttBurstSize(int p0) { megletProps.put("RttBurstSize", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingRequest.Builder setSecurityMode(int p0) { megletProps.put("SecurityMode", Integer.valueOf(p0)); return this; }
+        public android.net.wifi.rtt.RangingRequest.Builder setVendorData(java.util.List p0) { megletProps.put("VendorData", p0); return this; }
     }
 }

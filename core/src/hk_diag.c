@@ -1,8 +1,8 @@
 /*
- * megler_selftest and megler_probe: what this device does with the mechanisms the
+ * meglet_selftest and meglet_probe: what this device does with the mechanisms the
  * layer rests on, measured rather than assumed.
  */
-#include "../include/megler.h"
+#include "../include/meglet.h"
 
 #include <stdio.h>
 
@@ -29,7 +29,7 @@ static void append_line(const char *path, const char *text)
 }
 
 typedef struct selftest_out {
-    megler_line_fn out;
+    meglet_line_fn out;
     void *user;
     char *steps;
 } selftest_out;
@@ -41,14 +41,14 @@ static void selftest_line(const char *text, void *user)
     if (s->out) s->out(text, s->user);
 }
 
-int megler_selftest(megler_line_fn out, void *user)
+int meglet_selftest(meglet_line_fn out, void *user)
 {
-    char *libs = hk_sprintf("%s/selftest", megler_package_dir()), *scratch = hk_sprintf("%s/selftest-scratch", megler_data_dir());
+    char *libs = hk_sprintf("%s/selftest", meglet_package_dir()), *scratch = hk_sprintf("%s/selftest-scratch", meglet_data_dir());
     selftest_out s;
     int failed;
     s.out = out;
     s.user = user;
-    s.steps = megler_data_dir()[0] ? hk_sprintf("%s/megler-selftest-steps.log", megler_data_dir()) : NULL;
+    s.steps = meglet_data_dir()[0] ? hk_sprintf("%s/meglet-selftest-steps.log", meglet_data_dir()) : NULL;
     if (s.steps) hk_path_remove(s.steps, NULL);
     failed = hk_tests_run(libs, scratch, selftest_line, &s);
     free(s.steps);
@@ -58,13 +58,13 @@ int megler_selftest(megler_line_fn out, void *user)
 }
 
 /*
- * megler_storage_check: the steps are the tests' own (tests/hk_storage_tests.c,
+ * meglet_storage_check: the steps are the tests' own (tests/hk_storage_tests.c,
  * hk_storage_check_run), which the tests run on a stand-in for the shell.
  * Here they run on what the shell really hands over.
  */
-int megler_storage_check(const megler_storage_host *storage, megler_line_fn out, void *user, int *checks)
+int meglet_storage_check(const meglet_storage_host *storage, meglet_line_fn out, void *user, int *checks)
 {
-    const char *names[MEGLER_STORAGE_MAX_LINKS];
+    const char *names[MEGLET_STORAGE_MAX_LINKS];
     char line[160];
     int i, count = 0, skipped = 0;
     if (hk_run_active()) {
@@ -72,8 +72,8 @@ int megler_storage_check(const megler_storage_host *storage, megler_line_fn out,
         if (checks) (*checks)++;
         return 1;
     }
-    hk_run_storage(megler_storage_dir(), storage);
-    for (i = 0; storage && storage->links && i < storage->link_count && i < MEGLER_STORAGE_MAX_LINKS; i++) {
+    hk_run_storage(meglet_storage_dir(), storage);
+    for (i = 0; storage && storage->links && i < storage->link_count && i < MEGLET_STORAGE_MAX_LINKS; i++) {
         /* (A link that is only to be read has nothing here that could be tried without leaving something behind.) */
         if (storage->links[i].writable) names[count++] = storage->links[i].name;
         else skipped++;
@@ -84,18 +84,18 @@ int megler_storage_check(const megler_storage_host *storage, megler_line_fn out,
 }
 
 /*
- * megler_net_check: the steps are the tests' own (tests/hk_net_tests.c,
+ * meglet_net_check: the steps are the tests' own (tests/hk_net_tests.c,
  * hk_net_check_run), which the tests run without the internet. Here the
  * internet is asked too: the name and the path Android's own connectivity
  * check asks for, which answers 204 and nothing else.
  */
-int megler_net_check(megler_line_fn out, void *user, int *checks, int *refused)
+int meglet_net_check(meglet_line_fn out, void *user, int *checks, int *refused)
 {
     if (out) out("the network as an app finds it", user);
     return hk_net_check_run("connectivitycheck.gstatic.com", "/generate_204", out, user, checks, refused);
 }
 
-static megler_line_fn g_out;
+static meglet_line_fn g_out;
 static void *g_out_user;
 
 static char *g_probe_file;
@@ -283,12 +283,12 @@ static void probe_memory(void)
 
 #endif /* HK_HOST_ARM32 */
 
-void megler_probe(megler_line_fn out, void *user)
+void meglet_probe(meglet_line_fn out, void *user)
 {
     g_out = out;
     g_out_user = user;
     free(g_probe_file);
-    g_probe_file = megler_data_dir()[0] ? hk_sprintf("%s/megler-probe-steps.log", megler_data_dir()) : NULL;
+    g_probe_file = meglet_data_dir()[0] ? hk_sprintf("%s/meglet-probe-steps.log", meglet_data_dir()) : NULL;
     if (g_probe_file) hk_path_remove(g_probe_file, NULL);
     line("host: %s, %d processors", hk_host_name(), hk_cpu_count());
     line("memory: limit %u MB, in use %u MB", (unsigned)(hk_mem_limit() >> 20), (unsigned)(hk_mem_usage() >> 20));

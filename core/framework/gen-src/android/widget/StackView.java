@@ -3,14 +3,14 @@ package android.widget;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class StackView extends android.widget.AdapterViewAnimator {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public StackView(android.content.Context p0) { super(p0); }
     public StackView(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public StackView(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
     public StackView(android.content.Context p0, android.util.AttributeSet p1, int p2, int p3) { super(p0, p1, p2, p3); }
     public void advance() {}
     public void dispatchDraw(android.graphics.Canvas p0) {}
-    public java.lang.CharSequence getAccessibilityClassName() { return (java.lang.CharSequence) meglerProps.get("AccessibilityClassName"); }
+    public java.lang.CharSequence getAccessibilityClassName() { return (java.lang.CharSequence) megletProps.get("AccessibilityClassName"); }
     public boolean onGenericMotionEvent(android.view.MotionEvent p0) { return false; }
     public void onInitializeAccessibilityNodeInfoInternal(android.view.accessibility.AccessibilityNodeInfo p0) {}
     public boolean onInterceptTouchEvent(android.view.MotionEvent p0) { return false; }

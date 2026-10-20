@@ -1,8 +1,8 @@
 package javax.microedition.khronos.egl;
 public abstract class EGLContext {
-    private static final EGL10 EGL = new MeglerEGL();
+    private static final EGL10 EGL = new MegletEGL();
     public static EGL getEGL() { return EGL; }
     public abstract javax.microedition.khronos.opengles.GL getGL();
     /** @hide The EGL_CONTEXT_CLIENT_VERSION the app last asked eglCreateContext for (1 when it never said). */
-    public static int meglerRequestedVersion() { return MeglerEGL.sRequestedVersion; }
+    public static int megletRequestedVersion() { return MegletEGL.sRequestedVersion; }
 }

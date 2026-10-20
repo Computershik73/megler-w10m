@@ -3,29 +3,29 @@ package android.inputmethodservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class KeyboardView extends android.view.View implements android.view.View.OnClickListener {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public KeyboardView(android.content.Context p0, android.util.AttributeSet p1) { super(p0, p1); }
     public KeyboardView(android.content.Context p0, android.util.AttributeSet p1, int p2) { super(p0, p1, p2); }
     public KeyboardView(android.content.Context p0, android.util.AttributeSet p1, int p2, int p3) { super(p0, p1, p2, p3); }
     public void closing() {}
-    public android.inputmethodservice.Keyboard getKeyboard() { return (android.inputmethodservice.Keyboard) meglerProps.get("Keyboard"); }
-    protected android.inputmethodservice.KeyboardView.OnKeyboardActionListener getOnKeyboardActionListener() { return (android.inputmethodservice.KeyboardView.OnKeyboardActionListener) meglerProps.get("OnKeyboardActionListener"); }
+    public android.inputmethodservice.Keyboard getKeyboard() { return (android.inputmethodservice.Keyboard) megletProps.get("Keyboard"); }
+    protected android.inputmethodservice.KeyboardView.OnKeyboardActionListener getOnKeyboardActionListener() { return (android.inputmethodservice.KeyboardView.OnKeyboardActionListener) megletProps.get("OnKeyboardActionListener"); }
     public boolean handleBack() { return false; }
     public void invalidateAllKeys() {}
     public void invalidateKey(int p0) {}
-    public boolean isPreviewEnabled() { return (meglerProps.get("PreviewEnabled") instanceof Boolean ? (Boolean) meglerProps.get("PreviewEnabled") : false); }
-    public boolean isProximityCorrectionEnabled() { return (meglerProps.get("ProximityCorrectionEnabled") instanceof Boolean ? (Boolean) meglerProps.get("ProximityCorrectionEnabled") : false); }
-    public boolean isShifted() { return (meglerProps.get("Shifted") instanceof Boolean ? (Boolean) meglerProps.get("Shifted") : false); }
+    public boolean isPreviewEnabled() { return (megletProps.get("PreviewEnabled") instanceof Boolean ? (Boolean) megletProps.get("PreviewEnabled") : false); }
+    public boolean isProximityCorrectionEnabled() { return (megletProps.get("ProximityCorrectionEnabled") instanceof Boolean ? (Boolean) megletProps.get("ProximityCorrectionEnabled") : false); }
+    public boolean isShifted() { return (megletProps.get("Shifted") instanceof Boolean ? (Boolean) megletProps.get("Shifted") : false); }
     public void onClick(android.view.View p0) {}
     protected boolean onLongPress(android.inputmethodservice.Keyboard.Key p0) { return false; }
-    public void setKeyboard(android.inputmethodservice.Keyboard p0) { meglerProps.put("Keyboard", p0); }
-    public void setOnKeyboardActionListener(android.inputmethodservice.KeyboardView.OnKeyboardActionListener p0) { meglerProps.put("OnKeyboardActionListener", p0); }
+    public void setKeyboard(android.inputmethodservice.Keyboard p0) { megletProps.put("Keyboard", p0); }
+    public void setOnKeyboardActionListener(android.inputmethodservice.KeyboardView.OnKeyboardActionListener p0) { megletProps.put("OnKeyboardActionListener", p0); }
     public void setPopupOffset(int p0, int p1) {}
-    public void setPopupParent(android.view.View p0) { meglerProps.put("PopupParent", p0); }
-    public void setPreviewEnabled(boolean p0) { meglerProps.put("PreviewEnabled", Boolean.valueOf(p0)); }
-    public void setProximityCorrectionEnabled(boolean p0) { meglerProps.put("ProximityCorrectionEnabled", Boolean.valueOf(p0)); }
+    public void setPopupParent(android.view.View p0) { megletProps.put("PopupParent", p0); }
+    public void setPreviewEnabled(boolean p0) { megletProps.put("PreviewEnabled", Boolean.valueOf(p0)); }
+    public void setProximityCorrectionEnabled(boolean p0) { megletProps.put("ProximityCorrectionEnabled", Boolean.valueOf(p0)); }
     public boolean setShifted(boolean p0) { return false; }
-    public void setVerticalCorrection(int p0) { meglerProps.put("VerticalCorrection", Integer.valueOf(p0)); }
+    public void setVerticalCorrection(int p0) { megletProps.put("VerticalCorrection", Integer.valueOf(p0)); }
     protected void swipeDown() {}
     protected void swipeLeft() {}
     protected void swipeRight() {}

@@ -3,7 +3,7 @@ package android.graphics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class PathDashPathEffect extends android.graphics.PathEffect {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public PathDashPathEffect(android.graphics.Path p0, float p1, float p2, android.graphics.PathDashPathEffect.Style p3) { super(); }
     PathDashPathEffect() { this((android.graphics.Path) null, (float) 0f, (float) 0f, (android.graphics.PathDashPathEffect.Style) null); }
     public enum Style {

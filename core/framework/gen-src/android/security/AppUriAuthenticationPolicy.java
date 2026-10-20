@@ -3,20 +3,20 @@ package android.security;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AppUriAuthenticationPolicy implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static android.security.AppUriAuthenticationPolicy readFromXml(org.xmlpull.v1.XmlPullParser p0) { return new AppUriAuthenticationPolicy(); }
     public int describeContents() { return 0; }
-    public java.util.Set getAliases() { return (meglerProps.get("Aliases") != null ? (java.util.Set) meglerProps.get("Aliases") : new java.util.HashSet()); }
-    public java.util.Map getAppAndUriMappings() { return (meglerProps.get("AppAndUriMappings") != null ? (java.util.Map) meglerProps.get("AppAndUriMappings") : new java.util.HashMap()); }
+    public java.util.Set getAliases() { return (megletProps.get("Aliases") != null ? (java.util.Set) megletProps.get("Aliases") : new java.util.HashSet()); }
+    public java.util.Map getAppAndUriMappings() { return (megletProps.get("AppAndUriMappings") != null ? (java.util.Map) megletProps.get("AppAndUriMappings") : new java.util.HashMap()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     public void writeToXml(org.xmlpull.v1.XmlSerializer p0) {}
     protected AppUriAuthenticationPolicy() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public android.security.AppUriAuthenticationPolicy.Builder addAppAndUriMapping(java.lang.String p0, android.net.Uri p1, java.lang.String p2) { return this; }
         public android.security.AppUriAuthenticationPolicy.Builder addAppAndUriMapping(java.lang.String p0, android.security.UrisToAliases p1) { return this; }
-        public android.security.AppUriAuthenticationPolicy build() { android.security.AppUriAuthenticationPolicy x = new android.security.AppUriAuthenticationPolicy(); x.meglerProps.putAll(meglerProps); return x; }
+        public android.security.AppUriAuthenticationPolicy build() { android.security.AppUriAuthenticationPolicy x = new android.security.AppUriAuthenticationPolicy(); x.megletProps.putAll(megletProps); return x; }
     }
 }

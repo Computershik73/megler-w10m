@@ -6,8 +6,8 @@ public abstract class Service extends android.content.ContextWrapper implements 
     public static final int START_CONTINUATION_MASK = 15, START_STICKY_COMPATIBILITY = 0, START_STICKY = 1, START_NOT_STICKY = 2, START_REDELIVER_INTENT = 3,
         START_FLAG_REDELIVERY = 1, START_FLAG_RETRY = 2, STOP_FOREGROUND_REMOVE = 1, STOP_FOREGROUND_DETACH = 2, STOP_FOREGROUND_LEGACY = 0;
     public Service() { super(null); }
-    public final void meglerAttach(android.content.Context base) { attachBaseContext(base); }
-    public final Application getApplication() { return Application.meglerGet(); }
+    public final void megletAttach(android.content.Context base) { attachBaseContext(base); }
+    public final Application getApplication() { return Application.megletGet(); }
     public void onCreate() {}
     @Deprecated public void onStart(Intent i, int id) {}
     public int onStartCommand(Intent i, int flags, int id) { onStart(i, id); return START_STICKY; }
@@ -20,7 +20,7 @@ public abstract class Service extends android.content.ContextWrapper implements 
     public void onRebind(Intent i) {}
     public void onTaskRemoved(Intent root) {}
     public void onTimeout(int startId) {}
-    public final void stopSelf() { megler.Services.stopSelf(this); }
+    public final void stopSelf() { meglet.Services.stopSelf(this); }
     public final void stopSelf(int id) { stopSelf(); }
     public final boolean stopSelfResult(int id) { stopSelf(); return true; }
     public final void setForeground(boolean f) {}

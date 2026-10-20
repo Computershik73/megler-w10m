@@ -3,13 +3,13 @@ package android.app.admin;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ManagedSubscriptionsPolicy implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int TYPE_ALL_MANAGED_SUBSCRIPTIONS = 1;
     public static int TYPE_ALL_PERSONAL_SUBSCRIPTIONS;
     public ManagedSubscriptionsPolicy(int p0) {}
     public int describeContents() { return 0; }
-    public int getPolicyType() { return (meglerProps.get("PolicyType") instanceof Integer ? (Integer) meglerProps.get("PolicyType") : 0); }
+    public int getPolicyType() { return (megletProps.get("PolicyType") instanceof Integer ? (Integer) megletProps.get("PolicyType") : 0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     ManagedSubscriptionsPolicy() { this((int) 0); }
 }

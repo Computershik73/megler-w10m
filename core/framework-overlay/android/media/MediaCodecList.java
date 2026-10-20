@@ -1,9 +1,9 @@
 // Overlay of core/framework/src/android/media/MediaCodecList.java (tools/build-framework.sh).
-// It differs in infos(): every decoder is listed only when megler.MediaCodecNative.supported says its type can be decoded;
+// It differs in infos(): every decoder is listed only when meglet.MediaCodecNative.supported says its type can be decoded;
 // the original listed H.264, AAC and MP3 always and asked only for HEVC.
 //
-// Why. The list must be what MediaCodec can make, and here that is whatever the shell's decoders are (megler_codec_host in
-// megler.h; core/src/drivers/hk_java_media.c asks it in supported()), which a phone may lack one of. With none the list is
+// Why. The list must be what MediaCodec can make, and here that is whatever the shell's decoders are (meglet_codec_host in
+// meglet.h; core/src/drivers/hk_java_media.c asks it in supported()), which a phone may lack one of. With none the list is
 // empty, which Android allows: an app finds no decoder and createDecoderByType throws IOException, as on a phone without
 // one. Before, AIDA64's Codecs page listed three decoders that could not be made. Everything else is the original's,
 // unchanged.
@@ -11,7 +11,7 @@ package android.media;
 
 import java.util.ArrayList;
 
-/** The decoders Megler has (see MediaCodecInfo): H.264 and HEVC video, AAC and MP3 audio. No encoders. */
+/** The decoders Meglet has (see MediaCodecInfo): H.264 and HEVC video, AAC and MP3 audio. No encoders. */
 public final class MediaCodecList {
     public static final int REGULAR_CODECS = 0, ALL_CODECS = 1;
     private static MediaCodecInfo[] sInfos;
@@ -29,15 +29,15 @@ public final class MediaCodecList {
                 { MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10, MediaCodecInfo.CodecProfileLevel.HEVCMainTierLevel51 },
             };
             ArrayList<MediaCodecInfo> l = new ArrayList<>();
-            if (megler.MediaCodecNative.supported(MediaFormat.MIMETYPE_VIDEO_AVC))
-                l.add(new MediaCodecInfo("c2.megler.avc.decoder", false, MediaCodecInfo.CodecCapabilities.video(MediaFormat.MIMETYPE_VIDEO_AVC, avc)));
-            if (megler.MediaCodecNative.supported(MediaFormat.MIMETYPE_VIDEO_HEVC))
-                l.add(new MediaCodecInfo("c2.megler.hevc.decoder", false, MediaCodecInfo.CodecCapabilities.video(MediaFormat.MIMETYPE_VIDEO_HEVC, hevc)));
-            if (megler.MediaCodecNative.supported(MediaFormat.MIMETYPE_AUDIO_AAC))
-                l.add(new MediaCodecInfo("c2.megler.aac.decoder", false, MediaCodecInfo.CodecCapabilities.audio(MediaFormat.MIMETYPE_AUDIO_AAC, 8,
+            if (meglet.MediaCodecNative.supported(MediaFormat.MIMETYPE_VIDEO_AVC))
+                l.add(new MediaCodecInfo("c2.meglet.avc.decoder", false, MediaCodecInfo.CodecCapabilities.video(MediaFormat.MIMETYPE_VIDEO_AVC, avc)));
+            if (meglet.MediaCodecNative.supported(MediaFormat.MIMETYPE_VIDEO_HEVC))
+                l.add(new MediaCodecInfo("c2.meglet.hevc.decoder", false, MediaCodecInfo.CodecCapabilities.video(MediaFormat.MIMETYPE_VIDEO_HEVC, hevc)));
+            if (meglet.MediaCodecNative.supported(MediaFormat.MIMETYPE_AUDIO_AAC))
+                l.add(new MediaCodecInfo("c2.meglet.aac.decoder", false, MediaCodecInfo.CodecCapabilities.audio(MediaFormat.MIMETYPE_AUDIO_AAC, 8,
                     new int[] { MediaCodecInfo.CodecProfileLevel.AACObjectLC, MediaCodecInfo.CodecProfileLevel.AACObjectHE, MediaCodecInfo.CodecProfileLevel.AACObjectHE_PS })));
-            if (megler.MediaCodecNative.supported(MediaFormat.MIMETYPE_AUDIO_MPEG))
-                l.add(new MediaCodecInfo("c2.megler.mp3.decoder", false, MediaCodecInfo.CodecCapabilities.audio(MediaFormat.MIMETYPE_AUDIO_MPEG, 2, new int[0])));
+            if (meglet.MediaCodecNative.supported(MediaFormat.MIMETYPE_AUDIO_MPEG))
+                l.add(new MediaCodecInfo("c2.meglet.mp3.decoder", false, MediaCodecInfo.CodecCapabilities.audio(MediaFormat.MIMETYPE_AUDIO_MPEG, 2, new int[0])));
             sInfos = l.toArray(new MediaCodecInfo[0]);
         }
         return sInfos;

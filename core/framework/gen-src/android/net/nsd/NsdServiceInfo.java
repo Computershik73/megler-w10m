@@ -3,39 +3,39 @@ package android.net.nsd;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NsdServiceInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public NsdServiceInfo() {}
     public NsdServiceInfo(android.net.nsd.NsdServiceInfo p0) {}
     public NsdServiceInfo(java.lang.String p0, java.lang.String p1) {}
     public int describeContents() { return 0; }
-    public java.util.Map getAttributes() { return (meglerProps.get("Attributes") != null ? (java.util.Map) meglerProps.get("Attributes") : new java.util.HashMap()); }
-    public java.time.Instant getExpirationTime() { return (java.time.Instant) meglerProps.get("ExpirationTime"); }
-    public java.net.InetAddress getHost() { return (java.net.InetAddress) meglerProps.get("Host"); }
-    public java.util.List getHostAddresses() { return (meglerProps.get("HostAddresses") != null ? (java.util.List) meglerProps.get("HostAddresses") : new java.util.ArrayList()); }
-    public java.lang.String getHostname() { return (java.lang.String) meglerProps.get("Hostname"); }
-    public int getInterfaceIndex() { return (meglerProps.get("InterfaceIndex") instanceof Integer ? (Integer) meglerProps.get("InterfaceIndex") : 0); }
-    public android.net.Network getNetwork() { return (android.net.Network) meglerProps.get("Network"); }
-    public int getPort() { return (meglerProps.get("Port") instanceof Integer ? (Integer) meglerProps.get("Port") : 0); }
-    public byte[] getPublicKey() { return (byte[]) meglerProps.get("PublicKey"); }
-    public java.lang.String getServiceName() { return (java.lang.String) meglerProps.get("ServiceName"); }
-    public java.lang.String getServiceType() { return (java.lang.String) meglerProps.get("ServiceType"); }
-    public java.util.Set getSubtypes() { return (meglerProps.get("Subtypes") != null ? (java.util.Set) meglerProps.get("Subtypes") : new java.util.HashSet()); }
-    public byte[] getTxtRecord() { return (byte[]) meglerProps.get("TxtRecord"); }
+    public java.util.Map getAttributes() { return (megletProps.get("Attributes") != null ? (java.util.Map) megletProps.get("Attributes") : new java.util.HashMap()); }
+    public java.time.Instant getExpirationTime() { return (java.time.Instant) megletProps.get("ExpirationTime"); }
+    public java.net.InetAddress getHost() { return (java.net.InetAddress) megletProps.get("Host"); }
+    public java.util.List getHostAddresses() { return (megletProps.get("HostAddresses") != null ? (java.util.List) megletProps.get("HostAddresses") : new java.util.ArrayList()); }
+    public java.lang.String getHostname() { return (java.lang.String) megletProps.get("Hostname"); }
+    public int getInterfaceIndex() { return (megletProps.get("InterfaceIndex") instanceof Integer ? (Integer) megletProps.get("InterfaceIndex") : 0); }
+    public android.net.Network getNetwork() { return (android.net.Network) megletProps.get("Network"); }
+    public int getPort() { return (megletProps.get("Port") instanceof Integer ? (Integer) megletProps.get("Port") : 0); }
+    public byte[] getPublicKey() { return (byte[]) megletProps.get("PublicKey"); }
+    public java.lang.String getServiceName() { return (java.lang.String) megletProps.get("ServiceName"); }
+    public java.lang.String getServiceType() { return (java.lang.String) megletProps.get("ServiceType"); }
+    public java.util.Set getSubtypes() { return (megletProps.get("Subtypes") != null ? (java.util.Set) megletProps.get("Subtypes") : new java.util.HashSet()); }
+    public byte[] getTxtRecord() { return (byte[]) megletProps.get("TxtRecord"); }
     public void removeAttribute(java.lang.String p0) {}
     public void setAttribute(java.lang.String p0, java.lang.String p1) {}
     public void setAttribute(java.lang.String p0, byte[] p1) {}
-    public void setExpirationTime(java.time.Instant p0) { meglerProps.put("ExpirationTime", p0); }
-    public void setHost(java.net.InetAddress p0) { meglerProps.put("Host", p0); }
-    public void setHostAddresses(java.util.List p0) { meglerProps.put("HostAddresses", p0); }
-    public void setHostname(java.lang.String p0) { meglerProps.put("Hostname", p0); }
-    public void setInterfaceIndex(int p0) { meglerProps.put("InterfaceIndex", Integer.valueOf(p0)); }
-    public void setNetwork(android.net.Network p0) { meglerProps.put("Network", p0); }
-    public void setPort(int p0) { meglerProps.put("Port", Integer.valueOf(p0)); }
-    public void setPublicKey(byte[] p0) { meglerProps.put("PublicKey", p0); }
-    public void setServiceName(java.lang.String p0) { meglerProps.put("ServiceName", p0); }
-    public void setServiceType(java.lang.String p0) { meglerProps.put("ServiceType", p0); }
-    public void setSubtypes(java.util.Set p0) { meglerProps.put("Subtypes", p0); }
-    public void setTxtRecords(byte[] p0) { meglerProps.put("TxtRecords", p0); }
+    public void setExpirationTime(java.time.Instant p0) { megletProps.put("ExpirationTime", p0); }
+    public void setHost(java.net.InetAddress p0) { megletProps.put("Host", p0); }
+    public void setHostAddresses(java.util.List p0) { megletProps.put("HostAddresses", p0); }
+    public void setHostname(java.lang.String p0) { megletProps.put("Hostname", p0); }
+    public void setInterfaceIndex(int p0) { megletProps.put("InterfaceIndex", Integer.valueOf(p0)); }
+    public void setNetwork(android.net.Network p0) { megletProps.put("Network", p0); }
+    public void setPort(int p0) { megletProps.put("Port", Integer.valueOf(p0)); }
+    public void setPublicKey(byte[] p0) { megletProps.put("PublicKey", p0); }
+    public void setServiceName(java.lang.String p0) { megletProps.put("ServiceName", p0); }
+    public void setServiceType(java.lang.String p0) { megletProps.put("ServiceType", p0); }
+    public void setSubtypes(java.util.Set p0) { megletProps.put("Subtypes", p0); }
+    public void setTxtRecords(byte[] p0) { megletProps.put("TxtRecords", p0); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
 }

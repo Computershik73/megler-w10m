@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NetworkRegistrationInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int DOMAIN_CS = 1;
     public static final int DOMAIN_CS_PS = 3;
@@ -38,55 +38,55 @@ public final class NetworkRegistrationInfo implements android.os.Parcelable {
     public static java.lang.String registrationStateToString(int p0) { return null; }
     public static java.lang.String serviceTypeToString(int p0) { return null; }
     public int describeContents() { return 0; }
-    public int getAccessNetworkTechnology() { return (meglerProps.get("AccessNetworkTechnology") instanceof Integer ? (Integer) meglerProps.get("AccessNetworkTechnology") : 0); }
-    public java.util.List getAvailableServices() { return (meglerProps.get("AvailableServices") != null ? (java.util.List) meglerProps.get("AvailableServices") : new java.util.ArrayList()); }
-    public android.telephony.CellIdentity getCellIdentity() { return (android.telephony.CellIdentity) meglerProps.get("CellIdentity"); }
-    public android.telephony.DataSpecificRegistrationInfo getDataSpecificInfo() { return (android.telephony.DataSpecificRegistrationInfo) meglerProps.get("DataSpecificInfo"); }
-    public int getDomain() { return (meglerProps.get("Domain") instanceof Integer ? (Integer) meglerProps.get("Domain") : 0); }
-    public int getNetworkRegistrationState() { return (meglerProps.get("NetworkRegistrationState") instanceof Integer ? (Integer) meglerProps.get("NetworkRegistrationState") : 0); }
-    public int getNrState() { return (meglerProps.get("NrState") instanceof Integer ? (Integer) meglerProps.get("NrState") : 0); }
-    public java.lang.String getRegisteredPlmn() { return (java.lang.String) meglerProps.get("RegisteredPlmn"); }
-    public int getRegistrationState() { return (meglerProps.get("RegistrationState") instanceof Integer ? (Integer) meglerProps.get("RegistrationState") : 0); }
-    public int getRejectCause() { return (meglerProps.get("RejectCause") instanceof Integer ? (Integer) meglerProps.get("RejectCause") : 0); }
-    public int getRoamingType() { return (meglerProps.get("RoamingType") instanceof Integer ? (Integer) meglerProps.get("RoamingType") : 0); }
-    public int getTransportType() { return (meglerProps.get("TransportType") instanceof Integer ? (Integer) meglerProps.get("TransportType") : 0); }
-    public android.telephony.VoiceSpecificRegistrationInfo getVoiceSpecificInfo() { return (android.telephony.VoiceSpecificRegistrationInfo) meglerProps.get("VoiceSpecificInfo"); }
-    public boolean isEmergencyEnabled() { return (meglerProps.get("EmergencyEnabled") instanceof Boolean ? (Boolean) meglerProps.get("EmergencyEnabled") : false); }
-    public boolean isInService() { return (meglerProps.get("InService") instanceof Boolean ? (Boolean) meglerProps.get("InService") : false); }
-    public boolean isNetworkRegistered() { return (meglerProps.get("NetworkRegistered") instanceof Boolean ? (Boolean) meglerProps.get("NetworkRegistered") : false); }
-    public boolean isNetworkRoaming() { return (meglerProps.get("NetworkRoaming") instanceof Boolean ? (Boolean) meglerProps.get("NetworkRoaming") : false); }
-    public boolean isNetworkSearching() { return (meglerProps.get("NetworkSearching") instanceof Boolean ? (Boolean) meglerProps.get("NetworkSearching") : false); }
-    public boolean isNonTerrestrialNetwork() { return (meglerProps.get("NonTerrestrialNetwork") instanceof Boolean ? (Boolean) meglerProps.get("NonTerrestrialNetwork") : false); }
-    public boolean isRegistered() { return (meglerProps.get("Registered") instanceof Boolean ? (Boolean) meglerProps.get("Registered") : false); }
-    public boolean isRoaming() { return (meglerProps.get("Roaming") instanceof Boolean ? (Boolean) meglerProps.get("Roaming") : false); }
-    public boolean isSearching() { return (meglerProps.get("Searching") instanceof Boolean ? (Boolean) meglerProps.get("Searching") : false); }
-    public boolean isUsingCarrierAggregation() { return (meglerProps.get("UsingCarrierAggregation") instanceof Boolean ? (Boolean) meglerProps.get("UsingCarrierAggregation") : false); }
+    public int getAccessNetworkTechnology() { return (megletProps.get("AccessNetworkTechnology") instanceof Integer ? (Integer) megletProps.get("AccessNetworkTechnology") : 0); }
+    public java.util.List getAvailableServices() { return (megletProps.get("AvailableServices") != null ? (java.util.List) megletProps.get("AvailableServices") : new java.util.ArrayList()); }
+    public android.telephony.CellIdentity getCellIdentity() { return (android.telephony.CellIdentity) megletProps.get("CellIdentity"); }
+    public android.telephony.DataSpecificRegistrationInfo getDataSpecificInfo() { return (android.telephony.DataSpecificRegistrationInfo) megletProps.get("DataSpecificInfo"); }
+    public int getDomain() { return (megletProps.get("Domain") instanceof Integer ? (Integer) megletProps.get("Domain") : 0); }
+    public int getNetworkRegistrationState() { return (megletProps.get("NetworkRegistrationState") instanceof Integer ? (Integer) megletProps.get("NetworkRegistrationState") : 0); }
+    public int getNrState() { return (megletProps.get("NrState") instanceof Integer ? (Integer) megletProps.get("NrState") : 0); }
+    public java.lang.String getRegisteredPlmn() { return (java.lang.String) megletProps.get("RegisteredPlmn"); }
+    public int getRegistrationState() { return (megletProps.get("RegistrationState") instanceof Integer ? (Integer) megletProps.get("RegistrationState") : 0); }
+    public int getRejectCause() { return (megletProps.get("RejectCause") instanceof Integer ? (Integer) megletProps.get("RejectCause") : 0); }
+    public int getRoamingType() { return (megletProps.get("RoamingType") instanceof Integer ? (Integer) megletProps.get("RoamingType") : 0); }
+    public int getTransportType() { return (megletProps.get("TransportType") instanceof Integer ? (Integer) megletProps.get("TransportType") : 0); }
+    public android.telephony.VoiceSpecificRegistrationInfo getVoiceSpecificInfo() { return (android.telephony.VoiceSpecificRegistrationInfo) megletProps.get("VoiceSpecificInfo"); }
+    public boolean isEmergencyEnabled() { return (megletProps.get("EmergencyEnabled") instanceof Boolean ? (Boolean) megletProps.get("EmergencyEnabled") : false); }
+    public boolean isInService() { return (megletProps.get("InService") instanceof Boolean ? (Boolean) megletProps.get("InService") : false); }
+    public boolean isNetworkRegistered() { return (megletProps.get("NetworkRegistered") instanceof Boolean ? (Boolean) megletProps.get("NetworkRegistered") : false); }
+    public boolean isNetworkRoaming() { return (megletProps.get("NetworkRoaming") instanceof Boolean ? (Boolean) megletProps.get("NetworkRoaming") : false); }
+    public boolean isNetworkSearching() { return (megletProps.get("NetworkSearching") instanceof Boolean ? (Boolean) megletProps.get("NetworkSearching") : false); }
+    public boolean isNonTerrestrialNetwork() { return (megletProps.get("NonTerrestrialNetwork") instanceof Boolean ? (Boolean) megletProps.get("NonTerrestrialNetwork") : false); }
+    public boolean isRegistered() { return (megletProps.get("Registered") instanceof Boolean ? (Boolean) megletProps.get("Registered") : false); }
+    public boolean isRoaming() { return (megletProps.get("Roaming") instanceof Boolean ? (Boolean) megletProps.get("Roaming") : false); }
+    public boolean isSearching() { return (megletProps.get("Searching") instanceof Boolean ? (Boolean) megletProps.get("Searching") : false); }
+    public boolean isUsingCarrierAggregation() { return (megletProps.get("UsingCarrierAggregation") instanceof Boolean ? (Boolean) megletProps.get("UsingCarrierAggregation") : false); }
     public android.telephony.NetworkRegistrationInfo sanitizeLocationInfo() { return this; }
-    public void setAccessNetworkTechnology(int p0) { meglerProps.put("AccessNetworkTechnology", Integer.valueOf(p0)); }
-    public void setAvailableServices(java.util.List p0) { meglerProps.put("AvailableServices", p0); }
-    public void setIsNonTerrestrialNetwork(boolean p0) { meglerProps.put("IsNonTerrestrialNetwork", Boolean.valueOf(p0)); }
-    public void setIsUsingCarrierAggregation(boolean p0) { meglerProps.put("IsUsingCarrierAggregation", Boolean.valueOf(p0)); }
-    public void setNrState(int p0) { meglerProps.put("NrState", Integer.valueOf(p0)); }
-    public void setRoamingType(int p0) { meglerProps.put("RoamingType", Integer.valueOf(p0)); }
+    public void setAccessNetworkTechnology(int p0) { megletProps.put("AccessNetworkTechnology", Integer.valueOf(p0)); }
+    public void setAvailableServices(java.util.List p0) { megletProps.put("AvailableServices", p0); }
+    public void setIsNonTerrestrialNetwork(boolean p0) { megletProps.put("IsNonTerrestrialNetwork", Boolean.valueOf(p0)); }
+    public void setIsUsingCarrierAggregation(boolean p0) { megletProps.put("IsUsingCarrierAggregation", Boolean.valueOf(p0)); }
+    public void setNrState(int p0) { megletProps.put("NrState", Integer.valueOf(p0)); }
+    public void setRoamingType(int p0) { megletProps.put("RoamingType", Integer.valueOf(p0)); }
     public void updateNrState() {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     NetworkRegistrationInfo() { this((android.telephony.NetworkRegistrationInfo) null); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public Builder(android.telephony.NetworkRegistrationInfo p0) {}
-        public android.telephony.NetworkRegistrationInfo build() { android.telephony.NetworkRegistrationInfo x = new android.telephony.NetworkRegistrationInfo(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.telephony.NetworkRegistrationInfo.Builder setAccessNetworkTechnology(int p0) { meglerProps.put("AccessNetworkTechnology", Integer.valueOf(p0)); return this; }
-        public android.telephony.NetworkRegistrationInfo.Builder setAvailableServices(java.util.List p0) { meglerProps.put("AvailableServices", p0); return this; }
-        public android.telephony.NetworkRegistrationInfo.Builder setCellIdentity(android.telephony.CellIdentity p0) { meglerProps.put("CellIdentity", p0); return this; }
-        public android.telephony.NetworkRegistrationInfo.Builder setDataSpecificInfo(android.telephony.DataSpecificRegistrationInfo p0) { meglerProps.put("DataSpecificInfo", p0); return this; }
-        public android.telephony.NetworkRegistrationInfo.Builder setDomain(int p0) { meglerProps.put("Domain", Integer.valueOf(p0)); return this; }
-        public android.telephony.NetworkRegistrationInfo.Builder setEmergencyOnly(boolean p0) { meglerProps.put("EmergencyOnly", Boolean.valueOf(p0)); return this; }
-        public android.telephony.NetworkRegistrationInfo.Builder setIsNonTerrestrialNetwork(boolean p0) { meglerProps.put("IsNonTerrestrialNetwork", Boolean.valueOf(p0)); return this; }
-        public android.telephony.NetworkRegistrationInfo.Builder setRegisteredPlmn(java.lang.String p0) { meglerProps.put("RegisteredPlmn", p0); return this; }
-        public android.telephony.NetworkRegistrationInfo.Builder setRegistrationState(int p0) { meglerProps.put("RegistrationState", Integer.valueOf(p0)); return this; }
-        public android.telephony.NetworkRegistrationInfo.Builder setRejectCause(int p0) { meglerProps.put("RejectCause", Integer.valueOf(p0)); return this; }
-        public android.telephony.NetworkRegistrationInfo.Builder setTransportType(int p0) { meglerProps.put("TransportType", Integer.valueOf(p0)); return this; }
-        public android.telephony.NetworkRegistrationInfo.Builder setVoiceSpecificInfo(android.telephony.VoiceSpecificRegistrationInfo p0) { meglerProps.put("VoiceSpecificInfo", p0); return this; }
+        public android.telephony.NetworkRegistrationInfo build() { android.telephony.NetworkRegistrationInfo x = new android.telephony.NetworkRegistrationInfo(); x.megletProps.putAll(megletProps); return x; }
+        public android.telephony.NetworkRegistrationInfo.Builder setAccessNetworkTechnology(int p0) { megletProps.put("AccessNetworkTechnology", Integer.valueOf(p0)); return this; }
+        public android.telephony.NetworkRegistrationInfo.Builder setAvailableServices(java.util.List p0) { megletProps.put("AvailableServices", p0); return this; }
+        public android.telephony.NetworkRegistrationInfo.Builder setCellIdentity(android.telephony.CellIdentity p0) { megletProps.put("CellIdentity", p0); return this; }
+        public android.telephony.NetworkRegistrationInfo.Builder setDataSpecificInfo(android.telephony.DataSpecificRegistrationInfo p0) { megletProps.put("DataSpecificInfo", p0); return this; }
+        public android.telephony.NetworkRegistrationInfo.Builder setDomain(int p0) { megletProps.put("Domain", Integer.valueOf(p0)); return this; }
+        public android.telephony.NetworkRegistrationInfo.Builder setEmergencyOnly(boolean p0) { megletProps.put("EmergencyOnly", Boolean.valueOf(p0)); return this; }
+        public android.telephony.NetworkRegistrationInfo.Builder setIsNonTerrestrialNetwork(boolean p0) { megletProps.put("IsNonTerrestrialNetwork", Boolean.valueOf(p0)); return this; }
+        public android.telephony.NetworkRegistrationInfo.Builder setRegisteredPlmn(java.lang.String p0) { megletProps.put("RegisteredPlmn", p0); return this; }
+        public android.telephony.NetworkRegistrationInfo.Builder setRegistrationState(int p0) { megletProps.put("RegistrationState", Integer.valueOf(p0)); return this; }
+        public android.telephony.NetworkRegistrationInfo.Builder setRejectCause(int p0) { megletProps.put("RejectCause", Integer.valueOf(p0)); return this; }
+        public android.telephony.NetworkRegistrationInfo.Builder setTransportType(int p0) { megletProps.put("TransportType", Integer.valueOf(p0)); return this; }
+        public android.telephony.NetworkRegistrationInfo.Builder setVoiceSpecificInfo(android.telephony.VoiceSpecificRegistrationInfo p0) { megletProps.put("VoiceSpecificInfo", p0); return this; }
     }
 }

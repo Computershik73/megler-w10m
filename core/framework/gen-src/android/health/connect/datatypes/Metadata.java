@@ -3,31 +3,31 @@ package android.health.connect.datatypes;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Metadata {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int RECORDING_METHOD_ACTIVELY_RECORDED = 1;
     public static final int RECORDING_METHOD_AUTOMATICALLY_RECORDED = 2;
     public static final int RECORDING_METHOD_MANUAL_ENTRY = 3;
     public static int RECORDING_METHOD_UNKNOWN;
     public static java.util.Set VALID_TYPES;
-    public java.lang.String getClientRecordId() { return (java.lang.String) meglerProps.get("ClientRecordId"); }
-    public long getClientRecordVersion() { return (meglerProps.get("ClientRecordVersion") instanceof Long ? (Long) meglerProps.get("ClientRecordVersion") : 0L); }
-    public android.health.connect.datatypes.DataOrigin getDataOrigin() { return (android.health.connect.datatypes.DataOrigin) meglerProps.get("DataOrigin"); }
-    public android.health.connect.datatypes.Device getDevice() { return (android.health.connect.datatypes.Device) meglerProps.get("Device"); }
-    public java.lang.String getId() { return (java.lang.String) meglerProps.get("Id"); }
-    public java.time.Instant getLastModifiedTime() { return (java.time.Instant) meglerProps.get("LastModifiedTime"); }
-    public int getRecordingMethod() { return (meglerProps.get("RecordingMethod") instanceof Integer ? (Integer) meglerProps.get("RecordingMethod") : 0); }
-    public void setId(java.lang.String p0) { meglerProps.put("Id", p0); }
+    public java.lang.String getClientRecordId() { return (java.lang.String) megletProps.get("ClientRecordId"); }
+    public long getClientRecordVersion() { return (megletProps.get("ClientRecordVersion") instanceof Long ? (Long) megletProps.get("ClientRecordVersion") : 0L); }
+    public android.health.connect.datatypes.DataOrigin getDataOrigin() { return (android.health.connect.datatypes.DataOrigin) megletProps.get("DataOrigin"); }
+    public android.health.connect.datatypes.Device getDevice() { return (android.health.connect.datatypes.Device) megletProps.get("Device"); }
+    public java.lang.String getId() { return (java.lang.String) megletProps.get("Id"); }
+    public java.time.Instant getLastModifiedTime() { return (java.time.Instant) megletProps.get("LastModifiedTime"); }
+    public int getRecordingMethod() { return (megletProps.get("RecordingMethod") instanceof Integer ? (Integer) megletProps.get("RecordingMethod") : 0); }
+    public void setId(java.lang.String p0) { megletProps.put("Id", p0); }
     protected Metadata() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.health.connect.datatypes.Metadata build() { android.health.connect.datatypes.Metadata x = new android.health.connect.datatypes.Metadata(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.health.connect.datatypes.Metadata.Builder setClientRecordId(java.lang.String p0) { meglerProps.put("ClientRecordId", p0); return this; }
-        public android.health.connect.datatypes.Metadata.Builder setClientRecordVersion(long p0) { meglerProps.put("ClientRecordVersion", Long.valueOf(p0)); return this; }
-        public android.health.connect.datatypes.Metadata.Builder setDataOrigin(android.health.connect.datatypes.DataOrigin p0) { meglerProps.put("DataOrigin", p0); return this; }
-        public android.health.connect.datatypes.Metadata.Builder setDevice(android.health.connect.datatypes.Device p0) { meglerProps.put("Device", p0); return this; }
-        public android.health.connect.datatypes.Metadata.Builder setId(java.lang.String p0) { meglerProps.put("Id", p0); return this; }
-        public android.health.connect.datatypes.Metadata.Builder setLastModifiedTime(java.time.Instant p0) { meglerProps.put("LastModifiedTime", p0); return this; }
-        public android.health.connect.datatypes.Metadata.Builder setRecordingMethod(int p0) { meglerProps.put("RecordingMethod", Integer.valueOf(p0)); return this; }
+        public android.health.connect.datatypes.Metadata build() { android.health.connect.datatypes.Metadata x = new android.health.connect.datatypes.Metadata(); x.megletProps.putAll(megletProps); return x; }
+        public android.health.connect.datatypes.Metadata.Builder setClientRecordId(java.lang.String p0) { megletProps.put("ClientRecordId", p0); return this; }
+        public android.health.connect.datatypes.Metadata.Builder setClientRecordVersion(long p0) { megletProps.put("ClientRecordVersion", Long.valueOf(p0)); return this; }
+        public android.health.connect.datatypes.Metadata.Builder setDataOrigin(android.health.connect.datatypes.DataOrigin p0) { megletProps.put("DataOrigin", p0); return this; }
+        public android.health.connect.datatypes.Metadata.Builder setDevice(android.health.connect.datatypes.Device p0) { megletProps.put("Device", p0); return this; }
+        public android.health.connect.datatypes.Metadata.Builder setId(java.lang.String p0) { megletProps.put("Id", p0); return this; }
+        public android.health.connect.datatypes.Metadata.Builder setLastModifiedTime(java.time.Instant p0) { megletProps.put("LastModifiedTime", p0); return this; }
+        public android.health.connect.datatypes.Metadata.Builder setRecordingMethod(int p0) { megletProps.put("RecordingMethod", Integer.valueOf(p0)); return this; }
     }
 }

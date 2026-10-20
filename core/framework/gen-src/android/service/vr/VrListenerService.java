@@ -3,7 +3,7 @@ package android.service.vr;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class VrListenerService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String SERVICE_INTERFACE = "android.service.vr.VrListenerService";
     public VrListenerService() { super(); }
     public static boolean isVrModePackageEnabled(android.content.Context p0, android.content.ComponentName p1) { return false; }

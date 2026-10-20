@@ -3,11 +3,11 @@ package android.telephony.mbms;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class FileServiceInfo extends android.telephony.mbms.ServiceInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public FileServiceInfo(java.util.Map p0, java.lang.String p1, java.util.List p2, java.lang.String p3, java.util.Date p4, java.util.Date p5, java.util.List p6) { super((android.os.Parcel) null); }
     public int describeContents() { return 0; }
-    public java.util.List getFiles() { return (meglerProps.get("Files") != null ? (java.util.List) meglerProps.get("Files") : new java.util.ArrayList()); }
+    public java.util.List getFiles() { return (megletProps.get("Files") != null ? (java.util.List) megletProps.get("Files") : new java.util.ArrayList()); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     FileServiceInfo() { this((java.util.Map) null, (java.lang.String) null, (java.util.List) null, (java.lang.String) null, (java.util.Date) null, (java.util.Date) null, (java.util.List) null); }
 }

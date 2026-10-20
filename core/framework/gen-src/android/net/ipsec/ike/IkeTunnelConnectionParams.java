@@ -3,9 +3,9 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class IkeTunnelConnectionParams {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public IkeTunnelConnectionParams(android.net.ipsec.ike.IkeSessionParams p0, android.net.ipsec.ike.TunnelModeChildSessionParams p1) {}
-    public android.net.ipsec.ike.IkeSessionParams getIkeSessionParams() { return (android.net.ipsec.ike.IkeSessionParams) meglerProps.get("IkeSessionParams"); }
-    public android.net.ipsec.ike.TunnelModeChildSessionParams getTunnelModeChildSessionParams() { return (android.net.ipsec.ike.TunnelModeChildSessionParams) meglerProps.get("TunnelModeChildSessionParams"); }
+    public android.net.ipsec.ike.IkeSessionParams getIkeSessionParams() { return (android.net.ipsec.ike.IkeSessionParams) megletProps.get("IkeSessionParams"); }
+    public android.net.ipsec.ike.TunnelModeChildSessionParams getTunnelModeChildSessionParams() { return (android.net.ipsec.ike.TunnelModeChildSessionParams) megletProps.get("TunnelModeChildSessionParams"); }
     IkeTunnelConnectionParams() { this((android.net.ipsec.ike.IkeSessionParams) null, (android.net.ipsec.ike.TunnelModeChildSessionParams) null); }
 }

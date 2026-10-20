@@ -3,7 +3,7 @@ package android.telephony.ims;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class ImsException extends java.lang.Exception {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int CODE_ERROR_INVALID_SUBSCRIPTION = 3;
     public static final int CODE_ERROR_SERVICE_UNAVAILABLE = 1;
     public static final int CODE_ERROR_UNSPECIFIED = 0;
@@ -11,6 +11,6 @@ public final class ImsException extends java.lang.Exception {
     public ImsException(java.lang.String p0) { super(); }
     public ImsException(java.lang.String p0, int p1) { super(); }
     public ImsException(java.lang.String p0, int p1, java.lang.Throwable p2) { super(); }
-    public int getCode() { return (meglerProps.get("Code") instanceof Integer ? (Integer) meglerProps.get("Code") : 0); }
+    public int getCode() { return (megletProps.get("Code") instanceof Integer ? (Integer) megletProps.get("Code") : 0); }
     ImsException() { this((java.lang.String) null); }
 }

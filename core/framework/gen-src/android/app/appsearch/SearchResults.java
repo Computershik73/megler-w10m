@@ -3,7 +3,7 @@ package android.app.appsearch;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class SearchResults implements java.io.Closeable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public void close() {}
     public void getNextPage(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     protected SearchResults() {}

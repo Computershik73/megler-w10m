@@ -3,19 +3,19 @@ package android.service.credentials;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BeginGetCredentialRequest implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public java.util.List getBeginGetCredentialOptions() { return (meglerProps.get("BeginGetCredentialOptions") != null ? (java.util.List) meglerProps.get("BeginGetCredentialOptions") : new java.util.ArrayList()); }
-    public android.service.credentials.CallingAppInfo getCallingAppInfo() { return (android.service.credentials.CallingAppInfo) meglerProps.get("CallingAppInfo"); }
+    public java.util.List getBeginGetCredentialOptions() { return (megletProps.get("BeginGetCredentialOptions") != null ? (java.util.List) megletProps.get("BeginGetCredentialOptions") : new java.util.ArrayList()); }
+    public android.service.credentials.CallingAppInfo getCallingAppInfo() { return (android.service.credentials.CallingAppInfo) megletProps.get("CallingAppInfo"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected BeginGetCredentialRequest() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public android.service.credentials.BeginGetCredentialRequest.Builder addBeginGetCredentialOption(android.service.credentials.BeginGetCredentialOption p0) { return this; }
-        public android.service.credentials.BeginGetCredentialRequest build() { android.service.credentials.BeginGetCredentialRequest x = new android.service.credentials.BeginGetCredentialRequest(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.service.credentials.BeginGetCredentialRequest.Builder setBeginGetCredentialOptions(java.util.List p0) { meglerProps.put("BeginGetCredentialOptions", p0); return this; }
-        public android.service.credentials.BeginGetCredentialRequest.Builder setCallingAppInfo(android.service.credentials.CallingAppInfo p0) { meglerProps.put("CallingAppInfo", p0); return this; }
+        public android.service.credentials.BeginGetCredentialRequest build() { android.service.credentials.BeginGetCredentialRequest x = new android.service.credentials.BeginGetCredentialRequest(); x.megletProps.putAll(megletProps); return x; }
+        public android.service.credentials.BeginGetCredentialRequest.Builder setBeginGetCredentialOptions(java.util.List p0) { megletProps.put("BeginGetCredentialOptions", p0); return this; }
+        public android.service.credentials.BeginGetCredentialRequest.Builder setCallingAppInfo(android.service.credentials.CallingAppInfo p0) { megletProps.put("CallingAppInfo", p0); return this; }
     }
 }

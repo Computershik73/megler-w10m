@@ -15,7 +15,7 @@ import java.util.Locale;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * A database: one connection to the system's sqlite3 (megler.Sqlite), used by one thread at a time (a transaction keeps it for its
+ * A database: one connection to the system's sqlite3 (meglet.Sqlite), used by one thread at a time (a transaction keeps it for its
  * thread until it ends, as Android's primary connection does). Nested transactions behave as Android's: an inner one that does not
  * succeed makes the outer one roll back.
  */
@@ -45,8 +45,8 @@ public final class SQLiteDatabase extends SQLiteClosable {
         mErrorHandler = errorHandler != null ? errorHandler : new DefaultDatabaseErrorHandler();
     }
     private void open() {
-        mHandle = megler.Sqlite.open(mPath, mFlags);
-        if (mHandle == 0) throw new SQLiteCantOpenDatabaseException("Cannot open database '" + mPath + "': " + megler.Sqlite.errmsg(0));
+        mHandle = meglet.Sqlite.open(mPath, mFlags);
+        if (mHandle == 0) throw new SQLiteCantOpenDatabaseException("Cannot open database '" + mPath + "': " + meglet.Sqlite.errmsg(0));
         if ((mFlags & ENABLE_WRITE_AHEAD_LOGGING) != 0) enableWriteAheadLogging();
     }
     // ---- opening
@@ -87,8 +87,8 @@ public final class SQLiteDatabase extends SQLiteClosable {
     void release() { mLock.unlock(); }
     /** Throw the exception Android throws for sqlite3's error code. */
     SQLiteException error(String what) {
-        int code = mHandle != 0 ? megler.Sqlite.errcode(mHandle) : 14;
-        String msg = (mHandle != 0 ? megler.Sqlite.errmsg(mHandle) : "unknown error") + " (code " + code + ")" + (what != null ? (": , while compiling: " + what) : "");
+        int code = mHandle != 0 ? meglet.Sqlite.errcode(mHandle) : 14;
+        String msg = (mHandle != 0 ? meglet.Sqlite.errmsg(mHandle) : "unknown error") + " (code " + code + ")" + (what != null ? (": , while compiling: " + what) : "");
         return exceptionFor(code, msg);
     }
     SQLiteException exceptionFor(int code, String msg) {
@@ -113,12 +113,12 @@ public final class SQLiteDatabase extends SQLiteClosable {
     }
     private void execRaw(String sql) {
         acquire();
-        try { int rc = megler.Sqlite.exec(handle(), sql); if (rc != 0) throw error(sql); }
+        try { int rc = meglet.Sqlite.exec(handle(), sql); if (rc != 0) throw error(sql); }
         finally { release(); }
     }
-    @Override protected void onAllReferencesReleased() { if (mHandle != 0) { megler.Sqlite.close(mHandle); mHandle = 0; } }
+    @Override protected void onAllReferencesReleased() { if (mHandle != 0) { meglet.Sqlite.close(mHandle); mHandle = 0; } }
     @Override public void close() { acquire(); try { super.close(); } finally { release(); } }
-    @Override protected void finalize() throws Throwable { try { if (mHandle != 0) { megler.Sqlite.close(mHandle); mHandle = 0; } } finally { super.finalize(); } }
+    @Override protected void finalize() throws Throwable { try { if (mHandle != 0) { meglet.Sqlite.close(mHandle); mHandle = 0; } } finally { super.finalize(); } }
     // ---- transactions
     public void beginTransaction() { beginTransaction(null, true); }
     public void beginTransactionNonExclusive() { beginTransaction(null, false); }
@@ -130,11 +130,11 @@ public final class SQLiteDatabase extends SQLiteClosable {
         acquire();
         boolean ok = false;
         try {
-            if (mTxn == null) { int rc = megler.Sqlite.exec(handle(), exclusive ? "BEGIN EXCLUSIVE;" : "BEGIN IMMEDIATE;"); if (rc != 0) throw error("BEGIN"); }
+            if (mTxn == null) { int rc = meglet.Sqlite.exec(handle(), exclusive ? "BEGIN EXCLUSIVE;" : "BEGIN IMMEDIATE;"); if (rc != 0) throw error("BEGIN"); }
             Txn t = new Txn(); t.listener = listener; t.parent = mTxn; mTxn = t;
             if (listener != null) {
                 try { listener.onBegin(); }
-                catch (RuntimeException e) { if (t.parent == null) megler.Sqlite.exec(handle(), "ROLLBACK;"); mTxn = t.parent; throw e; }
+                catch (RuntimeException e) { if (t.parent == null) meglet.Sqlite.exec(handle(), "ROLLBACK;"); mTxn = t.parent; throw e; }
             }
             ok = true;
         } finally { if (!ok) release(); }
@@ -157,8 +157,8 @@ public final class SQLiteDatabase extends SQLiteClosable {
             }
             if (mTxn != null) { if (!success) mTxn.childFailed = true; }
             else {
-                int rc = megler.Sqlite.exec(handle(), success ? "COMMIT;" : "ROLLBACK;");
-                if (rc != 0) { megler.Sqlite.exec(handle(), "ROLLBACK;"); if (listenerError == null) throw error(success ? "COMMIT" : "ROLLBACK"); }
+                int rc = meglet.Sqlite.exec(handle(), success ? "COMMIT;" : "ROLLBACK;");
+                if (rc != 0) { meglet.Sqlite.exec(handle(), "ROLLBACK;"); if (listenerError == null) throw error(success ? "COMMIT" : "ROLLBACK"); }
             }
         } finally { release(); }
         if (listenerError != null) throw listenerError;
@@ -276,7 +276,7 @@ public final class SQLiteDatabase extends SQLiteClosable {
     }
     public void validateSql(String sql, CancellationSignal cs) {
         acquire();
-        try { long s = megler.Sqlite.prepare(handle(), sql); if (s == 0) throw error(sql); megler.Sqlite.finalizeStatement(s); }
+        try { long s = meglet.Sqlite.prepare(handle(), sql); if (s == 0) throw error(sql); meglet.Sqlite.finalizeStatement(s); }
         finally { release(); }
     }
     public void setCustomScalarFunction(String name, java.util.function.UnaryOperator<String> fn) { throw new UnsupportedOperationException("custom SQL functions are not available"); }
@@ -310,9 +310,9 @@ public final class SQLiteDatabase extends SQLiteClosable {
             public Builder setSynchronousMode(String m) { mSyncMode = m; return this; }
             public OpenParams build() { return new OpenParams(mOpenFlags, mCursorFactory, mErrorHandler, mLookasideSlotSize, mLookasideSlotCount, mIdleConnectionTimeout, mJournalMode, mSyncMode); }
             // ---- generated by tools/compat/fillmembers.py (OpenParams.Builder): the platform's members this class does not write (signatures only)
-            private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
-            public boolean isWriteAheadLoggingEnabled() { return (meglerFill.get("WriteAheadLoggingEnabled") instanceof Boolean ? (Boolean) meglerFill.get("WriteAheadLoggingEnabled") : false); }
-            public void setWriteAheadLoggingEnabled(boolean p0) { meglerFill.put("WriteAheadLoggingEnabled", Boolean.valueOf(p0)); }
+            private final java.util.HashMap<String, Object> megletFill = new java.util.HashMap<>();
+            public boolean isWriteAheadLoggingEnabled() { return (megletFill.get("WriteAheadLoggingEnabled") instanceof Boolean ? (Boolean) megletFill.get("WriteAheadLoggingEnabled") : false); }
+            public void setWriteAheadLoggingEnabled(boolean p0) { megletFill.put("WriteAheadLoggingEnabled", Boolean.valueOf(p0)); }
             // ---- end of generated members (OpenParams.Builder)
         }
     }

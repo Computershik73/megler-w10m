@@ -3,7 +3,7 @@ package android.webkit;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class WebViewRenderProcessClient {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public WebViewRenderProcessClient() {}
     public abstract void onRenderProcessResponsive(android.webkit.WebView p0, android.webkit.WebViewRenderProcess p1);
     public abstract void onRenderProcessUnresponsive(android.webkit.WebView p0, android.webkit.WebViewRenderProcess p1);

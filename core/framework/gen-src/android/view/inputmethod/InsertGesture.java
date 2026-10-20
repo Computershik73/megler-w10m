@@ -3,19 +3,19 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InsertGesture extends android.view.inputmethod.HandwritingGesture implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public android.graphics.PointF getInsertionPoint() { return (android.graphics.PointF) meglerProps.get("InsertionPoint"); }
-    public java.lang.String getTextToInsert() { return (java.lang.String) meglerProps.get("TextToInsert"); }
+    public android.graphics.PointF getInsertionPoint() { return (android.graphics.PointF) megletProps.get("InsertionPoint"); }
+    public java.lang.String getTextToInsert() { return (java.lang.String) megletProps.get("TextToInsert"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected InsertGesture() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.view.inputmethod.InsertGesture build() { android.view.inputmethod.InsertGesture x = new android.view.inputmethod.InsertGesture(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.view.inputmethod.InsertGesture.Builder setFallbackText(java.lang.String p0) { meglerProps.put("FallbackText", p0); return this; }
-        public android.view.inputmethod.InsertGesture.Builder setInsertionPoint(android.graphics.PointF p0) { meglerProps.put("InsertionPoint", p0); return this; }
-        public android.view.inputmethod.InsertGesture.Builder setTextToInsert(java.lang.String p0) { meglerProps.put("TextToInsert", p0); return this; }
+        public android.view.inputmethod.InsertGesture build() { android.view.inputmethod.InsertGesture x = new android.view.inputmethod.InsertGesture(); x.megletProps.putAll(megletProps); return x; }
+        public android.view.inputmethod.InsertGesture.Builder setFallbackText(java.lang.String p0) { megletProps.put("FallbackText", p0); return this; }
+        public android.view.inputmethod.InsertGesture.Builder setInsertionPoint(android.graphics.PointF p0) { megletProps.put("InsertionPoint", p0); return this; }
+        public android.view.inputmethod.InsertGesture.Builder setTextToInsert(java.lang.String p0) { megletProps.put("TextToInsert", p0); return this; }
     }
 }

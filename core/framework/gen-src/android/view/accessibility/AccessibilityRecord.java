@@ -3,68 +3,68 @@ package android.view.accessibility;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AccessibilityRecord {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected static final boolean DEBUG_CONCISE_TOSTRING = false;
     public AccessibilityRecord() {}
     public AccessibilityRecord(android.view.accessibility.AccessibilityRecord p0) {}
     public static android.view.accessibility.AccessibilityRecord obtain() { return new AccessibilityRecord(); }
     public static android.view.accessibility.AccessibilityRecord obtain(android.view.accessibility.AccessibilityRecord p0) { return new AccessibilityRecord(); }
-    public int getAddedCount() { return (meglerProps.get("AddedCount") instanceof Integer ? (Integer) meglerProps.get("AddedCount") : 0); }
-    public java.lang.CharSequence getBeforeText() { return (java.lang.CharSequence) meglerProps.get("BeforeText"); }
-    public java.lang.CharSequence getClassName() { return (java.lang.CharSequence) meglerProps.get("ClassName"); }
-    public java.lang.CharSequence getContentDescription() { return (java.lang.CharSequence) meglerProps.get("ContentDescription"); }
-    public int getCurrentItemIndex() { return (meglerProps.get("CurrentItemIndex") instanceof Integer ? (Integer) meglerProps.get("CurrentItemIndex") : 0); }
-    public int getDisplayId() { return (meglerProps.get("DisplayId") instanceof Integer ? (Integer) meglerProps.get("DisplayId") : 0); }
-    public int getFromIndex() { return (meglerProps.get("FromIndex") instanceof Integer ? (Integer) meglerProps.get("FromIndex") : 0); }
-    public int getItemCount() { return (meglerProps.get("ItemCount") instanceof Integer ? (Integer) meglerProps.get("ItemCount") : 0); }
-    public int getMaxScrollX() { return (meglerProps.get("MaxScrollX") instanceof Integer ? (Integer) meglerProps.get("MaxScrollX") : 0); }
-    public int getMaxScrollY() { return (meglerProps.get("MaxScrollY") instanceof Integer ? (Integer) meglerProps.get("MaxScrollY") : 0); }
-    public android.os.Parcelable getParcelableData() { return (android.os.Parcelable) meglerProps.get("ParcelableData"); }
-    public int getRemovedCount() { return (meglerProps.get("RemovedCount") instanceof Integer ? (Integer) meglerProps.get("RemovedCount") : 0); }
-    public int getScrollDeltaX() { return (meglerProps.get("ScrollDeltaX") instanceof Integer ? (Integer) meglerProps.get("ScrollDeltaX") : 0); }
-    public int getScrollDeltaY() { return (meglerProps.get("ScrollDeltaY") instanceof Integer ? (Integer) meglerProps.get("ScrollDeltaY") : 0); }
-    public int getScrollX() { return (meglerProps.get("ScrollX") instanceof Integer ? (Integer) meglerProps.get("ScrollX") : 0); }
-    public int getScrollY() { return (meglerProps.get("ScrollY") instanceof Integer ? (Integer) meglerProps.get("ScrollY") : 0); }
-    public android.view.accessibility.AccessibilityNodeInfo getSource() { return (android.view.accessibility.AccessibilityNodeInfo) meglerProps.get("Source"); }
+    public int getAddedCount() { return (megletProps.get("AddedCount") instanceof Integer ? (Integer) megletProps.get("AddedCount") : 0); }
+    public java.lang.CharSequence getBeforeText() { return (java.lang.CharSequence) megletProps.get("BeforeText"); }
+    public java.lang.CharSequence getClassName() { return (java.lang.CharSequence) megletProps.get("ClassName"); }
+    public java.lang.CharSequence getContentDescription() { return (java.lang.CharSequence) megletProps.get("ContentDescription"); }
+    public int getCurrentItemIndex() { return (megletProps.get("CurrentItemIndex") instanceof Integer ? (Integer) megletProps.get("CurrentItemIndex") : 0); }
+    public int getDisplayId() { return (megletProps.get("DisplayId") instanceof Integer ? (Integer) megletProps.get("DisplayId") : 0); }
+    public int getFromIndex() { return (megletProps.get("FromIndex") instanceof Integer ? (Integer) megletProps.get("FromIndex") : 0); }
+    public int getItemCount() { return (megletProps.get("ItemCount") instanceof Integer ? (Integer) megletProps.get("ItemCount") : 0); }
+    public int getMaxScrollX() { return (megletProps.get("MaxScrollX") instanceof Integer ? (Integer) megletProps.get("MaxScrollX") : 0); }
+    public int getMaxScrollY() { return (megletProps.get("MaxScrollY") instanceof Integer ? (Integer) megletProps.get("MaxScrollY") : 0); }
+    public android.os.Parcelable getParcelableData() { return (android.os.Parcelable) megletProps.get("ParcelableData"); }
+    public int getRemovedCount() { return (megletProps.get("RemovedCount") instanceof Integer ? (Integer) megletProps.get("RemovedCount") : 0); }
+    public int getScrollDeltaX() { return (megletProps.get("ScrollDeltaX") instanceof Integer ? (Integer) megletProps.get("ScrollDeltaX") : 0); }
+    public int getScrollDeltaY() { return (megletProps.get("ScrollDeltaY") instanceof Integer ? (Integer) megletProps.get("ScrollDeltaY") : 0); }
+    public int getScrollX() { return (megletProps.get("ScrollX") instanceof Integer ? (Integer) megletProps.get("ScrollX") : 0); }
+    public int getScrollY() { return (megletProps.get("ScrollY") instanceof Integer ? (Integer) megletProps.get("ScrollY") : 0); }
+    public android.view.accessibility.AccessibilityNodeInfo getSource() { return (android.view.accessibility.AccessibilityNodeInfo) megletProps.get("Source"); }
     public android.view.accessibility.AccessibilityNodeInfo getSource(int p0) { return null; }
-    public long getSourceNodeId() { return (meglerProps.get("SourceNodeId") instanceof Long ? (Long) meglerProps.get("SourceNodeId") : 0L); }
-    public java.util.List getText() { return (meglerProps.get("Text") != null ? (java.util.List) meglerProps.get("Text") : new java.util.ArrayList()); }
-    public int getToIndex() { return (meglerProps.get("ToIndex") instanceof Integer ? (Integer) meglerProps.get("ToIndex") : 0); }
-    public int getWindowId() { return (meglerProps.get("WindowId") instanceof Integer ? (Integer) meglerProps.get("WindowId") : 0); }
-    public boolean isChecked() { return (meglerProps.get("Checked") instanceof Boolean ? (Boolean) meglerProps.get("Checked") : false); }
-    public boolean isEnabled() { return (meglerProps.get("Enabled") instanceof Boolean ? (Boolean) meglerProps.get("Enabled") : false); }
-    public boolean isFullScreen() { return (meglerProps.get("FullScreen") instanceof Boolean ? (Boolean) meglerProps.get("FullScreen") : false); }
-    public boolean isImportantForAccessibility() { return (meglerProps.get("ImportantForAccessibility") instanceof Boolean ? (Boolean) meglerProps.get("ImportantForAccessibility") : false); }
-    public boolean isPassword() { return (meglerProps.get("Password") instanceof Boolean ? (Boolean) meglerProps.get("Password") : false); }
-    public boolean isScrollable() { return (meglerProps.get("Scrollable") instanceof Boolean ? (Boolean) meglerProps.get("Scrollable") : false); }
+    public long getSourceNodeId() { return (megletProps.get("SourceNodeId") instanceof Long ? (Long) megletProps.get("SourceNodeId") : 0L); }
+    public java.util.List getText() { return (megletProps.get("Text") != null ? (java.util.List) megletProps.get("Text") : new java.util.ArrayList()); }
+    public int getToIndex() { return (megletProps.get("ToIndex") instanceof Integer ? (Integer) megletProps.get("ToIndex") : 0); }
+    public int getWindowId() { return (megletProps.get("WindowId") instanceof Integer ? (Integer) megletProps.get("WindowId") : 0); }
+    public boolean isChecked() { return (megletProps.get("Checked") instanceof Boolean ? (Boolean) megletProps.get("Checked") : false); }
+    public boolean isEnabled() { return (megletProps.get("Enabled") instanceof Boolean ? (Boolean) megletProps.get("Enabled") : false); }
+    public boolean isFullScreen() { return (megletProps.get("FullScreen") instanceof Boolean ? (Boolean) megletProps.get("FullScreen") : false); }
+    public boolean isImportantForAccessibility() { return (megletProps.get("ImportantForAccessibility") instanceof Boolean ? (Boolean) megletProps.get("ImportantForAccessibility") : false); }
+    public boolean isPassword() { return (megletProps.get("Password") instanceof Boolean ? (Boolean) megletProps.get("Password") : false); }
+    public boolean isScrollable() { return (megletProps.get("Scrollable") instanceof Boolean ? (Boolean) megletProps.get("Scrollable") : false); }
     public void recycle() {}
-    public void setAddedCount(int p0) { meglerProps.put("AddedCount", Integer.valueOf(p0)); }
-    public void setBeforeText(java.lang.CharSequence p0) { meglerProps.put("BeforeText", p0); }
-    public void setChecked(boolean p0) { meglerProps.put("Checked", Boolean.valueOf(p0)); }
-    public void setClassName(java.lang.CharSequence p0) { meglerProps.put("ClassName", p0); }
-    public void setConnectionId(int p0) { meglerProps.put("ConnectionId", Integer.valueOf(p0)); }
-    public void setContentDescription(java.lang.CharSequence p0) { meglerProps.put("ContentDescription", p0); }
-    public void setCurrentItemIndex(int p0) { meglerProps.put("CurrentItemIndex", Integer.valueOf(p0)); }
-    public void setDisplayId(int p0) { meglerProps.put("DisplayId", Integer.valueOf(p0)); }
-    public void setEnabled(boolean p0) { meglerProps.put("Enabled", Boolean.valueOf(p0)); }
-    public void setFromIndex(int p0) { meglerProps.put("FromIndex", Integer.valueOf(p0)); }
-    public void setFullScreen(boolean p0) { meglerProps.put("FullScreen", Boolean.valueOf(p0)); }
-    public void setImportantForAccessibility(boolean p0) { meglerProps.put("ImportantForAccessibility", Boolean.valueOf(p0)); }
-    public void setItemCount(int p0) { meglerProps.put("ItemCount", Integer.valueOf(p0)); }
-    public void setMaxScrollX(int p0) { meglerProps.put("MaxScrollX", Integer.valueOf(p0)); }
-    public void setMaxScrollY(int p0) { meglerProps.put("MaxScrollY", Integer.valueOf(p0)); }
-    public void setParcelableData(android.os.Parcelable p0) { meglerProps.put("ParcelableData", p0); }
-    public void setPassword(boolean p0) { meglerProps.put("Password", Boolean.valueOf(p0)); }
-    public void setRemovedCount(int p0) { meglerProps.put("RemovedCount", Integer.valueOf(p0)); }
-    public void setScrollDeltaX(int p0) { meglerProps.put("ScrollDeltaX", Integer.valueOf(p0)); }
-    public void setScrollDeltaY(int p0) { meglerProps.put("ScrollDeltaY", Integer.valueOf(p0)); }
-    public void setScrollX(int p0) { meglerProps.put("ScrollX", Integer.valueOf(p0)); }
-    public void setScrollY(int p0) { meglerProps.put("ScrollY", Integer.valueOf(p0)); }
-    public void setScrollable(boolean p0) { meglerProps.put("Scrollable", Boolean.valueOf(p0)); }
-    public void setSealed(boolean p0) { meglerProps.put("Sealed", Boolean.valueOf(p0)); }
-    public void setSource(android.view.View p0) { meglerProps.put("Source", p0); }
+    public void setAddedCount(int p0) { megletProps.put("AddedCount", Integer.valueOf(p0)); }
+    public void setBeforeText(java.lang.CharSequence p0) { megletProps.put("BeforeText", p0); }
+    public void setChecked(boolean p0) { megletProps.put("Checked", Boolean.valueOf(p0)); }
+    public void setClassName(java.lang.CharSequence p0) { megletProps.put("ClassName", p0); }
+    public void setConnectionId(int p0) { megletProps.put("ConnectionId", Integer.valueOf(p0)); }
+    public void setContentDescription(java.lang.CharSequence p0) { megletProps.put("ContentDescription", p0); }
+    public void setCurrentItemIndex(int p0) { megletProps.put("CurrentItemIndex", Integer.valueOf(p0)); }
+    public void setDisplayId(int p0) { megletProps.put("DisplayId", Integer.valueOf(p0)); }
+    public void setEnabled(boolean p0) { megletProps.put("Enabled", Boolean.valueOf(p0)); }
+    public void setFromIndex(int p0) { megletProps.put("FromIndex", Integer.valueOf(p0)); }
+    public void setFullScreen(boolean p0) { megletProps.put("FullScreen", Boolean.valueOf(p0)); }
+    public void setImportantForAccessibility(boolean p0) { megletProps.put("ImportantForAccessibility", Boolean.valueOf(p0)); }
+    public void setItemCount(int p0) { megletProps.put("ItemCount", Integer.valueOf(p0)); }
+    public void setMaxScrollX(int p0) { megletProps.put("MaxScrollX", Integer.valueOf(p0)); }
+    public void setMaxScrollY(int p0) { megletProps.put("MaxScrollY", Integer.valueOf(p0)); }
+    public void setParcelableData(android.os.Parcelable p0) { megletProps.put("ParcelableData", p0); }
+    public void setPassword(boolean p0) { megletProps.put("Password", Boolean.valueOf(p0)); }
+    public void setRemovedCount(int p0) { megletProps.put("RemovedCount", Integer.valueOf(p0)); }
+    public void setScrollDeltaX(int p0) { megletProps.put("ScrollDeltaX", Integer.valueOf(p0)); }
+    public void setScrollDeltaY(int p0) { megletProps.put("ScrollDeltaY", Integer.valueOf(p0)); }
+    public void setScrollX(int p0) { megletProps.put("ScrollX", Integer.valueOf(p0)); }
+    public void setScrollY(int p0) { megletProps.put("ScrollY", Integer.valueOf(p0)); }
+    public void setScrollable(boolean p0) { megletProps.put("Scrollable", Boolean.valueOf(p0)); }
+    public void setSealed(boolean p0) { megletProps.put("Sealed", Boolean.valueOf(p0)); }
+    public void setSource(android.view.View p0) { megletProps.put("Source", p0); }
     public void setSource(android.view.View p0, int p1) {}
-    public void setSourceNodeId(long p0) { meglerProps.put("SourceNodeId", Long.valueOf(p0)); }
-    public void setToIndex(int p0) { meglerProps.put("ToIndex", Integer.valueOf(p0)); }
-    public void setWindowId(int p0) { meglerProps.put("WindowId", Integer.valueOf(p0)); }
+    public void setSourceNodeId(long p0) { megletProps.put("SourceNodeId", Long.valueOf(p0)); }
+    public void setToIndex(int p0) { megletProps.put("ToIndex", Integer.valueOf(p0)); }
+    public void setWindowId(int p0) { megletProps.put("WindowId", Integer.valueOf(p0)); }
 }

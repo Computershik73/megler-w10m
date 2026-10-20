@@ -3,11 +3,11 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class AsyncPlayer {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public AsyncPlayer(java.lang.String p0) {}
     public void play(android.content.Context p0, android.net.Uri p1, boolean p2, int p3) {}
     public void play(android.content.Context p0, android.net.Uri p1, boolean p2, android.media.AudioAttributes p3) {}
-    public void setUsesWakeLock(android.content.Context p0) { meglerProps.put("UsesWakeLock", p0); }
+    public void setUsesWakeLock(android.content.Context p0) { megletProps.put("UsesWakeLock", p0); }
     public void stop() {}
     AsyncPlayer() { this((java.lang.String) null); }
 }

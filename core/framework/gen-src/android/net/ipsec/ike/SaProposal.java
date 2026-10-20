@@ -3,7 +3,7 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class SaProposal {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int DH_GROUP_1024_BIT_MODP = 2;
     public static final int DH_GROUP_1536_BIT_MODP = 5;
     public static final int DH_GROUP_2048_BIT_MODP = 14;
@@ -48,15 +48,15 @@ public abstract class SaProposal {
     protected static java.util.Set getKeySet(android.util.SparseArray p0) { return new java.util.HashSet(); }
     public static java.lang.String getPseudorandomFunctionString(int p0) { return null; }
     public static java.util.Set getSupportedDhGroups() { return new java.util.HashSet(); }
-    protected java.util.List getAllTransformsAsList() { return (meglerProps.get("AllTransformsAsList") != null ? (java.util.List) meglerProps.get("AllTransformsAsList") : new java.util.ArrayList()); }
-    public java.util.List getDhGroups() { return (meglerProps.get("DhGroups") != null ? (java.util.List) meglerProps.get("DhGroups") : new java.util.ArrayList()); }
-    public java.util.List getEncryptionAlgorithms() { return (meglerProps.get("EncryptionAlgorithms") != null ? (java.util.List) meglerProps.get("EncryptionAlgorithms") : new java.util.ArrayList()); }
-    public java.util.List getIntegrityAlgorithms() { return (meglerProps.get("IntegrityAlgorithms") != null ? (java.util.List) meglerProps.get("IntegrityAlgorithms") : new java.util.ArrayList()); }
-    public int getProtocolId() { return (meglerProps.get("ProtocolId") instanceof Integer ? (Integer) meglerProps.get("ProtocolId") : 0); }
+    protected java.util.List getAllTransformsAsList() { return (megletProps.get("AllTransformsAsList") != null ? (java.util.List) megletProps.get("AllTransformsAsList") : new java.util.ArrayList()); }
+    public java.util.List getDhGroups() { return (megletProps.get("DhGroups") != null ? (java.util.List) megletProps.get("DhGroups") : new java.util.ArrayList()); }
+    public java.util.List getEncryptionAlgorithms() { return (megletProps.get("EncryptionAlgorithms") != null ? (java.util.List) megletProps.get("EncryptionAlgorithms") : new java.util.ArrayList()); }
+    public java.util.List getIntegrityAlgorithms() { return (megletProps.get("IntegrityAlgorithms") != null ? (java.util.List) megletProps.get("IntegrityAlgorithms") : new java.util.ArrayList()); }
+    public int getProtocolId() { return (megletProps.get("ProtocolId") instanceof Integer ? (Integer) megletProps.get("ProtocolId") : 0); }
     public boolean isNegotiatedFrom(android.net.ipsec.ike.SaProposal p0) { return false; }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     public static abstract class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected static final java.lang.String ERROR_TAG = "Invalid SA Proposal: ";
         protected boolean mHasAead;
         protected java.util.LinkedHashSet mProposedDhGroups;

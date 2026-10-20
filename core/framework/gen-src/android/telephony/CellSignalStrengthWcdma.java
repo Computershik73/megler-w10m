@@ -3,7 +3,7 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class CellSignalStrengthWcdma extends android.telephony.CellSignalStrength implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final java.lang.String LEVEL_CALCULATION_METHOD_RSCP = "rscp";
     public static final java.lang.String LEVEL_CALCULATION_METHOD_RSSI = "rssi";
@@ -13,14 +13,14 @@ public final class CellSignalStrengthWcdma extends android.telephony.CellSignalS
     public android.telephony.CellSignalStrengthWcdma copy() { return new android.telephony.CellSignalStrengthWcdma(); }
     protected void copyFrom(android.telephony.CellSignalStrengthWcdma p0) {}
     public int describeContents() { return 0; }
-    public int getAsuLevel() { return (meglerProps.get("AsuLevel") instanceof Integer ? (Integer) meglerProps.get("AsuLevel") : 0); }
-    public int getBitErrorRate() { return (meglerProps.get("BitErrorRate") instanceof Integer ? (Integer) meglerProps.get("BitErrorRate") : 0); }
-    public int getDbm() { return (meglerProps.get("Dbm") instanceof Integer ? (Integer) meglerProps.get("Dbm") : 0); }
-    public int getEcNo() { return (meglerProps.get("EcNo") instanceof Integer ? (Integer) meglerProps.get("EcNo") : 0); }
-    public int getLevel() { return (meglerProps.get("Level") instanceof Integer ? (Integer) meglerProps.get("Level") : 0); }
-    public int getRscp() { return (meglerProps.get("Rscp") instanceof Integer ? (Integer) meglerProps.get("Rscp") : 0); }
-    public int getRssi() { return (meglerProps.get("Rssi") instanceof Integer ? (Integer) meglerProps.get("Rssi") : 0); }
-    public boolean isValid() { return (meglerProps.get("Valid") instanceof Boolean ? (Boolean) meglerProps.get("Valid") : false); }
+    public int getAsuLevel() { return (megletProps.get("AsuLevel") instanceof Integer ? (Integer) megletProps.get("AsuLevel") : 0); }
+    public int getBitErrorRate() { return (megletProps.get("BitErrorRate") instanceof Integer ? (Integer) megletProps.get("BitErrorRate") : 0); }
+    public int getDbm() { return (megletProps.get("Dbm") instanceof Integer ? (Integer) megletProps.get("Dbm") : 0); }
+    public int getEcNo() { return (megletProps.get("EcNo") instanceof Integer ? (Integer) megletProps.get("EcNo") : 0); }
+    public int getLevel() { return (megletProps.get("Level") instanceof Integer ? (Integer) megletProps.get("Level") : 0); }
+    public int getRscp() { return (megletProps.get("Rscp") instanceof Integer ? (Integer) megletProps.get("Rscp") : 0); }
+    public int getRssi() { return (megletProps.get("Rssi") instanceof Integer ? (Integer) megletProps.get("Rssi") : 0); }
+    public boolean isValid() { return (megletProps.get("Valid") instanceof Boolean ? (Boolean) megletProps.get("Valid") : false); }
     public void setDefaultValues() {}
     public void updateLevel(android.os.PersistableBundle p0, android.telephony.ServiceState p1) {}
     public void writeToParcel(android.os.Parcel p0, int p1) {}

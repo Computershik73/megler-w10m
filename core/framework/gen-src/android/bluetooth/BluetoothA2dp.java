@@ -3,7 +3,7 @@ package android.bluetooth;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothA2dp implements android.bluetooth.BluetoothProfile {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_ACTIVE_DEVICE_CHANGED = "android.bluetooth.a2dp.profile.action.ACTIVE_DEVICE_CHANGED";
     public static final java.lang.String ACTION_AVRCP_CONNECTION_STATE_CHANGED = "android.bluetooth.a2dp.profile.action.AVRCP_CONNECTION_STATE_CHANGED";
     public static final java.lang.String ACTION_CODEC_CONFIG_CHANGED = "android.bluetooth.a2dp.profile.action.CODEC_CONFIG_CHANGED";
@@ -27,23 +27,23 @@ public final class BluetoothA2dp implements android.bluetooth.BluetoothProfile {
     public boolean disconnect(android.bluetooth.BluetoothDevice p0) { return false; }
     public void enableOptionalCodecs(android.bluetooth.BluetoothDevice p0) {}
     public void finalize() {}
-    public android.bluetooth.BluetoothDevice getActiveDevice() { return (android.bluetooth.BluetoothDevice) meglerProps.get("ActiveDevice"); }
-    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) meglerProps.get("Adapter"); }
-    public android.bluetooth.BufferConstraints getBufferConstraints() { return (android.bluetooth.BufferConstraints) meglerProps.get("BufferConstraints"); }
+    public android.bluetooth.BluetoothDevice getActiveDevice() { return (android.bluetooth.BluetoothDevice) megletProps.get("ActiveDevice"); }
+    public android.bluetooth.BluetoothAdapter getAdapter() { return (android.bluetooth.BluetoothAdapter) megletProps.get("Adapter"); }
+    public android.bluetooth.BufferConstraints getBufferConstraints() { return (android.bluetooth.BufferConstraints) megletProps.get("BufferConstraints"); }
     public android.bluetooth.BluetoothCodecStatus getCodecStatus(android.bluetooth.BluetoothDevice p0) { return null; }
-    public java.util.List getConnectedDevices() { return (meglerProps.get("ConnectedDevices") != null ? (java.util.List) meglerProps.get("ConnectedDevices") : new java.util.ArrayList()); }
+    public java.util.List getConnectedDevices() { return (megletProps.get("ConnectedDevices") != null ? (java.util.List) megletProps.get("ConnectedDevices") : new java.util.ArrayList()); }
     public int getConnectionPolicy(android.bluetooth.BluetoothDevice p0) { return 0; }
     public int getConnectionState(android.bluetooth.BluetoothDevice p0) { return 0; }
     public java.util.List getDevicesMatchingConnectionStates(int[] p0) { return new java.util.ArrayList(); }
-    public int getDynamicBufferSupport() { return (meglerProps.get("DynamicBufferSupport") instanceof Integer ? (Integer) meglerProps.get("DynamicBufferSupport") : 0); }
-    public java.util.Collection getSupportedCodecTypes() { return (meglerProps.get("SupportedCodecTypes") != null ? (java.util.Collection) meglerProps.get("SupportedCodecTypes") : new java.util.ArrayList()); }
+    public int getDynamicBufferSupport() { return (megletProps.get("DynamicBufferSupport") instanceof Integer ? (Integer) megletProps.get("DynamicBufferSupport") : 0); }
+    public java.util.Collection getSupportedCodecTypes() { return (megletProps.get("SupportedCodecTypes") != null ? (java.util.Collection) megletProps.get("SupportedCodecTypes") : new java.util.ArrayList()); }
     public boolean isA2dpPlaying(android.bluetooth.BluetoothDevice p0) { return false; }
     public int isOptionalCodecsEnabled(android.bluetooth.BluetoothDevice p0) { return 0; }
     public int isOptionalCodecsSupported(android.bluetooth.BluetoothDevice p0) { return 0; }
     public void onServiceConnected(android.os.IBinder p0) {}
     public void onServiceDisconnected() {}
     public boolean setActiveDevice(android.bluetooth.BluetoothDevice p0) { return false; }
-    public void setAvrcpAbsoluteVolume(int p0) { meglerProps.put("AvrcpAbsoluteVolume", Integer.valueOf(p0)); }
+    public void setAvrcpAbsoluteVolume(int p0) { megletProps.put("AvrcpAbsoluteVolume", Integer.valueOf(p0)); }
     public boolean setBufferLengthMillis(int p0, int p1) { return false; }
     public void setCodecConfigPreference(android.bluetooth.BluetoothDevice p0, android.bluetooth.BluetoothCodecConfig p1) {}
     public boolean setConnectionPolicy(android.bluetooth.BluetoothDevice p0, int p1) { return false; }

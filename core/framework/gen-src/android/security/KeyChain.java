@@ -3,7 +3,7 @@ package android.security;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class KeyChain {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACCOUNT_TYPE = "com.android.keychain";
     public static final java.lang.String ACTION_KEYCHAIN_CHANGED = "android.security.action.KEYCHAIN_CHANGED";
     public static final java.lang.String ACTION_KEY_ACCESS_CHANGED = "android.security.action.KEY_ACCESS_CHANGED";
@@ -60,10 +60,10 @@ public final class KeyChain {
     public static java.security.cert.X509Certificate toCertificate(byte[] p0) { return null; }
     public static java.util.Collection toCertificates(byte[] p0) { return new java.util.ArrayList(); }
     public static class KeyChainConnection implements java.io.Closeable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected KeyChainConnection(android.content.Context p0, android.content.ServiceConnection p1, android.security.IKeyChainService p2) {}
         public void close() {}
-        public android.security.IKeyChainService getService() { return (android.security.IKeyChainService) meglerProps.get("Service"); }
+        public android.security.IKeyChainService getService() { return (android.security.IKeyChainService) megletProps.get("Service"); }
         KeyChainConnection() { this((android.content.Context) null, (android.content.ServiceConnection) null, (android.security.IKeyChainService) null); }
     }
 }

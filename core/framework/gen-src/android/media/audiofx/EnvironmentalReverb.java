@@ -3,7 +3,7 @@ package android.media.audiofx;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class EnvironmentalReverb extends android.media.audiofx.AudioEffect {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int PARAM_DECAY_HF_RATIO = 3;
     public static final int PARAM_DECAY_TIME = 2;
     public static final int PARAM_DENSITY = 9;
@@ -15,34 +15,34 @@ public class EnvironmentalReverb extends android.media.audiofx.AudioEffect {
     public static final int PARAM_ROOM_HF_LEVEL = 1;
     public static final int PARAM_ROOM_LEVEL = 0;
     public EnvironmentalReverb(int p0, int p1) { super((java.util.UUID) null, (android.media.AudioDeviceAttributes) null); }
-    public short getDecayHFRatio() { return (meglerProps.get("DecayHFRatio") instanceof Short ? (Short) meglerProps.get("DecayHFRatio") : (short) 0); }
-    public int getDecayTime() { return (meglerProps.get("DecayTime") instanceof Integer ? (Integer) meglerProps.get("DecayTime") : 0); }
-    public short getDensity() { return (meglerProps.get("Density") instanceof Short ? (Short) meglerProps.get("Density") : (short) 0); }
-    public short getDiffusion() { return (meglerProps.get("Diffusion") instanceof Short ? (Short) meglerProps.get("Diffusion") : (short) 0); }
-    public android.media.audiofx.EnvironmentalReverb.Settings getProperties() { return (android.media.audiofx.EnvironmentalReverb.Settings) meglerProps.get("Properties"); }
-    public int getReflectionsDelay() { return (meglerProps.get("ReflectionsDelay") instanceof Integer ? (Integer) meglerProps.get("ReflectionsDelay") : 0); }
-    public short getReflectionsLevel() { return (meglerProps.get("ReflectionsLevel") instanceof Short ? (Short) meglerProps.get("ReflectionsLevel") : (short) 0); }
-    public int getReverbDelay() { return (meglerProps.get("ReverbDelay") instanceof Integer ? (Integer) meglerProps.get("ReverbDelay") : 0); }
-    public short getReverbLevel() { return (meglerProps.get("ReverbLevel") instanceof Short ? (Short) meglerProps.get("ReverbLevel") : (short) 0); }
-    public short getRoomHFLevel() { return (meglerProps.get("RoomHFLevel") instanceof Short ? (Short) meglerProps.get("RoomHFLevel") : (short) 0); }
-    public short getRoomLevel() { return (meglerProps.get("RoomLevel") instanceof Short ? (Short) meglerProps.get("RoomLevel") : (short) 0); }
-    public void setDecayHFRatio(short p0) { meglerProps.put("DecayHFRatio", Short.valueOf(p0)); }
-    public void setDecayTime(int p0) { meglerProps.put("DecayTime", Integer.valueOf(p0)); }
-    public void setDensity(short p0) { meglerProps.put("Density", Short.valueOf(p0)); }
-    public void setDiffusion(short p0) { meglerProps.put("Diffusion", Short.valueOf(p0)); }
-    public void setProperties(android.media.audiofx.EnvironmentalReverb.Settings p0) { meglerProps.put("Properties", p0); }
-    public void setReflectionsDelay(int p0) { meglerProps.put("ReflectionsDelay", Integer.valueOf(p0)); }
-    public void setReflectionsLevel(short p0) { meglerProps.put("ReflectionsLevel", Short.valueOf(p0)); }
-    public void setReverbDelay(int p0) { meglerProps.put("ReverbDelay", Integer.valueOf(p0)); }
-    public void setReverbLevel(short p0) { meglerProps.put("ReverbLevel", Short.valueOf(p0)); }
-    public void setRoomHFLevel(short p0) { meglerProps.put("RoomHFLevel", Short.valueOf(p0)); }
-    public void setRoomLevel(short p0) { meglerProps.put("RoomLevel", Short.valueOf(p0)); }
+    public short getDecayHFRatio() { return (megletProps.get("DecayHFRatio") instanceof Short ? (Short) megletProps.get("DecayHFRatio") : (short) 0); }
+    public int getDecayTime() { return (megletProps.get("DecayTime") instanceof Integer ? (Integer) megletProps.get("DecayTime") : 0); }
+    public short getDensity() { return (megletProps.get("Density") instanceof Short ? (Short) megletProps.get("Density") : (short) 0); }
+    public short getDiffusion() { return (megletProps.get("Diffusion") instanceof Short ? (Short) megletProps.get("Diffusion") : (short) 0); }
+    public android.media.audiofx.EnvironmentalReverb.Settings getProperties() { return (android.media.audiofx.EnvironmentalReverb.Settings) megletProps.get("Properties"); }
+    public int getReflectionsDelay() { return (megletProps.get("ReflectionsDelay") instanceof Integer ? (Integer) megletProps.get("ReflectionsDelay") : 0); }
+    public short getReflectionsLevel() { return (megletProps.get("ReflectionsLevel") instanceof Short ? (Short) megletProps.get("ReflectionsLevel") : (short) 0); }
+    public int getReverbDelay() { return (megletProps.get("ReverbDelay") instanceof Integer ? (Integer) megletProps.get("ReverbDelay") : 0); }
+    public short getReverbLevel() { return (megletProps.get("ReverbLevel") instanceof Short ? (Short) megletProps.get("ReverbLevel") : (short) 0); }
+    public short getRoomHFLevel() { return (megletProps.get("RoomHFLevel") instanceof Short ? (Short) megletProps.get("RoomHFLevel") : (short) 0); }
+    public short getRoomLevel() { return (megletProps.get("RoomLevel") instanceof Short ? (Short) megletProps.get("RoomLevel") : (short) 0); }
+    public void setDecayHFRatio(short p0) { megletProps.put("DecayHFRatio", Short.valueOf(p0)); }
+    public void setDecayTime(int p0) { megletProps.put("DecayTime", Integer.valueOf(p0)); }
+    public void setDensity(short p0) { megletProps.put("Density", Short.valueOf(p0)); }
+    public void setDiffusion(short p0) { megletProps.put("Diffusion", Short.valueOf(p0)); }
+    public void setProperties(android.media.audiofx.EnvironmentalReverb.Settings p0) { megletProps.put("Properties", p0); }
+    public void setReflectionsDelay(int p0) { megletProps.put("ReflectionsDelay", Integer.valueOf(p0)); }
+    public void setReflectionsLevel(short p0) { megletProps.put("ReflectionsLevel", Short.valueOf(p0)); }
+    public void setReverbDelay(int p0) { megletProps.put("ReverbDelay", Integer.valueOf(p0)); }
+    public void setReverbLevel(short p0) { megletProps.put("ReverbLevel", Short.valueOf(p0)); }
+    public void setRoomHFLevel(short p0) { megletProps.put("RoomHFLevel", Short.valueOf(p0)); }
+    public void setRoomLevel(short p0) { megletProps.put("RoomLevel", Short.valueOf(p0)); }
     EnvironmentalReverb() { this((int) 0, (int) 0); }
     public interface OnParameterChangeListener {
         void onParameterChange(android.media.audiofx.EnvironmentalReverb p0, int p1, int p2, int p3);
     }
     public static class Settings {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public short decayHFRatio;
         public int decayTime;
         public short density;

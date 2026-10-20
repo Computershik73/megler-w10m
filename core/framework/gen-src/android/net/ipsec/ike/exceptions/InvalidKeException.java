@@ -3,11 +3,11 @@ package android.net.ipsec.ike.exceptions;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class InvalidKeException extends android.net.ipsec.ike.exceptions.IkeProtocolException {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public InvalidKeException(int p0) { super(p0); }
     public InvalidKeException(byte[] p0) { super((int) 0); }
-    public int getDhGroup() { return (meglerProps.get("DhGroup") instanceof Integer ? (Integer) meglerProps.get("DhGroup") : 0); }
-    public int getMetricsErrorCode() { return (meglerProps.get("MetricsErrorCode") instanceof Integer ? (Integer) meglerProps.get("MetricsErrorCode") : 0); }
+    public int getDhGroup() { return (megletProps.get("DhGroup") instanceof Integer ? (Integer) megletProps.get("DhGroup") : 0); }
+    public int getMetricsErrorCode() { return (megletProps.get("MetricsErrorCode") instanceof Integer ? (Integer) megletProps.get("MetricsErrorCode") : 0); }
     public boolean isValidDataLength(int p0) { return false; }
     InvalidKeException() { this((int) 0); }
 }

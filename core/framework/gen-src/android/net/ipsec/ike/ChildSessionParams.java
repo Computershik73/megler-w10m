@@ -3,7 +3,7 @@ package android.net.ipsec.ike;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class ChildSessionParams {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     protected static final int CHILD_HARD_LIFETIME_SEC_DEFAULT = 7200;
     protected static final int CHILD_HARD_LIFETIME_SEC_MAXIMUM = 14400;
     protected static final int CHILD_HARD_LIFETIME_SEC_MINIMUM = 300;
@@ -19,22 +19,22 @@ public abstract class ChildSessionParams {
     public static android.net.ipsec.ike.ChildSessionParams fromPersistableBundle(android.os.PersistableBundle p0) { return null; }
     protected static java.util.List getProposalsFromPersistableBundle(android.os.PersistableBundle p0) { return new java.util.ArrayList(); }
     protected static java.util.List getTsFromPersistableBundle(android.os.PersistableBundle p0, java.lang.String p1) { return new java.util.ArrayList(); }
-    public java.util.List getChildSaProposals() { return (meglerProps.get("ChildSaProposals") != null ? (java.util.List) meglerProps.get("ChildSaProposals") : new java.util.ArrayList()); }
-    public long getHardLifetimeMsInternal() { return (meglerProps.get("HardLifetimeMsInternal") instanceof Long ? (Long) meglerProps.get("HardLifetimeMsInternal") : 0L); }
-    public int getHardLifetimeSeconds() { return (meglerProps.get("HardLifetimeSeconds") instanceof Integer ? (Integer) meglerProps.get("HardLifetimeSeconds") : 0); }
-    public java.util.List getInboundTrafficSelectors() { return (meglerProps.get("InboundTrafficSelectors") != null ? (java.util.List) meglerProps.get("InboundTrafficSelectors") : new java.util.ArrayList()); }
-    public android.net.ipsec.ike.IkeTrafficSelector[] getInboundTrafficSelectorsInternal() { return (android.net.ipsec.ike.IkeTrafficSelector[]) meglerProps.get("InboundTrafficSelectorsInternal"); }
-    public java.util.List getOutboundTrafficSelectors() { return (meglerProps.get("OutboundTrafficSelectors") != null ? (java.util.List) meglerProps.get("OutboundTrafficSelectors") : new java.util.ArrayList()); }
-    public android.net.ipsec.ike.IkeTrafficSelector[] getOutboundTrafficSelectorsInternal() { return (android.net.ipsec.ike.IkeTrafficSelector[]) meglerProps.get("OutboundTrafficSelectorsInternal"); }
-    public java.util.List getSaProposals() { return (meglerProps.get("SaProposals") != null ? (java.util.List) meglerProps.get("SaProposals") : new java.util.ArrayList()); }
-    public android.net.ipsec.ike.ChildSaProposal[] getSaProposalsInternal() { return (android.net.ipsec.ike.ChildSaProposal[]) meglerProps.get("SaProposalsInternal"); }
-    public long getSoftLifetimeMsInternal() { return (meglerProps.get("SoftLifetimeMsInternal") instanceof Long ? (Long) meglerProps.get("SoftLifetimeMsInternal") : 0L); }
-    public int getSoftLifetimeSeconds() { return (meglerProps.get("SoftLifetimeSeconds") instanceof Integer ? (Integer) meglerProps.get("SoftLifetimeSeconds") : 0); }
-    public boolean isTransportMode() { return (meglerProps.get("TransportMode") instanceof Boolean ? (Boolean) meglerProps.get("TransportMode") : false); }
+    public java.util.List getChildSaProposals() { return (megletProps.get("ChildSaProposals") != null ? (java.util.List) megletProps.get("ChildSaProposals") : new java.util.ArrayList()); }
+    public long getHardLifetimeMsInternal() { return (megletProps.get("HardLifetimeMsInternal") instanceof Long ? (Long) megletProps.get("HardLifetimeMsInternal") : 0L); }
+    public int getHardLifetimeSeconds() { return (megletProps.get("HardLifetimeSeconds") instanceof Integer ? (Integer) megletProps.get("HardLifetimeSeconds") : 0); }
+    public java.util.List getInboundTrafficSelectors() { return (megletProps.get("InboundTrafficSelectors") != null ? (java.util.List) megletProps.get("InboundTrafficSelectors") : new java.util.ArrayList()); }
+    public android.net.ipsec.ike.IkeTrafficSelector[] getInboundTrafficSelectorsInternal() { return (android.net.ipsec.ike.IkeTrafficSelector[]) megletProps.get("InboundTrafficSelectorsInternal"); }
+    public java.util.List getOutboundTrafficSelectors() { return (megletProps.get("OutboundTrafficSelectors") != null ? (java.util.List) megletProps.get("OutboundTrafficSelectors") : new java.util.ArrayList()); }
+    public android.net.ipsec.ike.IkeTrafficSelector[] getOutboundTrafficSelectorsInternal() { return (android.net.ipsec.ike.IkeTrafficSelector[]) megletProps.get("OutboundTrafficSelectorsInternal"); }
+    public java.util.List getSaProposals() { return (megletProps.get("SaProposals") != null ? (java.util.List) megletProps.get("SaProposals") : new java.util.ArrayList()); }
+    public android.net.ipsec.ike.ChildSaProposal[] getSaProposalsInternal() { return (android.net.ipsec.ike.ChildSaProposal[]) megletProps.get("SaProposalsInternal"); }
+    public long getSoftLifetimeMsInternal() { return (megletProps.get("SoftLifetimeMsInternal") instanceof Long ? (Long) megletProps.get("SoftLifetimeMsInternal") : 0L); }
+    public int getSoftLifetimeSeconds() { return (megletProps.get("SoftLifetimeSeconds") instanceof Integer ? (Integer) megletProps.get("SoftLifetimeSeconds") : 0); }
+    public boolean isTransportMode() { return (megletProps.get("TransportMode") instanceof Boolean ? (Boolean) megletProps.get("TransportMode") : false); }
     public android.os.PersistableBundle toPersistableBundle() { return null; }
     ChildSessionParams() { this((android.net.ipsec.ike.IkeTrafficSelector[]) null, (android.net.ipsec.ike.IkeTrafficSelector[]) null, (android.net.ipsec.ike.ChildSaProposal[]) null, (int) 0, (int) 0, (boolean) false); }
     public static abstract class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         protected int mHardLifetimeSec;
         protected java.util.List mInboundTsList;
         protected java.util.List mOutboundTsList;

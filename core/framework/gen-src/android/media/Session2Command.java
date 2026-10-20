@@ -3,25 +3,25 @@ package android.media;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Session2Command implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static int COMMAND_CODE_CUSTOM;
     public static android.os.Parcelable.Creator CREATOR;
     public Session2Command(int p0) {}
     public Session2Command(java.lang.String p0, android.os.Bundle p1) {}
     public int describeContents() { return 0; }
-    public int getCommandCode() { return (meglerProps.get("CommandCode") instanceof Integer ? (Integer) meglerProps.get("CommandCode") : 0); }
-    public java.lang.String getCustomAction() { return (java.lang.String) meglerProps.get("CustomAction"); }
-    public android.os.Bundle getCustomExtras() { return (android.os.Bundle) meglerProps.get("CustomExtras"); }
+    public int getCommandCode() { return (megletProps.get("CommandCode") instanceof Integer ? (Integer) megletProps.get("CommandCode") : 0); }
+    public java.lang.String getCustomAction() { return (java.lang.String) megletProps.get("CustomAction"); }
+    public android.os.Bundle getCustomExtras() { return (android.os.Bundle) megletProps.get("CustomExtras"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     Session2Command() { this((int) 0); }
     public static final class Result {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int RESULT_ERROR_UNKNOWN_ERROR = -1;
         public static final int RESULT_INFO_SKIPPED = 1;
         public static int RESULT_SUCCESS;
         public Result(int p0, android.os.Bundle p1) {}
-        public int getResultCode() { return (meglerProps.get("ResultCode") instanceof Integer ? (Integer) meglerProps.get("ResultCode") : 0); }
-        public android.os.Bundle getResultData() { return (android.os.Bundle) meglerProps.get("ResultData"); }
+        public int getResultCode() { return (megletProps.get("ResultCode") instanceof Integer ? (Integer) megletProps.get("ResultCode") : 0); }
+        public android.os.Bundle getResultData() { return (android.os.Bundle) megletProps.get("ResultData"); }
         Result() { this((int) 0, (android.os.Bundle) null); }
     }
 }

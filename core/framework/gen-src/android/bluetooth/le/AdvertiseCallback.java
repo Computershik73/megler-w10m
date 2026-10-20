@@ -3,7 +3,7 @@ package android.bluetooth.le;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class AdvertiseCallback {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ADVERTISE_FAILED_ALREADY_STARTED = 3;
     public static final int ADVERTISE_FAILED_DATA_TOO_LARGE = 1;
     public static final int ADVERTISE_FAILED_FEATURE_UNSUPPORTED = 5;

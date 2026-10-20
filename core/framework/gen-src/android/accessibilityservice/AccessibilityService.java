@@ -3,7 +3,7 @@ package android.accessibilityservice;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class AccessibilityService extends android.app.Service {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int ACCESSIBILITY_TAKE_SCREENSHOT_REQUEST_INTERVAL_TIMES_MS = 333;
     public static final int ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR = 1;
     public static final int ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT = 3;
@@ -108,23 +108,23 @@ public abstract class AccessibilityService extends android.app.Service {
     public void disableSelf() {}
     public boolean dispatchGesture(android.accessibilityservice.GestureDescription p0, android.accessibilityservice.AccessibilityService.GestureResultCallback p1, android.os.Handler p2) { return false; }
     public android.view.accessibility.AccessibilityNodeInfo findFocus(int p0) { return null; }
-    public android.accessibilityservice.AccessibilityButtonController getAccessibilityButtonController() { return (android.accessibilityservice.AccessibilityButtonController) meglerProps.get("AccessibilityButtonController"); }
+    public android.accessibilityservice.AccessibilityButtonController getAccessibilityButtonController() { return (android.accessibilityservice.AccessibilityButtonController) megletProps.get("AccessibilityButtonController"); }
     public android.accessibilityservice.AccessibilityButtonController getAccessibilityButtonController(int p0) { return null; }
-    public android.accessibilityservice.BrailleDisplayController getBrailleDisplayController() { return (android.accessibilityservice.BrailleDisplayController) meglerProps.get("BrailleDisplayController"); }
-    public int getConnectionId() { return (meglerProps.get("ConnectionId") instanceof Integer ? (Integer) meglerProps.get("ConnectionId") : 0); }
-    public android.accessibilityservice.FingerprintGestureController getFingerprintGestureController() { return (android.accessibilityservice.FingerprintGestureController) meglerProps.get("FingerprintGestureController"); }
-    public android.accessibilityservice.InputMethod getInputMethod() { return (android.accessibilityservice.InputMethod) meglerProps.get("InputMethod"); }
-    public android.accessibilityservice.AccessibilityService.MagnificationController getMagnificationController() { return (android.accessibilityservice.AccessibilityService.MagnificationController) meglerProps.get("MagnificationController"); }
+    public android.accessibilityservice.BrailleDisplayController getBrailleDisplayController() { return (android.accessibilityservice.BrailleDisplayController) megletProps.get("BrailleDisplayController"); }
+    public int getConnectionId() { return (megletProps.get("ConnectionId") instanceof Integer ? (Integer) megletProps.get("ConnectionId") : 0); }
+    public android.accessibilityservice.FingerprintGestureController getFingerprintGestureController() { return (android.accessibilityservice.FingerprintGestureController) megletProps.get("FingerprintGestureController"); }
+    public android.accessibilityservice.InputMethod getInputMethod() { return (android.accessibilityservice.InputMethod) megletProps.get("InputMethod"); }
+    public android.accessibilityservice.AccessibilityService.MagnificationController getMagnificationController() { return (android.accessibilityservice.AccessibilityService.MagnificationController) megletProps.get("MagnificationController"); }
     public android.accessibilityservice.AccessibilityService.MagnificationController getMagnificationController(int p0) { return null; }
-    public android.view.accessibility.AccessibilityNodeInfo getRootInActiveWindow() { return (android.view.accessibility.AccessibilityNodeInfo) meglerProps.get("RootInActiveWindow"); }
+    public android.view.accessibility.AccessibilityNodeInfo getRootInActiveWindow() { return (android.view.accessibility.AccessibilityNodeInfo) megletProps.get("RootInActiveWindow"); }
     public android.view.accessibility.AccessibilityNodeInfo getRootInActiveWindow(int p0) { return null; }
-    public android.accessibilityservice.AccessibilityServiceInfo getServiceInfo() { return (android.accessibilityservice.AccessibilityServiceInfo) meglerProps.get("ServiceInfo"); }
-    public android.accessibilityservice.AccessibilityService.SoftKeyboardController getSoftKeyboardController() { return (android.accessibilityservice.AccessibilityService.SoftKeyboardController) meglerProps.get("SoftKeyboardController"); }
-    public java.util.List getSystemActions() { return (meglerProps.get("SystemActions") != null ? (java.util.List) meglerProps.get("SystemActions") : new java.util.ArrayList()); }
+    public android.accessibilityservice.AccessibilityServiceInfo getServiceInfo() { return (android.accessibilityservice.AccessibilityServiceInfo) megletProps.get("ServiceInfo"); }
+    public android.accessibilityservice.AccessibilityService.SoftKeyboardController getSoftKeyboardController() { return (android.accessibilityservice.AccessibilityService.SoftKeyboardController) megletProps.get("SoftKeyboardController"); }
+    public java.util.List getSystemActions() { return (megletProps.get("SystemActions") != null ? (java.util.List) megletProps.get("SystemActions") : new java.util.ArrayList()); }
     public android.accessibilityservice.TouchInteractionController getTouchInteractionController(int p0) { return null; }
-    public java.util.List getWindows() { return (meglerProps.get("Windows") != null ? (java.util.List) meglerProps.get("Windows") : new java.util.ArrayList()); }
-    public android.util.SparseArray getWindowsOnAllDisplays() { return (android.util.SparseArray) meglerProps.get("WindowsOnAllDisplays"); }
-    public boolean isCacheEnabled() { return (meglerProps.get("CacheEnabled") instanceof Boolean ? (Boolean) meglerProps.get("CacheEnabled") : false); }
+    public java.util.List getWindows() { return (megletProps.get("Windows") != null ? (java.util.List) megletProps.get("Windows") : new java.util.ArrayList()); }
+    public android.util.SparseArray getWindowsOnAllDisplays() { return (android.util.SparseArray) megletProps.get("WindowsOnAllDisplays"); }
+    public boolean isCacheEnabled() { return (megletProps.get("CacheEnabled") instanceof Boolean ? (Boolean) megletProps.get("CacheEnabled") : false); }
     public boolean isNodeInCache(android.view.accessibility.AccessibilityNodeInfo p0) { return false; }
     public abstract void onAccessibilityEvent(android.view.accessibility.AccessibilityEvent p0);
     public android.os.IBinder onBind(android.content.Intent p0) { return null; }
@@ -138,10 +138,10 @@ public abstract class AccessibilityService extends android.app.Service {
     public void onSystemActionsChanged() {}
     public boolean performGlobalAction(int p0) { return false; }
     public void setAccessibilityFocusAppearance(int p0, int p1) {}
-    public void setAnimationScale(float p0) { meglerProps.put("AnimationScale", Float.valueOf(p0)); }
+    public void setAnimationScale(float p0) { megletProps.put("AnimationScale", Float.valueOf(p0)); }
     public boolean setCacheEnabled(boolean p0) { return false; }
     public void setGestureDetectionPassthroughRegion(int p0, android.graphics.Region p1) {}
-    public void setServiceInfo(android.accessibilityservice.AccessibilityServiceInfo p0) { meglerProps.put("ServiceInfo", p0); }
+    public void setServiceInfo(android.accessibilityservice.AccessibilityServiceInfo p0) { megletProps.put("ServiceInfo", p0); }
     public void setTouchExplorationPassthroughRegion(int p0, android.graphics.Region p1) {}
     public void takeScreenshot(int p0, java.util.concurrent.Executor p1, android.accessibilityservice.AccessibilityService.TakeScreenshotCallback p2) {}
     public void takeScreenshotOfWindow(int p0, java.util.concurrent.Executor p1, android.accessibilityservice.AccessibilityService.TakeScreenshotCallback p2) {}
@@ -164,13 +164,13 @@ public abstract class AccessibilityService extends android.app.Service {
         void onTouchStateChanged(int p0, int p1);
     }
     public static abstract class GestureResultCallback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public GestureResultCallback() {}
         public void onCancelled(android.accessibilityservice.GestureDescription p0) {}
         public void onCompleted(android.accessibilityservice.GestureDescription p0) {}
     }
     public static abstract class IAccessibilityServiceClientWrapper extends android.accessibilityservice.IAccessibilityServiceClient.Stub {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public IAccessibilityServiceClientWrapper(android.content.Context p0, android.os.Looper p1, android.accessibilityservice.AccessibilityService.Callbacks p2) { super(); }
         public IAccessibilityServiceClientWrapper(android.content.Context p0, java.util.concurrent.Executor p1, android.accessibilityservice.AccessibilityService.Callbacks p2) { super(); }
         public void bindInput() {}
@@ -194,15 +194,15 @@ public abstract class AccessibilityService extends android.app.Service {
         IAccessibilityServiceClientWrapper() { this((android.content.Context) null, (android.os.Looper) null, (android.accessibilityservice.AccessibilityService.Callbacks) null); }
     }
     public static final class MagnificationController {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public void addListener(android.accessibilityservice.AccessibilityService.MagnificationController.OnMagnificationChangedListener p0) {}
         public void addListener(android.accessibilityservice.AccessibilityService.MagnificationController.OnMagnificationChangedListener p0, android.os.Handler p1) {}
-        public float getCenterX() { return (meglerProps.get("CenterX") instanceof Float ? (Float) meglerProps.get("CenterX") : 0f); }
-        public float getCenterY() { return (meglerProps.get("CenterY") instanceof Float ? (Float) meglerProps.get("CenterY") : 0f); }
-        public android.graphics.Region getCurrentMagnificationRegion() { return (android.graphics.Region) meglerProps.get("CurrentMagnificationRegion"); }
-        public android.accessibilityservice.MagnificationConfig getMagnificationConfig() { return (android.accessibilityservice.MagnificationConfig) meglerProps.get("MagnificationConfig"); }
-        public android.graphics.Region getMagnificationRegion() { return (android.graphics.Region) meglerProps.get("MagnificationRegion"); }
-        public float getScale() { return (meglerProps.get("Scale") instanceof Float ? (Float) meglerProps.get("Scale") : 0f); }
+        public float getCenterX() { return (megletProps.get("CenterX") instanceof Float ? (Float) megletProps.get("CenterX") : 0f); }
+        public float getCenterY() { return (megletProps.get("CenterY") instanceof Float ? (Float) megletProps.get("CenterY") : 0f); }
+        public android.graphics.Region getCurrentMagnificationRegion() { return (android.graphics.Region) megletProps.get("CurrentMagnificationRegion"); }
+        public android.accessibilityservice.MagnificationConfig getMagnificationConfig() { return (android.accessibilityservice.MagnificationConfig) megletProps.get("MagnificationConfig"); }
+        public android.graphics.Region getMagnificationRegion() { return (android.graphics.Region) megletProps.get("MagnificationRegion"); }
+        public float getScale() { return (megletProps.get("Scale") instanceof Float ? (Float) megletProps.get("Scale") : 0f); }
         public boolean removeListener(android.accessibilityservice.AccessibilityService.MagnificationController.OnMagnificationChangedListener p0) { return false; }
         public boolean reset(boolean p0) { return false; }
         public boolean resetCurrentMagnification(boolean p0) { return false; }
@@ -216,21 +216,21 @@ public abstract class AccessibilityService extends android.app.Service {
         }
     }
     public static final class ScreenshotResult {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public ScreenshotResult(android.hardware.HardwareBuffer p0, android.graphics.ColorSpace p1, long p2) {}
-        public android.graphics.ColorSpace getColorSpace() { return (android.graphics.ColorSpace) meglerProps.get("ColorSpace"); }
-        public android.hardware.HardwareBuffer getHardwareBuffer() { return (android.hardware.HardwareBuffer) meglerProps.get("HardwareBuffer"); }
-        public long getTimestamp() { return (meglerProps.get("Timestamp") instanceof Long ? (Long) meglerProps.get("Timestamp") : 0L); }
+        public android.graphics.ColorSpace getColorSpace() { return (android.graphics.ColorSpace) megletProps.get("ColorSpace"); }
+        public android.hardware.HardwareBuffer getHardwareBuffer() { return (android.hardware.HardwareBuffer) megletProps.get("HardwareBuffer"); }
+        public long getTimestamp() { return (megletProps.get("Timestamp") instanceof Long ? (Long) megletProps.get("Timestamp") : 0L); }
         ScreenshotResult() { this((android.hardware.HardwareBuffer) null, (android.graphics.ColorSpace) null, (long) 0L); }
     }
     public static final class SoftKeyboardController {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int ENABLE_IME_FAIL_BY_ADMIN = 1;
         public static final int ENABLE_IME_FAIL_UNKNOWN = 2;
         public static int ENABLE_IME_SUCCESS;
         public void addOnShowModeChangedListener(android.accessibilityservice.AccessibilityService.SoftKeyboardController.OnShowModeChangedListener p0) {}
         public void addOnShowModeChangedListener(android.accessibilityservice.AccessibilityService.SoftKeyboardController.OnShowModeChangedListener p0, android.os.Handler p1) {}
-        public int getShowMode() { return (meglerProps.get("ShowMode") instanceof Integer ? (Integer) meglerProps.get("ShowMode") : 0); }
+        public int getShowMode() { return (megletProps.get("ShowMode") instanceof Integer ? (Integer) megletProps.get("ShowMode") : 0); }
         public boolean removeOnShowModeChangedListener(android.accessibilityservice.AccessibilityService.SoftKeyboardController.OnShowModeChangedListener p0) { return false; }
         public int setInputMethodEnabled(java.lang.String p0, boolean p1) { return 0; }
         public boolean setShowMode(int p0) { return false; }

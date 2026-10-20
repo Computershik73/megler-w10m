@@ -3,26 +3,26 @@ package android.companion;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class BluetoothDeviceFilter implements android.companion.DeviceFilter {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public java.lang.String getAddress() { return (java.lang.String) meglerProps.get("Address"); }
+    public java.lang.String getAddress() { return (java.lang.String) megletProps.get("Address"); }
     public java.lang.String getDeviceDisplayName(android.bluetooth.BluetoothDevice p0) { return null; }
     public java.lang.String getDeviceDisplayName(android.os.Parcelable p0) { return null; }
-    public int getMediumType() { return (meglerProps.get("MediumType") instanceof Integer ? (Integer) meglerProps.get("MediumType") : 0); }
-    public java.util.regex.Pattern getNamePattern() { return (java.util.regex.Pattern) meglerProps.get("NamePattern"); }
-    public java.util.List getServiceUuidMasks() { return (meglerProps.get("ServiceUuidMasks") != null ? (java.util.List) meglerProps.get("ServiceUuidMasks") : new java.util.ArrayList()); }
-    public java.util.List getServiceUuids() { return (meglerProps.get("ServiceUuids") != null ? (java.util.List) meglerProps.get("ServiceUuids") : new java.util.ArrayList()); }
+    public int getMediumType() { return (megletProps.get("MediumType") instanceof Integer ? (Integer) megletProps.get("MediumType") : 0); }
+    public java.util.regex.Pattern getNamePattern() { return (java.util.regex.Pattern) megletProps.get("NamePattern"); }
+    public java.util.List getServiceUuidMasks() { return (megletProps.get("ServiceUuidMasks") != null ? (java.util.List) megletProps.get("ServiceUuidMasks") : new java.util.ArrayList()); }
+    public java.util.List getServiceUuids() { return (megletProps.get("ServiceUuids") != null ? (java.util.List) megletProps.get("ServiceUuids") : new java.util.ArrayList()); }
     public boolean matches(android.bluetooth.BluetoothDevice p0) { return false; }
     public boolean matches(android.os.Parcelable p0) { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected BluetoothDeviceFilter() {}
     public static abstract class Builder extends android.provider.OneTimeUseBuilder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() { super(); }
         public android.companion.BluetoothDeviceFilter.Builder addServiceUuid(android.os.ParcelUuid p0, android.os.ParcelUuid p1) { return this; }
-        public android.companion.BluetoothDeviceFilter build() { android.companion.BluetoothDeviceFilter x = new android.companion.BluetoothDeviceFilter(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.companion.BluetoothDeviceFilter.Builder setAddress(java.lang.String p0) { meglerProps.put("Address", p0); return this; }
-        public android.companion.BluetoothDeviceFilter.Builder setNamePattern(java.util.regex.Pattern p0) { meglerProps.put("NamePattern", p0); return this; }
+        public android.companion.BluetoothDeviceFilter build() { android.companion.BluetoothDeviceFilter x = new android.companion.BluetoothDeviceFilter(); x.megletProps.putAll(megletProps); return x; }
+        public android.companion.BluetoothDeviceFilter.Builder setAddress(java.lang.String p0) { megletProps.put("Address", p0); return this; }
+        public android.companion.BluetoothDeviceFilter.Builder setNamePattern(java.util.regex.Pattern p0) { megletProps.put("NamePattern", p0); return this; }
     }
 }

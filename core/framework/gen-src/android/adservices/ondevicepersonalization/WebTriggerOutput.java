@@ -3,16 +3,16 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class WebTriggerOutput {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
-    public java.util.List getEventLogRecords() { return (meglerProps.get("EventLogRecords") != null ? (java.util.List) meglerProps.get("EventLogRecords") : new java.util.ArrayList()); }
-    public android.adservices.ondevicepersonalization.RequestLogRecord getRequestLogRecord() { return (android.adservices.ondevicepersonalization.RequestLogRecord) meglerProps.get("RequestLogRecord"); }
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
+    public java.util.List getEventLogRecords() { return (megletProps.get("EventLogRecords") != null ? (java.util.List) megletProps.get("EventLogRecords") : new java.util.ArrayList()); }
+    public android.adservices.ondevicepersonalization.RequestLogRecord getRequestLogRecord() { return (android.adservices.ondevicepersonalization.RequestLogRecord) megletProps.get("RequestLogRecord"); }
     protected WebTriggerOutput() {}
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
         public android.adservices.ondevicepersonalization.WebTriggerOutput.Builder addEventLogRecord(android.adservices.ondevicepersonalization.EventLogRecord p0) { return this; }
-        public android.adservices.ondevicepersonalization.WebTriggerOutput build() { android.adservices.ondevicepersonalization.WebTriggerOutput x = new android.adservices.ondevicepersonalization.WebTriggerOutput(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.ondevicepersonalization.WebTriggerOutput.Builder setEventLogRecords(java.util.List p0) { meglerProps.put("EventLogRecords", p0); return this; }
-        public android.adservices.ondevicepersonalization.WebTriggerOutput.Builder setRequestLogRecord(android.adservices.ondevicepersonalization.RequestLogRecord p0) { meglerProps.put("RequestLogRecord", p0); return this; }
+        public android.adservices.ondevicepersonalization.WebTriggerOutput build() { android.adservices.ondevicepersonalization.WebTriggerOutput x = new android.adservices.ondevicepersonalization.WebTriggerOutput(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.ondevicepersonalization.WebTriggerOutput.Builder setEventLogRecords(java.util.List p0) { megletProps.put("EventLogRecords", p0); return this; }
+        public android.adservices.ondevicepersonalization.WebTriggerOutput.Builder setRequestLogRecord(android.adservices.ondevicepersonalization.RequestLogRecord p0) { megletProps.put("RequestLogRecord", p0); return this; }
     }
 }

@@ -3,8 +3,8 @@ package android.nfc;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class NfcManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public NfcManager(android.content.Context p0) {}
-    public android.nfc.NfcAdapter getDefaultAdapter() { return (android.nfc.NfcAdapter) meglerProps.get("DefaultAdapter"); }
+    public android.nfc.NfcAdapter getDefaultAdapter() { return (android.nfc.NfcAdapter) megletProps.get("DefaultAdapter"); }
     NfcManager() { this((android.content.Context) null); }
 }

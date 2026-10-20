@@ -3,15 +3,15 @@ package android.app;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AsyncNotedAppOp implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AsyncNotedAppOp(int p0, int p1, java.lang.String p2, java.lang.String p3, long p4) {}
     public int describeContents() { return 0; }
-    public java.lang.String getAttributionTag() { return (java.lang.String) meglerProps.get("AttributionTag"); }
-    public java.lang.String getMessage() { return (java.lang.String) meglerProps.get("Message"); }
-    public int getNotingUid() { return (meglerProps.get("NotingUid") instanceof Integer ? (Integer) meglerProps.get("NotingUid") : 0); }
-    public java.lang.String getOp() { return (java.lang.String) meglerProps.get("Op"); }
-    public long getTime() { return (meglerProps.get("Time") instanceof Long ? (Long) meglerProps.get("Time") : 0L); }
+    public java.lang.String getAttributionTag() { return (java.lang.String) megletProps.get("AttributionTag"); }
+    public java.lang.String getMessage() { return (java.lang.String) megletProps.get("Message"); }
+    public int getNotingUid() { return (megletProps.get("NotingUid") instanceof Integer ? (Integer) megletProps.get("NotingUid") : 0); }
+    public java.lang.String getOp() { return (java.lang.String) megletProps.get("Op"); }
+    public long getTime() { return (megletProps.get("Time") instanceof Long ? (Long) megletProps.get("Time") : 0L); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AsyncNotedAppOp() { this((int) 0, (int) 0, (java.lang.String) null, (java.lang.String) null, (long) 0L); }
 }

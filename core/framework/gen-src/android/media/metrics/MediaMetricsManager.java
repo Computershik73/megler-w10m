@@ -3,7 +3,7 @@ package android.media.metrics;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaMetricsManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final long INVALID_TIMESTAMP = -1L;
     public MediaMetricsManager(android.media.metrics.IMediaMetricsManager p0, int p1) {}
     public android.media.metrics.BundleSession createBundleSession() { return null; }

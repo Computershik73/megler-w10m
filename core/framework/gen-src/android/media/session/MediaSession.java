@@ -3,7 +3,7 @@ package android.media.session;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaSession {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int FLAG_EXCLUSIVE_GLOBAL_PRIORITY = 65536;
     public static final int FLAG_HANDLES_MEDIA_BUTTONS = 1;
     public static final int FLAG_HANDLES_TRANSPORT_CONTROLS = 2;
@@ -12,32 +12,32 @@ public final class MediaSession {
     public MediaSession(android.content.Context p0, java.lang.String p1) {}
     public MediaSession(android.content.Context p0, java.lang.String p1, android.os.Bundle p2) {}
     protected void finalize() {}
-    public java.lang.String getCallingPackage() { return (java.lang.String) meglerProps.get("CallingPackage"); }
-    public android.media.session.MediaController getController() { return (android.media.session.MediaController) meglerProps.get("Controller"); }
-    public android.media.session.MediaSessionManager.RemoteUserInfo getCurrentControllerInfo() { return (android.media.session.MediaSessionManager.RemoteUserInfo) meglerProps.get("CurrentControllerInfo"); }
-    public android.media.session.MediaSession.Token getSessionToken() { return (android.media.session.MediaSession.Token) meglerProps.get("SessionToken"); }
-    public boolean isActive() { return (meglerProps.get("Active") instanceof Boolean ? (Boolean) meglerProps.get("Active") : false); }
+    public java.lang.String getCallingPackage() { return (java.lang.String) megletProps.get("CallingPackage"); }
+    public android.media.session.MediaController getController() { return (android.media.session.MediaController) megletProps.get("Controller"); }
+    public android.media.session.MediaSessionManager.RemoteUserInfo getCurrentControllerInfo() { return (android.media.session.MediaSessionManager.RemoteUserInfo) megletProps.get("CurrentControllerInfo"); }
+    public android.media.session.MediaSession.Token getSessionToken() { return (android.media.session.MediaSession.Token) megletProps.get("SessionToken"); }
+    public boolean isActive() { return (megletProps.get("Active") instanceof Boolean ? (Boolean) megletProps.get("Active") : false); }
     public void notifyRemoteVolumeChanged(android.media.VolumeProvider p0) {}
     public void release() {}
     public void sendSessionEvent(java.lang.String p0, android.os.Bundle p1) {}
-    public void setActive(boolean p0) { meglerProps.put("Active", Boolean.valueOf(p0)); }
-    public void setCallback(android.media.session.MediaSession.Callback p0) { meglerProps.put("Callback", p0); }
+    public void setActive(boolean p0) { megletProps.put("Active", Boolean.valueOf(p0)); }
+    public void setCallback(android.media.session.MediaSession.Callback p0) { megletProps.put("Callback", p0); }
     public void setCallback(android.media.session.MediaSession.Callback p0, android.os.Handler p1) {}
-    public void setExtras(android.os.Bundle p0) { meglerProps.put("Extras", p0); }
-    public void setFlags(int p0) { meglerProps.put("Flags", Integer.valueOf(p0)); }
-    public void setMediaButtonBroadcastReceiver(android.content.ComponentName p0) { meglerProps.put("MediaButtonBroadcastReceiver", p0); }
-    public void setMediaButtonReceiver(android.app.PendingIntent p0) { meglerProps.put("MediaButtonReceiver", p0); }
-    public void setMetadata(android.media.MediaMetadata p0) { meglerProps.put("Metadata", p0); }
-    public void setPlaybackState(android.media.session.PlaybackState p0) { meglerProps.put("PlaybackState", p0); }
-    public void setPlaybackToLocal(android.media.AudioAttributes p0) { meglerProps.put("PlaybackToLocal", p0); }
-    public void setPlaybackToRemote(android.media.VolumeProvider p0) { meglerProps.put("PlaybackToRemote", p0); }
-    public void setQueue(java.util.List p0) { meglerProps.put("Queue", p0); }
-    public void setQueueTitle(java.lang.CharSequence p0) { meglerProps.put("QueueTitle", p0); }
-    public void setRatingType(int p0) { meglerProps.put("RatingType", Integer.valueOf(p0)); }
-    public void setSessionActivity(android.app.PendingIntent p0) { meglerProps.put("SessionActivity", p0); }
+    public void setExtras(android.os.Bundle p0) { megletProps.put("Extras", p0); }
+    public void setFlags(int p0) { megletProps.put("Flags", Integer.valueOf(p0)); }
+    public void setMediaButtonBroadcastReceiver(android.content.ComponentName p0) { megletProps.put("MediaButtonBroadcastReceiver", p0); }
+    public void setMediaButtonReceiver(android.app.PendingIntent p0) { megletProps.put("MediaButtonReceiver", p0); }
+    public void setMetadata(android.media.MediaMetadata p0) { megletProps.put("Metadata", p0); }
+    public void setPlaybackState(android.media.session.PlaybackState p0) { megletProps.put("PlaybackState", p0); }
+    public void setPlaybackToLocal(android.media.AudioAttributes p0) { megletProps.put("PlaybackToLocal", p0); }
+    public void setPlaybackToRemote(android.media.VolumeProvider p0) { megletProps.put("PlaybackToRemote", p0); }
+    public void setQueue(java.util.List p0) { megletProps.put("Queue", p0); }
+    public void setQueueTitle(java.lang.CharSequence p0) { megletProps.put("QueueTitle", p0); }
+    public void setRatingType(int p0) { megletProps.put("RatingType", Integer.valueOf(p0)); }
+    public void setSessionActivity(android.app.PendingIntent p0) { megletProps.put("SessionActivity", p0); }
     MediaSession() { this((android.content.Context) null, (java.lang.String) null); }
     public static abstract class Callback {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Callback() {}
         public void onCommand(java.lang.String p0, android.os.Bundle p1, android.os.ResultReceiver p2) {}
         public void onCustomAction(java.lang.String p0, android.os.Bundle p1) {}
@@ -62,7 +62,7 @@ public final class MediaSession {
         public void onStop() {}
     }
     public static abstract class CallbackStub extends android.media.session.ISessionCallback.Stub {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public CallbackStub(android.media.session.MediaSession p0) { super(); }
         public void onAdjustVolume(java.lang.String p0, int p1, int p2, int p3) {}
         public void onCommand(java.lang.String p0, int p1, int p2, java.lang.String p3, android.os.Bundle p4, android.os.ResultReceiver p5) {}
@@ -91,23 +91,23 @@ public final class MediaSession {
         CallbackStub() { this((android.media.session.MediaSession) null); }
     }
     public static final class QueueItem implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public static final int UNKNOWN_ID = -1;
         public QueueItem(android.media.MediaDescription p0, long p1) {}
         public int describeContents() { return 0; }
-        public android.media.MediaDescription getDescription() { return (android.media.MediaDescription) meglerProps.get("Description"); }
-        public long getQueueId() { return (meglerProps.get("QueueId") instanceof Long ? (Long) meglerProps.get("QueueId") : 0L); }
+        public android.media.MediaDescription getDescription() { return (android.media.MediaDescription) megletProps.get("Description"); }
+        public long getQueueId() { return (megletProps.get("QueueId") instanceof Long ? (Long) megletProps.get("QueueId") : 0L); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         QueueItem() { this((android.media.MediaDescription) null, (long) 0L); }
     }
     public static final class Token implements android.os.Parcelable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static android.os.Parcelable.Creator CREATOR;
         public Token(int p0, android.media.session.ISessionController p1) {}
         public int describeContents() { return 0; }
-        public android.media.session.ISessionController getBinder() { return (android.media.session.ISessionController) meglerProps.get("Binder"); }
-        public int getUid() { return (meglerProps.get("Uid") instanceof Integer ? (Integer) meglerProps.get("Uid") : 0); }
+        public android.media.session.ISessionController getBinder() { return (android.media.session.ISessionController) megletProps.get("Binder"); }
+        public int getUid() { return (megletProps.get("Uid") instanceof Integer ? (Integer) megletProps.get("Uid") : 0); }
         public void writeToParcel(android.os.Parcel p0, int p1) {}
         Token() { this((int) 0, (android.media.session.ISessionController) null); }
     }

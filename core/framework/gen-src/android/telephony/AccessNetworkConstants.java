@@ -3,14 +3,14 @@ package android.telephony;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AccessNetworkConstants {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final int TRANSPORT_TYPE_INVALID = -1;
     public static final int TRANSPORT_TYPE_WLAN = 2;
     public static final int TRANSPORT_TYPE_WWAN = 1;
     public static java.lang.String transportTypeToString(int p0) { return null; }
     protected AccessNetworkConstants() {}
     public static final class AccessNetworkType {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int CDMA2000 = 4;
         public static final int EUTRAN = 3;
         public static final int GERAN = 1;
@@ -23,7 +23,7 @@ public final class AccessNetworkConstants {
         protected AccessNetworkType() {}
     }
     public static final class CdmaBands {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int BAND_0 = 1;
         public static final int BAND_1 = 2;
         public static final int BAND_10 = 11;
@@ -49,7 +49,7 @@ public final class AccessNetworkConstants {
         protected CdmaBands() {}
     }
     public static final class EutranBand {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int BAND_1 = 1;
         public static final int BAND_10 = 10;
         public static final int BAND_11 = 11;
@@ -113,7 +113,7 @@ public final class AccessNetworkConstants {
         protected EutranBand() {}
     }
     public static final class GeranBand {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int BAND_450 = 3;
         public static final int BAND_480 = 4;
         public static final int BAND_710 = 5;
@@ -131,7 +131,7 @@ public final class AccessNetworkConstants {
         protected GeranBand() {}
     }
     public static final class NgranBands {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int BAND_1 = 1;
         public static final int BAND_12 = 12;
         public static final int BAND_14 = 14;
@@ -192,7 +192,7 @@ public final class AccessNetworkConstants {
         protected NgranBands() {}
     }
     public static final class UtranBand {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final int BAND_1 = 1;
         public static final int BAND_10 = 10;
         public static final int BAND_11 = 11;

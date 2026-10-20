@@ -3,21 +3,21 @@ package android.view.inputmethod;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SelectRangeGesture extends android.view.inputmethod.PreviewableHandwritingGesture implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public int describeContents() { return 0; }
-    public int getGranularity() { return (meglerProps.get("Granularity") instanceof Integer ? (Integer) meglerProps.get("Granularity") : 0); }
-    public android.graphics.RectF getSelectionEndArea() { return (android.graphics.RectF) meglerProps.get("SelectionEndArea"); }
-    public android.graphics.RectF getSelectionStartArea() { return (android.graphics.RectF) meglerProps.get("SelectionStartArea"); }
+    public int getGranularity() { return (megletProps.get("Granularity") instanceof Integer ? (Integer) megletProps.get("Granularity") : 0); }
+    public android.graphics.RectF getSelectionEndArea() { return (android.graphics.RectF) megletProps.get("SelectionEndArea"); }
+    public android.graphics.RectF getSelectionStartArea() { return (android.graphics.RectF) megletProps.get("SelectionStartArea"); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     protected SelectRangeGesture() { super(); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.view.inputmethod.SelectRangeGesture build() { android.view.inputmethod.SelectRangeGesture x = new android.view.inputmethod.SelectRangeGesture(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.view.inputmethod.SelectRangeGesture.Builder setFallbackText(java.lang.String p0) { meglerProps.put("FallbackText", p0); return this; }
-        public android.view.inputmethod.SelectRangeGesture.Builder setGranularity(int p0) { meglerProps.put("Granularity", Integer.valueOf(p0)); return this; }
-        public android.view.inputmethod.SelectRangeGesture.Builder setSelectionEndArea(android.graphics.RectF p0) { meglerProps.put("SelectionEndArea", p0); return this; }
-        public android.view.inputmethod.SelectRangeGesture.Builder setSelectionStartArea(android.graphics.RectF p0) { meglerProps.put("SelectionStartArea", p0); return this; }
+        public android.view.inputmethod.SelectRangeGesture build() { android.view.inputmethod.SelectRangeGesture x = new android.view.inputmethod.SelectRangeGesture(); x.megletProps.putAll(megletProps); return x; }
+        public android.view.inputmethod.SelectRangeGesture.Builder setFallbackText(java.lang.String p0) { megletProps.put("FallbackText", p0); return this; }
+        public android.view.inputmethod.SelectRangeGesture.Builder setGranularity(int p0) { megletProps.put("Granularity", Integer.valueOf(p0)); return this; }
+        public android.view.inputmethod.SelectRangeGesture.Builder setSelectionEndArea(android.graphics.RectF p0) { megletProps.put("SelectionEndArea", p0); return this; }
+        public android.view.inputmethod.SelectRangeGesture.Builder setSelectionStartArea(android.graphics.RectF p0) { megletProps.put("SelectionStartArea", p0); return this; }
     }
 }

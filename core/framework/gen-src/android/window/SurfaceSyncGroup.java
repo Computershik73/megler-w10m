@@ -3,7 +3,7 @@ package android.window;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class SurfaceSyncGroup {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static int TRANSACTION_READY_TIMEOUT;
     public android.window.ISurfaceSyncGroup mISurfaceSyncGroup;
     public SurfaceSyncGroup(java.lang.String p0) {}
@@ -17,10 +17,10 @@ public final class SurfaceSyncGroup {
     public void addSyncCompleteCallback(java.util.concurrent.Executor p0, java.lang.Runnable p1) {}
     public void addTransaction(android.view.SurfaceControl.Transaction p0) {}
     public android.window.ITransactionReadyCallback createTransactionReadyCallback(boolean p0) { return null; }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public boolean isComplete() { return (meglerProps.get("Complete") instanceof Boolean ? (Boolean) meglerProps.get("Complete") : false); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public boolean isComplete() { return (megletProps.get("Complete") instanceof Boolean ? (Boolean) megletProps.get("Complete") : false); }
     public void markSyncReady() {}
-    public void setAddedToSyncListener(java.lang.Runnable p0) { meglerProps.put("AddedToSyncListener", p0); }
+    public void setAddedToSyncListener(java.lang.Runnable p0) { megletProps.put("AddedToSyncListener", p0); }
     public void toggleTimeout(boolean p0) {}
     SurfaceSyncGroup() { this((java.lang.String) null); }
     public interface SurfaceViewFrameCallback {

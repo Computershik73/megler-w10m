@@ -3,7 +3,7 @@ package android.net.wifi.p2p;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public class WifiP2pManager {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_WIFI_P2P_LISTEN_STATE_CHANGED = "android.net.wifi.p2p.action.WIFI_P2P_LISTEN_STATE_CHANGED";
     public static final java.lang.String ACTION_WIFI_P2P_PERSISTENT_GROUPS_CHANGED = "android.net.wifi.p2p.action.WIFI_P2P_PERSISTENT_GROUPS_CHANGED";
     public static final java.lang.String ACTION_WIFI_P2P_REQUEST_RESPONSE_CHANGED = "android.net.wifi.p2p.action.WIFI_P2P_REQUEST_RESPONSE_CHANGED";
@@ -224,16 +224,16 @@ public class WifiP2pManager {
     public void getListenState(android.net.wifi.p2p.WifiP2pManager.Channel p0, java.util.concurrent.Executor p1, java.util.function.Consumer p2) {}
     public void getNfcHandoverRequest(android.net.wifi.p2p.WifiP2pManager.Channel p0, android.net.wifi.p2p.WifiP2pManager.HandoverMessageListener p1) {}
     public void getNfcHandoverSelect(android.net.wifi.p2p.WifiP2pManager.Channel p0, android.net.wifi.p2p.WifiP2pManager.HandoverMessageListener p1) {}
-    public android.os.Messenger getP2pStateMachineMessenger() { return (android.os.Messenger) meglerProps.get("P2pStateMachineMessenger"); }
+    public android.os.Messenger getP2pStateMachineMessenger() { return (android.os.Messenger) megletProps.get("P2pStateMachineMessenger"); }
     public android.net.wifi.p2p.WifiP2pManager.Channel initialize(android.content.Context p0, android.os.Looper p1, android.net.wifi.p2p.WifiP2pManager.ChannelListener p2) { return null; }
     public android.net.wifi.p2p.WifiP2pManager.Channel initializeInternal(android.content.Context p0, android.os.Looper p1, android.net.wifi.p2p.WifiP2pManager.ChannelListener p2) { return null; }
     public void initiatorReportNfcHandover(android.net.wifi.p2p.WifiP2pManager.Channel p0, java.lang.String p1, android.net.wifi.p2p.WifiP2pManager.ActionListener p2) {}
-    public boolean isChannelConstrainedDiscoverySupported() { return (meglerProps.get("ChannelConstrainedDiscoverySupported") instanceof Boolean ? (Boolean) meglerProps.get("ChannelConstrainedDiscoverySupported") : false); }
-    public boolean isGroupClientRemovalSupported() { return (meglerProps.get("GroupClientRemovalSupported") instanceof Boolean ? (Boolean) meglerProps.get("GroupClientRemovalSupported") : false); }
-    public boolean isGroupOwnerIPv6LinkLocalAddressProvided() { return (meglerProps.get("GroupOwnerIPv6LinkLocalAddressProvided") instanceof Boolean ? (Boolean) meglerProps.get("GroupOwnerIPv6LinkLocalAddressProvided") : false); }
-    public boolean isPccModeSupported() { return (meglerProps.get("PccModeSupported") instanceof Boolean ? (Boolean) meglerProps.get("PccModeSupported") : false); }
-    public boolean isSetVendorElementsSupported() { return (meglerProps.get("SetVendorElementsSupported") instanceof Boolean ? (Boolean) meglerProps.get("SetVendorElementsSupported") : false); }
-    public boolean isWiFiDirectR2Supported() { return (meglerProps.get("WiFiDirectR2Supported") instanceof Boolean ? (Boolean) meglerProps.get("WiFiDirectR2Supported") : false); }
+    public boolean isChannelConstrainedDiscoverySupported() { return (megletProps.get("ChannelConstrainedDiscoverySupported") instanceof Boolean ? (Boolean) megletProps.get("ChannelConstrainedDiscoverySupported") : false); }
+    public boolean isGroupClientRemovalSupported() { return (megletProps.get("GroupClientRemovalSupported") instanceof Boolean ? (Boolean) megletProps.get("GroupClientRemovalSupported") : false); }
+    public boolean isGroupOwnerIPv6LinkLocalAddressProvided() { return (megletProps.get("GroupOwnerIPv6LinkLocalAddressProvided") instanceof Boolean ? (Boolean) megletProps.get("GroupOwnerIPv6LinkLocalAddressProvided") : false); }
+    public boolean isPccModeSupported() { return (megletProps.get("PccModeSupported") instanceof Boolean ? (Boolean) megletProps.get("PccModeSupported") : false); }
+    public boolean isSetVendorElementsSupported() { return (megletProps.get("SetVendorElementsSupported") instanceof Boolean ? (Boolean) megletProps.get("SetVendorElementsSupported") : false); }
+    public boolean isWiFiDirectR2Supported() { return (megletProps.get("WiFiDirectR2Supported") instanceof Boolean ? (Boolean) megletProps.get("WiFiDirectR2Supported") : false); }
     public void registerWifiP2pListener(java.util.concurrent.Executor p0, android.net.wifi.p2p.WifiP2pManager.WifiP2pListener p1) {}
     public void removeClient(android.net.wifi.p2p.WifiP2pManager.Channel p0, android.net.MacAddress p1, android.net.wifi.p2p.WifiP2pManager.ActionListener p2) {}
     public void removeExternalApprover(android.net.wifi.p2p.WifiP2pManager.Channel p0, android.net.MacAddress p1, android.net.wifi.p2p.WifiP2pManager.ActionListener p2) {}
@@ -255,7 +255,7 @@ public class WifiP2pManager {
     public void setConnectionRequestResult(android.net.wifi.p2p.WifiP2pManager.Channel p0, android.net.MacAddress p1, int p2, java.lang.String p3, android.net.wifi.p2p.WifiP2pManager.ActionListener p4) {}
     public void setDeviceName(android.net.wifi.p2p.WifiP2pManager.Channel p0, java.lang.String p1, android.net.wifi.p2p.WifiP2pManager.ActionListener p2) {}
     public void setDnsSdResponseListeners(android.net.wifi.p2p.WifiP2pManager.Channel p0, android.net.wifi.p2p.WifiP2pManager.DnsSdServiceResponseListener p1, android.net.wifi.p2p.WifiP2pManager.DnsSdTxtRecordListener p2) {}
-    public void setMiracastMode(int p0) { meglerProps.put("MiracastMode", Integer.valueOf(p0)); }
+    public void setMiracastMode(int p0) { megletProps.put("MiracastMode", Integer.valueOf(p0)); }
     public void setOngoingPeerConfig(android.net.wifi.p2p.WifiP2pManager.Channel p0, android.net.wifi.p2p.WifiP2pConfig p1, android.net.wifi.p2p.WifiP2pManager.ActionListener p2) {}
     public void setServiceResponseListener(android.net.wifi.p2p.WifiP2pManager.Channel p0, android.net.wifi.p2p.WifiP2pManager.ServiceResponseListener p1) {}
     public void setUpnpServiceResponseListener(android.net.wifi.p2p.WifiP2pManager.Channel p0, android.net.wifi.p2p.WifiP2pManager.UpnpServiceResponseListener p1) {}
@@ -278,11 +278,11 @@ public class WifiP2pManager {
         void onSuccess();
     }
     public static class Channel implements java.lang.AutoCloseable {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Channel(android.content.Context p0, android.os.Looper p1, android.net.wifi.p2p.WifiP2pManager.ChannelListener p2, android.os.Binder p3, android.net.wifi.p2p.WifiP2pManager p4) {}
         public void close() {}
         protected void finalize() {}
-        public android.os.Binder getBinder() { return (android.os.Binder) meglerProps.get("Binder"); }
+        public android.os.Binder getBinder() { return (android.os.Binder) megletProps.get("Binder"); }
         Channel() { this((android.content.Context) null, (android.os.Looper) null, (android.net.wifi.p2p.WifiP2pManager.ChannelListener) null, (android.os.Binder) null, (android.net.wifi.p2p.WifiP2pManager) null); }
     }
     public interface ChannelListener {

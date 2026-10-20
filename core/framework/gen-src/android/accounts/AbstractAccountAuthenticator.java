@@ -3,7 +3,7 @@ package android.accounts;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public abstract class AbstractAccountAuthenticator {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String KEY_CUSTOM_TOKEN_EXPIRY = "android.accounts.expiry";
     public AbstractAccountAuthenticator(android.content.Context p0) {}
     public abstract android.os.Bundle addAccount(android.accounts.AccountAuthenticatorResponse p0, java.lang.String p1, java.lang.String p2, java.lang.String[] p3, android.os.Bundle p4);
@@ -15,7 +15,7 @@ public abstract class AbstractAccountAuthenticator {
     public android.os.Bundle getAccountRemovalAllowed(android.accounts.AccountAuthenticatorResponse p0, android.accounts.Account p1) { return null; }
     public abstract android.os.Bundle getAuthToken(android.accounts.AccountAuthenticatorResponse p0, android.accounts.Account p1, java.lang.String p2, android.os.Bundle p3);
     public abstract java.lang.String getAuthTokenLabel(java.lang.String p0);
-    public android.os.IBinder getIBinder() { return (android.os.IBinder) meglerProps.get("IBinder"); }
+    public android.os.IBinder getIBinder() { return (android.os.IBinder) megletProps.get("IBinder"); }
     public abstract android.os.Bundle hasFeatures(android.accounts.AccountAuthenticatorResponse p0, android.accounts.Account p1, java.lang.String[] p2);
     public android.os.Bundle isCredentialsUpdateSuggested(android.accounts.AccountAuthenticatorResponse p0, android.accounts.Account p1, java.lang.String p2) { return null; }
     public android.os.Bundle startAddAccountSession(android.accounts.AccountAuthenticatorResponse p0, java.lang.String p1, java.lang.String p2, java.lang.String[] p3, android.os.Bundle p4) { return null; }

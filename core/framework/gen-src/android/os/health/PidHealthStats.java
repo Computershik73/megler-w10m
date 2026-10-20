@@ -3,7 +3,7 @@ package android.os.health;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class PidHealthStats {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.health.HealthKeys.Constants CONSTANTS;
     public static final int MEASUREMENT_WAKE_NESTING_COUNT = 20001;
     public static final int MEASUREMENT_WAKE_START_MS = 20003;

@@ -3,7 +3,7 @@ package android.hardware.lights;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class Light implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public static final int LIGHT_CAPABILITY_BRIGHTNESS = 1;
     public static final int LIGHT_CAPABILITY_COLOR_RGB = 2;
@@ -19,12 +19,12 @@ public final class Light implements android.os.Parcelable {
     public Light(int p0, java.lang.String p1, int p2, int p3, int p4) {}
     public Light(int p0, java.lang.String p1, int p2, int p3, int p4, int[] p5) {}
     public int describeContents() { return 0; }
-    public int getCapabilities() { return (meglerProps.get("Capabilities") instanceof Integer ? (Integer) meglerProps.get("Capabilities") : 0); }
-    public int getId() { return (meglerProps.get("Id") instanceof Integer ? (Integer) meglerProps.get("Id") : 0); }
-    public java.lang.String getName() { return (java.lang.String) meglerProps.get("Name"); }
-    public int getOrdinal() { return (meglerProps.get("Ordinal") instanceof Integer ? (Integer) meglerProps.get("Ordinal") : 0); }
-    public int[] getPreferredBrightnessLevels() { return (int[]) meglerProps.get("PreferredBrightnessLevels"); }
-    public int getType() { return (meglerProps.get("Type") instanceof Integer ? (Integer) meglerProps.get("Type") : 0); }
+    public int getCapabilities() { return (megletProps.get("Capabilities") instanceof Integer ? (Integer) megletProps.get("Capabilities") : 0); }
+    public int getId() { return (megletProps.get("Id") instanceof Integer ? (Integer) megletProps.get("Id") : 0); }
+    public java.lang.String getName() { return (java.lang.String) megletProps.get("Name"); }
+    public int getOrdinal() { return (megletProps.get("Ordinal") instanceof Integer ? (Integer) megletProps.get("Ordinal") : 0); }
+    public int[] getPreferredBrightnessLevels() { return (int[]) megletProps.get("PreferredBrightnessLevels"); }
+    public int getType() { return (megletProps.get("Type") instanceof Integer ? (Integer) megletProps.get("Type") : 0); }
     public boolean hasBrightnessControl() { return false; }
     public boolean hasRgbControl() { return false; }
     public void writeToParcel(android.os.Parcel p0, int p1) {}

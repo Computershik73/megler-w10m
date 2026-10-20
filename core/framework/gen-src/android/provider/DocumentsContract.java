@@ -3,7 +3,7 @@ package android.provider;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class DocumentsContract {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static final java.lang.String ACTION_DOCUMENT_ROOT_SETTINGS = "android.provider.action.DOCUMENT_ROOT_SETTINGS";
     public static final java.lang.String ACTION_DOCUMENT_SETTINGS = "android.provider.action.DOCUMENT_SETTINGS";
     public static final java.lang.String ACTION_MANAGE_DOCUMENT = "android.provider.action.MANAGE_DOCUMENT";
@@ -94,7 +94,7 @@ public final class DocumentsContract {
     public static android.net.Uri trashDocument(android.content.ContentResolver p0, android.net.Uri p1) { return null; }
     protected DocumentsContract() {}
     public static final class Document {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String COLUMN_DISPLAY_NAME = "_display_name";
         public static final java.lang.String COLUMN_DOCUMENT_ID = "document_id";
         public static final java.lang.String COLUMN_FLAGS = "flags";
@@ -128,7 +128,7 @@ public final class DocumentsContract {
         protected Path() {}
     }
     public static final class Root {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public static final java.lang.String COLUMN_AVAILABLE_BYTES = "available_bytes";
         public static final java.lang.String COLUMN_CAPACITY_BYTES = "capacity_bytes";
         public static final java.lang.String COLUMN_DOCUMENT_ID = "document_id";

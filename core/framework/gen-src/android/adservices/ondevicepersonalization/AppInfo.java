@@ -3,17 +3,17 @@ package android.adservices.ondevicepersonalization;
 
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class AppInfo implements android.os.Parcelable {
-    private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
     public static android.os.Parcelable.Creator CREATOR;
     public AppInfo(boolean p0) {}
     public int describeContents() { return 0; }
-    public boolean isInstalled() { return (meglerProps.get("Installed") instanceof Boolean ? (Boolean) meglerProps.get("Installed") : false); }
+    public boolean isInstalled() { return (megletProps.get("Installed") instanceof Boolean ? (Boolean) megletProps.get("Installed") : false); }
     public void writeToParcel(android.os.Parcel p0, int p1) {}
     AppInfo() { this((boolean) false); }
     public static final class Builder {
-        private final java.util.HashMap<String, Object> meglerProps = new java.util.HashMap<>();
+        private final java.util.HashMap<String, Object> megletProps = new java.util.HashMap<>();
         public Builder() {}
-        public android.adservices.ondevicepersonalization.AppInfo build() { android.adservices.ondevicepersonalization.AppInfo x = new android.adservices.ondevicepersonalization.AppInfo(); x.meglerProps.putAll(meglerProps); return x; }
-        public android.adservices.ondevicepersonalization.AppInfo.Builder setInstalled(boolean p0) { meglerProps.put("Installed", Boolean.valueOf(p0)); return this; }
+        public android.adservices.ondevicepersonalization.AppInfo build() { android.adservices.ondevicepersonalization.AppInfo x = new android.adservices.ondevicepersonalization.AppInfo(); x.megletProps.putAll(megletProps); return x; }
+        public android.adservices.ondevicepersonalization.AppInfo.Builder setInstalled(boolean p0) { megletProps.put("Installed", Boolean.valueOf(p0)); return this; }
     }
 }
