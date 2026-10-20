@@ -1,18 +1,34 @@
-// The shell's few settings: LocalState\settings.ini, "key=value" lines, so a
-// phone's can be read and changed over the Device Portal.
+// The shell's few settings: "key=value" lines in files of the shared folder, which every package of Megler's reads
+// (shell/AppPackage.h, docs/PER-APP-PACKAGES.md):
+//   <shared>\settings.ini                   Megler's: what every app is given unless it has its own
+//   <shared>\apps\<package>\settings.ini    one app's own, over Megler's; a key not there is Megler's
+// Megler's Settings change Megler's; an app's settings, changed in Megler on its page or in its own package from the player's
+// menu, change that app's. Each package reads the files when it starts; the app's own package takes Megler's and its own.
+// Where Windows gives no shared folder, Megler's are LocalState\settings.ini.
 #pragma once
 
+#include <optional>
 #include <string>
 
 namespace megler::app::settings {
 
-/// Reads LocalState\settings.ini. Once, at start-up.
-void load(const std::wstring& localStateDirectory);
+/// Reads the files. Once, at start-up. `ownPackage`: the Android package of an app's own package, empty in Megler. A
+/// LocalState\settings.ini of before (when they were kept there) is copied to its place in the shared folder the first time.
+void load(const std::wstring& localStateDirectory, const std::wstring& sharedFolder, const std::string& ownPackage);
 
+/// What this process goes by: its app's own, else Megler's, else `fallback`.
 std::string get(const std::string& key, const std::string& fallback);
 int getInt(const std::string& key, int fallback);
-/// Sets and writes the file.
+/// Sets and writes this process's own: Megler's in Megler, its app's in an app's own package.
 void set(const std::string& key, const std::string& value);
+
+/// Megler's, as its file has it; nothing when it has none.
+std::optional<std::string> megler(const std::string& key);
+void setMegler(const std::string& key, const std::string& value);
+/// The app `package`'s own, as its file has it; nothing when it goes by Megler's.
+std::optional<std::string> app(const std::string& package, const std::string& key);
+/// Sets the app's own, or, with nothing, has it go by Megler's again.
+void setApp(const std::string& package, const std::string& key, const std::optional<std::string>& value);
 
 /// The longer side of the surface an app draws to, in pixels: 960, 1280,
 /// 1600, or 0 for the panel's own size. A phone's 2560x1440 is four times the
