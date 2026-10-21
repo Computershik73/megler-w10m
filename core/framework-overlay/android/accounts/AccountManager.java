@@ -319,7 +319,8 @@ public class AccountManager {
         final java.util.HashSet<Account> before = new java.util.HashSet<>(java.util.Arrays.asList(added ? getAccountsByType(type) : new Account[0]));
         final megler.Accounts.Authenticator auth = megler.Accounts.authenticator(type);
         if (auth == null) {
-            result.fail(new IllegalArgumentException("no authenticator for the account type " + type));
+            // As Android's session ends when it cannot bind an authenticator: ERROR_CODE_REMOTE_EXCEPTION, "bind failure".
+            result.fail(new AuthenticatorException("bind failure: no authenticator for the account type " + type));
             return result;
         }
         final ServiceConnection[] bound = new ServiceConnection[1];

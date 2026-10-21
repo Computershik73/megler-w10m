@@ -240,6 +240,11 @@ public class Main extends Activity {
         check(signIn.getParcelableExtra(android.accounts.AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE) != null, "sign-in screen given the response");
         check(am.removeAccount(account, null, null, null).getResult(30, java.util.concurrent.TimeUnit.SECONDS).getBoolean(android.accounts.AccountManager.KEY_BOOLEAN_RESULT), "account removed");
         check(am.getAccountsByType(type).length == 0, "no account left");
+        // A type no authenticator has: the request fails as Android's does when it cannot bind one.
+        try {
+            am.addAccount("megler.test.no-such-type", null, null, null, null, null, null).getResult(10, java.util.concurrent.TimeUnit.SECONDS);
+            check(false, "an account type without an authenticator was added");
+        } catch (android.accounts.AuthenticatorException expected) { }
     }
 
     /**
