@@ -346,6 +346,7 @@ public class Main extends Activity {
         adaptiveIcon();
         launcherLoading();
         uriBuilder();
+        manyInterfaces();
         sound();
         mediaCodec();
         network();
@@ -2053,6 +2054,21 @@ public class Main extends Activity {
             return alpha.getByteCount() == 4 && alpha.getRowBytes() == 2 && (a.get(0) & 255) == 0x80 && (a.get(3) & 255) == 0x80 && a.position() == 4
                     && rgb.getByteCount() == 2 && (r.get(0) & 255) == 0x00 && (r.get(1) & 255) == 0xF8
                     && full.getByteCount() == 16 && Math.abs((f.get(0) & 255) - 0x80) <= 1 && (f.get(3) & 255) == 0x80 && f.position() == 16;
+        });
+    }
+
+    /**
+     * An object of a class whose interface has 600 interfaces of its own is an instance of each of them, the last ones as
+     * well, as Avito's Dagger component is of the 506th of its 564 (Avito ended at its start on a dependency it could not
+     * find there).
+     */
+    private void manyInterfaces() {
+        step("many-interfaces", () -> {
+            Object o = new ManyInterfaces.Impl();
+            boolean first = o instanceof ManyInterfaces.I0, at505 = ManyInterfaces.I505.class.isInstance(o), last = ManyInterfaces.I599.class.isInstance(o);
+            boolean cast = ManyInterfaces.I300.class.isAssignableFrom(ManyInterfaces.Impl.class);
+            detail = "I0=" + first + " I505=" + at505 + " I599=" + last + " I300 assignable=" + cast;
+            return first && at505 && last && cast;
         });
     }
 

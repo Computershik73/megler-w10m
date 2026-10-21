@@ -76,14 +76,31 @@ static mg_jvalue get(mg_jobj *o, const char *name)
 
 /* ------------------------------------------------------------ Class objects */
 
-static void flatten_interfaces(mg_dvm_class *c, mg_dvm_class **out, int *n, int cap)
+/* Every interface a class's own list names, and theirs, each once. */
+typedef struct iface_list {
+    mg_dvm_class **v;
+    int n, cap;
+} iface_list;
+
+static void flatten_interfaces(mg_dvm_class *c, iface_list *l)
 {
     int i, k;
     for (i = 0; i < c->nifaces; i++) {
-        for (k = 0; k < *n; k++)
-            if (out[k] == c->ifaces[i]) break;
-        if (k == *n && *n < cap) out[(*n)++] = c->ifaces[i];
-        flatten_interfaces(c->ifaces[i], out, n, cap);
+        mg_dvm_class *ic = c->ifaces[i];
+        for (k = 0; k < l->n; k++)
+            if (l->v[k] == ic) break;
+        /* One already there has had its own interfaces taken too: going through them again only costs, and on a
+           hierarchy where many interfaces share theirs it costs more at each level. */
+        if (k < l->n) continue;
+        if (l->n == l->cap) {
+            int cap = l->cap ? l->cap * 2 : 64;
+            mg_dvm_class **v = (mg_dvm_class **)realloc(l->v, sizeof(*v) * (size_t)cap);
+            if (!v) return;
+            l->v = v;
+            l->cap = cap;
+        }
+        l->v[l->n++] = ic;
+        flatten_interfaces(ic, l);
     }
 }
 
@@ -97,8 +114,9 @@ static void flatten_interfaces(mg_dvm_class *c, mg_dvm_class **out, int *n, int 
 static void fill_mirror(mg_jobj *m, mg_dvm_class *c)
 {
     static const char prims[] = "ZBCSIJFDV";               /* Android numbers the primitive types from one in this order */
-    mg_dvm_class *all[128], *k;
-    int n = 0, i;
+    iface_list all = { NULL, 0, 0 };
+    mg_dvm_class *k;
+    int i;
     set_int(m, "accessFlags", (i32)c->flags);
     set_int(m, "primitiveType", c->prim && strchr(prims, c->prim) ? (i32)(strchr(prims, c->prim) - prims) + 1 : 0);
     set_int(m, "dexClassDefIndex", c->dex ? (i32)c->def : 0xFFFF);
@@ -107,12 +125,15 @@ static void fill_mirror(mg_jobj *m, mg_dvm_class *c)
     if (c->component) set_obj(m, "componentType", mg_dvm_mirror(c->component));
     /* An app's class names the app's loader as its own; the system's name none, which libcore reads as the boot class loader. */
     if (c->dex && c->dex->app && g_dvm.app_loader) set_obj(m, "classLoader", g_dvm.app_loader);
-    for (k = c; k; k = k->super) flatten_interfaces(k, all, &n, (int)MG_COUNT(all));
-    if (n) {
-        mg_jobj *table = mg_dvm_new_array("[Ljava/lang/Object;", n * 2);
-        for (i = 0; table && i < n; i++) table->u.oarr.v[2 * i] = mg_dvm_mirror(all[i]);
+    /* All of them, however many: a table of at most 128 left Avito's Dagger component, which has 826, not an instance of
+       the 506th of its interface's 564 by Class.isInstance, and Avito ended at its start on a dependency it found missing. */
+    for (k = c; k; k = k->super) flatten_interfaces(k, &all);
+    if (all.n) {
+        mg_jobj *table = mg_dvm_new_array("[Ljava/lang/Object;", all.n * 2);
+        for (i = 0; table && i < all.n; i++) table->u.oarr.v[2 * i] = mg_dvm_mirror(all.v[i]);
         set_obj(m, "ifTable", table);
     }
+    free(all.v);
 }
 
 /* ------------------------------------------------------------------ threads */
