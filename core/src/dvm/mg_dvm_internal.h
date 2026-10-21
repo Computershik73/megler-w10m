@@ -240,6 +240,7 @@ struct mg_dvm_thread {
      */
     mg_dvm_frame *onload_frame;
     bool onload_running, onload_app;
+    int onload_scope;
     mg_dvm_thread *next;
     u64 prof_total;                    /* instructions this thread has executed while the profile was on */
     /*

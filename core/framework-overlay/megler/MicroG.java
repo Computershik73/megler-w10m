@@ -18,7 +18,7 @@ public final class MicroG {
     private final PackageInfo info = new PackageInfo();
     private final ArrayList<Entry> services = new ArrayList<>();
     private final HashMap<String, Running> running = new HashMap<>();
-    private final HashMap<ServiceConnection, Binding> bindings = new HashMap<>();
+    private final Map<ServiceConnection, Binding> bindings = new IdentityHashMap<>();
     private final PackageContext context;
     private Application application;
     private ClassLoader loader;
@@ -108,7 +108,7 @@ public final class MicroG {
         }
         info.services = new ServiceInfo[services.size()];
         for (int n = 0; n < services.size(); n++) info.services[n] = services.get(n).info;
-        // The existing Google compatibility identity is also used for the trusted bundled replacement.
+        // The existing Google compatibility identity is also used for the separately installed replacement.
         info.signatures = new Signature[] {GooglePackages.signature()};
         info.signingInfo = new SigningInfo(info.signatures);
         context = new PackageContext(resources);
@@ -150,18 +150,27 @@ public final class MicroG {
         MicroG g = get(); Entry e = g == null ? null : g.find(intent, GooglePackages.GMS.equals(from.getPackageName()));
         if (e == null) return false;
         Intent copy = new Intent(intent);
+        Binding pending = new Binding(null, copy);
+        synchronized (g.bindings) {
+            if (g.bindings.containsKey(conn)) return true;
+            g.bindings.put(conn, pending);
+        }
         new Handler(Looper.getMainLooper()).post(() -> {
+            synchronized (g.bindings) { if (g.bindings.get(conn) != pending) return; }
             ComponentName name = new ComponentName(GooglePackages.GMS, e.info.name);
             try {
-                if (g.bindings.containsKey(conn)) return;
                 Running r = g.create(e);
                 String key = copy.getAction() == null ? "" : copy.getAction();
                 if (!r.binders.containsKey(key)) r.binders.put(key, r.service.onBind(copy));
                 IBinder binder = r.binders.get(key);
-                r.clients++; g.bindings.put(conn, new Binding(r, copy));
+                synchronized (g.bindings) {
+                    if (g.bindings.get(conn) != pending) { g.destroyIfUnused(r); return; }
+                    r.clients++; pending.running = r;
+                }
                 if (binder == null) conn.onNullBinding(name); else conn.onServiceConnected(name, binder);
             } catch (Throwable t) {
                 android.util.Log.e("MicroG", "Binding " + e.info.name + " failed", t);
+                synchronized (g.bindings) { if (g.bindings.get(conn) != pending) return; }
                 conn.onNullBinding(name);
             }
         });
@@ -169,8 +178,11 @@ public final class MicroG {
     }
     public static boolean unbind(ServiceConnection conn) {
         MicroG g = get(); if (g == null) return false;
-        Binding b = g.bindings.remove(conn); if (b == null) return false;
+        Binding b;
+        synchronized (g.bindings) { b = g.bindings.remove(conn); }
+        if (b == null) return false;
         new Handler(Looper.getMainLooper()).post(() -> {
+            if (b.running == null) return;
             if (--b.running.clients == 0) {
                 b.running.service.onUnbind(b.intent); b.running.binders.clear();
                 g.destroyIfUnused(b.running);

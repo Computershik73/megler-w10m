@@ -64,6 +64,7 @@ struct mg_lib {
     size_t island_size[2], island_used[2], island_committed[2];
 
     bool relocated, sealed, inited, initing;
+    int service_scope;         /* service loader namespace; zero for the client and boot */
     bool runtime;              /* one of Android's own (mg_ld_load_runtime), not the app's: the two never see each other */
     mg_ld_stats stats;
     mg_svc_site *svc_sites;    /* immutable once executable; only our registered traps may resume */

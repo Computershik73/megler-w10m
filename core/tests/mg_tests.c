@@ -2253,6 +2253,26 @@ static void test_guest_kinds(const char *libdir)
     CHECK(mg_ld_sym_among(true, "t_user_which", &in) == NULL && in == NULL && mg_ld_sym_among(false, "t_ruser_which", NULL) == NULL);
     /* Loading either again by name gives the one already there. */
     CHECK(mg_ld_load("libt_same.so") == same && mg_ld_load_runtime("libt_same.so") == rsame);
+    /* A service has its own copy of a client's library, and resolves dependencies there. */
+    {
+        char *same_path = mg_sprintf("%s/libt_same.so", libdir), *user_path = mg_sprintf("%s/libt_user.so", libdir);
+        mg_lib *service_same, *service_user;
+        int previous = mg_ld_set_scope(15);
+        CHECK(mg_ld_find_lib("libt_same.so") == NULL && mg_ld_sym(NULL, "t_same_app_only") == NULL);
+        service_same = mg_ld_load_file(same_path);
+        service_user = mg_ld_load_file(user_path);
+        CHECK(service_same && service_same != same && service_same != rsame);
+        CHECK(service_user && service_user != user && mg_ld_init(service_user));
+        if (service_user) {
+            CHECK_INT(FN(service_user, int (*)(void), "t_user_which")(), 101);
+            CHECK(mg_ld_sym_deep(service_user, "t_same_which", &in) != NULL && in == service_same);
+        }
+        CHECK(mg_ld_sym_among(false, "t_same_which", &in) != NULL && in == service_same);
+        CHECK(mg_ld_find_runtime_lib("libt_same.so") == rsame);
+        mg_ld_set_scope(previous);
+        CHECK(mg_ld_find_lib("libt_same.so") == same && mg_ld_sym_among(false, "t_same_which", &in) != NULL && in == same);
+        free(same_path); free(user_path);
+    }
 }
 
 static void test_guest(const char *libdir, const char *scratch)

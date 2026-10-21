@@ -14,12 +14,13 @@ public final class ServiceClassLoader extends ClassLoader {
     @Override protected synchronized Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
         // Native lookup delegates to the shared platform, then this package's DEX files.
         Class<?> type = findClassNative(name);
-        int dot = name.lastIndexOf('.');
-        if (dot > 0 && type.getClassLoader() == this) {
-            String pkg = name.substring(0, dot);
-            if (getPackage(pkg) == null) definePackage(pkg, null, null, null, null, null, null, null);
-        }
         return type;
+    }
+    // DEX references also resolve classes without going through loadClass. Class.getPackage
+    // must still find metadata for these definitions (microG's Conscrypt provider uses it).
+    @Override protected synchronized Package getPackage(String name) {
+        Package p = super.getPackage(name);
+        return p != null ? p : definePackage(name, null, null, null, null, null, null, null);
     }
     @Override protected String findLibrary(String name) { return apk + "!/lib/armeabi-v7a/" + System.mapLibraryName(name); }
     @Override protected Class<?> findClass(String name) throws ClassNotFoundException { return findClassNative(name); }

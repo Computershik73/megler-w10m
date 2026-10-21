@@ -1027,8 +1027,10 @@ static mg_jobj *j_FindClass(JNIEnvP e, const char *name)
     int who = ASKER_APP;
     (void)e;
     if (!g_dvm.running) return mg_jni_class_object(name);
-    if (mg_dvm_self()->top && mg_dvm_self()->top->m->cls->scope) {
-        int scope = mg_dvm_self()->top->m->cls->scope;
+    mg_dvm_thread *thread = mg_dvm_self();
+    int scope = thread->onload_running && thread->top == thread->onload_frame ? thread->onload_scope :
+        thread->top ? thread->top->m->cls->scope : 0;
+    if (scope) {
         mg_dvm_class *type;
         if (!mg_dvm_class_exists_scope(name, scope)) { throw_not_found(name, ASKER_APP, false); return NULL; }
         type = mg_dvm_find_class_scope(name, scope);

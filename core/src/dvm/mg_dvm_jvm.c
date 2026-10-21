@@ -144,7 +144,10 @@ static mg_jobj *JVM_NativeLoad(void *env, mg_jobj *path, mg_jobj *loader)
     char why[700];
     (void)env;
     if (!name) return NULL;
-    if (load_native(name, loader == NULL, why, sizeof(why))) return NULL;
+    int previous = mg_ld_set_scope(mg_dvm_loader_scope(loader));
+    bool loaded = load_native(name, loader == NULL, why, sizeof(why));
+    mg_ld_set_scope(previous);
+    if (loaded) return NULL;
     /* An exception JNI_OnLoad left is not the answer: the reason is. */
     mg_dvm_clear_pending();
     return mg_dvm_new_string(why);
@@ -222,6 +225,7 @@ static bool load_native(const char *name_or_path, bool runtime, char *why, size_
     mg_lib *lib = runtime ? mg_ld_find_runtime_lib(base) : mg_ld_find_lib(base);
     mg_dvm_frame *was_frame;
     bool was_running, was_app;
+    int was_scope;
     void *onload;
     i32 version;
     why[0] = 0;
@@ -255,13 +259,16 @@ static bool load_native(const char *name_or_path, bool runtime, char *why, size_
     was_frame = t->onload_frame;
     was_running = t->onload_running;
     was_app = t->onload_app;
+    was_scope = t->onload_scope;
     t->onload_frame = t->top;
     t->onload_running = true;
     t->onload_app = !runtime;
+    t->onload_scope = runtime ? 0 : mg_ld_scope();
     version = MG_GFN(i32 (*)(void *, void *), onload)(mg_jni_vm(), NULL);
     t->onload_frame = was_frame;
     t->onload_running = was_running;
     t->onload_app = was_app;
+    t->onload_scope = was_scope;
     if (version == -1) {
         snprintf(why, why_size, "JNI_ERR returned from JNI_OnLoad in \"%s\"", name_or_path);
         return false;

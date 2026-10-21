@@ -32,6 +32,10 @@ public class Main extends Activity {
             check(service != client, "distinct definitions of GetServiceRequest");
             check(service.getClassLoader() == gms.getClassLoader(), "defining loader");
             check(service.getPackage() != null, "service package metadata");
+            check(com.google.android.gms.org.conscrypt.NativeCrypto.CLIENT_MARKER == 731, "client native class loaded first");
+            Class<?> provider = Class.forName("com.google.android.gms.org.conscrypt.OpenSSLProvider", true, gms.getClassLoader());
+            check(provider.newInstance() instanceof java.security.Provider, "microG Conscrypt provider initializes");
+            check(com.google.android.gms.org.conscrypt.NativeCrypto.CLIENT_MARKER == 731, "JNI registration preserves client class");
             check(service.getField("CREATOR").getType() != int.class, "service CREATOR type");
             check(client.getField("CREATOR").getInt(null) == 1729, "client CREATOR unchanged");
             check(java.lang.reflect.Array.newInstance(service, 1).getClass().getComponentType() == service, "array component loader");
@@ -49,6 +53,13 @@ public class Main extends Activity {
             check(r != null && r.serviceInfo.name.equals("org.microg.gms.ads.identifier.AdvertisingIdService"), "real service resolution");
             check(getPackageManager().resolveService(new Intent("com.google.android.gms.NO_SUCH_SERVICE").setPackage(GMS), 0) == null, "unknown service is absent");
             check(!bindService(new Intent(ACTION).setPackage("wrong.package"), connection, BIND_AUTO_CREATE), "package routing");
+            ServiceConnection cancelled = new ServiceConnection() {
+                public void onServiceConnected(ComponentName n, IBinder b) { fail(new AssertionError("callback after immediate unbind")); }
+                public void onServiceDisconnected(ComponentName n) { fail(new AssertionError("cancelled binding disconnected")); }
+                public void onNullBinding(ComponentName n) { fail(new AssertionError("cancelled null binding")); }
+            };
+            check(bindService(i, cancelled, BIND_AUTO_CREATE), "pending bind accepted");
+            unbindService(cancelled);
             check(bindService(i, connection, BIND_AUTO_CREATE), "bind accepted");
             new Handler().postDelayed(() -> { if (!done) fail(new AssertionError("binding timeout")); }, 30000);
         } catch (Throwable t) { fail(t); }

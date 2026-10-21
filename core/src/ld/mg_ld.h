@@ -41,6 +41,10 @@ struct mg_zip;
 /* Where libraries come from: the APKs' lib/armeabi-v7a/ (or lib/armeabi/) directories, in the order added. */
 #define MG_LD_MAX_APKS 16
 bool mg_ld_add_apk(const char *path);
+/* Service APK libraries and their dependencies are isolated from the client's. */
+bool mg_ld_add_service_apk(const char *path, int scope);
+int mg_ld_set_scope(int scope);
+int mg_ld_scope(void);
 /* The APKs added, for asset access; NULL past the last. */
 const struct mg_zip *mg_ld_apk_at(int index);
 /* A folder to look for libraries in by file name, after the APKs. */

@@ -97,7 +97,7 @@ N(ServiceClassLoader_openApk) {
     mg_dvm_unlock();
     if (scope == 16) { mg_dvm_throw("java/lang/IllegalStateException", "Too many service loaders"); return; }
     host = mg_fs_host_path(path);
-    if (!host || !mg_dvm_add_apk_scope(host, scope)) {
+    if (!host || (!mg_dvm_add_apk_scope(host, scope) || !mg_ld_add_service_apk(host, scope))) {
         free(host);
         mg_dvm_throw("java/io/IOException", "Cannot load service APK %s", path);
         return;
