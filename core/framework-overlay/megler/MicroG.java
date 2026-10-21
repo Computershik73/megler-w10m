@@ -12,6 +12,8 @@ import java.util.*;
 /** Optional GmsCore APK service host. Services execute in the client's process. */
 public final class MicroG {
     public static final String APK = "/system/priv-app/GmsCore/GmsCore.apk";
+    /** The folder of the services every app shares (core/src/run/mg_run.c). */
+    public static final String SHARED = "/data/megler-services";
     private static final String NS = "http://schemas.android.com/apk/res/android";
     private static MicroG instance;
     private static boolean checked;
@@ -94,8 +96,10 @@ public final class MicroG {
         ApplicationInfo a = new ApplicationInfo();
         a.packageName = a.processName = GooglePackages.GMS;
         a.sourceDir = a.publicSourceDir = APK;
-        // Until Megler has a separate service process, keep GmsCore's state private to this client.
-        a.dataDir = new File(Native.dataDir(), "megler-services/" + GooglePackages.GMS).getPath();
+        // microG's state is one for all apps, as on Android: the services' shared folder (mg_run.c), which microG's own app has
+        // for its private files too. Where there is none, it is this app's own.
+        File shared = new File(SHARED);
+        a.dataDir = shared.isDirectory() ? new File(shared, GooglePackages.GMS).getPath() : new File(Native.dataDir(), "megler-services/" + GooglePackages.GMS).getPath();
         a.nativeLibraryDir = APK + "!/lib/armeabi-v7a";
         a.enabled = true; a.uid = android.os.Process.myUid();
         a.flags = ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_INSTALLED | ApplicationInfo.FLAG_HAS_CODE;

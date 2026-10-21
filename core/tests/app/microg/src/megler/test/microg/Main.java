@@ -43,6 +43,7 @@ public class Main extends Activity {
             check(java.lang.reflect.Array.newInstance(service, 1).getClass().getComponentType() == service, "array component loader");
             check(Class.forName("android.os.Binder", false, gms.getClassLoader()) == Binder.class, "shared platform");
             check(!gms.getFilesDir().equals(getFilesDir()), "separate files");
+            check("/data/megler-services/com.google.android.gms".equals(gms.getDataDir().getPath()), "microG's state in the services' shared folder");
             check(!gms.getDatabasePath("x").equals(getDatabasePath("x")), "separate database");
             gms.getSharedPreferences("microg-probe", 0).edit().putString("owner", "microg").commit();
             check(!getSharedPreferences("microg-probe", 0).contains("owner"), "separate preferences");

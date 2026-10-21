@@ -12,6 +12,7 @@
 
 #include "../apk/mg_apk.h"
 #include "../bionic/mg_bionic.h"
+#include "../bionic/mg_fd.h"
 #include "../drivers/mg_driver.h"
 #include "../mg_core.h"
 #include "../host/mg_host.h"
@@ -277,12 +278,27 @@ static void other_app(const char *name, bool is_dir, void *user)
 
 char *mg_run_own_storage(const char *data_dir, const char *package) { return mg_sprintf("%s/apps/%s/sdcard", data_dir, package); }
 
+/*
+ * The services every app shares -- microG, which Android runs once for all apps -- keep their data in one folder beside the
+ * shared storage, <storage_dir>/services/data, which is /data/megler-services to every app: microG's state as an app hosts it
+ * (megler.MicroG) and the accounts (megler.Accounts) are there. The service's own package, run as an app (microG's
+ * settings), has that folder for its private files, so that what it is set to there is what every app's microG finds: device
+ * registration turned on, the check-in's Android ID, the accounts it signed in.
+ */
+#define SERVICES_GUEST "/data/megler-services"
+static bool service_package(const char *package) { return !strcmp(package, "com.google.android.gms"); }
+
 void mg_run_files(const char *data_dir, const char *storage_dir, const char *package, const megler_storage_host *storage)
 {
-    char *internal = mg_sprintf("%s/apps/%s/data", data_dir, package), *own = mg_run_own_storage(storage_dir, package), *apps;
+    char *services = mg_sprintf("%s/services/data", storage_dir);
+    char *internal = service_package(package) ? mg_sprintf("%s/%s", services, package) : mg_sprintf("%s/apps/%s/data", data_dir, package);
+    char *own = mg_run_own_storage(storage_dir, package), *apps;
     left_behind left;
     other_apps others;
     mg_fs_configure(package, internal, own);
+    mg_path_mkdirs(services);
+    mg_fs_mount(SERVICES_GUEST, services);
+    free(services);
     mg_run_storage(storage_dir, storage);
     others.data_dir = storage_dir;
     others.count = 0;
