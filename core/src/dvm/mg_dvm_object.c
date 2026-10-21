@@ -502,8 +502,15 @@ mg_jobj *mg_dvm_mirror(mg_dvm_class *c)
     if (!m) return NULL;
     m->native = c;
     m->u.klass.jc = c->jc;
-    /* Made twice by two threads at once: the first one stays, the other is an object nothing refers to. */
-    if (mg_atomic_cas_ptr((void *volatile *)(void *)&c->mirror, NULL, m) == NULL && g_dvm.fill_mirror) g_dvm.fill_mirror(m, c);
+    /*
+     * Filled before it is published: a mirror another thread finds must be whole. It was published first and filled after,
+     * and a thread that asked for the same class meanwhile had one without its component type, superclass or interfaces --
+     * Sberbank's coroutines copying an array (Arrays.copyOf) met a null component type so. Made twice by two threads at
+     * once, the first one published stays, the other is an object nothing refers to. (Until then `m` is held by this C
+     * stack, which the collector scans.)
+     */
+    if (g_dvm.fill_mirror) g_dvm.fill_mirror(m, c);
+    mg_atomic_cas_ptr((void *volatile *)(void *)&c->mirror, NULL, m);
     return c->mirror;
 }
 

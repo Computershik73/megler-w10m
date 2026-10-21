@@ -222,11 +222,19 @@ static void work(void *arg)
     /* a class both threads ask for at once, whose initialiser takes a while: it runs once, and both see what it set */
     if (!mg_dvm_call_static("t/Slow", "get", "()I", NULL, &r)) w->ok = false;
     w->slow = r.i;
-    /* the same classes, each thread in its own order: one Class object each, whoever linked it */
+    /* the same classes, each thread in its own order: one Class object each, whoever linked it, and whole when it is had --
+       on libcore, whose Class has the fields: its size, and an array's component type, are there (they were filled in after
+       the object was published, and a thread could have one without them) */
     for (i = 0; i < n; i++) {
         size_t at = w->id ? n - 1 - i : i;
         w->mirrors[at] = mg_dvm_class_object(k_race_classes[at]);
         if (!w->mirrors[at]) w->ok = false;
+        else {
+            mg_jvalue size, component;
+            size.j = component.j = 0;
+            if (mg_dvm_get_field(w->mirrors[at], "objectSize", &size) && size.i <= 0) w->ok = false;
+            if (k_race_classes[at][0] == '[' && mg_dvm_get_field(w->mirrors[at], "componentType", &component) && !component.l) w->ok = false;
+        }
     }
     /* the same strings interned by both: one object each */
     for (k = 0; k < (int)MG_COUNT(w->strings); k++) {
