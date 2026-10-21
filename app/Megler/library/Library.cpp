@@ -443,10 +443,13 @@ void Library::analyse(const std::string& id) {
         } else {
             files::remove(target + L".new");
         }
-    } else if (read) {
-        files::remove(path + L".icon");
-    } else if (files::exists(path + L".icon")) {
-        iconPath = path + L".icon";
+    } else {
+        // None found now. The one found before is kept -- the core drew an adaptive icon then and may not now -- and an app
+        // of the phone's own has the one its package was made with beside its APK (apppp.apk.icon), which its tiles
+        // were drawn from: taken from there. (It was removed here, and the library showed none for such apps.)
+        if (!files::exists(path + L".icon") && apk != path && files::exists(apk + L".icon")) files::copy(apk + L".icon", path + L".icon");
+        if (files::exists(path + L".icon")) iconPath = path + L".icon";
+        if (read) shellLog::write("library: " + id + ": the core found no icon it could draw" + (iconPath.empty() ? "" : "; the one kept is shown"));
     }
     if (icon) megler_free(icon);
     if (!read) shellLog::write("library: " + id + " could not be read now (" + narrow(apk) + "): what was found before is kept");
@@ -505,6 +508,9 @@ ApkEntry Library::installedEntry(const std::string& id, const std::string& fullN
         entry.report = ApkReport::parse(json);
         entry.analysed = entry.report.valid;
     }
+    // The icon: the library's, else the one the app's package was made with (beside its APK), copied here, where the list
+    // shows icons from.
+    if (!files::exists(own + L".icon") && files::exists(entry.path + L".icon")) files::copy(entry.path + L".icon", own + L".icon");
     if (files::exists(own + L".icon")) entry.iconPath = own + L".icon";
     return entry;
 }
