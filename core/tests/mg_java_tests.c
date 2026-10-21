@@ -562,6 +562,99 @@ static void bars_wanted(void *user, int bars)
     mg_lock_release(&g_bars_lock);
 }
 
+/* What the app's media session told (megler_media_session_host), in order: "state=3 actions=6;meta=Song/Band/Record 256x128 ff336699;". */
+static char g_media_heard[512];
+static mg_lock g_media_lock = MG_LOCK_INIT;
+
+static void media_heard(const char *what)
+{
+    size_t n;
+    mg_lock_acquire(&g_media_lock);
+    n = strlen(g_media_heard);
+    if (n + strlen(what) + 1 < sizeof(g_media_heard)) mg_strlcpy(g_media_heard + n, what, sizeof(g_media_heard) - n);
+    mg_lock_release(&g_media_lock);
+}
+
+static void media_state(void *user, int state, long long actions)
+{
+    char t[64];
+    (void)user;
+    snprintf(t, sizeof(t), "state=%d actions=%lld;", state, actions);
+    media_heard(t);
+}
+
+static void media_metadata(void *user, const char *title, const char *artist, const char *album, const uint32_t *art, int w, int h)
+{
+    char t[200];
+    (void)user;
+    snprintf(t, sizeof(t), "meta=%s/%s/%s %dx%d %08x;", title ? title : "-", artist ? artist : "-", album ? album : "-", w, h, art ? (unsigned)art[0] : 0u);
+    media_heard(t);
+}
+
+/* What the app asked of the phone (megler_system_host): "launch=com.example.other/com.example.other.Main;install=Viewed.apk;". */
+static char g_system_heard[512];
+static mg_lock g_system_lock = MG_LOCK_INIT;
+
+static void system_heard(const char *what)
+{
+    size_t n;
+    mg_lock_acquire(&g_system_lock);
+    n = strlen(g_system_heard);
+    if (n + strlen(what) + 1 < sizeof(g_system_heard)) mg_strlcpy(g_system_heard + n, what, sizeof(g_system_heard) - n);
+    mg_lock_release(&g_system_lock);
+}
+
+static bool system_install(void *user, const char *host_path, const char *name)
+{
+    char t[160];
+    mg_stat st;
+    (void)user;
+    snprintf(t, sizeof(t), "install=%s%s;", name, mg_path_stat(host_path, &st, NULL) ? "" : "(no file)");
+    system_heard(t);
+    return true;
+}
+
+static bool system_launch(void *user, const char *package, const char *activity)
+{
+    char t[200];
+    (void)user;
+    snprintf(t, sizeof(t), "launch=%s/%s;", package, activity ? activity : "-");
+    system_heard(t);
+    return true;
+}
+
+/* The apps folder the data app is given (megler_run_config.apps_dir): one other app, with an icon of 2 x 2. */
+static const char *phone_apps_fixture(void)
+{
+    static const unsigned char png[] = {
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
+        0x00, 0x02, 0x08, 0x06, 0x00, 0x00, 0x00, 0x72, 0xb6, 0x0d, 0x24, 0x00, 0x00, 0x00, 0x14, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63,
+        0x34, 0x4e, 0x9b, 0xf9, 0x9f, 0x81, 0x81, 0x81, 0x81, 0x89, 0x01, 0x0a, 0x00, 0x20, 0xe2, 0x02, 0x35, 0x31, 0xce, 0xf5, 0x2d, 0x00,
+        0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82
+    };
+    static char *dir;
+    char *path;
+    FILE *f;
+    if (dir) return dir;
+    dir = mg_sprintf("%s/phone-apps", megler_data_dir());
+    mg_path_mkdirs(dir);
+    path = mg_sprintf("%s/apps.txt", dir);
+    f = fopen(path, "wb");
+    if (f) {
+        fputs("com.example.other\tcom.example.other.Main\tOther\t1.0\t3\n", f);
+        fclose(f);
+    }
+    free(path);
+    path = mg_sprintf("%s/com.example.other.png", dir);
+    f = fopen(path, "wb");
+    if (f) {
+        fwrite(png, 1, sizeof(png), f);
+        fclose(f);
+    }
+    free(path);
+    return dir;
+}
+
 static bool start(const char *apk, const char *android_root)
 {
     static megler_run_config cfg;
@@ -586,6 +679,13 @@ static bool start(const char *apk, const char *android_root)
     cfg.keyboard.hide = keyboard_hide;
     cfg.bars.wanted = bars_wanted;
     g_bars_heard[0] = 0;
+    cfg.media_session.state = media_state;
+    cfg.media_session.metadata = media_metadata;
+    g_media_heard[0] = 0;
+    cfg.system.install_apk = system_install;
+    cfg.system.launch_app = system_launch;
+    g_system_heard[0] = 0;
+    cfg.apps_dir = phone_apps_fixture();
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (mg_codec_standin.c). */
     cfg.codec = *mg_codec_standin();
     if (g_camera_app) cfg.camera = *mg_camera_standin();
@@ -1696,6 +1796,57 @@ static void bars_and_insets(void)
     megler_set_insets(0, 0, 0, 0);
 }
 
+/*
+ * The app's media session, as the phone's media controls have it: its state (playing; play and pause allowed) and what it
+ * plays (title, artist, album, and its picture made at most 256 on a side) come to the shell (megler_media_session_host);
+ * then the controls' next key, which that state does not allow, does nothing, and their pause key reaches the session's
+ * onPause on the main thread (megler_key, android.media.session.MediaSession).
+ */
+static void media_session_keys(void)
+{
+    static const char want[] = "state=3 actions=6;meta=Song/Band/Record 256x128 ff336699;";
+    char heard[sizeof(g_media_heard)];
+    int tries;
+    CHECK(wait_line("I/DataTest: media-session waiting", 0, 30) >= 0);
+    for (tries = 0; tries < 100; tries++) {
+        mg_lock_acquire(&g_media_lock);
+        mg_strlcpy(heard, g_media_heard, sizeof(heard));
+        mg_lock_release(&g_media_lock);
+        if (!strcmp(heard, want)) break;
+        mg_sleep_ns(20000000ull);
+    }
+    say("  the media session told: %s", heard);
+    CHECK(!strcmp(heard, want));
+    megler_key(87, true);
+    megler_key(87, false);
+    megler_key(127, true);
+    megler_key(127, false);
+    CHECK(wait_line("I/DataTest: media-session paused", 0, 30) >= 0);
+    CHECK(find_line("I/DataTest: media-session next", 0) < 0 && count_lines("media-session paused OFF THE MAIN THREAD") == 0);
+}
+
+/*
+ * What the data app asked of the phone (megler_system_host), in order: to start the other app the apps folder has, by its
+ * launch intent; to install the APK it opened with ACTION_VIEW; to install its PackageInstaller session's one file, whose
+ * status, STATUS_SUCCESS (0), then comes back to the app.
+ */
+static void system_requests(void)
+{
+    static const char want[] = "launch=com.example.other/com.example.other.Main;install=Viewed.apk;install=base.apk;";
+    char heard[sizeof(g_system_heard)];
+    int tries;
+    for (tries = 0; tries < 150; tries++) {
+        mg_lock_acquire(&g_system_lock);
+        mg_strlcpy(heard, g_system_heard, sizeof(heard));
+        mg_lock_release(&g_system_lock);
+        if (!strcmp(heard, want)) break;
+        mg_sleep_ns(20000000ull);
+    }
+    say("  the app asked of the phone: %s", heard);
+    CHECK(!strcmp(heard, want));
+    CHECK(wait_line("I/DataTest: install-status 0 session=true package=com.example.store", 0, 30) >= 0);
+}
+
 static int run_data(void)
 {
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
@@ -1728,7 +1879,7 @@ static int run_data(void)
                                             custom action, as PlaybackStateCompat makes it. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "install-intent", "install-session", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -1792,6 +1943,8 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: media-player-done ok", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: media-player-ogg-done ok", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: sound-pool-played ok", 0, 30) >= 0);
+    /* The idle handlers of the step "idle-handler": the one that answered false ran once, the one that answered true again after it. */
+    CHECK(wait_line("I/DataTest: idle-handler-done ok", 0, 30) >= 0);
     /* The asynchronous decoder of "codec-avc-async": every picture came to its callback, in display order, on its handler's thread. */
     CHECK(wait_line("I/DataTest: codec-avc-async-done ok", 0, 30) >= 0);
     /* The window's insets, when its views are first laid out, say the frame they are relative to: the screen, which the window fills. */
@@ -1816,12 +1969,16 @@ static int run_data(void)
     expect_line("I/DataTest: dialog-fragment ok", &at, 30);
     /* The decor's content moved into a view of the app's own, which takes its place in the decor: laid out and shown, no cast to the decor's parameters. */
     expect_line("I/DataTest: decor-reparent ok", &at, 30);
+    /* An alert with a message taller than the screen fits on it, its button wholly there to be pressed. */
+    expect_line("I/DataTest: dialog-tall ok", &at, 30);
     /* And the battery an app reads is the core's (mg_battery_read): a full one on mains when nothing was set, in the second run the one set before it. */
     CHECK(find_line(run == 2 && want == 2 ? "I/DataTest: battery is level=37/100 status=3 plugged=0 health=2 voltage=3712 temperature=301 present=true technology=Li-poly capacity=37 charging=false"
                                            : "I/DataTest: battery is level=100/100 status=5 plugged=1 health=2 voltage=4200 temperature=250 present=true technology=Li-ion capacity=100 charging=true",
                     0) >= 0);
     battery_changes(run == 2 && want == 2);
     bars_and_insets();
+    media_session_keys();
+    system_requests();
     /*
      * The second run has the flags trace-net, trace-exceptions and trace-stacks on (tools/build-tests.sh puts them in its
      * data folder): the network steps' connections are said with where to and how they ended, the names looked up with their
@@ -2336,6 +2493,8 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     g_any_app = !strcmp(which, "app");
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
+    /* The data app runs with the phone's look told (megler_set_theme): a cobalt accent and a light theme; its step theme-accent checks what an app sees of it. */
+    if (!strcmp(which, "data")) megler_set_theme(0xFF0063B1u, false);
     /* The camera app's second run: every camera refused, as Windows refuses Megler the camera when the user has said no. */
     mg_camera_standin_refuse(g_camera_app && g_script_count && !strcmp(g_script[0], "denied"));
     /* The shell does not compose the window ("readback"): the core reads the GL frames back and composes it, as before. */

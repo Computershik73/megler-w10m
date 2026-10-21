@@ -1,6 +1,8 @@
 // Overlay of core/framework/src/megler/ResInflate.java (tools/build-framework.sh).
-// It differs in one statement: the mask layer of a <ripple> is handed to the RippleDrawable before it is left out of the
-// layers that are drawn. Everything else is the original's, unchanged.
+// It differs in two places. The mask layer of a <ripple> is handed to the RippleDrawable before it is left out of the
+// layers that are drawn. And an <adaptive-icon> is an AdaptiveIconDrawable (its background, foreground and monochrome
+// layers), where it was a LayerDrawable of its layers: launchers ask an icon whether it is adaptive, and draw it masked.
+// Everything else is the original's, unchanged.
 //
 // Why. Android's commonest ripple is one with nothing in it but a mask -- item_background_material, which is
 // ?attr/selectableItemBackground and the selector of every ListView: <ripple><item android:id="@android:id/mask">...</item>
@@ -281,17 +283,20 @@ public final class ResInflate {
             return new AnimatedVectorDrawable(d != null ? d : new ColorDrawable(0));
         }
         case "adaptive-icon": case "maskable-icon": {
-            LayerDrawable ld = new LayerDrawable(new Drawable[0]);
+            Drawable background = null, foreground = null, monochrome = null;
             int depth = p.getDepth() + 1, tt;
             while ((tt = p.next()) != XmlPullParser.END_DOCUMENT && (p.getDepth() >= depth || tt != XmlPullParser.END_TAG)) {
                 if (tt != XmlPullParser.START_TAG || p.getDepth() > depth) continue;
+                String layer = p.getName();
                 TypedArray a = attrs(r, t, as(p), S.AdaptiveIconDrawableLayer);
                 Drawable d = a.getDrawable(S.AdaptiveIconDrawableLayer_drawable);
                 a.recycle();
                 if (d == null) d = child(r, p, t);
-                if (d != null && !"monochrome".equals(p.getName())) ld.addLayer(d);
+                if ("background".equals(layer)) background = d;
+                else if ("foreground".equals(layer)) foreground = d;
+                else if ("monochrome".equals(layer)) monochrome = d;
             }
-            return ld;
+            return new AdaptiveIconDrawable(background, foreground, monochrome);
         }
         case "drawable": {
             // <drawable class="..."> or a custom tag

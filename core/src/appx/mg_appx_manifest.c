@@ -11,7 +11,11 @@
  *     and a package made again for the same app is an update of it;
  *   - Properties' DisplayName, and VisualElements' DisplayName and the tile's ShortName: the app's label (the short name
  *     cut to 40 characters, as the schema has it);
- *   - the tile's and the splash screen's BackgroundColor, when the caller gives them (the app's icon is drawn on them).
+ *   - the tile's and the splash screen's BackgroundColor, when the caller gives them (the app's icon is drawn on them);
+ *   - the association of APKs with Megler (an Extension of the category windows.fileTypeAssociation), taken out: an APK
+ *     opened on the phone is Megler's to install, and with every app's package claiming it Windows would ask which one.
+ *     Its megler: links stay, by which a package of Megler's starts another (Launcher.LaunchUriAsync with that package as
+ *     the target).
  * The version is Megler's: a package made by a newer Megler updates one made by an older.
  */
 #include "mg_appx.h"
@@ -113,6 +117,22 @@ static char *set_text(char *xml, const char *tag, const char *value)
     return out;
 }
 
+/* Takes out the first element that begins with `start`, through the first `end` after it, with the white space before it on
+   its line and the line's end after it. `xml` as it was when there is none; NULL when it does not end. */
+static char *cut_element(char *xml, const char *start, const char *end)
+{
+    char *a = strstr(xml, start), *b;
+    if (!a) return xml;
+    b = strstr(a, end);
+    if (!b) return NULL;
+    b += strlen(end);
+    while (a > xml && (a[-1] == ' ' || a[-1] == '\t')) a--;
+    if (*b == '\r') b++;
+    if (*b == '\n') b++;
+    memmove(a, b, strlen(b) + 1);
+    return xml;
+}
+
 /* The label escaped for an attribute or element text, cut to `max` characters; a UTF-8 sequence is copied whole or not at
    all, and a byte that begins none (or a control character) is a space. */
 static void escaped(char *out, size_t outlen, const char *s, size_t max)
@@ -183,6 +203,7 @@ char *mg_appx_app_manifest(const char *megler, const char *android_package, cons
     STEP(set_attr(xml, "<uap:DefaultTile", "ShortName", shortname), "the tile's ShortName");
     if (tile_color) STEP(set_attr(xml, "<uap:VisualElements", "BackgroundColor", tile_color), "VisualElements BackgroundColor");
     if (splash_color) STEP(set_attr(xml, "<uap:SplashScreen", "BackgroundColor", splash_color), "the splash screen's BackgroundColor");
+    STEP(cut_element(xml, "<uap:Extension Category=\"windows.fileTypeAssociation\"", "</uap:Extension>"), "the file type association's end");
 #undef STEP
     return xml;
 }

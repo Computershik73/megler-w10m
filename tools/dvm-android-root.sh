@@ -13,6 +13,13 @@
 #                           boot class path: an app that asks for it in its
 #                           manifest, or targets an Android before 9, has it
 #                           on its class path (drivers/mg_java.c)
+#   framework/platform-framework.dex, -classes2.dex, -classes3.dex
+#                           Android 9's own framework, the platform's original
+#                           bytecode: an app of the platform's own (its
+#                           manifest's sharedUserId android.uid.system, as
+#                           Settings) has it on its class path after Megler's
+#                           framework, for the hidden classes Megler's does not
+#                           have (drivers/mg_java.c)
 #   framework/core-oj.jar, core-libart.jar
 #                           the jars as the device has them: no bytecode in
 #                           them, but what else libcore opens them for (ICU4J
@@ -95,6 +102,10 @@ put() { # source, destination folder
 for name in core-oj core-libart conscrypt okhttp bouncycastle apache-xml; do put "$A9/boot/$name.dex" "$OUT/framework"; done
 # Android's legacy Apache HTTP client, for the apps that get it on their class path (drivers/mg_java.c, add_shared_libraries).
 put "$A9/boot/org.apache.http.legacy.dex" "$OUT/framework"
+# Android 9's own framework, for the platform's own apps (drivers/mg_java.c, add_platform_framework).
+for name in framework framework-classes2 framework-classes3; do
+  if [ -f "$A9/boot/$name.dex" ]; then cp -u "$A9/boot/$name.dex" "$OUT/framework/platform-$name.dex"; else echo "  (not there: build/android9/boot/$name.dex)"; fi
+done
 bash "$ROOT/tools/build-libcore-overlay.sh"
 put "$ROOT/build/libcore-overlay/megler-libcore.dex" "$OUT/framework"
 for name in core-oj core-libart; do put "$A9/system/framework/$name.jar" "$OUT/framework"; done

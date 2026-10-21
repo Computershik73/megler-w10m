@@ -16,6 +16,9 @@
 #include "ui/SeparateApps.h"
 #include "ui/SharedFolders.h"
 #include "ui/Theme.h"
+#include "ui/UiShots.h"
+#include "library/PhoneAppsList.h"
+#include "player/SystemHost.h"
 
 #include "megler.h"
 
@@ -47,8 +50,8 @@ UIElement AppShell::root() {
     const auto& p = palette();
     dispatcher_ = Window::Current().Dispatcher();
     root_ = Grid();
-    root_.RequestedTheme(ElementTheme::Dark);
-    root_.Background(brush(p.background));
+    root_.RequestedTheme(p.dark ? ElementTheme::Dark : ElementTheme::Light);
+    root_.Background(brush(p.surface));
     for (int i = 0; i < 3; ++i) {
         RowDefinition row;
         row.Height(i == 1 ? GridLengthHelper::FromValueAndType(1, GridUnitType::Star) : GridLengthHelper::Auto());
@@ -58,20 +61,20 @@ UIElement AppShell::root() {
     if (ApiInformation::IsTypePresent(L"Windows.UI.ViewManagement.StatusBar")) {
         try {
             auto status = StatusBar::GetForCurrentView();
-            status.BackgroundColor(p.background);
+            status.BackgroundColor(p.surface);
             status.BackgroundOpacity(1.0);
-            status.ForegroundColor(p.label);
+            status.ForegroundColor(p.onSurface);
         } catch (...) {
         }
     }
     try {
         auto bar = ApplicationView::GetForCurrentView().TitleBar();
-        bar.BackgroundColor(p.background);
-        bar.ForegroundColor(p.label);
-        bar.ButtonBackgroundColor(p.background);
-        bar.ButtonForegroundColor(p.label);
-        bar.InactiveBackgroundColor(p.background);
-        bar.ButtonInactiveBackgroundColor(p.background);
+        bar.BackgroundColor(p.surface);
+        bar.ForegroundColor(p.onSurface);
+        bar.ButtonBackgroundColor(p.surface);
+        bar.ButtonForegroundColor(p.onSurface);
+        bar.InactiveBackgroundColor(p.surface);
+        bar.ButtonInactiveBackgroundColor(p.surface);
     } catch (...) {
     }
 
@@ -100,6 +103,19 @@ UIElement AppShell::root() {
     // Hardware Back (the phone's only navigation button besides the camera).
     using winrt::Windows::UI::Core::SystemNavigationManager;
     SystemNavigationManager::GetForCurrentView().BackRequested([this](auto&&, auto const& e) { e.Handled(goBack()); });
+
+    // What a running app asks of the phone (player/SystemHost.h): an APK to install goes to the installer, as one picked.
+    {
+        std::weak_ptr<AppShell> weak = weak_from_this();
+        systemHost::Hooks hooks;
+        hooks.install = [weak](const std::wstring& path, const std::string& name, const std::string& from) {
+            if (auto self = weak.lock()) self->installApkPath(path, name, from);
+        };
+        hooks.cannotLaunch = [weak](const std::string& why) {
+            if (auto self = weak.lock()) self->alert("Couldn't Start the App", why);
+        };
+        systemHost::attach(std::move(hooks));
+    }
 
     timer_ = DispatcherTimer();
     timer_.Interval(std::chrono::milliseconds(250));
@@ -194,42 +210,35 @@ void AppShell::applyFullScreen(bool fullScreen, bool upright, bool hideStatus, b
 
 void AppShell::buildChrome() {
     const auto& p = palette();
+    // Material 3's small top app bar: 64 high, Back (an icon button) at its start, the title in title large, the page's
+    // actions at its end.
     navigationBar_ = Grid();
-    navigationBar_.Height(48);
-    navigationBar_.Background(brush(p.background));
+    navigationBar_.Height(64);
+    navigationBar_.Background(brush(p.surface));
     for (int i = 0; i < 3; ++i) {
         ColumnDefinition c;
         c.Width(i == 1 ? GridLengthHelper::FromValueAndType(1, GridUnitType::Star) : GridLengthHelper::Auto());
         navigationBar_.ColumnDefinitions().Append(c);
     }
 
-    titleText_ = text("", font::headline, weightSemibold(), p.label);
+    backButton_ = iconButton(glyphs::back, [this] { pop(); }, "Back", p.onSurface);
+    backButton_.Margin(ThicknessHelper::FromLengths(4, 0, 0, 0));
+    backButton_.VerticalAlignment(VerticalAlignment::Center);
+    navigationBar_.Children().Append(backButton_);
+
+    titleText_ = text("", font::titleLarge, weightNormal(), p.onSurface);
     titleText_.TextWrapping(TextWrapping::NoWrap);
     titleText_.TextTrimming(TextTrimming::CharacterEllipsis);
-    titleText_.HorizontalAlignment(HorizontalAlignment::Center);
     titleText_.VerticalAlignment(VerticalAlignment::Center);
-    titleText_.Margin(ThicknessHelper::FromLengths(96, 0, 96, 0));
-    Grid::SetColumnSpan(titleText_, 3);
+    titleText_.Margin(ThicknessHelper::FromLengths(16, 0, 8, 0));
+    Grid::SetColumn(titleText_, 1);
     navigationBar_.Children().Append(titleText_);
-
-    auto backContent = hstack(2);
-    backContent.VerticalAlignment(VerticalAlignment::Center);
-    add(backContent, glyph(glyphs::chevronLeft, 16, p.accentText));
-    backLabel_ = text("", font::body, weightNormal(), p.accentText);
-    backLabel_.TextWrapping(TextWrapping::NoWrap);
-    backLabel_.TextTrimming(TextTrimming::CharacterEllipsis);
-    backLabel_.MaxWidth(80);
-    add(backContent, backLabel_);
-    backButton_ = button(backContent, [this] { pop(); }, ButtonKind::plain, "Back");
-    backButton_.HorizontalAlignment(HorizontalAlignment::Left);
-    backButton_.Padding(ThicknessHelper::FromLengths(10, 0, 12, 0));
-    backButton_.VerticalAlignment(VerticalAlignment::Stretch);
-    navigationBar_.Children().Append(backButton_);
 
     toolbarHost_ = ContentControl();
     toolbarHost_.VerticalAlignment(VerticalAlignment::Center);
     toolbarHost_.HorizontalContentAlignment(HorizontalAlignment::Right);
-    toolbarHost_.Margin(ThicknessHelper::FromLengths(0, 0, 12, 0));
+    toolbarHost_.Foreground(brush(p.onSurfaceVariant));
+    toolbarHost_.Margin(ThicknessHelper::FromLengths(0, 0, 4, 0));
     Grid::SetColumn(toolbarHost_, 2);
     navigationBar_.Children().Append(toolbarHost_);
 
@@ -243,41 +252,61 @@ void AppShell::buildChrome() {
 
 void AppShell::buildTabBar() {
     const auto& p = palette();
+    // Material 3's navigation bar: 80 high on the surface container, each destination an icon over its label, the chosen
+    // one's icon on a pill of the secondary container.
     tabBar_ = Grid();
-    tabBar_.Background(brush(rgb(0x121212)));
-    tabBar_.BorderBrush(brush(p.separator));
-    tabBar_.BorderThickness(ThicknessHelper::FromLengths(0, 1, 0, 0));
+    tabBar_.Height(80);
+    tabBar_.Background(brush(p.surfaceContainer));
     tabButtons_.clear();
+    tabIndicators_.clear();
+    tabLabels_.clear();
     const std::pair<const char*, wchar_t> tabs[] = {
         {"Library", glyphs::library}, {"Device", glyphs::device}, {"Log", glyphs::log}, {"Settings", glyphs::settings}};
     for (int i = 0; i < 4; ++i) {
         ColumnDefinition c;
         c.Width(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
         tabBar_.ColumnDefinitions().Append(c);
-        auto content = vstack(3);
+        auto content = vstack(4);
         content.HorizontalAlignment(HorizontalAlignment::Center);
-        auto g = glyph(tabs[i].second, 20);
+        content.VerticalAlignment(VerticalAlignment::Center);
+        Border indicator;
+        indicator.Width(64);
+        indicator.Height(32);
+        indicator.CornerRadius(CornerRadiusHelper::FromUniformRadius(16));
+        auto g = icon(tabs[i].second, 24);
         g.HorizontalAlignment(HorizontalAlignment::Center);
-        add(content, g);
-        auto t = text(tabs[i].first, 10, weightMedium());
+        indicator.Child(g);
+        indicator.HorizontalAlignment(HorizontalAlignment::Center);
+        add(content, indicator);
+        auto t = text(tabs[i].first, font::labelMedium, weightMedium());
         t.HorizontalAlignment(HorizontalAlignment::Center);
+        t.TextWrapping(TextWrapping::NoWrap);
         add(content, t);
         auto b = button(content, [this, i] { selectTab(i); }, ButtonKind::plain, tabs[i].first);
-        b.Padding(ThicknessHelper::FromLengths(0, 7, 0, 6));
+        b.VerticalAlignment(VerticalAlignment::Stretch);
+        b.Padding(ThicknessHelper::FromLengths(0, 12, 0, 16));
         Grid::SetColumn(b, i);
         tabBar_.Children().Append(b);
         tabButtons_.push_back(b);
+        tabIndicators_.push_back(indicator);
+        tabLabels_.push_back(t);
     }
     Grid::SetRow(tabBar_, 2);
     root_.Children().Append(tabBar_);
 }
 
 void AppShell::showTop() {
+    const auto& p = palette();
     auto page = currentStack().pages.back();
     contentHost_.Child(nullptr);
     contentHost_.Child(page->view());
-    for (size_t i = 0; i < tabButtons_.size(); ++i)
-        tabButtons_[i].Foreground(brush(int(i) == selectedTab_ ? palette().accentText : palette().secondaryLabel));
+    for (size_t i = 0; i < tabButtons_.size(); ++i) {
+        const bool chosen = int(i) == selectedTab_;
+        // (The icon takes the button's colour; the label has its own, as Material's do.)
+        tabButtons_[i].Foreground(brush(chosen ? p.onSecondaryContainer : p.onSurfaceVariant));
+        tabIndicators_[i].Background(brush(chosen ? p.secondaryContainer : withAlpha(p.secondaryContainer, 0)));
+        tabLabels_[i].Foreground(brush(chosen ? p.onSurface : p.onSurfaceVariant));
+    }
     page->appeared();
     page->refresh();
     refreshChrome();
@@ -294,7 +323,7 @@ void AppShell::refreshChrome() {
     const bool canGoBack = stack.pages.size() > 1;
     titleText_.Text(hs(page->title()));
     setVisible(backButton_, canGoBack);
-    if (canGoBack) backLabel_.Text(hs(stack.pages[stack.pages.size() - 2]->title()));
+    titleText_.Margin(ThicknessHelper::FromLengths(canGoBack ? 4 : 16, 0, 8, 0));
     auto item = page->toolbarItem();
     if (toolbarHost_.Content() != item) toolbarHost_.Content(item);
     try {
@@ -327,7 +356,10 @@ void AppShell::pop() {
 }
 
 bool AppShell::goBack() {
-    if (dialogOpen_) return true; // the dialog takes Back itself
+    if (dialogOpen_) {
+        closeDialog(-1); // Back dismisses a dialog, as on Android
+        return true;
+    }
     if (currentStack().pages.back()->handleBack()) return true;
     if (currentStack().pages.size() > 1) {
         pop();
@@ -366,6 +398,8 @@ void AppShell::poll() {
         updateDisplayRequest();
         platform::sampleMemory();
         autorun::tick(*this);
+        uiShots::poll(*this);
+        phoneAppsList::publish();
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can
         // run here, else its page, which says why not. Before the player, Megler's folders the app has not got are offered
         // (ui/SharedFolders.h), once the phone's folders are known.
@@ -464,54 +498,107 @@ void AppShell::runOnUiThread(std::function<void()> work) {
 
 // MARK: Dialogs
 
-namespace {
-
-ContentDialog makeDialog(const std::string& title, const std::string& message) {
-    ContentDialog d;
-    if (!title.empty()) d.Title(box_value(hs(title)));
-    auto t = text(message, font::body, weightNormal(), palette().label);
-    t.TextWrapping(TextWrapping::Wrap);
-    d.Content(t);
-    d.RequestedTheme(ElementTheme::Dark);
-    d.Background(brush(palette().card));
-    d.Foreground(brush(palette().label));
-    return d;
+void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> done) {
+    if (dialogOpen_ || !root_) return;
+    dialogOpen_ = true;
+    const auto& p = palette();
+    dialogDone_ = std::move(done);
+    // Material 3's basic dialog: the high surface container, corners of 28 and a margin of 24 within, over a scrim; its
+    // headline in headline small, its text in body medium, its buttons text buttons at its end.
+    dialogLayer_ = Grid();
+    Grid::SetRowSpan(dialogLayer_, 3);
+    dialogLayer_.Background(brush(p.scrim));
+    dialogLayer_.Tapped([this](auto&&, auto const& e) {
+        if (e.OriginalSource().try_as<Grid>() == dialogLayer_) closeDialog(-1);
+    });
+    auto column = vstack(0);
+    if (!spec.title.empty()) {
+        auto t = text(spec.title, font::headlineSmall, weightNormal(), p.onSurface);
+        t.Margin(ThicknessHelper::FromLengths(0, 0, 0, 16));
+        add(column, t);
+    }
+    if (!spec.message.empty()) add(column, text(spec.message, font::bodyMedium, weightNormal(), p.onSurfaceVariant));
+    dialogField_ = nullptr;
+    if (spec.field) {
+        auto field = textField(dialogField_, spec.fieldText, spec.fieldPlaceholder);
+        field.Margin(ThicknessHelper::FromLengths(0, 16, 0, 0));
+        add(column, field);
+        if (!spec.fieldSuggestions.empty()) {
+            // Material's suggestion chips: outlined, corners of 8, 32 high.
+            auto chips = hstack(8);
+            chips.Margin(ThicknessHelper::FromLengths(0, 12, 0, 0));
+            for (const std::string& suggestion : spec.fieldSuggestions) {
+                auto label = text(suggestion, font::labelLarge, weightMedium(), p.onSurfaceVariant);
+                label.VerticalAlignment(VerticalAlignment::Center);
+                auto chip = button(label, [this, suggestion] {
+                    if (dialogField_) dialogField_.Text(hs(suggestion));
+                }, ButtonKind::rounded, suggestion);
+                chip.Height(32);
+                chip.Padding(ThicknessHelper::FromLengths(16, 0, 16, 0));
+                chip.BorderBrush(brush(p.outline));
+                chip.BorderThickness(ThicknessHelper::FromUniformLength(1));
+                chip.HorizontalAlignment(HorizontalAlignment::Left);
+                add(chips, chip);
+            }
+            add(column, chips);
+        }
+    }
+    auto actions = hstack(8);
+    actions.HorizontalAlignment(HorizontalAlignment::Right);
+    actions.Margin(ThicknessHelper::FromLengths(0, 24, -12, -8));
+    for (size_t i = 0; i < spec.buttons.size(); ++i) {
+        const bool confirming = i + 1 == spec.buttons.size();
+        auto b = textButton(spec.buttons[i], [this, i] { closeDialog(int(i)); }, confirming && spec.destructive ? p.error : p.primary);
+        add(actions, b);
+    }
+    add(column, actions);
+    Border sheet;
+    sheet.Child(column);
+    sheet.Background(brush(p.surfaceContainerHigh));
+    sheet.CornerRadius(CornerRadiusHelper::FromUniformRadius(28));
+    sheet.Padding(ThicknessHelper::FromUniformLength(24));
+    sheet.MinWidth(280);
+    sheet.MaxWidth(560);
+    sheet.Margin(ThicknessHelper::FromLengths(24, 24, 24, 24));
+    sheet.VerticalAlignment(VerticalAlignment::Center);
+    dialogLayer_.Children().Append(sheet);
+    root_.Children().Append(dialogLayer_);
+    if (dialogField_) {
+        dialogField_.SelectAll();
+        dialogField_.Focus(FocusState::Programmatic);
+    }
 }
 
-} // namespace
+void AppShell::closeDialog(int button) {
+    if (!dialogOpen_) return;
+    const std::string typed = dialogField_ ? narrow(std::wstring(dialogField_.Text())) : std::string();
+    uint32_t at = 0;
+    if (dialogLayer_ && root_.Children().IndexOf(dialogLayer_, at)) root_.Children().RemoveAt(at);
+    dialogLayer_ = nullptr;
+    dialogField_ = nullptr;
+    dialogOpen_ = false;
+    auto done = std::move(dialogDone_);
+    dialogDone_ = nullptr;
+    if (done) done(button, typed);
+}
 
 void AppShell::alert(std::string title, std::string message) {
-    if (dialogOpen_) return;
-    dialogOpen_ = true;
-    auto d = makeDialog(title, message);
-    d.PrimaryButtonText(L"OK");
-    std::weak_ptr<AppShell> weak = weak_from_this();
-    d.ShowAsync().Completed([weak](auto&&, auto&&) {
-        if (auto self = weak.lock()) self->runOnUiThread([weak] {
-                if (auto s = weak.lock()) s->dialogOpen_ = false;
-            });
-    });
+    DialogSpec spec;
+    spec.title = std::move(title);
+    spec.message = std::move(message);
+    spec.buttons = {"OK"};
+    dialog(std::move(spec), nullptr);
 }
 
 void AppShell::confirm(std::string title, std::string message, std::string confirmTitle, bool destructive,
                        std::function<void()> onConfirm) {
-    if (dialogOpen_) return;
-    dialogOpen_ = true;
-    auto d = makeDialog(title, message);
-    d.PrimaryButtonText(hs(confirmTitle));
-    d.SecondaryButtonText(L"Cancel");
-    if (destructive) {
-        auto style = Style(xaml_typename<Button>());
-        style.Setters().Append(Setter(Control::ForegroundProperty(), brush(palette().red)));
-        d.PrimaryButtonStyle(style);
-    }
-    std::weak_ptr<AppShell> weak = weak_from_this();
-    d.ShowAsync().Completed([weak, onConfirm](auto const& op, auto&&) {
-        const bool confirmed = op.GetResults() == ContentDialogResult::Primary;
-        if (auto self = weak.lock()) self->runOnUiThread([weak, onConfirm, confirmed] {
-                if (auto s = weak.lock()) s->dialogOpen_ = false;
-                if (confirmed && onConfirm) onConfirm();
-            });
+    DialogSpec spec;
+    spec.title = std::move(title);
+    spec.message = std::move(message);
+    spec.buttons = {"Cancel", std::move(confirmTitle)};
+    spec.destructive = destructive;
+    dialog(std::move(spec), [onConfirm](int button, std::string) {
+        if (button == 1 && onConfirm) onConfirm();
     });
 }
 
@@ -583,10 +670,18 @@ std::string streamCopy(winrt::Windows::Storage::StorageFile const& file, const s
 /// The picker, then the app installed (ui/SeparateApps.h): an APK straight from where it is, read through the broker's
 /// handles (shell/PickedFile.h) with no copy unless Megler has to keep one; a bundle unpacked from where it is into its
 /// base and splits, then installed from them.
-winrt::fire_and_forget pickAndInstall(std::weak_ptr<AppShell> weakShell, std::shared_ptr<ImportProgress> progress,
-                                      std::function<void(std::string, std::string)> done) {
-    using namespace winrt::Windows::Storage;
-    using namespace winrt::Windows::Storage::Pickers;
+/// Where an APK (or a bundle of split APKs) comes from: a file the picker or the phone's file manager gave, or a file of
+/// Megler's own at `path` (an APK an Android app asked to install, handed over in its data or the shared folder).
+struct ApkSource {
+    winrt::Windows::Storage::StorageFile file{nullptr};
+    std::wstring path;
+    std::string name;
+};
+
+/// The APK into the library and installed as an app of the phone's own (ui/SeparateApps.h): read where it is when the
+/// broker gives its handle, else copied; a bundle unpacked into its base and the splits this phone can use.
+winrt::fire_and_forget installFrom(std::weak_ptr<AppShell> weakShell, std::shared_ptr<ImportProgress> progress, ApkSource source,
+                                   std::function<void(std::string, std::string)> done) {
     std::string id, error;
     // What a bundle is unpacked for, asked here on the UI thread: the density a Java app is told the screen has (160 for
     // each of Windows' view pixels: player/PlayerScreen), and the phone's languages.
@@ -599,77 +694,77 @@ winrt::fire_and_forget pickAndInstall(std::weak_ptr<AppShell> weakShell, std::sh
     const std::string languages = bundleLanguages();
     winrt::apartment_context ui;
     try {
-        FileOpenPicker picker;
-        picker.ViewMode(PickerViewMode::List);
-        picker.SuggestedStartLocation(PickerLocationId::Downloads);
-        picker.FileTypeFilter().Append(L".apk");
-        picker.FileTypeFilter().Append(L".apks");
-        picker.FileTypeFilter().Append(L".xapk");
-        StorageFile file = co_await picker.PickSingleFileAsync();
-        if (file) {
-            const std::string name = narrow(file.Name());
-            const std::string target = Library::idFor(name);
-            const bool bundle = Library::isBundle(name);
-            const std::wstring finalPath = Library::instance().directory() + L"\\" + widen(target);
-            progress->name = name;
-            co_await winrt::resume_background();
+        const std::string name = source.file ? narrow(source.file.Name()) : source.name;
+        const std::string target = Library::idFor(name);
+        const bool bundle = Library::isBundle(name);
+        const std::wstring finalPath = Library::instance().directory() + L"\\" + widen(target);
+        progress->name = name;
+        co_await winrt::resume_background();
+        std::shared_ptr<PickedFile> picked;
+        std::wstring bundlePath;
+        if (source.file) {
             // Read where it is, under a path of Megler's that is no file (the copy's, if one is made, is finalPath).
-            auto picked = std::make_shared<PickedFile>(file, finalPath + (bundle ? L".bundle.picked" : L".picked"));
+            picked = std::make_shared<PickedFile>(source.file, finalPath + (bundle ? L".bundle.picked" : L".picked"));
             progress->total = picked->size();
-            std::wstring bundlePath;
             if (picked->ok()) {
                 bundlePath = picked->path();
             } else if (bundle) {
                 bundlePath = finalPath + L".bundle";
                 shellLog::write(format("import: copying %s (%llu bytes) to unpack it", name.c_str(), (unsigned long long)picked->size()));
-                error = streamCopy(file, bundlePath, *progress);
+                error = streamCopy(source.file, bundlePath, *progress);
             } else {
                 shellLog::write(format("import: copying %s (%llu bytes) into the library as %s", name.c_str(),
                                        (unsigned long long)picked->size(), target.c_str()));
-                error = streamCopy(file, finalPath, *progress);
+                error = streamCopy(source.file, finalPath, *progress);
             }
-            if (error.empty() && bundle) {
-                progress->unpacking = true;
-                progress->copied = 0;
-                progress->total = 0;
-                const std::string apkPath = narrow(finalPath), splitsPath = narrow(Library::splitsDirFor(finalPath));
-                shellLog::write(format("import: unpacking %s for %d dpi, languages %s", name.c_str(), density, languages.c_str()));
-                std::string answer;
-                if (char* json = megler_bundle_unpack(narrow(bundlePath).c_str(), apkPath.c_str(), splitsPath.c_str(), density, languages.c_str(),
-                                                    &unpackProgress, progress.get())) {
-                    answer = json;
-                    megler_free(json);
-                }
-                if (!picked->ok()) files::remove(bundlePath);
-                winrt::Windows::Data::Json::JsonObject o{nullptr};
-                if (!winrt::Windows::Data::Json::JsonObject::TryParse(hs(answer), o) || !o || !o.HasKey(L"ok")) {
-                    error = "the bundle could not be unpacked";
-                } else if (!o.GetNamedBoolean(L"ok", false)) {
-                    error = narrow(o.GetNamedString(L"error", L"the bundle could not be unpacked"));
-                } else {
-                    const auto count = [&](const wchar_t* key) {
-                        return o.HasKey(key) && o.GetNamedValue(key).ValueType() == winrt::Windows::Data::Json::JsonValueType::Array
-                                   ? unsigned(o.GetNamedArray(key).Size())
-                                   : 0u;
-                    };
-                    shellLog::write(format("import: %s unpacked: its base and %u splits kept, %u left out, %u expansion files", name.c_str(),
-                                           count(L"splits"), count(L"leftOut"), count(L"expansions")));
-                }
-            } else if (error.empty() && !picked->ok()) {
-                // An app in one APK has no splits: a folder of them left by a bundle of the same name is another app's.
-                files::removeTree(Library::splitsDirFor(finalPath));
+        } else if (bundle) {
+            bundlePath = source.path;
+        } else {
+            shellLog::write(format("import: copying %s into the library as %s", narrow(source.path).c_str(), target.c_str()));
+            if (!files::copy(source.path, finalPath)) error = "the APK could not be copied into Megler's library";
+        }
+        const bool inPlace = picked && picked->ok();
+        if (error.empty() && bundle) {
+            progress->unpacking = true;
+            progress->copied = 0;
+            progress->total = 0;
+            const std::string apkPath = narrow(finalPath), splitsPath = narrow(Library::splitsDirFor(finalPath));
+            shellLog::write(format("import: unpacking %s for %d dpi, languages %s", name.c_str(), density, languages.c_str()));
+            std::string answer;
+            if (char* json = megler_bundle_unpack(narrow(bundlePath).c_str(), apkPath.c_str(), splitsPath.c_str(), density, languages.c_str(),
+                                                &unpackProgress, progress.get())) {
+                answer = json;
+                megler_free(json);
             }
-            co_await ui;
-            if (error.empty()) {
-                id = target;
-                auto shell = weakShell.lock();
-                if (!bundle && picked->ok()) {
-                    // Straight from where it is: the library has it once it is installed (or kept).
-                    if (shell) separateApps::installPicked(*shell, picked, id);
-                } else {
-                    Library::instance().added(id);
-                    if (shell) separateApps::install(*shell, id, true);
-                }
+            if (picked && !inPlace) files::remove(bundlePath);
+            winrt::Windows::Data::Json::JsonObject o{nullptr};
+            if (!winrt::Windows::Data::Json::JsonObject::TryParse(hs(answer), o) || !o || !o.HasKey(L"ok")) {
+                error = "the bundle could not be unpacked";
+            } else if (!o.GetNamedBoolean(L"ok", false)) {
+                error = narrow(o.GetNamedString(L"error", L"the bundle could not be unpacked"));
+            } else {
+                const auto count = [&](const wchar_t* key) {
+                    return o.HasKey(key) && o.GetNamedValue(key).ValueType() == winrt::Windows::Data::Json::JsonValueType::Array
+                               ? unsigned(o.GetNamedArray(key).Size())
+                               : 0u;
+                };
+                shellLog::write(format("import: %s unpacked: its base and %u splits kept, %u left out, %u expansion files", name.c_str(),
+                                       count(L"splits"), count(L"leftOut"), count(L"expansions")));
+            }
+        } else if (error.empty() && !inPlace) {
+            // An app in one APK has no splits: a folder of them left by a bundle of the same name is another app's.
+            files::removeTree(Library::splitsDirFor(finalPath));
+        }
+        co_await ui;
+        if (error.empty()) {
+            id = target;
+            auto shell = weakShell.lock();
+            if (!bundle && inPlace) {
+                // Straight from where it is: the library has it once it is installed (or kept).
+                if (shell) separateApps::installPicked(*shell, picked, id);
+            } else {
+                Library::instance().added(id);
+                if (shell) separateApps::install(*shell, id, true);
             }
         }
     } catch (const hresult_error& e) {
@@ -678,6 +773,33 @@ winrt::fire_and_forget pickAndInstall(std::weak_ptr<AppShell> weakShell, std::sh
     if (!error.empty()) shellLog::write("import: failed: " + error);
     *progress = ImportProgress();
     done(std::move(id), std::move(error));
+}
+
+winrt::fire_and_forget pickAndInstall(std::weak_ptr<AppShell> weakShell, std::shared_ptr<ImportProgress> progress,
+                                      std::function<void(std::string, std::string)> done) {
+    using namespace winrt::Windows::Storage;
+    using namespace winrt::Windows::Storage::Pickers;
+    StorageFile file{nullptr};
+    std::string error;
+    try {
+        FileOpenPicker picker;
+        picker.ViewMode(PickerViewMode::List);
+        picker.SuggestedStartLocation(PickerLocationId::Downloads);
+        picker.FileTypeFilter().Append(L".apk");
+        picker.FileTypeFilter().Append(L".apks");
+        picker.FileTypeFilter().Append(L".xapk");
+        file = co_await picker.PickSingleFileAsync();
+    } catch (const hresult_error& e) {
+        error = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());
+    }
+    if (!file) {
+        *progress = ImportProgress();
+        done(std::string(), std::move(error));
+        co_return;
+    }
+    ApkSource source;
+    source.file = file;
+    installFrom(weakShell, progress, std::move(source), std::move(done));
 }
 
 } // namespace
@@ -691,6 +813,90 @@ void AppShell::importApk(std::function<void(std::string, std::string)> done) {
     pickAndInstall(weak, import_, [weak, done](std::string id, std::string error) {
         if (weak.lock() && done) done(std::move(id), std::move(error));
     });
+}
+
+void AppShell::installApkFile(winrt::Windows::Storage::StorageFile const& file) {
+    const std::string name = narrow(file.Name());
+    shellLog::write("import: " + name + " opened in Megler");
+    if (import_->active) {
+        alert("Another APK Is on Its Way", "Megler is installing an APK already. Open " + name + " again when it is done.");
+        return;
+    }
+    std::weak_ptr<AppShell> weak = weak_from_this();
+    confirm("Install " + name + "?",
+            "Megler reads it, tells you whether it can run here, and installs it as an app of the phone's own; the Library shows "
+            "how it goes.",
+            "Install", false, [this, weak, file] {
+                if (!weak.lock() || import_->active) return;
+                *import_ = ImportProgress();
+                import_->active = true;
+                ApkSource source;
+                source.file = file;
+                if (selectedTab_ != 0) selectTab(0);
+                installFrom(weak, import_, std::move(source), [weak](std::string, std::string error) {
+                    if (auto self = weak.lock(); self && !error.empty()) self->alert("Couldn't Install This APK", error);
+                });
+            });
+}
+
+void AppShell::installApkPath(const std::wstring& path, const std::string& name, const std::string& from) {
+    shellLog::write("import: " + from + " asks to install " + name + " (" + narrow(path) + ")");
+    if (import_->active) {
+        alert("Another APK Is on Its Way", "Megler is installing an APK already. Ask " + from + " again when it is done.");
+        return;
+    }
+    std::weak_ptr<AppShell> weak = weak_from_this();
+    confirm("Install " + name + "?", from + " wants to install this app. Megler reads it, tells you whether it can run here, and installs it "
+                                            "as an app of the phone's own.",
+            "Install", false, [this, weak, path, name] {
+                if (!weak.lock() || import_->active) return;
+                *import_ = ImportProgress();
+                import_->active = true;
+                ApkSource source;
+                source.path = path;
+                source.name = name;
+                installFrom(weak, import_, std::move(source), [weak](std::string, std::string error) {
+                    if (auto self = weak.lock(); self && !error.empty()) self->alert("Couldn't Install This APK", error);
+                });
+            });
+}
+
+void AppShell::openLink(winrt::Windows::Foundation::Uri const& uri) {
+    std::wstring what = std::wstring(uri.Path());
+    if (what.empty()) what = std::wstring(uri.Host());
+    while (!what.empty() && what.front() == L'/') what.erase(what.begin());
+    winrt::Windows::Foundation::WwwFormUrlDecoder decoder(uri.Query());
+    auto value = [&decoder](const wchar_t* key) {
+        try {
+            return narrow(std::wstring(decoder.GetFirstValueByName(key)));
+        } catch (const hresult_error&) {
+            return std::string();
+        }
+    };
+    shellLog::write("app: the link " + narrow(std::wstring(uri.RawUri())));
+    if (what == L"install") {
+        const std::string name = value(L"name");
+        if (name.empty() || name.find_first_of("\\/:") != std::string::npos || name.find("..") != std::string::npos) return;
+        installApkPath(appPackage::sharedFolder() + L"\\incoming\\" + widen(name), name, "An app of the phone's own");
+    } else if (what == L"run") {
+        // An app's own package is in front now, which is all a launcher wants of it.
+        if (appPackage::isSingleApp()) return;
+        const std::string package = value(L"package");
+        std::optional<ApkEntry> found;
+        for (const ApkEntry& e : Library::instance().entries())
+            if (e.report.package == package && e.report.ready()) found = e;
+        if (!found) {
+            alert("Couldn't Start the App", package + " is not in Megler's library.");
+            return;
+        }
+        if (session::snapshot().state != session::State::idle || session::spent()) {
+            alert("Megler Runs One App at a Time", found->title() + " can start once Megler is closed and opened again, or as an app of the phone's "
+                                                                   "own: its page in the Library, Install.");
+            return;
+        }
+        if (selectedTab_ != 0) selectTab(0);
+        push(makePlayerScreen(*this, found->id));
+    }
 }
 
 // MARK: Lifecycle

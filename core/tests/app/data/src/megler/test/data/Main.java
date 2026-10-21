@@ -339,12 +339,27 @@ public class Main extends Activity {
         wifi();
         mediaMetadata();
         playbackState();
+        themeAccent();
+        phoneApps();
+        installs();
+        bitmapBytes();
+        adaptiveIcon();
+        launcherLoading();
+        uriBuilder();
+        manyInterfaces();
+        step("apk-path", () -> {
+            // The APK as Android names it, whatever the file is called where the shell keeps it.
+            String source = getApplicationInfo().sourceDir, code = getPackageCodePath();
+            detail = "sourceDir=" + source + " codePath=" + code + " there=" + new java.io.File(source).isFile();
+            return source.equals("/data/app/" + getPackageName() + "-1/base.apk") && source.equals(code) && new java.io.File(source).isFile();
+        });
         sound();
         mediaCodec();
         network();
         renderNodes();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
+        mediaSession();
         new android.os.Handler().postDelayed(this::popup, 700);
     }
 
@@ -466,8 +481,60 @@ public class Main extends Activity {
                 boolean placed = wrap.getParent() == decor && content.getParent() == wrap && text.isShown() && text.getWidth() > 0 && dialog.isShowing();
                 Log.i("DataTest", "decor-reparent " + (placed ? "ok" : "FAILED") + " text=" + text.getWidth() + "x" + text.getHeight());
                 dialog.dismiss();
+                tallDialog();
             }, 400);
         }, 300);
+    }
+
+    /**
+     * An alert whose message is taller than the screen, as Telegram X's question whether to sync the contacts: the dialog
+     * fits on the screen, the message scrolls, and the button is there to be pressed, wholly on the screen.
+     */
+    private void tallDialog() {
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < 120; i++) text.append("A line of a message far longer than the screen is tall, number ").append(i).append('.').append('\n');
+        final android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this).setTitle("Sync the contacts?").setMessage(text)
+                .setPositiveButton("OK", null).setNegativeButton("Not now", null).create();
+        dialog.show();
+        new android.os.Handler().postDelayed(() -> {
+            android.widget.Button ok = dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE);
+            int[] at = new int[2];
+            ok.getLocationOnScreen(at);
+            int screen = getResources().getDisplayMetrics().heightPixels;
+            android.view.View decor = dialog.getWindow().getDecorView();
+            boolean fits = ok.isShown() && ok.getHeight() > 0 && at[1] >= 0 && at[1] + ok.getHeight() <= screen && decor.getHeight() <= screen;
+            Log.i("DataTest", "dialog-tall " + (fits ? "ok" : "FAILED") + " button=" + at[1] + "+" + ok.getHeight() + " screen=" + screen + " dialog=" + decor.getHeight());
+            dialog.dismiss();
+        }, 500);
+    }
+
+    private android.media.session.MediaSession session;
+
+    /**
+     * A media session that plays and may be paused, with a title, an artist, an album and a picture of 512 x 256: the test
+     * hears its state and what it plays (megler_media_session_host), then sends the phone's next key, which the session does
+     * not allow, and its pause key, which must reach onPause on the main thread.
+     */
+    private void mediaSession() {
+        session = new android.media.session.MediaSession(this, "DataTest");
+        session.setCallback(new android.media.session.MediaSession.Callback() {
+            @Override public void onPause() {
+                Log.i("DataTest", "media-session paused" + (android.os.Looper.myLooper() == android.os.Looper.getMainLooper() ? "" : " OFF THE MAIN THREAD"));
+            }
+            @Override public void onSkipToNext() { Log.i("DataTest", "media-session next FAILED: the state does not allow it"); }
+        });
+        session.setPlaybackState(new android.media.session.PlaybackState.Builder()
+                .setState(android.media.session.PlaybackState.STATE_PLAYING, 1000, 1f)
+                .setActions(android.media.session.PlaybackState.ACTION_PAUSE | android.media.session.PlaybackState.ACTION_PLAY).build());
+        android.graphics.Bitmap art = android.graphics.Bitmap.createBitmap(512, 256, android.graphics.Bitmap.Config.ARGB_8888);
+        art.eraseColor(0xFF336699);
+        session.setMetadata(new android.media.MediaMetadata.Builder()
+                .putString(android.media.MediaMetadata.METADATA_KEY_TITLE, "Song")
+                .putString(android.media.MediaMetadata.METADATA_KEY_ARTIST, "Band")
+                .putString(android.media.MediaMetadata.METADATA_KEY_ALBUM, "Record")
+                .putBitmap(android.media.MediaMetadata.METADATA_KEY_ART, art).build());
+        session.setActive(true);
+        Log.i("DataTest", "media-session waiting");
     }
 
     /**
@@ -1956,6 +2023,198 @@ public class Main extends Activity {
             codec.release();
             detail = out + " frames=" + s.samples.size();
             return out.ended && out.blocks == s.samples.size() && out.pcm == s.samples.size() * 1152L * 2 * 2;
+        });
+    }
+
+    /**
+     * The other apps the phone has, as a launcher sees them (the test's apps folder has one, com.example.other, "Other",
+     * launched by com.example.other.Main): the launcher's intent lists it with its label and icon, it has a launch intent and
+     * application info, and starting it asks the shell (megler_system_host.launch_app). And an activity with no icon has
+     * the platform's default one, with a size, where it had null (Nova Launcher read the size of it).
+     */
+    private void phoneApps() {
+        step("phone-apps", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.Intent launcher = new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER);
+            boolean listed = false;
+            for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(launcher, 0))
+                if ("com.example.other".equals(r.activityInfo.packageName))
+                    listed = "Other".equals(String.valueOf(r.loadLabel(pm))) && r.loadIcon(pm) != null && "com.example.other.Main".equals(r.activityInfo.name);
+            android.content.Intent open = pm.getLaunchIntentForPackage("com.example.other");
+            boolean info;
+            try { info = pm.getApplicationInfo("com.example.other", 0).enabled; } catch (android.content.pm.PackageManager.NameNotFoundException e) { info = false; }
+            boolean launcherApps = false;
+            android.content.pm.LauncherApps la = (android.content.pm.LauncherApps) getSystemService(LAUNCHER_APPS_SERVICE);
+            for (Object o : la.getActivityList(null, android.os.Process.myUserHandle()))
+                if ("com.example.other".equals(((android.content.pm.LauncherActivityInfo) o).getComponentName().getPackageName())) launcherApps = true;
+            // An activity with no icon of its own has one all the same, as on Android: the platform's default one at the last.
+            android.content.pm.ActivityInfo iconless = new android.content.pm.ActivityInfo();
+            iconless.packageName = getPackageName();
+            android.graphics.drawable.Drawable fallback = iconless.loadIcon(pm);
+            boolean defaultIcon = fallback != null && fallback.getIntrinsicWidth() > 0;
+            if (open != null) startActivity(open);
+            detail = "listed=" + listed + " open=" + open + " info=" + info + " launcherApps=" + launcherApps + " defaultIcon=" + fallback
+                    + (fallback != null ? " " + fallback.getIntrinsicWidth() : "");
+            return listed && open != null && "com.example.other.Main".equals(open.getComponent().getClassName()) && info && launcherApps && defaultIcon;
+        });
+    }
+
+    /**
+     * A bitmap's bytes in its config's form, as Android gives them: ALPHA_8 one a pixel (Nova Launcher copies an icon drawn
+     * into one into an array of width x height bytes), RGB_565 two in the machine's order, ARGB_8888 four, premultiplied.
+     */
+    private void bitmapBytes() {
+        step("bitmap-bytes", () -> {
+            android.graphics.Bitmap alpha = android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ALPHA_8);
+            alpha.eraseColor(0x80000000);
+            java.nio.ByteBuffer a = java.nio.ByteBuffer.allocate(4);
+            alpha.copyPixelsToBuffer(a);
+            android.graphics.Bitmap rgb = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.RGB_565);
+            rgb.eraseColor(0xFFFF0000);
+            java.nio.ByteBuffer r = java.nio.ByteBuffer.allocate(2);
+            rgb.copyPixelsToBuffer(r);
+            android.graphics.Bitmap full = android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888);
+            full.eraseColor(0x80FF0000);
+            java.nio.ByteBuffer f = java.nio.ByteBuffer.allocateDirect(16);
+            full.copyPixelsToBuffer(f);
+            detail = "alpha " + alpha.getByteCount() + "/" + alpha.getRowBytes() + " " + (a.get(0) & 255) + " at " + a.position()
+                    + "; 565 " + rgb.getByteCount() + " " + (r.get(0) & 255) + "," + (r.get(1) & 255) + "; 8888 " + full.getByteCount() + " " + (f.get(0) & 255)
+                    + "," + (f.get(3) & 255) + " at " + f.position();
+            return alpha.getByteCount() == 4 && alpha.getRowBytes() == 2 && (a.get(0) & 255) == 0x80 && (a.get(3) & 255) == 0x80 && a.position() == 4
+                    && rgb.getByteCount() == 2 && (r.get(0) & 255) == 0x00 && (r.get(1) & 255) == 0xF8
+                    && full.getByteCount() == 16 && Math.abs((f.get(0) & 255) - 0x80) <= 1 && (f.get(3) & 255) == 0x80 && f.position() == 16;
+        });
+    }
+
+    /**
+     * An object of a class whose interface has 600 interfaces of its own is an instance of each of them, the last ones as
+     * well, as Avito's Dagger component is of the 506th of its 564 (Avito ended at its start on a dependency it could not
+     * find there).
+     */
+    private void manyInterfaces() {
+        step("many-interfaces", () -> {
+            Object o = new ManyInterfaces.Impl();
+            boolean first = o instanceof ManyInterfaces.I0, at505 = ManyInterfaces.I505.class.isInstance(o), last = ManyInterfaces.I599.class.isInstance(o);
+            boolean cast = ManyInterfaces.I300.class.isAssignableFrom(ManyInterfaces.Impl.class);
+            detail = "I0=" + first + " I505=" + at505 + " I599=" + last + " I300 assignable=" + cast;
+            return first && at505 && last && cast;
+        });
+    }
+
+    /**
+     * A URI built with a scheme and a path that is not absolute, as MAX builds its routes: Android makes the path absolute,
+     * and the URI is hierarchical, with that path.
+     */
+    private void uriBuilder() {
+        step("uri-builder", () -> {
+            android.net.Uri u = new android.net.Uri.Builder().scheme("max").encodedAuthority(null).encodedPath(":chat-list").build();
+            android.net.Uri bare = new android.net.Uri.Builder().encodedPath("a/b").build();
+            detail = u + " path=" + u.getPath() + " hierarchical=" + u.isHierarchical() + "; " + bare + " path=" + bare.getPath();
+            return "max:/:chat-list".equals(u.toString()) && "/:chat-list".equals(u.getPath()) && u.isHierarchical() && "a/b".equals(bare.getPath());
+        });
+    }
+
+    /**
+     * What Launcher3 leans on while it loads its apps, which Nova Launcher stopped on. The main thread's idle handlers run
+     * when nothing is due: one that answers false runs once, one that answers true again at each idle spell (Launcher3
+     * waits that way before each step); the harness waits for "idle-handler-done". A widget's info names its user
+     * (getProfile, which Launcher3's ComponentKey refuses as null). And the launcher may host shortcuts, as the phone's
+     * home screen does.
+     */
+    private void launcherLoading() {
+        step("idle-handler", () -> {
+            final int[] once = { 0 }, kept = { 0 };
+            final android.os.MessageQueue q = android.os.Looper.myQueue();
+            final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+            q.addIdleHandler(() -> { once[0]++; return false; });
+            // Idle handlers run once for each message the queue gives out: this one posts one each time, so that the main
+            // thread is idle again after it, and says what it saw at its third time.
+            q.addIdleHandler(() -> {
+                if (++kept[0] < 3) { h.post(() -> {}); return true; }
+                Log.i("DataTest", "idle-handler-done " + (once[0] == 1 ? "ok" : "FAILED") + " once=" + once[0] + " kept=" + kept[0]);
+                return false;
+            });
+            android.appwidget.AppWidgetProviderInfo widget = new android.appwidget.AppWidgetProviderInfo();
+            android.content.pm.LauncherApps la = (android.content.pm.LauncherApps) getSystemService(LAUNCHER_APPS_SERVICE);
+            detail = "profile=" + widget.getProfile() + " shortcutHost=" + la.hasShortcutHostPermission();
+            return android.os.Process.myUserHandle().equals(widget.getProfile()) && la.hasShortcutHostPermission();
+        });
+    }
+
+    /**
+     * An AdaptiveIconDrawable as a launcher makes one to learn the icon's shape (Launcher3's GraphicsUtils.getShapePath):
+     * its mask is there, in its bounds; its layers are half as large again as the icon, centred; drawn, its middle is the
+     * background's colour.
+     */
+    private void adaptiveIcon() {
+        step("adaptive-icon", () -> {
+            android.graphics.drawable.AdaptiveIconDrawable d = new android.graphics.drawable.AdaptiveIconDrawable(
+                    new android.graphics.drawable.ColorDrawable(0xFF0000FF), new android.graphics.drawable.ColorDrawable(0));
+            d.setBounds(0, 0, 100, 100);
+            android.graphics.Path mask = new android.graphics.Path(d.getIconMask());
+            android.graphics.RectF box = new android.graphics.RectF();
+            mask.computeBounds(box, true);
+            android.graphics.Rect layer = d.getBackground().getBounds();
+            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888);
+            d.draw(new android.graphics.Canvas(b));
+            int middle = b.getPixel(50, 50);
+            detail = "mask " + box + " layer " + layer + " middle " + Integer.toHexString(middle) + " inset " + android.graphics.drawable.AdaptiveIconDrawable.getExtraInsetFraction();
+            return !mask.isEmpty() && box.width() > 90 && box.width() <= 101 && layer.left == -25 && layer.right == 125 && middle == 0xFF0000FF
+                    && android.graphics.drawable.AdaptiveIconDrawable.getExtraInsetFraction() == 0.25f;
+        });
+    }
+
+    /**
+     * Installing: an APK opened with ACTION_VIEW goes to Megler's installer (megler_system_host.install_apk), and so do a
+     * PackageInstaller session's files when it is committed, which then sends its status, STATUS_SUCCESS, to the
+     * PendingIntent it was given.
+     */
+    private void installs() {
+        step("install-intent", () -> {
+            java.io.File apk = new java.io.File(getCacheDir(), "Viewed.apk");
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(apk)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
+            startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW)
+                    .setDataAndType(android.net.Uri.fromFile(apk), "application/vnd.android.package-archive"));
+            return getPackageManager().canRequestPackageInstalls();
+        });
+        step("install-session", () -> {
+            android.content.pm.PackageInstaller pi = getPackageManager().getPackageInstaller();
+            android.content.pm.PackageInstaller.SessionParams params =
+                    new android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            params.setAppPackageName("com.example.store");
+            int id = pi.createSession(params);
+            android.content.pm.PackageInstaller.Session s = pi.openSession(id);
+            try (java.io.OutputStream o = s.openWrite("base", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
+            String[] names = s.getNames();
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context c, android.content.Intent i) {
+                    Log.i("DataTest", "install-status " + i.getIntExtra("android.content.pm.extra.STATUS", -99) + " session=" + (i.getIntExtra("android.content.pm.extra.SESSION_ID", -1) == id)
+                            + " package=" + i.getStringExtra("android.content.pm.extra.PACKAGE_NAME"));
+                }
+            }, new android.content.IntentFilter("megler.test.INSTALL_STATUS"));
+            android.app.PendingIntent status = android.app.PendingIntent.getBroadcast(this, 0, new android.content.Intent("megler.test.INSTALL_STATUS"),
+                    0);
+            s.commit(status.getIntentSender());
+            detail = "id=" + id + " names=" + java.util.Arrays.toString(names);
+            return id > 0 && names.length == 1 && "base.apk".equals(names[0]);
+        });
+    }
+
+    /**
+     * The phone's look as an app sees it (the test tells megler_set_theme a cobalt accent, #0063B1, and a light theme): the
+     * platform's DeviceDefault theme gives it as colorAccent, Material You's system_accent1_600 (number 0x0106003f, tone 40
+     * of the first accent palette, in HCT) is made of it, and the configuration is not night.
+     */
+    private void themeAccent() {
+        step("theme-accent", () -> {
+            android.content.res.TypedArray a = new android.view.ContextThemeWrapper(this, android.R.style.Theme_DeviceDefault_Light)
+                    .obtainStyledAttributes(new int[] { android.R.attr.colorAccent });
+            int accent = a.getColor(0, 0);
+            a.recycle();
+            int material = getResources().getColor(0x0106003f, null);
+            int mode = getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+            detail = String.format("accent=%08x material=%08x night=%d", accent, material, mode);
+            return accent == 0xFF0063B1 && Math.abs((material & 0xFF) - 0xAD) <= 1 && (material & 0xFFFFFF00) == 0xFF005F00 && mode == android.content.res.Configuration.UI_MODE_NIGHT_NO;
         });
     }
 

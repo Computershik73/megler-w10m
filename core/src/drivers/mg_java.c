@@ -57,6 +57,7 @@ static struct {
     char activity[200], application[200], package[128];
     char guest_apk[400];               /* the APK's path as the app sees it */
     bool apache_http;                  /* the app gets Android's legacy Apache HTTP client (org.apache.http.legacy): see apache_http_wanted */
+    bool platform_app;                 /* an app of the platform's own (sharedUserId android.uid.system): see add_platform_framework */
     /*
      * The app's splits (megler_run_config.split_apks, as many as there is room for): their names from their manifests
      * ("config.armeabi_v7a"), their paths as the app sees them (Native.splitPaths), and whether they have code.
@@ -112,6 +113,9 @@ static const char *text_of(mg_jobj *s)
 /* ----------------------------------------------------------- megler.Native */
 
 #define N(name) static void name(mg_jcall *c)
+
+/* The phone's look (megler_set_theme): its accent colour, 0 for none, and whether it is dark. */
+static volatile i32 g_theme_accent, g_theme_night;
 
 /* log(int priority, String tag, String msg): Android's priorities, 2 verbose to 7 assert, as logcat letters them. */
 N(Native_log)
@@ -568,9 +572,107 @@ N(Native_pollText)
     c->ret.l = a;
 }
 
-/* What the shell would have to do and cannot be asked yet: said once, and the app goes on. */
-N(Native_share) { mg_info("java: the app shares \"%s\" (nothing here to share it with)", text_of(c->args[0].l)); }
-N(Native_openUrl) { mg_info("java: the app opens %s (nothing here to open it)", text_of(c->args[0].l)); }
+/* mediaSessionState(state, actions): the app's active media session's PlaybackState (megler.h, megler_media_session_host). */
+N(Native_mediaSessionState)
+{
+    const megler_media_session_host *m = &J.config->media_session;
+    if (m->state) m->state(m->user, (int)c->args[0].i, (long long)c->args[1].j);
+}
+
+/* mediaSessionMetadata(title, artist, album, art, artWidth, artHeight): what that session says it plays; art is ARGB, or null. */
+N(Native_mediaSessionMetadata)
+{
+    const megler_media_session_host *m = &J.config->media_session;
+    mg_jobj *art = c->args[3].l;
+    i32 w = c->args[4].i, h = c->args[5].i;
+    const uint32_t *px = NULL;
+    if (!m->metadata) return;
+    if (art && art->kind == MG_J_PRIM_ARRAY && art->u.arr.etype == 'I' && w > 0 && h > 0 && w <= 256 && h <= 256 &&
+        art->u.arr.len >= (u32)(w * h))
+        px = (const uint32_t *)art->u.arr.data;
+    m->metadata(m->user, c->args[0].l ? text_of(c->args[0].l) : NULL, c->args[1].l ? text_of(c->args[1].l) : NULL,
+                c->args[2].l ? text_of(c->args[2].l) : NULL, px, px ? w : 0, px ? h : 0);
+}
+
+/* nightMode(), accentColor(): the phone's look as the shell told it (megler_set_theme). paletteTone(seed, palette, tone). */
+N(Native_nightMode) { c->ret.z = g_theme_night != 0; }
+N(Native_accentColor) { c->ret.i = g_theme_accent; }
+N(Native_paletteTone) { c->ret.i = (i32)megler_palette_tone((uint32_t)c->args[0].i, (int)c->args[1].i, (int)c->args[2].i); }
+
+/* share(text), openUrl(uri): to the shell (megler_system_host); said in the log either way. */
+N(Native_share)
+{
+    const megler_system_host *s = &J.config->system;
+    mg_info("java: the app shares \"%s\"%s", text_of(c->args[0].l), s->share_text ? "" : " (nothing here to share it with)");
+    if (s->share_text) s->share_text(s->user, text_of(c->args[0].l), NULL);
+}
+N(Native_openUrl)
+{
+    const megler_system_host *s = &J.config->system;
+    mg_info("java: the app opens %s%s", text_of(c->args[0].l), s->open_url ? "" : " (nothing here to open it)");
+    if (s->open_url) s->open_url(s->user, text_of(c->args[0].l));
+}
+
+/* installApk(path, name): an APK (or a folder of one app's APKs) the app wants installed, by its path in the app's files; true when the shell took it. */
+N(Native_installApk)
+{
+    const megler_system_host *s = &J.config->system;
+    const char *guest = text_of(c->args[0].l), *name = text_of(c->args[1].l);
+    char *host = mg_fs_host_path(guest);
+    c->ret.z = false;
+    mg_info("java: the app asks to install %s (%s)%s", name, host ? host : guest, s->install_apk ? "" : ": nothing here to install it with");
+    if (host && s->install_apk) c->ret.z = s->install_apk(s->user, host, name);
+    free(host);
+}
+
+/* launchApp(package, activity): another app the phone has, started; true when the shell started it. */
+N(Native_launchApp)
+{
+    const megler_system_host *s = &J.config->system;
+    const char *package = text_of(c->args[0].l);
+    const char *activity = c->args[1].l ? text_of(c->args[1].l) : NULL;
+    mg_info("java: the app starts %s%s%s%s", package, activity ? "/" : "", activity ? activity : "", s->launch_app ? "" : " (nothing here to start it)");
+    c->ret.z = s->launch_app ? s->launch_app(s->user, package, activity && activity[0] ? activity : NULL) : false;
+}
+
+/* appsList(): apps.txt of the apps the phone has (megler_run_config.apps_dir), or null when there is none. */
+N(Native_appsList)
+{
+    char *path, *text;
+    size_t size = 0;
+    c->ret.l = NULL;
+    if (!J.config->apps_dir) return;
+    path = mg_sprintf("%s/apps.txt", J.config->apps_dir);
+    text = (char *)mg_file_read_all(path, &size);
+    free(path);
+    if (!text) return;
+    text = (char *)realloc(text, size + 1);
+    if (!text) return;
+    text[size] = 0;
+    c->ret.l = mg_dvm_new_string(text);
+    free(text);
+}
+
+/* appIcon(package): that app's icon, a PNG, from the same folder; null when there is none. */
+N(Native_appIcon)
+{
+    const char *package = text_of(c->args[0].l);
+    char *path;
+    u8 *png;
+    size_t size = 0;
+    const char *p;
+    c->ret.l = NULL;
+    if (!J.config->apps_dir || !package[0]) return;
+    /* An Android package has letters, digits, '.' and '_' only: nothing that leaves the folder. */
+    for (p = package; *p; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '.' || *p == '_')) return;
+    path = mg_sprintf("%s/%s.png", J.config->apps_dir, package);
+    png = mg_file_read_all(path, &size);
+    free(path);
+    if (!png) return;
+    c->ret.l = bytes_of(png, size);
+    free(png);
+}
 N(Native_setOrientation) { mg_note_once("java: the app asked for orientation %d; the surface stays as the shell made it", (int)c->args[0].i); }
 
 /*
@@ -615,12 +717,20 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "pollText", NULL, Native_pollText },
     { "megler/Native", "showKeyboard", NULL, Native_showKeyboard },
     { "megler/Native", "systemBars", NULL, Native_systemBars },
+    { "megler/Native", "mediaSessionState", NULL, Native_mediaSessionState },
+    { "megler/Native", "installApk", NULL, Native_installApk },
+    { "megler/Native", "launchApp", NULL, Native_launchApp },
+    { "megler/Native", "appsList", NULL, Native_appsList },
+    { "megler/Native", "appIcon", NULL, Native_appIcon },
+    { "megler/Native", "mediaSessionMetadata", NULL, Native_mediaSessionMetadata },
     { "megler/Native", "setClipboard", NULL, Native_setClipboard },
     { "megler/Native", "getClipboard", NULL, Native_getClipboard },
     { "megler/Native", "share", NULL, Native_share },
     { "megler/Native", "setOrientation", NULL, Native_setOrientation },
     { "megler/Native", "insets", NULL, Native_insets },
-    { "megler/Native", "nightMode", NULL, Native_nothing },
+    { "megler/Native", "nightMode", NULL, Native_nightMode },
+    { "megler/Native", "accentColor", NULL, Native_accentColor },
+    { "megler/Native", "paletteTone", NULL, Native_paletteTone },
     { "megler/Native", "dnsServers", NULL, Native_dnsServers },
     { "megler/Native", "vibrate", NULL, Native_nothing },
     { "megler/Native", "openUrl", NULL, Native_openUrl },
@@ -985,7 +1095,7 @@ static void open_apk(int index, const char *host_path)
 }
 
 /*
- * Gives the APK its Android path, and tells the runtime that its classes are on the class path under that name. And the
+ * Gives the APK its Android path, /data/app/<package>-1/base.apk, and tells the runtime that its classes are on the class path under that name. And the
  * splits theirs, beside it, under the names Android gives installed splits (split_config.armeabi_v7a.apk), each a mount of
  * its own file wherever the shell keeps it; those with code are on the class path under their names too.
  */
@@ -999,7 +1109,9 @@ static void mount_apk(void)
     mg_fs_mount(guest_dir, dir);
     if (J.config->gms_apk_path && strcmp(J.package, "com.google.android.gms"))
         mg_fs_mount("/system/priv-app/GmsCore/GmsCore.apk", J.config->gms_apk_path);
-    snprintf(J.guest_apk, sizeof(J.guest_apk), "%s/%s", guest_dir, name);
+    /* Each app retains Android's stable base.apk path, regardless of the picked filename. */
+    snprintf(J.guest_apk, sizeof(J.guest_apk), "%s/base.apk", guest_dir);
+    mg_fs_mount(J.guest_apk, path);
     mg_dvm_dex_source_added(J.guest_apk);
     for (i = 0; i < J.nsplits; i++) {
         J.guest_splits[i] = mg_sprintf("%s/split_%s.apk", guest_dir, J.split_names[i]);
@@ -1153,6 +1265,28 @@ static void add_shared_libraries(void)
     free(path);
 }
 
+/*
+ * An app of the platform's own -- its manifest's sharedUserId is android.uid.system, as Android's Settings' is -- uses the
+ * platform's hidden classes as freely as its public ones: Settings 9 names 225 classes of Android 9's framework that
+ * Megler's does not have (android.provider.SearchIndexablesProvider, android.util.KeyValueListParser,
+ * com.android.internal.*), and ended at its start on the first of them. Such an app has Android 9's own framework on its
+ * class path after Megler's (framework/platform-framework*.dex, tools/dvm-android-root.sh): a class Megler's framework has
+ * is Megler's, and one it lacks is the platform's own. Any other app has Megler's alone, as before.
+ */
+static void add_platform_framework(void)
+{
+    static const char *const parts[] = { "platform-framework.dex", "platform-framework-classes2.dex", "platform-framework-classes3.dex" };
+    int i, added = 0;
+    if (!J.platform_app) return;
+    for (i = 0; i < (int)MG_COUNT(parts); i++) {
+        char *path = mg_sprintf("%s/framework/%s", J.root, parts[i]);
+        added += mg_dvm_add_dex_file(path) ? 1 : 0;
+        free(path);
+    }
+    if (added) mg_info("java: an app of the platform's own: Android 9's framework is on its class path after Megler's (%d files)", added);
+    else mg_warn("java: an app of the platform's own, and Android 9's framework is not in the Android root (framework/platform-framework.dex)");
+}
+
 static void main_thread(void *arg)
 {
     char *framework = mg_sprintf("%s/framework/megler-framework.dex", J.root), *res = mg_sprintf("%s/framework/framework-res.apk", J.root);
@@ -1165,7 +1299,7 @@ static void main_thread(void *arg)
     why[0] = 0;
     if (!mg_dvm_start_android(J.root)) snprintf(why, sizeof(why), "the Java runtime did not start on the Android root %s", J.root);
     else if (!mg_dvm_add_dex_file(framework)) snprintf(why, sizeof(why), "the Java framework is not in the Android root (%s)", framework);
-    else if (mg_dvm_app_follows(), add_shared_libraries(), mg_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
+    else if (add_platform_framework(), mg_dvm_app_follows(), add_shared_libraries(), mg_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
     if (!why[0]) {
         mg_jvalue sdk;
         if (mg_flag("trace-monitors")) mg_dvm_monitor_trace_start();
@@ -1288,6 +1422,7 @@ static bool java_start(const megler_run_config *config, const mg_apk_info *info)
     mg_strlcpy(J.application, info->application, sizeof(J.application));
     mg_strlcpy(J.package, info->package, sizeof(J.package));
     J.apache_http = apache_http_wanted(info);
+    J.platform_app = !strcmp(info->shared_user_id, "android.uid.system");
     /* The splits, in megler_run's order, which is info->splits' (run/mg_run.c): as many as the framework reads. */
     J.nsplits = config->split_count < info->nsplits ? config->split_count : info->nsplits;
     if (J.nsplits > MAX_SPLITS) {
@@ -1416,6 +1551,12 @@ void mg_java_keyboard_height(int pixels)
     if (!java_runs()) return;
     mg_atomic_xchg(&J.keyboard_height, pixels > 0 ? pixels : 0);
     push_event(EV_INSETS, 0, 0, 0);
+}
+
+void mg_java_set_theme(uint32_t accent_argb, bool night)
+{
+    mg_atomic_xchg(&g_theme_accent, (i32)accent_argb);
+    mg_atomic_xchg(&g_theme_night, night ? 1 : 0);
 }
 
 void mg_java_set_insets(int left, int top, int right, int bottom)

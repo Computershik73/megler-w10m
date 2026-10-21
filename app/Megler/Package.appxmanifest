@@ -19,8 +19,9 @@
     xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
     xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
     xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+    xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
     xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-    IgnorableNamespaces="uap mp rescap">
+    IgnorableNamespaces="uap uap3 mp rescap">
 
   <Identity
       Name="Megler"
@@ -69,6 +70,33 @@
           <uap:Rotation Preference="portrait" />
         </uap:InitialRotationPreference>
       </uap:VisualElements>
+      <Extensions>
+        <!-- APKs and bundles of split APKs open in Megler, from the phone's
+             file manager or any app that opens a file (App.cpp,
+             OnFileActivated): it asks, then installs one as the picker's.
+             An app's own package (shell/AppPackage.cpp) does not have this:
+             core/src/appx/mg_appx_manifest.c takes it out. -->
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="apk">
+            <uap:DisplayName>Android app</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType ContentType="application/vnd.android.package-archive">.apk</uap:FileType>
+              <uap:FileType>.apks</uap:FileType>
+              <uap:FileType>.xapk</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <!-- megler: links, by which a package of Megler's asks another one
+             (Launcher.LaunchUriAsync with that package's family name as its
+             target): an app's own package hands Megler an APK an Android app
+             wants installed, a launcher starts another app (App.cpp,
+             OnActivated). Every app's own package has it too. -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="megler">
+            <uap:DisplayName>Megler</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+      </Extensions>
     </Application>
   </Applications>
 
@@ -92,6 +120,11 @@
     <uap:Capability Name="musicLibrary" />
     <uap:Capability Name="documentsLibrary" />
     <uap:Capability Name="removableStorage" />
+    <!-- Sound in the background: an Android app's music or video goes on
+         while Megler is minimised, as an app's foreground service keeps it
+         going on Android (player/MediaControls.cpp: Windows wants the system
+         media controls taken up as well). -->
+    <uap3:Capability Name="backgroundMediaPlayback" />
     <!-- Making an Android library's code executable. -->
     <rescap:Capability Name="codeGeneration" />
     <!-- The phone's cameras for an Android app's android.hardware.Camera

@@ -51,7 +51,7 @@ public class AlertDialog extends Dialog implements DialogInterface {
         mBuilt = true;
         Context c = getContext();
         int textPrimary = themeColor(android.R.attr.textColorPrimary, 0xDE000000), textSecondary = themeColor(android.R.attr.textColorSecondary, 0x8A000000), accent = themeColor(android.R.attr.colorAccent, 0xFF6750A4);
-        LinearLayout root = new LinearLayout(c);
+        Body root = new Body(c);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(0, (int) dp(24), 0, (int) dp(8));
         // title
@@ -87,9 +87,8 @@ public class AlertDialog extends Dialog implements DialogInterface {
             mMessageView.setLineSpacing(0, 1.15f);
             mMessageView.setPadding((int) dp(24), 0, (int) dp(24), (int) dp(16));
             sv.addView(mMessageView);
-            root.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-            ((LinearLayout.LayoutParams) sv.getLayoutParams()).height = ViewGroup.LayoutParams.WRAP_CONTENT;
-            ((LinearLayout.LayoutParams) sv.getLayoutParams()).weight = 0;
+            root.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            root.flexible.add(sv);
         }
         if (mAdapter != null) {
             mListView = new ListView(c);
@@ -104,6 +103,7 @@ public class AlertDialog extends Dialog implements DialogInterface {
                 if (mChoiceMode != AbsListView.CHOICE_MODE_SINGLE) dismiss();
             });
             root.addView(mListView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0f));
+            root.flexible.add(mListView);
         }
         if (mView == null && mViewLayout != 0) mView = LayoutInflater.from(c).inflate(mViewLayout, root, false);
         if (mView != null) {
@@ -112,6 +112,7 @@ public class AlertDialog extends Dialog implements DialogInterface {
             if (mView.getParent() instanceof ViewGroup) ((ViewGroup) mView.getParent()).removeView(mView);
             custom.addView(mView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             root.addView(custom, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            root.flexible.add(custom);
         }
         // buttons, end-aligned: neutral at the start, then negative, positive
         boolean any = false;
@@ -273,6 +274,42 @@ public class AlertDialog extends Dialog implements DialogInterface {
             return row;
         }
     }
+    /**
+     * The dialog's column, as Android's AlertDialogLayout: the title and the buttons have the height they want, and the
+     * middle -- the message's scroll view, the list, the app's view -- what is left of the window's, scrolling within it.
+     * A plain column gave the middle all of it: Telegram X's question whether to sync the contacts, a message taller than
+     * the screen, had its buttons below the screen, and the dialog could not be closed.
+     */
+    private static final class Body extends LinearLayout {
+        final java.util.ArrayList<View> flexible = new java.util.ArrayList<>();
+        Body(Context c) { super(c); }
+        @Override protected void onMeasure(int w, int h) {
+            for (View f : flexible) f.getLayoutParams().height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            if (MeasureSpec.getMode(h) != MeasureSpec.UNSPECIFIED) {
+                int left = MeasureSpec.getSize(h) - getPaddingTop() - getPaddingBottom();
+                int free = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+                for (int i = 0; i < getChildCount(); i++) {
+                    View v = getChildAt(i);
+                    if (v.getVisibility() == GONE || flexible.contains(v)) continue;
+                    measureChildWithMargins(v, w, 0, free, 0);
+                    LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) v.getLayoutParams();
+                    left -= v.getMeasuredHeight() + lp.topMargin + lp.bottomMargin;
+                }
+                // The middle, in order, each at most what is left, and then held at the height it took: the column's own
+                // pass would give it all that is left before the buttons, and the buttons nothing.
+                for (View f : flexible) {
+                    if (f.getVisibility() == GONE) continue;
+                    LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) f.getLayoutParams();
+                    int room = Math.max(0, left - lp.topMargin - lp.bottomMargin);
+                    measureChildWithMargins(f, w, 0, MeasureSpec.makeMeasureSpec(room, MeasureSpec.AT_MOST), 0);
+                    lp.height = Math.min(f.getMeasuredHeight(), room);
+                    left -= Math.min(f.getMeasuredHeight(), room) + lp.topMargin + lp.bottomMargin;
+                }
+            }
+            super.onMeasure(w, h);
+        }
+    }
+
     private static final class CheckedRow extends LinearLayout implements Checkable {
         final TextView text; final CompoundButton box;
         CheckedRow(Context c, int mode) {

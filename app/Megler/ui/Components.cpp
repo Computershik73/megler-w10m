@@ -49,8 +49,8 @@ FrameworkElement apkIcon(const ApkEntry& entry, double size) {
 
     Border placeholder;
     placeholder.CornerRadius(radius);
-    placeholder.Background(brush(p.fill));
-    auto mark = glyph(glyphs::game, size * 0.46, p.tertiaryLabel);
+    placeholder.Background(brush(p.surfaceContainerHighest));
+    auto mark = icon(glyphs::game, size * 0.5, p.onSurfaceVariant);
     mark.HorizontalAlignment(HorizontalAlignment::Center);
     placeholder.Child(mark);
     holder.Children().Append(placeholder);
@@ -103,9 +103,8 @@ TextBlock apkStatus(const ApkEntry& entry, double size) {
 }
 
 Border warningCard(std::string_view message) {
-    auto mark = glyph(glyphs::warning, font::headline, palette().orange);
+    auto mark = icon(glyphs::warning, 24, palette().orange);
     mark.VerticalAlignment(VerticalAlignment::Top);
-    mark.Margin(ThicknessHelper::FromLengths(0, 2, 0, 0));
     Grid g;
     ColumnDefinition c0, c1;
     c0.Width(GridLengthHelper::Auto());
@@ -113,12 +112,12 @@ Border warningCard(std::string_view message) {
     g.ColumnDefinitions().Append(c0);
     g.ColumnDefinitions().Append(c1);
     g.Children().Append(mark);
-    auto t = text(message, font::footnote, weightNormal(), palette().label);
-    t.Margin(ThicknessHelper::FromLengths(10, 0, 0, 0));
+    auto t = text(message, font::bodyMedium, weightNormal(), palette().onSurface);
+    t.Margin(ThicknessHelper::FromLengths(16, 2, 0, 0));
     Grid::SetColumn(t, 1);
     g.Children().Append(t);
-    auto c = card(g, 12, 12);
-    c.Margin(ThicknessHelper::FromLengths(0, 0, 0, 14));
+    auto c = card(g, 12, 16);
+    c.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
     return c;
 }
 

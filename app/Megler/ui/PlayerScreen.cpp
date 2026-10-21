@@ -19,6 +19,7 @@
 #include "library/Library.h"
 #include "player/BarsHost.h"
 #include "player/KeyboardHost.h"
+#include "player/MediaControls.h"
 #include "player/Session.h"
 #include "player/WindowHost.h"
 #include "shell/AppPackage.h"
@@ -198,6 +199,7 @@ public:
     }
 
     void disappeared() override {
+        if (mediaControls_) mediaControls::stop(), mediaControls_ = false;
         releaseAllTouches();
         detachKeyboard();
         // A start that failed left nothing running: the next Play may try again.
@@ -216,6 +218,13 @@ public:
         measureFrameRate(frames);
 
         const bool ended = snap.state == session::State::exited || snap.state == session::State::failed;
+        // A Java app's sound goes on in the background only while the system media controls stand for it.
+        if (java_ && running_ && !mediaControls_) mediaControls::start(), mediaControls_ = true;
+        if (mediaControls_ && ended) mediaControls::stop(), mediaControls_ = false;
+        if (mediaControls_) {
+            const auto heardFrom = session::audio();
+            mediaControls::heard(heardFrom && heardFrom->audibleWithin(600));
+        }
         const bool waitingForFrame = (snap.state == session::State::starting || snap.state == session::State::running) && frames == 0;
         const bool stopping = running_ && snap.stopRequested;
         setVisible(busyOverlay_, !ended && (!started_ || waitingForFrame || stopping));
@@ -450,7 +459,9 @@ private:
     UIElement buildEndPanel() {
         const auto& p = palette();
         auto column = vstack(0);
-        column.Width(420);
+        // As wide as a dialog, and no wider than the screen less its margins: the phone is 411 wide upright, and a fixed
+        // 420 in a card of 20 a side cut its right end off, the Close button's with it.
+        column.MaxWidth(420);
         endTitle_ = text("", font::title3, weightBold(), p.label);
         endTitle_.TextAlignment(TextAlignment::Center);
         endTitle_.HorizontalAlignment(HorizontalAlignment::Center);
@@ -483,6 +494,7 @@ private:
         auto box = card(column, 18, 20);
         box.HorizontalAlignment(HorizontalAlignment::Center);
         box.VerticalAlignment(VerticalAlignment::Center);
+        box.Margin(ThicknessHelper::FromLengths(16, 16, 16, 16));
         endOverlay_ = Grid();
         endOverlay_.Background(brush(withAlpha(rgb(0x000000), 0.72)));
         endOverlay_.Children().Append(box);
@@ -1002,6 +1014,7 @@ private:
 
     bool started_ = false;
     bool running_ = false;
+    bool mediaControls_ = false; // the system media controls stand for the app (a Java app's, while it runs)
     bool menuShown_ = false;
     bool settingsShown_ = false; // an app's own package: its settings are over the menu
     bool endShown_ = false;

@@ -112,6 +112,34 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         if (d.fontWeightAdjustment != FONT_WEIGHT_ADJUSTMENT_UNDEFINED && fontWeightAdjustment != d.fontWeightAdjustment) changed |= 0x10000000;
         return changed;
     }
+    /**
+     * What change has that base has not, as a configuration whose other fields are undefined: base.updateFrom of it is base
+     * made change. (Hidden API; SettingsLib's InterestingConfigChanges reads the resources' configuration through it, and
+     * Settings ended at its start on the null it answered.)
+     */
+    public static Configuration generateDelta(Configuration base, Configuration change) {
+        Configuration d = new Configuration();
+        if (base.fontScale != change.fontScale) d.fontScale = change.fontScale;
+        if (base.mcc != change.mcc) d.mcc = change.mcc;
+        if (base.mnc != change.mnc) d.mnc = change.mnc;
+        base.fixUpLocaleList(); change.fixUpLocaleList();
+        if (!base.mLocaleList.equals(change.mLocaleList)) { d.mLocaleList = change.mLocaleList; d.locale = change.locale; }
+        if (base.touchscreen != change.touchscreen) d.touchscreen = change.touchscreen;
+        if (base.keyboard != change.keyboard) d.keyboard = change.keyboard;
+        if (base.keyboardHidden != change.keyboardHidden) d.keyboardHidden = change.keyboardHidden;
+        if (base.hardKeyboardHidden != change.hardKeyboardHidden) d.hardKeyboardHidden = change.hardKeyboardHidden;
+        if (base.navigation != change.navigation) d.navigation = change.navigation;
+        if (base.navigationHidden != change.navigationHidden) d.navigationHidden = change.navigationHidden;
+        if (base.orientation != change.orientation) d.orientation = change.orientation;
+        if (base.screenLayout != change.screenLayout) d.screenLayout = change.screenLayout;
+        if (base.colorMode != change.colorMode) d.colorMode = change.colorMode;
+        if (base.uiMode != change.uiMode) d.uiMode = change.uiMode;
+        if (base.screenWidthDp != change.screenWidthDp) d.screenWidthDp = change.screenWidthDp;
+        if (base.screenHeightDp != change.screenHeightDp) d.screenHeightDp = change.screenHeightDp;
+        if (base.smallestScreenWidthDp != change.smallestScreenWidthDp) d.smallestScreenWidthDp = change.smallestScreenWidthDp;
+        if (base.densityDpi != change.densityDpi) d.densityDpi = change.densityDpi;
+        return d;
+    }
     /** Take delta's defined fields; returns what changed. */
     public int updateFrom(Configuration d) {
         int changed = diff(d);
@@ -228,7 +256,6 @@ public final class Configuration implements Parcelable, Comparable<Configuration
     public int seq;
     public boolean userSetLocale;
     public static java.lang.String configurationDiffToString(int p0) { return null; }
-    public static android.content.res.Configuration generateDelta(android.content.res.Configuration p0, android.content.res.Configuration p1) { return null; }
     public static java.lang.String getUiModeTypeString(int p0) { return null; }
     public static java.lang.String localesToResourceQualifier(android.os.LocaleList p0) { return null; }
     public static void readXmlAttrs(org.xmlpull.v1.XmlPullParser p0, android.content.res.Configuration p1) {}

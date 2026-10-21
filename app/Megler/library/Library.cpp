@@ -421,7 +421,11 @@ void Library::analyse(const std::string& id) {
         megler_free(report);
     }
     ApkReport parsed = ApkReport::parse(json);
-    if (!json.empty()) files::write(path + L".json", json);
+    // An APK that cannot be read now -- an installed package's, whose folder Megler may not read, when a new build reads
+    // every APK again -- keeps what was found before: its report and its icon. (Its icon was removed here, and its report
+    // made empty: the library showed no icon for the apps of the phone's own after each new build.)
+    const bool read = !json.empty() && parsed.valid;
+    if (read) files::write(path + L".json", json);
 
     std::wstring iconPath;
     uint8_t* icon = nullptr;
@@ -440,10 +444,13 @@ void Library::analyse(const std::string& id) {
         } else {
             files::remove(target + L".new");
         }
-    } else {
+    } else if (read) {
         files::remove(path + L".icon");
+    } else if (files::exists(path + L".icon")) {
+        iconPath = path + L".icon";
     }
     if (icon) megler_free(icon);
+    if (!read) shellLog::write("library: " + id + " could not be read now (" + narrow(apk) + "): what was found before is kept");
 
     shellLog::write(format("library: %s is %s (%s%s) -- %s", id.c_str(), parsed.package.empty() ? "?" : parsed.package.c_str(),
                            parsed.engine.empty() ? "?" : parsed.engine.c_str(),
@@ -455,11 +462,15 @@ void Library::analyse(const std::string& id) {
         if (entry.id != id) continue;
         replaces = entry.replaces;
         entry.replaces = false;
+        entry.analysing = false;
+        if (!read && entry.analysed) {
+            if (entry.iconPath.empty()) entry.iconPath = iconPath;
+            break;
+        }
         package = parsed.package;
         entry.report = std::move(parsed);
         appPackage::registerServiceApk(entry);
         entry.analysed = true;
-        entry.analysing = false;
         entry.iconPath = iconPath;
         break;
     }

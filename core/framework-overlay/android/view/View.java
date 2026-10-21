@@ -33,7 +33,12 @@
 // view, so a blinking cursor cost a whole screen. ViewRoot (overlaid) now keeps each window's dirty rectangle and draws only
 // that, as Android's software rendering does (ViewRootImpl's mDirty, invalidateChildInParent). On the phone Apktool M drew
 // the whole screen in every frame because an AnimationDrawable in its closed drawer, off the screen, invalidated: on Android
-// that rectangle is clipped away on its way up and nothing is drawn. Everything else is the original's, unchanged.
+// that rectangle is clipped away on its way up and nothing is drawn.
+//
+// And setPadding and setPaddingRelative each set the padding themselves (meglerSetPadding, as Android's internalSetPadding),
+// where setPaddingRelative called setPadding: a view of an app's own that overrides setPadding to call setPaddingRelative
+// called itself until the stack ran out (Avito's text field, com.avito.android.lib.design.input.Input, as its layout was
+// inflated). Everything else is the original's, unchanged.
 package android.view;
 
 import android.animation.StateListAnimator;
@@ -739,12 +744,16 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     // ---- padding
     public void setPadding(int l, int t, int r, int b) {
         mUserPaddingStart = mUserPaddingEnd = Integer.MIN_VALUE;
+        meglerSetPadding(l, t, r, b);
+    }
+    public void setPaddingRelative(int s, int t, int e, int b) { meglerSetPadding(s, t, e, b); mUserPaddingStart = s; mUserPaddingEnd = e; }
+    /** The padding as it is to be, neither of the overridable setters called (Android's internalSetPadding). */
+    private void meglerSetPadding(int l, int t, int r, int b) {
         if (mPaddingLeft != l || mPaddingTop != t || mPaddingRight != r || mPaddingBottom != b) {
             mPaddingLeft = l; mPaddingTop = t; mPaddingRight = r; mPaddingBottom = b;
             requestLayout(); invalidate();
         }
     }
-    public void setPaddingRelative(int s, int t, int e, int b) { setPadding(s, t, e, b); mUserPaddingStart = s; mUserPaddingEnd = e; }
     public int getPaddingLeft() { return mPaddingLeft; }
     public int getPaddingTop() { return mPaddingTop; }
     public int getPaddingRight() { return mPaddingRight; }

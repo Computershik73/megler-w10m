@@ -1123,7 +1123,12 @@ static void test_appx_manifest(void)
         "          BackgroundColor=\"#000000\">\r\n"
         "        <uap:DefaultTile Wide310x150Logo=\"w.png\" ShortName=\"Megler\"/>\r\n"
         "        <uap:SplashScreen Image=\"s.png\" BackgroundColor=\"#000000\" />\r\n"
-        "      </uap:VisualElements></Application></Applications></Package>\r\n";
+        "      </uap:VisualElements>\r\n      <Extensions>\r\n"
+        "        <uap:Extension Category=\"windows.fileTypeAssociation\">\r\n"
+        "          <uap:FileTypeAssociation Name=\"apk\"><uap:SupportedFileTypes><uap:FileType>.apk</uap:FileType></uap:SupportedFileTypes>\r\n"
+        "          </uap:FileTypeAssociation>\r\n        </uap:Extension>\r\n"
+        "        <uap:Extension Category=\"windows.protocol\">\r\n          <uap:Protocol Name=\"megler\" />\r\n        </uap:Extension>\r\n"
+        "      </Extensions>\r\n    </Application></Applications></Package>\r\n";
     char err[200], name[64], name2[64];
     char *m, *m2;
     say("an app's own package: its manifest from Megler's");
@@ -1173,6 +1178,10 @@ static void test_appx_manifest(void)
     CHECK(m2 != NULL);
     free(m2);
     CHECK(mg_appx_app_manifest("<Package/>", "com.example", "x", NULL, NULL, err, sizeof(err)) == NULL && strstr(err, "Identity") != NULL);
+    /* Megler's association of APKs is not the app's; its megler: links are. */
+    CHECK(strstr(m, "windows.fileTypeAssociation") == NULL && strstr(m, "<uap:FileTypeAssociation") == NULL);
+    CHECK(strstr(m, "<uap:Extension Category=\"windows.protocol\">\r\n          <uap:Protocol Name=\"megler\" />") != NULL);
+    CHECK(strstr(m, "      </uap:VisualElements>\r\n      <Extensions>\r\n        <uap:Extension Category=\"windows.protocol\">") != NULL);
     free(m);
 }
 
@@ -1187,6 +1196,41 @@ static void put_utf16(u8 *out, const char *s, bool lower_case)
         out[0] = (u8)c;
         out[1] = 0;
     }
+}
+
+/* Material You's palettes of a seed (megler_palette_tone, core/src/run/mg_palette.c): what Android's framework gives as its system
+   colours. Material 3's baseline scheme is made of the seed #6750A4, and its colours are these; a channel may be one off, as a
+   bit of the floating point may round another way. */
+static void check_tone(uint32_t seed, int palette, int tone, uint32_t want)
+{
+    const uint32_t got = megler_palette_tone(seed, palette, tone);
+    bool near = true;
+    int shift;
+    for (shift = 0; shift < 32; shift += 8) near = near && abs((int)((got >> shift) & 0xFF) - (int)((want >> shift) & 0xFF)) <= 1;
+    if (!near) say("  palette %d at tone %d of #%08X is #%08X, not #%08X", palette, tone, (unsigned)seed, (unsigned)got, (unsigned)want);
+    CHECK(near);
+}
+
+static void test_palette(void)
+{
+    say("Material You's palettes made from a seed colour, in HCT");
+    check_tone(0xFF6750A4u, MEGLER_PALETTE_ACCENT1, 40, 0xFF6750A4u);
+    check_tone(0xFF6750A4u, MEGLER_PALETTE_ACCENT1, 80, 0xFFD0BCFFu);
+    check_tone(0xFF6750A4u, MEGLER_PALETTE_ACCENT1, 90, 0xFFEADDFFu);
+    check_tone(0xFF6750A4u, MEGLER_PALETTE_ACCENT1, 10, 0xFF21005Du);
+    check_tone(0xFF6750A4u, MEGLER_PALETTE_ACCENT2, 40, 0xFF625B71u);
+    check_tone(0xFF6750A4u, MEGLER_PALETTE_ACCENT2, 90, 0xFFE8DEF8u);
+    check_tone(0xFF6750A4u, MEGLER_PALETTE_ACCENT3, 40, 0xFF7D5260u);
+    check_tone(0xFF6750A4u, MEGLER_PALETTE_NEUTRAL1, 99, 0xFFFFFBFEu);
+    check_tone(0xFF6750A4u, MEGLER_PALETTE_NEUTRAL1, 10, 0xFF1C1B1Fu);
+    check_tone(0xFF6750A4u, MEGLER_PALETTE_NEUTRAL2, 30, 0xFF49454Fu);
+    check_tone(0xFF6750A4u, MEGLER_PALETTE_ERROR, 40, 0xFFBA1B1Bu);
+    /* A blue seed stays blue (CIE LCh, used before, made it violet); and Windows' cobalt. */
+    check_tone(0xFF0000FFu, MEGLER_PALETTE_ACCENT1, 80, 0xFFBDC2FFu);
+    check_tone(0xFF0063B1u, MEGLER_PALETTE_ACCENT1, 40, 0xFF005FADu);
+    check_tone(0xFF0063B1u, MEGLER_PALETTE_ACCENT1, 0, 0xFF000000u);
+    check_tone(0xFF0063B1u, MEGLER_PALETTE_ACCENT1, 100, 0xFFFFFFFFu);
+    CHECK(megler_palette_tone(0xFF0063B1u, 6, 50) == 0);
 }
 
 static void test_appx_pri(void)
@@ -2783,6 +2827,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_libc_odds();
     test_appx_manifest();
     test_appx_pri();
+    test_palette();
     test_mmap_commit();
     test_mmap_file(scratch);
     test_chromium_oom_report();

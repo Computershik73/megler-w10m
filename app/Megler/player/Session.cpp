@@ -3,6 +3,9 @@
 #include "player/Session.h"
 
 #include "player/BarsHost.h"
+#include "player/MediaControls.h"
+#include "player/SystemHost.h"
+#include "library/PhoneAppsList.h"
 #include "player/CameraHost.h"
 #include "player/CodecHost.h"
 #include "player/GfxHost.h"
@@ -38,8 +41,12 @@ std::shared_ptr<AudioHost> gAudio;
 std::vector<std::shared_ptr<WindowHost>> gOldWindows;
 std::vector<std::shared_ptr<AudioHost>> gOldAudio;
 // What megler_run_config points at, alive for the rest of the process.
-std::string gApkPath, gSplitsDir;
+std::string gApkPath, gSplitsDir, gAppsDir;
 bool gSuspended = false, gVisible = true, gFocused = true;
+// A Java app is heard in the background, as on Android (its own music and video players keep playing there, and the
+// system media controls stand for it: player/MediaControls.cpp); an engine's game is not, whether or not it stops its
+// own sound when paused.
+bool gBackgroundAudio = false;
 
 // What the app was last told, and the order it is told in: held across the
 // calls, by the one thread telling.
@@ -49,7 +56,7 @@ bool gPausedTold = false, gFocusedTold = true;
 /// Tells the running app what changed about its place on the phone.
 void tell() {
     std::lock_guard<std::mutex> telling(gTellMutex);
-    bool paused, focused;
+    bool paused, focused, silenced;
     std::shared_ptr<AudioHost> audio;
     {
         std::lock_guard<std::mutex> lock(gMutex);
@@ -57,6 +64,7 @@ void tell() {
         paused = gSuspended || !gVisible;
         focused = gFocused;
         audio = gAudio;
+        silenced = gSuspended || (!gVisible && !gBackgroundAudio);
     }
     // Focus goes before a pause and comes back after a resume, as Android's
     // own order has it.
@@ -65,13 +73,11 @@ void tell() {
         gFocusedTold = false;
     }
     if (paused != gPausedTold) {
-        // An app left in the background is not heard there, whether or not
-        // it stops its own sound when paused.
-        if (audio) audio->setPaused(paused);
         megler_set_paused(paused);
         gPausedTold = paused;
         shellLog::write(paused ? "session: paused" : "session: resumed");
     }
+    if (audio) audio->setPaused(silenced);
     if (focused && !gFocusedTold) {
         megler_set_focused(true);
         gFocusedTold = true;
@@ -176,7 +182,13 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         gSplitsDir = apk.splitsDir.empty() ? std::string() : narrow(apk.splitsDir);
         window = gWindow = std::make_shared<WindowHost>(panel, width, height);
         audio = gAudio = std::make_shared<AudioHost>();
+        gBackgroundAudio = apk.report.engine == "java";
+        // The other apps the phone has, for a launcher (library/PhoneAppsList.h), where the folder is there.
+        const std::wstring apps = phoneAppsList::folder();
+        gAppsDir = !apps.empty() && files::exists(apps + L"\\apps.txt") ? narrow(apps) : std::string();
     }
+    systemHost::setRunningApp(apk.title(), apk.report.package);
+    audio->setMedia(gBackgroundAudio);
     // The sound output takes a second and a half to build the first time:
     // begun now, at the rate the core's mixer runs at, it is there before the
     // app's first sound.
@@ -229,6 +241,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.keyboard = KeyboardHost::shared().callbacks();
         // The phone's bars a Java app wants hidden (player/BarsHost.h); what they cover goes back through setInsets.
         config.bars = BarsHost::shared().callbacks();
+        config.media_session = mediaControls::callbacks();
+        config.system = systemHost::callbacks();
+        config.apps_dir = gAppsDir.empty() ? nullptr : gAppsDir.c_str();
         config.on_exit = &onExit;
         config.user = nullptr;
         const bool started = megler_run(&config);

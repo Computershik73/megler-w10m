@@ -1,6 +1,11 @@
 package android.graphics;
 
-/** Pixels in native memory (megler.Gfx): premultiplied RGBA, rows top first. Every config is kept as ARGB_8888. */
+/**
+ * Pixels in native memory (megler.Gfx): premultiplied RGBA, rows top first. Every config is kept as ARGB_8888; what an app
+ * reads of the bytes (getRowBytes, getByteCount, copyPixelsToBuffer, copyPixelsFromBuffer) is in its config's form, as on
+ * Android: ALPHA_8 one byte a pixel, RGB_565 and ARGB_4444 two, the others four. Nova Launcher draws icons into an
+ * ALPHA_8 bitmap and copies it into an array of width x height bytes; four a pixel overflowed it.
+ */
 public final class Bitmap implements android.os.Parcelable {
     public static final int DENSITY_NONE = 0;
     public enum Config { ALPHA_8, RGB_565, ARGB_4444, ARGB_8888, RGBA_F16, HARDWARE, RGBA_1010102
@@ -103,8 +108,13 @@ public final class Bitmap implements android.os.Parcelable {
     public int getScaledHeight(Canvas c) { return mHeight; }
     public int getScaledWidth(android.util.DisplayMetrics m) { return getScaledWidth(m.densityDpi); }
     public int getScaledHeight(android.util.DisplayMetrics m) { return getScaledHeight(m.densityDpi); }
-    public final int getRowBytes() { return mWidth * 4; }
-    public final int getByteCount() { return mWidth * mHeight * 4; }
+    /** Bytes a pixel in the config's form. */
+    private int meglerPixelBytes() {
+        Config c = getConfig();
+        return c == Config.ALPHA_8 ? 1 : c == Config.RGB_565 || c == Config.ARGB_4444 ? 2 : 4;
+    }
+    public final int getRowBytes() { return mWidth * meglerPixelBytes(); }
+    public final int getByteCount() { return mWidth * mHeight * meglerPixelBytes(); }
     public final int getAllocationByteCount() { return getByteCount(); }
     public ColorSpace getColorSpace() { return ColorSpace.get(ColorSpace.Named.SRGB); }
     public void setConfig(Config c) { mConfig = c; }
@@ -138,37 +148,89 @@ public final class Bitmap implements android.os.Parcelable {
         copyPixelsToBuffer(dst);
     }
     public void copyPixelsToBuffer(java.nio.Buffer dst) {
+        int unit = dst instanceof java.nio.ByteBuffer ? 1 : dst instanceof java.nio.ShortBuffer ? 2 : 4;
+        int n = getByteCount();
+        if ((long) dst.remaining() * unit < n) throw new RuntimeException("Buffer not large enough for pixels");
         long addr = meglerAddress(dst);
-        if (addr != 0 && getConfig() != Config.RGB_565 && dst.remaining() * (dst instanceof java.nio.ByteBuffer ? 1 : dst instanceof java.nio.ShortBuffer ? 2 : 4) >= mWidth * mHeight * 4) {
-            int unit = dst instanceof java.nio.ByteBuffer ? 1 : dst instanceof java.nio.ShortBuffer ? 2 : 4;
+        if (addr != 0 && meglerPixelBytes() == 4) {
             megler.Gfx.bmRaw(mNative, addr + (long) dst.position() * unit, false);
-            dst.position(dst.position() + mWidth * mHeight * 4 / unit);
+            dst.position(dst.position() + n / unit);
             return;
         }
-        java.nio.ByteBuffer b = dst instanceof java.nio.ByteBuffer ? (java.nio.ByteBuffer) dst : null;
-        int n = getByteCount();
-        byte[] tmp = new byte[n];
+        byte[] tmp = meglerBytes();
+        if (dst instanceof java.nio.ByteBuffer) ((java.nio.ByteBuffer) dst).put(tmp);
+        else if (dst instanceof java.nio.ShortBuffer) {
+            short[] v = new short[n / 2];
+            java.nio.ByteBuffer.wrap(tmp).order(java.nio.ByteOrder.nativeOrder()).asShortBuffer().get(v);
+            ((java.nio.ShortBuffer) dst).put(v);
+        } else if (dst instanceof java.nio.IntBuffer) {
+            int[] v = new int[n / 4];
+            java.nio.ByteBuffer.wrap(tmp).order(java.nio.ByteOrder.nativeOrder()).asIntBuffer().get(v);
+            ((java.nio.IntBuffer) dst).put(v);
+        }
+    }
+    /** The pixels in the config's form, as copyPixelsToBuffer gives them: premultiplied RGBA, alpha alone, or 565 / 4444 in the machine's order. */
+    private byte[] meglerBytes() {
         int[] px = new int[mWidth * mHeight];
         getPixels(px, 0, mWidth, 0, 0, mWidth, mHeight);
-        for (int i = 0; i < px.length; i++) { int c = px[i]; int a = c >>> 24; tmp[4 * i] = (byte) (((c >> 16) & 255) * a / 255); tmp[4 * i + 1] = (byte) (((c >> 8) & 255) * a / 255); tmp[4 * i + 2] = (byte) ((c & 255) * a / 255); tmp[4 * i + 3] = (byte) a; }
-        if (b != null) b.put(tmp); else if (dst instanceof java.nio.IntBuffer) { java.nio.ByteBuffer.wrap(tmp).order(java.nio.ByteOrder.nativeOrder()).asIntBuffer().get(new int[0]); }
+        int k = meglerPixelBytes();
+        byte[] out = new byte[px.length * k];
+        Config c = getConfig();
+        boolean little = java.nio.ByteOrder.nativeOrder() == java.nio.ByteOrder.LITTLE_ENDIAN;
+        for (int i = 0; i < px.length; i++) {
+            int p = px[i], a = p >>> 24;
+            int r = ((p >> 16) & 255) * a / 255, g = ((p >> 8) & 255) * a / 255, b = (p & 255) * a / 255;
+            if (k == 1) out[i] = (byte) a;
+            else if (k == 2) {
+                int v = c == Config.RGB_565 ? (r >> 3) << 11 | (g >> 2) << 5 | b >> 3 : (r >> 4) << 12 | (g >> 4) << 8 | (b >> 4) << 4 | a >> 4;
+                out[2 * i] = (byte) (little ? v : v >> 8);
+                out[2 * i + 1] = (byte) (little ? v >> 8 : v);
+            } else {
+                out[4 * i] = (byte) r;
+                out[4 * i + 1] = (byte) g;
+                out[4 * i + 2] = (byte) b;
+                out[4 * i + 3] = (byte) a;
+            }
+        }
+        return out;
     }
     public void copyPixelsFromBuffer(java.nio.Buffer src) {
-        long addr = meglerAddress(src);
         int unit = src instanceof java.nio.ByteBuffer ? 1 : src instanceof java.nio.ShortBuffer ? 2 : 4;
-        if (addr != 0 && getConfig() != Config.RGB_565 && src.remaining() * unit >= mWidth * mHeight * 4) {
+        int n = getByteCount();
+        if ((long) src.remaining() * unit < n) throw new RuntimeException("Buffer not large enough for pixels");
+        long addr = meglerAddress(src);
+        if (addr != 0 && meglerPixelBytes() == 4) {
             megler.Gfx.bmRaw(mNative, addr + (long) src.position() * unit, true);
-            src.position(src.position() + mWidth * mHeight * 4 / unit);
+            src.position(src.position() + n / unit);
             mGeneration++;
             return;
         }
-        if (!(src instanceof java.nio.ByteBuffer)) return;
-        java.nio.ByteBuffer b = (java.nio.ByteBuffer) src;
+        byte[] in = new byte[n];
+        if (src instanceof java.nio.ByteBuffer) ((java.nio.ByteBuffer) src).get(in);
+        else if (src instanceof java.nio.ShortBuffer) {
+            short[] v = new short[n / 2];
+            ((java.nio.ShortBuffer) src).get(v);
+            java.nio.ByteBuffer.wrap(in).order(java.nio.ByteOrder.nativeOrder()).asShortBuffer().put(v);
+        } else if (src instanceof java.nio.IntBuffer) {
+            int[] v = new int[n / 4];
+            ((java.nio.IntBuffer) src).get(v);
+            java.nio.ByteBuffer.wrap(in).order(java.nio.ByteOrder.nativeOrder()).asIntBuffer().put(v);
+        } else return;
+        int k = meglerPixelBytes();
+        Config c = getConfig();
+        boolean little = java.nio.ByteOrder.nativeOrder() == java.nio.ByteOrder.LITTLE_ENDIAN;
         int[] px = new int[mWidth * mHeight];
-        for (int i = 0; i < px.length && b.remaining() >= 4; i++) {
-            int r = b.get() & 255, g = b.get() & 255, bl = b.get() & 255, a = b.get() & 255;
-            if (a != 0 && a != 255) { r = Math.min(255, r * 255 / a); g = Math.min(255, g * 255 / a); bl = Math.min(255, bl * 255 / a); }
-            px[i] = a << 24 | r << 16 | g << 8 | bl;
+        for (int i = 0; i < px.length; i++) {
+            int r, g, b, a;
+            if (k == 1) { a = in[i] & 255; r = g = b = 0; }
+            else if (k == 2) {
+                int lo = in[2 * i] & 255, hi = in[2 * i + 1] & 255, v = little ? hi << 8 | lo : lo << 8 | hi;
+                if (c == Config.RGB_565) { r = (v >> 11) * 255 / 31; g = ((v >> 5) & 63) * 255 / 63; b = (v & 31) * 255 / 31; a = 255; }
+                else { r = (v >> 12) * 17; g = ((v >> 8) & 15) * 17; b = ((v >> 4) & 15) * 17; a = (v & 15) * 17; }
+            } else { r = in[4 * i] & 255; g = in[4 * i + 1] & 255; b = in[4 * i + 2] & 255; a = in[4 * i + 3] & 255; }
+            // (premultiplied in the buffer; a pixel here is not)
+            if (a != 0 && a != 255) { r = Math.min(255, r * 255 / a); g = Math.min(255, g * 255 / a); b = Math.min(255, b * 255 / a); }
+            px[i] = a << 24 | r << 16 | g << 8 | b;
         }
         setPixels(px, 0, mWidth, 0, 0, mWidth, mHeight);
     }

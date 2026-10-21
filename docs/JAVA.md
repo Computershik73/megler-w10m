@@ -1126,8 +1126,23 @@ a first-run tip whose OK closes it. Fixed on the way: `LauncherApps` and
 that loads the home screen ended), and three things of libc's that the crash
 SDK imports (`__page_size`, which it read as a null pointer, `setpgrp`,
 `ptrace`). What it lists is what the framework's `PackageManager` knows: the
-app itself. Its umeng library asks for one HTTPS address over and over,
-about 150 times a second, when the name does not resolve.
+app itself, and since build 0.1.0.373 the apps of Megler's library ("Installing,
+and the phone's other apps"). Its umeng library asks for one HTTPS address
+over and over, about 150 times a second, when the name does not resolve.
+
+**Nova Launcher 8.9.4** (armeabi-v7a; Kotlin, Jetpack Compose for its first
+run, Firebase, Facebook's and Google's ad SDKs). On the phone (package 373, as
+an app's own package) it ended at its start: its `LauncherProvider` stopped on
+a `NullPointerException`, the rest of its start was never done, and its
+launcher activity then failed on a `lateinit` property that start sets. Run
+under qemu at the phone's 1440 x 2560 and 560 dpi, three things of the
+framework's were behind it, one after another: an activity with no icon had
+none (`PackageItemInfo.loadIcon` answered null; Android falls back to the
+application's icon, then the platform's default), a bitmap's bytes were four a
+pixel in every config (Nova copies an `ALPHA_8` icon into an array of one byte
+a pixel), and `AdaptiveIconDrawable` was an empty stub whose mask was null.
+With those fixed it starts under qemu to its welcome screen (Welcome to Nova
+Launcher, Get started). Not yet tried on the phone again.
 
 **AIDA64 2.22** (minSdk 19; a `GLSurfaceView` to ask the GPU, a night mode
 of its own). On the phone it ran and its detail pages opened from taps on
@@ -2935,6 +2950,108 @@ Once the keyboard is put away, each dialog is back where it was.
 **Not there:** composing text (a keyboard that composes sends each piece when
 it is final), the selection handles and the copy and paste bar (the
 framework's), and telling the shell where the cursor is on the screen.
+
+### The phone's accent and theme
+
+The phone's accent colour (Windows' `UISettings` Accent) and a light or dark
+theme are told to the core before an app starts (`megler_set_theme`;
+`player/PhoneState.cpp`, `tellTheme`). The theme is Windows' own, or what
+Megler's Settings choose (Theme: As Windows, Light, Dark). It is also
+Megler's own look.
+
+- Android's DeviceDefault and Material themes give the accent as their
+  `colorAccent`. So do AppCompat's when the app names no accent of its own
+  (`Resources`, overlaid: `accent_device_default_light`/`_dark`,
+  `accent_material_light`/`_dark`).
+- Material You's system colours (`android.R.color.system_accent1_*` to
+  `system_neutral2_*`, `SystemColors`) are made from the accent as Android 12
+  makes them from a wallpaper. `megler_palette_tone`
+  (`core/src/run/mg_palette.c`) is a port of material-color-utilities' HCT
+  (CAM16 hue and chroma, L* tone) and its core palette: accent 1 at the
+  seed's hue with a chroma of at least 48, accent 2 at 16, accent 3 at the hue
+  plus 60 at 24, neutrals at 4 and 8. A blue accent stays blue. A plain
+  CIE LCh palette turned the phone's #0000FF lavender.
+- The night bit of `Configuration.uiMode` is the theme. An app's DayNight
+  theme follows it.
+
+The test app `data` (`theme-accent`) is told a cobalt accent, #0063B1, and a
+light theme. DeviceDefault's `colorAccent` is #0063B1, `system_accent1_600` is
+#005FAD within one step, and the configuration is not night. The core's tests
+check the palettes against Material 3's baseline colours of #6750A4.
+
+### Sound in the background
+
+A Java app is heard while Megler is minimised, as on Android, where a music
+app plays on in the background. A game's engine is silenced when hidden, as
+before. Windows allows this to a UWP app only under three conditions:
+
+- the package has the capability `backgroundMediaPlayback`
+  (`Package.appxmanifest`);
+- the sound is in the Media category (`player/AudioHost.cpp`, `setMedia`);
+- play and pause are on in the system media controls and their presses are
+  answered (`player/MediaControls.cpp`).
+
+So the controls are on while a Java app runs. They show what the app's media
+session says (`megler_media_session_host`: its state, title, artist, album,
+art; the overlay of `android.media.session.MediaSession`). An app that has no
+session is shown playing while it is heard. The controls' buttons come to the
+app as Android's media keys, which go to its active session's
+`Callback.onMediaButtonEvent` as Android 9 sends them, and to the window when
+there is no session. The test app `data` (`media-session`) checks both ways.
+
+### Installing, and the phone's other apps
+
+What a Java app asks of the phone beyond its window goes to the shell through
+`megler_system_host` (`megler.h`; `player/SystemHost.cpp`):
+
+- **Links and sharing.** A link that none of the app's activities takes opens
+  in Windows (`Launcher.LaunchUriAsync`). Shared text goes to Windows' share
+  sheet.
+- **Installing.** An intent to install an APK goes to Megler's installer, as
+  Android hands it to its package installer, before AppRunner looks for an
+  activity of the app's own (`megler.Installs`). Such an intent is
+  `ACTION_INSTALL_PACKAGE`, or `ACTION_VIEW` of an APK (by its type or by a
+  name ending .apk, .apks or .xapk) with no activity named; a file manager, a
+  browser's download or an app store sends one.
+  - A file:// APK is handed over as it is. A content:// one, such as an
+    androidx `FileProvider`'s, is first copied into the app's cache.
+  - A `PackageInstaller` session is real as far as the app sees it. The files
+    written into it are kept in a folder of the app's cache. Committed, it
+    hands over its one APK, then sends `STATUS_SUCCESS` to the `IntentSender`
+    it was given (a `PendingIntent`'s sends through it).
+  - Megler asks the user, then installs the APK as one picked in the Library.
+    In an app's own package, the APK is copied into the shared folder's
+    `incoming\`, and Megler is opened with `megler:install?name=` (its package
+    family name as the target).
+  - A session of several APKs (a base and its splits) is not taken yet: the
+    user is told to install the app's .apks or .xapk from the file manager.
+- **Other apps: launchers.** The shell lists the apps of Megler's library that
+  can run in the shared folder (`library/PhoneAppsList.cpp`):
+  `phone-apps\apps.txt` has each app's package, launcher activity, label and
+  version, and `<package>.png` is its icon. Every package of Megler's gives
+  that folder to the app it runs (`megler_run_config.apps_dir`), and
+  `megler.PhoneApps` reads it. So `PackageManager` knows those apps:
+  `queryIntentActivities` of the launcher's intent, `getLaunchIntentForPackage`,
+  `getPackageInfo`, `getApplicationInfo`, `getActivityInfo`,
+  `getInstalledPackages`. `LauncherApps` lists them, and `loadIcon` gives
+  their icons. An activity of theirs that is started goes to the shell
+  (`launch_app`). The shell opens that app's own package with
+  `megler:run?package=`. An app with no package of its own is opened in
+  Megler, which plays it if it has not run an app yet. A launcher therefore
+  works best as an app's own package: from Megler, Megler is busy running the
+  launcher.
+
+APKs, .apks and .xapk files also open in Megler from the phone's file
+manager (a file type association of Megler's package, taken out of an app's
+own package by `core/src/appx/mg_appx_manifest.c`). Megler asks the user,
+then installs the file.
+
+The test app `data` checks the core's side. Its apps folder has one other app
+(`phone-apps`): the launcher's intent lists it with its label and icon,
+`LauncherApps` has it, and starting its launch intent reaches `launch_app`.
+It opens an APK by `ACTION_VIEW` (`install-intent`) and commits a session of
+one file (`install-session`). The harness hears both on `install_apk`, and the
+app hears `STATUS_SUCCESS`.
 
 ### WebP pictures
 

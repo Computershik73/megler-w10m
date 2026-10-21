@@ -1342,6 +1342,48 @@ typedef struct megler_system_bars_host {
 } megler_system_bars_host;
 
 /*
+ * What a Java app asks of the phone beyond its own window. Each call comes on the app's thread and must return at once; the
+ * shell does it on its own thread. Any call left NULL: the app runs, and the log says what it asked.
+ *   open_url     A link to open, UTF-8: what the app starts with Intent.ACTION_VIEW (or SENDTO, DIAL) when none of its own
+ *                activities takes it -- an http(s) page, mailto:, tel:, a Play Store page (market:// made https://).
+ *   share_text   Text the app shares (ACTION_SEND with EXTRA_TEXT), and its subject or NULL.
+ *   install_apk  An APK the app wants installed, a host path the shell can read (in the app's data folder or the shared
+ *                storage): what it opens with ACTION_VIEW or ACTION_INSTALL_PACKAGE (a file manager, a browser's download,
+ *                an app store's), or the files of a PackageInstaller session it commits, then a folder with the APKs of
+ *                one app (its base and its splits). `name` is the file's name, for showing. True: the shell took it, and
+ *                the app is told its install goes on; false: the app is told it cannot be installed.
+ *   launch_app   Another app the phone has, to start: an Android package and the activity's class name, or NULL for its
+ *                launcher activity (a launcher's tap, an app opening another). True: the shell starts it.
+ */
+typedef struct megler_system_host {
+    void *user;
+    void (*open_url)(void *user, const char *uri);
+    void (*share_text)(void *user, const char *text, const char *subject);
+    bool (*install_apk)(void *user, const char *host_path, const char *name);
+    bool (*launch_app)(void *user, const char *package, const char *activity);
+} megler_system_host;
+
+/*
+ * A Java app's media session (android.media.session.MediaSession, which androidx's MediaSessionCompat stands on): what
+ * the app says it plays and how, for the phone's own media controls (Windows' system media transport controls: the lock
+ * screen's, the volume flyout's). Only the session that was made active last is told. Both calls come on the thread the
+ * app calls from and must return at once. Left NULL, the app runs and nobody is told.
+ *   state     Android's PlaybackState: its state (STATE_*: 0 none, 1 stopped, 2 paused, 3 playing, 6 buffering...) and
+ *             the ACTION_* bits it allows (4 play, 2 pause, 32 next, 16 previous...). State 0 also when the session is
+ *             released or made inactive.
+ *   metadata  What plays: its title, artist and album (UTF-8, or NULL), and its picture as 0xAARRGGBB pixels, art_w x
+ *             art_h of them row by row (at most 256 on a side), or NULL.
+ * The other way, the controls' buttons, come as Android's media keys through megler_key (KEYCODE_MEDIA_PLAY 126,
+ * KEYCODE_MEDIA_PAUSE 127, KEYCODE_MEDIA_NEXT 87...), which the framework hands to that session as Android does.
+ */
+typedef struct megler_media_session_host {
+    void *user;
+    void (*state)(void *user, int state, long long actions);
+    void (*metadata)(void *user, const char *title, const char *artist, const char *album, const uint32_t *art, int art_w,
+                     int art_h);
+} megler_media_session_host;
+
+/*
  * The phone's location, for a Java app's android.location.LocationManager.
  *
  * A fix is where the phone was and when: degrees on WGS 84, metres, metres a second, degrees clockwise from north, and the time
@@ -1424,6 +1466,17 @@ typedef struct megler_run_config {
     megler_keyboard_host keyboard;
     /* The bars a Java app wants hidden (see megler_system_bars_host). May be left NULL. */
     megler_system_bars_host bars;
+    /* What a Java app's media session says it plays (see megler_media_session_host). May be left NULL. */
+    megler_media_session_host media_session;
+    /* What a Java app asks of the phone beyond its window: links, sharing, installing, other apps (see megler_system_host). May be left NULL. */
+    megler_system_host system;
+    /*
+     * The apps the phone has, for a Java app that lists or starts them (a launcher; PackageManager.queryIntentActivities
+     * of the launcher's intent, LauncherApps): a host folder with apps.txt -- a line for each app, its fields separated by
+     * tabs: Android package, launcher activity's class, label, version name, version code -- and each app's icon as
+     * <package>.png. NULL: the app knows of none but itself.
+     */
+    const char *apps_dir;
     /* The app has ended: by its own exit (status), by a crash (reason names it), or by megler_stop. Called once, from any thread. */
     void (*on_exit)(void *user, int status, const char *reason);
     void *user;
@@ -1491,6 +1544,31 @@ void megler_set_timezone(const char *id);
  * empty tag or one that is not a language's leaves "en-US", which is also what an app has until the first call.
  */
 void megler_set_locale(const char *tag);
+
+/*
+ * The phone's look, for a Java app. `accent_argb` is the phone's accent colour (Windows' UISettings Accent): Android's
+ * DeviceDefault and Material themes give it as their colorAccent -- switches, check boxes, progress bars, a dialog's
+ * buttons -- as do AppCompat's when the app names no accent of its own, and Material You's system colours
+ * (android.R.color.system_*, which Material 3's dynamic colours are) are made from it (megler_palette_tone). `night`
+ * is Configuration.uiMode's night bit, which an app's DayNight theme follows. Before megler_run: an app reads them as it
+ * starts. Until the first call there is no accent (Android's own teal; Google's blue for the system colours) and no night.
+ */
+void megler_set_theme(uint32_t accent_argb, bool night);
+
+/*
+ * A colour of Material You's tonal palettes made from a seed colour, roughly as Android 12 makes its system colours of a
+ * wallpaper's (core/src/run/mg_palette.c): `palette` one of these, `tone` the lightness from 0 (black) to 100 (white).
+ * The framework's android.R.color.system_* are made with it, and a shell may make its own look of the same colours.
+ */
+enum {
+    MEGLER_PALETTE_NEUTRAL1 = 0,
+    MEGLER_PALETTE_NEUTRAL2 = 1,
+    MEGLER_PALETTE_ACCENT1 = 2,
+    MEGLER_PALETTE_ACCENT2 = 3,
+    MEGLER_PALETTE_ACCENT3 = 4,
+    MEGLER_PALETTE_ERROR = 5,
+};
+uint32_t megler_palette_tone(uint32_t seed_argb, int palette, int tone);
 
 /*
  * The battery, in Android's own numbers. Any thread, any time, also while an

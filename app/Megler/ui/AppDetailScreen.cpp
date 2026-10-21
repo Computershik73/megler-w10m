@@ -33,9 +33,9 @@ std::string joined(const std::vector<std::string>& items, const char* separator)
 /// it imports that the layer lacks, and what it needs.
 UIElement libraryRow(const ApkLibrary& library) {
     const auto& p = palette();
-    auto column = vstack(3);
-    column.Padding(ThicknessHelper::FromLengths(16, 10, 16, 10));
-    add(column, monospace(library.name, font::subheadline, p.label));
+    auto column = vstack(2);
+    column.Padding(ThicknessHelper::FromLengths(16, 12, 24, 12));
+    add(column, monospace(library.name, font::bodyMedium, p.onSurface));
     std::string facts = formattedByteCount(library.size);
     if (library.thumbFunctions || library.armFunctions)
         facts += format(" · %d Thumb, %d ARM functions", library.thumbFunctions, library.armFunctions);
@@ -81,31 +81,38 @@ private:
         const auto& p = palette();
         const auto found = Library::instance().find(id_);
         if (!found) {
-            host_.Content(contentUnavailable(glyphs::box, "Removed", "This app is no longer in the library."));
+            auto gone = contentUnavailable(glyphs::box, "Removed", "This app is no longer in the library.");
+            gone.Margin(ThicknessHelper::FromLengths(16, 64, 16, 0));
+            host_.Content(gone);
             return;
         }
         const ApkEntry& entry = *found;
         const ApkReport& r = entry.report;
         auto column = vstack(0);
-        column.Padding(ThicknessHelper::FromLengths(16, 16, 16, 28));
+        column.Padding(ThicknessHelper::FromLengths(16, 8, 16, 24));
 
-        // Icon, name, package, status.
+        // The app as a store's page has it: its icon, its name in headline small, its package and its state under it.
         Grid header;
         ColumnDefinition c0, c1;
         c0.Width(GridLengthHelper::Auto());
         c1.Width(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
         header.ColumnDefinitions().Append(c0);
         header.ColumnDefinitions().Append(c1);
-        header.Children().Append(apkIcon(entry, 76));
-        auto names = vstack(3);
+        header.Children().Append(apkIcon(entry, 72));
+        auto names = vstack(4);
         names.VerticalAlignment(VerticalAlignment::Center);
         names.Margin(ThicknessHelper::FromLengths(16, 0, 0, 0));
-        add(names, text(entry.title(), font::title3, weightBold(), p.label));
-        if (!r.package.empty()) add(names, text(r.package, font::footnote, weightNormal(), p.secondaryLabel));
-        add(names, apkStatus(entry, font::subheadline));
+        add(names, text(entry.title(), font::headlineSmall, weightNormal(), p.onSurface));
+        if (!r.package.empty()) {
+            auto package = text(r.package, font::bodyMedium, weightNormal(), p.onSurfaceVariant);
+            package.TextWrapping(TextWrapping::NoWrap);
+            package.TextTrimming(TextTrimming::CharacterEllipsis);
+            add(names, package);
+        }
+        add(names, apkStatus(entry, font::bodyMedium));
         Grid::SetColumn(names, 1);
         header.Children().Append(names);
-        header.Margin(ThicknessHelper::FromLengths(0, 0, 0, 20));
+        header.Margin(ThicknessHelper::FromLengths(0, 8, 0, 16));
         add(column, header);
 
         if (auto warnings = platformWarnings()) add(column, warnings);
@@ -140,24 +147,20 @@ private:
             }
             if (!r.notes.empty()) {
                 std::vector<UIElement> rows;
-                for (const auto& note : r.notes) {
-                    auto t = text(note, font::subheadline, weightNormal(), p.label);
-                    t.Padding(ThicknessHelper::FromLengths(16, 11, 16, 11));
-                    rows.push_back(t);
-                }
+                for (const auto& note : r.notes) rows.push_back(listItem(note, "", glyphs::info));
                 add(column, listSection("Notes", rows));
             }
         } else if (entry.analysed) {
-            auto t = text(r.status(), font::subheadline, weightNormal(), p.label);
-            t.Padding(ThicknessHelper::FromLengths(16, 11, 16, 11));
-            add(column, listSection("This APK Couldn't Be Read", {t, labeledContent("File", entry.id + " · " +
-                                                                                              formattedByteCount(entry.size))}));
+            add(column, listSection("This APK Couldn't Be Read", {listItem(r.status(), "", glyphs::warning),
+                                                                  labeledContent("File", entry.id + " · " + formattedByteCount(entry.size))}));
         }
 
-        auto remove = button(label("Remove from Library", glyphs::trash, font::body, weightNormal(), p.red), [this] { askRemove(); },
-                             ButtonKind::rounded, "Remove from Library");
-        remove.Background(brush(p.card));
-        remove.Padding(ThicknessHelper::FromLengths(16, 13, 16, 13));
+        // Removing it: a destructive action, in the error colour.
+        auto remove = outlinedButton("Remove from Library", glyphs::trash, [this] { askRemove(); });
+        remove.Foreground(brush(p.error));
+        remove.BorderBrush(brush(p.error));
+        remove.HorizontalAlignment(HorizontalAlignment::Left);
+        remove.Margin(ThicknessHelper::FromLengths(0, 16, 0, 0));
         // The copy of a running app is open in the core.
         remove.IsEnabled(session::snapshot().apkId != id_ || !session::spent());
         add(column, remove);
@@ -165,69 +168,80 @@ private:
                                      : entry.splitsDir.empty()          ? "Removes Megler's copy of the APK."
                                                                         : "Removes Megler's copy of the app's APKs.") +
                              " The app installed on the phone stays, but Megler can no longer update it; its files and saves stay too.",
-                         font::footnote, weightNormal(), p.secondaryLabel);
-        note.Margin(ThicknessHelper::FromLengths(16, 7, 16, 0));
+                         font::bodySmall, weightNormal(), p.onSurfaceVariant);
+        note.Margin(ThicknessHelper::FromLengths(0, 8, 0, 0));
         add(column, note);
 
         host_.Content(column);
     }
 
-    /// The app as an app of the phone's own (ui/SeparateApps.h): whether it is installed and from which Megler, Install or
-    /// Update, its own settings, Uninstall; and, when the portal could not install a package made, Windows's installer.
+    /// The app as an app of the phone's own (ui/SeparateApps.h): whether it is installed and from which Megler; Install or
+    /// Update (Material's filled button), its own settings (tonal), Uninstall (a text button in the error colour); and, when
+    /// the portal could not install a package made, Windows's installer.
     UIElement phoneSection(const ApkEntry& entry) {
         const auto& p = palette();
         const ApkReport& r = entry.report;
         const separateApps::Status s = separateApps::status(r.package);
-        std::vector<UIElement> rows;
-        auto row = [&](const std::string& title, wchar_t icon, std::function<void()> onClick, bool enabled, std::optional<Color> color = std::nullopt) {
-            auto b = button(label(title, icon, font::body, weightNormal(), color.value_or(p.accent)), std::move(onClick), ButtonKind::rounded, title);
-            b.Padding(ThicknessHelper::FromLengths(16, 13, 16, 13));
-            b.HorizontalAlignment(HorizontalAlignment::Stretch);
-            b.HorizontalContentAlignment(HorizontalAlignment::Left);
-            b.IsEnabled(enabled && !s.queued);
-            rows.push_back(b);
-        };
+        auto column = vstack(12);
+
         std::string state;
         if (s.installed == separateApps::Installed::yes)
             state = s.outdated ? "Installed, made by Megler " + s.version + ". This is Megler " + appPackage::meglerVersion() + ": Update makes it again with this one."
-                               : "Installed, made by this Megler (" + s.version + ").";
+                               : "Installed on this phone, made by this Megler (" + s.version + ").";
         else if (s.installed == separateApps::Installed::no)
-            state = "Not installed.";
+            state = "Not installed on this phone.";
         else
             state = separateApps::portalProblem().empty() ? "Asking the Device Portal whether it is installed…"
                                                           : "Megler can't tell whether it is installed: " + separateApps::portalProblem();
-        auto stateText = text(state, font::subheadline, weightNormal(), s.outdated ? p.orange : p.label);
-        stateText.TextWrapping(TextWrapping::Wrap);
-        stateText.Padding(ThicknessHelper::FromLengths(16, 11, 16, 11));
-        rows.push_back(stateText);
 
         const std::string id = id_, package = r.package, title = entry.title();
         const bool installed = s.installed == separateApps::Installed::yes;
         // An APK that was the installed app's, which went (uninstalled elsewhere than here), is nowhere now.
         const bool apkThere = files::exists(entry.path);
-        row(installed ? (s.outdated ? "Update" : "Install Again") : "Install", installed ? glyphs::refresh : glyphs::add,
-            [this, id] { separateApps::install(shell_, id); }, r.ready() && apkThere);
-        row("App Settings", glyphs::settings, [this, package, title] { shell_.push(makeAppSettingsScreen(shell_, package, title)); }, true);
-        if (installed)
-            row("Uninstall", glyphs::trash, [this, package, title] {
+        auto buttons = hstack(8);
+        auto install = primaryButton(installed ? (s.outdated ? "Update" : "Install Again") : "Install", installed ? glyphs::refresh : glyphs::download,
+                                     [this, id] { separateApps::install(shell_, id); });
+        install.IsEnabled(r.ready() && apkThere && !s.queued);
+        install.HorizontalAlignment(HorizontalAlignment::Left);
+        add(buttons, install);
+        auto settings = tonalButton("App Settings", glyphs::settings, [this, package, title] { shell_.push(makeAppSettingsScreen(shell_, package, title)); });
+        settings.HorizontalAlignment(HorizontalAlignment::Left);
+        settings.IsEnabled(!s.queued);
+        add(buttons, settings);
+        add(column, buttons);
+
+        add(column, text(state, font::bodyMedium, weightNormal(), s.outdated ? p.orange : p.onSurfaceVariant));
+        const std::string step = opened_.empty() ? s.step : opened_;
+        if (!step.empty()) {
+            auto progress = vstack(8);
+            add(progress, text(step, font::bodyMedium, weightNormal(), p.onSurface));
+            if (s.queued) {
+                ProgressBar bar;
+                bar.IsIndeterminate(true);
+                bar.Foreground(brush(p.primary));
+                bar.Background(brush(p.secondaryContainer));
+                add(progress, bar);
+            }
+            add(column, card(progress, 12, 16));
+        }
+        auto more = hstack(0);
+        more.Margin(ThicknessHelper::FromLengths(-12, -4, 0, 0));
+        if (installed) {
+            add(more, textButton("Uninstall", [this, package, title] {
                 shell_.confirm("Uninstall " + title + "?",
                                "The app goes from the phone, with its private files. What it has in Android's storage stays in the shared folder, "
                                "and Megler keeps the APK: Install puts it back.",
                                "Uninstall", true, [this, package] { separateApps::uninstall(shell_, package); });
-            }, true, p.red);
+            }, p.error));
+        }
         // The package made, when the portal did not install it: Windows's own installer, as a file manager opens a package.
         if (!s.made.appx.empty() && !installed) {
             const std::wstring appx = s.made.appx, certificate = s.made.certificate;
-            row("Open the Package (Windows Installer)", glyphs::play, [this, appx] { openFile(appx); }, true);
-            row("Open the Certificate", glyphs::info, [this, certificate] { openFile(certificate); }, true);
+            add(more, textButton("Open the Package", [this, appx] { openFile(appx); }));
+            add(more, textButton("Open the Certificate", [this, certificate] { openFile(certificate); }));
         }
-        const std::string step = opened_.empty() ? s.step : opened_;
-        if (!step.empty()) {
-            auto t = text(step, font::subheadline, weightNormal(), p.secondaryLabel);
-            t.TextWrapping(TextWrapping::Wrap);
-            t.Padding(ThicknessHelper::FromLengths(16, 11, 16, 11));
-            rows.push_back(t);
-        }
+        if (more.Children().Size()) add(column, more);
+
         std::string footer = r.ready() ? std::string("An app of the phone's own: Megler and this ") + (entry.splitsDir.empty() ? "APK" : "app's APKs") +
                                              " in a package with the app's name and icon, made here and installed through the phone's Device "
                                              "Portal. It starts straight into the app, in a process of its own with its own memory; its /sdcard is "
@@ -237,7 +251,9 @@ private:
         if (!entry.installedPackage.empty())
             footer += apkThere ? " Megler keeps no copy of its APK: it reads the installed app's, and updates from it."
                                : " Its APK was the installed app's, which is gone: to install it again, install the APK again.";
-        return listSection("On This Phone", rows, footer);
+        add(column, text(footer, font::bodySmall, weightNormal(), p.onSurfaceVariant));
+        column.Margin(ThicknessHelper::FromLengths(0, 0, 0, 8));
+        return column;
     }
 
     void openFile(const std::wstring& path) {

@@ -48,6 +48,10 @@ constexpr const char* locationPlaceDefault = "55.751244,37.618423";
 /// as ru-RU or en-US; empty: the phone's, from Windows' settings.
 constexpr const char* localeTag = "megler.locale";
 
+/// Whether apps are told the phone is dark (Configuration.uiMode's night, player/PhoneState.h): "light", "dark", or
+/// empty: as Windows' theme is.
+constexpr const char* appTheme = "megler.appTheme";
+
 /// A separate app (ui/SharedFolders.h): the names of Megler's folders the user said "Not Now" to, "a|b".
 constexpr const char* foldersNotNow = "megler.folders.notNow";
 

@@ -7,7 +7,11 @@
 //
 // Why. The getters returned null, which on Android they do not for an EditText of a platform theme. Chromium's omnibox
 // (Brave 1.97) tints all four with Drawable.mutate().setTint(...) when it styles the URL bar, and the browser's main
-// activity ended with a NullPointerException there. Everything else is the original's, unchanged.
+// activity ended with a NullPointerException there.
+//
+// And setInputType makes the text editable only when the key listener it sets is another than before, as Android's
+// setKeyListenerOnly does. It did each time: MAX's text field sets its input type in its own setText, before the text is
+// editable, and the two called each other until the stack ran out. Everything else is the original's, unchanged.
 package android.widget;
 
 import android.content.Context;
@@ -839,6 +843,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public void setOnEditorActionListener(OnEditorActionListener l) { mEditorAction = l; }
     public void setInputType(int type) {
         mInputType = type;
+        KeyListener before = mKeyListener;
         boolean multi = (type & (EditorInfo.TYPE_MASK_CLASS | EditorInfo.TYPE_TEXT_FLAG_MULTI_LINE)) == (EditorInfo.TYPE_CLASS_TEXT | EditorInfo.TYPE_TEXT_FLAG_MULTI_LINE);
         if (isPasswordInputType(type)) setTransformationMethod(PasswordTransformationMethod.getInstance());
         else if (mTransformation instanceof PasswordTransformationMethod) setTransformationMethod(null);
@@ -846,7 +851,9 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
             if ((type & EditorInfo.TYPE_MASK_CLASS) == EditorInfo.TYPE_CLASS_NUMBER) mKeyListener = DigitsKeyListener.getInstance((type & EditorInfo.TYPE_NUMBER_FLAG_SIGNED) != 0, (type & EditorInfo.TYPE_NUMBER_FLAG_DECIMAL) != 0);
             else if ((type & EditorInfo.TYPE_MASK_CLASS) == EditorInfo.TYPE_CLASS_PHONE) mKeyListener = DialerKeyListener.getInstance();
             else if (mKeyListener == null) mKeyListener = TextKeyListener.getInstance();
-            if (!(mText instanceof Editable)) setText(mText, BufferType.EDITABLE);
+            // As Android's setKeyListenerOnly: the text made editable when the listener is another. An app's own setText that
+            // sets the input type again (MAX's) gets the same listener and stops there; called each time, it never ended.
+            if (mKeyListener != before && !(mText instanceof Editable)) setText(mText, BufferType.EDITABLE);
             if (!multi && !mSingleLine && (type & EditorInfo.TYPE_MASK_CLASS) != EditorInfo.TYPE_CLASS_TEXT) applySingleLine(true, false);
         }
         megler.InputMethods.restart(this);

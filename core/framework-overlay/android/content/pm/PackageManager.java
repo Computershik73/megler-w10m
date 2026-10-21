@@ -9,6 +9,15 @@
 // And getPackageInfo names the app's split APKs (splitNames, splitRevisionCodes),
 // as ApplicationInfo does: an app in several APKs that checks for its splits by
 // this way of asking found none, where the original left them empty.
+// And the other apps the phone has (megler.PhoneApps), which a launcher lists and
+// starts: queryIntentActivities of the launcher's intent (MAIN, LAUNCHER) has
+// them after the app's own, and getPackageInfo, getApplicationInfo,
+// getActivityInfo, getLaunchIntentForPackage, getInstalledPackages,
+// getInstalledApplications and getPackageUid know them; the original knew no
+// other app. And canRequestPackageInstalls is true: an app store may hand an APK
+// to Megler's installer (megler.Installs), which asks the user. And
+// getDefaultActivityIcon is the platform's sym_def_app_icon, where it was a
+// transparent colour with no size.
 package android.content.pm;
 
 import android.content.ComponentName;
@@ -74,7 +83,12 @@ public class PackageManager {
             return p;
         }
         if (megler.GooglePackages.is(pkg)) return megler.GooglePackages.packageInfo(pkg);
-        if (!mine(pkg)) throw new NameNotFoundException(pkg);
+        if (!mine(pkg)) {
+            // Another app the phone has (megler.PhoneApps), or none.
+            megler.PhoneApps.App other = megler.PhoneApps.find(pkg);
+            if (other != null) return megler.PhoneApps.packageInfo(other, flags);
+            throw new NameNotFoundException(pkg);
+        }
         megler.Manifest.read();
         PackageInfo p = new PackageInfo();
         p.packageName = pkg; p.versionCode = megler.Manifest.versionCode; p.versionName = megler.Manifest.versionName != null ? megler.Manifest.versionName : "1.0";
@@ -98,11 +112,20 @@ public class PackageManager {
     public static final class ResolveInfoFlags { private final long v; private ResolveInfoFlags(long v) { this.v = v; } public static ResolveInfoFlags of(long v) { return new ResolveInfoFlags(v); } public long getValue() { return v; } }
     public ApplicationInfo getApplicationInfo(String pkg, int flags) throws NameNotFoundException {
         if (megler.GooglePackages.is(pkg)) return megler.GooglePackages.applicationInfo(pkg);
-        if (!mine(pkg)) throw new NameNotFoundException(pkg);
+        if (!mine(pkg)) {
+            megler.PhoneApps.App other = megler.PhoneApps.find(pkg);
+            if (other != null) return megler.PhoneApps.applicationInfo(other);
+            throw new NameNotFoundException(pkg);
+        }
         return ApplicationInfo.self();
     }
     public ApplicationInfo getApplicationInfo(String pkg, ApplicationInfoFlags flags) throws NameNotFoundException { return getApplicationInfo(pkg, 0); }
     public ActivityInfo getActivityInfo(ComponentName c, int flags) throws NameNotFoundException {
+        if (!mine(c.getPackageName())) {
+            megler.PhoneApps.App other = megler.PhoneApps.find(c.getPackageName());
+            if (other != null) return megler.PhoneApps.activityInfo(other, c.getClassName());
+            throw new NameNotFoundException(c.toString());
+        }
         megler.Manifest.Component m = megler.Manifest.activity(c.getClassName());
         if (m == null) for (megler.Manifest.Component a : megler.Manifest.activities) if (a.name.endsWith(c.getClassName())) m = a;
         if (m == null) throw new NameNotFoundException(c.toString());
@@ -150,7 +173,14 @@ public class PackageManager {
     public android.graphics.drawable.Drawable getApplicationIcon(String pkg) throws NameNotFoundException { return getApplicationIcon(getApplicationInfo(pkg, 0)); }
     public android.graphics.drawable.Drawable getApplicationLogo(ApplicationInfo a) { return null; }
     public android.graphics.drawable.Drawable getActivityIcon(ComponentName c) throws NameNotFoundException { return getActivityInfo(c, 0).loadIcon(this); }
-    public android.graphics.drawable.Drawable getDefaultActivityIcon() { return new android.graphics.drawable.ColorDrawable(0); }
+    // The platform's icon of an app that has none (sym_def_app_icon), as Android's; a transparent one if it cannot be read.
+    public android.graphics.drawable.Drawable getDefaultActivityIcon() {
+        try {
+            android.graphics.drawable.Drawable d = android.content.res.Resources.getSystem().getDrawable(android.R.drawable.sym_def_app_icon);
+            if (d != null) return d;
+        } catch (RuntimeException e) {}
+        return new android.graphics.drawable.ColorDrawable(0);
+    }
     public android.graphics.drawable.Drawable getDrawable(String pkg, int res, ApplicationInfo a) { try { return megler.ContextImpl.app().getResources().getDrawable(res); } catch (Exception e) { return null; } }
     public CharSequence getText(String pkg, int res, ApplicationInfo a) { try { return megler.ContextImpl.app().getResources().getText(res); } catch (Exception e) { return null; } }
     public android.content.res.Resources getResourcesForApplication(String pkg) throws NameNotFoundException { android.content.Context external = megler.MicroG.context(pkg); if (external != null) return external.getResources(); if (!mine(pkg) && !"android".equals(pkg)) throw new NameNotFoundException(pkg); return megler.ContextImpl.app().getResources(); }
@@ -160,10 +190,20 @@ public class PackageManager {
     public InstallSourceInfo getInstallSourceInfo(String pkg) throws NameNotFoundException { return new InstallSourceInfo(); }
     public List<ResolveInfo> queryIntentActivities(Intent i, int flags) {
         ArrayList<ResolveInfo> l = new ArrayList<>();
-        megler.Manifest.Component c = megler.Manifest.resolve(i);
+        String target = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();
+        boolean other = target != null && !mine(target);
+        megler.Manifest.Component c = other ? null : megler.Manifest.resolve(i);
         if (c != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
-        else if (i.getData() != null && ("http".equals(i.getData().getScheme()) || "https".equals(i.getData().getScheme()) || "mailto".equals(i.getData().getScheme()))) {
+        else if (!other && i.getData() != null && ("http".equals(i.getData().getScheme()) || "https".equals(i.getData().getScheme()) || "mailto".equals(i.getData().getScheme()))) {
             ResolveInfo r = new ResolveInfo(); r.activityInfo = new ActivityInfo(); r.activityInfo.name = "com.android.browser.Browser"; r.activityInfo.packageName = "com.android.browser"; r.nonLocalizedLabel = "Browser"; l.add(r);
+        }
+        // The other apps the phone has (megler.PhoneApps): for the launcher's intent, all of them or the one it names; and the
+        // activity an intent names in one of them.
+        if (megler.PhoneApps.isLauncherIntent(i)) {
+            for (megler.PhoneApps.App a : megler.PhoneApps.all()) if (target == null || target.equals(a.packageName)) l.add(megler.PhoneApps.resolveInfo(a));
+        } else if (other && i.getComponent() != null) {
+            megler.PhoneApps.App a = megler.PhoneApps.find(target);
+            if (a != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = megler.PhoneApps.activityInfo(a, i.getComponent().getClassName()); l.add(r); }
         }
         return l;
     }
@@ -198,17 +238,31 @@ public class PackageManager {
     }
     public List<ResolveInfo> queryIntentContentProviders(Intent i, int flags) { return new ArrayList<>(); }
     public Intent getLaunchIntentForPackage(String pkg) {
-        if (!mine(pkg)) return null;
+        if (!mine(pkg)) {
+            megler.PhoneApps.App other = megler.PhoneApps.find(pkg);
+            return other == null || other.activity == null ? null
+                : new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(pkg, other.activity).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        }
         megler.Manifest.Component c = megler.Manifest.launcher();
         return c == null ? null : new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(pkg, c.name);
     }
     public Intent getLeanbackLaunchIntentForPackage(String pkg) { return null; }
-    public List<PackageInfo> getInstalledPackages(int flags) { ArrayList<PackageInfo> l = new ArrayList<>(); try { l.add(getPackageInfo(megler.Native.packageName(), flags)); } catch (NameNotFoundException e) {} return l; }
+    public List<PackageInfo> getInstalledPackages(int flags) {
+        ArrayList<PackageInfo> l = new ArrayList<>();
+        try { l.add(getPackageInfo(megler.Native.packageName(), flags)); } catch (NameNotFoundException e) {}
+        for (megler.PhoneApps.App a : megler.PhoneApps.all()) l.add(megler.PhoneApps.packageInfo(a, flags));
+        return l;
+    }
     public List<PackageInfo> getInstalledPackages(PackageInfoFlags flags) { return getInstalledPackages(0); }
-    public List<ApplicationInfo> getInstalledApplications(int flags) { ArrayList<ApplicationInfo> l = new ArrayList<>(); l.add(ApplicationInfo.self()); return l; }
+    public List<ApplicationInfo> getInstalledApplications(int flags) {
+        ArrayList<ApplicationInfo> l = new ArrayList<>();
+        l.add(ApplicationInfo.self());
+        for (megler.PhoneApps.App a : megler.PhoneApps.all()) l.add(megler.PhoneApps.applicationInfo(a));
+        return l;
+    }
     public String[] getPackagesForUid(int uid) { return new String[] { megler.Native.packageName() }; }
     public String getNameForUid(int uid) { return megler.Native.packageName(); }
-    public int getPackageUid(String pkg, int flags) throws NameNotFoundException { if (megler.GooglePackages.is(pkg)) return megler.GooglePackages.applicationInfo(pkg).uid; if (!mine(pkg)) throw new NameNotFoundException(pkg); return android.os.Process.myUid(); }
+    public int getPackageUid(String pkg, int flags) throws NameNotFoundException { if (megler.GooglePackages.is(pkg)) return megler.GooglePackages.applicationInfo(pkg).uid; if (!mine(pkg)) { megler.PhoneApps.App a = megler.PhoneApps.find(pkg); if (a != null) return a.uid; throw new NameNotFoundException(pkg); } return android.os.Process.myUid(); }
     /* components the app enabled or disabled (Instagram turns its own on in stages and checks each took), kept across launches */
     private static java.util.Properties sStates;
     private static synchronized java.util.Properties states() {
@@ -250,7 +304,8 @@ public class PackageManager {
     public boolean isSafeMode() { return false; }
     public boolean isInstantApp() { return false; }
     public boolean isInstantApp(String pkg) { return false; }
-    public boolean canRequestPackageInstalls() { return false; }
+    // An app may ask to install others: Megler's installer has the APK and asks the user (megler.Installs).
+    public boolean canRequestPackageInstalls() { return true; }
     private final PackageInstaller meglerInstaller = new PackageInstaller();
     public PackageInstaller getPackageInstaller() { return meglerInstaller; }
     public android.content.pm.ModuleInfo getModuleInfo(String pkg, int flags) throws NameNotFoundException { throw new NameNotFoundException(pkg); }

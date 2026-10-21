@@ -8,6 +8,15 @@
 // realActivity: one started through an <activity-alias> is found by an intent that names the activity itself, where the
 // original compared the names they were started as.
 //
+// And in one more: a media key from the phone (its media controls: the lock screen's and the volume flyout's play and
+// pause) goes to the app's active media session first, as Android hands it to the session rather than to the window
+// (android.media.session.MediaSession.meglerMediaKey); an app with none gets it as any other key.
+//
+// And an intent to install an APK (ACTION_INSTALL_PACKAGE, or ACTION_VIEW of an APK, naming no activity) goes to Megler's
+// installer first (megler.Installs), as Android hands it to its package installer, rather than to an activity of the app's
+// that takes the content or file scheme. And an intent for an activity of another app the phone has goes to the shell,
+// which starts that app (megler.PhoneApps).
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -107,10 +116,14 @@ public final class AppRunner {
                 ProviderInfo info = new ProviderInfo();
                 info.name = p.name; info.authority = p.authorities; info.packageName = Native.packageName(); info.exported = p.exported; info.metaData = p.metaData; info.grantUriPermissions = p.grantUriPermissions;
                 info.applicationInfo = app.getApplicationInfo();
+                // As the manifest says them: android:readPermission and writePermission, else android:permission for both
+                // (Android's SearchIndexablesProvider refuses to start without READ_SEARCH_INDEXABLES there).
+                info.readPermission = p.readPermission != null ? p.readPermission : p.permission;
+                info.writePermission = p.writePermission != null ? p.writePermission : p.permission;
                 cp.attachInfo(app, info);
                 ContentResolver.register(p.authorities, cp);
             } catch (Throwable t) {
-                android.util.Log.w("Megler", "content provider " + p.name + " did not start: " + t);
+                android.util.Log.w("Megler", "content provider " + p.name + " did not start", t);
             }
         }
     }
@@ -146,6 +159,18 @@ public final class AppRunner {
     }
     /** Context.startActivity: an activity of the app's own, or something the host can open (a web page, mail, the store). */
     public static void startActivity(Context from, Intent i, int request, Bundle opts) {
+        // An APK to install (a file manager's, a browser's download, an app store's): Megler's installer has it, as Android's
+        // package installer would (megler.Installs). Asked for a result, the caller hears RESULT_OK: the APK went.
+        if (megler.Installs.isInstall(i)) {
+            android.util.Log.d("Megler", "startActivity " + i + " -> Megler's installer");
+            megler.Installs.install(from, i);
+            final Activity caller = from instanceof Activity ? (Activity) from : top();
+            if (request >= 0 && caller != null) sHandler.post(() -> caller.meglerActivityResult(request, Activity.RESULT_OK, null));
+            return;
+        }
+        // An activity of another app the phone has (a launcher's tap, an app opening another): the shell starts that app
+        // (megler.PhoneApps), as Android starts another app's activity in its own process.
+        if (megler.PhoneApps.start(i)) return;
         Manifest.Component c = Manifest.resolve(i);
         android.util.Log.d("Megler", "startActivity " + i + (c != null ? " -> " + c.name : " (not an activity of this app)"));
         if (c != null) {
@@ -276,6 +301,9 @@ public final class AppRunner {
                 if (phase == 4) {
                     long t = SystemClock.uptimeMillis();
                     KeyEvent ke = new KeyEvent(t, t, ev[3 + 4 * k] != 0 ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP, id, 0);
+                    // A media key (the phone's media controls send them) is the active media session's, as on Android;
+                    // with none, it is the window's like any other key.
+                    if (android.media.session.MediaSession.meglerMediaKey(ke)) continue;
                     if (!InputMethods.key(ke)) ViewRootDispatch.key(ke);
                     continue;
                 }

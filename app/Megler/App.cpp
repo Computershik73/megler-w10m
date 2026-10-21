@@ -85,6 +85,29 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         Window::Current().Activate();
     }
 
+    /// A megler: link (Package.appxmanifest, the protocol), by which a package of Megler's asks another: an APK an app's own
+    /// package hands over to install, an app a launcher starts.
+    void OnActivated(IActivatedEventArgs const& args) {
+        shellLog::write(format("app: activated (kind %d)", int(args.Kind())));
+        ensureContent();
+        Window::Current().Activate();
+        if (args.Kind() == ActivationKind::Protocol) shell_->openLink(args.as<ProtocolActivatedEventArgs>().Uri());
+    }
+
+    /// An APK (or a bundle) opened in Megler from the phone's file manager or another app (Package.appxmanifest, the
+    /// file type association): installed once the user says yes, as one picked in the Library.
+    void OnFileActivated(FileActivatedEventArgs const& args) {
+        shellLog::write(format("app: opened with %u file(s)", unsigned(args.Files().Size())));
+        ensureContent();
+        Window::Current().Activate();
+        for (auto const& item : args.Files()) {
+            if (auto file = item.try_as<winrt::Windows::Storage::StorageFile>()) {
+                shell_->installApkFile(file);
+                break;
+            }
+        }
+    }
+
     // The flag copy-system-dlls: the phone's ntdll.dll and KERNELBASE.dll
     // copied into LocalState, to be read on the PC with a disassembler --
     // what an address of theirs in a crash report is, which no public
@@ -100,6 +123,8 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
 
     void ensureContent() {
         if (shell_) return;
+        // The folder of the flag files (core: mg_flag; ui/UiShots.h): the Device Portal puts files into a folder, but makes none.
+        files::makeDirectories(platform::localStateDirectory() + L"\\flags");
         settings::load(platform::localStateDirectory(), appPackage::sharedFolder(), appPackage::single().package);
         // The core, before any screen asks it anything. Its answer -- can
         // Android code run here -- is in the log and on the screens.
