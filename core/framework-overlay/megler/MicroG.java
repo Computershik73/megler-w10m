@@ -188,6 +188,25 @@ public final class MicroG {
         return null;
     }
     public static ServiceInfo resolve(Intent i) { MicroG g = get(); Entry e = g == null ? null : g.find(i, false); return e == null ? null : e.info; }
+    /** microG's enabled services whose filters take the action, exported or not: what the system finds by it (an account authenticator). */
+    public static java.util.List<ServiceInfo> services(String action) {
+        ArrayList<ServiceInfo> out = new ArrayList<>();
+        MicroG g = get();
+        if (g == null || action == null) return out;
+        for (Entry e : g.services) {
+            if (!e.info.enabled) continue;
+            for (IntentFilter f : e.filters) if (f.hasAction(action)) { out.add(e.info); break; }
+        }
+        return out;
+    }
+    /**
+     * A binding the system makes, as Android's account manager binds an authenticator: to a service of microG's whether it is
+     * exported or not (microG's GoogleLoginService is not).
+     */
+    public static boolean bindAsSystem(Intent intent, ServiceConnection conn) {
+        MicroG g = get();
+        return g != null && g.find(intent, true) != null && bind(g.context, intent, conn);
+    }
     private ClassLoader loader() {
         if (loader == null) try {
             loader = new ServiceClassLoader(APK);

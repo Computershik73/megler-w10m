@@ -96,7 +96,7 @@ public class Main extends Activity {
             check(bindService(i, cancelled, BIND_AUTO_CREATE), "pending bind accepted");
             unbindService(cancelled);
             check(bindService(i, connection, BIND_AUTO_CREATE), "bind accepted");
-            new Handler().postDelayed(() -> { if (!done) fail(new AssertionError("binding timeout")); }, 30000);
+            new Handler().postDelayed(() -> { if (!done) fail(new AssertionError("binding timeout")); }, 120000);
         } catch (Throwable t) { fail(t); }
     }
     private final ServiceConnection connection = new ServiceConnection() {
@@ -166,15 +166,65 @@ public class Main extends Activity {
                 check(called[0], "broker callback delivered");
                 check(com.google.android.gms.common.internal.GetServiceRequest.CREATOR == 1729, "client survives broker call");
                 dynamiteModule();
-                unbindService(this); done = true;
-                Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources, dynamite modules");
-                text.setText("microG isolated services: PASS");
+                unbindService(this);
+                // AccountManager blocks for its answers, which it may not do on the main thread.
+                new Thread(() -> {
+                    try {
+                        accounts();
+                        runOnUiThread(() -> {
+                            done = true;
+                            Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources, dynamite modules, accounts");
+                            text.setText("microG isolated services: PASS");
+                        });
+                    } catch (Throwable t) { runOnUiThread(() -> fail(t)); }
+                }, "accounts").start();
             } catch (Throwable t) { fail(t); }
             finally { data.recycle(); reply.recycle(); }
         }
         public void onServiceDisconnected(ComponentName n) { fail(new AssertionError("broker disconnected")); }
         public void onNullBinding(ComponentName n) { fail(new AssertionError("broker null binding")); }
     };
+
+    /**
+     * Google accounts are AccountManager's, and microG is their authenticator: its type is there, an account added is kept where
+     * every app sees it, microG's login service (not exported: the system binds it) answers a request, adding an account
+     * without an activity hands back microG's sign-in screen, and an account goes when removed. No network is used.
+     */
+    private void accounts() throws Exception {
+        final String type = "com.google";
+        android.accounts.AccountManager am = android.accounts.AccountManager.get(this);
+        android.accounts.AuthenticatorDescription google = null;
+        for (android.accounts.AuthenticatorDescription d : am.getAuthenticatorTypes()) if (type.equals(d.type)) google = d;
+        check(google != null && GMS.equals(google.packageName) && google.customTokens, "microG authenticates com.google");
+        final java.util.concurrent.CountDownLatch heard = new java.util.concurrent.CountDownLatch(1);
+        final String name = "megler.test@example.com";
+        android.accounts.OnAccountsUpdateListener listener = accounts -> {
+            for (android.accounts.Account a : accounts) if (name.equals(a.name)) heard.countDown();
+        };
+        am.addOnAccountsUpdatedListener(listener, null, false);
+        android.accounts.Account account = new android.accounts.Account(name, type);
+        check(am.addAccountExplicitly(account, null, null), "account added");
+        check(!am.addAccountExplicitly(account, null, null), "account added once");
+        check(java.util.Arrays.asList(am.getAccountsByType(type)).contains(account), "account listed");
+        check(heard.await(10, java.util.concurrent.TimeUnit.SECONDS), "listener told of the account");
+        am.removeOnAccountsUpdatedListener(listener);
+        check(new java.io.File("/data/megler-services/accounts/accounts.json").isFile(), "accounts kept in the services' shared folder");
+        am.setUserData(account, "megler", "1");
+        check("1".equals(am.getUserData(account, "megler")), "user data");
+        am.setAuthToken(account, "probe", "token-1");
+        check("token-1".equals(am.peekAuthToken(account, "probe")), "token kept");
+        am.invalidateAuthToken(type, "token-1");
+        check(am.peekAuthToken(account, "probe") == null, "token invalidated");
+        Bundle confirmed = am.confirmCredentials(account, null, null, null, null).getResult(30, java.util.concurrent.TimeUnit.SECONDS);
+        check(confirmed.getBoolean(android.accounts.AccountManager.KEY_BOOLEAN_RESULT), "microG's login service confirms");
+        Bundle add = am.addAccount(type, null, null, null, null, null, null).getResult(30, java.util.concurrent.TimeUnit.SECONDS);
+        Intent signIn = add.getParcelable(android.accounts.AccountManager.KEY_INTENT);
+        check(signIn != null && signIn.getComponent() != null && GMS.equals(signIn.getComponent().getPackageName())
+            && signIn.getComponent().getClassName().equals("org.microg.gms.auth.login.LoginActivity"), "microG's sign-in screen to add an account");
+        check(signIn.getParcelableExtra(android.accounts.AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE) != null, "sign-in screen given the response");
+        check(am.removeAccount(account, null, null, null).getResult(30, java.util.concurrent.TimeUnit.SECONDS).getBoolean(android.accounts.AccountManager.KEY_BOOLEAN_RESULT), "account removed");
+        check(am.getAccountsByType(type).length == 0, "no account left");
+    }
 
     /**
      * A dynamite module as a client's DynamiteModule loads one: microG's own factory makes the module's context, whose class loader

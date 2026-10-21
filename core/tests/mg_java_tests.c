@@ -2332,6 +2332,7 @@ static int run_camera(void)
 static int run_microg(void)
 {
     CHECK(wait_line("I/MicroGTest: PASS isolated GmsCore broker", 0, 1200) >= 0);
+    CHECK(find_line("storage and resources, dynamite modules, accounts", 0) >= 0);
     CHECK(find_line("E/MicroGTest: FAILED", 0) < 0);
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
     /* microG heard the boot (megler.MicroG.boot): its check-in trigger looked at its setting, which is off until the user turns it on. */
