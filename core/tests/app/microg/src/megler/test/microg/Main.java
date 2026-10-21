@@ -164,8 +164,9 @@ public class Main extends Activity {
                 check(binder.transact(46, data, reply, 0), "getService transaction"); reply.readException();
                 check(called[0], "broker callback delivered");
                 check(com.google.android.gms.common.internal.GetServiceRequest.CREATOR == 1729, "client survives broker call");
+                dynamiteModule();
                 unbindService(this); done = true;
-                Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources");
+                Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources, dynamite modules");
                 text.setText("microG isolated services: PASS");
             } catch (Throwable t) { fail(t); }
             finally { data.recycle(); reply.recycle(); }
@@ -173,5 +174,29 @@ public class Main extends Activity {
         public void onServiceDisconnected(ComponentName n) { fail(new AssertionError("broker disconnected")); }
         public void onNullBinding(ComponentName n) { fail(new AssertionError("broker null binding")); }
     };
+
+    /**
+     * A dynamite module as a client's DynamiteModule loads one: microG's own factory makes the module's context, whose class loader
+     * is a PathClassLoader over microG's APK. Its classes must be microG's, not the client's of the same name, and the provider
+     * installer (Sberbank's first call into microG) must load conscrypt's natives from microG's APK and put its provider first.
+     */
+    private void dynamiteModule() throws Exception {
+        Context gms = createPackageContext(GMS, CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY);
+        Class<?> factory = Class.forName("com.google.android.gms.chimera.DynamiteContextFactory", true, gms.getClassLoader());
+        Context module = (Context) factory.getMethod("createDynamiteContext", String.class, Context.class)
+            .invoke(null, "com.google.android.gms.providerinstaller.dynamite", this);
+        check(module != null, "dynamite module context");
+        ClassLoader loader = module.getClassLoader();
+        check(loader != gms.getClassLoader() && "dalvik.system.PathClassLoader".equals(loader.getClass().getName()), "module loader is microG's PathClassLoader");
+        Class<?> client = com.google.android.gms.common.internal.GetServiceRequest.class;
+        check(loader.loadClass(client.getName()) == Class.forName(client.getName(), false, gms.getClassLoader()), "module classes are microG's");
+        check(Class.forName(client.getName(), false, loader) != client, "module class by name is not the client's");
+        Class<?> installer = loader.loadClass("com.google.android.gms.providerinstaller.ProviderInstallerImpl");
+        installer.getMethod("insertProvider", Context.class).invoke(null, module);
+        java.security.Provider first = java.security.Security.getProviders()[0];
+        check("GmsCore_OpenSSL".equals(first.getName()), "provider installer puts microG's conscrypt first, not " + first.getName());
+        check("GmsCore_OpenSSL".equals(javax.net.ssl.SSLContext.getDefault().getProvider().getName()), "default TLS context from microG's conscrypt");
+        check(com.google.android.gms.org.conscrypt.NativeCrypto.CLIENT_MARKER == 731, "client native class after the module's natives");
+    }
 
 }

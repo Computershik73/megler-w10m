@@ -76,15 +76,72 @@ static mg_jvalue get(mg_jobj *o, const char *name)
 
 /* Service APK loaders are explicit: they share platform classes, never a client's libraries. */
 static mg_jobj *g_service_loaders[16];
+static char *g_service_apks[16]; /* the APK each one opened, by the name the app knows it under */
+/*
+ * Other loaders over a service's APK: microG makes a PathClassLoader over its own APK for each of its dynamite modules a client
+ * loads (DynamiteContextFactory.createClassLoader), whose classes on Android are microG's, apart from the client's. Here such
+ * a loader is the service loader's scope under another name: its classes are the service's, its native libraries the
+ * service's (a class's loader, as Java and System.loadLibrary see it, is the service loader). Before, the APK's classes were
+ * put on the client's one class path, where the client's own classes of the same names won (Play Store's
+ * ScionActivityInfo, without the field microG's measurement module reads) and conscrypt's natives were looked for in the
+ * client's APK (Sberbank's ProviderInstaller: UnsatisfiedLinkError).
+ */
+#define MAX_ALIASES 32
+static mg_jobj *g_alias_loaders[MAX_ALIASES];
+static int g_alias_scopes[MAX_ALIASES];
 int mg_dvm_loader_scope(mg_jobj *loader) {
     int i;
     if (!loader) return 0;
     for (i = 1; i < 16; i++) if (g_service_loaders[i] == loader) return i;
+    for (i = 0; i < MAX_ALIASES; i++) if (g_alias_loaders[i] == loader) return g_alias_scopes[i];
     return 0;
 }
 mg_jobj *mg_dvm_scope_loader(int scope) { return scope > 0 && scope < 16 ? g_service_loaders[scope] : NULL; }
 void mg_dvm_loader_roots(void (*fn)(mg_jobj *, void *), void *user) {
-    int i; for (i = 1; i < 16; i++) if (g_service_loaders[i]) fn(g_service_loaders[i], user);
+    int i;
+    for (i = 1; i < 16; i++) if (g_service_loaders[i]) fn(g_service_loaders[i], user);
+    /* (Kept for good, as the table holds them by address: microG keeps each module's loader for good itself.) */
+    for (i = 0; i < MAX_ALIASES; i++) if (g_alias_loaders[i]) fn(g_alias_loaders[i], user);
+}
+/* The scope of the service loader that opened this APK, or 0. */
+static int service_apk_scope(const char *source)
+{
+    int i;
+    for (i = 1; i < 16; i++) if (g_service_apks[i] && !strcmp(g_service_apks[i], source)) return i;
+    return 0;
+}
+/* A loader made over a service's APK becomes another name of its scope: false when the table is full. */
+static bool alias_loader(mg_jobj *loader, int scope, const char *source)
+{
+    mg_jvalue parent, merged, size;
+    int i, free_slot = -1;
+    bool known = false;
+    mg_dvm_lock();
+    for (i = 0; i < MAX_ALIASES && !known; i++) {
+        if (g_alias_loaders[i] == loader) known = true;
+        else if (!g_alias_loaders[i] && free_slot < 0) free_slot = i;
+    }
+    if (!known && free_slot >= 0) {
+        g_alias_loaders[free_slot] = loader;
+        g_alias_scopes[free_slot] = scope;
+    }
+    mg_dvm_unlock();
+    if (known) return true;
+    if (free_slot < 0) return false;
+    mg_info("dvm: a %s over %s: the classes of its scope %d", mg_dvm_class_of(loader)->name, source, scope);
+    /* microG's filter of the classes a module takes from its client (FilteredClassLoader, the module's MERGED_CLASSES and
+       MERGED_PACKAGES: Cronet's API) is not followed: those classes are microG's own here. Said, for when one is wanted. */
+    parent.l = merged.l = NULL;
+    size.i = 0;
+    if (mg_dvm_get_field(loader, "parent", &parent) && parent.l && !strcmp(mg_dvm_class_of(parent.l)->name, "com/google/android/gms/chimera/container/FilteredClassLoader")) {
+        int n = 0;
+        if (mg_dvm_get_field(parent.l, "allowedClasses", &merged) && merged.l && mg_dvm_call_virtual(merged.l, "size", "()I", NULL, &size)) n += size.i;
+        size.i = 0;
+        if (mg_dvm_get_field(parent.l, "allowedPackages", &merged) && merged.l && mg_dvm_call_virtual(merged.l, "size", "()I", NULL, &size)) n += size.i;
+        mg_dvm_clear_pending();
+        if (n) mg_warn("dvm: the module's loader over %s names %d classes and packages to take from the app; they are the service's own here", source, n);
+    }
+    return true;
 }
 N(ServiceClassLoader_openApk) {
     const char *path = mg_dvm_string_utf8(c->args[0].l);
@@ -103,6 +160,7 @@ N(ServiceClassLoader_openApk) {
         return;
     }
     free(host);
+    g_service_apks[scope] = mg_strdup(path);
     c->ret.i = scope;
 }
 N(ServiceClassLoader_findClassNative) {
@@ -926,6 +984,15 @@ N(DexFile_openDexFileNative)
         return;
     }
     for (i = 0; i < known && !there; i++) there = !strcmp(g_sources[i], source);
+    /* openDexFileNative(sourceName, outputName, flags, loader, elements): a loader other than the app's over a service's APK
+       is that service's scope under another name, and the APK's classes stay off the app's path. */
+    if (!there && c->args[3].l && c->args[3].l != g_dvm.app_loader && service_apk_scope(source)) {
+        if (!alias_loader(c->args[3].l, service_apk_scope(source), source)) {
+            mg_dvm_throw("java/io/IOException", "too many class loaders over service APKs (%s)", source);
+            return;
+        }
+        there = true;
+    }
     if (!there) {
         /* A file the app names itself (a second DEX file it unpacked, a plug-in): its classes join the path, after everything there. */
         host = mg_fs_host_path(source);
@@ -1005,12 +1072,35 @@ N(DexFile_defineClassNative)
     char internal[400];
     mg_dvm_class *k;
     size_t i;
+    int scope = mg_dvm_loader_scope(c->args[1].l); /* defineClassNative(name, loader, cookie, dexFile) */
     if (!name || strlen(name) >= sizeof(internal)) return;
     for (i = 0; name[i]; i++) internal[i] = name[i] == '.' ? '/' : name[i];
     internal[i] = 0;
     /* A class that is not there is null and no exception: the loader goes on to its next file, and throws ClassNotFoundException itself. */
-    if (!mg_dvm_class_exists(internal)) return;
-    k = mg_dvm_find_class(internal);
+    if (!mg_dvm_class_exists_scope(internal, scope)) return;
+    k = mg_dvm_find_class_scope(internal, scope);
+    c->ret.l = k ? mg_dvm_mirror(k) : NULL;
+}
+
+/*
+ * VMClassLoader.findLoadedClass(loader, name). There is one class path, which ClassLoader.loadClass reaches through its parent,
+ * so for a loader of that path the answer is null, as it always was. A loader of a scope of its own (another name of a
+ * service's) has all the classes of its scope at once, the platform's among them: ART too finds a class of a loader's own DEX
+ * files here, without asking the parent. The parent here would be the client's path, where a class of the same name may be
+ * the client's.
+ */
+N(VMClassLoader_findLoadedClass)
+{
+    const char *given = c->args[1].l ? mg_dvm_string_utf8(c->args[1].l) : NULL;
+    int scope = mg_dvm_loader_scope(c->args[0].l);
+    char internal[400];
+    mg_dvm_class *k;
+    size_t i;
+    if (!scope || !given || strlen(given) >= sizeof(internal) || strchr(given, '/')) return;
+    for (i = 0; given[i]; i++) internal[i] = given[i] == '.' ? '/' : given[i];
+    internal[i] = 0;
+    if (!mg_dvm_class_exists_scope(internal, scope)) return;
+    k = mg_dvm_find_class_scope(internal, scope);
     c->ret.l = k ? mg_dvm_mirror(k) : NULL;
 }
 
@@ -1494,7 +1584,7 @@ static const mg_jhle k_art[] = {
     { "dalvik/system/DexFile", "closeDexFile", NULL, DexFile_true },
     /* Nothing is compiled ahead of time or optimised here: every other question about that is answered no, none, zero. */
     { "dalvik/system/DexFile", NULL, NULL, Class_null },
-    { "java/lang/VMClassLoader", "findLoadedClass", NULL, Class_null },
+    { "java/lang/VMClassLoader", "findLoadedClass", NULL, VMClassLoader_findLoadedClass },
     { "java/lang/VMClassLoader", "getBootClassPathEntries", NULL, VMClassLoader_getBootClassPathEntries },
 
     { "java/util/concurrent/atomic/AtomicLong", "VMSupportsCS8", NULL, AtomicLong_VMSupportsCS8 },
