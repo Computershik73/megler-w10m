@@ -161,6 +161,12 @@ public class Main extends Activity {
                 data.writeInt(0xffff0007); fieldAt = data.dataPosition(); data.writeInt(0); fieldStart = data.dataPosition();
                 data.writeBundle(new Bundle()); fieldEnd = data.dataPosition();
                 data.setDataPosition(fieldAt); data.writeInt(fieldEnd - fieldStart); data.setDataPosition(fieldEnd);
+                // Field 11, the API's features: an array of the client's own Feature, as the client library writes it. microG's
+                // broker reads it with its own Feature's creator, and must get its own Feature objects (android.os.Parcel).
+                data.writeInt(0xffff000b); fieldAt = data.dataPosition(); data.writeInt(0); fieldStart = data.dataPosition();
+                data.writeTypedArray(new com.google.android.gms.common.Feature[] { new com.google.android.gms.common.Feature("megler_probe", 7) }, 0);
+                fieldEnd = data.dataPosition();
+                data.setDataPosition(fieldAt); data.writeInt(fieldEnd - fieldStart); data.setDataPosition(fieldEnd);
                 data.setDataPosition(sizeAt); data.writeInt(fieldEnd - start); data.setDataPosition(fieldEnd);
                 check(binder.transact(46, data, reply, 0), "getService transaction"); reply.readException();
                 check(called[0], "broker callback delivered");
