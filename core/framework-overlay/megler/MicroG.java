@@ -17,6 +17,7 @@ public final class MicroG {
     private static boolean checked;
     private final PackageInfo info = new PackageInfo();
     private final ArrayList<Entry> services = new ArrayList<>();
+    private final ArrayList<Receiver> receivers = new ArrayList<>();
     private final ArrayList<ProviderInfo> providers = new ArrayList<>();
     private final HashMap<String, ContentProvider> runningProviders = new HashMap<>();
     private final HashMap<String, Running> running = new HashMap<>();
@@ -26,6 +27,11 @@ public final class MicroG {
     private ClassLoader loader;
     private static final class Entry {
         ServiceInfo info = new ServiceInfo();
+        ArrayList<IntentFilter> filters = new ArrayList<>();
+    }
+    /** A receiver of microG's manifest, which hears broadcasts for microG (send), and the boot's (boot). */
+    private static final class Receiver {
+        ActivityInfo info = new ActivityInfo();
         ArrayList<IntentFilter> filters = new ArrayList<>();
     }
     private static final class Running {
@@ -95,12 +101,13 @@ public final class MicroG {
         a.flags = ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_INSTALLED | ApplicationInfo.FLAG_HAS_CODE;
         a.metaData = new Bundle(); info.applicationInfo = a;
         XmlBlock.Parser p = new XmlBlock(manifest, APK).newParser();
-        Entry current = null; IntentFilter filter = null; boolean inApp = false;
+        Entry current = null; Receiver receiver = null; IntentFilter filter = null; boolean inApp = false;
         int event;
         while ((event = p.next()) != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
             String tag = p.getName();
             if (event == org.xmlpull.v1.XmlPullParser.END_TAG) {
                 if ("service".equals(tag)) current = null;
+                if ("receiver".equals(tag)) receiver = null;
                 if ("intent-filter".equals(tag)) filter = null;
                 if ("application".equals(tag)) inApp = false;
                 continue;
@@ -134,19 +141,34 @@ public final class MicroG {
                 provider.writePermission = p.getAttributeValue(NS, "writePermission");
                 provider.processName = a.processName;
                 if (provider.enabled) providers.add(provider);
-            } else if (current != null && "intent-filter".equals(tag)) {
-                filter = new IntentFilter(); current.filters.add(filter);
+            } else if (inApp && "receiver".equals(tag)) {
+                receiver = new Receiver(); ActivityInfo r = receiver.info;
+                r.name = full(p.getAttributeValue(NS, "name")); r.packageName = info.packageName;
+                r.applicationInfo = a; r.enabled = p.getAttributeBooleanValue(NS, "enabled", true);
+                r.exported = p.getAttributeBooleanValue(NS, "exported", false);
+                r.permission = p.getAttributeValue(NS, "permission"); r.processName = a.processName;
+                receivers.add(receiver);
+            } else if (current != null && "meta-data".equals(tag)) {
+                /* A service's meta-data, as PackageManager's GET_META_DATA gives it: an account authenticator's description, by resource. */
+                String key = p.getAttributeValue(NS, "name");
+                int res = p.getAttributeResourceValue(NS, "resource", 0);
+                if (key != null && res != 0) current.info.metaData.putInt(key, res);
+                else if (key != null && p.getAttributeValue(NS, "value") != null) current.info.metaData.putString(key, p.getAttributeValue(NS, "value"));
+            } else if ((current != null || receiver != null) && "intent-filter".equals(tag)) {
+                filter = new IntentFilter(); (current != null ? current.filters : receiver.filters).add(filter);
             } else if (filter != null && "action".equals(tag)) filter.addAction(p.getAttributeValue(NS, "name"));
             else if (filter != null && "category".equals(tag)) filter.addCategory(p.getAttributeValue(NS, "name"));
         }
         info.services = new ServiceInfo[services.size()];
         for (int n = 0; n < services.size(); n++) info.services[n] = services.get(n).info;
         info.providers = providers.toArray(new ProviderInfo[0]);
+        info.receivers = new ActivityInfo[receivers.size()];
+        for (int n = 0; n < receivers.size(); n++) info.receivers[n] = receivers.get(n).info;
         // The existing Google compatibility identity is also used for the separately installed replacement.
         info.signatures = new Signature[] {GooglePackages.signature()};
         info.signingInfo = new SigningInfo(info.signatures);
         context = new PackageContext(resources);
-        android.util.Log.i("MicroG", "GmsCore " + info.versionName + ": " + services.size() + " services");
+        android.util.Log.i("MicroG", "GmsCore " + info.versionName + ": " + services.size() + " services, " + receivers.size() + " receivers, " + providers.size() + " providers");
     }
     private Entry find(Intent i, boolean internal) {
         if (i == null || !info.applicationInfo.enabled) return null;
@@ -171,15 +193,70 @@ public final class MicroG {
     private Running create(Entry e) throws Exception {
         Running r = running.get(e.info.name);
         if (r != null) return r;
-        if (application == null) {
-            Application a = info.applicationInfo.className == null ? new Application() :
-                (Application) loader().loadClass(info.applicationInfo.className).newInstance();
-            a.meglerAttach(context); a.onCreate(); application = a;
-        }
+        application();
         r = new Running(); r.service = (Service) loader().loadClass(e.info.name).newInstance();
         r.service.meglerAttach(context); r.service.onCreate(); running.put(e.info.name, r);
         return r;
     }
+    /** microG's Application, made and created once, on the first thing of microG's that runs here. */
+    private Application application() throws Exception {
+        if (application == null) {
+            Application a = info.applicationInfo.className == null ? new Application() :
+                (Application) loader().loadClass(info.applicationInfo.className).newInstance();
+            a.meglerAttach(context); a.onCreate(); application = a;
+            boot();
+        }
+        return application;
+    }
+
+    /**
+     * A broadcast for microG: one that names a receiver of microG's, or microG's package (CheckinPreferences.setEnabled sends one
+     * to its TriggerReceiver; an alarm's PendingIntent may hold one). Its receivers that take it hear it on the main thread, as
+     * on Android, with microG's Application for their context. An intent from elsewhere reaches exported receivers only. False
+     * when it is not for microG: the app's own broadcasts have it then.
+     */
+    public static boolean send(Context from, Intent intent) {
+        if (intent == null) return false;
+        String pkg = intent.getComponent() == null ? intent.getPackage() : intent.getComponent().getPackageName();
+        if (!GooglePackages.GMS.equals(pkg)) return false;
+        MicroG g = get();
+        if (g == null) return false;
+        g.deliver(intent, from != null && GooglePackages.GMS.equals(from.getPackageName()));
+        return true;
+    }
+    private void deliver(Intent intent, boolean internal) {
+        for (Receiver r : receivers) {
+            if (!r.info.enabled || (!internal && !r.info.exported)) continue;
+            boolean takes = false;
+            if (intent.getComponent() != null) takes = r.info.name.equals(intent.getComponent().getClassName());
+            else for (IntentFilter f : r.filters) if (f.hasAction(intent.getAction()) && f.matchCategories(intent.getCategories()) == null) takes = true;
+            if (!takes) continue;
+            final Intent copy = new Intent(intent);
+            new Handler(Looper.getMainLooper()).post(() -> {
+                try {
+                    BroadcastReceiver b = (BroadcastReceiver) loader().loadClass(r.info.name).newInstance();
+                    b.onReceive(application(), copy);
+                } catch (Throwable t) { android.util.Log.e("MicroG", "Receiver " + r.info.name + " failed on " + copy.getAction(), t); }
+            });
+        }
+    }
+    /**
+     * Android's boot as microG would have heard it: BOOT_COMPLETED to its receivers that list it, once in each process that
+     * hosts it, when microG's code first runs there (its Application is made: an app that only asks whether microG is there
+     * does not load it). Each looks at its own setting: the check-in's (TriggerReceiver) checks in when device registration is on and
+     * the last check-in is over twelve hours old; the others (cloud messaging, exposure notifications) do nothing while they
+     * are off, as they are until the user turns them on.
+     */
+    private void boot() {
+        for (Receiver r : receivers) {
+            if (!r.info.enabled) continue;
+            for (IntentFilter f : r.filters) if (f.hasAction(Intent.ACTION_BOOT_COMPLETED)) {
+                deliver(new Intent(Intent.ACTION_BOOT_COMPLETED).setComponent(new ComponentName(GooglePackages.GMS, r.info.name)), true);
+                break;
+            }
+        }
+    }
+
     public static boolean bind(Context from, Intent intent, ServiceConnection conn) {
         MicroG g = get(); Entry e = g == null ? null : g.find(intent, GooglePackages.GMS.equals(from.getPackageName()));
         if (e == null) return false;
@@ -284,5 +361,10 @@ public final class MicroG {
         }
         @Override public boolean bindService(Intent i, ServiceConnection c, int flags) { return Services.bind(this, i, c); }
         @Override public ComponentName startService(Intent i) { return Services.start(this, i); }
+        @Override public boolean stopService(Intent i) { return Services.stop(i); }
+        @Override public ComponentName startForegroundService(Intent i) { return Services.start(this, i); }
+        @Override public void sendBroadcast(Intent i) { Broadcasts.send(this, i); }
+        @Override public void sendBroadcast(Intent i, String permission) { Broadcasts.send(this, i); }
+        @Override public void sendOrderedBroadcast(Intent i, String permission) { Broadcasts.send(this, i); }
     }
 }

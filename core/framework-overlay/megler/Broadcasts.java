@@ -30,6 +30,8 @@
 // its time on the deliveries and on the lock of its queue (one window of 63 s drew one frame). An implicit intent goes to
 // the manifest's receivers whose filters take it as Android matches a filter (Manifest.match). And a receiver the manifest
 // disables, or the app disabled with setComponentEnabledSetting, receives nothing, as on Android; Spotify has two.
+// And a broadcast that names microG's package or one of its receivers goes to microG (megler.MicroG.send), which an app
+// hosts: microG's settings send one to its check-in trigger.
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -99,6 +101,8 @@ public final class Broadcasts {
     }
     public static void unregister(BroadcastReceiver r) { synchronized (sReceivers) { for (int i = sReceivers.size() - 1; i >= 0; i--) if (sReceivers.get(i)[0] == r) sReceivers.remove(i); } }
     public static void send(Context from, Intent i) {
+        // A broadcast for microG's package goes to microG's receivers (megler.MicroG), as Android sends it to that app.
+        if (MicroG.send(from, i)) return;
         final Context ctx = AppRunner.application() != null ? AppRunner.application() : from;
         ArrayList<BroadcastReceiver> targets = new ArrayList<>();
         /* Receivers registered at run time hear implicit intents only: one that names a component is for that component. */
