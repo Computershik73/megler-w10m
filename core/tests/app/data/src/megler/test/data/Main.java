@@ -1136,21 +1136,55 @@ public class Main extends Activity {
             }
         }, "tls-server");
         t.start();
+        // The legacy factory is used by both Meta Lite clients, with their own trust managers.
+        android.net.SSLCertificateSocketFactory factory = (android.net.SSLCertificateSocketFactory)
+                android.net.SSLCertificateSocketFactory.getDefault(10000, new android.net.SSLSessionCache(new java.io.File(getCacheDir(), "tls-sessions")));
+        java.security.KeyStore trusted = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+        trusted.load(null, null);
+        trusted.setCertificateEntry("server", tlsCertificate());
+        javax.net.ssl.TrustManagerFactory tmf = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trusted);
+        factory.setTrustManagers(tmf.getTrustManagers());
+        if (factory.getSupportedCipherSuites().length == 0 || factory.getDefaultCipherSuites().length == 0)
+            throw new AssertionError("legacy TLS cipher suites missing");
+        try (java.net.Socket unconnected = factory.createSocket()) {
+            factory.setHostname(unconnected, "localhost");
+            factory.setUseSessionTickets(unconnected, true);
+            android.net.SSLCertificateSocketFactory.class.getMethod("setSoWriteTimeout", java.net.Socket.class, int.class).invoke(factory, unconnected, 10000);
+        }
+        java.lang.reflect.Method encode = android.net.SSLCertificateSocketFactory.class.getMethod("toLengthPrefixedList", byte[][].class);
+        byte[][] protocols = { "h2".getBytes("US-ASCII"), "http/1.1".getBytes("US-ASCII") };
+        byte[] encoded = (byte[])encode.invoke(null, (Object)protocols);
+        if (encoded.length != 12 || encoded[0] != 2 || encoded[3] != 8) throw new AssertionError("ALPN encoding");
+        try { encode.invoke(null, (Object)new byte[][]{new byte[0]}); throw new AssertionError("empty ALPN accepted"); }
+        catch (java.lang.reflect.InvocationTargetException expected) {
+            if (!(expected.getCause() instanceof IllegalArgumentException)) throw expected;
+        }
+        android.net.SSLCertificateSocketFactory.class.getMethod("setAlpnProtocols", byte[][].class).invoke(factory, (Object)protocols);
+        boolean wrongHostRefused = false;
         String back, protocol, suite;
         boolean peer;
-        try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) contexts[1].getSocketFactory().createSocket("127.0.0.1", server.getLocalPort())) {
+        try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) factory.createSocket("localhost", server.getLocalPort())) {
             s.setSoTimeout(10000);
             s.startHandshake();
             javax.net.ssl.SSLSession session = s.getSession();
             protocol = session.getProtocol();
             suite = session.getCipherSuite();
             peer = session.getPeerCertificates()[0].equals(tlsCertificate());
+            factory.setUseSessionTickets(s, true);
+            try { android.net.SSLCertificateSocketFactory.class.getMethod("verifyHostname", java.net.Socket.class, String.class).invoke(null, s, "wrong.invalid"); }
+            catch (java.lang.reflect.InvocationTargetException expected) {
+                if (!(expected.getCause() instanceof javax.net.ssl.SSLPeerUnverifiedException)) throw expected;
+                wrongHostRefused = true;
+            }
             s.getOutputStream().write("ping\n".getBytes("UTF-8"));
             s.getOutputStream().flush();
             back = new java.io.BufferedReader(new java.io.InputStreamReader(s.getInputStream(), "UTF-8")).readLine();
         }
         String refused;
-        try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) javax.net.ssl.SSLSocketFactory.getDefault().createSocket("127.0.0.1", server.getLocalPort())) {
+        // Reset must invalidate the cached delegate and restore the system trust roots.
+        factory.setTrustManagers(null);
+        try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) factory.createSocket("localhost", server.getLocalPort())) {
             s.setSoTimeout(10000);
             s.startHandshake();
             refused = "handshake made";
@@ -1159,9 +1193,9 @@ public class Main extends Activity {
         }
         t.join(10000);
         server.close();
-        detail = "protocol=" + protocol + " suite=" + suite + " peer=" + peer + " heard=" + heard[0] + " back=" + back + " platform=" + refused + " then " + heard[1];
+        detail = "legacy-factory wrongHostRefused=" + wrongHostRefused + " protocol=" + protocol + " suite=" + suite + " peer=" + peer + " heard=" + heard[0] + " back=" + back + " platform=" + refused + " then " + heard[1];
         Log.i("DataTest", "tls-loopback-said " + detail);
-        return !t.isAlive() && "TLSv1.2".equals(protocol) && suite.startsWith("TLS_ECDHE_ECDSA_") && peer && "ping".equals(heard[0]) && "pong".equals(back)
+        return !t.isAlive() && wrongHostRefused && "TLSv1.2".equals(protocol) && suite.startsWith("TLS_ECDHE_ECDSA_") && peer && "ping".equals(heard[0]) && "pong".equals(back)
                 && "SSLHandshakeException".equals(refused) && heard[1] != null && heard[1].startsWith("the server: ");
     }
 
