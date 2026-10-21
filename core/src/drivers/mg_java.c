@@ -1095,7 +1095,7 @@ static void open_apk(int index, const char *host_path)
 }
 
 /*
- * Gives the APK its Android path, and tells the runtime that its classes are on the class path under that name. And the
+ * Gives the APK its Android path, /data/app/<package>-1/base.apk, and tells the runtime that its classes are on the class path under that name. And the
  * splits theirs, beside it, under the names Android gives installed splits (split_config.armeabi_v7a.apk), each a mount of
  * its own file wherever the shell keeps it; those with code are on the class path under their names too.
  */
@@ -1107,7 +1107,13 @@ static void mount_apk(void)
     int i;
     if (name > path) dir[name - path - 1] = 0;
     mg_fs_mount(guest_dir, dir);
-    snprintf(J.guest_apk, sizeof(J.guest_apk), "%s/%s", guest_dir, name);
+    /*
+     * The APK as Android names it, base.apk, whatever its file is called here: a library's copy is named after what was
+     * picked ("Instagram+Lite+_ARMv7a_.apk"), and Instagram Lite, which finds its second DEX file by its APK's path, did
+     * not find it there (a '+' read as a space, it seems) and ended on a class of it.
+     */
+    snprintf(J.guest_apk, sizeof(J.guest_apk), "%s/base.apk", guest_dir);
+    mg_fs_mount(J.guest_apk, path);
     mg_dvm_dex_source_added(J.guest_apk);
     for (i = 0; i < J.nsplits; i++) {
         J.guest_splits[i] = mg_sprintf("%s/split_%s.apk", guest_dir, J.split_names[i]);

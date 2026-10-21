@@ -347,6 +347,12 @@ public class Main extends Activity {
         launcherLoading();
         uriBuilder();
         manyInterfaces();
+        step("apk-path", () -> {
+            // The APK as Android names it, whatever the file is called where the shell keeps it.
+            String source = getApplicationInfo().sourceDir, code = getPackageCodePath();
+            detail = "sourceDir=" + source + " codePath=" + code + " there=" + new java.io.File(source).isFile();
+            return source.equals("/data/app/" + getPackageName() + "-1/base.apk") && source.equals(code) && new java.io.File(source).isFile();
+        });
         sound();
         mediaCodec();
         network();
