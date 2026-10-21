@@ -879,9 +879,14 @@ void AppShell::openLink(winrt::Windows::Foundation::Uri const& uri) {
         if (name.empty() || name.find_first_of("\\/:") != std::string::npos || name.find("..") != std::string::npos) return;
         installApkPath(appPackage::sharedFolder() + L"\\incoming\\" + widen(name), name, "An app of the phone's own");
     } else if (what == L"run") {
-        // An app's own package is in front now, which is all a launcher wants of it.
-        if (appPackage::isSingleApp()) return;
         const std::string package = value(L"package");
+        // An app's own package is in front now, which is all a launcher wants of it. Another app may want one of its
+        // activities (Play Store, microG's sign-in): the app starts it, now or once it runs (megler_start_activity).
+        if (appPackage::isSingleApp()) {
+            const std::string activity = value(L"activity");
+            if (!activity.empty() && package == appPackage::single().package) megler_start_activity(activity.c_str());
+            return;
+        }
         std::optional<ApkEntry> found;
         for (const ApkEntry& e : Library::instance().entries())
             if (e.report.package == package && e.report.ready()) found = e;

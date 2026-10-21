@@ -157,6 +157,22 @@ public final class AppRunner {
         Intent i = a.getIntent();
         return i != null && i.getComponent() != null ? i.getComponent().getClassName() : a.getClass().getName();
     }
+    /**
+     * An activity another app asked this one for (megler_start_activity: microG's sign-in, which Play Store's AccountManager
+     * asks for), from the main loop: started as Android starts an intent that names a component of this app -- if the
+     * manifest has the activity and exports it, as Android requires of a component another app starts.
+     */
+    public static void startRequested(String cls) {
+        Manifest.Component c = Manifest.activity(cls);
+        if (c == null || !c.exported) {
+            android.util.Log.w("Megler", "another app asked for " + cls + ", which this app " + (c == null ? "does not have" : "does not export"));
+            return;
+        }
+        Context from = sApp != null ? sApp : ContextImpl.app();
+        Intent i = new Intent().setClassName(Native.packageName(), cls).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        android.util.Log.i("Megler", "another app asked for " + cls);
+        startActivity(from, i, -1, null);
+    }
     /** Context.startActivity: an activity of the app's own, or something the host can open (a web page, mail, the store). */
     public static void startActivity(Context from, Intent i, int request, Bundle opts) {
         // An APK to install (a file manager's, a browser's download, an app store's): Megler's installer has it, as Android's

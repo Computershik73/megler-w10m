@@ -420,6 +420,41 @@ static void battery_news(void)
 }
 
 /*
+ * An activity another app asked for (megler_start_activity, from the shell's thread): kept until the main loop next asks
+ * for input, which hands it to megler.AppRunner.startRequested on the app's main thread. The latest ask wins.
+ */
+static char g_requested_activity[200];
+static volatile i32 g_activity_requested;
+static mg_lock g_requested_lock = MG_LOCK_INIT;
+
+void mg_java_start_activity(const char *activity_class)
+{
+    if (!activity_class || !activity_class[0]) return;
+    mg_lock_acquire(&g_requested_lock);
+    mg_strlcpy(g_requested_activity, activity_class, sizeof(g_requested_activity));
+    mg_lock_release(&g_requested_lock);
+    mg_atomic_xchg(&g_activity_requested, 1);
+    mg_info("java: another app asks for the activity %s", activity_class);
+}
+
+static void requested_activity(void)
+{
+    char name[200];
+    mg_jvalue arg;
+    if (!g_activity_requested || mg_atomic_cas(&g_activity_requested, 1, 0) != 1) return;
+    mg_lock_acquire(&g_requested_lock);
+    mg_strlcpy(name, g_requested_activity, sizeof(name));
+    mg_lock_release(&g_requested_lock);
+    arg.j = 0;
+    arg.l = mg_dvm_new_string(name);
+    if (!mg_dvm_call_static("megler/AppRunner", "startRequested", "(Ljava/lang/String;)V", &arg, NULL)) {
+        mg_warn("java: the activity %s another app asked for was not started: %s", name,
+                mg_dvm_pending() ? mg_dvm_class_of(mg_dvm_pending())->name : "megler.AppRunner.startRequested did not run");
+        mg_dvm_clear_pending();
+    }
+}
+
+/*
  * pollInput(): what has happened since the last call, as int[1 + 4n] --
  * n, then (phase, id, x bits, y bits) for each -- or null. Called by the main
  * loop between messages, so this is also where a stop asked from outside
@@ -435,6 +470,7 @@ N(Native_pollInput)
         if (mg_dvm_pending()) return;
     }
     if (mg_battery_changes() != J.battery_changes) battery_news();
+    requested_activity();
     mg_lock_acquire(&J.lock);
     n = J.nevents;
     if (n) {

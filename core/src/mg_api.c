@@ -128,6 +128,7 @@ void megler_set_insets(int left, int top, int right, int bottom) { mg_java_set_i
 void megler_set_paused(bool paused) { mg_run_set_paused(paused); }
 void megler_set_focused(bool focused) { mg_run_set_focused(focused); }
 void megler_stop(void) { mg_run_stop(); }
+void megler_start_activity(const char *activity_class) { mg_java_start_activity(activity_class); }
 uint32_t megler_frames(void) { return mg_run_frames(); }
 
 /* The phone, for an app. The time zone is kept where Android's own code looks for it (bionic/mg_bionic.h). */

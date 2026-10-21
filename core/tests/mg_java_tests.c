@@ -1281,6 +1281,10 @@ static int run_demos(void)
     CHECK(shown >= 0 && rect_in(line_at(shown), "row0", row));
     /* A layout of the list whose data has not changed puts its rows back without asking the adapter for any of them again. */
     CHECK(wait_line("I/DemoTest: list: laid out again, rows bound again 0 rows=", 0, 30) >= 0);
+    /* Another app asks for an activity of this one (megler_start_activity, as Play Store asks microG for its sign-in): the
+       main loop hands the ask to the framework, which refuses an activity the manifest does not export, as Android does. */
+    megler_start_activity("megler.test.demos.Second");
+    CHECK(wait_line("another app asked for megler.test.demos.Second, which this app does not export", 0, 30) >= 0);
     settle();
     write_picture("demos-1-list");
     profile_end("start");

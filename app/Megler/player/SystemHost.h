@@ -29,8 +29,9 @@ void attach(Hooks hooks);
 megler_system_host callbacks();
 /// The app that runs, for saying who asks (session::start).
 void setRunningApp(const std::string& label, const std::string& package);
-/// UI thread: another app the phone has started -- its own package if it has one, else Megler with it (megler:run).
-void launch(const std::string& package);
+/// UI thread: another app the phone has started -- its own package if it has one, else Megler with it (megler:run). With an
+/// activity's class, that activity of it (megler:run's activity; its own package starts it, ui/AppShell.cpp).
+void launch(const std::string& package, const std::string& activity = std::string());
 /// The family name of Megler's own package, and of an app's own package.
 std::wstring meglerFamilyName();
 std::wstring appFamilyName(const std::string& package);

@@ -1515,6 +1515,13 @@ void megler_set_paused(bool paused);
 void megler_set_focused(bool focused);
 /* Asks the app to finish. Returns at once; on_exit follows. */
 void megler_stop(void);
+/*
+ * Another app asks this one to show one of its activities, by class name: what Android's startActivity of an intent that
+ * names a component of this app does (microG's sign-in, LoginActivity, asked for by Play Store's AccountManager through
+ * megler_system_host.launch_app). A Java app's main thread starts it on top of what it shows, if its manifest has the
+ * activity and exports it; asked before the app runs, once its first activity is up. Any thread; the latest ask wins.
+ */
+void megler_start_activity(const char *activity_class);
 /* Frames presented since the app started. */
 uint32_t megler_frames(void);
 
