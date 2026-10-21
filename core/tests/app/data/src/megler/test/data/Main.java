@@ -1116,17 +1116,18 @@ public class Main extends Activity {
     }
 
     /**
-     * A TLS server of the app's own on 127.0.0.1 and a client that trusts its certificate: the handshake, a line each way, the
-     * session's protocol, suite and peer. Then a client with the platform's trust, which must refuse the same server, and the
-     * server must see the handshake fail.
+     * A TLS server of the app's own on 127.0.0.1 and Android's legacy SSLCertificateSocketFactory, which trusts its certificate:
+     * the handshake, a line each way, the session's protocol, suite and peer, a host name the certificate does not name refused.
+     * Then the same factory with the platform's trust again, which resumes the session its cache keeps, and a factory without
+     * a cache, whose platform trust must refuse the same server, and the server must see the handshake fail.
      */
     private boolean tlsLoopback() throws Exception {
         javax.net.ssl.SSLContext[] contexts = tlsContexts();
         final javax.net.ssl.SSLServerSocket server = (javax.net.ssl.SSLServerSocket) contexts[0].getServerSocketFactory()
                 .createServerSocket(0, 5, java.net.InetAddress.getByName("127.0.0.1"));
-        final String[] heard = new String[2];
+        final String[] heard = new String[3];
         Thread t = new Thread(() -> {
-            for (int i = 0; i < 2; i++) {
+            for (int i = 0; i < 3; i++) {
                 try (java.net.Socket c = server.accept()) {
                     c.setSoTimeout(10000);
                     heard[i] = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), "UTF-8")).readLine();
@@ -1152,7 +1153,6 @@ public class Main extends Activity {
         try (java.net.Socket unconnected = factory.createSocket()) {
             factory.setHostname(unconnected, "localhost");
             factory.setUseSessionTickets(unconnected, true);
-            android.net.SSLCertificateSocketFactory.class.getMethod("setSoWriteTimeout", java.net.Socket.class, int.class).invoke(factory, unconnected, 10000);
         }
         java.lang.reflect.Method encode = android.net.SSLCertificateSocketFactory.class.getMethod("toLengthPrefixedList", byte[][].class);
         byte[][] protocols = { "h2".getBytes("US-ASCII"), "http/1.1".getBytes("US-ASCII") };
@@ -1166,14 +1166,21 @@ public class Main extends Activity {
         boolean wrongHostRefused = false;
         String back, protocol, suite;
         boolean peer;
+        Object writeTimeout;
+        byte[] first;
         try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) factory.createSocket("localhost", server.getLocalPort())) {
             s.setSoTimeout(10000);
             s.startHandshake();
             javax.net.ssl.SSLSession session = s.getSession();
+            first = session.getId();
             protocol = session.getProtocol();
             suite = session.getCipherSuite();
             peer = session.getPeerCertificates()[0].equals(tlsCertificate());
             factory.setUseSessionTickets(s, true);
+            // The write timeout is an option of the socket's descriptor, which a socket has once it is connected: on an
+            // unconnected one Android's conscrypt fails with EBADF, and so does this one.
+            android.net.SSLCertificateSocketFactory.class.getMethod("setSoWriteTimeout", java.net.Socket.class, int.class).invoke(factory, s, 10000);
+            writeTimeout = Class.forName("com.android.org.conscrypt.OpenSSLSocketImpl").getMethod("getSoWriteTimeout").invoke(s);
             try { android.net.SSLCertificateSocketFactory.class.getMethod("verifyHostname", java.net.Socket.class, String.class).invoke(null, s, "wrong.invalid"); }
             catch (java.lang.reflect.InvocationTargetException expected) {
                 if (!(expected.getCause() instanceof javax.net.ssl.SSLPeerUnverifiedException)) throw expected;
@@ -1183,10 +1190,24 @@ public class Main extends Activity {
             s.getOutputStream().flush();
             back = new java.io.BufferedReader(new java.io.InputStreamReader(s.getInputStream(), "UTF-8")).readLine();
         }
-        String refused;
-        // Reset must invalidate the cached delegate and restore the system trust roots.
+        // Back to the platform's trust: the factory makes a new context, whose session cache is the same SSLSessionCache. A
+        // session it keeps is resumed without the certificate being looked at again, as Android's factory does (conscrypt
+        // checks a certificate in a full handshake only), so this handshake is made, and with the first session.
         factory.setTrustManagers(null);
+        String resumed;
         try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) factory.createSocket("localhost", server.getLocalPort())) {
+            resumed = java.util.Arrays.equals(first, s.getSession().getId()) ? "the first session" : "another session";
+        } catch (javax.net.ssl.SSLHandshakeException e) {
+            resumed = "SSLHandshakeException";
+        }
+        // A factory without a cache has a full handshake to make: once its trust is set back to the platform's, the context
+        // made with the app's trust is not used again, and the platform's must refuse the server.
+        android.net.SSLCertificateSocketFactory fresh = (android.net.SSLCertificateSocketFactory) android.net.SSLCertificateSocketFactory.getDefault(10000, null);
+        fresh.setTrustManagers(tmf.getTrustManagers());
+        fresh.getDefaultCipherSuites();
+        fresh.setTrustManagers(null);
+        String refused;
+        try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) fresh.createSocket("localhost", server.getLocalPort())) {
             s.setSoTimeout(10000);
             s.startHandshake();
             refused = "handshake made";
@@ -1195,10 +1216,11 @@ public class Main extends Activity {
         }
         t.join(10000);
         server.close();
-        detail = "legacy-factory wrongHostRefused=" + wrongHostRefused + " protocol=" + protocol + " suite=" + suite + " peer=" + peer + " heard=" + heard[0] + " back=" + back + " platform=" + refused + " then " + heard[1];
+        detail = "legacy-factory wrongHostRefused=" + wrongHostRefused + " writeTimeout=" + writeTimeout + " protocol=" + protocol + " suite=" + suite + " peer=" + peer + " heard=" + heard[0] + " back=" + back
+                + " cached=" + resumed + " platform=" + refused + " then " + heard[2];
         Log.i("DataTest", "tls-loopback-said " + detail);
-        return !t.isAlive() && wrongHostRefused && "TLSv1.2".equals(protocol) && suite.startsWith("TLS_ECDHE_ECDSA_") && peer && "ping".equals(heard[0]) && "pong".equals(back)
-                && "SSLHandshakeException".equals(refused) && heard[1] != null && heard[1].startsWith("the server: ");
+        return !t.isAlive() && wrongHostRefused && Integer.valueOf(10000).equals(writeTimeout) && "TLSv1.2".equals(protocol) && suite.startsWith("TLS_ECDHE_ECDSA_") && peer && "ping".equals(heard[0]) && "pong".equals(back)
+                && "the first session".equals(resumed) && "SSLHandshakeException".equals(refused) && heard[2] != null && heard[2].startsWith("the server: ");
     }
 
     /**

@@ -119,6 +119,13 @@ Android `getInsecure` API uses an insecure trust manager. No global TLS bypass
 or fallback from failed initialization to different trust settings is added.
 
 The loopback TLS regression in `data.apk` uses this factory with a trusted
-local certificate, rejects a mismatching hostname, then resets trust managers
-and requires the system trust manager to reject that local certificate. It
-also exercises unconnected socket options and ALPN list encoding.
+local certificate and rejects a mismatching hostname. It sets the write
+timeout on the connected socket: the option belongs to the socket's file
+descriptor, and on an unconnected socket Conscrypt fails with EBADF, on
+Android as here. After its trust managers are reset, the same factory resumes
+the session kept in its `SSLSessionCache` without checking the certificate
+again. Android's factory does the same: Conscrypt checks certificates only in
+a full handshake. A factory without a session cache then has to make a full
+handshake, and the system trust manager must reject the local certificate.
+The test also covers ALPN list encoding and the options of an unconnected
+socket.
