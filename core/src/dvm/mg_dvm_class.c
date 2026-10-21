@@ -124,7 +124,19 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
         if (n < 3 || desc[0] != 'L' || desc[n - 1] != ';') continue;
         name = (char *)mg_dvm_meta_alloc(n);
         memcpy(name, desc + 1, n - 2);
-        if (!cdef_find_scope(name, d->scope)) {
+        const cdef *existing = cdef_find_scope(name, d->scope);
+        /* Android 9's core-libart has an older ICU number API. The framework overlay supplies
+         * the Android 30 methods used by newer apps; choose those definitions when it arrives. */
+        if (existing && d->scope == 0 && strstr(d->name, "megler-framework.dex") &&
+            !strncmp(name, "android/icu/number/", sizeof("android/icu/number/") - 1)) {
+            cdef *replace = (cdef *)existing;
+            replace->desc = desc;
+            replace->dex = d;
+            replace->def = i;
+            free(name);
+            continue;
+        }
+        if (!existing) {
             if (g_ncdefs == g_cdefs_cap) {
                 g_cdefs_cap = g_cdefs_cap ? g_cdefs_cap * 2 : 1024;
                 g_cdefs = (cdef *)mg_realloc(g_cdefs, sizeof(cdef) * g_cdefs_cap);

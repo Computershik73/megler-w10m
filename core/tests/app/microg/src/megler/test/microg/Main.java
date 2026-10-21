@@ -22,6 +22,8 @@ public class Main extends Activity {
         super.onCreate(state);
         text = new TextView(this); text.setText("Checking microG..."); setContentView(text);
         try {
+            PackageInfo own = getPackageManager().getPackageInfo(getPackageName(), PackageManager.GET_META_DATA);
+            check(own.applicationInfo != null && getPackageName().equals(own.applicationInfo.packageName), "own package metadata");
             PackageInfo pi = getPackageManager().getPackageInfo(GMS, PackageManager.GET_SERVICES);
             check(pi.applicationInfo.sourceDir.endsWith("/GmsCore/GmsCore.apk"), "real APK metadata");
             check(pi.services != null && pi.services.length > 20, "manifest services");
@@ -48,6 +50,38 @@ public class Main extends Activity {
             if (label == 0) label = gms.getResources().getIdentifier("app_name", "string", GMS);
             check(label != 0, "package resources found");
             check(gms.getResources().getString(label).length() > 0, "package resource value");
+            String authority = "com.google.android.gms.microg.settings";
+            ProviderInfo settings = getPackageManager().resolveContentProvider(authority, 0);
+            check(settings != null && settings.name.startsWith("org.microg.gms."), "microG settings provider resolves");
+            android.database.Cursor checkin = getContentResolver().query(
+                android.net.Uri.parse("content://" + authority + "/check-in"),
+                new String[] { "androidId", "digest", "lastCheckin", "securityToken", "versionInfo", "deviceDataVersionInfo" },
+                null, null, null);
+            check(checkin != null, "microG check-in provider answers");
+            checkin.close();
+            Class<?> precision = Class.forName("android.icu.number.Precision");
+            Object twoPlaces = precision.getMethod("fixedFraction", int.class).invoke(null, 2);
+            Object formatter = Class.forName("android.icu.number.NumberFormatter").getMethod("with").invoke(null);
+            formatter = formatter.getClass().getMethod("precision", precision).invoke(formatter, twoPlaces);
+            formatter = formatter.getClass().getMethod("locale", java.util.Locale.class).invoke(formatter, java.util.Locale.US);
+            Object formatted = formatter.getClass().getMethod("format", double.class).invoke(formatter, 12.3);
+            check("12.30".equals(formatted.toString()), "Android 30 number formatter rounds and pads");
+            Class<?> numbers = Class.forName("android.icu.number.NumberFormatter");
+            Object rounded = numbers.getMethod("with").invoke(null);
+            rounded = rounded.getClass().getMethod("precision", precision).invoke(rounded,
+                precision.getMethod("fixedFraction", int.class).invoke(null, 0));
+            rounded = rounded.getClass().getMethod("roundingMode", java.math.RoundingMode.class).invoke(rounded,
+                java.math.RoundingMode.HALF_UP);
+            rounded = rounded.getClass().getMethod("locale", java.util.Locale.class).invoke(rounded, java.util.Locale.US);
+            check("13".equals(rounded.getClass().getMethod("format", double.class).invoke(rounded, 12.5).toString()),
+                "Android 30 number formatter rounding mode");
+            Class<?> unit = Class.forName("android.icu.util.MeasureUnit");
+            Object usd = Class.forName("android.icu.util.Currency").getMethod("getInstance", String.class).invoke(null, "USD");
+            Object money = numbers.getMethod("with").invoke(null);
+            money = money.getClass().getMethod("unit", unit).invoke(money, usd);
+            money = money.getClass().getMethod("locale", java.util.Locale.class).invoke(money, java.util.Locale.US);
+            check(money.getClass().getMethod("format", double.class).invoke(money, 12.3).toString().contains("$"),
+                "Android 30 number formatter currency");
             Intent i = new Intent(ACTION).setPackage(GMS);
             ResolveInfo r = getPackageManager().resolveService(i, 0);
             check(r != null && r.serviceInfo.name.equals("org.microg.gms.ads.identifier.AdvertisingIdService"), "real service resolution");

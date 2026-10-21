@@ -17,6 +17,8 @@ public final class MicroG {
     private static boolean checked;
     private final PackageInfo info = new PackageInfo();
     private final ArrayList<Entry> services = new ArrayList<>();
+    private final ArrayList<ProviderInfo> providers = new ArrayList<>();
+    private final HashMap<String, ContentProvider> runningProviders = new HashMap<>();
     private final HashMap<String, Running> running = new HashMap<>();
     private final Map<ServiceConnection, Binding> bindings = new IdentityHashMap<>();
     private final PackageContext context;
@@ -49,6 +51,27 @@ public final class MicroG {
     public static boolean installed() { return get() != null; }
     public static PackageInfo packageInfo(String pkg) { MicroG g = get(); return g != null && GooglePackages.GMS.equals(pkg) ? g.info : null; }
     public static Context context(String pkg) { MicroG g = get(); return g != null && GooglePackages.GMS.equals(pkg) ? g.context : null; }
+    public static ContentProvider provider(String authority) {
+        MicroG g = get();
+        if (g == null || authority == null) return null;
+        synchronized (g.runningProviders) {
+            for (ProviderInfo info : g.providers) {
+                if (!info.exported || info.authority == null || !Arrays.asList(info.authority.split(";")).contains(authority)) continue;
+                ContentProvider running = g.runningProviders.get(info.name);
+                if (running != null) return running;
+                try {
+                    running = (ContentProvider) g.loader().loadClass(info.name).newInstance();
+                    running.attachInfo(g.context, info);
+                    g.runningProviders.put(info.name, running);
+                    return running;
+                } catch (Throwable t) {
+                    android.util.Log.e("MicroG", "Starting provider " + info.name + " failed", t);
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
     private static String full(String name) {
         if (name == null) return null;
         return name.startsWith(".") ? GooglePackages.GMS + name : name.indexOf('.') < 0 ? GooglePackages.GMS + "." + name : name;
@@ -101,6 +124,16 @@ public final class MicroG {
                 s.exported = p.getAttributeBooleanValue(NS, "exported", true);
                 s.permission = p.getAttributeValue(NS, "permission"); s.processName = a.processName;
                 s.metaData = new Bundle(); services.add(current);
+            } else if (inApp && "provider".equals(tag)) {
+                ProviderInfo provider = new ProviderInfo();
+                provider.name = full(p.getAttributeValue(NS, "name")); provider.packageName = info.packageName;
+                provider.applicationInfo = a; provider.authority = p.getAttributeValue(NS, "authorities");
+                provider.enabled = p.getAttributeBooleanValue(NS, "enabled", true);
+                provider.exported = p.getAttributeBooleanValue(NS, "exported", false);
+                provider.readPermission = p.getAttributeValue(NS, "readPermission");
+                provider.writePermission = p.getAttributeValue(NS, "writePermission");
+                provider.processName = a.processName;
+                if (provider.enabled) providers.add(provider);
             } else if (current != null && "intent-filter".equals(tag)) {
                 filter = new IntentFilter(); current.filters.add(filter);
             } else if (filter != null && "action".equals(tag)) filter.addAction(p.getAttributeValue(NS, "name"));
@@ -108,6 +141,7 @@ public final class MicroG {
         }
         info.services = new ServiceInfo[services.size()];
         for (int n = 0; n < services.size(); n++) info.services[n] = services.get(n).info;
+        info.providers = providers.toArray(new ProviderInfo[0]);
         // The existing Google compatibility identity is also used for the separately installed replacement.
         info.signatures = new Signature[] {GooglePackages.signature()};
         info.signingInfo = new SigningInfo(info.signatures);

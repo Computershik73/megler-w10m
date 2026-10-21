@@ -82,7 +82,7 @@ public class PackageManager {
             p.signatures = new Signature[] { new Signature("") };
             return p;
         }
-        if (megler.GooglePackages.is(pkg)) return megler.GooglePackages.packageInfo(pkg);
+        if (!mine(pkg) && megler.GooglePackages.is(pkg)) return megler.GooglePackages.packageInfo(pkg);
         if (!mine(pkg)) {
             // Another app the phone has (megler.PhoneApps), or none.
             megler.PhoneApps.App other = megler.PhoneApps.find(pkg);
@@ -92,6 +92,11 @@ public class PackageManager {
         megler.Manifest.read();
         PackageInfo p = new PackageInfo();
         p.packageName = pkg; p.versionCode = megler.Manifest.versionCode; p.versionName = megler.Manifest.versionName != null ? megler.Manifest.versionName : "1.0";
+        p.applicationInfo = ApplicationInfo.self();
+        if (megler.GooglePackages.VENDING.equals(pkg) || megler.GooglePackages.GMS.equals(pkg)) {
+            p.signatures = new Signature[] { megler.GooglePackages.signature() };
+            p.signingInfo = new SigningInfo(p.signatures);
+        }
         p.firstInstallTime = p.lastUpdateTime = new java.io.File(megler.Native.apkPath()).lastModified();
         String[] splits = ApplicationInfo.self().splitNames;
         if (splits != null) { p.splitNames = splits.clone(); p.splitRevisionCodes = new int[splits.length]; }
@@ -111,7 +116,7 @@ public class PackageManager {
     public static final class ComponentInfoFlags { private final long v; private ComponentInfoFlags(long v) { this.v = v; } public static ComponentInfoFlags of(long v) { return new ComponentInfoFlags(v); } public long getValue() { return v; } }
     public static final class ResolveInfoFlags { private final long v; private ResolveInfoFlags(long v) { this.v = v; } public static ResolveInfoFlags of(long v) { return new ResolveInfoFlags(v); } public long getValue() { return v; } }
     public ApplicationInfo getApplicationInfo(String pkg, int flags) throws NameNotFoundException {
-        if (megler.GooglePackages.is(pkg)) return megler.GooglePackages.applicationInfo(pkg);
+        if (!mine(pkg) && megler.GooglePackages.is(pkg)) return megler.GooglePackages.applicationInfo(pkg);
         if (!mine(pkg)) {
             megler.PhoneApps.App other = megler.PhoneApps.find(pkg);
             if (other != null) return megler.PhoneApps.applicationInfo(other);
@@ -136,7 +141,14 @@ public class PackageManager {
     public ServiceInfo getServiceInfo(ComponentName c, int flags) throws NameNotFoundException { ServiceInfo external = megler.MicroG.resolve(new Intent().setComponent(c)); if (external != null) return external; for (megler.Manifest.Component s : megler.Manifest.services) if (s.name.equals(c.getClassName())) return service(s); throw new NameNotFoundException(c.toString()); }
     public ServiceInfo getServiceInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getServiceInfo(c, 0); }
     public ProviderInfo getProviderInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component p : megler.Manifest.providers) if (p.name.equals(c.getClassName())) return provider(p); throw new NameNotFoundException(c.toString()); }
-    public ProviderInfo resolveContentProvider(String authority, int flags) { for (megler.Manifest.Component p : megler.Manifest.providers) if (p.authorities != null && java.util.Arrays.asList(p.authorities.split(";")).contains(authority)) return provider(p); return null; }
+    public ProviderInfo resolveContentProvider(String authority, int flags) {
+        android.content.pm.PackageInfo gms = megler.MicroG.packageInfo(megler.GooglePackages.GMS);
+        if (gms != null && gms.providers != null) for (ProviderInfo p : gms.providers)
+            if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
+        for (megler.Manifest.Component p : megler.Manifest.providers)
+            if (p.authorities != null && java.util.Arrays.asList(p.authorities.split(";")).contains(authority)) return provider(p);
+        return null;
+    }
     public List<ProviderInfo> queryContentProviders(String process, int uid, int flags) { ArrayList<ProviderInfo> l = new ArrayList<>(); for (megler.Manifest.Component p : megler.Manifest.providers) l.add(provider(p)); return l; }
     public boolean hasSystemFeature(String name) { return hasSystemFeature(name, 0); }
     public boolean hasSystemFeature(String name, int version) {
@@ -262,7 +274,7 @@ public class PackageManager {
     }
     public String[] getPackagesForUid(int uid) { return new String[] { megler.Native.packageName() }; }
     public String getNameForUid(int uid) { return megler.Native.packageName(); }
-    public int getPackageUid(String pkg, int flags) throws NameNotFoundException { if (megler.GooglePackages.is(pkg)) return megler.GooglePackages.applicationInfo(pkg).uid; if (!mine(pkg)) { megler.PhoneApps.App a = megler.PhoneApps.find(pkg); if (a != null) return a.uid; throw new NameNotFoundException(pkg); } return android.os.Process.myUid(); }
+    public int getPackageUid(String pkg, int flags) throws NameNotFoundException { if (!mine(pkg) && megler.GooglePackages.is(pkg)) return megler.GooglePackages.applicationInfo(pkg).uid; if (!mine(pkg)) { megler.PhoneApps.App a = megler.PhoneApps.find(pkg); if (a != null) return a.uid; throw new NameNotFoundException(pkg); } return android.os.Process.myUid(); }
     /* components the app enabled or disabled (Instagram turns its own on in stages and checks each took), kept across launches */
     private static java.util.Properties sStates;
     private static synchronized java.util.Properties states() {
