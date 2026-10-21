@@ -186,6 +186,7 @@ public class Main extends Activity {
                 // AccountManager blocks for its answers, which it may not do on the main thread.
                 new Thread(() -> {
                     try {
+                        sharedPreferences();
                         accounts();
                         runOnUiThread(() -> {
                             done = true;
@@ -200,6 +201,29 @@ public class Main extends Activity {
         public void onServiceDisconnected(ComponentName n) { fail(new AssertionError("broker disconnected")); }
         public void onNullBinding(ComponentName n) { fail(new AssertionError("broker null binding")); }
     };
+
+    /**
+     * microG's settings in the services' shared folder, as two processes have them: each its own copy of the file in memory. One
+     * turns a setting on (as microG's settings turn device registration on); the other, which read the file before, then writes
+     * another setting. The first setting must stay on, and the other copy must see it.
+     */
+    private void sharedPreferences() throws Exception {
+        java.io.File file = new java.io.File("/data/megler-services/megler-test/shared_prefs/two-processes.xml");
+        file.getParentFile().mkdirs();
+        file.delete();
+        java.lang.reflect.Constructor<?> make = Class.forName("android.content.MeglerSharedPreferences").getConstructor(java.io.File.class);
+        SharedPreferences settings = (SharedPreferences) make.newInstance(file), other = (SharedPreferences) make.newInstance(file);
+        check(!other.getBoolean("checkin_enable_service", false), "nothing set yet");
+        check(settings.edit().putBoolean("checkin_enable_service", true).commit(), "first copy writes");
+        check(other.edit().putString("profile_serial", "008741F4E8A2D8C6").commit(), "second copy writes");
+        SharedPreferences fresh = (SharedPreferences) make.newInstance(file);
+        check(fresh.getBoolean("checkin_enable_service", false), "a setting another copy wrote survives a stale copy's write");
+        check("008741F4E8A2D8C6".equals(fresh.getString("profile_serial", null)), "the stale copy's own setting is written");
+        check(other.getBoolean("checkin_enable_service", false), "a copy sees what another wrote since");
+        settings.edit().remove("profile_serial").apply();
+        Class.forName("android.content.MeglerSharedPreferences").getMethod("flushAll").invoke(null);
+        check(other.getString("profile_serial", null) == null && other.getBoolean("checkin_enable_service", false), "a removal reaches the other copy");
+    }
 
     /**
      * Google accounts are AccountManager's, and microG is their authenticator: its type is there, an account added is kept where
