@@ -354,6 +354,19 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     std::string icon;
     std::vector<std::pair<std::string, std::string>> logos;
     if (!entry.iconPath.empty() && files::read(entry.iconPath, icon)) logos = drawLogos(icon);
+    if (logos.empty()) {
+        // No icon kept for it (the library's cache gone, or never written for an APK installed where it was picked): the
+        // icon looked for in the APK itself, which is being packaged and so can be read. A reinstalled Telegram got
+        // Megler's logos this way.
+        uint8_t* bytes = nullptr;
+        size_t n = 0;
+        const std::string splitsDir = entry.splitsDir.empty() ? std::string() : narrow(entry.splitsDir);
+        if (megler_apk_icon_splits(narrow(entry.path).c_str(), splitsDir.empty() ? nullptr : splitsDir.c_str(), &bytes, &n) && bytes && n > 0) {
+            icon.assign(reinterpret_cast<const char*>(bytes), n);
+            logos = drawLogos(icon);
+        }
+        if (bytes) megler_free(bytes);
+    }
     shellLog::write(logos.empty() ? std::string("app package: Megler's own logos, the app's icon is not drawn")
                                   : "app package: the app's icon drawn on " + std::to_string(logos.size()) + " logos");
 
@@ -416,7 +429,9 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     for (const auto& name : splits)
         megler_appx_add_file(a, ("app/app.apk.splits/" + narrow(name)).c_str(), narrow(entry.splitsDir + L"\\" + name).c_str());
     if (files::exists(entry.path + L".json")) megler_appx_add_file(a, "app/app.apk.json", narrow(entry.path + L".json").c_str());
-    if (files::exists(entry.path + L".icon")) megler_appx_add_file(a, "app/app.apk.icon", narrow(entry.path + L".icon").c_str());
+    // The icon as the library keeps it (beside Megler's copy, or in the library for an APK installed where it was picked).
+    const std::wstring iconFile = !entry.iconPath.empty() && files::exists(entry.iconPath) ? entry.iconPath : entry.path + L".icon";
+    if (files::exists(iconFile)) megler_appx_add_file(a, "app/app.apk.icon", narrow(iconFile).c_str());
     const std::wstring stamp = Library::instance().directory() + L"\\reports.version";
     if (files::exists(stamp)) megler_appx_add_file(a, "app/reports.version", narrow(stamp).c_str());
     progress("Signing the package…");
