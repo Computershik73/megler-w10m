@@ -6,10 +6,16 @@ public class DigitsKeyListener extends NumberKeyListener {
     public DigitsKeyListener(java.util.Locale l) { this(false, false); }
     public DigitsKeyListener(java.util.Locale l, boolean sign, boolean decimal) { this(sign, decimal); }
     private DigitsKeyListener(String accepted) { mSign = false; mDecimal = false; mAccepted = accepted.toCharArray(); }
-    public static DigitsKeyListener getInstance() { return new DigitsKeyListener(); }
-    public static DigitsKeyListener getInstance(boolean sign, boolean decimal) { return new DigitsKeyListener(sign, decimal); }
-    public static DigitsKeyListener getInstance(java.util.Locale l) { return new DigitsKeyListener(); }
-    public static DigitsKeyListener getInstance(java.util.Locale l, boolean sign, boolean decimal) { return new DigitsKeyListener(sign, decimal); }
+    /** One for each sign and decimal, as Android keeps them: an app that sets the same input type again gets the same listener. */
+    private static final DigitsKeyListener[] sInstance = new DigitsKeyListener[4];
+    public static DigitsKeyListener getInstance() { return getInstance(false, false); }
+    public static synchronized DigitsKeyListener getInstance(boolean sign, boolean decimal) {
+        int k = (sign ? 1 : 0) | (decimal ? 2 : 0);
+        if (sInstance[k] == null) sInstance[k] = new DigitsKeyListener(sign, decimal);
+        return sInstance[k];
+    }
+    public static DigitsKeyListener getInstance(java.util.Locale l) { return getInstance(false, false); }
+    public static DigitsKeyListener getInstance(java.util.Locale l, boolean sign, boolean decimal) { return getInstance(sign, decimal); }
     public static DigitsKeyListener getInstance(String accepted) { return new DigitsKeyListener(accepted); }
     protected char[] getAcceptedChars() { return mAccepted; }
     public int getInputType() { int t = android.text.InputType.TYPE_CLASS_NUMBER; if (mSign) t |= android.text.InputType.TYPE_NUMBER_FLAG_SIGNED; if (mDecimal) t |= android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL; return t; }
