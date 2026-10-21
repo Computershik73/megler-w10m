@@ -25,7 +25,16 @@ public class TypedArray implements AutoCloseable {
     }
     public int length() { return mValues.length; }
     public int getIndexCount() { return mIndexCount; }
-    public int getIndex(int at) { return mIndices[at]; }
+    /**
+     * The index of the at-th attribute that has a value. As Android's, whose table has a place for every attribute asked
+     * for: past the last that has a value and within those asked for it answers 0 rather than failing (Avito's image view
+     * reads one place past its count, and ended at its start on the exception).
+     */
+    public int getIndex(int at) {
+        if (at >= 0 && at < mIndexCount) return mIndices[at];
+        if (at >= 0 && at < mValues.length) return 0;
+        throw new ArrayIndexOutOfBoundsException("length=" + (mValues.length + 1) + "; index=" + (at + 1));
+    }
     public Resources getResources() { return mRes; }
     public int getChangingConfigurations() { return 0; }
     public void recycle() { mRecycled = true; }
