@@ -9,6 +9,12 @@
 // readTypedArray) or a class loader (readParcelable, readParcelableArray, readParcelableList, readValue, readArrayList) --
 // gets an object of its own class: when the one kept is of another class of that name, it is written out and read in
 // through the reader's creator, as between two processes. Objects of the same class come back as themselves, as before.
+//
+// And those typed readers read Android's own layout too. The Play services client library writes its typed arrays and
+// lists itself (SafeParcelWriter): the count, then each item after a non-zero word, written out in place -- which is what
+// Android's createTypedArray reads. The original read an index into its table there, and microG's broker got some other
+// object of the table ("bici cannot be cast to [Ljava/lang/Object;" in createTypedArray, Play Store's every request). A
+// reference into the table is now a mark word and the index, and a typed reader that finds no mark reads Android's layout.
 // Everything else is the original's, unchanged.
 package android.os;
 
@@ -161,8 +167,16 @@ public final class Parcel {
     public android.util.SparseIntArray readSparseIntArray() { int n = readInt(); if (n < 0) return null; android.util.SparseIntArray r = new android.util.SparseIntArray(n); for (int i = 0; i < n; i++) { int k = readInt(); r.put(k, readInt()); } return r; }
 
     // ---- objects: an index into this parcel's table (-1 for null)
-    private void writeObj(Object o) { if (o == null) { writeInt(-1); return; } mObjects.add(o); writeInt(mObjects.size() - 1); }
-    private Object readObj() { int i = readInt(); return i >= 0 && i < mObjects.size() ? mObjects.get(i) : null; }
+    /** The word before an index into the table: no count, size or flag Android writes there is this (negative, not -1). */
+    private static final int OBJECT = 0x8C0FFEE1;
+    private void writeObj(Object o) { writeInt(OBJECT); if (o == null) { writeInt(-1); return; } mObjects.add(o); writeInt(mObjects.size() - 1); }
+    private Object readObj() { if (readInt() != OBJECT) return null; int i = readInt(); return i >= 0 && i < mObjects.size() ? mObjects.get(i) : null; }
+    /** Whether what comes next is a reference into the table (else it is written out in place, as Android lays it out). */
+    private boolean objectNext() {
+        int a = mPos;
+        if (a + 4 > mSize) return false;
+        return ((mBuf[a] & 255) | (mBuf[a + 1] & 255) << 8 | (mBuf[a + 2] & 255) << 16 | (mBuf[a + 3] & 255) << 24) == OBJECT;
+    }
     public void writeBundle(Bundle b) { writeObj(b == null ? null : new Bundle(b)); }
     public Bundle readBundle() { return (Bundle) readObj(); }
     public Bundle readBundle(ClassLoader l) { return readBundle(); }
@@ -170,20 +184,37 @@ public final class Parcel {
     public PersistableBundle readPersistableBundle() { return (PersistableBundle) readObj(); }
     public PersistableBundle readPersistableBundle(ClassLoader l) { return readPersistableBundle(); }
     public void writeParcelable(Parcelable p, int flags) { writeObj(p); }
-    public <T extends Parcelable> T readParcelable(ClassLoader l) { return (T) adapt(readObj(), l); }
-    public <T> T readParcelable(ClassLoader l, Class<T> c) { return (T) adapt(readObj(), l); }
+    public <T extends Parcelable> T readParcelable(ClassLoader l) { return (T) (objectNext() ? adapt(readObj(), l) : readWrittenParcelable(l)); }
+    public <T> T readParcelable(ClassLoader l, Class<T> c) { return (T) (objectNext() ? adapt(readObj(), l) : readWrittenParcelable(l)); }
     public Parcelable.Creator<?> readParcelableCreator(ClassLoader l) { return null; }
     public <T> Parcelable.Creator<T> readParcelableCreator(ClassLoader l, Class<T> c) { return null; }
     public void writeParcelableCreator(Parcelable p) { writeString(p == null ? null : p.getClass().getName()); }
     public <T extends Parcelable> void writeTypedObject(T v, int flags) { writeObj(v); }
-    public <T> T readTypedObject(Parcelable.Creator<T> c) { return (T) adapt(readObj(), c); }
+    public <T> T readTypedObject(Parcelable.Creator<T> c) {
+        if (objectNext()) return (T) adapt(readObj(), c);
+        return readInt() != 0 ? c.createFromParcel(this) : null;
+    }
     public <T extends Parcelable> void writeTypedList(List<T> v) { writeObj(v == null ? null : new ArrayList<>(v)); }
     public <T extends Parcelable> void writeTypedList(List<T> v, int flags) { writeTypedList(v); }
-    public <T> ArrayList<T> createTypedArrayList(Parcelable.Creator<T> c) { List<T> v = (List<T>) readObj(); return v == null ? null : (ArrayList<T>) adaptAll(v, c); }
-    public <T> void readTypedList(List<T> o, Parcelable.Creator<T> c) { List<T> v = (List<T>) readObj(); o.clear(); if (v != null) o.addAll((List<T>) adaptAll(v, c)); }
+    public <T> ArrayList<T> createTypedArrayList(Parcelable.Creator<T> c) {
+        if (!objectNext()) return writtenList(c);
+        List<T> v = (List<T>) readObj();
+        return v == null ? null : (ArrayList<T>) adaptAll(v, c);
+    }
+    public <T> void readTypedList(List<T> o, Parcelable.Creator<T> c) {
+        List<T> v = objectNext() ? (List<T>) readObj() : writtenList(c);
+        o.clear();
+        if (v != null) o.addAll((List<T>) adaptAll(v, c));
+    }
     public <T extends Parcelable> void writeTypedArray(T[] v, int flags) { writeObj(v); }
-    public <T> T[] createTypedArray(Parcelable.Creator<T> c) { return (T[]) adaptArray((Object[]) readObj(), c); }
-    public <T> void readTypedArray(T[] o, Parcelable.Creator<T> c) { T[] v = (T[]) adaptArray((Object[]) readObj(), c); if (v != null) System.arraycopy(v, 0, o, 0, Math.min(v.length, o.length)); }
+    public <T> T[] createTypedArray(Parcelable.Creator<T> c) {
+        if (!objectNext()) return writtenArray(c);
+        return (T[]) adaptArray((Object[]) readObj(), c);
+    }
+    public <T> void readTypedArray(T[] o, Parcelable.Creator<T> c) {
+        T[] v = objectNext() ? (T[]) adaptArray((Object[]) readObj(), c) : writtenArray(c);
+        if (v != null) System.arraycopy(v, 0, o, 0, Math.min(v.length, o.length));
+    }
     public void writeParcelableArray(Parcelable[] v, int flags) { writeObj(v); }
     public <T> T[] readParcelableArray(ClassLoader l, Class<T> c) { return (T[]) adaptArray((Object[]) readObj(), l); }
     public Parcelable[] readParcelableArray(ClassLoader l) { return (Parcelable[]) adaptArray((Object[]) readObj(), l); }
@@ -336,6 +367,32 @@ public final class Parcel {
         java.lang.Object readRawParceled(android.os.Parcel p0);
     }
     // ---- end of generated nested classes
+
+    // ---- Android's layout, where a writer wrote items out in place (see the overlay's note at the top)
+
+    private <T> T[] writtenArray(Parcelable.Creator<T> c) {
+        int n = readInt();
+        if (n < 0) return null;
+        T[] out = c.newArray(n);
+        for (int i = 0; i < n; i++) out[i] = readTypedObject(c);
+        return out;
+    }
+    private <T> ArrayList<T> writtenList(Parcelable.Creator<T> c) {
+        int n = readInt();
+        if (n < 0) return null;
+        ArrayList<T> out = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) out.add(readTypedObject(c));
+        return out;
+    }
+    /** A Parcelable as Android's writeParcelable lays it out: its class's name, then itself through its CREATOR. */
+    private Object readWrittenParcelable(ClassLoader l) {
+        String name = readString();
+        if (name == null) return null;
+        Parcelable.Creator<?> c = creator(name, l != null ? l : Parcel.class.getClassLoader());
+        if (c == null) throw new BadParcelableException("ClassNotFoundException when unmarshalling: " + name);
+        if (c instanceof Parcelable.ClassLoaderCreator) return ((Parcelable.ClassLoaderCreator<?>) c).createFromParcel(this, l);
+        return c.createFromParcel(this);
+    }
 
     // ---- a Parcelable read as the reader's class (see the overlay's note at the top)
 

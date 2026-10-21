@@ -167,6 +167,16 @@ public class Main extends Activity {
                 data.writeTypedArray(new com.google.android.gms.common.Feature[] { new com.google.android.gms.common.Feature("megler_probe", 7) }, 0);
                 fieldEnd = data.dataPosition();
                 data.setDataPosition(fieldAt); data.writeInt(fieldEnd - fieldStart); data.setDataPosition(fieldEnd);
+                // Field 10, the default features, as the client library's SafeParcelWriter writes a typed array itself, in
+                // Android's layout: the count, then each item after its size, written out in place (Play Store's are so).
+                data.writeInt(0xffff000a); fieldAt = data.dataPosition(); data.writeInt(0); fieldStart = data.dataPosition();
+                data.writeInt(1);
+                int itemAt = data.dataPosition(); data.writeInt(0); int itemStart = data.dataPosition();
+                new com.google.android.gms.common.Feature("megler_inline", 9).writeToParcel(data, 0);
+                int itemEnd = data.dataPosition();
+                data.setDataPosition(itemAt); data.writeInt(itemEnd - itemStart); data.setDataPosition(itemEnd);
+                fieldEnd = data.dataPosition();
+                data.setDataPosition(fieldAt); data.writeInt(fieldEnd - fieldStart); data.setDataPosition(fieldEnd);
                 data.setDataPosition(sizeAt); data.writeInt(fieldEnd - start); data.setDataPosition(fieldEnd);
                 check(binder.transact(46, data, reply, 0), "getService transaction"); reply.readException();
                 check(called[0], "broker callback delivered");
