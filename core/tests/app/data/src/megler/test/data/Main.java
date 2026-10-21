@@ -40,6 +40,8 @@ public class Main extends Activity {
         } catch (Throwable t) {
             held = false;
             detail = t.toString();
+            // A call made by reflection fails as InvocationTargetException: what the method threw is its cause.
+            if (t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null) detail += " from " + t.getCause();
         }
         if (held) ok++;
         else failed++;
