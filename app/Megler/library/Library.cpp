@@ -219,7 +219,8 @@ void Library::load() {
             if ((stale || !entry.analysed) && files::exists(entry.path)) toRead.push_back(entry.id);
             entries_.push_back(std::move(entry));
         }
-        for (const auto& entry : entries_) appPackage::registerServiceApk(entry);
+        if (appPackage::single().package == "com.google.android.gms")
+            for (const auto& entry : entries_) appPackage::registerServiceApk(entry, narrow(winrt::Windows::ApplicationModel::Package::Current().Id().FullName()));
         refreshingAll_ = stale && !toRead.empty();
         if (stale && toRead.empty()) files::write(directory_ + L"\\reports.version", versionStamp());
         ++generation_;
@@ -472,7 +473,8 @@ void Library::analyse(const std::string& id) {
         }
         package = parsed.package;
         entry.report = std::move(parsed);
-        appPackage::registerServiceApk(entry);
+        if (appPackage::single().package == "com.google.android.gms")
+            appPackage::registerServiceApk(entry, narrow(winrt::Windows::ApplicationModel::Package::Current().Id().FullName()));
         entry.analysed = true;
         entry.iconPath = iconPath;
         break;
@@ -528,7 +530,6 @@ void Library::adopt(const std::string& id, const std::string& fullName) {
     files::remove(own);
     files::removeTree(splitsDirFor(own));
     ApkEntry entry = installedEntry(id, fullName);
-    appPackage::registerServiceApk(entry);
     const std::string package = entry.report.package;
     auto existing = std::find_if(entries_.begin(), entries_.end(), [&](const ApkEntry& e) { return e.id == id; });
     if (existing != entries_.end())

@@ -10,4 +10,4 @@ if [ -f "$OUT/GmsCore.apk" ] && echo "$SHA  $OUT/GmsCore.apk" | sha256sum -c -; 
 curl -fL --retry 3 "https://github.com/microg/GmsCore/releases/download/$VERSION/com.google.android.gms-252432034.apk" -o "$OUT/GmsCore.apk.download"
 echo "$SHA  $OUT/GmsCore.apk.download" | sha256sum -c -
 mv "$OUT/GmsCore.apk.download" "$OUT/GmsCore.apk"
-echo "microG $VERSION ready; tools/dvm-android-root.sh will include it."
+echo "microG $VERSION ready; install this APK as a separate application, or use it for the optional integration test."

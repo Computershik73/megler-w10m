@@ -196,6 +196,8 @@ void run(Job& job, int number, int total) {
                                  (kept.empty() ? std::string() : " (" + kept + ")"));
             return;
         }
+        const bool servicePublished = appPackage::registerServiceApk(entry, made.fullName, true);
+        if (!servicePublished) shellLog::write("microG: installed, but its shared service APK could not be published; launch microG to retry");
         // Installed: the package made is the installed one now, and goes (Windows's installer is not wanted for it). The
         // app is listed as installed at once; the portal's list is asked again once the queue is done.
         files::remove(made.appx);

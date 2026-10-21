@@ -561,21 +561,56 @@ PortalResult installThroughPortal(const Made& made, const std::function<void(con
     }
 }
 
-void registerServiceApk(const ApkEntry& entry) {
-    if (entry.report.package != "com.google.android.gms" || !entry.report.ok || !canRead(entry.path)) return;
+bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullName, bool replace) {
+    if (entry.report.package != "com.google.android.gms") return true;
+    if (!entry.report.ok || installedFullName.empty() || installedFullName.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos || !canRead(entry.path)) return false;
     const auto shared = sharedFolder();
-    if (shared.empty()) return;
-    const auto folder = shared + L"\\services";
-    files::makeDirectories(folder);
-    const auto path = folder + L"\\gms-apk.txt";
-    if (files::write(path + L".part", narrow(entry.path))) files::move(path + L".part", path);
+    if (shared.empty()) return false;
+    const auto record = shared + L"\\services\\gms-package.txt";
+    std::string previous;
+    if (!replace && files::read(record, previous) && iniValue(previous, "package") == installedFullName) {
+        const auto token = iniValue(previous, "cache");
+        if (!token.empty() && token.find_first_not_of("0123456789abcdef-") == std::string::npos &&
+            canRead(shared + L"\\services\\" + widen(token) + L"\\GmsCore.apk")) return true;
+    }
+    // One shared service copy per installation. Fresh paths also preserve an older client's mapped APK.
+    FILETIME time; GetSystemTimeAsFileTime(&time);
+    const auto token = format("%08lx%08lx-%08lx", time.dwHighDateTime, time.dwLowDateTime, GetCurrentProcessId());
+    const auto folder = shared + L"\\services\\" + widen(token);
+    if (!files::makeDirectories(folder)) return false;
+    const auto apk = folder + L"\\GmsCore.apk";
+    if (!files::copy(entry.path, apk + L".part") || !files::move(apk + L".part", apk)) return false;
+    if (!files::write(record + L".part", "package=" + installedFullName + "\ncache=" + token + "\n") ||
+        !files::move(record + L".part", record)) return false;
+    shellLog::write("microG: registered separately installed " + installedFullName);
+    return true;
+}
+
+void unregisterServiceApk(const std::string& installedFullName) {
+    const auto record = sharedFolder() + L"\\services\\gms-package.txt";
+    std::string registered;
+    if (files::read(record, registered) && iniValue(registered, "package") == installedFullName) files::remove(record);
+    // Existing clients can finish with their mapped version. The cache is not an installation.
 }
 
 std::wstring serviceApk() {
     const auto shared = sharedFolder();
-    std::string path;
-    if (shared.empty() || !files::read(shared + L"\\services\\gms-apk.txt", path) || path.empty()) return {};
-    const auto apk = widen(path);
+    std::string record;
+    if (shared.empty() || !files::read(shared + L"\\services\\gms-package.txt", record)) return {};
+    const auto name = iniValue(record, "package"), token = iniValue(record, "cache");
+    if (name.empty() || token.empty() || token.find_first_not_of("0123456789abcdef-") != std::string::npos) return {};
+    if (name.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos) return {};
+    std::vector<InstalledApp> apps;
+    std::string error;
+    if (!installedApps(apps, error)) {
+        shellLog::write("microG: cannot verify service package installation: " + error);
+        return {};
+    }
+    if (std::none_of(apps.begin(), apps.end(), [&](const InstalledApp& a) { return a.fullName == name; })) {
+        unregisterServiceApk(name);
+        return {};
+    }
+    const auto apk = shared + L"\\services\\" + widen(token) + L"\\GmsCore.apk";
     return canRead(apk) ? apk : std::wstring();
 }
 
@@ -630,6 +665,7 @@ PortalResult uninstallThroughPortal(const InstalledApp& app) {
             shellLog::write(format("app package: the Device Portal did not uninstall %s: %d ", app.fullName.c_str(), int(answer.StatusCode())) + body);
             return {false, format("The Device Portal did not uninstall it (%d): ", int(answer.StatusCode())) + body};
         }
+        unregisterServiceApk(app.fullName);
         shellLog::write("app package: " + app.fullName + " uninstalled through the Device Portal");
         return {true, "Uninstalled."};
     } catch (hresult_error const& e) {

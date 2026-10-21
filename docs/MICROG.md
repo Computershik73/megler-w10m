@@ -1,21 +1,24 @@
 # microG services
 
-Megler can load a separately installed `com.google.android.gms` microG APK as
-an optional service provider. Add/install the official microG Services APK in
-Megler as an ordinary application. The library records its readable APK path
-in the publisher cache (`shared/services/gms-apk.txt`). Clients built with this
-version discover it at startup; existing client APPX packages must be updated.
-The APK is not copied into every client. Updating microG replaces the recorded
-path; an uninstalled or unreadable APK is not used. Restart clients after an
-update. Installing Google’s proprietary GmsCore is not supported by this host.
+Megler can use a separately installed `com.google.android.gms` microG APK as an
+optional service provider. Install the official microG Services APK in Megler
+as its own application. After installation, Megler copies its APK once into the
+shared Publisher Cache and records the installed Windows package identity and
+cache token. Client APPX packages do not contain GmsCore; at launch, the runtime
+mounts the registered APK from the shared cache. Reinstalling or updating
+microG publishes a new cache entry, so already running clients can finish with
+the version they loaded. Uninstalling microG clears its registration, and
+clients stop using it after restart. If automatic publication fails, launching
+the standalone microG app retries registration. Installing Googleâ€™s proprietary
+GmsCore is not supported by this host.
 
-This is in-process hosting with an isolated loader, not Android cross-process
-Binder. Each client still has its own microG Application, service instances
-and private microG state under its data directory. Installing and launching
-microG does not create a shared background daemon, a common signed-in account,
-or push delivery while clients are stopped. Account, push, provider and activity
-integration require further work. Play Integrity is not implemented by this change.
-
+GmsCore services currently execute inside each client process, with a separate
+Java class namespace and ELF library scope. The APK is installed and stored once,
+but Megler does not yet run a centralized microG daemon or provide Android
+cross-process Binder. Each client has its own service instances and private
+microG state. Shared sign-in, push delivery while clients are stopped, and
+cross-client provider state therefore remain unfinished. Play Integrity is not
+implemented by this change.
 ## Class isolation
 
 The failed implementation reverted in `1adae04` appended GmsCore's DEX files
@@ -42,7 +45,7 @@ also runs the `microg` test when `build/microg/GmsCore.apk` exists. The client
 fixture intentionally defines an incompatible `GetServiceRequest.CREATOR`.
 It checks independent class identities, reflection and arrays, shared Binder
 identity, resources/storage isolation, Advertising ID transactions,
-unbind/rebind, and the actual `IGmsServiceBroker.getService` transaction 46
+unbind/rebind, native `libconscrypt_gmscore_jni.so` loading in the service ELF scope, and the actual `IGmsServiceBroker.getService` transaction 46
 with a callback returning `ICommonService`.
 
 A focused run of the built ARM runner is:
