@@ -481,8 +481,31 @@ public class Main extends Activity {
                 boolean placed = wrap.getParent() == decor && content.getParent() == wrap && text.isShown() && text.getWidth() > 0 && dialog.isShowing();
                 Log.i("DataTest", "decor-reparent " + (placed ? "ok" : "FAILED") + " text=" + text.getWidth() + "x" + text.getHeight());
                 dialog.dismiss();
+                tallDialog();
             }, 400);
         }, 300);
+    }
+
+    /**
+     * An alert whose message is taller than the screen, as Telegram X's question whether to sync the contacts: the dialog
+     * fits on the screen, the message scrolls, and the button is there to be pressed, wholly on the screen.
+     */
+    private void tallDialog() {
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < 120; i++) text.append("A line of a message far longer than the screen is tall, number ").append(i).append('.').append('\n');
+        final android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this).setTitle("Sync the contacts?").setMessage(text)
+                .setPositiveButton("OK", null).setNegativeButton("Not now", null).create();
+        dialog.show();
+        new android.os.Handler().postDelayed(() -> {
+            android.widget.Button ok = dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE);
+            int[] at = new int[2];
+            ok.getLocationOnScreen(at);
+            int screen = getResources().getDisplayMetrics().heightPixels;
+            android.view.View decor = dialog.getWindow().getDecorView();
+            boolean fits = ok.isShown() && ok.getHeight() > 0 && at[1] >= 0 && at[1] + ok.getHeight() <= screen && decor.getHeight() <= screen;
+            Log.i("DataTest", "dialog-tall " + (fits ? "ok" : "FAILED") + " button=" + at[1] + "+" + ok.getHeight() + " screen=" + screen + " dialog=" + decor.getHeight());
+            dialog.dismiss();
+        }, 500);
     }
 
     private android.media.session.MediaSession session;
