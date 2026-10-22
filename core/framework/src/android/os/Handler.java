@@ -18,12 +18,14 @@ public class Handler {
     }
     public final boolean post(Runnable r) { return postDelayed(r, 0); }
     public final boolean postDelayed(Runnable r, long ms) {
-        // microG services run in the client's process. DroidGuard waits synchronously on a
-        // Volley RequestFuture during a local Binder call, which can be on this same main
-        // thread. Delivering Volley's response to that main queue would deadlock it.
+        // DroidGuard waits synchronously on a Volley RequestFuture during a local Binder
+        // call, which can be on this same main thread. This also happens when microG runs
+        // as its own app (for example, its reCAPTCHA test), not just inside a client.
+        // Delivering Volley's response to that main queue would deadlock it.
         if (ms == 0 && mLooper == Looper.getMainLooper()
                 && r.getClass().getName().equals("com.android.volley.ExecutorDelivery$ResponseDeliveryRunnable")
-                && r.getClass().getClassLoader() instanceof megler.ServiceClassLoader) {
+                && (r.getClass().getClassLoader() instanceof megler.ServiceClassLoader
+                    || "com.google.android.gms".equals(megler.Native.packageName()))) {
             r.run();
             return true;
         }
