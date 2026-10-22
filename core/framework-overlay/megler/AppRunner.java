@@ -18,10 +18,19 @@
 // which starts that app (megler.PhoneApps). Started for a result, its result comes back to the caller as the caller is in
 // front again (megler.AppResults): Play Store hears so that microG's sign-in, in microG's app, added the account.
 //
+// And the app's components are made by the factory its manifest names (android:appComponentFactory), as Android 9's
+// ActivityThread makes them: the factory is made with the app's class loader and asked for the class loader first
+// (instantiateClassLoader), then for the Application, the content providers, the activities, and the services and receivers
+// (megler.Services, megler.Broadcasts). They had been made from their classes directly. Facebook's factory puts its own
+// class loaders in place when asked for the class loader, and holds back each component until the code it loads after the
+// start is there (most of its classes are in a second DEX file it unpacks itself); made directly, its first activity was
+// not found yet and the app ended at once (ClassNotFoundException: com.facebook.katana.activity.FbMainTabActivity).
+//
 // Everything else is the original's, unchanged.
 package megler;
 
 import android.app.Activity;
+import android.app.AppComponentFactory;
 import android.app.Application;
 import android.content.*;
 import android.content.pm.ProviderInfo;
@@ -63,6 +72,30 @@ public final class AppRunner {
         } catch (Throwable t) { android.util.Log.w("Megler", "the app's class loader: " + t); }
     }
 
+    private static AppComponentFactory sFactory = AppComponentFactory.DEFAULT;
+    /** The factory the app's components are made by: its manifest's android:appComponentFactory, else the platform's. */
+    public static AppComponentFactory componentFactory() { return sFactory; }
+    /**
+     * As LoadedApk makes the app's class loader: the manifest's factory made with the app's own class loader, and asked for the
+     * class loader the app is to have (instantiateClassLoader), which is then the one the app's contexts give.
+     */
+    private static void installComponentFactory() {
+        String name = Manifest.appComponentFactory;
+        if (name == null) return;
+        try {
+            AppComponentFactory f = (AppComponentFactory) Class.forName(name, true, classLoader()).getDeclaredConstructor().newInstance();
+            ClassLoader cl = f.instantiateClassLoader(classLoader(), android.content.pm.ApplicationInfo.self());
+            sFactory = f;
+            if (cl != null && cl != sLoader) {
+                sLoader = cl;
+                Thread.currentThread().setContextClassLoader(cl);
+            }
+            android.util.Log.i("Megler", "the app's components are made by its factory " + name);
+        } catch (Throwable t) {
+            android.util.Log.w("Megler", "the app's component factory " + name + " could not be made; the platform's makes them", t);
+        }
+    }
+
     public static void run(String activityClass, String applicationClass) throws Exception {
         android.webkit.MimeTypeMap.meglerInstallDefault();
         KeyStoreProvider.install();
@@ -73,10 +106,11 @@ public final class AppRunner {
         if (Thread.getDefaultUncaughtExceptionHandler() == null) Thread.setDefaultUncaughtExceptionHandler(new UncaughtLogger());
         Manifest.read();
         installClassLoader();
+        installComponentFactory();
         ContextImpl base = ContextImpl.app();
         String appCls = applicationClass != null ? applicationClass : Manifest.applicationClass;
         Application app;
-        try { app = appCls != null ? (Application) Class.forName(appCls).newInstance() : new Application(); }
+        try { app = sFactory.instantiateApplication(classLoader(), appCls != null ? appCls : Application.class.getName()); }
         catch (ClassNotFoundException e) { android.util.Log.w("Megler", "no application class " + appCls); app = new Application(); }
         sApp = app;
         Application.meglerSet(app);
@@ -113,7 +147,7 @@ public final class AppRunner {
         for (Manifest.Component p : ordered) {
             if (!p.enabled) continue;
             try {
-                ContentProvider cp = (ContentProvider) Class.forName(p.name).newInstance();
+                ContentProvider cp = sFactory.instantiateProvider(classLoader(), p.name);
                 ProviderInfo info = new ProviderInfo();
                 info.name = p.name; info.authority = p.authorities; info.packageName = Native.packageName(); info.exported = p.exported; info.metaData = p.metaData; info.grantUriPermissions = p.grantUriPermissions;
                 info.applicationInfo = app.getApplicationInfo();
@@ -139,7 +173,7 @@ public final class AppRunner {
     static Activity launch(String cls, Intent intent, Activity caller, int request, Manifest.Component info) throws Exception {
         android.util.Log.d("Megler", "launch " + cls);
         Activity prev = top();
-        Activity a = (Activity) Class.forName(cls).newInstance();
+        Activity a = sFactory.instantiateActivity(classLoader(), cls, intent);
         ContextImpl base = ContextImpl.forActivity();
         a.meglerAttach(base, sApp, intent, info, caller, request);
         if (prev != null && prev.isResumedMegler()) prev.meglerPause();

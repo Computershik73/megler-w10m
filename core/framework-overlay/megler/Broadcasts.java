@@ -32,6 +32,7 @@
 // disables, or the app disabled with setComponentEnabledSetting, receives nothing, as on Android; Spotify has two.
 // And a broadcast that names microG's package or one of its receivers goes to microG (megler.MicroG.send), which an app
 // hosts: microG's settings send one to its check-in trigger.
+// And a receiver of the manifest is made by the app's component factory (AppRunner.componentFactory), as on Android 9.
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -110,7 +111,7 @@ public final class Broadcasts {
             synchronized (sReceivers) { for (Object[] e : sReceivers) if (e[1] != null && ((IntentFilter) e[1]).hasAction(i.getAction())) targets.add((BroadcastReceiver) e[0]); }
         for (Manifest.Component c : Manifest.match(Manifest.receivers, i)) {
             if (!enabled(ctx, c)) continue;
-            try { targets.add((BroadcastReceiver) Class.forName(c.name).newInstance()); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
+            try { targets.add(AppRunner.componentFactory().instantiateReceiver(AppRunner.classLoader(), c.name, i)); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
         }
         Handler h = new Handler(Looper.getMainLooper());
         for (BroadcastReceiver r : targets) h.post(() -> r.onReceive(ctx, i));
