@@ -121,17 +121,25 @@ public final class PhoneApps {
         return Intent.ACTION_MAIN.equals(i.getAction()) && c != null && c.contains(Intent.CATEGORY_LAUNCHER);
     }
 
-    /** An intent for an activity of another app the phone has: started by the shell, true; any other intent, false. */
-    public static boolean start(Intent i) {
+    /** For an intent for an activity of another app the phone has: that app's package and the activity (null when the intent
+     *  names none); for any other intent, null. */
+    public static String[] target(Intent i) {
         ComponentName c = i.getComponent();
         String target = c != null ? c.getPackageName() : i.getPackage();
-        if (target == null || target.equals(Native.packageName())) return false;
+        if (target == null || target.equals(Native.packageName())) return null;
         App a = find(target);
-        if (a == null) return false;
+        if (a == null) return null;
         String activity = c != null ? c.getClassName() : null;
         if (activity != null && activity.startsWith(".")) activity = target + activity;
-        android.util.Log.i("Megler", "phone apps: starting " + target + (activity != null ? "/" + activity : ""));
-        if (!Native.launchApp(target, activity)) android.util.Log.w("Megler", "phone apps: " + target + " was not started");
+        return new String[] { target, activity };
+    }
+
+    /** An intent for an activity of another app the phone has: started by the shell, true; any other intent, false. */
+    public static boolean start(Intent i) {
+        String[] t = target(i);
+        if (t == null) return false;
+        android.util.Log.i("Megler", "phone apps: starting " + t[0] + (t[1] != null ? "/" + t[1] : ""));
+        if (!Native.launchApp(t[0], t[1])) android.util.Log.w("Megler", "phone apps: " + t[0] + " was not started");
         return true;
     }
 }

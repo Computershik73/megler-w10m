@@ -56,8 +56,13 @@ for `com.google`, which is not exported, as the system binds it -- and call it
 off the main thread with the caller's package, uid and pid, as
 AccountManagerService does. An authenticator's screen (microG's sign-in) is
 started for a caller that gave an activity; when it opens in microG's own app,
-`addAccount` ends when the new account appears in the shared file. There is no
-account chooser, no visibility, and no session API.
+`addAccount` ends when the new account appears in the shared file. A caller
+that starts the screen itself for a result (Play Store calls `addAccount` with
+no activity and starts the intent it gets with `startActivityForResult`) gets
+the result the sign-in sets as it finishes (`RESULT_OK`): `megler.AppResults`
+passes it through `/data/megler-services/results/`, and microG's app brings the
+caller to the front again. There is no account chooser, no visibility, and no
+session API.
 
 ## Parcels between a client and microG
 

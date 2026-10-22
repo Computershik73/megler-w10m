@@ -2058,6 +2058,59 @@ public class Main extends Activity {
     }
 
     /**
+     * The result of an activity one app starts in another for one (megler.AppResults), both sides in this app. The C side asks
+     * for Answer as another app asks (megler_start_activity); Answer writes the note that com.example.other waits for it, as
+     * that app would have, and finishes with a result, which the framework writes in the services' folder before it brings
+     * com.example.other to the front. Then this activity asks com.example.other for its activity Main for a result, and puts
+     * the result Answer left where com.example.other would have written Main's: once the shell shows this app again (the C side
+     * pauses and resumes it), onActivityResult has it -- its code and its extras of plain types.
+     */
+    public static class Answer extends Activity {
+        @Override
+        protected void onCreate(Bundle state) {
+            super.onCreate(state);
+            File dir = new File("/data/megler-services/results/" + getPackageName());
+            dir.mkdirs();
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(new File(dir, Answer.class.getName() + ".caller"))) {
+                out.write("com.example.other".getBytes("UTF-8"));
+            } catch (java.io.IOException e) {
+                Log.i("DataTest", "app-results: the note cannot be written: " + e);
+            }
+            setResult(RESULT_OK, new android.content.Intent().putExtra("authAccount", "someone@example.com").putExtra("n", 7).putExtra("skipped", new int[] { 1 }));
+            sAnswered = true;
+            finish();
+        }
+    }
+    private static boolean sAnswered;
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!sAnswered) return;
+        sAnswered = false;
+        File answer = new File("/data/megler-services/results/" + getPackageName() + "/" + Answer.class.getName() + ".json");
+        File other = new File("/data/megler-services/results/com.example.other");
+        boolean written = answer.isFile();
+        startActivityForResult(new android.content.Intent().setClassName("com.example.other", "com.example.other.Main"), 77);
+        String note;
+        try (java.io.FileInputStream in = new java.io.FileInputStream(new File(other, "com.example.other.Main.caller"))) {
+            byte[] b = new byte[64];
+            int n = in.read(b);
+            note = new String(b, 0, Math.max(n, 0), "UTF-8");
+        } catch (java.io.IOException e) {
+            note = e.toString();
+        }
+        boolean moved = answer.renameTo(new File(other, "com.example.other.Main.json"));
+        Log.i("DataTest", "app-results asked written=" + written + " note=" + note + " moved=" + moved);
+    }
+
+    @Override
+    protected void onActivityResult(int request, int result, android.content.Intent data) {
+        Log.i("DataTest", "app-results answered request=" + request + " result=" + result + " authAccount=" + (data == null ? null : data.getStringExtra("authAccount"))
+                + " n=" + (data == null ? -1 : data.getIntExtra("n", -1)) + " skipped=" + (data != null && data.hasExtra("skipped")));
+    }
+
+    /**
      * The other apps the phone has, as a launcher sees them (the test's apps folder has one, com.example.other, "Other",
      * launched by com.example.other.Main): the launcher's intent lists it with its label and icon, it has a launch intent and
      * application info, and starting it asks the shell (megler_system_host.launch_app). And an activity with no icon has

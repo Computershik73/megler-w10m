@@ -15,7 +15,8 @@
 // And an intent to install an APK (ACTION_INSTALL_PACKAGE, or ACTION_VIEW of an APK, naming no activity) goes to Megler's
 // installer first (megler.Installs), as Android hands it to its package installer, rather than to an activity of the app's
 // that takes the content or file scheme. And an intent for an activity of another app the phone has goes to the shell,
-// which starts that app (megler.PhoneApps).
+// which starts that app (megler.PhoneApps). Started for a result, its result comes back to the caller as the caller is in
+// front again (megler.AppResults): Play Store hears so that microG's sign-in, in microG's app, added the account.
 //
 // Everything else is the original's, unchanged.
 package megler;
@@ -171,6 +172,7 @@ public final class AppRunner {
         Context from = sApp != null ? sApp : ContextImpl.app();
         Intent i = new Intent().setClassName(Native.packageName(), cls).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         android.util.Log.i("Megler", "another app asked for " + cls);
+        AppResults.requested(cls);
         startActivity(from, i, -1, null);
     }
     /** Context.startActivity: an activity of the app's own, or something the host can open (a web page, mail, the store). */
@@ -185,8 +187,14 @@ public final class AppRunner {
             return;
         }
         // An activity of another app the phone has (a launcher's tap, an app opening another): the shell starts that app
-        // (megler.PhoneApps), as Android starts another app's activity in its own process.
-        if (megler.PhoneApps.start(i)) return;
+        // (megler.PhoneApps), as Android starts another app's activity in its own process. Asked for a result, the caller
+        // has it when it is in front again (megler.AppResults).
+        String[] other = megler.PhoneApps.target(i);
+        if (other != null) {
+            if (request >= 0) AppResults.await(from instanceof Activity ? (Activity) from : top(), request, other[0], other[1]);
+            megler.PhoneApps.start(i);
+            return;
+        }
         Manifest.Component c = Manifest.resolve(i);
         android.util.Log.d("Megler", "startActivity " + i + (c != null ? " -> " + c.name : " (not an activity of this app)"));
         if (c != null) {
@@ -264,6 +272,7 @@ public final class AppRunner {
         boolean wasTop = idx == sStack.size() - 1;
         if (a.isResumedMegler()) a.meglerPause();
         sStack.remove(idx);
+        AppResults.finished(a);
         Activity below = top();
         if (wasTop && below != null && resumeBelow) {
             Activity caller = a.meglerCaller();
@@ -349,6 +358,8 @@ public final class AppRunner {
     private static void hostPause(boolean pause) {
         if (pause == sPausedByHost) return;
         sPausedByHost = pause;
+        // a result another app's activity left for this one comes first, as onActivityResult comes before onResume
+        if (!pause) AppResults.resumed();
         Activity a = top();
         if (a == null) return;
         if (pause) { if (a.isResumedMegler()) a.meglerPause(); }

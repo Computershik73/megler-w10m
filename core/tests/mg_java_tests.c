@@ -1854,6 +1854,31 @@ static void system_requests(void)
     CHECK(wait_line("I/DataTest: install-status 0 session=true package=com.example.store", 0, 30) >= 0);
 }
 
+/*
+ * The result of an activity one app starts in another for one (megler.AppResults), both sides in the data app (its
+ * Main.Answer). Asked for Answer as another app asks, the app finishes it with its result, writes that in the services' folder
+ * for com.example.other, which waits for it, and brings that app to the front (launch_app with no activity). Then the app asks
+ * com.example.other for its activity Main for a result and puts Answer's result where that app would have written it; when
+ * the shell shows the app again, onActivityResult has it: RESULT_OK and the extras of plain types (an int[] is not passed).
+ */
+static void app_results(int *at)
+{
+    static const char want[] = "launch=com.example.other/-;launch=com.example.other/com.example.other.Main;";
+    char heard[sizeof(g_system_heard)];
+    size_t n;
+    megler_start_activity("megler.test.data.Main$Answer");
+    expect_line("I/DataTest: app-results asked written=true note=megler.test.data moved=true", at, 30);
+    CHECK(find_line("phone apps: megler.test.data.Main$Answer finished with -1; back to com.example.other", 0) >= 0);
+    mg_lock_acquire(&g_system_lock);
+    mg_strlcpy(heard, g_system_heard, sizeof(heard));
+    mg_lock_release(&g_system_lock);
+    n = strlen(heard);
+    CHECK(n >= sizeof(want) - 1 && !strcmp(heard + n - (sizeof(want) - 1), want));
+    megler_set_paused(true);
+    megler_set_paused(false);
+    expect_line("I/DataTest: app-results answered request=77 result=-1 authAccount=someone@example.com n=7 skipped=false", at, 30);
+}
+
 static int run_data(void)
 {
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
@@ -1987,6 +2012,7 @@ static int run_data(void)
     bars_and_insets();
     media_session_keys();
     system_requests();
+    app_results(&at);
     /*
      * The second run has the flags trace-net, trace-exceptions and trace-stacks on (tools/build-tests.sh puts them in its
      * data folder): the network steps' connections are said with where to and how they ended, the names looked up with their
