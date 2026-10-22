@@ -321,6 +321,7 @@ public class Main extends Activity {
         sharedLibrary();
         cameras();
         safetyCenter();
+        parseIntent();
         xml();
         assetFd();
         tasks();
@@ -1608,6 +1609,26 @@ public class Main extends Activity {
             Object m = getSystemService(c);
             detail = "class=" + c.getName() + " service=" + m;
             return m == null;
+        });
+    }
+
+    /**
+     * An intent written in XML (res/xml/intent_probe.xml), read with Intent.parseIntent as AndroidX's preferences read their
+     * <intent> child: its action, component, data, category and extras.
+     */
+    private void parseIntent() {
+        step("parse-intent", () -> {
+            android.content.res.XmlResourceParser p = getResources().getXml(R.xml.intent_probe);
+            int t;
+            while ((t = p.next()) != org.xmlpull.v1.XmlPullParser.START_TAG && t != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {}
+            android.content.Intent i = android.content.Intent.parseIntent(getResources(), p, p);
+            p.close();
+            detail = String.valueOf(i) + " categories=" + (i == null ? null : i.getCategories()) + " who=" + (i == null ? null : i.getStringExtra("who"))
+                    + " flag=" + (i == null ? null : i.getBooleanExtra("flag", false));
+            return i != null && "megler.test.ACTION".equals(i.getAction()) && i.getComponent() != null
+                    && "org.microg.gms.auth.login.LoginActivity".equals(i.getComponent().getClassName()) && "com.google.android.gms".equals(i.getComponent().getPackageName())
+                    && "https://example.com/path".equals(String.valueOf(i.getData())) && i.hasCategory("android.intent.category.DEFAULT")
+                    && "microg".equals(i.getStringExtra("who")) && i.getBooleanExtra("flag", false);
         });
     }
 
