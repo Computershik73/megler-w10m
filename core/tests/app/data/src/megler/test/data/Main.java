@@ -363,7 +363,10 @@ public class Main extends Activity {
                     .getMethod("getBaseApkOptimizationInfo").invoke(null);
             return info != null
                     && "run-from-apk".equals(info.getClass().getMethod("getStatus").invoke(info))
-                    && "unknown".equals(info.getClass().getMethod("getReason").invoke(info));
+                    && "unknown".equals(info.getClass().getMethod("getReason").invoke(info))
+                    && Boolean.FALSE.equals(info.getClass().getMethod("isOptimized").invoke(info))
+                    && Boolean.FALSE.equals(info.getClass().getMethod("isVerified").invoke(info))
+                    && Boolean.FALSE.equals(info.getClass().getMethod("isFullyCompiled").invoke(info));
         });
         sound();
         mediaCodec();
