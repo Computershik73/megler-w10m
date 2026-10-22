@@ -391,6 +391,8 @@ N(Native_density) { c->ret.f = (float)(J.config->density_dpi > 0 ? J.config->den
 N(Native_uptimeNanos) { c->ret.j = (i64)mg_time_monotonic_ns(); }
 /* flag(name): a switch for trying something on the phone (mg_flag): a file of that name in the data folder's flags. */
 N(Native_flag) { c->ret.z = mg_flag(text_of(c->args[0].l)); }
+/* askClearData(): this app's data cleared when it next starts (megler_ask_clear_data), for Android's app info screen. */
+N(Native_askClearData) { c->ret.z = megler_ask_clear_data(J.package); }
 static void Native_frameMark(mg_jcall *c);
 static void Native_presentRect(mg_jcall *c);
 static void Native_checkPartial(mg_jcall *c);
@@ -776,6 +778,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "presentRect", NULL, Native_presentRect },
     { "megler/Native", "checkPartial", NULL, Native_checkPartial },
     { "megler/Native", "flag", NULL, Native_flag },
+    { "megler/Native", "askClearData", NULL, Native_askClearData },
     { NULL, NULL, NULL, NULL },
 };
 

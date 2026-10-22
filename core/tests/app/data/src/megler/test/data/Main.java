@@ -2086,6 +2086,16 @@ public class Main extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (sScreens == 1) {
+            sScreens = 2;
+            startActivity(new android.content.Intent("android.settings.APPLICATION_DETAILS_SETTINGS", android.net.Uri.parse("package:" + getPackageName())));
+            return;
+        }
+        if (sScreens == 2) {
+            sScreens = 3;
+            startActivity(new android.content.Intent("android.settings.SYNC_SETTINGS").putExtra("account_types", new String[] { "megler.test.none" }));
+            return;
+        }
         if (!sAnswered) return;
         sAnswered = false;
         File answer = new File("/data/megler-services/results/" + getPackageName() + "/" + Answer.class.getName() + ".json");
@@ -2108,7 +2118,11 @@ public class Main extends Activity {
     protected void onActivityResult(int request, int result, android.content.Intent data) {
         Log.i("DataTest", "app-results answered request=" + request + " result=" + result + " authAccount=" + (data == null ? null : data.getStringExtra("authAccount"))
                 + " n=" + (data == null ? -1 : data.getIntExtra("n", -1)) + " skipped=" + (data != null && data.hasExtra("skipped")));
+        // Then Android's Settings screens that Megler has (megler.SystemScreens), as this activity is in front again: this app's
+        // info, then, once that is closed, the accounts.
+        if (request == 77) sScreens = 1;
     }
+    private static int sScreens;
 
     /**
      * The other apps the phone has, as a launcher sees them (the test's apps folder has one, com.example.other, "Other",

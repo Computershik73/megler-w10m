@@ -62,3 +62,5 @@
     public static native void mediaSessionMetadata(String title, String artist, String album, int[] art, int artWidth, int artHeight);
     /** A switch for trying something on the phone (core: mg_flag): on when a file of that name is in the data folder's flags. */
     public static native boolean flag(String name);
+    /** Asks the core to clear this app's data when it next starts (megler.h, megler_ask_clear_data): Android's Clear storage. */
+    public static native boolean askClearData();

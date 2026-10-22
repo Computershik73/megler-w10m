@@ -26,6 +26,9 @@
 // start is there (most of its classes are in a second DEX file it unpacks itself); made directly, its first activity was
 // not found yet and the app ended at once (ClassNotFoundException: com.facebook.katana.activity.FbMainTabActivity).
 //
+// And the screens of Android's Settings an app opens -- the accounts, the app's info -- are Megler's own (megler.SystemScreens),
+// shown on top of the app as Android shows the Settings app's: they had opened nothing.
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -173,7 +176,8 @@ public final class AppRunner {
     static Activity launch(String cls, Intent intent, Activity caller, int request, Manifest.Component info) throws Exception {
         android.util.Log.d("Megler", "launch " + cls);
         Activity prev = top();
-        Activity a = sFactory.instantiateActivity(classLoader(), cls, intent);
+        // Megler's screens of Android's Settings are the system's, not the app's: its factory does not make them.
+        Activity a = SystemScreens.isScreen(cls) ? (Activity) Class.forName(cls).newInstance() : sFactory.instantiateActivity(classLoader(), cls, intent);
         ContextImpl base = ContextImpl.forActivity();
         a.meglerAttach(base, sApp, intent, info, caller, request);
         if (prev != null && prev.isResumedMegler()) prev.meglerPause();
@@ -285,6 +289,18 @@ public final class AppRunner {
             return;
         }
         if ("android.intent.action.CHOOSER".equals(action)) { Intent inner = i.getParcelableExtra("android.intent.extra.INTENT"); if (inner != null) startActivity(from, inner, request, opts); return; }
+        // A screen of Android's Settings that Megler has (megler.SystemScreens): shown on top of the app.
+        final String screen = SystemScreens.screenFor(i);
+        if (screen != null) {
+            final Activity caller = from instanceof Activity ? (Activity) from : top();
+            final Intent intent = new Intent(i);
+            android.util.Log.d("Megler", "startActivity " + i + " -> Megler's " + screen);
+            sHandler.post(() -> {
+                try { launch(screen, intent, caller, request, SystemScreens.component(screen)); }
+                catch (Throwable t) { android.util.Log.e("Megler", "starting " + screen + " failed", t); }
+            });
+            return;
+        }
         /* a screen of the system's (the account chooser, Settings pages, the permission dialog): Megler has none of them -- asked for a
            result, the caller hears the user backed out, as it would on a phone; otherwise nothing opens */
         String pkg = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();

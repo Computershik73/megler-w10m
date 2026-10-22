@@ -1877,6 +1877,21 @@ static void app_results(int *at)
     megler_set_paused(true);
     megler_set_paused(false);
     expect_line("I/DataTest: app-results answered request=77 result=-1 authAccount=someone@example.com n=7 skipped=false", at, 30);
+    /*
+     * Then Android's Settings screens that Megler has (megler.SystemScreens), which the app opens: its own info (Force stop,
+     * Clear storage), which Back closes; then the accounts of a type it names, none, which Back closes too.
+     */
+    expect_line("D/Megler: launch megler.SystemScreens$AppInfo", at, 30);
+    settle();
+    megler_key(4, true);
+    megler_key(4, false);
+    expect_line("D/Megler: finish megler.SystemScreens$AppInfo", at, 30);
+    expect_line("D/Megler: launch megler.SystemScreens$Accounts", at, 30);
+    expect_line("I/Megler: accounts screen: 0 account(s) of megler.test.none, 0 type(s) to add", at, 30);
+    settle();
+    megler_key(4, true);
+    megler_key(4, false);
+    expect_line("D/Megler: finish megler.SystemScreens$Accounts", at, 30);
 }
 
 static int run_data(void)
