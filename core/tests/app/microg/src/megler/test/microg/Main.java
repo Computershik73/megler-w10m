@@ -62,6 +62,44 @@ public class Main extends Activity {
                 check(result != null && "kotlin.Triple".equals(result.getClass().getName()), "DroidGuard server response");
                 Log.i("MicroGTest", "DROIDGUARD PASS signed Google response on main thread");
             }
+            if ("1".equals(System.getenv("MG_MICROG_POTOKEN_VM_TEST"))) {
+                ClassLoader loader = gms.getClassLoader();
+                Class<?> prefs = Class.forName("org.microg.gms.droidguard.core.DroidGuardPreferences", true, loader);
+                prefs.getMethod("setEnabled", Context.class, boolean.class).invoke(null, gms, true);
+                Class<?> helperClass = Class.forName("org.microg.gms.potokens.PoTokenHelper", true, loader);
+                java.lang.reflect.Constructor<?> helperCtor = helperClass.getDeclaredConstructor(Context.class);
+                helperCtor.setAccessible(true);
+                Object helper = helperCtor.newInstance(gms);
+                java.lang.reflect.Method buildKeySet = helperClass.getDeclaredMethod("buildKeySet");
+                buildKeySet.setAccessible(true);
+                Object keySet = buildKeySet.invoke(helper);
+                byte[] encodedKeySet = (byte[]) keySet.getClass().getMethod("encode").invoke(keySet);
+                Class<?> requestClass = Class.forName("com.google.android.gms.droidguard.internal.DroidGuardResultsRequest", true, loader);
+                Object request = requestClass.newInstance();
+                Bundle bundle = (Bundle) requestClass.getField("bundle").get(request);
+                bundle.putByteArray("po-fast-key", encodedKeySet);
+                java.util.ArrayList<String> fallback = new java.util.ArrayList<String>();
+                fallback.add("po-fast-key");
+                bundle.putStringArrayList("extraKeysRetainedInFallback", fallback);
+                Class<?> factoryClass = Class.forName("org.microg.gms.droidguard.core.NetworkHandleProxyFactory", true, loader);
+                java.lang.reflect.Constructor<?> factoryCtor = factoryClass.getDeclaredConstructor(Context.class);
+                factoryCtor.setAccessible(true);
+                Object factory = factoryCtor.newInstance(gms);
+                Class<?> callbackClass = Class.forName("org.microg.gms.droidguard.GuardCallback", true, loader);
+                Object callback = callbackClass.getDeclaredConstructor(Context.class, String.class).newInstance(gms, GMS);
+                Object handle = factoryClass.getMethod("createHandle", String.class, String.class, callbackClass, requestClass)
+                    .invoke(factory, GMS, "po-token-fast", callback, request);
+                check(handle != null, "PoToken DroidGuard VM handle");
+                check(Boolean.TRUE.equals(handle.getClass().getMethod("init").invoke(handle)), "PoToken DroidGuard VM initializes");
+                byte[] nonce = new byte[32];
+                new java.security.SecureRandom().nextBytes(nonce);
+                java.util.Map<String, String> input = new java.util.HashMap<String, String>();
+                input.put("b", android.util.Base64.encodeToString(nonce, android.util.Base64.NO_WRAP));
+                byte[] result = (byte[]) handle.getClass().getMethod("run", java.util.Map.class).invoke(handle, input);
+                handle.getClass().getMethod("close").invoke(handle);
+                check(result != null && result.length > 0, "PoToken DroidGuard VM returns bytes");
+                Log.i("MicroGTest", "POTOKEN VM PASS bytes=" + result.length);
+            }
             check(GMS.equals(gms.getPackageName()), "package context");
             Class<?> client = com.google.android.gms.common.internal.GetServiceRequest.class;
             Class<?> service = Class.forName(client.getName(), false, gms.getClassLoader());

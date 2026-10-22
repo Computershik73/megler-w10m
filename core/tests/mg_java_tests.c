@@ -699,6 +699,8 @@ static bool start(const char *apk, const char *android_root)
         ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_DROIDGUARD_TEST", "1", 1);
     if (getenv("MG_MICROG_DROIDGUARD_HANDLE_TEST") && mg_bionic_find("setenv"))
         ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_DROIDGUARD_HANDLE_TEST", "1", 1);
+    if (getenv("MG_MICROG_POTOKEN_VM_TEST") && mg_bionic_find("setenv"))
+        ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_POTOKEN_VM_TEST", "1", 1);
     say("a Java app through megler_run (%s on the Android root %s)", apk, android_root);
     {
         /* What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. */
@@ -2394,6 +2396,8 @@ static int run_microg(void)
         CHECK(wait_line("I/MicroGTest: DROIDGUARD PASS signed Google response on main thread", 0, 1200) >= 0);
     if (getenv("MG_MICROG_DROIDGUARD_HANDLE_TEST"))
         CHECK(wait_line("I/MicroGTest: DROIDGUARD HANDLE PASS", 0, 1200) >= 0);
+    if (getenv("MG_MICROG_POTOKEN_VM_TEST"))
+        CHECK(wait_line("I/MicroGTest: POTOKEN VM PASS bytes=", 0, 1200) >= 0);
     CHECK(wait_line("I/MicroGTest: PASS isolated GmsCore broker", 0, 1200) >= 0);
     CHECK(find_line("storage and resources, dynamite modules, accounts", 0) >= 0);
     /* And microG's GCM registration service answers with a Messenger's binder that says it is android.os.IMessenger, the one
