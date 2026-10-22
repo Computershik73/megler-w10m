@@ -28,6 +28,19 @@ public class Main extends Activity {
             check(pi.applicationInfo.sourceDir.endsWith("/GmsCore/GmsCore.apk"), "real APK metadata");
             check(pi.services != null && pi.services.length > 20, "manifest services");
             Context gms = createPackageContext(GMS, CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY);
+            if ("1".equals(System.getenv("MG_MICROG_DROIDGUARD_TEST"))) {
+                // A service's local Binder call may enter DroidGuard on the app's main thread.
+                // Its synchronous Volley future must complete even while that looper is busy.
+                Class<?> factoryClass = Class.forName("org.microg.gms.droidguard.core.NetworkHandleProxyFactory", true, gms.getClassLoader());
+                java.lang.reflect.Constructor<?> ctor = factoryClass.getDeclaredConstructor(Context.class);
+                ctor.setAccessible(true);
+                Object factory = ctor.newInstance(gms);
+                Log.i("MicroGTest", "DROIDGUARD request to Google begins on main thread");
+                Object result = factoryClass.getMethod("fetchFromServer", String.class, String.class)
+                    .invoke(factory, "recaptcha-android-frame", GMS);
+                check(result != null && "kotlin.Triple".equals(result.getClass().getName()), "DroidGuard server response");
+                Log.i("MicroGTest", "DROIDGUARD PASS signed Google response on main thread");
+            }
             check(GMS.equals(gms.getPackageName()), "package context");
             Class<?> client = com.google.android.gms.common.internal.GetServiceRequest.class;
             Class<?> service = Class.forName(client.getName(), false, gms.getClassLoader());

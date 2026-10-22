@@ -695,6 +695,8 @@ static bool start(const char *apk, const char *android_root)
     if (g_verbose >= 2 && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_TOUCH_LOG", "1", 1);
     /* And every window's views with their frames, every three seconds while it lays out: verbose 3. */
     if (g_verbose >= 3 && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_VIEW_DUMP", "1", 1);
+    if (getenv("MG_MICROG_DROIDGUARD_TEST") && mg_bionic_find("setenv"))
+        ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_DROIDGUARD_TEST", "1", 1);
     say("a Java app through megler_run (%s on the Android root %s)", apk, android_root);
     {
         /* What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. */
@@ -2384,6 +2386,10 @@ static int run_camera(void)
 /* Regression: a client and GmsCore carry incompatible classes of identical names. */
 static int run_microg(void)
 {
+    /* Opt-in live integration check: Google's signed DroidGuard VM response is needed.
+       A local Binder call can block the app's main thread while Volley delivers it. */
+    if (getenv("MG_MICROG_DROIDGUARD_TEST"))
+        CHECK(wait_line("I/MicroGTest: DROIDGUARD PASS signed Google response on main thread", 0, 1200) >= 0);
     CHECK(wait_line("I/MicroGTest: PASS isolated GmsCore broker", 0, 1200) >= 0);
     CHECK(find_line("storage and resources, dynamite modules, accounts", 0) >= 0);
     /* And microG's GCM registration service answers with a Messenger's binder that says it is android.os.IMessenger, the one
