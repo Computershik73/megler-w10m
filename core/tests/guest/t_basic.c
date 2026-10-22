@@ -437,6 +437,45 @@ int t_proc(void)
     return found;
 }
 
+/* The first line of a file, or "" (Facebook reads the kernel's boot UUID). */
+static void first_line(const char *path, char *line, int n)
+{
+    void *f = fopen(path, "r");
+    line[0] = 0;
+    if (!f) return;
+    if (!fgets(line, n, f)) line[0] = 0;
+    fclose(f);
+}
+
+static int uuid_shaped(const char *s)
+{
+    int i;
+    for (i = 0; i < 36; i++) {
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+            if (s[i] != '-') return 0;
+        } else if (!((s[i] >= '0' && s[i] <= '9') || (s[i] >= 'a' && s[i] <= 'f'))) {
+            return 0;
+        }
+    }
+    return s[36] == '\n';
+}
+
+/* The kernel's UUIDs: boot_id the same at every read, uuid another at every read, both shaped as UUIDs. 1 when so. */
+int t_boot_id(void)
+{
+    char a[64], b[64], u1[64], u2[64];
+    int i, same = 1, differ = 0;
+    first_line("/proc/sys/kernel/random/boot_id", a, sizeof(a));
+    first_line("/proc/sys/kernel/random/boot_id", b, sizeof(b));
+    first_line("/proc/sys/kernel/random/uuid", u1, sizeof(u1));
+    first_line("/proc/sys/kernel/random/uuid", u2, sizeof(u2));
+    for (i = 0; i < 37; i++) {
+        if (a[i] != b[i]) same = 0;
+        if (u1[i] != u2[i]) differ = 1;
+    }
+    return uuid_shaped(a) && uuid_shaped(u1) && uuid_shaped(u2) && same && differ;
+}
+
 /* /proc/self/smaps, as Instagram reads it for the page size: the first "KernelPageSize:" line's number of kB (4), or -1. */
 int t_smaps(void)
 {
