@@ -28,10 +28,12 @@
 // loaded by WebViewLibraryLoader into address space reserved for it, as Android's loader does. AOSP's flags
 // (updateServiceIpcWrapper, registerResourcePaths) are off here, as they are on an Android 15 phone.
 //
-// One difference is this runtime's: it has one class path, not a name space per class loader. The WebView's classes join
-// it after the app's (core/src/dvm/mg_dvm_art.c, DexFile), and say they come from the app's loader; so the app's loader is
-// given the WebView's native path too (addNativePath, which Android's libcore has), for Chromium's own
-// System.loadLibrary("webviewchromium") to find the library already loaded.
+// The class loader is this runtime's loader of a name space of its own (megler.ServiceClassLoader), as Android's is a loader
+// of the WebView's own beside the app's: the WebView's classes are its own, beside the app's classes of the same names. They
+// had joined the app's one class path after the app's, and an app with Chromium classes of its own lost the WebView's of
+// those names: microG (Cronet) as an app had 193 of the WebView's 3478 classes shadowed, and its sign-in screen ended in
+// NoSuchMethodError: org/chromium/base/task/PostTask.a(I) when it made its WebView. Its native library is loaded for that
+// loader too (core/src/drivers/mg_java_webview.c), where Chromium's own System.loadLibrary("webviewchromium") finds it.
 package android.webkit;
 
 import android.app.AppGlobals;
@@ -483,25 +485,13 @@ public final class WebViewFactory {
     }
 
     /**
-     * Megler: the WebView's class loader, which Android's LoadedApk makes for the package: a PathClassLoader over its APK
-     * with the APK's library folder as its native path. And the app's loader is given that native path too (see the top).
+     * Megler: the WebView's class loader, which Android's LoadedApk makes for the package: one of a name space of its own over
+     * its APK, sharing the platform's classes and not the app's (see the top), whose libraries are the APK's lib/armeabi-v7a.
      */
     private static ClassLoader makeClassLoader(Application app) throws MissingWebViewPackageException {
-        String libraryPath = getWebViewNativeLibraryPath();
         try {
-            ClassLoader loader = (ClassLoader) Class.forName("dalvik.system.PathClassLoader")
-                    .getConstructor(String.class, String.class, ClassLoader.class)
-                    .newInstance(WEBVIEW_APK, libraryPath, WebViewFactory.class.getClassLoader());
-            ClassLoader appLoader = app != null ? app.getClassLoader() : null;
-            if (appLoader != null) {
-                Class<?> base = Class.forName("dalvik.system.BaseDexClassLoader");
-                if (base.isInstance(appLoader)) {
-                    base.getMethod("addNativePath", Collection.class)
-                            .invoke(appLoader, Collections.singletonList(libraryPath));
-                }
-            }
-            return loader;
-        } catch (ReflectiveOperationException e) {
+            return new megler.ServiceClassLoader(WEBVIEW_APK);
+        } catch (java.io.IOException e) {
             throw new MissingWebViewPackageException(e);
         }
     }
