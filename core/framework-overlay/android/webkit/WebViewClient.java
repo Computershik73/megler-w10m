@@ -26,11 +26,29 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
 public class WebViewClient {
+    private static final String RECAPTCHA_FRAME = "https://www.google.com/recaptcha/api2/mframe";
+
     private static void traceRecaptcha(String event, String url) {
         if (url == null || !(url.startsWith("https://www.google.com/recaptcha/")
                 || url.startsWith("https://www.gstatic.com/recaptcha/"))) return;
         android.net.Uri uri = android.net.Uri.parse(url);
         android.util.Log.i("RecaptchaWebView", event + " " + uri.getHost() + uri.getPath());
+    }
+
+    private static void traceRecaptchaPage(final WebView view, final String url,
+            final String when) {
+        if (view == null || url == null || !url.startsWith(RECAPTCHA_FRAME)) return;
+        if (!url.equals(view.getUrl())) return;
+        view.evaluateJavascript("(function(){return JSON.stringify({ready:document.readyState,"
+                + "scripts:document.scripts.length,frames:document.querySelectorAll('iframe').length,"
+                + "bridge:typeof window.RecaptchaEmbedder,recaptcha:typeof window.grecaptcha});})()",
+                new ValueCallback<String>() {
+                    @Override public void onReceiveValue(String result) {
+                        android.util.Log.i("RecaptchaWebView", "page " + when + " "
+                                + (result == null ? "null" : result.substring(0,
+                                        Math.min(result.length(), 180))));
+                    }
+                });
     }
 
     /**
@@ -125,6 +143,16 @@ public class WebViewClient {
      */
     public void onPageFinished(WebView view, String url) {
         traceRecaptcha("finished", url);
+        traceRecaptchaPage(view, url, "finished");
+        if (url != null && url.startsWith(RECAPTCHA_FRAME)) {
+            final WebView page = view;
+            final String pageUrl = url;
+            view.postDelayed(new Runnable() {
+                @Override public void run() {
+                    traceRecaptchaPage(page, pageUrl, "after-5s");
+                }
+            }, 5000);
+        }
     }
 
     /**
