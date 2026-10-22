@@ -288,13 +288,79 @@ char *mg_run_own_storage(const char *data_dir, const char *package) { return mg_
 #define SERVICES_GUEST "/data/megler-services"
 static bool service_package(const char *package) { return !strcmp(package, "com.google.android.gms"); }
 
+/* The host folder of an app's private files (/data/data/<package>), malloc'd: its own, or the services' shared one's part. */
+static char *internal_dir(const char *data_dir, const char *storage_dir, const char *package)
+{
+    return service_package(package) ? mg_sprintf("%s/services/data/%s", storage_dir, package) : mg_sprintf("%s/apps/%s/data", data_dir, package);
+}
+
+/* A folder and everything in it. */
+struct tree {
+    const char *path;
+    int files, failed;
+};
+
+static void remove_tree(const char *path, struct tree *t);
+
+static void remove_entry(const char *name, bool is_dir, void *user)
+{
+    struct tree *t = (struct tree *)user;
+    char *path = mg_sprintf("%s/%s", t->path, name);
+    if (is_dir) remove_tree(path, t);
+    else if (mg_path_remove(path, NULL)) t->files++;
+    else t->failed++;
+    free(path);
+}
+
+static void remove_tree(const char *path, struct tree *t)
+{
+    const char *outer = t->path;
+    t->path = path;
+    mg_path_list(path, remove_entry, t, NULL);
+    t->path = outer;
+    if (!mg_path_rmdir(path, NULL)) t->failed++;
+}
+
+/*
+ * Clearing an app's data, asked for by megler_ask_clear_data (a file named after the package in the shared storage's folder
+ * clear-data): done now, before the app's folders are set up and anything of it is open, as Android's "Clear storage" is
+ * done with the app stopped. Its private folder goes, and its own Android/data folder in the shared storage; its Android/obb
+ * stays, as on Android. Then the ask goes.
+ */
+bool mg_run_clear_data_if_asked(const char *data_dir, const char *storage_dir, const char *package)
+{
+    char *ask = mg_sprintf("%s/clear-data/%s", storage_dir, package), *internal, *own, *external;
+    struct tree t;
+    mg_stat st;
+    if (!mg_path_stat(ask, &st, NULL)) {
+        free(ask);
+        return false;
+    }
+    internal = internal_dir(data_dir, storage_dir, package);
+    own = mg_run_own_storage(storage_dir, package);
+    external = mg_sprintf("%s/Android/data/%s", own, package);
+    memset(&t, 0, sizeof(t));
+    if (mg_path_stat(internal, &st, NULL)) remove_tree(internal, &t);
+    if (mg_path_stat(external, &st, NULL)) remove_tree(external, &t);
+    mg_path_remove(ask, NULL);
+    if (t.failed) mg_warn("run: the app's data was cleared, as asked, but for %d file(s) or folder(s) that could not be removed (%d files removed)", t.failed, t.files);
+    else mg_info("run: the app's data was cleared, as asked: %d files removed from %s and %s", t.files, internal, external);
+    free(ask);
+    free(internal);
+    free(own);
+    free(external);
+    return true;
+}
+
 void mg_run_files(const char *data_dir, const char *storage_dir, const char *package, const megler_storage_host *storage)
 {
     char *services = mg_sprintf("%s/services/data", storage_dir);
-    char *internal = service_package(package) ? mg_sprintf("%s/%s", services, package) : mg_sprintf("%s/apps/%s/data", data_dir, package);
+    char *internal;
     char *own = mg_run_own_storage(storage_dir, package), *apps;
     left_behind left;
     other_apps others;
+    mg_run_clear_data_if_asked(data_dir, storage_dir, package);
+    internal = internal_dir(data_dir, storage_dir, package);
     mg_fs_configure(package, internal, own);
     mg_path_mkdirs(services);
     mg_fs_mount(SERVICES_GUEST, services);

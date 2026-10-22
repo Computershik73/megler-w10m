@@ -30,6 +30,11 @@ u32 mg_run_frames(void);
  */
 void mg_run_files(const char *data_dir, const char *storage_dir, const char *package, const megler_storage_host *storage);
 /*
+ * What mg_run_files does first: when megler_ask_clear_data asked for it (<storage_dir>/clear-data/<package>), the app's
+ * private folder and its own Android/data folder go, and the ask; true then.
+ */
+bool mg_run_clear_data_if_asked(const char *data_dir, const char *storage_dir, const char *package);
+/*
  * The host folder that holds an app's own part of the shared storage (its Android/data/<package> and Android/obb/<package>
  * are under it, as under /storage/emulated/0): <data_dir>/apps/<package>/sdcard, malloc'd. Where mg_run_files mounts it,
  * and where megler_bundle_unpack puts a bundle's expansion files before the app has ever run.

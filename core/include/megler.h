@@ -1522,6 +1522,14 @@ void megler_stop(void);
  * activity and exports it; asked before the app runs, once its first activity is up. Any thread; the latest ask wins.
  */
 void megler_start_activity(const char *activity_class);
+/*
+ * Clears an app's data, as Android's "Clear storage" does, when the app next starts: before anything of it is open, its
+ * private folder (/data/data/<package>) and its own Android/data folder in the shared storage go; its Android/obb stays, as
+ * on Android. Asking is a file named after the package in the folder clear-data of the shared storage (megler_init's
+ * storage_dir), which every package Megler made of an app sees: the shell's app page asks so, and the app itself, from
+ * Android's app info screen. True when the ask is written. Needs megler_init.
+ */
+bool megler_ask_clear_data(const char *package);
 /* Frames presented since the app started. */
 uint32_t megler_frames(void);
 
