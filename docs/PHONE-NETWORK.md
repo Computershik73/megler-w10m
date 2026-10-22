@@ -96,3 +96,36 @@ of a fatal log line alone is not a functional test of the other apps.
 
 Login, account operations and music playback are not implied by a successful
 startup or TLS handshake. No account credentials are entered by this sweep.
+
+## Meta Lite TLS factory — 2026-10-21
+
+On HP Elite x3 build 374, both separately installed Lite apps hide an exception
+while preparing their main connection behind a network error. Instagram Lite
+calls `setTrustManagers` on the null returned by
+`SSLCertificateSocketFactory.getDefault`. Facebook Lite 532.0.0.6.105 calls
+`getClass` on the same null in `X/1zT.A00`, DEX offset 33, repeating roughly
+every two seconds. The latter was confirmed against its unpacked DEX.
+Diagnostic logs are in `build/phone/lite-network`; they are not committed.
+Other HTTPS connections do exchange data. A failed numeric-host probe in the
+resolver trace followed by a successful name lookup is not itself a DNS outage.
+
+The framework overlay implements the legacy factory on the boot Conscrypt
+provider: real sockets, key/trust managers, SNI, handshake/write timeouts,
+ALPN/NPN configuration, session tickets and persistent session caching.
+String-host socket overloads complete the handshake and verify the hostname;
+address-only and unconnected overloads follow Android's deferred verification
+semantics. Default factories use the system trust roots. Only the explicit
+Android `getInsecure` API uses an insecure trust manager. No global TLS bypass
+or fallback from failed initialization to different trust settings is added.
+
+The loopback TLS regression in `data.apk` uses this factory with a trusted
+local certificate and rejects a mismatching hostname. It sets the write
+timeout on the connected socket: the option belongs to the socket's file
+descriptor, and on an unconnected socket Conscrypt fails with EBADF, on
+Android as here. After its trust managers are reset, the same factory resumes
+the session kept in its `SSLSessionCache` without checking the certificate
+again. Android's factory does the same: Conscrypt checks certificates only in
+a full handshake. A factory without a session cache then has to make a full
+handshake, and the system trust manager must reject the local certificate.
+The test also covers ALPN list encoding and the options of an unconnected
+socket.
