@@ -149,6 +149,26 @@ static void test_host(const char *scratch)
             mg_section_unmap(base_b, 2 * 65536 + (size_t)(b - (u8 *)base_b));
         }
     }
+#if defined(__arm__) || defined(_M_ARM)
+    /* Code written through one view of a section and run through another, which may be run (mg_section_map_code): a hook's
+       two mappings of one memfd (Facebook's). Thumb: movs r0, #42; bx lr. */
+    {
+        mg_section *s = mg_section_create(65536);
+        void *base_w = NULL, *base_x = NULL;
+        u16 *w = s ? (u16 *)mg_section_map(s, 0, 65536, true, &base_w) : NULL;
+        u8 *x = s ? (u8 *)mg_section_map_code(s, 0, 65536, &base_x) : NULL;
+        CHECK(s != NULL && w != NULL && x != NULL);
+        if (w && x) {
+            w[0] = 0x202A;
+            w[1] = 0x4770;
+            mg_icache_flush(x, 4);
+            CHECK_INT(((int (*)(void))((mg_addr)x | 1))(), 42);
+        }
+        if (w) mg_section_unmap(base_w, 65536);
+        if (x) mg_section_unmap(base_x, 65536 + (size_t)(x - (u8 *)base_x));
+        if (s) mg_section_close(s);
+    }
+#endif
 
     t0 = mg_time_monotonic_ns();
     mg_sleep_ns(5000000ull);

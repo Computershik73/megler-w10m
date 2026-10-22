@@ -62,6 +62,11 @@ void *mg_mem_alloc(size_t size);
 typedef struct mg_section mg_section;
 mg_section *mg_section_create(u64 size);
 void *mg_section_map(mg_section *s, u64 offset, size_t size, bool writable, void **base);
+/*
+ * A view that may be read and run, not written: code written through a writable view of the same section (or the
+ * descriptor) and run here, as a hook's or a JIT's two mappings of one memfd are. NULL where the host refuses it.
+ */
+void *mg_section_map_code(mg_section *s, u64 offset, size_t size, void **base);
 void mg_section_unmap(void *base, size_t size);
 void mg_section_close(mg_section *s);
 /*

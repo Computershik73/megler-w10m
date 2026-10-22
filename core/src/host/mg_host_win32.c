@@ -80,7 +80,13 @@ void *mg_mem_reserve(size_t size)
 
 void *mg_mem_reserve_at(void *p, size_t size) { return p ? valloc(p, size, MEM_RESERVE, PAGE_READWRITE) : NULL; }
 
-/* Sections: pagefile-backed file mappings, viewed with MapViewOfFile(FromApp), whose offsets are on the 64 KB granularity. */
+/*
+ * Sections: pagefile-backed file mappings, viewed with MapViewOfFile(FromApp), whose offsets are on the 64 KB granularity.
+ * A section is made with execute rights where the system grants them (the package's codeGeneration capability), so that a
+ * view of it can run code (mg_section_map_code); its other views are read-write or read-only as before. Made with
+ * PAGE_READWRITE only, no view of it could ever be made executable: Facebook maps its memfd a second time with PROT_EXEC
+ * to run the code it wrote, and faulted executing there.
+ */
 struct mg_section {
     HANDLE handle;
 };
@@ -97,9 +103,11 @@ mg_section *mg_section_create(u64 size)
     HANDLE h;
     if (!size) return NULL;
 #if MG_UWP
-    h = CreateFileMappingFromApp(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, size, NULL);
+    h = CreateFileMappingFromApp(INVALID_HANDLE_VALUE, NULL, PAGE_EXECUTE_READWRITE, size, NULL);
+    if (!h) h = CreateFileMappingFromApp(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, size, NULL);
 #else
-    h = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, (DWORD)(size >> 32), (DWORD)size, NULL);
+    h = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_EXECUTE_READWRITE, (DWORD)(size >> 32), (DWORD)size, NULL);
+    if (!h) h = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, (DWORD)(size >> 32), (DWORD)size, NULL);
 #endif
     if (!h) return NULL;
     s = (mg_section *)calloc(1, sizeof(*s));
@@ -121,6 +129,23 @@ void *mg_section_map(mg_section *s, u64 offset, size_t size, bool writable, void
     v = MapViewOfFileFromApp(s->handle, writable ? FILE_MAP_WRITE : FILE_MAP_READ, aligned, size + delta);
 #else
     v = MapViewOfFile(s->handle, writable ? FILE_MAP_WRITE : FILE_MAP_READ, (DWORD)(aligned >> 32), (DWORD)aligned, size + delta);
+#endif
+    if (!v) return NULL;
+    views_count(size + delta, 1);
+    if (base) *base = v;
+    return (u8 *)v + delta;
+}
+
+void *mg_section_map_code(mg_section *s, u64 offset, size_t size, void **base)
+{
+    u64 aligned = offset & ~(u64)0xFFFF;
+    size_t delta = (size_t)(offset - aligned);
+    void *v;
+    if (!s || !size) return NULL;
+#if MG_UWP
+    v = MapViewOfFileFromApp(s->handle, FILE_MAP_READ | FILE_MAP_EXECUTE, aligned, size + delta);
+#else
+    v = MapViewOfFile(s->handle, FILE_MAP_READ | FILE_MAP_EXECUTE, (DWORD)(aligned >> 32), (DWORD)aligned, size + delta);
 #endif
     if (!v) return NULL;
     views_count(size + delta, 1);

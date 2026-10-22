@@ -1354,7 +1354,7 @@ void *mg_fd_file_map(int fd, u64 offset, size_t len, void **base, size_t *mapped
     return p;
 }
 
-void *mg_fd_shm_map(int fd, u64 offset, size_t len, bool *writable, void **base, size_t *mapped)
+void *mg_fd_shm_map(int fd, u64 offset, size_t len, bool code, bool *writable, void **base, size_t *mapped)
 {
     void *p = NULL;
     WITH_FD(fd, o, NULL)
@@ -1364,7 +1364,9 @@ void *mg_fd_shm_map(int fd, u64 offset, size_t len, bool *writable, void **base,
         mg_set_errno(GE_INVAL);
     } else {
         *writable = (o->shm_prot & 2) != 0;
-        p = mg_section_map(o->section, offset, MG_ALIGN_UP(len, MG_PAGE), *writable, base);
+        p = code ? mg_section_map_code(o->section, offset, MG_ALIGN_UP(len, MG_PAGE), base) : NULL;
+        if (p) *writable = false;
+        else p = mg_section_map(o->section, offset, MG_ALIGN_UP(len, MG_PAGE), *writable, base);
         if (!p) mg_set_errno(GE_NOMEM);
         else *mapped = MG_ALIGN_UP(len, MG_PAGE) + (size_t)((u8 *)p - (u8 *)*base);
     }
