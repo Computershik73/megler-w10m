@@ -706,6 +706,9 @@ static bool start(const char *apk, const char *android_root)
         megler_free(report);
     }
     g_start_ns = mg_time_monotonic_ns();
+    /* MG_JAVA_START_ACTIVITY: an activity of the app another app asks for, as the shell hands it over (Play Store asking
+       microG for its sign-in): started once the app's first activity is up. */
+    if (getenv("MG_JAVA_START_ACTIVITY")) megler_start_activity(getenv("MG_JAVA_START_ACTIVITY"));
     if (megler_run(&cfg)) return true;
 #if !MG_HOST_ARM32
     {
