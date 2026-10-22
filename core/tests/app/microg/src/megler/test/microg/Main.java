@@ -13,6 +13,7 @@ public class Main extends Activity {
     private static final String ACTION = "com.google.android.gms.ads.identifier.service.START";
     private static final String DESCRIPTOR = "com.google.android.gms.ads.identifier.internal.IAdvertisingIdService";
     private boolean done;
+    private boolean gmsBroadcastContext;
     private int connections;
     private IBinder first;
     private TextView text;
@@ -28,6 +29,17 @@ public class Main extends Activity {
             check(pi.applicationInfo.sourceDir.endsWith("/GmsCore/GmsCore.apk"), "real APK metadata");
             check(pi.services != null && pi.services.length > 20, "manifest services");
             Context gms = createPackageContext(GMS, CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY);
+            String testAction = "megler.test.microg.REGISTERED_RECEIVER_CONTEXT";
+            gms.registerReceiver(new BroadcastReceiver() {
+                @Override public void onReceive(Context context, Intent intent) {
+                    try {
+                        gms.unregisterReceiver(this);
+                        check(GMS.equals(context.getPackageName()), "microG receiver registration context");
+                        gmsBroadcastContext = true;
+                    } catch (Throwable t) { fail(t); }
+                }
+            }, new IntentFilter(testAction));
+            sendBroadcast(new Intent(testAction));
             if ("1".equals(System.getenv("MG_MICROG_DROIDGUARD_HANDLE_TEST"))) {
                 ClassLoader loader = gms.getClassLoader();
                 Class<?> prefs = Class.forName("org.microg.gms.droidguard.core.DroidGuardPreferences", true, loader);
@@ -283,9 +295,10 @@ public class Main extends Activity {
                 check(name.getClassName().startsWith("org.microg.gms.gcm."), "GCM registration service: " + name.getClassName());
                 check("android.os.IMessenger".equals(binder.getInterfaceDescriptor()), "GCM registration binder descriptor: " + binder.getInterfaceDescriptor());
                 check(new Messenger(binder).getBinder() == binder, "Messenger over the registration binder");
+                check(gmsBroadcastContext, "microG receiver got its registration context");
                 unbindService(this);
                 done = true;
-                Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources, dynamite modules, accounts, GCM's messenger");
+                Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources, dynamite modules, accounts, GCM's messenger and receiver context");
                 text.setText("microG isolated services: PASS");
             } catch (Throwable t) { fail(t); }
         }

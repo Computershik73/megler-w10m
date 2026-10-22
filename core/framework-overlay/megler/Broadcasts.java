@@ -50,15 +50,15 @@ public final class Broadcasts {
     /** The sticky broadcasts Megler keeps, as Android keeps them: one intent for each, the last that was sent. */
     private static final String[] STICKY = { Intent.ACTION_BATTERY_CHANGED, ConnectivityManager.CONNECTIVITY_ACTION };
     private Broadcasts() {}
-    public static Intent register(BroadcastReceiver r, IntentFilter f) {
+    public static Intent register(Context context, BroadcastReceiver r, IntentFilter f) {
         /* With no receiver there is nothing to keep: the call only asks for the sticky intent. (A null in the list was a NullPointerException waiting for the first broadcast its filter matched.) */
-        if (r != null) synchronized (sReceivers) { sReceivers.add(new Object[] { r, f }); }
+        if (r != null) synchronized (sReceivers) { sReceivers.add(new Object[] { r, f, context }); }
         Intent first = null;
         if (f != null) for (String action : STICKY) {
             if (!f.hasAction(action)) continue;
             final Intent b = action.equals(Intent.ACTION_BATTERY_CHANGED) ? battery() : connectivity();
             /* A sticky broadcast reaches the receiver it was registered with as any broadcast does: later, on the main thread, if it is still registered then. Each the filter takes; the first is the value. */
-            if (r != null) new Handler(Looper.getMainLooper()).post(() -> { if (registered(r)) r.onReceive(AppRunner.application(), b); });
+            if (r != null) new Handler(Looper.getMainLooper()).post(() -> { if (registered(r)) r.onReceive(context, b); });
             if (first == null) first = b;
         }
         return first;
@@ -76,10 +76,10 @@ public final class Broadcasts {
     public static void batteryChanged(int power) {
         if (power != 0) send(AppRunner.application(), new Intent(power == 1 ? Intent.ACTION_POWER_CONNECTED : Intent.ACTION_POWER_DISCONNECTED));
         final Intent b = battery();
-        final ArrayList<BroadcastReceiver> targets = new ArrayList<>();
-        synchronized (sReceivers) { for (Object[] e : sReceivers) if (e[1] != null && ((IntentFilter) e[1]).hasAction(Intent.ACTION_BATTERY_CHANGED)) targets.add((BroadcastReceiver) e[0]); }
+        final ArrayList<Object[]> targets = new ArrayList<>();
+        synchronized (sReceivers) { for (Object[] e : sReceivers) if (e[1] != null && ((IntentFilter) e[1]).hasAction(Intent.ACTION_BATTERY_CHANGED)) targets.add(e); }
         Handler h = new Handler(Looper.getMainLooper());
-        for (BroadcastReceiver r : targets) h.post(() -> { if (registered(r)) r.onReceive(AppRunner.application(), b); });
+        for (Object[] target : targets) h.post(() -> { BroadcastReceiver r = (BroadcastReceiver) target[0]; if (registered(r)) r.onReceive((Context) target[2], b); });
     }
     /** The battery as Android broadcasts it, from what the core says it is now. */
     public static Intent battery() {
@@ -105,16 +105,16 @@ public final class Broadcasts {
         // A broadcast for microG's package goes to microG's receivers (megler.MicroG), as Android sends it to that app.
         if (MicroG.send(from, i)) return;
         final Context ctx = AppRunner.application() != null ? AppRunner.application() : from;
-        ArrayList<BroadcastReceiver> targets = new ArrayList<>();
+        ArrayList<Object[]> targets = new ArrayList<>();
         /* Receivers registered at run time hear implicit intents only: one that names a component is for that component. */
         if (i.getComponent() == null)
-            synchronized (sReceivers) { for (Object[] e : sReceivers) if (e[1] != null && ((IntentFilter) e[1]).hasAction(i.getAction())) targets.add((BroadcastReceiver) e[0]); }
+            synchronized (sReceivers) { for (Object[] e : sReceivers) if (e[1] != null && ((IntentFilter) e[1]).hasAction(i.getAction())) targets.add(e); }
         for (Manifest.Component c : Manifest.match(Manifest.receivers, i)) {
             if (!enabled(ctx, c)) continue;
-            try { targets.add(AppRunner.componentFactory().instantiateReceiver(AppRunner.classLoader(), c.name, i)); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
+            try { targets.add(new Object[] { AppRunner.componentFactory().instantiateReceiver(AppRunner.classLoader(), c.name, i), null, ctx }); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
         }
         Handler h = new Handler(Looper.getMainLooper());
-        for (BroadcastReceiver r : targets) h.post(() -> r.onReceive(ctx, i));
+        for (Object[] target : targets) h.post(() -> ((BroadcastReceiver) target[0]).onReceive((Context) target[2], i));
     }
     /** Whether a receiver of the manifest is enabled: as the app last set it (PackageManager), or else as the manifest says. */
     private static boolean enabled(Context ctx, Manifest.Component c) {

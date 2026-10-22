@@ -85,7 +85,7 @@ public final class ContextImpl extends Context {
     }
     @Override public void startActivity(Intent i) { AppRunner.startActivity(this, i, -1, null); }
     @Override public void sendBroadcast(Intent i) { Broadcasts.send(this, i); }
-    @Override public Intent registerReceiver(BroadcastReceiver r, IntentFilter f) { return Broadcasts.register(r, f); }
+    @Override public Intent registerReceiver(BroadcastReceiver r, IntentFilter f) { return Broadcasts.register(this, r, f); }
     @Override public void unregisterReceiver(BroadcastReceiver r) { Broadcasts.unregister(r); }
     @Override public ComponentName startService(Intent s) { return Services.start(this, s); }
     @Override public boolean stopService(Intent s) { return Services.stop(s); }

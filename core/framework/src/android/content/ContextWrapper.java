@@ -42,7 +42,7 @@ public class ContextWrapper extends Context {
     @Override public void startActivity(Intent intent) { b().startActivity(intent); }
     @Override public void startActivity(Intent intent, android.os.Bundle o) { b().startActivity(intent, o); }
     @Override public void sendBroadcast(Intent intent) { b().sendBroadcast(intent); }
-    @Override public Intent registerReceiver(BroadcastReceiver r, IntentFilter f) { return b().registerReceiver(r, f); }
+    @Override public Intent registerReceiver(BroadcastReceiver r, IntentFilter f) { return megler.Broadcasts.register(this, r, f); }
     @Override public void unregisterReceiver(BroadcastReceiver r) { b().unregisterReceiver(r); }
     @Override public ComponentName startService(Intent s) { return b().startService(s); }
     @Override public boolean stopService(Intent s) { return b().stopService(s); }
