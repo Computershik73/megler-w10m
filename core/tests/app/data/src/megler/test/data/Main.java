@@ -320,6 +320,7 @@ public class Main extends Activity {
         compatChange();
         sharedLibrary();
         cameras();
+        safetyCenter();
         xml();
         assetFd();
         tasks();
@@ -1594,6 +1595,19 @@ public class Main extends Activity {
             String[] ids = cm.getCameraIdList();
             Log.i("DataTest", "cameras ids=" + (ids == null ? "null" : String.valueOf(ids.length)) + " old=" + android.hardware.Camera.getNumberOfCameras());
             return ids != null && ids.length == 0 && android.hardware.Camera.getNumberOfCameras() == 0;
+        });
+    }
+
+    /**
+     * Android 13's Safety Center, as a device without one has it: the class is there, and Context.getSystemService of it is
+     * null (Play Store asks so on its sign-in screen, and ended on a NoClassDefFoundError where the class was missing).
+     */
+    private void safetyCenter() {
+        step("safety-center", () -> {
+            Class<?> c = Class.forName("android.safetycenter.SafetyCenterManager");
+            Object m = getSystemService(c);
+            detail = "class=" + c.getName() + " service=" + m;
+            return m == null;
         });
     }
 
