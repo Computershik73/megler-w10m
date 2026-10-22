@@ -2399,6 +2399,14 @@ static int run_microg(void)
     if (getenv("MG_MICROG_POTOKEN_VM_TEST"))
         CHECK(wait_line("I/MicroGTest: POTOKEN VM PASS bytes=", 0, 1200) >= 0);
     CHECK(wait_line("I/MicroGTest: PASS isolated GmsCore broker", 0, 1200) >= 0);
+    /* The Java framework and a native library in Play Store/GmsCore must
+       describe the same build after the Java driver has initialized it. */
+    CHECK(mg_sysprop("ro.build.version.sdk") && !strcmp(mg_sysprop("ro.build.version.sdk"), "34"));
+    CHECK(mg_sysprop("ro.build.version.release") && !strcmp(mg_sysprop("ro.build.version.release"), "14"));
+    CHECK(mg_sysprop("ro.build.version.incremental") && !strcmp(mg_sysprop("ro.build.version.incremental"), "1"));
+    CHECK(mg_sysprop("ro.build.version.security_patch") && !strcmp(mg_sysprop("ro.build.version.security_patch"), "2024-01-01"));
+    CHECK(mg_sysprop("ro.build.id") && !strcmp(mg_sysprop("ro.build.id"), "AP1A"));
+    CHECK(mg_sysprop("ro.build.fingerprint") && !strcmp(mg_sysprop("ro.build.fingerprint"), "google/sailfish/sailfish:14/AP1A/1:user/release-keys"));
     CHECK(find_line("storage and resources, dynamite modules, accounts", 0) >= 0);
     /* And microG's GCM registration service answers with a Messenger's binder that says it is android.os.IMessenger, the one
        Firebase's MessengerIpcClient takes for an app's FCM token. */

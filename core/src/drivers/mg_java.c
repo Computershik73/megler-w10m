@@ -1341,6 +1341,15 @@ static void main_thread(void *arg)
     else if (add_platform_framework(), mg_dvm_app_follows(), add_shared_libraries(), mg_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
     if (!why[0]) {
         mg_jvalue sdk;
+        static const struct { const char *cls, *field, *prop; } build_props[] = {
+            { "android/os/Build$VERSION", "RELEASE", "ro.build.version.release" },
+            { "android/os/Build$VERSION", "INCREMENTAL", "ro.build.version.incremental" },
+            { "android/os/Build$VERSION", "SECURITY_PATCH", "ro.build.version.security_patch" },
+            { "android/os/Build", "ID", "ro.build.id" },
+            { "android/os/Build", "DISPLAY", "ro.build.display.id" },
+            { "android/os/Build", "FINGERPRINT", "ro.build.fingerprint" },
+        };
+        size_t prop_index;
         if (mg_flag("trace-monitors")) mg_dvm_monitor_trace_start();
         if (mg_flag("trace-stacks")) mg_dvm_stacks_trace_start();
         mg_flags_each("trace-calls-", call_trace_flag, NULL);
@@ -1355,6 +1364,18 @@ static void main_thread(void *arg)
             mg_sysprop_set("ro.build.version.sdk", level);
         } else {
             mg_dvm_clear_pending();
+        }
+        /* Java apps use the framework overlay's Build. Native libraries in the same
+           process must report the same release and build identity via system properties. */
+        for (prop_index = 0; prop_index < MG_COUNT(build_props); prop_index++) {
+            mg_jvalue value;
+            const char *text;
+            if (!mg_dvm_get_static(build_props[prop_index].cls, build_props[prop_index].field, &value) || !value.l) {
+                mg_dvm_clear_pending();
+                continue;
+            }
+            text = mg_dvm_string_utf8(value.l);
+            if (text) mg_sysprop_set(build_props[prop_index].prop, text);
         }
         /* A feature split's code joins the app's class path after the base's, as its class loader has it on Android. */
         for (i = 0; i < J.nsplits; i++) J.split_code[i] = mg_dvm_add_apk(J.config->split_apks[i]) > 0;
