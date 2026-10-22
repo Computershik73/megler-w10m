@@ -189,9 +189,8 @@ public class Main extends Activity {
                         sharedPreferences();
                         accounts();
                         runOnUiThread(() -> {
-                            done = true;
-                            Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources, dynamite modules, accounts");
-                            text.setText("microG isolated services: PASS");
+                            try { check(bindService(new Intent("com.google.android.c2dm.intent.REGISTER").setPackage(GMS), gcmConnection, BIND_AUTO_CREATE), "GCM registration bind"); }
+                            catch (Throwable t) { fail(t); }
                         });
                     } catch (Throwable t) { runOnUiThread(() -> fail(t)); }
                 }, "accounts").start();
@@ -200,6 +199,26 @@ public class Main extends Activity {
         }
         public void onServiceDisconnected(ComponentName n) { fail(new AssertionError("broker disconnected")); }
         public void onNullBinding(ComponentName n) { fail(new AssertionError("broker null binding")); }
+    };
+
+    /**
+     * microG's GCM registration service, as Firebase's MessengerIpcClient binds it for an app's FCM token: its binder is a
+     * Messenger's, which says it is android.os.IMessenger (Firebase takes no other), and a Messenger over it is that one.
+     */
+    private final ServiceConnection gcmConnection = new ServiceConnection() {
+        public void onServiceConnected(ComponentName name, IBinder binder) {
+            try {
+                check(name.getClassName().startsWith("org.microg.gms.gcm."), "GCM registration service: " + name.getClassName());
+                check("android.os.IMessenger".equals(binder.getInterfaceDescriptor()), "GCM registration binder descriptor: " + binder.getInterfaceDescriptor());
+                check(new Messenger(binder).getBinder() == binder, "Messenger over the registration binder");
+                unbindService(this);
+                done = true;
+                Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources, dynamite modules, accounts, GCM's messenger");
+                text.setText("microG isolated services: PASS");
+            } catch (Throwable t) { fail(t); }
+        }
+        public void onServiceDisconnected(ComponentName n) { fail(new AssertionError("GCM registration disconnected")); }
+        public void onNullBinding(ComponentName n) { fail(new AssertionError("GCM registration null binding")); }
     };
 
     /**

@@ -2367,6 +2367,9 @@ static int run_microg(void)
 {
     CHECK(wait_line("I/MicroGTest: PASS isolated GmsCore broker", 0, 1200) >= 0);
     CHECK(find_line("storage and resources, dynamite modules, accounts", 0) >= 0);
+    /* And microG's GCM registration service answers with a Messenger's binder that says it is android.os.IMessenger, the one
+       Firebase's MessengerIpcClient takes for an app's FCM token. */
+    CHECK(find_line("accounts, GCM's messenger", 0) >= 0);
     /* microG's broker read the client's features, one array kept as objects and one written out in Android's layout. */
     CHECK(find_line("Feature[megler_inline,9]", 0) >= 0 && find_line("Feature[megler_probe,7]", 0) >= 0);
     CHECK(find_line("E/MicroGTest: FAILED", 0) < 0);
