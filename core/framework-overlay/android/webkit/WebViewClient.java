@@ -26,6 +26,12 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
 public class WebViewClient {
+    private static void traceRecaptcha(String event, String url) {
+        if (url == null || !(url.startsWith("https://www.google.com/recaptcha/")
+                || url.startsWith("https://www.gstatic.com/recaptcha/"))) return;
+        android.net.Uri uri = android.net.Uri.parse(url);
+        android.util.Log.i("RecaptchaWebView", event + " " + uri.getHost() + uri.getPath());
+    }
 
     /**
      * Give the host application a chance to take control when a URL is about to be loaded in the
@@ -103,6 +109,7 @@ public class WebViewClient {
      *            database.
      */
     public void onPageStarted(WebView view, String url, Bitmap favicon) {
+        traceRecaptcha("start", url);
     }
 
     /**
@@ -117,6 +124,7 @@ public class WebViewClient {
      * @param url The url of the page.
      */
     public void onPageFinished(WebView view, String url) {
+        traceRecaptcha("finished", url);
     }
 
     /**
@@ -331,6 +339,7 @@ public class WebViewClient {
      * @param error Information about the error occurred.
      */
     public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+        traceRecaptcha("network error " + error.getErrorCode() + " main=" + request.isForMainFrame(), request.getUrl().toString());
         if (request.isForMainFrame()) {
             onReceivedError(view,
                     error.getErrorCode(), error.getDescription().toString(),
@@ -350,6 +359,7 @@ public class WebViewClient {
      */
     public void onReceivedHttpError(
             WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
+        traceRecaptcha("HTTP " + errorResponse.getStatusCode() + " main=" + request.isForMainFrame(), request.getUrl().toString());
     }
 
     /**

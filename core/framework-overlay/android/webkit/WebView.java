@@ -728,6 +728,8 @@ public class WebView extends AbsoluteLayout
     public void postUrl(String url, byte[] postData) {
         checkThread();
         if (URLUtil.isNetworkUrl(url)) {
+            if (url.startsWith("https://www.google.com/recaptcha/"))
+                Log.i("RecaptchaWebView", "POST " + Uri.parse(url).getPath() + " bytes=" + (postData == null ? 0 : postData.length));
             mProvider.postUrl(url, postData);
         } else {
             mProvider.loadUrl(url);
