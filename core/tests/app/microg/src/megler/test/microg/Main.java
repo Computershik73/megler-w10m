@@ -14,6 +14,7 @@ public class Main extends Activity {
     private static final String DESCRIPTOR = "com.google.android.gms.ads.identifier.internal.IAdvertisingIdService";
     private boolean done;
     private boolean gmsBroadcastContext;
+    private boolean gmsFlaggedBroadcastContext;
     private int connections;
     private IBinder first;
     private TextView text;
@@ -40,6 +41,17 @@ public class Main extends Activity {
                 }
             }, new IntentFilter(testAction));
             sendBroadcast(new Intent(testAction));
+            String flaggedAction = "megler.test.microg.FLAGGED_RECEIVER_CONTEXT";
+            gms.registerReceiver(new BroadcastReceiver() {
+                @Override public void onReceive(Context context, Intent intent) {
+                    try {
+                        gms.unregisterReceiver(this);
+                        check(GMS.equals(context.getPackageName()), "microG flagged receiver registration context");
+                        gmsFlaggedBroadcastContext = true;
+                    } catch (Throwable t) { fail(t); }
+                }
+            }, new IntentFilter(flaggedAction), 0);
+            sendBroadcast(new Intent(flaggedAction));
             if ("1".equals(System.getenv("MG_MICROG_DROIDGUARD_HANDLE_TEST"))) {
                 ClassLoader loader = gms.getClassLoader();
                 Class<?> prefs = Class.forName("org.microg.gms.droidguard.core.DroidGuardPreferences", true, loader);
@@ -296,6 +308,7 @@ public class Main extends Activity {
                 check("android.os.IMessenger".equals(binder.getInterfaceDescriptor()), "GCM registration binder descriptor: " + binder.getInterfaceDescriptor());
                 check(new Messenger(binder).getBinder() == binder, "Messenger over the registration binder");
                 check(gmsBroadcastContext, "microG receiver got its registration context");
+                check(gmsFlaggedBroadcastContext, "microG flagged receiver got its registration context");
                 unbindService(this);
                 done = true;
                 Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources, dynamite modules, accounts, GCM's messenger and receiver context");

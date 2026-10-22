@@ -33,6 +33,8 @@
 // And a broadcast that names microG's package or one of its receivers goes to microG (megler.MicroG.send), which an app
 // hosts: microG's settings send one to its check-in trigger.
 // And a receiver of the manifest is made by the app's component factory (AppRunner.componentFactory), as on Android 9.
+// A receiver registered at run time gets the Context that registered it, including one of microG's own. Giving all such
+// receivers the client's Application made microG look up com.android.vending.microg.settings inside Play Store.
 // Everything else is the original's, unchanged.
 package megler;
 
