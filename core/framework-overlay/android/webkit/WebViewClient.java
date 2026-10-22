@@ -39,14 +39,19 @@ public class WebViewClient {
             final String when) {
         if (view == null || url == null || !url.startsWith(RECAPTCHA_FRAME)) return;
         if (!url.equals(view.getUrl())) return;
-        view.evaluateJavascript("(function(){return JSON.stringify({ready:document.readyState,"
-                + "scripts:document.scripts.length,frames:document.querySelectorAll('iframe').length,"
-                + "bridge:typeof window.RecaptchaEmbedder,recaptcha:typeof window.grecaptcha});})()",
+        view.evaluateJavascript("(function(){var body=document.body;var text=body?body.innerText:'';"
+                + "return JSON.stringify({ready:document.readyState,"
+                + "html:document.documentElement.outerHTML.length,text:text.length,"
+                + "children:body?body.children.length:0,scripts:document.scripts.length,"
+                + "frames:document.querySelectorAll('iframe').length,"
+                + "bridge:typeof window.RecaptchaEmbedder,recaptcha:typeof window.grecaptcha,"
+                + "error:/error|invalid|unavailable/i.test(text),"
+                + "denied:/denied|unusual traffic|automated/i.test(text)});})()",
                 new ValueCallback<String>() {
                     @Override public void onReceiveValue(String result) {
                         android.util.Log.i("RecaptchaWebView", "page " + when + " "
                                 + (result == null ? "null" : result.substring(0,
-                                        Math.min(result.length(), 180))));
+                                        Math.min(result.length(), 256))));
                     }
                 });
     }
