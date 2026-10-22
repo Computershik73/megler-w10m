@@ -76,6 +76,8 @@ N(Loader_load)
     char *host;
     mg_lib *l;
     size_t n;
+    int scope, previous;
+    bool ok;
     c->ret.i = 6;
     if (!lib || !loader) return;
     /* findLibrary takes the name System.loadLibrary would: "webviewchromium" for libwebviewchromium.so. */
@@ -96,23 +98,34 @@ N(Loader_load)
         mg_warn("webview: the WebView's library is %s, which is not in an APK; only an APK's are loaded so", path ? path : "nothing");
         return;
     }
+    /*
+     * In the ELF scope of the WebView's class loader (a name space of its own, android/webkit/WebViewFactory.java), whose APK
+     * that scope reads its libraries from: Chromium's System.loadLibrary("webviewchromium") from the WebView's classes then
+     * finds this library there, and its JNI_OnLoad finds the WebView's classes, not an app's of the same names.
+     */
+    scope = mg_dvm_loader_scope(loader);
+    previous = mg_ld_set_scope(scope);
     l = mg_ld_find_lib(lib);
     if (!l) {
-        host = mg_fs_host_path(apk);
-        if (!host || !mg_ld_add_apk(host)) {
+        host = scope ? NULL : mg_fs_host_path(apk);
+        if (!scope && (!host || !mg_ld_add_apk(host))) {
             mg_warn("webview: %s cannot be read for its libraries", apk);
             free(host);
+            mg_ld_set_scope(previous);
             return;
         }
         free(host);
-        mg_info("webview: loading %s from %s", lib, apk);
+        mg_info("webview: loading %s from %s%s", lib, apk, scope ? ", in the WebView's own scope" : "");
         l = mg_ld_load(lib);
         if (!l) {
             mg_warn("webview: %s did not load", lib);
+            mg_ld_set_scope(previous);
             return;
         }
     }
-    if (!mg_ld_init(l)) {
+    ok = mg_ld_init(l);
+    mg_ld_set_scope(previous);
+    if (!ok) {
         mg_warn("webview: the constructors of %s did not run", lib);
         return;
     }

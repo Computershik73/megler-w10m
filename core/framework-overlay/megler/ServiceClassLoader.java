@@ -1,0 +1,27 @@
+package megler;
+
+/** A service package namespace, sharing only platform classes with its client. */
+public final class ServiceClassLoader extends ClassLoader {
+    private final int scope;
+    private final String apk;
+    public ServiceClassLoader(String apk) throws java.io.IOException {
+        super(null);
+        this.apk = apk;
+        scope = openApk(apk);
+    }
+    private native int openApk(String apk) throws java.io.IOException;
+    private native Class<?> findClassNative(String name) throws ClassNotFoundException;
+    @Override protected synchronized Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+        // Native lookup delegates to the shared platform, then this package's DEX files.
+        Class<?> type = findClassNative(name);
+        return type;
+    }
+    // DEX references also resolve classes without going through loadClass. Class.getPackage
+    // must still find metadata for these definitions (microG's Conscrypt provider uses it).
+    @Override protected synchronized Package getPackage(String name) {
+        Package p = super.getPackage(name);
+        return p != null ? p : definePackage(name, null, null, null, null, null, null, null);
+    }
+    @Override protected String findLibrary(String name) { return apk + "!/lib/armeabi-v7a/" + System.mapLibraryName(name); }
+    @Override protected Class<?> findClass(String name) throws ClassNotFoundException { return findClassNative(name); }
+}

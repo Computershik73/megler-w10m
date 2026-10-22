@@ -661,6 +661,7 @@ static bool start(const char *apk, const char *android_root)
     g_android_root = android_root;
     memset(&cfg, 0, sizeof(cfg));
     cfg.apk_path = apk;
+    cfg.gms_apk_path = getenv("MG_JAVA_GMS_APK");
     cfg.splits_dir = g_splits_dir;
     cfg.android_root = android_root;
     /* Unless another is asked for, a small phone at Android's base density: a dp is a pixel, and the layout's numbers can be read off the picture. */
@@ -705,6 +706,9 @@ static bool start(const char *apk, const char *android_root)
         megler_free(report);
     }
     g_start_ns = mg_time_monotonic_ns();
+    /* MG_JAVA_START_ACTIVITY: an activity of the app another app asks for, as the shell hands it over (Play Store asking
+       microG for its sign-in): started once the app's first activity is up. */
+    if (getenv("MG_JAVA_START_ACTIVITY")) megler_start_activity(getenv("MG_JAVA_START_ACTIVITY"));
     if (megler_run(&cfg)) return true;
 #if !MG_HOST_ARM32
     {
@@ -1280,6 +1284,10 @@ static int run_demos(void)
     CHECK(shown >= 0 && rect_in(line_at(shown), "row0", row));
     /* A layout of the list whose data has not changed puts its rows back without asking the adapter for any of them again. */
     CHECK(wait_line("I/DemoTest: list: laid out again, rows bound again 0 rows=", 0, 30) >= 0);
+    /* Another app asks for an activity of this one (megler_start_activity, as Play Store asks microG for its sign-in): the
+       main loop hands the ask to the framework, which refuses an activity the manifest does not export, as Android does. */
+    megler_start_activity("megler.test.demos.Second");
+    CHECK(wait_line("another app asked for megler.test.demos.Second, which this app does not export", 0, 30) >= 0);
     settle();
     write_picture("demos-1-list");
     profile_end("start");
@@ -1846,6 +1854,46 @@ static void system_requests(void)
     CHECK(wait_line("I/DataTest: install-status 0 session=true package=com.example.store", 0, 30) >= 0);
 }
 
+/*
+ * The result of an activity one app starts in another for one (megler.AppResults), both sides in the data app (its
+ * Main.Answer). Asked for Answer as another app asks, the app finishes it with its result, writes that in the services' folder
+ * for com.example.other, which waits for it, and brings that app to the front (launch_app with no activity). Then the app asks
+ * com.example.other for its activity Main for a result and puts Answer's result where that app would have written it; when
+ * the shell shows the app again, onActivityResult has it: RESULT_OK and the extras of plain types (an int[] is not passed).
+ */
+static void app_results(int *at)
+{
+    static const char want[] = "launch=com.example.other/-;launch=com.example.other/com.example.other.Main;";
+    char heard[sizeof(g_system_heard)];
+    size_t n;
+    megler_start_activity("megler.test.data.Main$Answer");
+    expect_line("I/DataTest: app-results asked written=true note=megler.test.data moved=true", at, 30);
+    CHECK(find_line("phone apps: megler.test.data.Main$Answer finished with -1; back to com.example.other", 0) >= 0);
+    mg_lock_acquire(&g_system_lock);
+    mg_strlcpy(heard, g_system_heard, sizeof(heard));
+    mg_lock_release(&g_system_lock);
+    n = strlen(heard);
+    CHECK(n >= sizeof(want) - 1 && !strcmp(heard + n - (sizeof(want) - 1), want));
+    megler_set_paused(true);
+    megler_set_paused(false);
+    expect_line("I/DataTest: app-results answered request=77 result=-1 authAccount=someone@example.com n=7 skipped=false", at, 30);
+    /*
+     * Then Android's Settings screens that Megler has (megler.SystemScreens), which the app opens: its own info (Force stop,
+     * Clear storage), which Back closes; then the accounts of a type it names, none, which Back closes too.
+     */
+    expect_line("D/Megler: launch megler.SystemScreens$AppInfo", at, 30);
+    settle();
+    megler_key(4, true);
+    megler_key(4, false);
+    expect_line("D/Megler: finish megler.SystemScreens$AppInfo", at, 30);
+    expect_line("D/Megler: launch megler.SystemScreens$Accounts", at, 30);
+    expect_line("I/Megler: accounts screen: 0 account(s) of megler.test.none, 0 type(s) to add", at, 30);
+    settle();
+    megler_key(4, true);
+    megler_key(4, false);
+    expect_line("D/Megler: finish megler.SystemScreens$Accounts", at, 30);
+}
+
 static int run_data(void)
 {
     static const char *const steps[] = { "open", "kept", "insert", "query", "types", "update", "delete", "rollback", "commit", "constraint", "statement", "text",
@@ -1861,23 +1909,28 @@ static int run_data(void)
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
                                             (CompatChanges), the WebView APK added to the app's resources as a shared library, and
-                                            the cameras there are (none, as a device without one says). */
+                                            the cameras there are (none, as a device without one says). And Android 13's Safety
+                                            Center's class, whose service is null, as on a device without one. And an intent
+                                            written in XML, read as AndroidX's preferences read theirs (Intent.parseIntent). */
                                          "user-handle",
                                          "cleartext",
                                          "compat-change",
                                          "shared-library",
                                          "cameras",
+                                         "safety-center",
+                                         "parse-intent",
                                          /* And XML through android.util.Xml: a serializer and a pull parser, kXML's. And a stored file of
                                             the APK as a descriptor whose number is taken from its ParcelFileDescriptor. And the app's task as
                                             ActivityManager describes it. And registerReceiver's other forms through a ContextWrapper. And a
                                             ViewGroup made without its constructor calling an overridable setWillNotDraw. And an EditText's
-                                            cursor and selection handles. And ParcelFileDescriptor's dup, detachFd and adoptFd. And a theme
+                                            cursor and selection handles. And ParcelFileDescriptor's dup, detachFd and adoptFd, and one
+                                            through a Parcel (writeToParcel and CREATOR), as an AIDL stub passes it. And a theme
                                             attribute that names itself. And MessageQueue.next(), and the app's storage statistics. And a
                                             broadcast that names its receiver, which reaches that receiver alone. And the platform's
                                             MediaMetadata through a Parcel, as MediaMetadataCompat makes it, and PlaybackState with a
                                             custom action, as PlaybackStateCompat makes it. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
-                                         "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
+                                         "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
                                          "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "install-intent", "install-session", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
@@ -1978,6 +2031,7 @@ static int run_data(void)
     bars_and_insets();
     media_session_keys();
     system_requests();
+    app_results(&at);
     /*
      * The second run has the flags trace-net, trace-exceptions and trace-stacks on (tools/build-tests.sh puts them in its
      * data folder): the network steps' connections are said with where to and how they ended, the names looked up with their
@@ -2327,6 +2381,24 @@ static int run_camera(void)
     return g_failed;
 }
 
+/* Regression: a client and GmsCore carry incompatible classes of identical names. */
+static int run_microg(void)
+{
+    CHECK(wait_line("I/MicroGTest: PASS isolated GmsCore broker", 0, 1200) >= 0);
+    CHECK(find_line("storage and resources, dynamite modules, accounts", 0) >= 0);
+    /* And microG's GCM registration service answers with a Messenger's binder that says it is android.os.IMessenger, the one
+       Firebase's MessengerIpcClient takes for an app's FCM token. */
+    CHECK(find_line("accounts, GCM's messenger", 0) >= 0);
+    /* microG's broker read the client's features, one array kept as objects and one written out in Android's layout. */
+    CHECK(find_line("Feature[megler_inline,9]", 0) >= 0 && find_line("Feature[megler_probe,7]", 0) >= 0);
+    CHECK(find_line("E/MicroGTest: FAILED", 0) < 0);
+    CHECK(find_line("FATAL EXCEPTION", 0) < 0);
+    /* microG heard the boot (megler.MicroG.boot): its check-in trigger looked at its setting, which is off until the user turns it on. */
+    CHECK(find_line("GmsCheckinTrigger: Ignoring Intent { act=android.intent.action.BOOT_COMPLETED", 0) >= 0);
+    say_app_lines("/MicroGTest: ");
+    return g_failed;
+}
+
 /* -------------------------------------------------------------- any app */
 
 /*
@@ -2542,7 +2614,8 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         apk = base;
     }
     if (start(apk, android_root)) {
-        if (!strcmp(which, "demos")) run_demos();
+        if (!strcmp(which, "microg")) run_microg();
+        else if (!strcmp(which, "demos")) run_demos();
         else if (!strcmp(which, "natives")) run_natives();
         else if (!strcmp(which, "crash")) run_crash();
         else if (!strcmp(which, "data")) run_data();

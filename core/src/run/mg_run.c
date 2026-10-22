@@ -12,6 +12,7 @@
 
 #include "../apk/mg_apk.h"
 #include "../bionic/mg_bionic.h"
+#include "../bionic/mg_fd.h"
 #include "../drivers/mg_driver.h"
 #include "../mg_core.h"
 #include "../host/mg_host.h"
@@ -277,12 +278,93 @@ static void other_app(const char *name, bool is_dir, void *user)
 
 char *mg_run_own_storage(const char *data_dir, const char *package) { return mg_sprintf("%s/apps/%s/sdcard", data_dir, package); }
 
+/*
+ * The services every app shares -- microG, which Android runs once for all apps -- keep their data in one folder beside the
+ * shared storage, <storage_dir>/services/data, which is /data/megler-services to every app: microG's state as an app hosts it
+ * (megler.MicroG) and the accounts (megler.Accounts) are there. The service's own package, run as an app (microG's
+ * settings), has that folder for its private files, so that what it is set to there is what every app's microG finds: device
+ * registration turned on, the check-in's Android ID, the accounts it signed in.
+ */
+#define SERVICES_GUEST "/data/megler-services"
+static bool service_package(const char *package) { return !strcmp(package, "com.google.android.gms"); }
+
+/* The host folder of an app's private files (/data/data/<package>), malloc'd: its own, or the services' shared one's part. */
+static char *internal_dir(const char *data_dir, const char *storage_dir, const char *package)
+{
+    return service_package(package) ? mg_sprintf("%s/services/data/%s", storage_dir, package) : mg_sprintf("%s/apps/%s/data", data_dir, package);
+}
+
+/* A folder and everything in it. */
+struct tree {
+    const char *path;
+    int files, failed;
+};
+
+static void remove_tree(const char *path, struct tree *t);
+
+static void remove_entry(const char *name, bool is_dir, void *user)
+{
+    struct tree *t = (struct tree *)user;
+    char *path = mg_sprintf("%s/%s", t->path, name);
+    if (is_dir) remove_tree(path, t);
+    else if (mg_path_remove(path, NULL)) t->files++;
+    else t->failed++;
+    free(path);
+}
+
+static void remove_tree(const char *path, struct tree *t)
+{
+    const char *outer = t->path;
+    t->path = path;
+    mg_path_list(path, remove_entry, t, NULL);
+    t->path = outer;
+    if (!mg_path_rmdir(path, NULL)) t->failed++;
+}
+
+/*
+ * Clearing an app's data, asked for by megler_ask_clear_data (a file named after the package in the shared storage's folder
+ * clear-data): done now, before the app's folders are set up and anything of it is open, as Android's "Clear storage" is
+ * done with the app stopped. Its private folder goes, and its own Android/data folder in the shared storage; its Android/obb
+ * stays, as on Android. Then the ask goes.
+ */
+bool mg_run_clear_data_if_asked(const char *data_dir, const char *storage_dir, const char *package)
+{
+    char *ask = mg_sprintf("%s/clear-data/%s", storage_dir, package), *internal, *own, *external;
+    struct tree t;
+    mg_stat st;
+    if (!mg_path_stat(ask, &st, NULL)) {
+        free(ask);
+        return false;
+    }
+    internal = internal_dir(data_dir, storage_dir, package);
+    own = mg_run_own_storage(storage_dir, package);
+    external = mg_sprintf("%s/Android/data/%s", own, package);
+    memset(&t, 0, sizeof(t));
+    if (mg_path_stat(internal, &st, NULL)) remove_tree(internal, &t);
+    if (mg_path_stat(external, &st, NULL)) remove_tree(external, &t);
+    mg_path_remove(ask, NULL);
+    if (t.failed) mg_warn("run: the app's data was cleared, as asked, but for %d file(s) or folder(s) that could not be removed (%d files removed)", t.failed, t.files);
+    else mg_info("run: the app's data was cleared, as asked: %d files removed from %s and %s", t.files, internal, external);
+    free(ask);
+    free(internal);
+    free(own);
+    free(external);
+    return true;
+}
+
 void mg_run_files(const char *data_dir, const char *storage_dir, const char *package, const megler_storage_host *storage)
 {
-    char *internal = mg_sprintf("%s/apps/%s/data", data_dir, package), *own = mg_run_own_storage(storage_dir, package), *apps;
+    char *services = mg_sprintf("%s/services/data", storage_dir);
+    char *internal;
+    char *own = mg_run_own_storage(storage_dir, package), *apps;
     left_behind left;
     other_apps others;
+    mg_run_clear_data_if_asked(data_dir, storage_dir, package);
+    internal = internal_dir(data_dir, storage_dir, package);
     mg_fs_configure(package, internal, own);
+    mg_path_mkdirs(services);
+    mg_fs_mount(SERVICES_GUEST, services);
+    free(services);
     mg_run_storage(storage_dir, storage);
     others.data_dir = storage_dir;
     others.count = 0;
@@ -356,6 +438,7 @@ bool mg_run_start(const megler_run_config *config)
     g_config = *config;
     g_apk_path = mg_strdup(config->apk_path);
     g_config.apk_path = g_apk_path;
+    g_config.gms_apk_path = config->gms_apk_path ? mg_strdup(config->gms_apk_path) : NULL;
     /*
      * The drivers see the splits as one list, of those the reading took (a split of another app is no split of this one),
      * in the order of info.splits, which names them.

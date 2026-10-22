@@ -106,6 +106,7 @@
 #define G_MSG_TRUNC 0x20
 #define G_MSG_DONTWAIT 0x40
 #define G_MSG_WAITALL 0x100
+#define G_MSG_ERRQUEUE 0x2000
 
 #define G_POLLIN 1
 #define G_POLLOUT 4
@@ -1141,6 +1142,13 @@ static i32 recv_any(gsock *s, void *buf, u32 n, int flags, void *from, u32 *from
     i32 r;
     memset(&a, 0, sizeof(a));
     if (said) *said = 0;
+    /*
+     * The socket's error queue (MSG_ERRQUEUE, which IP_RECVERR asks Linux to fill; setsockopt takes that option and passes
+     * it on to nothing): always empty here, and Linux answers an empty queue with EAGAIN at once. Taken for an ordinary
+     * receive, it took the next datagram, the one the app was waiting for: Facebook's QUIC (folly's AsyncUDPSocket) empties
+     * the queue before every read, and every answer of the server went there; its connections timed out.
+     */
+    if (flags & G_MSG_ERRQUEUE) return fail(GE_AGAIN);
     if (!s->host) {
         r = local_recv(s, (u8 *)buf, n, flags, &cut, nonblock);
         if (r >= 0 && from && fromlen) {

@@ -37,6 +37,8 @@ bool mg_java_ended(int *status, const char **reason);
 void mg_java_text(const char *utf8);
 void mg_java_text_key(int key);
 void mg_java_keyboard_closed(void);
+/* An activity of the app another app asks for (megler_start_activity): started from the main loop. */
+void mg_java_start_activity(const char *activity_class);
 void mg_java_keyboard_height(int pixels);
 /* How much of each edge of the surface the phone's bars cover (megler.h, megler_set_insets). Kept for the next app when none runs. */
 void mg_java_set_insets(int left, int top, int right, int bottom);

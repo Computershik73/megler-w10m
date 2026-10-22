@@ -322,6 +322,8 @@ public class Main extends Activity {
         compatChange();
         sharedLibrary();
         cameras();
+        safetyCenter();
+        parseIntent();
         xml();
         assetFd();
         tasks();
@@ -329,6 +331,7 @@ public class Main extends Activity {
         viewGroupFlag();
         textDrawables();
         pfdDup();
+        pfdParcel();
         themeSelfRef();
         queueNext();
         storageStats();
@@ -1464,6 +1467,36 @@ public class Main extends Activity {
     }
 
     /**
+     * A ParcelFileDescriptor through a Parcel, as an AIDL stub passes one (microG's People service hands Play Store the
+     * account's picture so): written with writeToParcel and read with CREATOR, it reads the file after the writer closed its own.
+     */
+    private void pfdParcel() {
+        step("pfd-parcel", () -> {
+            java.io.File file = new java.io.File(getCacheDir(), "pfd-parcel.txt");
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(file)) { out.write("avatar".getBytes("UTF-8")); }
+            android.os.ParcelFileDescriptor sent = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            p.writeInt(1);
+            sent.writeToParcel(p, 0);
+            sent.close();
+            p.setDataPosition(0);
+            boolean present = p.readInt() != 0;
+            android.os.ParcelFileDescriptor got = android.os.ParcelFileDescriptor.CREATOR.createFromParcel(p);
+            p.recycle();
+            String text = null;
+            if (got != null) {
+                try (java.io.InputStream in = new android.os.ParcelFileDescriptor.AutoCloseInputStream(got)) {
+                    byte[] b = new byte[16];
+                    int n = in.read(b);
+                    text = new String(b, 0, Math.max(n, 0), "UTF-8");
+                }
+            }
+            detail = "present=" + present + " read=" + text;
+            return present && "avatar".equals(text) && file.delete();
+        });
+    }
+
+    /**
      * A theme with android.R.style.TextAppearance applied, as GeckoView asks the system's colours: TextAppearance's
      * textColorHighlight names itself, which leaves it out rather than an attribute getColor cannot take; every colour that
      * is there can be had.
@@ -1621,6 +1654,39 @@ public class Main extends Activity {
             String[] ids = cm.getCameraIdList();
             Log.i("DataTest", "cameras ids=" + (ids == null ? "null" : String.valueOf(ids.length)) + " old=" + android.hardware.Camera.getNumberOfCameras());
             return ids != null && ids.length == 0 && android.hardware.Camera.getNumberOfCameras() == 0;
+        });
+    }
+
+    /**
+     * Android 13's Safety Center, as a device without one has it: the class is there, and Context.getSystemService of it is
+     * null (Play Store asks so on its sign-in screen, and ended on a NoClassDefFoundError where the class was missing).
+     */
+    private void safetyCenter() {
+        step("safety-center", () -> {
+            Class<?> c = Class.forName("android.safetycenter.SafetyCenterManager");
+            Object m = getSystemService(c);
+            detail = "class=" + c.getName() + " service=" + m;
+            return m == null;
+        });
+    }
+
+    /**
+     * An intent written in XML (res/xml/intent_probe.xml), read with Intent.parseIntent as AndroidX's preferences read their
+     * <intent> child: its action, component, data, category and extras.
+     */
+    private void parseIntent() {
+        step("parse-intent", () -> {
+            android.content.res.XmlResourceParser p = getResources().getXml(R.xml.intent_probe);
+            int t;
+            while ((t = p.next()) != org.xmlpull.v1.XmlPullParser.START_TAG && t != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {}
+            android.content.Intent i = android.content.Intent.parseIntent(getResources(), p, p);
+            p.close();
+            detail = String.valueOf(i) + " categories=" + (i == null ? null : i.getCategories()) + " who=" + (i == null ? null : i.getStringExtra("who"))
+                    + " flag=" + (i == null ? null : i.getBooleanExtra("flag", false));
+            return i != null && "megler.test.ACTION".equals(i.getAction()) && i.getComponent() != null
+                    && "org.microg.gms.auth.login.LoginActivity".equals(i.getComponent().getClassName()) && "com.google.android.gms".equals(i.getComponent().getPackageName())
+                    && "https://example.com/path".equals(String.valueOf(i.getData())) && i.hasCategory("android.intent.category.DEFAULT")
+                    && "microg".equals(i.getStringExtra("who")) && i.getBooleanExtra("flag", false);
         });
     }
 
@@ -2083,6 +2149,73 @@ public class Main extends Activity {
             return out.ended && out.blocks == s.samples.size() && out.pcm == s.samples.size() * 1152L * 2 * 2;
         });
     }
+
+    /**
+     * The result of an activity one app starts in another for one (megler.AppResults), both sides in this app. The C side asks
+     * for Answer as another app asks (megler_start_activity); Answer writes the note that com.example.other waits for it, as
+     * that app would have, and finishes with a result, which the framework writes in the services' folder before it brings
+     * com.example.other to the front. Then this activity asks com.example.other for its activity Main for a result, and puts
+     * the result Answer left where com.example.other would have written Main's: once the shell shows this app again (the C side
+     * pauses and resumes it), onActivityResult has it -- its code and its extras of plain types.
+     */
+    public static class Answer extends Activity {
+        @Override
+        protected void onCreate(Bundle state) {
+            super.onCreate(state);
+            File dir = new File("/data/megler-services/results/" + getPackageName());
+            dir.mkdirs();
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(new File(dir, Answer.class.getName() + ".caller"))) {
+                out.write("com.example.other".getBytes("UTF-8"));
+            } catch (java.io.IOException e) {
+                Log.i("DataTest", "app-results: the note cannot be written: " + e);
+            }
+            setResult(RESULT_OK, new android.content.Intent().putExtra("authAccount", "someone@example.com").putExtra("n", 7).putExtra("skipped", new int[] { 1 }));
+            sAnswered = true;
+            finish();
+        }
+    }
+    private static boolean sAnswered;
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (sScreens == 1) {
+            sScreens = 2;
+            startActivity(new android.content.Intent("android.settings.APPLICATION_DETAILS_SETTINGS", android.net.Uri.parse("package:" + getPackageName())));
+            return;
+        }
+        if (sScreens == 2) {
+            sScreens = 3;
+            startActivity(new android.content.Intent("android.settings.SYNC_SETTINGS").putExtra("account_types", new String[] { "megler.test.none" }));
+            return;
+        }
+        if (!sAnswered) return;
+        sAnswered = false;
+        File answer = new File("/data/megler-services/results/" + getPackageName() + "/" + Answer.class.getName() + ".json");
+        File other = new File("/data/megler-services/results/com.example.other");
+        boolean written = answer.isFile();
+        startActivityForResult(new android.content.Intent().setClassName("com.example.other", "com.example.other.Main"), 77);
+        String note;
+        try (java.io.FileInputStream in = new java.io.FileInputStream(new File(other, "com.example.other.Main.caller"))) {
+            byte[] b = new byte[64];
+            int n = in.read(b);
+            note = new String(b, 0, Math.max(n, 0), "UTF-8");
+        } catch (java.io.IOException e) {
+            note = e.toString();
+        }
+        boolean moved = answer.renameTo(new File(other, "com.example.other.Main.json"));
+        Log.i("DataTest", "app-results asked written=" + written + " note=" + note + " moved=" + moved);
+    }
+
+    @Override
+    protected void onActivityResult(int request, int result, android.content.Intent data) {
+        Log.i("DataTest", "app-results answered request=" + request + " result=" + result + " authAccount=" + (data == null ? null : data.getStringExtra("authAccount"))
+                + " n=" + (data == null ? -1 : data.getIntExtra("n", -1)) + " skipped=" + (data != null && data.hasExtra("skipped")));
+        // Then Android's Settings screens that Megler has (megler.SystemScreens), as this activity is in front again: this app's
+        // info, then, once that is closed, the accounts.
+        if (request == 77) sScreens = 1;
+    }
+    private static int sScreens;
 
     /**
      * The other apps the phone has, as a launcher sees them (the test's apps folder has one, com.example.other, "Other",

@@ -13,6 +13,8 @@ public final class Services {
     private static final HashMap<ServiceConnection, String> sBound = new HashMap<>();
     private Services() {}
     private static Manifest.Component find(Intent i) {
+        String pkg = i.getComponent() == null ? i.getPackage() : i.getComponent().getPackageName();
+        if (pkg != null && !pkg.equals(Native.packageName())) return null;
         if (i.getComponent() != null) { for (Manifest.Component c : Manifest.services) if (c.name.equals(i.getComponent().getClassName())) return c; }
         if (i.getAction() != null) for (Manifest.Component c : Manifest.services) for (Manifest.Filter f : c.filters) if (f.actions.contains(i.getAction())) return c;
         return null;
@@ -28,6 +30,8 @@ public final class Services {
         return s;
     }
     public static ComponentName start(Context from, Intent i) {
+        ComponentName external = MicroG.start(from, i);
+        if (external != null) return external;
         Manifest.Component c = find(i);
         if (c == null) return null;
         new Handler(Looper.getMainLooper()).post(() -> {
@@ -36,14 +40,16 @@ public final class Services {
         return new ComponentName(Native.packageName(), c.name);
     }
     public static boolean stop(Intent i) {
+        if (MicroG.stop(i)) return true;
         Manifest.Component c = find(i);
         if (c == null) return false;
         Service s = sRunning.remove(c.name);
         if (s != null) s.onDestroy();
         return s != null;
     }
-    public static void stopSelf(Service s) { String k = null; for (java.util.Map.Entry<String, Service> e : sRunning.entrySet()) if (e.getValue() == s) k = e.getKey(); if (k != null) { sRunning.remove(k); s.onDestroy(); } }
+    public static void stopSelf(Service s) { if (MicroG.stopSelf(s)) return; String k = null; for (java.util.Map.Entry<String, Service> e : sRunning.entrySet()) if (e.getValue() == s) k = e.getKey(); if (k != null) { sRunning.remove(k); s.onDestroy(); } }
     public static boolean bind(Context from, Intent i, ServiceConnection conn) {
+        if (MicroG.bind(from, i, conn)) return true;
         final IBinder play = PlayStore.bind(i);
         if (play != null) {
             final ComponentName cn = new ComponentName(GooglePackages.VENDING, i.getAction());
@@ -63,7 +69,7 @@ public final class Services {
         });
         return true;
     }
-    public static void unbind(ServiceConnection conn) { sBound.remove(conn); }
+    public static void unbind(ServiceConnection conn) { if (!MicroG.unbind(conn)) sBound.remove(conn); }
 
     /** A system service by name, or null for those Megler has nothing for. */
     public static Object system(String name, Context c) {

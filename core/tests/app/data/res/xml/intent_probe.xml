@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- An intent written in XML, as a preference's <intent> child is (Main's step "parse-intent"). -->
+<intent xmlns:android="http://schemas.android.com/apk/res/android"
+    android:action="megler.test.ACTION"
+    android:targetPackage="com.google.android.gms"
+    android:targetClass="org.microg.gms.auth.login.LoginActivity"
+    android:data="https://example.com/path">
+    <categories android:name="android.intent.category.DEFAULT" />
+    <extra android:name="who" android:value="microg" />
+    <extra android:name="flag" android:value="true" />
+</intent>

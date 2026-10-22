@@ -5,7 +5,7 @@
 
 #include "../zip/mg_zip.h"
 
-int mg_dvm_add_apk(const char *path)
+int mg_dvm_add_apk_scope(const char *path, int scope)
 {
     const char *slash = strrchr(path, '/'), *back = strrchr(path, '\\'), *base;
     mg_zip z;
@@ -34,9 +34,11 @@ int mg_dvm_add_apk(const char *path)
             continue;
         }
         snprintf(label, sizeof(label), "%.60s!%s", base, name);
-        if (mg_dvm_add_dex(data, size, label)) added++;
+        if (scope ? mg_dvm_add_dex_scope(data, size, label, scope) : mg_dvm_add_dex(data, size, label)) added++;
         else free(data);
     }
     mg_zip_close(&z);
     return added;
 }
+
+int mg_dvm_add_apk(const char *path) { return mg_dvm_add_apk_scope(path, 0); }

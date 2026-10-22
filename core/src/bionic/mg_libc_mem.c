@@ -314,7 +314,8 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
         void *base = NULL;
         size_t mapped = 0;
         bool writable = false;
-        p = (u8 *)mg_fd_shm_map(fd, offset, len, &writable, &base, &mapped);
+        /* To be run and not written (PROT_EXEC without PROT_WRITE): a view the host lets run (mg_section_map_code). */
+        p = (u8 *)mg_fd_shm_map(fd, offset, len, (prot & G_PROT_EXEC) && !(prot & G_PROT_WRITE), &writable, &base, &mapped);
         if (p) {
             if ((prot & G_PROT_WRITE) && !writable) {
                 mg_section_unmap(base, mapped);

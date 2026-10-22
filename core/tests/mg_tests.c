@@ -149,6 +149,26 @@ static void test_host(const char *scratch)
             mg_section_unmap(base_b, 2 * 65536 + (size_t)(b - (u8 *)base_b));
         }
     }
+#if defined(__arm__) || defined(_M_ARM)
+    /* Code written through one view of a section and run through another, which may be run (mg_section_map_code): a hook's
+       two mappings of one memfd (Facebook's). Thumb: movs r0, #42; bx lr. */
+    {
+        mg_section *s = mg_section_create(65536);
+        void *base_w = NULL, *base_x = NULL;
+        u16 *w = s ? (u16 *)mg_section_map(s, 0, 65536, true, &base_w) : NULL;
+        u8 *x = s ? (u8 *)mg_section_map_code(s, 0, 65536, &base_x) : NULL;
+        CHECK(s != NULL && w != NULL && x != NULL);
+        if (w && x) {
+            w[0] = 0x202A;
+            w[1] = 0x4770;
+            mg_icache_flush(x, 4);
+            CHECK_INT(((int (*)(void))((mg_addr)x | 1))(), 42);
+        }
+        if (w) mg_section_unmap(base_w, 65536);
+        if (x) mg_section_unmap(base_x, 65536 + (size_t)(x - (u8 *)base_x));
+        if (s) mg_section_close(s);
+    }
+#endif
 
     t0 = mg_time_monotonic_ns();
     mg_sleep_ns(5000000ull);
@@ -2171,6 +2191,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     (void)scratch;
     CHECK_INT(FN(lib, int (*)(const char *), "t_files")(buf), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_proc")(), 1);
+    CHECK_INT(FN(lib, int (*)(void), "t_boot_id")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_smaps")(), 4);
     CHECK_INT(FN(lib, int (*)(void), "t_props")(), 28);
     CHECK_INT(FN(lib, int (*)(void), "t_dl")(), 4);
@@ -2253,6 +2274,26 @@ static void test_guest_kinds(const char *libdir)
     CHECK(mg_ld_sym_among(true, "t_user_which", &in) == NULL && in == NULL && mg_ld_sym_among(false, "t_ruser_which", NULL) == NULL);
     /* Loading either again by name gives the one already there. */
     CHECK(mg_ld_load("libt_same.so") == same && mg_ld_load_runtime("libt_same.so") == rsame);
+    /* A service has its own copy of a client's library, and resolves dependencies there. */
+    {
+        char *same_path = mg_sprintf("%s/libt_same.so", libdir), *user_path = mg_sprintf("%s/libt_user.so", libdir);
+        mg_lib *service_same, *service_user;
+        int previous = mg_ld_set_scope(15);
+        CHECK(mg_ld_find_lib("libt_same.so") == NULL && mg_ld_sym(NULL, "t_same_app_only") == NULL);
+        service_same = mg_ld_load_file(same_path);
+        service_user = mg_ld_load_file(user_path);
+        CHECK(service_same && service_same != same && service_same != rsame);
+        CHECK(service_user && service_user != user && mg_ld_init(service_user));
+        if (service_user) {
+            CHECK_INT(FN(service_user, int (*)(void), "t_user_which")(), 101);
+            CHECK(mg_ld_sym_deep(service_user, "t_same_which", &in) != NULL && in == service_same);
+        }
+        CHECK(mg_ld_sym_among(false, "t_same_which", &in) != NULL && in == service_same);
+        CHECK(mg_ld_find_runtime_lib("libt_same.so") == rsame);
+        mg_ld_set_scope(previous);
+        CHECK(mg_ld_find_lib("libt_same.so") == same && mg_ld_sym_among(false, "t_same_which", &in) != NULL && in == same);
+        free(same_path); free(user_path);
+    }
 }
 
 static void test_guest(const char *libdir, const char *scratch)
@@ -2309,12 +2350,14 @@ static void test_guest(const char *libdir, const char *scratch)
             if (svc) {
                 int saved = *mg_errno_ptr();
                 mg_ld_get_stats(svc, &st);
-                CHECK_INT(st.svc_sites, 4);
+                CHECK_INT(st.svc_sites, 5);
                 *mg_errno_ptr() = 123;
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_getpid")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_literal")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_unknown")(), -38);
                 CHECK_INT(FN(svc, int (*)(void *, unsigned), "t_svc_cacheflush")(SYM(svc, "t_svc_getpid"), 2), 0);
+                /* compiler-rt's __clear_cache, whose number is finished by movt: patched too, and it succeeds. */
+                CHECK_INT(FN(svc, int (*)(void *, unsigned), "t_svc_clear_cache")(SYM(svc, "t_svc_getpid"), 2), 0);
                 CHECK_INT(*mg_errno_ptr(), 123);
                 *mg_errno_ptr() = saved;
             }
@@ -2333,7 +2376,7 @@ static void test_guest(const char *libdir, const char *scratch)
         if (svc) {
             mg_addr target;
             mg_ld_get_stats(svc, &st);
-            CHECK_INT(st.svc_sites, 4);
+            CHECK_INT(st.svc_sites, 5);
             fn = (const u8 *)((mg_addr)SYM(svc, "t_svc_getpid") & ~(mg_addr)1);
             for (k = 0; k < 16; k += 2) {
                 trapped |= mg_rd16(fn + k) == 0xDEA5;

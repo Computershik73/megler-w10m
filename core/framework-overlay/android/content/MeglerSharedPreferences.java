@@ -4,7 +4,15 @@
 // wrote the file itself: opening it emptied it and the lines went in only when it was closed, so an app that ended in
 // between -- a crash, the phone restarting, an update of the package -- found its preferences empty the next time
 // (Asphalt 9's A9HM.xml was found 0 bytes after the game had ended in a race).
-// A ".new" file left by a write cut short is deleted when the preferences are read. Everything else is the original's.
+// A ".new" file left by a write cut short is deleted when the preferences are read.
+//
+// And preferences in the services' shared folder (/data/megler-services: microG's, which every app that hosts microG and
+// microG's own app use at once) are kept for several processes. microG keeps its settings in SharedPreferences behind its
+// own provider, counting on one process for them; here each process has the provider and a copy of the file in memory, and
+// wrote its whole copy on every change: a process that had read the file before the user turned device registration on in
+// microG's settings turned it off again with its next write of any other setting (seen on the phone). Such a file is read
+// again when another process has written it since (its time and length), and a write puts this process's changes alone
+// on what the file holds then. Everything else is the original's.
 package android.content;
 
 import java.io.*;
@@ -18,8 +26,37 @@ public final class MeglerSharedPreferences implements SharedPreferences {
     private static final android.os.Handler MAIN = new android.os.Handler(android.os.Looper.getMainLooper());
     private static final java.util.concurrent.ExecutorService WRITER = java.util.concurrent.Executors.newSingleThreadExecutor(r -> { Thread t = new Thread(r, "SharedPreferencesWriter"); t.setDaemon(true); return t; });
     private final java.util.concurrent.atomic.AtomicBoolean writePending = new java.util.concurrent.atomic.AtomicBoolean();
+    /** A file several processes use (see the note at the top), the file's time and length as this process last saw them, and the
+        changes this process made that are not written yet. */
+    private final boolean shared;
+    private long seenTime = -1, seenLength = -1;
+    private final HashMap<String, Object> unwrittenPuts = new HashMap<>();
+    private final HashSet<String> unwrittenRemoves = new HashSet<>();
+    private boolean unwrittenClear;
 
-    public MeglerSharedPreferences(File f) { file = f; load(); }
+    public MeglerSharedPreferences(File f) { file = f; shared = sharedFile(f); load(); }
+
+    /** Whether the file is in the services' shared folder, as an app hosting microG or microG's own app (whose files are there) names it. */
+    private static boolean sharedFile(File f) {
+        String path = f.getAbsolutePath();
+        if (path.startsWith("/data/megler-services/")) return true;
+        String gms = "com.google.android.gms";
+        return (path.startsWith("/data/data/" + gms + "/") || path.startsWith("/data/user/0/" + gms + "/")) && gms.equals(megler.Native.packageName());
+    }
+    private void see() { seenTime = file.lastModified(); seenLength = file.length(); }
+    /** A shared file another process wrote since: read again, with this process's unwritten changes on top. */
+    private synchronized void refresh() {
+        if (!shared || (file.lastModified() == seenTime && file.length() == seenLength)) return;
+        map.clear();
+        read(map);
+        see();
+        overlayUnwritten(map);
+    }
+    private void overlayUnwritten(HashMap<String, Object> into) {
+        if (unwrittenClear) into.clear();
+        for (String k : unwrittenRemoves) into.remove(k);
+        into.putAll(unwrittenPuts);
+    }
 
     private static String esc(String s) { return s.replace("\\", "\\\\").replace("\n", "\\n"); }
     private static String unesc(String s) {
@@ -29,7 +66,12 @@ public final class MeglerSharedPreferences implements SharedPreferences {
     }
     private File written() { return new File(file.getPath() + ".new"); }
     private void load() {
-        written().delete();
+        // (Not in a shared file: there it may be another process's write in progress.)
+        if (!shared) written().delete();
+        read(map);
+        see();
+    }
+    private void read(HashMap<String, Object> map) {
         if (!file.exists()) return;
         try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(file), "UTF-8"))) {
             String line;
@@ -52,8 +94,20 @@ public final class MeglerSharedPreferences implements SharedPreferences {
     }
     private synchronized boolean save() {
         file.getParentFile().mkdirs();
-        File next = written();
+        if (shared) {
+            // What the file holds now, this process's changes on it: another process's settings stay as it wrote them.
+            HashMap<String, Object> now = new HashMap<>();
+            read(now);
+            overlayUnwritten(now);
+            map.clear();
+            map.putAll(now);
+        }
+        File next = shared ? new File(file.getPath() + "." + android.os.Process.myPid() + ".new") : written();
         if (!write(next) || !next.renameTo(file)) { next.delete(); return false; }
+        unwrittenPuts.clear();
+        unwrittenRemoves.clear();
+        unwrittenClear = false;
+        see();
         return true;
     }
     private boolean write(File to) {
@@ -72,14 +126,14 @@ public final class MeglerSharedPreferences implements SharedPreferences {
             return true;
         } catch (IOException e) { return false; }
     }
-    public synchronized Map<String, ?> getAll() { return new HashMap<>(map); }
-    public synchronized String getString(String k, String d) { Object v = map.get(k); return v instanceof String ? (String) v : d; }
-    @SuppressWarnings("unchecked") public synchronized Set<String> getStringSet(String k, Set<String> d) { Object v = map.get(k); return v instanceof Set ? (Set<String>) v : d; }
-    public synchronized int getInt(String k, int d) { Object v = map.get(k); return v instanceof Integer ? (Integer) v : d; }
-    public synchronized long getLong(String k, long d) { Object v = map.get(k); return v instanceof Long ? (Long) v : v instanceof Integer ? (Integer) v : d; }
-    public synchronized float getFloat(String k, float d) { Object v = map.get(k); return v instanceof Float ? (Float) v : d; }
-    public synchronized boolean getBoolean(String k, boolean d) { Object v = map.get(k); return v instanceof Boolean ? (Boolean) v : d; }
-    public synchronized boolean contains(String k) { return map.containsKey(k); }
+    public synchronized Map<String, ?> getAll() { refresh(); return new HashMap<>(map); }
+    public synchronized String getString(String k, String d) { refresh(); Object v = map.get(k); return v instanceof String ? (String) v : d; }
+    @SuppressWarnings("unchecked") public synchronized Set<String> getStringSet(String k, Set<String> d) { refresh(); Object v = map.get(k); return v instanceof Set ? (Set<String>) v : d; }
+    public synchronized int getInt(String k, int d) { refresh(); Object v = map.get(k); return v instanceof Integer ? (Integer) v : d; }
+    public synchronized long getLong(String k, long d) { refresh(); Object v = map.get(k); return v instanceof Long ? (Long) v : v instanceof Integer ? (Integer) v : d; }
+    public synchronized float getFloat(String k, float d) { refresh(); Object v = map.get(k); return v instanceof Float ? (Float) v : d; }
+    public synchronized boolean getBoolean(String k, boolean d) { refresh(); Object v = map.get(k); return v instanceof Boolean ? (Boolean) v : d; }
+    public synchronized boolean contains(String k) { refresh(); return map.containsKey(k); }
     public void registerOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener l) { if (l != null && !listeners.contains(l)) listeners.add(l); }
     public void unregisterOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener l) { listeners.remove(l); }
     /* As Android's: an editor's changes go to memory at once (under the preferences' lock), apply() writes the file in the
@@ -92,11 +146,20 @@ public final class MeglerSharedPreferences implements SharedPreferences {
     private List<String> toMemory(boolean clear, Set<String> removes, Map<String, Object> puts) {
         ArrayList<String> changed = new ArrayList<>();
         synchronized (this) {
+            refresh();
             if (clear && !map.isEmpty()) map.clear();
             for (String k : removes) if (map.remove(k) != null) changed.add(k);
             for (Map.Entry<String, Object> e : puts.entrySet()) {
                 Object old = e.getValue() == null ? map.remove(e.getKey()) : map.put(e.getKey(), e.getValue());
                 if (!Objects.equals(old, e.getValue())) changed.add(e.getKey());
+            }
+            if (shared) {
+                if (clear) { unwrittenClear = true; unwrittenPuts.clear(); unwrittenRemoves.clear(); }
+                for (String k : removes) { unwrittenPuts.remove(k); unwrittenRemoves.add(k); }
+                for (Map.Entry<String, Object> e : puts.entrySet()) {
+                    if (e.getValue() == null) { unwrittenPuts.remove(e.getKey()); unwrittenRemoves.add(e.getKey()); }
+                    else { unwrittenRemoves.remove(e.getKey()); unwrittenPuts.put(e.getKey(), e.getValue()); }
+                }
             }
         }
         return changed;

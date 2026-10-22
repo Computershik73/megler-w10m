@@ -18,6 +18,7 @@
 #include "mg_bundle.h"
 #include "mg_icon.h"
 #include "mg_json.h"
+#include "../webp/mg_webp.h"
 
 /* -------------------------------------------------------- string pools */
 
@@ -1282,6 +1283,36 @@ static u8 *icon_drawn(const char *apk_path, char *const *splits, int nsplits, co
 
 u8 *mg_apk_icon_draw(const char *apk_path, const char *path, size_t *size) { return icon_drawn(apk_path, NULL, 0, path, size); }
 
+/*
+ * An icon picture the shell can show: a WebP one is made a PNG. Play Store's launcher icon is a WebP picture of its APK's,
+ * and the phone's own decoders have no WebP in them: its library entry showed no icon, while its package's tiles, which the
+ * core draws, had one. The core's WebP decoder gives B, G, R, A premultiplied, made straight R, G, B, A for the PNG.
+ */
+static u8 *icon_as_png(u8 *bytes, size_t *size)
+{
+    int w = 0, h = 0;
+    size_t i, png_size = 0;
+    u8 *rgba, *png;
+    if (!bytes || !mg_webp_is(bytes, *size) || !mg_webp_size(bytes, *size, &w, &h) || w <= 0 || h <= 0 || w > 4096 || h > 4096) return bytes;
+    rgba = (u8 *)mg_alloc((size_t)w * h * 4);
+    if (!mg_webp_decode(bytes, *size, rgba, w, h, w * 4)) {
+        free(rgba);
+        return bytes;
+    }
+    for (i = 0; i < (size_t)w * h; i++) {
+        u8 *px = rgba + i * 4, b = px[0], a = px[3];
+        px[0] = a ? (u8)(px[2] * 255 / a) : 0;
+        px[1] = a ? (u8)(px[1] * 255 / a) : 0;
+        px[2] = a ? (u8)(b * 255 / a) : 0;
+    }
+    png = mg_png_encode(rgba, w, h, &png_size);
+    free(rgba);
+    if (!png) return bytes;
+    free(bytes);
+    *size = png_size;
+    return png;
+}
+
 bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_t **data, size_t *size)
 {
     mg_apk_info *info = (mg_apk_info *)mg_alloc(sizeof(*info));
@@ -1320,6 +1351,7 @@ bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_
     }
     mg_apk_free_list(splits, n);
     free(info);
+    bytes = icon_as_png(bytes, size);
     *data = bytes;
     return bytes != NULL;
 }

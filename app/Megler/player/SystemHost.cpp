@@ -154,10 +154,10 @@ bool installApkThunk(void*, const char* hostPath, const char* name) {
     return true;
 }
 
-bool launchAppThunk(void*, const char* package, const char*) {
-    const std::string p = package ? package : "";
+bool launchAppThunk(void*, const char* package, const char* activity) {
+    const std::string p = package ? package : "", a = activity ? activity : "";
     if (p.empty()) return false;
-    onUi([p] { launch(p); });
+    onUi([p, a] { launch(p, a); });
     return true;
 }
 
@@ -194,10 +194,11 @@ std::wstring appFamilyName(const std::string& package) {
     return widen(identity) + L"_" + std::wstring(winrt::Windows::ApplicationModel::Package::Current().Id().PublisherId());
 }
 
-void launch(const std::string& package) {
-    const std::wstring uri = L"megler:run?package=" + escaped(package);
+void launch(const std::string& package, const std::string& activity) {
+    // The activity's class goes with it: microG's sign-in, which Play Store's AccountManager asks for, is not microG's launcher.
+    const std::wstring uri = L"megler:run?package=" + escaped(package) + (activity.empty() ? L"" : L"&activity=" + escaped(activity));
     const std::wstring own = appFamilyName(package);
-    shellLog::write("system: starting " + package);
+    shellLog::write("system: starting " + package + (activity.empty() ? "" : "/" + activity));
     // Its own package first; without one, Megler, which plays it from its library.
     openIn(own, uri, [package, uri](bool ok) {
         if (ok) return;

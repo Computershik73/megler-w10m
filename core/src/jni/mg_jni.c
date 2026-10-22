@@ -159,7 +159,18 @@ mg_jclass *mg_jni_class(const char *name, const char *super)
 /* What the runtime asks when it has linked a class: this layer's class of that name, which from now on is that one. */
 static mg_jclass *jni_class_for(const char *name, const char *super, mg_dvm_class *d)
 {
-    mg_jclass *c = declare(name);
+    mg_jclass *c;
+    if (d->scope) {
+        /* Do not overwrite the client's JNI class wrapper for this same name. */
+        c = (mg_jclass *)mg_alloc(sizeof(*c));
+        c->name = mg_strdup(name);
+        c->mirror.refs = 1; c->mirror.kind = MG_J_CLASS; c->mirror.permanent = true;
+        c->mirror.u.klass.jc = c;
+        c->super = d->super ? d->super->jc : NULL;
+        mg_lock_acquire(&g_jni_lock);
+        c->next = g_classes; g_classes = c;
+        mg_lock_release(&g_jni_lock);
+    } else c = declare(name);
     if (super && !c->super && strcmp(name, super)) c->super = declare(super);
     c->foreign = d->foreign;
     c->dvm = d;
@@ -1016,6 +1027,15 @@ static mg_jobj *j_FindClass(JNIEnvP e, const char *name)
     int who = ASKER_APP;
     (void)e;
     if (!g_dvm.running) return mg_jni_class_object(name);
+    mg_dvm_thread *thread = mg_dvm_self();
+    int scope = thread->onload_running && thread->top == thread->onload_frame ? thread->onload_scope :
+        thread->top ? thread->top->m->cls->scope : 0;
+    if (scope) {
+        mg_dvm_class *type;
+        if (!mg_dvm_class_exists_scope(name, scope)) { throw_not_found(name, ASKER_APP, false); return NULL; }
+        type = mg_dvm_find_class_scope(name, scope);
+        return type ? mg_dvm_mirror(type) : NULL;
+    }
     /* With the runtime up, a class a DEX file defines is found as Android finds it: linked, or not found and an exception. (It is initialised when a method or field of it is asked for.) */
     mg_dvm_clear_pending();
     if (g_dvm.app_loader) {

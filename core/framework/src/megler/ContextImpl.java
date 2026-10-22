@@ -94,6 +94,8 @@ public final class ContextImpl extends Context {
     @Override public int checkPermission(String p, int pid, int uid) { return PackageManager.PERMISSION_GRANTED; }
     @Override public Context createPackageContext(String pkg, int flags) throws PackageManager.NameNotFoundException {
         if (pkg.equals(getPackageName()) || "android".equals(pkg)) return this;
+        Context external = MicroG.context(pkg);
+        if (external != null) return external;
         throw new PackageManager.NameNotFoundException(pkg);
     }
     @Override public Context createConfigurationContext(Configuration c) {

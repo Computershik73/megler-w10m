@@ -1,9 +1,11 @@
 // One app: what megler_apk_report says about its APK -- what it is, which
 // engine drives it, its native libraries and what they need -- and what to do
 // with it: install it as an app of the phone's own, update or uninstall it
-// (ui/SeparateApps.h), its own settings, and Remove. Megler runs an app itself
-// only in an auto run (auto/AutoRun.h).
+// (ui/SeparateApps.h), its own settings, clear its data, and Remove. Megler runs
+// an app itself only in an auto run (auto/AutoRun.h).
 #include "pch.h"
+
+#include "megler.h"
 
 #include "library/Library.h"
 #include "player/Session.h"
@@ -226,6 +228,15 @@ private:
         }
         auto more = hstack(0);
         more.Margin(ThicknessHelper::FromLengths(-12, -4, 0, 0));
+        // Android's Clear storage: the core clears the app's data when it next starts (megler_ask_clear_data).
+        if (!package.empty()) {
+            add(more, textButton("Clear Data", [this, package, title] {
+                shell_.confirm("Clear " + title + "'s data?",
+                               "Its private files, settings, databases and the accounts it keeps, and its Android/data folder, are deleted "
+                               "the next time it starts; its Android/obb files stay. If the app is open now, close it first.",
+                               "Clear Data", true, [this, package, title] { askClearData(package, title); });
+            }, p.error));
+        }
         if (installed) {
             add(more, textButton("Uninstall", [this, package, title] {
                 shell_.confirm("Uninstall " + title + "?",
@@ -254,6 +265,20 @@ private:
         add(column, text(footer, font::bodySmall, weightNormal(), p.onSurfaceVariant));
         column.Margin(ThicknessHelper::FromLengths(0, 0, 0, 8));
         return column;
+    }
+
+    /// The ask is a file in the shared storage's folder clear-data, where the app's own package looks when it starts; when
+    /// Megler's storage is not that folder (not yet copied there), it is written in both.
+    void askClearData(const std::string& package, const std::string& title) {
+        bool asked = megler_ask_clear_data(package.c_str());
+        const std::wstring shared = appPackage::sharedFolder();
+        if (!appPackage::meglersStorageShared() && !shared.empty()) {
+            files::makeDirectories(shared + L"\\clear-data");
+            asked = files::write(shared + L"\\clear-data\\" + widen(package), "") || asked;
+        }
+        shellLog::write("app page: clear the data of " + package + (asked ? ", asked" : ", could not be asked"));
+        shell_.alert(asked ? "Data Will Be Cleared" : "Couldn't Clear the Data",
+                     asked ? title + "'s data goes the next time it starts." : "Megler couldn't write the request in its storage.");
     }
 
     void openFile(const std::wstring& path) {

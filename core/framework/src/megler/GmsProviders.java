@@ -9,6 +9,8 @@ import android.os.Bundle;
 public final class GmsProviders {
     private GmsProviders() {}
     public static ContentProvider forAuthority(String a) {
+        ContentProvider microg = MicroG.provider(a);
+        if (microg != null) return microg;
         if ("com.google.android.gms.auth.accounts".equals(a)) return Accounts.INSTANCE;
         return null;
     }

@@ -126,7 +126,7 @@ static bool widen(char from, mg_jvalue v, char to, mg_jvalue *out)
 
 static mg_jobj *make_field(mg_dvm_field *f)
 {
-    mg_dvm_class *fc = mg_dvm_find_class("java/lang/reflect/Field"), *type = mg_dvm_find_class_desc(f->type);
+    mg_dvm_class *fc = mg_dvm_find_class("java/lang/reflect/Field"), *type = mg_dvm_find_desc_scope(f->type, f->cls->scope);
     mg_jobj *o = fc && type ? mg_dvm_alloc_object(fc) : NULL;
     if (!o) return NULL;
     o->native = f;
@@ -242,7 +242,7 @@ static void field_set(mg_jcall *c, char given)
     char kind = f->type[0] == '[' ? 'L' : f->type[0];
     if (!place) return;
     if (given == 'L' && kind == 'L') {
-        mg_dvm_class *type = mg_dvm_find_class_desc(f->type);
+        mg_dvm_class *type = mg_dvm_find_desc_scope(f->type, f->cls->scope);
         if (!type) return;
         if (v.l && !mg_dvm_is_instance(v.l, type)) {
             mg_dvm_throw("java/lang/IllegalArgumentException", "field %s.%s has type %s, got %s", f->cls->name, f->name, f->type, mg_dvm_class_of(v.l)->name);
@@ -386,7 +386,7 @@ N(Executable_getMethodNameInternal) { c->ret.l = mg_dvm_intern_string(mg_dvm_new
 N(Executable_getMethodReturnTypeInternal)
 {
     const char *ret = strchr(method_from(c->self)->sig, ')');
-    mg_dvm_class *k = ret ? mg_dvm_find_class_desc(ret + 1) : NULL;
+    mg_dvm_class *k = ret ? mg_dvm_find_desc_scope(ret + 1, method_from(c->self)->cls->scope) : NULL;
     if (k) c->ret.l = mg_dvm_mirror(k);
 }
 
@@ -404,7 +404,7 @@ N(Executable_getParameterTypesInternal)
     for (i = 0; a && i < m->nparams; i++) {
         mg_dvm_class *k;
         p = next_param(p, desc, sizeof(desc));
-        k = p ? mg_dvm_find_class_desc(desc) : NULL;
+        k = p ? mg_dvm_find_desc_scope(desc, m->cls->scope) : NULL;
         if (!k) return;
         a->u.oarr.v[i] = mg_dvm_mirror(k);
     }
@@ -446,7 +446,7 @@ static bool invoke_boxed(mg_dvm_method *target, const mg_dvm_method *declared, m
         if (!p) return mg_dvm_throw("java/lang/InternalError", "a signature that cannot be read: %s", declared->sig);
         params[i].j = 0;
         if (desc[0] == 'L' || desc[0] == '[') {
-            mg_dvm_class *type = a ? mg_dvm_find_class_desc(desc) : NULL;
+            mg_dvm_class *type = a ? mg_dvm_find_desc_scope(desc, declared->cls->scope) : NULL;
             if (a && !type) return false;
             if (a && !mg_dvm_is_instance(a, type)) return mg_dvm_throw("java/lang/IllegalArgumentException", "method %s.%s argument %u has type %s, got %s", declared->cls->name, declared->name, (unsigned)i + 1, desc, mg_dvm_class_of(a)->name);
             params[i].l = a;

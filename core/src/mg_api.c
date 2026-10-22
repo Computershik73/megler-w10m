@@ -128,6 +128,25 @@ void megler_set_insets(int left, int top, int right, int bottom) { mg_java_set_i
 void megler_set_paused(bool paused) { mg_run_set_paused(paused); }
 void megler_set_focused(bool focused) { mg_run_set_focused(focused); }
 void megler_stop(void) { mg_run_stop(); }
+void megler_start_activity(const char *activity_class) { mg_java_start_activity(activity_class); }
+
+bool megler_ask_clear_data(const char *package)
+{
+    char *dir, *path;
+    mg_file *f;
+    int err = 0;
+    if (!package || !package[0] || strchr(package, '/') || strchr(package, '\\') || !g_data_dir[0]) return false;
+    dir = mg_sprintf("%s/clear-data", megler_storage_dir());
+    path = mg_sprintf("%s/%s", dir, package);
+    mg_path_mkdirs(dir);
+    f = mg_file_open(path, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &err);
+    if (f) mg_file_close(f);
+    if (f) mg_info("run: %s's data is to be cleared when it next starts", package);
+    else mg_warn("run: the ask to clear %s's data could not be written (%s, error %d)", package, path, err);
+    free(dir);
+    free(path);
+    return f != NULL;
+}
 uint32_t megler_frames(void) { return mg_run_frames(); }
 
 /* The phone, for an app. The time zone is kept where Android's own code looks for it (bionic/mg_bionic.h). */

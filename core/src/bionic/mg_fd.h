@@ -37,14 +37,15 @@ int mg_fd_close(int fd);
 /*
  * mmap(MAP_SHARED) of shared memory (ashmem, memfd, ASharedMemory): a view of the same pages as every other mapping of it,
  * at an address of its own. *writable says whether the view may be written; *base and *mapped are what
- * mg_section_unmap takes. NULL with errno ENODEV when the descriptor is not shared memory.
+ * mg_section_unmap takes. NULL with errno ENODEV when the descriptor is not shared memory. With `code` (PROT_EXEC without
+ * PROT_WRITE) the view is one that may be run, read-only (mg_section_map_code), where the host gives one.
  */
 /*
  * A read-only view of [offset, offset + len) of a regular file opened read-only, backed by the file (mg_file_map), as
  * mg_fd_shm_map gives: NULL with GE_NODEV for anything else, or where the range is past the file's end.
  */
 void *mg_fd_file_map(int fd, u64 offset, size_t len, void **base, size_t *mapped);
-void *mg_fd_shm_map(int fd, u64 offset, size_t len, bool *writable, void **base, size_t *mapped);
+void *mg_fd_shm_map(int fd, u64 offset, size_t len, bool code, bool *writable, void **base, size_t *mapped);
 /* A descriptor on a host file (MG_O_* flags), for handing the guest a file that has no guest path -- the APK itself. */
 int mg_fd_open_host(const char *host_path, int host_flags);
 int mg_fd_eventfd(unsigned initial, int flags);

@@ -14,6 +14,7 @@
  * How registers hold values is in mg_dvm_internal.h (mg_dvm_reg).
  */
 #include "mg_dvm_internal.h"
+#include "../ld/mg_ld.h"
 
 #include "../mg_core.h"
 
@@ -253,11 +254,12 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     const mg_jvalue *params = cparams;
     u64 native_started = 0, call_started = 0;
     bool is_static = (m->flags & DVM_ACC_STATIC) != 0, outermost, timed = false;
+    int library_scope = mg_ld_set_scope(m->cls->scope);
     result->j = 0;
-    if (!m->bound && !mg_dvm_bind_native(m)) return false;
+    if (!m->bound && !mg_dvm_bind_native(m)) { mg_ld_set_scope(library_scope); return false; }
     /* The frame is what a stack trace shows of a native method; the parameters are laid out above it. */
     f = push_frame(t, m, argv ? ((size_t)m->nparams * sizeof(mg_jvalue) + 8) / sizeof(mg_dvm_reg) + 1 : 0);
-    if (!f) return false;
+    if (!f) { mg_ld_set_scope(library_scope); return false; }
     if (argv) {
         mg_jvalue *made = (mg_jvalue *)(void *)MG_ALIGN_UP((mg_addr)f->regs, (mg_addr)8);
         marshal(m, argv, made);
@@ -309,6 +311,7 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     if (native_started) m->prof_ns += mg_time_monotonic_ns() - native_started;
     pop_frame(t);
     normalise(m->shorty[0], result);
+    mg_ld_set_scope(library_scope);
     return t->pending == NULL;
 }
 

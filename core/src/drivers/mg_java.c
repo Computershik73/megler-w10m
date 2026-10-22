@@ -391,6 +391,8 @@ N(Native_density) { c->ret.f = (float)(J.config->density_dpi > 0 ? J.config->den
 N(Native_uptimeNanos) { c->ret.j = (i64)mg_time_monotonic_ns(); }
 /* flag(name): a switch for trying something on the phone (mg_flag): a file of that name in the data folder's flags. */
 N(Native_flag) { c->ret.z = mg_flag(text_of(c->args[0].l)); }
+/* askClearData(): this app's data cleared when it next starts (megler_ask_clear_data), for Android's app info screen. */
+N(Native_askClearData) { c->ret.z = megler_ask_clear_data(J.package); }
 static void Native_frameMark(mg_jcall *c);
 static void Native_presentRect(mg_jcall *c);
 static void Native_checkPartial(mg_jcall *c);
@@ -420,6 +422,41 @@ static void battery_news(void)
 }
 
 /*
+ * An activity another app asked for (megler_start_activity, from the shell's thread): kept until the main loop next asks
+ * for input, which hands it to megler.AppRunner.startRequested on the app's main thread. The latest ask wins.
+ */
+static char g_requested_activity[200];
+static volatile i32 g_activity_requested;
+static mg_lock g_requested_lock = MG_LOCK_INIT;
+
+void mg_java_start_activity(const char *activity_class)
+{
+    if (!activity_class || !activity_class[0]) return;
+    mg_lock_acquire(&g_requested_lock);
+    mg_strlcpy(g_requested_activity, activity_class, sizeof(g_requested_activity));
+    mg_lock_release(&g_requested_lock);
+    mg_atomic_xchg(&g_activity_requested, 1);
+    mg_info("java: another app asks for the activity %s", activity_class);
+}
+
+static void requested_activity(void)
+{
+    char name[200];
+    mg_jvalue arg;
+    if (!g_activity_requested || mg_atomic_cas(&g_activity_requested, 1, 0) != 1) return;
+    mg_lock_acquire(&g_requested_lock);
+    mg_strlcpy(name, g_requested_activity, sizeof(name));
+    mg_lock_release(&g_requested_lock);
+    arg.j = 0;
+    arg.l = mg_dvm_new_string(name);
+    if (!mg_dvm_call_static("megler/AppRunner", "startRequested", "(Ljava/lang/String;)V", &arg, NULL)) {
+        mg_warn("java: the activity %s another app asked for was not started: %s", name,
+                mg_dvm_pending() ? mg_dvm_class_of(mg_dvm_pending())->name : "megler.AppRunner.startRequested did not run");
+        mg_dvm_clear_pending();
+    }
+}
+
+/*
  * pollInput(): what has happened since the last call, as int[1 + 4n] --
  * n, then (phase, id, x bits, y bits) for each -- or null. Called by the main
  * loop between messages, so this is also where a stop asked from outside
@@ -435,6 +472,7 @@ N(Native_pollInput)
         if (mg_dvm_pending()) return;
     }
     if (mg_battery_changes() != J.battery_changes) battery_news();
+    requested_activity();
     mg_lock_acquire(&J.lock);
     n = J.nevents;
     if (n) {
@@ -740,6 +778,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "presentRect", NULL, Native_presentRect },
     { "megler/Native", "checkPartial", NULL, Native_checkPartial },
     { "megler/Native", "flag", NULL, Native_flag },
+    { "megler/Native", "askClearData", NULL, Native_askClearData },
     { NULL, NULL, NULL, NULL },
 };
 
@@ -1107,11 +1146,9 @@ static void mount_apk(void)
     int i;
     if (name > path) dir[name - path - 1] = 0;
     mg_fs_mount(guest_dir, dir);
-    /*
-     * The APK as Android names it, base.apk, whatever its file is called here: a library's copy is named after what was
-     * picked ("Instagram+Lite+_ARMv7a_.apk"), and Instagram Lite, which finds its second DEX file by its APK's path, did
-     * not find it there (a '+' read as a space, it seems) and ended on a class of it.
-     */
+    if (J.config->gms_apk_path && strcmp(J.package, "com.google.android.gms"))
+        mg_fs_mount("/system/priv-app/GmsCore/GmsCore.apk", J.config->gms_apk_path);
+    /* Each app retains Android's stable base.apk path, regardless of the picked filename. */
     snprintf(J.guest_apk, sizeof(J.guest_apk), "%s/base.apk", guest_dir);
     mg_fs_mount(J.guest_apk, path);
     mg_dvm_dex_source_added(J.guest_apk);

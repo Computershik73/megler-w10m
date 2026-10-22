@@ -15,6 +15,19 @@ static int g_load_depth;
 static mg_lib *g_libs, *g_libs_tail;
 static mg_zip g_apks[MG_LD_MAX_APKS];
 static int g_napks;
+static mg_zip g_service_apks[16];
+static bool g_service_apk_ready[16];
+static MG_THREAD_LOCAL int g_service_scope;
+int mg_ld_scope(void) { return g_service_scope; }
+int mg_ld_set_scope(int scope) { int old = g_service_scope; g_service_scope = scope; return old; }
+bool mg_ld_add_service_apk(const char *path, int scope) {
+    char why[160];
+    if (scope <= 0 || scope >= 16) return false;
+    if (g_service_apk_ready[scope]) return true;
+    if (!mg_zip_open(&g_service_apks[scope], path, why, sizeof(why))) return false;
+    g_service_apk_ready[scope] = true;
+    return true;
+}
 static char *g_dirs[8];
 static int g_ndirs;
 static char *g_runtime_dirs[4];            /* where the runtime's own libraries are: never searched for an app's */
@@ -139,6 +152,15 @@ static const mg_zip_entry *apk_lib(const char *name, const mg_zip **in)
     const char *abi = mg_ld_abi();
     char path[300];
     int i;
+    if (g_service_scope) {
+        const mg_zip_entry *e;
+        if (g_service_scope >= 16 || !g_service_apk_ready[g_service_scope]) return NULL;
+        *in = &g_service_apks[g_service_scope];
+        snprintf(path, sizeof(path), "lib/armeabi-v7a/%s", name);
+        e = mg_zip_find(*in, path);
+        if (!e) { snprintf(path, sizeof(path), "lib/armeabi/%s", name); e = mg_zip_find(*in, path); }
+        return e;
+    }
     if (!abi) return NULL;
     snprintf(path, sizeof(path), "lib/%s/%s", abi, name);
     for (i = 0; i < g_napks; i++) {
@@ -156,6 +178,7 @@ bool mg_ld_has_lib(const char *name)
     const mg_zip *z;
     int i;
     if (apk_lib(name, &z)) return true;
+    if (g_service_scope) return false;
     for (i = 0; i < g_ndirs; i++) {
         char *p = mg_sprintf("%s/%s", g_dirs[i], name);
         mg_stat st;
@@ -208,7 +231,7 @@ static const u8 *read_lib_file(const char *name, bool runtime, size_t *size, boo
     const mg_zip *z = NULL;
     const mg_zip_entry *e = runtime ? NULL : apk_lib(name, &z);
     char **dirs = runtime ? g_runtime_dirs : g_dirs;
-    int ndirs = runtime ? g_nruntime_dirs : g_ndirs, i;
+    int ndirs = runtime ? g_nruntime_dirs : g_service_scope ? 0 : g_ndirs, i;
     if (e) {
         *owned = true;
         return mg_zip_read(z, e, 0x40000000u, size);
@@ -353,7 +376,7 @@ static bool resolve(mg_lib *lib, const char *name, mg_addr *addr, const Elf32_Sy
         return true;
     }
     for (l = g_libs; l; l = l->next) {
-        const Elf32_Sym *s = l->runtime == lib->runtime ? lib_lookup(l, name, gh, sh) : NULL;
+        const Elf32_Sym *s = l->runtime == lib->runtime && l->service_scope == lib->service_scope ? lib_lookup(l, name, gh, sh) : NULL;
         if (s) {
             *sym = s;
             *def = l;
@@ -961,7 +984,7 @@ static mg_lib *find_lib(const char *name, bool runtime)
     name = base_name(name);
     mg_lock_acquire(&g_lock);
     for (l = g_libs; l; l = l->next)
-        if (l->runtime == runtime && (!strcmp(l->name, name) || (l->soname && !strcmp(l->soname, name)))) break;
+        if (l->runtime == runtime && l->service_scope == (runtime ? 0 : g_service_scope) && (!strcmp(l->name, name) || (l->soname && !strcmp(l->soname, name)))) break;
     mg_lock_release(&g_lock);
     return l;
 }
@@ -1005,6 +1028,7 @@ static mg_lib *load_lib(const char *name, bool runtime, const char *host_path)
         return NULL;
     }
     lib->runtime = runtime;
+    lib->service_scope = runtime ? 0 : g_service_scope;
     /* Listed before its dependencies load, so a cycle finds it instead of loading it again. */
     mg_lock_acquire(&g_lock);
     if (g_libs_tail) g_libs_tail->next = lib;
@@ -1147,7 +1171,7 @@ void *mg_ld_sym(mg_lib *lib, const char *name)
     }
     /* dlsym(RTLD_DEFAULT) from the app's code: the app's libraries, then the system. */
     for (l = g_libs; l; l = l->next) {
-        s = l->runtime ? NULL : lib_lookup(l, name, gh, sh);
+        s = l->runtime || l->service_scope != g_service_scope ? NULL : lib_lookup(l, name, gh, sh);
         if (s) return (void *)sym_address(l, s);
     }
     {
@@ -1162,7 +1186,7 @@ void *mg_ld_sym_among(bool runtime, const char *name, mg_lib **found_in)
     mg_lib *l;
     if (found_in) *found_in = NULL;
     for (l = g_libs; l; l = l->next) {
-        const Elf32_Sym *s = l->runtime == runtime ? lib_lookup(l, name, gh, sh) : NULL;
+        const Elf32_Sym *s = l->runtime == runtime && l->service_scope == (runtime ? 0 : g_service_scope) ? lib_lookup(l, name, gh, sh) : NULL;
         if (s && ELF_ST_TYPE(s->st_info) != STT_TLS) {
             if (found_in) *found_in = l;
             return (void *)sym_address(l, s);

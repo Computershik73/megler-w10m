@@ -15,12 +15,25 @@
 // And an intent to install an APK (ACTION_INSTALL_PACKAGE, or ACTION_VIEW of an APK, naming no activity) goes to Megler's
 // installer first (megler.Installs), as Android hands it to its package installer, rather than to an activity of the app's
 // that takes the content or file scheme. And an intent for an activity of another app the phone has goes to the shell,
-// which starts that app (megler.PhoneApps).
+// which starts that app (megler.PhoneApps). Started for a result, its result comes back to the caller as the caller is in
+// front again (megler.AppResults): Play Store hears so that microG's sign-in, in microG's app, added the account.
+//
+// And the app's components are made by the factory its manifest names (android:appComponentFactory), as Android 9's
+// ActivityThread makes them: the factory is made with the app's class loader and asked for the class loader first
+// (instantiateClassLoader), then for the Application, the content providers, the activities, and the services and receivers
+// (megler.Services, megler.Broadcasts). They had been made from their classes directly. Facebook's factory puts its own
+// class loaders in place when asked for the class loader, and holds back each component until the code it loads after the
+// start is there (most of its classes are in a second DEX file it unpacks itself); made directly, its first activity was
+// not found yet and the app ended at once (ClassNotFoundException: com.facebook.katana.activity.FbMainTabActivity).
+//
+// And the screens of Android's Settings an app opens -- the accounts, the app's info -- are Megler's own (megler.SystemScreens),
+// shown on top of the app as Android shows the Settings app's: they had opened nothing.
 //
 // Everything else is the original's, unchanged.
 package megler;
 
 import android.app.Activity;
+import android.app.AppComponentFactory;
 import android.app.Application;
 import android.content.*;
 import android.content.pm.ProviderInfo;
@@ -62,6 +75,30 @@ public final class AppRunner {
         } catch (Throwable t) { android.util.Log.w("Megler", "the app's class loader: " + t); }
     }
 
+    private static AppComponentFactory sFactory = AppComponentFactory.DEFAULT;
+    /** The factory the app's components are made by: its manifest's android:appComponentFactory, else the platform's. */
+    public static AppComponentFactory componentFactory() { return sFactory; }
+    /**
+     * As LoadedApk makes the app's class loader: the manifest's factory made with the app's own class loader, and asked for the
+     * class loader the app is to have (instantiateClassLoader), which is then the one the app's contexts give.
+     */
+    private static void installComponentFactory() {
+        String name = Manifest.appComponentFactory;
+        if (name == null) return;
+        try {
+            AppComponentFactory f = (AppComponentFactory) Class.forName(name, true, classLoader()).getDeclaredConstructor().newInstance();
+            ClassLoader cl = f.instantiateClassLoader(classLoader(), android.content.pm.ApplicationInfo.self());
+            sFactory = f;
+            if (cl != null && cl != sLoader) {
+                sLoader = cl;
+                Thread.currentThread().setContextClassLoader(cl);
+            }
+            android.util.Log.i("Megler", "the app's components are made by its factory " + name);
+        } catch (Throwable t) {
+            android.util.Log.w("Megler", "the app's component factory " + name + " could not be made; the platform's makes them", t);
+        }
+    }
+
     public static void run(String activityClass, String applicationClass) throws Exception {
         android.webkit.MimeTypeMap.meglerInstallDefault();
         KeyStoreProvider.install();
@@ -72,10 +109,11 @@ public final class AppRunner {
         if (Thread.getDefaultUncaughtExceptionHandler() == null) Thread.setDefaultUncaughtExceptionHandler(new UncaughtLogger());
         Manifest.read();
         installClassLoader();
+        installComponentFactory();
         ContextImpl base = ContextImpl.app();
         String appCls = applicationClass != null ? applicationClass : Manifest.applicationClass;
         Application app;
-        try { app = appCls != null ? (Application) Class.forName(appCls).newInstance() : new Application(); }
+        try { app = sFactory.instantiateApplication(classLoader(), appCls != null ? appCls : Application.class.getName()); }
         catch (ClassNotFoundException e) { android.util.Log.w("Megler", "no application class " + appCls); app = new Application(); }
         sApp = app;
         Application.meglerSet(app);
@@ -112,7 +150,7 @@ public final class AppRunner {
         for (Manifest.Component p : ordered) {
             if (!p.enabled) continue;
             try {
-                ContentProvider cp = (ContentProvider) Class.forName(p.name).newInstance();
+                ContentProvider cp = sFactory.instantiateProvider(classLoader(), p.name);
                 ProviderInfo info = new ProviderInfo();
                 info.name = p.name; info.authority = p.authorities; info.packageName = Native.packageName(); info.exported = p.exported; info.metaData = p.metaData; info.grantUriPermissions = p.grantUriPermissions;
                 info.applicationInfo = app.getApplicationInfo();
@@ -138,7 +176,8 @@ public final class AppRunner {
     static Activity launch(String cls, Intent intent, Activity caller, int request, Manifest.Component info) throws Exception {
         android.util.Log.d("Megler", "launch " + cls);
         Activity prev = top();
-        Activity a = (Activity) Class.forName(cls).newInstance();
+        // Megler's screens of Android's Settings are the system's, not the app's: its factory does not make them.
+        Activity a = SystemScreens.isScreen(cls) ? (Activity) Class.forName(cls).newInstance() : sFactory.instantiateActivity(classLoader(), cls, intent);
         ContextImpl base = ContextImpl.forActivity();
         a.meglerAttach(base, sApp, intent, info, caller, request);
         if (prev != null && prev.isResumedMegler()) prev.meglerPause();
@@ -157,6 +196,23 @@ public final class AppRunner {
         Intent i = a.getIntent();
         return i != null && i.getComponent() != null ? i.getComponent().getClassName() : a.getClass().getName();
     }
+    /**
+     * An activity another app asked this one for (megler_start_activity: microG's sign-in, which Play Store's AccountManager
+     * asks for), from the main loop: started as Android starts an intent that names a component of this app -- if the
+     * manifest has the activity and exports it, as Android requires of a component another app starts.
+     */
+    public static void startRequested(String cls) {
+        Manifest.Component c = Manifest.activity(cls);
+        if (c == null || !c.exported) {
+            android.util.Log.w("Megler", "another app asked for " + cls + ", which this app " + (c == null ? "does not have" : "does not export"));
+            return;
+        }
+        Context from = sApp != null ? sApp : ContextImpl.app();
+        Intent i = new Intent().setClassName(Native.packageName(), cls).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        android.util.Log.i("Megler", "another app asked for " + cls);
+        AppResults.requested(cls);
+        startActivity(from, i, -1, null);
+    }
     /** Context.startActivity: an activity of the app's own, or something the host can open (a web page, mail, the store). */
     public static void startActivity(Context from, Intent i, int request, Bundle opts) {
         // An APK to install (a file manager's, a browser's download, an app store's): Megler's installer has it, as Android's
@@ -169,8 +225,14 @@ public final class AppRunner {
             return;
         }
         // An activity of another app the phone has (a launcher's tap, an app opening another): the shell starts that app
-        // (megler.PhoneApps), as Android starts another app's activity in its own process.
-        if (megler.PhoneApps.start(i)) return;
+        // (megler.PhoneApps), as Android starts another app's activity in its own process. Asked for a result, the caller
+        // has it when it is in front again (megler.AppResults).
+        String[] other = megler.PhoneApps.target(i);
+        if (other != null) {
+            if (request >= 0) AppResults.await(from instanceof Activity ? (Activity) from : top(), request, other[0], other[1]);
+            megler.PhoneApps.start(i);
+            return;
+        }
         Manifest.Component c = Manifest.resolve(i);
         android.util.Log.d("Megler", "startActivity " + i + (c != null ? " -> " + c.name : " (not an activity of this app)"));
         if (c != null) {
@@ -227,6 +289,18 @@ public final class AppRunner {
             return;
         }
         if ("android.intent.action.CHOOSER".equals(action)) { Intent inner = i.getParcelableExtra("android.intent.extra.INTENT"); if (inner != null) startActivity(from, inner, request, opts); return; }
+        // A screen of Android's Settings that Megler has (megler.SystemScreens): shown on top of the app.
+        final String screen = SystemScreens.screenFor(i);
+        if (screen != null) {
+            final Activity caller = from instanceof Activity ? (Activity) from : top();
+            final Intent intent = new Intent(i);
+            android.util.Log.d("Megler", "startActivity " + i + " -> Megler's " + screen);
+            sHandler.post(() -> {
+                try { launch(screen, intent, caller, request, SystemScreens.component(screen)); }
+                catch (Throwable t) { android.util.Log.e("Megler", "starting " + screen + " failed", t); }
+            });
+            return;
+        }
         /* a screen of the system's (the account chooser, Settings pages, the permission dialog): Megler has none of them -- asked for a
            result, the caller hears the user backed out, as it would on a phone; otherwise nothing opens */
         String pkg = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();
@@ -248,6 +322,7 @@ public final class AppRunner {
         boolean wasTop = idx == sStack.size() - 1;
         if (a.isResumedMegler()) a.meglerPause();
         sStack.remove(idx);
+        AppResults.finished(a);
         Activity below = top();
         if (wasTop && below != null && resumeBelow) {
             Activity caller = a.meglerCaller();
@@ -333,6 +408,8 @@ public final class AppRunner {
     private static void hostPause(boolean pause) {
         if (pause == sPausedByHost) return;
         sPausedByHost = pause;
+        // a result another app's activity left for this one comes first, as onActivityResult comes before onResume
+        if (!pause) AppResults.resumed();
         Activity a = top();
         if (a == null) return;
         if (pause) { if (a.isResumedMegler()) a.meglerPause(); }

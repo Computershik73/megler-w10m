@@ -409,6 +409,38 @@ static int maps_one(mg_addr bias, const char *name, const void *phdr, unsigned p
  */
 #define CHROME_COMMAND_LINE "/data/local/chrome-command-line"
 
+/*
+ * The kernel's UUIDs, as text: /proc/sys/kernel/random/boot_id, one for as long as the phone has been up (made from the
+ * minute it started, which the realtime and monotonic clocks give alike in every process), and .../uuid, a new random one
+ * at every read. Facebook reads the boot's ("Error reading boot_id from procfs" where there was none).
+ */
+static u64 mix64(u64 x)
+{
+    x += 0x9E3779B97F4A7C15ull;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
+    return x ^ (x >> 31);
+}
+
+static void kernel_uuid(textbuf *t, bool boot)
+{
+    u8 b[16];
+    int i;
+    if (boot) {
+        u64 minute = (mg_time_realtime_ns() - mg_time_monotonic_ns()) / 60000000000ull, hi = mix64(minute ^ 0x6D65676C6572ull), lo = mix64(hi);
+        for (i = 0; i < 8; i++) {
+            b[i] = (u8)(hi >> (8 * i));
+            b[8 + i] = (u8)(lo >> (8 * i));
+        }
+    } else {
+        mg_random(b, sizeof(b));
+    }
+    b[6] = (u8)((b[6] & 0x0F) | 0x40);   /* version 4 */
+    b[8] = (u8)((b[8] & 0x3F) | 0x80);   /* the RFC 4122 variant */
+    tb_add(t, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n", b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10],
+           b[11], b[12], b[13], b[14], b[15]);
+}
+
 /* Whether a path is one of the files synthetic() makes up. */
 static bool is_synthetic(const char *g)
 {
@@ -456,6 +488,8 @@ static char *synthetic(const char *g, size_t *size)
     } else if (!strcmp(g, "/proc/stat")) {
         tb_add(&t, "cpu  100 0 100 10000 0 0 0 0 0 0\n");
         for (i = 0; i < cpus; i++) tb_add(&t, "cpu%d 100 0 100 10000 0 0 0 0 0 0\n", i);
+    } else if (!strcmp(g, "/proc/sys/kernel/random/boot_id") || !strcmp(g, "/proc/sys/kernel/random/uuid")) {
+        kernel_uuid(&t, !strcmp(g, "/proc/sys/kernel/random/boot_id"));
     } else if (!strcmp(g, "/proc/version")) {
         tb_add(&t, "Linux version 4.4.0-megler (megler@w10m) #1 SMP PREEMPT\n");
     } else if (!strcmp(g, "/sys/devices/system/cpu/possible") || !strcmp(g, "/sys/devices/system/cpu/present") ||
@@ -1354,7 +1388,7 @@ void *mg_fd_file_map(int fd, u64 offset, size_t len, void **base, size_t *mapped
     return p;
 }
 
-void *mg_fd_shm_map(int fd, u64 offset, size_t len, bool *writable, void **base, size_t *mapped)
+void *mg_fd_shm_map(int fd, u64 offset, size_t len, bool code, bool *writable, void **base, size_t *mapped)
 {
     void *p = NULL;
     WITH_FD(fd, o, NULL)
@@ -1364,7 +1398,9 @@ void *mg_fd_shm_map(int fd, u64 offset, size_t len, bool *writable, void **base,
         mg_set_errno(GE_INVAL);
     } else {
         *writable = (o->shm_prot & 2) != 0;
-        p = mg_section_map(o->section, offset, MG_ALIGN_UP(len, MG_PAGE), *writable, base);
+        p = code ? mg_section_map_code(o->section, offset, MG_ALIGN_UP(len, MG_PAGE), base) : NULL;
+        if (p) *writable = false;
+        else p = mg_section_map(o->section, offset, MG_ALIGN_UP(len, MG_PAGE), *writable, base);
         if (!p) mg_set_errno(GE_NOMEM);
         else *mapped = MG_ALIGN_UP(len, MG_PAGE) + (size_t)((u8 *)p - (u8 *)*base);
     }

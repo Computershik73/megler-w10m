@@ -98,6 +98,17 @@ void *mg_section_map(mg_section *s, u64 offset, size_t size, bool writable, void
     return v;
 }
 
+void *mg_section_map_code(mg_section *s, u64 offset, size_t size, void **base)
+{
+    void *v;
+    if (!s || !size) return NULL;
+    v = mmap(NULL, size, PROT_READ | PROT_EXEC, MAP_SHARED, s->fd, (off_t)offset);
+    if (v == MAP_FAILED) return NULL;
+    views_count(size, 1);
+    if (base) *base = v;
+    return v;
+}
+
 void mg_section_unmap(void *base, size_t size)
 {
     if (!base || !size) return;

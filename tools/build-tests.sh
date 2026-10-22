@@ -190,6 +190,11 @@ EOF
         echo "the Java test app $app (build/guest/java/$app.apk), through megler_run"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/$app.apk' $WB/$app.apk && rm -rf $WB/java-data-$app && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java $app $WB/$app.apk $WB/java-data-$app $WB/android-root '$WROOT/build/java-pictures' 2>&1" || STATUS=1
       done
+      # Optional real microG integration, including a conflicting client GMS class.
+      # Fetch the pinned upstream APK with tools/microg-fetch.sh first.
+      if [ -f "$ROOT/build/microg/GmsCore.apk" ] && [ -f "$ROOT/build/guest/java/microg.apk" ]; then
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp '$WROOT/build/guest/java/microg.apk' $WB/microg.apk && cp '$WROOT/build/microg/GmsCore.apk' $WB/GmsCore.apk && MG_JAVA_GMS_APK=$WB/GmsCore.apk qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java microg $WB/microg.apk $WB/java-data-microg $WB/android-root - 2>&1" || STATUS=1
+      fi
       # The app in several APKs, from each of its bundles: unpacked as the shell unpacks one, for a screen of 320 dpi, and run.
       for bundle in apks xapk; do
         if [ ! -f "$ROOT/build/guest/java/splits.$bundle" ]; then

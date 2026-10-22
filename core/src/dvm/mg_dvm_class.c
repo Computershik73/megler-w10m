@@ -80,7 +80,8 @@ const char *mg_dvm_intern(const char *s)
 /* ------------------------------------------------- which file defines a class */
 
 /*
- * Every class any DEX file defines, by name, first definition winning. An
+ * Every class any DEX file defines, by name and service-loader scope.
+ * The first definition wins within a scope. An
  * entry points at the class's descriptor in its file ("Lfoo/Bar;") and copies
  * nothing: an app defines tens of thousands of classes and uses a fraction.
  */
@@ -98,13 +99,13 @@ static u32 g_cdef_buckets[CDEF_BUCKETS];
 static mg_dvm_dex *g_dexes[256];
 static int g_ndexes;
 
-static const cdef *cdef_find(const char *name)
+static const cdef *cdef_find_scope(const char *name, int scope)
 {
     size_t n = strlen(name);
     u32 i = g_cdef_buckets[hash_bytes(name, n) % CDEF_BUCKETS];
     while (i) {
         const cdef *c = &g_cdefs[i - 1];
-        if (!strncmp(c->desc + 1, name, n) && c->desc[n + 1] == ';' && c->desc[n + 2] == 0) return c;
+        if (c->dex->scope == scope && !strncmp(c->desc + 1, name, n) && c->desc[n + 1] == ';' && c->desc[n + 2] == 0) return c;
         i = c->next;
     }
     return NULL;
@@ -123,7 +124,19 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
         if (n < 3 || desc[0] != 'L' || desc[n - 1] != ';') continue;
         name = (char *)mg_dvm_meta_alloc(n);
         memcpy(name, desc + 1, n - 2);
-        if (!cdef_find(name)) {
+        const cdef *existing = cdef_find_scope(name, d->scope);
+        /* Android 9's core-libart has an older ICU number API. The framework overlay supplies
+         * the Android 30 methods used by newer apps; choose those definitions when it arrives. */
+        if (existing && d->scope == 0 && strstr(d->name, "megler-framework.dex") &&
+            !strncmp(name, "android/icu/number/", sizeof("android/icu/number/") - 1)) {
+            cdef *replace = (cdef *)existing;
+            replace->desc = desc;
+            replace->dex = d;
+            replace->def = i;
+            free(name);
+            continue;
+        }
+        if (!existing) {
             if (g_ncdefs == g_cdefs_cap) {
                 g_cdefs_cap = g_cdefs_cap ? g_cdefs_cap * 2 : 1024;
                 g_cdefs = (cdef *)mg_realloc(g_cdefs, sizeof(cdef) * g_cdefs_cap);
@@ -295,12 +308,21 @@ static void link_fail(link_error *err, const char *cls, const char *fmt, ...)
     va_end(ap);
 }
 
-static mg_dvm_class *loaded(const char *name)
+static mg_dvm_class *loaded_scope(const char *name, int scope)
 {
     mg_dvm_class *c;
     for (c = g_classes[hash_bytes(name, strlen(name)) % CLASS_BUCKETS]; c; c = c->next)
-        if (!strcmp(c->name, name)) return c;
+        if (c->scope == scope && !strcmp(c->name, name)) return c;
     return NULL;
+}
+
+static mg_dvm_class *loaded(const char *name) { return loaded_scope(name, 0); }
+static const cdef *cdef_find(const char *name) { return cdef_find_scope(name, 0); }
+static const cdef *definition(const char *name, int scope)
+{
+    const cdef *boot = cdef_find_scope(name, 0);
+    if (!scope || (boot && !boot->dex->app)) return boot;
+    return cdef_find_scope(name, scope);
 }
 
 static void publish(mg_dvm_class *c)
@@ -324,9 +346,9 @@ static void publish(mg_dvm_class *c)
     if (g_dvm.trace >= 1) mg_info("dvm: linked %s (%u slots, %d in the vtable)", c->name, (unsigned)c->nslots, c->nvtab);
 }
 
-static mg_dvm_class *load_class(const char *name, link_error *err);
+static mg_dvm_class *load_class_scope(const char *name, int scope, link_error *err);
 
-static mg_dvm_class *load_class_desc(const char *desc, link_error *err)
+static mg_dvm_class *load_desc_scope(const char *desc, int scope, link_error *err)
 {
     static const struct { char letter; const char *name; } prims[] = { { 'I', "int" }, { 'J', "long" }, { 'F', "float" }, { 'D', "double" },
         { 'Z', "boolean" }, { 'B', "byte" }, { 'C', "char" }, { 'S', "short" }, { 'V', "void" } };
@@ -335,19 +357,22 @@ static mg_dvm_class *load_class_desc(const char *desc, link_error *err)
     char *name;
     if (n == 1) {
         for (i = 0; i < MG_COUNT(prims); i++)
-            if (prims[i].letter == desc[0]) return load_class(prims[i].name, err);
+            if (prims[i].letter == desc[0]) return load_class_scope(prims[i].name, 0, err);
     }
-    if (desc[0] == '[') return load_class(desc, err);
+    if (desc[0] == '[') return load_class_scope(desc, scope, err);
     if (n < 3 || desc[0] != 'L' || desc[n - 1] != ';') {
         link_fail(err, "java/lang/NoClassDefFoundError", "%s", desc);
         return NULL;
     }
     name = (char *)mg_dvm_meta_alloc(n);
     memcpy(name, desc + 1, n - 2);
-    c = load_class(name, err);
+    c = load_class_scope(name, scope, err);
     free(name);
     return c;
 }
+
+static mg_dvm_class *load_class(const char *name, link_error *err) { return load_class_scope(name, 0, err); }
+static mg_dvm_class *load_class_desc(const char *desc, link_error *err) { return load_desc_scope(desc, 0, err); }
 
 static bool same_package(const char *a, const char *b)
 {
@@ -367,14 +392,14 @@ static mg_dvm_class *link_primitive(const char *name, char letter)
     return c;
 }
 
-static mg_dvm_class *link_array(const char *name, link_error *err)
+static mg_dvm_class *link_array(const char *name, int scope, link_error *err)
 {
     mg_dvm_class *c, *component, *object, *cloneable, *serializable;
     if (!name[1] || (name[1] == 'L' && !strchr(name, ';'))) {
         link_fail(err, "java/lang/NoClassDefFoundError", "%s", name);
         return NULL;
     }
-    component = load_class_desc(name + 1, err);
+    component = load_desc_scope(name + 1, scope, err);
     object = component ? load_class("java/lang/Object", err) : NULL;
     if (!object) return NULL;
     if (component->prim == 'V') {
@@ -383,6 +408,7 @@ static mg_dvm_class *link_array(const char *name, link_error *err)
     }
     c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
     c->name = mg_dvm_intern(name);
+    c->scope = component->scope;
     c->component = component;
     c->elem = component->prim ? component->prim : 'L';
     c->flags = (component->flags & DVM_ACC_PUBLIC) | DVM_ACC_FINAL | DVM_ACC_ABSTRACT;
@@ -466,11 +492,12 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
     int inherited, i, k;
     c->name = mg_dvm_intern(name);
     c->dex = d;
+    c->scope = d->scope;
     c->def = cd->def;
     c->flags = mg_dvm_rd32(def + 4);
 
     if (super_idx != 0xFFFFFFFFu) {
-        c->super = load_class_desc(mg_dvm_dex_type(d, super_idx), err);
+        c->super = load_desc_scope(mg_dvm_dex_type(d, super_idx), d->scope, err);
         if (!c->super) goto fail;
         if (c->super->flags & DVM_ACC_INTERFACE) {
             link_fail(err, "java/lang/IncompatibleClassChangeError", "%s has the interface %s for its superclass", name, c->super->name);
@@ -489,7 +516,7 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
         n = mg_dvm_rd32(d->b + ifaces_off);
         c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc(sizeof(*c->ifaces) * (n + 1));
         for (j = 0; j < n; j++) {
-            mg_dvm_class *ic = load_class_desc(mg_dvm_dex_type(d, mg_dvm_rd16(d->b + ifaces_off + 4 + 2 * j)), err);
+            mg_dvm_class *ic = load_desc_scope(mg_dvm_dex_type(d, mg_dvm_rd16(d->b + ifaces_off + 4 + 2 * j)), d->scope, err);
             if (!ic) goto fail;
             c->ifaces[c->nifaces++] = ic;
         }
@@ -576,7 +603,7 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
         for (k = 0; k < inherited; k++) {
             const mg_dvm_method *o = c->vtab[k];
             if (o->name != m->name || o->sig != m->sig) continue;
-            if (!(o->flags & (DVM_ACC_PUBLIC | DVM_ACC_PROTECTED | DVM_ACC_PRIVATE)) && !same_package(o->cls->name, c->name)) continue;
+            if (!(o->flags & (DVM_ACC_PUBLIC | DVM_ACC_PROTECTED | DVM_ACC_PRIVATE)) && (o->cls->scope != c->scope || !same_package(o->cls->name, c->name))) continue;
             slot = k;
             break;
         }
@@ -597,19 +624,26 @@ fail:
 
 /* Names being linked, innermost last: a class that is its own ancestor would otherwise be linked for ever. */
 static const char *g_linking[64];
+static int g_linking_scope[64];
 static int g_nlinking;
 
-static mg_dvm_class *load_class(const char *name, link_error *err)
+static mg_dvm_class *load_class_scope(const char *name, int scope, link_error *err)
 {
     static const struct { const char *name; char letter; } prims[] = { { "int", 'I' }, { "long", 'J' }, { "float", 'F' }, { "double", 'D' },
         { "boolean", 'Z' }, { "byte", 'B' }, { "char", 'C' }, { "short", 'S' }, { "void", 'V' } };
-    mg_dvm_class *c = loaded(name);
-    const cdef *cd;
+    mg_dvm_class *c;
+    const cdef *cd = definition(name, scope);
+    if (cd) scope = cd->dex->scope;
+    c = loaded_scope(name, scope);
     size_t i;
     int k;
     if (c) return c;
-    if (name[0] == '[') return link_array(name, err);
-    cd = cdef_find(name);
+    if (name[0] == '[') {
+        mg_dvm_class *component = load_desc_scope(name + 1, scope, err);
+        if (!component) return NULL;
+        c = loaded_scope(name, component->scope);
+        return c ? c : link_array(name, component->scope, err);
+    }
     if (!cd) {
         for (i = 0; i < MG_COUNT(prims); i++)
             if (!strcmp(prims[i].name, name)) return link_primitive(name, prims[i].letter);
@@ -617,7 +651,7 @@ static mg_dvm_class *load_class(const char *name, link_error *err)
         return NULL;
     }
     for (k = 0; k < g_nlinking; k++) {
-        if (!strcmp(g_linking[k], name)) {
+        if (g_linking_scope[k] == scope && !strcmp(g_linking[k], name)) {
             link_fail(err, "java/lang/ClassCircularityError", "%s", name);
             return NULL;
         }
@@ -626,6 +660,7 @@ static mg_dvm_class *load_class(const char *name, link_error *err)
         link_fail(err, "java/lang/ClassFormatError", "%s: its superclasses nest too deep", name);
         return NULL;
     }
+    g_linking_scope[g_nlinking] = scope;
     g_linking[g_nlinking++] = name;
     c = link_dex_class(cd, name, err);
     g_nlinking--;
@@ -640,20 +675,20 @@ static void throw_link_error(const link_error *err, const char *asked)
     else mg_dvm_throw(err->cls, "%s", err->msg);
 }
 
-mg_dvm_class *mg_dvm_find_class(const char *name)
+mg_dvm_class *mg_dvm_find_class_scope(const char *name, int scope)
 {
     link_error err;
     mg_dvm_class *c;
     err.cls = NULL;
     err.msg[0] = 0;
     mg_dvm_lock();
-    c = load_class(name, &err);
+    c = load_class_scope(name, scope, &err);
     mg_dvm_unlock();
     if (!c) throw_link_error(&err, name);
     return c;
 }
 
-mg_dvm_class *mg_dvm_find_class_desc(const char *descriptor)
+mg_dvm_class *mg_dvm_find_desc_scope(const char *descriptor, int scope)
 {
     link_error err;
     mg_dvm_class *c;
@@ -661,10 +696,21 @@ mg_dvm_class *mg_dvm_find_class_desc(const char *descriptor)
     err.cls = NULL;
     err.msg[0] = 0;
     mg_dvm_lock();
-    c = load_class_desc(descriptor, &err);
+    c = load_desc_scope(descriptor, scope, &err);
     mg_dvm_unlock();
     if (!c) throw_link_error(&err, mg_dvm_descriptor_name(descriptor, name, sizeof(name)) ? name : descriptor);
     return c;
+}
+
+mg_dvm_class *mg_dvm_find_class(const char *name) { return mg_dvm_find_class_scope(name, 0); }
+mg_dvm_class *mg_dvm_find_class_desc(const char *desc) { return mg_dvm_find_desc_scope(desc, 0); }
+bool mg_dvm_class_exists_scope(const char *name, int scope) {
+    bool yes;
+    if (!scope) return mg_dvm_class_exists(name);
+    mg_dvm_lock();
+    yes = definition(name, scope) != NULL || loaded_scope(name, scope) != NULL;
+    mg_dvm_unlock();
+    return yes || name[0] == '[';
 }
 
 bool mg_dvm_class_exists(const char *name)
@@ -882,7 +928,7 @@ mg_dvm_class *mg_dvm_resolve_type(mg_dvm_dex *d, u32 idx)
     }
     c = d->tcache[idx];
     if (c) return c;
-    c = mg_dvm_find_class_desc(mg_dvm_dex_type(d, idx));
+    c = mg_dvm_find_desc_scope(mg_dvm_dex_type(d, idx), d->scope);
     if (c) d->tcache[idx] = c;
     return c;
 }

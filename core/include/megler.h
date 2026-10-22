@@ -1423,6 +1423,8 @@ typedef struct megler_location_host {
 
 typedef struct megler_run_config {
     const char *apk_path;
+    /* Optional installed microG APK. Opened as the service package; no copy in each client. */
+    const char *gms_apk_path;
     /*
      * An app in several APKs (megler_apk_report_splits): its splits, as a folder whose .apk files they are (the folder
      * megler_bundle_unpack makes), and as a list of paths; either may be left NULL. The app runs as one, as Android runs
@@ -1513,6 +1515,21 @@ void megler_set_paused(bool paused);
 void megler_set_focused(bool focused);
 /* Asks the app to finish. Returns at once; on_exit follows. */
 void megler_stop(void);
+/*
+ * Another app asks this one to show one of its activities, by class name: what Android's startActivity of an intent that
+ * names a component of this app does (microG's sign-in, LoginActivity, asked for by Play Store's AccountManager through
+ * megler_system_host.launch_app). A Java app's main thread starts it on top of what it shows, if its manifest has the
+ * activity and exports it; asked before the app runs, once its first activity is up. Any thread; the latest ask wins.
+ */
+void megler_start_activity(const char *activity_class);
+/*
+ * Clears an app's data, as Android's "Clear storage" does, when the app next starts: before anything of it is open, its
+ * private folder (/data/data/<package>) and its own Android/data folder in the shared storage go; its Android/obb stays, as
+ * on Android. Asking is a file named after the package in the folder clear-data of the shared storage (megler_init's
+ * storage_dir), which every package Megler made of an app sees: the shell's app page asks so, and the app itself, from
+ * Android's app info screen. True when the ask is written. Needs megler_init.
+ */
+bool megler_ask_clear_data(const char *package);
 /* Frames presented since the app started. */
 uint32_t megler_frames(void);
 

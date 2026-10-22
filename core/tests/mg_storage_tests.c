@@ -735,6 +735,50 @@ static int type_of(const dir_seen *s, const char *name)
 #define PKG "org.megler.test.storage"
 #define SD "/storage/emulated/0"
 
+/*
+ * Clearing an app's data, as asked (megler_ask_clear_data writes <storage>/clear-data/<package>): before its folders are set
+ * up, its private folder goes with everything in it, and its own Android/data folder; its Android/obb stays, as on Android,
+ * and so does another app's data. Asked for no more, nothing goes.
+ */
+static void test_clear_data(const char *base)
+{
+    static const char *const made[] = { "apps/org.megler.test.cleared/data/shared_prefs/settings.xml", "apps/org.megler.test.cleared/data/databases/main.db",
+                                        "apps/org.megler.test.cleared/sdcard/Android/data/org.megler.test.cleared/files/save.dat",
+                                        "apps/org.megler.test.cleared/sdcard/Android/obb/org.megler.test.cleared/main.1.obb",
+                                        "apps/org.megler.test.kept/data/shared_prefs/settings.xml", "clear-data/org.megler.test.cleared" };
+    mg_stat st;
+    char *data = mg_sprintf("%s/cleared", base), *p, *dir;   /* a folder of its own: the layout's test counts the apps it finds */
+    size_t i;
+    say("clearing an app's data, as asked: its private folder and its Android/data go, its obb and other apps' data stay");
+    for (i = 0; i < MG_COUNT(made); i++) {
+        p = mg_sprintf("%s/%s", data, made[i]);
+        dir = mg_sprintf("%s", p);
+        *strrchr(dir, '/') = 0;
+        CHECK(mg_path_mkdirs(dir) && mg_file_write_all(p, "x", 1));
+        free(dir);
+        free(p);
+    }
+    CHECK(mg_run_clear_data_if_asked(data, data, "org.megler.test.cleared"));
+    for (i = 0; i < MG_COUNT(made); i++) {
+        bool kept = strstr(made[i], "/obb/") || strstr(made[i], "test.kept");
+        p = mg_sprintf("%s/%s", data, made[i]);
+        CHECK(mg_path_stat(p, &st, NULL) == kept);
+        free(p);
+    }
+    p = mg_sprintf("%s/apps/org.megler.test.cleared/data", data);
+    CHECK(!mg_path_stat(p, &st, NULL));
+    free(p);
+    p = mg_sprintf("%s/apps/org.megler.test.cleared/sdcard/Android/data/org.megler.test.cleared", data);
+    CHECK(!mg_path_stat(p, &st, NULL));
+    free(p);
+    CHECK(!mg_run_clear_data_if_asked(data, data, "org.megler.test.cleared"));
+    CHECK(!mg_run_clear_data_if_asked(data, data, "org.megler.test.kept"));
+    p = mg_sprintf("%s/apps/org.megler.test.kept/data/shared_prefs/settings.xml", data);
+    CHECK(mg_path_stat(p, &st, NULL));
+    free(p);
+    free(data);
+}
+
 static const megler_storage_link k_links[] = {
     { "Music", true }, { "Pictures", true },
     { "Books", false },                /* a name of the user's own, and only to be read */
@@ -1551,6 +1595,7 @@ static int run_in(const char *base, mg_storage_host_maker make, mg_test_sink sin
         test_foreign_paths(base);
         CHECK(libc_found());
         if (libc_found()) {
+            test_clear_data(data);
             test_layout(data);
             test_threads();
             test_odd_names();

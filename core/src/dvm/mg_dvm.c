@@ -130,6 +130,16 @@ static bool add_dex(const void *data, size_t size, const char *label, bool boot)
     return true;
 }
 
+bool mg_dvm_add_dex_scope(const void *data, size_t size, const char *label, int scope)
+{
+    mg_dvm_dex *d = mg_dvm_dex_open((const u8 *)data, size, label);
+    if (!d) return false;
+    d->scope = scope;
+    d->app = true;
+    mg_dvm_classes_add_dex(d);
+    return true;
+}
+
 bool mg_dvm_add_dex(const void *data, size_t size, const char *label) { return add_dex(data, size, label, !g_dvm.running); }
 
 static bool add_dex_file(const char *path, bool boot)

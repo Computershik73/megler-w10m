@@ -235,7 +235,10 @@ static void patch_plt(mg_lib *lib, u8 *seg, size_t size)
  *
  * Executable segments also contain literal pools and Thumb-2 second halves.
  * Keep the Thumb r7-producer check instead of replacing every DF00 halfword.
- * In particular Chromium's cacheflush uses a literal load, not movw.
+ * In particular Chromium's cacheflush uses a literal load, not movw, and
+ * compiler-rt's __clear_cache (Facebook's libdexload.so) ends with movt:
+ * movs r7,#2; movs r2,#0; movt r7,#15; svc 0. Left unpatched, that svc went
+ * to Windows, failed, and __clear_cache's assertion aborted the app.
  * trap-svc retains its diagnostic meaning: stop at the site without dispatch.
  */
 static volatile i32 g_trap_svc = -1;
@@ -269,9 +272,9 @@ static void patch_svc(mg_lib *lib, u8 *seg, size_t size)
         if (mg_rd16(seg + i) != 0xDF00) continue;
         a = mg_rd16(seg + i - 2);
         b = i >= 4 ? mg_rd16(seg + i - 4) : 0;
-        /* movs r7,#n; ldr r7,[pc,#n]; mov r7,rN; mov.w/movw r7,#n; ldr.w r7,[pc,+/-n]. */
+        /* movs r7,#n; ldr r7,[pc,#n]; mov r7,rN; mov.w/movw/movt r7,#n; ldr.w r7,[pc,+/-n]. */
         if ((a & 0xFF00) == 0x2700 || (a & 0xFF00) == 0x4F00 || (a & 0xFF87) == 0x4607
-            || (((b & 0xFBF0) == 0xF040 || (b & 0xFBF0) == 0xF240) && (a & 0x8F00) == 0x0700)
+            || (((b & 0xFBF0) == 0xF040 || (b & 0xFBF0) == 0xF240 || (b & 0xFBF0) == 0xF2C0) && (a & 0x8F00) == 0x0700)
             || ((b == 0xF8DF || b == 0xF85F) && (a & 0xF000) == 0x7000))
             patch_svc_site(lib, seg + i, true, trap);
     }

@@ -599,6 +599,18 @@ static void test_udp(void)
     m.name = from;
     m.namelen = sizeof(from);
     CHECK(N.recvmsg(a, &m, 0) == 7 && !memcmp(part1, "abc", 3) && !memcmp(part2, "defg", 4) && (m.flags & MSG_TRUNC_) && m.namelen == 16 && m.controllen == 0);
+    /*
+     * The error queue (MSG_ERRQUEUE), as a QUIC library with IP_RECVERR empties it before it reads: empty, EAGAIN at once,
+     * and the datagram that is there stays for the read after it.
+     */
+    CHECK(N.sendto(a, "quic", 4, 0, sa_b, 16) == 4);
+    iov[0].base = buf;
+    iov[0].len = sizeof(buf);
+    memset(&m, 0, sizeof(m));
+    m.iov = iov;
+    m.iovlen = 1;
+    CHECK(N.recvmsg(b, &m, 0x2000 /* MSG_ERRQUEUE */ | MSG_DONTWAIT_) == -1 && err() == GE_AGAIN);
+    CHECK(N.recv(b, buf, sizeof(buf), 0) == 4 && !memcmp(buf, "quic", 4));
     /* A datagram socket has no peer to write to until it is given one (EDESTADDRREQ). */
     CHECK(N.send(a, "x", 1, 0) == -1 && err() == GE_DESTADDRREQ);
     N.close(a);
