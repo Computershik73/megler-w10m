@@ -358,6 +358,13 @@ public class Main extends Activity {
             detail = "sourceDir=" + source + " codePath=" + code + " there=" + new java.io.File(source).isFile();
             return source.equals("/data/app/" + getPackageName() + "-1/base.apk") && source.equals(code) && new java.io.File(source).isFile();
         });
+        step("apk-optimization", () -> {
+            Object info = Class.forName("dalvik.system.ApplicationRuntime")
+                    .getMethod("getBaseApkOptimizationInfo").invoke(null);
+            return info != null
+                    && "run-from-apk".equals(info.getClass().getMethod("getStatus").invoke(info))
+                    && "unknown".equals(info.getClass().getMethod("getReason").invoke(info));
+        });
         sound();
         mediaCodec();
         network();
