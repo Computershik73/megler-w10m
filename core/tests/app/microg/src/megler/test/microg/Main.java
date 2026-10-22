@@ -28,6 +28,27 @@ public class Main extends Activity {
             check(pi.applicationInfo.sourceDir.endsWith("/GmsCore/GmsCore.apk"), "real APK metadata");
             check(pi.services != null && pi.services.length > 20, "manifest services");
             Context gms = createPackageContext(GMS, CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY);
+            if ("1".equals(System.getenv("MG_MICROG_DROIDGUARD_HANDLE_TEST"))) {
+                ClassLoader loader = gms.getClassLoader();
+                Class<?> prefs = Class.forName("org.microg.gms.droidguard.core.DroidGuardPreferences", true, loader);
+                prefs.getMethod("setEnabled", Context.class, boolean.class).invoke(null, gms, true);
+                Class<?> factoryClass = Class.forName("org.microg.gms.droidguard.core.NetworkHandleProxyFactory", true, loader);
+                java.lang.reflect.Constructor<?> ctor = factoryClass.getDeclaredConstructor(Context.class);
+                ctor.setAccessible(true);
+                Object factory = ctor.newInstance(gms);
+                Class<?> callback = Class.forName("org.microg.gms.droidguard.GuardCallback", true, loader);
+                Class<?> request = Class.forName("com.google.android.gms.droidguard.internal.DroidGuardResultsRequest", true, loader);
+                Object guardCallback = callback.getDeclaredConstructor(Context.class, String.class).newInstance(gms, GMS);
+                Object handle = factoryClass.getMethod("createHandle", String.class, String.class, callback, request)
+                    .invoke(factory, GMS, "recaptcha-android-frame", guardCallback, null);
+                check(handle != null, "DroidGuard VM handle");
+                check(Boolean.TRUE.equals(handle.getClass().getMethod("init").invoke(handle)), "DroidGuard VM initializes");
+                byte[] verdict = (byte[]) handle.getClass().getMethod("run", java.util.Map.class)
+                    .invoke(handle, new java.util.HashMap<String, Object>());
+                check(verdict != null && verdict.length > 0, "DroidGuard VM returns bytes");
+                handle.getClass().getMethod("close").invoke(handle);
+                Log.i("MicroGTest", "DROIDGUARD HANDLE PASS");
+            }
             if ("1".equals(System.getenv("MG_MICROG_DROIDGUARD_TEST"))) {
                 // A service's local Binder call may enter DroidGuard on the app's main thread.
                 // Its synchronous Volley future must complete even while that looper is busy.

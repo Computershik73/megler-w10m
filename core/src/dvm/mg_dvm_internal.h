@@ -75,6 +75,7 @@ static inline mg_dvm_class *mg_dvm_class_of(const mg_jobj *o) { return ((const m
 
 struct mg_dvm_dex {
     int scope; /* 0: existing app/boot path; >0: isolated package loader. */
+    mg_jobj *loader; /* Defining loader for a DEX added through DexFile.openDexFileNative. */
     const u8 *b;
     size_t size;
     u32 nstr, ntype, nproto, nfield, nmeth, ncls;

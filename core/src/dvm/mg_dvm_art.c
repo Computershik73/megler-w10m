@@ -102,6 +102,10 @@ void mg_dvm_loader_roots(void (*fn)(mg_jobj *, void *), void *user) {
     for (i = 1; i < 16; i++) if (g_service_loaders[i]) fn(g_service_loaders[i], user);
     /* (Kept for good, as the table holds them by address: microG keeps each module's loader for good itself.) */
     for (i = 0; i < MAX_ALIASES; i++) if (g_alias_loaders[i]) fn(g_alias_loaders[i], user);
+    for (i = 0; i < (int)mg_dvm_dex_count(); i++) {
+        mg_dvm_dex *d = mg_dvm_dex_at((u32)i);
+        if (d && d->loader) fn(d->loader, user);
+    }
 }
 /* The scope of the service loader that opened this APK, or 0. */
 static int service_apk_scope(const char *source)
@@ -225,8 +229,9 @@ static void fill_mirror(mg_jobj *m, mg_dvm_class *c)
     set_int(m, "objectSize", (i32)(MG_DVM_HEADER + c->nslots * sizeof(mg_jvalue)));
     if (c->super) set_obj(m, "superClass", mg_dvm_mirror(c->super));
     if (c->component) set_obj(m, "componentType", mg_dvm_mirror(c->component));
-    /* An app's class names the app's loader as its own; the system's name none, which libcore reads as the boot class loader. */
+    /* Each dynamically opened DEX names its defining loader; the original app uses its app loader. */
     if (c->scope) set_obj(m, "classLoader", mg_dvm_scope_loader(c->scope));
+    else if (c->dex && c->dex->loader) set_obj(m, "classLoader", c->dex->loader);
     else if (c->dex && c->dex->app && g_dvm.app_loader) set_obj(m, "classLoader", g_dvm.app_loader);
     /* All of them, however many: a table of at most 128 left Avito's Dagger component, which has 826, not an instance of
        the 506th of its interface's 564 by Class.isInstance, and Avito ended at its start on a dependency it found missing. */
@@ -693,8 +698,12 @@ N(VMStack_getStackClass2)
     c->ret.l = f ? mg_dvm_mirror(f->m->cls) : NULL;
 }
 
-/* The class loader of a class as Java sees it: the app's for the app's classes, none (the boot class path) for all others. */
-static mg_jobj *loader_of(const mg_dvm_class *k) { return k->scope ? mg_dvm_scope_loader(k->scope) : mg_dvm_class_is_app(k) ? g_dvm.app_loader : NULL; }
+/* The defining loader as Java sees it; boot classes have none. */
+static mg_jobj *loader_of(const mg_dvm_class *k) {
+    if (k->scope) return mg_dvm_scope_loader(k->scope);
+    if (k->dex && k->dex->loader) return k->dex->loader;
+    return mg_dvm_class_is_app(k) ? g_dvm.app_loader : NULL;
+}
 
 N(VMStack_getCallingClassLoader)
 {
@@ -995,6 +1004,7 @@ N(DexFile_openDexFileNative)
     }
     if (!there) {
         /* A file the app names itself (a second DEX file it unpacked, a plug-in): its classes join the path, after everything there. */
+        u32 before = mg_dvm_dex_count(), j;
         host = mg_fs_host_path(source);
         n = strlen(source);
         if (host && n > 4 && !strcmp(source + n - 4, ".dex")) there = mg_dvm_add_dex_file(host);
@@ -1005,6 +1015,12 @@ N(DexFile_openDexFileNative)
             return;
         }
         mg_dvm_dex_source_added(source);
+        /* DexFile opened these classes for this loader. Class.getClassLoader (and its
+           resource and native-library lookup) must point back to that loader. */
+        for (j = before; j < mg_dvm_dex_count(); j++) {
+            mg_dvm_dex *d = mg_dvm_dex_at(j);
+            if (d && d->scope == 0) d->loader = c->args[3].l;
+        }
     }
     /* The cookie is opaque to libcore: an array of one long, as Android's is an array of pointers. */
     cookie = mg_dvm_new_array("[J", 1);
