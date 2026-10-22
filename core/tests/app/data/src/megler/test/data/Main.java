@@ -327,6 +327,7 @@ public class Main extends Activity {
         viewGroupFlag();
         textDrawables();
         pfdDup();
+        pfdParcel();
         themeSelfRef();
         queueNext();
         storageStats();
@@ -1402,6 +1403,36 @@ public class Main extends Activity {
                 + ", after " + adopted.getFileDescriptor().valid();
             android.system.Os.close(b);
             return na >= 0 && n >= 0 && file.length() == 4 && open && !adopted.getFileDescriptor().valid() && file.delete();
+        });
+    }
+
+    /**
+     * A ParcelFileDescriptor through a Parcel, as an AIDL stub passes one (microG's People service hands Play Store the
+     * account's picture so): written with writeToParcel and read with CREATOR, it reads the file after the writer closed its own.
+     */
+    private void pfdParcel() {
+        step("pfd-parcel", () -> {
+            java.io.File file = new java.io.File(getCacheDir(), "pfd-parcel.txt");
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(file)) { out.write("avatar".getBytes("UTF-8")); }
+            android.os.ParcelFileDescriptor sent = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            p.writeInt(1);
+            sent.writeToParcel(p, 0);
+            sent.close();
+            p.setDataPosition(0);
+            boolean present = p.readInt() != 0;
+            android.os.ParcelFileDescriptor got = android.os.ParcelFileDescriptor.CREATOR.createFromParcel(p);
+            p.recycle();
+            String text = null;
+            if (got != null) {
+                try (java.io.InputStream in = new android.os.ParcelFileDescriptor.AutoCloseInputStream(got)) {
+                    byte[] b = new byte[16];
+                    int n = in.read(b);
+                    text = new String(b, 0, Math.max(n, 0), "UTF-8");
+                }
+            }
+            detail = "present=" + present + " read=" + text;
+            return present && "avatar".equals(text) && file.delete();
         });
     }
 

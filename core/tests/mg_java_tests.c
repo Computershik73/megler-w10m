@@ -1879,13 +1879,14 @@ static int run_data(void)
                                             the APK as a descriptor whose number is taken from its ParcelFileDescriptor. And the app's task as
                                             ActivityManager describes it. And registerReceiver's other forms through a ContextWrapper. And a
                                             ViewGroup made without its constructor calling an overridable setWillNotDraw. And an EditText's
-                                            cursor and selection handles. And ParcelFileDescriptor's dup, detachFd and adoptFd. And a theme
+                                            cursor and selection handles. And ParcelFileDescriptor's dup, detachFd and adoptFd, and one
+                                            through a Parcel (writeToParcel and CREATOR), as an AIDL stub passes it. And a theme
                                             attribute that names itself. And MessageQueue.next(), and the app's storage statistics. And a
                                             broadcast that names its receiver, which reaches that receiver alone. And the platform's
                                             MediaMetadata through a Parcel, as MediaMetadataCompat makes it, and PlaybackState with a
                                             custom action, as PlaybackStateCompat makes it. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
-                                         "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup",
+                                         "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
                                          "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "install-intent", "install-session", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
