@@ -379,6 +379,61 @@ public class Main extends Activity {
             return r == android.app.job.JobScheduler.RESULT_SUCCESS && pending != null && Work.class.getName().equals(pending.getService().getClassName())
                 && pending.getMinLatencyMillis() == 100;
         });
+        // A download enqueued in the system's download provider (content://downloads, as DownloadManager and Play Store's old
+        // downloader do), from a server of this app's own on 127.0.0.1 that wants the row's cookie: its cursor's observer hears
+        // it go (ContentObservable, AbstractCursor.setNotificationUri), DOWNLOAD_COMPLETE comes with its id, and its row and its
+        // file say what came.
+        step("downloads", () -> {
+            final java.net.ServerSocket server = new java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"));
+            final boolean[] cookie = { false };
+            new Thread(() -> {
+                try (java.net.Socket s = server.accept()) {
+                    java.io.BufferedReader in = new java.io.BufferedReader(new java.io.InputStreamReader(s.getInputStream(), "ISO-8859-1"));
+                    for (String line; (line = in.readLine()) != null && !line.isEmpty(); ) if (line.equalsIgnoreCase("Cookie: a=b")) cookie[0] = true;
+                    s.getOutputStream().write("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nhello".getBytes("ISO-8859-1"));
+                    s.getOutputStream().flush();
+                } catch (java.io.IOException e) {
+                    Log.w("DataTest", "downloads server: " + e);
+                } finally {
+                    try { server.close(); } catch (java.io.IOException e) {}
+                }
+            }, "downloads-server").start();
+            final android.net.Uri all = android.net.Uri.parse("content://downloads/my_downloads");
+            final android.database.Cursor watched = getContentResolver().query(all, null, null, null, null);
+            final boolean[] observed = { false };
+            final android.database.ContentObserver watcher = new android.database.ContentObserver(null) {
+                @Override public void onChange(boolean self) { observed[0] = true; }
+            };
+            if (watched != null) watched.registerContentObserver(watcher);
+            final java.io.File file = new java.io.File(getCacheDir(), "downloaded.txt");
+            file.delete();
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context c, android.content.Intent i) {
+                    long id = i.getLongExtra("extra_download_id", -1);
+                    String status = "?", bytes = "?", body = "?";
+                    try (android.database.Cursor row = getContentResolver().query(android.net.Uri.withAppendedPath(all, Long.toString(id)), new String[] { "status", "current_bytes" }, null, null, null)) {
+                        if (row != null && row.moveToFirst()) { status = row.getString(0); bytes = row.getString(1); }
+                    }
+                    try (java.io.InputStream in = getContentResolver().openInputStream(android.net.Uri.withAppendedPath(all, Long.toString(id)))) {
+                        byte[] b = new byte[16];
+                        int n = in.read(b);
+                        body = n > 0 ? new String(b, 0, n) : "";
+                    } catch (java.io.IOException e) { body = String.valueOf(e); }
+                    if (watched != null) { watched.unregisterContentObserver(watcher); watched.close(); }
+                    Log.i("DataTest", "downloads ok status=" + status + " bytes=" + bytes + " body=" + body + " cookie=" + cookie[0] + " observed=" + observed[0]
+                            + " file=" + file.length());
+                }
+            }, new android.content.IntentFilter("android.intent.action.DOWNLOAD_COMPLETE"));
+            android.content.ContentValues v = new android.content.ContentValues();
+            v.put("uri", "http://127.0.0.1:" + server.getLocalPort() + "/hello.txt");
+            v.put("destination", 4);
+            v.put("hint", android.net.Uri.fromFile(file).toString());
+            v.put("cookiedata", "a=b");
+            v.put("notificationpackage", getPackageName());
+            android.net.Uri row = getContentResolver().insert(all, v);
+            detail = "row=" + row;
+            return row != null && row.toString().startsWith("content://downloads/my_downloads/");
+        });
         step("start-asked", () -> {
             startService(new android.content.Intent(this, Again.class));
             return true;

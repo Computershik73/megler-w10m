@@ -29,6 +29,7 @@ public class ContentResolver {
         ContentProvider p; synchronized (sProviders) { p = sProviders.get(a); }
         if (p != null) return p;
         if ("settings".equals(a)) return megler.SettingsProvider.INSTANCE;
+        if ("downloads".equals(a)) return megler.Downloads.INSTANCE;
         return megler.GmsProviders.forAuthority(a);
     }
     public final ContentProviderClient acquireContentProviderClient(Uri u) { ContentProvider p = provider(u); return p == null ? null : new ContentProviderClient(p); }
