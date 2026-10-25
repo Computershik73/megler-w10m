@@ -3103,6 +3103,21 @@ through `transact`, as AIDL's `asInterface` takes another scope's object for
 a remote one. The process's receivers, providers and activities still run in
 the app's own scope.
 
+### Downloads
+
+`megler.Downloads` is the system's download provider
+(`content://downloads/my_downloads`), into which `DownloadManager` and Play
+Store's old downloader (its self-update) insert a row. Each download runs on a
+thread of its own over HTTP, with the row's headers, cookies, user agent and
+referer, redirects followed, into the file the row's hint names or one of the
+app's cache. A query gives the rows' status and bytes, a change is told to the
+row's and the provider's URI, and at the end the receiver the row names is told
+`DOWNLOAD_COMPLETE` with the download's id; `openFile` gives the file. The rows
+are the app's while it runs. A cursor's content observers hear of a change of
+its notification URI (`AbstractCursor.setNotificationUri` registers with the
+resolver, `ContentObservable.registerObserver` registers at all: both were
+stubs that did nothing, and unregistering an observer threw).
+
 ### WebP pictures
 
 An app's pictures are WebP as often as PNG (Android's build tools convert
