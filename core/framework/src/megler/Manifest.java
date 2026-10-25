@@ -178,6 +178,12 @@ public final class Manifest {
         if (v == null || !v.startsWith("@")) return v;
         try { return megler.ContextImpl.app().getResources().getString(Integer.parseInt(v.substring(1))); } catch (Throwable t) { return v; }
     }
+    /** The process a component runs in, as Android names it: the app's own when none is named (or ""), "<package>:x" for
+     *  ":x", and a string resource's text when the manifest names one (GmsCore's "@string/common_persistent_process"). */
+    public static String processOf(Component c) {
+        String pkg = megler.Native.packageName(), p = val(c.process);
+        return p == null || p.isEmpty() ? pkg : p.startsWith(":") ? pkg + p : p;
+    }
     private static boolean hasVal(java.util.List<String> list, String x) { for (String v : list) if (val(v).equals(x)) return true; return false; }
     /** Android's intent-filter match: the action (an intent without one passes any filter that lists one), then the data --
      *  an intent with a URI needs a filter naming its scheme (and host, when the filter names hosts), one without needs a
@@ -199,9 +205,85 @@ public final class Manifest {
     /** The activity an explicit or implicit intent would open in this app, or null. */
     public static Component resolve(android.content.Intent i) {
         read();
+        return resolveIn(activities, i);
+    }
+    /** The activity of these an explicit or implicit intent would open, or null. */
+    public static Component resolveIn(java.util.List<Component> list, android.content.Intent i) {
         android.content.ComponentName cn = i.getComponent();
-        if (cn != null) { Component c = activity(cn.getClassName()); if (c != null) return c; for (Component a : activities) if (a.name.endsWith(cn.getClassName())) return a; return null; }
-        for (Component c : activities) for (Filter f : c.filters) if (matches(f, i)) return c;
+        if (cn != null) {
+            for (Component c : list) if (c.name.equals(cn.getClassName())) return c;
+            for (Component a : list) if (a.name.endsWith(cn.getClassName())) return a;
+            return null;
+        }
+        for (Component c : list) for (Filter f : c.filters) if (matches(f, i)) return c;
         return null;
+    }
+
+    /**
+     * The activities (and their aliases) of another APK's manifest, package `pkg`: what megler.MicroG starts of Google Play
+     * services in an app that hosts it. An activity that names no theme has its application's, as on Android.
+     */
+    public static ArrayList<Component> activitiesIn(byte[] manifest, String label, String pkg) {
+        ArrayList<Component> out = new ArrayList<>();
+        try {
+            XmlBlock.Parser p = new XmlBlock(manifest, label).newParser();
+            Component cur = null; Filter filter = null;
+            boolean inApp = false;
+            int t, appTheme = 0;
+            while ((t = p.next()) != XmlPullParser.END_DOCUMENT) {
+                String tag = p.getName();
+                if (t == XmlPullParser.END_TAG) {
+                    if ("intent-filter".equals(tag)) filter = null;
+                    else if ("application".equals(tag)) inApp = false;
+                    else if ("activity".equals(tag) || "activity-alias".equals(tag)) cur = null;
+                    continue;
+                }
+                if (t != XmlPullParser.START_TAG) continue;
+                switch (tag) {
+                case "application": inApp = true; appTheme = p.getAttributeResourceValue(NS, "theme", 0); break;
+                case "activity": case "activity-alias": {
+                    if (!inApp) break;
+                    cur = new Component();
+                    cur.kind = tag;
+                    cur.name = full(p.getAttributeValue(NS, "name"), pkg);
+                    cur.theme = appTheme;
+                    if ("activity-alias".equals(tag)) {
+                        String target = full(p.getAttributeValue(NS, "targetActivity"), pkg);
+                        for (Component a : out) if (a.name.equals(target)) { cur.theme = a.theme; cur.screenOrientation = a.screenOrientation; cur.configChanges = a.configChanges; }
+                        cur.parentActivity = target;
+                    }
+                    cur.theme = p.getAttributeResourceValue(NS, "theme", cur.theme);
+                    cur.label = p.getAttributeResourceValue(NS, "label", 0);
+                    cur.icon = p.getAttributeResourceValue(NS, "icon", 0);
+                    cur.screenOrientation = p.getAttributeIntValue(NS, "screenOrientation", cur.screenOrientation);
+                    cur.configChanges = p.getAttributeIntValue(NS, "configChanges", cur.configChanges);
+                    cur.launchMode = p.getAttributeIntValue(NS, "launchMode", 0);
+                    cur.windowSoftInputMode = p.getAttributeIntValue(NS, "windowSoftInputMode", 0);
+                    cur.exported = p.getAttributeBooleanValue(NS, "exported", false);
+                    cur.enabled = p.getAttributeBooleanValue(NS, "enabled", true);
+                    cur.process = p.getAttributeValue(NS, "process");
+                    cur.permission = p.getAttributeValue(NS, "permission");
+                    out.add(cur);
+                    break;
+                }
+                case "intent-filter": if (cur != null) { filter = new Filter(); cur.filters.add(filter); } break;
+                case "action": if (filter != null) filter.actions.add(p.getAttributeValue(NS, "name")); break;
+                case "category": if (filter != null) filter.categories.add(p.getAttributeValue(NS, "name")); break;
+                case "data":
+                    if (filter != null) {
+                        String s = p.getAttributeValue(NS, "scheme"), h = p.getAttributeValue(NS, "host"), m = p.getAttributeValue(NS, "mimeType");
+                        if (s != null) filter.schemes.add(s); if (h != null) filter.hosts.add(h); if (m != null) filter.mimeTypes.add(m);
+                    }
+                    break;
+                }
+            }
+        } catch (Exception e) { android.util.Log.e("Megler", "the manifest of " + pkg + " could not be read", e); }
+        return out;
+    }
+    private static String full(String n, String pkg) {
+        if (n == null) return null;
+        if (n.startsWith(".")) return pkg + n;
+        if (n.indexOf('.') < 0) return pkg + "." + n;
+        return n;
     }
 }

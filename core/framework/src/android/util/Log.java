@@ -38,7 +38,28 @@ public final class Log {
     public static int e(String tag, String msg, Throwable t) { return out(ERROR, tag, msg, t); }
     public static int wtf(String tag, String msg) { return out(ASSERT, tag, msg, null); }
     public static int println(int p, String tag, String msg) { return out(p, tag, msg, null); }
-    public static boolean isLoggable(String tag, int level) { return level >= INFO; }
+    /* The flag log-debug-<tag> (a file of that name in the data folder's flags): a tag's debug and verbose lines are said too,
+       and those of the tags under it (log-debug-NetworkScheduler for NetworkScheduler.ATC) -- what GmsCore's task scheduler
+       decides it says only so. Looked at once a tag. */
+    private static final java.util.HashMap<String, Boolean> sDebug = new java.util.HashMap<>();
+    public static boolean isLoggable(String tag, int level) {
+        if (level >= INFO) return true;
+        if (tag == null) return false;
+        synchronized (sDebug) {
+            Boolean on = sDebug.get(tag);
+            if (on == null) {
+                boolean f = false;
+                for (String t = tag; !f; ) {
+                    f = megler.Native.flag("log-debug-" + t);
+                    int dot = t.lastIndexOf('.');
+                    if (dot < 0) break;
+                    t = t.substring(0, dot);
+                }
+                sDebug.put(tag, on = f);
+            }
+            return on;
+        }
+    }
     public static String getStackTraceString(Throwable t) {
         if (t == null) return "";
         java.io.StringWriter sw = new java.io.StringWriter();

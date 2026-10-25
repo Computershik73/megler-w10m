@@ -77,8 +77,10 @@ static MG_NOINLINE mg_dvm_frame *stack_full(mg_dvm_thread *t, mg_dvm_method *m, 
  * The flags trace-calls-<prefix> (mg_java.c reads them; the prefix a class name with dots, "com.example.Auth"): every call
  * of a method of a class whose name starts with one of the prefixes is said in the log, with its thread and depth, and so
  * is its return, with the value it returns, or the exception it ends with. What an app does between two things it logs,
- * when it logs nothing in between: VK mp3 mod's sign-in thread ended with no exception and nothing after it ran. Classes
- * are looked at once each (mg_dvm_class.call_traced). At most 8000 lines a run.
+ * when it logs nothing in between: VK mp3 mod's sign-in thread ended with no exception and nothing after it ran. A String
+ * among the arguments of a call from the interpreter, or returned, is said too, its first 80 characters (call_trace_text):
+ * GmsCore's sign-in ended in "Unknown" for an error its server answered with, which it says nowhere. Classes are looked
+ * at once each (mg_dvm_class.call_traced). At most 8000 lines a run.
  */
 static volatile bool g_call_trace;
 static char g_call_prefixes[8][160];
@@ -110,9 +112,47 @@ static bool call_traced(mg_dvm_method *m)
     return c->call_traced == 1 && mg_atomic_add(&g_call_lines, 1) <= 8000;
 }
 
-static void call_trace_enter(mg_dvm_thread *t, mg_dvm_method *m, const char *how)
+/* A String of a traced call, as said: in quotes, its first 80 characters, those not printable ASCII as '?'. */
+static void call_trace_text(mg_jobj *s, char *out, size_t size)
 {
-    if (call_traced(m)) mg_info("calls: thread %u depth %d: %s.%s%s%s", (unsigned)t->id, t->depth, m->cls->name, m->name, m->sig, how);
+    i32 n = 0, i;
+    const u16 *u = mg_dvm_string_utf16(s, &n);
+    size_t k = 0;
+    if (!u) { mg_strlcpy(out, "null", size); return; }
+    out[k++] = '"';
+    for (i = 0; i < n && i < 80 && k + 5 < size; i++) out[k++] = u[i] >= 0x20 && u[i] < 0x7F ? (char)u[i] : '?';
+    if (i < n) { out[k++] = '.'; out[k++] = '.'; out[k++] = '.'; }
+    out[k++] = '"';
+    out[k] = 0;
+}
+
+/* The String arguments of a call (argv: its registers, the object first for one not static), said after its name. */
+static void call_trace_strings(const mg_dvm_method *m, const mg_dvm_reg *argv, u32 argc, char *out, size_t size)
+{
+    const char *p = m->sig + 1;
+    u32 r = (m->flags & DVM_ACC_STATIC) ? 0 : 1;
+    size_t k = 0;
+    out[0] = 0;
+    while (*p && *p != ')' && r < argc && k + 100 < size) {
+        const char *start = p;
+        while (*p == '[') p++;
+        if (*p == 'L') { while (*p && *p != ';') p++; if (*p) p++; } else if (*p) p++;
+        if ((size_t)(p - start) == 18 && !strncmp(start, "Ljava/lang/String;", 18)) {
+            out[k++] = ' ';
+            call_trace_text((mg_jobj *)argv[r], out + k, size - k);
+            k += strlen(out + k);
+        }
+        r += (*start == 'J' || *start == 'D') ? 2 : 1;
+    }
+}
+
+static void call_trace_enter(mg_dvm_thread *t, mg_dvm_method *m, const char *how, const mg_dvm_reg *argv, u32 argc)
+{
+    char strings[400];
+    if (!call_traced(m)) return;
+    strings[0] = 0;
+    if (argv) call_trace_strings(m, argv, argc, strings, sizeof(strings));
+    mg_info("calls: thread %u depth %d: %s.%s%s%s%s", (unsigned)t->id, t->depth, m->cls->name, m->name, m->sig, how, strings);
 }
 
 static void call_trace_return(mg_dvm_thread *t, mg_dvm_method *m, const mg_jvalue *v)
@@ -124,6 +164,12 @@ static void call_trace_return(mg_dvm_thread *t, mg_dvm_method *m, const mg_jvalu
     case 'V': mg_info("calls: thread %u depth %d: %s.%s returns", (unsigned)t->id, t->depth, m->cls->name, m->name); break;
     case 'L':
     case '[':
+        if (v->l && v->l->kind == MG_J_STRING) {
+            char text[100];
+            call_trace_text(v->l, text, sizeof(text));
+            mg_info("calls: thread %u depth %d: %s.%s returns %s", (unsigned)t->id, t->depth, m->cls->name, m->name, text);
+            break;
+        }
         mg_info("calls: thread %u depth %d: %s.%s returns %s", (unsigned)t->id, t->depth, m->cls->name, m->name, v->l ? mg_dvm_class_of(v->l)->name : "null");
         break;
     case 'J': mg_info("calls: thread %u depth %d: %s.%s returns %lld", (unsigned)t->id, t->depth, m->cls->name, m->name, (long long)v->j); break;
@@ -272,7 +318,7 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
         mg_dvm_monitor_enter(sync);
     }
     if (g_dvm.trace >= 2) mg_info("dvm: %*s-> %s.%s%s (native)", t->depth, "", m->cls->name, m->name, m->sig);
-    if (g_call_trace) call_trace_enter(t, m, " (native)");
+    if (g_call_trace) call_trace_enter(t, m, " (native)", NULL, 0);
     if (g_dvm.profiling) native_started = mg_time_monotonic_ns();
     /* The always-on count (mg_dvm_thread_costs): the outermost native method's time; one called back from it is in it. */
     outermost = t->native_depth++ == 0;
@@ -945,7 +991,7 @@ bool mg_dvm_invoke(mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_
             if (f->sync) mg_dvm_monitor_enter(f->sync);
         }
         if (g_dvm.trace >= 2) mg_info("dvm: %*s-> %s.%s%s (from C)", t->depth, "", m->cls->name, m->name, m->sig);
-        if (g_call_trace) call_trace_enter(t, m, " (from C)");
+        if (g_call_trace) call_trace_enter(t, m, " (from C)", NULL, 0);
         ok = interpret(t, f, ret);
     }
     t->c_depth--;

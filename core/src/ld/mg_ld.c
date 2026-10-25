@@ -226,26 +226,64 @@ int mg_ld_apk_libs(void (*cb)(const char *name, u64 size, void *user), void *use
  * app's are in the APKs and then the folders named for them; the runtime's
  * only in the folders named for the runtime.
  */
-static const u8 *read_lib_file(const char *name, bool runtime, size_t *size, bool *owned)
+/*
+ * Where a library's bytes are: a buffer of the whole file, or an APK's stored (not deflated) entry, read where it lies a piece
+ * at a time. The WebView's library is 70 MB stored in its APK: read into a buffer first, it needed that much address space
+ * again beside its image, and Play Store, with Google Play services hosted, had not both (its sign-in page had no WebView).
+ */
+typedef struct lib_source {
+    const u8 *file;             /* the whole file, or NULL */
+    const mg_zip *zip;          /* else the APK, */
+    u64 at;                     /* and where the entry's bytes begin in it */
+    size_t size;
+} lib_source;
+
+static bool src_read(const lib_source *s, u64 off, void *dst, size_t n)
+{
+    if (off > s->size || n > s->size - off) return false;
+    if (!n) return true;
+    if (s->file) {
+        memcpy(dst, s->file + off, n);
+        return true;
+    }
+    return mg_zip_pread(s->zip, s->at + off, dst, n);
+}
+
+/* The library's source (lib_source): a stored entry of an APK as it lies, else the file's bytes read (*owned: to be freed). */
+static bool read_lib_file(const char *name, bool runtime, lib_source *src, bool *owned)
 {
     const mg_zip *z = NULL;
     const mg_zip_entry *e = runtime ? NULL : apk_lib(name, &z);
     char **dirs = runtime ? g_runtime_dirs : g_dirs;
     int ndirs = runtime ? g_nruntime_dirs : g_service_scope ? 0 : g_ndirs, i;
+    u64 at;
+    size_t size = 0;
+    memset(src, 0, sizeof(*src));
+    *owned = false;
     if (e) {
-        *owned = true;
-        return mg_zip_read(z, e, 0x40000000u, size);
+        if (e->method == 0 && e->usize < 0x40000000u && mg_zip_stored_at(z, e, &at)) {
+            src->zip = z;
+            src->at = at;
+            src->size = (size_t)e->usize;
+            return true;
+        }
+        src->file = mg_zip_read(z, e, 0x40000000u, &size);
+        src->size = size;
+        *owned = src->file != NULL;
+        return src->file != NULL;
     }
     for (i = 0; i < ndirs; i++) {
         char *p = mg_sprintf("%s/%s", dirs[i], name);
-        u8 *b = mg_file_read_all(p, size);
+        u8 *b = mg_file_read_all(p, &size);
         free(p);
         if (b) {
+            src->file = b;
+            src->size = size;
             *owned = true;
-            return b;
+            return true;
         }
     }
-    return NULL;
+    return false;
 }
 
 /* ---------------------------------------------------------------- islands */
@@ -715,37 +753,59 @@ static bool parse_dynamic(mg_lib *lib)
     return true;
 }
 
-/* How much island a library may need, from its file alone: PLT entries and thread-pointer reads, plus a stub per import. */
-static size_t island_estimate(const u8 *file, size_t size, const Elf32_Ehdr *eh)
+/* Thread-pointer reads in [off, off + size) of the source, as mg_patch_count_tp_reads counts them in one buffer. */
+static size_t count_tp_reads(const lib_source *src, u64 off, size_t size)
 {
-    const Elf32_Phdr *ph = (const Elf32_Phdr *)(file + eh->e_phoff);
-    size_t need = 8192;
+    enum { PIECE = 1 << 20 };
+    size_t done = 0, n = 0;
+    u8 *buf;
+    if (src->file) return mg_patch_count_tp_reads(src->file + off, size);
+    /* A piece at a time, each read 2 bytes longer, so that an instruction across a piece's end is counted once, in that piece
+       (a window is 4 bytes, taken every 2; PIECE is a multiple of 4, which keeps the 32-bit ARM ones' alignment). */
+    buf = (u8 *)mg_alloc(PIECE + 2);
+    while (done < size) {
+        size_t want = size - done > PIECE + 2 ? PIECE + 2 : size - done;
+        if (!src_read(src, off + done, buf, want)) break;
+        n += mg_patch_count_tp_reads(buf, want);
+        done += PIECE;
+    }
+    free(buf);
+    return n;
+}
+
+/* How much island a library may need, from its file alone: PLT entries and thread-pointer reads, plus a stub per import. */
+static size_t island_estimate(const lib_source *src, const Elf32_Phdr *ph, int phnum)
+{
+    size_t need = 8192, size = src->size;
     int i;
-    for (i = 0; i < eh->e_phnum; i++) {
+    for (i = 0; i < phnum; i++) {
         if (ph[i].p_type == PT_LOAD && (ph[i].p_flags & PF_X) && ph[i].p_offset <= size && ph[i].p_filesz <= size - ph[i].p_offset)
-            need += (size_t)mg_patch_count_tp_reads(file + ph[i].p_offset, ph[i].p_filesz) * 16;
+            need += count_tp_reads(src, ph[i].p_offset, ph[i].p_filesz) * 16;
         if (ph[i].p_type == PT_DYNAMIC && ph[i].p_offset <= size && ph[i].p_filesz <= size - ph[i].p_offset) {
-            const Elf32_Dyn *d = (const Elf32_Dyn *)(file + ph[i].p_offset);
+            Elf32_Dyn *d = (Elf32_Dyn *)mg_alloc(ph[i].p_filesz + sizeof(Elf32_Dyn));
             u32 n = ph[i].p_filesz / sizeof(Elf32_Dyn), k;
+            if (!src_read(src, ph[i].p_offset, d, ph[i].p_filesz)) n = 0;
             for (k = 0; k < n && d[k].d_tag != DT_NULL; k++) {
                 /* 12 bytes of thunk per PLT entry, 16 of stub should its import be missing; other relocations may need stubs too. */
                 if (d[k].d_tag == DT_PLTRELSZ) need += (size_t)(d[k].d_val / 8) * 28;
                 if (d[k].d_tag == DT_RELSZ) need += (size_t)(d[k].d_val / 8) / 4;
             }
+            free(d);
         }
     }
     return MG_ALIGN_UP(need, 65536);
 }
 
-static mg_lib *map_library(const char *name, const u8 *file, size_t size)
+static mg_lib *map_library(const char *name, const lib_source *src)
 {
-    const Elf32_Ehdr *eh = (const Elf32_Ehdr *)file;
-    const Elf32_Phdr *ph;
+    Elf32_Ehdr ehdr;
+    const Elf32_Ehdr *eh = &ehdr;
+    Elf32_Phdr *ph;
     mg_lib *lib;
     u32 vmin = 0xFFFFFFFFu, vmax = 0;
-    size_t isl, image, below;
+    size_t isl, image, below, size = src->size;
     int i;
-    if (size < sizeof(Elf32_Ehdr) || memcmp(eh->e_ident, "\177ELF", 4)) {
+    if (size < sizeof(Elf32_Ehdr) || !src_read(src, 0, &ehdr, sizeof(ehdr)) || memcmp(eh->e_ident, "\177ELF", 4)) {
         mg_err("ld: %s: not an ELF file", name);
         return NULL;
     }
@@ -757,13 +817,19 @@ static mg_lib *map_library(const char *name, const u8 *file, size_t size)
         mg_err("ld: %s: program headers outside the file", name);
         return NULL;
     }
-    ph = (const Elf32_Phdr *)(file + eh->e_phoff);
+    ph = (Elf32_Phdr *)mg_alloc(sizeof(Elf32_Phdr) * eh->e_phnum);
+    if (!src_read(src, eh->e_phoff, ph, sizeof(Elf32_Phdr) * eh->e_phnum)) {
+        mg_err("ld: %s: its program headers cannot be read", name);
+        free(ph);
+        return NULL;
+    }
     for (i = 0; i < eh->e_phnum; i++) {
         u32 lo, hi;
         if (ph[i].p_type != PT_LOAD) continue;
         if (ph[i].p_offset > size || ph[i].p_filesz > size - ph[i].p_offset || ph[i].p_filesz > ph[i].p_memsz ||
             ph[i].p_vaddr > 0x7FFFFFFFu || ph[i].p_memsz > 0x7FFFFFFFu - ph[i].p_vaddr) {
             mg_err("ld: %s: a segment lies outside the file", name);
+            free(ph);
             return NULL;
         }
         lo = MG_ALIGN_DOWN(ph[i].p_vaddr, MG_PAGE);
@@ -773,6 +839,7 @@ static mg_lib *map_library(const char *name, const u8 *file, size_t size)
     }
     if (vmax <= vmin) {
         mg_err("ld: %s: nothing to load", name);
+        free(ph);
         return NULL;
     }
 
@@ -781,15 +848,14 @@ static mg_lib *map_library(const char *name, const u8 *file, size_t size)
     lib->vmin = vmin;
     lib->vmax = vmax;
     lib->phnum = eh->e_phnum;
-    lib->phdr = (Elf32_Phdr *)mg_alloc(sizeof(Elf32_Phdr) * eh->e_phnum);
-    memcpy(lib->phdr, ph, sizeof(Elf32_Phdr) * eh->e_phnum);
+    lib->phdr = ph;
 
     /*
      * One reservation: [island] image [island]. A Thumb branch reaches 16 MB,
      * so a library whose image is larger than that gets an island on both
      * sides, and each patched instruction uses the nearer one.
      */
-    isl = island_estimate(file, size, eh);
+    isl = island_estimate(src, ph, eh->e_phnum);
     image = MG_ALIGN_UP((size_t)(vmax - vmin), 65536);
     below = image > 14u * 1024 * 1024 ? isl : 0;
     if (g_place.active && (g_place.first || g_place.recursive)) {
@@ -833,7 +899,14 @@ static mg_lib *map_library(const char *name, const u8 *file, size_t size)
         lib->map_size = below + image + isl;
         lib->map = (u8 *)mg_mem_reserve(lib->map_size);
         if (!lib->map) {
+            u32 free_mb = 0, largest = 0, reserved = 0, committed = 0, stretch[4] = { 0, 0, 0, 0 };
             mg_err("ld: %s: no address space for %u MB", name, (unsigned)(lib->map_size >> 20));
+            if (mg_host_address_space(&free_mb, &largest, &reserved, &committed))
+                mg_err("ld:   the process has %u MB free (the largest stretch %u MB), %u MB reserved, %u MB committed, %u MB of it views",
+                       (unsigned)free_mb, (unsigned)largest, (unsigned)reserved, (unsigned)committed, (unsigned)(mg_views_kb() >> 10));
+            if (mg_host_free_stretches(stretch, 4))
+                mg_err("ld:   the largest free stretches: %u, %u, %u and %u MB", (unsigned)stretch[0], (unsigned)stretch[1],
+                       (unsigned)stretch[2], (unsigned)stretch[3]);
             goto bad;
         }
         lib->base = lib->map + below - vmin;
@@ -860,7 +933,10 @@ static mg_lib *map_library(const char *name, const u8 *file, size_t size)
             mg_err("ld: %s: out of memory mapping a %u KB segment", name, (hi - lo) >> 10);
             goto bad;
         }
-        memcpy(lib->base + p->p_vaddr, file + p->p_offset, p->p_filesz);
+        if (!src_read(src, p->p_offset, lib->base + p->p_vaddr, p->p_filesz)) {
+            mg_err("ld: %s: a %u KB segment cannot be read", name, (unsigned)(p->p_filesz >> 10));
+            goto bad;
+        }
     }
     if (lib->dyn && !in_image(lib, (u32)((const u8 *)lib->dyn - lib->base), 8)) lib->dyn = NULL;
     if (!parse_dynamic(lib)) goto bad;
@@ -997,9 +1073,9 @@ bool mg_ld_lib_is_runtime(const mg_lib *lib) { return lib && lib->runtime; }
 static mg_lib *load_lib(const char *name, bool runtime, const char *host_path)
 {
     mg_lib *lib;
-    const u8 *file;
+    lib_source src;
     size_t size = 0;
-    bool owned = false;
+    bool owned = false, found;
     int i;
     name = base_name(name);
     if (mg_bionic_is_system_lib(name)) return NULL;
@@ -1010,19 +1086,21 @@ static mg_lib *load_lib(const char *name, bool runtime, const char *host_path)
         return lib;
     }
     if (host_path) {
-        file = mg_file_read_all(host_path, &size);
-        owned = true;
+        memset(&src, 0, sizeof(src));
+        src.file = mg_file_read_all(host_path, &size);
+        src.size = size;
+        owned = found = src.file != NULL;
     } else {
-        file = read_lib_file(name, runtime, &size, &owned);
+        found = read_lib_file(name, runtime, &src, &owned);
     }
-    if (!file) {
+    if (!found) {
         if (host_path) mg_err("ld: %s cannot be read", host_path);
-        else mg_err("ld: %s: not found in %s", name, runtime ? "the Android root's libraries" : "the APK");
+        else mg_err("ld: %s: not found in %s, or it cannot be read", name, runtime ? "the Android root's libraries" : "the APK");
         load_unlock();
         return NULL;
     }
-    lib = map_library(name, file, size);
-    if (owned) free((void *)file);
+    lib = map_library(name, &src);
+    if (owned) free((void *)src.file);
     if (!lib) {
         load_unlock();
         return NULL;

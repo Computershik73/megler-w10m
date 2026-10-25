@@ -336,6 +336,248 @@ public class Main extends Activity {
         queueNext();
         storageStats();
         broadcastExplicit();
+        serviceStopThread();
+        // A stop by a start's id stops the service only when that was its latest start, as on Android (Twice says so).
+        step("start-ids", () -> {
+            startService(new android.content.Intent(this, Twice.class));
+            startService(new android.content.Intent(this, Twice.class));
+            return true;
+        });
+        // A start has its id when it is asked for: a service that starts itself again and then stops by its first start's id
+        // goes on, in the same instance, as GmsCore's IntentOperationService does (Again says so).
+        // A service the manifest puts in another process runs in a class scope of its own (megler.Processes), with that process's
+        // name and its own statics: this scope's sMarker is 7, the other's 0. Asked through transact, as across processes.
+        step("process-scope", () -> {
+            sMarker = 7;
+            bindService(new android.content.Intent(this, Elsewhere.class), new android.content.ServiceConnection() {
+                @Override public void onServiceConnected(android.content.ComponentName n, android.os.IBinder b) {
+                    android.os.Parcel data = android.os.Parcel.obtain(), reply = android.os.Parcel.obtain();
+                    String said;
+                    try { b.transact(1, data, reply, 0); said = reply.readString(); } catch (android.os.RemoteException e) { said = String.valueOf(e); }
+                    data.recycle();
+                    reply.recycle();
+                    Log.i("DataTest", "process-scope " + said + " here=" + Main.class.getClassLoader().getClass().getSimpleName().equals("ServiceClassLoader"));
+                }
+                @Override public void onServiceDisconnected(android.content.ComponentName n) {}
+            }, BIND_AUTO_CREATE);
+            return true;
+        });
+        // Jobs are run (JobScheduler): one scheduled with extras and a minimum latency, which the scheduler tells back with its
+        // service; one given work twice, which it takes in order.
+        step("job-scheduler", () -> {
+            android.app.job.JobScheduler js = (android.app.job.JobScheduler) getSystemService(JOB_SCHEDULER_SERVICE);
+            android.os.PersistableBundle extras = new android.os.PersistableBundle();
+            extras.putString("said", "hello");
+            android.content.ComponentName work = new android.content.ComponentName(this, Work.class);
+            int r = js.schedule(new android.app.job.JobInfo.Builder(41, work).setExtras(extras).setMinimumLatency(100)
+                    .setRequiredNetworkType(android.app.job.JobInfo.NETWORK_TYPE_ANY).build());
+            android.app.job.JobInfo pending = js.getPendingJob(41);
+            android.app.job.JobInfo queue = new android.app.job.JobInfo.Builder(42, work).build();
+            js.enqueue(queue, new android.app.job.JobWorkItem(new android.content.Intent("one")));
+            js.enqueue(queue, new android.app.job.JobWorkItem(new android.content.Intent("two")));
+            detail = "result=" + r + " pending=" + pending + " latency=" + (pending != null ? pending.getMinLatencyMillis() : -1);
+            return r == android.app.job.JobScheduler.RESULT_SUCCESS && pending != null && Work.class.getName().equals(pending.getService().getClassName())
+                && pending.getMinLatencyMillis() == 100;
+        });
+        step("start-asked", () -> {
+            startService(new android.content.Intent(this, Again.class));
+            return true;
+        });
+        // A PendingIntent's creator is the package of the context that made it: GmsCore's code in this process makes its own
+        // with its own context, and its task scheduler finds the task's service in that package.
+        step("pending-intent-creator", () -> {
+            Context other = new android.content.ContextWrapper(this) {
+                @Override public String getPackageName() { return "megler.test.other"; }
+            };
+            android.app.PendingIntent mine = android.app.PendingIntent.getBroadcast(this, 0, new android.content.Intent("megler.test.MINE"), 0);
+            android.app.PendingIntent theirs = android.app.PendingIntent.getBroadcast(other, 0, new android.content.Intent("megler.test.THEIRS"), 0);
+            detail = "mine " + mine.getCreatorPackage() + ", theirs " + theirs.getCreatorPackage();
+            return getPackageName().equals(mine.getCreatorPackage()) && getPackageName().equals(mine.getTargetPackage())
+                    && mine.getCreatorUid() == android.os.Process.myUid() && "megler.test.other".equals(theirs.getCreatorPackage());
+        });
+        // A PendingIntent asked for again by what it starts is the same one, as on Android: with its first extras, or the new
+        // ones for FLAG_UPDATE_CURRENT; FLAG_NO_CREATE finds it or gives none, and cancel ends it (GmsCore checks its watchdogs
+        // so). The one sent says which extras it had.
+        step("pending-intent-flags", () -> {
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    int v = i.getIntExtra("v", 0);
+                    Log.i("DataTest", "pending-intent-sent " + (v == 3 ? "ok" : "FAILED") + " v=" + v);
+                    c.unregisterReceiver(this);
+                }
+            }, new android.content.IntentFilter("megler.test.PENDING"));
+            android.content.Intent a = new android.content.Intent("megler.test.PENDING").putExtra("v", 1);
+            android.app.PendingIntent none = android.app.PendingIntent.getBroadcast(this, 7, a, android.app.PendingIntent.FLAG_NO_CREATE);
+            android.app.PendingIntent first = android.app.PendingIntent.getBroadcast(this, 7, a, 0);
+            android.app.PendingIntent again = android.app.PendingIntent.getBroadcast(this, 7, new android.content.Intent("megler.test.PENDING").putExtra("v", 2), 0);
+            android.app.PendingIntent updated = android.app.PendingIntent.getBroadcast(this, 7, new android.content.Intent("megler.test.PENDING").putExtra("v", 3), android.app.PendingIntent.FLAG_UPDATE_CURRENT);
+            android.app.PendingIntent found = android.app.PendingIntent.getBroadcast(this, 7, a, android.app.PendingIntent.FLAG_NO_CREATE);
+            android.app.PendingIntent other = android.app.PendingIntent.getBroadcast(this, 8, a, 0);
+            boolean sent = true;
+            try { first.send(); } catch (android.app.PendingIntent.CanceledException e) { sent = false; }
+            first.cancel();
+            android.app.PendingIntent gone = android.app.PendingIntent.getBroadcast(this, 7, a, android.app.PendingIntent.FLAG_NO_CREATE);
+            boolean refused = false;
+            try { first.send(); } catch (android.app.PendingIntent.CanceledException e) { refused = true; }
+            android.app.PendingIntent fresh = android.app.PendingIntent.getBroadcast(this, 9, a, 0);
+            android.app.PendingIntent instead = android.app.PendingIntent.getBroadcast(this, 9, a, android.app.PendingIntent.FLAG_CANCEL_CURRENT);
+            boolean replaced = false;
+            try { fresh.send(); } catch (android.app.PendingIntent.CanceledException e) { replaced = true; }
+            detail = "none " + (none == null) + ", same " + (again == first) + "/" + (updated == first) + ", found " + (found == first)
+                    + ", other " + (other != first) + ", sent " + sent + ", gone " + (gone == null) + ", refused " + refused
+                    + ", replaced " + (instead != fresh) + "/" + replaced;
+            return none == null && again == first && updated == first && found == first && other != first && sent && gone == null && refused
+                    && instead != fresh && replaced;
+        });
+        // Alarms as Android keeps them: one for a PendingIntent, which setting it again moves and cancel takes away, and a
+        // repeating one goes off each interval until it is cancelled (GmsCore's watchdog of its module setup is one).
+        step("alarm-replace-cancel", () -> {
+            // The receiver hears on a thread of its own, as the steps keep the main thread, where alarms go off, busy; it
+            // decides once the repeating one has gone off three times, and a while after it cancelled that one.
+            final int[] heard = new int[3];
+            final android.app.AlarmManager alarms = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+            final android.os.HandlerThread thread = new android.os.HandlerThread("alarms");
+            thread.start();
+            final android.os.Handler on = new android.os.Handler(thread.getLooper());
+            final android.app.PendingIntent repeated = android.app.PendingIntent.getBroadcast(this, 22, new android.content.Intent("megler.test.ALARM").putExtra("which", 2), 0);
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    int which = i.getIntExtra("which", 0);
+                    if (++heard[which] != 3 || which != 2) return;
+                    alarms.cancel(repeated);
+                    on.postDelayed(() -> {
+                        boolean ok = heard[0] == 1 && heard[1] == 0 && heard[2] == 3;
+                        Log.i("DataTest", "alarms " + (ok ? "ok" : "FAILED") + " moved=" + heard[0] + " cancelled=" + heard[1] + " repeated=" + heard[2]);
+                        c.unregisterReceiver(this);
+                        thread.quitSafely();
+                    }, 1500);
+                }
+            }, new android.content.IntentFilter("megler.test.ALARM"), null, on);
+            long now = android.os.SystemClock.elapsedRealtime();
+            android.app.PendingIntent moved = android.app.PendingIntent.getBroadcast(this, 20, new android.content.Intent("megler.test.ALARM").putExtra("which", 0), 0);
+            alarms.set(android.app.AlarmManager.ELAPSED_REALTIME, now + 100, moved);
+            alarms.set(android.app.AlarmManager.ELAPSED_REALTIME, now + 200, moved);
+            android.app.PendingIntent off = android.app.PendingIntent.getBroadcast(this, 21, new android.content.Intent("megler.test.ALARM").putExtra("which", 1), 0);
+            alarms.set(android.app.AlarmManager.ELAPSED_REALTIME, now + 100, off);
+            alarms.cancel(off);
+            alarms.setRepeating(android.app.AlarmManager.ELAPSED_REALTIME, now + 300, 400, repeated);
+            return true;
+        });
+        // A Messenger reaches a binder of another's that passes transactions on to a Messenger's, as Google Play services' task
+        // services hand theirs to its scheduler, and the message received says the sender's uid (Forward says so).
+        step("messenger-forwarded", () -> {
+            android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper()) {
+                @Override public void handleMessage(android.os.Message m) {
+                    boolean ok = m.what == 7 && m.arg1 == 42 && "yes".equals(m.getData().getString("said")) && m.sendingUid == android.os.Process.myUid();
+                    Log.i("DataTest", "messenger-forwarded " + (ok ? "ok" : "FAILED") + " what=" + m.what + " arg1=" + m.arg1 + " uid=" + (m.sendingUid == android.os.Process.myUid()));
+                }
+            };
+            android.os.Messenger inner = new android.os.Messenger(main);
+            android.os.Message m = android.os.Message.obtain(null, 7, 42, 0);
+            m.getData().putString("said", "yes");
+            try { new android.os.Messenger(new Forward(inner.getBinder())).send(m); } catch (android.os.RemoteException e) { detail = String.valueOf(e); return false; }
+            return true;
+        });
+        // Insets built one kind of bar at a time, as AndroidX's WindowInsetsCompat builds them on Android 11 and later: what is
+        // built has each (Builder.setInsets, Android 11's: through reflection, as this app is built for Android 10).
+        step("insets-builder", () -> {
+            try {
+                Class<?> type = Class.forName("android.view.WindowInsets$Type");
+                int status = (Integer) type.getMethod("statusBars").invoke(null), navigation = (Integer) type.getMethod("navigationBars").invoke(null);
+                java.lang.reflect.Method set = android.view.WindowInsets.Builder.class.getMethod("setInsets", int.class, android.graphics.Insets.class);
+                android.view.WindowInsets.Builder b = new android.view.WindowInsets.Builder();
+                set.invoke(b, navigation, android.graphics.Insets.of(0, 0, 0, 168));
+                set.invoke(b, status, android.graphics.Insets.of(0, 84, 0, 0));
+                android.view.WindowInsets w = b.build();
+                detail = "built " + w.getSystemWindowInsetLeft() + "," + w.getSystemWindowInsetTop() + "," + w.getSystemWindowInsetRight() + "," + w.getSystemWindowInsetBottom();
+                return w.getSystemWindowInsetTop() == 84 && w.getSystemWindowInsetBottom() == 168 && w.getSystemWindowInsetLeft() == 0;
+            } catch (ReflectiveOperationException e) { detail = String.valueOf(e); return false; }
+        });
+        // A view that hands its insets to its child itself and returns them consumed, as Play Store's content view does: the
+        // child has them once, as they were, and not again with nothing left in them (consumed insets end the dispatch).
+        step("insets-consumed", () -> {
+            android.widget.FrameLayout parent = new android.widget.FrameLayout(this);
+            final android.view.View child = new android.view.View(this);
+            parent.addView(child);
+            final java.util.ArrayList<Integer> got = new java.util.ArrayList<>();
+            child.setOnApplyWindowInsetsListener((v, i) -> { got.add(i.getSystemWindowInsetBottom()); return i; });
+            parent.setOnApplyWindowInsetsListener((v, i) -> { child.dispatchApplyWindowInsets(i); return i.consumeSystemWindowInsets(); });
+            android.view.WindowInsets out = parent.dispatchApplyWindowInsets(new android.view.WindowInsets.Builder().setSystemWindowInsets(android.graphics.Insets.of(0, 0, 0, 168)).build());
+            detail = "child had " + got + ", consumed " + out.isConsumed();
+            return got.size() == 1 && got.get(0) == 168 && out.isConsumed();
+        });
+        // Siblings after one that consumes the insets: an app made for Android 11 or later gives each the group's insets, one
+        // made for an earlier Android stops at the one that consumed them (this app is made for Android 9; the other is asked
+        // for through the framework's record of the app's target, megler.Manifest.targetSdk, and put back).
+        step("insets-siblings", () -> {
+            java.lang.reflect.Field target;
+            try { target = Class.forName("megler.Manifest").getField("targetSdk"); } catch (ReflectiveOperationException e) { detail = String.valueOf(e); return false; }
+            int was;
+            try { was = target.getInt(null); } catch (IllegalAccessException e) { detail = String.valueOf(e); return false; }
+            String[] had = new String[2];
+            int[] sdks = { 30, was };
+            for (int k = 0; k < 2; k++) {
+                android.widget.FrameLayout parent = new android.widget.FrameLayout(this);
+                android.view.View first = new android.view.View(this), second = new android.view.View(this);
+                parent.addView(first);
+                parent.addView(second);
+                final java.util.ArrayList<Integer> got = new java.util.ArrayList<>();
+                first.setOnApplyWindowInsetsListener((v, i) -> i.consumeSystemWindowInsets());
+                second.setOnApplyWindowInsetsListener((v, i) -> { got.add(i.getSystemWindowInsetBottom()); return i; });
+                try {
+                    target.setInt(null, sdks[k]);
+                    parent.dispatchApplyWindowInsets(new android.view.WindowInsets.Builder().setSystemWindowInsets(android.graphics.Insets.of(0, 0, 0, 168)).build());
+                } catch (IllegalAccessException e) { detail = String.valueOf(e); return false; }
+                finally { try { target.setInt(null, was); } catch (IllegalAccessException e) {} }
+                had[k] = String.valueOf(got);
+            }
+            detail = "target 30: " + had[0] + ", target " + was + ": " + had[1];
+            return "[168]".equals(had[0]) && "[]".equals(had[1]);
+        });
+        // A receiver registered with a Handler hears on that Handler's thread (GmsCore makes blocking calls in such a one).
+        step("broadcast-handler", () -> {
+            final android.os.HandlerThread thread = new android.os.HandlerThread("broadcast-handler");
+            thread.start();
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    boolean held = android.os.Looper.myLooper() == thread.getLooper();
+                    Log.i("DataTest", "broadcast-on-handler " + (held ? "ok" : "FAILED") + " thread=" + Thread.currentThread().getName());
+                    c.unregisterReceiver(this);
+                    thread.quitSafely();
+                }
+            }, new android.content.IntentFilter("megler.test.ON_HANDLER"), null, new android.os.Handler(thread.getLooper()));
+            sendBroadcast(new android.content.Intent("megler.test.ON_HANDLER"));
+            return true;
+        });
+        // Preferences whose keys have spaces (GmsCore keys some by an account, "Account {name=..., type=com.google}"): what
+        // one run commits, the next reads from the file whole.
+        step("prefs-spaced-key", () -> {
+            android.content.SharedPreferences p = getSharedPreferences("spaced", MODE_PRIVATE);
+            String key = "Account {name=a b, type=com.example}";
+            detail = "found " + p.getAll();
+            boolean before = run == 1 || (p.getInt(key, 0) == 7 && "x y".equals(p.getString("with space", null)) && p.getAll().size() == 2);
+            return before && p.edit().putInt(key, 7).putString("with space", "x y").commit();
+        });
+        // An account removed is told as Android 8 and later tell it: ACCOUNT_REMOVED with its name and type, and
+        // LOGIN_ACCOUNTS_CHANGED (Play Store learns so, through Google Play services, that its account is gone).
+        step("account-removed", () -> {
+            final android.accounts.AccountManager am = android.accounts.AccountManager.get(this);
+            final android.accounts.Account a = new android.accounts.Account("removed by run " + run, "megler.test.account");
+            final String[] removed = new String[1];
+            final int[] changes = new int[1];
+            android.content.IntentFilter f = new android.content.IntentFilter(android.accounts.AccountManager.ACTION_ACCOUNT_REMOVED);
+            f.addAction(android.accounts.AccountManager.LOGIN_ACCOUNTS_CHANGED_ACTION);
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    if (android.accounts.AccountManager.LOGIN_ACCOUNTS_CHANGED_ACTION.equals(i.getAction())) { changes[0]++; return; }
+                    removed[0] = i.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME) + "/" + i.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_TYPE);
+                    boolean held = (a.name + "/" + a.type).equals(removed[0]) && changes[0] >= 1;
+                    Log.i("DataTest", "account-removed-broadcast " + (held ? "ok" : "FAILED") + " removed=" + removed[0] + " changes=" + changes[0]);
+                    c.unregisterReceiver(this);
+                }
+            }, f);
+            return am.addAccountExplicitly(a, null, null) && am.removeAccountExplicitly(a) && am.getAccountsByType(a.type).length == 0;
+        });
         step("package-installer", () -> {
             android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
             return installer != null && installer == getPackageManager().getPackageInstaller()
@@ -357,6 +599,16 @@ public class Main extends Activity {
             String source = getApplicationInfo().sourceDir, code = getPackageCodePath();
             detail = "sourceDir=" + source + " codePath=" + code + " there=" + new java.io.File(source).isFile();
             return source.equals("/data/app/" + getPackageName() + "-1/base.apk") && source.equals(code) && new java.io.File(source).isFile();
+        });
+        step("apk-optimization", () -> {
+            Object info = Class.forName("dalvik.system.ApplicationRuntime")
+                    .getMethod("getBaseApkOptimizationInfo").invoke(null);
+            return info != null
+                    && "run-from-apk".equals(info.getClass().getMethod("getStatus").invoke(info))
+                    && "unknown".equals(info.getClass().getMethod("getReason").invoke(info))
+                    && Boolean.FALSE.equals(info.getClass().getMethod("isOptimized").invoke(info))
+                    && Boolean.FALSE.equals(info.getClass().getMethod("isVerified").invoke(info))
+                    && Boolean.FALSE.equals(info.getClass().getMethod("isFullyCompiled").invoke(info));
         });
         sound();
         mediaCodec();
@@ -1554,7 +1806,7 @@ public class Main extends Activity {
         });
     }
 
-    static int relayHeard, targetHeard, offHeard;
+    static int relayHeard, targetHeard, offHeard, remoteHeard, hereHeard;
 
     /** A receiver of the manifest for megler.test.RELAY, which passes what it hears to Target by an intent that names Target. */
     public static final class Relay extends android.content.BroadcastReceiver {
@@ -1572,6 +1824,142 @@ public class Main extends Activity {
     /** A receiver the manifest disables, with Relay's filter: it hears nothing. */
     public static final class Off extends android.content.BroadcastReceiver {
         @Override public void onReceive(Context c, android.content.Intent i) { offHeard++; }
+    }
+
+    /** A receiver whose manifest names the process "": the app's own, where it hears what Relay hears. */
+    public static final class Here extends android.content.BroadcastReceiver {
+        @Override public void onReceive(Context c, android.content.Intent i) { hereHeard++; }
+    }
+
+    /** A receiver assigned to another process must not run with this process's Application. */
+    public static final class Remote extends android.content.BroadcastReceiver {
+        @Override public void onReceive(Context c, android.content.Intent i) { remoteHeard++; }
+    }
+
+    static volatile int stoppedOnMain, stoppedElsewhere;
+
+    /** A service started twice, which stops itself by the first start's id (too old) and then by the second's. */
+    public static final class Twice extends android.app.Service {
+        private String said;
+        @Override public android.os.IBinder onBind(android.content.Intent i) { return null; }
+        @Override public int onStartCommand(android.content.Intent i, int flags, int id) {
+            if (id == 2) {
+                boolean early = stopSelfResult(1);
+                said = "early=" + early;
+                boolean latest = stopSelfResult(2);
+                said += " latest=" + latest;
+            }
+            return START_NOT_STICKY;
+        }
+        @Override public void onDestroy() { Log.i("DataTest", "start-ids " + ("early=false latest=true".equals(said) ? "ok" : "FAILED") + " " + said); }
+    }
+
+    /* A static of this app's, which its process of another name (Elsewhere's) has a copy of its own of. */
+    static int sMarker;
+
+    /**
+     * A service in another process (android:process=":elsewhere"), as Play Store's download service is: asked through its
+     * binder, it says the name of the process it runs in (its ActivityManager's, for this pid), the app's static sMarker as
+     * its process has it, and the kind of loader its class came from.
+     */
+    public static final class Elsewhere extends android.app.Service {
+        @Override public android.os.IBinder onBind(android.content.Intent intent) {
+            return new android.os.Binder() {
+                @Override protected boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags) {
+                    String process = "?";
+                    for (android.app.ActivityManager.RunningAppProcessInfo p : ((android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE)).getRunningAppProcesses())
+                        if (p.pid == android.os.Process.myPid()) process = p.processName;
+                    reply.writeString("process=" + process + " marker=" + sMarker + " loader=" + Elsewhere.class.getClassLoader().getClass().getSimpleName()
+                            + " application=" + (getApplication() != null));
+                    return true;
+                }
+            };
+        }
+    }
+
+    /** The jobs of the step "job-scheduler": 41 says its extra and finishes later, from a thread; 42 takes its work. */
+    public static final class Work extends android.app.job.JobService {
+        @Override public boolean onStartJob(final android.app.job.JobParameters p) {
+            if (p.getJobId() == 41) {
+                Log.i("DataTest", "job 41 said=" + p.getExtras().getString("said") + " network=" + (p.getNetwork() != null));
+                new Thread(() -> jobFinished(p, false)).start();
+                return true;
+            }
+            StringBuilder got = new StringBuilder();
+            for (android.app.job.JobWorkItem w; (w = p.dequeueWork()) != null; ) {
+                got.append(w.getIntent().getAction()).append(',');
+                p.completeWork(w);
+            }
+            Log.i("DataTest", "job " + p.getJobId() + " work=" + got);
+            return false;
+        }
+        @Override public boolean onStopJob(android.app.job.JobParameters p) { return false; }
+    }
+
+    public static final class Again extends android.app.Service {
+        private static int made;
+        private String said = "";
+        @Override public void onCreate() { made++; }
+        @Override public android.os.IBinder onBind(android.content.Intent i) { return null; }
+        @Override public int onStartCommand(android.content.Intent i, int flags, int id) {
+            if (id == 1) {
+                startService(new android.content.Intent(this, Again.class));
+                said = "first=" + stopSelfResult(1);
+            } else if (id == 2) {
+                said += " second=" + stopSelfResult(2);
+            }
+            return START_NOT_STICKY;
+        }
+        @Override public void onDestroy() {
+            said += " made=" + made;
+            Log.i("DataTest", "start-asked " + ("first=false second=true made=1".equals(said) ? "ok" : "FAILED") + " " + said);
+        }
+    }
+
+    /** A binder that says it is an IMessenger and passes every transaction on to another, as GmsCore's task services wrap theirs. */
+    static final class Forward extends android.os.Binder {
+        private final android.os.IBinder inner;
+        Forward(android.os.IBinder inner) { this.inner = inner; attachInterface(null, "android.os.IMessenger"); }
+        @Override protected boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags) throws android.os.RemoteException {
+            return inner.transact(code, data, reply, flags);
+        }
+    }
+
+    /** A service of the app's that says on which thread it is destroyed. */
+    public static final class Stopped extends android.app.Service {
+        @Override public android.os.IBinder onBind(android.content.Intent i) { return null; }
+        @Override public void onDestroy() {
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) stoppedOnMain++;
+            else stoppedElsewhere++;
+        }
+    }
+
+    /**
+     * A service stopped from a thread of the app's own is destroyed on the main thread, as on Android (GmsCore's
+     * IndexWorkerChimeraService checks that in its onDestroy; Play Store stops it from a background thread). Stopped once its
+     * start has gone through, and looked at for up to two seconds after.
+     */
+    private void serviceStopThread() {
+        step("service-stop-thread", () -> {
+            final android.content.Intent i = new android.content.Intent(this, Stopped.class);
+            startService(i);
+            final android.os.Handler h = new android.os.Handler();
+            h.post(() -> {
+                new Thread(() -> stopService(i), "service-stopper").start();
+                h.postDelayed(new Runnable() {
+                    int looks;
+
+                    @Override public void run() {
+                        if (++looks < 10 && stoppedOnMain + stoppedElsewhere == 0) {
+                            h.postDelayed(this, 200);
+                            return;
+                        }
+                        Log.i("DataTest", "service-stop " + (stoppedOnMain == 1 && stoppedElsewhere == 0 ? "ok" : "FAILED") + " main=" + stoppedOnMain + " elsewhere=" + stoppedElsewhere);
+                    }
+                }, 200);
+            });
+            return true;
+        });
     }
 
     /**
@@ -1714,8 +2102,8 @@ public class Main extends Activity {
                         return;
                     }
                     unregisterReceiver(r);
-                    boolean held = relayHeard == 1 && targetHeard == 1 && offHeard == 0 && registered[0] == 1;
-                    Log.i("DataTest", "broadcast-relay " + (held ? "ok" : "FAILED") + " relay=" + relayHeard + " target=" + targetHeard + " off=" + offHeard + " registered=" + registered[0]);
+                    boolean held = relayHeard == 1 && targetHeard == 1 && offHeard == 0 && remoteHeard == 0 && hereHeard == 1 && registered[0] == 1;
+                    Log.i("DataTest", "broadcast-relay " + (held ? "ok" : "FAILED") + " relay=" + relayHeard + " target=" + targetHeard + " off=" + offHeard + " remote=" + remoteHeard + " here=" + hereHeard + " registered=" + registered[0]);
                 }
             }, 1500);
             return true;
@@ -2229,8 +2617,8 @@ public class Main extends Activity {
             android.content.Intent launcher = new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER);
             boolean listed = false;
             for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(launcher, 0))
-                if ("com.example.other".equals(r.activityInfo.packageName))
-                    listed = "Other".equals(String.valueOf(r.loadLabel(pm))) && r.loadIcon(pm) != null && "com.example.other.Main".equals(r.activityInfo.name);
+                if ("com.example.other".equals(r.activityInfo.packageName) && "com.example.other.Main".equals(r.activityInfo.name))
+                    listed = "Other".equals(String.valueOf(r.loadLabel(pm))) && r.loadIcon(pm) != null;
             android.content.Intent open = pm.getLaunchIntentForPackage("com.example.other");
             boolean info;
             try { info = pm.getApplicationInfo("com.example.other", 0).enabled; } catch (android.content.pm.PackageManager.NameNotFoundException e) { info = false; }
@@ -2247,6 +2635,39 @@ public class Main extends Activity {
             detail = "listed=" + listed + " open=" + open + " info=" + info + " launcherApps=" + launcherApps + " defaultIcon=" + fallback
                     + (fallback != null ? " " + fallback.getIntrinsicWidth() : "");
             return listed && open != null && "com.example.other.Main".equals(open.getComponent().getClassName()) && info && launcherApps && defaultIcon;
+        });
+        // Its activities, every one, as the shell described them (the apps folder's com.example.other/activities.json), as a
+        // shortcut maker lists them: each with whether it is exported; both launcher entries, the alias's too; the one that
+        // makes shortcuts, with its own label and icon (3 x 3, the app's is 2 x 2); not for a link. Then two are started by
+        // their classes: Settings, and Second, an alias, which starts what it stands for (the test hears both, launch_app).
+        step("phone-apps-activities", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.pm.PackageInfo p;
+            try {
+                p = pm.getPackageInfo("com.example.other", android.content.pm.PackageManager.GET_ACTIVITIES);
+            } catch (android.content.pm.PackageManager.NameNotFoundException e) { detail = String.valueOf(e); return false; }
+            StringBuilder names = new StringBuilder();
+            android.content.pm.ActivityInfo settings = null;
+            for (android.content.pm.ActivityInfo a : p.activities) {
+                names.append(a.name.substring(a.name.lastIndexOf('.') + 1)).append(a.exported ? "+" : "-").append(',');
+                if (a.name.endsWith(".Settings")) settings = a;
+            }
+            int entries = 0;
+            android.content.Intent launcher = new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER);
+            for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(launcher, 0)) if ("com.example.other".equals(r.activityInfo.packageName)) entries++;
+            boolean shortcuts = false, link = false;
+            for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(new android.content.Intent(android.content.Intent.ACTION_CREATE_SHORTCUT), 0))
+                if ("com.example.other.Settings".equals(r.activityInfo.name)) shortcuts = true;
+            for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://example.org/")), 0))
+                if ("com.example.other".equals(r.activityInfo.packageName)) link = true;
+            android.graphics.drawable.Drawable icon = settings != null ? settings.loadIcon(pm) : null;
+            String label = settings != null ? String.valueOf(settings.loadLabel(pm)) : null;
+            startActivity(new android.content.Intent().setClassName("com.example.other", "com.example.other.Settings"));
+            startActivity(new android.content.Intent().setClassName("com.example.other", "com.example.other.Second"));
+            detail = "activities " + names + " entries=" + entries + " shortcuts=" + shortcuts + " link=" + link + " label=" + label
+                    + " icon=" + (icon != null ? icon.getIntrinsicWidth() + "x" + icon.getIntrinsicHeight() : "null");
+            return "Main+,Settings+,Hidden-,Second+,".equals(names.toString()) && entries == 2 && shortcuts && !link && "Other Settings".equals(label)
+                && icon != null && icon.getIntrinsicWidth() == 3;
         });
     }
 
@@ -2388,6 +2809,22 @@ public class Main extends Activity {
             s.commit(status.getIntentSender());
             detail = "id=" + id + " names=" + java.util.Arrays.toString(names);
             return id > 0 && names.length == 1 && "base.apk".equals(names[0]);
+        });
+        // A session of an app's base and a split, as Google Play installs an app built as a bundle: handed over as one .apks
+        // file of both (the test opens it and counts them).
+        step("install-splits", () -> {
+            android.content.pm.PackageInstaller pi = getPackageManager().getPackageInstaller();
+            android.content.pm.PackageInstaller.SessionParams params =
+                    new android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            params.setAppPackageName("com.example.split");
+            int id = pi.createSession(params);
+            android.content.pm.PackageInstaller.Session s = pi.openSession(id);
+            try (java.io.OutputStream o = s.openWrite("base.apk", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
+            try (java.io.OutputStream o = s.openWrite("split_config.xxhdpi.apk", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
+            String[] names = s.getNames();
+            s.commit(android.app.PendingIntent.getBroadcast(this, 1, new android.content.Intent("megler.test.INSTALL_STATUS"), 0).getIntentSender());
+            detail = "id=" + id + " names=" + java.util.Arrays.toString(names);
+            return id > 0 && names.length == 2;
         });
     }
 

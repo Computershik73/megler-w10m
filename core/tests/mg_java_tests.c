@@ -72,6 +72,7 @@
 #include "../src/host/mg_host.h"
 #include "../src/ndk/mg_egl.h"
 #include "../src/run/mg_run.h"
+#include "../src/zip/mg_zip.h"
 #include "mg_camera_standin.h"
 #include "mg_location_standin.h"
 #include "mg_codec_standin.h"
@@ -606,10 +607,22 @@ static void system_heard(const char *what)
 
 static bool system_install(void *user, const char *host_path, const char *name)
 {
-    char t[160];
+    char t[160], inside[32] = "";
     mg_stat st;
+    size_t len = strlen(name);
     (void)user;
-    snprintf(t, sizeof(t), "install=%s%s;", name, mg_path_stat(host_path, &st, NULL) ? "" : "(no file)");
+    /* A bundle of an app's APKs (a session of several): how many it has. */
+    if (len > 5 && !strcmp(name + len - 5, ".apks")) {
+        mg_zip z;
+        char err[120];
+        if (mg_zip_open(&z, host_path, err, sizeof(err))) {
+            snprintf(inside, sizeof(inside), "(%u)", (unsigned)z.count);
+            mg_zip_close(&z);
+        } else {
+            snprintf(inside, sizeof(inside), "(not a ZIP)");
+        }
+    }
+    snprintf(t, sizeof(t), "install=%s%s%s;", name, inside, mg_path_stat(host_path, &st, NULL) ? "" : "(no file)");
     system_heard(t);
     return true;
 }
@@ -623,7 +636,11 @@ static bool system_launch(void *user, const char *package, const char *activity)
     return true;
 }
 
-/* The apps folder the data app is given (megler_run_config.apps_dir): one other app, with an icon of 2 x 2. */
+/*
+ * The apps folder the data app is given (megler_run_config.apps_dir): one other app, with an icon of 2 x 2, and its activities
+ * as the shell describes them (megler_apk_describe_activities): Main, its launcher entry; Settings, which makes shortcuts,
+ * with a label and an icon of 3 x 3 of its own; Hidden, not exported; and Second, an alias of Main, another launcher entry.
+ */
 static const char *phone_apps_fixture(void)
 {
     static const unsigned char png[] = {
@@ -652,6 +669,33 @@ static const char *phone_apps_fixture(void)
         fclose(f);
     }
     free(path);
+    {
+        static const unsigned char png3[] = {
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00,
+            0x00, 0x03, 0x08, 0x06, 0x00, 0x00, 0x00, 0x56, 0x28, 0xb5, 0xbf, 0x00, 0x00, 0x00, 0x11, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63,
+            0x50, 0x48, 0x58, 0xf0, 0x1f, 0x86, 0x19, 0x70, 0x72, 0x00, 0x67, 0x94, 0x13, 0x18, 0xea, 0x6e, 0x41, 0xd0, 0x00, 0x00, 0x00, 0x00,
+            0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82
+        };
+        static const char activities[] =
+            "{\"package\":\"com.example.other\",\"label\":\"Other\",\"icon\":0,\"activities\":["
+            "{\"name\":\"com.example.other.Main\",\"label\":\"Other\",\"exported\":true,\"filters\":[{\"id\":1,"
+            "\"actions\":[\"android.intent.action.MAIN\"],\"categories\":[\"android.intent.category.LAUNCHER\"],\"schemes\":[],\"hosts\":[],\"types\":[]}]},"
+            "{\"name\":\"com.example.other.Settings\",\"label\":\"Other Settings\",\"icon\":2131230721,\"exported\":true,\"filters\":[{\"id\":1,"
+            "\"actions\":[\"android.intent.action.CREATE_SHORTCUT\"],\"categories\":[\"android.intent.category.DEFAULT\"],\"schemes\":[],\"hosts\":[],\"types\":[]}]},"
+            "{\"name\":\"com.example.other.Hidden\",\"exported\":false,\"filters\":[]},"
+            "{\"name\":\"com.example.other.Second\",\"enabled\":true,\"target\":\"com.example.other.Main\",\"label\":\"Other Second\",\"exported\":true,"
+            "\"filters\":[{\"id\":1,\"actions\":[\"android.intent.action.MAIN\"],\"categories\":[\"android.intent.category.LAUNCHER\"],\"schemes\":[],"
+            "\"hosts\":[],\"types\":[]}]}]}";
+        char *own = mg_sprintf("%s/com.example.other", dir);
+        mg_path_mkdirs(own);
+        path = mg_sprintf("%s/activities.json", own);
+        mg_file_write_all(path, activities, sizeof(activities) - 1);
+        free(path);
+        path = mg_sprintf("%s/7f080001.png", own);
+        mg_file_write_all(path, png3, sizeof(png3));
+        free(path);
+        free(own);
+    }
     return dir;
 }
 
@@ -662,6 +706,7 @@ static bool start(const char *apk, const char *android_root)
     memset(&cfg, 0, sizeof(cfg));
     cfg.apk_path = apk;
     cfg.gms_apk_path = getenv("MG_JAVA_GMS_APK");
+    cfg.gsf_apk_path = getenv("MG_JAVA_GSF_APK");
     cfg.splits_dir = g_splits_dir;
     cfg.android_root = android_root;
     /* Unless another is asked for, a small phone at Android's base density: a dp is a pixel, and the layout's numbers can be read off the picture. */
@@ -695,6 +740,12 @@ static bool start(const char *apk, const char *android_root)
     if (g_verbose >= 2 && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_TOUCH_LOG", "1", 1);
     /* And every window's views with their frames, every three seconds while it lays out: verbose 3. */
     if (g_verbose >= 3 && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_VIEW_DUMP", "1", 1);
+    if (getenv("MG_MICROG_DROIDGUARD_TEST") && mg_bionic_find("setenv"))
+        ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_DROIDGUARD_TEST", "1", 1);
+    if (getenv("MG_MICROG_DROIDGUARD_HANDLE_TEST") && mg_bionic_find("setenv"))
+        ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_DROIDGUARD_HANDLE_TEST", "1", 1);
+    if (getenv("MG_MICROG_POTOKEN_VM_TEST") && mg_bionic_find("setenv"))
+        ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_POTOKEN_VM_TEST", "1", 1);
     say("a Java app through megler_run (%s on the Android root %s)", apk, android_root);
     {
         /* What the shell reads before it starts an app: this is a Java app it can run, and how it asks to be held. */
@@ -704,6 +755,31 @@ static bool start(const char *apk, const char *android_root)
         if (g_crash_app) CHECK(report && strstr(report, "\"activity\":\"megler.test.crash.First\""));
         if (!g_any_app) CHECK(report && strstr(report, g_portrait ? "\"orientation\":\"portrait\"" : "\"orientation\":\"unspecified\""));
         megler_free(report);
+    }
+    {
+        /* What another app's launcher is told of this one's activities (megler_apk_describe_activities): each, with its
+           filters; for the app whose launcher entries are aliases, each alias with what it stands for, the disabled one so,
+           and the label of its first activity, a resource, as the app's strings have it. */
+        char *dir = mg_sprintf("%s/activities-described", megler_data_dir()), *path = mg_sprintf("%s/activities.json", dir);
+        size_t size = 0;
+        u8 *bytes;
+        char *json = NULL;
+        CHECK(megler_apk_describe_activities(apk, g_splits_dir, dir));
+        bytes = mg_file_read_all(path, &size);
+        if (bytes && (json = (char *)realloc(bytes, size + 1)) != NULL) json[size] = 0;
+        else free(bytes);
+        CHECK(json && strstr(json, "\"activities\":[{\"name\":"));
+        if (g_crash_app) {
+            CHECK(json && strstr(json, "{\"name\":\"megler.test.crash.First\",\"label\":\"Megler Crash\",\"exported\":false,\"filters\":[]}"));
+            CHECK(json && strstr(json, "{\"name\":\"megler.test.crash.IconDark\",\"enabled\":false,\"target\":\"megler.test.crash.Second\",\"exported\":true,"));
+            CHECK(json && strstr(json, "{\"name\":\"megler.test.crash.IconLight\",\"enabled\":true,\"target\":\"megler.test.crash.First\",\"exported\":true,"
+                                       "\"filters\":[{\"id\":1,\"actions\":[\"android.intent.action.MAIN\"],\"categories\":[\"android.intent.category.LAUNCHER\"],"
+                                       "\"schemes\":[],\"hosts\":[],\"types\":[]}]}"));
+        }
+        if (json) say("  activities described: %.200s", json);
+        free(json);
+        free(path);
+        free(dir);
     }
     g_start_ns = mg_time_monotonic_ns();
     /* MG_JAVA_START_ACTIVITY: an activity of the app another app asks for, as the shell hands it over (Play Store asking
@@ -1839,7 +1915,9 @@ static void media_session_keys(void)
  */
 static void system_requests(void)
 {
-    static const char want[] = "launch=com.example.other/com.example.other.Main;install=Viewed.apk;install=base.apk;";
+    /* (Then, of its activities, Settings by its class, and Second, an alias, as what it stands for.) */
+    static const char want[] = "launch=com.example.other/com.example.other.Main;launch=com.example.other/com.example.other.Settings;"
+                               "launch=com.example.other/com.example.other.Main;install=Viewed.apk;install=base.apk;install=com.example.split.apks(2);";
     char heard[sizeof(g_system_heard)];
     int tries;
     for (tries = 0; tries < 150; tries++) {
@@ -1926,12 +2004,15 @@ static int run_data(void)
                                             cursor and selection handles. And ParcelFileDescriptor's dup, detachFd and adoptFd, and one
                                             through a Parcel (writeToParcel and CREATOR), as an AIDL stub passes it. And a theme
                                             attribute that names itself. And MessageQueue.next(), and the app's storage statistics. And a
-                                            broadcast that names its receiver, which reaches that receiver alone. And the platform's
+                                            broadcast that names its receiver, which reaches that receiver alone. And a service stopped from
+                                            another thread, destroyed on the main thread, a PendingIntent's creator, and a receiver registered with a
+                                            Handler, which hears on its thread, preferences whose keys have spaces, and an
+                                            account removed, told as Android 8 tells it. And the platform's
                                             MediaMetadata through a Parcel, as MediaMetadataCompat makes it, and PlaybackState with a
                                             custom action, as PlaybackStateCompat makes it. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "install-intent", "install-session", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "phone-apps-activities", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path", "apk-optimization",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -1990,7 +2071,30 @@ static int run_data(void)
               && find_line("location: no longer followed", 0) >= 0);
     }
     /* The broadcasts of the step "broadcast-explicit", once delivered: the relayed one, which names Target, reached Target alone. */
-    CHECK(wait_line("I/DataTest: broadcast-relay ok relay=1 target=1 off=0 registered=1", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: broadcast-relay ok relay=1 target=1 off=0 remote=0 here=1 registered=1", 0, 30) >= 0);
+    /* The service of the step "service-stop-thread", stopped from another thread: destroyed on the main thread, as on Android. */
+    CHECK(wait_line("I/DataTest: service-stop ok main=1 elsewhere=0", 0, 30) >= 0);
+    /* The service of the step "start-ids": a stop by its first start's id did not stop it, one by its latest did. */
+    CHECK(wait_line("I/DataTest: start-ids ok early=false latest=true", 0, 30) >= 0);
+    /* The service of the step "start-asked": it started itself again, and a stop by its first start's id kept that instance. */
+    CHECK(wait_line("I/DataTest: start-asked ok first=false second=true made=1", 0, 30) >= 0);
+    /* The service of the step "process-scope", in a process of another name: its own class scope, with that name and statics
+       of its own. */
+    CHECK(wait_line("I/DataTest: process-scope process=megler.test.data:elsewhere marker=0 loader=ServiceClassLoader application=true here=false", 0, 30) >= 0);
+    /* The jobs of the step "job-scheduler", run: the one scheduled with its extra, the one given work with both pieces, in order. */
+    CHECK(wait_line("I/DataTest: job 41 said=hello", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: job 42 work=one,two,", 0, 30) >= 0);
+    /* The PendingIntent the step "pending-intent-flags" sent: the one it asked for first, with the extras FLAG_UPDATE_CURRENT gave. */
+    CHECK(wait_line("I/DataTest: pending-intent-sent ok v=3", 0, 30) >= 0);
+    /* The alarms of the step "alarm-replace-cancel": the one set twice went off once, the cancelled one never, the repeating one
+       three times, until it was cancelled. */
+    CHECK(wait_line("I/DataTest: alarms ok moved=1 cancelled=0 repeated=3", 0, 30) >= 0);
+    /* The message of the step "messenger-forwarded", sent through a binder that passed it on: received whole, with the uid. */
+    CHECK(wait_line("I/DataTest: messenger-forwarded ok what=7 arg1=42 uid=true", 0, 30) >= 0);
+    /* The receiver of the step "broadcast-handler", registered with a Handler: it heard on that Handler's thread. */
+    CHECK(wait_line("I/DataTest: broadcast-on-handler ok thread=broadcast-handler", 0, 30) >= 0);
+    /* The account the step "account-removed" added and removed: told as removed, with its name and type. */
+    CHECK(wait_line("I/DataTest: account-removed-broadcast ok removed=removed by run ", 0, 30) >= 0);
     /* The sound the step "audio-track" and those after it started: each MediaPlayer played to its end, the SoundPool's sound played once loaded. */
     CHECK(wait_line("I/DataTest: media-player-done ok", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: media-player-ogg-done ok", 0, 30) >= 0);
@@ -2384,7 +2488,31 @@ static int run_camera(void)
 /* Regression: a client and GmsCore carry incompatible classes of identical names. */
 static int run_microg(void)
 {
+    if (getenv("MG_TEST_GMS_PARTIAL_RESOURCES")) {
+        CHECK(wait_line("I/MicroGTest: PASS same-package partial resources preserve GMS AppCompat style", 0, 1200) >= 0);
+        CHECK(find_line("E/MicroGTest: FAILED", 0) < 0);
+        say_app_lines("/MicroGTest: ");
+        return g_failed;
+    }
+    /* Opt-in live integration check: Google's signed DroidGuard VM response is needed.
+       A local Binder call can block the app's main thread while Volley delivers it. */
+    if (getenv("MG_MICROG_DROIDGUARD_TEST"))
+        CHECK(wait_line("I/MicroGTest: DROIDGUARD PASS signed Google response on main thread", 0, 1200) >= 0);
+    if (getenv("MG_MICROG_DROIDGUARD_HANDLE_TEST"))
+        CHECK(wait_line("I/MicroGTest: DROIDGUARD HANDLE PASS", 0, 1200) >= 0);
+    if (getenv("MG_MICROG_POTOKEN_VM_TEST"))
+        CHECK(wait_line("I/MicroGTest: POTOKEN VM PASS bytes=", 0, 1200) >= 0);
     CHECK(wait_line("I/MicroGTest: PASS isolated GmsCore broker", 0, 1200) >= 0);
+    /* The Java framework and a native library in Play Store/GmsCore must
+       describe the same build after the Java driver has initialized it. */
+    CHECK(mg_sysprop("ro.build.version.sdk") && !strcmp(mg_sysprop("ro.build.version.sdk"), "34"));
+    CHECK(mg_sysprop("ro.build.version.release") && !strcmp(mg_sysprop("ro.build.version.release"), "14"));
+    CHECK(mg_sysprop("ro.build.version.incremental") && !strcmp(mg_sysprop("ro.build.version.incremental"), "1"));
+    CHECK(mg_sysprop("ro.build.version.security_patch") && !strcmp(mg_sysprop("ro.build.version.security_patch"), "2024-01-01"));
+    CHECK(mg_sysprop("ro.build.id") && !strcmp(mg_sysprop("ro.build.id"), "AP1A"));
+    CHECK(mg_sysprop("ro.build.fingerprint") && !strcmp(mg_sysprop("ro.build.fingerprint"), "google/sailfish/sailfish:14/AP1A/1:user/release-keys"));
+    CHECK(mg_sysprop("ro.product.model") && !strcmp(mg_sysprop("ro.product.model"), "Pixel"));
+    CHECK(mg_sysprop("ro.product.device") && !strcmp(mg_sysprop("ro.product.device"), "sailfish"));
     CHECK(find_line("storage and resources, dynamite modules, accounts", 0) >= 0);
     /* And microG's GCM registration service answers with a Messenger's binder that says it is android.os.IMessenger, the one
        Firebase's MessengerIpcClient takes for an app's FCM token. */

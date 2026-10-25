@@ -10,6 +10,8 @@ public class IntentSender implements android.os.Parcelable {
     private android.app.PendingIntent meglerPending;
     /** The IntentSender of a PendingIntent: sending it sends that. */
     public static IntentSender meglerOf(android.app.PendingIntent p) { IntentSender s = new IntentSender(); s.meglerPending = p; return s; }
+    /** The PendingIntent this sends, when one gave it (Activity.startIntentSenderForResult starts its activity). */
+    public android.app.PendingIntent meglerPending() { return meglerPending; }
     public void sendIntent(Context c, int code, Intent i, OnFinished f, android.os.Handler h) throws SendIntentException {
         if (meglerPending == null) return;
         try {

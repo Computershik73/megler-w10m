@@ -17,7 +17,21 @@ public class Handler {
         handleMessage(msg);
     }
     public final boolean post(Runnable r) { return postDelayed(r, 0); }
-    public final boolean postDelayed(Runnable r, long ms) { Message m = Message.obtain(this, r); return mLooper.mQueue.enqueue(m, SystemClock.uptimeMillis() + Math.max(0, ms)); }
+    public final boolean postDelayed(Runnable r, long ms) {
+        // DroidGuard waits synchronously on a Volley RequestFuture during a local Binder
+        // call, which can be on this same main thread. This also happens when microG runs
+        // as its own app (for example, its reCAPTCHA test), not just inside a client.
+        // Delivering Volley's response to that main queue would deadlock it.
+        if (ms == 0 && mLooper == Looper.getMainLooper()
+                && r.getClass().getName().equals("com.android.volley.ExecutorDelivery$ResponseDeliveryRunnable")
+                && (r.getClass().getClassLoader() instanceof megler.ServiceClassLoader
+                    || "com.google.android.gms".equals(megler.Native.packageName()))) {
+            r.run();
+            return true;
+        }
+        Message m = Message.obtain(this, r);
+        return mLooper.mQueue.enqueue(m, SystemClock.uptimeMillis() + Math.max(0, ms));
+    }
     public final boolean postDelayed(Runnable r, Object token, long ms) { Message m = Message.obtain(this, r); m.obj = token; return mLooper.mQueue.enqueue(m, SystemClock.uptimeMillis() + Math.max(0, ms)); }
     public final boolean postAtTime(Runnable r, long uptime) { return mLooper.mQueue.enqueue(Message.obtain(this, r), uptime); }
     public final boolean postAtFrontOfQueue(Runnable r) { return mLooper.mQueue.enqueue(Message.obtain(this, r), 0); }

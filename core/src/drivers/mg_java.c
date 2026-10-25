@@ -41,7 +41,12 @@
 #include "mg_java_gl.h"
 
 #define MAX_EVENTS 256
-#define MAX_APKS 16
+/*
+ * APKs 12 on are those the framework adds (addApk): Google Play services' and its framework's for an app that hosts them, the
+ * resource archives each keeps for the language (locale-filtered-resources), and the WebView's. Play Store with Google Play
+ * services hosted took the four of 16 there were before the WebView's, and its sign-in page had no WebView.
+ */
+#define MAX_APKS 32
 /* The app's splits are APKs 2 to 11: ten, which is all the framework reads (its Resources looks in 2 to 11). */
 #define FIRST_SPLIT_APK 2
 #define MAX_SPLITS 10
@@ -323,6 +328,8 @@ N(Native_addApk)
             c->ret.i = free_at;
             mg_info("java: %s is APK %d of the app's resources and files", path, free_at);
         }
+    } else if (c->ret.i < 0) {
+        mg_warn("java: %s cannot be added: all %d places for more APKs are taken", path, MAX_APKS - FIRST_LIBRARY_APK);
     }
     mg_lock_release(&J.lock);
     free(host);
@@ -691,25 +698,48 @@ N(Native_appsList)
     free(text);
 }
 
+/* An Android package's name, which has letters, digits, '.' and '_' only: nothing that leaves the apps folder. */
+static bool apps_package_ok(const char *package)
+{
+    const char *p;
+    if (!J.config->apps_dir || !package[0] || package[0] == '.') return false;
+    for (p = package; *p; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '.' || *p == '_')) return false;
+    return true;
+}
+
+/* A file of the apps folder, `path` (freed here), as bytes; null when there is none. */
+static mg_jobj *apps_file(char *path)
+{
+    size_t size = 0;
+    u8 *bytes = mg_file_read_all(path, &size);
+    mg_jobj *o = bytes ? bytes_of(bytes, size) : NULL;
+    free(bytes);
+    free(path);
+    return o;
+}
+
 /* appIcon(package): that app's icon, a PNG, from the same folder; null when there is none. */
 N(Native_appIcon)
 {
     const char *package = text_of(c->args[0].l);
-    char *path;
-    u8 *png;
-    size_t size = 0;
-    const char *p;
-    c->ret.l = NULL;
-    if (!J.config->apps_dir || !package[0]) return;
-    /* An Android package has letters, digits, '.' and '_' only: nothing that leaves the folder. */
-    for (p = package; *p; p++)
-        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '.' || *p == '_')) return;
-    path = mg_sprintf("%s/%s.png", J.config->apps_dir, package);
-    png = mg_file_read_all(path, &size);
-    free(path);
-    if (!png) return;
-    c->ret.l = bytes_of(png, size);
-    free(png);
+    c->ret.l = apps_package_ok(package) ? apps_file(mg_sprintf("%s/%s.png", J.config->apps_dir, package)) : NULL;
+}
+
+/* appActivities(package): that app's activities as the shell described them (megler_apk_describe_activities), the bytes of
+   <package>/activities.json in the same folder; null when there are none. */
+N(Native_appActivities)
+{
+    const char *package = text_of(c->args[0].l);
+    c->ret.l = apps_package_ok(package) ? apps_file(mg_sprintf("%s/%s/activities.json", J.config->apps_dir, package)) : NULL;
+}
+
+/* appResIcon(package, id): the picture of that app's icon resource `id`, a PNG, from <package>/ in the same folder; null when
+   there is none. */
+N(Native_appResIcon)
+{
+    const char *package = text_of(c->args[0].l);
+    c->ret.l = apps_package_ok(package) ? apps_file(mg_sprintf("%s/%s/%08x.png", J.config->apps_dir, package, (unsigned)c->args[1].i)) : NULL;
 }
 N(Native_setOrientation) { mg_note_once("java: the app asked for orientation %d; the surface stays as the shell made it", (int)c->args[0].i); }
 
@@ -717,6 +747,33 @@ N(Native_setOrientation) { mg_note_once("java: the app asked for orientation %d;
  * exit(): the framework calls it when the last activity is gone. The main
  * loop is told to end, and megler.AppRunner.run returns to main_thread below.
  */
+/*
+ * thrownInService(Throwable t), asked on the thread that threw it (an uncaught exception's handler runs there): the class scope
+ * of the service the thread is one of (megler.ServiceClassLoader: Google Play services' code hosted here), else 0. The thread
+ * is the service's when the outermost frame of code of an app's own or of a service's -- not of the boot class path's, which
+ * every thread starts in -- is the service's: a worker of a pool GmsCore made runs GmsCore's task under the platform's frames.
+ * Once the exception's frames have been made StackTraceElements (a handler before printed them), libcore keeps no backtrace:
+ * then whose code started the thread says (mg_dvm_thread.owner_scope). Its uncaught exceptions are its process's on Android.
+ */
+N(Native_thrownInService)
+{
+    mg_jobj *e = c->args[0].l, *trace;
+    const i64 *v;
+    i32 n, i;
+    c->ret.i = mg_dvm_self()->owner_scope;
+    if (!e || !g_dvm.f_backtrace || !mg_dvm_is_instance(e, g_dvm.c_throwable)) return;
+    trace = mg_dvm_slots(e)[g_dvm.f_backtrace->slot].l;
+    if (!trace || trace->kind != MG_J_PRIM_ARRAY || trace->u.arr.etype != 'J') return;
+    v = (const i64 *)trace->u.arr.data;
+    n = (i32)(trace->u.arr.len / 2);
+    for (i = n - 1; i >= 0; i--) {
+        const mg_dvm_method *m = (const mg_dvm_method *)(mg_addr)v[2 * i];
+        if (!m || !m->cls) continue;
+        if (m->cls->scope > 0) { c->ret.i = m->cls->scope; return; }
+        if (mg_dvm_class_is_app(m->cls)) { c->ret.i = 0; return; }
+    }
+}
+
 N(Native_exit)
 {
     mg_jvalue looper;
@@ -728,6 +785,7 @@ N(Native_exit)
 
 static const mg_jhle k_native[] = {
     { "megler/Native", "log", NULL, Native_log },
+    { "megler/Native", "thrownInService", NULL, Native_thrownInService },
     { "megler/Native", "readAsset", NULL, Native_readAsset },
     { "megler/Native", "listAssets", NULL, Native_listAssets },
     { "megler/Native", "assetFd", NULL, Native_assetFd },
@@ -760,6 +818,8 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "launchApp", NULL, Native_launchApp },
     { "megler/Native", "appsList", NULL, Native_appsList },
     { "megler/Native", "appIcon", NULL, Native_appIcon },
+    { "megler/Native", "appActivities", NULL, Native_appActivities },
+    { "megler/Native", "appResIcon", NULL, Native_appResIcon },
     { "megler/Native", "mediaSessionMetadata", NULL, Native_mediaSessionMetadata },
     { "megler/Native", "setClipboard", NULL, Native_setClipboard },
     { "megler/Native", "getClipboard", NULL, Native_getClipboard },
@@ -1148,6 +1208,8 @@ static void mount_apk(void)
     mg_fs_mount(guest_dir, dir);
     if (J.config->gms_apk_path && strcmp(J.package, "com.google.android.gms"))
         mg_fs_mount("/system/priv-app/GmsCore/GmsCore.apk", J.config->gms_apk_path);
+    if (J.config->gsf_apk_path && strcmp(J.package, "com.google.android.gsf"))
+        mg_fs_mount("/system/priv-app/GoogleServicesFramework/GoogleServicesFramework.apk", J.config->gsf_apk_path);
     /* Each app retains Android's stable base.apk path, regardless of the picked filename. */
     snprintf(J.guest_apk, sizeof(J.guest_apk), "%s/base.apk", guest_dir);
     mg_fs_mount(J.guest_apk, path);
@@ -1341,6 +1403,22 @@ static void main_thread(void *arg)
     else if (add_platform_framework(), mg_dvm_app_follows(), add_shared_libraries(), mg_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
     if (!why[0]) {
         mg_jvalue sdk;
+        static const struct { const char *cls, *field, *prop; } build_props[] = {
+            { "android/os/Build$VERSION", "RELEASE", "ro.build.version.release" },
+            { "android/os/Build$VERSION", "INCREMENTAL", "ro.build.version.incremental" },
+            { "android/os/Build$VERSION", "SECURITY_PATCH", "ro.build.version.security_patch" },
+            { "android/os/Build", "ID", "ro.build.id" },
+            { "android/os/Build", "DISPLAY", "ro.build.display.id" },
+            { "android/os/Build", "FINGERPRINT", "ro.build.fingerprint" },
+            { "android/os/Build", "MODEL", "ro.product.model" },
+            { "android/os/Build", "BRAND", "ro.product.brand" },
+            { "android/os/Build", "PRODUCT", "ro.product.name" },
+            { "android/os/Build", "DEVICE", "ro.product.device" },
+            { "android/os/Build", "BOARD", "ro.product.board" },
+            { "android/os/Build", "MANUFACTURER", "ro.product.manufacturer" },
+            { "android/os/Build", "HARDWARE", "ro.hardware" },
+        };
+        size_t prop_index;
         if (mg_flag("trace-monitors")) mg_dvm_monitor_trace_start();
         if (mg_flag("trace-stacks")) mg_dvm_stacks_trace_start();
         mg_flags_each("trace-calls-", call_trace_flag, NULL);
@@ -1355,6 +1433,18 @@ static void main_thread(void *arg)
             mg_sysprop_set("ro.build.version.sdk", level);
         } else {
             mg_dvm_clear_pending();
+        }
+        /* Java apps use the framework overlay's Build. Native libraries in the same
+           process must report the same release, build and device via system properties. */
+        for (prop_index = 0; prop_index < MG_COUNT(build_props); prop_index++) {
+            mg_jvalue value;
+            const char *text;
+            if (!mg_dvm_get_static(build_props[prop_index].cls, build_props[prop_index].field, &value) || !value.l) {
+                mg_dvm_clear_pending();
+                continue;
+            }
+            text = mg_dvm_string_utf8(value.l);
+            if (text) mg_sysprop_set(build_props[prop_index].prop, text);
         }
         /* A feature split's code joins the app's class path after the base's, as its class loader has it on Android. */
         for (i = 0; i < J.nsplits; i++) J.split_code[i] = mg_dvm_add_apk(J.config->split_apks[i]) > 0;

@@ -212,8 +212,8 @@ public class Intent implements Cloneable, android.os.Parcelable {
     public CharSequence[] getCharSequenceArrayExtra(String k) { return extras == null ? null : extras.getCharSequenceArray(k); }
     public Bundle getBundleExtra(String k) { return extras == null ? null : extras.getBundle(k); }
     public int fillIn(Intent o, int flags) { if (o.action != null && action == null) action = o.action; if (o.data != null && data == null) data = o.data; if (o.extras != null) ex().putAll(o.extras); return 0; }
-    public boolean filterEquals(Intent o) { return o != null && java.util.Objects.equals(action, o.action) && java.util.Objects.equals(data, o.data) && java.util.Objects.equals(type, o.type) && java.util.Objects.equals(component, o.component) && java.util.Objects.equals(categories, o.categories); }
-    public int filterHashCode() { return java.util.Objects.hash(action, data, type, component, categories); }
+    public boolean filterEquals(Intent o) { return o != null && java.util.Objects.equals(action, o.action) && java.util.Objects.equals(data, o.data) && java.util.Objects.equals(type, o.type) && java.util.Objects.equals(identifier, o.identifier) && java.util.Objects.equals(pkg, o.pkg) && java.util.Objects.equals(component, o.component) && java.util.Objects.equals(categories, o.categories); }
+    public int filterHashCode() { return java.util.Objects.hash(action, data, type, identifier, pkg, component, categories); }
     public int describeContents() { return 0; }
     public void writeToParcel(android.os.Parcel p, int f) { p.writeValue(this); }
     @Override public String toString() { return "Intent { " + (action != null ? "act=" + action + " " : "") + (categories != null ? "cat=" + categories + " " : "") + (data != null ? "dat=" + data + " " : "") + (type != null ? "typ=" + type + " " : "") + (getFlags() != 0 ? "flg=0x" + Integer.toHexString(getFlags()) + " " : "") + (component != null ? "cmp=" + component.flattenToShortString() + " " : "") + (extras != null ? "(has extras) " : "") + "}"; }

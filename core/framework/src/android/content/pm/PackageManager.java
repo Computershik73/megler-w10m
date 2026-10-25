@@ -746,8 +746,8 @@ public class PackageManager {
     public java.util.Set getMimeGroup(java.lang.String p0) { return new java.util.HashSet(); }
     public int getMoveStatus(int p0) { return 0; }
     public java.lang.String[] getNamesForUids(int[] p0) { return null; }
-    public android.content.pm.PackageInfo getPackageArchiveInfo(java.lang.String p0, int p1) { return null; }
-    public android.content.pm.PackageInfo getPackageArchiveInfo(java.lang.String p0, android.content.pm.PackageManager.PackageInfoFlags p1) { return null; }
+    public android.content.pm.PackageInfo getPackageArchiveInfo(java.lang.String path, int flags) { return megler.ArchiveInfo.read(path); }
+    public android.content.pm.PackageInfo getPackageArchiveInfo(java.lang.String path, android.content.pm.PackageManager.PackageInfoFlags flags) { return megler.ArchiveInfo.read(path); }
     public java.util.List getPackageCandidateVolumes(android.content.pm.ApplicationInfo p0) { return new java.util.ArrayList(); }
     public int[] getPackageGids(java.lang.String p0) { return null; }
     public int[] getPackageGids(java.lang.String p0, int p1) { return null; }

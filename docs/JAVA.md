@@ -3023,8 +3023,10 @@ What a Java app asks of the phone beyond its window goes to the shell through
     In an app's own package, the APK is copied into the shared folder's
     `incoming\`, and Megler is opened with `megler:install?name=` (its package
     family name as the target).
-  - A session of several APKs (a base and its splits) is not taken yet: the
-    user is told to install the app's .apks or .xapk from the file manager.
+  - A session of several APKs (a base and its splits, as Google Play installs
+    an app built as a bundle) is handed over as one `.apks` of them, a ZIP of
+    the APKs stored as they are, which Megler's installer unpacks as it does a
+    bundle from the file manager.
 - **Other apps: launchers.** The shell lists the apps of Megler's library that
   can run in the shared folder (`library/PhoneAppsList.cpp`):
   `phone-apps\apps.txt` has each app's package, launcher activity, label and
@@ -3040,6 +3042,24 @@ What a Java app asks of the phone beyond its window goes to the shell through
   Megler, which plays it if it has not run an app yet. A launcher therefore
   works best as an app's own package: from Megler, Megler is busy running the
   launcher.
+- **Other apps: their activities.** Beside the list Megler describes each
+  app's activities from its APK and splits, in `phone-apps\<package>\`
+  (`megler_apk_describe_activities`): `activities.json`, every activity and
+  alias with its label in the phone's language, its icon, whether it is
+  enabled and exported, and its intent filters; and a picture of each icon
+  they name, `<id>.png`. `source.txt` there says which APK they are of, so
+  that they are made again only for another. `megler.PhoneApps` reads them
+  (`Native.appActivities`, `Native.appResIcon`): `getPackageInfo` with
+  `GET_ACTIVITIES` and `getActivityInfo` have every activity, the launcher's
+  intent every entry (an alias's too), an intent that names the package or
+  asks for `ACTION_CREATE_SHORTCUT` the activities whose filters take it, and
+  an activity's own icon is its picture. An intent with no package that any
+  app could take (a link) is not given them and goes to Windows, as before.
+  An alias started is the activity it stands for. An app with no description
+  has its launcher activity alone, as before. The phone's other packages'
+  install folders cannot be read by an app container on Windows 10 Mobile
+  (Megler's own check fails after each install), which is why Megler, which
+  has the APKs, writes this for them.
 
 APKs, .apks and .xapk files also open in Megler from the phone's file
 manager (a file type association of Megler's package, taken out of an app's
@@ -3052,6 +3072,36 @@ The test app `data` checks the core's side. Its apps folder has one other app
 It opens an APK by `ACTION_VIEW` (`install-intent`) and commits a session of
 one file (`install-session`). The harness hears both on `install_apk`, and the
 app hears `STATUS_SUCCESS`.
+
+### Jobs, and an app's other processes
+
+`android.app.job` (overlaid): the app's jobs are run, once for the app whichever
+instance of `JobScheduler` is asked. A job runs on the main thread once its
+minimum latency has passed; a network it asks for is taken to be there, and
+`JobParameters.getNetwork` is the phone's. Its service is made as the app's
+other services are (`megler.Services.service`), and `onStartJob` is called;
+the job ends when that answers false, at `jobFinished`, or when `dequeueWork`
+has no more work; then again after its backoff when it asks to be
+rescheduled, after its interval when it repeats, at once when work was
+enqueued meanwhile. Scheduling it again or cancelling it stops it if it runs
+(`onStopJob`). `JobInfo` keeps what its Builder is told (its service,
+transient extras, network type, latency, period, backoff, ...), where it kept
+the id and extras only. Not done: jobs persisted across runs, constraints
+other than the time, content triggers.
+
+`megler.Processes`: a component the manifest puts in another process
+(`android:process`) runs in a class scope of the app's own APK
+(`megler.ServiceClassLoader`), with an Application of its own made from the
+manifest's class, whose context is the app's but for its class loader, its
+Application and its `ActivityManager`, which names that process for this pid.
+The code there has statics of its own. Play Store's Application builds an
+object graph for each of its processes by the name of the process it runs
+in, and its download service (`:download_service`) asked for its own part of
+it and had the main process's; the services of such a process are made
+there now (`megler.Services`). Their binders reach the rest of the app
+through `transact`, as AIDL's `asInterface` takes another scope's object for
+a remote one. The process's receivers, providers and activities still run in
+the app's own scope.
 
 ### WebP pictures
 

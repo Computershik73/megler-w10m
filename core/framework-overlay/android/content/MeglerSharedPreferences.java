@@ -71,6 +71,16 @@ public final class MeglerSharedPreferences implements SharedPreferences {
         read(map);
         see();
     }
+    /* The space after a line's key: one the writer escaped ("\ ") is the key's own. GmsCore keys some by an account
+       ("Account {name=..., type=com.google}"), and the number of such a line was read from the key's middle. */
+    private static int keyEnd(String line) {
+        for (int i = 2; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '\\') i++;
+            else if (c == ' ') return i;
+        }
+        return -1;
+    }
     private void read(HashMap<String, Object> map) {
         if (!file.exists()) return;
         try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(file), "UTF-8"))) {
@@ -78,19 +88,27 @@ public final class MeglerSharedPreferences implements SharedPreferences {
             while ((line = r.readLine()) != null) {
                 if (line.length() < 3) continue;
                 char t = line.charAt(0);
-                int sp = line.indexOf(' ', 2);
+                int sp = keyEnd(line);
                 if (sp < 0) continue;
                 String k = unesc(line.substring(2, sp)), v = line.substring(sp + 1);
-                switch (t) {
-                case 's': map.put(k, unesc(v)); break;
-                case 'i': map.put(k, Integer.parseInt(v)); break;
-                case 'l': map.put(k, Long.parseLong(v)); break;
-                case 'f': map.put(k, Float.parseFloat(v)); break;
-                case 'b': map.put(k, Boolean.parseBoolean(v)); break;
-                case 'S': { HashSet<String> set = new HashSet<>(); for (String p : v.split("\u0001", -1)) if (!p.isEmpty()) set.add(unesc(p)); map.put(k, set); break; }
+                try {
+                    read(map, t, k, v);
+                } catch (NumberFormatException e) {
+                    /* A line that is not what its type says is left out, not the app ended. */
+                    android.util.Log.w("Megler", "preferences " + file.getName() + ": a value of type " + t + " that is not one, left out");
                 }
             }
         } catch (IOException e) { }
+    }
+    private static void read(HashMap<String, Object> map, char t, String k, String v) {
+        switch (t) {
+        case 's': map.put(k, unesc(v)); break;
+        case 'i': map.put(k, Integer.parseInt(v)); break;
+        case 'l': map.put(k, Long.parseLong(v)); break;
+        case 'f': map.put(k, Float.parseFloat(v)); break;
+        case 'b': map.put(k, Boolean.parseBoolean(v)); break;
+        case 'S': { HashSet<String> set = new HashSet<>(); for (String p : v.split("\u0001", -1)) if (!p.isEmpty()) set.add(unesc(p)); map.put(k, set); break; }
+        }
     }
     private synchronized boolean save() {
         file.getParentFile().mkdirs();

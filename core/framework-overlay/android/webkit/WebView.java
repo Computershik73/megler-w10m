@@ -728,9 +728,47 @@ public class WebView extends AbsoluteLayout
     public void postUrl(String url, byte[] postData) {
         checkThread();
         if (URLUtil.isNetworkUrl(url)) {
+            if (url.startsWith("https://www.google.com/recaptcha/")) {
+                Log.i("RecaptchaWebView", "POST " + Uri.parse(url).getPath() + " bytes=" + (postData == null ? 0 : postData.length));
+                if (url.equals("https://www.google.com/recaptcha/api2/mframe") && postData != null)
+                    traceRecaptchaPost(postData);
+            }
             mProvider.postUrl(url, postData);
         } else {
             mProvider.loadUrl(url);
+        }
+    }
+
+    private static void traceRecaptchaPost(byte[] data) {
+        try {
+            String body = new String(data, "UTF-8");
+            StringBuilder fields = new StringBuilder();
+            for (String part : body.split("&")) {
+                int equals = part.indexOf('=');
+                if (equals < 0) continue;
+                String key = java.net.URLDecoder.decode(part.substring(0, equals), "UTF-8");
+                String value = java.net.URLDecoder.decode(part.substring(equals + 1), "UTF-8");
+                if (fields.length() != 0) fields.append(',');
+                fields.append(key).append(':').append(value.length());
+                if ("dg".equals(key)) {
+                    fields.append(value.startsWith("ERROR") ? ":error" : ":result");
+                } else if ("mp".equals(key)) {
+                    StringBuilder params = new StringBuilder();
+                    for (String inner : value.split("&")) {
+                        int separator = inner.indexOf('=');
+                        if (separator < 0) continue;
+                        String name = java.net.URLDecoder.decode(inner.substring(0, separator), "UTF-8");
+                        String param = java.net.URLDecoder.decode(inner.substring(separator + 1), "UTF-8");
+                        if (params.length() != 0) params.append(',');
+                        params.append(name).append(':').append(param.length());
+                        if ("di".equals(name)) params.append(param.matches("[0-9]+") ? ":numeric" : ":invalid");
+                    }
+                    fields.append("[").append(params).append(']');
+                }
+            }
+            Log.i("RecaptchaWebView", "POST fields " + fields);
+        } catch (Exception e) {
+            Log.i("RecaptchaWebView", "POST fields could not be decoded: " + e.getClass().getSimpleName());
         }
     }
 

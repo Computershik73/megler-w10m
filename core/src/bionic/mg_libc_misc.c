@@ -407,6 +407,9 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef int (*sigaltstack_fn)(const void *, void *);
     typedef int (*memfd_fn)(const char *, unsigned);
     typedef int (*munmap_fn)(void *, size_t);
+    typedef int (*timerfd_create_fn)(int, int);
+    typedef int (*timerfd_settime_fn)(int, int, const void *, void *);
+    typedef int (*timerfd_gettime_fn)(int, void *);
     switch (nr) {
     case 67:                                                                                                  /* sigaction */
         if (fault_signal_refused(a, b)) return -1;
@@ -427,6 +430,9 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 238: case 268: return 0;                                          /* tkill, tgkill */
     case 0xF0002: return g_cacheflush(a, b, c);                            /* __ARM_NR_cacheflush */
     case 345: return 0;                                                    /* getcpu */
+    case 350: return ((timerfd_create_fn)mg_bionic_find("timerfd_create"))((int)a, (int)b);
+    case 353: return ((timerfd_settime_fn)mg_bionic_find("timerfd_settime"))((int)a, (int)b, (const void *)(mg_addr)c, (void *)(mg_addr)d);
+    case 354: return ((timerfd_gettime_fn)mg_bionic_find("timerfd_gettime"))((int)a, (void *)(mg_addr)b);
     default:
         mg_note_once("syscall(%ld) is not supported", nr);
         mg_set_errno(GE_NOSYS);
@@ -1101,7 +1107,8 @@ static int g_getpwnam_r(const char *name, g_passwd *pw, char *buf, size_t n, u32
     (void)name;
     return g_getpwuid_r(10100, pw, buf, n, result);
 }
-static const char *g_getprogname(void) { return "app_process"; }
+static const char *g_progname = "app_process";
+static const char *g_getprogname(void) { return g_progname; }
 
 /* One group as there is one user, the app's own, under the same name. Any other is not found, which is an answer and not an error. */
 typedef struct g_group {
@@ -1394,7 +1401,7 @@ const mg_sym mg_tab_misc[] = {
     M("basename", g_basename), M("__gnu_basename", g_basename), M("dirname", g_dirname), M("mkstemp", g_mkstemp),
     M("mkstemp64", g_mkstemp), M("mktemp", g_mktemp), M("mkdtemp", g_mkdtemp),
     M("getpwuid", g_getpwuid), M("getpwnam", g_getpwnam), M("getlogin", g_getlogin),
-    M("getpwuid_r", g_getpwuid_r), M("getpwnam_r", g_getpwnam_r), M("getprogname", g_getprogname),
+    M("getpwuid_r", g_getpwuid_r), M("getpwnam_r", g_getpwnam_r), M("getprogname", g_getprogname), MG_DATA("__progname", &g_progname),
     M("getgrgid_r", g_getgrgid_r), M("getgrnam_r", g_getgrnam_r),
     M("seteuid", g_set_one_id), M("setegid", g_set_one_id), M("setreuid", g_set_two_ids), M("setregid", g_set_two_ids),
     M("getpgid", g_getpgid), M("setpgid", g_setpgid), M("capget", g_capget), M("capset", g_capset),

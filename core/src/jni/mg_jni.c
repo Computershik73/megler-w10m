@@ -1127,8 +1127,19 @@ static i32 j_Throw(JNIEnvP e, mg_jobj *obj)
 }
 static i32 j_ThrowNew(JNIEnvP e, mg_jobj *cls, const char *msg)
 {
+    mg_jclass *c = class_of(cls);
     (void)e;
-    mg_jni_throw(class_of(cls)->name, msg);
+    /*
+     * The class handed over, not its name: GmsCore's LevelDB throws its own LevelDbIoErrorException, of GmsCore's scope
+     * (megler.ServiceClassLoader), and by name the app's scope had none, so the exception was a stand-in that is no Throwable
+     * and logging it ended Play Store (IncompatibleClassChangeError for printStackTrace).
+     */
+    if (g_dvm.running && is_real(c)) {
+        mg_warn("jni: %s: %s", c->name, msg ? msg : "");
+        mg_dvm_throw_class(c->dvm, msg ? msg : "");
+        return 0;
+    }
+    mg_jni_throw(c->name, msg);
     return 0;
 }
 static mg_jobj *j_ExceptionOccurred(JNIEnvP e) { (void)e; return pending(); }

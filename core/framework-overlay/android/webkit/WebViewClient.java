@@ -26,6 +26,43 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
 public class WebViewClient {
+    private static final String RECAPTCHA_FRAME = "https://www.google.com/recaptcha/api2/mframe";
+
+    private static void traceRecaptcha(String event, String url) {
+        if (url == null || !(url.startsWith("https://www.google.com/recaptcha/")
+                || url.startsWith("https://www.gstatic.com/recaptcha/"))) return;
+        android.net.Uri uri = android.net.Uri.parse(url);
+        android.util.Log.i("RecaptchaWebView", event + " " + uri.getHost() + uri.getPath());
+    }
+
+    private static void traceRecaptchaPage(final WebView view, final String url,
+            final String when) {
+        if (view == null || url == null || !url.startsWith(RECAPTCHA_FRAME)) return;
+        if (!url.equals(view.getUrl())) return;
+        view.evaluateJavascript("(function(){var body=document.body;var text=body?body.innerText:'';"
+                + "var terms=['not found','moved','cookie','browser','sorry','blocked',"
+                + "'captcha','google','unsupported','disabled','enable','redirect',"
+                + "'continue','policy','not available','access','request','client',"
+                + "'service','reload','traffic','javascript'];"
+                + "return JSON.stringify({ready:document.readyState,"
+                + "html:document.documentElement.outerHTML.length,text:text.length,"
+                + "children:body?body.children.length:0,scripts:document.scripts.length,"
+                + "frames:document.querySelectorAll('iframe').length,"
+                + "bridge:typeof window.RecaptchaEmbedder,recaptcha:typeof window.grecaptcha,"
+                + "chromeError:location.protocol==='chrome-error:',"
+                + "samePath:location.pathname==='/recaptcha/api2/mframe',"
+                + "first:body&&body.firstElementChild?body.firstElementChild.tagName:'',"
+                + "forms:document.forms.length,terms:terms.filter(function(w){return text.toLowerCase().indexOf(w)>=0}).join(','),"
+                + "error:/error|invalid|unavailable/i.test(text),"
+                + "denied:/denied|unusual traffic|automated/i.test(text)});})()",
+                new ValueCallback<String>() {
+                    @Override public void onReceiveValue(String result) {
+                        android.util.Log.i("RecaptchaWebView", "page " + when + " "
+                                + (result == null ? "null" : result.substring(0,
+                                        Math.min(result.length(), 384))));
+                    }
+                });
+    }
 
     /**
      * Give the host application a chance to take control when a URL is about to be loaded in the
@@ -103,6 +140,7 @@ public class WebViewClient {
      *            database.
      */
     public void onPageStarted(WebView view, String url, Bitmap favicon) {
+        traceRecaptcha("start", url);
     }
 
     /**
@@ -117,6 +155,17 @@ public class WebViewClient {
      * @param url The url of the page.
      */
     public void onPageFinished(WebView view, String url) {
+        traceRecaptcha("finished", url);
+        traceRecaptchaPage(view, url, "finished");
+        if (url != null && url.startsWith(RECAPTCHA_FRAME)) {
+            final WebView page = view;
+            final String pageUrl = url;
+            view.postDelayed(new Runnable() {
+                @Override public void run() {
+                    traceRecaptchaPage(page, pageUrl, "after-5s");
+                }
+            }, 5000);
+        }
     }
 
     /**
@@ -319,6 +368,7 @@ public class WebViewClient {
     @Deprecated
     public void onReceivedError(WebView view, int errorCode,
             String description, String failingUrl) {
+        traceRecaptcha("network error legacy " + errorCode, failingUrl);
     }
 
     /**
@@ -331,6 +381,7 @@ public class WebViewClient {
      * @param error Information about the error occurred.
      */
     public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+        traceRecaptcha("network error " + error.getErrorCode() + " main=" + request.isForMainFrame(), request.getUrl().toString());
         if (request.isForMainFrame()) {
             onReceivedError(view,
                     error.getErrorCode(), error.getDescription().toString(),
@@ -350,6 +401,7 @@ public class WebViewClient {
      */
     public void onReceivedHttpError(
             WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
+        traceRecaptcha("HTTP " + errorResponse.getStatusCode() + " main=" + request.isForMainFrame(), request.getUrl().toString());
     }
 
     /**
@@ -409,6 +461,7 @@ public class WebViewClient {
      */
     public void onReceivedSslError(WebView view, SslErrorHandler handler,
             SslError error) {
+        traceRecaptcha("SSL error " + error.getPrimaryError(), error.getUrl());
         handler.cancel();
     }
 

@@ -335,9 +335,44 @@ static void test_guest_natives(const char *guest_dir)
 }
 #endif
 
-void test_jni(const char *guest_dir)
+/*
+ * ThrowNew of a class of another class scope (a service's, megler.ServiceClassLoader: GmsCore's LevelDB throws its own
+ * LevelDbIoErrorException) throws that class: a Throwable bytecode can call, not a stand-in made from the class's name, which
+ * the app's scope may not have (logging GmsCore's ended Play Store with an IncompatibleClassChangeError) or have as another.
+ * The d8 program's DEX file (mg_dvm_tests_d8.c) in a scope of its own, while the app's has none of its classes: its
+ * exception Main$Oops is then of that scope alone, as GmsCore's is.
+ */
+static void test_scoped_throw(const char *fixtures)
+{
+    enum { SCOPE = 13 };
+    static const char OOPS[] = "d8t/Main$Oops";
+    char *path;
+    static mg_map map;                                   /* (a DEX file is used where it lies: kept mapped) */
+    mg_dvm_class *theirs;
+    mg_jobj *e;
+    say("JNI: ThrowNew of a class of another class scope");
+    if (mg_dvm_class_exists(OOPS)) {
+        say("  (the app's scope has %s already: the d8 program was run on this runtime first; not tested here)", OOPS);
+        return;
+    }
+    path = mg_sprintf("%s/d8t.dex", fixtures);
+    CHECK(mg_map_open(&map, path));
+    free(path);
+    if (!map.data) return;
+    CHECK(mg_dvm_add_dex_scope(map.data, (size_t)map.size, "d8t.dex (scope 13)", SCOPE));
+    theirs = mg_dvm_find_class_scope(OOPS, SCOPE);
+    CHECK(theirs && theirs->scope == SCOPE && !mg_dvm_class_exists(OOPS));
+    if (!theirs) return;
+    J(14, i32 (*)(ENV, mg_jobj *, const char *))(E, mg_dvm_mirror(theirs), "from scope 13");   /* ThrowNew */
+    e = mg_dvm_pending();
+    CHECK(e && mg_dvm_class_of(e) == theirs && mg_dvm_is_instance(e, g_dvm.c_throwable));
+    CHECK_STR(thrown(), "d8t.Main$Oops: from scope 13");
+}
+
+void test_jni(const char *guest_dir, const char *fixtures)
 {
     test_env();
+    if (fixtures) test_scoped_throw(fixtures);
 #if MG_HOST_ARM32
     if (guest_dir) test_guest_natives(guest_dir);
     else say("(no guest libraries were named: native methods in a guest library are not tested)");

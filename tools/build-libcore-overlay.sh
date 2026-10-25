@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Add public TLS APIs to the Android 9 boot classes, preserving their original
-# implementation and licensing. Loaded before core-oj.dex; no image is edited.
+# Add newer APIs to Android 9 boot classes, preserving the original image.
+# This DEX is loaded before core-oj.dex so a standalone compatibility class
+# can also replace an older class with the same DEX descriptor.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/build/android9/aosp/libcore/ojluni/src/main/java"
@@ -24,6 +25,8 @@ for members in sorted(overlay.rglob('*.java.members')):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(text[:at] + members.read_text(encoding='utf-8') + '\n}\n', encoding='utf-8')
     files.append('"' + target.as_posix() + '"')
+for source in sorted(overlay.rglob('*.java')):
+    files.append('"' + source.as_posix() + '"')
 (out / 'sources.arg').write_text('\n'.join(files), encoding='utf-8')
 PY
 "$JDK/bin/javac" -source 8 -target 8 -encoding UTF-8 -d "$(cygpath -m "$OUT/classes")" "@$(cygpath -m "$OUT/sources.arg")"

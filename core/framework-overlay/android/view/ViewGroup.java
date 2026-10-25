@@ -11,6 +11,12 @@
 // And in makeOptionalFitsSystemWindows, which marks this group and its children, as Android's does (see the overlay's
 // View); the original's did nothing.
 //
+// And in dispatchApplyWindowInsets, for an app made for Android 11 or later (Manifest.targetSdk 30 and up): each child is
+// given the insets this group was left with, as Android 11's ViewGroup gives them, not what the child before it returned. An
+// app made for an earlier Android has them as before, each child what the one before it returned, until one consumes them.
+// Consumed insets end the dispatch now (WindowInsets, overlaid), and a child that consumed them no longer kept them from the
+// children after it.
+//
 // Everything else is the original's, unchanged.
 package android.view;
 
@@ -287,7 +293,12 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     @Override public void dispatchSystemUiVisibilityChanged(int v) { super.dispatchSystemUiVisibilityChanged(v); for (int i = 0; i < mChildrenCount; i++) mChildren[i].dispatchSystemUiVisibilityChanged(v); }
     @Override public WindowInsets dispatchApplyWindowInsets(WindowInsets in) {
         WindowInsets r = super.dispatchApplyWindowInsets(in);
-        if (!r.isConsumed()) for (int i = 0; i < mChildrenCount; i++) { r = mChildren[i].dispatchApplyWindowInsets(r); if (r.isConsumed()) break; }
+        if (r.isConsumed()) return r;
+        if (megler.Manifest.targetSdk >= 30) {
+            for (int i = 0; i < mChildrenCount; i++) mChildren[i].dispatchApplyWindowInsets(r);
+            return r;
+        }
+        for (int i = 0; i < mChildrenCount; i++) { r = mChildren[i].dispatchApplyWindowInsets(r); if (r.isConsumed()) break; }
         return r;
     }
     void onChildVisibilityChanged(View child, int old, int now) {}

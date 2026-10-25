@@ -1,5 +1,6 @@
 package megler;
 
+import android.app.Activity;
 import android.app.Application;
 import android.app.Service;
 import android.content.*;
@@ -21,11 +22,18 @@ public final class MicroG {
     private final ArrayList<Entry> services = new ArrayList<>();
     private final ArrayList<Receiver> receivers = new ArrayList<>();
     private final ArrayList<ProviderInfo> providers = new ArrayList<>();
+    /* GmsCore's activities, which an app that hosts it starts here (activity, newActivity). */
+    private ArrayList<Manifest.Component> activities = new ArrayList<>();
     private final HashMap<String, ContentProvider> runningProviders = new HashMap<>();
     private final HashMap<String, Running> running = new HashMap<>();
+    /* The id of the latest start of each of GmsCore's services here (megler.Services.postStart). */
+    private final HashMap<String, Integer> startIds = new HashMap<>();
     private final Map<ServiceConnection, Binding> bindings = new IdentityHashMap<>();
     private final PackageContext context;
     private Application application;
+    /* The Application made and attached (attached), before it is created (application). */
+    private volatile Application attached;
+    private Application attaching;
     private ClassLoader loader;
     private static final class Entry {
         ServiceInfo info = new ServiceInfo();
@@ -57,11 +65,44 @@ public final class MicroG {
         return instance;
     }
     public static boolean installed() { return get() != null; }
+
+    /**
+     * The activity of GmsCore's an intent of this app opens, when it is for GmsCore's package (by its component, or its package
+     * with an action): it runs here, in GmsCore's class scope and with its context, as its services do (megler.AppRunner).
+     * GmsCore's sign-in started from here hands its screens this process's own objects -- the PendingIntent its authenticator
+     * wraps in UNPACKING_REDIRECT, the AccountAuthenticatorResponse -- which its separate app's process could not have: Play
+     * Store's "Sign in" opened that app's settings instead. Disabled activities, and launcher intents (GmsCore's own app), are not.
+     * An intent that names no package is GmsCore's when its action is not Android's own and this app has no activity for it:
+     * GmsCore's sign-in finds its next screen so (PRE_ADD_ACCOUNT).
+     */
+    public static Manifest.Component activity(Intent i) {
+        MicroG g = get();
+        if (g == null || i == null || PhoneApps.isLauncherIntent(i)) return null;
+        String pkg = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();
+        if (pkg == null) {
+            String action = i.getAction();
+            if (action == null || action.startsWith("android.") || Manifest.resolve(i) != null) return null;
+        } else if (!GooglePackages.GMS.equals(pkg)) return null;
+        Manifest.Component c = Manifest.resolveIn(g.activities, i);
+        return c != null && c.enabled ? c : null;
+    }
+    /** Whether a component is one of GmsCore's activities (activity), which run in its scope here. */
+    public static boolean hosts(Manifest.Component c) { MicroG g = get(); return g != null && c != null && g.activities.contains(c); }
+    /** An activity of GmsCore's, made in its class scope, its Application made first as for anything of GmsCore's that runs here. */
+    public static Activity newActivity(String cls) throws Exception {
+        MicroG g = get();
+        g.application();
+        return (Activity) g.loader().loadClass(cls).newInstance();
+    }
+    /** The context GmsCore's activities here are based on, and their Application. */
+    public static Context activityBase() { MicroG g = get(); return g == null ? null : g.context; }
+    public static Application activityApplication() throws Exception { MicroG g = get(); return g == null ? null : g.application(); }
     public static PackageInfo packageInfo(String pkg) { MicroG g = get(); return g != null && GooglePackages.GMS.equals(pkg) ? g.info : null; }
     public static Context context(String pkg) { MicroG g = get(); return g != null && GooglePackages.GMS.equals(pkg) ? g.context : null; }
     public static ContentProvider provider(String authority) {
         MicroG g = get();
         if (g == null || authority == null) return null;
+        g.attachOnMain();
         synchronized (g.runningProviders) {
             for (ProviderInfo info : g.providers) {
                 if (!info.exported || info.authority == null || !Arrays.asList(info.authority.split(";")).contains(authority)) continue;
@@ -171,6 +212,7 @@ public final class MicroG {
         // The existing Google compatibility identity is also used for the separately installed replacement.
         info.signatures = new Signature[] {GooglePackages.signature()};
         info.signingInfo = new SigningInfo(info.signatures);
+        activities = Manifest.activitiesIn(manifest, APK, GooglePackages.GMS);
         context = new PackageContext(resources);
         android.util.Log.i("MicroG", "GmsCore " + info.versionName + ": " + services.size() + " services, " + receivers.size() + " receivers, " + providers.size() + " providers");
     }
@@ -188,6 +230,34 @@ public final class MicroG {
         return null;
     }
     public static ServiceInfo resolve(Intent i) { MicroG g = get(); Entry e = g == null ? null : g.find(i, false); return e == null ? null : e.info; }
+    /**
+     * What PackageManager.queryIntentServices lists of GmsCore's: as on Android, exported or not (exported matters to a
+     * binding), and a disabled one only with MATCH_DISABLED_COMPONENTS. GmsCore tells an unlocked user so: it asks for its own
+     * DirectBootHelperService, disabled and unexported, which Android lists with that flag once the user is unlocked; an empty
+     * answer kept every API that is not direct boot aware from the client (People, Checkin). And its task scheduler looks for a
+     * task's service among all those of its TASK_READY filter, none of them exported. The exported come first, so that
+     * resolveService gives a client what it can bind, as before.
+     */
+    public static List<ServiceInfo> query(Intent i, int flags) {
+        ArrayList<ServiceInfo> out = new ArrayList<>(), hidden = new ArrayList<>();
+        MicroG g = get();
+        if (g == null || i == null || !g.info.applicationInfo.enabled) return out;
+        boolean disabled = (flags & PackageManager.MATCH_DISABLED_COMPONENTS) != 0;
+        ComponentName c = i.getComponent();
+        String pkg = c == null ? i.getPackage() : c.getPackageName();
+        if (pkg != null && !g.info.packageName.equals(pkg)) return out;
+        for (Entry e : g.services) {
+            if (!e.info.enabled && !disabled) continue;
+            if (c != null) {
+                if (e.info.name.equals(c.getClassName())) { out.add(e.info); break; }
+                continue;
+            }
+            for (IntentFilter f : e.filters)
+                if (f.hasAction(i.getAction()) && f.matchCategories(i.getCategories()) == null) { (e.info.exported ? out : hidden).add(e.info); break; }
+        }
+        out.addAll(hidden);
+        return out;
+    }
     /** microG's enabled services whose filters take the action, exported or not: what the system finds by it (an account authenticator). */
     public static java.util.List<ServiceInfo> services(String action) {
         ArrayList<ServiceInfo> out = new ArrayList<>();
@@ -207,26 +277,83 @@ public final class MicroG {
         MicroG g = get();
         return g != null && g.find(intent, true) != null && bind(g.context, intent, conn);
     }
-    private ClassLoader loader() {
+    /* One loader, one class scope of GmsCore's, whichever thread asks first: Play Store asked for GmsCore's flags provider on
+       a thread of its own while its main thread started GmsCore, each made a loader, and GmsCore's classes were there twice,
+       their statics apart -- the flags provider's PhenotypeFlag was never set up (Must call PhenotypeFlag.init() first). */
+    private synchronized ClassLoader loader() {
         if (loader == null) try {
             loader = new ServiceClassLoader(APK);
         } catch (Exception e) { throw new IllegalStateException("Loading GmsCore", e); }
         return loader;
     }
+    /* (running is changed on the main thread and read by stop and stopSelf on any thread: they lock it.) */
     private Running create(Entry e) throws Exception {
-        Running r = running.get(e.info.name);
+        Running r;
+        synchronized (running) { r = running.get(e.info.name); }
         if (r != null) return r;
         application();
         r = new Running(); r.service = (Service) loader().loadClass(e.info.name).newInstance();
-        r.service.meglerAttach(context); r.service.onCreate(); running.put(e.info.name, r);
+        r.service.meglerAttach(context); r.service.onCreate();
+        synchronized (running) { running.put(e.info.name, r); }
         return r;
+    }
+    /*
+     * An uncaught exception of a thread of GmsCore's here (Native.thrownInService) ends that thread alone, as it ends GmsCore's
+     * own process on Android, which Android starts again while the app that used it goes on. GmsCore's crash handler, made the
+     * process's default by its Application, passes what it does not handle on to the app's, and the app's ended the app: GmsCore's
+     * metrics collection and its Constellation module crashed Play Store during its sign-in. The main thread's are the app's.
+     */
+    private static final class ServiceCrashes implements Thread.UncaughtExceptionHandler {
+        private final Thread.UncaughtExceptionHandler under;
+        ServiceCrashes(Thread.UncaughtExceptionHandler under) { this.under = under; }
+        @Override public void uncaughtException(Thread t, Throwable e) {
+            if (t != Looper.getMainLooper().getThread() && Native.thrownInService(e) != 0) {
+                android.util.Log.e("Megler", "Google Play services' thread " + t.getName() + " ended with an uncaught exception; on Android its process would, and the app goes on", e);
+                return;
+            }
+            if (under != null) under.uncaughtException(t, e);
+        }
+    }
+    /**
+     * microG's Application, made and attached once (attachBaseContext), as Android makes and attaches an app's before it starts
+     * its providers; created (application) on the first thing of microG's that runs here. GmsCore's attachBaseContext sets up
+     * its flags (PhenotypeFlag), which its providers read. One asked for while it is being attached (by what the attaching runs)
+     * is that one.
+     */
+    private synchronized Application attached() throws Exception {
+        if (attached != null) return attached;
+        if (attaching != null) return attaching;
+        Application a = info.applicationInfo.className == null ? new Application() :
+            (Application) loader().loadClass(info.applicationInfo.className).newInstance();
+        attaching = a;
+        try { a.meglerAttach(context); attached = a; } finally { attaching = null; }
+        return a;
+    }
+    /*
+     * GmsCore's Application attached before its first provider starts, on the main thread, as Android does it: Play Store asks
+     * GmsCore's flags provider (Phenotype) at its start, on a thread of its own, before anything else of GmsCore's runs, and
+     * without it every answer was an IllegalStateException. That thread waits for the main thread, though not for long: one the
+     * main thread waits on itself would not get it otherwise, and the provider then answers as before.
+     */
+    private void attachOnMain() {
+        if (attached != null) return;
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            try { attached(); } catch (Throwable t) { android.util.Log.e("MicroG", "Attaching GmsCore's Application failed", t); }
+            return;
+        }
+        final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        onMain(() -> {
+            try { attached(); } catch (Throwable t) { android.util.Log.e("MicroG", "Attaching GmsCore's Application failed", t); }
+            finally { done.countDown(); }
+        });
+        try { done.await(10, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
     /** microG's Application, made and created once, on the first thing of microG's that runs here. */
     private Application application() throws Exception {
         if (application == null) {
-            Application a = info.applicationInfo.className == null ? new Application() :
-                (Application) loader().loadClass(info.applicationInfo.className).newInstance();
-            a.meglerAttach(context); a.onCreate(); application = a;
+            Application a = attached();
+            a.onCreate(); application = a;
+            Thread.setDefaultUncaughtExceptionHandler(new ServiceCrashes(Thread.getDefaultUncaughtExceptionHandler()));
             boot();
         }
         return application;
@@ -246,6 +373,32 @@ public final class MicroG {
         if (g == null) return false;
         g.deliver(intent, from != null && GooglePackages.GMS.equals(from.getPackageName()));
         return true;
+    }
+    /**
+     * A broadcast of Android's system (megler.Accounts: the accounts changed, one was removed) to GmsCore's receivers, as the
+     * system sends it to Google Play services: exported or not, whatever names the intent.
+     */
+    public static boolean sendAsSystem(Intent intent) {
+        MicroG g = get();
+        if (g == null || intent == null) return false;
+        g.deliver(new Intent(intent).setPackage(GooglePackages.GMS), true);
+        return true;
+    }
+    /*
+     * The implicit broadcasts Google's system configuration lets reach the receivers of an app's manifest on Android 8 and later
+     * (google.xml's allow-implicit-broadcast, which BiTGApps installs). GmsCore's checkin sends CHECKIN_COMPLETE to no package,
+     * and its own receiver of it starts its first sync of its server flags (Phenotype): without it every flag of GmsCore's kept
+     * its default, the DroidGuard of its sign-in among them, and Google's server refused the account ("MissingDroidguard").
+     */
+    private static final Set<String> IMPLICIT = new HashSet<>(Arrays.asList(
+        "com.google.android.checkin.CHECKIN_COMPLETE", "com.google.gservices.intent.action.GSERVICES_CHANGED",
+        "com.google.gservices.intent.action.GSERVICES_OVERRIDE", "com.google.android.c2dm.intent.RECEIVE",
+        "com.google.android.onetimeinitializer.ONE_TIME_INITIALIZED"));
+    /** One of those broadcasts, naming no package nor component, to microG's receivers too: from microG, to all that take it; from the app, to the exported ones. */
+    public static void sendImplicit(Context from, Intent intent) {
+        if (intent == null || intent.getComponent() != null || intent.getPackage() != null || !IMPLICIT.contains(intent.getAction())) return;
+        MicroG g = get();
+        if (g != null) g.deliver(intent, from != null && GooglePackages.GMS.equals(from.getPackageName()));
     }
     private void deliver(Intent intent, boolean internal) {
         for (Receiver r : receivers) {
@@ -276,6 +429,16 @@ public final class MicroG {
             for (IntentFilter f : r.filters) if (f.hasAction(Intent.ACTION_BOOT_COMPLETED)) {
                 deliver(new Intent(Intent.ACTION_BOOT_COMPLETED).setComponent(new ComponentName(GooglePackages.GMS, r.info.name)), true);
                 break;
+            }
+            // Google's GmsCore starts its device registration from CHECKIN, not BOOT_COMPLETED.
+            // Send the same trigger Android's checkin scheduler sends after boot. The receiver
+            // decides whether a checkin is due and obtains the ID from Google's server.
+            if ("com.google.android.gms.checkin.CheckinServiceTriggerReceiver".equals(r.info.name)) {
+                for (IntentFilter f : r.filters) if (f.hasAction("android.server.checkin.CHECKIN")) {
+                    deliver(new Intent("android.server.checkin.CHECKIN")
+                            .setComponent(new ComponentName(GooglePackages.GMS, r.info.name)), true);
+                    break;
+                }
             }
         }
     }
@@ -326,49 +489,79 @@ public final class MicroG {
     }
     private void destroyIfUnused(Running r) {
         if (!r.started && r.clients == 0) {
-            running.values().remove(r); r.service.onDestroy();
+            synchronized (running) { running.values().remove(r); }
+            r.service.onDestroy();
         }
     }
     public static ComponentName start(Context from, Intent intent) {
         MicroG g = get(); Entry e = g == null ? null : g.find(intent, GooglePackages.GMS.equals(from.getPackageName()));
         if (e == null) return null;
         Intent copy = new Intent(intent);
-        new Handler(Looper.getMainLooper()).post(() -> {
-            try { Running r = g.create(e); r.started = true; r.service.onStartCommand(copy, 0, ++r.starts); }
+        Services.postStart(g.startIds, e.info.name, id -> {
+            try { Running r = g.create(e); r.started = true; r.starts++; r.service.onStartCommand(copy, 0, id); }
             catch (Throwable t) { android.util.Log.e("MicroG", "Starting " + e.info.name + " failed", t); }
         });
         return new ComponentName(GooglePackages.GMS, e.info.name);
     }
+    /* Android stops a service on its process's main thread, whichever thread asked, and later, never inside the call that asked
+       (a service may stop itself in onStartCommand and go on with it): GmsCore's IndexWorkerChimeraService checks the thread in
+       onDestroy, and Play Store's background stop of it ended Play Store. */
+    static void onMain(Runnable r) { new Handler(Looper.getMainLooper()).post(r); }
     public static boolean stop(Intent intent) {
         MicroG g = get(); Entry e = g == null ? null : g.find(intent, true);
         if (e == null) return false;
-        Running r = g.running.get(e.info.name); if (r == null) return false;
-        r.started = false; g.destroyIfUnused(r); return true;
+        synchronized (g.running) { if (g.running.get(e.info.name) == null) return false; }
+        onMain(() -> {
+            Running r;
+            synchronized (g.running) { r = g.running.get(e.info.name); }
+            if (r != null) { r.started = false; g.destroyIfUnused(r); }
+        });
+        return true;
     }
-    public static boolean stopSelf(Service service) {
-        MicroG g = get(); if (g == null) return false;
-        for (Running r : new ArrayList<>(g.running.values())) if (r.service == service) {
-            r.started = false; g.destroyIfUnused(r); return true;
-        }
-        return false;
+    /** Service.stopSelfResult for GmsCore's services: 1 when it stops, 0 when a later start keeps it, -1 when it is none of theirs running here. */
+    public static int stopSelf(Service service, int id) {
+        MicroG g = get(); if (g == null) return -1;
+        String name = null; Running found = null;
+        synchronized (g.running) { for (Map.Entry<String, Running> x : g.running.entrySet()) if (x.getValue().service == service) { name = x.getKey(); found = x.getValue(); } }
+        if (found == null) return -1;
+        final Running r = found;
+        return Services.postStop(g.startIds, name, id, () -> {
+            boolean still;
+            synchronized (g.running) { still = g.running.containsValue(r); }
+            if (still) { r.started = false; g.destroyIfUnused(r); }
+        }) ? 1 : 0;
     }
     private final class PackageContext extends ContextWrapper {
         private final Resources resources;
+        private final boolean deviceProtected;
         private final HashMap<String, SharedPreferences> prefs = new HashMap<>();
-        PackageContext(Resources r) { super(ContextImpl.app()); resources = r; }
+        PackageContext(Resources r) { this(r, false); }
+        PackageContext(Resources r, boolean deviceProtected) {
+            super(ContextImpl.app());
+            resources = r;
+            this.deviceProtected = deviceProtected;
+        }
         @Override public String getPackageName() { return GooglePackages.GMS; }
         @Override public String getOpPackageName() { return getPackageName(); }
         @Override public ApplicationInfo getApplicationInfo() { return info.applicationInfo; }
         @Override public String getPackageCodePath() { return APK; }
         @Override public String getPackageResourcePath() { return APK; }
         @Override public ClassLoader getClassLoader() { return loader(); }
-        @Override public Context getApplicationContext() { return application == null ? this : application; }
+        @Override public Context getApplicationContext() { Application a = application != null ? application : attached; return a == null ? this : a; }
         @Override public Resources getResources() { return resources; }
         @Override public AssetManager getAssets() { return resources.getAssets(); }
-        @Override public File getDataDir() { return new File(info.applicationInfo.dataDir); }
+        @Override public File getDataDir() {
+            File data = new File(info.applicationInfo.dataDir);
+            if (deviceProtected) data = new File(data, "device_protected");
+            data.mkdirs();
+            return data;
+        }
         private File dir(String name) { File f = new File(getDataDir(), name); f.mkdirs(); return f; }
         @Override public File getDatabasePath(String name) { return name.startsWith("/") ? new File(name) : new File(dir("databases"), name); }
-        @Override public Context createDeviceProtectedStorageContext() { return this; }
+        @Override public boolean isDeviceProtectedStorage() { return deviceProtected; }
+        @Override public boolean isCredentialProtectedStorage() { return !deviceProtected; }
+        @Override public Context createDeviceProtectedStorageContext() { return deviceProtected ? this : new PackageContext(resources, true); }
+        @Override public Context createCredentialProtectedStorageContext() { return deviceProtected ? new PackageContext(resources) : this; }
         @Override public File getFilesDir() { return dir("files"); }
         @Override public File getCacheDir() { return dir("cache"); }
         @Override public File getDir(String name, int mode) { return dir("app_" + name); }

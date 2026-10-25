@@ -239,9 +239,12 @@ def cmd_install(a):
     guid = target_guid()
     if guid is None:
         return install_through_portal(appx)
-    r = subprocess.run([winappdeploycmd(), verb, "-file", appx, "-g", guid], capture_output=True, text=True)
+    r = subprocess.run([winappdeploycmd(), verb, "-file", appx, "-g", guid],
+                       capture_output=True, text=True, errors="replace")
     out = (r.stdout + r.stderr).strip()
-    print(out.splitlines()[-1] if out else "")
+    line = out.splitlines()[-1] if out else ""
+    encoding = sys.stdout.encoding or "utf-8"
+    print(line.encode(encoding, errors="replace").decode(encoding))
     if r.returncode == 0:
         print("now on the phone:", package()["PackageFullName"])
     return r.returncode

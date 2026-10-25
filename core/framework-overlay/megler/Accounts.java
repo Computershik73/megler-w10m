@@ -83,6 +83,7 @@ public final class Accounts {
         }
         sEntries.clear();
         sEntries.addAll(read);
+        if (sTold == null) sTold = current();
         return true;
     }
     private static void map(JSONObject o, Map<String, String> into) throws org.json.JSONException {
@@ -224,14 +225,41 @@ public final class Accounts {
             }
         }
     };
+    /* The accounts the last change was told of (first: those first read): what is gone since is told as removed. */
+    private static ArrayList<Account> sTold;
+    private static ArrayList<Account> current() {
+        ArrayList<Account> now = new ArrayList<>();
+        for (Entry e : sEntries) now.add(new Account(e.name, e.type));
+        return now;
+    }
     private static void changed() {
         ArrayList<Runnable> all;
+        final ArrayList<Account> gone = new ArrayList<>();
+        synchronized (Accounts.class) {
+            ArrayList<Account> now = current();
+            if (sTold != null) for (Account a : sTold) if (!now.contains(a)) gone.add(a);
+            sTold = now;
+        }
         synchronized (sListeners) { all = new ArrayList<>(sListeners); }
         for (Runnable r : all) WATCH.post(r);
         Context app = AppRunner.application() != null ? AppRunner.application() : ContextImpl.app();
         if (app != null) WATCH.post(() -> {
             Broadcasts.send(app, new Intent(android.accounts.AccountManager.LOGIN_ACCOUNTS_CHANGED_ACTION));
             Broadcasts.send(app, new Intent(android.accounts.AccountManager.ACTION_VISIBLE_ACCOUNTS_CHANGED));
+            /*
+             * And to Google Play services, as Android's system sends them there. GmsCore's receiver of LOGIN_ACCOUNTS_CHANGED
+             * tells apps which Google account came or went (GOOGLE_ACCOUNT_CHANGE): that is how Play Store hears its account
+             * was removed. Without it Play Store went back to the removed account and ended (MainActivity.x).
+             */
+            MicroG.sendAsSystem(new Intent(android.accounts.AccountManager.LOGIN_ACCOUNTS_CHANGED_ACTION));
+            // Each account removed, as Android 8 and later tell it: to the app, and to Google Play services.
+            for (Account a : gone) {
+                Intent removed = new Intent(android.accounts.AccountManager.ACTION_ACCOUNT_REMOVED)
+                        .putExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME, a.name)
+                        .putExtra(android.accounts.AccountManager.KEY_ACCOUNT_TYPE, a.type);
+                Broadcasts.send(app, new Intent(removed).setPackage(app.getPackageName()));
+                MicroG.sendAsSystem(removed);
+            }
         });
     }
 

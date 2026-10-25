@@ -174,7 +174,7 @@ public final class AssetManager implements AutoCloseable {
             for (int i = 0; i < sLibs.size(); i++) if (sLibs.get(i).path.equals(path)) return i + 2;
             int apk = megler.Native.addApk(path);
             if (apk < 0) {
-                android.util.Log.w("AssetManager", "cannot add " + path + ": it cannot be read");
+                android.util.Log.w("AssetManager", "cannot add " + path + ": it cannot be read, or there is no room for it (the log says which)");
                 return 0;
             }
             Library lib = new Library(path, apk);

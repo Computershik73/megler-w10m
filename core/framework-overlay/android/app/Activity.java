@@ -84,6 +84,16 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         mComponent = new ComponentName(getPackageName(), getClass().getName());
         int theme = info != null && info.theme != 0 ? info.theme : megler.ContextImpl.defaultTheme();
         setTheme(theme);
+        if ("com.google.android.gms".equals(megler.Native.packageName())) {
+            android.util.TypedValue value = new android.util.TypedValue();
+            android.content.res.Resources.Bag bag = getResources().meglerBag(theme);
+            android.util.Log.i("ThemeProbe", getClass().getName() + " component=" + (info == null ? "null" : info.name)
+                    + " theme=0x" + Integer.toHexString(theme) + " windowActionBar="
+                    + getTheme().resolveAttribute(0x7f0102c5, value, true)
+                    + " bag=" + (bag == null ? "missing" : bag.n + "/" + bag.indexOf(0x7f0102c5))
+                    + " config=" + getResources().getConfiguration()
+                    + " applied=" + getTheme());
+        }
         if (info != null && info.label != 0) { try { mTitle = getResources().getText(info.label); } catch (Exception e) {} }
         if (mTitle == null) mTitle = megler.AppRunner.appLabel(this);
         if (info != null && info.screenOrientation >= 0) mRequestedOrientation = info.screenOrientation;
@@ -162,6 +172,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     private boolean windowShown() { return mWindow != null && mWindow.peekDecorView() != null && megler.ViewRoot.of(mWindow.peekDecorView()) != null; }
     public final Activity meglerCaller() { return mCaller; }
     public final int meglerRequestCode() { return mRequestCode; }
+    /** It passed its caller's request on (FLAG_ACTIVITY_FORWARD_RESULT): its own result goes to no one. */
+    public final void meglerForwardedResult() { mRequestCode = -1; }
     public final int meglerResultCode() { return mResultCode; }
     public final Intent meglerResultData() { return mResultData; }
     public final void meglerActivityResult(int request, int result, Intent data) { onActivityResult(request, result, data); }
@@ -358,8 +370,26 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void startActivityFromFragment(Fragment f, Intent i, int request) { startActivityForResult(i, request); }
     public boolean startActivityIfNeeded(Intent i, int request) { startActivityForResult(i, request); return true; }
     public boolean startNextMatchingActivity(Intent i) { return false; }
-    public void startIntentSenderForResult(IntentSender s, int request, Intent fill, int mask, int values, int extra) {}
-    public void startIntentSenderForResult(IntentSender s, int request, Intent fill, int mask, int values, int extra, Bundle o) {}
+    /*
+     * An IntentSender of a PendingIntent for an activity (IntentSender.meglerOf) starts that activity from this one, as Android
+     * does: the fill-in intent's extras added, its flags as the mask and values say (FLAG_ACTIVITY_FORWARD_RESULT among them:
+     * megler.AppRunner). GmsCore's sign-in unpacks its screen's PendingIntent so (UnpackingRedirectActivity), and these did
+     * nothing: the sign-in ended at once, as cancelled. An IntentSender of anything else is sent.
+     */
+    public void startIntentSenderForResult(IntentSender s, int request, Intent fill, int mask, int values, int extra) throws IntentSender.SendIntentException {
+        startIntentSenderForResult(s, request, fill, mask, values, extra, null);
+    }
+    public void startIntentSenderForResult(IntentSender s, int request, Intent fill, int mask, int values, int extra, Bundle o) throws IntentSender.SendIntentException {
+        PendingIntent p = s == null ? null : s.meglerPending();
+        if (p == null || !p.isActivity()) {
+            if (s != null) s.sendIntent(this, 0, fill, null, null);
+            return;
+        }
+        Intent i = new Intent(p.meglerIntent());
+        if (fill != null) i.fillIn(fill, 0);
+        i.setFlags((i.getFlags() & ~mask) | (values & mask));
+        startActivityForResult(i, request, o);
+    }
     public void finish() {
         if (mFinished) return;
         mFinished = true;
@@ -605,8 +635,10 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public void startActivityFromChild(android.app.Activity p0, android.content.Intent p1, int p2, android.os.Bundle p3) {}
             public void startActivityFromFragment(android.app.Fragment p0, android.content.Intent p1, int p2, android.os.Bundle p3) {}
             public boolean startActivityIfNeeded(android.content.Intent p0, int p1, android.os.Bundle p2) { return false; }
-            public void startIntentSender(android.content.IntentSender p0, android.content.Intent p1, int p2, int p3, int p4) {}
-            public void startIntentSender(android.content.IntentSender p0, android.content.Intent p1, int p2, int p3, int p4, android.os.Bundle p5) {}
+            public void startIntentSender(android.content.IntentSender p0, android.content.Intent p1, int p2, int p3, int p4) { startIntentSender(p0, p1, p2, p3, p4, null); }
+            public void startIntentSender(android.content.IntentSender p0, android.content.Intent p1, int p2, int p3, int p4, android.os.Bundle p5) {
+                try { startIntentSenderForResult(p0, -1, p1, p2, p3, p4, p5); } catch (IntentSender.SendIntentException e) { throw new RuntimeException(e); }
+            }
             public void startIntentSenderForResult(android.content.IntentSender p0, java.lang.String p1, int p2, android.content.Intent p3, int p4, int p5, android.os.Bundle p6) {}
             public void startIntentSenderForResultInner(android.content.IntentSender p0, java.lang.String p1, int p2, android.content.Intent p3, int p4, int p5, android.os.Bundle p6) {}
             public void startIntentSenderFromChild(android.app.Activity p0, android.content.IntentSender p1, int p2, android.content.Intent p3, int p4, int p5, int p6) {}

@@ -102,6 +102,10 @@ void mg_dvm_loader_roots(void (*fn)(mg_jobj *, void *), void *user) {
     for (i = 1; i < 16; i++) if (g_service_loaders[i]) fn(g_service_loaders[i], user);
     /* (Kept for good, as the table holds them by address: microG keeps each module's loader for good itself.) */
     for (i = 0; i < MAX_ALIASES; i++) if (g_alias_loaders[i]) fn(g_alias_loaders[i], user);
+    for (i = 0; i < (int)mg_dvm_dex_count(); i++) {
+        mg_dvm_dex *d = mg_dvm_dex_at((u32)i);
+        if (d && d->loader) fn(d->loader, user);
+    }
 }
 /* The scope of the service loader that opened this APK, or 0. */
 static int service_apk_scope(const char *source)
@@ -146,6 +150,9 @@ static bool alias_loader(mg_jobj *loader, int scope, const char *source)
 N(ServiceClassLoader_openApk) {
     const char *path = mg_dvm_string_utf8(c->args[0].l);
     char *host;
+    char *legacy;
+    u8 *legacy_dex;
+    size_t legacy_size = 0;
     int scope;
     if (!path) { npe("apk"); return; }
     mg_dvm_lock();
@@ -160,6 +167,14 @@ N(ServiceClassLoader_openApk) {
         return;
     }
     free(host);
+    /* A separately loaded service may declare Android's optional Apache HTTP
+       library even when its client does not. Keep that library in the service
+       scope so it cannot resolve client classes or displace client libraries. */
+    legacy = mg_sprintf("%s/framework/org.apache.http.legacy.dex", g_dvm.android_root ? g_dvm.android_root : ".");
+    legacy_dex = mg_file_read_all(legacy, &legacy_size);
+    if (legacy_dex && !mg_dvm_add_dex_scope(legacy_dex, legacy_size, "org.apache.http.legacy.dex", scope))
+        free(legacy_dex);
+    free(legacy);
     g_service_apks[scope] = mg_strdup(path);
     c->ret.i = scope;
 }
@@ -225,8 +240,9 @@ static void fill_mirror(mg_jobj *m, mg_dvm_class *c)
     set_int(m, "objectSize", (i32)(MG_DVM_HEADER + c->nslots * sizeof(mg_jvalue)));
     if (c->super) set_obj(m, "superClass", mg_dvm_mirror(c->super));
     if (c->component) set_obj(m, "componentType", mg_dvm_mirror(c->component));
-    /* An app's class names the app's loader as its own; the system's name none, which libcore reads as the boot class loader. */
+    /* Each dynamically opened DEX names its defining loader; the original app uses its app loader. */
     if (c->scope) set_obj(m, "classLoader", mg_dvm_scope_loader(c->scope));
+    else if (c->dex && c->dex->loader) set_obj(m, "classLoader", c->dex->loader);
     else if (c->dex && c->dex->app && g_dvm.app_loader) set_obj(m, "classLoader", g_dvm.app_loader);
     /* All of them, however many: a table of at most 128 left Avito's Dagger component, which has 826, not an instance of
        the 506th of its interface's 564 by Class.isInstance, and Avito ended at its start on a dependency it found missing. */
@@ -339,12 +355,38 @@ void mg_dvm_thread_detach(void)
     t->peer = NULL;
 }
 
+/* What a thread Java starts is given: its Thread, and whose code started it (mg_dvm_thread.owner_scope). */
+typedef struct started_thread {
+    mg_jobj *peer;
+    int owner_scope;
+} started_thread;
+
+/*
+ * The class scope of the service whose code is starting a thread on this one: that of the innermost frame of an app's own code
+ * or a service's (a pool's worker is started under the platform's frames, by the code that gave the pool its first task); with
+ * none, this thread's own owner.
+ */
+static int starting_scope(void)
+{
+    mg_dvm_thread *self = mg_dvm_self();
+    mg_dvm_frame *f;
+    for (f = self->top; f; f = f->prev) {
+        if (!f->m || !f->m->cls) continue;
+        if (f->m->cls->scope > 0) return f->m->cls->scope;
+        if (mg_dvm_class_is_app(f->m->cls)) return 0;
+    }
+    return self->owner_scope;
+}
+
 /* A thread Java started: run(), what Java does with an exception nothing caught, and the word to whoever waits in join(). */
 static void thread_main(void *arg)
 {
-    mg_jobj *peer = (mg_jobj *)arg, *e;
+    started_thread *s = (started_thread *)arg;
+    mg_jobj *peer = s->peer, *e;
     mg_dvm_thread *t = mg_dvm_self();
     mg_jvalue v;
+    t->owner_scope = s->owner_scope;
+    free(s);
     /* One of the app's threads from the start: native methods run on it, and the guest's C library must know it. */
     mg_gthread_self();
     t->peer = peer;
@@ -367,11 +409,15 @@ N(Thread_nativeCreate)
     mg_jobj *peer = c->args[0].l;
     i64 stack = c->args[1].j;
     mg_thread *th;
+    started_thread *s = (started_thread *)mg_alloc(sizeof(*s));
+    s->peer = peer;
+    s->owner_scope = starting_scope();
     /* Alive from the moment start() returns, as Java promises; the thread puts its own state here when it runs. */
     set_long(peer, "nativePeer", 1);
     /* Java's frames are not on this stack, only what native methods need of it. */
-    th = mg_thread_start(thread_main, peer, stack > (1 << 20) ? (size_t)stack : (size_t)1 << 20, "java");
+    th = mg_thread_start(thread_main, s, stack > (1 << 20) ? (size_t)stack : (size_t)1 << 20, "java");
     if (!th) {
+        free(s);
         set_long(peer, "nativePeer", 0);
         mg_dvm_throw("java/lang/OutOfMemoryError", "a thread could not be started");
         return;
@@ -693,8 +739,12 @@ N(VMStack_getStackClass2)
     c->ret.l = f ? mg_dvm_mirror(f->m->cls) : NULL;
 }
 
-/* The class loader of a class as Java sees it: the app's for the app's classes, none (the boot class path) for all others. */
-static mg_jobj *loader_of(const mg_dvm_class *k) { return k->scope ? mg_dvm_scope_loader(k->scope) : mg_dvm_class_is_app(k) ? g_dvm.app_loader : NULL; }
+/* The defining loader as Java sees it; boot classes have none. */
+static mg_jobj *loader_of(const mg_dvm_class *k) {
+    if (k->scope) return mg_dvm_scope_loader(k->scope);
+    if (k->dex && k->dex->loader) return k->dex->loader;
+    return mg_dvm_class_is_app(k) ? g_dvm.app_loader : NULL;
+}
 
 N(VMStack_getCallingClassLoader)
 {
@@ -995,6 +1045,7 @@ N(DexFile_openDexFileNative)
     }
     if (!there) {
         /* A file the app names itself (a second DEX file it unpacked, a plug-in): its classes join the path, after everything there. */
+        u32 before = mg_dvm_dex_count(), j;
         host = mg_fs_host_path(source);
         n = strlen(source);
         if (host && n > 4 && !strcmp(source + n - 4, ".dex")) there = mg_dvm_add_dex_file(host);
@@ -1005,6 +1056,12 @@ N(DexFile_openDexFileNative)
             return;
         }
         mg_dvm_dex_source_added(source);
+        /* DexFile opened these classes for this loader. Class.getClassLoader (and its
+           resource and native-library lookup) must point back to that loader. */
+        for (j = before; j < mg_dvm_dex_count(); j++) {
+            mg_dvm_dex *d = mg_dvm_dex_at(j);
+            if (d && d->scope == 0) d->loader = c->args[3].l;
+        }
     }
     /* The cookie is opaque to libcore: an array of one long, as Android's is an array of pointers. */
     cookie = mg_dvm_new_array("[J", 1);

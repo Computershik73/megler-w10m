@@ -957,11 +957,7 @@ void mg_dvm_clear_pending(void) { mg_dvm_self()->pending = NULL; }
 
 bool mg_dvm_throw(const char *cls, const char *fmt, ...)
 {
-    mg_dvm_thread *t = mg_dvm_self();
     mg_dvm_class *c;
-    mg_dvm_method *ctor;
-    mg_jobj *e;
-    mg_jvalue arg, ignored;
     char msg[600];
     msg[0] = 0;
     if (fmt) {
@@ -976,9 +972,24 @@ bool mg_dvm_throw(const char *cls, const char *fmt, ...)
         if (!strcmp(cls, "java/lang/NoClassDefFoundError")) mg_fatal("dvm: the boot class path has no java.lang.NoClassDefFoundError to throw (%s)", msg);
         return mg_dvm_throw("java/lang/NoClassDefFoundError", "%s (to throw it: %s)", cls, msg);
     }
-    t->pending = NULL;
+    mg_dvm_self()->pending = NULL;
     c = mg_dvm_find_class(cls);
-    if (!c || !mg_dvm_ensure_init(c)) return false;             /* what stopped it is pending instead */
+    if (!c) return false;                                        /* what stopped it is pending instead */
+    return mg_dvm_throw_class(c, fmt ? msg : NULL);
+}
+
+/*
+ * An exception of this class, with this message (NULL: none), made as bytecode makes one. JNI's ThrowNew names its class by
+ * the class itself, which may be a service's own (megler.ServiceClassLoader): by its name the app's scope has no such class.
+ */
+bool mg_dvm_throw_class(mg_dvm_class *c, const char *msg)
+{
+    mg_dvm_thread *t = mg_dvm_self();
+    mg_dvm_method *ctor;
+    mg_jobj *e;
+    mg_jvalue arg, ignored;
+    t->pending = NULL;
+    if (!mg_dvm_ensure_init(c)) return false;                    /* what stopped it is pending instead */
     e = mg_dvm_alloc_object(c);
     if (!e) return false;
     arg.j = 0;
@@ -988,12 +999,12 @@ bool mg_dvm_throw(const char *cls, const char *fmt, ...)
      * otherwise the exception, even one whose constructor could not be run at all (the stack was full).
      */
     if (ctor) {
-        arg.l = fmt ? mg_dvm_new_string(msg) : NULL;
+        arg.l = msg ? mg_dvm_new_string(msg) : NULL;
         if (!mg_dvm_invoke(ctor, e, &arg, &ignored) && t->pending) return false;
     } else {
         ctor = mg_dvm_find_method(c, "<init>", "()V", false);
         if (ctor && !mg_dvm_invoke(ctor, e, NULL, &ignored) && t->pending) return false;
-        if (fmt && g_dvm.f_message && mg_dvm_is_instance(e, g_dvm.c_throwable)) mg_dvm_slots(e)[g_dvm.f_message->slot].l = mg_dvm_new_string(msg);
+        if (msg && g_dvm.f_message && mg_dvm_is_instance(e, g_dvm.c_throwable)) mg_dvm_slots(e)[g_dvm.f_message->slot].l = mg_dvm_new_string(msg);
     }
     t->pending = e;
     return false;

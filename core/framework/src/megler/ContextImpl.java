@@ -19,10 +19,15 @@ public final class ContextImpl extends Context {
     private static AssetManager sAssets;
     private static Resources sResources;
     private final Resources mResources;
+    private final boolean mDeviceProtected;
     private Resources.Theme mTheme;
     private int mThemeId;
 
-    private ContextImpl(Resources r) { mResources = r; }
+    private ContextImpl(Resources r) { this(r, false); }
+    private ContextImpl(Resources r, boolean deviceProtected) {
+        mResources = r;
+        mDeviceProtected = deviceProtected;
+    }
     public static synchronized ContextImpl app() {
         if (sApp == null) {
             if (sAssets == null) sAssets = new AssetManager();
@@ -65,10 +70,22 @@ public final class ContextImpl extends Context {
     @Override public ApplicationInfo getApplicationInfo() { return ApplicationInfo.self(); }
     @Override public String getPackageResourcePath() { return getApplicationInfo().sourceDir; }
     @Override public String getPackageCodePath() { return getApplicationInfo().sourceDir; }
-    private static File dir(String sub) { File f = new File(Native.dataDir(), sub); f.mkdirs(); return f; }
+    private File dir(String sub) { File f = new File(getDataDir(), sub); f.mkdirs(); return f; }
     @Override public File getFilesDir() { return dir("files"); }
     @Override public File getCacheDir() { return dir("cache"); }
-    @Override public File getDataDir() { return new File(Native.dataDir()); }
+    @Override public File getDataDir() {
+        File f = mDeviceProtected ? new File(Native.dataDir(), "device_protected") : new File(Native.dataDir());
+        if (mDeviceProtected) f.mkdirs();
+        return f;
+    }
+    @Override public boolean isDeviceProtectedStorage() { return mDeviceProtected; }
+    @Override public boolean isCredentialProtectedStorage() { return !mDeviceProtected; }
+    @Override public Context createDeviceProtectedStorageContext() {
+        return mDeviceProtected ? this : new ContextImpl(mResources, true);
+    }
+    @Override public Context createCredentialProtectedStorageContext() {
+        return mDeviceProtected ? new ContextImpl(mResources, false) : this;
+    }
     @Override public File getDir(String name, int mode) { return dir("app_" + name); }
     @Override public File getExternalFilesDir(String type) {
         File f = new File(Native.externalDir(), "Android/data/" + getPackageName() + "/files" + (type == null ? "" : "/" + type));
@@ -78,14 +95,15 @@ public final class ContextImpl extends Context {
     @Override public SharedPreferences getSharedPreferences(String name, int mode) {
         if (name == null) name = "null";
         synchronized (sPrefs) {
-            SharedPreferences p = sPrefs.get(name);
-            if (p == null) { p = new android.content.MeglerSharedPreferences(new File(dir("shared_prefs"), name + ".xml")); sPrefs.put(name, p); }
+            String key = getDataDir().getPath() + "/" + name;
+            SharedPreferences p = sPrefs.get(key);
+            if (p == null) { p = new android.content.MeglerSharedPreferences(new File(dir("shared_prefs"), name + ".xml")); sPrefs.put(key, p); }
             return p;
         }
     }
     @Override public void startActivity(Intent i) { AppRunner.startActivity(this, i, -1, null); }
     @Override public void sendBroadcast(Intent i) { Broadcasts.send(this, i); }
-    @Override public Intent registerReceiver(BroadcastReceiver r, IntentFilter f) { return Broadcasts.register(r, f); }
+    @Override public Intent registerReceiver(BroadcastReceiver r, IntentFilter f) { return Broadcasts.register(this, r, f); }
     @Override public void unregisterReceiver(BroadcastReceiver r) { Broadcasts.unregister(r); }
     @Override public ComponentName startService(Intent s) { return Services.start(this, s); }
     @Override public boolean stopService(Intent s) { return Services.stop(s); }
@@ -95,6 +113,7 @@ public final class ContextImpl extends Context {
     @Override public Context createPackageContext(String pkg, int flags) throws PackageManager.NameNotFoundException {
         if (pkg.equals(getPackageName()) || "android".equals(pkg)) return this;
         Context external = MicroG.context(pkg);
+        if (external == null) external = Gsf.context(pkg);
         if (external != null) return external;
         throw new PackageManager.NameNotFoundException(pkg);
     }
@@ -103,7 +122,7 @@ public final class ContextImpl extends Context {
         Configuration base = new Configuration(getResources().getConfiguration());
         if (c != null) base.updateFrom(c);
         Resources r = new Resources(getAssets(), getResources().getDisplayMetrics(), base);
-        return new ContextImpl(r);
+        return new ContextImpl(r, mDeviceProtected);
     }
     private final java.util.ArrayList<ComponentCallbacks> mCallbacks = new java.util.ArrayList<>();
     @Override public void registerComponentCallbacks(ComponentCallbacks c) { mCallbacks.add(c); }

@@ -6,7 +6,23 @@
 //
 // Why. Chromium (Brave 1.97) asks every WindowInsets for its frame and catches the NoSuchMethodError that Android before
 // 16 gives; here the method was there and returned null, and the NullPointerException that followed, in a listener of
-// onApplyWindowInsets, ended the app at its first layout. Everything else is the original's, unchanged.
+// onApplyWindowInsets, ended the app at its first layout.
+//
+// And the Builder keeps each kind of bar apart (setInsets): the status bar's, the navigation bar's, the caption bar's and
+// the keyboard's, and the window's insets it builds are what they cover together, edge by edge, as Android's are. The
+// original's setInsets put whatever kind it was given in the place of all of them. AndroidX's WindowInsetsCompat.Builder
+// builds insets so on Android 11 and later, the status bar's and then the navigation bar's, or the other way round, and what
+// it built had only the last kind it was given.
+//
+// And insets with no display cutout in them have it consumed, as Android's have (its constructor: displayCutout == null),
+// so that consuming their system window insets ends their dispatch (isConsumed), as it does on Android 11 and later. The
+// original's left them unconsumed, as on a phone with a cutout (the iPhone's), and the views under one that consumed them
+// were dispatched them again with nothing left in them; the phones this runs on have no cutout (ViewRoot.cutout). Play
+// Store's content view hands its insets to its drawer itself and returns them consumed: the drawer was given them a second
+// time, with nothing in them, and kept those (AndroidX's DrawerLayout keeps the last it was given, and gives them its
+// children when it measures them), and the bottom tabs never had the navigation bar's height. Only the insets the decor
+// gives its content when it keeps it off both bars still reach every view (meglerToChildren), consumed, as before. Everything
+// else is the original's, unchanged.
 package android.view;
 
 import android.graphics.Insets;
@@ -37,16 +53,19 @@ public final class WindowInsets {
     private final Insets mSystem, mIme;
     private final boolean mConsumed;
     private DisplayCutout mCutout;
-    /* as on a phone with a display cutout: consuming the system window insets leaves the cutout, so the insets still reach the
-     * children of a view that fits system windows (with nothing left in them); only consumeDisplayCutout ends that */
+    /* the cutout consumed, or none there (as Android's constructor has it): consuming the system window insets ends their
+     * dispatch then. Insets with a cutout left in them, or that the decor made to reach its content (meglerToChildren), still
+     * reach the children of a view that consumed them (with nothing left in them); consumeDisplayCutout ends that */
     private boolean mCutoutConsumed;
     /* the size of the window the insets are relative to (getFrame); 0 x 0 when nobody said */
     private android.util.Size mFrame = new android.util.Size(0, 0);
     public WindowInsets(Insets system, Insets ime, boolean consumed) { mSystem = system; mIme = ime; mConsumed = consumed; }
     public WindowInsets(WindowInsets o) { this(o.mSystem, o.mIme, o.mConsumed); mCutout = o.mCutout; mCutoutConsumed = o.mCutoutConsumed; mFrame = o.mFrame; }
-    public WindowInsets(Rect r) { this(Insets.of(r), Insets.NONE, false); }
+    public WindowInsets(Rect r) { this(Insets.of(r), Insets.NONE, false); mCutoutConsumed = true; }
     /** Megler: the window's insets (the status bar and home indicator areas, the keyboard). */
-    public static WindowInsets meglerOf(int l, int t, int r, int b, int imeBottom, DisplayCutout cutout) { WindowInsets i = new WindowInsets(Insets.of(l, t, r, b), Insets.of(0, 0, 0, imeBottom), false); i.mCutout = cutout; return i; }
+    public static WindowInsets meglerOf(int l, int t, int r, int b, int imeBottom, DisplayCutout cutout) { WindowInsets i = new WindowInsets(Insets.of(l, t, r, b), Insets.of(0, 0, 0, imeBottom), false); i.mCutout = cutout; i.mCutoutConsumed = cutout == null; return i; }
+    /** Megler: the same insets, which still reach the children of a view that consumes them (megler.DecorView's, for its content). */
+    public WindowInsets meglerToChildren() { WindowInsets i = new WindowInsets(this); i.mCutoutConsumed = false; return i; }
     /** Megler: the size of the window these insets are of, which getFrame() gives; set once, by megler.ViewRoot, on insets it has just made. */
     public WindowInsets meglerFrame(int width, int height) { mFrame = new android.util.Size(width, height); return this; }
     public int getSystemWindowInsetLeft() { return mConsumed ? 0 : mSystem.left; }
@@ -88,19 +107,36 @@ public final class WindowInsets {
     public android.view.RoundedCorner getRoundedCorner(int p) { return null; }
     @Override public String toString() { return "WindowInsets{systemWindowInsets=" + mSystem + " ime=" + mIme + (mConsumed ? " consumed" : "") + "}"; }
     public static final class Builder {
-        private Insets sys = Insets.NONE, ime = Insets.NONE; private DisplayCutout cut; private android.util.Size frame = new android.util.Size(0, 0);
+        /* Each kind apart, as getInsets(types) tells them of insets: the status bar's top, the navigation bar's other edges. */
+        private Insets status = Insets.NONE, navigation = Insets.NONE, caption = Insets.NONE, ime = Insets.NONE;
+        private DisplayCutout cut; private boolean cutConsumed = true; private android.util.Size frame = new android.util.Size(0, 0);
         public Builder() {}
-        public Builder(WindowInsets w) { sys = w.mSystem; ime = w.mIme; cut = w.mCutout; frame = w.mFrame; }
-        public Builder setSystemWindowInsets(Insets i) { sys = i; return this; }
+        public Builder(WindowInsets w) { setSystemWindowInsets(w.mSystem); ime = w.mIme; cut = w.mCutout; cutConsumed = w.mCutoutConsumed; frame = w.mFrame; }
+        public Builder setSystemWindowInsets(Insets i) {
+            status = Insets.of(0, i.top, 0, 0);
+            navigation = Insets.of(i.left, 0, i.right, i.bottom);
+            caption = Insets.NONE;
+            return this;
+        }
         public Builder setStableInsets(Insets i) { return this; }
-        public Builder setInsets(int types, Insets i) { if ((types & 8) != 0) ime = i; else sys = i; return this; }
+        public Builder setInsets(int types, Insets i) {
+            if ((types & Type.statusBars()) != 0) status = i;
+            if ((types & Type.navigationBars()) != 0) navigation = i;
+            if ((types & Type.captionBar()) != 0) caption = i;
+            if ((types & Type.ime()) != 0) ime = i;
+            return this;
+        }
         public Builder setInsetsIgnoringVisibility(int types, Insets i) { return this; }
         public Builder setVisible(int types, boolean v) { return this; }
-        public Builder setDisplayCutout(DisplayCutout c) { cut = c; return this; }
+        public Builder setDisplayCutout(DisplayCutout c) { cut = c; cutConsumed = c == null; return this; }
         public Builder setSystemGestureInsets(Insets i) { return this; }
         public Builder setMandatorySystemGestureInsets(Insets i) { return this; }
         public Builder setTappableElementInsets(Insets i) { return this; }
-        public WindowInsets build() { WindowInsets w = new WindowInsets(sys, ime, false); w.mCutout = cut; w.mFrame = frame; return w; }
+        public WindowInsets build() {
+            WindowInsets w = new WindowInsets(Insets.max(status, Insets.max(navigation, caption)), ime, false);
+            w.mCutout = cut; w.mCutoutConsumed = cutConsumed; w.mFrame = frame;
+            return w;
+        }
         // ---- generated by tools/compat/fillmembers.py (Builder): the platform's members this class does not write (signatures only)
         public android.view.WindowInsets.Builder setBoundingRects(int p0, java.util.List p1) { return this; }
         public android.view.WindowInsets.Builder setBoundingRectsIgnoringVisibility(int p0, java.util.List p1) { return this; }

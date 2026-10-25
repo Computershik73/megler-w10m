@@ -175,6 +175,22 @@ void run(Job& job, int number, int total) {
                 return;
             }
         }
+        // Windows removes the old APPX during an update. Keep its APK in Megler first,
+        // so a new package that Megler cannot read cannot leave a marker to a vanished file.
+        if (!job.picked && !entry.installedPackage.empty()) {
+            setStep(package, stepOf("Keeping the APK for this update…"));
+            const std::string error = Library::instance().restore(job.id);
+            if (!error.empty()) {
+                setStep(package, "The installed APK could not be kept for the update: " + error);
+                return;
+            }
+            const auto restored = Library::instance().find(job.id);
+            if (!restored) {
+                setStep(package, "The APK kept for the update is missing from the library.");
+                return;
+            }
+            entry = *restored;
+        }
         const std::wstring apkPath = entry.path;
         const uint64_t apkSize = job.picked ? job.picked->size() : files::size(entry.path);
         setStep(package, stepOf("Making the package…"));
