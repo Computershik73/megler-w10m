@@ -1,7 +1,7 @@
 // Overlay of core/framework/src/android/content/pm/PackageItemInfo.java (tools/build-framework.sh).
 // It differs in loadIcon. The item of another app the phone has (megler.PhoneApps: a launcher lists them) gives that app's
-// icon, which the shell put beside the list of them; the original looked the icon's number up in the app's own resources,
-// which have no other app's. And an item with no icon of its own is never without one, as on Android
+// icon, which the shell put beside the list of them, or the item's own (an activity's, an alias's), which the shell drew
+// beside it too; the original looked the icon's number up in the app's own resources, which have no other app's. And an item with no icon of its own is never without one, as on Android
 // (ApplicationPackageManager.loadItemIcon): an activity's is its application's, and the last is the platform's default
 // icon (PackageManager.getDefaultActivityIcon). The original answered null, and Nova Launcher 8.9.4 ended at its start: it
 // draws the icon of an activity of its own that has none (AdaptiveIconSettingsActivity) and read the size of null.
@@ -22,7 +22,7 @@ public class PackageItemInfo {
     public android.graphics.drawable.Drawable loadIcon(PackageManager pm) {
         // Another app the phone has: its icon as the phone has it (megler.PhoneApps); the app's own resources have none of it.
         if (packageName != null && !packageName.equals(megler.Native.packageName())) {
-            android.graphics.drawable.Drawable d = megler.PhoneApps.icon(packageName);
+            android.graphics.drawable.Drawable d = megler.PhoneApps.icon(packageName, icon);
             if (d != null) return d;
         }
         android.graphics.drawable.Drawable d = null;

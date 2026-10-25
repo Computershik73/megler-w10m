@@ -11,6 +11,10 @@
 // the decor's own before that (Android's PendingInsetsController), so that what an app asks in onCreate counts; megler.ViewRoot
 // tells the shell which bars to hide. The original's controller before attach did nothing.
 //
+// And the insets it gives its content when it keeps the content off both bars still reach every view of it, consumed
+// (WindowInsets.meglerToChildren), as they did before consumed insets ended their dispatch (WindowInsets, overlaid): the
+// content's own listeners are told of the window's insets with nothing left in them.
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -170,7 +174,8 @@ public final class DecorView extends FrameLayout {
                 lp.setMargins(mInsetLeft, mInsetTop, mInsetRight, mInsetBottom);
                 mStack.setLayoutParams(lp);
             }
-            WindowInsets rest = in.consumeSystemWindowInsets();
+            // (They still reach every view of the content, with nothing left in them: WindowInsets.meglerToChildren.)
+            WindowInsets rest = in.consumeSystemWindowInsets().meglerToChildren();
             super.dispatchApplyWindowInsets(rest);
             return rest;
         }

@@ -1210,6 +1210,24 @@ int t_timerfd(void)
     return 8;
 }
 
+/* Chromium calls timerfd through syscall() rather than libc's timerfd functions. */
+int t_timerfd_syscall(void)
+{
+    int fd = (int)syscall(350, 1, 0x800 | 0x80000);  /* CLOCK_MONOTONIC, NONBLOCK, CLOEXEC */
+    t_itimerspec it, cur;
+    unsigned long long n = 0;
+    t_pollfd p;
+    if (fd < 0) return -1;
+    memset(&it, 0, sizeof(it));
+    it.value_nsec = 20 * 1000000;
+    if (syscall(353, fd, 0, &it, 0) != 0) { close(fd); return -2; }
+    p.fd = fd; p.events = 1; p.revents = 0;
+    if (poll(&p, 1, 2000) != 1 || !(p.revents & 1) || read(fd, &n, 8) != 8 || n != 1) { close(fd); return -3; }
+    if (syscall(354, fd, &cur) != 0 || cur.value_sec || cur.value_nsec) { close(fd); return -4; }
+    close(fd);
+    return 4;
+}
+
 /* A deep enough frame to need the stack protector's cookie, when built with it. */
 int t_stack(const char *s)
 {

@@ -37,6 +37,7 @@ std::wstring sharedFolder();
 bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullName, bool replace = false);
 void unregisterServiceApk(const std::string& installedFullName);
 std::wstring serviceApk();
+std::wstring gsfApk();
 
 /// An app's own package, before its app starts: the app's private files that Megler handed over when it made the package
 /// (the shared folder's handover\<package>, see make) copied into its LocalState in place of its own, which are kept

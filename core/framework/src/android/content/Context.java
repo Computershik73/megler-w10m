@@ -126,8 +126,9 @@ public abstract class Context {
     public void sendOrderedBroadcast(Intent i, String perm) { sendBroadcast(i); }
     public void sendStickyBroadcast(Intent i) { sendBroadcast(i); }
     public Intent registerReceiver(BroadcastReceiver r, IntentFilter f, int flags) { return registerReceiver(r, f); }
-    public Intent registerReceiver(BroadcastReceiver r, IntentFilter f, String perm, Handler h) { return registerReceiver(r, f); }
-    public Intent registerReceiver(BroadcastReceiver r, IntentFilter f, String perm, Handler h, int flags) { return registerReceiver(r, f); }
+    /* With a Handler, the receiver hears on its thread (megler.Broadcasts). */
+    public Intent registerReceiver(BroadcastReceiver r, IntentFilter f, String perm, Handler h) { return megler.Broadcasts.register(this, r, f, h); }
+    public Intent registerReceiver(BroadcastReceiver r, IntentFilter f, String perm, Handler h, int flags) { return megler.Broadcasts.register(this, r, f, h); }
     public ComponentName startForegroundService(Intent service) { return startService(service); }
     public boolean bindService(Intent service, int flags, java.util.concurrent.Executor e, ServiceConnection c) { return bindService(service, c, flags); }
     public int checkCallingOrSelfPermission(String p) { return checkPermission(p, android.os.Process.myPid(), android.os.Process.myUid()); }

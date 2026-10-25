@@ -150,6 +150,9 @@ static bool alias_loader(mg_jobj *loader, int scope, const char *source)
 N(ServiceClassLoader_openApk) {
     const char *path = mg_dvm_string_utf8(c->args[0].l);
     char *host;
+    char *legacy;
+    u8 *legacy_dex;
+    size_t legacy_size = 0;
     int scope;
     if (!path) { npe("apk"); return; }
     mg_dvm_lock();
@@ -164,6 +167,14 @@ N(ServiceClassLoader_openApk) {
         return;
     }
     free(host);
+    /* A separately loaded service may declare Android's optional Apache HTTP
+       library even when its client does not. Keep that library in the service
+       scope so it cannot resolve client classes or displace client libraries. */
+    legacy = mg_sprintf("%s/framework/org.apache.http.legacy.dex", g_dvm.android_root ? g_dvm.android_root : ".");
+    legacy_dex = mg_file_read_all(legacy, &legacy_size);
+    if (legacy_dex && !mg_dvm_add_dex_scope(legacy_dex, legacy_size, "org.apache.http.legacy.dex", scope))
+        free(legacy_dex);
+    free(legacy);
     g_service_apks[scope] = mg_strdup(path);
     c->ret.i = scope;
 }
@@ -344,12 +355,38 @@ void mg_dvm_thread_detach(void)
     t->peer = NULL;
 }
 
+/* What a thread Java starts is given: its Thread, and whose code started it (mg_dvm_thread.owner_scope). */
+typedef struct started_thread {
+    mg_jobj *peer;
+    int owner_scope;
+} started_thread;
+
+/*
+ * The class scope of the service whose code is starting a thread on this one: that of the innermost frame of an app's own code
+ * or a service's (a pool's worker is started under the platform's frames, by the code that gave the pool its first task); with
+ * none, this thread's own owner.
+ */
+static int starting_scope(void)
+{
+    mg_dvm_thread *self = mg_dvm_self();
+    mg_dvm_frame *f;
+    for (f = self->top; f; f = f->prev) {
+        if (!f->m || !f->m->cls) continue;
+        if (f->m->cls->scope > 0) return f->m->cls->scope;
+        if (mg_dvm_class_is_app(f->m->cls)) return 0;
+    }
+    return self->owner_scope;
+}
+
 /* A thread Java started: run(), what Java does with an exception nothing caught, and the word to whoever waits in join(). */
 static void thread_main(void *arg)
 {
-    mg_jobj *peer = (mg_jobj *)arg, *e;
+    started_thread *s = (started_thread *)arg;
+    mg_jobj *peer = s->peer, *e;
     mg_dvm_thread *t = mg_dvm_self();
     mg_jvalue v;
+    t->owner_scope = s->owner_scope;
+    free(s);
     /* One of the app's threads from the start: native methods run on it, and the guest's C library must know it. */
     mg_gthread_self();
     t->peer = peer;
@@ -372,11 +409,15 @@ N(Thread_nativeCreate)
     mg_jobj *peer = c->args[0].l;
     i64 stack = c->args[1].j;
     mg_thread *th;
+    started_thread *s = (started_thread *)mg_alloc(sizeof(*s));
+    s->peer = peer;
+    s->owner_scope = starting_scope();
     /* Alive from the moment start() returns, as Java promises; the thread puts its own state here when it runs. */
     set_long(peer, "nativePeer", 1);
     /* Java's frames are not on this stack, only what native methods need of it. */
-    th = mg_thread_start(thread_main, peer, stack > (1 << 20) ? (size_t)stack : (size_t)1 << 20, "java");
+    th = mg_thread_start(thread_main, s, stack > (1 << 20) ? (size_t)stack : (size_t)1 << 20, "java");
     if (!th) {
+        free(s);
         set_long(peer, "nativePeer", 0);
         mg_dvm_throw("java/lang/OutOfMemoryError", "a thread could not be started");
         return;

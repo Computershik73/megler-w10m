@@ -41,5 +41,7 @@ public final class Native {
     public static native void vibrate(long ms);
     public static native void openUrl(String url);
     public static native void exit();
+    /** The class scope of the service (Google Play services hosted here) whose thread threw it, else 0 (core: mg_java.c). */
+    public static native int thrownInService(Throwable t);
     public static native long uptimeNanos();
 }

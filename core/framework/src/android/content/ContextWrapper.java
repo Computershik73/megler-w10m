@@ -37,6 +37,10 @@ public class ContextWrapper extends Context {
     @Override public File getFilesDir() { return b().getFilesDir(); }
     @Override public File getCacheDir() { return b().getCacheDir(); }
     @Override public File getDataDir() { return b().getDataDir(); }
+    @Override public boolean isDeviceProtectedStorage() { return b().isDeviceProtectedStorage(); }
+    @Override public boolean isCredentialProtectedStorage() { return b().isCredentialProtectedStorage(); }
+    @Override public Context createDeviceProtectedStorageContext() { return b().createDeviceProtectedStorageContext(); }
+    @Override public Context createCredentialProtectedStorageContext() { return b().createCredentialProtectedStorageContext(); }
     @Override public File getDir(String name, int mode) { return b().getDir(name, mode); }
     @Override public File getExternalFilesDir(String type) { return b().getExternalFilesDir(type); }
     @Override public void startActivity(Intent intent) { b().startActivity(intent); }
@@ -80,7 +84,6 @@ public class ContextWrapper extends Context {
     public android.content.Context createApplicationContext(android.content.pm.ApplicationInfo p0, int p1) { return null; }
     public android.content.Context createContextAsUser(android.os.UserHandle p0, int p1) { return null; }
     public android.content.Context createContextForSdkInSandbox(android.content.pm.ApplicationInfo p0, int p1) { return null; }
-    public android.content.Context createCredentialProtectedStorageContext() { return null; }
     public android.content.Context createDeviceContext(int p0) { return null; }
     public android.content.Context createPackageContextAsUser(java.lang.String p0, int p1, android.os.UserHandle p2) { return null; }
     public android.content.Context createTokenContext(android.os.IBinder p0, android.view.Display p1) { return null; }
@@ -113,7 +116,6 @@ public class ContextWrapper extends Context {
     public int getWallpaperDesiredMinimumWidth() { return 0; }
     public android.os.IBinder getWindowContextToken() { return null; }
     public boolean isConfigurationContext() { return false; }
-    public boolean isCredentialProtectedStorage() { return false; }
     public android.graphics.drawable.Drawable peekWallpaper() { return null; }
     public void rebindService(android.content.ServiceConnection p0, android.content.Context.BindServiceFlags p1) {}
     public void registerDeviceIdChangeListener(java.util.concurrent.Executor p0, java.util.function.IntConsumer p1) {}

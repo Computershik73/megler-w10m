@@ -20,9 +20,15 @@ public abstract class Service extends android.content.ContextWrapper implements 
     public void onRebind(Intent i) {}
     public void onTaskRemoved(Intent root) {}
     public void onTimeout(int startId) {}
-    public final void stopSelf() { megler.Services.stopSelf(this); }
-    public final void stopSelf(int id) { stopSelf(); }
-    public final boolean stopSelfResult(int id) { stopSelf(); return true; }
+    public final void stopSelf() { stopSelfResult(-1); }
+    /*
+     * As Android: a stop by a start's id stops the service only when that was its latest start. A service that works each start
+     * off on a thread of its own stops itself as each is done; another start meanwhile keeps it, and its work goes on (GmsCore's
+     * metrics collection ended Play Store when its client went with an onDestroy between two starts). A start has its id when it
+     * is asked for, before it reaches onStartCommand, as Android's activity manager gives it (megler.Services.postStart).
+     */
+    public final void stopSelf(int id) { stopSelfResult(id); }
+    public final boolean stopSelfResult(int id) { return megler.Services.stopSelf(this, id); }
     public final void setForeground(boolean f) {}
     public final void startForeground(int id, Notification n) {}
     public final void startForeground(int id, Notification n, int type) {}

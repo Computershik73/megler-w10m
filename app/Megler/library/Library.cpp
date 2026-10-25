@@ -184,6 +184,58 @@ void Library::load() {
                     shellLog::write("library: " + narrow(name) + " was replaced with this build's");
                 }
             }
+            // A locally bundled BiTGApps archive is offered once in the library.
+            // Removing one of these entries must not silently put it back on
+            // the next launch or replace an APK the user already installed.
+            const std::wstring bitgapps = platform::installDirectory() + L"\\bitgapps";
+            const std::wstring bitgappsStamp = directory_ + L"\\bitgapps.added";
+            // GSF has no launcher activity, so it is a shared service APK rather than a Windows app.
+            // Publish it once for every client APPX of this publisher to mount from the same path.
+            const std::wstring gsfSource = bitgapps + L"\\GoogleServicesFramework.apk";
+            const std::wstring shared = appPackage::sharedFolder();
+            if (!shared.empty() && files::exists(gsfSource)) {
+                const std::wstring gsfFolder = shared + L"\\services\\gsf";
+                const std::wstring gsfTarget = gsfFolder + L"\\GoogleServicesFramework.apk";
+                if (!files::exists(gsfTarget) && files::makeDirectories(gsfFolder)) {
+                    if (files::copy(gsfSource, gsfTarget + L".part") && files::move(gsfTarget + L".part", gsfTarget))
+                        shellLog::write("library: published Google Services Framework in the shared service cache");
+                    else shellLog::write("library: could not publish Google Services Framework");
+                }
+            }
+            if (files::exists(bitgapps + L"\\PrebuiltGmsCore.apk") && !files::exists(bitgappsStamp)) {
+                bool copied = true;
+                for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"GoogleServicesFramework.apk", L"Phonesky.apk"}) {
+                    const std::wstring destination = directory_ + L"\\bitgapps-" + name;
+                    if (!files::exists(destination) && !files::copy(bitgapps + L"\\" + name, destination)) {
+                        copied = false;
+                        shellLog::write("library: could not offer BiTGApps " + narrow(name));
+                    }
+                }
+                if (copied) {
+                    files::write(bitgappsStamp, "offered");
+                    shellLog::write("library: offered locally bundled BiTGApps APKs");
+                }
+            }
+            // An older update could leave an .installed marker pointing at an APPX that Windows
+            // removed during replacement. Recover the bundled Google APK before listing entries;
+            // otherwise Update tries to pack app.apk from the vanished APPX again.
+            for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"Phonesky.apk"}) {
+                const std::wstring own = directory_ + L"\\bitgapps-" + name;
+                const std::wstring marker = own + L".installed";
+                std::string fullName;
+                if (!files::read(marker, fullName) || appPackage::canRead(appPackage::installedApk(fullName))) continue;
+                const std::wstring source = bitgapps + L"\\" + name;
+                if (!files::exists(source)) continue;
+                if (files::copy(source, own + L".part") && files::move(own + L".part", own)) {
+                    files::remove(marker);
+                    files::remove(own + L".json");
+                    files::remove(own + L".icon");
+                    shellLog::write("library: recovered " + narrow(name) + " from this Megler's BiTGApps bundle");
+                } else {
+                    files::remove(own + L".part");
+                    shellLog::write("library: could not recover " + narrow(name) + " from the BiTGApps bundle");
+                }
+            }
         }
 
         std::string stamp;

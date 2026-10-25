@@ -79,9 +79,9 @@ public final class UsageStatsManager {
     public java.util.List queryBroadcastResponseStats(java.lang.String p0, long p1) { return new java.util.ArrayList(); }
     public java.util.List queryConfigurations(int p0, long p1, long p2) { return new java.util.ArrayList(); }
     public java.util.List queryEventStats(int p0, long p1, long p2) { return new java.util.ArrayList(); }
-    public android.app.usage.UsageEvents queryEvents(long p0, long p1) { return null; }
-    public android.app.usage.UsageEvents queryEvents(android.app.usage.UsageEventsQuery p0) { return null; }
-    public android.app.usage.UsageEvents queryEventsForSelf(long p0, long p1) { return null; }
+    public android.app.usage.UsageEvents queryEvents(long p0, long p1) { return new android.app.usage.UsageEvents((java.util.List) new java.util.ArrayList(), new String[0]); }
+    public android.app.usage.UsageEvents queryEvents(android.app.usage.UsageEventsQuery p0) { return queryEvents(0, 0); }
+    public android.app.usage.UsageEvents queryEventsForSelf(long p0, long p1) { return queryEvents(p0, p1); }
     public java.util.List queryUsageStats(int p0, long p1, long p2) { return new java.util.ArrayList(); }
     public void registerAppUsageLimitObserver(int p0, java.lang.String[] p1, java.time.Duration p2, java.time.Duration p3, android.app.PendingIntent p4) {}
     public void registerAppUsageObserver(int p0, java.lang.String[] p1, long p2, java.util.concurrent.TimeUnit p3, android.app.PendingIntent p4) {}

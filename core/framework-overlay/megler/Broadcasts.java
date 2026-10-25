@@ -35,6 +35,9 @@
 // And a receiver of the manifest is made by the app's component factory (AppRunner.componentFactory), as on Android 9.
 // A receiver registered at run time gets the Context that registered it, including one of microG's own. Giving all such
 // receivers the client's Application made microG look up com.android.vending.microg.settings inside Play Store.
+// And a receiver registered with a Handler hears on that Handler's thread, as on Android; the others on the main thread.
+// GmsCore registers some of its own with a Handler of a thread of its own and makes blocking calls in onReceive, which it
+// refuses to make on the main thread: run there, one ended Play Store.
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -52,15 +55,18 @@ public final class Broadcasts {
     /** The sticky broadcasts Megler keeps, as Android keeps them: one intent for each, the last that was sent. */
     private static final String[] STICKY = { Intent.ACTION_BATTERY_CHANGED, ConnectivityManager.CONNECTIVITY_ACTION };
     private Broadcasts() {}
-    public static Intent register(Context context, BroadcastReceiver r, IntentFilter f) {
+    public static Intent register(Context context, BroadcastReceiver r, IntentFilter f) { return register(context, r, f, null); }
+    /** A receiver that hears on the thread of `handler` (the main thread when it is null). */
+    public static Intent register(Context context, BroadcastReceiver r, IntentFilter f, Handler handler) {
+        final Handler on = handler != null ? handler : new Handler(Looper.getMainLooper());
         /* With no receiver there is nothing to keep: the call only asks for the sticky intent. (A null in the list was a NullPointerException waiting for the first broadcast its filter matched.) */
-        if (r != null) synchronized (sReceivers) { sReceivers.add(new Object[] { r, f, context }); }
+        if (r != null) synchronized (sReceivers) { sReceivers.add(new Object[] { r, f, context, on }); }
         Intent first = null;
         if (f != null) for (String action : STICKY) {
             if (!f.hasAction(action)) continue;
             final Intent b = action.equals(Intent.ACTION_BATTERY_CHANGED) ? battery() : connectivity();
-            /* A sticky broadcast reaches the receiver it was registered with as any broadcast does: later, on the main thread, if it is still registered then. Each the filter takes; the first is the value. */
-            if (r != null) new Handler(Looper.getMainLooper()).post(() -> { if (registered(r)) r.onReceive(context, b); });
+            /* A sticky broadcast reaches the receiver it was registered with as any broadcast does: later, on its thread, if it is still registered then. Each the filter takes; the first is the value. */
+            if (r != null) on.post(() -> { if (registered(r)) r.onReceive(context, b); });
             if (first == null) first = b;
         }
         return first;
@@ -80,8 +86,7 @@ public final class Broadcasts {
         final Intent b = battery();
         final ArrayList<Object[]> targets = new ArrayList<>();
         synchronized (sReceivers) { for (Object[] e : sReceivers) if (e[1] != null && ((IntentFilter) e[1]).hasAction(Intent.ACTION_BATTERY_CHANGED)) targets.add(e); }
-        Handler h = new Handler(Looper.getMainLooper());
-        for (Object[] target : targets) h.post(() -> { BroadcastReceiver r = (BroadcastReceiver) target[0]; if (registered(r)) r.onReceive((Context) target[2], b); });
+        for (Object[] target : targets) ((Handler) target[3]).post(() -> { BroadcastReceiver r = (BroadcastReceiver) target[0]; if (registered(r)) r.onReceive((Context) target[2], b); });
     }
     /** The battery as Android broadcasts it, from what the core says it is now. */
     public static Intent battery() {
@@ -106,6 +111,8 @@ public final class Broadcasts {
     public static void send(Context from, Intent i) {
         // A broadcast for microG's package goes to microG's receivers (megler.MicroG), as Android sends it to that app.
         if (MicroG.send(from, i)) return;
+        // And one of the implicit broadcasts Google's system configuration lets through (CHECKIN_COMPLETE) to its receivers too.
+        MicroG.sendImplicit(from, i);
         final Context ctx = AppRunner.application() != null ? AppRunner.application() : from;
         ArrayList<Object[]> targets = new ArrayList<>();
         /* Receivers registered at run time hear implicit intents only: one that names a component is for that component. */
@@ -113,10 +120,23 @@ public final class Broadcasts {
             synchronized (sReceivers) { for (Object[] e : sReceivers) if (e[1] != null && ((IntentFilter) e[1]).hasAction(i.getAction())) targets.add(e); }
         for (Manifest.Component c : Manifest.match(Manifest.receivers, i)) {
             if (!enabled(ctx, c)) continue;
-            try { targets.add(new Object[] { AppRunner.componentFactory().instantiateReceiver(AppRunner.classLoader(), c.name, i), null, ctx }); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
+            // A receiver assigned to another Android process needs that process's
+            // Application. Running it in the main process gives it the wrong one
+            // (Play Store's instant-app receiver casts it to its process-specific type).
+            // The process is named as Android names it (Manifest.processOf): none or an
+            // empty name is the app's own (Play Store's AccountRemovedBroadcastReceiver says
+            // ""). GmsCore's components of its other processes (persistent, ui: nearly all
+            // of them) run in its one process here, as in every client that hosts it
+            // (megler.MicroG).
+            String process = Manifest.processOf(c);
+            if (!process.equals(ctx.getPackageName()) && !GooglePackages.GMS.equals(ctx.getPackageName())) {
+                android.util.Log.i("Megler", "receiver " + c.name + " belongs to process " + c.process + "; not dispatched in the main process");
+                continue;
+            }
+            try { targets.add(new Object[] { AppRunner.componentFactory().instantiateReceiver(AppRunner.classLoader(), c.name, i), null, ctx, null }); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
         }
-        Handler h = new Handler(Looper.getMainLooper());
-        for (Object[] target : targets) h.post(() -> ((BroadcastReceiver) target[0]).onReceive((Context) target[2], i));
+        Handler main = new Handler(Looper.getMainLooper());
+        for (Object[] target : targets) (target[3] != null ? (Handler) target[3] : main).post(() -> ((BroadcastReceiver) target[0]).onReceive((Context) target[2], i));
     }
     /** Whether a receiver of the manifest is enabled: as the app last set it (PackageManager), or else as the manifest says. */
     private static boolean enabled(Context ctx, Manifest.Component c) {

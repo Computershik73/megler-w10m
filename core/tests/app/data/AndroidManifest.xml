@@ -28,5 +28,23 @@
                 <action android:name="megler.test.RELAY" />
             </intent-filter>
         </receiver>
+        <!-- An empty process name is the app's own process, as on Android (Play Store's AccountRemovedBroadcastReceiver has one). -->
+        <receiver android:name=".Main$Here" android:process="" android:exported="false">
+            <intent-filter>
+                <action android:name="megler.test.RELAY" />
+            </intent-filter>
+        </receiver>
+        <!-- Started, then stopped from a thread of the app's (Main's step "service-stop-thread"). -->
+        <service android:name=".Main$Stopped" android:exported="false" />
+        <!-- Started twice, and stopped by its starts' ids (Main's step "start-ids"). -->
+        <service android:name=".Main$Twice" android:exported="false" />
+        <service android:name=".Main$Again" android:exported="false" />
+        <service android:name=".Main$Elsewhere" android:exported="false" android:process=":elsewhere" />
+        <service android:name=".Main$Work" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <receiver android:name=".Main$Remote" android:process=":remote" android:exported="false">
+            <intent-filter>
+                <action android:name="megler.test.RELAY" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

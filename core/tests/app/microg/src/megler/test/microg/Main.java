@@ -24,12 +24,93 @@ public class Main extends Activity {
         super.onCreate(state);
         text = new TextView(this); text.setText("Checking microG..."); setContentView(text);
         try {
+            Context device = createDeviceProtectedStorageContext();
+            java.lang.reflect.Method isCredential = Context.class.getMethod("isCredentialProtectedStorage");
+            java.lang.reflect.Method credentialContext = Context.class.getMethod("createCredentialProtectedStorageContext");
+            check(Boolean.TRUE.equals(isCredential.invoke(this)) && !isDeviceProtectedStorage(), "app uses credential protected storage");
+            check(device.isDeviceProtectedStorage() && Boolean.FALSE.equals(isCredential.invoke(device))
+                    && !device.getDataDir().equals(getDataDir()), "device protected context has separate data");
+            check(((Context) credentialContext.invoke(device)).getDataDir().equals(getDataDir()),
+                    "device context returns to credential protected storage");
             PackageInfo own = getPackageManager().getPackageInfo(getPackageName(), PackageManager.GET_META_DATA);
             check(own.applicationInfo != null && getPackageName().equals(own.applicationInfo.packageName), "own package metadata");
             PackageInfo pi = getPackageManager().getPackageInfo(GMS, PackageManager.GET_SERVICES);
             check(pi.applicationInfo.sourceDir.endsWith("/GmsCore/GmsCore.apk"), "real APK metadata");
             check(pi.services != null && pi.services.length > 20, "manifest services");
+            PackageInfo archive = getPackageManager().getPackageArchiveInfo(pi.applicationInfo.sourceDir, 0);
+            check(archive != null && GMS.equals(archive.packageName) && archive.versionCode == pi.versionCode
+                    && pi.applicationInfo.sourceDir.equals(archive.applicationInfo.sourceDir), "archive package metadata");
+            check(getPackageManager().getPackageArchiveInfo(pi.applicationInfo.sourceDir + ".missing", 0) == null,
+                    "missing archive has no package metadata");
+            android.os.UserManager users = (android.os.UserManager) getSystemService(Context.USER_SERVICE);
+            check(users.isUserUnlocked() && users.isUserUnlocked(android.os.Process.myUserHandle()), "current user is unlocked");
+            check(android.os.UserManager.class.getMethod("get", Context.class).invoke(null, this) == users
+                    && ((java.util.List) android.os.UserManager.class.getMethod("getProfiles", int.class).invoke(users, 0)).size() == 1,
+                    "one unlocked owner profile");
+            android.app.usage.UsageStatsManager usage = (android.app.usage.UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
+            check(usage.queryEvents(0, System.currentTimeMillis()) != null, "usage events query is an empty result, not null");
+            if (System.getenv("MG_JAVA_GSF_APK") != null) {
+                PackageInfo gsfInfo = getPackageManager().getPackageInfo("com.google.android.gsf", PackageManager.GET_PROVIDERS);
+                check(gsfInfo.providers != null && gsfInfo.providers.length > 0, "shared GSF APK metadata");
+                ProviderInfo gservices = getPackageManager().resolveContentProvider("com.google.android.gsf.gservices", 0);
+                check(gservices != null && "com.google.android.gsf".equals(gservices.packageName), "GSF GServices provider resolves");
+                Context gsf = createPackageContext("com.google.android.gsf", CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY);
+                check("com.google.android.gsf".equals(gsf.getPackageName()) && gsf.getClassLoader() != getClassLoader(),
+                        "GSF has its own service class loader");
+                check(gsf.getApplicationContext() == gsf && gsf.getSystemService(android.os.UserManager.class) != null,
+                        "GSF application context has user services");
+                android.database.Cursor gservicesValues = getContentResolver().query(android.net.Uri.parse("content://com.google.android.gsf.gservices"),
+                        null, null, new String[] {"android_id"}, null);
+                check(gservicesValues != null, "GSF provider answers a query");
+                gservicesValues.close();
+            }
             Context gms = createPackageContext(GMS, CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY);
+            check(gms.getSystemService(android.os.UserManager.class) != null, "GMS service context has user services");
+            Context gmsDevice = gms.createDeviceProtectedStorageContext();
+            check(gmsDevice.isDeviceProtectedStorage() && !gms.isDeviceProtectedStorage()
+                    && !gmsDevice.getDataDir().equals(gms.getDataDir())
+                    && gmsDevice.getDataDir().equals(new java.io.File(gms.getDataDir(), "device_protected")),
+                    "GMS service separates device protected data");
+            check(((Context) credentialContext.invoke(gmsDevice)).getDataDir().equals(gms.getDataDir()),
+                    "GMS service returns to credential protected data");
+            int settingsTheme = gms.getResources().getIdentifier("common.Theme.GoogleSettings", "style", GMS);
+            Log.i("ThemeProbe", "fixture settingsTheme=0x" + Integer.toHexString(settingsTheme));
+            if (settingsTheme != 0) {
+                int actionBar = gms.getResources().getIdentifier("windowActionBar", "attr", GMS);
+                Log.i("ThemeProbe", "fixture actionBar=0x" + Integer.toHexString(actionBar));
+                android.content.res.Resources.Theme theme = gms.getResources().newTheme();
+                theme.applyStyle(settingsTheme, true);
+                check(actionBar != 0 && theme.resolveAttribute(actionBar, new android.util.TypedValue(), true),
+                        "GMS settings theme inherits AppCompat attributes");
+                android.content.res.Configuration phoneConfig = new android.content.res.Configuration(gms.getResources().getConfiguration());
+                phoneConfig.setLocale(new java.util.Locale("ru", "RU"));
+                phoneConfig.uiMode = android.content.res.Configuration.UI_MODE_TYPE_NORMAL | android.content.res.Configuration.UI_MODE_NIGHT_YES;
+                phoneConfig.screenWidthDp = 411;
+                phoneConfig.screenHeightDp = 731;
+                android.util.DisplayMetrics phoneMetrics = new android.util.DisplayMetrics();
+                phoneMetrics.setTo(gms.getResources().getDisplayMetrics());
+                phoneMetrics.densityDpi = 560;
+                phoneMetrics.density = 3.5f;
+                android.content.res.Resources phoneResources = new android.content.res.Resources(gms.getAssets(),
+                        phoneMetrics, phoneConfig);
+                android.content.res.Resources.Theme phoneTheme = phoneResources.newTheme();
+                phoneTheme.applyStyle(settingsTheme, true);
+                check(phoneTheme.resolveAttribute(actionBar, new android.util.TypedValue(), true),
+                        "GMS settings theme inherits AppCompat attributes in Russian night mode");
+            }
+            String partialResources = pi.applicationInfo.sourceDir + ".partial";
+            if (new java.io.File(partialResources).isFile()) {
+                check(settingsTheme != 0, "GMS settings style exists in the base APK");
+                int cookie = (Integer) android.content.res.AssetManager.class
+                        .getMethod("addAssetPathAsSharedLibrary", String.class).invoke(gms.getAssets(), partialResources);
+                check(cookie != 0,
+                        "same-package partial resources loaded");
+                check(gms.getResources().getIdentifier("common.Theme.GoogleSettings", "style", GMS) == settingsTheme,
+                        "partial locale resources do not hide the base GMS style");
+                Log.i("MicroGTest", "PASS same-package partial resources preserve GMS AppCompat style");
+                done = true;
+                return;
+            }
             String testAction = "megler.test.microg.REGISTERED_RECEIVER_CONTEXT";
             gms.registerReceiver(new BroadcastReceiver() {
                 @Override public void onReceive(Context context, Intent intent) {
@@ -156,6 +237,16 @@ public class Main extends Activity {
                 null, null, null);
             check(checkin != null, "microG check-in provider answers");
             checkin.close();
+            android.net.Uri global = android.provider.Settings.Global.CONTENT_URI;
+            android.content.ContentValues setting = new android.content.ContentValues();
+            setting.put("name", "megler_checkin_probe");
+            setting.put("value", "from-gsf");
+            check(getContentResolver().insert(global, setting) != null, "GSF can write global settings");
+            android.database.Cursor saved = getContentResolver().query(
+                android.net.Uri.withAppendedPath(global, "megler_checkin_probe"), new String[] { "value" }, null, null, null);
+            check(saved != null && saved.moveToFirst() && "from-gsf".equals(saved.getString(0)),
+                "GSF can read global settings by URI");
+            saved.close();
             Class<?> precision = Class.forName("android.icu.number.Precision");
             Object twoPlaces = precision.getMethod("fixedFraction", int.class).invoke(null, 2);
             Object formatter = Class.forName("android.icu.number.NumberFormatter").getMethod("with").invoke(null);

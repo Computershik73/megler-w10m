@@ -5,6 +5,9 @@
 //   <shared>\phone-apps\apps.txt     a line for each app that can run here: its package, launcher activity, label,
 //                                    version name, version code, separated by tabs (UTF-8)
 //   <shared>\phone-apps\<package>.png its icon
+//   <shared>\phone-apps\<package>\  its activities (megler_apk_describe_activities: activities.json and the pictures of their
+//                                    icons), for a launcher or a shortcut maker that lists them; source.txt says which APK they
+//                                    are of, so that they are written again only for another
 #pragma once
 
 #include <string>

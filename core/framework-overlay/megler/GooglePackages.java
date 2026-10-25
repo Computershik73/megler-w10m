@@ -51,6 +51,8 @@ public final class GooglePackages {
     public static android.content.pm.ApplicationInfo applicationInfo(String pkg) {
         android.content.pm.PackageInfo microg = MicroG.packageInfo(pkg);
         if (microg != null) return microg.applicationInfo;
+        android.content.pm.PackageInfo gsf = Gsf.packageInfo(pkg);
+        if (gsf != null) return gsf.applicationInfo;
         android.content.pm.PackageInfo webview = systemWebView(pkg);
         if (webview != null) return webview.applicationInfo;
         android.content.pm.ApplicationInfo a = new android.content.pm.ApplicationInfo();
@@ -64,6 +66,8 @@ public final class GooglePackages {
     public static android.content.pm.PackageInfo packageInfo(String pkg) {
         android.content.pm.PackageInfo microg = MicroG.packageInfo(pkg);
         if (microg != null) return microg;
+        android.content.pm.PackageInfo gsf = Gsf.packageInfo(pkg);
+        if (gsf != null) return gsf;
         android.content.pm.PackageInfo webview = systemWebView(pkg);
         if (webview != null) return webview;
         android.content.pm.PackageInfo p = new android.content.pm.PackageInfo();

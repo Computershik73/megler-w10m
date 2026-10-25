@@ -1032,6 +1032,79 @@ static void test_mmap_file(const char *scratch)
     free(path);
 }
 
+static void count_entry(const char *name, bool is_dir, void *user)
+{
+    (void)is_dir;
+    if (strcmp(name, "config.fb")) say("  unexpected entry %s", name);
+    (*(int *)user)++;
+}
+
+static void write_whole(const char *path, const char *text)
+{
+    int err = 0;
+    mg_file *f = mg_file_open(path, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &err);
+    CHECK(f && mg_file_write(f, text, strlen(text), &err) == (i64)strlen(text));
+    if (f) mg_file_close(f);
+}
+
+static bool reads_as(mg_file *f, const char *text)
+{
+    char got[16] = { 0 };
+    int err = 0;
+    return f && mg_file_pread(f, got, strlen(text), 0, &err) == (i64)strlen(text) && !memcmp(got, text, strlen(text));
+}
+
+/*
+ * A rename over a file that is open and mapped replaces it, as on Android, and whoever had the old file keeps it: Google's
+ * GmsCore writes its Chimera config so, opening the new one and moving it over the live one it has mapped. Windows refuses
+ * that move; the host puts the old file aside (mg_host_win32.c, replace_in_use), and the folder lists, and is removed, as
+ * if it were gone.
+ */
+static void test_rename_in_use(const char *scratch)
+{
+    char *dir = mg_sprintf("%s/replace", scratch), *live = mg_sprintf("%s/config.fb", dir), *pending = mg_sprintf("%s/config.fb.pending", dir);
+    mg_file *old_file, *now, *moved;
+    void *base = NULL;
+    size_t mapped = 0;
+    const u8 *view;
+    int err = 0, entries = 0;
+    say("rename: over a file that is open and mapped, which keeps its old content for those who have it");
+    mg_path_mkdirs(dir);
+    write_whole(live, "old config");
+    old_file = mg_file_open(live, MG_O_READ, &err);
+    view = old_file ? (const u8 *)mg_file_map(old_file, 0, 10, &base, &mapped) : NULL;
+    CHECK(old_file && view);
+    write_whole(pending, "new config");
+    moved = mg_file_open(pending, MG_O_READ, &err);
+    CHECK(moved != NULL);
+    CHECK(mg_path_rename(pending, live, &err));
+    now = mg_file_open(live, MG_O_READ, &err);
+    CHECK(reads_as(now, "new config") && reads_as(moved, "new config"));
+    CHECK(reads_as(old_file, "old config") && view && !memcmp(view, "old config", 10));
+    CHECK(mg_path_list(dir, count_entry, &entries, &err) && entries == 1);
+    /* And again over the one just moved there, which is open twice now. */
+    write_whole(pending, "3rd config");
+    CHECK(mg_path_rename(pending, live, &err));
+    CHECK(reads_as(now, "new config"));
+    if (now) mg_file_close(now);
+    now = mg_file_open(live, MG_O_READ, &err);
+    CHECK(reads_as(now, "3rd config"));
+    entries = 0;
+    CHECK(mg_path_list(dir, count_entry, &entries, &err) && entries == 1);
+    if (now) mg_file_close(now);
+    if (moved) mg_file_close(moved);
+    if (view) mg_section_unmap(base, mapped);
+    if (old_file) mg_file_close(old_file);
+    /* With nothing left open, a listing removes what was put aside, and the folder can go. */
+    entries = 0;
+    CHECK(mg_path_list(dir, count_entry, &entries, &err) && entries == 1);
+    CHECK(mg_path_remove(live, &err));
+    CHECK(mg_path_rmdir(dir, &err));
+    free(pending);
+    free(live);
+    free(dir);
+}
+
 /*
  * Shared memory holds no address space of its own (bionic/mg_libc_io.c): a region made, written and read through its
  * descriptor, and grown past its section, has no view until the app maps it; mapped, it is one view of its size; unmapped,
@@ -2216,6 +2289,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     /* (No Android root here, so no /system/fonts: an empty iterator, opened and closed; the fonts themselves under the apps' runs.) */
     CHECK(FN(lib, int (*)(void), "t_fonts")() >= 0);
     CHECK_INT(FN(lib, int (*)(void), "t_timerfd")(), 8);
+    CHECK_INT(FN(lib, int (*)(void), "t_timerfd_syscall")(), 4);
     CHECK_INT(FN(lib, int (*)(void), "t_fnmatch")(), 16);
     CHECK_INT(FN(lib, int (*)(const char *), "t_stack")("a string that fits"), 18);
 }
@@ -2873,6 +2947,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_palette();
     test_mmap_commit();
     test_mmap_file(scratch);
+    test_rename_in_use(scratch);
     test_chromium_oom_report();
     test_shm_views();
     test_free_stretches();

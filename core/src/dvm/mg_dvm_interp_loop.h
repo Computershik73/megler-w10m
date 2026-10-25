@@ -564,7 +564,7 @@ int DVM_LOOP(mg_dvm_thread *t, mg_dvm_frame *f, mg_jvalue *ret)
         if (g_dvm.trace >= 2) mg_info("dvm: %*s-> %s.%s%s", t->depth, "", target->cls->name, target->name, target->sig);
         nf = push_frame(t, target, target->regs);
         if (!nf) goto exception;
-        if (g_call_trace) call_trace_enter(t, target, "");
+        if (g_call_trace) call_trace_enter(t, target, "", inv_argv, inv_count);
         /*
          * The arguments are the callee's last registers, in the order and the widths the caller's hold them; the others
          * start at zero. (Loops, not memset and memcpy: a call has a few registers, and the C library's calls cost more.)

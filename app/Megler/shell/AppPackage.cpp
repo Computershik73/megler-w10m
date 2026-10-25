@@ -614,6 +614,13 @@ std::wstring serviceApk() {
     return canRead(apk) ? apk : std::wstring();
 }
 
+std::wstring gsfApk() {
+    const auto shared = sharedFolder();
+    if (shared.empty()) return {};
+    const auto path = shared + L"\\services\\gsf\\GoogleServicesFramework.apk";
+    return canRead(path) ? path : std::wstring();
+}
+
 bool installedApps(std::vector<InstalledApp>& out, std::string& error) {
     using namespace winrt::Windows::Data::Json;
     out.clear();

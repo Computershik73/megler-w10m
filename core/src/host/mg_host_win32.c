@@ -1666,6 +1666,56 @@ bool mg_path_rmdir(const char *path, int *err)
     return ok != 0;
 }
 
+/*
+ * A file that a rename has put aside (replace_in_use) keeps a name that begins so until the last handle and view of it are
+ * gone; listings leave such names out.
+ */
+static const wchar_t ASIDE_PREFIX[] = L".megler-replaced-";
+
+static bool is_aside(const wchar_t *name)
+{
+    return !wcsncmp(name, ASIDE_PREFIX, sizeof(ASIDE_PREFIX) / sizeof(wchar_t) - 1);
+}
+
+/*
+ * POSIX rename replaces a file that is open or mapped, and those who have it keep the old one. Windows refuses to replace a
+ * file anyone has open, even when every open shared deletion, as every open here does: Google's GmsCore writes its Chimera
+ * config so, over the live one it has mapped, and without the new config none of its modules was loaded on the phone. So the
+ * file in the way is renamed aside, which an open shared for deletion allows, the move is made, and the file aside is deleted:
+ * it goes when its last handle and view do. One that cannot be deleted yet is hidden, and deleted by a later listing of its
+ * folder. Whatever fails, the file in the way is put back.
+ */
+static BOOL replace_in_use(const wchar_t *a, const wchar_t *b)
+{
+    static volatile LONG counter;
+    WIN32_FILE_ATTRIBUTE_DATA from, in_way;
+    const wchar_t *slash = wcsrchr(b, L'\\');
+    size_t dir = slash ? (size_t)(slash - b) + 1 : 0;
+    wchar_t *aside;
+    DWORD why;
+    BOOL ok;
+    if (!GetFileAttributesExW(a, GetFileExInfoStandard, &from) || !GetFileAttributesExW(b, GetFileExInfoStandard, &in_way)
+        || (in_way.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) return FALSE;
+    aside = (wchar_t *)mg_alloc(sizeof(wchar_t) * (dir + 64));
+    memcpy(aside, b, sizeof(wchar_t) * dir);
+    swprintf(aside + dir, 64, L"%ls%08lx-%08lx-%08lx", ASIDE_PREFIX, (unsigned long)GetCurrentProcessId(),
+             (unsigned long)InterlockedIncrement(&counter), (unsigned long)GetTickCount());
+    if (!MoveFileExW(b, aside, 0)) {
+        free(aside);
+        return FALSE;
+    }
+    ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
+    if (!ok) {
+        why = GetLastError();
+        MoveFileExW(aside, b, 0);
+        SetLastError(why);
+    } else if (!DeleteFileW(aside)) {
+        SetFileAttributesW(aside, in_way.dwFileAttributes | FILE_ATTRIBUTE_HIDDEN);
+    }
+    free(aside);
+    return ok;
+}
+
 bool mg_path_rename(const char *from, const char *to, int *err)
 {
     wchar_t *a, *b;
@@ -1674,6 +1724,13 @@ bool mg_path_rename(const char *from, const char *to, int *err)
     a = wide_path(from);
     b = wide_path(to);
     ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
+    if (!ok) {
+        DWORD e = GetLastError();
+        if (e == ERROR_ACCESS_DENIED || e == ERROR_SHARING_VIOLATION || e == ERROR_USER_MAPPED_FILE) {
+            ok = replace_in_use(a, b);
+            if (!ok) SetLastError(e);
+        }
+    }
     if (!ok) SET_ERR();
     free(a);
     free(b);
@@ -1755,16 +1812,26 @@ bool mg_path_list(const char *path, mg_dir_cb cb, void *user, int *err)
         if (err) *err = err_of(e);
         return false;
     }
-    free(w);
     do {
         char *name;
         if (!wcscmp(fd.cFileName, L".") || !wcscmp(fd.cFileName, L"..")) continue;
+        if (is_aside(fd.cFileName)) {
+            /* A file a rename put aside: deleted once nothing has it any more (a delete still pending leaves it listed). */
+            size_t n = len - 1, k = wcslen(fd.cFileName);
+            wchar_t *full = (wchar_t *)mg_alloc(sizeof(wchar_t) * (n + k + 1));
+            memcpy(full, w, sizeof(wchar_t) * n);
+            memcpy(full + n, fd.cFileName, sizeof(wchar_t) * (k + 1));
+            DeleteFileW(full);
+            free(full);
+            continue;
+        }
         name = utf8_of(fd.cFileName);
         mg_name_from_host(name);
         cb(name, (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0, user);
         free(name);
     } while (FindNextFileW(h, &fd));
     FindClose(h);
+    free(w);
     return true;
 }
 

@@ -325,6 +325,12 @@ public class Resources {
         if (type == null) return 0;
         try { return Integer.parseInt(n); } catch (NumberFormatException e) {}
         if ("android".equals(pkg)) return sFramework.identifier("android", type, n);
+        // addAssetPath can also add a same-package resource archive (GMS's locale-filtered resources).
+        // Its partial table must not hide styles and attributes still present in the base APK.
+        if (pkg == null || pkg.equals(mAssets.meglerPackageName())) {
+            int own = appTable().identifier(null, type, n);
+            if (own != 0) return own;
+        }
         ResTable lib = library(pkg);
         if (lib != null) return lib.identifier(pkg, type, n);
         int id = appTable().identifier(null, type, n);

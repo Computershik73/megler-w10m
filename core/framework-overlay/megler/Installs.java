@@ -7,8 +7,10 @@
 // what a file manager, a browser's download or an app store opens; a file:// URI is the file itself, a content:// one (an
 // androidx FileProvider's) is copied out of its provider into the app's cache first. And a PackageInstaller session
 // (android.content.pm.PackageInstaller): the files written into it, committed; one file is that APK, several are one app's
-// base and splits, handed over as their folder. A committed session is told STATUS_SUCCESS through its IntentSender once
-// Megler has it: the user still says yes in Megler, and the app learns no more than that it was handed over.
+// base and splits -- what Google Play installs of an app built as a bundle -- handed over as one .apks file of them, which
+// Megler's installer unpacks as it does a bundle from the file manager (the splits for this phone's screen, languages and
+// processor). A committed session is told STATUS_SUCCESS through its IntentSender once Megler has it: the user still says
+// yes in Megler, and the app learns no more than that it was handed over.
 package megler;
 
 import android.content.Context;
@@ -121,7 +123,17 @@ public final class Installs {
         File[] files = s.dir.listFiles();
         boolean handed = false;
         if (files != null && files.length == 1) handed = Native.installApk(files[0].getPath(), files[0].getName());
-        else if (files != null && files.length > 1) handed = Native.installApk(s.dir.getPath(), (s.packageName != null ? s.packageName : "app") + ".apks");
+        else if (files != null && files.length > 1) {
+            File bundle = new File(s.dir.getParentFile(), s.dir.getName() + ".apks");
+            String name = (s.packageName != null ? s.packageName : "app") + ".apks";
+            try {
+                bundle(files, bundle);
+                handed = Native.installApk(bundle.getPath(), name);
+            } catch (java.io.IOException e) {
+                android.util.Log.w("Megler", "install: session " + id + "'s files could not be put in one bundle: " + e);
+                bundle.delete();
+            }
+        }
         android.util.Log.i("Megler", "install: session " + id + " committed, " + (files == null ? 0 : files.length) + " file(s): "
             + (handed ? "Megler has it" : "Megler could not take it"));
         if (status == null) return;
@@ -134,6 +146,29 @@ public final class Installs {
             status.sendIntent(AppRunner.application(), 0, result, null, null);
         } catch (Exception e) {
             android.util.Log.w("Megler", "install: the session's status could not be sent: " + e);
+        }
+    }
+
+    /* The APKs into one .apks file: a ZIP of them, each stored as it is (an APK is compressed inside already). */
+    private static void bundle(File[] files, File into) throws java.io.IOException {
+        byte[] chunk = new byte[1 << 16];
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(new java.io.BufferedOutputStream(new FileOutputStream(into), 1 << 16))) {
+            for (File f : files) {
+                java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                try (InputStream in = new java.io.FileInputStream(f)) {
+                    for (int n; (n = in.read(chunk)) > 0; ) crc.update(chunk, 0, n);
+                }
+                java.util.zip.ZipEntry e = new java.util.zip.ZipEntry(f.getName());
+                e.setMethod(java.util.zip.ZipEntry.STORED);
+                e.setSize(f.length());
+                e.setCompressedSize(f.length());
+                e.setCrc(crc.getValue());
+                zip.putNextEntry(e);
+                try (InputStream in = new java.io.FileInputStream(f)) {
+                    for (int n; (n = in.read(chunk)) > 0; ) zip.write(chunk, 0, n);
+                }
+                zip.closeEntry();
+            }
         }
     }
 

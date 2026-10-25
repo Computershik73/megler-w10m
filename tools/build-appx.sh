@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds, packs and signs the Megler app package.
 #
-#   tools/build-appx.sh [arm|x64] [--auto MODES] [--libcore] [--java] [--clean] [--no-pack]
+#   tools/build-appx.sh [arm|x64] [--auto MODES] [--libcore] [--java] [--bitgapps ZIP] [--clean] [--no-pack]
 #
 #   arm        (default) the shipping package for Windows 10 Mobile, ARM32
 #   x64        the same shell for this PC, to compile and look at; it carries
@@ -47,6 +47,9 @@
 #              tools/build-framework.sh builds in the folder `android`): what
 #              a phone needs to show a Java app's picture. The library offers
 #              to add them while it is empty, as it offers the demo.
+#   --bitgapps ZIP  include the GMS, GSF and Play Store APKs from a locally
+#              supplied BiTGApps archive in bitgapps/; implies --java. The
+#              archive and its extracted APKs are not stored in the repository.
 #   --clean    recompile everything
 #   --no-pack  stop after staging (no makeappx, no signing)
 #
@@ -110,6 +113,7 @@ AUTO_NET=0
 AUTO_CODEC=0
 LIBCORE=0
 JAVA=0
+BITGAPPS=""
 while [ $# -gt 0 ]; do
   arg="$1"; shift
   case "$arg" in
@@ -137,6 +141,8 @@ while [ $# -gt 0 ]; do
       done ;;
     --libcore) LIBCORE=1 ;;
     --java) JAVA=1 ;;
+    --bitgapps) [ $# -gt 0 ] || { echo "--bitgapps needs a ZIP path" >&2; exit 2; }; BITGAPPS="$1"; shift ;;
+    --bitgapps=*) BITGAPPS="${arg#--bitgapps=}" ;;
     --clean) CLEAN=1 ;;
     --no-pack) PACK=0 ;;
     -h|--help) sed -n '2,41p' "$0"; exit 0 ;;
@@ -157,6 +163,11 @@ if [ "$AUTO_SELFTEST" = 1 ] && [ "$AUTO_PLAY" = 1 ]; then echo "--auto: selftest
 if [ "$AUTO_JAVA" = 1 ] && { [ "$AUTO_SELFTEST" = 1 ] || [ "$AUTO_PLAY" = 1 ]; }; then echo "--auto: java cannot go with selftest or play" >&2; exit 2; fi
 # The Java test app is of no use without what it runs on.
 if [ "$AUTO_JAVA" = 1 ]; then JAVA=1; fi
+if [ -n "$BITGAPPS" ]; then
+  [ "$ARCH" = arm ] || { echo "--bitgapps requires arm" >&2; exit 2; }
+  [ -f "$BITGAPPS" ] || { echo "--bitgapps archive not found: $BITGAPPS" >&2; exit 2; }
+  JAVA=1
+fi
 if [ "$JAVA" = 1 ]; then LIBCORE=1; fi
 
 # MARK: Tools
@@ -512,6 +523,9 @@ if [ "$JAVA" = 1 ]; then
     [ -f "$STAGE/android/$need" ] || echo "    WARNING: no android/$need in the package: a Java app will not start, or will start bare" >&2
   done
 fi
+if [ -n "$BITGAPPS" ]; then
+  python "$(w "$ROOT/tools/bitgapps-extract.py")" "$(w "$BITGAPPS")" "$(w "$STAGE/bitgapps")"
+fi
 
 # MARK: ANGLE
 #
@@ -642,6 +656,10 @@ if [ "$ARCH" = arm ]; then
           "$STAGE"/api-ms-win-*.dll "$STAGE"/ext-ms-win-*.dll
     echo "    WARNING: ANGLE is NOT in this package: $ANGLE_WHY" >&2
     echo "    WARNING: the app will say \"ANGLE missing\" and no Android app can draw" >&2
+    if [ -n "$BITGAPPS" ] && [ "$PACK" = 1 ]; then
+      echo "--bitgapps: refusing to pack an unusable app without ANGLE" >&2
+      exit 1
+    fi
   fi
 fi
 

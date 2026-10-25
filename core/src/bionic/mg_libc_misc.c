@@ -407,6 +407,9 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef int (*sigaltstack_fn)(const void *, void *);
     typedef int (*memfd_fn)(const char *, unsigned);
     typedef int (*munmap_fn)(void *, size_t);
+    typedef int (*timerfd_create_fn)(int, int);
+    typedef int (*timerfd_settime_fn)(int, int, const void *, void *);
+    typedef int (*timerfd_gettime_fn)(int, void *);
     switch (nr) {
     case 67:                                                                                                  /* sigaction */
         if (fault_signal_refused(a, b)) return -1;
@@ -427,6 +430,9 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 238: case 268: return 0;                                          /* tkill, tgkill */
     case 0xF0002: return g_cacheflush(a, b, c);                            /* __ARM_NR_cacheflush */
     case 345: return 0;                                                    /* getcpu */
+    case 350: return ((timerfd_create_fn)mg_bionic_find("timerfd_create"))((int)a, (int)b);
+    case 353: return ((timerfd_settime_fn)mg_bionic_find("timerfd_settime"))((int)a, (int)b, (const void *)(mg_addr)c, (void *)(mg_addr)d);
+    case 354: return ((timerfd_gettime_fn)mg_bionic_find("timerfd_gettime"))((int)a, (void *)(mg_addr)b);
     default:
         mg_note_once("syscall(%ld) is not supported", nr);
         mg_set_errno(GE_NOSYS);

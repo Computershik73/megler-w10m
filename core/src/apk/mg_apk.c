@@ -334,9 +334,6 @@ typedef struct attr {
 typedef struct manifest_ctx {
     mg_apk_info *info;
     const arsc *res;
-    pool strings;
-    const u8 *resmap;
-    u32 resmap_count;
     /* where the parser is */
     bool in_application, in_activity, in_filter;
     char cur_activity[200], cur_lib[96], cur_func[96];
@@ -521,14 +518,19 @@ static void end_element(manifest_ctx *c, const char *tag)
     }
 }
 
-static bool parse_manifest(mg_apk_info *info, const arsc *res, const u8 *xml, u32 size)
+/* The elements of a binary XML in their order: `start` with each one's tag and its attributes (the first 24), `end` with its tag. */
+typedef struct xml_walker {
+    void (*start)(void *user, const char *tag, const attr *attrs, int nattrs);
+    void (*end)(void *user, const char *tag);
+    void *user;
+} xml_walker;
+
+static bool xml_walk(const u8 *xml, u32 size, const xml_walker *w)
 {
-    manifest_ctx c;
-    u32 off;
-    memset(&c, 0, sizeof(c));
-    c.info = info;
-    c.res = res;
-    info->has_code = true;
+    pool strings;
+    const u8 *resmap = NULL;
+    u32 resmap_count = 0, off;
+    memset(&strings, 0, sizeof(strings));
     if (size < 8 || mg_rd16(xml) != 0x0003) return false;
     off = mg_rd16(xml + 2);
     while (off + 8 <= size) {
@@ -536,16 +538,16 @@ static bool parse_manifest(mg_apk_info *info, const arsc *res, const u8 *xml, u3
         u32 type = mg_rd16(ch), head = mg_rd16(ch + 2), csize = mg_rd32(ch + 4);
         if (csize < 8 || csize > size - off || head > csize) break;
         if (type == 0x0001) {
-            pool_open(&c.strings, ch, csize);
+            pool_open(&strings, ch, csize);
         } else if (type == 0x0180) {
-            c.resmap = ch + head;
-            c.resmap_count = (csize - head) / 4;
+            resmap = ch + head;
+            resmap_count = (csize - head) / 4;
         } else if (type == 0x0102 && csize >= 36) {
             char tag[64];
             attr attrs[24];
             u32 astart = mg_rd16(ch + 24), asize = mg_rd16(ch + 26), acount = mg_rd16(ch + 28), i;
             int n = 0;
-            pool_get(&c.strings, mg_rd32(ch + 20), tag, sizeof(tag));
+            pool_get(&strings, mg_rd32(ch + 20), tag, sizeof(tag));
             for (i = 0; i < acount && n < (int)MG_COUNT(attrs) && asize >= 20; i++) {
                 const u8 *a = ch + 16 + astart + i * asize;
                 u32 name_index;
@@ -553,22 +555,40 @@ static bool parse_manifest(mg_apk_info *info, const arsc *res, const u8 *xml, u3
                 if (a + 20 > ch + csize) break;
                 name_index = mg_rd32(a + 4);
                 memset(out, 0, sizeof(*out));
-                pool_get(&c.strings, name_index, out->name, sizeof(out->name));
-                if (name_index < c.resmap_count) out->id = mg_rd32(c.resmap + name_index * 4);
+                pool_get(&strings, name_index, out->name, sizeof(out->name));
+                if (name_index < resmap_count) out->id = mg_rd32(resmap + name_index * 4);
                 out->type = a[15];
                 out->data = mg_rd32(a + 16);
-                if (out->type == 0x03) pool_get(&c.strings, out->data, out->text, sizeof(out->text));
-                else if (mg_rd32(a + 8) != 0xFFFFFFFFu) pool_get(&c.strings, mg_rd32(a + 8), out->text, sizeof(out->text));
+                if (out->type == 0x03) pool_get(&strings, out->data, out->text, sizeof(out->text));
+                else if (mg_rd32(a + 8) != 0xFFFFFFFFu) pool_get(&strings, mg_rd32(a + 8), out->text, sizeof(out->text));
                 n++;
             }
-            start_element(&c, tag, attrs, n);
+            w->start(w->user, tag, attrs, n);
         } else if (type == 0x0103 && csize >= 24) {
             char tag[64];
-            pool_get(&c.strings, mg_rd32(ch + 20), tag, sizeof(tag));
-            end_element(&c, tag);
+            pool_get(&strings, mg_rd32(ch + 20), tag, sizeof(tag));
+            w->end(w->user, tag);
         }
         off += csize;
     }
+    return true;
+}
+
+static void manifest_start(void *user, const char *tag, const attr *attrs, int nattrs) { start_element((manifest_ctx *)user, tag, attrs, nattrs); }
+static void manifest_end(void *user, const char *tag) { end_element((manifest_ctx *)user, tag); }
+
+static bool parse_manifest(mg_apk_info *info, const arsc *res, const u8 *xml, u32 size)
+{
+    manifest_ctx c;
+    xml_walker w;
+    memset(&c, 0, sizeof(c));
+    c.info = info;
+    c.res = res;
+    info->has_code = true;
+    w.start = manifest_start;
+    w.end = manifest_end;
+    w.user = &c;
+    if (!xml_walk(xml, size, &w)) return false;
     if (!info->label[0] && c.label_ref) arsc_string(res, c.label_ref, false, info->label, sizeof(info->label), NULL);
     info->icon_id = c.icon_ref;
     info->label_id = c.label_ref;
@@ -1252,12 +1272,10 @@ static bool icon_value(void *user, u32 id, u8 *type, u32 *data, char *text, size
     return found;
 }
 
-/* The icon an XML describes (an adaptive icon, a vector, ...), drawn: a PNG, or NULL. */
-static u8 *icon_drawn(const char *apk_path, char *const *splits, int nsplits, const char *path, size_t *size)
+/* An app's APKs, the base first, each open with its resources.arsc read (the base's is a->zips[0] when it opened). */
+static icon_apks *apks_open(const char *apk_path, char *const *splits, int nsplits)
 {
     icon_apks *a = (icon_apks *)mg_alloc(sizeof(*a));
-    mg_icon_src src;
-    u8 *png = NULL;
     int k;
     for (k = -1; k < nsplits && a->n < (int)MG_COUNT(a->zips); k++) {
         char err[160];
@@ -1269,15 +1287,35 @@ static u8 *icon_drawn(const char *apk_path, char *const *splits, int nsplits, co
         arsc_open(&a->res[a->n], a->tables[a->n], (u32)rsize);
         a->n++;
     }
-    src.read = icon_read;
-    src.value = icon_value;
-    src.user = a;
-    png = mg_icon_png(&src, path, 256, size);
+    return a;
+}
+
+static void apks_close(icon_apks *a)
+{
+    int k;
     for (k = 0; k < a->n; k++) {
         mg_zip_close(&a->zips[k]);
         free(a->tables[k]);
     }
     free(a);
+}
+
+/* The icon an XML of those APKs describes (an adaptive icon, a vector, ...), drawn: a PNG, or NULL. */
+static u8 *icon_drawn_in(icon_apks *a, const char *path, size_t *size)
+{
+    mg_icon_src src;
+    src.read = icon_read;
+    src.value = icon_value;
+    src.user = a;
+    return mg_icon_png(&src, path, 256, size);
+}
+
+/* The icon an XML describes (an adaptive icon, a vector, ...), drawn: a PNG, or NULL. */
+static u8 *icon_drawn(const char *apk_path, char *const *splits, int nsplits, const char *path, size_t *size)
+{
+    icon_apks *a = apks_open(apk_path, splits, nsplits);
+    u8 *png = icon_drawn_in(a, path, size);
+    apks_close(a);
     return png;
 }
 
@@ -1357,3 +1395,250 @@ bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_
 }
 
 bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size) { return megler_apk_icon_splits(apk_path, NULL, data, size); }
+
+/* ------------------------------------------------- the activities, for another app's launcher */
+
+#define ATTR_EXPORTED 0x01010010u
+#define ATTR_MIME_TYPE 0x01010026u
+#define ATTR_SCHEME 0x01010027u
+#define ATTR_HOST 0x01010028u
+
+typedef struct acts_ctx {
+    char package[200];
+    const icon_apks *apks;     /* every APK's resources, for the labels */
+    mg_jbuf out, act, filters;  /* the description; the activity being read; its filters */
+    bool in_application, in_activity, in_filter, began, listed, exported_given, exported;
+    int nfilters;
+    /* the filter being read */
+    char actions[16][160], categories[16][160], schemes[8][32], hosts[8][160], types[8][96];
+    int nactions, ncategories, nschemes, nhosts, ntypes;
+    /* the icons the app and its activities name, each once */
+    u32 icons[64];
+    int nicons;
+} acts_ctx;
+
+static void jbuf_reset(mg_jbuf *j)
+{
+    free(j->s);
+    memset(j, 0, sizeof(*j));
+}
+
+static void acts_icon(acts_ctx *c, u32 id)
+{
+    int k;
+    if (!id) return;
+    for (k = 0; k < c->nicons; k++)
+        if (c->icons[k] == id) return;
+    if (c->nicons < (int)MG_COUNT(c->icons)) c->icons[c->nicons++] = id;
+}
+
+/* A label attribute's text: the string it is, or the resource it names in the phone's language, through every APK's table. */
+static void acts_label(const acts_ctx *c, const attr *a, char *out, size_t cap)
+{
+    u32 best = 0;
+    int k;
+    out[0] = 0;
+    if (a->type == 0x03) mg_strlcpy(out, a->text, cap);
+    else if (a->type == 0x01 && a->data)
+        for (k = 0; k < c->apks->n; k++) arsc_string(&c->apks->res[k], a->data, false, out, cap, &best);
+}
+
+static void acts_class(const acts_ctx *c, const char *name, char *out, size_t cap)
+{
+    if (name[0] == '.') snprintf(out, cap, "%s%s", c->package, name);
+    else if (!strchr(name, '.') && name[0]) snprintf(out, cap, "%s.%s", c->package, name);
+    else mg_strlcpy(out, name, cap);
+}
+
+/* `n` strings, each in `width` bytes from `items`, as a member that is an array of them. */
+static void acts_array(mg_jbuf *j, const char *key, const char *items, int n, size_t width)
+{
+    int k;
+    mg_jkey(j, key, false);
+    mg_jraw(j, "[");
+    for (k = 0; k < n; k++) {
+        if (k) mg_jraw(j, ",");
+        mg_jstr(j, items + k * width);
+    }
+    mg_jraw(j, "]");
+}
+
+static void acts_start(void *user, const char *tag, const attr *attrs, int nattrs)
+{
+    acts_ctx *c = (acts_ctx *)user;
+    const attr *name = NULL;
+    int i;
+    for (i = 0; i < nattrs; i++)
+        if (attrs[i].id == ATTR_NAME || (!attrs[i].id && !strcmp(attrs[i].name, "name"))) name = &attrs[i];
+    if (!strcmp(tag, "manifest")) {
+        for (i = 0; i < nattrs; i++)
+            if (!attrs[i].id && !strcmp(attrs[i].name, "package")) mg_strlcpy(c->package, attrs[i].text, sizeof(c->package));
+        mg_jraw(&c->out, "{");
+        mg_jkey(&c->out, "package", true);
+        mg_jstr(&c->out, c->package);
+        c->began = true;
+    } else if (!strcmp(tag, "application") && c->began && !c->listed) {
+        char label[200] = "";
+        u32 icon = 0;
+        c->in_application = true;
+        for (i = 0; i < nattrs; i++) {
+            if (attrs[i].id == ATTR_LABEL) acts_label(c, &attrs[i], label, sizeof(label));
+            if (attrs[i].id == ATTR_ICON && attrs[i].type == 0x01) icon = attrs[i].data;
+        }
+        mg_jkey(&c->out, "label", false);
+        mg_jstr(&c->out, label);
+        mg_jkey(&c->out, "icon", false);
+        mg_jint(&c->out, (long long)icon);
+        mg_jkey(&c->out, "activities", false);
+        mg_jraw(&c->out, "[");
+        acts_icon(c, icon);
+        c->listed = true;
+    } else if (c->in_application && !c->in_activity && (!strcmp(tag, "activity") || !strcmp(tag, "activity-alias")) && name) {
+        char text[200];
+        c->in_activity = true;
+        c->exported_given = false;
+        c->nfilters = 0;
+        jbuf_reset(&c->act);
+        jbuf_reset(&c->filters);
+        acts_class(c, name->text, text, sizeof(text));
+        mg_jkey(&c->act, "name", true);
+        mg_jstr(&c->act, text);
+        for (i = 0; i < nattrs; i++) {
+            const attr *a = &attrs[i];
+            if (a->id == ATTR_TARGET_ACTIVITY && !strcmp(tag, "activity-alias")) {
+                acts_class(c, a->text, text, sizeof(text));
+                mg_jkey(&c->act, "target", false);
+                mg_jstr(&c->act, text);
+            } else if (a->id == ATTR_LABEL) {
+                acts_label(c, a, text, sizeof(text));
+                if (text[0]) {
+                    mg_jkey(&c->act, "label", false);
+                    mg_jstr(&c->act, text);
+                }
+            } else if (a->id == ATTR_ICON && a->type == 0x01 && a->data) {
+                mg_jkey(&c->act, "icon", false);
+                mg_jint(&c->act, (long long)a->data);
+                acts_icon(c, a->data);
+            } else if (a->id == ATTR_ENABLED && a->type == 0x12) {
+                mg_jkey(&c->act, "enabled", false);
+                mg_jraw(&c->act, a->data ? "true" : "false");
+            } else if (a->id == ATTR_EXPORTED && a->type == 0x12) {
+                c->exported_given = true;
+                c->exported = a->data != 0;
+            }
+        }
+    } else if (c->in_activity && !strcmp(tag, "intent-filter")) {
+        c->in_filter = true;
+        c->nactions = c->ncategories = c->nschemes = c->nhosts = c->ntypes = 0;
+    } else if (c->in_filter && !strcmp(tag, "action") && name && c->nactions < (int)MG_COUNT(c->actions)) {
+        mg_strlcpy(c->actions[c->nactions++], name->text, sizeof(c->actions[0]));
+    } else if (c->in_filter && !strcmp(tag, "category") && name && c->ncategories < (int)MG_COUNT(c->categories)) {
+        mg_strlcpy(c->categories[c->ncategories++], name->text, sizeof(c->categories[0]));
+    } else if (c->in_filter && !strcmp(tag, "data")) {
+        for (i = 0; i < nattrs; i++) {
+            const attr *a = &attrs[i];
+            if (a->id == ATTR_SCHEME && c->nschemes < (int)MG_COUNT(c->schemes)) mg_strlcpy(c->schemes[c->nschemes++], a->text, sizeof(c->schemes[0]));
+            if (a->id == ATTR_HOST && c->nhosts < (int)MG_COUNT(c->hosts)) mg_strlcpy(c->hosts[c->nhosts++], a->text, sizeof(c->hosts[0]));
+            if (a->id == ATTR_MIME_TYPE && c->ntypes < (int)MG_COUNT(c->types)) mg_strlcpy(c->types[c->ntypes++], a->text, sizeof(c->types[0]));
+        }
+    }
+}
+
+static void acts_end(void *user, const char *tag)
+{
+    acts_ctx *c = (acts_ctx *)user;
+    if (!strcmp(tag, "intent-filter") && c->in_filter) {
+        mg_jbuf *j = &c->filters;
+        c->in_filter = false;
+        if (c->nfilters++) mg_jraw(j, ",");
+        mg_jraw(j, "{");
+        mg_jkey(j, "id", true);
+        mg_jint(j, c->nfilters);
+        acts_array(j, "actions", c->actions[0], c->nactions, sizeof(c->actions[0]));
+        acts_array(j, "categories", c->categories[0], c->ncategories, sizeof(c->categories[0]));
+        acts_array(j, "schemes", c->schemes[0], c->nschemes, sizeof(c->schemes[0]));
+        acts_array(j, "hosts", c->hosts[0], c->nhosts, sizeof(c->hosts[0]));
+        acts_array(j, "types", c->types[0], c->ntypes, sizeof(c->types[0]));
+        mg_jraw(j, "}");
+    } else if ((!strcmp(tag, "activity") || !strcmp(tag, "activity-alias")) && c->in_activity) {
+        c->in_activity = false;
+        if (c->out.s && c->out.s[c->out.n - 1] != '[') mg_jraw(&c->out, ",");
+        mg_jraw(&c->out, "{");
+        mg_jraw(&c->out, c->act.s ? c->act.s : "");
+        /* Not said: exported when it has a filter, as Android before 12 has it. */
+        mg_jkey(&c->out, "exported", false);
+        mg_jraw(&c->out, (c->exported_given ? c->exported : c->nfilters > 0) ? "true" : "false");
+        mg_jkey(&c->out, "filters", false);
+        mg_jraw(&c->out, "[");
+        mg_jraw(&c->out, c->filters.s ? c->filters.s : "");
+        mg_jraw(&c->out, "]}");
+    } else if (!strcmp(tag, "application")) {
+        c->in_application = false;
+    }
+}
+
+/* The picture of icon resource `id` in those APKs: a PNG (a WebP one made one, an XML one drawn), or NULL. */
+static u8 *icon_of_id(icon_apks *a, u32 id, size_t *size)
+{
+    char path[200] = "";
+    u32 best = 0;
+    size_t len;
+    int k;
+    u8 *bytes;
+    for (k = 0; k < a->n; k++) arsc_string(&a->res[k], id, true, path, sizeof(path), &best);
+    len = strlen(path);
+    if (!len) return NULL;
+    if (len > 4 && !strcmp(path + len - 4, ".xml")) return icon_drawn_in(a, path, size);
+    bytes = icon_read(a, path, size);
+    if (!bytes || *size == 0 || *size > (8u << 20)) {
+        free(bytes);
+        return NULL;
+    }
+    return icon_as_png(bytes, size);
+}
+
+bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir, const char *out_dir)
+{
+    char **splits = NULL;
+    int n = mg_apk_list_splits(splits_dir, &splits), k;
+    icon_apks *a = apks_open(apk_path, splits, n);
+    acts_ctx *c = (acts_ctx *)mg_alloc(sizeof(*c));
+    const mg_zip_entry *me = a->n ? mg_zip_find(&a->zips[0], "AndroidManifest.xml") : NULL;
+    size_t msize = 0;
+    u8 *manifest = me ? mg_zip_read(&a->zips[0], me, 16u << 20, &msize) : NULL;
+    xml_walker w;
+    bool ok = false;
+    char *path;
+    c->apks = a;
+    w.start = acts_start;
+    w.end = acts_end;
+    w.user = c;
+    if (manifest && xml_walk(manifest, (u32)msize, &w) && c->began) {
+        if (!c->listed) {
+            mg_jkey(&c->out, "activities", false);
+            mg_jraw(&c->out, "[");
+        }
+        mg_jraw(&c->out, "]}");
+        mg_path_mkdirs(out_dir);
+        path = mg_sprintf("%s/activities.json", out_dir);
+        ok = mg_file_write_all(path, c->out.s, c->out.n);
+        free(path);
+        for (k = 0; ok && k < c->nicons; k++) {
+            size_t size = 0;
+            u8 *png = icon_of_id(a, c->icons[k], &size);
+            if (!png) continue;
+            path = mg_sprintf("%s/%08x.png", out_dir, (unsigned)c->icons[k]);
+            mg_file_write_all(path, png, size);
+            free(path);
+            free(png);
+        }
+    }
+    free(manifest);
+    jbuf_reset(&c->out);
+    jbuf_reset(&c->act);
+    jbuf_reset(&c->filters);
+    free(c);
+    apks_close(a);
+    mg_apk_free_list(splits, n);
+    return ok;
+}

@@ -176,10 +176,13 @@ public final class AppRunner {
     static Activity launch(String cls, Intent intent, Activity caller, int request, Manifest.Component info) throws Exception {
         android.util.Log.d("Megler", "launch " + cls);
         Activity prev = top();
-        // Megler's screens of Android's Settings are the system's, not the app's: its factory does not make them.
-        Activity a = SystemScreens.isScreen(cls) ? (Activity) Class.forName(cls).newInstance() : sFactory.instantiateActivity(classLoader(), cls, intent);
-        ContextImpl base = ContextImpl.forActivity();
-        a.meglerAttach(base, sApp, intent, info, caller, request);
+        // Megler's screens of Android's Settings are the system's, not the app's: its factory does not make them. Google Play
+        // services' activities hosted here are GmsCore's, made in its scope on its context with its Application (MicroG).
+        boolean gms = MicroG.hosts(info);
+        Activity a = SystemScreens.isScreen(cls) ? (Activity) Class.forName(cls).newInstance()
+                : gms ? MicroG.newActivity(cls) : sFactory.instantiateActivity(classLoader(), cls, intent);
+        Context base = gms ? MicroG.activityBase() : ContextImpl.forActivity();
+        a.meglerAttach(base, gms ? MicroG.activityApplication() : sApp, intent, info, caller, request);
         if (prev != null && prev.isResumedMegler()) prev.meglerPause();
         sStack.add(a);
         a.meglerCreate(null);
@@ -215,6 +218,17 @@ public final class AppRunner {
     }
     /** Context.startActivity: an activity of the app's own, or something the host can open (a web page, mail, the store). */
     public static void startActivity(Context from, Intent i, int request, Bundle opts) {
+        // FLAG_ACTIVITY_FORWARD_RESULT: the activity started takes this one's place as its caller's, as on Android -- its result
+        // goes to whoever started this one, which gives its own up. GmsCore's UnpackingRedirectActivity starts the sign-in so,
+        // and finishes.
+        if ((i.getFlags() & Intent.FLAG_ACTIVITY_FORWARD_RESULT) != 0 && request < 0 && from instanceof Activity && ((Activity) from).meglerCaller() != null) {
+            Activity a = (Activity) from;
+            Activity caller = a.meglerCaller();
+            int forwarded = a.meglerRequestCode();
+            a.meglerForwardedResult();
+            startActivity(caller, new Intent(i).setFlags(i.getFlags() & ~Intent.FLAG_ACTIVITY_FORWARD_RESULT), forwarded, opts);
+            return;
+        }
         // An APK to install (a file manager's, a browser's download, an app store's): Megler's installer has it, as Android's
         // package installer would (megler.Installs). Asked for a result, the caller hears RESULT_OK: the APK went.
         if (megler.Installs.isInstall(i)) {
@@ -222,6 +236,21 @@ public final class AppRunner {
             megler.Installs.install(from, i);
             final Activity caller = from instanceof Activity ? (Activity) from : top();
             if (request >= 0 && caller != null) sHandler.post(() -> caller.meglerActivityResult(request, Activity.RESULT_OK, null));
+            return;
+        }
+        // An activity of Google Play services, which this app hosts (megler.MicroG.activity): it runs here, in GmsCore's class
+        // scope and with its context, as GmsCore's services do -- its sign-in hands its screens objects of this process.
+        final Manifest.Component hosted = MicroG.activity(i);
+        if (hosted != null) {
+            final Activity caller = from instanceof Activity ? (Activity) from : top();
+            final Intent intent = new Intent(i);
+            if (intent.getComponent() == null) intent.setComponent(new ComponentName(GooglePackages.GMS, hosted.name));
+            final String cls = "activity-alias".equals(hosted.kind) && hosted.parentActivity != null ? hosted.parentActivity : hosted.name;
+            android.util.Log.d("Megler", "startActivity " + i + " -> Google Play services' " + cls + ", here");
+            sHandler.post(() -> {
+                try { launch(cls, intent, caller, request, hosted); }
+                catch (Throwable t) { android.util.Log.e("Megler", "starting " + cls + " failed", t); }
+            });
             return;
         }
         // An activity of another app the phone has (a launcher's tap, an app opening another): the shell starts that app

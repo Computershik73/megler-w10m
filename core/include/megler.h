@@ -137,6 +137,24 @@ char *megler_apk_report_splits(const char *apk_path, const char *splits_dir);
 bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_t **data, size_t *size);
 
 /*
+ * An app's activities as another app's launcher sees them (megler.PhoneApps; the shell writes them beside the list of the
+ * phone's apps, library/PhoneAppsList.cpp): `out_dir`, made if it is not there, is given activities.json --
+ *
+ *   { "package": "org.example", "label": "Example", "icon": 2131558400,
+ *     "activities": [ { "name": "org.example.Main", "label": "Example", "icon": 2131558401, "enabled": false,
+ *                       "exported": true, "filters": [ { "id": 1, "actions": ["android.intent.action.MAIN"],
+ *                       "categories": ["android.intent.category.LAUNCHER"], "schemes": [], "hosts": [], "types": [] } ] },
+ *                     { "name": "org.example.Light", "target": "org.example.Main", ... } ] }
+ *
+ * -- an activity-alias with the activity it stands for ("target"), a label in the phone's language (a resource's, through
+ * the splits' tables too), "enabled" only when the manifest says, "exported" as the manifest says or else whether it has an
+ * intent filter -- and a picture of each icon the app and its activities name, <id as 8 hex digits>.png: a PNG, a WebP made
+ * one, an XML one (adaptive, vector) drawn. `splits_dir` as megler_apk_report_splits has it. False when the APK's manifest
+ * cannot be read or the description cannot be written.
+ */
+bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir, const char *out_dir);
+
+/*
  * A bundle of split APKs as they go about outside Google Play: an .apks file (SAI's, bundletool's, APKPure's: the base
  * APK and its splits in a ZIP archive, perhaps with APKPure's manifest.json and an icon) or an .xapk (APKPure's:
  * manifest.json, the APK or the base and its splits, an icon, and perhaps expansion files under Android/obb/<package>/).
@@ -1425,6 +1443,8 @@ typedef struct megler_run_config {
     const char *apk_path;
     /* Optional installed microG APK. Opened as the service package; no copy in each client. */
     const char *gms_apk_path;
+    /* Optional Google Services Framework APK, shared by all client packages. */
+    const char *gsf_apk_path;
     /*
      * An app in several APKs (megler_apk_report_splits): its splits, as a folder whose .apk files they are (the folder
      * megler_bundle_unpack makes), and as a list of paths; either may be left NULL. The app runs as one, as Android runs

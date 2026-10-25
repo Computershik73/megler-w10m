@@ -40,18 +40,26 @@ public class WebViewClient {
         if (view == null || url == null || !url.startsWith(RECAPTCHA_FRAME)) return;
         if (!url.equals(view.getUrl())) return;
         view.evaluateJavascript("(function(){var body=document.body;var text=body?body.innerText:'';"
+                + "var terms=['not found','moved','cookie','browser','sorry','blocked',"
+                + "'captcha','google','unsupported','disabled','enable','redirect',"
+                + "'continue','policy','not available','access','request','client',"
+                + "'service','reload','traffic','javascript'];"
                 + "return JSON.stringify({ready:document.readyState,"
                 + "html:document.documentElement.outerHTML.length,text:text.length,"
                 + "children:body?body.children.length:0,scripts:document.scripts.length,"
                 + "frames:document.querySelectorAll('iframe').length,"
                 + "bridge:typeof window.RecaptchaEmbedder,recaptcha:typeof window.grecaptcha,"
+                + "chromeError:location.protocol==='chrome-error:',"
+                + "samePath:location.pathname==='/recaptcha/api2/mframe',"
+                + "first:body&&body.firstElementChild?body.firstElementChild.tagName:'',"
+                + "forms:document.forms.length,terms:terms.filter(function(w){return text.toLowerCase().indexOf(w)>=0}).join(','),"
                 + "error:/error|invalid|unavailable/i.test(text),"
                 + "denied:/denied|unusual traffic|automated/i.test(text)});})()",
                 new ValueCallback<String>() {
                     @Override public void onReceiveValue(String result) {
                         android.util.Log.i("RecaptchaWebView", "page " + when + " "
                                 + (result == null ? "null" : result.substring(0,
-                                        Math.min(result.length(), 256))));
+                                        Math.min(result.length(), 384))));
                     }
                 });
     }
@@ -360,6 +368,7 @@ public class WebViewClient {
     @Deprecated
     public void onReceivedError(WebView view, int errorCode,
             String description, String failingUrl) {
+        traceRecaptcha("network error legacy " + errorCode, failingUrl);
     }
 
     /**
@@ -452,6 +461,7 @@ public class WebViewClient {
      */
     public void onReceivedSslError(WebView view, SslErrorHandler handler,
             SslError error) {
+        traceRecaptcha("SSL error " + error.getPrimaryError(), error.getUrl());
         handler.cancel();
     }
 

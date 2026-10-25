@@ -203,6 +203,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.apk_path = gApkPath.c_str();
         const std::string servicePath = narrow(appPackage::serviceApk());
         config.gms_apk_path = servicePath.empty() ? nullptr : servicePath.c_str();
+        const std::string gsfPath = narrow(appPackage::gsfApk());
+        config.gsf_apk_path = gsfPath.empty() ? nullptr : gsfPath.c_str();
         config.splits_dir = gSplitsDir.empty() ? nullptr : gSplitsDir.c_str();
         config.split_apks = nullptr;
         config.split_count = 0;

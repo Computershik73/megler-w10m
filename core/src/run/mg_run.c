@@ -286,7 +286,7 @@ char *mg_run_own_storage(const char *data_dir, const char *package) { return mg_
  * registration turned on, the check-in's Android ID, the accounts it signed in.
  */
 #define SERVICES_GUEST "/data/megler-services"
-static bool service_package(const char *package) { return !strcmp(package, "com.google.android.gms"); }
+static bool service_package(const char *package) { return !strcmp(package, "com.google.android.gms") || !strcmp(package, "com.google.android.gsf"); }
 
 /* The host folder of an app's private files (/data/data/<package>), malloc'd: its own, or the services' shared one's part. */
 static char *internal_dir(const char *data_dir, const char *storage_dir, const char *package)
@@ -439,6 +439,7 @@ bool mg_run_start(const megler_run_config *config)
     g_apk_path = mg_strdup(config->apk_path);
     g_config.apk_path = g_apk_path;
     g_config.gms_apk_path = config->gms_apk_path ? mg_strdup(config->gms_apk_path) : NULL;
+    g_config.gsf_apk_path = config->gsf_apk_path ? mg_strdup(config->gsf_apk_path) : NULL;
     /*
      * The drivers see the splits as one list, of those the reading took (a split of another app is no split of this one),
      * in the order of info.splits, which names them.

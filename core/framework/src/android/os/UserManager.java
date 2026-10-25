@@ -166,7 +166,10 @@ public class UserManager {
     public static final java.lang.String USER_TYPE_PROFILE_TEST = "android.os.usertype.profile.TEST";
     public static final java.lang.String USER_TYPE_SYSTEM_HEADLESS = "android.os.usertype.system.HEADLESS";
     public static android.content.Intent createUserCreationIntent(java.lang.String p0, java.lang.String p1, java.lang.String p2, android.os.PersistableBundle p3) { return null; }
-    public static android.os.UserManager get(android.content.Context p0) { return null; }
+    public static android.os.UserManager get(android.content.Context context) {
+        Object service = context == null ? null : context.getSystemService(android.content.Context.USER_SERVICE);
+        return service instanceof UserManager ? (UserManager) service : new UserManager();
+    }
     public static int getMaxSupportedUsers() { return 0; }
     public static int getMaxSwitchableUsers() { return 0; }
     public static void invalidateCacheOnUserDataChanged() {}
@@ -244,7 +247,7 @@ public class UserManager {
     public java.lang.String getProfileLabel() { return null; }
     public android.content.pm.UserInfo getProfileParent(int p0) { return null; }
     public android.os.UserHandle getProfileParent(android.os.UserHandle p0) { return null; }
-    public java.util.List getProfiles(int p0) { return new java.util.ArrayList(); }
+    public java.util.List getProfiles(int p0) { return java.util.Collections.singletonList(new android.content.pm.UserInfo(p0)); }
     public java.util.List getProfilesIncludingCommunal(int p0) { return new java.util.ArrayList(); }
     public int getRemainingCreatableProfileCount(java.lang.String p0) { return 0; }
     public int getRemainingCreatableUserCount(java.lang.String p0) { return 0; }
@@ -324,10 +327,10 @@ public class UserManager {
     public boolean isUserSwitcherEnabled() { return false; }
     public boolean isUserSwitcherEnabled(boolean p0) { return false; }
     public boolean isUserTypeEnabled(java.lang.String p0) { return false; }
-    public boolean isUserUnlocked(int p0) { return false; }
-    public boolean isUserUnlocked(android.os.UserHandle p0) { return false; }
-    public boolean isUserUnlockingOrUnlocked(int p0) { return false; }
-    public boolean isUserUnlockingOrUnlocked(android.os.UserHandle p0) { return false; }
+    public boolean isUserUnlocked(int p0) { return true; }
+    public boolean isUserUnlocked(android.os.UserHandle p0) { return true; }
+    public boolean isUserUnlockingOrUnlocked(int p0) { return true; }
+    public boolean isUserUnlockingOrUnlocked(android.os.UserHandle p0) { return true; }
     public boolean isUserVisible() { return false; }
     public boolean isVisibleBackgroundUsersOnDefaultDisplaySupported() { return false; }
     public boolean isVisibleBackgroundUsersSupported() { return false; }

@@ -5,7 +5,9 @@
 // original said no camera at all, and a scanner that asks before it opens one
 // (VK mp3 mod's QR sign-in among them) would not offer to scan. Likewise the
 // location (android.hardware.location, .gps, .network), wherever the shell can
-// find the phone (megler.LocationNative).
+// find the phone (megler.LocationNative). And getSystemAvailableFeatures lists those same
+// features and the OpenGL ES version, and getSystemSharedLibraryNames the legacy
+// Apache HTTP client, where both said nothing.
 // And getPackageInfo names the app's split APKs (splitNames, splitRevisionCodes),
 // as ApplicationInfo does: an app in several APKs that checks for its splits by
 // this way of asking found none, where the original left them empty.
@@ -14,7 +16,9 @@
 // them after the app's own, and getPackageInfo, getApplicationInfo,
 // getActivityInfo, getLaunchIntentForPackage, getInstalledPackages,
 // getInstalledApplications and getPackageUid know them; the original knew no
-// other app. And canRequestPackageInstalls is true: an app store may hand an APK
+// other app. Every activity of theirs that the shell described (each entry of
+// a launcher, an alias's too; GET_ACTIVITIES; an intent for their package, or
+// for ACTION_CREATE_SHORTCUT), and getDrawable their icons. And canRequestPackageInstalls is true: an app store may hand an APK
 // to Megler's installer (megler.Installs), which asks the user. And
 // getDefaultActivityIcon is the platform's sym_def_app_icon, where it was a
 // transparent colour with no size.
@@ -58,15 +62,20 @@ public class PackageManager {
     public static synchronized PackageManager self() { if (sSelf == null) sSelf = new PackageManager(); return sSelf; }
     private static boolean mine(String pkg) { return pkg != null && pkg.equals(megler.Native.packageName()); }
     /* the process a component names (android:process: ":x" is the app's own "<package>:x"), the app's process when it names none */
-    private static String process(megler.Manifest.Component c) {
-        String pkg = megler.Native.packageName();
-        return c.process == null || c.process.isEmpty() ? pkg : c.process.startsWith(":") ? pkg + c.process : c.process;
-    }
+    private static String process(megler.Manifest.Component c) { return megler.Manifest.processOf(c); }
     private static ActivityInfo activity(megler.Manifest.Component c) {
         ActivityInfo a = new ActivityInfo();
         a.name = c.name; a.packageName = megler.Native.packageName(); a.theme = c.theme; a.labelRes = c.label; a.icon = c.icon; a.screenOrientation = c.screenOrientation;
         a.configChanges = c.configChanges; a.launchMode = c.launchMode; a.exported = c.exported; a.enabled = c.enabled; a.metaData = c.metaData; a.parentActivityName = c.parentActivity;
         a.softInputMode = c.windowSoftInputMode; a.processName = process(c); a.taskAffinity = a.packageName;
+        return a;
+    }
+    /** An activity of Google Play services that runs here (megler.MicroG.activity), as its package describes it. */
+    private static ActivityInfo hosted(megler.Manifest.Component c) {
+        ActivityInfo a = activity(c);
+        a.packageName = a.taskAffinity = a.processName = megler.GooglePackages.GMS;
+        PackageInfo gms = megler.MicroG.packageInfo(megler.GooglePackages.GMS);
+        if (gms != null) a.applicationInfo = gms.applicationInfo;
         return a;
     }
     private static ServiceInfo service(megler.Manifest.Component c) { ServiceInfo s = new ServiceInfo(); s.name = c.name; s.packageName = megler.Native.packageName(); s.exported = c.exported; s.enabled = c.enabled; s.metaData = c.metaData; s.permission = c.permission; s.processName = process(c); return s; }
@@ -127,6 +136,9 @@ public class PackageManager {
     public ApplicationInfo getApplicationInfo(String pkg, ApplicationInfoFlags flags) throws NameNotFoundException { return getApplicationInfo(pkg, 0); }
     public ActivityInfo getActivityInfo(ComponentName c, int flags) throws NameNotFoundException {
         if (!mine(c.getPackageName())) {
+            // An activity of Google Play services, which runs here (megler.MicroG.activity): as GmsCore's manifest describes it.
+            megler.Manifest.Component hosted = megler.MicroG.activity(new Intent().setComponent(c));
+            if (hosted != null) return hosted(hosted);
             megler.PhoneApps.App other = megler.PhoneApps.find(c.getPackageName());
             if (other != null) return megler.PhoneApps.activityInfo(other, c.getClassName());
             throw new NameNotFoundException(c.toString());
@@ -142,6 +154,9 @@ public class PackageManager {
     public ServiceInfo getServiceInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getServiceInfo(c, 0); }
     public ProviderInfo getProviderInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component p : megler.Manifest.providers) if (p.name.equals(c.getClassName())) return provider(p); throw new NameNotFoundException(c.toString()); }
     public ProviderInfo resolveContentProvider(String authority, int flags) {
+        android.content.pm.PackageInfo gsf = megler.Gsf.packageInfo(megler.GooglePackages.GSF);
+        if (gsf != null && gsf.providers != null) for (ProviderInfo p : gsf.providers)
+            if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
         android.content.pm.PackageInfo gms = megler.MicroG.packageInfo(megler.GooglePackages.GMS);
         if (gms != null && gms.providers != null) for (ProviderInfo p : gms.providers)
             if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
@@ -172,8 +187,32 @@ public class PackageManager {
             return megler.LocationNative.access(false) != megler.LocationNative.NONE;
         return false;
     }
-    public FeatureInfo[] getSystemAvailableFeatures() { return new FeatureInfo[0]; }
-    public String[] getSystemSharedLibraryNames() { return new String[0]; }
+    /*
+     * The device's features as Android lists them: every one hasSystemFeature says yes to, and the OpenGL ES version of the
+     * device's configuration (ConfigurationInfo.meglerDevice), as the platform adds it. And its shared libraries: the one an
+     * app can ask for and have, Android's legacy Apache HTTP client (drivers/mg_java.c). Both said nothing before, and Play
+     * Store described to Google's server a device with no touchscreen, no screen, no OpenGL ES and no libraries; its table of
+     * contents asked again for the device's configuration after each upload ("Failed to converge on device config for TOC").
+     */
+    public FeatureInfo[] getSystemAvailableFeatures() {
+        ArrayList<FeatureInfo> l = new ArrayList<>();
+        java.util.HashSet<String> seen = new java.util.HashSet<>();
+        for (java.lang.reflect.Field f : PackageManager.class.getFields()) {
+            if (!f.getName().startsWith("FEATURE_") || f.getType() != String.class || !java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+            try {
+                String name = (String) f.get(null);
+                if (name == null || !seen.add(name) || !hasSystemFeature(name)) continue;
+                FeatureInfo info = new FeatureInfo();
+                info.name = name;
+                l.add(info);
+            } catch (IllegalAccessException e) {}
+        }
+        FeatureInfo gl = new FeatureInfo();
+        gl.reqGlEsVersion = ConfigurationInfo.meglerDevice().reqGlEsVersion;
+        l.add(gl);
+        return l.toArray(new FeatureInfo[0]);
+    }
+    public String[] getSystemSharedLibraryNames() { return new String[] { "org.apache.http.legacy" }; }
     public int checkPermission(String perm, String pkg) { return PERMISSION_GRANTED; }
     public boolean isPermissionRevokedByPolicy(String perm, String pkg) { return false; }
     public PermissionInfo getPermissionInfo(String name, int flags) throws NameNotFoundException { PermissionInfo p = new PermissionInfo(); p.name = name; return p; }
@@ -193,9 +232,13 @@ public class PackageManager {
         } catch (RuntimeException e) {}
         return new android.graphics.drawable.ColorDrawable(0);
     }
-    public android.graphics.drawable.Drawable getDrawable(String pkg, int res, ApplicationInfo a) { try { return megler.ContextImpl.app().getResources().getDrawable(res); } catch (Exception e) { return null; } }
+    public android.graphics.drawable.Drawable getDrawable(String pkg, int res, ApplicationInfo a) {
+        // Another app's picture: one of its icons, as the shell drew it (megler.PhoneApps); this app's resources have none of it.
+        if (pkg != null && !mine(pkg) && megler.PhoneApps.find(pkg) != null) return res == 0 ? null : megler.PhoneApps.icon(pkg, res);
+        try { return megler.ContextImpl.app().getResources().getDrawable(res); } catch (Exception e) { return null; }
+    }
     public CharSequence getText(String pkg, int res, ApplicationInfo a) { try { return megler.ContextImpl.app().getResources().getText(res); } catch (Exception e) { return null; } }
-    public android.content.res.Resources getResourcesForApplication(String pkg) throws NameNotFoundException { android.content.Context external = megler.MicroG.context(pkg); if (external != null) return external.getResources(); if (!mine(pkg) && !"android".equals(pkg)) throw new NameNotFoundException(pkg); return megler.ContextImpl.app().getResources(); }
+    public android.content.res.Resources getResourcesForApplication(String pkg) throws NameNotFoundException { android.content.Context external = megler.MicroG.context(pkg); if (external == null) external = megler.Gsf.context(pkg); if (external != null) return external.getResources(); if (!mine(pkg) && !"android".equals(pkg)) throw new NameNotFoundException(pkg); return megler.ContextImpl.app().getResources(); }
     public android.content.res.Resources getResourcesForApplication(ApplicationInfo a) throws NameNotFoundException { return getResourcesForApplication(a.packageName); }
     public android.content.res.Resources getResourcesForActivity(ComponentName c) { return megler.ContextImpl.app().getResources(); }
     public String getInstallerPackageName(String pkg) { return "com.android.vending"; }
@@ -205,17 +248,22 @@ public class PackageManager {
         String target = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();
         boolean other = target != null && !mine(target);
         megler.Manifest.Component c = other ? null : megler.Manifest.resolve(i);
+        megler.Manifest.Component hosted = c == null ? megler.MicroG.activity(i) : null;
         if (c != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
+        else if (hosted != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = hosted(hosted); l.add(r); return l; }
         else if (!other && i.getData() != null && ("http".equals(i.getData().getScheme()) || "https".equals(i.getData().getScheme()) || "mailto".equals(i.getData().getScheme()))) {
             ResolveInfo r = new ResolveInfo(); r.activityInfo = new ActivityInfo(); r.activityInfo.name = "com.android.browser.Browser"; r.activityInfo.packageName = "com.android.browser"; r.nonLocalizedLabel = "Browser"; l.add(r);
         }
-        // The other apps the phone has (megler.PhoneApps): for the launcher's intent, all of them or the one it names; and the
-        // activity an intent names in one of them.
+        // The other apps the phone has (megler.PhoneApps): for the launcher's intent, every entry of all of them or of the one it
+        // names; the activity an intent names in one of them; and the activities of theirs an intent is for, of the package it
+        // names or that make shortcuts.
         if (megler.PhoneApps.isLauncherIntent(i)) {
-            for (megler.PhoneApps.App a : megler.PhoneApps.all()) if (target == null || target.equals(a.packageName)) l.add(megler.PhoneApps.resolveInfo(a));
+            for (megler.PhoneApps.App a : megler.PhoneApps.all()) if (target == null || target.equals(a.packageName)) l.addAll(megler.PhoneApps.launcherEntries(a));
         } else if (other && i.getComponent() != null) {
             megler.PhoneApps.App a = megler.PhoneApps.find(target);
             if (a != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = megler.PhoneApps.activityInfo(a, i.getComponent().getClassName()); l.add(r); }
+        } else if (i.getComponent() == null && (other || target == null)) {
+            l.addAll(megler.PhoneApps.query(i));
         }
         return l;
     }
@@ -228,8 +276,7 @@ public class PackageManager {
     public List<ResolveInfo> queryIntentServices(Intent i, int flags) {
         ArrayList<ResolveInfo> l = new ArrayList<>();
         for (megler.Manifest.Component c : megler.Manifest.match(megler.Manifest.services, i)) { ResolveInfo r = new ResolveInfo(); r.serviceInfo = service(c); l.add(r); }
-        ServiceInfo external = megler.MicroG.resolve(i);
-        if (external != null) { ResolveInfo r = new ResolveInfo(); r.serviceInfo = external; l.add(r); }
+        for (ServiceInfo external : megler.MicroG.query(i, flags)) { ResolveInfo r = new ResolveInfo(); r.serviceInfo = external; l.add(r); }
         if (l.isEmpty() && !megler.MicroG.installed() && googleService(i)) {
             ResolveInfo r = new ResolveInfo(); ServiceInfo s = new ServiceInfo();
             s.packageName = "com.google.android.gms"; s.name = "com.google.android.gms.chimera.GmsIntentOperationService"; s.exported = true; s.enabled = true;
@@ -843,8 +890,8 @@ public class PackageManager {
     public java.util.Set getMimeGroup(java.lang.String p0) { return new java.util.HashSet(); }
     public int getMoveStatus(int p0) { return 0; }
     public java.lang.String[] getNamesForUids(int[] p0) { return null; }
-    public android.content.pm.PackageInfo getPackageArchiveInfo(java.lang.String p0, int p1) { return null; }
-    public android.content.pm.PackageInfo getPackageArchiveInfo(java.lang.String p0, android.content.pm.PackageManager.PackageInfoFlags p1) { return null; }
+    public android.content.pm.PackageInfo getPackageArchiveInfo(java.lang.String path, int flags) { return megler.ArchiveInfo.read(path); }
+    public android.content.pm.PackageInfo getPackageArchiveInfo(java.lang.String path, android.content.pm.PackageManager.PackageInfoFlags flags) { return megler.ArchiveInfo.read(path); }
     public java.util.List getPackageCandidateVolumes(android.content.pm.ApplicationInfo p0) { return new java.util.ArrayList(); }
     public int[] getPackageGids(java.lang.String p0) { return null; }
     public int[] getPackageGids(java.lang.String p0, int p1) { return null; }

@@ -12,9 +12,10 @@
     // These overloads also retain this wrapper as the receiver's context. Delegating to b() would give a hosted microG
     // receiver the client application's context, while calling the two-argument form would hit Chromium wrappers that throw.
     @Override public Intent registerReceiver(BroadcastReceiver r, IntentFilter f, int flags) { return megler.Broadcasts.register(this, r, f); }
-    @Override public Intent registerReceiver(BroadcastReceiver r, IntentFilter f, String perm, android.os.Handler h) { return megler.Broadcasts.register(this, r, f); }
+    // With a Handler, the receiver hears on its thread (megler.Broadcasts).
+    @Override public Intent registerReceiver(BroadcastReceiver r, IntentFilter f, String perm, android.os.Handler h) { return megler.Broadcasts.register(this, r, f, h); }
     @Override public Intent registerReceiver(BroadcastReceiver r, IntentFilter f, String perm, android.os.Handler h, int flags) {
-        return megler.Broadcasts.register(this, r, f);
+        return megler.Broadcasts.register(this, r, f, h);
     }
     // And startForegroundService, and the broadcasts with a permission. The original's wrapper did not pass them on, and
     // Context's defaults call this.startService(i) and this.sendBroadcast(i), which reach a subclass of the wrapper that

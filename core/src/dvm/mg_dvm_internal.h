@@ -242,6 +242,7 @@ struct mg_dvm_thread {
     mg_dvm_frame *onload_frame;
     bool onload_running, onload_app;
     int onload_scope;
+    int owner_scope;                   /* the class scope of the service whose code started this thread (Thread.start), else 0 */
     mg_dvm_thread *next;
     u64 prof_total;                    /* instructions this thread has executed while the profile was on */
     /*
@@ -473,6 +474,8 @@ bool mg_dvm_monitor_notify(mg_jobj *o, bool all);
 
 /* Leaves an existing object pending. */
 void mg_dvm_throw_object(mg_jobj *e);
+/* An exception of the class itself, with its message (NULL: none), constructed as bytecode constructs one. */
+bool mg_dvm_throw_class(mg_dvm_class *c, const char *msg);
 /* The frames of the calling thread as (method, pc) pairs in a long[], for Throwable.fillInStackTrace. */
 mg_jobj *mg_dvm_capture_stack(void);
 /* A fallback: a native method registered here is used only when neither mg_dvm_register nor a library has one. */

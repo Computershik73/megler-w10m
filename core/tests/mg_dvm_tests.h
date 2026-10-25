@@ -75,7 +75,7 @@ void test_runtime(const char *fixtures);
 /* mg_dvm_tests_gc.c: the collector, from the heap up. */
 void test_gc(void);
 /* mg_dvm_tests_jni.c: the runtime and the JNI layer as one Java world; with a guest library where guest code can run. */
-void test_jni(const char *guest_dir);
+void test_jni(const char *guest_dir, const char *fixtures);
 /* mg_dvm_tests_d8.c: a program compiled by javac and d8, against what the JVM printed for it. */
 void test_d8(const char *fixtures);
 /*

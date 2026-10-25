@@ -13,17 +13,50 @@ public class AlarmManager {
     }
     private final android.os.Handler mHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private long delay(int type, long at) { long now = type == RTC || type == RTC_WAKEUP ? System.currentTimeMillis() : android.os.SystemClock.elapsedRealtime(); return Math.max(0, at - now); }
-    public void set(int type, long at, PendingIntent op) { mHandler.postDelayed(() -> { try { op.send(); } catch (PendingIntent.CanceledException e) {} }, delay(type, at)); }
+    /*
+     * The alarms of this process, by their PendingIntent, as Android keeps them: one each, which a new one with the same
+     * PendingIntent replaces (PendingIntent finds the same one again for the same intent), which cancel takes away, as it does
+     * the PendingIntent's cancel (meglerCanceled), and a repeating one goes off again each interval. Every AlarmManager of the
+     * process has them alike.
+     */
+    private static final java.util.IdentityHashMap<PendingIntent, Runnable> sAlarms = new java.util.IdentityHashMap<>();
+    private static android.os.Handler sAlarmHandler;
+    private static void schedule(PendingIntent op, long delay, long interval) {
+        if (op == null) return;
+        Runnable fire = new Runnable() {
+            @Override public void run() {
+                synchronized (sAlarms) {
+                    if (sAlarms.get(op) != this) return;
+                    if (interval <= 0) sAlarms.remove(op);
+                }
+                try { op.send(); } catch (PendingIntent.CanceledException e) { synchronized (sAlarms) { if (sAlarms.get(op) == this) sAlarms.remove(op); } return; }
+                synchronized (sAlarms) { if (interval > 0 && sAlarms.get(op) == this) sAlarmHandler.postDelayed(this, op, interval); }
+            }
+        };
+        synchronized (sAlarms) {
+            if (sAlarmHandler == null) sAlarmHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+            sAlarmHandler.removeCallbacksAndMessages(op);
+            sAlarms.put(op, fire);
+            sAlarmHandler.postDelayed(fire, op, delay);
+        }
+    }
+    /** PendingIntent.cancel: its alarm, if it has one, goes. */
+    public static void meglerCanceled(PendingIntent op) {
+        synchronized (sAlarms) {
+            if (sAlarms.remove(op) != null && sAlarmHandler != null) sAlarmHandler.removeCallbacksAndMessages(op);
+        }
+    }
+    public void set(int type, long at, PendingIntent op) { schedule(op, delay(type, at), 0); }
     public void set(int type, long at, String tag, OnAlarmListener l, android.os.Handler h) { mHandler.postDelayed(l::onAlarm, delay(type, at)); }
     public void setExact(int type, long at, PendingIntent op) { set(type, at, op); }
     public void setExact(int type, long at, String tag, OnAlarmListener l, android.os.Handler h) { set(type, at, tag, l, h); }
     public void setExactAndAllowWhileIdle(int type, long at, PendingIntent op) { set(type, at, op); }
     public void setAndAllowWhileIdle(int type, long at, PendingIntent op) { set(type, at, op); }
     public void setWindow(int type, long start, long len, PendingIntent op) { set(type, start, op); }
-    public void setRepeating(int type, long at, long interval, PendingIntent op) { set(type, at, op); }
-    public void setInexactRepeating(int type, long at, long interval, PendingIntent op) { set(type, at, op); }
+    public void setRepeating(int type, long at, long interval, PendingIntent op) { schedule(op, delay(type, at), interval); }
+    public void setInexactRepeating(int type, long at, long interval, PendingIntent op) { schedule(op, delay(type, at), interval); }
     public void setAlarmClock(AlarmClockInfo i, PendingIntent op) {}
-    public void cancel(PendingIntent op) {}
+    public void cancel(PendingIntent op) { meglerCanceled(op); }
     public void cancel(OnAlarmListener l) {}
     public void cancelAll() {}
     public boolean canScheduleExactAlarms() { return true; }
