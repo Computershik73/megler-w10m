@@ -250,10 +250,31 @@ struct mg_dvm_frame {
     mg_jobj *sync;                     /* the monitor a synchronized method holds */
 };
 
+/*
+ * A frame stack is in segments, each reserved when the frames first need it: a thread's first is DVM_STACK_FIRST_WORDS,
+ * each next one twice the one before, until together they hold the thread's whole (stack_max). A frame that does not fit in
+ * the rest of a segment goes at the start of the next (stack_next); when the first frame of a segment returns, the thread is
+ * back in the one below (stack_back), and the one it left is kept for the next time the frames come that deep. Each was
+ * reserved whole: Yandex Maps' 202 threads held 76 MB of addresses in frame stacks of 384 KB, where most never used 64 KB,
+ * with 15 MB of its 2 GB left in one piece (package 506).
+ */
+#define DVM_STACK_SEGS 12
+typedef struct mg_dvm_stack_seg {
+    mg_dvm_reg *base;
+    size_t words, committed;
+    mg_dvm_reg *sp;                    /* a segment below the current one: where its frames end */
+} mg_dvm_stack_seg;
+
 struct mg_dvm_thread {
-    mg_dvm_reg *stack, *stack_end;     /* frames and registers; grows up */
+    mg_dvm_reg *stack, *stack_end;     /* the current segment of frames and registers; grows up */
     size_t stack_committed;            /* words of it backed by memory: reserved whole, committed as it grows (stack_grow) */
-    size_t stack_words;                /* words reserved: DVM_STACK_WORDS, or DVM_STACK_ATTACHED_WORDS for a thread native code attached */
+    size_t stack_words;                /* words of the current segment reserved */
+    size_t stack_max;                  /* words the segments hold together at most: DVM_STACK_WORDS, DVM_STACK_ATTACHED_WORDS... */
+    size_t stack_below;                /* words of the segments below the current one */
+    size_t stack_peak;                 /* the most words its segments have held together */
+    int nsegs;                         /* segments below the current one, in segs */
+    mg_dvm_stack_seg segs[DVM_STACK_SEGS];
+    mg_dvm_stack_seg spare;            /* the segment above the current one, kept when its frames returned; base NULL for none */
     mg_dvm_reg *sp;
     mg_dvm_frame *top;
     mg_jobj *pending;                  /* the exception being thrown */
@@ -317,9 +338,9 @@ struct mg_dvm_thread {
 #define DVM_STACK_RESERVE 2048
 #define DVM_STACK_WORDS (192u * 1024u)
 /*
- * What is committed of it when a thread starts (64 KB); it doubles as frames need more. It was committed whole (768 KB) for
- * every thread: Facebook's 170 threads held 130 MB of it, nearly all never touched, and Windows counts it all against the
- * app's limit.
+ * A thread's first segment of it (64 KB), reserved and committed when the thread starts; a segment commits more as frames
+ * need it, doubling. The stack was committed whole (768 KB) for every thread: Facebook's 170 threads held 130 MB of it,
+ * nearly all never touched, and Windows counts it all against the app's limit.
  */
 #define DVM_STACK_FIRST_WORDS (16u * 1024u)
 /*
@@ -528,6 +549,8 @@ mg_dvm_thread *mg_dvm_self_sized(size_t words);
 /* The runtime's threads now: how many, how many of them attached by native code, and the frame stacks' reserved bytes. */
 /* The thread's Java frames for a fault's report (mg_core.c's fault detail): made nothing, locked nothing. */
 void mg_dvm_fault_frames(char *out, size_t cap);
+/* Whether [p, p + size) is within the committed part of one of the thread's segments of frames (mg_dvm_stack_seg). */
+bool mg_dvm_in_frames(const mg_dvm_thread *t, const void *p, size_t size);
 void mg_dvm_monitor_trace_start(void);
 void mg_dvm_stacks_trace_start(void);
 void mg_dvm_call_trace_add(const char *prefix);

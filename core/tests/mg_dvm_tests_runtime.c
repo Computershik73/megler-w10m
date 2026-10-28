@@ -311,7 +311,7 @@ typedef struct attached_run {
 static void attached_work(void *arg)
 {
     attached_run *r = (attached_run *)arg;
-    r->words = mg_dvm_self_attached()->stack_words;
+    r->words = mg_dvm_self_attached()->stack_max;
     A[0].i = 1000;
     r->down = call("t/Deep", "down", "(I)I").i;
     call("t/Deep", "forever", "(I)I");
@@ -328,12 +328,23 @@ static void test_limits(void)
     A[0].i = 10000;
     CHECK_INT(call("t/Deep", "down", "(I)I").i, 10000);
     CHECK_STR(thrown(), "");
-    /* Which it committed as they needed it, more than the first part of it. */
-    CHECK(mg_dvm_self()->stack_committed > DVM_STACK_FIRST_WORDS);
+    /* In segments beyond the first, made as they needed them: back in the first, the one above it kept. */
+    CHECK(mg_dvm_self()->nsegs == 0 && mg_dvm_self()->spare.base != NULL && mg_dvm_self()->stack_peak > DVM_STACK_FIRST_WORDS);
     call("t/Deep", "forever", "(I)I");
     CHECK(!strncmp(thrown(), "java.lang.StackOverflowError: ", 30));
-    /* Without end, the whole of it, the reserve with it. */
-    CHECK(mg_dvm_self()->stack_committed == DVM_STACK_WORDS && mg_dvm_self()->stack_words == DVM_STACK_WORDS);
+    /* Without end, the whole of it, the reserve with it; and back in the first segment after it. */
+    CHECK(mg_dvm_self()->stack_peak >= DVM_STACK_WORDS && mg_dvm_self()->nsegs == 0);
+    {
+        /* Each of three thousand calls holds an array of its own across the calls inside it, in every segment of the stack:
+           the collections the arrays bring on find every one (a freed one is poisoned and reused). */
+        u64 before_gc = 0, after_gc = 0;
+        mg_dvm_gc_totals(&before_gc, NULL);
+        A[0].i = 3000;
+        CHECK_INT(call("t/Deep", "kept", "(I)I").i, 3000);
+        CHECK_STR(thrown(), "");
+        mg_dvm_gc_totals(&after_gc, NULL);
+        CHECK(after_gc > before_gc);
+    }
     {
         /* A thread native code attached has the smaller one: a thousand calls deep fit, one that does not end is the
            error there too, and the thread goes on. */

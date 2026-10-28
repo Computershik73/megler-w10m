@@ -201,11 +201,74 @@ static MG_NOINLINE bool stack_grow(mg_dvm_thread *t, size_t words)
     return words + FRAME_WORDS <= (size_t)(t->stack_end - t->sp);
 }
 
+/*
+ * The frames go on in the next segment (mg_dvm_stack_seg), the kept one if a frame of `words` fits in it, else a new one twice
+ * the size of this, or as large as the frame needs: false when the segments would hold more than the thread's whole stack
+ * between them (and each its reserve, which only the last one's frames reach), or there is no memory.
+ */
+static MG_NOINLINE bool stack_next(mg_dvm_thread *t, size_t words)
+{
+    size_t need = words + FRAME_WORDS + DVM_STACK_RESERVE, used = t->stack_below + t->stack_words;
+    size_t cap = t->stack_max + (size_t)(t->nsegs + 1) * DVM_STACK_RESERVE, size;
+    mg_dvm_stack_seg next;
+    if (t->nsegs == DVM_STACK_SEGS || used >= cap) return false;
+    if (t->spare.base && t->spare.words >= need) {
+        next = t->spare;
+    } else {
+        size = t->nsegs == DVM_STACK_SEGS - 1 ? cap - used : t->stack_words * 2;
+        if (size < need) size = (need + DVM_STACK_FIRST_WORDS - 1) & ~(size_t)(DVM_STACK_FIRST_WORDS - 1);
+        if (size > cap - used) size = cap - used;
+        if (size < need) return false;
+        next.base = (mg_dvm_reg *)mg_mem_reserve(sizeof(mg_dvm_reg) * size);
+        if (!next.base) return false;
+        next.words = size;
+        next.committed = size < DVM_STACK_FIRST_WORDS ? size : DVM_STACK_FIRST_WORDS;
+        if (next.committed < need) next.committed = need;
+        if (!mg_mem_commit(next.base, sizeof(mg_dvm_reg) * next.committed, MG_PROT_RW)) {
+            mg_mem_release(next.base, sizeof(mg_dvm_reg) * size);
+            return false;
+        }
+        if (t->spare.base) mg_mem_release(t->spare.base, sizeof(mg_dvm_reg) * t->spare.words);
+    }
+    t->spare.base = NULL;
+    /* This one below, written whole before it is counted: the collector may stop the thread anywhere, and scans both. */
+    t->segs[t->nsegs].base = t->stack;
+    t->segs[t->nsegs].words = t->stack_words;
+    t->segs[t->nsegs].committed = t->stack_committed;
+    t->segs[t->nsegs].sp = t->sp;
+    t->stack_below += t->stack_words;
+    t->nsegs++;
+    t->stack = next.base;
+    t->stack_words = next.words;
+    t->stack_committed = next.committed;
+    t->stack_end = t->stack + t->stack_committed - DVM_STACK_RESERVE;
+    t->sp = t->stack;
+    if (t->stack_below + t->stack_words > t->stack_peak) t->stack_peak = t->stack_below + t->stack_words;
+    return words + FRAME_WORDS <= (size_t)(t->stack_end - t->sp);
+}
+
+/* The first frame of a segment has returned: back to the segment below, where the frames now end; the one left is kept. */
+static MG_NOINLINE void stack_back(mg_dvm_thread *t)
+{
+    mg_dvm_stack_seg *below = &t->segs[t->nsegs - 1];
+    if (t->spare.base) mg_mem_release(t->spare.base, sizeof(mg_dvm_reg) * t->spare.words);
+    t->spare.base = t->stack;
+    t->spare.words = t->stack_words;
+    t->spare.committed = t->stack_committed;
+    t->stack = below->base;
+    t->stack_words = below->words;
+    t->stack_committed = below->committed;
+    t->stack_end = t->stack + t->stack_committed - DVM_STACK_RESERVE;
+    t->sp = below->sp;
+    t->stack_below -= below->words;
+    t->nsegs--;
+}
+
 /* A frame for `m` with `words` registers on the thread's stack, made the method being run. NULL when the stack is full (thrown). */
 static inline mg_dvm_frame *push_frame(mg_dvm_thread *t, mg_dvm_method *m, size_t words)
 {
     mg_dvm_frame *f;
-    if (words + FRAME_WORDS > (size_t)(t->stack_end - t->sp) && !stack_grow(t, words)) return stack_full(t, m, words);
+    if (words + FRAME_WORDS > (size_t)(t->stack_end - t->sp) && !stack_grow(t, words) && !stack_next(t, words)) return stack_full(t, m, words);
     f = (mg_dvm_frame *)(void *)t->sp;
     f->prev = t->top;
     f->m = m;
@@ -231,6 +294,7 @@ static inline void pop_frame(mg_dvm_thread *t)
     t->sp = (mg_dvm_reg *)(void *)f;
     t->top = f->prev;
     t->depth--;
+    if (t->sp == t->stack && t->nsegs) stack_back(t);
 }
 
 /* ----------------------------------------------------------- values in and out */

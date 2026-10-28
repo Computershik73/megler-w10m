@@ -222,6 +222,8 @@ u64 mg_dvm_executed_all(void);
  * address -- and the most any one thread's host stack has been seen to use.
  */
 void mg_dvm_thread_census(u32 *threads, u32 *attached, u64 *frame_bytes, u64 *c_reserved, u64 *c_peak);
+/* The runtime's frame stacks: the bytes their segments reserve, the bytes of it committed, and the most any thread's frames take now. */
+void mg_dvm_frame_census(u64 *reserved, u64 *committed, u64 *deepest);
 typedef struct mg_dvm_costs {
     u64 executed, waited_ns, native_ns, natives, alloc_ns, allocs, blocked_ns;
 } mg_dvm_costs;

@@ -258,14 +258,23 @@ static void stop_thread(mg_dvm_thread *t, void *user)
     g_stopped[g_nstopped++].t = t;
 }
 
-/* A thread's frame stack, the registers of every frame, and a margin above the top one for a frame being made. */
+/*
+ * A thread's frame stack, the registers of every frame, and a margin above the top one for a frame being made: the segments
+ * below the current one to where their frames end, and the current one. (Stopped while it moved from one segment to the
+ * next, a thread has some of a segment scanned twice, or more than its frames: words, no harm.)
+ */
 static void scan_frames(mg_dvm_thread *t, void *user)
 {
     mg_dvm_reg *top;
+    int i;
     (void)user;
     if (!t->stack) return;
+    for (i = 0; i < t->nsegs && i < DVM_STACK_SEGS; i++) {
+        mg_dvm_reg *base = t->segs[i].base, *end = t->segs[i].sp;
+        if (base && end > base && end <= base + t->segs[i].committed) scan_words((mg_addr)base, (mg_addr)end);
+    }
     top = t->sp + 64 < t->stack + t->stack_committed ? t->sp + 64 : t->stack + t->stack_committed;
-    scan_words((mg_addr)t->stack, (mg_addr)top);
+    if (top > t->stack) scan_words((mg_addr)t->stack, (mg_addr)top);
 }
 
 static MG_NOINLINE void scan_own_stack(void)

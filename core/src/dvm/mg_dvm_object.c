@@ -67,8 +67,23 @@ static void thread_ends(void)
     t_self = NULL;
     /* Its frame stack goes; the small rest stays, for whoever still holds its address (a Thread whose nativePeer was read a moment ago). */
     mg_mem_release(t->stack, sizeof(mg_dvm_reg) * t->stack_words);
+    while (t->nsegs > 0) {
+        t->nsegs--;
+        mg_mem_release(t->segs[t->nsegs].base, sizeof(mg_dvm_reg) * t->segs[t->nsegs].words);
+    }
+    if (t->spare.base) mg_mem_release(t->spare.base, sizeof(mg_dvm_reg) * t->spare.words);
+    t->spare.base = NULL;
     t->stack = t->sp = t->stack_end = NULL;
     t->stack_committed = 0;
+}
+
+bool mg_dvm_in_frames(const mg_dvm_thread *t, const void *p, size_t size)
+{
+    int i;
+    if (t->stack && (mg_addr)p >= (mg_addr)t->stack && (mg_addr)p + size <= (mg_addr)(t->stack + t->stack_committed)) return true;
+    for (i = 0; i < t->nsegs; i++)
+        if ((mg_addr)p >= (mg_addr)t->segs[i].base && (mg_addr)p + size <= (mg_addr)(t->segs[i].base + t->segs[i].committed)) return true;
+    return false;
 }
 
 void mg_dvm_threads_each(void (*fn)(mg_dvm_thread *t, void *user), void *user)
@@ -95,7 +110,7 @@ void mg_dvm_fault_frames(char *out, size_t cap)
     if (!t || !t->stack) return;
     for (f = t->top; f && depth < 16 && n + 200 < cap; f = f->prev, depth++) {
         const mg_dvm_method *m;
-        if ((mg_dvm_reg *)(void *)f < t->stack || (mg_dvm_reg *)(void *)f >= t->stack_end) break;
+        if (!mg_dvm_in_frames(t, f, sizeof(*f))) break;
         m = f->m;
         if (!m || !m->cls || !m->cls->name || !m->name) break;
         n += (size_t)snprintf(out + n, cap - n, "%s%s.%s%s at %u", depth ? ", " : "\n  its Java frames: ", m->cls->name, m->name,
@@ -120,11 +135,14 @@ static mg_dvm_thread *make_self(size_t words)
     }
     t->c_stack_min = hi ? (mg_addr)hi : 0;
     mg_thread_set_end_hook(thread_ends);
-    t->stack_words = words;
-    t->stack = (mg_dvm_reg *)mg_mem_reserve(sizeof(mg_dvm_reg) * words);
-    if (!t->stack || !mg_mem_commit(t->stack, sizeof(mg_dvm_reg) * DVM_STACK_FIRST_WORDS, MG_PROT_RW))
+    /* The first segment of its frame stack (the rest when the frames need it: mg_dvm_stack_seg). */
+    t->stack_max = words;
+    t->stack_words = words < DVM_STACK_FIRST_WORDS ? words : DVM_STACK_FIRST_WORDS;
+    t->stack_peak = t->stack_words;
+    t->stack = (mg_dvm_reg *)mg_mem_reserve(sizeof(mg_dvm_reg) * t->stack_words);
+    if (!t->stack || !mg_mem_commit(t->stack, sizeof(mg_dvm_reg) * t->stack_words, MG_PROT_RW))
         mg_fatal("dvm: no memory for a thread's frame stack");
-    t->stack_committed = DVM_STACK_FIRST_WORDS;
+    t->stack_committed = t->stack_words;
     t->stack_end = t->stack + t->stack_committed - DVM_STACK_RESERVE;
     t->sp = t->stack;
     t->id = mg_thread_self_id();
@@ -147,11 +165,29 @@ void mg_dvm_thread_census(u32 *threads, u32 *attached, u64 *frame_bytes, u64 *c_
     mg_dvm_lock();
     for (t = g_threads; t; t = t->next) {
         (*threads)++;
-        if (t->stack_words == DVM_STACK_ATTACHED_WORDS) (*attached)++;
-        *frame_bytes += sizeof(mg_dvm_reg) * (u64)t->stack_words;
+        if (t->stack_max == DVM_STACK_ATTACHED_WORDS) (*attached)++;
+        *frame_bytes += sizeof(mg_dvm_reg) * (u64)(t->stack_below + t->stack_words + (t->spare.base ? t->spare.words : 0));
         /* A thread native code attached brought its own host stack; the ones the runtime made are the ones we sized. */
-        if (t->stack_words != DVM_STACK_ATTACHED_WORDS && t->stack_hi > t->stack_lo) *c_reserved += (u64)(t->stack_hi - t->stack_lo);
+        if (t->stack_max != DVM_STACK_ATTACHED_WORDS && t->stack_hi > t->stack_lo) *c_reserved += (u64)(t->stack_hi - t->stack_lo);
         if (t->c_stack_min && t->stack_hi > t->c_stack_min && (u64)(t->stack_hi - t->c_stack_min) > *c_peak) *c_peak = (u64)(t->stack_hi - t->c_stack_min);
+    }
+    mg_dvm_unlock();
+}
+void mg_dvm_frame_census(u64 *reserved, u64 *committed, u64 *deepest)
+{
+    mg_dvm_thread *t;
+    int i;
+    *reserved = *committed = *deepest = 0;
+    mg_dvm_lock();
+    for (t = g_threads; t; t = t->next) {
+        u64 used = sizeof(mg_dvm_reg) * (u64)(t->stack_below + (size_t)(t->sp - t->stack));
+        *reserved += sizeof(mg_dvm_reg) * (u64)(t->stack_words + (t->spare.base ? t->spare.words : 0));
+        *committed += sizeof(mg_dvm_reg) * (u64)(t->stack_committed + (t->spare.base ? t->spare.committed : 0));
+        for (i = 0; i < t->nsegs; i++) {
+            *reserved += sizeof(mg_dvm_reg) * (u64)t->segs[i].words;
+            *committed += sizeof(mg_dvm_reg) * (u64)t->segs[i].committed;
+        }
+        if (t->stack && used > *deepest) *deepest = used;
     }
     mg_dvm_unlock();
 }
@@ -671,7 +707,7 @@ static void monitor_sample_copy(mg_dvm_thread *t, monitor_sample *s)
         }
     }
     for (f = t->top; f && s->frames < 32; f = f->prev) {
-        if ((mg_addr)f < (mg_addr)t->stack || (mg_addr)f + sizeof(*f) > (mg_addr)(t->stack + t->stack_committed) || !f->m) break;
+        if (!mg_dvm_in_frames(t, f, sizeof(*f)) || !f->m) break;
         s->methods[s->frames] = f->m;
         s->pcs[s->frames++] = f->pc;
     }
