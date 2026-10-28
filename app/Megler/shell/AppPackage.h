@@ -82,6 +82,16 @@ PortalResult uninstallThroughPortal(const InstalledApp& app);
 /// This Megler's version, "0.1.0.358": the version of every package it makes.
 std::string meglerVersion();
 
+/// Megler's own update, copied to the phone over USB (MTP) into Pictures\Megler: the newest Megler_<version>_ARM.appx there,
+/// when it is newer than this Megler, installed with the Megler.cer beside it through the phone's own Device Portal, which
+/// closes this Megler to replace it. Tried once for each version (LocalState\update-tried-<version>). Megler's own package
+/// only, not an app's. Off the UI thread: started on a thread of its own.
+void installCopiedUpdate();
+/// Megler: the Android files of older builds in the shared folder (<shared>\android\<version>, some 170 MB each) that no
+/// package in `installed` (the Device Portal's whole list) is of any more -- after Update All, every older build's. Slow:
+/// off the UI thread.
+void removeUnusedAndroidRoots(const std::vector<InstalledApp>& installed);
+
 /// An installed app's own package's APK, app\app.apk in its install folder, beside Megler's (the folder of the packages
 /// installed on the phone's storage), and whether Megler can read it there. When it can, Megler keeps no copy of the APK: an
 /// update is made from the installed one (Library, ui/SeparateApps.cpp).

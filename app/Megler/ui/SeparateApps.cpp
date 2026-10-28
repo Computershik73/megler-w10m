@@ -124,16 +124,20 @@ void list() {
     std::vector<appPackage::InstalledApp> apps;
     std::string error;
     const bool ok = appPackage::installedApps(apps, error);
-    std::lock_guard<std::mutex> lock(gMutex);
-    if (ok) {
-        gInstalled = std::move(apps);
-        gListed = true;
-        gProblem.clear();
-    } else {
-        gProblem = error;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        if (ok) {
+            gInstalled = apps;
+            gListed = true;
+            gProblem.clear();
+        } else {
+            gProblem = error;
+        }
+        gListing = false;
+        gGeneration++;
     }
-    gListing = false;
-    gGeneration++;
+    // What the packages no longer need: the Android files of builds none of them is of (after Update All, the older ones').
+    if (ok) appPackage::removeUnusedAndroidRoots(apps);
 }
 
 /// One job. Off the UI thread.

@@ -84,10 +84,12 @@ void collect(const std::wstring& root, const std::wstring& rel, std::vector<std:
         }
         out.emplace_back(zip, dir + L"\\" + name);
     }
+    // (bitgapps, Google's APKs Megler offers in its library, some 100 MB: an app's own package has its app, and the services
+    // it hosts come from the shared folder's services\ -- each package of before carried them all the same.)
     for (const auto& name : files::listFolders(dir, L"*")) {
         if (rel.empty() && (sameName(name, L"android") || sameName(name, L"selftest") || sameName(name, L"demo") ||
                             sameName(name, L"codec") || sameName(name, L"app") || sameName(name, L"AppxMetadata") ||
-                            sameName(name, L"appx-template")))
+                            sameName(name, L"appx-template") || sameName(name, L"bitgapps")))
             continue;
         collect(root, rel.empty() ? name : rel + L"\\" + name, out, skipped);
     }
@@ -703,6 +705,50 @@ PortalResult uninstallThroughPortal(const InstalledApp& app) {
 }
 
 std::string meglerVersion() { return versionString(); }
+
+namespace {
+
+/// "0.1.0.354" before "0.1.0.358".
+bool olderVersion(const std::string& a, const std::string& b) {
+    unsigned x[4] = {}, y[4] = {};
+    sscanf_s(a.c_str(), "%u.%u.%u.%u", &x[0], &x[1], &x[2], &x[3]);
+    sscanf_s(b.c_str(), "%u.%u.%u.%u", &y[0], &y[1], &y[2], &y[3]);
+    for (int i = 0; i < 4; i++)
+        if (x[i] != y[i]) return x[i] < y[i];
+    return false;
+}
+
+uint64_t treeSize(const std::wstring& dir) {
+    uint64_t total = 0;
+    for (const auto& name : files::list(dir, L"*")) total += files::size(dir + L"\\" + name);
+    for (const auto& name : files::listFolders(dir, L"*")) total += treeSize(dir + L"\\" + name);
+    return total;
+}
+
+} // namespace
+
+void removeUnusedAndroidRoots(const std::vector<InstalledApp>& installed) {
+    if (isSingleApp()) return;
+    const std::wstring shared = sharedFolder();
+    if (shared.empty()) return;
+    const std::string current = versionString();
+    for (const auto& name : files::listFolders(shared + L"\\android", L"*")) {
+        const std::string version = narrow(name);
+        // This build's, a newer one's (a Megler put back to an older build), and those packages are still of, stay.
+        if (!olderVersion(version, current) ||
+            std::any_of(installed.begin(), installed.end(), [&](const InstalledApp& a) { return a.version == version; }))
+            continue;
+        const std::wstring root = shared + L"\\android\\" + name;
+        const uint64_t size = treeSize(root);
+        // "complete" first: a root without it is never read, whatever of the rest stays.
+        files::remove(root + L"\\complete");
+        if (files::removeTree(root))
+            shellLog::write("app package: Android's files of " + version + " removed from the shared folder (" + formattedByteCount(size) +
+                            "): no app's package is of that build any more");
+        else
+            shellLog::write("app package: Android's files of " + version + " could not all be removed from the shared folder");
+    }
+}
 
 std::wstring installedApk(const std::string& fullName) {
     const std::wstring install = platform::installDirectory();
