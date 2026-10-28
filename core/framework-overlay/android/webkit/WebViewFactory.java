@@ -34,6 +34,8 @@
 // those names: microG (Cronet) as an app had 193 of the WebView's 3478 classes shadowed, and its sign-in screen ended in
 // NoSuchMethodError: org/chromium/base/task/PostTask.a(I) when it made its WebView. Its native library is loaded for that
 // loader too (core/src/drivers/mg_java_webview.c), where Chromium's own System.loadLibrary("webviewchromium") finds it.
+//
+// And disableWebView is said in the log and left undone: here one process is an app's processes and its services' too.
 package android.webkit;
 
 import android.app.AppGlobals;
@@ -203,6 +205,10 @@ public final class WebViewFactory {
 
     /**
      * @hide
+     * Megler: said and left undone. On Android a process that is never to show a web page disables the WebView for itself
+     * alone; here an app's processes and the services it uses (Google Play services') are one process. Google Play
+     * services 26 disables it in one of its own, and with that Play Store's sign-in, whose page (MinuteMaid) is a WebView in
+     * Google Play services' sign-in process, could not start: Play Store went back to its first screen.
      */
     static void disableWebView() {
         synchronized (sProviderLock) {
@@ -210,8 +216,8 @@ public final class WebViewFactory {
                 throw new IllegalStateException(
                         "Can't disable WebView: WebView already initialized");
             }
-            sWebViewDisabled = true;
         }
+        android.util.Log.w(LOGTAG, "WebView.disableWebView(): left enabled, as the process that asks is this one, which others share here", new Throwable());
     }
 
     /**

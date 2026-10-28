@@ -3437,6 +3437,18 @@ class to it (its log: `packageId=2`). Its assets are found through the app's
 `AssetManager` too: Chromium maps `icudtl.dat`, its `.pak` files and V8's
 snapshot out of the APK with `openNonAssetFd`.
 
+**An APK's compiled XML.** `AssetManager.openXmlResourceParser(cookie, name)`
+reads a compiled XML file of the cookie's APK (1 the app's, 2 on a library's,
+0 the first that has it) into an `XmlBlock` parser; it answered null.
+Google Play services 26 makes an `AssetManager` of its own for each of its
+modules' APKs, adds the APK (`addAssetPath`, which here adds it as a library)
+and reads the module's `AndroidManifest.xml` so; its Application ended in a
+NullPointerException before anything ran. The data app's step
+`asset-manager-manifest` does the same with its own APK. (The core reads an
+APK's `resources.arsc` for its label and icon up to 256 MB, `ARSC_MAX` in
+`apk/mg_apk.c`: Google Play services 26's is 88 MB, and at 64 MB it had its
+package's name and no icon.)
+
 **Input.** A touch reaches the page through `View.onTouchEvent` like any
 view's. A tap on a field of the page focuses it, and Chromium's `ImeAdapter`
 asks for the keyboard through `InputMethodManager`, which is

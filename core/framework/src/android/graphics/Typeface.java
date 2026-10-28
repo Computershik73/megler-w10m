@@ -93,6 +93,17 @@ public class Typeface {
         private byte[] data; private int weight = -1; private boolean italic; private String fallback;
         public Builder(java.io.File f) { try { data = java.nio.file.Files.readAllBytes(f.toPath()); } catch (java.io.IOException e) {} }
         public Builder(android.content.res.AssetManager m, String path) { data = megler.Native.readAsset(path); }
+        /** A font file open on a descriptor (Google Play services' downloaded fonts): read from it, the descriptor left open, as
+         *  it stays the caller's. */
+        public Builder(java.io.FileDescriptor fd) {
+            try {
+                java.io.FileInputStream in = new java.io.FileInputStream(fd);
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] chunk = new byte[1 << 15];
+                for (int n; (n = in.read(chunk)) > 0; ) out.write(chunk, 0, n);
+                data = out.toByteArray();
+            } catch (java.io.IOException e) {}
+        }
         public Builder setWeight(int w) { weight = w; return this; }
         public Builder setItalic(boolean i) { italic = i; return this; }
         public Builder setFallback(String f) { fallback = f; return this; }

@@ -112,6 +112,12 @@ static bool pool_get(const pool *p, u32 index, char *out, size_t cap)
 
 /* ---------------------------------------------------------- resources.arsc */
 
+/*
+ * The most of a resources.arsc read for an APK's label and icon (each read is freed when they are found). Google Play
+ * services 26's is 88 MB, 60 MB of it its strings: at 64 MB it was not read, and the app had its package's name and no icon.
+ */
+#define ARSC_MAX (256u << 20)
+
 typedef struct arsc {
     const u8 *data;
     u32 size;
@@ -805,7 +811,7 @@ static bool read_manifest(const char *apk_path, mg_zip *z, mg_apk_info *info)
     }
     manifest = mg_zip_read(z, me, 16u << 20, &msize);
     re = mg_zip_find(z, "resources.arsc");
-    if (re) resources = mg_zip_read(z, re, 64u << 20, &rsize);
+    if (re) resources = mg_zip_read(z, re, ARSC_MAX, &rsize);
     arsc_open(&res, resources, (u32)rsize);
     if (!manifest || !parse_manifest(info, &res, manifest, (u32)msize)) {
         mg_strlcpy(info->error, "the APK's manifest cannot be read", sizeof(info->error));
@@ -883,7 +889,7 @@ bool mg_apk_read_app(const char *apk_path, const char *const *splits, int nsplit
     for (k = 0; k < nz && (info->icon_id || (info->label_id && !info->label[0])); k++) {
         const mg_zip_entry *re = mg_zip_find(zips[k], "resources.arsc");
         size_t rsize = 0;
-        u8 *resources = re ? mg_zip_read(zips[k], re, 64u << 20, &rsize) : NULL;
+        u8 *resources = re ? mg_zip_read(zips[k], re, ARSC_MAX, &rsize) : NULL;
         arsc res;
         if (!resources) continue;
         arsc_open(&res, resources, (u32)rsize);
@@ -1302,7 +1308,7 @@ static icon_apks *apks_open(const char *apk_path, char *const *splits, int nspli
         size_t rsize = 0;
         if (!mg_zip_open(&a->zips[a->n], k < 0 ? apk_path : splits[k], err, sizeof(err))) continue;
         e = mg_zip_find(&a->zips[a->n], "resources.arsc");
-        a->tables[a->n] = e ? mg_zip_read(&a->zips[a->n], e, 64u << 20, &rsize) : NULL;
+        a->tables[a->n] = e ? mg_zip_read(&a->zips[a->n], e, ARSC_MAX, &rsize) : NULL;
         arsc_open(&a->res[a->n], a->tables[a->n], (u32)rsize);
         a->n++;
     }
