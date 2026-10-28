@@ -2887,6 +2887,16 @@ focused view's `InputConnection`).
   Enter is for the field and does not ask the framework twice. That fault is
   the framework's own (`core/framework`); the iOS shell it was written for
   sends line ends as text too.
+- **Typed text goes where the field's own code leaves the cursor.** The
+  framework's `BaseInputConnection` puts the cursor at the end of what is
+  replaced before the text goes in, as Android's `replaceText` does, so that
+  it moves with the edit and a `TextWatcher` that rewrites the text and puts
+  the cursor itself has the last word. It used to put the cursor after the
+  edit, at the replaced range's start plus the text's length: WhatsApp's phone
+  number and code fields, which put dashes in as one types, had the cursor
+  put back before the dash just added, and the next digit went in there, the
+  digits out of order (package 481). The data app's "input-format" step types
+  seven digits into a field that puts in two dashes, and a Backspace.
 
 Tested in the demos app (`Typing`: four fields; 28 checks): a touch of a field
 asks for the keyboard with the right kind, flags and Enter for each of the
