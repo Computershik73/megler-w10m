@@ -1796,6 +1796,43 @@ static void gl_called(u32 id, const u32 *saved)
     case 6:         /* glBufferData(target, size, data, usage) */
         mg_trace("gl %s %u bytes", name, saved[1]);
         break;
+    /*
+     * What a framebuffer is made of and drawn to, with the names in it: which one is bound, what is attached where, which
+     * draw buffers are on, what is deleted. A draw that ANGLE ends on (Framebuffer11::markAttachmentsDirty, Yandex Maps and
+     * HERE WeGo, packages 498 to 501) is read against them.
+     */
+    case 7:         /* glBindFramebuffer(target, framebuffer) */
+        mg_trace("gl %s 0x%x %u", name, saved[0], saved[1]);
+        break;
+    case 8:         /* glFramebufferTexture2D(target, attachment, textarget, texture, level) */
+        mg_trace("gl %s 0x%x attachment 0x%x textarget 0x%x texture %u level %u", name, saved[0], saved[1], saved[2], saved[3], saved[6]);
+        break;
+    case 9:         /* glFramebufferRenderbuffer(target, attachment, renderbuffertarget, renderbuffer) */
+        mg_trace("gl %s 0x%x attachment 0x%x renderbuffer %u", name, saved[0], saved[1], saved[3]);
+        break;
+    case 10: {      /* glDrawBuffers(n, bufs); glDeleteTextures, glDeleteFramebuffers, glDeleteRenderbuffers(n, names) */
+        const u32 *v = (const u32 *)(mg_addr)saved[1];
+        u32 n = saved[0];
+        if (!v || n == 0) mg_trace("gl %s %u", name, n);
+        else if (n == 1) mg_trace("gl %s 1: 0x%x", name, v[0]);
+        else if (n == 2) mg_trace("gl %s 2: 0x%x 0x%x", name, v[0], v[1]);
+        else if (n == 3) mg_trace("gl %s 3: 0x%x 0x%x 0x%x", name, v[0], v[1], v[2]);
+        else mg_trace("gl %s %u: 0x%x 0x%x 0x%x 0x%x ...", name, n, v[0], v[1], v[2], v[3]);
+        break;
+    }
+    case 11: {      /* glInvalidateFramebuffer(target, n, attachments), glDiscardFramebufferEXT */
+        const u32 *v = (const u32 *)(mg_addr)saved[2];
+        if (!v || saved[1] == 0) mg_trace("gl %s 0x%x %u", name, saved[0], saved[1]);
+        else if (saved[1] == 1) mg_trace("gl %s 0x%x 1: 0x%x", name, saved[0], v[0]);
+        else mg_trace("gl %s 0x%x %u: 0x%x 0x%x ...", name, saved[0], saved[1], v[0], v[1]);
+        break;
+    }
+    case 12:        /* glFramebufferTextureLayer(target, attachment, texture, level, layer) */
+        mg_trace("gl %s 0x%x attachment 0x%x texture %u level %u layer %u", name, saved[0], saved[1], saved[2], saved[3], saved[6]);
+        break;
+    case 13:        /* glBindRenderbuffer(target, renderbuffer); glReadBuffer(src) */
+        mg_trace("gl %s 0x%x %u", name, saved[0], saved[1]);
+        break;
     default:
         mg_trace("gl %s", name);
         break;
@@ -1810,6 +1847,15 @@ static u8 gl_kind(const char *name)
     if (!strcmp(name, "glRenderbufferStorage")) return 4;
     if (!strcmp(name, "glRenderbufferStorageMultisample")) return 5;
     if (!strcmp(name, "glBufferData")) return 6;
+    if (!strcmp(name, "glBindFramebuffer")) return 7;
+    if (!strcmp(name, "glFramebufferTexture2D")) return 8;
+    if (!strcmp(name, "glFramebufferRenderbuffer")) return 9;
+    if (!strcmp(name, "glDrawBuffers") || !strcmp(name, "glDrawBuffersEXT") || !strcmp(name, "glDeleteTextures") || !strcmp(name, "glDeleteFramebuffers")
+        || !strcmp(name, "glDeleteRenderbuffers"))
+        return 10;
+    if (!strcmp(name, "glInvalidateFramebuffer") || !strcmp(name, "glDiscardFramebufferEXT")) return 11;
+    if (!strcmp(name, "glFramebufferTextureLayer")) return 12;
+    if (!strcmp(name, "glBindRenderbuffer") || !strcmp(name, "glReadBuffer")) return 13;
     return 0;
 }
 
