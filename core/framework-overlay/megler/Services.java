@@ -57,7 +57,7 @@ public final class Services {
         Manifest.Component c = find(i);
         if (c == null) return null;
         postStart(sLastStart, c.name, id -> {
-            try { Service s = create(c); s.onStartCommand(i, 0, id); } catch (Throwable t) { android.util.Log.e("Megler", "service " + c.name + " failed", t); }
+            try { Service s = create(c); s.onStartCommand(Processes.forLoader(i, s.getClass().getClassLoader()), 0, id); } catch (Throwable t) { android.util.Log.e("Megler", "service " + c.name + " failed", t); }
         });
         return new ComponentName(Native.packageName(), c.name);
     }
@@ -122,7 +122,7 @@ public final class Services {
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
                 Service s = create(c);
-                IBinder b = s.onBind(i);
+                IBinder b = s.onBind(Processes.forLoader(i, s.getClass().getClassLoader()));
                 sBound.put(conn, c.name);
                 ComponentName cn = new ComponentName(Native.packageName(), c.name);
                 if (b != null) conn.onServiceConnected(cn, b); else conn.onNullBinding(cn);

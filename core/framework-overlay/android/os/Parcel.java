@@ -15,6 +15,8 @@
 // Android's createTypedArray reads. The original read an index into its table there, and microG's broker got some other
 // object of the table ("bici cannot be cast to [Ljava/lang/Object;" in createTypedArray, Play Store's every request). A
 // reference into the table is now a mark word and the index, and a typed reader that finds no mark reads Android's layout.
+// And readBundle with a class loader gives the bundle that loader (Bundle.setClassLoader makes its objects of another
+// class scope again as the loader's, as Android unparcels a bundle with its loader).
 // Everything else is the original's, unchanged.
 package android.os;
 
@@ -179,7 +181,7 @@ public final class Parcel {
     }
     public void writeBundle(Bundle b) { writeObj(b == null ? null : new Bundle(b)); }
     public Bundle readBundle() { return (Bundle) readObj(); }
-    public Bundle readBundle(ClassLoader l) { return readBundle(); }
+    public Bundle readBundle(ClassLoader l) { Bundle b = readBundle(); if (b != null && l != null) b.setClassLoader(l); return b; }
     public void writePersistableBundle(PersistableBundle b) { writeObj(b); }
     public PersistableBundle readPersistableBundle() { return (PersistableBundle) readObj(); }
     public PersistableBundle readPersistableBundle(ClassLoader l) { return readPersistableBundle(); }

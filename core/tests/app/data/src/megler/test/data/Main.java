@@ -357,6 +357,35 @@ public class Main extends Activity {
                     data.recycle();
                     reply.recycle();
                     Log.i("DataTest", "process-scope " + said + " here=" + Main.class.getClassLoader().getClass().getSimpleName().equals("ServiceClassLoader"));
+                    // Then a broadcast from that process, its extra an object of that process's class: this process's receiver
+                    // has it as one of its own class (megler.Processes.forLoader).
+                    registerReceiver(new android.content.BroadcastReceiver() {
+                        @Override public void onReceive(android.content.Context c, android.content.Intent i) {
+                            String got;
+                            try { Note n = i.getParcelableExtra("note"); got = n != null ? n.text : "null"; } catch (ClassCastException e) { got = String.valueOf(e); }
+                            Log.i("DataTest", "process-intent note=" + got);
+                        }
+                    }, new android.content.IntentFilter("megler.test.FROM_ELSEWHERE"));
+                    android.os.Parcel d2 = android.os.Parcel.obtain();
+                    try { b.transact(2, d2, null, 0); } catch (android.os.RemoteException e) { Log.w("DataTest", "process-intent: " + e); }
+                    d2.recycle();
+                    // And a bundle in its reply with a Note of its process's class (as Google Play services' sign-in answers
+                    // with its TokenData): given this process's loader, the bundle has the Note as one of this process's class.
+                    android.os.Parcel d3 = android.os.Parcel.obtain(), r3 = android.os.Parcel.obtain();
+                    String inBundle;
+                    try {
+                        b.transact(3, d3, r3, 0);
+                        r3.setDataPosition(0);
+                        android.os.Bundle got = r3.readBundle();
+                        got.setClassLoader(Main.class.getClassLoader());
+                        android.os.Bundle inner = got.getBundle("details");
+                        inner.setClassLoader(Main.class.getClassLoader());
+                        Note kept = (Note) inner.getParcelable("note");
+                        inBundle = kept != null ? kept.text : "null";
+                    } catch (Exception e) { inBundle = String.valueOf(e); }
+                    d3.recycle();
+                    r3.recycle();
+                    Log.i("DataTest", "process-bundle note=" + inBundle);
                 }
                 @Override public void onServiceDisconnected(android.content.ComponentName n) {}
             }, BIND_AUTO_CREATE);
@@ -1912,6 +1941,18 @@ public class Main extends Activity {
     /* A static of this app's, which its process of another name (Elsewhere's) has a copy of its own of. */
     static int sMarker;
 
+    /** A Parcelable of this app's own, which Elsewhere's process has a class of its own of. */
+    public static final class Note implements android.os.Parcelable {
+        final String text;
+        Note(String text) { this.text = text; }
+        @Override public int describeContents() { return 0; }
+        @Override public void writeToParcel(android.os.Parcel p, int flags) { p.writeString(text); }
+        public static final Creator<Note> CREATOR = new Creator<Note>() {
+            @Override public Note createFromParcel(android.os.Parcel p) { return new Note(p.readString()); }
+            @Override public Note[] newArray(int n) { return new Note[n]; }
+        };
+    }
+
     /**
      * A service in another process (android:process=":elsewhere"), as Play Store's download service is: asked through its
      * binder, it says the name of the process it runs in (its ActivityManager's, for this pid), the app's static sMarker as
@@ -1921,6 +1962,20 @@ public class Main extends Activity {
         @Override public android.os.IBinder onBind(android.content.Intent intent) {
             return new android.os.Binder() {
                 @Override protected boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags) {
+                    if (code == 3) {
+                        // a bundle holding a bundle with a Note of this process's class, in the reply
+                        android.os.Bundle details = new android.os.Bundle();
+                        details.putParcelable("note", new Note("in a bundle"));
+                        android.os.Bundle answer = new android.os.Bundle();
+                        answer.putBundle("details", details);
+                        reply.writeBundle(answer);
+                        return true;
+                    }
+                    if (code == 2) {
+                        // a broadcast with a Note of this process's class, to the app's receiver in its own process
+                        sendBroadcast(new android.content.Intent("megler.test.FROM_ELSEWHERE").setPackage(getPackageName()).putExtra("note", new Note("from elsewhere")));
+                        return true;
+                    }
                     String process = "?";
                     for (android.app.ActivityManager.RunningAppProcessInfo p : ((android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE)).getRunningAppProcesses())
                         if (p.pid == android.os.Process.myPid()) process = p.processName;

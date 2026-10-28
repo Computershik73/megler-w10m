@@ -17,7 +17,11 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
     public static Bundle forPair(String k, String v) { Bundle b = new Bundle(); b.putString(k, v); return b; }
     @Override public Object clone() { return new Bundle(this); }
     public Bundle deepCopy() { return new Bundle(this); }
-    public void setClassLoader(ClassLoader l) { mLoader = l; }
+    /* As Android unparcels a bundle with the loader it is given: a Parcelable in it of another class scope's (Google Play
+       services' TokenData, in the bundle its sign-in service answers an app with) is made again of the loader's class of
+       its name (megler.Processes.adaptBundle). It stayed the other's, and WhatsApp's GoogleAuthUtil, which casts it to its
+       own, ended the app with a ClassCastException as it asked for its Google Drive backup. */
+    public void setClassLoader(ClassLoader l) { mLoader = l; if (l != null) megler.Processes.adaptBundle(this, l); }
     public ClassLoader getClassLoader() { return mLoader; }
     public boolean hasFileDescriptors() { return false; }
     public void putAll(Bundle b) { if (b != null) map.putAll(b.map); }
