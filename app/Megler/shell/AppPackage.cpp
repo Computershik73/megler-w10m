@@ -832,17 +832,31 @@ void installCopiedUpdate() {
                 }
             }
             if (best.empty() || !olderVersion(versionString(), best)) return;
+            /*
+             * A try is written down before it is made, and its result after: a package the installer refused is not tried again.
+             * A try that has no result -- this Megler was closed, or suspended while it sent the package, which the portal
+             * takes a minute for -- is made again at the next start, three times in all. 508's first try had no result, and
+             * every start after it said "tried once already" (the second, made by hand, ended when the owner went to another app).
+             */
             const std::wstring tried = platform::localStateDirectory() + L"\\update-tried-" + widen(best);
-            if (files::exists(tried)) {
-                shellLog::write("update: Megler " + best + " in Pictures\\Megler was tried once already (" + narrow(tried) + ")");
-                return;
+            std::string record;
+            if (files::read(tried, record)) {
+                int tries = 0;
+                for (size_t at = record.find(" installs "); at != std::string::npos; at = record.find(" installs ", at + 1)) tries++;
+                if (record.find("result: ") != std::string::npos || tries >= 3) {
+                    shellLog::write(format("update: Megler %s in Pictures\\Megler was tried %d time%s already (%s)", best.c_str(), tries,
+                                           tries == 1 ? "" : "s", narrow(tried).c_str()));
+                    return;
+                }
+                shellLog::write(format("update: the try %d of Megler %s did not end (this Megler was closed or suspended while it sent it): tried again",
+                                       tries, best.c_str()));
             }
             auto certificate = folder.TryGetItemAsync(L"Megler.cer").get();
             if (!certificate) {
                 shellLog::write("update: Megler " + best + " is in Pictures\\Megler without Megler.cer beside it: not installed");
                 return;
             }
-            files::write(tried, "Megler " + versionString() + " installs " + best + "\r\n");
+            files::append(tried, "Megler " + versionString() + " installs " + best + "\r\n");
             Made made;
             made.appx = std::wstring(bestFile.Path());
             made.certificate = std::wstring(certificate.Path());
@@ -851,6 +865,7 @@ void installCopiedUpdate() {
                             "): installed through the Device Portal, which closes this Megler");
             const PortalResult result = installThroughPortal(made, [](const std::string& step) { shellLog::write("update: " + step); });
             shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
+            files::append(tried, "result: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said + "\r\n");
         } catch (hresult_error const& e) {
             shellLog::write(format("update: Pictures\\Megler could not be read: 0x%08x ", unsigned(e.code())) + narrow(e.message()));
         }
