@@ -729,25 +729,65 @@ static bool trivial(const mg_dvm_method *m, u32 w, const mg_dvm_reg *a, mg_jvalu
 /* ---------------------------------------------------------------- exceptions */
 
 /*
+ * Each place an exception of a class is thrown at is said three times, then counted: the exceptions an app throws and catches
+ * every time from one place used up the 2000 lines in Yandex Maps' first half minute, before what was being looked for
+ * (package 507). 0 when the table has no room left near the place: said as before.
+ */
+typedef struct thrown_site {
+    const mg_dvm_method *m;
+    const mg_dvm_class *c;
+    u32 pc, n;
+} thrown_site;
+static thrown_site g_thrown_sites[2048];
+static mg_lock g_thrown_sites_lock = MG_LOCK_INIT;
+
+static u32 thrown_here(const mg_dvm_method *m, u32 pc, const mg_dvm_class *c)
+{
+    const u32 mask = (u32)MG_COUNT(g_thrown_sites) - 1;
+    u32 h = ((u32)((mg_addr)m >> 3) * 2654435761u ^ pc * 40503u ^ (u32)((mg_addr)c >> 4)) & mask, i, n = 0;
+    mg_lock_acquire(&g_thrown_sites_lock);
+    for (i = 0; i < 16; i++) {
+        thrown_site *s = &g_thrown_sites[(h + i) & mask];
+        if (!s->m) {
+            s->m = m;
+            s->c = c;
+            s->pc = pc;
+            n = s->n = 1;
+            break;
+        }
+        if (s->m == m && s->pc == pc && s->c == c) {
+            n = ++s->n;
+            break;
+        }
+    }
+    mg_lock_release(&g_thrown_sites_lock);
+    return n;
+}
+
+/*
  * The flag trace-exceptions (a file of that name in LocalState\flags, read once): every exception thrown is said in the log
  * once, with its message and the method it was thrown in, caught or not -- what an app catches and says nothing about is
- * otherwise not seen at all (VK mp3 mod's sign-in stood still with nothing in the log). At most 2000 lines a run.
+ * otherwise not seen at all (VK mp3 mod's sign-in stood still with nothing in the log). At most 2000 lines a run, and three
+ * of each place (thrown_here).
  */
 static void trace_exception(mg_dvm_thread *t, mg_dvm_method *m, u32 pc, mg_jobj *e)
 {
     static int wanted = -1;
     static volatile i32 said;
     const char *text = NULL;
+    u32 here;
     if (wanted < 0) wanted = mg_flag("trace-exceptions") ? 1 : 0;
     if (!wanted || e == t->traced) return;
     t->traced = e;
+    here = thrown_here(m, pc, mg_dvm_class_of(e));
+    if (here > 3) return;
     if (mg_atomic_add(&said, 1) > 2000) return;
     if (g_dvm.f_message && mg_dvm_is_instance(e, g_dvm.c_throwable)) {
         mg_jobj *msg = mg_dvm_slots(e)[g_dvm.f_message->slot].l;
         if (msg) text = mg_dvm_string_utf8(msg);
     }
-    mg_info("dvm: thrown on thread %u: %s%s%s, in %s.%s at %u", (unsigned)t->id, mg_dvm_class_name(e), text ? ": " : "", text ? text : "", m->cls->name,
-            m->name, (unsigned)pc);
+    mg_info("dvm: thrown on thread %u: %s%s%s, in %s.%s at %u%s", (unsigned)t->id, mg_dvm_class_name(e), text ? ": " : "", text ? text : "", m->cls->name,
+            m->name, (unsigned)pc, here == 3 ? " (the third time there: the next are not said)" : "");
 }
 
 /* The handler in method `m` for exception `e` thrown at `pc`, if it has one. */
