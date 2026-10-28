@@ -1,34 +1,19 @@
+/* Megler: a formatter not yet given a locale (NumberFormatter.java says why this package is here). */
 package android.icu.number;
 
-import android.icu.util.MeasureUnit;
-import java.math.RoundingMode;
+import android.icu.util.ULocale;
 import java.util.Locale;
 
-public final class UnlocalizedNumberFormatter extends NumberFormatterSettings {
-    UnlocalizedNumberFormatter() { this(null, null, null, NumberFormatter.UnitWidth.SHORT); }
+public class UnlocalizedNumberFormatter extends NumberFormatterSettings<UnlocalizedNumberFormatter> {
+    UnlocalizedNumberFormatter(Macros macros) { super(macros); }
 
-    private UnlocalizedNumberFormatter(Precision precision, RoundingMode roundingMode, MeasureUnit unit,
-                                       NumberFormatter.UnitWidth unitWidth) {
-        super(precision, roundingMode, unit, unitWidth);
+    public LocalizedNumberFormatter locale(Locale locale) { return locale(locale == null ? null : ULocale.forLocale(locale)); }
+
+    public LocalizedNumberFormatter locale(ULocale locale) {
+        Macros m = macros.copy();
+        m.locale = locale;
+        return new LocalizedNumberFormatter(m);
     }
 
-    public NumberFormatterSettings precision(Precision value) {
-        return new UnlocalizedNumberFormatter(value, roundingMode, unit, unitWidth);
-    }
-
-    public NumberFormatterSettings roundingMode(RoundingMode value) {
-        return new UnlocalizedNumberFormatter(precision, value, unit, unitWidth);
-    }
-
-    public NumberFormatterSettings unit(MeasureUnit value) {
-        return new UnlocalizedNumberFormatter(precision, roundingMode, value, unitWidth);
-    }
-
-    public NumberFormatterSettings unitWidth(NumberFormatter.UnitWidth value) {
-        return new UnlocalizedNumberFormatter(precision, roundingMode, unit, value);
-    }
-
-    public LocalizedNumberFormatter locale(Locale value) {
-        return new LocalizedNumberFormatter(value, precision, roundingMode, unit, unitWidth);
-    }
+    @Override UnlocalizedNumberFormatter create(Macros macros) { return new UnlocalizedNumberFormatter(macros); }
 }

@@ -1,40 +1,58 @@
+/* Megler: a formatter with its locale, which formats (Formatting.java; NumberFormatter.java says why this package is here). */
 package android.icu.number;
 
-import android.icu.util.Currency;
-import android.icu.util.MeasureUnit;
-import java.math.RoundingMode;
-import java.text.DecimalFormat;
-import java.text.NumberFormat;
-import java.util.Locale;
+import android.icu.util.Measure;
+import java.text.AttributedCharacterIterator;
+import java.text.FieldPosition;
+import java.text.Format;
+import java.text.ParsePosition;
 
-public final class LocalizedNumberFormatter extends NumberFormatterSettings {
-    private final Locale locale;
+public class LocalizedNumberFormatter extends NumberFormatterSettings<LocalizedNumberFormatter> {
+    LocalizedNumberFormatter(Macros macros) { super(macros); }
 
-    LocalizedNumberFormatter(Locale locale, Precision precision, RoundingMode roundingMode,
-                             MeasureUnit unit, NumberFormatter.UnitWidth unitWidth) {
-        super(precision, roundingMode, unit, unitWidth);
-        this.locale = locale == null ? Locale.getDefault() : locale;
+    public FormattedNumber format(long input) { return Formatting.format(macros, Long.valueOf(input)); }
+
+    public FormattedNumber format(double input) { return Formatting.format(macros, Double.valueOf(input)); }
+
+    public FormattedNumber format(Number input) {
+        if (input == null) throw new IllegalArgumentException("Cannot format null input");
+        return Formatting.format(macros, input);
     }
 
-    public FormattedNumber format(double value) {
-        boolean currency = unit instanceof Currency;
-        NumberFormat formatter = currency && unitWidth != NumberFormatter.UnitWidth.HIDDEN
-            ? NumberFormat.getCurrencyInstance(locale) : NumberFormat.getNumberInstance(locale);
-        if (currency && unitWidth != NumberFormatter.UnitWidth.HIDDEN) {
-            try { formatter.setCurrency(java.util.Currency.getInstance(((Currency) unit).getCurrencyCode())); }
-            catch (IllegalArgumentException ignored) { /* Keep the locale's currency. */ }
+    /* A measure's own unit, in place of the formatter's. */
+    public FormattedNumber format(Measure input) {
+        if (input == null) throw new IllegalArgumentException("Cannot format null input");
+        Macros m = macros.copy();
+        m.unit = input.getUnit();
+        return Formatting.format(m, input.getNumber());
+    }
+
+    public UnlocalizedNumberFormatter withoutLocale() {
+        Macros m = macros.copy();
+        m.locale = null;
+        return new UnlocalizedNumberFormatter(m);
+    }
+
+    /* As a java.text.Format, which formats numbers and does not parse. */
+    public Format toFormat() { return new AsFormat(this); }
+
+    @Override LocalizedNumberFormatter create(Macros macros) { return new LocalizedNumberFormatter(macros); }
+
+    private static final class AsFormat extends Format {
+        private final LocalizedNumberFormatter formatter;
+
+        AsFormat(LocalizedNumberFormatter formatter) { this.formatter = formatter; }
+
+        @Override public StringBuffer format(Object obj, StringBuffer toAppendTo, FieldPosition pos) {
+            if (!(obj instanceof Number)) throw new IllegalArgumentException("Cannot format " + obj);
+            return toAppendTo.append(formatter.format((Number) obj));
         }
-        if (precision != null) {
-            formatter.setMinimumFractionDigits(precision.minFraction);
-            formatter.setMaximumFractionDigits(precision.maxFraction);
+
+        @Override public AttributedCharacterIterator formatToCharacterIterator(Object obj) {
+            if (!(obj instanceof Number)) throw new IllegalArgumentException("Cannot format " + obj);
+            return formatter.format((Number) obj).toCharacterIterator();
         }
-        if (roundingMode != null && formatter instanceof DecimalFormat)
-            ((DecimalFormat) formatter).setRoundingMode(roundingMode);
-        String result = formatter.format(value);
-        if (unit != null && !currency && unitWidth != NumberFormatter.UnitWidth.HIDDEN)
-            result += " " + unit.getSubtype();
-        if (currency && unitWidth == NumberFormatter.UnitWidth.ISO_CODE)
-            result = ((Currency) unit).getCurrencyCode() + " " + NumberFormat.getNumberInstance(locale).format(value);
-        return new FormattedNumber(result);
+
+        @Override public Object parseObject(String source, ParsePosition pos) { throw new UnsupportedOperationException(); }
     }
 }

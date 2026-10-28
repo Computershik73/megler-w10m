@@ -440,6 +440,8 @@ bool mg_dvm_ensure_init(mg_dvm_class *c);
 
 /* What an index in a DEX file names, as the instruction using it needs. NULL with an exception pending. */
 mg_dvm_class *mg_dvm_resolve_type(mg_dvm_dex *d, u32 idx);
+/* A descriptor as the file `d` means it: one in the package it keeps to itself, as that class is registered (in `buf`). */
+const char *mg_dvm_own_desc(const mg_dvm_dex *d, const char *desc, char *buf, size_t size);
 enum { DVM_INVOKE_VIRTUAL, DVM_INVOKE_SUPER, DVM_INVOKE_DIRECT, DVM_INVOKE_STATIC, DVM_INVOKE_INTERFACE };
 mg_dvm_method *mg_dvm_resolve_method(mg_dvm_dex *d, u32 idx, int kind);
 mg_dvm_field *mg_dvm_resolve_field(mg_dvm_dex *d, u32 idx, bool is_static);

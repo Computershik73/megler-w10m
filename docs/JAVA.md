@@ -2143,6 +2143,63 @@ libcore too; it is kept because libcore is 40 MB that the ordinary package does
 not carry, and because the PC's tests must run where `build/android9` has not
 been unpacked.
 
+**Newer libcore classes** are in `megler-libcore.dex`, which is on the boot
+path before `core-oj.dex` (`tools/build-libcore-overlay.sh` builds it from
+`core/libcore-overlay`): a class there is added, or replaces Android 9's of the
+same name, and a `.java.members` file adds members to Android 9's source.
+Besides `DelegateLastClassLoader` and TLS's newer methods there is
+`java.util.zip.CRC32C` (Android 14's; Yandex Maps ended with
+`NoClassDefFoundError` when it saved a route, package 489), and `Checksum`'s
+two default methods of Java 9 (`update(byte[])`, `update(ByteBuffer)`). The
+data app's "crc32c" step checks the standard check value, the defaults, a
+direct buffer and `Adler32` through the interface.
+
+**Methods core-libart's classes lack** cannot be added that way: core-libart
+(ICU4J among it) is a file of DEX code here, without its sources. A reference
+to such a method that a class does not have is looked for in the framework's
+`megler.members.<the class's name>` (`core/framework-overlay/megler/members`;
+`boot_member` in `mg_dvm_class.c`): a static method of the same name and
+signature is the class's static method, and a static method that takes the
+object first is the object's method -- a copy of it, not static and not
+virtual, which the interpreter calls as it is, the registers of the call being
+the same. The class's superclasses are asked in turn. There is
+`MeasureUnit.getIdentifier()` and `MeasureUnit.forIdentifier(String)`
+(Android 12's), ICU 60's names spelled as ICU 68 spells them
+(`inch-ofhg`, `liter-per-100-kilometer`).
+
+**`android.icu.number`** is two packages. Android 9's core-libart has ICU 60's,
+which Android had not published, whose classes are other (`Rounder`, not
+`Precision`) and fewer, and which its `android.icu.text.DecimalFormat` is made
+of; apps of now call the one Android 11 published, with what Android 12 and 13
+added (`usage()`, `FormattedNumber.getOutputUnit()`). The framework's is that
+one (`core/framework-overlay/android/icu/number`), and the runtime keeps
+core-libart's to core-libart: its classes in the package are registered under
+`megler/libart/` names, and what core-libart names in it resolves to them
+(`mg_dvm_own_desc`), so that `DecimalFormat` keeps the classes it was built
+with and an app sees the framework's alone. (Until package 496 the framework's
+few classes took the place of core-libart's of the same names: Yandex Maps
+ended with `NoSuchMethodError: UnlocalizedNumberFormatter.usage`, Facebook's
+compact counts had no `notation()`, and `android.icu.text.DecimalFormat` had
+lost the classes it uses.) The framework's formats with ICU 60's
+`android.icu.text` -- `DecimalFormat`, `CompactDecimalFormat`, `MeasureFormat`
+given that `DecimalFormat` -- and has the settings: notation (simple,
+scientific, engineering, compact), unit and per-unit, every precision
+(fraction, significant, both with either priority, increment, currency), the
+rounding mode, grouping, integer width, symbols and numbering systems, unit
+width, every sign display, the decimal separator, scale, usage, and trailing
+zeros. A usage's unit comes from CLDR's preferences of a few kinds of quantity
+(`Units.java`: temperature, length, mass, speed, volume, area, fuel,
+pressure), with the locale's `mu`, `ms` and `rg`; CLDR's mixed units are the
+larger unit alone. Not there: skeletons and number ranges. The data app's step
+"icu-number", compiled against the newer classes as an app is
+(`core/tests/app/data/stubs`, which `tools/build-test-app.sh` compiles
+against and leaves out of the DEX file), asks for AndroidX's unit of the
+weather in the US, in Russia and with `-u-mu-celsius`, a road's unit,
+Facebook's compact counts, Play Store's fixed digits, a currency, a unit's full
+name, the sign, fraction rounding that keeps two significant digits, the value
+as shown; and formats with ICU 60's `DecimalFormat` and `CompactDecimalFormat`,
+and finds no `Rounder`.
+
 ### Starting on Android's libcore
 
 `mg_dvm_start_android(root)`, with `root` a folder laid out like Android's

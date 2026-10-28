@@ -464,6 +464,456 @@ public class Main extends Activity {
             detail = "row=" + row;
             return row != null && row.toString().startsWith("content://downloads/my_downloads/");
         });
+        // Android 10's rollback service (a system API, so by reflection): there, with no rollbacks (Play Store ends without it).
+        step("rollback-service", () -> {
+            Object rollbacks = getSystemService("rollback");
+            if (rollbacks == null) { detail = "none"; return false; }
+            java.util.List<?> available = (java.util.List<?>) rollbacks.getClass().getMethod("getAvailableRollbacks").invoke(rollbacks);
+            java.util.List<?> committed = (java.util.List<?>) rollbacks.getClass().getMethod("getRecentlyCommittedRollbacks").invoke(rollbacks);
+            detail = rollbacks.getClass().getName() + " available=" + available + " committed=" + committed;
+            return available.isEmpty() && committed.isEmpty();
+        });
+        // The ART manager (PackageManager.getArtManager, a system API, so by reflection): there, with profiling off.
+        step("art-manager", () -> {
+            Object art = getPackageManager().getClass().getMethod("getArtManager").invoke(getPackageManager());
+            if (art == null) { detail = "none"; return false; }
+            Object on = art.getClass().getMethod("isRuntimeProfilingEnabled", int.class).invoke(art, 0);
+            detail = art.getClass().getName() + " profiling=" + on;
+            return Boolean.FALSE.equals(on);
+        });
+        // A ProgressBar that overrides getIndeterminateDrawable to cast it to a drawable of its own, as Material's progress
+        // indicators do, is made, and its indeterminate drawable is none until it sets one; a plain one has one to colour.
+        step("progress-subclass", () -> {
+            Indicator i = new Indicator(this);
+            android.graphics.drawable.Drawable plain = new android.widget.ProgressBar(this).getIndeterminateDrawable();
+            detail = "indicator=" + i.getIndeterminateDrawable() + " plain=" + plain;
+            return i.getIndeterminateDrawable() == null && plain != null;
+        });
+        // A phone with its SIM, as the shell said it (megler_set_cellular): GSM, ready, the operator, its country, LTE; and
+        // the telephony and microphone features. The harness gives a SIM of the run's region: 310260 in the US, 25001 in
+        // Russia.
+        step("telephony", () -> {
+            android.telephony.TelephonyManager tm = (android.telephony.TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            android.content.pm.PackageManager pm = getPackageManager();
+            boolean russia = "RU".equals(java.util.Locale.getDefault().getCountry());
+            String operator = russia ? "25001" : "310260", iso = russia ? "ru" : "us";
+            detail = "type=" + tm.getPhoneType() + " sim=" + tm.getSimState() + " op=" + tm.getSimOperator() + "/" + tm.getSimOperatorName()
+                    + " net=" + tm.getNetworkOperator() + " iso=" + tm.getSimCountryIso() + " nt=" + tm.getNetworkType();
+            return tm.getPhoneType() == android.telephony.TelephonyManager.PHONE_TYPE_GSM && tm.getSimState() == android.telephony.TelephonyManager.SIM_STATE_READY
+                && operator.equals(tm.getSimOperator()) && "Test Operator".equals(tm.getSimOperatorName()) && operator.equals(tm.getNetworkOperator())
+                && iso.equals(tm.getSimCountryIso()) && iso.equals(tm.getNetworkCountryIso()) && tm.getNetworkType() == 13 && !tm.isNetworkRoaming()
+                && pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY) && pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_MICROPHONE);
+        });
+        // What the microphone hears, through AudioRecord: the harness's ramp (mic_start), 16-bit and as floats.
+        step("microphone", () -> {
+            android.media.AudioRecord r = new android.media.AudioRecord(android.media.MediaRecorder.AudioSource.MIC, 16000,
+                    android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT, 6400);
+            r.startRecording();
+            short[] s = new short[800];
+            int got = r.read(s, 0, s.length);
+            boolean ramp = got == s.length;
+            for (int i = 1; i < got; i++) if ((short) (s[i] - s[i - 1]) != 1 && s[i] != 0) ramp = false;
+            r.stop();
+            r.release();
+            detail = "got=" + got + " first=" + (got > 0 ? s[0] : -1) + " last=" + (got > 0 ? s[got - 1] : -1);
+            return ramp && s[got - 1] != 0;
+        });
+        // An image matrix set before the view is laid out, then the scale type made MATRIX, as Material's FloatingActionButton
+        // does as it is made: once laid out, the view draws by that matrix.
+        step("image-matrix-before-layout", () -> {
+            android.widget.ImageView iv = new android.widget.ImageView(this);
+            iv.setImageDrawable(new android.graphics.drawable.BitmapDrawable(getResources(), android.graphics.Bitmap.createBitmap(10, 10, android.graphics.Bitmap.Config.ARGB_8888)));
+            android.graphics.Matrix m = new android.graphics.Matrix();
+            m.setScale(2f, 2f);
+            iv.setImageMatrix(m);
+            iv.setScaleType(android.widget.ImageView.ScaleType.MATRIX);
+            iv.measure(android.view.View.MeasureSpec.makeMeasureSpec(100, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(100, android.view.View.MeasureSpec.EXACTLY));
+            iv.layout(0, 0, 100, 100);
+            float[] v = new float[9];
+            iv.getImageMatrix().getValues(v);
+            detail = java.util.Arrays.toString(v);
+            return v[0] == 2f && v[4] == 2f && v[2] == 0f && v[5] == 0f;
+        });
+        // A DelegateLastClassLoader over a DEX of a module's own (assets/module.dex) has its classes before its parent's: its
+        // Twin, of the same name as the app's, is its own, and so is the Twin its ModuleProbe calls, as a module's own
+        // classes of Google Play services are (dalvik.system's 4-argument constructor is Android 10's). A PathClassLoader
+        // over the same file, whose parent is the app's, still gives the app's.
+        step("delegate-last-scope", () -> {
+            java.io.File f = new java.io.File(getCacheDir(), "module.dex");
+            try (java.io.InputStream in = getAssets().open("module.dex"); java.io.OutputStream out = new java.io.FileOutputStream(f)) {
+                byte[] b = new byte[8192];
+                for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
+            }
+            ClassLoader app = getClassLoader();
+            dalvik.system.DelegateLastClassLoader last = new dalvik.system.DelegateLastClassLoader(f.getPath(), null, app, false);
+            Class<?> twin = last.loadClass("megler.test.data.Twin");
+            String own = (String) twin.getMethod("who").invoke(null);
+            String inner = (String) last.loadClass("megler.test.data.ModuleProbe").getMethod("twin").invoke(null);
+            String plain = (String) new dalvik.system.PathClassLoader(f.getPath(), app).loadClass("megler.test.data.Twin").getMethod("who").invoke(null);
+            detail = "own=" + own + " inner=" + inner + " app=" + Twin.who() + " plain=" + plain + " loader=" + (twin.getClassLoader() == last);
+            return "module".equals(own) && "module".equals(inner) && "app".equals(Twin.who()) && "app".equals(plain) && twin != Twin.class && twin.getClassLoader() == last;
+        });
+        // An APK's manifest read through an AssetManager of one's own, as Google Play services 26 reads each of its modules':
+        // the hidden constructor, addAssetPath, openXmlResourceParser on the cookie it gave.
+        step("asset-manager-manifest", () -> {
+            android.content.res.AssetManager am = android.content.res.AssetManager.class.getDeclaredConstructor().newInstance();
+            int cookie = (Integer) android.content.res.AssetManager.class.getMethod("addAssetPath", String.class).invoke(am, getApplicationInfo().sourceDir);
+            android.content.res.XmlResourceParser p = am.openXmlResourceParser(cookie, "AndroidManifest.xml");
+            String pkg = null;
+            for (int ev = p.getEventType(); ev != org.xmlpull.v1.XmlPullParser.END_DOCUMENT && pkg == null; ev = p.next())
+                if (ev == org.xmlpull.v1.XmlPullParser.START_TAG && "manifest".equals(p.getName())) pkg = p.getAttributeValue(null, "package");
+            p.close();
+            detail = "cookie=" + cookie + " package=" + pkg;
+            return cookie != 0 && getPackageName().equals(pkg);
+        });
+        // A large asset the APK deflates, read through AssetManager.open as it is inflated (not whole into an array first):
+        // every byte as made, available() what is left, and the bytes after a mark read again after reset().
+        step("big-asset", () -> {
+            int size = 3 << 20, bad = -1, at = 0;
+            byte[] buf = new byte[65536];
+            try (java.io.InputStream in = getAssets().open("big-deflated.bin")) {
+                boolean avail = in.available() == size;
+                for (int r; (r = in.read(buf)) > 0; at += r)
+                    for (int k = 0; k < r && bad < 0; k++)
+                        if (buf[k] != (byte) ((at + k) * 31 + ((at + k) >> 12))) bad = at + k;
+                detail = "class=" + in.getClass().getSimpleName() + " read=" + at + " bad=" + bad + " available=" + avail;
+                if (!avail || at != size || bad >= 0) return false;
+            }
+            try (java.io.InputStream in = getAssets().open("big-deflated.bin")) {
+                byte[] one = new byte[1000], two = new byte[1000];
+                in.skip(1000000);
+                in.mark(1 << 20);
+                int a = in.read(one), b;
+                in.reset();
+                b = in.read(two);
+                detail += " again=" + (a == 1000 && b == 1000 && java.util.Arrays.equals(one, two) && one[0] == (byte) (1000000 * 31 + (1000000 >> 12)));
+                return a == 1000 && b == 1000 && java.util.Arrays.equals(one, two) && one[0] == (byte) (1000000 * 31 + (1000000 >> 12))
+                        && in.getClass().getSimpleName().equals("InflatedAssetStream");
+            }
+        });
+        // A path's segments through Path.getPathIterator, as Compose walks them on Android 14 (the Play Store's app pages): a
+        // line, quad or cubic with its start point first, a rectangle in lines, a close without points, and then done. By
+        // reflection, since the app is built against Android 10's android.jar.
+        step("path-iterator", () -> {
+            android.graphics.Path p = new android.graphics.Path();
+            p.moveTo(10, 20);
+            p.lineTo(30, 20);
+            p.quadTo(40, 30, 30, 40);
+            p.cubicTo(20, 50, 10, 50, 10, 40);
+            p.close();
+            p.addRect(0, 0, 5, 5, android.graphics.Path.Direction.CW);
+            java.lang.reflect.Method iterator = android.graphics.Path.class.getMethod("getPathIterator");
+            Class<?> ic = Class.forName("android.graphics.PathIterator"), sc = Class.forName("android.graphics.PathIterator$Segment");
+            java.lang.reflect.Method hasNext = ic.getMethod("hasNext"), next = ic.getMethod("next", float[].class, int.class), peek = ic.getMethod("peek"),
+                    segment = ic.getMethod("next"), verbOf = sc.getMethod("getVerb"), pointsOf = sc.getMethod("getPoints");
+            Object it = iterator.invoke(p);
+            StringBuilder verbs = new StringBuilder();
+            float[] pts = new float[10];
+            boolean points = true;
+            while ((Boolean) hasNext.invoke(it)) {
+                verbs.append((int) (Integer) next.invoke(it, pts, 2));
+                if (verbs.length() == 2) points &= pts[2] == 10 && pts[3] == 20 && pts[4] == 30 && pts[5] == 20;
+                if (verbs.length() == 4) points &= pts[2] == 30 && pts[3] == 40 && pts[4] == 20 && pts[5] == 50 && pts[8] == 10 && pts[9] == 40;
+                if (verbs.length() == 8) points &= pts[2] == 5 && pts[3] == 0 && pts[4] == 5 && pts[5] == 5;
+            }
+            boolean done = (Integer) peek.invoke(it) == 6 && (Integer) next.invoke(it, pts, 0) == 6;
+            android.graphics.Path moved = new android.graphics.Path(p);
+            moved.offset(1, 1);
+            Object first = segment.invoke(iterator.invoke(moved));
+            float[] at = (float[]) pointsOf.invoke(first);
+            boolean offset = (Integer) verbOf.invoke(first) == 0 && at[0] == 11 && at[1] == 21;
+            boolean empty = !(Boolean) hasNext.invoke(iterator.invoke(new android.graphics.Path())), small = false;
+            try {
+                next.invoke(iterator.invoke(p), new float[9], 2);
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                small = e.getCause() instanceof ArrayIndexOutOfBoundsException;
+            }
+            detail = "verbs=" + verbs + " points=" + points + " done=" + done + " offset=" + offset + " empty=" + empty + " small=" + small;
+            return verbs.toString().equals("0124501115") && points && done && offset && empty && small;
+        });
+        // A MutableContextWrapper's new base, as WhatsApp's prewarmed chat views get the Conversation activity: the wrapper then
+        // answers as that context does, and unwrapping it leads to the activity.
+        step("mutable-context", () -> {
+            android.content.MutableContextWrapper w = new android.content.MutableContextWrapper(getApplicationContext());
+            android.view.View v = new android.view.View(w);
+            w.setBaseContext(this);
+            android.content.Context c = v.getContext();
+            while (c instanceof android.content.ContextWrapper && !(c instanceof android.app.Activity)) c = ((android.content.ContextWrapper) c).getBaseContext();
+            boolean based = w.getBaseContext() == this, found = c == this, theme = w.getTheme() == getTheme();
+            detail = "based=" + based + " found=" + found + " theme=" + theme;
+            return based && found && theme;
+        });
+        // Runtime.exec of a program the phone does not have: an IOException each time, as Android says it of a missing program,
+        // and never an Error from the process class's initialisation (Facebook ended so at its first exec).
+        step("exec", () -> {
+            int refused = 0;
+            String said = null;
+            for (int i = 0; i < 2; i++) {
+                try {
+                    Runtime.getRuntime().exec(new String[] { "getprop", "ro.build.version.sdk" });
+                } catch (java.io.IOException e) {
+                    refused++;
+                    said = e.getMessage();
+                }
+            }
+            detail = "refused=" + refused + " said=" + said;
+            return refused == 2 && said != null && said.contains("error=2");
+        });
+        // CRC-32C, which Android 14 has (java.util.zip.CRC32C; Yandex Maps checks its saved routes with it): the standard check
+        // value of "123456789", the same through Checksum.update(byte[]) and update(ByteBuffer), the interface's defaults, and
+        // after reset. By reflection: the app is built against Android 10's android.jar.
+        step("crc32c", () -> {
+            byte[] digits = "123456789".getBytes("US-ASCII");
+            Class<?> c = Class.forName("java.util.zip.CRC32C");
+            java.util.zip.Checksum one = (java.util.zip.Checksum) c.newInstance();
+            one.update(digits, 0, digits.length);
+            java.util.zip.Checksum two = (java.util.zip.Checksum) c.newInstance();
+            java.util.zip.Checksum.class.getMethod("update", byte[].class).invoke(two, (Object) digits);
+            java.util.zip.Checksum three = (java.util.zip.Checksum) c.newInstance();
+            java.nio.ByteBuffer direct = java.nio.ByteBuffer.allocateDirect(digits.length);
+            direct.put(digits).flip();
+            java.util.zip.Checksum.class.getMethod("update", java.nio.ByteBuffer.class).invoke(three, direct);
+            long v = one.getValue();
+            one.reset();
+            one.update('1');
+            java.util.zip.Adler32 adler = new java.util.zip.Adler32();
+            java.util.zip.Checksum.class.getMethod("update", byte[].class).invoke(adler, (Object) digits);
+            detail = "crc32c=" + Long.toHexString(v) + " interface=" + Long.toHexString(two.getValue()) + " buffer=" + Long.toHexString(three.getValue())
+                     + " one=" + Long.toHexString(one.getValue()) + " adler=" + Long.toHexString(adler.getValue()) + " consumed=" + !direct.hasRemaining();
+            return v == 0xE3069283L && two.getValue() == v && three.getValue() == v && one.getValue() == 0x90F599E3L
+                   && adler.getValue() == 0x091E01DEL && !direct.hasRemaining();
+        });
+        // The frame stacks of threads Java starts: two thousand calls deep on a thread of the default size, twenty thousand
+        // on one that asked for 16 MB, and a recursion without end the StackOverflowError it is on Android, caught there.
+        step("thread-stack", () -> {
+            final int[] got = { -1, -1 };
+            final boolean[] overflow = { false };
+            Thread small = new Thread(() -> { got[0] = depth(2000); try { depth(Integer.MAX_VALUE); } catch (StackOverflowError e) { overflow[0] = true; } });
+            Thread big = new Thread(null, () -> got[1] = depth(20000), "deep", 16 << 20);
+            small.start();
+            big.start();
+            small.join(60000);
+            big.join(60000);
+            detail = "small=" + got[0] + " big=" + got[1] + " overflow=" + overflow[0];
+            return got[0] == 2000 && got[1] == 20000 && overflow[0];
+        });
+        // android.icu.number as an app built for Android 13 calls it (compiled against the app's stubs/): the unit AndroidX's
+        // LocalePreferences asks for the weather (Yandex Maps, Google Play services), by the region and by the locale's "mu";
+        // the unit for a road's length; Facebook's compact counts; Play Store's fixed fraction digits; a currency, a unit by
+        // its full name, the sign always, the value as shown. And ICU 60's own DecimalFormat and CompactDecimalFormat, whose
+        // android.icu.number the runtime keeps to core-libart, still format; and ICU 60's Rounder is not the app's to see.
+        step("icu-number", () -> {
+            android.icu.number.UnlocalizedNumberFormatter weather = android.icu.number.NumberFormatter.with().usage("weather").unit(android.icu.util.MeasureUnit.CELSIUS);
+            String us = weather.locale(java.util.Locale.US).format(1).getOutputUnit().getIdentifier();
+            String ru = weather.locale(new java.util.Locale("ru", "RU")).format(1).getOutputUnit().getIdentifier();
+            String mu = weather.locale(java.util.Locale.forLanguageTag("en-US-u-mu-celsius")).format(1).getOutputUnit().getIdentifier();
+            String road = android.icu.number.NumberFormatter.with().usage("road").unit(android.icu.util.MeasureUnit.METER).locale(java.util.Locale.US)
+                .format(3218.688).getOutputUnit().getIdentifier();
+            String compact = android.icu.number.NumberFormatter.withLocale(java.util.Locale.US).notation(android.icu.number.Notation.compactShort())
+                .precision(android.icu.number.Precision.maxFraction(1)).roundingMode(java.math.RoundingMode.DOWN).format(1289000L).toString();
+            String compactLong = android.icu.number.NumberFormatter.withLocale(java.util.Locale.US).notation(android.icu.number.Notation.compactLong())
+                .format(1289000L).toString();
+            String fixed = android.icu.number.NumberFormatter.with().precision(android.icu.number.Precision.fixedFraction(2)).locale(java.util.Locale.US)
+                .format(12.3).toString();
+            String money = android.icu.number.NumberFormatter.with().unit(android.icu.util.Currency.getInstance("USD")).locale(java.util.Locale.US)
+                .format(1234.5).toString();
+            String km = android.icu.number.NumberFormatter.with().unit(android.icu.util.MeasureUnit.KILOMETER)
+                .unitWidth(android.icu.number.NumberFormatter.UnitWidth.FULL_NAME).locale(java.util.Locale.US).format(5).toString();
+            String sign = android.icu.number.NumberFormatter.with().sign(android.icu.number.NumberFormatter.SignDisplay.ALWAYS)
+                .grouping(android.icu.number.NumberFormatter.GroupingStrategy.OFF).locale(java.util.Locale.US).format(12345).toString();
+            String digits = android.icu.number.NumberFormatter.with().precision(android.icu.number.Precision.maxFraction(3).withMaxDigits(2))
+                .locale(java.util.Locale.US).format(123.456).toString();
+            java.math.BigDecimal even = android.icu.number.NumberFormatter.with().precision(android.icu.number.Precision.integer())
+                .locale(java.util.Locale.US).format(2.5).toBigDecimal();
+            String old = android.icu.text.NumberFormat.getInstance(android.icu.util.ULocale.US).format(1234.5);
+            String oldCompact = android.icu.text.CompactDecimalFormat.getInstance(android.icu.util.ULocale.US,
+                android.icu.text.CompactDecimalFormat.CompactStyle.SHORT).format(1289000L);
+            boolean rounder;
+            try {
+                Class.forName("android.icu.number.Rounder");
+                rounder = true;
+            } catch (ClassNotFoundException e) {
+                rounder = false;
+            }
+            detail = "us=" + us + " ru=" + ru + " mu=" + mu + " road=" + road + " compact=" + compact + " long=" + compactLong + " fixed=" + fixed
+                     + " money=" + money + " km=" + km + " sign=" + sign + " digits=" + digits + " even=" + even + " old=" + old + " old-compact=" + oldCompact
+                     + " rounder=" + rounder;
+            return "fahrenheit".equals(us) && "celsius".equals(ru) && "celsius".equals(mu) && "mile".equals(road) && "1.2M".equals(compact)
+                   && "1.3 million".equals(compactLong) && "12.30".equals(fixed) && "$1,234.50".equals(money) && "5 kilometers".equals(km)
+                   && "+12345".equals(sign) && "120".equals(digits) && even.intValue() == 2 && "1,234.5".equals(old) && "1.3M".equals(oldCompact) && !rounder;
+        });
+        // A HandlerThread's looper, as Android gives it: null at once for a thread not started and for one that ended (Facebook's
+        // stories loader asked one of those, and waited for good); the thread's own once it runs, with its id.
+        step("handler-thread", () -> {
+            android.os.HandlerThread never = new android.os.HandlerThread("never started");
+            boolean none = never.getLooper() == null && never.getState() == Thread.State.NEW;
+            android.os.HandlerThread t = new android.os.HandlerThread("looper");
+            t.start();
+            android.os.Looper l = t.getLooper();
+            boolean runs = l != null && l.getThread() == t && t.getThreadId() > 0;
+            t.quit();
+            t.join(5000);
+            boolean ended = !t.isAlive() && t.getLooper() == null && t.getState() == Thread.State.TERMINATED;
+            detail = "none=" + none + " runs=" + runs + " ended=" + ended;
+            return none && runs && ended;
+        });
+        // A dialog the activity makes and keeps itself (Activity.showDialog, as WhatsApp asks whether the phone number is right):
+        // made once by onCreateDialog, prepared and shown each time, dismissed, made again after removeDialog.
+        step("managed-dialog", () -> {
+            dialogsMade = dialogsPrepared = 0;
+            showDialog(21);
+            android.app.Dialog one = lastDialog;
+            boolean shown = one != null && one.isShowing();
+            showDialog(21);
+            boolean kept = dialogsMade == 1 && dialogsPrepared == 2 && lastDialog == one;
+            dismissDialog(21);
+            boolean dismissed = !one.isShowing();
+            removeDialog(21);
+            showDialog(21);
+            boolean again = dialogsMade == 2 && lastDialog != one && lastDialog.isShowing();
+            dismissDialog(21);
+            removeDialog(21);
+            boolean none = !showDialog(23, null), unknown = false;
+            try {
+                dismissDialog(22);
+            } catch (IllegalArgumentException e) {
+                unknown = true;
+            }
+            detail = "shown=" + shown + " kept=" + kept + " dismissed=" + dismissed + " again=" + again + " none=" + none + " unknown=" + unknown;
+            return shown && kept && dismissed && again && none && unknown;
+        });
+        // Digits typed into a field whose TextWatcher puts dashes in as one types (WhatsApp's phone number and code fields): each
+        // goes where the watcher left the cursor, after its dash, so the digits stay in the order typed; a Backspace at the end
+        // takes the last digit. The input connection put the cursor back before the dash, and the next digit went there.
+        step("input-format", () -> {
+            final android.widget.EditText field = new android.widget.EditText(this);
+            field.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
+            field.addTextChangedListener(new android.text.TextWatcher() {
+                private boolean self;
+                @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void afterTextChanged(android.text.Editable s) {
+                    if (self) return;
+                    StringBuilder digits = new StringBuilder(), shown = new StringBuilder();
+                    for (int i = 0; i < s.length(); i++) if (Character.isDigit(s.charAt(i))) digits.append(s.charAt(i));
+                    for (int i = 0; i < digits.length(); i++) {
+                        if (i == 3 || i == 5) shown.append('-');
+                        shown.append(digits.charAt(i));
+                    }
+                    self = true;
+                    s.replace(0, s.length(), shown);
+                    android.text.Selection.setSelection(s, s.length());
+                    self = false;
+                }
+            });
+            android.view.inputmethod.InputConnection ic = field.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            for (char c : "1234567".toCharArray()) ic.commitText(String.valueOf(c), 1);
+            String typed = field.getText().toString();
+            int cursor = field.getSelectionStart();
+            ic.deleteSurroundingText(1, 0);
+            String back = field.getText().toString();
+            detail = "typed=" + typed + " cursor=" + cursor + " after a Backspace=" + back;
+            return typed.equals("123-45-67") && cursor == typed.length() && back.equals("123-45-6");
+        });
+        // The windows an activity opened besides its own, as Android's window manager treats a token's (megler.ViewRoot, asked by
+        // reflection): a dialog hidden while its activity is stopped -- told GONE, without the window focus, still attached -- shown
+        // again after, and removed once the activity is destroyed. A dialog stayed on the screen over the activities after its own.
+        step("dialog-of-stopped", () -> {
+            Class<?> roots = Class.forName("megler.ViewRoot");
+            java.lang.reflect.Method stopped = roots.getMethod("ownerStopped", Activity.class, boolean.class), close = roots.getMethod("closeAll", Activity.class);
+            final int[] seen = { -1 };
+            android.view.View probe = new android.view.View(this) {
+                @Override protected void onWindowVisibilityChanged(int v) { super.onWindowVisibilityChanged(v); seen[0] = v; }
+            };
+            android.app.Dialog dialog = new android.app.Dialog(this);
+            dialog.setContentView(probe);
+            dialog.show();
+            android.view.View decor = dialog.getWindow().getDecorView();
+            boolean focused = decor.hasWindowFocus();
+            stopped.invoke(null, this, true);
+            boolean hidden = seen[0] == android.view.View.GONE && !decor.hasWindowFocus() && decor.isAttachedToWindow();
+            stopped.invoke(null, this, false);
+            boolean shown = seen[0] == android.view.View.VISIBLE && decor.hasWindowFocus();
+            int closed = (Integer) close.invoke(null, this);
+            boolean gone = closed == 1 && !decor.isAttachedToWindow();
+            detail = "focused=" + focused + " hidden=" + hidden + " shown=" + shown + " closed=" + closed + " gone=" + gone;
+            return focused && hidden && shown && gone;
+        });
+        // Android 14's ZipPathValidator, which OsmAnd clears as it starts: there, and a ZIP entry named with ".." still reads.
+        step("zip-path-validator", () -> {
+            Class<?> v = Class.forName("dalvik.system.ZipPathValidator");
+            v.getMethod("clearCallback").invoke(null);
+            java.io.File zip = new java.io.File(getCacheDir(), "dots.zip");
+            try (java.util.zip.ZipOutputStream o = new java.util.zip.ZipOutputStream(new java.io.FileOutputStream(zip))) {
+                o.putNextEntry(new java.util.zip.ZipEntry("a/../b.txt"));
+                o.write('x');
+                o.closeEntry();
+            }
+            try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(zip)) {
+                detail = "entry=" + z.getEntry("a/../b.txt");
+                return z.getEntry("a/../b.txt") != null;
+            }
+        });
+        // A list whose row is clickable itself (its own OnClickListener, as Play Store's drawer's rows are): a tap on the row
+        // clicks it. The list's interception of the pointer going up unpressed the row first, and the row never clicked.
+        step("list-row-click", () -> {
+            final boolean[] clicked = { false };
+            android.widget.ListView list = new android.widget.ListView(this);
+            list.setAdapter(new android.widget.BaseAdapter() {
+                @Override public int getCount() { return 3; }
+                @Override public Object getItem(int p) { return p; }
+                @Override public long getItemId(int p) { return p; }
+                @Override public android.view.View getView(int p, android.view.View convert, android.view.ViewGroup parent) {
+                    android.widget.TextView t = new android.widget.TextView(Main.this);
+                    t.setText("row " + p);
+                    t.setMinHeight(60);
+                    if (p == 0) t.setOnClickListener(v -> clicked[0] = true);
+                    return t;
+                }
+            });
+            list.measure(android.view.View.MeasureSpec.makeMeasureSpec(300, android.view.View.MeasureSpec.EXACTLY),
+                         android.view.View.MeasureSpec.makeMeasureSpec(300, android.view.View.MeasureSpec.EXACTLY));
+            list.layout(0, 0, 300, 300);
+            long now = android.os.SystemClock.uptimeMillis();
+            android.view.MotionEvent down = android.view.MotionEvent.obtain(now, now, android.view.MotionEvent.ACTION_DOWN, 20, 20, 0);
+            android.view.MotionEvent up = android.view.MotionEvent.obtain(now, now + 50, android.view.MotionEvent.ACTION_UP, 20, 20, 0);
+            boolean took = list.dispatchTouchEvent(down);
+            list.dispatchTouchEvent(up);
+            down.recycle();
+            up.recycle();
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() ->
+                Log.i("DataTest", "list-row-click rows=" + list.getChildCount() + " clicked=" + clicked[0]), 200);
+            detail = "rows=" + list.getChildCount() + " took=" + took;
+            return took && list.getChildCount() > 0;
+        });
+        // A typeface built from a font file open on a descriptor (Typeface.Builder(FileDescriptor), as Google Play services
+        // loads its downloaded fonts): made, and the descriptor still open after.
+        step("typeface-descriptor", () -> {
+            java.io.File font = new java.io.File("/system/fonts/ComingSoon.ttf");
+            try (android.os.ParcelFileDescriptor pfd = android.os.ParcelFileDescriptor.open(font, android.os.ParcelFileDescriptor.MODE_READ_ONLY)) {
+                android.graphics.Typeface t = new android.graphics.Typeface.Builder(pfd.getFileDescriptor()).build();
+                boolean open = pfd.getFileDescriptor().valid();
+                detail = "typeface=" + t + " open=" + open;
+                return t != null && open;
+            }
+        });
+        // The phone is set up (device_provisioned, user_setup_complete), as it is once its first-use setup is done: Play Store
+        // runs no install until it is.
+        step("device-provisioned", () -> {
+            int global = android.provider.Settings.Global.getInt(getContentResolver(), "device_provisioned", 0);
+            int secure = android.provider.Settings.Secure.getInt(getContentResolver(), "user_setup_complete", 0);
+            detail = "device_provisioned=" + global + " user_setup_complete=" + secure;
+            return global == 1 && secure == 1;
+        });
+        // The phone's users: one, 0, with serial number 0, its handle found by that number (Play Store counts them before it
+        // installs, and ended on the null array it was given; getSerialNumbersOfUsers is a system API, so by reflection).
+        step("users", () -> {
+            android.os.UserManager um = (android.os.UserManager) getSystemService(USER_SERVICE);
+            long[] serials = (long[]) um.getClass().getMethod("getSerialNumbersOfUsers", boolean.class).invoke(um, true);
+            android.os.UserHandle first = serials != null && serials.length > 0 ? um.getUserForSerialNumber(serials[0]) : null;
+            detail = "serials=" + java.util.Arrays.toString(serials) + " first=" + first;
+            return serials != null && serials.length == 1 && first != null && um.getSerialNumberForUser(first) == serials[0];
+        });
         step("start-asked", () -> {
             startService(new android.content.Intent(this, Again.class));
             return true;
@@ -748,6 +1198,27 @@ public class Main extends Activity {
                     && android.net.wifi.WifiManager.calculateSignalLevel(-50, 5) == 4 && android.net.wifi.WifiManager.calculateSignalLevel(-100, 5) == 0
                     && android.net.wifi.WifiManager.calculateSignalLevel(-80, 5) == 1;
         });
+    }
+
+    private int dialogsMade, dialogsPrepared;
+    private android.app.Dialog lastDialog;
+
+    /** Calls `n` deep ("thread-stack"). */
+    static int depth(int n) { return n <= 0 ? 0 : 1 + depth(n - 1); }
+
+    /** The managed dialog of "managed-dialog": made for 21, none for any other number. */
+    @Override
+    protected android.app.Dialog onCreateDialog(int id) {
+        if (id != 21) return null;
+        dialogsMade++;
+        return new android.app.AlertDialog.Builder(this).setMessage("Is this number right?").setPositiveButton("OK", null).create();
+    }
+
+    @Override
+    protected void onPrepareDialog(int id, android.app.Dialog dialog) {
+        super.onPrepareDialog(id, dialog);
+        dialogsPrepared++;
+        lastDialog = dialog;
     }
 
     /** A platform DialogFragment as VK mp3 mod's code check is one: an AlertDialog with a field, made by onCreateDialog. */
