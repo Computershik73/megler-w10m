@@ -1211,7 +1211,7 @@ the framework should not let it think (not looked into).
 | `PackageManager` knowing more than the app itself (installed APKs in the library) | QuickShortcutMaker's whole purpose | small in Java, a decision for the shell |
 | EGL and OpenGL ES from Java (`megler.EGLNative`, `GLES20` over ANGLE) | Device Info's GPU page; any `GLSurfaceView` | done (2026-10-14): "OpenGL ES from Java" above; on a phone not yet tried |
 | `megler.Web` (a `WebView`) | ads, licence and help pages in all three | done (2026-10-16): Android's System WebView, Chromium 128, in the app's process ("The WebView") |
-| Processes (`Runtime.exec`) | root checkers and file managers probing `su`, `getprop`, `sh` | answered: "no such program" (`error=2`), for every program, `sh` included. An app that wants `getprop`'s output gets the exception, not an empty answer |
+| Processes (`Runtime.exec`) | root checkers and file managers probing `su`, `getprop`, `sh` | answered: "no such program" (`error=2`), for every program, `sh` included. An app that wants `getprop`'s output gets the exception, not an empty answer. `UNIXProcess.initIDs` is the runtime's too and does nothing: libcore's set SIGCHLD with `sigaction`, which through Facebook's sigmux hook failed, and the `InternalError` it threw ended Facebook at its first exec (package 487; the data app's "exec" step) |
 | TLS (conscrypt's `libjavacrypto.so`) | anything that talks HTTPS | done (2026-10-14): the library is built like the other seven, over Android 9's own `libssl.so` ("The security providers"); TLS 1.2 on loopback and https through Android's HTTP client under qemu; on a phone not yet tried |
 | `invoke-custom`, method handles | not met in these three (d8 desugared them) | large |
 

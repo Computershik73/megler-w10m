@@ -462,7 +462,8 @@ N(Thread_nativeHoldsLock)
     }
 }
 
-N(Thread_nativeGetStatus) { c->ret.i = c->args[0].z ? 1 : 0; }  /* an index into Thread.State: NEW, or RUNNABLE once started */
+/* An index into Thread.State: NEW, RUNNABLE once started, and TERMINATED once it has ended (its nativePeer gone, end_peer). */
+N(Thread_nativeGetStatus) { c->ret.i = !c->args[0].z ? 0 : thread_of(c->self) ? 1 : 5; }
 N(Thread_nothing) { (void)c; }
 N(Thread_yield)
 {
@@ -1372,6 +1373,14 @@ N(UNIXProcess_forkAndExec)
     mg_dvm_throw("java/io/IOException", "error=2, No such file or directory");
     c->ret.i = -1;
 }
+/*
+ * And UNIXProcess.initIDs, which its class's initialiser calls before the first exec: libcore's sets SIGCHLD to its default
+ * with sigaction and throws InternalError ("Can't set SIGCHLD handler") when that fails. Facebook's sigmux hooks sigaction,
+ * and through the hook the call failed: the class could not be initialised, and the Error, which nobody catches where an
+ * IOException is expected, ended the app at its first Runtime.exec. No child is ever started here, so there is no SIGCHLD
+ * to be ready for, nor a PATH to search: nothing to do, and the exec then fails as above.
+ */
+N(UNIXProcess_initIDs) { (void)c; }
 N(Package_getSystemPackages0) { c->ret.l = mg_dvm_new_array("[Ljava/lang/String;", 0); }
 
 /* ---------------------------------------------------------------- the rest */
@@ -1596,6 +1605,7 @@ static const mg_jhle k_art[] = {
     { "dalvik/system/VMRuntime", "registerNativeAllocation", NULL, VMRuntime_registerNativeAllocation },
     { "dalvik/system/VMRuntime", "registerNativeFree", NULL, VMRuntime_registerNativeFree },
     { "java/lang/UNIXProcess", "forkAndExec", NULL, UNIXProcess_forkAndExec },
+    { "java/lang/UNIXProcess", "initIDs", NULL, UNIXProcess_initIDs },
     { "java/lang/Package", "getSystemPackage0", NULL, Class_null },
     { "java/lang/Package", "getSystemPackages0", NULL, Package_getSystemPackages0 },
     { "dalvik/system/VMStack", "getClosestUserClassLoader", NULL, VMStack_getClosestUserClassLoader },
