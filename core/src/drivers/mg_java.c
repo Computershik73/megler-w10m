@@ -131,14 +131,31 @@ static const char *text_of(mg_jobj *s)
 /* The phone's look (megler_set_theme): its accent colour, 0 for none, and whether it is dark. */
 static volatile i32 g_theme_accent, g_theme_night;
 
-/* log(int priority, String tag, String msg): Android's priorities, 2 verbose to 7 assert, as logcat letters them. */
+/*
+ * log(int priority, String tag, String msg): Android's priorities, 2 verbose to 7 assert, as logcat letters them. A line of
+ * the layer's log holds 1 KB, and a message with a stack trace is longer: it goes in pieces, each cut at the end of one of its
+ * lines, the first with the tag; at most 64. Cut at 1 KB, Yandex Maps' crash said its cause's class and half its message and
+ * not one of its frames (package 507).
+ */
 N(Native_log)
 {
     static const char letters[] = "??VDIWEF";
-    int priority = c->args[0].i;
+    int priority = c->args[0].i, level = priority >= 6 ? MG_LOG_ERROR : priority == 5 ? MG_LOG_WARN : MG_LOG_INFO, piece = 0;
     const char *tag = text_of(c->args[1].l), *msg = text_of(c->args[2].l);
     char letter = priority >= 2 && priority <= 7 ? letters[priority] : 'I';
-    mg_log(priority >= 6 ? MG_LOG_ERROR : priority == 5 ? MG_LOG_WARN : MG_LOG_INFO, "%c/%s: %s", letter, tag, msg);
+    size_t len = strlen(msg), at = 0;
+    do {
+        size_t n = len - at;
+        if (n > 900) {
+            size_t cut = 900;
+            while (cut > 0 && msg[at + cut] != '\n') cut--;
+            n = cut ? cut : 900;
+        }
+        if (!piece) mg_log(level, "%c/%s: %.*s", letter, tag, (int)n, msg + at);
+        else mg_log(level, "%.*s", (int)n, msg + at);
+        at += n;
+        if (at < len && msg[at] == '\n') at++;
+    } while (at < len && ++piece < 64);
 }
 
 static mg_jobj *bytes_of(const u8 *data, size_t size)
