@@ -21,6 +21,7 @@
 #include "player/KeyboardHost.h"
 #include "player/MediaControls.h"
 #include "player/Session.h"
+#include "player/StorageHost.h"
 #include "player/WindowHost.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
@@ -31,6 +32,7 @@
 #include "ui/AppShell.h"
 #include "ui/Components.h"
 
+#include <winrt/Windows.Storage.AccessCache.h>
 #include <winrt/Windows.UI.Text.Core.h>
 
 #include <map>
@@ -53,6 +55,76 @@ namespace {
 /// opened the menu over the app's own dialog.
 constexpr double menuCorner = 56;
 constexpr auto menuTapWindow = std::chrono::milliseconds(700);
+
+// MARK: Saving the log
+//
+// The end panel's Save the Log: the shell's log of this run and of the two before (LocalState\megler.log,
+// megler.prev.log, megler.prev2.log) copied into "Megler logs" in the phone's Documents, each named after the app and
+// the time, so that it can be sent on from the phone. An app container has no way into Documents but the folder picker
+// (player/StorageHost.h): the folder Android's storage has as Documents is used when there is one; else the picker opens
+// in Documents, and the phone's Documents folder chosen there is kept as that link (StorageHost::add), so that it is asked
+// for once.
+
+/// `s` with what a file's name cannot have made '_'.
+std::string fileNamePart(std::string s) {
+    for (char& c : s)
+        if (std::strchr("\\/:*?\"<>|", c) || (unsigned char)c < 32) c = '_';
+    return s;
+}
+
+winrt::fire_and_forget saveTheLog(std::weak_ptr<AppShell> weakShell, std::string label) {
+    using namespace winrt::Windows::Storage;
+    using namespace winrt::Windows::Storage::Pickers;
+    namespace access = winrt::Windows::Storage::AccessCache;
+    std::string error, where;
+    unsigned saved = 0;
+    try {
+        StorageFolder documents{nullptr};
+        for (const auto& link : StorageHost::shared().links()) {
+            if (_stricmp(link.name.c_str(), "Documents") != 0 || link.token.empty()) continue;
+            try {
+                documents = co_await access::StorageApplicationPermissions::FutureAccessList().GetFolderAsync(hs(link.token));
+            } catch (const hresult_error& e) {
+                shellLog::write(format("player: the folder linked as Documents is not handed back (0x%08X): the picker asks", unsigned(e.code())));
+            }
+            break;
+        }
+        if (!documents) {
+            FolderPicker picker;
+            picker.ViewMode(PickerViewMode::List);
+            picker.SuggestedStartLocation(PickerLocationId::DocumentsLibrary);
+            // (A folder picker with no file type named throws; any type will do.)
+            picker.FileTypeFilter().Append(L"*");
+            documents = co_await picker.PickSingleFolderAsync();
+            if (!documents) co_return;
+            if (_stricmp(narrow(std::wstring(documents.Name())).c_str(), "Documents") == 0 && StorageHost::shared().nameFree("Documents")) {
+                const std::string why = StorageHost::shared().add(documents, "Documents");
+                shellLog::write(why.empty() ? "player: the phone's Documents linked as /sdcard/Documents" : "player: Documents not linked: " + why);
+            }
+        }
+        StorageFolder logs = co_await documents.CreateFolderAsync(L"Megler logs", CreationCollisionOption::OpenIfExists);
+        where = narrow(std::wstring(logs.Path()));
+        SYSTEMTIME t;
+        GetLocalTime(&t);
+        const std::string stamp = format("%04u-%02u-%02u %02u-%02u-%02u", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+        for (const wchar_t* name : {L"megler.log", L"megler.prev.log", L"megler.prev2.log"}) {
+            const std::wstring path = platform::localStateDirectory() + L"\\" + name;
+            if (!files::exists(path)) continue;
+            StorageFile file = co_await StorageFile::GetFileFromPathAsync(hstring(path));
+            co_await file.CopyAsync(logs, hs(fileNamePart(label) + " " + stamp + " " + narrow(name)), NameCollisionOption::GenerateUniqueName);
+            saved++;
+        }
+    } catch (const hresult_error& e) {
+        error = format("0x%08X %s", unsigned(e.code()), narrow(std::wstring(e.message())).c_str());
+    }
+    shellLog::write(error.empty() ? format("player: %u log files saved to %s", saved, where.c_str()) : "player: the log could not be saved: " + error);
+    auto shell = weakShell.lock();
+    if (!shell) co_return;
+    if (!error.empty())
+        shell->alert("Couldn't Save the Log", error);
+    else
+        shell->alert("Log Saved", format("%u files in %s.", saved, where.c_str()));
+}
 
 class PlayerScreen final : public Page {
 public:
@@ -491,6 +563,12 @@ private:
         log.Margin(ThicknessHelper::FromLengths(0, 10, 0, 0));
         endSecondary_ = log;
         add(column, log);
+        // The log to the phone's Documents, to be sent on from there (saveTheLog).
+        auto save = primaryButton("Save the Log to Documents", glyphs::download, [this] {
+            saveTheLog(shell_.weak_from_this(), title_);
+        }, p.fill);
+        save.Margin(ThicknessHelper::FromLengths(0, 10, 0, 0));
+        add(column, save);
         auto box = card(column, 18, 20);
         box.HorizontalAlignment(HorizontalAlignment::Center);
         box.VerticalAlignment(VerticalAlignment::Center);
