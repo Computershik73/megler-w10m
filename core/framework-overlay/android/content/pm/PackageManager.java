@@ -171,6 +171,8 @@ public class PackageManager {
         if (name.startsWith("android.hardware.touchscreen") || name.equals(FEATURE_FAKETOUCH) || name.equals(FEATURE_SCREEN_PORTRAIT) || name.equals(FEATURE_SCREEN_LANDSCAPE)) return true;
         if (name.equals(FEATURE_WIFI) || name.equals(FEATURE_AUDIO_OUTPUT) || name.equals(FEATURE_OPENGLES_EXTENSION_PACK) || name.equals(FEATURE_SENSOR_ACCELEROMETER)) return true;
         if (name.equals(FEATURE_INPUT_METHODS) || name.equals(FEATURE_GAMEPAD)) return true;
+        // A phone, with or without its SIM (TelephonyManager says which); and its microphone (AudioRecord, the shell's).
+        if (name.equals(FEATURE_TELEPHONY) || name.equals("android.hardware.telephony.gsm") || name.equals(FEATURE_MICROPHONE)) return true;
         // The phone's cameras, as the shell finds them (megler.CameraNative, core/src/drivers/mg_java_camera.c).
         if (name.startsWith("android.hardware.camera")) {
             int f = megler.CameraNative.features();

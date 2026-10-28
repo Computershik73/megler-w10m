@@ -1375,6 +1375,9 @@ typedef struct megler_system_bars_host {
  *                the app is told its install goes on; false: the app is told it cannot be installed.
  *   launch_app   Another app the phone has, to start: an Android package and the activity's class name, or NULL for its
  *                launcher activity (a launcher's tap, an app opening another). True: the shell starts it.
+ *   uninstall_app  Another app the phone has, to uninstall: an Android package (an app store's Uninstall,
+ *                PackageInstaller.uninstall; ACTION_DELETE of package:<name>). True: the shell asks the user. It is gone
+ *                when apps_dir's apps.txt no longer has it; installs/<package>.uninstall.txt says when the user said no.
  */
 typedef struct megler_system_host {
     void *user;
@@ -1382,6 +1385,7 @@ typedef struct megler_system_host {
     void (*share_text)(void *user, const char *text, const char *subject);
     bool (*install_apk)(void *user, const char *host_path, const char *name);
     bool (*launch_app)(void *user, const char *package, const char *activity);
+    bool (*uninstall_app)(void *user, const char *package);
 } megler_system_host;
 
 /*
@@ -1442,6 +1446,22 @@ typedef struct megler_location_host {
     bool (*last)(void *user, megler_location *fix);
 } megler_location_host;
 
+/*
+ * The phone's microphone, for a Java app's AudioRecord. While an app records:
+ *   start  to hear the microphone as 16-bit PCM at `rate` Hz in `channels` (1 or 2) -- Windows asks the user the first time.
+ *          True when it does; false (no microphone, or the user said no): the app reads silence, at the microphone's pace.
+ *   stop   to stop.
+ * While it runs, the shell hands what it hears to megler_microphone_push, from any thread. Called on the app's threads.
+ * May be left zero: no microphone.
+ */
+typedef struct megler_microphone_host {
+    void *user;
+    bool (*start)(void *user, int rate, int channels);
+    void (*stop)(void *user);
+} megler_microphone_host;
+/* What the microphone heard: `frames` frames of the channels start was asked for, interleaved. */
+void megler_microphone_push(const int16_t *samples, int frames);
+
 typedef struct megler_run_config {
     const char *apk_path;
     /* Optional installed microG APK. Opened as the service package; no copy in each client. */
@@ -1471,6 +1491,8 @@ typedef struct megler_run_config {
     megler_storage_host storage;
     /* The phone's location for a Java app's LocationManager (see megler_location_host). May be left zero: no location. */
     megler_location_host location;
+    /* The phone's microphone for a Java app's AudioRecord (see megler_microphone_host). May be left zero: silence. */
+    megler_microphone_host microphone;
     /*
      * Drawing for an app whose user interface is Java (see megler_gfx_host). All of it may be left NULL: such an app still starts,
      * lays its views out and takes input, but nothing is drawn (its bitmaps hold only what the layer does itself: erasing, single
@@ -1636,6 +1658,42 @@ typedef struct megler_battery {
     bool present;
 } megler_battery;
 void megler_set_battery(const megler_battery *now);
+
+/*
+ * The phone's cellular side, for a Java app's TelephonyManager: whether a SIM is in it and ready, its operator's name and
+ * MCC and MNC ("25001"), the network's type as TelephonyManager numbers it (13 LTE, 10 HSPA, 3 UMTS, 2 EDGE, 1 GPRS, 0 not
+ * known) and whether the phone is roaming. Said before an app starts and whenever it changes; until it is said, no SIM. An
+ * app is told it runs on a phone all the same (PHONE_TYPE_GSM, the telephony feature): apps that see neither take a
+ * phone with no SIM for a tablet. NULL: no SIM.
+ */
+typedef struct megler_cellular {
+    bool sim_ready;
+    const char *operator_name; /* UTF-8; NULL: not known */
+    const char *mcc_mnc;       /* NULL: not known */
+    int network_type;
+    bool roaming;
+} megler_cellular;
+void megler_set_cellular(const megler_cellular *now);
+
+/*
+ * The phone's text messages and calls, for a Java app as Android has them (the framework's megler.Phone). Any thread.
+ *
+ * megler_sms_received: a text message that came to the phone -- who it is from as the phone has it (a number, or a name
+ * the sender gave), its text (UTF-8), when it came (milliseconds since 1970, UTC). The app is sent Android's SMS_RECEIVED
+ * with it (receivers that hold RECEIVE_SMS: Google Play services' SMS Retriever, the app's own), an app-specific SMS token
+ * in its text sends that token's PendingIntent, and it is in content://sms/inbox for an app that holds READ_SMS.
+ *
+ * megler_call_logged: a call the phone's history has -- the other side's number, when it began (ms since 1970, UTC), its
+ * type as Android's call log numbers it (1 incoming, 2 outgoing, 3 missed, 5 rejected) and how long it went on (seconds).
+ * An incoming, missed or rejected one is told as Android tells a call that rings: PHONE_STATE RINGING with its number (to
+ * receivers that hold READ_PHONE_STATE, the number to those that hold READ_CALL_LOG as well) and then IDLE, and
+ * TelephonyManager's listeners hear the same; and it is in content://call_log/calls for an app that holds READ_CALL_LOG.
+ *
+ * Only what comes while an app runs is the app's: the phone's earlier messages and calls are not given to it. Nothing of
+ * either is written in the log but that there was one. Before an app runs, and with no Java app, they are dropped.
+ */
+void megler_sms_received(const char *from, const char *body, int64_t time_ms);
+void megler_call_logged(const char *number, int64_t time_ms, int type, int duration_s);
 
 /* ------------------------------------------------------------ diagnostics */
 

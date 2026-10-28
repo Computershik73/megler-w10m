@@ -96,6 +96,28 @@ void mg_battery_set(const mg_battery *now)
 
 u32 mg_battery_changes(void) { return (u32)g_battery_changes; }
 
+/* ----------------------------------------------------- the SIM (mg_run.h) */
+
+static mg_cellular g_cellular;
+static mg_lock g_cellular_lock = MG_LOCK_INIT;
+
+void mg_cellular_read(mg_cellular *out)
+{
+    mg_lock_acquire(&g_cellular_lock);
+    *out = g_cellular;
+    mg_lock_release(&g_cellular_lock);
+}
+
+void mg_cellular_set(const mg_cellular *now)
+{
+    mg_lock_acquire(&g_cellular_lock);
+    if (now) g_cellular = *now;
+    else memset(&g_cellular, 0, sizeof(g_cellular));
+    g_cellular.operator_name[sizeof(g_cellular.operator_name) - 1] = 0;
+    g_cellular.mcc_mnc[sizeof(g_cellular.mcc_mnc) - 1] = 0;
+    mg_lock_release(&g_cellular_lock);
+}
+
 static void on_guest_exit(int status) { mg_run_ended(status, NULL); }
 static void on_crash(const char *report) { mg_run_ended(-1, report); }
 

@@ -35,6 +35,9 @@ bool mg_java_ended(int *status, const char **reason);
  * the surface it covers. From any thread; queued for the app's main thread. Nothing happens when no Java app runs.
  */
 void mg_java_text(const char *utf8);
+/* megler_sms_received, megler_call_logged: queued for the app's main thread (megler.Phone, Native.pollPhone). */
+void mg_java_phone_sms(const char *from, const char *body, i64 time_ms);
+void mg_java_phone_call(const char *number, i64 time_ms, int type, int duration_s);
 void mg_java_text_key(int key);
 void mg_java_keyboard_closed(void);
 /* An activity of the app another app asks for (megler_start_activity): started from the main loop. */

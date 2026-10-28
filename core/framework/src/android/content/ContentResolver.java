@@ -30,6 +30,9 @@ public class ContentResolver {
         if (p != null) return p;
         if ("settings".equals(a)) return megler.SettingsProvider.INSTANCE;
         if ("downloads".equals(a)) return megler.Downloads.INSTANCE;
+        /* the phone's text messages and calls that came while the app ran (megler.Phone) */
+        if ("sms".equals(a)) return megler.Phone.SMS;
+        if ("call_log".equals(a)) return megler.Phone.CALL_LOG;
         return megler.GmsProviders.forAuthority(a);
     }
     public final ContentProviderClient acquireContentProviderClient(Uri u) { ContentProvider p = provider(u); return p == null ? null : new ContentProviderClient(p); }

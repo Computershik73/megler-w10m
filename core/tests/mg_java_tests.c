@@ -59,6 +59,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "../include/megler.h"
 #include "../src/apk/mg_apk.h"
@@ -605,6 +606,8 @@ static void system_heard(const char *what)
     mg_lock_release(&g_system_lock);
 }
 
+static const char *phone_apps_fixture(void);
+
 static bool system_install(void *user, const char *host_path, const char *name)
 {
     char t[160], inside[32] = "";
@@ -624,7 +627,99 @@ static bool system_install(void *user, const char *host_path, const char *name)
     }
     snprintf(t, sizeof(t), "install=%s%s%s;", name, inside, mg_path_stat(host_path, &st, NULL) ? "" : "(no file)");
     system_heard(t);
+    /* What Megler does with them, as the session learns it: the user says no to the one APK of com.example.store; the
+       bundle of com.example.split is installed, the app in the phone's apps. */
+    if (!strcmp(name, "com.example.store.apk")) {
+        char *dir = mg_sprintf("%s/installs", phone_apps_fixture()), *path = mg_sprintf("%s/%s.txt", dir, name);
+        static unsigned times;
+        char told[96];
+        int n = snprintf(told, sizeof(told), "%u%u\tdeclined\tNot installed: Megler was told no.\n", (unsigned)time(NULL), ++times);
+        mg_path_mkdirs(dir);
+        mg_file_write_all(path, told, (size_t)n);
+        free(path);
+        free(dir);
+    } else if (!strcmp(name, "com.example.split.apks")) {
+        char *path = mg_sprintf("%s/apps.txt", phone_apps_fixture());
+        FILE *f = fopen(path, "ab");
+        if (f) {
+            fputs("com.example.split\tcom.example.split.Main\tSplit\t1.0\t1\n", f);
+            fclose(f);
+        }
+        free(path);
+    }
     return true;
+}
+
+/* What Megler does with the apps the app asks to uninstall, as the app learns it: com.example.split goes from the phone's
+   apps (the list as the fixture made it); the user keeps com.example.other. */
+static bool system_uninstall(void *user, const char *package)
+{
+    (void)user;
+    if (!strcmp(package, "com.example.split")) {
+        char *path = mg_sprintf("%s/apps.txt", phone_apps_fixture());
+        static const char list[] = "com.example.other\tcom.example.other.Main\tOther\t1.0\t3\n";
+        mg_file_write_all(path, list, sizeof(list) - 1);
+        free(path);
+    } else if (!strcmp(package, "com.example.other")) {
+        char *dir = mg_sprintf("%s/installs", phone_apps_fixture()), *path = mg_sprintf("%s/%s.uninstall.txt", dir, package);
+        static unsigned times;
+        char told[96];
+        int n = snprintf(told, sizeof(told), "%u%u\tdeclined\tNot uninstalled: Megler was told no.\n", (unsigned)time(NULL), ++times);
+        mg_path_mkdirs(dir);
+        mg_file_write_all(path, told, (size_t)n);
+        free(path);
+        free(dir);
+    }
+    return true;
+}
+
+/*
+ * A microphone that hears a steady ramp, 0, 1, 2 ... in each channel, for as long as it is started: what the data app's
+ * step microphone reads back through AudioRecord. It says what it was asked for (g_mic_heard).
+ */
+/* What the command line says after the screen's size: for `app` the steps of its script, for `data` the run it is to be. */
+static int g_script_count;
+static char **g_script;
+
+static char g_mic_heard[128];
+static volatile i32 g_mic_on;
+static mg_thread *g_mic_thread;
+static int g_mic_rate, g_mic_channels;
+
+static void mic_feed(void *arg)
+{
+    int16_t s[320];
+    int16_t next = 0;
+    int i, frames = 160;
+    (void)arg;
+    while (g_mic_on) {
+        for (i = 0; i < frames * g_mic_channels; i++) s[i] = (int16_t)(next + i / g_mic_channels);
+        next = (int16_t)(next + frames);
+        megler_microphone_push(s, frames);
+        mg_sleep_ns(10000000ull);
+    }
+}
+
+static bool mic_start(void *user, int rate, int channels)
+{
+    size_t n = strlen(g_mic_heard);
+    (void)user;
+    snprintf(g_mic_heard + n, sizeof(g_mic_heard) - n, "start %d %d;", rate, channels);
+    g_mic_rate = rate;
+    g_mic_channels = channels;
+    g_mic_on = 1;
+    g_mic_thread = mg_thread_start(mic_feed, NULL, 0, "test microphone");
+    return true;
+}
+
+static void mic_stop(void *user)
+{
+    size_t n = strlen(g_mic_heard);
+    (void)user;
+    g_mic_on = 0;
+    if (g_mic_thread) mg_thread_join(g_mic_thread);
+    g_mic_thread = NULL;
+    snprintf(g_mic_heard + n, sizeof(g_mic_heard) - n, "stop;");
 }
 
 static bool system_launch(void *user, const char *package, const char *activity)
@@ -729,6 +824,7 @@ static bool start(const char *apk, const char *android_root)
     g_media_heard[0] = 0;
     cfg.system.install_apk = system_install;
     cfg.system.launch_app = system_launch;
+    cfg.system.uninstall_app = system_uninstall;
     g_system_heard[0] = 0;
     cfg.apps_dir = phone_apps_fixture();
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (mg_codec_standin.c). */
@@ -736,10 +832,24 @@ static bool start(const char *apk, const char *android_root)
     if (g_camera_app) cfg.camera = *mg_camera_standin();
     /* The phone in Moscow, the location on (mg_location_standin.c). */
     cfg.location = *mg_location_standin();
+    /*
+     * A microphone that hears a ramp (mic_start), and a SIM of the country the run's language and region are in, as a
+     * phone's is -- the US in the first run (en-US), Russia in the second (ru-RU): the data app's steps microphone,
+     * telephony and locale, which takes the SIM's country for the region's.
+     */
+    cfg.microphone.start = mic_start;
+    cfg.microphone.stop = mic_stop;
+    g_mic_heard[0] = 0;
+    {
+        static const megler_cellular us = { true, "Test Operator", "310260", 13, false }, ru = { true, "Test Operator", "25001", 13, false };
+        megler_set_cellular(g_script_count && !strcmp(g_script[0], "run:2") ? &ru : &us);
+    }
     /* The framework says which window each touch went to when it finds this in the environment: asked for with verbose 2. */
     if (g_verbose >= 2 && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_TOUCH_LOG", "1", 1);
     /* And every window's views with their frames, every three seconds while it lays out: verbose 3. */
     if (g_verbose >= 3 && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_VIEW_DUMP", "1", 1);
+    /* MG_JAVA_VD_TRACE=1: every vector drawable an app draws is said in its log, with its tint and filter (android.graphics.drawable.VectorDrawable's TL_VD_TRACE). */
+    if (getenv("MG_JAVA_VD_TRACE") && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_VD_TRACE", "1", 1);
     if (getenv("MG_MICROG_DROIDGUARD_TEST") && mg_bionic_find("setenv"))
         ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_DROIDGUARD_TEST", "1", 1);
     if (getenv("MG_MICROG_DROIDGUARD_HANDLE_TEST") && mg_bionic_find("setenv"))
@@ -1798,10 +1908,7 @@ static int run_splits(void)
     return g_failed;
 }
 
-/* What the command line says after the screen's size: for `app` the steps of its script, for `data` the run it is to be. */
-static int g_script_count;
-static char **g_script;
-
+/* The script (g_script, above), as main gives it. */
 void mg_tests_java_set_script(int count, char **steps)
 {
     g_script_count = count;
@@ -1858,6 +1965,40 @@ static void battery_changes(bool on_battery)
     CHECK(wait_line("I/DataTest: battery-heard 4 level=78/100 status=3 plugged=0 health=2 voltage=3890 temperature=320 present=true technology=Li-ion", 0, 30) >= 0);
     /* Four in all, the first being the one every receiver gets when it registers, and nothing came anywhere but on the main thread. */
     CHECK(count_lines("I/DataTest: battery-heard ") == 4 && count_lines("I/DataTest: power-heard ") == (on_battery ? 2 : 1) && count_lines("OFF THE MAIN THREAD") == 0);
+}
+
+/*
+ * The phone's text messages and calls, given as the shell gives them (megler_sms_received, megler_call_logged; megler.Phone):
+ * a message from a number is SMS_RECEIVED, its sender, time and text read back from its PDU, and in content://sms/inbox; a
+ * longer one from a sender with a name, in Russian and holding the app-specific SMS token, comes in two parts and sends the
+ * token's PendingIntent; a missed call rings with its number, to the receiver and to TelephonyManager's listener, is idle
+ * again and is in content://call_log/calls. The numbers are made up.
+ */
+static void phone_events(void)
+{
+    const char *ready;
+    char token[16] = "", *text;
+    int line = wait_line("I/DataTest: phone-ready token=", 0, 30);
+    CHECK(line >= 0);
+    if (line < 0) return;
+    ready = strstr(line_at(line), "token=");
+    if (ready) mg_strlcpy(token, ready + 6, sizeof(token));
+    CHECK(strlen(token) == 11);
+    megler_sms_received("+15555550123", "Megler test code 123456", 1767225600000ll);
+    CHECK(wait_line("I/DataTest: sms-heard parts=1 from=+15555550123 time=1767225600000 body=Megler test code 123456", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: sms-inbox rows=1 body=Megler test code 123456 type=1", 0, 30) >= 0);
+    text = mg_sprintf("\xd0\x9a\xd0\xbe\xd0\xb4 \xd0\xb4\xd0\xbb\xd1\x8f \xd0\xb2\xd1\x85\xd0\xbe\xd0\xb4\xd0\xb0: 654321. "
+                      "A message longer than one part of seventy characters, as the code comes. %s", token);
+    megler_sms_received("Megler", text, 1767225660000ll);
+    CHECK(wait_line("I/DataTest: sms-heard parts=2 from=Megler time=1767225660000 body=", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: sms-token-heard parts=2 from=Megler", 0, 30) >= 0);
+    free(text);
+    megler_call_logged("+15555550199", 1767225720000ll, 3, 0);
+    CHECK(wait_line("I/DataTest: call-state RINGING number=+15555550199", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: call-listener 1 +15555550199", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: call-state IDLE number=+15555550199", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: call-log rows=1 number=+15555550199 type=3", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: call-listener 0 +15555550199", 0, 30) >= 0);
 }
 
 /*
@@ -2142,6 +2283,7 @@ static int run_data(void)
                                            : "I/DataTest: battery is level=100/100 status=5 plugged=1 health=2 voltage=4200 temperature=250 present=true technology=Li-ion capacity=100 charging=true",
                     0) >= 0);
     battery_changes(run == 2 && want == 2);
+    phone_events();
     bars_and_insets();
     media_session_keys();
     system_requests();

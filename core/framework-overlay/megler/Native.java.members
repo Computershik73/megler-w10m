@@ -4,6 +4,14 @@
     // android.os.BatteryManager, both overlaid here to ask this instead).
     /** level, scale, status, plugged, health, millivolts, tenths of a degree Celsius, present (1 or 0): the numbers of Android's ACTION_BATTERY_CHANGED. */
     public static native int[] battery();
+    /** The SIM as the shell said it (megler_set_cellular): ready (1/0), operator name, MCC+MNC, network type, roaming (1/0),
+     *  separated by tabs (core/src/drivers/mg_java.c). */
+    public static native String cellular();
+    /** The microphone (megler_microphone_host): asked for at `rate` Hz in 1 or 2 channels, true when it hears; stopped;
+     *  and what it heard, 16-bit samples, into `b` (blocking: until `n` are there) -- how many (core/src/drivers/mg_java.c). */
+    public static native boolean micStart(int rate, int channels);
+    public static native void micStop();
+    public static native int micRead(short[] b, int off, int n, boolean blocking);
     /** The battery's kind as Android names it, "Li-ion". */
     public static native String batteryTechnology();
     /**

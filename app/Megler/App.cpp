@@ -13,6 +13,7 @@
 
 #include "auto/AutoRun.h"
 #include "library/Library.h"
+#include "player/PhoneEvents.h"
 #include "player/PhoneState.h"
 #include "player/Session.h"
 #include "shell/AppPackage.h"
@@ -71,6 +72,8 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
             shellLog::write("app: resuming");
             if (shell_) shell_->resuming();
             session::setSuspended(false);
+            // A call takes the screen, and may have come and gone while Megler was suspended under it.
+            phoneEvents::check();
         });
         try {
             CoreApplication::Exiting([](auto&&, auto&&) { shellLog::write("app: exiting"); });

@@ -38,6 +38,9 @@
 // And a receiver registered with a Handler hears on that Handler's thread, as on Android; the others on the main thread.
 // GmsCore registers some of its own with a Handler of a thread of its own and makes blocking calls in onReceive, which it
 // refuses to make on the main thread: run there, one ended Play Store.
+// And a broadcast can be sent to the receivers that hold a permission, as Android's sendBroadcast(intent, receiverPermission)
+// sends it: megler.Phone's SMS_RECEIVED to those that hold RECEIVE_SMS, PHONE_STATE with the caller's number to those that hold
+// READ_CALL_LOG as well and without it to the others (a receiver's permissions are its package's, megler.Phone.holds).
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -108,7 +111,11 @@ public final class Broadcasts {
         return b;
     }
     public static void unregister(BroadcastReceiver r) { synchronized (sReceivers) { for (int i = sReceivers.size() - 1; i >= 0; i--) if (sReceivers.get(i)[0] == r) sReceivers.remove(i); } }
-    public static void send(Context from, Intent i) {
+    public static void send(Context from, Intent i) { send(from, i, null, null, false); }
+    /** To the receivers that hold `permission`. */
+    public static void send(Context from, Intent i, String permission) { send(from, i, permission, null, false); }
+    /** To the receivers that hold `permission` and, with `also` not null, that hold it as well (`holdsAlso`) or do not. */
+    public static void send(Context from, Intent i, String permission, String also, boolean holdsAlso) {
         // A broadcast for microG's package goes to microG's receivers (megler.MicroG), as Android sends it to that app.
         if (MicroG.send(from, i)) return;
         // And one of the implicit broadcasts Google's system configuration lets through (CHECKIN_COMPLETE) to its receivers too.
@@ -117,9 +124,9 @@ public final class Broadcasts {
         ArrayList<Object[]> targets = new ArrayList<>();
         /* Receivers registered at run time hear implicit intents only: one that names a component is for that component. */
         if (i.getComponent() == null)
-            synchronized (sReceivers) { for (Object[] e : sReceivers) if (e[1] != null && ((IntentFilter) e[1]).hasAction(i.getAction())) targets.add(e); }
+            synchronized (sReceivers) { for (Object[] e : sReceivers) if (e[1] != null && ((IntentFilter) e[1]).hasAction(i.getAction()) && allowed((Context) e[2], permission, also, holdsAlso)) targets.add(e); }
         for (Manifest.Component c : Manifest.match(Manifest.receivers, i)) {
-            if (!enabled(ctx, c)) continue;
+            if (!enabled(ctx, c) || !allowed(ctx, permission, also, holdsAlso)) continue;
             // A receiver assigned to another Android process needs that process's
             // Application. Running it in the main process gives it the wrong one
             // (Play Store's instant-app receiver casts it to its process-specific type).
@@ -136,7 +143,15 @@ public final class Broadcasts {
             try { targets.add(new Object[] { AppRunner.componentFactory().instantiateReceiver(AppRunner.classLoader(), c.name, i), null, ctx, null }); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
         }
         Handler main = new Handler(Looper.getMainLooper());
-        for (Object[] target : targets) (target[3] != null ? (Handler) target[3] : main).post(() -> ((BroadcastReceiver) target[0]).onReceive((Context) target[2], i));
+        // (Each receiver has the intent as a Parcel between processes would make it for it: the objects of another class scope
+        // among its extras made again by its own classes, megler.Processes.forLoader.)
+        for (Object[] target : targets) (target[3] != null ? (Handler) target[3] : main).post(() -> {
+            BroadcastReceiver r = (BroadcastReceiver) target[0];
+            r.onReceive((Context) target[2], Processes.forLoader(i, r.getClass().getClassLoader()));
+        });
+    }
+    private static boolean allowed(Context c, String permission, String also, boolean holdsAlso) {
+        return (permission == null || Phone.holds(c, permission)) && (also == null || Phone.holds(c, also) == holdsAlso);
     }
     /** Whether a receiver of the manifest is enabled: as the app last set it (PackageManager), or else as the manifest says. */
     private static boolean enabled(Context ctx, Manifest.Component c) {

@@ -1,16 +1,50 @@
 package android.telephony;
+/**
+ * The phone's telephony, as the shell says it (megler_set_cellular, megler.Native.cellular): a phone, always (GSM), with
+ * its SIM's state, operator, MCC and MNC, country, network type and roaming. Apps that see no phone type and no SIM take
+ * the phone for a tablet; before, they saw neither.
+ */
 public class TelephonyManager {
     public static final int PHONE_TYPE_NONE = 0, PHONE_TYPE_GSM = 1, SIM_STATE_UNKNOWN = 0, SIM_STATE_ABSENT = 1, SIM_STATE_READY = 5, NETWORK_TYPE_UNKNOWN = 0, NETWORK_TYPE_LTE = 13,
         CALL_STATE_IDLE = 0, CALL_STATE_RINGING = 1, CALL_STATE_OFFHOOK = 2, DATA_DISCONNECTED = 0, DATA_CONNECTED = 2;
     public static final String ACTION_PHONE_STATE_CHANGED = "android.intent.action.PHONE_STATE", EXTRA_STATE = "state";
-    public int getPhoneType() { return PHONE_TYPE_NONE; } public int getSimState() { return SIM_STATE_ABSENT; }
-    public String getNetworkCountryIso() { return java.util.Locale.getDefault().getCountry().toLowerCase(java.util.Locale.ROOT); }
-    public String getSimCountryIso() { return getNetworkCountryIso(); } public String getNetworkOperator() { return ""; } public String getNetworkOperatorName() { return ""; }
-    public String getSimOperator() { return ""; } public String getSimOperatorName() { return ""; } public int getNetworkType() { return NETWORK_TYPE_UNKNOWN; } public int getDataNetworkType() { return NETWORK_TYPE_UNKNOWN; }
-    public int getCallState() { return CALL_STATE_IDLE; } public int getDataState() { return DATA_DISCONNECTED; } public boolean isNetworkRoaming() { return false; }
+    /* The SIM as the shell said it: { ready, operator name, MCC+MNC, network type, roaming }. */
+    private static String[] sim() {
+        String line = null;
+        try { line = megler.Native.cellular(); } catch (Throwable t) {}
+        String[] f = line != null ? line.split("\t", -1) : new String[0];
+        return f.length >= 5 ? f : new String[] { "0", "", "", "0", "0" };
+    }
+    private static boolean simReady() { return "1".equals(sim()[0]); }
+    /* A country's ISO code from the MCC (its first three digits), for the countries the phone is likely in; else null. */
+    private static String countryOf(String mccMnc) {
+        if (mccMnc == null || mccMnc.length() < 3) return null;
+        switch (mccMnc.substring(0, 3)) {
+            case "250": return "ru"; case "255": return "ua"; case "257": return "by"; case "401": return "kz"; case "282": return "ge"; case "283": return "am";
+            case "400": return "az"; case "434": return "uz"; case "436": return "tj"; case "437": return "kg"; case "438": return "tm"; case "259": return "md";
+            case "246": return "lt"; case "247": return "lv"; case "248": return "ee"; case "260": return "pl"; case "262": return "de"; case "208": return "fr";
+            case "222": return "it"; case "214": return "es"; case "234": case "235": return "gb"; case "286": return "tr"; case "425": return "il";
+            case "310": case "311": case "312": case "313": case "314": case "315": case "316": return "us"; case "302": return "ca"; case "334": return "mx";
+            case "460": return "cn"; case "440": case "441": return "jp"; case "450": return "kr"; case "404": case "405": return "in"; case "724": return "br";
+            case "505": return "au"; case "655": return "za"; case "602": return "eg";
+            default: return null;
+        }
+    }
+    public int getPhoneType() { return PHONE_TYPE_GSM; } public int getSimState() { return simReady() ? SIM_STATE_READY : SIM_STATE_ABSENT; }
+    public String getNetworkCountryIso() {
+        String c = simReady() ? countryOf(sim()[2]) : null;
+        return c != null ? c : java.util.Locale.getDefault().getCountry().toLowerCase(java.util.Locale.ROOT);
+    }
+    public String getSimCountryIso() { return simReady() ? getNetworkCountryIso() : ""; }
+    public String getNetworkOperator() { return simReady() ? sim()[2] : ""; } public String getNetworkOperatorName() { return simReady() ? sim()[1] : ""; }
+    public String getSimOperator() { return simReady() ? sim()[2] : ""; } public String getSimOperatorName() { return simReady() ? sim()[1] : ""; }
+    public int getNetworkType() { try { return simReady() ? Integer.parseInt(sim()[3]) : NETWORK_TYPE_UNKNOWN; } catch (NumberFormatException e) { return NETWORK_TYPE_UNKNOWN; } }
+    public int getDataNetworkType() { return getNetworkType(); }
+    /* The call state megler.Phone last told (a call of the phone's history that came in rings, and is idle again). */
+    public int getCallState() { return megler.Phone.callState(); } public int getDataState() { return DATA_DISCONNECTED; } public boolean isNetworkRoaming() { return simReady() && "1".equals(sim()[4]); }
     public String getLine1Number() { return null; } public String getDeviceId() { return null; } public String getImei() { return null; } public String getSubscriberId() { return null; }
-    public boolean isVoiceCapable() { return false; } public boolean isSmsCapable() { return false; } public boolean hasCarrierPrivileges() { return false; }
-    public int getPhoneCount() { return 0; } public int getActiveModemCount() { return 0; } public void listen(PhoneStateListener l, int events) {}
+    public boolean isVoiceCapable() { return true; } public boolean isSmsCapable() { return true; } public boolean hasCarrierPrivileges() { return false; }
+    public int getPhoneCount() { return 1; } public int getActiveModemCount() { return 1; } public void listen(PhoneStateListener l, int events) { megler.Phone.listen(l, null, (events & PhoneStateListener.LISTEN_CALL_STATE) != 0); }
     public TelephonyManager createForSubscriptionId(int id) { return this; }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
     public TelephonyManager() {}
@@ -200,9 +234,9 @@ public class TelephonyManager {
     public static final java.lang.String EXTRA_SPECIFIC_CARRIER_ID = "android.telephony.extra.SPECIFIC_CARRIER_ID";
     public static final java.lang.String EXTRA_SPECIFIC_CARRIER_NAME = "android.telephony.extra.SPECIFIC_CARRIER_NAME";
     public static final java.lang.String EXTRA_SPN = "android.telephony.extra.SPN";
-    public static java.lang.String EXTRA_STATE_IDLE;
-    public static java.lang.String EXTRA_STATE_OFFHOOK;
-    public static java.lang.String EXTRA_STATE_RINGING;
+    public static final java.lang.String EXTRA_STATE_IDLE = "IDLE";
+    public static final java.lang.String EXTRA_STATE_OFFHOOK = "OFFHOOK";
+    public static final java.lang.String EXTRA_STATE_RINGING = "RINGING";
     public static final java.lang.String EXTRA_SUBSCRIPTION_ID = "android.telephony.extra.SUBSCRIPTION_ID";
     public static final java.lang.String EXTRA_VISUAL_VOICEMAIL_ENABLED_BY_USER_BOOL = "android.telephony.extra.VISUAL_VOICEMAIL_ENABLED_BY_USER_BOOL";
     public static final java.lang.String EXTRA_VOICEMAIL_NUMBER = "android.telephony.extra.VOICEMAIL_NUMBER";
@@ -502,8 +536,8 @@ public class TelephonyManager {
     public java.lang.String getBasebandVersionForPhone(int p0) { return null; }
     public int getCallComposerStatus() { return (meglerFill.get("CallComposerStatus") instanceof Integer ? (Integer) meglerFill.get("CallComposerStatus") : 0); }
     public void getCallForwarding(int p0, java.util.concurrent.Executor p1, android.telephony.TelephonyManager.CallForwardingInfoCallback p2) {}
-    public int getCallState(int p0) { return 0; }
-    public int getCallStateForSubscription() { return 0; }
+    public int getCallState(int p0) { return megler.Phone.callState(); }
+    public int getCallStateForSubscription() { return megler.Phone.callState(); }
     public void getCallWaitingStatus(java.util.concurrent.Executor p0, java.util.function.Consumer p1) {}
     public int getCardIdForDefaultEuicc() { return 0; }
     public android.os.PersistableBundle getCarrierConfig() { return null; }
@@ -681,7 +715,7 @@ public class TelephonyManager {
     public boolean handlePinMmi(java.lang.String p0) { return false; }
     public boolean handlePinMmiForSubscriber(int p0, java.lang.String p1) { return false; }
     public boolean hasCarrierPrivileges(int p0) { return false; }
-    public boolean hasIccCard() { return false; }
+    public boolean hasIccCard() { return simReady(); }
     public boolean hasIccCard(int p0) { return false; }
     public boolean iccCloseLogicalChannel(int p0) { return false; }
     public boolean iccCloseLogicalChannel(int p0, int p1) { return false; }
@@ -772,8 +806,8 @@ public class TelephonyManager {
     public boolean rebootRadio() { return false; }
     public void refreshUiccProfile() {}
     public void registerCarrierPrivilegesCallback(int p0, java.util.concurrent.Executor p1, android.telephony.TelephonyManager.CarrierPrivilegesCallback p2) {}
-    public void registerTelephonyCallback(int p0, java.util.concurrent.Executor p1, android.telephony.TelephonyCallback p2) {}
-    public void registerTelephonyCallback(java.util.concurrent.Executor p0, android.telephony.TelephonyCallback p1) {}
+    public void registerTelephonyCallback(int p0, java.util.concurrent.Executor p1, android.telephony.TelephonyCallback p2) { registerTelephonyCallback(p1, p2); }
+    public void registerTelephonyCallback(java.util.concurrent.Executor p0, android.telephony.TelephonyCallback p1) { if (p1 instanceof TelephonyCallback.CallStateListener) megler.Phone.listen(p1, p0, true); }
     public void reportDefaultNetworkStatus(boolean p0) {}
     public void requestCellInfoUpdate(android.os.WorkSource p0, java.util.concurrent.Executor p1, android.telephony.TelephonyManager.CellInfoCallback p2) {}
     public void requestCellInfoUpdate(java.util.concurrent.Executor p0, android.telephony.TelephonyManager.CellInfoCallback p1) {}
@@ -884,7 +918,7 @@ public class TelephonyManager {
     public boolean switchSlots(int[] p0) { return false; }
     public void toggleRadioOnOff() {}
     public void unregisterCarrierPrivilegesCallback(android.telephony.TelephonyManager.CarrierPrivilegesCallback p0) {}
-    public void unregisterTelephonyCallback(android.telephony.TelephonyCallback p0) {}
+    public void unregisterTelephonyCallback(android.telephony.TelephonyCallback p0) { megler.Phone.listen(p0, null, false); }
     public void updateAvailableNetworks(java.util.List p0, java.util.concurrent.Executor p1, java.util.function.Consumer p2) {}
     public void updateOtaEmergencyNumberDbFilePath(android.os.ParcelFileDescriptor p0) {}
     public void updateServiceLocation() {}

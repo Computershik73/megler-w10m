@@ -305,6 +305,7 @@ public class Main extends Activity {
         helper.close();
         storage(run);
         battery();
+        phoneEvents();
         connectivity();
         dnsServers();
         systemLibs();
@@ -1073,6 +1074,59 @@ public class Main extends Activity {
                 else Log.i("DataTest", "power-heard" + where + " " + intent.getAction());
             }
         }, news);
+    }
+
+    /**
+     * The phone's text messages and calls, which the test's C side gives the app as the shell would (megler_sms_received,
+     * megler_call_logged) once this says it is ready: SMS_RECEIVED read with getMessagesFromIntent (sender, time, the text of
+     * all its parts) and the message in content://sms/inbox; the PendingIntent of an app-specific SMS token, sent by the
+     * message that holds the token; PHONE_STATE RINGING with the caller's number and then IDLE, TelephonyManager's listener the
+     * same, and the call in content://call_log/calls. Each is a line; the C side checks them.
+     */
+    private void phoneEvents() {
+        registerReceiver(new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, android.content.Intent intent) {
+                android.telephony.SmsMessage[] parts = android.provider.Telephony.Sms.Intents.getMessagesFromIntent(intent);
+                StringBuilder body = new StringBuilder();
+                for (android.telephony.SmsMessage m : parts) body.append(m.getMessageBody());
+                String from = parts[0].getOriginatingAddress();
+                Log.i("DataTest", "sms-heard parts=" + parts.length + " from=" + from + " time=" + parts[0].getTimestampMillis() + " body=" + body);
+                try (Cursor c = getContentResolver().query(android.provider.Telephony.Sms.Inbox.CONTENT_URI, new String[] { "address", "body", "type" },
+                                                           "address=?", new String[] { from }, null)) {
+                    String got = c != null && c.moveToFirst() ? c.getString(1) + " type=" + c.getInt(2) : "none";
+                    Log.i("DataTest", "sms-inbox rows=" + (c == null ? -1 : c.getCount()) + " body=" + got);
+                }
+            }
+        }, new android.content.IntentFilter("android.provider.Telephony.SMS_RECEIVED"));
+        registerReceiver(new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, android.content.Intent intent) {
+                android.telephony.SmsMessage[] parts = android.provider.Telephony.Sms.Intents.getMessagesFromIntent(intent);
+                Log.i("DataTest", "sms-token-heard parts=" + (parts == null ? 0 : parts.length) + " from=" + (parts == null ? "" : parts[0].getOriginatingAddress()));
+            }
+        }, new android.content.IntentFilter("megler.test.SMS_TOKEN"));
+        android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(this, 7, new android.content.Intent("megler.test.SMS_TOKEN").setPackage(getPackageName()), 0);
+        String token = android.telephony.SmsManager.getDefault().createAppSpecificSmsToken(pi);
+        registerReceiver(new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, android.content.Intent intent) {
+                String state = intent.getStringExtra(android.telephony.TelephonyManager.EXTRA_STATE);
+                Log.i("DataTest", "call-state " + state + " number=" + intent.getStringExtra(android.telephony.TelephonyManager.EXTRA_INCOMING_NUMBER));
+                if (!android.telephony.TelephonyManager.EXTRA_STATE_IDLE.equals(state)) return;
+                try (Cursor c = getContentResolver().query(android.provider.CallLog.Calls.CONTENT_URI, new String[] { "number", "type", "duration" },
+                                                           "type=?", new String[] { "3" }, "date DESC")) {
+                    String got = c != null && c.moveToFirst() ? c.getString(0) + " type=" + c.getInt(1) : "none";
+                    Log.i("DataTest", "call-log rows=" + (c == null ? -1 : c.getCount()) + " number=" + got);
+                }
+            }
+        }, new android.content.IntentFilter(android.telephony.TelephonyManager.ACTION_PHONE_STATE_CHANGED));
+        android.telephony.TelephonyManager tm = (android.telephony.TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+        tm.listen(new android.telephony.PhoneStateListener() {
+            @Override
+            public void onCallStateChanged(int state, String number) { Log.i("DataTest", "call-listener " + state + " " + number); }
+        }, android.telephony.PhoneStateListener.LISTEN_CALL_STATE);
+        Log.i("DataTest", "phone-ready token=" + token);
     }
 
     /**

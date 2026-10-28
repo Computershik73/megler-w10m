@@ -1,5 +1,6 @@
-// What the phone is at this moment, for an app to be told of: its time zone
-// and its battery (megler_set_timezone and megler_set_battery, core/include/megler.h).
+// What the phone is at this moment, for an app to be told of: its time zone,
+// its battery and its SIM (megler_set_timezone, megler_set_battery and
+// megler_set_cellular, core/include/megler.h).
 //
 // Windows names its time zones as tzdata does (Windows.Globalization's
 // Calendar), which is the name Android wants. Of the battery it says how full

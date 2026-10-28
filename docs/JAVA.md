@@ -898,6 +898,25 @@ they were. The core's host test makes a folder, a file of more than 300
 characters, reads it through a path with `.` and `..` in it, lists, renames
 and removes them.
 
+### The SIM
+
+An app is told it runs on a phone: `TelephonyManager.getPhoneType()` is GSM,
+it is voice and SMS capable with one modem, and `hasSystemFeature` has
+`android.hardware.telephony` (and `.gsm`). Apps that saw no phone type and no
+SIM took the phone for a tablet. The SIM is the shell's to say
+(`megler_set_cellular`, megler.h; `player/PhoneState.cpp`), from the cellular
+connection profile Windows keeps for it: the home operator's MCC and MNC
+(`HomeProviderId`), the profile's name for the operator's, the data class for
+the network's type (LTE, HSPA, UMTS, EDGE, GPRS), the registration for
+roaming. It is said before each app and whenever the network changes. With a
+SIM, `getSimState` is ready, `getSimOperator` and `getNetworkOperator` the MCC
+and MNC, the operator names the profile's, the countries the MCC's (for the
+countries the phone is likely in, else the phone's region), `getNetworkType`
+the data class's. With none, the SIM is absent and the countries are the
+region's, as before. `megler.Native.cellular` hands it to Java as one line.
+The data app's step `telephony` reads it back from the harness's SIM, one of
+the US in the first run and of Russia in the second.
+
 ### The battery (both hosts; the app under qemu-arm)
 
 The core answers for the battery in one place, `mg_battery_read`
@@ -1030,10 +1049,11 @@ Android that property comes from the runtime's command line; here
 properties. (Not `System.specialProperties`: where libopenjdk.so runs, that
 native is the library's and the runtime's fallback is never called -- the
 first attempt put it there, and the apps still had en-US.) The framework's
-`LocaleList`, the resources' configuration and `TelephonyManager`'s network
-and SIM country follow from the default locale: an app that takes the SIM's
-country as the default for a phone number gets the phone's region (urent
-does, and had "us"). The properties `persist.sys.locale` and `ro.product.locale`
+`LocaleList` and the resources' configuration follow from the default
+locale, and so do `TelephonyManager`'s network and SIM country when there is
+no SIM: an app that takes the SIM's country as the default for a phone number
+gets the phone's region (urent does, and had "us"). With a SIM they are its
+country, from its MCC (below, "The SIM"). The properties `persist.sys.locale` and `ro.product.locale`
 say the tag, a native app's `AConfiguration` has its language and region,
 and the JNI world's `Locale` and Unity's tag are the same.
 
@@ -3006,6 +3026,57 @@ Once the keyboard is put away, each dialog is back where it was.
 **Not there:** composing text (a keyboard that composes sends each piece when
 it is final), the selection handles and the copy and paste bar (the
 framework's), and telling the shell where the cursor is on the screen.
+
+### The phone's text messages and calls
+
+What comes to the phone while an app runs is the app's as Android gives it,
+nothing older (`megler_sms_received`, `megler_call_logged` in `megler.h`; the
+framework's `megler.Phone`; the shell's `player/PhoneEvents.cpp`). WhatsApp
+confirms a number by a message, which Google Play services' SMS Retriever
+reads through `SMS_RECEIVED`, or by a flash call, a missed call whose number
+is the code, which its `FlashCallReceiver` hears as `PHONE_STATE` RINGING with
+the caller's number. Under Megler neither came (package 482).
+
+- **The shell** watches Windows' chat message store (the `chat` capability):
+  a message the store says was made, incoming and after the app's start, is
+  told with its sender, text and time. Windows says when a call's state changes
+  but not who calls, so when one is over the call history is read
+  (`phoneCallHistoryPublic`), a moment later and once more, and the calls that
+  began since the app started are told, oldest first. Both are read again when
+  Megler resumes, since a call takes the screen and Megler may be suspended
+  under it.
+- **The core** queues them for the main thread (`EV_PHONE`, `Native.pollPhone`)
+  and writes in the log only that there was one, never a number or a text.
+- **A message** becomes SMS-DELIVER PDUs (3GPP TS 23.040: the sender as a
+  number or GSM 7-bit letters, the time, the text in UCS-2, in parts of 67
+  characters with a concatenation header past 70) in `SMS_RECEIVED` with
+  "format" 3gpp, to the receivers that hold `RECEIVE_SMS`; an app-specific SMS
+  token of `SmsManager` (`createAppSpecificSmsToken`) in its text sends that
+  token's PendingIntent, once; and it is in `content://sms/inbox` for an app
+  that holds `READ_SMS`. `SmsMessage.createFromPdu` reads such a PDU (the
+  overlay's: the stub's was empty), and `Telephony.Sms.Intents.
+  getMessagesFromIntent` the intent's.
+- **A call** is in `content://call_log/calls` for an app that holds
+  `READ_CALL_LOG`; one that came in rings: `PHONE_STATE` RINGING, OFFHOOK when
+  it was answered, then IDLE, with the number to the receivers that hold
+  `READ_CALL_LOG` and without it to the others that hold `READ_PHONE_STATE`, as
+  Android 9 sends it, and `TelephonyManager`'s listeners (`listen`,
+  `registerTelephonyCallback` with a `CallStateListener`) hear the same.
+  `TelephonyManager.EXTRA_STATE_*` were null in the framework and are Android's
+  strings now.
+- Permissions are the app's manifest's (Megler grants what it asks, by
+  `uses-permission` and by `uses-permission-sdk-23`, which Android 6 and later
+  grant: WhatsApp asks for `READ_CALL_LOG` so, and was given `PHONE_STATE`
+  without the number until `megler.Manifest` read that tag too, package 483);
+  Google Play services, which the app hosts, holds them as on a phone. The store is
+  an SQLite database in memory with Android's columns, so an app's projection,
+  selection and order work as they would.
+
+The data app's `phoneEvents` registers for all of it and the test's C side
+gives it a message from a number, a longer one from a sender with a name in
+Russian that holds the token, and a missed call: the sender, time and text read
+back from the PDUs, the inbox row, the token's PendingIntent, RINGING with the
+number to the receiver and the listener, IDLE, and the call log's row.
 
 ### The phone's accent and theme
 
@@ -5007,6 +5078,27 @@ test apps are that file's layouts, styles and nine-patches.
 | `megler.Web` | `WebView` | (done) not the shell's: Android's System WebView, Chromium, whose library runs as the app's code and draws in software ("The WebView") |
 | `megler.Sensors` | sensors | `Windows.Devices.Sensors` |
 | the keyboard, clipboard, sharing, URLs, orientation, insets | `megler.Native`'s calls to the host | calls of the shell's that `megler.h` does not have yet |
+
+### The microphone
+
+`AudioRecord` hears the phone's microphone (`megler_microphone_host`,
+megler.h; `player/MicrophoneHost.cpp`). `startRecording` asks the shell for
+it at the record's rate and channels (`megler.Native.micStart`). Windows asks
+the user the first time: MediaCapture, for audio alone, on the UI thread; the
+package declares the microphone capability. Then an AudioGraph runs at that
+rate and those channels, which the graph resamples the microphone to. Each of
+its quanta, 32-bit float, is made 16-bit and pushed to the core
+(`megler_microphone_push`) into a ring of two seconds, which `read` takes from
+(`micRead`): 16-bit as it is, 8-bit or float made from it, into arrays or a
+`ByteBuffer`. A blocking read waits for what it asked for; after a second of
+nothing it is given silence, so that the app does not hang. `stop` and
+`release` let the microphone go (`micStop`). With no microphone, or after the
+user's no, a record is silence at the microphone's pace, as before.
+`hasSystemFeature` has `android.hardware.microphone`. `MediaRecorder`, which
+encodes as it records (AAC, AMR), is not done yet. The data app's step
+`microphone` records from the harness's microphone, which hears a ramp, and
+reads it back; the harness checks it was asked for at 16000 Hz, mono, and let
+go.
 
 ### Sound from Java
 

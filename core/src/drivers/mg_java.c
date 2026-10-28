@@ -54,9 +54,10 @@
 #define MAX_SPLITS 10
 
 /* The phases of an event as megler.AppRunner.deliver reads them. */
-enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8 };
+enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8, EV_PHONE = 10 };
 
 #define MAX_TEXT 512
+#define MAX_PHONE 64
 
 static struct {
     const megler_run_config *config;
@@ -97,6 +98,12 @@ static struct {
      */
     char *text[MAX_TEXT];
     int ntext;
+    /*
+     * The phone's text messages and calls the app has not taken yet, oldest first (megler_sms_received, megler_call_logged):
+     * "s<ms>\n<from>\n<text>" and "c<ms>\n<type>\n<seconds>\n<number>", as megler.Phone reads them. One EV_PHONE event each.
+     */
+    char *phone[MAX_PHONE];
+    int nphone;
     volatile i32 keyboard_height;      /* pixels of the surface's bottom the keyboard covers */
     volatile i32 enter_newline;        /* the field the keyboard was last shown for takes Enter as a new line */
     /* The battery as the app was last told of it by a broadcast (at the start: as it was then), and the core's count of its changes at that time. */
@@ -627,6 +634,131 @@ N(Native_battery)
     c->ret.l = a;
 }
 
+/*
+ * The microphone (megler_microphone_host): what an AudioRecord reads. The shell pushes what it hears into a ring of two
+ * seconds (megler_microphone_push); micRead takes it out, waiting for it when asked to block. When nothing comes for a
+ * second (the microphone gone), a blocking read is given silence, so that the app does not hang. One recording at a time,
+ * as on Android: a second start takes the microphone over.
+ */
+static struct {
+    mg_lock lock;
+    mg_cond more;
+    bool inited, on;
+    i16 *ring;
+    u32 cap, head, count;   /* samples */
+    int channels;
+} MIC = { MG_LOCK_INIT };
+
+static void mic_init(void)
+{
+    static mg_lock once = MG_LOCK_INIT;
+    mg_lock_acquire(&once);
+    if (!MIC.inited) {
+        mg_cond_init(&MIC.more);
+        MIC.inited = true;
+    }
+    mg_lock_release(&once);
+}
+
+void megler_microphone_push(const int16_t *samples, int frames)
+{
+    u32 n, i;
+    if (!MIC.inited || frames <= 0 || !samples) return;
+    mg_lock_acquire(&MIC.lock);
+    if (MIC.on && MIC.ring) {
+        n = (u32)frames * (u32)MIC.channels;
+        for (i = 0; i < n; i++) {
+            MIC.ring[(MIC.head + MIC.count) % MIC.cap] = samples[i];
+            if (MIC.count < MIC.cap) MIC.count++;
+            else MIC.head = (MIC.head + 1) % MIC.cap;   /* full: the oldest goes */
+        }
+        mg_cond_broadcast(&MIC.more);
+    }
+    mg_lock_release(&MIC.lock);
+}
+
+/* micStart(rate, channels): the microphone asked of the shell; true when it hears. */
+N(Native_micStart)
+{
+    const megler_microphone_host *h = &J.config->microphone;
+    int rate = c->args[0].i, channels = c->args[1].i == 2 ? 2 : 1;
+    bool ok;
+    mic_init();
+    if (rate < 4000 || rate > 192000) rate = 44100;
+    mg_lock_acquire(&MIC.lock);
+    free(MIC.ring);
+    MIC.cap = (u32)rate * (u32)channels * 2u;
+    MIC.ring = (i16 *)mg_alloc(sizeof(i16) * MIC.cap);
+    MIC.channels = channels;
+    MIC.head = MIC.count = 0;
+    MIC.on = true;
+    mg_lock_release(&MIC.lock);
+    ok = h->start ? h->start(h->user, rate, channels) : false;
+    mg_info("java: the app records at %d Hz in %d channel%s: %s", rate, channels, channels == 2 ? "s" : "",
+            ok ? "the microphone hears" : h->start ? "the microphone was refused; the app reads silence" : "no microphone here; the app reads silence");
+    if (!ok) {
+        mg_lock_acquire(&MIC.lock);
+        MIC.on = false;
+        mg_lock_release(&MIC.lock);
+    }
+    c->ret.z = ok;
+}
+
+/* micStop(): the microphone no longer wanted. */
+N(Native_micStop)
+{
+    const megler_microphone_host *h = &J.config->microphone;
+    bool was;
+    (void)c;
+    mic_init();
+    mg_lock_acquire(&MIC.lock);
+    was = MIC.on;
+    MIC.on = false;
+    mg_cond_broadcast(&MIC.more);
+    mg_lock_release(&MIC.lock);
+    if (was && h->stop) h->stop(h->user);
+}
+
+/* micRead(short[] buffer, offset, count, blocking): samples heard, into the buffer; how many. */
+N(Native_micRead)
+{
+    mg_jobj *a = c->args[0].l;
+    i32 off = c->args[1].i, want = c->args[2].i, got = 0;
+    bool blocking = c->args[3].z != 0;
+    i16 *out;
+    c->ret.i = 0;
+    if (!a || off < 0 || want <= 0 || (u32)off + (u32)want > a->u.arr.len) return;
+    out = (i16 *)a->u.arr.data + off;
+    mic_init();
+    mg_lock_acquire(&MIC.lock);
+    while (got < want) {
+        while (MIC.count > 0 && got < want) {
+            out[got++] = MIC.ring[MIC.head];
+            MIC.head = (MIC.head + 1) % MIC.cap;
+            MIC.count--;
+        }
+        if (got >= want || !blocking || !MIC.on) break;
+        if (!mg_cond_wait_ns(&MIC.more, &MIC.lock, 1000000000ull) && MIC.count == 0) {
+            /* Nothing for a second: silence for the rest, as a microphone that hears nothing gives. */
+            while (got < want) out[got++] = 0;
+        }
+    }
+    mg_lock_release(&MIC.lock);
+    c->ret.i = got;
+}
+
+/* cellular(): the SIM as the core has it (mg_cellular_read): "1" or "0" for a SIM ready, the operator's name, MCC and MNC,
+   the network's type and "1" or "0" for roaming, separated by tabs. */
+N(Native_cellular)
+{
+    mg_cellular s;
+    char *line;
+    mg_cellular_read(&s);
+    line = mg_sprintf("%d\t%s\t%s\t%d\t%d", s.sim_ready ? 1 : 0, s.operator_name, s.mcc_mnc, s.network_type, s.roaming ? 1 : 0);
+    c->ret.l = mg_dvm_new_string(line);
+    free(line);
+}
+
 N(Native_batteryTechnology)
 {
     mg_battery b;
@@ -724,6 +856,25 @@ N(Native_pollText)
     c->ret.l = a;
 }
 
+/* pollPhone(): the oldest of the phone's messages and calls the app has not taken (J.phone), as a String[1], or null. */
+N(Native_pollPhone)
+{
+    char *item = NULL;
+    mg_jobj *a;
+    mg_lock_acquire(&J.lock);
+    if (J.nphone) {
+        item = J.phone[0];
+        memmove(&J.phone[0], &J.phone[1], sizeof(char *) * (size_t)--J.nphone);
+    }
+    mg_lock_release(&J.lock);
+    c->ret.l = NULL;
+    if (!item) return;
+    a = mg_dvm_new_array("[Ljava/lang/String;", 1);
+    if (a) a->u.oarr.v[0] = mg_dvm_new_string(item);
+    free(item);
+    c->ret.l = a;
+}
+
 /* mediaSessionState(state, actions): the app's active media session's PlaybackState (megler.h, megler_media_session_host). */
 N(Native_mediaSessionState)
 {
@@ -787,6 +938,15 @@ N(Native_launchApp)
     c->ret.z = s->launch_app ? s->launch_app(s->user, package, activity && activity[0] ? activity : NULL) : false;
 }
 
+/* uninstallApp(package): another app the phone has, to uninstall; true when the shell asks the user (megler_system_host). */
+N(Native_uninstallApp)
+{
+    const megler_system_host *s = &J.config->system;
+    const char *package = text_of(c->args[0].l);
+    mg_info("java: the app asks to uninstall %s%s", package, s->uninstall_app ? "" : " (nothing here to uninstall it with)");
+    c->ret.z = s->uninstall_app ? s->uninstall_app(s->user, package) : false;
+}
+
 /* appsList(): apps.txt of the apps the phone has (megler_run_config.apps_dir), or null when there is none. */
 N(Native_appsList)
 {
@@ -847,6 +1007,14 @@ N(Native_appResIcon)
 {
     const char *package = text_of(c->args[0].l);
     c->ret.l = apps_package_ok(package) ? apps_file(mg_sprintf("%s/%s/%08x.png", J.config->apps_dir, package, (unsigned)c->args[1].i)) : NULL;
+}
+
+/* appInstall(name): what Megler last wrote of the APK the app handed it under `name` (megler.Installs: <package>.apk or
+   <package>.apks), the bytes of installs/<name>.txt in the same folder; null when it has written nothing. */
+N(Native_appInstall)
+{
+    const char *name = text_of(c->args[0].l);
+    c->ret.l = apps_package_ok(name) ? apps_file(mg_sprintf("%s/installs/%s.txt", J.config->apps_dir, name)) : NULL;
 }
 N(Native_setOrientation) { mg_note_once("java: the app asked for orientation %d; the surface stays as the shell made it", (int)c->args[0].i); }
 
@@ -913,6 +1081,10 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "externalDir", NULL, Native_externalDir },
     { "megler/Native", "battery", NULL, Native_battery },
     { "megler/Native", "batteryTechnology", NULL, Native_batteryTechnology },
+    { "megler/Native", "cellular", NULL, Native_cellular },
+    { "megler/Native", "micStart", NULL, Native_micStart },
+    { "megler/Native", "micStop", NULL, Native_micStop },
+    { "megler/Native", "micRead", NULL, Native_micRead },
     { "megler/Native", "packageName", NULL, Native_packageName },
     { "megler/Native", "screenWidth", NULL, Native_screenWidth },
     { "megler/Native", "screenHeight", NULL, Native_screenHeight },
@@ -920,15 +1092,18 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "setContentView", NULL, Native_nothing },
     { "megler/Native", "pollInput", NULL, Native_pollInput },
     { "megler/Native", "pollText", NULL, Native_pollText },
+    { "megler/Native", "pollPhone", NULL, Native_pollPhone },
     { "megler/Native", "showKeyboard", NULL, Native_showKeyboard },
     { "megler/Native", "systemBars", NULL, Native_systemBars },
     { "megler/Native", "mediaSessionState", NULL, Native_mediaSessionState },
     { "megler/Native", "installApk", NULL, Native_installApk },
     { "megler/Native", "launchApp", NULL, Native_launchApp },
+    { "megler/Native", "uninstallApp", NULL, Native_uninstallApp },
     { "megler/Native", "appsList", NULL, Native_appsList },
     { "megler/Native", "appIcon", NULL, Native_appIcon },
     { "megler/Native", "appActivities", NULL, Native_appActivities },
     { "megler/Native", "appResIcon", NULL, Native_appResIcon },
+    { "megler/Native", "appInstall", NULL, Native_appInstall },
     { "megler/Native", "mediaSessionMetadata", NULL, Native_mediaSessionMetadata },
     { "megler/Native", "setClipboard", NULL, Native_setClipboard },
     { "megler/Native", "getClipboard", NULL, Native_getClipboard },
@@ -1762,6 +1937,52 @@ static void push_text(const char *kind, const char *utf8)
 void mg_java_text(const char *utf8)
 {
     if (utf8 && utf8[0]) push_text("t", utf8);
+}
+
+/* A message or a call for megler.Phone: queued with its event, or dropped (no Java app, or it takes none). What it says never goes in the log. */
+static void push_phone(char *item, const char *what)
+{
+    bool queued = false;
+    if (!java_runs()) {
+        mg_info("java: %s, while no Java app runs: not given to an app", what);
+        free(item);
+        return;
+    }
+    mg_lock_acquire(&J.lock);
+    if (J.nphone < MAX_PHONE) {
+        J.phone[J.nphone++] = item;
+        queued = true;
+    }
+    mg_lock_release(&J.lock);
+    mg_info("java: %s%s", what, queued ? ", for the app" : ", and the app has not taken the ones before: dropped");
+    if (queued) push_event(EV_PHONE, 0, 0, 0);
+    else free(item);
+}
+
+/* A line of an item may not hold the line end that ends it. */
+static char *one_line(const char *s)
+{
+    char *d = mg_strdup(s ? s : ""), *p;
+    for (p = d; *p; p++)
+        if (*p == '\n' || *p == '\r') *p = ' ';
+    return d;
+}
+
+void mg_java_phone_sms(const char *from, const char *body, i64 time_ms)
+{
+    char *who = one_line(from);
+    push_phone(mg_sprintf("s%lld\n%s\n%s", (long long)time_ms, who, body ? body : ""), "the phone has a text message");
+    free(who);
+}
+
+void mg_java_phone_call(const char *number, i64 time_ms, int type, int duration_s)
+{
+    static const char *const kinds[] = { "a call", "an incoming call", "an outgoing call", "a missed call", "a call", "a rejected call" };
+    char *who = one_line(number), *what;
+    what = mg_sprintf("the phone's history has %s", kinds[type >= 0 && type <= 5 ? type : 0]);
+    push_phone(mg_sprintf("c%lld\n%d\n%d\n%s", (long long)time_ms, type, duration_s < 0 ? 0 : duration_s, who), what);
+    free(what);
+    free(who);
 }
 
 void mg_java_text_key(int key)
