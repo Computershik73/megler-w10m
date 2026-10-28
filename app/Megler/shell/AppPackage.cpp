@@ -520,7 +520,14 @@ PortalResult installThroughPortal(const Made& made, const std::function<void(con
         Portal portal;
         progress("Asking the Device Portal…");
         if (std::string why = portal.open(); !why.empty()) return {false, why};
-        shellLog::write("app package: the Device Portal's cookies: " + (portal.cookies.empty() ? std::string("none") : narrow(portal.cookies)) +
+        // (The cookies' names alone: their values are the portal's session, which a log sent on is no place for.)
+        std::string names;
+        for (size_t at = 0; at < portal.cookies.size();) {
+            const size_t end = portal.cookies.find(L"; ", at), eq = portal.cookies.find(L'=', at);
+            names += (names.empty() ? "" : ", ") + narrow(portal.cookies.substr(at, (eq < end ? eq : end) - at));
+            at = end == std::wstring::npos ? portal.cookies.size() : end + 2;
+        }
+        shellLog::write("app package: the Device Portal's cookies: " + (names.empty() ? std::string("none") : names) +
                         (portal.token.empty() ? ", no CSRF token" : ", a CSRF token"));
 
         HttpMultipartFormDataContent form;
@@ -800,6 +807,54 @@ void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
         shellLog::write("app package: " + narrow(path) + (ok ? " handed to Windows" : " not taken by Windows"));
         if (done) done(ok);
     }(path, std::move(done));
+}
+
+void installCopiedUpdate() {
+    if (isSingleApp()) return;
+    std::thread([] {
+        try {
+            auto item = KnownFolders::PicturesLibrary().TryGetItemAsync(L"Megler").get();
+            auto folder = item ? item.try_as<StorageFolder>() : nullptr;
+            if (!folder) return;
+            // "Megler_0.1.0.476_ARM.appx": the newest there.
+            std::string best;
+            StorageFile bestFile{nullptr};
+            for (auto const& file : folder.GetFilesAsync().get()) {
+                const std::string name = narrow(file.Name());
+                const std::string head = "Megler_", tail = "_ARM.appx";
+                if (name.size() <= head.size() + tail.size() || name.compare(0, head.size(), head) || name.compare(name.size() - tail.size(), tail.size(), tail)) continue;
+                const std::string version = name.substr(head.size(), name.size() - head.size() - tail.size());
+                unsigned v[4];
+                if (sscanf_s(version.c_str(), "%u.%u.%u.%u", &v[0], &v[1], &v[2], &v[3]) != 4) continue;
+                if (best.empty() || olderVersion(best, version)) {
+                    best = version;
+                    bestFile = file;
+                }
+            }
+            if (best.empty() || !olderVersion(versionString(), best)) return;
+            const std::wstring tried = platform::localStateDirectory() + L"\\update-tried-" + widen(best);
+            if (files::exists(tried)) {
+                shellLog::write("update: Megler " + best + " in Pictures\\Megler was tried once already (" + narrow(tried) + ")");
+                return;
+            }
+            auto certificate = folder.TryGetItemAsync(L"Megler.cer").get();
+            if (!certificate) {
+                shellLog::write("update: Megler " + best + " is in Pictures\\Megler without Megler.cer beside it: not installed");
+                return;
+            }
+            files::write(tried, "Megler " + versionString() + " installs " + best + "\r\n");
+            Made made;
+            made.appx = std::wstring(bestFile.Path());
+            made.certificate = std::wstring(certificate.Path());
+            made.identity = "Megler " + best;
+            shellLog::write("update: Megler " + best + " found in Pictures\\Megler (this is " + versionString() +
+                            "): installed through the Device Portal, which closes this Megler");
+            const PortalResult result = installThroughPortal(made, [](const std::string& step) { shellLog::write("update: " + step); });
+            shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
+        } catch (hresult_error const& e) {
+            shellLog::write(format("update: Pictures\\Megler could not be read: 0x%08x ", unsigned(e.code())) + narrow(e.message()));
+        }
+    }).detach();
 }
 
 }  // namespace megler::app::appPackage

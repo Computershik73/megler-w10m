@@ -451,7 +451,10 @@ void AppShell::updateDisplayRequest() {
     // dims and locks after its timeout otherwise, and a locked phone
     // suspends us.
     const session::State state = session::snapshot().state;
-    const bool wanted = state == session::State::starting || state == session::State::running || checks::running();
+    // And always, while Megler is in front, under the flag keep-screen-on (LocalState\flags): a phone left waiting for the
+    // next package, which is copied to it and installed from it, or for a test, is not to lock meanwhile.
+    const bool wanted = state == session::State::starting || state == session::State::running || checks::running() ||
+                        files::exists(platform::localStateDirectory() + L"\\flags\\keep-screen-on");
     if (wanted == displayRequestActive_) return;
     try {
         if (!displayRequest_) displayRequest_ = winrt::Windows::System::Display::DisplayRequest();

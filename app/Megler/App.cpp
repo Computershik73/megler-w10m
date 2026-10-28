@@ -86,6 +86,8 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         copySystemDlls();
         ensureContent();
         Window::Current().Activate();
+        // A newer Megler copied to the phone's Pictures\Megler: installed through the phone's own Device Portal.
+        appPackage::installCopiedUpdate();
     }
 
     /// A megler: link (Package.appxmanifest, the protocol), by which a package of Megler's asks another: an APK an app's own
