@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds, packs and signs the Megler app package.
 #
-#   tools/build-appx.sh [arm|x64] [--auto MODES] [--libcore] [--java] [--bitgapps ZIP] [--clean] [--no-pack]
+#   tools/build-appx.sh [arm|x64] [--auto MODES] [--libcore] [--java] [--bitgapps ZIP] [--gms APK] [--play-store APK] [--clean] [--no-pack]
 #
 #   arm        (default) the shipping package for Windows 10 Mobile, ARM32
 #   x64        the same shell for this PC, to compile and look at; it carries
@@ -50,6 +50,10 @@
 #   --bitgapps ZIP  include the GMS, GSF and Play Store APKs from a locally
 #              supplied BiTGApps archive in bitgapps/; implies --java. The
 #              archive and its extracted APKs are not stored in the repository.
+#   --gms APK, --play-store APK  with --bitgapps: these APKs of Google Play
+#              services and Play Store take the place of the archive's (its
+#              GSF stays), as bitgapps/PrebuiltGmsCore.apk and Phonesky.apk,
+#              which the library offers. Not stored in the repository either.
 #   --clean    recompile everything
 #   --no-pack  stop after staging (no makeappx, no signing)
 #
@@ -114,6 +118,8 @@ AUTO_CODEC=0
 LIBCORE=0
 JAVA=0
 BITGAPPS=""
+GMS_APK=""
+PLAY_STORE_APK=""
 while [ $# -gt 0 ]; do
   arg="$1"; shift
   case "$arg" in
@@ -143,6 +149,10 @@ while [ $# -gt 0 ]; do
     --java) JAVA=1 ;;
     --bitgapps) [ $# -gt 0 ] || { echo "--bitgapps needs a ZIP path" >&2; exit 2; }; BITGAPPS="$1"; shift ;;
     --bitgapps=*) BITGAPPS="${arg#--bitgapps=}" ;;
+    --gms) [ $# -gt 0 ] || { echo "--gms needs an APK path" >&2; exit 2; }; GMS_APK="$1"; shift ;;
+    --gms=*) GMS_APK="${arg#--gms=}" ;;
+    --play-store) [ $# -gt 0 ] || { echo "--play-store needs an APK path" >&2; exit 2; }; PLAY_STORE_APK="$1"; shift ;;
+    --play-store=*) PLAY_STORE_APK="${arg#--play-store=}" ;;
     --clean) CLEAN=1 ;;
     --no-pack) PACK=0 ;;
     -h|--help) sed -n '2,41p' "$0"; exit 0 ;;
@@ -168,6 +178,11 @@ if [ -n "$BITGAPPS" ]; then
   [ -f "$BITGAPPS" ] || { echo "--bitgapps archive not found: $BITGAPPS" >&2; exit 2; }
   JAVA=1
 fi
+for apk in "$GMS_APK" "$PLAY_STORE_APK"; do
+  [ -z "$apk" ] && continue
+  [ -n "$BITGAPPS" ] || { echo "--gms and --play-store go with --bitgapps (whose GSF is used)" >&2; exit 2; }
+  [ -f "$apk" ] || { echo "APK not found: $apk" >&2; exit 2; }
+done
 if [ "$JAVA" = 1 ]; then LIBCORE=1; fi
 
 # MARK: Tools
@@ -525,6 +540,11 @@ if [ "$JAVA" = 1 ]; then
 fi
 if [ -n "$BITGAPPS" ]; then
   python "$(w "$ROOT/tools/bitgapps-extract.py")" "$(w "$BITGAPPS")" "$(w "$STAGE/bitgapps")"
+  # The APKs given instead of the archive's, under the names the library offers them by.
+  [ -n "$GMS_APK" ] && cp "$GMS_APK" "$STAGE/bitgapps/PrebuiltGmsCore.apk" &&
+    echo "    instead: PrebuiltGmsCore.apk is $(basename "$GMS_APK") ($(stat -c %s "$GMS_APK") bytes, sha256 $(sha256sum "$GMS_APK" | cut -d' ' -f1))"
+  [ -n "$PLAY_STORE_APK" ] && cp "$PLAY_STORE_APK" "$STAGE/bitgapps/Phonesky.apk" &&
+    echo "    instead: Phonesky.apk is $(basename "$PLAY_STORE_APK") ($(stat -c %s "$PLAY_STORE_APK") bytes, sha256 $(sha256sum "$PLAY_STORE_APK" | cut -d' ' -f1))"
 fi
 
 # MARK: ANGLE
