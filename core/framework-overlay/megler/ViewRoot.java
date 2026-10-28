@@ -423,6 +423,20 @@ public final class ViewRoot implements ViewParent {
             b.append(" color=").append(Integer.toHexString(tp.getColor())).append(tp.getShader() != null ? " shader=" + tp.getShader().getClass().getSimpleName() : "")
              .append(tp.getXfermode() != null ? " xfer" : "").append(tp.getColorFilter() != null ? " cf" : "").append(tp.getMaskFilter() != null ? " mask" : "");
         }
+        if (v instanceof android.widget.ImageView) {
+            // its picture: the drawable, where it is drawn, how, and in what colour (Organic Maps' map buttons drew none)
+            android.widget.ImageView iv = (android.widget.ImageView) v;
+            android.graphics.drawable.Drawable d = iv.getDrawable();
+            if (d == null) b.append(" img=none");
+            else {
+                b.append(" img=").append(d.getClass().getSimpleName()).append(' ').append(d.getIntrinsicWidth()).append('x').append(d.getIntrinsicHeight())
+                 .append(" bounds=").append(d.getBounds().toShortString()).append(" scale=").append(iv.getScaleType()).append(" a=").append(d.getAlpha());
+                if (!iv.getImageMatrix().isIdentity()) b.append(" m=").append(iv.getImageMatrix().toShortString());
+                if (iv.getImageTintList() != null) b.append(" itint=").append(Integer.toHexString(iv.getImageTintList().getDefaultColor()));
+                if (d.getColorFilter() != null) b.append(" cf=").append(d.getColorFilter().getClass().getSimpleName());
+                if (d instanceof android.graphics.drawable.VectorDrawable) b.append(" [").append(((android.graphics.drawable.VectorDrawable) d).meglerDescribe()).append(']');
+            }
+        }
         android.graphics.drawable.Drawable bg = v.getBackground();
         if (bg instanceof android.graphics.drawable.InsetDrawable && ((android.graphics.drawable.InsetDrawable) bg).getDrawable() != null) {
             b.append(" bg=Inset(");
@@ -438,8 +452,13 @@ public final class ViewRoot implements ViewParent {
         android.view.ViewGroup.LayoutParams lp = v.getLayoutParams();
         if (lp != null) {
             b.append(" lp=").append(lp.getClass().getSimpleName()).append('(').append(lp.width).append(',').append(lp.height).append(')');
-            for (String f : new String[] { "topToTop", "topToBottom", "bottomToBottom", "leftToLeft", "startToStart", "endToEnd", "rightToRight", "horizontalBias", "dimensionRatio" }) {
-                try { java.lang.reflect.Field fl = lp.getClass().getField(f); Object o = fl.get(lp); if (o != null && !"-1".equals(String.valueOf(o)) && !"0.5".equals(String.valueOf(o))) b.append(' ').append(f).append('=').append(o); } catch (Exception e) {}
+            // a ConstraintLayout's constraints: the fields the class has, looked up once each (a getField that misses
+            // throws, and with trace-exceptions on that filled its budget of lines with nothing)
+            for (java.lang.reflect.Field fl : lp.getClass().getFields()) {
+                String f = fl.getName();
+                if (!"topToTop".equals(f) && !"topToBottom".equals(f) && !"bottomToBottom".equals(f) && !"leftToLeft".equals(f) && !"startToStart".equals(f)
+                    && !"endToEnd".equals(f) && !"rightToRight".equals(f) && !"horizontalBias".equals(f) && !"dimensionRatio".equals(f)) continue;
+                try { Object o = fl.get(lp); if (o != null && !"-1".equals(String.valueOf(o)) && !"0.5".equals(String.valueOf(o))) b.append(' ').append(f).append('=').append(o); } catch (Exception e) {}
             }
         }
         android.util.Log.d("ViewDump", b.toString());

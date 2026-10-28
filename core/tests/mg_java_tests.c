@@ -2705,6 +2705,8 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (picture_dir) mg_path_mkdirs(picture_dir);
     g_portrait = !strcmp(which, "demos");
     g_any_app = !strcmp(which, "app");
+    /* MG_JAVA_SPLITS: for an app that is not a test's, the folder of its splits (as the library keeps an app's beside its base). */
+    if (g_any_app && getenv("MG_JAVA_SPLITS")) g_splits_dir = mg_strdup(getenv("MG_JAVA_SPLITS"));
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
     /* The data app runs with the phone's look told (megler_set_theme): a cobalt accent and a light theme; its step theme-accent checks what an app sees of it. */

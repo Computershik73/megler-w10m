@@ -17,6 +17,10 @@
 // Consumed insets end the dispatch now (WindowInsets, overlaid), and a child that consumed them no longer kept them from the
 // children after it.
 //
+// And, with the flag trace-touch (a file of that name in the data folder's flags), a pointer going down says in the log, for
+// each group it reaches, the point in the group, each child it is under and whether that child took it, or that none did:
+// where a tap that does nothing stops.
+//
 // Everything else is the original's, unchanged.
 package android.view;
 
@@ -495,6 +499,18 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         if (!child.hasIdentityMatrix()) c.transform(child.inverseMatrix());
         return c;
     }
+    /* The flag trace-touch, read once. */
+    private static Boolean sTraceTouch;
+    private static boolean traceTouch() {
+        if (sTraceTouch == null) sTraceTouch = megler.Native.flag("trace-touch");
+        return sTraceTouch;
+    }
+    private static String touchName(View v) {
+        String n = v.getClass().getName();
+        int id = v.getId();
+        return n.substring(n.lastIndexOf('.') + 1) + (id != NO_ID ? "#" + Integer.toHexString(id) : "") + (v.isClickable() ? " clickable" : "")
+            + (v.isEnabled() ? "" : " disabled");
+    }
     private boolean dispatchToChild(MotionEvent e, View child, boolean cancel, int idBits) {
         MotionEvent t = idBits != -1 && mMotionSplit ? e.split(idBits) : MotionEvent.obtain(e);
         if (cancel) t.setAction(MotionEvent.ACTION_CANCEL);
@@ -534,7 +550,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                 if (!isTransformedTouchPointInView(x, y, c, null)) continue;
                 int bits = bitsOf(c) | (1 << id);
                 if (dispatchToChild(e, c, false, mMotionSplit ? bits : -1)) { target = c; }
+                if (traceTouch()) android.util.Log.d("Touch", touchName(this) + " at " + (int) x + "," + (int) y + ": " + touchName(c) + " "
+                    + c.getLeft() + "," + c.getTop() + " " + c.getWidth() + "x" + c.getHeight() + (target == c ? " took it" : " did not"));
             }
+            if (target == null && traceTouch()) android.util.Log.d("Touch", touchName(this) + " at " + (int) x + "," + (int) y + ": no child took it");
             if (target != null) {
                 if (id < 16) mTouchTarget[id] = target;
                 mTouchTargetBits |= 1 << id;

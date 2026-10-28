@@ -49,6 +49,20 @@ public class VectorDrawable extends Drawable {
     @Override public ConstantState getConstantState() { final VectorDrawable src = this; return new ConstantState() { public Drawable newDrawable() { VectorDrawable v = new VectorDrawable(); v.copy(src); return v; } }; }
     private void copy(VectorDrawable o) { mRoot.kids.addAll(o.mRoot.kids); mVw = o.mVw; mVh = o.mVh; mW = o.mW; mH = o.mH; mAlpha = o.mAlpha; mTint = o.mTint; mTintMode = o.mTintMode; mMirror = o.mMirror; }
     @Override public Drawable mutate() { return this; }
+    /** For the view dump (megler.ViewRoot): its tint, filter and alpha, and the colours of its first paths. */
+    public String meglerDescribe() {
+        StringBuilder b = new StringBuilder("vector ").append(mW).append('x').append(mH).append(" alpha=").append(mAlpha);
+        if (mTint != null) b.append(" tint=").append(Integer.toHexString(mTint.getColorForState(getState(), mTint.getDefaultColor()))).append(' ').append(mTintMode);
+        if (mFilter != null) b.append(" filter=").append(mFilter.getClass().getSimpleName());
+        int n = 0;
+        for (Node k : mRoot.kids) {
+            if (!(k instanceof PathNode) || n >= 3) continue;
+            PathNode p = (PathNode) k;
+            b.append(" path").append(n++).append(" fill=").append(p.fill != null ? Integer.toHexString(p.fill.getDefaultColor()) : "none")
+             .append(" a=").append(p.fillAlpha);
+        }
+        return b.toString();
+    }
 
     private ColorFilter mDrawFilter;
     @Override public void draw(Canvas c) {
