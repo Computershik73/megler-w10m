@@ -2244,6 +2244,10 @@ static int run_crash(void)
      * focus before it (the original showed it at once, and it lost a focus it was never given when Gate covered it).
      */
     expect_line("I/CrashTest: gate onCreate", &at, 60);
+    /* Gate recreates itself once (Activity.recreate, AppRunner.recreate): stopped as one being made again, then the same
+       component again with the state it saved, which still gives First its result. */
+    expect_line("I/CrashTest: gate stop changing=true", &at, 60);
+    expect_line("I/CrashTest: gate recreated state=7 component=megler.test.crash.Gate", &at, 60);
     expect_line("I/CrashTest: first order resume,result:7:-1,resume,focus:true,", &at, 60);
     /*
      * FLAG_ACTIVITY_CLEAR_TOP as Android has it, First found by its class though started through an alias: with the flag

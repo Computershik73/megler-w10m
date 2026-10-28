@@ -174,6 +174,10 @@ public final class AppRunner {
         return Native.packageName();
     }
     static Activity launch(String cls, Intent intent, Activity caller, int request, Manifest.Component info) throws Exception {
+        return launch(cls, intent, caller, request, info, null);
+    }
+    /** An activity made and started; `state` the one a recreated activity saved, given to onCreate and to onRestoreInstanceState. */
+    static Activity launch(String cls, Intent intent, Activity caller, int request, Manifest.Component info, Bundle state) throws Exception {
         android.util.Log.d("Megler", "launch " + cls);
         Activity prev = top();
         // Megler's screens of Android's Settings are the system's, not the app's: its factory does not make them. Google Play
@@ -185,8 +189,8 @@ public final class AppRunner {
         a.meglerAttach(base, gms ? MicroG.activityApplication() : sApp, intent, info, caller, request);
         if (prev != null && prev.isResumedMegler()) prev.meglerPause();
         sStack.add(a);
-        a.meglerCreate(null);
-        if (!a.isFinishing()) { a.meglerStart(); a.meglerResume(); }
+        a.meglerCreate(state);
+        if (!a.isFinishing()) { a.meglerStart(); if (state != null) a.meglerRestoreState(state); a.meglerResume(); }
         if (prev != null && !a.isFinishing()) {
             final Activity p = prev;
             // the one below stops once the new one covers it (a translucent or floating window leaves it visible)
@@ -375,16 +379,25 @@ public final class AppRunner {
             for (int k = i; k >= 0; k--) if (k < sStack.size()) finishNow(sStack.get(k), sStack.size() - 1 == k);
         });
     }
+    /*
+     * Activity.recreate, as Android does it: the same component made again (its manifest's, not the class the app's component
+     * factory made of it) with the same intent, given the state the old one saved after it stopped. It made the old one's
+     * class again with no state: Facebook's factory makes its splash screen's class for its main activity until the app is
+     * ready and then recreates that activity to have the real one made -- and got its splash screen again, for good.
+     */
     public static void recreate(Activity a) {
         sHandler.post(() -> {
             int idx = sStack.indexOf(a);
             if (idx < 0) return;
-            Bundle state = new Bundle();
+            String component = a.getComponentName().getClassName();
+            android.util.Log.d("Megler", "recreate " + a.getClass().getName() + " as " + component);
+            a.meglerChanging(true);
             if (a.isResumedMegler()) a.meglerPause();
             a.meglerStop();
+            Bundle state = a.meglerSaveState();
             a.meglerDestroy();
             sStack.remove(idx);
-            try { launch(a.getClass().getName(), a.getIntent(), a.meglerCaller(), a.meglerRequestCode(), Manifest.activity(a.getClass().getName())); }
+            try { launch(component, a.getIntent(), a.meglerCaller(), a.meglerRequestCode(), Manifest.activity(component), state); }
             catch (Exception e) { throw new RuntimeException(e); }
         });
     }

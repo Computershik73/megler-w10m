@@ -22,7 +22,19 @@
 // gives it: Asphalt 9's MainActivity starts its data installer from onResume, creates its native game only in
 // onActivityResult, and its onWindowFocusChanged calls into that game, which was not there yet (a read at 0x34, package
 // 262). meglerVisible, which AppRunner asks whether an activity below must be started again, says whether the activity was
-// started and not stopped, so that such an activity is not started twice. Everything else is the original's, unchanged.
+// started and not stopped, so that such an activity is not started twice.
+//
+// And the managed dialogs, showDialog, dismissDialog and removeDialog, which did nothing: WhatsApp asks whether the phone
+// number is right through showDialog(21), and nothing came of tapping Next. onDestroy dismisses them, as Android's does.
+//
+// And the activity's other windows, its dialogs and popups: hidden while it is stopped and shown again when it is on the
+// screen (meglerStop, makeVisible; megler.ViewRoot.ownerStopped), and removed once it is destroyed (ViewRoot.closeAll), as
+// Android's window manager does with a token's windows. A dialog stayed in the list of windows after its activity had
+// gone: WhatsApp's progress dialog of its phone number screen showed through the code screen.
+//
+// And getComponentName: the component the activity was started as (the manifest's), not its class, which an app's component
+// factory chooses; AppRunner.recreate makes that component again, with the state the activity saved, as Android does.
+// Everything else is the original's, unchanged.
 package android.app;
 
 import android.content.*;
@@ -81,7 +93,9 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         mInfo = info;
         mCaller = caller;
         mRequestCode = requestCode;
-        mComponent = new ComponentName(getPackageName(), getClass().getName());
+        /* the component it was started as, as Android's ActivityRecord has it: the manifest's activity, which an app's
+           component factory may have made of another class (Facebook's makes its splash screen's class for its main activity) */
+        mComponent = new ComponentName(getPackageName(), info != null && info.name != null ? info.name : getClass().getName());
         int theme = info != null && info.theme != 0 ? info.theme : megler.ContextImpl.defaultTheme();
         setTheme(theme);
         if ("com.google.android.gms".equals(megler.Native.packageName())) {
@@ -273,6 +287,11 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public boolean isLaunchedFromBubble() { return false; }
     public boolean isActivityTransitionRunning() { return false; }
     public void recreate() { megler.AppRunner.recreate(this); }
+    /* For AppRunner.recreate: the state the activity saves, as Android saves it before it is destroyed to be made again; that
+       state given back after onStart; and that it is being made again (isChangingConfigurations). */
+    public final Bundle meglerSaveState() { Bundle b = new Bundle(); onSaveInstanceState(b); return b; }
+    public final void meglerRestoreState(Bundle b) { if (b != null) onRestoreInstanceState(b); }
+    public final void meglerChanging(boolean changing) { mChangingConfigurations = changing; }
 
     // ---- the window
     public Window getWindow() {
