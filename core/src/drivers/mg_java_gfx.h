@@ -64,6 +64,23 @@ void mg_java_gfx_bitmap_changed(i64 bm);
 bool mg_java_gfx_lock_rgba(i64 bm, mg_java_gfx_bitmap *out);
 void mg_java_gfx_unlock_rgba(i64 bm);
 
+/*
+ * A canvas's pixels, to be drawn into directly (the WebView's software draw: drivers/mg_java_webview.c): the canvas's bitmap
+ * locked in Android's order as mg_java_gfx_lock_rgba locks it, and what the canvas has in effect -- its matrix, as Skia's nine
+ * numbers, and its clip's box in the bitmap's pixels. False for a canvas with no bitmap of its own here (a recording
+ * canvas's, one whose bitmap is gone). Every true is ended with mg_java_gfx_canvas_raster_end, which takes the pixels as
+ * changed.
+ */
+typedef struct mg_java_gfx_raster {
+    void *pixels;
+    i32 width, height, stride;
+    float matrix[9];
+    i32 clip[4];                       /* left, top, right, bottom */
+    bool empty;                        /* the clip is empty: nothing is to be drawn */
+} mg_java_gfx_raster;
+bool mg_java_gfx_canvas_raster(i64 canvas, mg_java_gfx_raster *out);
+void mg_java_gfx_canvas_raster_end(i64 canvas);
+
 #ifdef __cplusplus
 }
 #endif

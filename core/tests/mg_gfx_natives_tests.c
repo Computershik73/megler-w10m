@@ -568,6 +568,43 @@ static void test_webp(void)
     }
 }
 
+/*
+ * A canvas's pixels lent out to be drawn into directly (the WebView's software table, drivers/mg_java_webview.c): the
+ * bitmap's size and rows, the canvas's matrix as Skia's nine numbers, its clip's box in the bitmap's pixels; R, G, B, A in
+ * memory while they are lent; and what was written there is the bitmap's afterwards, read back as the colour it is.
+ */
+static void test_canvas_raster(void)
+{
+    static const float move[6] = { 1, 0, 3, 0, 1, 2 };
+    mg_java_gfx_raster r;
+    i64 bm = call("bmNew", 2, I(8), I(6)).j, cv = call("cvNew", 1, J(bm)).j;
+    u8 *px;
+    say("  a canvas's pixels lent out (the WebView's software table): Android's byte order, the matrix, the clip");
+    CHECK(!mg_java_gfx_canvas_raster(0, &r));
+    call("cvMatrix", 3, J(cv), L(floats(move, 6)), Z(false));
+    call("cvClipRect", 6, J(cv), F(0), F(0), F(4), F(3), I(1));
+    CHECK(mg_java_gfx_canvas_raster(cv, &r));
+    CHECK(r.pixels != NULL && r.width == 8 && r.height == 6 && r.stride == 32);
+    CHECK(r.matrix[0] == 1 && r.matrix[1] == 0 && r.matrix[2] == 3 && r.matrix[3] == 0 && r.matrix[4] == 1 && r.matrix[5] == 2);
+    CHECK(r.matrix[6] == 0 && r.matrix[7] == 0 && r.matrix[8] == 1);
+    CHECK(!r.empty && r.clip[0] == 3 && r.clip[1] == 2 && r.clip[2] == 7 && r.clip[3] == 5);
+    if (r.pixels) {
+        px = (u8 *)r.pixels + 2 * 32 + 3 * 4;
+        px[0] = 0xFF;
+        px[1] = 0x00;
+        px[2] = 0x00;
+        px[3] = 0xFF;
+        mg_java_gfx_canvas_raster_end(cv);
+    }
+    CHECK_HEX(call("bmGetPixel", 3, J(bm), I(3), I(2)).i, 0xFFFF0000u);
+    CHECK_HEX(call("bmGetPixel", 3, J(bm), I(0), I(0)).i, 0u);
+    /* The memory itself erased (bmEraseMemory), whatever canvas the bitmap has. */
+    call("bmEraseMemory", 2, J(bm), I((i32)0xFF0000FFu));
+    CHECK_HEX(call("bmGetPixel", 3, J(bm), I(5), I(4)).i, 0xFF0000FFu);
+    call("cvFree", 1, J(cv));
+    call("bmFree", 1, J(bm));
+}
+
 static void test_canvas(void)
 {
     static const float move[6] = { 1, 0, 5, 0, 1, 7 }, twice[6] = { 2, 0, 0, 0, 2, 0 }, turn[6] = { 0, -1, 10, 1, 0, 0 };
@@ -2402,12 +2439,13 @@ int mg_gfx_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     say("megler.Gfx's native methods, over the stand-in");
     /* One entry for each native method megler/Gfx.java declares. */
     for (e = mg_java_gfx_natives(); e->cls; e++) n += strcmp(e->cls, "megler/Gfx") == 0 && e->sig && e->fn;
-    CHECK_INT(n, 66);
+    CHECK_INT(n, 68);
     mg_java_gfx_set_host(mg_gfx_standin());
     mg_java_gfx_stats(&bytes0, &count0);
     test_bitmaps();
     test_webp();
     test_canvas();
+    test_canvas_raster();
     test_drawing();
     test_paint();
     test_text();

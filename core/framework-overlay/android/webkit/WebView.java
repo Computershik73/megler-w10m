@@ -2872,16 +2872,14 @@ public class WebView extends AbsoluteLayout
 
     @Override
     protected void onDraw(Canvas canvas) {
-        // Megler: a canvas that says it is hardware-accelerated -- a RenderNode's, which Compose draws an AndroidView
-        // into -- is given what the WebView draws in software, through a bitmap of the view's size. Chromium draws a
-        // hardware-accelerated canvas through the platform's draw functor (AwDrawFn), and this platform has none: its
-        // function table is null (drivers/mg_java_webview.c), and Spotify's WebView ended the app making its functor.
-        // Every canvas here draws bitmaps, and a RenderNode's is a bitmap of the node's.
-        if (canvas.isHardwareAccelerated()) {
-            meglerDrawThroughBitmap(canvas);
-            return;
-        }
-        mProvider.getViewDelegate().onDraw(canvas);
+        // Megler: every canvas is given what the WebView draws through one bitmap of what the window shows of the view,
+        // which Chromium draws into directly (the platform's software table, drivers/mg_java_webview.c). Drawn straight
+        // into the canvas it is given, Chromium drew each frame into a new Bitmap of the WebView's whole size of its own
+        // (12 to 15 MB, ten a second), which only the collector took back: Google's sign-in page in Play Store filled
+        // the process with them and frames went undrawn. A canvas that says it is hardware-accelerated -- a RenderNode's,
+        // which Compose draws an AndroidView into -- has always been drawn so: Chromium draws such a canvas through the
+        // platform's draw functor (AwDrawFn), which is not here, and Spotify's WebView ended the app making its functor.
+        meglerDrawThroughBitmap(canvas);
     }
 
     private Bitmap mMeglerBitmap;
@@ -2903,12 +2901,14 @@ public class WebView extends AbsoluteLayout
         if (!area.intersect(sx, sy, sx + getWidth(), sy + getHeight())) return;
         int w = area.width(), h = area.height();
         if (mMeglerBitmap == null || mMeglerBitmap.getWidth() != w || mMeglerBitmap.getHeight() != h) {
-            android.util.Log.i("WebView", "drawn on a hardware-accelerated canvas through a bitmap of " + w + "x" + h + ", of a view of "
-                    + getWidth() + "x" + getHeight());
+            android.util.Log.i("WebView", "drawn through a bitmap of " + w + "x" + h + ", of a view of " + getWidth() + "x" + getHeight());
+            if (mMeglerBitmap != null) mMeglerBitmap.recycle();
             mMeglerBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             mMeglerCanvas = new Canvas(mMeglerBitmap);
         } else {
-            mMeglerCanvas.drawColor(0, android.graphics.PorterDuff.Mode.CLEAR);
+            // cleared in its memory, which Chromium draws into next: through the canvas the shell would clear it, and
+            // the clear would be read back before Chromium's draw
+            megler.Gfx.bmEraseMemory(mMeglerBitmap.meglerNative(), 0);
         }
         // What View.draw did to the canvas it was given -- the view's content scrolled by its scroll position -- with the
         // visible part's corner at the bitmap's.

@@ -2304,11 +2304,11 @@ static int run_gl(void)
     CHECK(!strcmp(mg_gl_standin_app_features_off(), "allowTranslateUniformBlockToStructuredBuffer"));
     CHECK(find_line("egl: asking ANGLE for a display as Direct3D 11, without its allowTranslateUniformBlockToStructuredBuffer", 0) >= 0);
     /* (The app logs the strings just after that line, on the same thread: waited for too, not looked for at once.) */
-    CHECK(wait_line("I/GlTest: egl14 strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=3", 0, 30) >= 0);
+    CHECK(wait_line("I/GlTest: egl14 strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=4", 0, 30) >= 0);
     /* The renderer, on the GL thread with its context current: created, changed, drawn, in that order. */
     expect_line("I/GlTest: created 1 thread=GLThread ", &at, 120);
     CHECK(strstr(line_at(at), "current=true version=2 config=8/16") != NULL);
-    expect_line("I/GlTest: strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=3 gl10=Megler", &at, 30);
+    expect_line("I/GlTest: strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=4 gl10=Megler", &at, 30);
     expect_line("I/GlTest: program linked=1 position=0 color=0 log=stand-in: program", &at, 30);
     expect_line("I/GlTest: changed ", &at, 30);
     expect_line("I/GlTest: first frame on GLThread", &at, 30);
@@ -2665,6 +2665,15 @@ static int run_webview(void)
         count_colour(body, 0x1E78C8), body[2] * body[3]);
     CHECK(count_colour(bar, 0xFFD200) == bar[2] * bar[3]);
     CHECK(count_colour(body, 0x1E78C8) == body[2] * body[3]);
+    /*
+     * The platform's software table handed over (drivers/mg_java_webview.c) and read by Chromium as it reads it -- straight
+     * into the WebView bitmap's pixels, where its GPU can share textures across threads (EGLImage and fence syncs: gpu_info's
+     * can_support_threaded_texture_mailbox), as ANGLE's on the phone and the stand-in's can -- and no bitmap of Chromium's own
+     * that could not be made or let go.
+     */
+    CHECK(find_line("webview: the platform's software table is handed over", 0) >= 0);
+    CHECK(find_line("webview: Chromium draws straight into a canvas's pixels", 0) >= 0);
+    CHECK(find_line("Error allocating bitmap", 0) < 0 && find_line("Error unlocking java bitmap pixels", 0) < 0);
     /* A tap on the field gives it the focus and asks for the keyboard. */
     shown = K.shown;
     tap(x, y);

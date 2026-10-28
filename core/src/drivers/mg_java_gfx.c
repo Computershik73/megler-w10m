@@ -1787,6 +1787,29 @@ N(G_bmErase)
     bm_changed(b);
 }
 
+/*
+ * (long bm, int argb): the memory itself made one colour, never through a canvas of the bitmap, which would draw it in the
+ * shell and have it read back before memory is next written (the WebView's bitmap, which Chromium draws into directly,
+ * android/webkit/WebView.java).
+ */
+N(G_bmEraseMemory)
+{
+    gbitmap *b = bm_of(c->args[0].j);
+    u32 v = premultiplied((u32)c->args[1].i), *row;
+    i32 x, y;
+    if (!b) return;
+    bm_settle(b);
+    if (!v) {
+        memset(b->px, 0, (size_t)b->stride * (size_t)b->h);
+    } else {
+        for (y = 0; y < b->h; y++) {
+            row = bm_row(b, y);
+            for (x = 0; x < b->w; x++) row[x] = v;
+        }
+    }
+    bm_changed(b);
+}
+
 N(G_bmGetPixel)
 {
     gbitmap *b = bm_of(c->args[0].j);
@@ -3613,6 +3636,7 @@ static const mg_jhle k_gfx[] = {
     { "megler/Gfx", "bmNew", "(II)J", G_bmNew },
     { "megler/Gfx", "bmFree", "(J)V", G_bmFree },
     { "megler/Gfx", "bmErase", "(JI)V", G_bmErase },
+    { "megler/Gfx", "bmEraseMemory", "(JI)V", G_bmEraseMemory },
     { "megler/Gfx", "bmDiffer", NULL, G_bmDiffer },
     { "megler/Gfx", "bmGetPixel", "(JII)I", G_bmGetPixel },
     { "megler/Gfx", "bmSetPixel", "(JIII)V", G_bmSetPixel },
@@ -3764,6 +3788,40 @@ bool mg_java_gfx_lock_rgba(i64 bm, mg_java_gfx_bitmap *out)
     if (first) swap_red_blue(b->px, b->px, (size_t)b->w * (size_t)b->h);
     info_of(b, out);
     return true;
+}
+
+bool mg_java_gfx_canvas_raster(i64 canvas, mg_java_gfx_raster *out)
+{
+    gcanvas *v = cv_of(canvas);
+    mg_java_gfx_bitmap px;
+    gstate *s;
+    if (!v || v->rec || !v->bm || !mg_java_gfx_lock_rgba(handle(v->bm), &px)) return false;
+    s = cv_state(v);
+    out->pixels = px.pixels;
+    out->width = px.width;
+    out->height = px.height;
+    out->stride = px.stride;
+    out->matrix[0] = s->m[0]; out->matrix[1] = s->m[1]; out->matrix[2] = s->m[2];
+    out->matrix[3] = s->m[3]; out->matrix[4] = s->m[4]; out->matrix[5] = s->m[5];
+    out->matrix[6] = out->matrix[7] = 0;
+    out->matrix[8] = 1;
+    out->empty = s->empty;
+    out->clip[0] = s->empty ? 0 : whole(floor(s->clip[0]));
+    out->clip[1] = s->empty ? 0 : whole(floor(s->clip[1]));
+    out->clip[2] = s->empty ? 0 : whole(ceil(s->clip[2]));
+    out->clip[3] = s->empty ? 0 : whole(ceil(s->clip[3]));
+    /* (the clip within the bitmap: a box past its edges draws nothing there) */
+    if (out->clip[0] < 0) out->clip[0] = 0;
+    if (out->clip[1] < 0) out->clip[1] = 0;
+    if (out->clip[2] > px.width) out->clip[2] = px.width;
+    if (out->clip[3] > px.height) out->clip[3] = px.height;
+    return true;
+}
+
+void mg_java_gfx_canvas_raster_end(i64 canvas)
+{
+    gcanvas *v = cv_of(canvas);
+    if (v && v->bm) mg_java_gfx_unlock_rgba(handle(v->bm));
 }
 
 void mg_java_gfx_unlock_rgba(i64 bm)

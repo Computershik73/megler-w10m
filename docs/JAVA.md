@@ -3370,24 +3370,49 @@ by its own where the app's come first. No app tried has done that yet.
 
 **Drawing.** No canvas is hardware-accelerated here, so the WebView draws in
 software, as it does on Android into a `Bitmap`'s canvas:
-`AwContents.onDraw` with `isHardwareAccelerated()` false. A `RenderNode`'s
-canvas says it is (Compose draws an `AndroidView` into one), and Chromium
-draws such a canvas through the platform's draw functor, whose function table
-is null here: the overlay's `WebView.onDraw` gives it the WebView's software
-drawing through a bitmap instead (Spotify's WebView ended the app making its
-functor). The bitmap is what the window shows of the view, as the functor
-draws on Android: a WebView sized to its page is many screens tall, and a
-bitmap of all of it was as big (a check: a WebView 20000 rows tall is drawn
-through 744); a view out of the window gets at most a screen's worth from its
-scroll position. The tables of
-functions the platform's `libwebviewchromium_plat_support.so` gives a WebView
-(`GraphicsUtils.nativeGetDrawSWFunctionTable`, the GL functor's) are null
-(`mg_java_webview.c`; the library is a system library's name to the linker,
-`bionic/mg_bionic.c`, and a file that says so in the root's `lib`), so
-Chromium renders the page into a `Bitmap` of its own and draws that into the
-view's canvas (its `JavaBrowserViewRendererHelper`): the page reaches the
-window through the views like any other view's pixels, and through
-`View.draw` into an app's own bitmap.
+`AwContents.onDraw` with `isHardwareAccelerated()` false. The overlay's
+`WebView.onDraw` draws every frame through one bitmap of what the window shows
+of the view, as the functor draws on Android, and puts that bitmap in the
+canvas it was given: a WebView sized to its page is many screens tall (a
+check: a WebView 20000 rows tall is drawn through 744), and a view out of the
+window gets at most a screen's worth from its scroll position. The bitmap is
+kept from one frame to the next and cleared in its memory. A `RenderNode`'s
+canvas says it is hardware-accelerated (Compose draws an `AndroidView` into
+one), and Chromium would draw it through the platform's draw functor, which is
+not here: through the bitmap it is drawn like any other (Spotify's WebView
+ended the app making its functor).
+
+Chromium draws into that bitmap directly. The platform's
+`libwebviewchromium_plat_support.so` gives a WebView tables of functions;
+here the software one (`GraphicsUtils.nativeGetDrawSWFunctionTable`,
+`mg_java_webview.c`) is there and the GL functor's are null (the library is a
+system library's name to the linker, `bionic/mg_bionic.c`, and a file that
+says so in the root's `lib`). The table is Chromium's
+`AwDrawSWFunctionTable` (`android_webview/public/browser/draw_sw.h`): its
+version (1) first, then `access_pixels` and `release_pixels`. Without the
+version Chromium called `release_pixels` for `access_pixels` and had it free
+the `JNIEnv`, which corrupted the heap of Play Store's process at the first
+frame of Google's sign-in page (0xc0000374, no report of the core's: Windows
+ended the process). Its `access_pixels` hands Chromium the pixels
+under a canvas of a core `Bitmap` as Skia's `SkCanvasState` (version 1, a
+stable ABI of Skia's), in an `AwPixelInfo` of version 3: one raster layer,
+the bitmap locked in Android's order (R, G, B, A), the canvas's matrix and its
+clip's box (`mg_java_gfx_canvas_raster`); `release_pixels` unlocks it. The log
+says "webview: Chromium draws straight into a canvas's pixels" the first
+time. Chromium asks for a canvas's pixels only where its GPU can share
+textures across threads (`can_support_threaded_texture_mailbox`: EGL's
+`EGL_KHR_fence_sync`, which the layer gives, `EGL_KHR_image_base`,
+`EGL_KHR_gl_texture_2D_image` and `GL_OES_EGL_image`, which ANGLE over
+Direct3D 11 has, and the tests' stand-in names too); where they are missing
+`AwContents` forces its own bitmap, as below. The data's side of it is checked
+in `mg_gfx_natives_tests.c` (a canvas's pixels lent out), Chromium's in
+`mg_java_tests.c`'s `webview`. Before, with no table, Chromium drew each frame into a new `Bitmap` of
+the WebView's whole size of its own (its `JavaBrowserViewRendererHelper`'s
+"auxiliary bitmap", 12 to 15 MB at 1440 pixels wide, ten a second), which only
+the collector took back: Google's sign-in page in Play Store filled the
+process's two gigabytes with them, Bitmaps could no longer be made ("Error
+allocating bitmap"), frames went undrawn and the app ended. A canvas whose
+pixels are not the core's (a recording one) still gets that, as before.
 
 All the same, Chromium makes its GPU service at the first WebView and ends the
 process if it cannot (`GpuServiceWebView`, "gpu::InitializeGLThreadSafe()

@@ -6,6 +6,8 @@ public final class Gfx {
     public static native long bmNew(int w, int h);
     public static native void bmFree(long bm);
     public static native void bmErase(long bm, int argb);
+    /** The memory itself, never through a canvas of it (the WebView's bitmap, which Chromium draws into directly). */
+    public static native void bmEraseMemory(long bm, int argb);
     public static native int bmGetPixel(long bm, int x, int y);
     public static native void bmSetPixel(long bm, int x, int y, int argb);
     public static native void bmPixels(long bm, int[] px, int offset, int stride, int x, int y, int w, int h, boolean set);
