@@ -2630,6 +2630,10 @@ static int run_webview(void)
     int at = -1, i, line, x = -1, y = -1, bar[4], body[4];
     i32 shown;
     expect_line("I/WebViewTest: onCreate", &at, 120);
+    /* The default User-Agent before any WebView: given before Chromium was loaded, and the WebView's own once it is. */
+    line = wait_line("I/WebViewTest: default user-agent ", 0, 120);
+    CHECK(line >= 0 && wait_line("I/WebViewFactory: Loading ", 0, 600) > line);
+    CHECK(wait_line("I/WebViewTest: user-agent-default ok", 0, 600) >= 0);
     /* Each in its turn; the bridge's call comes from the page's script while it loads, so is looked for from the start. */
     for (i = 0; i < (int)MG_COUNT(steps); i++) {
         snprintf(text, sizeof(text), "I/WebViewTest: %s ok", steps[i]);

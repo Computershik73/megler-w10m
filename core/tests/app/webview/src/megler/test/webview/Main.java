@@ -59,6 +59,8 @@ public class Main extends Activity {
         }
     }
 
+    private String defaultAgent;
+
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -71,6 +73,10 @@ public class Main extends Activity {
         }
         base = "http://127.0.0.1:" + server.port;
         started = SystemClock.uptimeMillis();
+        // The default User-Agent asked before any WebView is made: answered without loading Chromium, and the same string
+        // the WebView itself gives once it is loaded (checked at "user-agent" below).
+        defaultAgent = android.webkit.WebSettings.getDefaultUserAgent(this);
+        Log.i(T, "default user-agent " + defaultAgent + " ms=" + (SystemClock.uptimeMillis() - started));
         try {
             web = new WebView(this);
         } catch (Throwable t) {
@@ -91,6 +97,7 @@ public class Main extends Activity {
         });
         setContentView(web);
         Log.i(T, "user-agent " + web.getSettings().getUserAgentString());
+        Log.i(T, "user-agent-default " + (web.getSettings().getUserAgentString().equals(defaultAgent) ? "ok" : "FAILED " + defaultAgent));
         stage = 1;
         web.loadUrl(base + "/page");
     }

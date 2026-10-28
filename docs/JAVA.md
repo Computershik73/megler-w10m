@@ -3291,6 +3291,19 @@ Chromium, loaded from the Android root into the app as a phone loads it. The
 framework's own WebView, written for iOS, sat over a WKWebView (`megler.Web`),
 whose natives answer nothing on Windows: a WebView was a blank rectangle.
 
+**The default User-Agent without Chromium.** `WebSettings.getDefaultUserAgent`
+asked the WebView's provider, which is all of Chromium loaded: its library and
+heaps, some 200 MB of a 32-bit process's 2 GB of addresses. Apps and their SDKs
+ask for the string at their start, for an ad's or a statistics' request, and
+Yandex Maps ran out of addresses as the WebView was loading (package 490).
+Until the WebView is loaded the string is made as Chromium makes a WebView's,
+of the same `Build` fields and the WebView package's version
+(`WebViewFactory.meglerDefaultUserAgent`); once it is loaded it is asked. The
+WebView test app asks for it before it makes a WebView, and the test checks that
+it came before Chromium was loaded and that the WebView's own string is the
+same. And the log's "Loading com.android.webview ..." says, after "for", which
+of the app's methods wanted the WebView.
+
 **Which WebView.** Two could be had from Google's own servers:
 
 - The Android 9 image's own, `/system/app/webview/webview.apk`: Chromium

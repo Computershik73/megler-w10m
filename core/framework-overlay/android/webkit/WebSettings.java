@@ -1403,7 +1403,7 @@ public abstract class WebSettings {
      * @param context a Context object used to access application assets
      */
     public static String getDefaultUserAgent(Context context) {
-        return WebViewFactory.getProvider().getStatics().getDefaultUserAgent(context);
+        return WebViewFactory.meglerDefaultUserAgent(context);
     }
 
     /**
