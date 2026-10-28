@@ -32,10 +32,12 @@
 #include "../host/mg_host.h"
 #include "../mg_core.h"
 #include "../ld/mg_ld.h"
+#include "../ndk/mg_egl.h"
 #include "../ndk/mg_ndk.h"
 #include "../run/mg_run.h"
 #include "../zip/mg_zip.h"
 #include "mg_driver.h"
+#include "../apk/mg_arsc.h"
 #include "mg_java.h"
 #include "mg_java_gfx.h"
 #include "mg_java_gl.h"
@@ -225,6 +227,34 @@ N(Native_assetFd)
     free(name);
 }
 
+/*
+ * (String name) -> long[] { descriptor of the APK, where the entry's deflated bytes begin, how many }: an asset the APK
+ * deflates, which AssetManager.open inflates as it is read (InflatedAssetStream) rather than whole into a byte[] -- WhatsApp
+ * opened five of 20 MB as it started, and the arrays stayed, held through stale words of stacks. null for any other.
+ */
+N(Native_assetDeflated)
+{
+    char *name = asset_name(c->args[0].l);
+    int apk = app_apk_with(name);
+    const mg_zip_entry *e = apk >= 0 && apk < MAX_APKS && J.apk_open[apk] ? mg_zip_find(&J.apk[apk], name) : NULL;
+    u64 at = 0;
+    c->ret.l = NULL;
+    if (e && e->method == 8 && mg_zip_data_at(&J.apk[apk], e, &at)) {
+        int fd = mg_fd_open_host(J.apk_path[apk], MG_O_READ);
+        mg_jobj *a = fd >= 0 ? mg_dvm_new_array("[J", 3) : NULL;
+        if (a) {
+            i64 *v = (i64 *)a->u.arr.data;
+            v[0] = fd;
+            v[1] = (i64)at;
+            v[2] = (i64)e->csize;
+            c->ret.l = a;
+        } else if (fd >= 0) {
+            mg_fd_close(fd);
+        }
+    }
+    free(name);
+}
+
 N(Native_assetLength)
 {
     char *name = asset_name(c->args[0].l);
@@ -296,6 +326,83 @@ N(Native_listAssets)
 }
 
 N(Native_readApkFile) { c->ret.l = apk_file(c->args[0].i, text_of(c->args[1].l)); }
+
+/*
+ * readApkResourceTable(apk, languages): the APK's resources.arsc, cut down to the resources of no language and of
+ * `languages` (mg_arsc_keep_languages), or whole where nothing goes or it cannot be cut; null when there is none. For
+ * another package's resources in the app (Google Play services' 84 MB table, of which the phone's language and English
+ * are a tenth: apk/mg_arsc.h says why).
+ */
+N(Native_readApkResourceTable)
+{
+    int apk = c->args[0].i, n = 0, i;
+    mg_jobj *list = c->args[1].l;
+    char names[8][8], joined[80];
+    const char *langs[8], *file;
+    const mg_zip_entry *e;
+    size_t size = 0, cut_size = 0;
+    u8 *data, *cut;
+    char *kept = NULL;
+    c->ret.l = NULL;
+    if (apk < 0 || apk >= MAX_APKS || !J.apk_open[apk]) return;
+    e = mg_zip_find(&J.apk[apk], "resources.arsc");
+    if (!e) return;
+    joined[0] = 0;
+    for (i = 0; list && i < (int)list->u.oarr.len && n < 8; i++)
+        if (list->u.oarr.v[i]) {
+            const char *l = text_of(list->u.oarr.v[i]);
+            size_t at = strlen(joined);
+            if (!*l || strspn(l, "abcdefghijklmnopqrstuvwxyz") != strlen(l)) continue;
+            mg_strlcpy(names[n], l, sizeof(names[n]));
+            langs[n] = names[n];
+            snprintf(joined + at, sizeof(joined) - at, "-%s", names[n]);
+            n++;
+        }
+    file = strrchr(J.apk_path[apk], '/');
+    if (!file) file = strrchr(J.apk_path[apk], '\\');
+    file = file ? file + 1 : J.apk_path[apk];
+    /*
+     * The table cut down is kept beside the APK, named for the table's CRC-32 and the languages, and read from there the next
+     * time, by every app: Google Play services' 84 MB were read and cut at every app's start (0.7 s on the phone), for the
+     * same 9 MB each time. The APK is in the services' shared folder, which all of Megler's packages can write to.
+     */
+    if (e->usize >= (1u << 20) && n) {
+        size_t have = 0;
+        u8 *bytes;
+        kept = mg_sprintf("%s.%08x%s.arsc", J.apk_path[apk], (unsigned)e->crc, joined);
+        bytes = mg_file_read_all(kept, &have);
+        if (bytes && have >= 12 && bytes[0] == 2 && bytes[1] == 0) {
+            c->ret.l = bytes_of(bytes, have);
+            mg_info("java: %s's resource table: %u KB with the languages the app has (%s), as cut before", file, (unsigned)(have >> 10), joined + 1);
+            free(bytes);
+            free(kept);
+            return;
+        }
+        free(bytes);
+    }
+    if (!(data = mg_zip_read(&J.apk[apk], e, 256u << 20, &size))) {
+        free(kept);
+        return;
+    }
+    cut = size >= (1u << 20) && n ? mg_arsc_keep_languages(data, size, langs, n, &cut_size) : NULL;
+    if (cut) {
+        mg_info("java: %s's resource table: %u KB, %u KB with the languages the app has (%s)", file, (unsigned)(size >> 10), (unsigned)(cut_size >> 10),
+                joined + 1);
+        c->ret.l = bytes_of(cut, cut_size);
+        if (kept) {
+            /* Written aside and renamed: another app may read it meanwhile, or write it too. */
+            char *part = mg_sprintf("%s.%u.part", kept, (unsigned)mg_thread_self_id());
+            int err = 0;
+            if (!mg_file_write_all(part, cut, cut_size) || !mg_path_rename(part, kept, &err)) mg_path_remove(part, &err);
+            free(part);
+        }
+        free(cut);
+    } else {
+        c->ret.l = bytes_of(data, size);
+    }
+    free(data);
+    free(kept);
+}
 
 #define FIRST_LIBRARY_APK 12
 
@@ -789,8 +896,10 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "readAsset", NULL, Native_readAsset },
     { "megler/Native", "listAssets", NULL, Native_listAssets },
     { "megler/Native", "assetFd", NULL, Native_assetFd },
+    { "megler/Native", "assetDeflated", NULL, Native_assetDeflated },
     { "megler/Native", "assetLength", NULL, Native_assetLength },
     { "megler/Native", "readApkFile", NULL, Native_readApkFile },
+    { "megler/Native", "readApkResourceTable", NULL, Native_readApkResourceTable },
     { "megler/Native", "addApk", NULL, Native_addApk },
     { "megler/Native", "listApkFiles", NULL, Native_listApkFiles },
     { "megler/Native", "apkFileFd", NULL, Native_apkFileFd },

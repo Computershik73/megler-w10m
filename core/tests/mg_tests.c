@@ -40,6 +40,7 @@
 #include "../src/ndk/mg_ndk.h"
 #include "../src/run/mg_run.h"
 #include "../src/appx/mg_appx.h"
+#include "../src/apk/mg_arsc.h"
 #include "zlib.h"
 #include "../src/zip/mg_zip.h"
 
@@ -2922,6 +2923,72 @@ static void test_sqlite(const char *scratch)
     CHECK(!mg_sqlite_available() && !mg_sqlite_start());
 }
 #endif
+
+/* The strings of a table's resources, as a count and a hash of them in their order. */
+typedef struct arsc_strings {
+    u32 n;
+    u32 hash;
+} arsc_strings;
+
+static void arsc_string_seen(const u8 *s, size_t len, void *user)
+{
+    arsc_strings *a = (arsc_strings *)user;
+    size_t i;
+    a->n++;
+    for (i = 0; i < len; i++) a->hash = (a->hash ^ s[i]) * 16777619u;
+    a->hash = (a->hash ^ 0xFF) * 16777619u;
+}
+
+/*
+ * A resource table cut down to the phone's language and English (mg_arsc_keep_languages), on microG's GmsCore's (80
+ * languages): much smaller; the resources it keeps have the same strings in the same order as in the whole table; nothing
+ * more goes the second time; a table that is not one is left alone.
+ */
+static void test_arsc(const char *libdir)
+{
+    static const char *const langs[] = { "ru", "en" };
+    /* Beside the guest libraries' folder (build/guest/...), from the repository's folder, or where the ARM run's files are. */
+    char *places[3], *apk = NULL, err[160];
+    int k;
+    mg_zip z;
+    const mg_zip_entry *e;
+    u8 *table = NULL, *cut = NULL, *again;
+    size_t size = 0, cut_size = 0, again_size = 0;
+    arsc_strings whole = { 0, 2166136261u }, kept = { 0, 2166136261u }, all_left = { 0, 2166136261u };
+    say("a resource table cut down to two languages");
+    places[0] = libdir ? mg_sprintf("%s/../../microg/GmsCore.apk", libdir) : mg_sprintf("build/microg/GmsCore.apk");
+    places[1] = mg_sprintf("build/microg/GmsCore.apk");
+    places[2] = mg_sprintf("GmsCore.apk");
+    for (k = 0; k < 3; k++) {
+        if (!apk && mg_zip_open(&z, places[k], err, sizeof(err))) apk = places[k];
+        else free(places[k]);
+    }
+    if (!apk) {
+        say("  (no build/microg/GmsCore.apk: tools/microg-fetch.sh gets it; these checks are left out)");
+        return;
+    }
+    e = mg_zip_find(&z, "resources.arsc");
+    table = e ? mg_zip_read(&z, e, 64u << 20, &size) : NULL;
+    mg_zip_close(&z);
+    CHECK(table != NULL);
+    if (table) cut = mg_arsc_keep_languages(table, size, langs, 2, &cut_size);
+    CHECK(cut && cut_size < size / 2);
+    if (cut) {
+        say("  %u KB, %u KB with ru and en", (unsigned)(size >> 10), (unsigned)(cut_size >> 10));
+        CHECK(mg_arsc_each_string(table, size, langs, 2, arsc_string_seen, &whole));
+        CHECK(mg_arsc_each_string(cut, cut_size, langs, 2, arsc_string_seen, &kept));
+        CHECK(mg_arsc_each_string(cut, cut_size, NULL, -1, arsc_string_seen, &all_left));
+        CHECK(whole.n > 100 && kept.n == whole.n && kept.hash == whole.hash && all_left.n == whole.n && all_left.hash == whole.hash);
+        again = mg_arsc_keep_languages(cut, cut_size, langs, 2, &again_size);
+        CHECK(again == NULL);
+        free(again);
+        /* Cut short, it is not a table, and is left alone. */
+        CHECK(mg_arsc_keep_languages(table, size / 3, langs, 2, &again_size) == NULL);
+    }
+    free(cut);
+    free(table);
+    free(apk);
+}
 
 int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, void *user)
 {

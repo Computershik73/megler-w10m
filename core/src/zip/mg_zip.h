@@ -42,6 +42,8 @@ u8 *mg_zip_read(const mg_zip *z, const mg_zip_entry *e, size_t limit, size_t *si
 bool mg_zip_read_into(const mg_zip *z, const mg_zip_entry *e, u8 *out, size_t size);
 /* Where a stored entry's bytes are in the file; false for a deflated one (or a damaged one). */
 bool mg_zip_stored_at(const mg_zip *z, const mg_zip_entry *e, u64 *offset);
+/* Where an entry's bytes are in the file, as they are there (deflated, for a deflated one: e->csize of them); false when it is damaged. */
+bool mg_zip_data_at(const mg_zip *z, const mg_zip_entry *e, u64 *offset);
 /* `n` bytes of the file itself from `offset`; false when they are not all there. */
 bool mg_zip_pread(const mg_zip *z, u64 offset, void *buf, size_t n);
 /* Every entry whose name starts with `prefix`. */
