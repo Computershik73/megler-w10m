@@ -1528,16 +1528,31 @@ static bool tell(mg_file *f, LARGE_INTEGER *pos)
     return SetFilePointerEx(f->h, zero, pos, FILE_CURRENT) != 0;
 }
 
+/*
+ * pread and pwrite: the offset goes with the call (OVERLAPPED, on a handle that is not overlapped), so that the read or
+ * the write is at it whatever another thread does with the same file meanwhile, as Linux's are. Seeking there first and
+ * back after, two threads' reads took each other's offsets: Chromium reads and writes one file from several threads so,
+ * and SQLite. The position is put back after, as pread leaves it (Windows moves it past what was read).
+ */
+static OVERLAPPED at_offset(u64 offset)
+{
+    OVERLAPPED ov;
+    memset(&ov, 0, sizeof(ov));
+    ov.Offset = (DWORD)offset;
+    ov.OffsetHigh = (DWORD)(offset >> 32);
+    return ov;
+}
+
 i64 mg_file_pread(mg_file *f, void *buf, size_t n, u64 offset, int *err)
 {
-    LARGE_INTEGER saved, at;
+    LARGE_INTEGER saved;
+    OVERLAPPED ov = at_offset(offset);
     DWORD got = 0;
     BOOL ok;
     DWORD e;
     if (!tell(f, &saved)) { SET_ERR(); return -1; }
-    at.QuadPart = (LONGLONG)offset;
-    if (!SetFilePointerEx(f->h, at, NULL, FILE_BEGIN)) { SET_ERR(); return -1; }
-    ok = ReadFile(f->h, buf, (DWORD)n, &got, NULL);
+    BEFORE_SYSTEM_WRITE(buf, n);
+    ok = ReadFile(f->h, buf, (DWORD)n, &got, &ov);
     e = GetLastError();
     SetFilePointerEx(f->h, saved, NULL, FILE_BEGIN);
     if (!ok) {
@@ -1550,14 +1565,13 @@ i64 mg_file_pread(mg_file *f, void *buf, size_t n, u64 offset, int *err)
 
 i64 mg_file_pwrite(mg_file *f, const void *buf, size_t n, u64 offset, int *err)
 {
-    LARGE_INTEGER saved, at;
+    LARGE_INTEGER saved;
+    OVERLAPPED ov = at_offset(offset);
     DWORD put = 0;
     BOOL ok;
     DWORD e;
     if (!tell(f, &saved)) { SET_ERR(); return -1; }
-    at.QuadPart = (LONGLONG)offset;
-    if (!SetFilePointerEx(f->h, at, NULL, FILE_BEGIN)) { SET_ERR(); return -1; }
-    ok = WriteFile(f->h, buf, (DWORD)n, &put, NULL);
+    ok = WriteFile(f->h, buf, (DWORD)n, &put, &ov);
     e = GetLastError();
     SetFilePointerEx(f->h, saved, NULL, FILE_BEGIN);
     if (!ok) {

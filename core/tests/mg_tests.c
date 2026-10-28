@@ -108,6 +108,63 @@ static void list_one(const char *name, bool is_dir, void *user)
     mg_strlcpy(s->last, name, sizeof(s->last));
 }
 
+/*
+ * Positioned reads of one file from two threads at once, each at offsets of its own: every word of the file is its own
+ * offset, and each read has to see its own (mg_file_pread's offset goes with the call; seeking first, the two took each
+ * other's offsets).
+ */
+typedef struct pread_race {
+    mg_file *f;
+    u32 seed, bad, done;
+} pread_race;
+
+static void pread_racer(void *arg)
+{
+    pread_race *r = (pread_race *)arg;
+    u32 i, x = r->seed, word = 0;
+    int err = 0;
+    for (i = 0; i < 3000; i++) {
+        u32 at;
+        x = x * 1103515245u + 12345u;
+        at = ((x >> 8) % (256u * 1024u)) * 4u;
+        if (mg_file_pread(r->f, &word, 4, at, &err) != 4 || word != at) r->bad++;
+        r->done++;
+    }
+}
+
+static void test_pread_threads(const char *scratch)
+{
+    char *path = mg_sprintf("%s/pread-race.bin", scratch);
+    u32 *words = (u32 *)mg_alloc(1024u * 1024u), i;
+    pread_race a, b;
+    mg_thread *ta, *tb;
+    mg_file *f;
+    int err = 0;
+    say("files: positioned reads from two threads at once, each at its own offsets");
+    for (i = 0; i < 256u * 1024u; i++) words[i] = i * 4u;
+    f = mg_file_open(path, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &err);
+    CHECK(f && mg_file_write(f, words, 1024u * 1024u, &err) == 1024 * 1024);
+    if (f) mg_file_close(f);
+    f = mg_file_open(path, MG_O_READ, &err);
+    CHECK(f != NULL);
+    if (f) {
+        memset(&a, 0, sizeof(a));
+        memset(&b, 0, sizeof(b));
+        a.f = b.f = f;
+        a.seed = 1;
+        b.seed = 77;
+        ta = mg_thread_start(pread_racer, &a, 256u * 1024u, "pread-a");
+        tb = mg_thread_start(pread_racer, &b, 256u * 1024u, "pread-b");
+        if (ta) mg_thread_join(ta);
+        if (tb) mg_thread_join(tb);
+        say("  %u and %u reads, %u and %u of them not at their offset", a.done, b.done, a.bad, b.bad);
+        CHECK(ta && tb && a.done == 3000 && b.done == 3000 && a.bad == 0 && b.bad == 0);
+        mg_file_close(f);
+    }
+    free(words);
+    free(path);
+}
+
 static void test_host(const char *scratch)
 {
     u8 *p;
@@ -3102,9 +3159,12 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_libc_odds();
     test_appx_manifest();
     test_appx_pri();
+    test_arsc(libdir);
     test_palette();
     test_mmap_commit();
     test_mmap_file(scratch);
+    test_mmap_madvise(scratch);
+    test_pread_threads(scratch);
     test_rename_in_use(scratch);
     test_chromium_oom_report();
     test_shm_views();
