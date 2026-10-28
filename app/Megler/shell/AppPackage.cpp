@@ -593,6 +593,36 @@ void unregisterServiceApk(const std::string& installedFullName) {
     // Existing clients can finish with their mapped version. The cache is not an installation.
 }
 
+namespace {
+
+/// Whether the registered service package is still installed, asked of the Device Portal on a thread of its own, once a run.
+/// The portal's list of the phone's packages takes seconds to come, and every app's start waited for it: 9 to 10 s between
+/// "session: starting" and the app's own start, in each app's log (packages 484 to 491). An app does not need the answer
+/// to start. A service package uninstalled outside Megler (Megler's own uninstall unregisters it at once) is forgotten
+/// here, and the next start is without it.
+void verifyServiceApkLater(const std::string& name) {
+    static std::atomic<bool> asked{false};
+    if (asked.exchange(true)) return;
+    std::thread([name] {
+        try {
+            winrt::init_apartment(winrt::apartment_type::multi_threaded);
+        } catch (...) {
+        }
+        std::vector<InstalledApp> apps;
+        std::string error;
+        if (!installedApps(apps, error)) {
+            shellLog::write("microG: cannot verify service package installation: " + error);
+            return;
+        }
+        if (std::none_of(apps.begin(), apps.end(), [&](const InstalledApp& a) { return a.fullName == name; })) {
+            unregisterServiceApk(name);
+            shellLog::write("microG: " + name + " is no longer installed: apps start without it from the next start on");
+        }
+    }).detach();
+}
+
+}  // namespace
+
 std::wstring serviceApk() {
     const auto shared = sharedFolder();
     std::string record;
@@ -600,18 +630,10 @@ std::wstring serviceApk() {
     const auto name = iniValue(record, "package"), token = iniValue(record, "cache");
     if (name.empty() || token.empty() || token.find_first_not_of("0123456789abcdef-") != std::string::npos) return {};
     if (name.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos) return {};
-    std::vector<InstalledApp> apps;
-    std::string error;
-    if (!installedApps(apps, error)) {
-        shellLog::write("microG: cannot verify service package installation: " + error);
-        return {};
-    }
-    if (std::none_of(apps.begin(), apps.end(), [&](const InstalledApp& a) { return a.fullName == name; })) {
-        unregisterServiceApk(name);
-        return {};
-    }
     const auto apk = shared + L"\\services\\" + widen(token) + L"\\GmsCore.apk";
-    return canRead(apk) ? apk : std::wstring();
+    if (!canRead(apk)) return {};
+    verifyServiceApkLater(name);
+    return apk;
 }
 
 std::wstring gsfApk() {

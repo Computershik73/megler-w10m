@@ -1338,6 +1338,31 @@ collector urgent.
 
 ### What a run costs
 
+**How long a start takes, on the phone** (Yandex Maps, package 490): the shell
+1.4 s to "session: starting", then nothing in the log for 9.8 s, then 0.4 s for
+libcore, 2 s for the app's sixteen DEX files, and from the app's `Application`
+on its own code. The same 9 to 10 s were in every app's log (Facebook,
+WhatsApp, Play Store, packages 484 to 491). They were the shell asking the
+Device Portal, over the loopback, for the phone's whole list of packages, to see
+whether Google Play services' own package was still installed
+(`appPackage::serviceApk`), before any app could start. That is asked on a
+thread of its own now, once a run, and a package found gone is forgotten for the
+next start (Megler's own uninstall forgets it at once). And:
+- The table of which DEX file defines each class had 16384 buckets; Yandex
+  Maps defines 210000 classes and Google Play services 60000 more, so every
+  lookup (each class of each DEX file as it was read, each class loaded) went
+  through fifteen entries with `strncmp`. It grows now, two entries a bucket at
+  most (`cdef_grow`), and a class's name is no longer copied to be looked up.
+  The tables of loaded classes and of interned names have 65536 buckets (they
+  had 4096 and 8192).
+- Google Play services' resource table cut down (see Memory) is kept beside its
+  APK in the services' shared folder, named for the table's CRC-32 and the
+  languages, and read from there by every app after the first: its 84 MB were
+  read and cut at each start, 0.7 s.
+
+What is left is the interpreter running the app's own start, and Google Play
+services starting in the same process beside it.
+
 Measured by the runtime's own counts, in the 32-bit build under qemu
 (`mg_mem_usage` gives nothing in a test program, so what the *process* takes was
 not measured):
