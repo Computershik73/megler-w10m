@@ -615,7 +615,7 @@ typedef struct lib_walk {
     int count;
 } lib_walk;
 
-enum { L_UNITY, L_UE4, L_COCOS, L_GODOT, L_SDL, L_MAIN, L_GDX, L_FLUTTER, L_MONO, L_IL2CPP, L_VULKAN_ONLY };
+enum { L_UNITY, L_UE4, L_COCOS, L_GODOT, L_SDL, L_MAIN, L_GDX, L_FLUTTER, L_MONO, L_IL2CPP, L_DEXPROTECTOR, L_VULKAN_ONLY };
 
 static void lib_seen(const mg_zip_entry *e, void *user)
 {
@@ -634,6 +634,7 @@ static void lib_seen(const mg_zip_entry *e, void *user)
     if (!strcmp(name, "libmain.so") || !strcmp(name, "libnative-activity.so")) w->has[L_MAIN] = true;
     if (!strcmp(name, "libgdx.so")) w->has[L_GDX] = true;
     if (!strcmp(name, "libflutter.so")) w->has[L_FLUTTER] = true;
+    if (!strcmp(name, "libdexprotector.so")) w->has[L_DEXPROTECTOR] = true;
 }
 
 static void abi_seen(const mg_zip_entry *e, void *user)
@@ -696,9 +697,21 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
     else if (w.has[L_UE4]) strcpy(info->engine, "unreal");
     else if (w.has[L_GODOT]) strcpy(info->engine, "godot");
     else if (w.has[L_COCOS]) strcpy(info->engine, "cocos2d-x");
+    /*
+     * A Flutter app is a Java app: its activity (FlutterActivity or the app's own on top of it) starts Flutter's engine,
+     * libflutter.so, through JNI, and the engine runs the app's Dart code (libapp.so) and draws into the activity's
+     * SurfaceView. The Java driver runs it as any other. Without bytecode and an activity there is nothing to start it.
+     */
+    else if (w.has[L_FLUTTER] && info->activity[0] && mg_zip_find(zips[0], "classes.dex")) strcpy(info->engine, "java");
     else if (w.has[L_FLUTTER]) strcpy(info->engine, "flutter");
     else if (!strcmp(info->activity, "android.app.NativeActivity") || (!info->has_code && w.count) || info->native_library[0]) strcpy(info->engine, "native-activity");
     else if (w.has[L_SDL]) strcpy(info->engine, "sdl");
+    /*
+     * libGDX is a Java app as well: its AndroidApplication is an activity that draws with OpenGL ES on a GLSurfaceView, and
+     * libgdx.so holds a few of its classes' natives (buffers, matrices), loaded with System.loadLibrary. ("Durak" was
+     * refused as an engine with no driver.)
+     */
+    else if (w.has[L_GDX] && info->activity[0] && mg_zip_find(zips[0], "classes.dex")) strcpy(info->engine, "java");
     else if (w.has[L_GDX]) strcpy(info->engine, "libgdx");
     /*
      * Everything else that has bytecode and an activity to start is an ordinary Android app: Java, which loads what
@@ -758,6 +771,12 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
     if (w.has[L_MONO] && mg_core_arm_state() < 0) note(info, "Unity with Mono: its JIT writes ARM-mode code at run time, which this phone does not keep running.");
     if (!strcmp(info->engine, "unity"))
         note(info, "The Unity driver is new and unfinished: the engine and the game's code start, and no Unity game has been seen to draw on a phone yet.");
+    if (w.has[L_FLUTTER] && !strcmp(info->engine, "java"))
+        note(info, "Built with Flutter: its engine runs inside the Java app and draws with OpenGL ES (there is no Vulkan here). Flutter apps are new here.");
+    if (w.has[L_GDX] && !strcmp(info->engine, "java"))
+        note(info, "Built with libGDX: the game runs as a Java app and draws with OpenGL ES.");
+    if (w.has[L_DEXPROTECTOR])
+        note(info, "Protected by DexProtector: most of the app's code is encrypted in the APK and decrypted while it starts by a packed native library made for Android's own runtime. Such an app may stop before its first screen.");
     if (!strcmp(info->engine, "native-activity") && info->has_code && strcmp(info->activity, "android.app.NativeActivity"))
         note(info, "Its activity (%s) is the app's own Java class on top of NativeActivity. That Java code is not run here: the app starts, and gets as far as it can without it.",
              info->activity);

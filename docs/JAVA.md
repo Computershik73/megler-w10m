@@ -2463,6 +2463,34 @@ counts it now reads (`ref_counted` in `mg_jni.c`); the table forgets an
 object once nothing references it globally, so it grows with what is
 referenced, not with what ever was.
 
+### A Flutter app
+
+A Flutter app is a Java app: its activity (`FlutterActivity`, or the app's
+own on top of it) loads Flutter's engine, `libflutter.so`, and the engine
+runs the app's Dart code, compiled ahead of time into `libapp.so`, and draws
+into the activity's `SurfaceView`. The APK's report took the engine's
+library for an engine of its own with no driver ("there is no driver for that
+engine yet"), so no Flutter app could be started. It is a Java app now, with
+a note that it is built with Flutter (`classify` in `mg_apk.c`; the bundle
+tests make one of the natives test app with the two libraries beside its own).
+
+What the engine asks of the system was checked against what is here, on its
+dynamic imports (a release engine of May 2026, Dart 3.12, 481 of them): an ARM library that
+imports the same names, loaded with `mg_tests --load` under qemu, left eight
+unresolved besides OpenGL ES and EGL (which are ANGLE's on the phone, and all
+there): `readlinkat`, `symlinkat`, `utimensat`, `inotify_init1` and
+`close_range` of dart:io, now there as the other `*at` calls are (the
+directory descriptor not looked at), and BoringSSL's three weak
+`OPENSSL_memory_*` hooks, which are meant to be absent. What it looks up at
+run time: `libvulkan.so` is not there, and the engine draws with Impeller's
+OpenGL ES backend instead; `AChoreographer_*` (API 29) are not, and it waits
+for the display's frames through Java's `Choreographer`; `ASurfaceControl_*`
+answer none. Each lookup in the system's libraries that finds nothing now
+says so in the log, once (`dl: dlsym(NAME) found nothing`). The Dart VM
+reads `/proc/cpuinfo` for ARMv7 and its features (vfp, neon, idiva), which
+says so, as `getauxval(AT_HWCAP)` does. No Flutter app has been run here yet:
+the next step is a phone's log of one.
+
 ### A SurfaceView drawn by native code
 
 A game whose activity is Java and whose engine is native hands the engine the
