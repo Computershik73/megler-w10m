@@ -66,8 +66,9 @@ static void thread_ends(void)
     mg_dvm_unlock();
     t_self = NULL;
     /* Its frame stack goes; the small rest stays, for whoever still holds its address (a Thread whose nativePeer was read a moment ago). */
-    free(t->stack);
+    mg_mem_release(t->stack, sizeof(mg_dvm_reg) * t->stack_words);
     t->stack = t->sp = t->stack_end = NULL;
+    t->stack_committed = 0;
 }
 
 void mg_dvm_threads_each(void (*fn)(mg_dvm_thread *t, void *user), void *user)
@@ -76,11 +77,37 @@ void mg_dvm_threads_each(void (*fn)(mg_dvm_thread *t, void *user), void *user)
     for (t = g_threads; t; t = t->next) fn(t, user);
 }
 
-mg_dvm_thread *mg_dvm_self(void)
+/*
+ * For a fault's report (mg_core.c, mg_core_set_fault_detail): the Java frames of the thread that faulted, innermost first,
+ * each method and the place it last called out from -- what the native code that faulted was called by, or what the
+ * runtime was running. Read as they lie, with nothing made and nothing locked: the thread may have stopped anywhere in the
+ * runtime. A frame outside the thread's own stack of frames ends the list. Nothing for a thread that never ran Java.
+ * WhatsApp's end in the interpreter (an access at address 0x23, called from its native library) said only "Megler.exe".
+ */
+void mg_dvm_fault_frames(char *out, size_t cap)
 {
     mg_dvm_thread *t = t_self;
+    mg_dvm_frame *f;
+    size_t n = 0;
+    int depth = 0;
+    if (!cap) return;
+    out[0] = 0;
+    if (!t || !t->stack) return;
+    for (f = t->top; f && depth < 16 && n + 200 < cap; f = f->prev, depth++) {
+        const mg_dvm_method *m;
+        if ((mg_dvm_reg *)(void *)f < t->stack || (mg_dvm_reg *)(void *)f >= t->stack_end) break;
+        m = f->m;
+        if (!m || !m->cls || !m->cls->name || !m->name) break;
+        n += (size_t)snprintf(out + n, cap - n, "%s%s.%s%s at %u", depth ? ", " : "\n  its Java frames: ", m->cls->name, m->name,
+                              (m->flags & DVM_ACC_NATIVE) ? " (native)" : "", (unsigned)f->pc);
+        if (n >= cap) { out[cap - 1] = 0; return; }
+    }
+}
+
+static mg_dvm_thread *make_self(size_t words)
+{
+    mg_dvm_thread *t;
     void *lo = NULL, *hi = NULL;
-    if (t) return t;
     t = (mg_dvm_thread *)mg_alloc(sizeof(*t));
     /* Where the host's stack ends, if the host knows and what it says holds for where this function stands now. */
     mg_thread_stack_bounds(&lo, &hi);
@@ -91,9 +118,14 @@ mg_dvm_thread *mg_dvm_self(void)
         t->stack_lo = (mg_addr)lo;
         t->stack_hi = (mg_addr)hi;
     }
+    t->c_stack_min = hi ? (mg_addr)hi : 0;
     mg_thread_set_end_hook(thread_ends);
-    t->stack = (mg_dvm_reg *)mg_alloc(sizeof(mg_dvm_reg) * DVM_STACK_WORDS);
-    t->stack_end = t->stack + DVM_STACK_WORDS - DVM_STACK_RESERVE;
+    t->stack_words = words;
+    t->stack = (mg_dvm_reg *)mg_mem_reserve(sizeof(mg_dvm_reg) * words);
+    if (!t->stack || !mg_mem_commit(t->stack, sizeof(mg_dvm_reg) * DVM_STACK_FIRST_WORDS, MG_PROT_RW))
+        mg_fatal("dvm: no memory for a thread's frame stack");
+    t->stack_committed = DVM_STACK_FIRST_WORDS;
+    t->stack_end = t->stack + t->stack_committed - DVM_STACK_RESERVE;
     t->sp = t->stack;
     t->id = mg_thread_self_id();
     mg_dvm_lock();
@@ -103,6 +135,27 @@ mg_dvm_thread *mg_dvm_self(void)
     t_self = t;
     return t;
 }
+
+mg_dvm_thread *mg_dvm_self(void) { return t_self ? t_self : make_self(DVM_STACK_WORDS); }
+mg_dvm_thread *mg_dvm_self_sized(size_t words) { return t_self ? t_self : make_self(words); }
+
+void mg_dvm_thread_census(u32 *threads, u32 *attached, u64 *frame_bytes, u64 *c_reserved, u64 *c_peak)
+{
+    mg_dvm_thread *t;
+    *threads = *attached = 0;
+    *frame_bytes = *c_reserved = *c_peak = 0;
+    mg_dvm_lock();
+    for (t = g_threads; t; t = t->next) {
+        (*threads)++;
+        if (t->stack_words == DVM_STACK_ATTACHED_WORDS) (*attached)++;
+        *frame_bytes += sizeof(mg_dvm_reg) * (u64)t->stack_words;
+        /* A thread native code attached brought its own host stack; the ones the runtime made are the ones we sized. */
+        if (t->stack_words != DVM_STACK_ATTACHED_WORDS && t->stack_hi > t->stack_lo) *c_reserved += (u64)(t->stack_hi - t->stack_lo);
+        if (t->c_stack_min && t->stack_hi > t->c_stack_min && (u64)(t->stack_hi - t->c_stack_min) > *c_peak) *c_peak = (u64)(t->stack_hi - t->c_stack_min);
+    }
+    mg_dvm_unlock();
+}
+mg_dvm_thread *mg_dvm_self_attached(void) { return t_self ? t_self : make_self(DVM_STACK_ATTACHED_WORDS); }
 
 /* --------------------------------------------------------------- allocation */
 
@@ -610,7 +663,7 @@ static void monitor_sample_copy(mg_dvm_thread *t, monitor_sample *s)
         }
     }
     for (f = t->top; f && s->frames < 32; f = f->prev) {
-        if ((mg_addr)f < (mg_addr)t->stack || (mg_addr)f + sizeof(*f) > (mg_addr)(t->stack + DVM_STACK_WORDS) || !f->m) break;
+        if ((mg_addr)f < (mg_addr)t->stack || (mg_addr)f + sizeof(*f) > (mg_addr)(t->stack + t->stack_committed) || !f->m) break;
         s->methods[s->frames] = f->m;
         s->pcs[s->frames++] = f->pc;
     }

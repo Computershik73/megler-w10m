@@ -489,7 +489,7 @@ static void end_peer(mg_jobj *peer)
 
 bool mg_dvm_thread_attach(const char *name, mg_jobj *group, bool daemon)
 {
-    mg_dvm_thread *t = mg_dvm_self();
+    mg_dvm_thread *t = mg_dvm_self_attached();
     if (!g_dvm.running || !g_dvm.libcore || t->peer) return true;
     if (make_peer(name, group, daemon)) return true;
     mg_dvm_clear_pending();
@@ -518,6 +518,7 @@ void mg_dvm_thread_detach(void)
 typedef struct started_thread {
     mg_jobj *peer;
     int owner_scope;
+    i64 stack;                         /* the stack size the Thread asked for; 0 for the default */
 } started_thread;
 
 /*
@@ -542,7 +543,9 @@ static void thread_main(void *arg)
 {
     started_thread *s = (started_thread *)arg;
     mg_jobj *peer = s->peer, *e;
-    mg_dvm_thread *t = mg_dvm_self();
+    /* The frame stack: a thread's own size, or the whole when it asked for more than 1 MB of stack (deep recursion). */
+    mg_dvm_thread *t = mg_dvm_self_sized(s->stack > (1 << 20) ? (s->stack / 4 > DVM_STACK_WORDS ? (size_t)(s->stack / 4) & ~(size_t)0x3FFF : DVM_STACK_WORDS)
+                                                              : DVM_STACK_JAVA_WORDS);
     mg_jvalue v;
     t->owner_scope = s->owner_scope;
     free(s);
@@ -570,11 +573,19 @@ N(Thread_nativeCreate)
     mg_thread *th;
     started_thread *s = (started_thread *)mg_alloc(sizeof(*s));
     s->peer = peer;
+    s->stack = stack;
     s->owner_scope = starting_scope();
     /* Alive from the moment start() returns, as Java promises; the thread puts its own state here when it runs. */
     set_long(peer, "nativePeer", 1);
-    /* Java's frames are not on this stack, only what native methods need of it. */
-    th = mg_thread_start(thread_main, s, stack > (1 << 20) ? (size_t)stack : (size_t)1 << 20, "java");
+    /*
+     * Java's frames are not on this stack (the frame stack holds them); it is only what C and native methods use, which the
+     * guard in mg_dvm_invoke (c_stack_low, 48 KB above the bottom) turns into a catchable StackOverflowError before it runs
+     * out. Measured deepest over a heavy app of 213 threads: 23 KB; the data app: 7 KB. 256 KB leaves a tenfold margin and,
+     * committed whole for Android code (mg_thread_whole_stack), is 768 KB less memory a thread than the 1 MB this once gave
+     * -- ~190 MB for an app of 253 threads. A thread that asks for more than 256 KB still gets what it asked, for native
+     * code that wants a deep stack of its own.
+     */
+    th = mg_thread_start(thread_main, s, stack > (256 << 10) ? (size_t)stack : (size_t)256 << 10, "java");
     if (!th) {
         free(s);
         set_long(peer, "nativePeer", 0);

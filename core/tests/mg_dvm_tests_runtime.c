@@ -299,6 +299,26 @@ static void test_threads(void)
 
 /* ------------------------------------------------------------------- limits */
 
+/* A thread the app's native code made and attached: its frame stack, and what it can do on it. */
+typedef struct attached_run {
+    size_t words;
+    i32 down;
+    char overflow[48];
+    i32 after;
+} attached_run;
+
+static void attached_work(void *arg)
+{
+    attached_run *r = (attached_run *)arg;
+    r->words = mg_dvm_self_attached()->stack_words;
+    A[0].i = 1000;
+    r->down = call("t/Deep", "down", "(I)I").i;
+    call("t/Deep", "forever", "(I)I");
+    mg_strlcpy(r->overflow, thrown(), sizeof(r->overflow));
+    A[0].i = 100;
+    r->after = call("t/Deep", "down", "(I)I").i;
+}
+
 static void test_limits(void)
 {
     mg_dvm_stats before, after;
@@ -307,8 +327,22 @@ static void test_limits(void)
     A[0].i = 10000;
     CHECK_INT(call("t/Deep", "down", "(I)I").i, 10000);
     CHECK_STR(thrown(), "");
+    /* Which it committed as they needed it, more than the first part of it. */
+    CHECK(mg_dvm_self()->stack_committed > DVM_STACK_FIRST_WORDS);
     call("t/Deep", "forever", "(I)I");
     CHECK(!strncmp(thrown(), "java.lang.StackOverflowError: ", 30));
+    /* Without end, the whole of it, the reserve with it. */
+    CHECK(mg_dvm_self()->stack_committed == DVM_STACK_WORDS && mg_dvm_self()->stack_words == DVM_STACK_WORDS);
+    {
+        /* A thread native code attached has the smaller one: a thousand calls deep fit, one that does not end is the
+           error there too, and the thread goes on. */
+        static attached_run r;
+        mg_thread *th = mg_thread_start(attached_work, &r, 1 << 20, "dvm-attached");
+        CHECK(th != NULL);
+        if (th) mg_thread_join(th);
+        CHECK(r.words == DVM_STACK_ATTACHED_WORDS && r.down == 1000 && r.after == 100);
+        CHECK(!strncmp(r.overflow, "java.lang.StackOverflowError: ", 30));
+    }
     CHECK_INT(call("t/Deep", "caught", "()I").i, 1);
     CHECK_STR(thrown(), "");
     A[0].i = 100;

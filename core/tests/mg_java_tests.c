@@ -2807,6 +2807,14 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     /* An app that shows pictures and composes no OpenGL frames has them shown from its canvas (megler_gfx_host.present). */
     if (W.pictures > 0 && count_lines("java: the app draws with EGL on a view") == 0) CHECK(W.from_canvas > 0);
     if (!g_any_app) CHECK(count_lines("a frame drawn in part missed") == 0);
+    {
+        /* The host (C) stacks the runtime's threads reserve, and the deepest any was seen to use: where the census would. */
+        u32 threads = 0, attached = 0;
+        u64 frames = 0, c_reserved = 0, c_peak = 0;
+        mg_dvm_thread_census(&threads, &attached, &frames, &c_reserved, &c_peak);
+        say("  threads %u (%u attached), frame stacks %u MB, host stacks %u MB (the deepest used %u KB)",
+            (unsigned)threads, (unsigned)attached, (unsigned)(frames >> 20), (unsigned)(c_reserved >> 20), (unsigned)(c_peak >> 10));
+    }
     say("%d checks, %d failed", g_checks, g_failed);
     return g_failed;
 }

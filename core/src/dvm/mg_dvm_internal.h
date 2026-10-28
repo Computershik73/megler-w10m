@@ -238,6 +238,8 @@ struct mg_dvm_frame {
 
 struct mg_dvm_thread {
     mg_dvm_reg *stack, *stack_end;     /* frames and registers; grows up */
+    size_t stack_committed;            /* words of it backed by memory: reserved whole, committed as it grows (stack_grow) */
+    size_t stack_words;                /* words reserved: DVM_STACK_WORDS, or DVM_STACK_ATTACHED_WORDS for a thread native code attached */
     mg_dvm_reg *sp;
     mg_dvm_frame *top;
     mg_jobj *pending;                  /* the exception being thrown */
@@ -246,6 +248,7 @@ struct mg_dvm_thread {
     int depth;                         /* frames */
     int c_depth;                       /* calls from C into the interpreter, nested */
     mg_addr c_stack_low;               /* the host's stack must not be used below here; 0 when the host could not say */
+    mg_addr c_stack_min;               /* the lowest the host's stack pointer has been (mg_dvm_invoke, invoke_native): its deepest use */
     bool overflowing;                  /* StackOverflowError is being made: its own calls may use the reserve */
     u64 steps_left;                    /* under a step limit: instructions this call from C may still execute; all ones once it is used up */
     mg_jvalue scratch;                 /* where a field with no slot of its own is read from and written to */
@@ -293,9 +296,30 @@ struct mg_dvm_thread {
     mg_addr stack_lo, stack_hi;
 };
 
-/* How much of a thread's stack only the making of a StackOverflowError may use, in registers. */
+/*
+ * How much of a thread's stack only the making of a StackOverflowError may use, in registers; and, while the stack is not
+ * committed whole, how far below its committed end frames stop, so that nothing ever reaches past what is committed.
+ */
 #define DVM_STACK_RESERVE 2048
 #define DVM_STACK_WORDS (192u * 1024u)
+/*
+ * What is committed of it when a thread starts (64 KB); it doubles as frames need more. It was committed whole (768 KB) for
+ * every thread: Facebook's 170 threads held 130 MB of it, nearly all never touched, and Windows counts it all against the
+ * app's limit.
+ */
+#define DVM_STACK_FIRST_WORDS (16u * 1024u)
+/*
+ * What is reserved for a thread the app's native code made and attached (AttachCurrentThread): 128 KB. Such a thread calls
+ * into Java to be told something, or to tell, and comes back; the threads Java starts get the whole. Yandex Maps had 199
+ * threads when its 2 GB of addresses ran out, 150 MB of them frame stacks reserved whole (package 489).
+ */
+#define DVM_STACK_ATTACHED_WORDS (32u * 1024u)
+/*
+ * And for a thread Java starts (Thread.start), unless it asked for a stack larger than 1 MB: 384 KB, some four thousand
+ * frames, as many as ART's interpreter fits in an Android thread's 1 MB. The main thread keeps the whole. Yandex Maps had
+ * 229 such threads, with Google Play services' in the same process, when its addresses ran out (package 493).
+ */
+#define DVM_STACK_JAVA_WORDS (96u * 1024u)
 /* Calls from C into the interpreter that may be nested (a native method calling back, a static initialiser): each is real C recursion. */
 #define DVM_MAX_C_DEPTH 200
 
@@ -465,7 +489,28 @@ const char *mg_dvm_defined_name(u32 i, mg_dvm_dex **dex);
 
 /* -------------------------------------------------------- mg_dvm_object.c */
 
+/*
+ * mg_dvm_dex.c: a DEX file whose bytes are at `b` for now (a view the caller unmaps once its classes are registered), opened
+ * for its tables and classes' names alone: no checksum, no caches. mg_dvm_dex_ready views it again from `map_path` at
+ * `map_at` when the first of its classes is linked, checks it, and makes its caches. With the runtime's lock held.
+ */
+mg_dvm_dex *mg_dvm_dex_open_lazy(const u8 *b, size_t size, const char *label, const char *map_path, u64 map_at);
+bool mg_dvm_dex_ready(mg_dvm_dex *d);
+/* Whether a DEX file of these bytes of that file is the runtime's already (registered, viewed or not). */
+bool mg_dvm_dex_known(const char *map_path, u64 map_at, size_t size);
+/* mg_dvm.c: such a file added to the class path, of the app or of a scope (`scope` > 0). */
+bool mg_dvm_add_dex_lazy(const void *data, size_t size, const char *label, int scope, const char *map_path, u64 map_at);
+/* mg_dvm_apk.c: bytes of DEX files viewed now, for the memory line. */
+void mg_dvm_dex_viewed(u64 bytes);
+
 mg_dvm_thread *mg_dvm_self(void);
+/* The same for a thread of the app's own that attaches: made, if it is not yet, with the smaller frame stack. */
+mg_dvm_thread *mg_dvm_self_attached(void);
+/* The same for a thread Java starts, with a frame stack of `words` (DVM_STACK_JAVA_WORDS, or more for a stack asked for). */
+mg_dvm_thread *mg_dvm_self_sized(size_t words);
+/* The runtime's threads now: how many, how many of them attached by native code, and the frame stacks' reserved bytes. */
+/* The thread's Java frames for a fault's report (mg_core.c's fault detail): made nothing, locked nothing. */
+void mg_dvm_fault_frames(char *out, size_t cap);
 void mg_dvm_monitor_trace_start(void);
 void mg_dvm_stacks_trace_start(void);
 void mg_dvm_call_trace_add(const char *prefix);

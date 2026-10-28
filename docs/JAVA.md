@@ -5443,11 +5443,20 @@ the app's native heap, the libraries, and Java. Hollow Knight alone left 690 MB
 of them free. Three things follow.
 
 **Threads are cheap here and must stay so.** A Java thread costs a host stack
-and a frame stack. The host stack can be small, since Java frames are not on it
-(1 MB, or what the native code it calls needs: `mg_thread_whole_stack` commits
-it whole). The frame stack is 768 KB today, allocated at once; it should be
-reserved and committed as it grows. Thirty threads are then some tens of MB,
-where 32 MB a thread, as an interpreter that recurses in C needs, would be a gigabyte. A thread's state is not
+and a frame stack. The host stack can be small, since Java frames are not on it:
+256 KB (or what a thread asks for above that, for native code that wants a deep
+stack). `mg_thread_whole_stack` commits it whole for Android code, so it is
+memory, not only addresses, which Windows counts against the app's limit. It
+once gave 1 MB; the interpreter recurses in C only where C stands between two
+pieces of bytecode (`mg_dvm_invoke`), and the guard there (`c_stack_low`, 48 KB
+above the bottom) turns running out into a catchable `StackOverflowError`. The
+deepest any thread's host stack was seen to use, measured over a heavy app of
+213 threads (`java: addresses by kind` reports it, and the data app's run says
+it): 23 KB; the data app itself 7 KB. So 256 KB is a tenfold margin and 768 KB
+a thread less than the 1 MB before it -- Yandex Maps' 253 threads held 253 MB
+of host stacks, now some 65 (package 498 → 499). The frame stack is 384 KB of
+addresses for an ordinary thread, reserved at once and committed as it grows:
+64 KB first, doubled as frames need it (`stack_grow`). A thread's state is not
 freed when the thread ends yet; the host layer has no hook for that.
 
 **Objects have to be freed.** A process that never collects is a

@@ -264,7 +264,7 @@ static void scan_frames(mg_dvm_thread *t, void *user)
     mg_dvm_reg *top;
     (void)user;
     if (!t->stack) return;
-    top = t->sp + 64 < t->stack + DVM_STACK_WORDS ? t->sp + 64 : t->stack + DVM_STACK_WORDS;
+    top = t->sp + 64 < t->stack + t->stack_committed ? t->sp + 64 : t->stack + t->stack_committed;
     scan_words((mg_addr)t->stack, (mg_addr)top);
 }
 

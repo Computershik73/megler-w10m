@@ -28,7 +28,7 @@
 /* The stack has no room for a frame of `words` registers: the error, or nothing when even the reserve is used up. */
 static MG_NOINLINE mg_dvm_frame *stack_full(mg_dvm_thread *t, mg_dvm_method *m, size_t words)
 {
-    mg_dvm_reg *limit = t->stack + DVM_STACK_WORDS;
+    mg_dvm_reg *limit = t->stack + t->stack_committed; /* the whole stack, unless more of it could not be committed */
     mg_dvm_frame *f;
     if (t->overflowing && words + FRAME_WORDS <= (size_t)(limit - t->sp)) {
         /* The making of the error itself, in the reserve. */
@@ -185,11 +185,27 @@ static void call_trace_unwind(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *e)
         mg_info("calls: thread %u depth %d: %s.%s ends with %s", (unsigned)t->id, t->depth, m->cls->name, m->name, e ? mg_dvm_class_of(e)->name : "?");
 }
 
+/*
+ * More of the thread's stack committed, enough for a frame of `words` registers above sp and the reserve: doubled until it
+ * is, up to the whole stack. False when it is all committed already (the stack is full) or the memory is not there.
+ */
+static MG_NOINLINE bool stack_grow(mg_dvm_thread *t, size_t words)
+{
+    size_t need = (size_t)(t->sp - t->stack) + words + FRAME_WORDS + DVM_STACK_RESERVE, more = t->stack_committed;
+    if (t->stack_committed >= t->stack_words) return false;
+    while (more < need && more < t->stack_words) more *= 2;
+    if (more > t->stack_words) more = t->stack_words;
+    if (!mg_mem_commit(t->stack + t->stack_committed, sizeof(mg_dvm_reg) * (more - t->stack_committed), MG_PROT_RW)) return false;
+    t->stack_committed = more;
+    t->stack_end = t->stack + more - DVM_STACK_RESERVE;
+    return words + FRAME_WORDS <= (size_t)(t->stack_end - t->sp);
+}
+
 /* A frame for `m` with `words` registers on the thread's stack, made the method being run. NULL when the stack is full (thrown). */
 static inline mg_dvm_frame *push_frame(mg_dvm_thread *t, mg_dvm_method *m, size_t words)
 {
     mg_dvm_frame *f;
-    if (words + FRAME_WORDS > (size_t)(t->stack_end - t->sp)) return stack_full(t, m, words);
+    if (words + FRAME_WORDS > (size_t)(t->stack_end - t->sp) && !stack_grow(t, words)) return stack_full(t, m, words);
     f = (mg_dvm_frame *)(void *)t->sp;
     f->prev = t->top;
     f->m = m;
@@ -301,6 +317,7 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     u64 native_started = 0, call_started = 0;
     bool is_static = (m->flags & DVM_ACC_STATIC) != 0, outermost, timed = false;
     int library_scope = mg_ld_set_scope(m->cls->scope);
+    if ((mg_addr)&f < t->c_stack_min) t->c_stack_min = (mg_addr)&f;
     result->j = 0;
     if (!m->bound && !mg_dvm_bind_native(m)) { mg_ld_set_scope(library_scope); return false; }
     /* The frame is what a stack trace shows of a native method; the parameters are laid out above it. */
@@ -968,6 +985,7 @@ bool mg_dvm_invoke(mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_
     mg_dvm_frame *f;
     mg_jvalue local;
     bool ok = false;
+    if ((mg_addr)&local < t->c_stack_min) t->c_stack_min = (mg_addr)&local;
     if (!ret) ret = &local;
     ret->j = 0;
     /*

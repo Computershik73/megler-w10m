@@ -216,6 +216,12 @@ void mg_dvm_gc_run_finalization(void);
  * behind.
  */
 u64 mg_dvm_executed_all(void);
+/*
+ * The runtime's threads: how many, how many native code attached, the bytes their frame stacks reserve, the bytes their
+ * host (C) stacks reserve -- committed whole for Android code (mg_thread_whole_stack), so this is memory, not only
+ * address -- and the most any one thread's host stack has been seen to use.
+ */
+void mg_dvm_thread_census(u32 *threads, u32 *attached, u64 *frame_bytes, u64 *c_reserved, u64 *c_peak);
 typedef struct mg_dvm_costs {
     u64 executed, waited_ns, native_ns, natives, alloc_ns, allocs, blocked_ns;
 } mg_dvm_costs;
