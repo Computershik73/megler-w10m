@@ -6,6 +6,7 @@
 #include "shell/Strings.h"
 
 #include <xaudio2.h>
+#include <eventtoken.h>
 #include <roapi.h>
 
 #include <algorithm>
