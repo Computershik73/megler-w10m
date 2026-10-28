@@ -7,6 +7,7 @@
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
+#include "ui/SeparateApps.h"
 
 #include <winrt/Windows.Graphics.Imaging.h>
 
@@ -100,6 +101,18 @@ void poll(AppShell& shell) {
             if (n >= 0 && size_t(n) < entries.size()) shell.push(makeAppDetailScreen(shell, entries[size_t(n)].id));
         } else if (flag.rfind(L"ui-back-", 0) == 0) {
             shell.goBack();
+        } else if (flag == L"ui-update-all") {
+            separateApps::updateAll(shell);
+        } else if (flag.rfind(L"ui-update-", 0) == 0) {
+            const std::string package = narrow(flag.substr(10));
+            bool found = false;
+            for (const auto& e : Library::instance().entries()) {
+                if (e.report.package != package) continue;
+                separateApps::install(shell, e.id);
+                found = true;
+                break;
+            }
+            if (!found) shellLog::write("ui: no app of the package " + package + " in the library to update");
         }
     }
 }
