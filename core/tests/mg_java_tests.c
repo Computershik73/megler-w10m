@@ -1133,10 +1133,15 @@ static void type_into_fields(const int row[4], int *at)
     CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_PASSWORD);
     megler_text_commit("pw");
     expect_line("I/DemoTest: typing: secret=\"pw\"", at, 30);
+    megler_text_key(MEGLER_TEXT_BACKSPACE);
+    megler_text_commit("w");
+    expect_line("I/DemoTest: typing: secret=\"pw\"", at, 30);
     /* A note of several lines: Enter is a new line there, and the keyboard is told so. */
     shown = K.shown;
     tap(note[0] + 60, note[1] + 30);
     CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT && K.flags == (MEGLER_KEYBOARD_F_MULTILINE | MEGLER_KEYBOARD_F_CAP_SENTENCES) && K.enter == MEGLER_ENTER_NEWLINE);
+    /* The password field left says (in numbers only) that it holds what the keyboard typed. */
+    expect_line("keyboard: the password field android.widget.EditText holds what the keyboard typed (2 characters)", at, 30);
     megler_text_commit("one");
     megler_text_key(MEGLER_TEXT_ENTER);
     megler_text_commit("two");

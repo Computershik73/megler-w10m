@@ -2942,6 +2942,21 @@ No reason was found in the core or the framework why the phone would lose
 typed text that this path delivers under qemu. The next phone log will show
 at which of the three steps it goes missing.
 
+**What a password field got, in numbers.** Facebook said a password was
+wrong that the user had typed right (package 484), and its field shows dots.
+Two lines say, without a character of it, whether the field got what was
+typed. The shell, when a field is left or the keyboard put away, counts what
+the keyboard did there: `player: in that field (kind 5) the keyboard typed N
+characters and took back K by Backspace keys and T by changes to its text`,
+and how often a key and a change came within 0.2 s of each other (one
+Backspace told twice would take back two characters). And
+`InputMethods` keeps, for a password field, what the keyboard's text and
+Backspaces make of the field's text, typed at its end, and when the field is
+left or its Enter pressed says whether the field holds that: `keyboard: the
+password field ... holds what the keyboard typed (N characters)`, or holds a
+different number and not what was typed. The demos test types "pw", a
+Backspace and "w" into its password field and checks the first.
+
 **What the keyboard does to a window is Android's.** The window's
 `softInputMode` decides (`adjustMode` in the overlay's `megler/ViewRoot.java`):
 

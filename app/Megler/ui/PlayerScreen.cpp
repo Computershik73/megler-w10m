@@ -750,6 +750,8 @@ private:
         }
         if (!keyboardWanted_)
             shellLog::write(format("player: the app asks for the keyboard (kind %d, flags 0x%X, Enter %d)", kind, unsigned(flags), enter));
+        typingTold();
+        typing_.kind = kind;
         keyboardWanted_ = true;
         try {
             // A new scope is the text service's to read at the next focus: so the focus is left and taken again.
@@ -771,6 +773,7 @@ private:
     /// The app no longer wants it, or (`byUser`) Back was pressed while it was up.
     void putKeyboardAway(bool byUser) {
         if (!keyboardWanted_ && !keyboardUp_) return;
+        typingTold();
         keyboardWanted_ = false;
         if (byUser) session::keyboardClosed();
         try {
@@ -842,6 +845,9 @@ private:
     /// the fixed beginning; with only that left the app is told all the same.
     void keyboardBackspace() {
         session::textKey(MEGLER_TEXT_BACKSPACE);
+        typing_.byKey++;
+        typing_.lastByKey = std::chrono::steady_clock::now();
+        if (typing_.lastByKey - typing_.lastByText < std::chrono::milliseconds(200)) typing_.close++;
         if (!typingSaid_) {
             typingSaid_ = true;
             shellLog::write("player: typing (a Backspace) reaches the app");
@@ -863,6 +869,20 @@ private:
         }
     }
 
+    /// What the keyboard did in the field it leaves, counted, in the log; then the counts start afresh. Only numbers: a
+    /// password's characters are never written. Facebook said a password was wrong that the user had typed right, and
+    /// nothing in the log could say whether the field got what the keyboard typed. A Backspace that comes both as a key
+    /// and as a change to the text (close) would take back two characters for one.
+    void typingTold() {
+        const Typing t = typing_;
+        typing_ = Typing{};
+        if (!t.typed && !t.byText && !t.byKey) return;
+        shellLog::write(format("player: in that field (kind %d) the keyboard typed %d characters and took back %d by Backspace keys and %d "
+                               "by changes to its text%s",
+                               t.kind, t.typed, t.byKey, t.byText,
+                               t.close ? format(", %d times a key and a change within 0.2 s of each other", t.close).c_str() : ""));
+    }
+
     /// The text as the keyboard has made it: the difference told to the app.
     /// True when the text should be started afresh.
     bool keyboardTyped(const std::wstring& now) {
@@ -882,6 +902,12 @@ private:
         for (int i = 0; i < gone; ++i) session::textKey(MEGLER_TEXT_BACKSPACE);
         const std::wstring added = now.substr(common);
         if (!added.empty()) session::textCommit(narrow(added));
+        typing_.typed += int(added.size());
+        if (gone > 0) {
+            typing_.byText += gone;
+            typing_.lastByText = std::chrono::steady_clock::now();
+            if (typing_.lastByText - typing_.lastByKey < std::chrono::milliseconds(200)) typing_.close++;
+        }
         if (!typingSaid_ && (gone > 0 || !added.empty())) {
             typingSaid_ = true;
             shellLog::write("player: typing reaches the text service's field and goes to the app");
@@ -1036,6 +1062,15 @@ private:
     bool keyboardWanted_ = false; // the app asked for the keyboard and has not been told it is gone
     bool keyboardUp_ = false;     // Windows says it is on the screen
     bool typingSaid_ = false;     // the log has said that typing reaches the app
+    // What the keyboard did in the field being edited, counted (never what it typed): see typingTold.
+    struct Typing {
+        int kind = 0;             // MEGLER_KEYBOARD_*
+        int typed = 0;            // characters added
+        int byText = 0;           // characters taken back by a change to the text
+        int byKey = 0;            // Backspace keys
+        int close = 0;            // a Backspace key and a change that took a character back, within 0.2 s of each other
+        std::chrono::steady_clock::time_point lastByText{}, lastByKey{};
+    } typing_;
     bool navigationBarShown_ = false; // out of full-screen mode while the keyboard is up
     int bars_ = 0;                    // the phone's bars the app wants hidden: MEGLER_BAR_*
     double cover_[4] = {};            // what the bars cover of the window, in view pixels (barsCover)
