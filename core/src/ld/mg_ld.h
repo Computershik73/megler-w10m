@@ -165,6 +165,8 @@ typedef struct mg_ld_stats {
     u32 svc_sites;         /* direct system calls intercepted */
 } mg_ld_stats;
 void mg_ld_get_stats(const mg_lib *lib, mg_ld_stats *out);
+/* The committed memory of the libraries the loader mapped: their segments, as read from their files. */
+u64 mg_ld_image_bytes(void);
 
 /*
  * The address to call for a guest function pointer. Thumb code is called as it

@@ -806,6 +806,7 @@ static mg_lib *map_library(const char *name, const lib_source *src)
     mg_lib *lib;
     u32 vmin = 0xFFFFFFFFu, vmax = 0;
     size_t isl, image, below, size = src->size;
+    u64 committed = 0;
     int i;
     if (size < sizeof(Elf32_Ehdr) || !src_read(src, 0, &ehdr, sizeof(ehdr)) || memcmp(eh->e_ident, "\177ELF", 4)) {
         mg_err("ld: %s: not an ELF file", name);
@@ -939,9 +940,14 @@ static mg_lib *map_library(const char *name, const lib_source *src)
             mg_err("ld: %s: a %u KB segment cannot be read", name, (unsigned)(p->p_filesz >> 10));
             goto bad;
         }
+        committed += hi - lo;
     }
     if (lib->dyn && !in_image(lib, (u32)((const u8 *)lib->dyn - lib->base), 8)) lib->dyn = NULL;
     if (!parse_dynamic(lib)) goto bad;
+    /* (A placed image is in the app's own mapping, a reservation of no access to it, which mg_mmap_usage does not count.) */
+    mg_lock_acquire(&g_lock);
+    g_image_bytes += committed;
+    mg_lock_release(&g_lock);
     return lib;
 bad:
     /* (A placed image's range is the app's: only what the loader reserved itself is given back.) */
@@ -1332,6 +1338,15 @@ void *mg_ld_lib_base(const mg_lib *lib) { return lib->base; }
 size_t mg_ld_lib_extent(const mg_lib *lib) { return lib->map_size + (lib->placed ? lib->island_size[0] : 0); }
 const char *mg_ld_lib_name(const mg_lib *lib) { return lib->name; }
 void mg_ld_get_stats(const mg_lib *lib, mg_ld_stats *out) { *out = lib->stats; }
+
+u64 mg_ld_image_bytes(void)
+{
+    u64 n;
+    mg_lock_acquire(&g_lock);
+    n = g_image_bytes;
+    mg_lock_release(&g_lock);
+    return n;
+}
 
 const char *mg_ld_symbol_at(const void *addr, const char **lib_name, const void **sym_addr, const void **lib_base)
 {

@@ -624,6 +624,22 @@ bool mg_host_keyed_mutex(void *mutex, bool acquire, u32 ms);
  */
 bool mg_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb, u32 *committed_mb);
 /*
+ * What holds the process's addresses, in megabytes: the images (the program and its DLLs), the views of files and shared
+ * memory, and the private memory, committed and reserved; and the sizes of private allocation that hold the most of it,
+ * with how many of each. Yandex Maps ran out of addresses with 210 MB of the last 340 MB in nothing the core could name
+ * (package 490). False where it cannot be walked. (The heaps are not asked: HeapSummary walks a heap, and of the process's
+ * several some are not serialized -- walked while their owner used them, one was broken and the app ended, package 493 --
+ * and it held the process heap's lock for most of a second.)
+ */
+typedef struct mg_host_address_kinds {
+    u32 images_mb, views_mb, private_mb, private_reserved_mb;
+    int nsizes;
+    struct { u32 kb, count; } sizes[4];
+} mg_host_address_kinds;
+/* The threads mg_thread_start started that run now: each has the stack it was given, 1 MB of addresses or more. */
+u32 mg_thread_live_count(void);
+bool mg_host_address_census(mg_host_address_kinds *k);
+/*
  * The `n` largest free stretches of the address space, in megabytes, largest first, 0 past the last. Two allocations of
  * one size need two stretches of it: Chromium in a single process maps each image it decodes twice. False where the
  * address space cannot be walked.

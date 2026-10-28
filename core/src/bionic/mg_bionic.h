@@ -185,6 +185,8 @@ void mg_signals_thread_gone(mg_gthread *t);
 
 /* The allocator the guest's malloc family is; anything a shim returns for the guest to free comes from it. */
 void *mg_g_malloc(size_t n);
+/* What the guest has asked malloc, calloc, realloc and memalign for and not freed, in bytes. */
+u64 mg_g_malloc_bytes(void);
 void *mg_g_calloc(size_t n, size_t m);
 void *mg_g_realloc(void *p, size_t n);
 void mg_g_free(void *p);

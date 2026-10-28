@@ -1321,6 +1321,26 @@ static void test_free_stretches(void)
     say("address space: the largest free stretches %u, %u, %u and %u MB, of %u MB free", (unsigned)s[0], (unsigned)s[1], (unsigned)s[2],
         (unsigned)s[3], (unsigned)free_mb);
     CHECK(s[0] == largest && s[0] >= s[1] && s[1] >= s[2] && s[2] >= s[3] && s[0] + s[1] + s[2] + s[3] <= free_mb);
+    {
+        /* What holds the addresses, by kind: the program's image, and private memory, a 3 MB allocation made here among it. */
+        mg_host_address_kinds k, after;
+        void *big = mg_mem_reserve(3u << 20);
+        u8 *small = (u8 *)malloc(8u << 20);
+        int i;
+        bool seen = false;
+        CHECK(big && mg_mem_commit(big, 3u << 20, MG_PROT_RW) && small);
+        if (small) memset(small, 1, 8u << 20);
+        CHECK(mg_host_address_census(&k));
+        for (i = 0; i < k.nsizes; i++) seen = seen || (k.sizes[i].kb == 3072 && k.sizes[i].count >= 1);
+        say("addresses by kind: images %u MB, views %u MB, private %u MB committed and %u reserved; threads the core started %u",
+            (unsigned)k.images_mb, (unsigned)k.views_mb, (unsigned)k.private_mb, (unsigned)k.private_reserved_mb, (unsigned)mg_thread_live_count());
+        CHECK(k.images_mb > 0 && k.private_mb >= 3 && k.nsizes > 0);
+        /* (A 3 MB allocation is among the four sizes holding the most only where little else is; it is said, not checked.) */
+        if (!seen) say("  (the 3 MB allocation is not among the four sizes that hold the most here)");
+        free(small);
+        if (big) mg_mem_release(big, 3u << 20);
+        CHECK(mg_host_address_census(&after) && after.private_mb + 3 <= k.private_mb + 1);
+    }
 }
 
 /*
@@ -2523,12 +2543,15 @@ static void test_guest(const char *libdir, const char *scratch)
 {
     mg_lib *basic, *dep;
     mg_ld_stats st;
+    u64 images = mg_ld_image_bytes();
     mg_ld_add_search_dir(libdir);
     mg_fs_mount("/scratch", scratch);
 
     basic = mg_ld_load("libt_basic.so");
     CHECK(basic != NULL);
     if (!basic) return;
+    /* Its segments, committed, in what the frames line says of the native libraries: at least a page, at most its extent. */
+    CHECK(mg_ld_image_bytes() - images >= MG_PAGE && mg_ld_image_bytes() - images <= mg_ld_lib_extent(basic));
     CHECK(mg_ld_init(basic));
     mg_ld_get_stats(basic, &st);
     CHECK(st.tp_reads >= 4);                        /* the initial-exec TLS accesses */

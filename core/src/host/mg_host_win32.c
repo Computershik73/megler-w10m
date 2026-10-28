@@ -321,15 +321,20 @@ static void close_own_handle(mg_thread *t)
 static void (*volatile g_end_hook)(void);
 void mg_thread_set_end_hook(void (*fn)(void)) { g_end_hook = fn; }
 
+static volatile LONG g_live_threads;
+u32 mg_thread_live_count(void) { return (u32)g_live_threads; }
+
 static DWORD WINAPI thread_main(LPVOID p)
 {
     mg_thread *t = (mg_thread *)p;
+    InterlockedIncrement(&g_live_threads);
     t->id = GetCurrentThreadId();
     t->self = own_handle();
     t_current = t;
     t->fn(t->arg);
     if (g_end_hook) g_end_hook();
     close_own_handle(t);
+    InterlockedDecrement(&g_live_threads);
     return 0;
 }
 
@@ -3093,6 +3098,63 @@ bool mg_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb,
     *largest_free_mb = (u32)(largest >> 20);
     *reserved_mb = (u32)(reserved >> 20);
     *committed_mb = (u32)(committed >> 20);
+    return true;
+}
+
+bool mg_host_address_census(mg_host_address_kinds *k)
+{
+    MEMORY_BASIC_INFORMATION info;
+    SYSTEM_INFO si;
+    u64 images = 0, views = 0, priv = 0, priv_reserved = 0, current = 0;
+    void *base = NULL;
+    /* The private allocations by size (64 KB steps), and how many of each. */
+    struct { u32 kb, count; } seen[96];
+    int nseen = 0, i, j;
+    mg_addr at, end;
+    memset(k, 0, sizeof(*k));
+    GetNativeSystemInfo(&si);
+    at = (mg_addr)si.lpMinimumApplicationAddress;
+    end = (mg_addr)si.lpMaximumApplicationAddress;
+    for (;;) {
+        bool more = at < end && VirtualQuery((LPCVOID)at, &info, sizeof(info)) == sizeof(info) && info.RegionSize;
+        /* An allocation of private memory ends where the next region is not of it. */
+        if (base && (!more || info.Type != MEM_PRIVATE || info.State == MEM_FREE || info.AllocationBase != base)) {
+            u32 kb = (u32)(((current + 0xFFFF) & ~(u64)0xFFFF) >> 10);
+            for (i = 0; i < nseen && seen[i].kb != kb; i++) {}
+            if (i < nseen) seen[i].count++;
+            else if (nseen < (int)MG_COUNT(seen)) seen[nseen].kb = kb, seen[nseen++].count = 1;
+            base = NULL;
+            current = 0;
+        }
+        if (!more) break;
+        if (info.State == MEM_COMMIT) {
+            if (info.Type == MEM_IMAGE) images += info.RegionSize;
+            else if (info.Type == MEM_MAPPED) views += info.RegionSize;
+            else priv += info.RegionSize;
+        } else if (info.State == MEM_RESERVE && info.Type == MEM_PRIVATE) {
+            priv_reserved += info.RegionSize;
+        }
+        if (info.State != MEM_FREE && info.Type == MEM_PRIVATE) {
+            base = info.AllocationBase;
+            current += info.RegionSize;
+        }
+        at = (mg_addr)info.BaseAddress + info.RegionSize;
+    }
+    k->images_mb = (u32)(images >> 20);
+    k->views_mb = (u32)(views >> 20);
+    k->private_mb = (u32)(priv >> 20);
+    k->private_reserved_mb = (u32)(priv_reserved >> 20);
+    /* The four sizes that hold the most. */
+    for (j = 0; j < 4 && nseen; j++) {
+        int best = -1;
+        for (i = 0; i < nseen; i++)
+            if (seen[i].count && (best < 0 || (u64)seen[i].kb * seen[i].count > (u64)seen[best].kb * seen[best].count)) best = i;
+        if (best < 0) break;
+        k->sizes[j].kb = seen[best].kb;
+        k->sizes[j].count = seen[best].count;
+        seen[best].count = 0;
+        k->nsizes = j + 1;
+    }
     return true;
 }
 

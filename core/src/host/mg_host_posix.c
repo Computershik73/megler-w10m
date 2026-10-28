@@ -1560,6 +1560,14 @@ bool mg_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb,
     return false;
 }
 
+u32 mg_thread_live_count(void) { return 0; }
+
+bool mg_host_address_census(mg_host_address_kinds *k)
+{
+    (void)k;
+    return false;
+}
+
 bool mg_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb)
 {
     (void)device; (void)budget_mb; (void)used_mb;

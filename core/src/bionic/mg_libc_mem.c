@@ -22,6 +22,11 @@ typedef struct ghdr {
 
 #define HDR(p) ((ghdr *)((u8 *)(p) - sizeof(ghdr)))
 
+/* What the guest has asked malloc for and not freed, in bytes, modulo 2^32 (mg_g_malloc_bytes): its blocks are the host's. */
+static volatile i32 g_malloced;
+
+u64 mg_g_malloc_bytes(void) { return (u32)mg_atomic_add(&g_malloced, 0); }
+
 void *mg_g_malloc(size_t n)
 {
     u8 *raw;
@@ -36,6 +41,7 @@ void *mg_g_malloc(size_t n)
     }
     ((ghdr *)raw)->offset = sizeof(ghdr);
     ((ghdr *)raw)->size = (u32)n;
+    mg_atomic_add(&g_malloced, (i32)n);
     return raw + sizeof(ghdr);
 }
 
@@ -54,12 +60,15 @@ void *mg_g_calloc(size_t n, size_t m)
     }
     ((ghdr *)raw)->offset = sizeof(ghdr);
     ((ghdr *)raw)->size = (u32)total;
+    mg_atomic_add(&g_malloced, (i32)total);
     return raw + sizeof(ghdr);
 }
 
 void mg_g_free(void *p)
 {
-    if (p) free((u8 *)p - HDR(p)->offset);
+    if (!p) return;
+    mg_atomic_add(&g_malloced, -(i32)HDR(p)->size);
+    free((u8 *)p - HDR(p)->offset);
 }
 
 static void *g_memalign(size_t align, size_t n)
@@ -78,6 +87,7 @@ static void *g_memalign(size_t align, size_t n)
     p = (u8 *)MG_ALIGN_UP((mg_addr)raw + sizeof(ghdr), (mg_addr)align);
     HDR(p)->offset = (u32)(p - raw);
     HDR(p)->size = (u32)n;
+    mg_atomic_add(&g_malloced, (i32)n);
     return p;
 }
 
@@ -95,12 +105,14 @@ void *mg_g_realloc(void *p, size_t n)
         return NULL;
     }
     if (HDR(p)->offset == sizeof(ghdr)) {
+        u32 was = HDR(p)->size;
         u8 *raw = (u8 *)realloc((u8 *)p - sizeof(ghdr), n + sizeof(ghdr));
         if (!raw) {
             mg_set_errno(GE_NOMEM);
             return NULL;
         }
         ((ghdr *)raw)->size = (u32)n;
+        mg_atomic_add(&g_malloced, (i32)((u32)n - was));
         return raw + sizeof(ghdr);
     }
     /* An aligned block: the host cannot grow it in place and keep the alignment. */

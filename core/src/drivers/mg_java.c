@@ -1350,7 +1350,7 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
     u64 native = 0, natives = 0, alloc = 0, allocs = 0, blocked = 0, wall = 0, other, interpreted, live_bytes;
     u64 bitmap_bytes = 0, list_bytes = 0, process = mg_mem_usage(), collections = 0, collecting_ns = 0;
     u32 bitmaps = 0, nodes = 0, n = w->frames;
-    char of[40], redrawn[60], rates[300], mem[40], gc[120];
+    char of[40], redrawn[60], rates[300], mem[480], gc[120];
     int i;
     for (i = 0; i < PARTS; i++) {
         const meter_sum *p = &w->part[i];
@@ -1394,19 +1394,77 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
              per_frame_ms(interpreted, n), interpreted ? (double)executed * 1e3 / (double)interpreted : 0.0,
              (double)(mg_dvm_executed_all() - w->all_executed) / 1e6);
     mem[0] = 0;
-    if (process) snprintf(mem, sizeof(mem), "; the process %u MB", (unsigned)(process >> 20));
+    if (process) {
+        /* And the parts of it the core can name: the Java heap's memory, the DEX files, what madvise has given back. */
+        mg_dvm_heap_info hi;
+        u64 dex_read = 0, dex_viewed = 0, given = 0, again = 0, anon = 0, files = 0;
+        mg_dvm_heap_stats(&hi);
+        mg_dvm_dex_memory(&dex_read, &dex_viewed);
+        mg_mmap_given_back(&given, &again);
+        mg_mmap_usage(&anon, &files);
+        snprintf(mem, sizeof(mem), "the process %u MB (the heap's blocks %u MB and large objects %u MB; DEX files %u MB in memory, %u MB viewed "
+                 "in their APKs; native libraries %u MB; the app's malloc %u MB; the app's mappings %u MB anonymous and %u MB of files; %u MB "
+                 "given back with madvise, %u MB of it touched again)", (unsigned)(process >> 20), (unsigned)(hi.reserved >> 20),
+                 (unsigned)(hi.large_bytes >> 20), (unsigned)(dex_read >> 20), (unsigned)(dex_viewed >> 20), (unsigned)(mg_ld_image_bytes() >> 20),
+                 (unsigned)(mg_g_malloc_bytes() >> 20), (unsigned)(anon >> 20), (unsigned)(files >> 20), (unsigned)(given >> 20),
+                 (unsigned)(again >> 20));
+        /*
+         * And the addresses: a 32-bit process has 2 GB of them, and what the next allocation needs is a stretch of them free,
+         * whoever makes it. Yandex Maps ran out of them with 1.2 GB of its 2 GB of memory used, and the shell's own drawing
+         * failed first (package 489); its memory line had not said so.
+         */
+        {
+            u32 free_mb = 0, largest = 0, reserved = 0, committed = 0;
+            size_t used = strlen(mem);
+            if (mg_host_address_space(&free_mb, &largest, &reserved, &committed))
+                snprintf(mem + used, sizeof(mem) - used, "; addresses %u MB free (the largest stretch %u), %u reserved, %u committed", (unsigned)free_mb,
+                         (unsigned)largest, (unsigned)reserved, (unsigned)committed);
+        }
+    }
     /* The collector, as its own part: what it took in the time the line covers, every thread of the runtime's stopped for most of it. */
     mg_dvm_gc_totals(&collections, &collecting_ns);
     snprintf(gc, sizeof(gc), "collecting %.1f ms in %u collections", (double)(collecting_ns - w->collecting_ns) / 1e6, (unsigned)(collections - w->collections));
     mg_info("java: frames %s%.1f s: %u drawn%s, %.1f ms of work each on average (the longest frame %.1f without input and messages): Java %.1f "
             "(input and messages %.1f, measure and layout %.1f, "
             "draw traversal %.1f), of it in the shell's drawing %.1f, %s; present %.1f; idle %u%%; %s; heap %u MB (objects %u live, %u "
-            "made in these %.1f s; bitmaps %u; display lists %u KB, %u nodes)%s; %s",
+            "made in these %.1f s; bitmaps %u; display lists %u KB, %u nodes); %s",
             what, (double)elapsed / 1e9, (unsigned)w->drawn, of, per_frame_ms(java + present, n), per_frame_ms(w->longest, 1), per_frame_ms(java, n),
             per_frame_ms(busy[PART_BETWEEN], n), per_frame_ms(busy[PART_LAYOUT], n), per_frame_ms(busy[PART_DRAW], n), per_frame_ms(host, n), rates,
             per_frame_ms(present, n), (unsigned)(elapsed ? waited * 100 / elapsed : 0), gc,
             (unsigned)((live_bytes + bitmap_bytes) >> 20), (unsigned)(live_bytes >> 20), (unsigned)((s.object_bytes - w->object_bytes) >> 20),
-            (double)elapsed / 1e9, (unsigned)(bitmap_bytes >> 20), (unsigned)(list_bytes >> 10), (unsigned)nodes, mem, redrawn);
+            (double)elapsed / 1e9, (unsigned)(bitmap_bytes >> 20), (unsigned)(list_bytes >> 10), (unsigned)nodes, redrawn);
+    /* Its own line, which the frames line had no room left for. */
+    if (mem[0]) mg_info("java: memory: %s", mem);
+    /*
+     * And what holds the addresses, by kind (mg_host_address_census): of the private memory, in allocations of which sizes
+     * most of it is; the threads (each with its stack, 1 MB of addresses, and the runtime's with a frame stack besides); what
+     * the runtime's tables and classes take of the heap; and the graphics processor's own memory as DXGI says it. A host
+     * stack is committed whole for Android code (mg_thread_whole_stack), so it is memory, not only addresses. Where the
+     * memory line's parts do not add up, this says where the rest is.
+     */
+    if (process) {
+        mg_host_address_kinds k;
+        u32 gpu_used = 0, gpu_budget = 0, threads = 0, attached = 0;
+        u64 frames = 0, c_reserved = 0, c_peak = 0;
+        char sizes[160];
+        int i;
+        if (mg_host_address_census(&k)) {
+            sizes[0] = 0;
+            for (i = 0; i < k.nsizes; i++) {
+                size_t used = strlen(sizes);
+                snprintf(sizes + used, sizeof(sizes) - used, "%s%u of %u KB", i ? ", " : "", (unsigned)k.sizes[i].count, (unsigned)k.sizes[i].kb);
+            }
+            mg_egl_gpu_memory(&gpu_used, &gpu_budget);
+            mg_dvm_thread_census(&threads, &attached, &frames, &c_reserved, &c_peak);
+            mg_info("java: addresses by kind: the program and its DLLs %u MB, views of files and shared memory %u MB, private memory %u MB "
+                    "committed and %u reserved, the most of it in allocations of %s; threads the core started %u, the runtime's %u (%u of "
+                    "them attached by native code), their frame stacks %u MB and their host stacks %u MB (the deepest used %u KB); the "
+                    "runtime's tables and classes %u MB; the graphics processor's memory %u MB of %u",
+                    (unsigned)k.images_mb, (unsigned)k.views_mb, (unsigned)k.private_mb, (unsigned)k.private_reserved_mb, sizes[0] ? sizes : "none",
+                    (unsigned)mg_thread_live_count(), (unsigned)threads, (unsigned)attached, (unsigned)(frames >> 20), (unsigned)(c_reserved >> 20),
+                    (unsigned)(c_peak >> 10), (unsigned)(s.meta_bytes >> 20), (unsigned)gpu_used, (unsigned)gpu_budget);
+        }
+    }
 }
 
 /* megler.Native.frameMark(phase, redrawn), from megler.ViewRoot.doFrame on the main thread. */
