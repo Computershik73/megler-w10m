@@ -2,3 +2,8 @@
     public boolean isFromSource(int source) {
         return (getSource() & source) == source;
     }
+    // Android has it here, final; KeyEvent and MotionEvent say theirs. Flutter's touch processor asks it of an InputEvent
+    // (HERE WeGo ended with a NoSuchMethodError at its first touch).
+    public InputDevice getDevice() {
+        return InputDevice.getDevice(getDeviceId());
+    }
