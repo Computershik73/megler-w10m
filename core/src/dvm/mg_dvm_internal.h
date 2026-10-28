@@ -137,6 +137,19 @@ struct mg_dvm_field {
     u32 idx;                           /* field_idx in its dex */
 };
 
+/*
+ * A method's counts for the profile (mg_dvm_profile): counted only while it is on, and not exactly when two threads run the
+ * same method. Apart from the method, made the first time the profile counts it: they were 40 bytes of each of the 128 a
+ * method took, for every method of every class linked (Yandex Maps and Google Play services link some 400,000).
+ */
+typedef struct mg_dvm_method_prof {
+    u64 self;                          /* instructions executed in the method itself */
+    u64 incl;                          /* and in everything called from it, summed over its calls (a method that calls itself counts twice) */
+    u64 ns;                            /* a native method: the time spent in it, what it called back included */
+    u64 bytes;                         /* bytes of objects made while it was the innermost method */
+    u32 calls, objects;
+} mg_dvm_method_prof;
+
 struct mg_dvm_method {
     mg_dvm_class *cls;
     const char *name;                  /* interned */
@@ -154,12 +167,7 @@ struct mg_dvm_method {
     void *jni;                         /* or its function in a library of the app's: registered by it, or found by its JNI name */
     bool bound;                        /* which of the two it is to be has been settled */
     i8 critical;                       /* a library's function that takes its arguments alone (@CriticalNative): 1 yes, -1 no, 0 not looked at */
-    /* The profile (mg_dvm_profile): counted only while it is on, and not exactly when two threads run the same method. */
-    u64 prof_self;                     /* instructions executed in the method itself */
-    u64 prof_incl;                     /* and in everything called from it, summed over its calls (a method that calls itself counts twice) */
-    u64 prof_ns;                       /* a native method: the time spent in it, what it called back included */
-    u64 prof_bytes;                    /* bytes of objects made while it was the innermost method */
-    u32 prof_calls, prof_objects;
+    mg_dvm_method_prof *volatile prof; /* the profile's counts of it, NULL until it counts it (mg_dvm_prof) */
     /*
      * The meter's time of a native method (mg_dvm_thread_costs): its calls from bytecode, and what one of them takes on
      * average, in the host's ticks. A method whose calls are short is not timed every time (see invoke_native).
@@ -175,6 +183,10 @@ struct mg_dvm_method {
     volatile u32 shape;
     mg_dvm_field *volatile shape_field;
 };
+
+/* mg_dvm.c: a method's profile counts, made the first time they are wanted. */
+mg_dvm_method_prof *mg_dvm_prof_make(mg_dvm_method *m);
+static inline mg_dvm_method_prof *mg_dvm_prof(mg_dvm_method *m) { mg_dvm_method_prof *p = m->prof; return p ? p : mg_dvm_prof_make(m); }
 
 enum { DVM_CS_FAILED = -1, DVM_CS_LINKED = 0, DVM_CS_INITIALIZING = 1, DVM_CS_INITIALIZED = 2 };
 

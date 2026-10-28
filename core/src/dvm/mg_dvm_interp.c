@@ -224,8 +224,9 @@ static inline void pop_frame(mg_dvm_thread *t)
 {
     mg_dvm_frame *f = t->top;
     if (g_dvm.profiling) {
-        f->m->prof_incl += t->prof_total - f->prof_start;
-        f->m->prof_calls++;
+        mg_dvm_method_prof *p = mg_dvm_prof(f->m);
+        p->incl += t->prof_total - f->prof_start;
+        p->calls++;
     }
     t->sp = (mg_dvm_reg *)(void *)f;
     t->top = f->prev;
@@ -392,7 +393,7 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     if (timed) native_time(t, m, call_started);
     else if (outermost) t->native_ticks += m->meter_avg;
     if (sync) mg_dvm_monitor_exit(sync);
-    if (native_started) m->prof_ns += mg_time_monotonic_ns() - native_started;
+    if (native_started) mg_dvm_prof(m)->ns += mg_time_monotonic_ns() - native_started;
     pop_frame(t);
     normalise(m->shorty[0], result);
     mg_ld_set_scope(library_scope);
@@ -741,7 +742,7 @@ static MG_NOINLINE bool slow_step(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc)
 {
     g_dvm.steps++;
     if (g_dvm.profiling) {
-        f->m->prof_self++;
+        mg_dvm_prof(f->m)->self++;
         t->prof_total++;
     }
     if (g_dvm.trace >= 3) mg_info("dvm: %*s%s.%s %u: %s", t->depth, "", f->m->cls->name, f->m->name, (unsigned)pc, mg_dvm_insn_name(f->m->insns[pc]));

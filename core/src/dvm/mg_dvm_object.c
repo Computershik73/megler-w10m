@@ -220,8 +220,9 @@ static mg_jobj *alloc_raw(mg_dvm_class *c, int kind, u64 body)
         /* Who makes the objects: the innermost method of the thread, a native one included. */
         mg_dvm_thread *t = mg_dvm_self();
         if (t->top) {
-            t->top->m->prof_objects++;
-            t->top->m->prof_bytes += size;
+            mg_dvm_method_prof *p = mg_dvm_prof(t->top->m);
+            p->objects++;
+            p->bytes += size;
         }
     }
     o->j.refs = 1;

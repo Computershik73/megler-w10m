@@ -11,16 +11,26 @@ static void set_slow(void) { g_dvm.slow = (g_dvm.trace >= 3 || g_dvm.step_limit 
 
 /* ------------------------------------------------------------- the profile */
 
+mg_dvm_method_prof *mg_dvm_prof_make(mg_dvm_method *m)
+{
+    mg_dvm_method_prof *p = (mg_dvm_method_prof *)mg_alloc(sizeof(*p)), *was;
+    memset(p, 0, sizeof(*p));
+    was = (mg_dvm_method_prof *)mg_atomic_cas_ptr((void *volatile *)&m->prof, NULL, p);
+    if (was) {
+        free(p);                       /* another thread made them first */
+        return was;
+    }
+    return p;
+}
+
 static void profile_clear(mg_dvm_class *c, void *user)
 {
     int pass, i;
     (void)user;
     for (pass = 0; pass < 2; pass++) {
         mg_dvm_method *list = pass ? c->virt : c->direct;
-        for (i = 0; i < (pass ? c->nvirt : c->ndirect); i++) {
-            list[i].prof_self = list[i].prof_incl = list[i].prof_ns = list[i].prof_bytes = 0;
-            list[i].prof_calls = list[i].prof_objects = 0;
-        }
+        for (i = 0; i < (pass ? c->nvirt : c->ndirect); i++)
+            if (list[i].prof) memset(list[i].prof, 0, sizeof(*list[i].prof));
     }
 }
 
@@ -45,17 +55,18 @@ static void profile_collect(mg_dvm_class *c, void *user)
         mg_dvm_method *list = pass ? c->virt : c->direct;
         for (i = 0; i < (pass ? c->nvirt : c->ndirect); i++) {
             mg_dvm_method *m = &list[i];
-            if (!m->prof_calls && !m->prof_self && !m->prof_objects) continue;
+            const mg_dvm_method_prof *p = m->prof;
+            if (!p || (!p->calls && !p->self && !p->objects)) continue;
             if (r->n == r->cap) {
                 r->cap = r->cap ? r->cap * 2 : 1024;
                 r->v = (mg_dvm_method **)mg_realloc(r->v, sizeof(*r->v) * r->cap);
             }
             r->v[r->n++] = m;
-            r->instructions += m->prof_self;
-            r->objects += m->prof_objects;
-            r->bytes += m->prof_bytes;
+            r->instructions += p->self;
+            r->objects += p->objects;
+            r->bytes += p->bytes;
             /* Native time is counted once where natives do not nest; where one calls back into bytecode that calls another, twice. */
-            r->native_ns += m->prof_ns;
+            r->native_ns += p->ns;
         }
     }
 }
@@ -63,9 +74,9 @@ static void profile_collect(mg_dvm_class *c, void *user)
 static int g_profile_key;
 static int profile_order(const void *a, const void *b)
 {
-    const mg_dvm_method *x = *(mg_dvm_method *const *)a, *y = *(mg_dvm_method *const *)b;
-    u64 p = g_profile_key == 0 ? x->prof_self : g_profile_key == 1 ? x->prof_incl : g_profile_key == 2 ? x->prof_ns : x->prof_bytes;
-    u64 q = g_profile_key == 0 ? y->prof_self : g_profile_key == 1 ? y->prof_incl : g_profile_key == 2 ? y->prof_ns : y->prof_bytes;
+    const mg_dvm_method_prof *x = (*(mg_dvm_method *const *)a)->prof, *y = (*(mg_dvm_method *const *)b)->prof;
+    u64 p = g_profile_key == 0 ? x->self : g_profile_key == 1 ? x->incl : g_profile_key == 2 ? x->ns : x->bytes;
+    u64 q = g_profile_key == 0 ? y->self : g_profile_key == 1 ? y->incl : g_profile_key == 2 ? y->ns : y->bytes;
     return p < q ? 1 : p > q ? -1 : 0;
 }
 
@@ -89,14 +100,15 @@ void mg_dvm_profile_report(int top, void (*line)(const char *text, void *user), 
         line(text, user);
         for (i = 0; i < r.n && (int)i < top; i++) {
             const mg_dvm_method *m = r.v[i];
-            u64 value = key == 0 ? m->prof_self : key == 1 ? m->prof_incl : key == 2 ? m->prof_ns : m->prof_bytes;
+            const mg_dvm_method_prof *p = m->prof;
+            u64 value = key == 0 ? p->self : key == 1 ? p->incl : key == 2 ? p->ns : p->bytes;
             if (!value) break;
-            if (key == 2) snprintf(text, sizeof(text), "    %8llu ms  %7u calls  %s.%s", (unsigned long long)(value / 1000000ull), (unsigned)m->prof_calls, m->cls->name, m->name);
+            if (key == 2) snprintf(text, sizeof(text), "    %8llu ms  %7u calls  %s.%s", (unsigned long long)(value / 1000000ull), (unsigned)p->calls, m->cls->name, m->name);
             else if (key == 3)
-                snprintf(text, sizeof(text), "    %8llu KB  %7u objects  %s.%s", (unsigned long long)(value >> 10), (unsigned)m->prof_objects, m->cls->name, m->name);
+                snprintf(text, sizeof(text), "    %8llu KB  %7u objects  %s.%s", (unsigned long long)(value >> 10), (unsigned)p->objects, m->cls->name, m->name);
             else
                 snprintf(text, sizeof(text), "    %9llu k  %5.1f%%  %7u calls  %s.%s%s", (unsigned long long)(value / 1000), r.instructions ? 100.0 * (double)value / (double)r.instructions : 0.0,
-                         (unsigned)m->prof_calls, m->cls->name, m->name, m->sig);
+                         (unsigned)p->calls, m->cls->name, m->name, m->sig);
             line(text, user);
         }
     }

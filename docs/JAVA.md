@@ -5814,6 +5814,25 @@ addresses for an ordinary thread, reserved at once and committed as it grows:
 64 KB first, doubled as frames need it (`stack_grow`). A thread's state is not
 freed when the thread ends yet; the host layer has no hook for that.
 
+**The runtime's own tables are kept small.** What it keeps of DEX files and
+linked classes is counted by kind (`mg_dvm_meta_alloc_kind`;
+`java: addresses by kind` and the Java tests' runs say it): classes, methods,
+fields, vtables, the DEX files' tables (each index's cache), names, and the
+class names of files registered and not viewed yet. A buffer that is freed
+once used (a name looked up by its descriptor, a prototype's signature before
+it is interned) is not counted; it was, and the count grew with every lookup.
+Measured on avito under qemu (213 threads, 50,000 classes linked), 126 MB at
+first: a method was 128 bytes, 40 of them the profile's counts, which are now
+apart (`mg_dvm_prof`, made the first time the profile counts the method): 88
+bytes, and the methods 42 MB to 29. A lazily registered DEX file's class names
+are copied while the file is not viewed (the table of definitions points at
+them); once it is viewed its entries point at the file's own again and the
+copies go (`mg_dvm_classes_viewed`), and every file of a big app is viewed
+within seconds. And names, a million of them, small and kept for good, are
+laid end to end in blocks of 256 KB, without the heap's header and rounding
+of each: names 35 MB to 9, the tables 126 MB to 87. What is left is the
+methods, the DEX files' tables (28 MB) and the classes (11 MB).
+
 **Objects have to be freed.** A process that never collects is a
 demonstration. Measured on `hello` under qemu, with the runtime's own counts
 (instructions counted by `mg_dvm_count_instructions`):
