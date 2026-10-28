@@ -19,8 +19,12 @@
  * can hold. An mg_jclass says which it is in `dvm` and `foreign`.
  */
 
-/* How many parameters a method called through this layer may have. */
-#define JARGS 64
+/*
+ * How many parameters a method called through this layer may have: as many as Java allows (255 words of them). It was 64:
+ * WhatsApp's native code calls back JniBridge.jnidispatch with 78 (45 ints and 33 objects), and the last 14 were whatever
+ * the stack held -- the interpreter took the int 0x23 for an object and the app ended.
+ */
+#define JARGS 256
 
 /* ---------------------------------------------------------------- classes */
 
@@ -29,7 +33,7 @@ typedef struct jmeth {
     char *name, *sig;
     bool is_static;
     mg_jhle_fn fn;
-    char argk[JARGS];                  /* one kind letter per argument: Z B C S I J F D L */
+    char *argk;                        /* one kind letter per argument: Z B C S I J F D L */
     int nargs;
     char retk;
     bool warned;
@@ -470,7 +474,12 @@ static jmeth *get_method(mg_jclass *cls, const char *name, const char *sig, bool
         m->name = mg_strdup(name);
         m->sig = mg_strdup(sig);
         m->is_static = is_static;
-        parse_sig(sig, m->argk, (int)sizeof(m->argk), &m->nargs, &m->retk);
+        {
+            char kinds[JARGS];
+            parse_sig(sig, kinds, JARGS, &m->nargs, &m->retk);
+            m->argk = (char *)mg_alloc((size_t)m->nargs + 1);
+            memcpy(m->argk, kinds, (size_t)m->nargs);
+        }
         m->next = cls->meths;
         cls->meths = m;
     }

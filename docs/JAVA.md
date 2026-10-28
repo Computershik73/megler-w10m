@@ -1937,8 +1937,11 @@ Once it is started (`mg_jni.c` asks `g_dvm.running`):
   way, looking classes up before their natives are registered). Asking for a
   method or field id initialises.
 - `Call...Method` on a method of a DEX class runs the bytecode, virtually or
-  exactly as asked; fields are slots. A native method takes up to 64 parameters
-  and 120 argument words (it was 32 and 22).
+  exactly as asked; fields are slots. A method called through JNI takes as many
+  parameters as Java allows (`JARGS`, 256; it was 64, and WhatsApp's native
+  code calls `JniBridge.jnidispatch` back with 78: the last 14 were whatever
+  the stack held, and the interpreter ended on an int taken for an object). A
+  native method takes 120 argument words (it was 22).
 - `MonitorEnter`/`MonitorExit` are the runtime's monitors;
   `NewDirectByteBuffer`, `GetDirectBufferAddress` and `-Capacity` work on
   libcore's own `java.nio.DirectByteBuffer` when it is there.
