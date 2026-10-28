@@ -3485,6 +3485,19 @@ N(G_pathBounds)
     path_free(&p);
 }
 
+/* (float[] path, int n) -> float[]: the path as it is drawn, for Path.getPathIterator: verbs MEGLER_GFX_PATH_*, each with its
+   numbers after it, the arcs, ovals and round rectangles in cubics and everything through the transforms after it. */
+N(G_pathSegments)
+{
+    mg_jobj *array;
+    gpath p;
+    if (!path_of(c->args[0].l, c->args[1].i, &p)) return;
+    array = mg_dvm_new_array("[F", p.n);
+    if (array && p.n) memcpy(array->u.arr.data, p.v, sizeof(float) * (size_t)p.n);
+    c->ret.l = array;
+    path_free(&p);
+}
+
 /* (float[] path, int n, int fill, float x, float y) -> boolean: whether the point is inside the path as it would be filled */
 N(G_pathContains)
 {
@@ -3650,6 +3663,7 @@ static const mg_jhle k_gfx[] = {
     { "megler/Gfx", "shMatrix", "(J[F)V", G_shMatrix },
     { "megler/Gfx", "shFree", "(J)V", G_shFree },
     { "megler/Gfx", "pathBounds", "([FI[F)V", G_pathBounds },
+    { "megler/Gfx", "pathSegments", "([FI)[F", G_pathSegments },
     { "megler/Gfx", "pathContains", "([FIIFF)Z", G_pathContains },
     { "megler/Gfx", "pathLength", "([FI[F)F", G_pathLength },
     { "megler/Gfx", "present", "(J)V", G_present },

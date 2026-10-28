@@ -1336,6 +1336,16 @@ static void test_paths(void)
         CHECK_FLOAT(call("pathLength", 3, L(floats(moved, 13)), I(13), L(NULL)).f, 10);
         call("pathBounds", 3, L(floats(moved, 13)), I(13), L(out));
         CHECK(floats_of(out)[0] == 2 && floats_of(out)[1] == 2 && floats_of(out)[2] == 8 && floats_of(out)[3] == 10);
+        /* The path as it is drawn, for Path.getPathIterator: the transform gone into the points before it, a rectangle in lines. */
+        {
+            static const float drawn[] = { 0, 2, 2, 1, 8, 10 }, rect[] = { 6, 4, 3, 1, 9, 0 }, box[] = { 0, 1, 3, 1, 4, 3, 1, 4, 9, 1, 1, 9, 4 };
+            mg_jobj *segments = call("pathSegments", 2, L(floats(moved, 13)), I(13)).l;
+            CHECK(segments && segments->u.arr.len == 6 && memcmp(floats_of(segments), drawn, sizeof(drawn)) == 0);
+            segments = call("pathSegments", 2, L(floats(rect, 6)), I(6)).l;
+            CHECK(segments && segments->u.arr.len == 13 && memcmp(floats_of(segments), box, sizeof(box)) == 0);
+            segments = call("pathSegments", 2, L(floats(rect, 6)), I(0)).l;
+            CHECK(segments && segments->u.arr.len == 0);
+        }
         /* Inside or not, by the fill rule: two squares the same way round, and the inner one turned the other way. */
         CHECK(call("pathContains", 5, L(floats(two, 12)), I(12), I(0), F(5), F(5)).z);
         CHECK(!call("pathContains", 5, L(floats(two, 12)), I(12), I(1), F(5), F(5)).z);

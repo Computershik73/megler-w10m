@@ -4875,6 +4875,28 @@ on a looper thread of its own and takes it back with `next()`.
   a rectangle clipped to and clipped out by `INVERSE_WINDING`. The camera
   test app frames its `TextureView` as VK does, and the test finds the
   camera's picture in it and the white corner.
+  And `getPathIterator`, which gave null, with `PathIterator.java` in
+  place of the generated stub: the segments are the path as the core draws
+  it (`Gfx.pathSegments`, the same `path_build`), arcs, ovals and round
+  rectangles in cubics and the transforms gone into the points, given as
+  Android 14 gives Skia's (`SkPath::RawIter`): a line, quad or cubic with its
+  start point first, a close with none, then `VERB_DONE`. There are no
+  conics, since `conicTo` is a quad here. Compose walks paths with it on
+  Android 14 and later (androidx.graphics.path), and the Play Store's app
+  pages ended on a `NullPointerException` at `PathIterator.hasNext()`
+  (package 479). The data app's "path-iterator" step walks a path of each
+  verb and a rectangle, one moved by `offset`, an empty one, and a points
+  array too short.
+  And `MutableContextWrapper.setBaseContext`, whose generated stub kept the
+  context as a property and left the wrapper on its old base. WhatsApp
+  inflates a chat's views ahead of time in a `PrewarmContextWrapper` over
+  the application and sets the Conversation activity as its base when the
+  chat opens; the list of messages unwraps its context to that activity to
+  measure the unread divider, found none ("The Context is not an
+  Activity"), and the app ended as a chat with an unread message opened
+  (package 487). The overlay sets the base. The data app's
+  "mutable-context" step changes a view's wrapper to the activity and
+  unwraps it.
 
 The framework's own files in `core/framework` still have all forty-six faults;
 the overlay is where they are fixed.

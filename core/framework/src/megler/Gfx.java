@@ -59,6 +59,8 @@ public final class Gfx {
     public static native void shFree(long sh);
 
     public static native void pathBounds(float[] path, int n, float[] out);
+    /** The path as it is drawn: verbs 0 move, 1 line, 2 quad, 3 cubic, 4 close, each with its coordinates after it. */
+    public static native float[] pathSegments(float[] path, int n);
     public static native boolean pathContains(float[] path, int n, int fill, float x, float y);
     public static native float pathLength(float[] path, int n, float[] out);
 
