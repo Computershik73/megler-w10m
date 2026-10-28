@@ -104,9 +104,14 @@ public final class AppRunner {
         KeyStoreProvider.install();
         Looper.prepareMainLooper();
         sHandler = new Handler(Looper.getMainLooper());
-        /* as RuntimeInit: there is always a default handler (apps wrap it and call through). Android's kills the app; this one
-           reports the exception and lets the thread end, as Megler did before. */
-        if (Thread.getDefaultUncaughtExceptionHandler() == null) Thread.setDefaultUncaughtExceptionHandler(new UncaughtLogger());
+        /* as RuntimeInit: every exception nothing caught is logged before any handler has it (its LoggingHandler, the pre-handler
+           Thread.dispatchUncaughtException calls first), as the handler an app sets may end the process without a word -- Weather
+           Channel's (Taboola's, under Chromium's) calls System.exit(0); and there is always a default handler (apps wrap it and
+           call through). Android's kills the app; this one lets the thread end, as Megler did before. */
+        UncaughtLogger uncaught = new UncaughtLogger();
+        try { Thread.class.getMethod("setUncaughtExceptionPreHandler", Thread.UncaughtExceptionHandler.class).invoke(null, uncaught.logging); }
+        catch (ReflectiveOperationException e) { android.util.Log.w("Megler", "no pre-handler for uncaught exceptions: " + e); }
+        if (Thread.getDefaultUncaughtExceptionHandler() == null) Thread.setDefaultUncaughtExceptionHandler(uncaught);
         Manifest.read();
         installClassLoader();
         installComponentFactory();
@@ -135,9 +140,20 @@ public final class AppRunner {
         Looper.loop();
     }
     public static Application application() { return sApp; }
-    static final class UncaughtLogger implements Thread.UncaughtExceptionHandler {
+    /* Android's LoggingHandler: FATAL EXCEPTION, the thread, the process and the stack; not for a thread of Google Play services'
+       that ends alone, which MicroG's handler (ServiceCrashes) says itself. */
+    static final class UncaughtLogging implements Thread.UncaughtExceptionHandler {
+        volatile Throwable logged;
         public void uncaughtException(Thread t, Throwable e) {
-            android.util.Log.e("AndroidRuntime", "FATAL EXCEPTION: " + t.getName(), e);
+            if (t != Looper.getMainLooper().getThread() && Native.thrownInService(e) != 0) return;
+            logged = e;
+            android.util.Log.e("AndroidRuntime", "FATAL EXCEPTION: " + t.getName() + "\nProcess: " + Native.packageName() + ", PID: " + android.os.Process.myPid(), e);
+        }
+    }
+    static final class UncaughtLogger implements Thread.UncaughtExceptionHandler {
+        final UncaughtLogging logging = new UncaughtLogging();
+        public void uncaughtException(Thread t, Throwable e) {
+            if (logging.logged != e) logging.uncaughtException(t, e);   // as KillApplicationHandler's ensureLogging
             if (t == Looper.getMainLooper().getThread()) { if (e instanceof RuntimeException) throw (RuntimeException) e; if (e instanceof Error) throw (Error) e; throw new RuntimeException(e); }
         }
     }
