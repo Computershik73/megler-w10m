@@ -1,6 +1,11 @@
 package android.media;
 
-/** Volumes and focus: the app always has focus, and volume is the phone's own (the app's settings are remembered, not applied). */
+/**
+ * Volumes and focus: the app always has focus, and volume is the phone's own (the app's settings are remembered, not applied).
+ * Where a call's sound goes is the app's: in MODE_IN_COMMUNICATION or MODE_IN_CALL, or with a communication device set, to
+ * the earpiece, or the loudspeaker when setSpeakerphoneOn or setCommunicationDevice says so; otherwise where sound always
+ * goes. The shell is told each change (megler.Native.audioRoute, megler_audio_host.route), and routes the phone's sound so.
+ */
 public class AudioManager {
     public static final int STREAM_VOICE_CALL = 0, STREAM_SYSTEM = 1, STREAM_RING = 2, STREAM_MUSIC = 3, STREAM_ALARM = 4, STREAM_NOTIFICATION = 5, STREAM_DTMF = 8, STREAM_ACCESSIBILITY = 10, USE_DEFAULT_STREAM_TYPE = Integer.MIN_VALUE;
     public static final int AUDIOFOCUS_NONE = 0, AUDIOFOCUS_GAIN = 1, AUDIOFOCUS_GAIN_TRANSIENT = 2, AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK = 3, AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE = 4,
@@ -17,6 +22,17 @@ public class AudioManager {
     public static abstract class AudioPlaybackCallback { public void onPlaybackConfigChanged(java.util.List<?> configs) {} }
     private static final int[] sVolume = { 5, 7, 5, 11, 6, 5, 0, 0, 11, 0, 11 };
     private static int sMode = MODE_NORMAL, sSession = 1;
+    private static boolean sSpeakerphone, sCommunicationSet;
+    private static int sRoute;
+
+    /* The route for what the app has said: 0 as ever, 1 the earpiece, 2 the loudspeaker; told when it changes. */
+    private static synchronized void meglerRoute() {
+        boolean call = sMode == MODE_IN_CALL || sMode == MODE_IN_COMMUNICATION || sCommunicationSet;
+        int route = !call ? 0 : sSpeakerphone ? 2 : 1;
+        if (route == sRoute) return;
+        sRoute = route;
+        megler.Native.audioRoute(route);
+    }
     public AudioManager() {}
     public AudioManager(android.content.Context c) {}
     public int getStreamVolume(int s) { return s >= 0 && s < sVolume.length ? sVolume[s] : 11; }
@@ -38,10 +54,10 @@ public class AudioManager {
     public int getRingerMode() { return RINGER_MODE_NORMAL; }
     public void setRingerMode(int m) {}
     public int getMode() { return sMode; }
-    public void setMode(int m) { sMode = m; }
+    public void setMode(int m) { sMode = m; meglerRoute(); }
     public boolean isMusicActive() { return false; }
-    public boolean isSpeakerphoneOn() { return true; }
-    public void setSpeakerphoneOn(boolean on) {}
+    public boolean isSpeakerphoneOn() { return sSpeakerphone; }
+    public void setSpeakerphoneOn(boolean on) { sSpeakerphone = on; meglerRoute(); }
     public boolean isMicrophoneMute() { return false; }
     public void setMicrophoneMute(boolean on) {}
     public boolean isBluetoothScoOn() { return false; }
@@ -52,7 +68,9 @@ public class AudioManager {
     public void playSoundEffect(int effect) {}
     public void playSoundEffect(int effect, float volume) {}
     public void loadSoundEffects() {} public void unloadSoundEffects() {}
-    public AudioDeviceInfo[] getDevices(int flags) { return (flags & GET_DEVICES_OUTPUTS) != 0 ? new AudioDeviceInfo[] { AudioDeviceInfo.meglerSpeaker() } : new AudioDeviceInfo[0]; }
+    public AudioDeviceInfo[] getDevices(int flags) {
+        return (flags & GET_DEVICES_OUTPUTS) != 0 ? new AudioDeviceInfo[] { AudioDeviceInfo.meglerSpeaker(), AudioDeviceInfo.meglerEarpiece() } : new AudioDeviceInfo[0];
+    }
     public void registerAudioDeviceCallback(AudioDeviceCallback cb, android.os.Handler h) {}
     public void unregisterAudioDeviceCallback(AudioDeviceCallback cb) {}
     public void registerAudioPlaybackCallback(AudioPlaybackCallback cb, android.os.Handler h) {}
@@ -308,7 +326,7 @@ public class AudioManager {
     public boolean areNavigationRepeatSoundEffectsEnabled() { return false; }
     public void cancelMuteAwaitConnection(android.media.AudioDeviceAttributes p0) {}
     public void clearAudioServerStateCallback() {}
-    public void clearCommunicationDevice() {}
+    public void clearCommunicationDevice() { sCommunicationSet = false; sSpeakerphone = false; meglerRoute(); }
     public boolean clearPreferredDevicesForCapturePreset(int p0) { return false; }
     public boolean clearPreferredMixerAttributes(android.media.AudioAttributes p0, android.media.AudioDeviceInfo p1) { return false; }
     public void disableSafeMediaVolume() {}
@@ -325,11 +343,16 @@ public class AudioManager {
     public int[] getAssistantServicesUids() { return new int[0]; }
     public java.util.List getAudioDevicesForAttributes(android.media.AudioAttributes p0) { return new java.util.ArrayList(); }
     public int getAudioHwSyncForSession(int p0) { return 0; }
-    public java.util.List getAvailableCommunicationDevices() { return new java.util.ArrayList(); }
+    public java.util.List<AudioDeviceInfo> getAvailableCommunicationDevices() {
+        java.util.ArrayList<AudioDeviceInfo> devices = new java.util.ArrayList<>();
+        devices.add(AudioDeviceInfo.meglerEarpiece());
+        devices.add(AudioDeviceInfo.meglerSpeaker());
+        return devices;
+    }
     public int getBluetoothAudioDeviceCategory(java.lang.String p0) { return 0; }
     public android.media.AudioRecord getCallDownlinkExtractionAudioRecord(android.media.AudioFormat p0) { return null; }
     public android.media.AudioTrack getCallUplinkInjectionAudioTrack(android.media.AudioFormat p0) { return null; }
-    public android.media.AudioDeviceInfo getCommunicationDevice() { return (android.media.AudioDeviceInfo) meglerFill.get("CommunicationDevice"); }
+    public android.media.AudioDeviceInfo getCommunicationDevice() { return sSpeakerphone ? AudioDeviceInfo.meglerSpeaker() : AudioDeviceInfo.meglerEarpiece(); }
     public float getCsd() { return (meglerFill.get("Csd") instanceof Float ? (Float) meglerFill.get("Csd") : 0f); }
     public int getDeviceVolumeBehavior(android.media.AudioDeviceAttributes p0) { return 0; }
     public java.util.List getDevicesForAttributes(android.media.AudioAttributes p0) { return new java.util.ArrayList(); }
@@ -451,7 +474,13 @@ public class AudioManager {
     public boolean setBluetoothAudioDeviceCategory(java.lang.String p0, int p1) { return false; }
     public void setBluetoothHeadsetProperties(java.lang.String p0, boolean p1, boolean p2) {}
     public void setBluetoothVariableLatencyEnabled(boolean p0) { meglerFill.put("BluetoothVariableLatencyEnabled", Boolean.valueOf(p0)); }
-    public boolean setCommunicationDevice(android.media.AudioDeviceInfo p0) { return false; }
+    public boolean setCommunicationDevice(android.media.AudioDeviceInfo d) {
+        if (d == null || (d.getType() != AudioDeviceInfo.TYPE_BUILTIN_SPEAKER && d.getType() != AudioDeviceInfo.TYPE_BUILTIN_EARPIECE)) return false;
+        sCommunicationSet = true;
+        sSpeakerphone = d.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+        meglerRoute();
+        return true;
+    }
     public void setCsd(float p0) { meglerFill.put("Csd", Float.valueOf(p0)); }
     public void setCsdAsAFeatureEnabled(boolean p0) { meglerFill.put("CsdAsAFeatureEnabled", Boolean.valueOf(p0)); }
     public boolean setDeviceAsNonDefaultForStrategy(android.media.audiopolicy.AudioProductStrategy p0, android.media.AudioDeviceAttributes p1) { return false; }

@@ -719,6 +719,18 @@ N(Native_micStop)
     if (was && h->stop) h->stop(h->user);
 }
 
+/* audioRoute(route): where the app's sound is to go, as its AudioManager has it (megler_audio_host.route). */
+N(Native_audioRoute)
+{
+    const megler_audio_host *h = &J.config->audio;
+    int route = c->args[0].i;
+    if (route < MEGLER_AUDIO_ROUTE_DEFAULT || route > MEGLER_AUDIO_ROUTE_SPEAKER) route = MEGLER_AUDIO_ROUTE_DEFAULT;
+    mg_info("java: the app's sound %s", route == MEGLER_AUDIO_ROUTE_EARPIECE ? "goes to the earpiece, for a call"
+                                        : route == MEGLER_AUDIO_ROUTE_SPEAKER ? "goes to the loudspeaker, for a call on speaker"
+                                                                              : "goes where it always does");
+    if (h->route) h->route(h->user, route);
+}
+
 /* micRead(short[] buffer, offset, count, blocking): samples heard, into the buffer; how many. */
 N(Native_micRead)
 {
@@ -1085,6 +1097,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "micStart", NULL, Native_micStart },
     { "megler/Native", "micStop", NULL, Native_micStop },
     { "megler/Native", "micRead", NULL, Native_micRead },
+    { "megler/Native", "audioRoute", NULL, Native_audioRoute },
     { "megler/Native", "packageName", NULL, Native_packageName },
     { "megler/Native", "screenWidth", NULL, Native_screenWidth },
     { "megler/Native", "screenHeight", NULL, Native_screenHeight },

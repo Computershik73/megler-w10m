@@ -5327,6 +5327,22 @@ encodes as it records (AAC, AMR), is not done yet. The data app's step
 reads it back; the harness checks it was asked for at 16000 Hz, mono, and let
 go.
 
+**A call's sound** goes where the app's `AudioManager` says, as on a phone:
+in `MODE_IN_COMMUNICATION` or `MODE_IN_CALL`, or with a communication device
+set, to the earpiece, or to the loudspeaker after `setSpeakerphoneOn(true)` or
+`setCommunicationDevice` of the speaker; `MODE_NORMAL` ends it. The two are
+the communication devices there are (`getAvailableCommunicationDevices`,
+`getCommunicationDevice`), and `getDevices` lists both. Each change is told to
+the shell (`megler.Native.audioRoute`, `megler_audio_host.route`), which makes
+its XAudio2 output again in the Communications category for a call and sets
+the phone's endpoint, the earpiece or the speakerphone
+(`Windows.Phone.Media.Devices.AudioRoutingManager`, declared in
+`player/AudioHost.cpp` from the phone contract's metadata), and the default
+once the call has ended; the microphone then hears as a call does
+(Communications, the echo taken out). The data app's step `audio-route` goes
+to the earpiece, the loudspeaker and back; the harness checks the shell was
+told each.
+
 ### Sound from Java
 
 `megler.Audio`'s natives (`drivers/mg_java_audio.c`) are what the framework's

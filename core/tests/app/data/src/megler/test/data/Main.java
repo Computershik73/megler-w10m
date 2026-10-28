@@ -742,6 +742,31 @@ public class Main extends Activity {
                    && "1.3 million".equals(compactLong) && "12.30".equals(fixed) && "$1,234.50".equals(money) && "5 kilometers".equals(km)
                    && "+12345".equals(sign) && "120".equals(digits) && even.intValue() == 2 && "1,234.5".equals(old) && "1.3M".equals(oldCompact) && !rounder;
         });
+        // Where a call's sound goes, as the app's AudioManager has it (WhatsApp's calls): MODE_IN_COMMUNICATION is the
+        // earpiece, setSpeakerphoneOn(true) the loudspeaker, and setCommunicationDevice either of the two communication
+        // devices there are; MODE_NORMAL ends it. Android 12's methods by reflection: the app is built against Android 10.
+        step("audio-route", () -> {
+            android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+            java.lang.reflect.Method device = android.media.AudioManager.class.getMethod("getCommunicationDevice");
+            java.lang.reflect.Method available = android.media.AudioManager.class.getMethod("getAvailableCommunicationDevices");
+            java.lang.reflect.Method set = android.media.AudioManager.class.getMethod("setCommunicationDevice", android.media.AudioDeviceInfo.class);
+            java.lang.reflect.Method clear = android.media.AudioManager.class.getMethod("clearCommunicationDevice");
+            am.setMode(android.media.AudioManager.MODE_IN_COMMUNICATION);
+            boolean earpiece = !am.isSpeakerphoneOn()
+                               && ((android.media.AudioDeviceInfo) device.invoke(am)).getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+            am.setSpeakerphoneOn(true);
+            boolean speaker = am.isSpeakerphoneOn()
+                              && ((android.media.AudioDeviceInfo) device.invoke(am)).getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+            java.util.List<?> devices = (java.util.List<?>) available.invoke(am);
+            android.media.AudioDeviceInfo ear = null;
+            for (Object d : devices)
+                if (((android.media.AudioDeviceInfo) d).getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) ear = (android.media.AudioDeviceInfo) d;
+            boolean chosen = ear != null && (Boolean) set.invoke(am, ear) && !am.isSpeakerphoneOn();
+            clear.invoke(am);
+            am.setMode(android.media.AudioManager.MODE_NORMAL);
+            detail = "earpiece=" + earpiece + " speaker=" + speaker + " devices=" + devices.size() + " chosen=" + chosen + " mode=" + am.getMode();
+            return earpiece && speaker && devices.size() == 2 && chosen && am.getMode() == android.media.AudioManager.MODE_NORMAL;
+        });
         // A HandlerThread's looper, as Android gives it: null at once for a thread not started and for one that ended (Facebook's
         // stories loader asked one of those, and waited for good); the thread's own once it runs, with its id.
         step("handler-thread", () -> {

@@ -2,6 +2,8 @@
 
 #include "player/MicrophoneHost.h"
 
+#include "player/AudioHost.h"
+
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
@@ -194,9 +196,12 @@ bool start(void*, int rate, int channels) {
     }
     if (!access) return false;
     bool ok = false;
+    // For a call (the app's AudioManager in communication) the graph hears as one: the echo of what the earpiece or the
+    // loudspeaker plays taken out, as a call wants it. Speech otherwise.
+    const bool call = AudioHost::callRoute() != MEGLER_AUDIO_ROUTE_DEFAULT;
     inMta([&] {
         stopGraph();
-        AudioGraphSettings settings(AudioRenderCategory::Speech);
+        AudioGraphSettings settings(call ? AudioRenderCategory::Communications : AudioRenderCategory::Speech);
         AudioEncodingProperties encoding = AudioEncodingProperties::CreatePcm(static_cast<uint32_t>(rate), static_cast<uint32_t>(channels), 32);
         encoding.Subtype(L"Float");
         settings.EncodingProperties(encoding);
@@ -206,7 +211,7 @@ bool start(void*, int rate, int channels) {
             return;
         }
         AudioGraph graph = made.Graph();
-        const auto input = graph.CreateDeviceInputNodeAsync(MediaCategory::Speech, graph.EncodingProperties()).get();
+        const auto input = graph.CreateDeviceInputNodeAsync(call ? MediaCategory::Communications : MediaCategory::Speech, graph.EncodingProperties()).get();
         if (input.Status() != AudioDeviceNodeCreationStatus::Success) {
             shellLog::write(format("microphone: no microphone to hear (status %d)", int(input.Status())));
             graph.Close();
@@ -229,7 +234,7 @@ bool start(void*, int rate, int channels) {
         }
         graph.Start();
         const auto e = graph.EncodingProperties();
-        shellLog::write(format("microphone: hearing at %u Hz in %u channel(s)", e.SampleRate(), e.ChannelCount()));
+        shellLog::write(format("microphone: hearing at %u Hz in %u channel(s)%s", e.SampleRate(), e.ChannelCount(), call ? ", for a call" : ""));
         ok = true;
     });
     return ok;

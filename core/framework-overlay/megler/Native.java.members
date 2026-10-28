@@ -12,6 +12,9 @@
     public static native boolean micStart(int rate, int channels);
     public static native void micStop();
     public static native int micRead(short[] b, int off, int n, boolean blocking);
+    /** Where the app's sound is to go, as its AudioManager has it: 0 as ever, 1 the earpiece, 2 the loudspeaker, for a
+     *  call (megler_audio_host.route, core/src/drivers/mg_java.c). */
+    public static native void audioRoute(int route);
     /** The battery's kind as Android names it, "Li-ion". */
     public static native String batteryTechnology();
     /**

@@ -4,6 +4,9 @@ public final class AudioDeviceInfo {
     private final int mType;
     private AudioDeviceInfo(int t) { mType = t; }
     static AudioDeviceInfo meglerSpeaker() { return new AudioDeviceInfo(TYPE_BUILTIN_SPEAKER); }
+    static AudioDeviceInfo meglerEarpiece() { return new AudioDeviceInfo(TYPE_BUILTIN_EARPIECE); }
+    @Override public boolean equals(Object o) { return o instanceof AudioDeviceInfo && ((AudioDeviceInfo) o).mType == mType; }
+    @Override public int hashCode() { return mType; }
     public int getId() { return mType; }
     public CharSequence getProductName() { return "iPhone"; }
     public String getAddress() { return ""; }

@@ -294,10 +294,18 @@ typedef struct megler_window_host {
  *
  * All of it may be left NULL.
  */
+/*
+ *   route   where the sound is to go, as a Java app's AudioManager has it: MEGLER_AUDIO_ROUTE_DEFAULT where it always goes;
+ *           for a call (MODE_IN_COMMUNICATION, MODE_IN_CALL, a communication device), MEGLER_AUDIO_ROUTE_EARPIECE, or
+ *           MEGLER_AUDIO_ROUTE_SPEAKER on speaker (setSpeakerphoneOn, setCommunicationDevice). Called on the app's threads
+ *           when it changes. May be left NULL.
+ */
+enum { MEGLER_AUDIO_ROUTE_DEFAULT = 0, MEGLER_AUDIO_ROUTE_EARPIECE = 1, MEGLER_AUDIO_ROUTE_SPEAKER = 2 };
 typedef struct megler_audio_host {
     void *user;
     bool (*open)(void *user, int rate);
     void (*write)(void *user, const int16_t *samples, int frames);
+    void (*route)(void *user, int route);
 } megler_audio_host;
 
 /*
