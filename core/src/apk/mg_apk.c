@@ -1622,6 +1622,159 @@ static u8 *icon_of_id(icon_apks *a, u32 id, size_t *size)
     return icon_as_png(bytes, size);
 }
 
+/*
+ * The certificates an APK is signed with, as megler.ApkSigner reads the running app's own: the APK Signing Block's v3
+ * signer, else its v2 one, else the v1 PKCS#7 file under META-INF (.RSA, .DSA, .EC). Each is written into `j` as a JSON
+ * string of its DER in hex digits (what android.content.pm.Signature(String) takes). How many were written.
+ */
+typedef struct cspan {
+    const u8 *p;
+    size_t n;
+} cspan;
+
+static u32 cle32(const u8 *p) { return (u32)p[0] | (u32)p[1] << 8 | (u32)p[2] << 16 | (u32)p[3] << 24; }
+static u64 cle64(const u8 *p) { return (u64)cle32(p) | (u64)cle32(p + 4) << 32; }
+
+/* A value after its 32-bit little-endian length, taken off the front of `s`. */
+static bool cspan_lp(cspan *s, cspan *out)
+{
+    u32 n;
+    if (s->n < 4) return false;
+    n = cle32(s->p);
+    if (n > s->n - 4) return false;
+    out->p = s->p + 4;
+    out->n = n;
+    s->p += 4 + (size_t)n;
+    s->n -= 4 + (size_t)n;
+    return true;
+}
+
+static void cert_hex(mg_jbuf *j, const u8 *der, size_t n, int written)
+{
+    static const char digits[] = "0123456789abcdef";
+    char *hex = (char *)mg_alloc(n * 2 + 1);
+    size_t k;
+    for (k = 0; k < n; k++) {
+        hex[2 * k] = digits[der[k] >> 4];
+        hex[2 * k + 1] = digits[der[k] & 15];
+    }
+    hex[2 * n] = 0;
+    if (written) mg_jraw(j, ",");
+    mg_jstr(j, hex);
+    free(hex);
+}
+
+static int certs_of_block(const mg_zip *z, mg_jbuf *j)
+{
+    u8 *tail, foot[24], *blk = NULL;
+    size_t tn = (size_t)(z->size < 65557 ? z->size : 65557), i;
+    long eocd = -1;
+    u64 cd, size;
+    cspan b, v2 = {0}, v3 = {0}, s, signers, signer, signed_data, digests, certs, c;
+    int written = 0;
+    if (tn < 22) return 0;
+    tail = (u8 *)mg_alloc(tn);
+    if (!mg_zip_pread(z, z->size - tn, tail, tn)) goto done;
+    for (i = tn - 22 + 1; i-- > 0;)
+        if (cle32(tail + i) == 0x06054b50u) {
+            eocd = (long)i;
+            break;
+        }
+    if (eocd < 0) goto done;
+    cd = cle32(tail + eocd + 16);
+    if (cd < 32 || !mg_zip_pread(z, cd - 24, foot, 24)) goto done;
+    if (memcmp(foot + 8, "APK Sig Block 42", 16)) goto done;
+    size = cle64(foot);
+    if (size < 24 || size > cd || size > (16u << 20)) goto done;
+    blk = (u8 *)mg_alloc((size_t)size - 24);
+    if (!mg_zip_pread(z, cd - size, blk, (size_t)size - 24)) goto done;
+    b.p = blk;
+    b.n = (size_t)size - 24;
+    while (b.n >= 12) {
+        u64 plen = cle64(b.p);
+        u32 id = cle32(b.p + 8);
+        if (plen < 4 || plen - 4 > b.n - 12) break;
+        if (id == 0x7109871au) { v2.p = b.p + 12; v2.n = (size_t)plen - 4; }
+        if (id == 0xf05368c0u) { v3.p = b.p + 12; v3.n = (size_t)plen - 4; }
+        b.p += 12 + (size_t)plen - 4;
+        b.n -= 12 + (size_t)plen - 4;
+    }
+    s = v3.p ? v3 : v2;
+    if (!s.p || !cspan_lp(&s, &signers) || !cspan_lp(&signers, &signer) || !cspan_lp(&signer, &signed_data) ||
+        !cspan_lp(&signed_data, &digests) || !cspan_lp(&signed_data, &certs))
+        goto done;
+    while (certs.n && cspan_lp(&certs, &c)) cert_hex(j, c.p, c.n, written++);
+done:
+    free(blk);
+    free(tail);
+    return written;
+}
+
+/* One DER element off the front of `s`: its tag, its contents, and the whole of it. */
+static bool der_next(cspan *s, u8 *tag, cspan *val, cspan *whole)
+{
+    size_t len, head = 2, k;
+    if (s->n < 2) return false;
+    *tag = s->p[0];
+    len = s->p[1];
+    if (len & 0x80) {
+        size_t m = len & 0x7f;
+        if (m == 0 || m > 4 || s->n < 2 + m) return false;
+        for (len = 0, k = 0; k < m; k++) len = len << 8 | s->p[2 + k];
+        head += m;
+    }
+    if (len > s->n - head) return false;
+    if (val) { val->p = s->p + head; val->n = len; }
+    if (whole) { whole->p = s->p; whole->n = head + len; }
+    s->p += head + len;
+    s->n -= head + len;
+    return true;
+}
+
+typedef struct v1_find {
+    const mg_zip_entry *e;
+} v1_find;
+
+/* Whether `s` is `upper` (letters in capitals) in either case. */
+static bool same_ascii(const char *s, const char *upper)
+{
+    for (; *s && *upper; s++, upper++)
+        if ((*s >= 'a' && *s <= 'z' ? *s - 32 : *s) != *upper) return false;
+    return !*s && !*upper;
+}
+
+static void v1_each(const mg_zip_entry *e, void *user)
+{
+    v1_find *f = (v1_find *)user;
+    const char *dot = strrchr(e->name, '.');
+    if (f->e || !dot || strlen(e->name) < 10 || strchr(e->name + 9, '/')) return;
+    if (same_ascii(dot, ".RSA") || same_ascii(dot, ".DSA") || same_ascii(dot, ".EC")) f->e = e;
+}
+
+static int certs_of_v1(const mg_zip *z, mg_jbuf *j)
+{
+    v1_find f = {0};
+    size_t n = 0;
+    u8 *p7, tag;
+    cspan s, ci, sd, x, whole;
+    int written = 0;
+    mg_zip_each(z, "META-INF/", v1_each, &f);
+    if (!f.e || !(p7 = mg_zip_read(z, f.e, 1u << 20, &n))) return 0;
+    s.p = p7;
+    s.n = n;
+    /* ContentInfo { contentType, [0] SignedData { version, digestAlgorithms, encapContentInfo, [0] certificates, ... } } */
+    if (der_next(&s, &tag, &ci, NULL) && tag == 0x30 && der_next(&ci, &tag, NULL, NULL) && tag == 0x06 &&
+        der_next(&ci, &tag, &x, NULL) && tag == 0xa0 && der_next(&x, &tag, &sd, NULL) && tag == 0x30 &&
+        der_next(&sd, &tag, NULL, NULL) && der_next(&sd, &tag, NULL, NULL) && der_next(&sd, &tag, NULL, NULL)) {
+        cspan certs;
+        if (der_next(&sd, &tag, &certs, NULL) && tag == 0xa0)
+            while (certs.n && der_next(&certs, &tag, NULL, &whole))
+                if (tag == 0x30) cert_hex(j, whole.p, whole.n, written++);
+    }
+    free(p7);
+    return written;
+}
+
 bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir, const char *out_dir)
 {
     char **splits = NULL;
@@ -1643,6 +1796,10 @@ bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir
             mg_jkey(&c->out, "activities", false);
             mg_jraw(&c->out, "[");
         }
+        mg_jraw(&c->out, "]");
+        mg_jkey(&c->out, "certificates", false);
+        mg_jraw(&c->out, "[");
+        if (!certs_of_block(&a->zips[0], &c->out)) certs_of_v1(&a->zips[0], &c->out);
         mg_jraw(&c->out, "]}");
         mg_path_mkdirs(out_dir);
         path = mg_sprintf("%s/activities.json", out_dir);

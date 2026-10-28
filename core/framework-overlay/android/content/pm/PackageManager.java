@@ -319,8 +319,31 @@ public class PackageManager {
         for (megler.PhoneApps.App a : megler.PhoneApps.all()) l.add(megler.PhoneApps.applicationInfo(a));
         return l;
     }
-    public String[] getPackagesForUid(int uid) { return new String[] { megler.Native.packageName() }; }
-    public String getNameForUid(int uid) { return megler.Native.packageName(); }
+    /*
+     * The app's uid is the Google packages' it hosts as well (their ApplicationInfo has it: GmsCore and Google Services
+     * Framework run in its process), so they are the uid's packages too, as Android gives every package of a shared user
+     * id. Google Play services checks that a package a caller names is one of the calling uid's: its sign-in refused its own
+     * backup module a token ("GLSActivity: Package not matching uid 10100 com.google.android.gms"), and WhatsApp's search
+     * for its Google Drive backup failed until it said it took too long; Play Store said the same of it.
+     */
+    public String[] getPackagesForUid(int uid) {
+        String other = otherOfUid(uid);
+        if (other != null) return new String[] { other };
+        java.util.ArrayList<String> out = new java.util.ArrayList<>();
+        out.add(megler.Native.packageName());
+        if (uid == android.os.Process.myUid()) {
+            if (megler.MicroG.packageInfo(megler.GooglePackages.GMS) != null && !out.contains(megler.GooglePackages.GMS)) out.add(megler.GooglePackages.GMS);
+            if (megler.Gsf.packageInfo(megler.GooglePackages.GSF) != null && !out.contains(megler.GooglePackages.GSF)) out.add(megler.GooglePackages.GSF);
+        }
+        return out.toArray(new String[0]);
+    }
+    public String getNameForUid(int uid) { String other = otherOfUid(uid); return other != null ? other : megler.Native.packageName(); }
+    /* Another app the phone has by its uid (megler.PhoneApps gives each one of its own), else null: the running app's. */
+    private static String otherOfUid(int uid) {
+        if (uid == android.os.Process.myUid()) return null;
+        for (megler.PhoneApps.App a : megler.PhoneApps.all()) if (a.uid == uid) return a.packageName;
+        return null;
+    }
     public int getPackageUid(String pkg, int flags) throws NameNotFoundException { if (!mine(pkg) && megler.GooglePackages.is(pkg)) return megler.GooglePackages.applicationInfo(pkg).uid; if (!mine(pkg)) { megler.PhoneApps.App a = megler.PhoneApps.find(pkg); if (a != null) return a.uid; throw new NameNotFoundException(pkg); } return android.os.Process.myUid(); }
     /* components the app enabled or disabled (Instagram turns its own on in stages and checks each took), kept across launches */
     private static java.util.Properties sStates;

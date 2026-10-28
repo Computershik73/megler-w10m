@@ -3116,6 +3116,36 @@ What a Java app asks of the phone beyond its window goes to the shell through
   install folders cannot be read by an app container on Windows 10 Mobile
   (Megler's own check fails after each install), which is why Megler, which
   has the APKs, writes this for them.
+- **Other apps: their signatures, uids, comings and goings.**
+  - `activities.json` also has the certificates the APK is signed with
+    (`"certificates"`, each DER in hex): the APK Signing Block's v3 signer's,
+    else its v2 one's, else those of the v1 PKCS#7 file under `META-INF`.
+    `getPackageInfo` gives them as the app's `signatures` with
+    `GET_SIGNATURES` and as its `signingInfo` with `GET_SIGNING_CERTIFICATES`,
+    and neither otherwise, as on Android. Before 0.1.0.460 another app's
+    `PackageInfo` carried the running app's own signatures. Google Play
+    compares an app's with its record, so every app it had installed was
+    "installed but certificate mismatch" to it: not from Google Play.
+  - Each app has a uid of its own, made from its package name (10200 and up),
+    and `getNameForUid` and `getPackagesForUid` name it. Before, the first app
+    listed had the running app's uid, 10100.
+  - The running app's uid, 10100, is the uid of the Google packages it hosts as
+    well (GmsCore and Google Services Framework run in its process, and their
+    `ApplicationInfo` says so), and `getPackagesForUid` names them with the app,
+    as Android names the packages of a shared user id. Google Play services
+    checks that a package a caller names is one of the calling uid's: its sign-in
+    refused its own backup module a token ("Package not matching uid 10100
+    com.google.android.gms"), and WhatsApp's search for its Google Drive backup
+    failed until it said it took too long (package 485); Play Store warned of
+    the same.
+  - Once the app has asked for the list, it is read again every three seconds.
+    What changes is told as Android tells it: `ACTION_PACKAGE_ADDED`; for a new
+    version `ACTION_PACKAGE_REMOVED` and `ACTION_PACKAGE_ADDED` (both
+    replacing) and `ACTION_PACKAGE_REPLACED`; for an app gone
+    `ACTION_PACKAGE_REMOVED` with `EXTRA_DATA_REMOVED` and
+    `ACTION_PACKAGE_FULLY_REMOVED`. Each has the package as its data and its
+    `EXTRA_UID`. Before, Google Play went on showing an app removed in Megler
+    as installed.
 
 APKs, .apks and .xapk files also open in Megler from the phone's file
 manager (a file type association of Megler's package, taken out of an app's

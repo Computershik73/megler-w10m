@@ -685,7 +685,7 @@ static const char *phone_apps_fixture(void)
             "{\"name\":\"com.example.other.Hidden\",\"exported\":false,\"filters\":[]},"
             "{\"name\":\"com.example.other.Second\",\"enabled\":true,\"target\":\"com.example.other.Main\",\"label\":\"Other Second\",\"exported\":true,"
             "\"filters\":[{\"id\":1,\"actions\":[\"android.intent.action.MAIN\"],\"categories\":[\"android.intent.category.LAUNCHER\"],\"schemes\":[],"
-            "\"hosts\":[],\"types\":[]}]}]}";
+            "\"hosts\":[],\"types\":[]}]}],\"certificates\":[\"3003020107\"]}";
         char *own = mg_sprintf("%s/com.example.other", dir);
         mg_path_mkdirs(own);
         path = mg_sprintf("%s/activities.json", own);
@@ -769,6 +769,8 @@ static bool start(const char *apk, const char *android_root)
         if (bytes && (json = (char *)realloc(bytes, size + 1)) != NULL) json[size] = 0;
         else free(bytes);
         CHECK(json && strstr(json, "\"activities\":[{\"name\":"));
+        /* (The test apps are not signed: their certificates are none. A real app's are its own.) */
+        if (!g_any_app) CHECK(json && strstr(json, "],\"certificates\":[]}"));
         if (g_crash_app) {
             CHECK(json && strstr(json, "{\"name\":\"megler.test.crash.First\",\"label\":\"Megler Crash\",\"exported\":false,\"filters\":[]}"));
             CHECK(json && strstr(json, "{\"name\":\"megler.test.crash.IconDark\",\"enabled\":false,\"target\":\"megler.test.crash.Second\",\"exported\":true,"));

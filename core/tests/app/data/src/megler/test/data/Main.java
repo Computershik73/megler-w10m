@@ -2779,6 +2779,24 @@ public class Main extends Activity {
             return "Main+,Settings+,Hidden-,Second+,".equals(names.toString()) && entries == 2 && shortcuts && !link && "Other Settings".equals(label)
                 && icon != null && icon.getIntrinsicWidth() == 3;
         });
+        // Its signatures are its APK's certificates as the shell described them (the fixture's: 30 03 02 01 07), given when asked
+        // for and not otherwise; and it has a uid of its own, which names it.
+        step("phone-apps-signatures", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.pm.PackageInfo plain, sigs, signing;
+            try {
+                plain = pm.getPackageInfo("com.example.other", 0);
+                sigs = pm.getPackageInfo("com.example.other", android.content.pm.PackageManager.GET_SIGNATURES);
+                signing = pm.getPackageInfo("com.example.other", android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES);
+            } catch (android.content.pm.PackageManager.NameNotFoundException e) { detail = String.valueOf(e); return false; }
+            byte[] want = { 0x30, 0x03, 0x02, 0x01, 0x07 };
+            boolean got = sigs.signatures != null && sigs.signatures.length == 1 && java.util.Arrays.equals(sigs.signatures[0].toByteArray(), want);
+            boolean signed = signing.signingInfo != null && signing.signingInfo.getApkContentsSigners().length == 1
+                    && java.util.Arrays.equals(signing.signingInfo.getApkContentsSigners()[0].toByteArray(), want);
+            int uid = plain.applicationInfo.uid;
+            detail = "plain=" + java.util.Arrays.toString(plain.signatures) + " sigs=" + got + " signing=" + signed + " uid=" + uid + " named=" + pm.getNameForUid(uid);
+            return plain.signatures == null && got && signed && uid != android.os.Process.myUid() && "com.example.other".equals(pm.getNameForUid(uid));
+        });
     }
 
     /**

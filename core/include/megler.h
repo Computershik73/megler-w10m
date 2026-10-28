@@ -144,13 +144,16 @@ bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_
  *     "activities": [ { "name": "org.example.Main", "label": "Example", "icon": 2131558401, "enabled": false,
  *                       "exported": true, "filters": [ { "id": 1, "actions": ["android.intent.action.MAIN"],
  *                       "categories": ["android.intent.category.LAUNCHER"], "schemes": [], "hosts": [], "types": [] } ] },
- *                     { "name": "org.example.Light", "target": "org.example.Main", ... } ] }
+ *                     { "name": "org.example.Light", "target": "org.example.Main", ... } ],
+ *     "certificates": [ "3082..." ] }
  *
  * -- an activity-alias with the activity it stands for ("target"), a label in the phone's language (a resource's, through
  * the splits' tables too), "enabled" only when the manifest says, "exported" as the manifest says or else whether it has an
  * intent filter -- and a picture of each icon the app and its activities name, <id as 8 hex digits>.png: a PNG, a WebP made
- * one, an XML one (adaptive, vector) drawn. `splits_dir` as megler_apk_report_splits has it. False when the APK's manifest
- * cannot be read or the description cannot be written.
+ * one, an XML one (adaptive, vector) drawn. "certificates" are those the APK is signed with, each its DER in hex digits: the
+ * APK Signing Block's v3 signer's, else its v2 one's, else the v1 PKCS#7 file's under META-INF (megler.PhoneApps gives them
+ * as the app's signatures; Google Play compares them with its own record). `splits_dir` as megler_apk_report_splits has it.
+ * False when the APK's manifest cannot be read or the description cannot be written.
  */
 bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir, const char *out_dir);
 
