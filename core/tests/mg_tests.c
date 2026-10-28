@@ -1033,6 +1033,97 @@ static void test_mmap_file(const char *scratch)
     free(path);
 }
 
+/*
+ * Anonymous memory given back with madvise (MADV_DONTNEED, bionic/mg_libc_mem.c) is the system's again -- decommitted, where
+ * the host says what is -- and still the app's: a page of it touched is zero, read or written; one the system itself writes
+ * into (a file read into it) is read into; made no-access and given access again it is zero; what was not given back keeps
+ * what it had; an address off a page is refused, as Linux refuses it.
+ */
+static void test_mmap_madvise(const char *scratch)
+{
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef int (*munmap_fn)(void *, size_t);
+    typedef int (*mprotect_fn)(void *, size_t, int);
+    typedef int (*madvise_fn)(void *, size_t, int);
+    typedef i32 (*read_fn)(int, void *, u32);
+    typedef int (*close_fn)(int);
+    enum { NONE = 0, RW = 3, PRIVATE = 0x02, ANONYMOUS = 0x20, DONTNEED = 4, MB = 1 << 20, FILE_BYTES = 8000 };
+    mmap_fn mmap_ = (mmap_fn)mg_bionic_find("mmap");
+    munmap_fn munmap_ = (munmap_fn)mg_bionic_find("munmap");
+    mprotect_fn mprotect_ = (mprotect_fn)mg_bionic_find("mprotect");
+    madvise_fn madvise_ = (madvise_fn)mg_bionic_find("madvise");
+    read_fn read_ = (read_fn)mg_bionic_find("read");
+    close_fn close_ = (close_fn)mg_bionic_find("close");
+    char *path = mg_sprintf("%s/madvised.bin", scratch);
+    u8 *data = (u8 *)mg_alloc(FILE_BYTES), *p;
+    mg_file *f;
+    int err = 0, fd, i;
+    bool same = true;
+    i64 before, after;
+    u64 anon0 = 0, anon1 = 0, anon2 = 0, anon3 = 0;
+    say("mmap: anonymous memory given back with madvise is the system's again, and zero when touched");
+    CHECK(mmap_ && munmap_ && mprotect_ && madvise_ && read_ && close_);
+    if (!mmap_ || !munmap_ || !mprotect_ || !madvise_ || !read_ || !close_) goto done;
+    mg_mmap_usage(&anon0, NULL);
+    p = (u8 *)mmap_(NULL, 4 * MB, RW, PRIVATE | ANONYMOUS, -1, 0);
+    CHECK(p && p != (u8 *)(mg_addr)-1);
+    if (!p || p == (u8 *)(mg_addr)-1) goto done;
+    memset(p, 0x5A, 4 * MB);
+    mg_mmap_usage(&anon1, NULL);
+    before = mg_mem_committed(p, 4 * MB);
+    CHECK(madvise_(p + MB, 2 * MB, DONTNEED) == 0);
+    after = mg_mem_committed(p, 4 * MB);
+    CHECK(before == -1 || (before == 4 * MB && after == 2 * MB));
+    /* What the frames line says of the app's mappings (mg_mmap_usage): the 4 MB mapped, less the 2 MB given back. */
+    mg_mmap_usage(&anon2, NULL);
+    CHECK(anon1 - anon0 == 4 * MB && anon1 - anon2 == 2 * MB);
+    say("  4 MB written, 2 MB of it given back: %lld bytes committed before, %lld after (-1: the host does not say)", (long long)before,
+        (long long)after);
+    CHECK(p[0] == 0x5A && p[MB - 1] == 0x5A && p[3 * MB] == 0x5A && p[4 * MB - 1] == 0x5A);
+    /* Read, then written: the page and those given back of its 64 KB are committed again, zero. */
+    CHECK(p[MB] == 0 && p[MB + 4095] == 0);
+    p[MB + 20 * 4096 + 7] = 1;
+    CHECK(p[MB + 20 * 4096 + 7] == 1 && p[MB + 20 * 4096 + 8] == 0);
+    after = mg_mem_committed(p, 4 * MB);
+    CHECK(after == -1 || (after > 2 * MB && after < 3 * MB));
+    /* The system writes into a page given back: a file read into it, past a page's start. */
+    for (i = 0; i < FILE_BYTES; i++) data[i] = (u8)(i * 13 + 1);
+    f = mg_file_open(path, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &err);
+    CHECK(f && mg_file_write(f, data, FILE_BYTES, &err) == FILE_BYTES);
+    if (f) mg_file_close(f);
+    fd = mg_fd_open_host(path, MG_O_READ);
+    CHECK(fd >= 0);
+    if (fd >= 0) {
+        CHECK(read_(fd, p + 2 * MB + 100, FILE_BYTES) == FILE_BYTES);
+        for (i = 0; i < FILE_BYTES; i++)
+            if (p[2 * MB + 100 + i] != data[i]) same = false;
+        CHECK(same && p[2 * MB + 99] == 0 && p[2 * MB + 100 + FILE_BYTES] == 0);
+        close_(fd);
+    }
+    say("  a file read by the system into a page given back: %s", same ? "its bytes" : "NOT its bytes");
+    /* Given back, made no-access, given access again: zero, committed by mprotect. */
+    memset(p, 0x6B, MB);
+    CHECK(madvise_(p, MB, DONTNEED) == 0 && mprotect_(p, MB, NONE) == 0 && mprotect_(p, MB, RW) == 0);
+    CHECK(p[0] == 0 && p[MB - 1] == 0);
+    CHECK(madvise_(p + 100, 4096, DONTNEED) == -1);
+    /*
+     * A page the app has and did not make no-access, decommitted with nothing marking it given back (the way one of the
+     * layer's decommits once left a page of PartitionAlloc's on the phone): touched, it is committed again, zero, and the
+     * log says so -- not a fault that ends the app.
+     */
+    p[3 * MB + 8192] = 0x77;
+    CHECK(mg_mem_decommit(p + 3 * MB + 8192, MG_PAGE));
+    CHECK(p[3 * MB + 8192] == 0);
+    p[3 * MB + 8192] = 0x78;
+    CHECK(p[3 * MB + 8192] == 0x78 && p[3 * MB] == 0x5A);
+    CHECK(munmap_(p, 4 * MB) == 0);
+    mg_mmap_usage(&anon3, NULL);
+    CHECK(anon3 == anon0);
+done:
+    free(data);
+    free(path);
+}
+
 static void count_entry(const char *name, bool is_dir, void *user)
 {
     (void)is_dir;

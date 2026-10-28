@@ -159,6 +159,25 @@ i64 mg_mem_committed(const void *p, size_t size)
     return -1;
 }
 
+size_t mg_mem_discard(void *p, size_t size, void (*fn)(u8 *at, size_t n, void *user), void *user)
+{
+    /* Decommitted as on Windows (no access until committed again, zero then), which is what the layer above is tried by. */
+    if (fn) fn((u8 *)p, size, user);
+    return mg_mem_decommit(p, size) ? size : 0;
+}
+
+static void (*g_before_system_write)(void *p, size_t size);
+void mg_mem_set_before_system_write(void (*fn)(void *p, size_t size)) { g_before_system_write = fn; }
+
+bool mg_mem_page_state(const void *p, bool *committed, int *prot)
+{
+    (void)p;
+    (void)committed;
+    (void)prot;
+    return false;
+}
+#define BEFORE_SYSTEM_WRITE(p, n) do { if (g_before_system_write && (n)) g_before_system_write((p), (n)); } while (0)
+
 void mg_mem_release(void *p, size_t size) { munmap(p, size); }
 
 void mg_icache_flush(void *p, size_t size)
@@ -714,6 +733,7 @@ void mg_file_close(mg_file *f)
 i64 mg_file_read(mg_file *f, void *buf, size_t n, int *err)
 {
     ssize_t r;
+    BEFORE_SYSTEM_WRITE(buf, n);
     do r = read(f->fd, buf, n); while (r < 0 && errno == EINTR);
     if (r < 0) SET_ERR();
     return r;
@@ -730,6 +750,7 @@ i64 mg_file_write(mg_file *f, const void *buf, size_t n, int *err)
 i64 mg_file_pread(mg_file *f, void *buf, size_t n, u64 offset, int *err)
 {
     ssize_t r;
+    BEFORE_SYSTEM_WRITE(buf, n);
     do r = pread(f->fd, buf, n, (off_t)offset); while (r < 0 && errno == EINTR);
     if (r < 0) SET_ERR();
     return r;
@@ -1149,6 +1170,7 @@ i32 mg_sock_recv(mg_sock *k, void *buf, u32 n, int flags, mg_sockaddr *from, int
     ssize_t r;
     memset(&m, 0, sizeof(m));
     memset(&ss, 0, sizeof(ss));
+    BEFORE_SYSTEM_WRITE(buf, n);
     iov.iov_base = buf;
     iov.iov_len = n;
     m.msg_iov = &iov;

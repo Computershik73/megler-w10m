@@ -46,6 +46,21 @@ bool mg_mem_decommit(void *p, size_t size);
 bool mg_mem_protect_committed(void *p, size_t size, int prot);
 /* How many bytes of [p, p + size) are the process's own memory committed (not views of files or sections): Windows says; -1 where the host does not (POSIX, which commits as pages are touched). */
 i64 mg_mem_committed(const void *p, size_t size);
+/*
+ * What an allocator done with memory gives back (madvise's MADV_DONTNEED): the committed pages of [p, p + size) that are
+ * readable and writable are decommitted, each run told to `fn` first; pages of any other access are left. The bytes given
+ * back. Windows says each page's access; POSIX does not, and takes all of it for readable and writable, as an allocator's
+ * memory is when it gives it back.
+ */
+size_t mg_mem_discard(void *p, size_t size, void (*fn)(u8 *at, size_t n, void *user), void *user);
+/*
+ * Called with memory the system itself is about to write into (a file's or a socket's bytes read into a buffer the app
+ * gave): the layer above commits pages of it that it gave back (bionic/mg_libc_mem.c, madvise), which the system would
+ * refuse to write into -- the call failing -- where the app's own code faults and has them committed again.
+ */
+void mg_mem_set_before_system_write(void (*fn)(void *p, size_t size));
+/* Whether the page at `p` is committed, and its access (MG_PROT_*, -1 for any other): false where the host cannot say (POSIX). */
+bool mg_mem_page_state(const void *p, bool *committed, int *prot);
 void mg_mem_release(void *p, size_t size);
 /* After writing code and before running it. */
 void mg_icache_flush(void *p, size_t size);

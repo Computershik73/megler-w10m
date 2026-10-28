@@ -230,6 +230,11 @@ const char *mg_fs_package(void);
 
 /* Writes what an app wrote into shared file mappings back to their files (mg_libc_mem.c); at the app's end. */
 void mg_mem_write_back(void);
+/* What madvise has given back to the host so far, and how much of it was touched (committed) again since. */
+void mg_mmap_given_back(u64 *given, u64 *again);
+/* What the app's mappings hold now, as far as they are its own (mapped, not made no-access, not given back): anonymous
+   memory, and the copies of files mapped privately. Views of shared memory are not in it. */
+void mg_mmap_usage(u64 *anon, u64 *files);
 
 /* Android system properties, for __system_property_get. */
 const char *mg_sysprop(const char *name);

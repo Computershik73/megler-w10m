@@ -219,6 +219,44 @@ i64 mg_mem_committed(const void *p, size_t size)
     i64 n = 0;
     return mem_runs(p, size, count_run, &n) ? n : -1;
 }
+size_t mg_mem_discard(void *p, size_t size, void (*fn)(u8 *at, size_t n, void *user), void *user)
+{
+    u8 *at = (u8 *)p, *end = at + size;
+    size_t given = 0;
+    while (at < end) {
+        MEMORY_BASIC_INFORMATION info;
+        u8 *next;
+        size_t n;
+        if (VirtualQuery((LPCVOID)at, &info, sizeof(info)) != sizeof(info) || !info.RegionSize) break;
+        next = (u8 *)info.BaseAddress + info.RegionSize;
+        n = (size_t)((next < end ? next : end) - at);
+        if (info.State == MEM_COMMIT && info.Type == MEM_PRIVATE && info.Protect == PAGE_READWRITE) {
+            if (fn) fn(at, n, user);
+            if (VirtualFree(at, n, MEM_DECOMMIT)) given += n;
+        }
+        at += n;
+    }
+    return given;
+}
+
+static void (*g_before_system_write)(void *p, size_t size);
+void mg_mem_set_before_system_write(void (*fn)(void *p, size_t size)) { g_before_system_write = fn; }
+
+bool mg_mem_page_state(const void *p, bool *committed, int *prot)
+{
+    MEMORY_BASIC_INFORMATION info;
+    if (VirtualQuery(p, &info, sizeof(info)) != sizeof(info)) return false;
+    *committed = info.State == MEM_COMMIT;
+    switch (info.Protect & 0xFF) {
+    case PAGE_NOACCESS: *prot = MG_PROT_NONE; break;
+    case PAGE_READONLY: *prot = MG_PROT_R; break;
+    case PAGE_READWRITE: *prot = MG_PROT_RW; break;
+    case PAGE_EXECUTE_READ: *prot = MG_PROT_RX; break;
+    default: *prot = -1; break;
+    }
+    return true;
+}
+#define BEFORE_SYSTEM_WRITE(p, n) do { if (g_before_system_write && (n)) g_before_system_write((p), (n)); } while (0)
 void mg_mem_release(void *p, size_t size) { (void)size; VirtualFree(p, 0, MEM_RELEASE); }
 void mg_icache_flush(void *p, size_t size) { FlushInstructionCache(GetCurrentProcess(), p, size); }
 void *mg_mem_alloc(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); }
@@ -1462,6 +1500,7 @@ void mg_file_close(mg_file *f)
 i64 mg_file_read(mg_file *f, void *buf, size_t n, int *err)
 {
     DWORD got = 0;
+    BEFORE_SYSTEM_WRITE(buf, n);
     if (!ReadFile(f->h, buf, (DWORD)n, &got, NULL)) {
         if (GetLastError() == ERROR_HANDLE_EOF || GetLastError() == ERROR_BROKEN_PIPE) return 0;
         SET_ERR();
@@ -2512,6 +2551,7 @@ i32 mg_sock_recv(mg_sock *k, void *buf, u32 n, int flags, mg_sockaddr *from, int
     if (said) *said = 0;
     if (k->ping) return ping_recv(k, buf, n, flags, from, said, err);
     memset(&ss, 0, sizeof(ss));
+    BEFORE_SYSTEM_WRITE(buf, n);
     r = recvfrom(k->s, (char *)buf, n > 0x7FFFFFFFu ? 0x7FFFFFFF : (int)n, native_flags(flags), from ? (struct sockaddr *)&ss : NULL, from ? &len : NULL);
     if (r == SOCKET_ERROR) {
         int e = WSAGetLastError();
