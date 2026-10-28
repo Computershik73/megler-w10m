@@ -619,6 +619,13 @@ public final class MicroG {
             if (still) { r.started = false; g.destroyIfUnused(r); }
         }) ? 1 : 0;
     }
+    /* A package context's attribution context: that context in everything but its tag. */
+    private static final class Attributed extends ContextWrapper {
+        private final String tag;
+        Attributed(Context base, String tag) { super(base); this.tag = tag; }
+        @Override public String getAttributionTag() { return tag; }
+        @Override public Context createAttributionContext(String other) { return getBaseContext().createAttributionContext(other); }
+    }
     private final class PackageContext extends ContextWrapper {
         private final Resources resources;
         private final boolean deviceProtected;
@@ -663,10 +670,12 @@ public final class MicroG {
         @Override public Context createPackageContext(String pkg, int flags) throws PackageManager.NameNotFoundException {
             return getPackageName().equals(pkg) ? this : super.createPackageContext(pkg, flags);
         }
-        // An attribution context and a split's are this package's still: a wrapper asks its base, which here is the app's, and
-        // Google Play services 26, which makes an attribution context for much of its work, then bound its own services as
-        // the app (Play Store's sign-in: "Unable to bind to auth delegate service").
-        @Override public Context createAttributionContext(String tag) { return this; }
+        // An attribution context and a split's are this package's still: Context's own wrapper asks its base, which here is the
+        // app's, and Google Play services 26, which makes an attribution context for much of its work, then bound its own
+        // services as the app (Play Store's sign-in: "Unable to bind to auth delegate service"). An attribution context is this
+        // one with its tag (Attributed), which GmsCore's location service wants of its own requests: without it each was
+        // refused, "internal location usage has a forbidden attribution tag \"null\"" (Weather Channel, package 505).
+        @Override public Context createAttributionContext(String tag) { return tag == null ? this : new Attributed(this, tag); }
         @Override public Context createContextForSplit(String split) { return this; }
         @Override public boolean bindService(Intent i, ServiceConnection c, int flags) { return Services.bind(this, i, c); }
         @Override public ComponentName startService(Intent i) { return Services.start(this, i); }
