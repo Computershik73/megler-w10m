@@ -550,10 +550,21 @@ static bool read_method(mg_dvm_class *c, mg_dvm_method *m, u32 idx, u32 flags, u
 static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error *err)
 {
     mg_dvm_dex *d = cd->dex;
-    const u8 *def = d->b + d->cls_off + 32 * cd->def, *end = d->b + d->size;
-    mg_dvm_class *c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
-    u32 super_idx = mg_dvm_rd32(def + 8), ifaces_off = mg_dvm_rd32(def + 12), data_off = mg_dvm_rd32(def + 24);
+    const u8 *def, *end;
+    mg_dvm_class *c;
+    u32 super_idx, ifaces_off, data_off;
     int inherited, i, k;
+    /* The file's bytes, viewed now if they are not yet (a file registered by its classes' names alone). */
+    if (!mg_dvm_dex_ready(d)) {
+        link_fail(err, "java/lang/NoClassDefFoundError", "%s: its DEX file %s cannot be read", name, d->name);
+        return NULL;
+    }
+    def = d->b + d->cls_off + 32 * cd->def;
+    end = d->b + d->size;
+    c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
+    super_idx = mg_dvm_rd32(def + 8);
+    ifaces_off = mg_dvm_rd32(def + 12);
+    data_off = mg_dvm_rd32(def + 24);
     c->name = mg_dvm_intern(name);
     c->dex = d;
     c->scope = d->scope;

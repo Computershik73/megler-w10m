@@ -268,6 +268,7 @@ int mg_dvm_tests_run(const mg_dvm_test_config *config, mg_test_sink sink, void *
         test_two_files();
         test_language();
         test_runtime(config->fixtures);
+        if (config->scratch) test_lazy_dex(config->fixtures, config->scratch);
         test_gc();
         test_jni(config->guest_dir, config->fixtures);
         if (!g_libcore) test_d8(config->fixtures);            /* on libcore that program has been run already, with the other */

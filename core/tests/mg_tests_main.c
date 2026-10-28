@@ -268,6 +268,12 @@ static int link_mode(int argc, char **argv)
     for (k = 0; k < nfiles; k++) {
         mg_dvm_dex *d = files[k];
         char name[512];
+        bool ready;
+        /* (A file is viewed once a class of it is needed: here, all of it, now.) */
+        mg_dvm_lock();
+        ready = mg_dvm_dex_ready(d);
+        mg_dvm_unlock();
+        if (!ready || !d->b) continue;
         for (i = 0; i < d->ntype; i++) {
             const char *cls = class_of_descriptor(mg_dvm_dex_type(d, i), name, sizeof(name));
             if (!cls) continue;

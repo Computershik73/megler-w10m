@@ -8,6 +8,7 @@
 
 #include "../src/dvm/mg_dvm_internal.h"
 #include "mg_dvm_tests.h"
+#include "zlib.h"
 
 /* ------------------------------------------------------------------ natives */
 
@@ -490,6 +491,113 @@ static void test_misc(void)
     mg_dvm_get_stats(&stats);
     CHECK(stats.classes_linked > 60 && stats.classes_initialised > 20 && stats.objects > 500 && stats.object_bytes > stats.objects * 32 && stats.strings_interned > 50);
     CHECK_STR(thrown(), "");
+}
+
+/* ------------------------------------------------------------ DEX files viewed when needed */
+
+static void le16(u8 *p, u32 v) { p[0] = (u8)v; p[1] = (u8)(v >> 8); }
+static void le32(u8 *p, u32 v) { le16(p, v & 0xFFFF); le16(p + 2, v >> 16); }
+
+/* An APK of one file, stored as it is on a four-byte boundary (as zipalign puts it, with its extra field); where its data starts. */
+static bool write_stored_apk(const char *path, const char *name, const u8 *data, size_t size, size_t *data_at)
+{
+    size_t n = strlen(name), local = 30 + n + 7, total = local + size + 46 + n + 22;
+    u8 *z = (u8 *)calloc(1, total), *c, *e;
+    u32 crc = (u32)crc32(crc32(0L, Z_NULL, 0), data, (uInt)size);
+    bool ok;
+    if (!z) return false;
+    le32(z, 0x04034b50u);
+    le16(z + 4, 20);
+    le32(z + 14, crc);
+    le32(z + 18, (u32)size);
+    le32(z + 22, (u32)size);
+    le16(z + 26, (u32)n);
+    le16(z + 28, 7);
+    memcpy(z + 30, name, n);
+    le16(z + 30 + n, 0xD935);          /* zipalign's: the alignment, and the padding */
+    le16(z + 30 + n + 2, 3);
+    le16(z + 30 + n + 4, 4);
+    memcpy(z + local, data, size);
+    c = z + local + size;
+    le32(c, 0x02014b50u);
+    le16(c + 4, 20);
+    le16(c + 6, 20);
+    le32(c + 16, crc);
+    le32(c + 20, (u32)size);
+    le32(c + 24, (u32)size);
+    le16(c + 28, (u32)n);
+    memcpy(c + 46, name, n);
+    e = c + 46 + n;
+    le32(e, 0x06054b50u);
+    le16(e + 8, 1);
+    le16(e + 10, 1);
+    le32(e + 12, (u32)(46 + n));
+    le32(e + 16, (u32)(local + size));
+    ok = mg_file_write_all(path, z, total);
+    free(z);
+    *data_at = local;
+    return ok;
+}
+
+/*
+ * An APK's DEX file that it stores as it is: registered by its classes' names, not viewed until the first of its classes is
+ * linked, and viewed then. One that changed on the disk after its classes were registered (here: a byte of it, in a scope of
+ * its own, as a service's module's) is not taken: its class is a NoClassDefFoundError, and nothing else is the worse for it.
+ */
+void test_lazy_dex(const char *fixtures, const char *scratch)
+{
+    /* A fixture whose class nothing has defined yet (on libcore the benchmark's is, and the in-memory test's may be). */
+    static const char *const files[][2] = { { "bench.dex", "bench/Bench" }, { "m.dex", "t/FromMemory" } };
+    char *bench = NULL, *bad = mg_sprintf("%s/lazy-bad.apk", scratch), *good = mg_sprintf("%s/lazy-good.apk", scratch);
+    const char *cls = NULL;
+    size_t size = 0, at = 0, k;
+    u8 *dex = NULL;
+    u64 read0 = 0, viewed0 = 0, read1 = 0, viewed1 = 0;
+    say("DEX files viewed once a class of them is linked");
+    for (k = 0; k < MG_COUNT(files) && !dex; k++) {
+        if (mg_dvm_class_exists(files[k][1]) || mg_dvm_class_exists_scope(files[k][1], 15)) continue;
+        free(bench);
+        bench = mg_sprintf("%s/%s", fixtures, files[k][0]);
+        dex = mg_file_read_all(bench, &size);
+        cls = files[k][1];
+    }
+    if (!dex) {
+        say("  (no fixture whose class is not defined already: left out here)");
+        goto done;
+    }
+    mg_path_mkdirs(scratch);
+    CHECK(write_stored_apk(bad, "classes.dex", dex, size, &at));
+    CHECK_INT(mg_dvm_add_apk_scope(bad, 15), 1);
+    {
+        u8 *apk = NULL;
+        size_t apk_size = 0;
+        apk = mg_file_read_all(bad, &apk_size);
+        CHECK(apk && apk_size > at + size / 2);
+        if (apk && apk_size > at + size / 2) {
+            apk[at + size / 2] ^= 0x5A;
+            CHECK(mg_file_write_all(bad, apk, apk_size));
+        }
+        free(apk);
+    }
+    CHECK(mg_dvm_find_class_scope(cls, 15) == NULL);
+    CHECK(!strncmp(thrown(), "java.lang.NoClassDefFoundError: ", 32));
+    CHECK(write_stored_apk(good, "classes.dex", dex, size, &at));
+    mg_dvm_dex_memory(&read0, &viewed0);
+    CHECK_INT(mg_dvm_add_apk(good), 1);
+    mg_dvm_dex_memory(&read1, &viewed1);
+    CHECK(read1 == read0 && viewed1 == viewed0);
+    CHECK(mg_dvm_class_exists(cls));
+    mg_dvm_dex_memory(&read1, &viewed1);
+    CHECK(viewed1 == viewed0);
+    CHECK(mg_dvm_find_class(cls) != NULL);
+    CHECK_STR(thrown(), "");
+    mg_dvm_dex_memory(&read1, &viewed1);
+    CHECK(read1 == read0 && viewed1 >= viewed0 + size);
+done:
+    free(dex);
+    free(good);
+    free(bad);
+    free(bench);
 }
 
 void test_runtime(const char *fixtures)

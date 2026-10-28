@@ -138,6 +138,7 @@ static int find_line(const char *text, int from)
 }
 
 static const char *line_at(int i) { return i >= 0 && i < g_nlines ? g_lines[i] : ""; }
+const char *megler_data_dir(void);
 
 /* Waits for a line of the log, up to `seconds`, while the app runs; its number, or -1. */
 static int wait_line(const char *text, int from, int seconds)
@@ -2249,12 +2250,49 @@ static int run_data(void)
     /* The service of the step "process-scope", in a process of another name: its own class scope, with that name and statics
        of its own. */
     CHECK(wait_line("I/DataTest: process-scope process=megler.test.data:elsewhere marker=0 loader=ServiceClassLoader application=true here=false", 0, 30) >= 0);
+    /* Its scope has the APK's DEX files read for the app's own, not a copy (dvm/mg_dvm_apk.c). */
+    CHECK(find_line("of its DEX files are the ones read before, shared", 0) >= 0);
+    /*
+     * Its DEX file, which the APK deflates, inflated into the data folder on the first run and viewed from there, not read into
+     * memory; the second run finds it there and makes none (dvm/mg_dvm_apk.c).
+     */
+    CHECK(find_line(g_script_count && !strcmp(g_script[0], "run:2") ? "1 inflated into the data folder's dex (0 of them now)"
+                                                                     : "1 inflated into the data folder's dex (1 of them now)", 0) >= 0);
+    /*
+     * And a copy of it named the old way, with a hash of the APK's path, which the version in that path made anew at every
+     * update of Megler: put there in the first run, removed when the second reads its DEX files.
+     */
+    {
+        int at = find_line(" of its DEX files are views of files", 0);
+        const char *line = at >= 0 ? line_at(at) : NULL, *dvm = line ? strstr(line, "dvm: ") : NULL, *colon = dvm ? strchr(dvm + 5, ':') : NULL;
+        char base[64] = "", *stale;
+        mg_stat st;
+        int err = 0;
+        if (dvm && colon && (size_t)(colon - dvm - 5) < sizeof(base)) memcpy(base, dvm + 5, (size_t)(colon - dvm - 5));
+        CHECK(base[0] != 0);
+        stale = mg_sprintf("%s/dex/%s-0badf00d-classes.dex-00000000-1", megler_data_dir(), base);
+        if (g_script_count && !strcmp(g_script[0], "run:2")) {
+            CHECK(!mg_path_stat(stale, &st, &err));
+        } else {
+            mg_file *f = mg_file_open(stale, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &err);
+            CHECK(f != NULL);
+            if (f) mg_file_close(f);
+        }
+        free(stale);
+    }
+    /* And its broadcast, an object of its process's class in it: this process's receiver has it as one of its own class. */
+    CHECK(wait_line("I/DataTest: process-intent note=from elsewhere", 0, 30) >= 0);
+    /* And a bundle in a reply of its binder, holding an object of its process's class: given this process's loader, the
+       object is of this process's class (Bundle.setClassLoader, as WhatsApp reads Google Play services' TokenData). */
+    CHECK(wait_line("I/DataTest: process-bundle note=in a bundle", 0, 30) >= 0);
     /* The jobs of the step "job-scheduler", run: the one scheduled with its extra, the one given work with both pieces, in order. */
     CHECK(wait_line("I/DataTest: job 41 said=hello", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: job 42 work=one,two,", 0, 30) >= 0);
     /* The download of the step "downloads": done, its row and file with the server's five bytes, the cookie sent, its cursor's
        observer told. */
     CHECK(wait_line("I/DataTest: downloads ok status=200 bytes=5 body=hello cookie=true observed=true file=5", 0, 30) >= 0);
+    /* The list of the step "list-row-click": its row, clickable itself, clicked by a tap. */
+    CHECK(wait_line("I/DataTest: list-row-click rows=3 clicked=true", 0, 30) >= 0);
     /* The PendingIntent the step "pending-intent-flags" sent: the one it asked for first, with the extras FLAG_UPDATE_CURRENT gave. */
     CHECK(wait_line("I/DataTest: pending-intent-sent ok v=3", 0, 30) >= 0);
     /* The alarms of the step "alarm-replace-cancel": the one set twice went off once, the cancelled one never, the repeating one

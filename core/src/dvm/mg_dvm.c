@@ -143,6 +143,23 @@ bool mg_dvm_add_dex_scope(const void *data, size_t size, const char *label, int 
 
 bool mg_dvm_add_dex(const void *data, size_t size, const char *label) { return add_dex(data, size, label, !g_dvm.running); }
 
+bool mg_dvm_add_dex_lazy(const void *data, size_t size, const char *label, int scope, const char *map_path, u64 map_at)
+{
+    mg_dvm_dex *d = mg_dvm_dex_open_lazy((const u8 *)data, size, label, map_path, map_at);
+    if (!d) return false;
+    if (scope) {
+        d->scope = scope;
+        d->app = true;
+    } else {
+        d->boot = !g_dvm.running;
+        d->app = g_dvm.app_follows;
+    }
+    mg_dvm_classes_add_dex(d);
+    /* (The caller unmaps the view the names were read from; the file is viewed again when it is needed.) */
+    d->b = NULL;
+    return true;
+}
+
 static bool add_dex_file(const char *path, bool boot)
 {
     size_t size = 0;

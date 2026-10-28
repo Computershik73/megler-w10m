@@ -168,6 +168,11 @@ void test_real_apk(const char *apk)
         if (k == nseen && nseen < (int)MG_COUNT(seen)) seen[nseen++] = d;
     }
     for (k = 0; k < nseen; k++) {
+        /* (A file is viewed once a class of it is needed: here, all of each, now. The runtime's lock, as linking holds it.) */
+        mg_dvm_lock();
+        CHECK(mg_dvm_dex_ready(seen[k]));
+        mg_dvm_unlock();
+        if (!seen[k]->b) continue;
         read_everything(seen[k], &fields, &methods, &with_code, &instructions, &bad);
         if (k == 0) checksum = mg_dvm_rd32(seen[k]->b + 8);
     }

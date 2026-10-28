@@ -3339,8 +3339,9 @@ other than the time, content triggers.
 
 `megler.Processes`: a component the manifest puts in another process
 (`android:process`) runs in a class scope of the app's own APK
-(`megler.ServiceClassLoader`), with an Application of its own made from the
-manifest's class, whose context is the app's but for its class loader, its
+(`megler.ServiceClassLoader`; its DEX files are the bytes already read for
+the app's own scope, shared, not read again: `dvm/mg_dvm_apk.c`), with an
+Application of its own made from the manifest's class, whose context is the app's but for its class loader, its
 Application and its `ActivityManager`, which names that process for this pid.
 The code there has statics of its own. Play Store's Application builds an
 object graph for each of its processes by the name of the process it runs
@@ -3793,7 +3794,108 @@ The runtime's own tables -- classes, interned names and strings, registered
 natives -- are under one lock. Each thread has its own frames and pending
 exception.
 
+A `Thread` is alive from `start()` until its `run()` returns, and
+`getState()` is `NEW`, then `RUNNABLE`, then `TERMINATED` once it has ended
+(it stayed `RUNNABLE`). The framework's `HandlerThread` is Android's: its
+`getLooper()` is null at once for a thread not started or one that ended,
+and waits only while the thread is alive and has no looper yet. It waited
+for good: Facebook's stories loader stood in it for the whole run, the app
+showing its loading circles (package 479). The data app's
+"handler-thread" step asks one not started, one running, and one that quit.
+
 ### Memory
+
+**A 32-bit process has 2 GB of addresses, and an app can run out of them
+before its memory.** Yandex Maps did, half a minute after it started, each
+time (package 489): 1.2 GB of its 2 GB of memory used, 69 MB of addresses
+free and no stretch of them a megabyte long; the shell's own drawing failed
+first (`CoreUIComponents.dll` writing through a NULL), then the map's OpenGL
+(`GL_OUT_OF_MEMORY`) or its `malloc` (`std::bad_alloc`). What took them, and
+what was done:
+- **Google Play services' resource table** (84 MB, in every app it runs in:
+  `megler.MicroG`) was read whole into the Java heap, and again for every
+  `Resources` made of it. 58 MB of it is the strings of 75 languages. Another
+  package's table is now read once for each APK, cut down to the resources of
+  no language, of English and of the phone's languages (`apk/mg_arsc.c`, which
+  also renumbers the strings the kept resources use; `readApkResourceTable`):
+  about a tenth of it. The log says each one cut ("GmsCore.apk's resource
+  table: ... KB, ... KB with the languages the app has"). The app's own table
+  stays whole, since an app may switch its language itself. The core's tests
+  cut microG's GmsCore's table to two languages and compare the strings the
+  kept resources have with the whole table's.
+- **Frame stacks**: the 199 threads each had 768 KB of addresses for one, 150
+  MB. A thread the app's native code made and attached
+  (`AttachCurrentThread`) calls into Java to be told something and comes back,
+  and gets 128 KB (`DVM_STACK_ATTACHED_WORDS`). A thread Java starts gets 384
+  KB (`DVM_STACK_JAVA_WORDS`, some four thousand frames, as many as ART's
+  interpreter fits in an Android thread's 1 MB), or as much as it asked for when
+  it asked for more than 1 MB; the main thread keeps the whole 768 KB. Yandex
+  Maps had 229 threads Java started, Google Play services' among them, when its
+  addresses ran out (package 493). The runtime's tests run a thousand calls deep
+  and a recursion without end on an attached thread; the data app's
+  "thread-stack" step two thousand on a thread of the default size, twenty
+  thousand on one that asked for 16 MB, and one without end.
+- **The memory line now says the addresses** too: how many megabytes are free,
+  the largest free stretch, what is reserved and what committed. And a line
+  after it ("java: addresses by kind") says what holds them: the program and
+  its DLLs, views of files and shared memory, private memory and the sizes of
+  allocation most of it is in, the threads (the core's, the runtime's and how
+  many native code attached, their frame stacks), the runtime's tables and
+  classes, and the graphics processor's memory. It asked the heaps too
+  (`HeapSummary`, every heap of the process) in package 493, and was taken out
+  of that: some of a process's heaps are not serialized, one was walked while
+  its owner used it and the app ended, and the walk held the process heap's lock
+  for most of a second.
+
+**An app's DEX files are views of files where they can be**
+(`mg_dvm_apk.c`), not memory of the process's, which Windows counts against
+the app's limit:
+- One the APK stores as it is, on a 4-byte boundary as zipalign puts it, is a
+  read-only view of those bytes of the APK. Google Play services 26 stores its
+  fifteen (109 MB) so.
+- One the APK deflates is inflated once into `<data_dir>/dex/`, named for the
+  APK, the entry and the entry's CRC-32 and size, and viewed from there, as
+  ART keeps an app's DEX files outside its APK too. It is made under another
+  name and renamed when whole; the other files of the same APK and entry (an
+  older version's) are removed. Play Store 53 deflates its eight (58 MB). The
+  name had a hash of the APK's path in it, and the path of an APK Megler brings
+  has Megler's version in it: every update of Megler made another copy (four
+  of Facebook's, package 482).
+- Where neither can be made, the file is read into memory, as before.
+- **A view is made only when it is needed.** Every file was viewed whole from
+  the start, its checksum read over all of it and its caches of what each
+  index resolved to made: Yandex Maps' sixteen and Google Play services'
+  fifteen in it were 245 MB of a 32-bit process's 2 GB of addresses, read from
+  the flash at every start, whether a class of them was used or not (package
+  494). Now the file is viewed for a moment, its header and tables checked and
+  its classes' names copied into one block of its own (the table of
+  definitions points at them, `mg_dvm_classes_add_dex`), and let go
+  (`mg_dvm_add_dex_lazy`). The first of its classes to be linked views it
+  again (`mg_dvm_dex_ready`, in `link_dex_class`): the same file, its checksum
+  right, and its caches made then. A file changed on the disk meanwhile, or
+  that cannot be viewed again, is said in the log, and its classes are
+  `NoClassDefFoundError`s. Every lookup that reaches a file's bytes starts from
+  a class linked from it, so that is the one place. The runtime's tests store
+  a DEX file in an APK of their own: added, it is not viewed, nor when its class
+  is only asked about; linked, it is; and one changed after it was added, in a
+  scope of its own, gives the error. The same bytes of the same file registered
+  for two scopes (a service's or a process's over the app's own APK) share one
+  view, as the bytes read for the app's own served such a scope before ("N of
+  its DEX files are the ones read before, shared").
+The log says it per APK ("N of its DEX files are views of files, each viewed
+once a class of it is needed: ... of the APK, ... inflated into the data
+folder's dex (... of them now)"), and after
+each of the frame meter's lines a line "java: memory:" says the process's
+parts the core can name: the heap's blocks and large objects, the DEX files
+in memory and viewed, the native libraries' segments (`mg_ld_image_bytes`,
+read into committed memory), what the app's native code has from `malloc`
+and not freed (`mg_g_malloc_bytes`; the blocks are the host's), the app's
+own mappings, anonymous and private copies of files, as far as they are
+mapped, not made no-access and not given back (`mg_mmap_usage`), and what
+madvise has given back. What is left of the process's figure is the
+runtime's own `malloc`, the shell, Direct2D and ANGLE. Play Store 53 with Google Play services
+26 was 1100 MB in package 479, the heap's blocks and large objects 300 MB of
+it.
 
 **Objects are collected** (`mg_dvm_gc.c`, the next section). Every object is
 a zeroed allocation from the runtime's own heap (`mg_dvm_heap.c`). Allocation
