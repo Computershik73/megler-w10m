@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 
+#include "../arm/mg_stubs.h"
 #include "../bionic/mg_bionic.h"
 #include "../dvm/mg_dvm_internal.h"
 #include "../ld/mg_ld.h"
@@ -930,6 +931,47 @@ mg_jvalue mg_jni_call_native(void *fn, mg_jobj *self_or_class, const char *sig, 
     return call_native(fn, self_or_class, sig, args, false);
 }
 
+/*
+ * The same under a guard: when the native code faults and the fault is not the layer's to repair, the thread comes back
+ * here (mg_core.c: the stub longjmp to this setjmp) and *faulted says so; the call's value is then 0. The guard of a call
+ * further out is kept and put back, so that a native method called back from a guarded one has its own. Where there is
+ * no stub setjmp (a host that is not ARM32), a plain call.
+ */
+#if defined(__GNUC__) || defined(__clang__)
+typedef int (*setjmp_stub_fn)(u32 *jb) __attribute__((returns_twice));
+#else
+typedef int (*setjmp_stub_fn)(u32 *jb);
+#endif
+
+static MG_NOINLINE int guarded(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args, mg_jvalue *out)
+{
+    mg_gthread *t = mg_gthread_self();
+    u32 jb[32];
+    u32 *volatile outer = t->fault_guard;
+    void *setjmp_stub = mg_stub(MG_STUB_SETJMP);
+    if (!setjmp_stub) {
+        *out = call_native(fn, self_or_class, sig, args, false);
+        return 0;
+    }
+    if (MG_GFN(setjmp_stub_fn, setjmp_stub)(jb) != 0) {
+        t->fault_guard = outer;
+        return 1;
+    }
+    t->fault_guard = jb;
+    *out = call_native(fn, self_or_class, sig, args, false);
+    t->fault_guard = outer;
+    return 0;
+}
+
+mg_jvalue mg_jni_call_native_guarded(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args, bool *faulted)
+{
+    mg_jvalue ret;
+    ret.j = 0;
+    *faulted = guarded(fn, self_or_class, sig, args, &ret) != 0;
+    if (*faulted) ret.j = 0;
+    return ret;
+}
+
 static mg_jvalue call_native_bare(void *fn, const char *sig, const mg_jvalue *args) { return call_native(fn, NULL, sig, args, true); }
 
 /* A native method of one of the runtime's classes: asked once for each, when it is first called. */
@@ -950,6 +992,7 @@ void mg_jni_dvm_join(mg_dvm_jni *out)
     out->find = native_for_dvm;
     out->tried = native_tried;
     out->call = mg_jni_call_native;
+    out->call_guarded = mg_jni_call_native_guarded;
     out->call_bare = call_native_bare;
     out->class_for = jni_class_for;
 }

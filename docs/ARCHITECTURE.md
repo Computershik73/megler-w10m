@@ -193,6 +193,27 @@ exception path with this wrapper still needs a phone run.
 The diagnostic flag `trap-svc` instead writes an unregistered `udf #165` and
 leaves the fault fatal, named by library and offset in the crash report.
 
+### A fault in another process's code
+
+A fault the layer cannot repair ends the app: the thread is parked, the crash
+report goes to the log, and the shell shows it. On Android, though, much of
+what runs in an app's process here runs in processes of its own there: Google
+Play services' code (its sign-in, its DroidGuard VM in `:unstable`), whose
+crash ends that process alone, and the app it served is told. So a native
+method of such code is called under a guard (`mg_jni_call_native_guarded`):
+the runtime saves the thread's registers with the stubs' `setjmp`, and a fault
+beyond repair in guest code under it (not in the layer's own modules, which may
+hold their locks) sends the thread back there with the stubs' `longjmp`. The
+call then ends with a `RuntimeException` that says so, and the app runs on. The
+report is in the log all the same, with `fault: contained` after it.
+
+Such code is that of a service's class scope, a dex whose loader's parents
+include a service's loader (DroidGuard's VM, a `DexClassLoader` of Google Play
+services'), or the platform's own on a thread a service's code started. What a
+native library leaves behind when it is cut short stays: its own locks and its
+globals. A thread a native library started itself has no guard, and a fault on
+it still ends the app.
+
 ### Everything else that differs
 
 Some apps overwrite libc entry points to install inline hooks. On ARM, `abort`,

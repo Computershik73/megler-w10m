@@ -230,6 +230,27 @@ static bool on_fault(mg_fault *f)
             mg_err("  %s", textures);
         }
         mg_trace_dump(MG_LOG_ERROR, 500);
+        {
+            /*
+             * Guest code run under a guard (mg_jni_call_native_guarded: a native method of code Android runs in a process
+             * of its own, not the app's -- Google Play services' DroidGuard): on Android that process ends, and the app
+             * that asked it is told so. Here the thread goes back to the call, which ends with an exception, and the app
+             * runs on. Not when the fault is in the layer's own code (a module of the host's), which may hold its locks.
+             */
+            mg_gthread *gt = mg_guest_tp_get() ? mg_gthread_self() : NULL;
+            char module[96];
+            mg_addr module_base = 0;
+            void *longjmp_stub = mg_stub(MG_STUB_LONGJMP);
+            if (gt && gt->fault_guard && longjmp_stub && !mg_host_module_at(pc, module, sizeof(module), &module_base)) {
+                u32 *jb = gt->fault_guard;
+                gt->fault_guard = NULL;
+                mg_warn("fault: contained: the thread goes back to the native method's call, which ends with an exception; the app runs on");
+                f->regs[0] = (u32)(mg_addr)jb;
+                f->regs[1] = 1;
+                mg_fault_resume_at(f, (mg_addr)longjmp_stub);
+                return true;
+            }
+        }
         if (g_crash_hook) {
             g_crash_hook(report);
             /*

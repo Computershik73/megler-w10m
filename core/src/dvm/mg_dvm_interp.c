@@ -340,8 +340,29 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     } else if (g_dvm.jni.call) {
         /* A library's function. One marked @CriticalNative is called with its arguments alone, as Android calls it. */
         if (!m->critical) m->critical = is_static && mg_dvm_method_annotated(m, "Ldalvik/annotation/optimization/CriticalNative;") ? 1 : -1;
-        if (m->critical > 0 && g_dvm.jni.call_bare) *result = g_dvm.jni.call_bare(m->jni, m->sig, params);
-        else *result = g_dvm.jni.call(m->jni, target, m->sig, params);
+        if (m->critical > 0 && g_dvm.jni.call_bare) {
+            *result = g_dvm.jni.call_bare(m->jni, m->sig, params);
+        } else {
+            /*
+             * Code Android runs in a process of its own, not the app's: a service's (its class, or the loader its dex came
+             * from: Google Play services' DroidGuard), or the platform's on a thread a service's code started. A fault in
+             * its native code beyond repair ends that process on Android, and the app is told; here it ends this call with
+             * an exception, and the app runs on (mg_jni_call_native_guarded).
+             */
+            int scope = m->cls->scope > 0 ? mg_dvm_scope_root(m->cls->scope) : mg_dvm_dex_process_scope(m->cls->dex);
+            if (!scope && !mg_dvm_class_is_app(m->cls)) scope = t->owner_scope;
+            if (scope > 0 && g_dvm.jni.call_guarded) {
+                bool faulted = false;
+                *result = g_dvm.jni.call_guarded(m->jni, target, m->sig, params, &faulted);
+                if (faulted) {
+                    mg_warn("dvm: %s.%s%s faulted in its native code; the call ends with an exception, as the process of the code would end on Android", m->cls->name, m->name, m->sig);
+                    mg_dvm_throw("java/lang/RuntimeException", "%s.%s%s faulted in its native code: the process it runs in on Android would have ended",
+                                 m->cls->name, m->name, m->sig);
+                }
+            } else {
+                *result = g_dvm.jni.call(m->jni, target, m->sig, params);
+            }
+        }
         /* What a library hands back as an object must be one of the runtime's; the JNI layer has others, from before it started. */
         if (m->shorty[0] == 'L' && result->l && !result->l->dvm) {
             mg_note_once("dvm: %s.%s returned an object that is not the runtime's; null is taken instead", m->cls->name, m->name);

@@ -313,6 +313,8 @@ typedef struct mg_dvm_jni {
     /* The names a library could have exported the method under, as ART lists them when none did: "Java_a_B_c and Java_a_B_c__I". */
     void (*tried)(const char *cls, const char *name, const char *sig, char *out, size_t n);
     mg_jvalue (*call)(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args);
+    /* The same under a guard: *faulted when the native code faulted beyond repair, and the call was ended instead of the app. */
+    mg_jvalue (*call_guarded)(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args, bool *faulted);
     /* The same for a method that is given its arguments alone, no JNIEnv and no class (@CriticalNative). */
     mg_jvalue (*call_bare)(void *fn, const char *sig, const mg_jvalue *args);
     mg_jclass *(*class_for)(const char *name, const char *super, mg_dvm_class *c);
