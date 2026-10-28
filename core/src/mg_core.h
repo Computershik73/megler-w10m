@@ -36,6 +36,13 @@ void mg_core_set_arm_state(int state);
 /* Called with a description of a fault in guest code that nothing could repair, before the process ends. */
 void mg_core_set_crash_hook(void (*hook)(const char *report));
 /*
+ * What a fault's report adds of the thread that faulted, written into `out` (the Java runtime's: the thread's Java frames,
+ * mg_dvm_object.c). Run in the fault's handler, on that thread: it may make nothing and take no lock.
+ */
+void mg_core_set_fault_detail(void (*detail)(char *out, size_t cap));
+/* The same detail for the thread that asks, outside any fault (empty when none was set): its Java frames, for a log line. */
+void mg_core_thread_detail(char *out, size_t cap);
+/*
  * Chromium's end out of memory: when the Thumb code at `pc` is the trap that ends its OnNoMemoryInternal, the address of
  * the global that function put the size it was asked for in; 0 when it is not. The crash report reads it. The code from
  * 18 bytes before pc to 16 after it must be readable.

@@ -20,6 +20,7 @@ bool mg_probe_fix_fault(mg_fault *f);
 static volatile i32 g_plt_rescues, g_wx_flips;
 static bool g_inited, g_can_run;
 static void (*g_crash_hook)(const char *report);
+static void (*g_fault_detail)(char *out, size_t cap);
 
 /* The exceptions that are not memory or an instruction, by what Windows numbers them (a signal number says nothing here). */
 static const char *fault_name(u32 code)
@@ -203,6 +204,10 @@ static bool on_fault(mg_fault *f)
                      mg_guest_tp_get() ? ", which has run Android code" : ", which has never run Android code");
             n = strlen(report);
             snprintf(report + n, sizeof(report) - n, "; %u MB in use of %u", (unsigned)(mg_mem_usage() >> 20), (unsigned)(mg_mem_limit() >> 20));
+            if (g_fault_detail && mg_guest_tp_get()) {
+                n = strlen(report);
+                g_fault_detail(report + n, sizeof(report) - n);
+            }
             if (mg_egl_device_removed()) {
                 n = strlen(report);
                 snprintf(report + n, sizeof(report) - n, "\n  the Direct3D device had been removed: 0x%x", (unsigned)mg_egl_device_removed());
@@ -329,3 +334,10 @@ bool mg_core_can_run(void) { return g_can_run; }
 u32 mg_core_plt_rescues(void) { return (u32)g_plt_rescues; }
 u32 mg_core_wx_flips(void) { return (u32)g_wx_flips; }
 void mg_core_set_crash_hook(void (*hook)(const char *report)) { g_crash_hook = hook; }
+void mg_core_set_fault_detail(void (*detail)(char *out, size_t cap)) { g_fault_detail = detail; }
+void mg_core_thread_detail(char *out, size_t cap)
+{
+    if (!cap) return;
+    out[0] = 0;
+    if (g_fault_detail) g_fault_detail(out, cap);
+}

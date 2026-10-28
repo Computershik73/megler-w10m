@@ -17,6 +17,7 @@
 #include <stdio.h>
 
 #include "../elf/mg_elf.h"
+#include "../mg_core.h"
 #include "mg_fd.h"
 
 /* --------------------------------------------------------------- the paths
@@ -749,6 +750,35 @@ int mg_fd_open_host(const char *host_path, int host_flags)
     return fd;
 }
 
+/*
+ * A file opened over and over: the first 200 opens of one path within 10 s are said once, with the Java frames of the
+ * thread that opened it last (mg_core_thread_detail), as an app's loop shows itself (Google Play services read its module
+ * configuration and rewrote ChimeraConfigService.xml a hundred times a second, on several threads, in every app). A few
+ * paths at most are said; the table is by a hash of the path, and a collision only starts a count again.
+ */
+static void open_counted(const char *path)
+{
+    enum { SLOTS = 64, TIMES = 200, WINDOW_MS = 10000, SAID_MAX = 6 };
+    static struct { volatile u32 hash, count, from, said; } slots[SLOTS];
+    static volatile i32 said_total;
+    u32 h = 2166136261u, now = (u32)(mg_time_monotonic_ns() / 1000000ull), i;
+    const char *c;
+    char frames[1500];
+    for (c = path; *c; c++) h = (h ^ (u8)*c) * 16777619u;
+    i = h % SLOTS;
+    if (slots[i].hash != h || now - slots[i].from > WINDOW_MS) {
+        slots[i].hash = h;
+        slots[i].from = now;
+        slots[i].count = 1;
+        return;
+    }
+    if (++slots[i].count != TIMES || slots[i].said || mg_atomic_add(&said_total, 1) > SAID_MAX) return;
+    slots[i].said = 1;
+    mg_core_thread_detail(frames, sizeof(frames));
+    mg_warn("open: %s opened %u times in %u ms%s", path, (unsigned)TIMES, (unsigned)(now - slots[i].from),
+            frames[0] ? frames : " (not from Java)");
+}
+
 static int g_open(const char *path, int flags, int mode)
 {
     char *g, *h;
@@ -757,6 +787,7 @@ static int g_open(const char *path, int flags, int mode)
     int fd, err = 0, hf = 0, acc = flags & G_O_ACCMODE;
     (void)mode;
     mg_trace("open(%s, 0x%x)", path ? path : "(null)", (unsigned)flags);
+    if (path && *path) open_counted(path);
     if (!path || !*path) {
         mg_set_errno(GE_NOENT);
         return -1;

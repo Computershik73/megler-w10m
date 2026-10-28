@@ -1,5 +1,6 @@
 /* The runtime's interface to the rest of the core: starting it, adding DEX files, calling into it from C. See mg_dvm.h. */
 #include "mg_dvm_internal.h"
+#include "../mg_core.h"
 
 #include <stdio.h>
 
@@ -228,6 +229,7 @@ bool mg_dvm_start_android(const char *root)
 
 bool mg_dvm_start(const char *const *boot, int nboot)
 {
+    mg_core_set_fault_detail(mg_dvm_fault_frames);
     static const char *const first[] = { "java/lang/Object", "java/lang/Class", "java/lang/String", "java/lang/Throwable" };
     const u16 one = 1;
     char why[300];
