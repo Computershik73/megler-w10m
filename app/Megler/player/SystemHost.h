@@ -7,6 +7,8 @@
 //                (App.cpp, OnActivated).
 //   launch_app   The app's own package, if it is installed (megler:run, with that package as the target); else Megler with
 //                megler:run, which plays it when nothing has run yet in its process.
+//   uninstall_app  Megler's uninstaller (ui/AppShell.h, uninstallApp), which asks the user; an app's own package opens
+//                Megler with megler:uninstall?package=.
 #pragma once
 
 #include "megler.h"
@@ -19,6 +21,8 @@ namespace megler::app::systemHost {
 struct Hooks {
     /// UI thread: an APK at a path of Megler's own that the app (`from`, its name) wants installed.
     std::function<void(const std::wstring& path, const std::string& name, const std::string& from)> install;
+    /// UI thread: another app the phone has (an Android package) that the app (`from`, its name) wants uninstalled.
+    std::function<void(const std::string& package, const std::string& from)> uninstall;
     /// UI thread: another app could not be started; `why` says so in a sentence.
     std::function<void(const std::string& why)> cannotLaunch;
 };

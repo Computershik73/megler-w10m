@@ -1519,7 +1519,10 @@ typedef struct megler_run_config {
      * The apps the phone has, for a Java app that lists or starts them (a launcher; PackageManager.queryIntentActivities
      * of the launcher's intent, LauncherApps): a host folder with apps.txt -- a line for each app, its fields separated by
      * tabs: Android package, launcher activity's class, label, version name, version code -- and each app's icon as
-     * <package>.png. NULL: the app knows of none but itself.
+     * <package>.png. And installs/<name>.txt: what the shell's installer last told of an APK the app handed it under that
+     * name (install_apk), "<when>\t<what>\t<why>" -- declined, incompatible, failed or busy -- for the app's installer
+     * session (megler.Installs), which is installed when apps.txt has the app at the APK's version. NULL: the app knows of
+     * none but itself.
      */
     const char *apps_dir;
     /* The app has ended: by its own exit (status), by a crash (reason names it), or by megler_stop. Called once, from any thread. */

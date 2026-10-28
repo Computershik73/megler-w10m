@@ -101,7 +101,7 @@ public:
     void dialog(DialogSpec spec, std::function<void(int button, std::string text)> done);
     void alert(std::string title, std::string message);
     void confirm(std::string title, std::string message, std::string confirmTitle, bool destructive,
-                 std::function<void()> onConfirm);
+                 std::function<void()> onConfirm, std::function<void()> onCancel = nullptr);
 
     /// The file picker for an .apk, or a bundle of split APKs (.apks, .xapk),
     /// and the app installed (ui/SeparateApps.h). An APK is read where it is: a
@@ -119,8 +119,12 @@ public:
     void installApkFile(winrt::Windows::Storage::StorageFile const& file);
     /// An APK at a path of Megler's own that an Android app (`from`, its name) asked to install: likewise, after a yes.
     void installApkPath(const std::wstring& path, const std::string& name, const std::string& from);
+    /// Another app the phone has that an Android app (`from`, its name) asked to uninstall: after a yes, its own package and
+    /// Megler's copy of it go; a no is told to the app that asked (library/PhoneAppsList.h).
+    void uninstallApp(const std::string& package, const std::string& from);
     /// A megler: link Megler was opened with (App.cpp, OnActivated): megler:install?name= (an APK an app's own package
-    /// handed over in the shared folder's incoming\), megler:run?package= (an app a launcher starts).
+    /// handed over in the shared folder's incoming\), megler:uninstall?package= (an app it asks to uninstall),
+    /// megler:run?package= (an app a launcher starts).
     void openLink(winrt::Windows::Foundation::Uri const& uri);
 
     // Lifecycle (from App)
@@ -150,6 +154,10 @@ private:
     bool foldersPublished_ = false; // Megler: its added folders listed for the separate apps (ui/SharedFolders.h)
     bool storageShared_ = false;    // Megler: the copy of its storage to the shared folder has been started (shell/AppPackage.h)
     std::shared_ptr<ImportProgress> import_;
+    // APKs Android apps asked to install that the library has taken: its id and the name they came by, till it has them read
+    std::vector<std::pair<std::string, std::string>> askedInstalls_;
+    /// At every poll: tells an app that asked of an APK the library has read that cannot run here (library/PhoneAppsList.h).
+    void tellAskedInstalls();
 
     winrt::Windows::UI::Xaml::Controls::Grid root_{nullptr};
     winrt::Windows::UI::Xaml::Controls::Grid navigationBar_{nullptr};

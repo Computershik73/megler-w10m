@@ -55,6 +55,18 @@ std::wstring folder() {
     return shared.empty() ? std::wstring() : shared + L"\\phone-apps";
 }
 
+void installOutcome(const std::string& name, const std::string& what, const std::string& why) {
+    const std::wstring dir = folder();
+    if (dir.empty() || name.empty() || name.find_first_of("\\/:") != std::string::npos) return;
+    files::makeDirectories(dir + L"\\installs");
+    // when it was told, first: the same outcome told again is still news to the session that waits for it
+    const std::string line = std::to_string((unsigned long long)GetTickCount64()) + "\t" + what + "\t" + field(why) + "\n";
+    if (files::write(dir + L"\\installs\\" + widen(name) + L".txt", line))
+        shellLog::write("phone apps: " + name + " " + what + " told to the app that asked for it");
+    else
+        shellLog::write("phone apps: " + name + " " + what + " could not be told to the app that asked for it");
+}
+
 void publish() {
     static unsigned published = ~0u;
     if (appPackage::isSingleApp()) return;

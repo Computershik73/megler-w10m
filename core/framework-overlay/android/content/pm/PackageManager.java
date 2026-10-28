@@ -855,8 +855,17 @@ public class PackageManager {
     public void clearInstantAppCookie() {}
     public void clearPackagePreferredActivities(java.lang.String p0) {}
     public java.lang.String[] currentToCanonicalPackageNames(java.lang.String[] p0) { return null; }
-    public void deletePackage(java.lang.String p0, android.content.pm.IPackageDeleteObserver p1, int p2) {}
-    public void deletePackageAsUser(java.lang.String p0, android.content.pm.IPackageDeleteObserver p1, int p2, int p3) {}
+    public void deletePackage(java.lang.String p0, android.content.pm.IPackageDeleteObserver p1, int p2) { megler.Installs.deleteObserved(p0, p1); }
+    public void deletePackageAsUser(java.lang.String p0, android.content.pm.IPackageDeleteObserver p1, int p2, int p3) { megler.Installs.deleteObserved(p0, p1); }
+    /* Space freed for a download (Google Play asks before each): there is no cache of others' to clear here; the observer
+       (the app's own IPackageDataObserver Stub) is told it went well, on the main thread, as Android tells it. */
+    public void freeStorageAndNotify(long size, android.content.pm.IPackageDataObserver observer) { freeStorageAndNotify(null, size, observer); }
+    public void freeStorageAndNotify(java.lang.String volumeUuid, long size, android.content.pm.IPackageDataObserver observer) {
+        if (observer == null) return;
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            try { observer.onRemoveCompleted(null, true); } catch (android.os.RemoteException e) {}
+        });
+    }
     public void extendVerificationTimeout(int p0, int p1, long p2) {}
     public android.content.res.TypedArray extractPackageItemInfoAttributes(android.content.pm.PackageItemInfo p0, java.lang.String p1, java.lang.String p2, int[] p3) { return null; }
     public void flushPackageRestrictionsAsUser(int p0) {}

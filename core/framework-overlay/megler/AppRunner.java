@@ -235,6 +235,14 @@ public final class AppRunner {
         }
         // An APK to install (a file manager's, a browser's download, an app store's): Megler's installer has it, as Android's
         // package installer would (megler.Installs). Asked for a result, the caller hears RESULT_OK: the APK went.
+        // An app to uninstall (ACTION_DELETE of package:<name>), likewise: Megler asks the user.
+        if (megler.Installs.isUninstall(i)) {
+            android.util.Log.d("Megler", "startActivity " + i + " -> Megler's uninstaller");
+            megler.Installs.uninstall(i.getData().getSchemeSpecificPart(), (android.content.IntentSender) null);
+            final Activity caller = from instanceof Activity ? (Activity) from : top();
+            if (request >= 0 && caller != null) sHandler.post(() -> caller.meglerActivityResult(request, Activity.RESULT_OK, null));
+            return;
+        }
         if (megler.Installs.isInstall(i)) {
             android.util.Log.d("Megler", "startActivity " + i + " -> Megler's installer");
             megler.Installs.install(from, i);

@@ -69,6 +69,11 @@
     public static native byte[] appActivities(String packageName);
     /** The picture of that app's icon resource `id` (one its activities name), a PNG; null when there is none. */
     public static native byte[] appResIcon(String packageName, int id);
+    /** What Megler last wrote of the APK it was handed under `name` (installApk): installs/<name>.txt of the same folder,
+     *  "<when>\t<what>\t<why>", UTF-8 -- declined, incompatible, failed or busy; null when it has written nothing. */
+    public static native byte[] appInstall(String name);
+    /** Another app the phone has, to uninstall (megler_system_host.uninstall_app): true when the shell asks the user. */
+    public static native boolean uninstallApp(String packageName);
     /** A colour of Material You's palettes made from a seed (megler_palette_tone): palette 0 neutral 1 ... 5 error, tone 0 to 100. */
     public static native int paletteTone(int seed, int palette, int tone);
     /** What that session plays: title, artist, album (or null), and a picture of at most 256x256 as ARGB pixels, or null. */

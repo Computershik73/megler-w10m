@@ -757,6 +757,13 @@ static const char *phone_apps_fixture(void)
         fclose(f);
     }
     free(path);
+    /* (What Megler told of an APK on an earlier run is old news.) */
+    path = mg_sprintf("%s/installs/com.example.store.apk.txt", dir);
+    remove(path);
+    free(path);
+    path = mg_sprintf("%s/installs/com.example.other.uninstall.txt", dir);
+    remove(path);
+    free(path);
     path = mg_sprintf("%s/com.example.other.png", dir);
     f = fopen(path, "wb");
     if (f) {
@@ -2058,14 +2065,15 @@ static void media_session_keys(void)
 
 /*
  * What the data app asked of the phone (megler_system_host), in order: to start the other app the apps folder has, by its
- * launch intent; to install the APK it opened with ACTION_VIEW; to install its PackageInstaller session's one file, whose
- * status, STATUS_SUCCESS (0), then comes back to the app.
+ * launch intent; to install the APK it opened with ACTION_VIEW; to install its PackageInstaller sessions' files, by their
+ * apps' names. Their status comes back to the app once Megler has told it: STATUS_FAILURE_ABORTED (3) for the one the user
+ * said no to, STATUS_SUCCESS (0) for the one the phone's apps then have.
  */
 static void system_requests(void)
 {
     /* (Then, of its activities, Settings by its class, and Second, an alias, as what it stands for.) */
     static const char want[] = "launch=com.example.other/com.example.other.Main;launch=com.example.other/com.example.other.Settings;"
-                               "launch=com.example.other/com.example.other.Main;install=Viewed.apk;install=base.apk;install=com.example.split.apks(2);";
+                               "launch=com.example.other/com.example.other.Main;install=Viewed.apk;install=com.example.store.apk;install=com.example.split.apks(2);";
     char heard[sizeof(g_system_heard)];
     int tries;
     for (tries = 0; tries < 150; tries++) {
@@ -2077,7 +2085,19 @@ static void system_requests(void)
     }
     say("  the app asked of the phone: %s", heard);
     CHECK(!strcmp(heard, want));
-    CHECK(wait_line("I/DataTest: install-status 0 session=true package=com.example.store", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: install-status 3 session=true package=com.example.store", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: install-status 0 session=false package=com.example.split", 0, 30) >= 0);
+    /* As on Android, the app installed is told of before its session's status. Then the app uninstalls it through the
+       package installer (system_uninstall takes it out of the phone's apps): it hears of its going, then STATUS_SUCCESS; and
+       STATUS_FAILURE_ABORTED for the other app, which the user keeps. */
+    CHECK(wait_line("I/DataTest: package-broadcast android.intent.action.PACKAGE_ADDED com.example.split replacing=false uid=true", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: package-broadcast android.intent.action.PACKAGE_REMOVED com.example.split replacing=false uid=true", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: package-broadcast android.intent.action.PACKAGE_FULLY_REMOVED com.example.split replacing=false uid=true", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: uninstall-status 0 package=com.example.split", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: uninstall-status 3 package=com.example.other", 0, 30) >= 0);
+    /* The microphone was asked for at the rate and channels the app's AudioRecord has, and let go when it stopped. */
+    say("  the microphone was asked: %s", g_mic_heard);
+    CHECK(strstr(g_mic_heard, "start 16000 1;stop;") != NULL);
 }
 
 /*

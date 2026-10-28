@@ -2,6 +2,8 @@
 
 #include "player/SystemHost.h"
 
+#include "library/PhoneAppsList.h"
+
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
 #include "shell/ShellLog.h"
@@ -146,11 +148,32 @@ bool installApkThunk(void*, const char* hostPath, const char* name) {
         files::makeDirectories(incoming);
         if (!files::copy(path, incoming + L"\\" + widen(file))) {
             shellLog::write("system: " + file + " could not be handed to Megler (the copy into the shared folder failed)");
+            phoneAppsList::installOutcome(file, "failed", "The APK could not be handed to Megler: the copy into the shared folder failed.");
             return;
         }
         const std::wstring uri = L"megler:install?name=" + escaped(file);
         onUi([uri] { openIn(meglerFamilyName(), uri, nullptr); });
     }).detach();
+    return true;
+}
+
+bool uninstallAppThunk(void*, const char* package) {
+    const std::string p = package ? package : "";
+    if (p.empty() || p.find_first_of("\\/:?&=%") != std::string::npos) return false;
+    std::string from;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        from = gLabel;
+    }
+    if (!appPackage::isSingleApp()) {
+        onUi([p, from] {
+            if (auto h = hooks(); h.uninstall) h.uninstall(p, from);
+        });
+        return true;
+    }
+    // An app's own package: Megler, which has the library and the packages, is opened on it.
+    const std::wstring uri = L"megler:uninstall?package=" + escaped(p);
+    onUi([uri] { openIn(meglerFamilyName(), uri, nullptr); });
     return true;
 }
 
@@ -175,6 +198,7 @@ megler_system_host callbacks() {
     host.share_text = &shareTextThunk;
     host.install_apk = &installApkThunk;
     host.launch_app = &launchAppThunk;
+    host.uninstall_app = &uninstallAppThunk;
     return host;
 }
 

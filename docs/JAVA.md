@@ -3144,8 +3144,33 @@ What a Java app asks of the phone beyond its window goes to the shell through
     androidx `FileProvider`'s, is first copied into the app's cache.
   - A `PackageInstaller` session is real as far as the app sees it. The files
     written into it are kept in a folder of the app's cache. Committed, it
-    hands over its one APK, then sends `STATUS_SUCCESS` to the `IntentSender`
-    it was given (a `PendingIntent`'s sends through it).
+    hands over its one APK under the app's package name (`<package>.apk`; the
+    names Google Play writes, `stream..<package>`, are refused by Megler's
+    link for their `..`). Then it waits for the outcome and sends it to the
+    `IntentSender` it was given (a `PendingIntent`'s sends through it), as
+    Android does once the install is over:
+    - `STATUS_SUCCESS` once the phone's apps (`phone-apps\apps.txt`) have the
+      app at the APK's version, then `ACTION_PACKAGE_ADDED` (and
+      `ACTION_PACKAGE_REPLACED` for an update). Google Play checks that version
+      as soon as it hears of success; told at once, while Megler still asked
+      the user, it reported a failed install.
+    - What Megler wrote of the name in `phone-apps\installs\<name>.txt`
+      (`Native.appInstall`): the user's no (`STATUS_FAILURE_ABORTED`), an app
+      that cannot run here (`STATUS_FAILURE_INCOMPATIBLE`, with Megler's
+      reason), or a failed install (`STATUS_FAILURE`).
+    - `STATUS_FAILURE` after 30 minutes with neither.
+
+    The session is then gone, with its files.
+  - Uninstalling is handled the same way: `PackageInstaller.uninstall` (Google
+    Play's Uninstall), or `ACTION_DELETE` / `ACTION_UNINSTALL_PACKAGE` of
+    `package:<name>`, asks Megler (`megler_system_host.uninstall_app`). An
+    app's own package opens Megler with `megler:uninstall?package=`. Megler
+    asks the user. On a yes, the app's own package is uninstalled and
+    Megler's copy of it leaves the library, so the phone's apps no longer
+    have it. The app hears `ACTION_PACKAGE_REMOVED`, then `STATUS_SUCCESS`.
+    On a no, `installs\<package>.uninstall.txt` says so, and the app hears
+    `STATUS_FAILURE_ABORTED`. Before 0.1.0.463 the call did nothing, and
+    Google Play showed "Uninstalling..." for ever.
   - Megler asks the user, then installs the APK as one picked in the Library.
     In an app's own package, the APK is copied into the shared folder's
     `incoming\`, and Megler is opened with `megler:install?name=` (its package
@@ -3227,8 +3252,17 @@ The test app `data` checks the core's side. Its apps folder has one other app
 (`phone-apps`): the launcher's intent lists it with its label and icon,
 `LauncherApps` has it, and starting its launch intent reaches `launch_app`.
 It opens an APK by `ACTION_VIEW` (`install-intent`) and commits a session of
-one file (`install-session`). The harness hears both on `install_apk`, and the
-app hears `STATUS_SUCCESS`.
+one file (`install-session`) and one of a base and a split (`install-splits`).
+The harness hears them on `install_apk`, by their apps' names. It says no to
+the first in `installs\`, and the app hears `STATUS_FAILURE_ABORTED`. It adds
+the second to `apps.txt`; the app hears `ACTION_PACKAGE_ADDED`, then
+`STATUS_SUCCESS`. Then the app uninstalls it through `PackageInstaller.uninstall`; the
+harness takes it out of `apps.txt`, and the app hears
+`ACTION_PACKAGE_REMOVED`, `ACTION_PACKAGE_FULLY_REMOVED` and
+`STATUS_SUCCESS`. The other app's uninstall the harness says no to, and the
+app hears `STATUS_FAILURE_ABORTED`. The other app's
+signatures are the fixture's certificate, given only when asked for, and its
+uid names it (`phone-apps-signatures`).
 
 ### Jobs, and an app's other processes
 

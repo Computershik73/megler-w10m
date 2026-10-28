@@ -2977,6 +2977,14 @@ public class Main extends Activity {
                     new android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
             params.setAppPackageName("com.example.store");
             int id = pi.createSession(params);
+            // told of as Android tells of it, at once (Play Store asks before it writes)
+            android.content.pm.PackageInstaller.SessionInfo info = pi.getSessionInfo(id);
+            boolean mine = false;
+            for (android.content.pm.PackageInstaller.SessionInfo i : pi.getMySessions()) if (i.getSessionId() == id) mine = true;
+            if (info == null || info.getSessionId() != id || !"com.example.store".equals(info.getAppPackageName()) || !getPackageName().equals(info.getInstallerPackageName()) || !mine) {
+                detail = "info=" + info + " mine=" + mine;
+                return false;
+            }
             android.content.pm.PackageInstaller.Session s = pi.openSession(id);
             try (java.io.OutputStream o = s.openWrite("base", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
             String[] names = s.getNames();
@@ -2984,8 +2992,19 @@ public class Main extends Activity {
                 @Override public void onReceive(android.content.Context c, android.content.Intent i) {
                     Log.i("DataTest", "install-status " + i.getIntExtra("android.content.pm.extra.STATUS", -99) + " session=" + (i.getIntExtra("android.content.pm.extra.SESSION_ID", -1) == id)
                             + " package=" + i.getStringExtra("android.content.pm.extra.PACKAGE_NAME"));
+                    // The app installed, uninstalled as an app store uninstalls one; and the other app, which the user keeps.
+                    if (i.getIntExtra("android.content.pm.extra.STATUS", -99) == 0 && "com.example.split".equals(i.getStringExtra("android.content.pm.extra.PACKAGE_NAME"))) {
+                        android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
+                        installer.uninstall("com.example.split", android.app.PendingIntent.getBroadcast(c, 2, new android.content.Intent("megler.test.UNINSTALL_STATUS"), 0).getIntentSender());
+                        installer.uninstall("com.example.other", android.app.PendingIntent.getBroadcast(c, 3, new android.content.Intent("megler.test.UNINSTALL_STATUS"), 0).getIntentSender());
+                    }
                 }
             }, new android.content.IntentFilter("megler.test.INSTALL_STATUS"));
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context c, android.content.Intent i) {
+                    Log.i("DataTest", "uninstall-status " + i.getIntExtra("android.content.pm.extra.STATUS", -99) + " package=" + i.getStringExtra("android.content.pm.extra.PACKAGE_NAME"));
+                }
+            }, new android.content.IntentFilter("megler.test.UNINSTALL_STATUS"));
             android.app.PendingIntent status = android.app.PendingIntent.getBroadcast(this, 0, new android.content.Intent("megler.test.INSTALL_STATUS"),
                     0);
             s.commit(status.getIntentSender());
@@ -3003,11 +3022,32 @@ public class Main extends Activity {
             android.content.pm.PackageInstaller.Session s = pi.openSession(id);
             try (java.io.OutputStream o = s.openWrite("base.apk", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
             try (java.io.OutputStream o = s.openWrite("split_config.xxhdpi.apk", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
+            // and ART's profile, as Google Play writes beside the APKs: kept, not handed over
+            try (java.io.OutputStream o = s.openWrite("base.dm", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
             String[] names = s.getNames();
+            // As Android tells of packages that come and go: the test adds this one to the phone's apps, then takes it out.
+            android.content.IntentFilter packages = new android.content.IntentFilter();
+            for (String a : new String[] { android.content.Intent.ACTION_PACKAGE_ADDED, android.content.Intent.ACTION_PACKAGE_REMOVED,
+                                           android.content.Intent.ACTION_PACKAGE_FULLY_REMOVED, android.content.Intent.ACTION_PACKAGE_REPLACED })
+                packages.addAction(a);
+            packages.addDataScheme("package");
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context c, android.content.Intent i) {
+                    Log.i("DataTest", "package-broadcast " + i.getAction() + " " + i.getData().getSchemeSpecificPart()
+                            + " replacing=" + i.getBooleanExtra(android.content.Intent.EXTRA_REPLACING, false) + " uid=" + (i.getIntExtra(android.content.Intent.EXTRA_UID, -1) > 0));
+                }
+            }, packages);
             s.commit(android.app.PendingIntent.getBroadcast(this, 1, new android.content.Intent("megler.test.INSTALL_STATUS"), 0).getIntentSender());
             detail = "id=" + id + " names=" + java.util.Arrays.toString(names);
-            return id > 0 && names.length == 2;
+            return id > 0 && names.length == 3;
         });
+    }
+
+    /** As Material's BaseProgressIndicator: its indeterminate drawable is its own kind, cast from the ProgressBar's. */
+    static final class Indicator extends android.widget.ProgressBar {
+        static final class Own extends android.graphics.drawable.ColorDrawable {}
+        Indicator(android.content.Context c) { super(c); }
+        @Override public Own getIndeterminateDrawable() { return (Own) super.getIndeterminateDrawable(); }
     }
 
     /**
