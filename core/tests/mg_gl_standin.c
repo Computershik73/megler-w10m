@@ -91,6 +91,8 @@ static struct {
 
 static MG_THREAD_LOCAL sb_context *t_ctx;
 static MG_THREAD_LOCAL sb_surface *t_surf;
+static sb_context *volatile g_renderer;   /* the context made current last, on any thread */
+static u64 g_dwell_ns;
 static bool g_complete;
 static bool complete_integer(u32 name, i32 *v);
 
@@ -268,6 +270,10 @@ static unsigned e_MakeCurrent(void *d, void *draw, void *read, void *ctx)
     (void)d; (void)read;
     t_ctx = (sb_context *)ctx;
     t_surf = ctx ? (sb_surface *)draw : NULL;
+    if (ctx) g_renderer = (sb_context *)ctx;
+    mg_lock_acquire(&g_lock);
+    S.stats.makes++;
+    mg_lock_release(&g_lock);
     /* A context made current the first time gets the surface's size as its viewport, as OpenGL has it. */
     if (t_ctx && t_surf && !t_ctx->viewport[2]) {
         t_ctx->viewport[2] = t_surf->w;
@@ -853,9 +859,19 @@ static void g_ClearColor(float r, float g, float b, float a)
 static u8 byte_of(float v) { return (u8)(v <= 0 ? 0 : v >= 1 ? 255 : (int)(v * 255.0f + 0.5f)); }
 static void g_Clear(u32 mask)
 {
+    static volatile i32 inside;
     size_t i, n;
     u8 c[4];
     sb_store *s = t_ctx ? fb_store(t_ctx->fb) : NULL;
+    bool overlapped = mg_atomic_add(&inside, 1) > 1, stale = t_ctx && t_ctx != g_renderer;
+    if (g_dwell_ns) mg_sleep_ns(g_dwell_ns);
+    mg_atomic_add(&inside, -1);
+    if (overlapped || stale) {
+        mg_lock_acquire(&g_lock);
+        S.stats.overlaps += overlapped;
+        S.stats.stale += stale;
+        mg_lock_release(&g_lock);
+    }
     if (!t_ctx || (!t_surf && !s) || !(mask & GL_COLOR_BUFFER_BIT)) return;
     for (i = 0; i < 4; i++) c[i] = byte_of(t_ctx->clear[i]);
     if (s) {
@@ -1253,6 +1269,8 @@ void mg_gl_standin_stats_get(mg_gl_standin_stats *out)
     *out = S.stats;
     mg_lock_release(&g_lock);
 }
+
+void mg_gl_standin_set_dwell(u64 ns) { g_dwell_ns = ns; }
 
 void mg_gl_standin_reset(bool bgra, bool es1)
 {

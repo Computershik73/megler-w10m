@@ -1023,6 +1023,102 @@ static void test_cost(void)
     thrown();
 }
 
+/*
+ * Turns (mg_egl.c): two threads, each with a context of the app's display current, clear at once, one through what guests
+ * are given (mg_egl_resolve) and one through what the layer's Java natives are (mg_egl_host). The stand-in counts a clear
+ * that came while another was still in it, and one of a context other than the one made current last (what ANGLE's
+ * renderer draws wrong with, or through a null pointer): none of either, and the threads' contexts made current again in
+ * between. The thunks are ARM's; elsewhere nothing is checked.
+ */
+typedef struct turn_side {
+    void *d, *ctx;
+    bool host;
+    int clears;
+    volatile i32 ready;                /* 1: its context current; -1: it could not be */
+    volatile i32 done;
+} turn_side;
+static volatile i32 g_turn_go;
+
+static void turn_clearing(void *p)
+{
+    typedef unsigned (*make_fn)(void *, void *, void *, void *);
+    typedef void (*clear_fn)(u32);
+    turn_side *s = (turn_side *)p;
+    make_fn make = (make_fn)(s->host ? mg_egl_host("eglMakeCurrent") : mg_egl_resolve("eglMakeCurrent"));
+    clear_fn clear = (clear_fn)(s->host ? mg_egl_host("glClear") : mg_egl_resolve("glClear"));
+    int i;
+    if (!make || !clear || !make(s->d, NULL, NULL, s->ctx)) {
+        mg_atomic_xchg(&s->ready, -1);
+        mg_atomic_xchg(&s->done, 1);
+        return;
+    }
+    mg_atomic_xchg(&s->ready, 1);
+    while (!g_turn_go) mg_sleep_ns(100000ull);
+    for (i = 0; i < 200; i++) {
+        clear(0x4000);
+        s->clears++;
+    }
+    make(s->d, NULL, NULL, NULL);
+    mg_atomic_xchg(&s->done, 1);
+}
+
+static void test_turns(void)
+{
+#if MG_HOST_ARM32
+    typedef void *(*display_fn)(void *);
+    typedef unsigned (*init_fn)(void *, int *, int *);
+    typedef void *(*create_fn)(void *, void *, void *, const int *);
+    typedef unsigned (*destroy_fn)(void *, void *);
+    static const int es2[] = { 0x3098, 2, 0x3038 };
+    display_fn get_display = (display_fn)mg_egl_resolve("eglGetDisplay");
+    init_fn initialize = (init_fn)mg_egl_resolve("eglInitialize");
+    create_fn create = (create_fn)mg_egl_resolve("eglCreateContext");
+    destroy_fn destroy = (destroy_fn)mg_egl_resolve("eglDestroyContext");
+    turn_side a, b;
+    mg_thread *ta, *tb;
+    mg_gl_standin_stats before, after;
+    int major = 0, minor = 0, tries;
+    void *d;
+    say("Turns: two threads with contexts of the app's display current clear at once");
+    CHECK(get_display && initialize && create && destroy);
+    if (!get_display || !initialize || !create || !destroy) return;
+    d = get_display(NULL);
+    CHECK(d && initialize(d, &major, &minor));
+    memset(&a, 0, sizeof(a));
+    memset(&b, 0, sizeof(b));
+    a.d = b.d = d;
+    a.ctx = create(d, NULL, NULL, es2);
+    b.ctx = create(d, NULL, NULL, es2);
+    b.host = true;
+    CHECK(a.ctx && b.ctx);
+    if (!a.ctx || !b.ctx) return;
+    g_turn_go = 0;
+    mg_gl_standin_set_dwell(50000ull);
+    ta = mg_thread_start(turn_clearing, &a, 1u << 20, "turn-a");
+    tb = mg_thread_start(turn_clearing, &b, 1u << 20, "turn-b");
+    CHECK(ta && tb);
+    for (tries = 0; tries < 500 && (!a.ready || !b.ready); tries++) mg_sleep_ns(2000000ull);
+    CHECK(a.ready == 1 && b.ready == 1);
+    mg_gl_standin_stats_get(&before);
+    mg_atomic_xchg(&g_turn_go, 1);
+    if (ta) mg_thread_join(ta);
+    if (tb) mg_thread_join(tb);
+    mg_gl_standin_set_dwell(0);
+    mg_gl_standin_stats_get(&after);
+    CHECK(a.done && b.done && a.clears == 200 && b.clears == 200);
+    CHECK(after.overlaps == before.overlaps);
+    CHECK(after.stale == before.stale);
+    /* Each thread's first clear after the other's made its context current again: none, then its own. */
+    CHECK(after.makes - before.makes >= 4);
+    say("  400 clears: %d overlapping, %d of a context not made current last; %d make-currents for the turns",
+        (int)(after.overlaps - before.overlaps), (int)(after.stale - before.stale), (int)(after.makes - before.makes) - 2);
+    destroy(d, a.ctx);
+    destroy(d, b.ctx);
+#else
+    say("(Turns: the thunks are ARM's, nothing is checked here)");
+#endif
+}
+
 int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
 {
     t_sink = sink;
@@ -1040,6 +1136,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_hardware_buffers();
     test_webview_display();
     test_fence_syncs();
+    test_turns();
     test_calls();
     test_buffers();
     mg_gl_standin_reset(true, false);

@@ -270,7 +270,8 @@ stack scan, thread and memory lines, the flags (`mg_flag`: a file's presence in
 `LocalState\flags`, put there through the Device Portal: `no-interrupt`,
 `no-render`, `late-render`, `no-egl`, `no-panel`, `early-present`, `no-present`,
 `normal-priority`, `trace-gl`), `trace-gl` (every GL call through a generated
-thunk), the unattended `play` mode, and `tools/phone-etw.py`. And for what an app
+thunk), `no-gl-turns` (the thunks that have two threads' calls of one ANGLE
+display take turns left out; `ndk/mg_egl.c`, "turns"), the unattended `play` mode, and `tools/phone-etw.py`. And for what an app
 does that it says nothing of: `trace-net` (every TCP connection the app makes,
 where to, how it ended and how long it took, and every name it looks up with its
 addresses; `bionic/mg_net.c`, `mg_netdb.c`) and `trace-exceptions` (every Java

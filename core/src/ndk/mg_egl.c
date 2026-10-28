@@ -1102,14 +1102,313 @@ static void w_link_program(u32 program)
     gl_said_log(true, program);
 }
 
+/* ---------------------------------------------------------------- turns
+ *
+ * ANGLE's Direct3D 11 renderer belongs to a display and serves every context made on it with one state manager and its
+ * device's one immediate context, and counts on the display's contexts taking turns, each made current again before it
+ * draws after another (webview_display above). As gecko-w10m builds it, ANGLE locks a context's share group, not the
+ * display: two threads that keep contexts of one display current and call at once run in it at once, and either draws with
+ * what the other left bound. HERE WeGo compiles its shaders on one thread while it draws on another, and in Yandex Maps a
+ * thread of Google Play services' made a context of its own while the map drew: both ended in glDrawElements, ANGLE marking
+ * a framebuffer's attachments through a null pointer (packages 501-503).
+ *
+ * So every function of EGL's and OpenGL ES's that the app is given (mg_egl_resolve), and that the layer's own Java natives
+ * call (mg_egl_host), goes through a thunk that takes its display's turn around the call. Until a thread makes a context of
+ * a display current while another thread has one of it current, nothing is taken: one thread drawing, as most apps do,
+ * pays the thunk alone. From then on every call of that display's threads holds the display's lock (a thread's calls inside
+ * its own nest in its turn), and a call of a thread whose context is not the one ANGLE last had current first makes it
+ * current again -- none, then its own --, which is what has ANGLE set its whole state again. The app's display and the
+ * WebView's take turns each of their own. The flag no-gl-turns leaves the thunks out.
+ *
+ * The layer's own code that calls ANGLE on an app's thread takes the turn too (mg_egl_external_upload), and so does a job of
+ * a hardware buffers' thread (buffer_job_run); a job for a thread that holds the display's turn and waits for it runs in
+ * that turn, lent, as the two never run at once.
+ */
+typedef struct gl_turn {
+    mg_lock lock;
+    EGLContext last;                   /* the context ANGLE last had current on this display */
+    volatile i32 on;                   /* its calls take turns */
+    volatile i32 threads;              /* threads with a context of this display current */
+    volatile i32 loose;                /* calls under way that began before turns were on */
+    volatile i32 switches;             /* times a context was made current again for its turn */
+    u64 switch_ns;
+    const char *whose;
+} gl_turn;
+static gl_turn g_turn_app = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, 0, "the app's" };
+static gl_turn g_turn_web = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, 0, "the WebView's" };
+
+#define TURN_DEPTH 64
+typedef struct turn_thread {
+    int depth;                         /* calls of EGL and OpenGL ES under way on this thread, one inside another */
+    gl_turn *held;                     /* the display whose lock the outermost holds */
+    gl_turn *loose;                    /* the display whose loose calls the outermost is counted in */
+    gl_turn *lent;                     /* a job's: the display whose turn the thread it works for holds */
+    struct turn_thread *lender;        /* a job's: that thread */
+    EGLDisplay dpy;                    /* what this thread has current, as ANGLE was given it */
+    EGLSurface draw, read;
+    EGLContext ctx;
+    u32 lr[TURN_DEPTH];                /* the return addresses of the thunks' callers */
+} turn_thread;
+static MG_THREAD_LOCAL turn_thread t_turn;
+
+static gl_turn *turn_of(EGLDisplay d) { return d && d == g_webview_display ? &g_turn_web : &g_turn_app; }
+
+/* The calling thread's context made current again for its turn: none, then its own, and ANGLE sets its whole state again. */
+static void turn_refresh(turn_thread *t, gl_turn *g)
+{
+    fn_make_current make = A(fn_make_current, "eglMakeCurrent");
+    u64 t0 = mg_time_monotonic_ns();
+    i32 n;
+    if (!make || !make(t->dpy, NULL, NULL, NULL) || !make(t->dpy, t->draw, t->read, t->ctx)) {
+        static volatile i32 said;
+        if (mg_atomic_add(&said, 1) <= 5) mg_warn("egl: a thread's context could not be made current again for its turn on %s display", g->whose);
+    }
+    g->last = t->ctx;
+    g->switch_ns += mg_time_monotonic_ns() - t0;
+    n = mg_atomic_add(&g->switches, 1);
+    if (n == 1 || n == 10 || n == 100 || n == 1000 || n == 10000 || n == 100000)
+        mg_info("egl: %d time%s a thread's context made current again for its turn on %s display, %.1f ms in all", (int)n, n == 1 ? "" : "s",
+                g->whose, (double)g->switch_ns / 1e6);
+}
+
+static void turn_begin(void)
+{
+    turn_thread *t = &t_turn;
+    gl_turn *g;
+    if (t->depth++) return;
+    g = turn_of(t->dpy);
+    if (t->lent == g) {
+        /* A job for a thread that holds this display's turn and waits for the job: in that turn. */
+        if (t->ctx && g->last != t->ctx) turn_refresh(t, g);
+        return;
+    }
+    if (!g->on) {
+        mg_atomic_add(&g->loose, 1);
+        t->loose = g;
+        if (!g->on) return;
+        /* Turns came on as this call began: it waits for its turn as the rest do. */
+        mg_atomic_add(&g->loose, -1);
+        t->loose = NULL;
+    }
+    mg_lock_acquire(&g->lock);
+    t->held = g;
+    if (t->ctx && g->last != t->ctx) turn_refresh(t, g);
+}
+
+static void turn_end(void)
+{
+    turn_thread *t = &t_turn;
+    if (--t->depth) return;
+    if (t->loose) {
+        mg_atomic_add(&t->loose->loose, -1);
+        t->loose = NULL;
+    }
+    if (t->held) {
+        gl_turn *g = t->held;
+        t->held = NULL;
+        mg_lock_release(&g->lock);
+    }
+}
+
+/*
+ * Before a make-current of `ctx` on `d` (inside turn_begin): a second thread with a context of the display current turns
+ * turns on, once the calls already under way that began before have ended -- not this thread's own, nor the one a job of
+ * this thread's works for --, and the make-current itself is in the display's turn.
+ */
+static void turn_before(EGLDisplay d, EGLContext ctx)
+{
+    turn_thread *t = &t_turn;
+    gl_turn *g = turn_of(d);
+    i32 others;
+    int waited;
+    if (!ctx) return;
+    others = g->threads - (t->ctx && turn_of(t->dpy) == g ? 1 : 0);
+    if (others > 0 && !mg_atomic_xchg(&g->on, 1)) {
+        for (waited = 0; waited < 100; waited++) {
+            if (g->loose - (t->loose == g) - (t->lender && t->lender->loose == g) <= 0) break;
+            mg_sleep_ns(500000ull);
+        }
+        mg_info("egl: two threads have contexts of %s display current at once; their calls of EGL and OpenGL ES take turns from now on%s",
+                g->whose, waited == 100 ? " (a call under way had not ended after 50 ms)" : "");
+    }
+    if (g->on && !t->held && t->lent != g) {
+        if (t->loose) {
+            mg_atomic_add(&t->loose->loose, -1);
+            t->loose = NULL;
+        }
+        mg_lock_acquire(&g->lock);
+        t->held = g;
+    }
+}
+
+/* After a make-current that EGL took: what the calling thread has current now, as ANGLE was given it. */
+static void turn_bound(EGLDisplay d, EGLSurface draw, EGLSurface read, EGLContext ctx)
+{
+    turn_thread *t = &t_turn;
+    if (t->ctx) mg_atomic_add(&turn_of(t->dpy)->threads, -1);
+    t->dpy = ctx ? d : NULL;
+    t->draw = ctx ? draw : NULL;
+    t->read = ctx ? read : NULL;
+    t->ctx = ctx;
+    if (ctx) {
+        gl_turn *g = turn_of(d);
+        mg_atomic_add(&g->threads, 1);
+        g->last = ctx;
+    }
+}
+
+/* After a lent job: ANGLE last had the job's context current, and this thread goes on in its turn with its own. */
+static void turn_back(void)
+{
+    turn_thread *t = &t_turn;
+    if (t->held && t->ctx && t->held->last != t->ctx) turn_refresh(t, t->held);
+}
+
+#if MG_HOST_ARM32
+/*
+ * The thunks: one block, written once, of two bodies and a short entry for each slot -- movw r12, #slot and a jump to its
+ * body. A body keeps the arguments as they came (r0-r3; the fifth on are the caller's stack, which is left as it was),
+ * takes the turn (turn_enter: it keeps the caller's return address and gives the slot's function), calls the function,
+ * gives the turn back (turn_leave: it gives the return address back) and returns the function's result (r0, r1). The
+ * guests' body is for Android's soft-float calls; the layer's own (mg_egl_host, Windows' and Linux's hard-float calls)
+ * keeps d0-d7 for the function too, and d0 of its result.
+ */
+#define TURN_GUEST 2048
+#define TURN_HOST 512
+#define TURN_ENTRY 12
+#define TURN_ENTRIES_AT 128
+static void *g_turn_target[TURN_GUEST + TURN_HOST];
+static int g_turn_used[2];
+static u8 *g_turn_code;
+static bool g_turn_tried;
+static mg_lock g_turn_slots_lock = MG_LOCK_INIT;
+
+static void *turn_enter(u32 lr, u32 slot)
+{
+    turn_thread *t = &t_turn;
+    if (t->depth < TURN_DEPTH) t->lr[t->depth] = lr;
+    else mg_err("egl: calls of EGL and OpenGL ES %d deep, one inside another, on one thread: the deepest cannot return", t->depth);
+    turn_begin();
+    return g_turn_target[slot];
+}
+
+static u32 turn_leave(void)
+{
+    turn_thread *t = &t_turn;
+    turn_end();
+    return t->depth < TURN_DEPTH ? t->lr[t->depth] : 0;
+}
+
+static bool turn_code(void)
+{
+    static const u16 guest[] = {
+        0xB40F,             /* push {r0-r3} */
+        0x4670,             /* mov r0, lr */
+        0x4661,             /* mov r1, r12: the slot */
+        0xF8DF, 0xC018,     /* ldr.w r12, [pc, #24]: turn_enter */
+        0x47E0,             /* blx r12 */
+        0x4684,             /* mov r12, r0: the function */
+        0xBC0F,             /* pop {r0-r3} */
+        0x47E0,             /* blx r12 */
+        0xB403,             /* push {r0, r1}: its result */
+        0xF8DF, 0xC00C,     /* ldr.w r12, [pc, #12]: turn_leave */
+        0x47E0,             /* blx r12 */
+        0x4686,             /* mov lr, r0 */
+        0xBC03,             /* pop {r0, r1} */
+        0x4770,             /* bx lr */
+    };
+    static const u16 host[] = {
+        0xB40F,             /* push {r0-r3} */
+        0xED2D, 0x0B10,     /* vpush {d0-d7}: 80 bytes pushed, the stack still a multiple of eight */
+        0x4670,             /* mov r0, lr */
+        0x4661,             /* mov r1, r12 */
+        0xF8DF, 0xC024,     /* ldr.w r12, [pc, #36]: turn_enter */
+        0x47E0,             /* blx r12 */
+        0x4684,             /* mov r12, r0 */
+        0xECBD, 0x0B10,     /* vpop {d0-d7} */
+        0xBC0F,             /* pop {r0-r3} */
+        0x47E0,             /* blx r12 */
+        0xB403,             /* push {r0, r1} */
+        0xED2D, 0x0B02,     /* vpush {d0} */
+        0xF8DF, 0xC010,     /* ldr.w r12, [pc, #16]: turn_leave */
+        0x47E0,             /* blx r12 */
+        0x4686,             /* mov lr, r0 */
+        0xECBD, 0x0B02,     /* vpop {d0} */
+        0xBC03,             /* pop {r0, r1} */
+        0x4770,             /* bx lr */
+    };
+    const size_t size = (TURN_ENTRIES_AT + (TURN_GUEST + TURN_HOST) * TURN_ENTRY + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1);
+    u32 words[2];
+    u8 *p = (u8 *)mg_mem_alloc(size);
+    int i;
+    if (!p) return false;
+    words[0] = (u32)(mg_addr)turn_enter;
+    words[1] = (u32)(mg_addr)turn_leave;
+    memcpy(p, guest, sizeof(guest));
+    memcpy(p + sizeof(guest), words, sizeof(words));
+    memcpy(p + 64, host, sizeof(host));
+    memcpy(p + 64 + sizeof(host), words, sizeof(words));
+    for (i = 0; i < TURN_GUEST + TURN_HOST; i++) {
+        u8 *e = p + TURN_ENTRIES_AT + (size_t)i * TURN_ENTRY;
+        u16 code[4];
+        u32 body = (u32)(mg_addr)(p + (i < TURN_GUEST ? 0 : 64)) | 1;
+        code[0] = (u16)(0xF240 | ((i >> 12) & 0xF) | (((i >> 11) & 1) << 10));     /* movw r12, #i */
+        code[1] = (u16)((((i >> 8) & 7) << 12) | (12 << 8) | (i & 0xFF));
+        code[2] = 0xF8DF;                                                            /* ldr.w pc, [pc, #0]: the body */
+        code[3] = 0xF000;
+        memcpy(e, code, sizeof(code));
+        memcpy(e + sizeof(code), &body, sizeof(body));
+    }
+    if (!mg_mem_protect(p, size, MG_PROT_RX)) return false;
+    mg_icache_flush(p, size);
+    g_turn_code = p;
+    return true;
+}
+
+/* The thunk that calls `target` in its display's turn: for a guest's calls, or the layer's own (`host`). */
+static void *turn_thunk(void *target, bool host)
+{
+    static int off = -1;
+    int base = host ? TURN_GUEST : 0, n = host ? TURN_HOST : TURN_GUEST, i;
+    void *out = target;
+    if (off < 0) off = mg_flag("no-gl-turns") ? 1 : 0;
+    if (!target || off) return target;
+    mg_lock_acquire(&g_turn_slots_lock);
+    if (!g_turn_tried) {
+        g_turn_tried = true;
+        if (!turn_code()) mg_err("egl: no memory for the thunks that have EGL and OpenGL ES calls take turns: they do not");
+    }
+    if (g_turn_code) {
+        for (i = 0; i < g_turn_used[host] && g_turn_target[base + i] != target; i++) {}
+        if (i == g_turn_used[host] && i < n) {
+            g_turn_target[base + i] = target;
+            g_turn_used[host]++;
+        }
+        if (i < n) out = (void *)((mg_addr)(g_turn_code + TURN_ENTRIES_AT + (size_t)(base + i) * TURN_ENTRY) | 1);
+        else mg_note_once("egl: more functions of EGL and OpenGL ES than the thunks that have them take turns; the next ones do not");
+    }
+    mg_lock_release(&g_turn_slots_lock);
+    return out;
+}
+#else
+static void *turn_thunk(void *target, bool host)
+{
+    (void)host;
+    return target;
+}
+#endif
+
 static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface read, EGLContext ctx)
 {
     static volatile i32 said;
     fn_make_current real = A(fn_make_current, "eglMakeCurrent");
     surface *wd = window_surface(draw), *wr = window_surface(read);
+    EGLSurface real_draw = wd ? window_real(wd, NULL, NULL) : draw, real_read = wr ? window_real(wr, NULL, NULL) : read;
     EGLBoolean ok;
     if (!real) return 0;
-    ok = real(d, wd ? window_real(wd, NULL, NULL) : draw, wr ? window_real(wr, NULL, NULL) : read, ctx);
+    turn_begin();
+    turn_before(d, ctx);
+    ok = real(d, real_draw, real_read, ctx);
     if (ok) {
         surface *was_draw = t_draw, *was_read = t_read;
         t_draw = ctx ? wd : NULL;
@@ -1118,10 +1417,12 @@ static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface rea
         surface_hold(t_read);
         surface_let_go(was_draw);
         surface_let_go(was_read);
+        turn_bound(d, real_draw, real_read, ctx);
         if (ctx && gl_errors_wanted()) gl_debug_context(ctx);
     } else {
         refused(wd || wr ? "eglMakeCurrent of a window surface on a view's window" : "eglMakeCurrent", &said);
     }
+    turn_end();
     return ok;
 }
 
@@ -1164,7 +1465,9 @@ static EGLBoolean window_swap(EGLDisplay d, surface *w)
         fn_current_surface current = A(fn_current_surface, "eglGetCurrentSurface");
         fn_current_ctx context = A(fn_current_ctx, "eglGetCurrentContext");
         EGLSurface read = t_read == w ? after : current ? current(EGL_READ) : after;
-        if (!make || !context || !make(d, after, read, context())) mg_warn("egl: the window's surface of its new size could not be made current");
+        EGLContext ctx = context ? context() : NULL;
+        if (!make || !ctx || !make(d, after, read, ctx)) mg_warn("egl: the window's surface of its new size could not be made current");
+        else turn_bound(d, after, read, ctx);
     }
     if (!shown) {
         static volatile i32 said;
@@ -1279,6 +1582,7 @@ static bool buffer_context(int which)
     if (g_buffers[which].ctx) return true;
     if (!d || !create || !make) return false;
     ctx = create(d, NULL, NULL, es2);
+    if (ctx) turn_before(d, ctx);
     if (!ctx || !make(d, NULL, NULL, ctx)) {
         /* Without contexts that need no configuration, or none current without a surface: a configuration's, over a pbuffer. */
         static const EGLint want[] = { EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RED_SIZE, 8, EGL_NONE };
@@ -1294,11 +1598,13 @@ static bool buffer_context(int which)
             ctx = create(d, config, NULL, es2);
             surface = ctx ? pbuffer(d, config, one) : NULL;
         }
+        if (ctx) turn_before(d, ctx);
         if (!ctx || !surface || !make(d, surface, surface, ctx)) {
             mg_err("egl: no context of the layer's own for hardware buffers' textures%s; no image of one can be made", which ? " on the WebView's display" : "");
             return false;
         }
     }
+    turn_bound(d, surface, surface, ctx);
     g_buffers[which].ctx = ctx;
     return true;
 }
@@ -1309,9 +1615,28 @@ typedef struct buffer_job {
     int what;
     void *image;
     bool ok;
+    turn_thread *lender;               /* the thread that asked, which waits for it */
 } buffer_job;
 
+static void buffer_job_work(buffer_job *j);
+
+/* A job in its display's turn: the turn of the thread that asked, when that one holds it (turn_begin). */
 static void buffer_job_run(void *p)
+{
+    buffer_job *j = (buffer_job *)p;
+    turn_thread *t = &t_turn;
+    EGLDisplay d = j->b->display ? webview_display() : display();
+    if (!t->ctx) t->dpy = d;
+    t->lender = j->lender;
+    t->lent = j->lender && j->lender->held == turn_of(d) ? j->lender->held : NULL;
+    turn_begin();
+    buffer_job_work(j);
+    turn_end();
+    t->lent = NULL;
+    t->lender = NULL;
+}
+
+static void buffer_job_work(buffer_job *j)
 {
     enum {
         TEXTURE_2D = 0x0DE1, LINEAR = 0x2601, CLAMP_TO_EDGE = 0x812F, MIN_FILTER = 0x2801, MAG_FILTER = 0x2800, WRAP_S = 0x2802,
@@ -1327,7 +1652,6 @@ static void buffer_job_run(void *p)
     typedef void (*fn_read)(i32, i32, i32, i32, u32, u32, void *);
     typedef void (*fn_fbo_texture)(u32, u32, u32, u32, i32);
     static const EGLint preserved[] = { EGL_IMAGE_PRESERVED_KHR, 1, EGL_NONE };
-    buffer_job *j = (buffer_job *)p;
     mg_ahb *b = j->b;
     buffers *own = &g_buffers[b->display];
     fn_gen gen = A(fn_gen, "glGenTextures"), del = A(fn_gen, "glDeleteTextures"), gen_fbo = A(fn_gen, "glGenFramebuffers");
@@ -1420,7 +1744,9 @@ static bool buffer_job_do(mg_ahb *b, int what, void **image)
     memset(&j, 0, sizeof(j));
     j.b = b;
     j.what = what;
+    j.lender = &t_turn;
     run_on(g_buffers[b->display].thread, buffer_job_run, &j);
+    turn_back();
     if (image) *image = j.image;
     return j.ok;
 }
@@ -1928,7 +2254,7 @@ void *mg_egl_resolve(const char *name)
     static int tracing = -1;
     void *fn = resolve(name);
     if (tracing < 0) tracing = mg_flag("trace-gl") ? 1 : 0;
-    return tracing && fn ? traced(name, fn) : fn;
+    return turn_thunk(tracing && fn ? traced(name, fn) : fn, false);
 }
 
 void *mg_egl_host(const char *name)
@@ -1936,12 +2262,12 @@ void *mg_egl_host(const char *name)
     static bool told;
     if (!mg_egl_is_gl_name(name)) return NULL;
     /* The EGL functions above take no floats: the same ones guests get. */
-    if (name[0] == 'e') return resolve(name);
+    if (name[0] == 'e') return turn_thunk(resolve(name), true);
     if (!told) {
         told = true;
         mg_gltex_set_host(angle);
     }
-    return mg_gltex_wrap(name, angle(name));
+    return turn_thunk(mg_gltex_wrap(name, angle(name)), true);
 }
 
 u32 mg_egl_device_removed(void) { return mg_host_d3d11_removed_reason(g_d3d_device); }
@@ -1950,7 +2276,7 @@ bool mg_egl_gpu_memory(u32 *used_mb, u32 *budget_mb) { return g_d3d_device && mg
 
 /* ------------------------------------------------------ external textures */
 
-bool mg_egl_external_upload(u32 external, u32 *helper, void **image, int *helper_w, int *helper_h, const u8 *rgba, int w, int h)
+static bool external_upload(u32 external, u32 *helper, void **image, int *helper_w, int *helper_h, const u8 *rgba, int w, int h)
 {
     enum {
         TEXTURE_2D = 0x0DE1, TEXTURE_EXTERNAL = 0x8D65, BINDING_2D = 0x8069, BINDING_EXTERNAL = 0x8D67, UNPACK_BUFFER = 0x88EC,
@@ -2042,6 +2368,15 @@ bool mg_egl_external_upload(u32 external, u32 *helper, void **image, int *helper
     storei(UNPACK_SKIP_PIXELS, was_skip_pixels);
     storei(UNPACK_ALIGNMENT, was_alignment);
     if (was_buffer && bind_buffer) bind_buffer(UNPACK_BUFFER, (u32)was_buffer);
+    return ok;
+}
+
+bool mg_egl_external_upload(u32 external, u32 *helper, void **image, int *helper_w, int *helper_h, const u8 *rgba, int w, int h)
+{
+    bool ok;
+    turn_begin();
+    ok = external_upload(external, helper, image, helper_w, helper_h, rgba, w, h);
+    turn_end();
     return ok;
 }
 
