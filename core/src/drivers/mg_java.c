@@ -876,7 +876,7 @@ N(Native_thrownInService)
     for (i = n - 1; i >= 0; i--) {
         const mg_dvm_method *m = (const mg_dvm_method *)(mg_addr)v[2 * i];
         if (!m || !m->cls) continue;
-        if (m->cls->scope > 0) { c->ret.i = m->cls->scope; return; }
+        if (m->cls->scope > 0) { c->ret.i = mg_dvm_scope_root(m->cls->scope); return; }
         if (mg_dvm_class_is_app(m->cls)) { c->ret.i = 0; return; }
     }
 }

@@ -74,9 +74,14 @@ static mg_jvalue get(mg_jobj *o, const char *name)
     return x;
 }
 
-/* Service APK loaders are explicit: they share platform classes, never a client's libraries. */
-static mg_jobj *g_service_loaders[16];
-static char *g_service_apks[16]; /* the APK each one opened, by the name the app knows it under */
+/*
+ * Service APK loaders are explicit: they share platform classes, never a client's libraries. Scopes 1 to 15 are theirs (the
+ * native linker keeps a service's APK by its scope, ld/mg_ld.c); 16 on are child scopes (below), whose loaders are kept here too.
+ */
+#define SERVICE_SCOPES 16
+#define MAX_SCOPES MG_LD_MAX_SCOPES
+static mg_jobj *g_service_loaders[MAX_SCOPES];
+static char *g_service_apks[SERVICE_SCOPES]; /* the APK each one opened, by the name the app knows it under */
 /*
  * Other loaders over a service's APK: microG makes a PathClassLoader over its own APK for each of its dynamite modules a client
  * loads (DynamiteContextFactory.createClassLoader), whose classes on Android are microG's, apart from the client's. Here such
@@ -89,17 +94,75 @@ static char *g_service_apks[16]; /* the APK each one opened, by the name the app
 #define MAX_ALIASES 32
 static mg_jobj *g_alias_loaders[MAX_ALIASES];
 static int g_alias_scopes[MAX_ALIASES];
+/*
+ * Child scopes: the classes of a loader a service's code makes over an APK of a module's own (Google Play services' Chimera
+ * and Dynamite modules: a DelegateLastClassLoader, or a PathClassLoader of its own that looks in its own files first, whose
+ * parent is the service's loader, another module's, or a filter over them or the boot class path), and of any
+ * DelegateLastClassLoader, are a namespace of their own. A name is looked for among the platform's classes first, then, for
+ * a loader that looks in its own files first (a DelegateLastClassLoader, or one that overrides loadClass), in its own files
+ * and then in its parent's scope; for one that asks its parent first, the other way round (mg_dvm_class.c, definition).
+ * Before, such a module's classes went on the app's one class path, where the app's classes of the same short obfuscated
+ * names won: Google Play services 17's ads module called a kk.a of Play Store's (NoSuchMethodError), and 26's modules ended
+ * Play Store 53 with "Cannot cast ruh to algy" and a NoSuchMethodError of j$.util.Objects. A loader whose parents reach the
+ * app's own and that asks its parent first (an app's plug-in) still puts its classes on the app's path, as before.
+ */
+static int g_child_parent[MAX_SCOPES];         /* its parent's scope: 0 the app's, -1 the boot class path's alone */
+static bool g_child[MAX_SCOPES], g_child_own_first[MAX_SCOPES];
+bool mg_dvm_scope_child(int scope, int *parent, bool *own_first)
+{
+    if (scope < SERVICE_SCOPES || scope >= MAX_SCOPES || !g_child[scope]) return false;
+    *parent = g_child_parent[scope];
+    *own_first = g_child_own_first[scope];
+    return true;
+}
+int mg_dvm_scope_root(int scope)
+{
+    int depth;
+    for (depth = 0; depth < MAX_SCOPES && scope >= SERVICE_SCOPES && scope < MAX_SCOPES && g_child[scope]; depth++) scope = g_child_parent[scope];
+    return scope > 0 ? scope : 0;
+}
 int mg_dvm_loader_scope(mg_jobj *loader) {
     int i;
     if (!loader) return 0;
-    for (i = 1; i < 16; i++) if (g_service_loaders[i] == loader) return i;
+    for (i = 1; i < MAX_SCOPES; i++) if (g_service_loaders[i] == loader) return i;
     for (i = 0; i < MAX_ALIASES; i++) if (g_alias_loaders[i] == loader) return g_alias_scopes[i];
     return 0;
 }
-mg_jobj *mg_dvm_scope_loader(int scope) { return scope > 0 && scope < 16 ? g_service_loaders[scope] : NULL; }
+mg_jobj *mg_dvm_scope_loader(int scope) { return scope > 0 && scope < MAX_SCOPES ? g_service_loaders[scope] : NULL; }
+static mg_dvm_field *loader_parent_field(void)
+{
+    static mg_dvm_field *parent;
+    if (!parent) {
+        mg_dvm_class *cl = mg_dvm_find_class("java/lang/ClassLoader");
+        parent = cl ? mg_dvm_find_field(cl, "parent", false) : NULL;
+        if (!cl) mg_dvm_clear_pending();
+    }
+    return parent;
+}
+/*
+ * A dex a loader of a service's own made (Google Play services' DroidGuard: a DexClassLoader over the VM's APK it downloads,
+ * its parent Google Play services' loader) is the app's to the runtime, scope 0; its code is still the service's, which on
+ * Android runs in a process of the service's. Its loader's parents say whose: the first one that is a service's loader.
+ * Kept once there is a loader to ask (one opened before it has its loader is asked again).
+ */
+int mg_dvm_dex_process_scope(mg_dvm_dex *d)
+{
+    mg_dvm_field *parent;
+    mg_jobj *l;
+    int s = 0, depth;
+    if (!d) return 0;
+    if (d->scope > 0) return mg_dvm_scope_root(d->scope);
+    if (d->process_scope_known) return d->process_scope;
+    if (!d->loader) return 0;
+    if (!(parent = loader_parent_field())) return 0;
+    for (l = d->loader, depth = 0; l && depth < 16 && !(s = mg_dvm_loader_scope(l)); depth++) l = mg_dvm_slots(l)[parent->slot].l;
+    d->process_scope = (u8)s;
+    d->process_scope_known = true;
+    return s;
+}
 void mg_dvm_loader_roots(void (*fn)(mg_jobj *, void *), void *user) {
     int i;
-    for (i = 1; i < 16; i++) if (g_service_loaders[i]) fn(g_service_loaders[i], user);
+    for (i = 1; i < MAX_SCOPES; i++) if (g_service_loaders[i]) fn(g_service_loaders[i], user);
     /* (Kept for good, as the table holds them by address: microG keeps each module's loader for good itself.) */
     for (i = 0; i < MAX_ALIASES; i++) if (g_alias_loaders[i]) fn(g_alias_loaders[i], user);
     for (i = 0; i < (int)mg_dvm_dex_count(); i++) {
@@ -111,8 +174,104 @@ void mg_dvm_loader_roots(void (*fn)(mg_jobj *, void *), void *user) {
 static int service_apk_scope(const char *source)
 {
     int i;
-    for (i = 1; i < 16; i++) if (g_service_apks[i] && !strcmp(g_service_apks[i], source)) return i;
+    for (i = 1; i < SERVICE_SCOPES; i++) if (g_service_apks[i] && !strcmp(g_service_apks[i], source)) return i;
     return 0;
+}
+
+/* Whether a loader puts dex files of its own on the app's path: the app's, or a plug-in loader of the app's. */
+static bool loader_on_app_path(mg_jobj *l)
+{
+    u32 i, n = mg_dvm_dex_count();
+    if (l == g_dvm.app_loader) return true;
+    for (i = 0; i < n; i++) {
+        mg_dvm_dex *d = mg_dvm_dex_at(i);
+        if (d && d->scope == 0 && d->loader == l) return true;
+    }
+    return false;
+}
+/*
+ * The scope the classes a loader asks its parent for come from: a service's or a child's scope, 0 the app's (its loader or a
+ * plug-in's), -1 the boot class path's alone. Through a loader of no files of its own (a filter, as Google Play services'
+ * are), the first loader among its fields that says another than the boot class path. -2 when nothing says.
+ */
+static int reached_scope(mg_jobj *l, int depth)
+{
+    mg_dvm_field *parent = loader_parent_field();
+    mg_dvm_class *cl = mg_dvm_find_class("java/lang/ClassLoader");
+    for (; depth < 16; depth++) {
+        mg_dvm_class *k;
+        int s, i;
+        if (!l) return -1;
+        if ((s = mg_dvm_loader_scope(l)) > 0) return s;
+        if (loader_on_app_path(l)) return 0;
+        k = mg_dvm_class_of(l);
+        if (!strcmp(k->name, "java/lang/BootClassLoader")) return -1;
+        for (; k && k != cl; k = k->super)
+            for (i = 0; i < k->nifields; i++) {
+                mg_jobj *v;
+                int r;
+                if (k->ifields[i].type[0] != 'L') continue;
+                v = mg_dvm_slots(l)[k->ifields[i].slot].l;
+                if (!v || v == l || !cl || !mg_dvm_is_instance(v, cl) || (parent && v == mg_dvm_slots(l)[parent->slot].l)) continue;
+                if ((r = reached_scope(v, depth + 1)) >= 0) return r;
+            }
+        if (!parent) return -2;
+        l = mg_dvm_slots(l)[parent->slot].l;
+    }
+    return -2;
+}
+/* Whether a loader looks in its own files before its parent: a DelegateLastClassLoader, or one whose loadClass is its own. */
+static bool looks_in_own_files_first(mg_jobj *loader)
+{
+    mg_dvm_class *k = mg_dvm_class_of(loader);
+    mg_dvm_method *m;
+    for (; k; k = k->super) if (!strcmp(k->name, "dalvik/system/DelegateLastClassLoader")) return true;
+    m = mg_dvm_find_virtual(mg_dvm_class_of(loader), "loadClass", "(Ljava/lang/String;Z)Ljava/lang/Class;");
+    mg_dvm_clear_pending();
+    return m && m->cls && strcmp(m->cls->name, "java/lang/ClassLoader");
+}
+/*
+ * The child scope a loader's files go in (above): its own once made, `*made` when made now (and to be let go if the file
+ * has no DEX in it after all: a split of native libraries alone); 0 when they go on the app's path. None before the app's
+ * own loader is: the first PathClassLoader is that one, whose files are the app's.
+ */
+static int child_scope_for(mg_jobj *loader, bool *made)
+{
+    mg_dvm_field *pf = loader_parent_field();
+    mg_dvm_class *k;
+    int s = mg_dvm_loader_scope(loader), parent, i, slot = -1;
+    bool delegate_last = false, own_first;
+    *made = false;
+    if (s >= SERVICE_SCOPES && g_child[s]) return s;
+    if (s > 0 || !pf || !g_dvm.app_loader) return 0;
+    for (k = mg_dvm_class_of(loader); k; k = k->super) if (!strcmp(k->name, "dalvik/system/DelegateLastClassLoader")) delegate_last = true;
+    parent = reached_scope(mg_dvm_slots(loader)[pf->slot].l, 0);
+    if (parent > 0 || parent == -1) own_first = looks_in_own_files_first(loader);
+    else if (delegate_last) { own_first = true; parent = 0; }
+    else return 0;
+    mg_dvm_lock();
+    for (i = SERVICE_SCOPES; i < MAX_SCOPES && slot < 0; i++)
+        if (!g_service_loaders[i]) slot = i;
+    if (slot > 0) {
+        g_child_parent[slot] = parent;
+        g_child_own_first[slot] = own_first;
+        g_child[slot] = true;
+        g_service_loaders[slot] = loader;
+    }
+    mg_dvm_unlock();
+    if (slot < 0) {
+        mg_warn("dvm: no scope left for a %s: its classes go on the app's path", mg_dvm_class_of(loader)->name);
+        return 0;
+    }
+    *made = true;
+    return slot;
+}
+static void child_scope_release(int slot)
+{
+    mg_dvm_lock();
+    g_child[slot] = false;
+    g_service_loaders[slot] = NULL;
+    mg_dvm_unlock();
 }
 /* A loader made over a service's APK becomes another name of its scope: false when the table is full. */
 static bool alias_loader(mg_jobj *loader, int scope, const char *source)
@@ -156,10 +315,10 @@ N(ServiceClassLoader_openApk) {
     int scope;
     if (!path) { npe("apk"); return; }
     mg_dvm_lock();
-    for (scope = 1; scope < 16 && g_service_loaders[scope]; scope++);
-    if (scope < 16) g_service_loaders[scope] = c->self;
+    for (scope = 1; scope < SERVICE_SCOPES && g_service_loaders[scope]; scope++);
+    if (scope < SERVICE_SCOPES) g_service_loaders[scope] = c->self;
     mg_dvm_unlock();
-    if (scope == 16) { mg_dvm_throw("java/lang/IllegalStateException", "Too many service loaders"); return; }
+    if (scope == SERVICE_SCOPES) { mg_dvm_throw("java/lang/IllegalStateException", "Too many service loaders"); return; }
     host = mg_fs_host_path(path);
     if (!host || (!mg_dvm_add_apk_scope(host, scope) || !mg_ld_add_service_apk(host, scope))) {
         free(host);
@@ -372,7 +531,7 @@ static int starting_scope(void)
     mg_dvm_frame *f;
     for (f = self->top; f; f = f->prev) {
         if (!f->m || !f->m->cls) continue;
-        if (f->m->cls->scope > 0) return f->m->cls->scope;
+        if (f->m->cls->scope > 0) return mg_dvm_scope_root(f->m->cls->scope);
         if (mg_dvm_class_is_app(f->m->cls)) return 0;
     }
     return self->owner_scope;
@@ -1044,6 +1203,40 @@ N(DexFile_openDexFileNative)
         }
         there = true;
     }
+    /* A loader of a module's, or a DelegateLastClassLoader: a scope of its own (above). */
+    if (!there && c->args[3].l && c->args[3].l != g_dvm.app_loader) {
+        bool made;
+        int child = child_scope_for(c->args[3].l, &made);
+        if (child > 0) {
+            host = mg_fs_host_path(source);
+            n = strlen(source);
+            if (host && n > 4 && !strcmp(source + n - 4, ".dex")) {
+                size_t size = 0;
+                u8 *data = mg_file_read_all(host, &size);
+                const char *slash = strrchr(source, '/');
+                there = data && mg_dvm_add_dex_scope(data, size, slash ? slash + 1 : source, child);
+                if (!there) free(data);
+            } else if (host && (there = mg_dvm_add_apk_scope(host, child) > 0)) {
+                /* its native libraries are its APK's (Google Play services' Cronet module: lib/armeabi-v7a/libcronet.<version>.so,
+                   stored, which it loads by the path "<apk>!/lib/armeabi-v7a/..."); before, the one of Play Store's own Cronet
+                   was taken, and the module stopped on its version */
+                mg_ld_add_service_apk(host, child);
+            }
+            free(host);
+            if (!there) {
+                if (made) child_scope_release(child);
+                mg_dvm_throw("java/io/IOException", "No original dex files found for dex location %s", source);
+                return;
+            }
+            if (made) {
+                int parent;
+                bool own_first;
+                mg_dvm_scope_child(child, &parent, &own_first);
+                mg_info("dvm: a %s over %s: scope %d of its own, its %s first, then scope %d", mg_dvm_class_of(c->args[3].l)->name, source,
+                        child, own_first ? "own files" : "parent's", parent);
+            }
+        }
+    }
     if (!there) {
         /* A file the app names itself (a second DEX file it unpacked, a plug-in): its classes join the path, after everything there. */
         u32 before = mg_dvm_dex_count(), j;
@@ -1137,6 +1330,8 @@ N(DexFile_defineClassNative)
     /* A class that is not there is null and no exception: the loader goes on to its next file, and throws ClassNotFoundException itself. */
     if (!mg_dvm_class_exists_scope(internal, scope)) return;
     k = mg_dvm_find_class_scope(internal, scope);
+    /* A child scope's loader defines its own classes alone: its parent's, its loadClass asks the parent for. */
+    if (k && scope >= SERVICE_SCOPES && k->scope != scope) return;
     c->ret.l = k ? mg_dvm_mirror(k) : NULL;
 }
 

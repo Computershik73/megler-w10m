@@ -13,16 +13,18 @@ static mg_lock g_load_lock = MG_LOCK_INIT;
 static u32 g_load_owner;                   /* dlopen from a constructor re-enters on the same thread */
 static int g_load_depth;
 static mg_lib *g_libs, *g_libs_tail;
+/* What the images the loader mapped hold in committed memory: their segments, read from their files (mg_ld_image_bytes). */
+static u64 g_image_bytes;
 static mg_zip g_apks[MG_LD_MAX_APKS];
 static int g_napks;
-static mg_zip g_service_apks[16];
-static bool g_service_apk_ready[16];
+static mg_zip g_service_apks[MG_LD_MAX_SCOPES];
+static bool g_service_apk_ready[MG_LD_MAX_SCOPES];
 static MG_THREAD_LOCAL int g_service_scope;
 int mg_ld_scope(void) { return g_service_scope; }
 int mg_ld_set_scope(int scope) { int old = g_service_scope; g_service_scope = scope; return old; }
 bool mg_ld_add_service_apk(const char *path, int scope) {
     char why[160];
-    if (scope <= 0 || scope >= 16) return false;
+    if (scope <= 0 || scope >= MG_LD_MAX_SCOPES) return false;
     if (g_service_apk_ready[scope]) return true;
     if (!mg_zip_open(&g_service_apks[scope], path, why, sizeof(why))) return false;
     g_service_apk_ready[scope] = true;
@@ -154,7 +156,7 @@ static const mg_zip_entry *apk_lib(const char *name, const mg_zip **in)
     int i;
     if (g_service_scope) {
         const mg_zip_entry *e;
-        if (g_service_scope >= 16 || !g_service_apk_ready[g_service_scope]) return NULL;
+        if (g_service_scope >= MG_LD_MAX_SCOPES || !g_service_apk_ready[g_service_scope]) return NULL;
         *in = &g_service_apks[g_service_scope];
         snprintf(path, sizeof(path), "lib/armeabi-v7a/%s", name);
         e = mg_zip_find(*in, path);

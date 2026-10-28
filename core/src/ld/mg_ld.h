@@ -41,7 +41,11 @@ struct mg_zip;
 /* Where libraries come from: the APKs' lib/armeabi-v7a/ (or lib/armeabi/) directories, in the order added. */
 #define MG_LD_MAX_APKS 16
 bool mg_ld_add_apk(const char *path);
-/* Service APK libraries and their dependencies are isolated from the client's. */
+/*
+ * Service APK libraries and their dependencies are isolated from the client's; so are a module's, whose class loader has a
+ * scope of its own (dvm/mg_dvm_art.c, child scopes: 16 on), from its APK.
+ */
+#define MG_LD_MAX_SCOPES 64
 bool mg_ld_add_service_apk(const char *path, int scope);
 int mg_ld_set_scope(int scope);
 int mg_ld_scope(void);

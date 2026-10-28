@@ -89,6 +89,24 @@ struct mg_dvm_dex {
     char name[96];
     bool boot;                         /* part of the boot class path */
     bool app;                          /* added after mg_dvm_app_follows: the app's own, whose classes say they come from its class loader */
+    bool process_scope_known;          /* mg_dvm_dex_process_scope has its answer in process_scope */
+    u8 process_scope;
+    /*
+     * A DEX file registered by its classes' names alone (mg_dvm_add_dex_lazy): `b` and the caches are NULL until the first
+     * of its classes is linked (mg_dvm_dex_ready), when the file is viewed from `map_path` at `map_at` and its checksum
+     * checked. `names` holds its classes' descriptors, which the table of definitions points at.
+     */
+    bool lazy, lazy_failed;
+    char *map_path;
+    u64 map_at;
+    size_t map_size;
+    u32 checksum;
+    char *names;
+    /*
+     * A package the file keeps to itself ("android/icu/number/", core-libart's), or NULL: its classes in it are registered
+     * under megler/libart/ names, and what the file names in that package resolves to them (mg_dvm_own_desc).
+     */
+    const char *own;
 };
 
 /*
@@ -379,6 +397,13 @@ bool mg_dvm_class_exists_scope(const char *name, int scope);
 bool mg_dvm_add_dex_scope(const void *data, size_t size, const char *label, int scope);
 int mg_dvm_add_apk_scope(const char *path, int scope);
 int mg_dvm_loader_scope(mg_jobj *loader);
+/* The service scope a dex's classes are of (mg_dvm_art.c): its own, else that of the first loader in its loader's parents that
+   is a service's; 0 for the app's and the platform's. */
+int mg_dvm_dex_process_scope(mg_dvm_dex *d);
+/* A child scope's parent scope (0 the app's, -1 the boot path's alone) and whether its own files come first (mg_dvm_art.c). */
+bool mg_dvm_scope_child(int scope, int *parent, bool *own_first);
+/* The service scope a scope is under: itself for a service's, a child's parent's root, 0 for the app's. */
+int mg_dvm_scope_root(int scope);
 mg_jobj *mg_dvm_scope_loader(int scope);
 void mg_dvm_loader_roots(void (*fn)(mg_jobj *, void *), void *user);
 mg_dvm_class *mg_dvm_find_class_desc(const char *descriptor);

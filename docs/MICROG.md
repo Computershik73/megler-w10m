@@ -104,6 +104,63 @@ wrappers do not overwrite the client's wrappers; FindClass in a scoped native
 method uses its defining namespace. This is an explicit service-loader path;
 ordinary arbitrary Android ClassLoader delegation is still not fully implemented.
 
+## A module's own scope (child scopes)
+
+Google Play services loads each of its Chimera and Dynamite modules (Cronet,
+the ads module, the Dynamite loader itself) through a class loader of its own
+over the module's APK: a `DelegateLastClassLoader` once SDK_INT is 29 or more
+(Android 10's four-argument constructor, which `core/libcore-overlay` adds to
+Android 9's class), or a `PathClassLoader` of Google's that looks in its own
+files first; its parent is the service's loader, another module's, or a filter
+over them or the boot class path. Such a loader's classes, and those of any
+`DelegateLastClassLoader`, get a scope of their own, from 16 on
+(`mg_dvm_art.c`, child scopes): a name is looked for among the platform's
+classes first, then in the loader's own files and its parent's scope, in the
+order the loader asks them (its own first for a delegate-last loader, its
+parent's first otherwise; a parent of the boot class path alone adds nothing).
+The parent's scope is found by walking the loader's parents, and through a
+filter loader of no files of its own, its fields. A child's native libraries
+come from its APK in a linker scope of the same number, so the Cronet module
+loads its own `libcronet.<version>.so` (stored in the APK) and not the one Play
+Store embeds. A loader whose parents reach the app's own loader and that asks
+its parent first (an app's plug-in) still puts its classes on the app's path;
+so does every loader before the app's own is made, and a file with no DEX in it
+gets no scope. Which service a child's code is of (a thread's owner, the
+uncaught exceptions of a service's thread, guarded native calls) is its root
+scope's (`mg_dvm_scope_root`).
+
+Before, a module's classes went on the app's one class path, where the app's
+classes of the same short obfuscated names won: Google Play services 17's ads
+module called Play Store's `kk.a` (NoSuchMethodError), and 26's modules ended
+Play Store 53 with "Cannot cast ruh to algy" and a NoSuchMethodError of
+`j$.util.Objects`. The data app's step `delegate-last-scope` checks the order
+with a DEX of its own (`module-src/`, carried as `assets/module.dex`): a
+`DelegateLastClassLoader` gets the module's `Twin`, a `PathClassLoader` whose
+parent is the app's gets the app's.
+
+An attribution context of Google Play services' (`createAttributionContext`,
+which version 26 makes for much of its work) is its package context itself:
+`ContextWrapper` now asks its base for one, as Android's does, and the base of
+the service's context is the app's, which bound the service's own services as
+the app. A binding meant for Google Play services that none of its services
+takes is said in the log ("no service of Google Play services binds ...").
+
+A service of Google Play services is given one `onBind` for each intent that is
+different as Android's `Intent.filterEquals` has it -- its action, data, type,
+identifier and categories, not its extras (`MicroG.bindKey`) -- and the clients
+of the same intent share that binder, as on Android; each new one is a line in
+the log ("bound ... for ..."). They were told apart by the action alone. GmsCore
+26's container services (`GmsApiService`, the bound brokers) serve every API of
+the modules they hold, and the intent a client is given for an API by the
+chimera provider's dynamic lookup (`BoundService.getStartIntent`) is the same
+action for all of them, `com.google.android.chimera.BoundService.START`, with
+the API in its data (`chimera-action:<the API's action>`): the broker made for
+the first API a container was asked for was handed to the clients of all the
+others, which it refused ("Unexpected service id: 343" to `GoogleAuth.API`, and
+40, 41, 270... about a hundred a minute). Google Play services' own sign-in did
+not connect, and WhatsApp's search for its Google Drive backup failed until it
+said it took too long (package 486). The microG test checks the keys.
+
 ## Verification
 
 `tools/microg-fetch.sh` downloads upstream microG `v0.3.17.252432` and verifies

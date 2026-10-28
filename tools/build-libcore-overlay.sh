@@ -29,7 +29,7 @@ for source in sorted(overlay.rglob('*.java')):
     files.append('"' + source.as_posix() + '"')
 (out / 'sources.arg').write_text('\n'.join(files), encoding='utf-8')
 PY
-"$JDK/bin/javac" -source 8 -target 8 -encoding UTF-8 -d "$(cygpath -m "$OUT/classes")" "@$(cygpath -m "$OUT/sources.arg")"
+"$JDK/bin/javac" -source 8 -target 8 -encoding UTF-8 -cp "$(cygpath -m "$SDK/platforms/android-29/android.jar")" -d "$(cygpath -m "$OUT/classes")" "@$(cygpath -m "$OUT/sources.arg")"
 (cd "$OUT/classes" && "$JDK/bin/jar" cf ../classes.jar .)
 "$JDK/bin/java" -cp "$(cygpath -m "$SDK/build-tools/29.0.3/lib/d8.jar")" com.android.tools.r8.D8 --release --min-api 26 --lib "$(cygpath -m "$SDK/platforms/android-29/android.jar")" --output "$(cygpath -m "$OUT/dex")" "$(cygpath -m "$OUT/classes.jar")"
 mv "$OUT/dex/classes.dex" "$DEX"

@@ -320,8 +320,16 @@ static mg_dvm_class *loaded(const char *name) { return loaded_scope(name, 0); }
 static const cdef *cdef_find(const char *name) { return cdef_find_scope(name, 0); }
 static const cdef *definition(const char *name, int scope)
 {
-    const cdef *boot = cdef_find_scope(name, 0);
+    const cdef *boot = cdef_find_scope(name, 0), *found;
+    int parent;
+    bool own_first;
     if (!scope || (boot && !boot->dex->app)) return boot;
+    /* A child scope's (mg_dvm_art.c): its own files and its parent's scope, in its loader's order; -1, the boot path alone. */
+    if (mg_dvm_scope_child(scope, &parent, &own_first)) {
+        if (own_first && (found = cdef_find_scope(name, scope))) return found;
+        if (parent >= 0 && (found = definition(name, parent))) return found;
+        return own_first ? NULL : cdef_find_scope(name, scope);
+    }
     return cdef_find_scope(name, scope);
 }
 
