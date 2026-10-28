@@ -68,7 +68,7 @@ const char *mg_dvm_intern(const char *s)
     for (e = g_names[h]; e; e = e->next)
         if (!strcmp(e->text, s)) break;
     if (!e) {
-        e = (name_entry *)mg_dvm_meta_alloc(sizeof(*e) + n);
+        e = (name_entry *)mg_dvm_meta_alloc_kind(sizeof(*e) + n, DVM_META_NAME);
         memcpy(e->text, s, n + 1);
         e->next = g_names[h];
         g_names[h] = e;
@@ -166,10 +166,12 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
     /* A file viewed only for now (mg_dvm_dex_open_lazy): its classes' descriptors are copied, one block for all of them. */
     if (d->lazy) {
         for (i = 0; i < d->ncls; i++) pooled += strlen(mg_dvm_dex_type(d, mg_dvm_rd32(d->b + d->cls_off + 32 * i))) + 1;
-        d->names = (char *)mg_dvm_meta_alloc(pooled ? pooled : 1);
+        d->names_size = pooled ? pooled : 1;
+        d->names = (char *)mg_dvm_meta_alloc_kind(d->names_size, DVM_META_POOL);
     }
     mg_dvm_lock();
     if (g_ndexes < (int)MG_COUNT(g_dexes)) g_dexes[g_ndexes++] = d;
+    d->cdef_first = g_ncdefs;
     for (i = 0; i < d->ncls; i++) {
         const char *desc = mg_dvm_dex_type(d, mg_dvm_rd32(d->b + d->cls_off + 32 * i));
         size_t n = strlen(desc);
@@ -186,7 +188,7 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
             const char *mine = mg_dvm_own_desc(d, desc, own, sizeof(own));
             if (mine != desc) {
                 n = strlen(mine);
-                desc = (const char *)memcpy(mg_dvm_meta_alloc(n + 1), mine, n + 1);
+                desc = (const char *)memcpy(mg_dvm_meta_alloc_kind(n + 1, DVM_META_NAME), mine, n + 1);
             }
         }
         name = desc + 1;               /* the name is the descriptor's, between its L and its ; */
@@ -207,8 +209,37 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
             added++;
         }
     }
+    d->cdef_end = g_ncdefs;
     mg_dvm_unlock();
     mg_info("dvm: %s: %u classes (%u new), %u methods, %u strings", d->name, (unsigned)d->ncls, (unsigned)added, (unsigned)d->nmeth, (unsigned)d->nstr);
+}
+
+/*
+ * A DEX file registered by its classes' names alone, viewed now (mg_dvm_dex_ready): the entries it added point at its own
+ * descriptors again, and the copies made while it was not viewed are let go. Every file of Yandex Maps' and Google Play
+ * services' is viewed within seconds of the start, and the copies stayed, some 17 MB of the two. Not the names the
+ * runtime gave a package a file keeps to itself (mg_dvm_own_desc): those are not in the pool.
+ */
+void mg_dvm_classes_viewed(mg_dvm_dex *d)
+{
+    char *pool;
+    size_t size;
+    u32 i;
+    mg_dvm_lock();
+    pool = d->names;
+    size = d->names_size;
+    if (pool && d->b) {
+        for (i = d->cdef_first; i < d->cdef_end && i < g_ncdefs; i++) {
+            cdef *c = &g_cdefs[i];
+            if (c->dex == d && c->desc >= pool && c->desc < pool + size) c->desc = mg_dvm_dex_type(d, mg_dvm_rd32(d->b + d->cls_off + 32 * c->def));
+        }
+        d->names = NULL;
+        d->names_size = 0;
+    } else {
+        pool = NULL;
+    }
+    mg_dvm_unlock();
+    if (pool) mg_dvm_meta_free_kind(pool, size, DVM_META_POOL);
 }
 
 u32 mg_dvm_defined_count(void) { return g_ncdefs; }
@@ -222,7 +253,7 @@ const char *mg_dvm_defined_name(u32 i, mg_dvm_dex **dex)
     if (i >= g_ncdefs) return NULL;
     if (dex) *dex = g_cdefs[i].dex;
     n = strlen(g_cdefs[i].desc);
-    name = (char *)mg_dvm_meta_alloc(n);
+    name = (char *)mg_alloc(n);
     memcpy(name, g_cdefs[i].desc + 1, n - 2);
     interned = mg_dvm_intern(name);
     free(name);
@@ -428,7 +459,7 @@ static mg_dvm_class *load_desc_scope(const char *desc, int scope, link_error *er
         link_fail(err, "java/lang/NoClassDefFoundError", "%s", desc);
         return NULL;
     }
-    name = (char *)mg_dvm_meta_alloc(n);
+    name = (char *)mg_alloc(n);
     memcpy(name, desc + 1, n - 2);
     c = load_class_scope(name, scope, err);
     free(name);
@@ -447,7 +478,7 @@ static bool same_package(const char *a, const char *b)
 
 static mg_dvm_class *link_primitive(const char *name, char letter)
 {
-    mg_dvm_class *c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
+    mg_dvm_class *c = (mg_dvm_class *)mg_dvm_meta_alloc_kind(sizeof(*c), DVM_META_CLASS);
     c->name = mg_dvm_intern(name);
     c->prim = letter;
     c->flags = DVM_ACC_PUBLIC | DVM_ACC_FINAL | DVM_ACC_ABSTRACT;
@@ -470,7 +501,7 @@ static mg_dvm_class *link_array(const char *name, int scope, link_error *err)
         link_fail(err, "java/lang/NoClassDefFoundError", "%s", name);
         return NULL;
     }
-    c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
+    c = (mg_dvm_class *)mg_dvm_meta_alloc_kind(sizeof(*c), DVM_META_CLASS);
     c->name = mg_dvm_intern(name);
     c->scope = component->scope;
     c->component = component;
@@ -483,7 +514,7 @@ static mg_dvm_class *link_array(const char *name, int scope, link_error *err)
     /* Every array is Cloneable and Serializable, where the boot class path has them. */
     cloneable = cdef_find("java/lang/Cloneable") ? load_class("java/lang/Cloneable", err) : NULL;
     serializable = cdef_find("java/io/Serializable") ? load_class("java/io/Serializable", err) : NULL;
-    c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc(sizeof(*c->ifaces) * 2);
+    c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc_kind(sizeof(*c->ifaces) * 2, DVM_META_CLASS);
     if (cloneable) c->ifaces[c->nifaces++] = cloneable;
     if (serializable) c->ifaces[c->nifaces++] = serializable;
     c->state = DVM_CS_INITIALIZED;
@@ -561,7 +592,7 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
     }
     def = d->b + d->cls_off + 32 * cd->def;
     end = d->b + d->size;
-    c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
+    c = (mg_dvm_class *)mg_dvm_meta_alloc_kind(sizeof(*c), DVM_META_CLASS);
     super_idx = mg_dvm_rd32(def + 8);
     ifaces_off = mg_dvm_rd32(def + 12);
     data_off = mg_dvm_rd32(def + 24);
@@ -590,7 +621,7 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
             goto fail;
         }
         n = mg_dvm_rd32(d->b + ifaces_off);
-        c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc(sizeof(*c->ifaces) * (n + 1));
+        c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc_kind(sizeof(*c->ifaces) * (n + 1), DVM_META_CLASS);
         for (j = 0; j < n; j++) {
             char own[512];
             mg_dvm_class *ic = load_desc_scope(mg_dvm_own_desc(d, mg_dvm_dex_type(d, mg_dvm_rd16(d->b + ifaces_off + 4 + 2 * j)), own, sizeof(own)),
@@ -617,10 +648,10 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
             link_fail(err, "java/lang/ClassFormatError", "%s: more members than the file has", name);
             goto fail;
         }
-        c->sfields = (mg_dvm_field *)mg_dvm_meta_alloc(sizeof(mg_dvm_field) * (nsf + 1));
-        c->ifields = (mg_dvm_field *)mg_dvm_meta_alloc(sizeof(mg_dvm_field) * (nif + 1));
-        c->direct = (mg_dvm_method *)mg_dvm_meta_alloc(sizeof(mg_dvm_method) * (ndm + 1));
-        c->virt = (mg_dvm_method *)mg_dvm_meta_alloc(sizeof(mg_dvm_method) * (nvm + 1));
+        c->sfields = (mg_dvm_field *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_field) * (nsf + 1), DVM_META_FIELD);
+        c->ifields = (mg_dvm_field *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_field) * (nif + 1), DVM_META_FIELD);
+        c->direct = (mg_dvm_method *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_method) * (ndm + 1), DVM_META_METHOD);
+        c->virt = (mg_dvm_method *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_method) * (nvm + 1), DVM_META_METHOD);
         for (group = 0; group < 2; group++) {
             u32 n = group ? nif : nsf;
             idx = 0;
@@ -664,7 +695,7 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
             }
         }
     }
-    if (c->nsfields) c->statics = (mg_jvalue *)mg_dvm_meta_alloc(sizeof(mg_jvalue) * (size_t)c->nsfields);
+    if (c->nsfields) c->statics = (mg_jvalue *)mg_dvm_meta_alloc_kind(sizeof(mg_jvalue) * (size_t)c->nsfields, DVM_META_FIELD);
 
     /*
      * The vtable: the superclass's, a method of the same name and signature
@@ -672,7 +703,7 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
      * methods appended.
      */
     inherited = c->super ? c->super->nvtab : 0;
-    c->vtab = (mg_dvm_method **)mg_dvm_meta_alloc(sizeof(*c->vtab) * (size_t)(inherited + c->nvirt + 1));
+    c->vtab = (mg_dvm_method **)mg_dvm_meta_alloc_kind(sizeof(*c->vtab) * (size_t)(inherited + c->nvirt + 1), DVM_META_VTABLE);
     if (inherited) memcpy(c->vtab, c->super->vtab, sizeof(*c->vtab) * (size_t)inherited);
     c->nvtab = inherited;
     for (i = 0; i < c->nvirt; i++) {
@@ -930,7 +961,7 @@ mg_dvm_class *mg_dvm_foreign_class(const char *name, mg_jclass *jc)
     c = loaded(name);
     object = c ? NULL : load_class("java/lang/Object", &err);
     if (!c && object) {
-        c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
+        c = (mg_dvm_class *)mg_dvm_meta_alloc_kind(sizeof(*c), DVM_META_CLASS);
         c->name = mg_dvm_intern(name);
         c->flags = DVM_ACC_PUBLIC;
         c->super = object;
@@ -1072,8 +1103,8 @@ static mg_dvm_method *boot_member(mg_dvm_class *c, const char *name, const char 
         g = i < nmade ? made[i].copy : NULL;
         if (!g) {
             size_t n = strlen(m->shorty);
-            char *shorty = (char *)mg_dvm_meta_alloc(n);
-            g = (mg_dvm_method *)mg_dvm_meta_alloc(sizeof(*g));
+            char *shorty = (char *)mg_dvm_meta_alloc_kind(n, DVM_META_METHOD);
+            g = (mg_dvm_method *)mg_dvm_meta_alloc_kind(sizeof(*g), DVM_META_METHOD);
             *g = *m;
             /* As the object's method is described: its signature, and its parameters but the object. */
             shorty[0] = m->shorty[0];
@@ -1427,17 +1458,17 @@ mg_dvm_class *mg_dvm_make_proxy_class(const char *name, mg_dvm_class *super, mg_
         mg_dvm_unlock();
         return c;
     }
-    c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
+    c = (mg_dvm_class *)mg_dvm_meta_alloc_kind(sizeof(*c), DVM_META_CLASS);
     c->name = mg_dvm_intern(name);
     /* 0x40000 is how libcore's Class.isProxy knows one (Android's kAccClassIsProxy). */
     c->flags = DVM_ACC_PUBLIC | DVM_ACC_FINAL | 0x40000;
     c->super = super;
     c->nslots = super->nslots;
     c->nifaces = nifaces;
-    c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc(sizeof(*c->ifaces) * (size_t)(nifaces + 1));
+    c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc_kind(sizeof(*c->ifaces) * (size_t)(nifaces + 1), DVM_META_CLASS);
     for (i = 0; i < nifaces; i++) c->ifaces[i] = ifaces[i];
     c->ndirect = 1;
-    c->direct = (mg_dvm_method *)mg_dvm_meta_alloc(sizeof(mg_dvm_method) * 2);
+    c->direct = (mg_dvm_method *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_method) * 2, DVM_META_METHOD);
     c->direct[0].cls = c;
     c->direct[0].name = mg_dvm_intern("<init>");
     c->direct[0].sig = mg_dvm_intern(construct_sig);
@@ -1448,9 +1479,9 @@ mg_dvm_class *mg_dvm_make_proxy_class(const char *name, mg_dvm_class *super, mg_
     c->direct[0].native = construct;
     c->direct[0].bound = true;
     c->nvirt = nmethods;
-    c->virt = (mg_dvm_method *)mg_dvm_meta_alloc(sizeof(mg_dvm_method) * (size_t)(nmethods + 1));
+    c->virt = (mg_dvm_method *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_method) * (size_t)(nmethods + 1), DVM_META_METHOD);
     inherited = super->nvtab;
-    c->vtab = (mg_dvm_method **)mg_dvm_meta_alloc(sizeof(*c->vtab) * (size_t)(inherited + nmethods + 1));
+    c->vtab = (mg_dvm_method **)mg_dvm_meta_alloc_kind(sizeof(*c->vtab) * (size_t)(inherited + nmethods + 1), DVM_META_VTABLE);
     memcpy(c->vtab, super->vtab, sizeof(*c->vtab) * (size_t)inherited);
     c->nvtab = inherited;
     for (i = 0; i < nmethods; i++) {

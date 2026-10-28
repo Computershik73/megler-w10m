@@ -260,6 +260,13 @@ void mg_dvm_get_stats(mg_dvm_stats *out)
     }
     out->instructions = g_dvm.steps;
     out->meta_bytes = (u64)(u32)g_dvm.meta_units * 16;
+    out->meta_classes = (u64)(u32)g_dvm.meta_kind_units[DVM_META_CLASS] * 16;
+    out->meta_methods = (u64)(u32)g_dvm.meta_kind_units[DVM_META_METHOD] * 16;
+    out->meta_fields = (u64)(u32)g_dvm.meta_kind_units[DVM_META_FIELD] * 16;
+    out->meta_vtables = (u64)(u32)g_dvm.meta_kind_units[DVM_META_VTABLE] * 16;
+    out->meta_dex = (u64)(u32)g_dvm.meta_kind_units[DVM_META_DEX] * 16;
+    out->meta_names = (u64)(u32)g_dvm.meta_kind_units[DVM_META_NAME] * 16;
+    out->meta_pools = (u64)(u32)g_dvm.meta_kind_units[DVM_META_POOL] * 16;
 }
 
 mg_jobj *mg_dvm_alloc_object(mg_dvm_class *c)

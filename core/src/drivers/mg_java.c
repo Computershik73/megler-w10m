@@ -1459,10 +1459,14 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
             mg_info("java: addresses by kind: the program and its DLLs %u MB, views of files and shared memory %u MB, private memory %u MB "
                     "committed and %u reserved, the most of it in allocations of %s; threads the core started %u, the runtime's %u (%u of "
                     "them attached by native code), their frame stacks %u MB and their host stacks %u MB (the deepest used %u KB); the "
-                    "runtime's tables and classes %u MB; the graphics processor's memory %u MB of %u",
+                    "runtime's tables and classes %u MB (classes %u, methods %u, fields %u, vtables %u, the DEX files' tables %u, names %u, those of "
+                    "files not viewed yet %u); "
+                    "the graphics processor's memory %u MB of %u",
                     (unsigned)k.images_mb, (unsigned)k.views_mb, (unsigned)k.private_mb, (unsigned)k.private_reserved_mb, sizes[0] ? sizes : "none",
                     (unsigned)mg_thread_live_count(), (unsigned)threads, (unsigned)attached, (unsigned)(frames >> 20), (unsigned)(c_reserved >> 20),
-                    (unsigned)(c_peak >> 10), (unsigned)(s.meta_bytes >> 20), (unsigned)gpu_used, (unsigned)gpu_budget);
+                    (unsigned)(c_peak >> 10), (unsigned)(s.meta_bytes >> 20), (unsigned)(s.meta_classes >> 20), (unsigned)(s.meta_methods >> 20),
+                    (unsigned)(s.meta_fields >> 20), (unsigned)(s.meta_vtables >> 20), (unsigned)(s.meta_dex >> 20), (unsigned)(s.meta_names >> 20),
+                    (unsigned)(s.meta_pools >> 20), (unsigned)gpu_used, (unsigned)gpu_budget);
         }
     }
 }

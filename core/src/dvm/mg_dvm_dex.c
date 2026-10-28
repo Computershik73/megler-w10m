@@ -95,7 +95,7 @@ static mg_dvm_dex *dex_header(const u8 *b, size_t size, const char *label, bool 
         mg_warn("dvm: %s: the checksum is wrong, the file is damaged", label);
         return NULL;
     }
-    d = (mg_dvm_dex *)mg_dvm_meta_alloc(sizeof(*d));
+    d = (mg_dvm_dex *)mg_dvm_meta_alloc_kind(sizeof(*d), DVM_META_DEX);
     d->b = b;
     d->size = file_size;
     d->nstr = mg_dvm_rd32(b + 0x38);
@@ -125,11 +125,11 @@ static mg_dvm_dex *dex_header(const u8 *b, size_t size, const char *label, bool 
 /* What each index resolved to, filled as code first uses it. */
 static void dex_caches(mg_dvm_dex *d)
 {
-    d->tcache = (mg_dvm_class *volatile *)mg_dvm_meta_alloc(sizeof(void *) * (d->ntype + 1));
-    d->mcache = (mg_dvm_method *volatile *)mg_dvm_meta_alloc(sizeof(void *) * (d->nmeth + 1));
-    d->fcache = (mg_dvm_field *volatile *)mg_dvm_meta_alloc(sizeof(void *) * (d->nfield + 1));
-    d->scache = (mg_jobj *volatile *)mg_dvm_meta_alloc(sizeof(void *) * (d->nstr + 1));
-    d->pcache = (const char *volatile *)mg_dvm_meta_alloc(sizeof(void *) * (d->nproto + 1));
+    d->tcache = (mg_dvm_class *volatile *)mg_dvm_meta_alloc_kind(sizeof(void *) * (d->ntype + 1), DVM_META_DEX);
+    d->mcache = (mg_dvm_method *volatile *)mg_dvm_meta_alloc_kind(sizeof(void *) * (d->nmeth + 1), DVM_META_DEX);
+    d->fcache = (mg_dvm_field *volatile *)mg_dvm_meta_alloc_kind(sizeof(void *) * (d->nfield + 1), DVM_META_DEX);
+    d->scache = (mg_jobj *volatile *)mg_dvm_meta_alloc_kind(sizeof(void *) * (d->nstr + 1), DVM_META_DEX);
+    d->pcache = (const char *volatile *)mg_dvm_meta_alloc_kind(sizeof(void *) * (d->nproto + 1), DVM_META_DEX);
 }
 
 mg_dvm_dex *mg_dvm_dex_open(const u8 *b, size_t size, const char *label)
@@ -191,6 +191,7 @@ bool mg_dvm_dex_ready(mg_dvm_dex *d)
         dex_caches(d);
         d->b = other->b;
         d->lazy = false;
+        mg_dvm_classes_viewed(d);
         return true;
     }
     f = mg_file_open(d->map_path, MG_O_READ, &err);
@@ -208,6 +209,7 @@ bool mg_dvm_dex_ready(mg_dvm_dex *d)
     dex_caches(d);
     d->b = b;
     d->lazy = false;
+    mg_dvm_classes_viewed(d);
     mg_dvm_dex_viewed(mapped);
     mg_dbg("dvm: %s is viewed now, for the first of its classes", d->name);
     return true;
@@ -257,7 +259,7 @@ const char *mg_dvm_dex_proto_sig(mg_dvm_dex *d, u32 proto)
     /* A Kotlin constructor's signature runs to thousands of characters: measure, then build. */
     len = 2 + strlen(ret);
     for (i = 0; i < count; i++) len += strlen(mg_dvm_dex_type(d, mg_dvm_rd16(d->b + params + 4 + 2 * i)));
-    text = (char *)mg_dvm_meta_alloc(len + 1);
+    text = (char *)mg_alloc(len + 1);
     text[k++] = '(';
     for (i = 0; i < count; i++) {
         const char *t = mg_dvm_dex_type(d, mg_dvm_rd16(d->b + params + 4 + 2 * i));
@@ -327,11 +329,50 @@ int mg_dvm_dex_line(const mg_dvm_method *m, u32 pc)
     return best;
 }
 
-void *mg_dvm_meta_alloc(size_t size)
+/*
+ * Names -- of classes, methods, fields, signatures, each interned once (mg_dvm_intern) -- are many and small and kept for good:
+ * laid end to end in blocks of 256 KB, without the heap's header and rounding of each, and counted by the block. Over an app
+ * like avito they were some 35 MB, a million of them.
+ */
+#define NAME_BLOCK ((size_t)256 << 10)
+static mg_lock g_name_lock = MG_LOCK_INIT;
+static u8 *g_name_at, *g_name_end;
+
+static void *name_alloc(size_t size)
 {
-    mg_atomic_add(&g_dvm.meta_units, (i32)((size + 15) >> 4));
+    u8 *p;
+    size = (size + sizeof(void *) - 1) & ~(sizeof(void *) - 1);
+    mg_lock_acquire(&g_name_lock);
+    if (!g_name_at || (size_t)(g_name_end - g_name_at) < size) {
+        g_name_at = (u8 *)mg_alloc(NAME_BLOCK);
+        g_name_end = g_name_at + NAME_BLOCK;
+        mg_atomic_add(&g_dvm.meta_units, (i32)(NAME_BLOCK >> 4));
+        mg_atomic_add(&g_dvm.meta_kind_units[DVM_META_NAME], (i32)(NAME_BLOCK >> 4));
+    }
+    p = g_name_at;
+    g_name_at += size;
+    mg_lock_release(&g_name_lock);
+    return p;
+}
+
+void mg_dvm_meta_free_kind(void *p, size_t size, int kind)
+{
+    i32 units = (i32)((size + 15) >> 4);
+    mg_atomic_add(&g_dvm.meta_units, -units);
+    mg_atomic_add(&g_dvm.meta_kind_units[kind & 7], -units);
+    free(p);
+}
+
+void *mg_dvm_meta_alloc_kind(size_t size, int kind)
+{
+    i32 units = (i32)((size + 15) >> 4);
+    if (kind == DVM_META_NAME && size <= 1024) return name_alloc(size);
+    mg_atomic_add(&g_dvm.meta_units, units);
+    mg_atomic_add(&g_dvm.meta_kind_units[kind & 7], units);
     return mg_alloc(size);
 }
+
+void *mg_dvm_meta_alloc(size_t size) { return mg_dvm_meta_alloc_kind(size, DVM_META_OTHER); }
 
 bool mg_dvm_method_annotated(const mg_dvm_method *m, const char *descriptor)
 {

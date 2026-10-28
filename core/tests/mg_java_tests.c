@@ -3021,9 +3021,16 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         /* The host (C) stacks the runtime's threads reserve, and the deepest any was seen to use: where the census would. */
         u32 threads = 0, attached = 0;
         u64 frames = 0, c_reserved = 0, c_peak = 0;
+        mg_dvm_stats st;
         mg_dvm_thread_census(&threads, &attached, &frames, &c_reserved, &c_peak);
+        mg_dvm_get_stats(&st);
         say("  threads %u (%u attached), frame stacks %u MB, host stacks %u MB (the deepest used %u KB)",
             (unsigned)threads, (unsigned)attached, (unsigned)(frames >> 20), (unsigned)(c_reserved >> 20), (unsigned)(c_peak >> 10));
+        say("  the runtime's tables and classes %u KB: classes %u, methods %u, fields %u, vtables %u, the DEX files' tables %u, names %u, "
+            "those of files not viewed yet %u (%u classes linked)",
+            (unsigned)(st.meta_bytes >> 10), (unsigned)(st.meta_classes >> 10), (unsigned)(st.meta_methods >> 10), (unsigned)(st.meta_fields >> 10),
+            (unsigned)(st.meta_vtables >> 10), (unsigned)(st.meta_dex >> 10), (unsigned)(st.meta_names >> 10), (unsigned)(st.meta_pools >> 10),
+            (unsigned)st.classes_linked);
     }
     say("%d checks, %d failed", g_checks, g_failed);
     return g_failed;

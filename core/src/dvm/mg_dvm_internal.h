@@ -102,6 +102,8 @@ struct mg_dvm_dex {
     size_t map_size;
     u32 checksum;
     char *names;
+    size_t names_size;
+    u32 cdef_first, cdef_end;          /* the entries of the table of definitions it added, [first, end) */
     /*
      * A package the file keeps to itself ("android/icu/number/", core-libart's), or NULL: its classes in it are registered
      * under megler/libart/ names, and what the file names in that package resolves to them (mg_dvm_own_desc).
@@ -375,6 +377,7 @@ typedef struct mg_dvm_globals {
     u64 steps;
     volatile i32 n_linked, n_initialised, n_interned;
     volatile i32 meta_units;           /* what the tables and classes take, in units of 16 bytes */
+    volatile i32 meta_kind_units[8];   /* the same by kind (DVM_META_*) */
     u64 objects, object_bytes;
 } mg_dvm_globals;
 extern mg_dvm_globals g_dvm;
@@ -639,6 +642,14 @@ void mg_dvm_art_annot_start(void);
 /* mg_dvm_jvm.c: libjavacore.so and libopenjdk.so from <root>/lib, where guest code can run; and libopenjdkjvm.so's functions for them. */
 bool mg_dvm_load_libcore_natives(const char *root);
 
+/* What a piece of the runtime's own memory is for, in mg_dvm_stats. */
+enum { DVM_META_OTHER, DVM_META_CLASS, DVM_META_METHOD, DVM_META_FIELD, DVM_META_VTABLE, DVM_META_DEX, DVM_META_NAME, DVM_META_POOL };
+/* mg_dvm_dex.c: memory kept for good, of a kind (DVM_META_*), counted (mg_dvm_stats.meta_bytes). What is freed again is not this. */
+void *mg_dvm_meta_alloc_kind(size_t size, int kind);
+/* The same given back (a DEX file's pool of class names once the file is viewed): not for the small names, which are kept. */
+void mg_dvm_meta_free_kind(void *p, size_t size, int kind);
+/* mg_dvm_class.c: a lazily registered DEX file viewed now: its classes' entries point at the file's own names again, and its pool goes. */
+void mg_dvm_classes_viewed(mg_dvm_dex *d);
 /* mg_dvm_dex.c: memory for what is kept of DEX files and classes, counted (mg_dvm_stats.meta_bytes). */
 void *mg_dvm_meta_alloc(size_t size);
 

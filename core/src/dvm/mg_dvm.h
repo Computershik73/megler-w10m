@@ -258,6 +258,10 @@ typedef struct mg_dvm_stats {
     u64 objects, object_bytes;         /* allocated; nothing is freed yet */
     u64 instructions;                  /* executed, counted only while a step limit or tracing is on */
     u64 meta_bytes;                    /* what the runtime keeps of DEX files and linked classes (not the files themselves) */
+    /* Of it: the classes themselves (and their interfaces' lists), their methods, their fields (and static values), their
+       vtables, the DEX files' own tables (each index's cache), and names (interned, and the lazily viewed files' pools). */
+    u64 meta_classes, meta_methods, meta_fields, meta_vtables, meta_dex, meta_names;
+    u64 meta_pools;                    /* the class names of DEX files registered and not viewed yet, copied */
     u32 strings_interned;
 } mg_dvm_stats;
 void mg_dvm_get_stats(mg_dvm_stats *out);
