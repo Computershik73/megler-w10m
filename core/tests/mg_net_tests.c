@@ -615,6 +615,26 @@ static void test_udp(void)
     CHECK(N.send(a, "x", 1, 0) == -1 && err() == GE_DESTADDRREQ);
     N.close(a);
     N.close(b);
+    /*
+     * A socket with a peer of its own whose port nobody listens on hears of the refusal: its next receive fails with
+     * ECONNREFUSED, as Linux's does -- a QUIC client then goes over to TCP at once instead of waiting out its handshake.
+     */
+    {
+        u8 sa_c[16];
+        i32 tv[2] = { 2, 0 };
+        int c = N.socket(AF_INET_, SOCK_DGRAM_, 0), d = N.socket(AF_INET_, SOCK_DGRAM_, 0), r, e;
+        CHECK(c >= 0 && d >= 0 && N.bind(d, sa_c, sa4(sa_c, k_lo4, 0)) == 0);
+        len = sizeof(sa_c);
+        CHECK(N.getsockname(d, sa_c, &len) == 0 && port_of(sa_c) > 0);
+        N.close(d);
+        CHECK(N.connect(c, sa_c, 16) == 0 && N.send(c, "x", 1, 0) == 1);
+        CHECK(N.setsockopt(c, SOL_SOCKET_, SO_RCVTIMEO_, tv, sizeof(tv)) == 0);
+        r = N.recv(c, buf, sizeof(buf), 0);
+        e = err();
+        say("  a peer of its own that nobody listens for: the receive %d, errno %d", r, r < 0 ? e : 0);
+        CHECK(r == -1 && e == GE_CONNREFUSED);
+        N.close(c);
+    }
 }
 
 /*

@@ -2448,6 +2448,17 @@ bool mg_sock_connect(mg_sock *k, const mg_sockaddr *a, int *err)
         p.MaxSynRetransmissions = TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS;
         WSAIoctl(k->s, SIO_TCP_INITIAL_RTO, &p, sizeof(p), NULL, 0, &got, NULL, NULL);
     }
+    if (k->type == MG_SOCK_DGRAM) {
+        /*
+         * A datagram socket with a peer of its own hears of that peer's refusal (an ICMP port or host unreachable), as
+         * Linux's does: its next receive or send fails, with ECONNREFUSED (mg_net.c). Without a peer it hears nothing of it,
+         * as on Linux (mg_sock_open turns that off). A QUIC client connects its socket and, told so, goes over to TCP at
+         * once; not told, it waited out its handshake's time (Facebook's start, behind a network that refuses UDP).
+         */
+        BOOL tell = a->family != 0;
+        DWORD got = 0;
+        WSAIoctl(k->s, SIO_UDP_CONNRESET, &tell, sizeof(tell), NULL, 0, &got, NULL, NULL);
+    }
     InterlockedExchange(&k->connect_error, 0);
     InterlockedExchange(&k->connecting, 1);
     if (connect(k->s, (const struct sockaddr *)&ss, len) == 0) {

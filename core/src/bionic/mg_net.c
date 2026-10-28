@@ -336,6 +336,9 @@ static void addr_text(const mg_sockaddr *a, char *out, size_t size)
     }
 }
 
+/* What a traced socket's lines call it. */
+static const char *proto_of(const gsock *s) { return s->type == G_SOCK_STREAM ? "TCP" : "UDP"; }
+
 static void first_connection_began(gsock *s, const mg_sockaddr *a)
 {
     if (mg_net_trace_wanted()) {
@@ -374,8 +377,8 @@ static void open_round(void)
         if (s->last_out) snprintf(out_ago, sizeof(out_ago), ", the last %llu s ago", (unsigned long long)((now - s->last_out) / 1000000000ull));
         if (s->last_in) snprintf(in_ago, sizeof(in_ago), ", the last %llu s ago", (unsigned long long)((now - s->last_in) / 1000000000ull));
         if (s->last_send_err || s->last_recv_err) snprintf(errs, sizeof(errs), "; the last errors: send %d, receive %d", s->last_send_err, s->last_recv_err);
-        mg_net_trace("TCP to %s: open for %llu s; sent %llu bytes in %u calls%s; received %llu bytes in %u calls%s%s; %u reads or writes would have blocked%s",
-                     s->trace_to, (unsigned long long)((now - s->io_from) / 1000000000ull), (unsigned long long)s->sent, s->sends, out_ago,
+        mg_net_trace("%s to %s: open for %llu s; sent %llu bytes in %u calls%s; received %llu bytes in %u calls%s%s; %u reads or writes would have blocked%s",
+                     proto_of(s), s->trace_to, (unsigned long long)((now - s->io_from) / 1000000000ull), (unsigned long long)s->sent, s->sends, out_ago,
                      (unsigned long long)s->received, s->recvs, in_ago, s->got_end ? ", then the other end's close" : "", s->would_block, errs);
     }
     mg_lock_release(&g_open_lock);
@@ -452,7 +455,7 @@ static void io_note(gsock *s, bool sending, const void *buf, i32 r)
             text[i] = c >= 32 && c < 127 ? (char)c : '.';
         }
         text[n] = 0;
-        mg_net_trace("TCP to %s: the first bytes %s, %d of them, %llu ms after it was made: %s", s->trace_to, sending ? "sent" : "received", (int)r,
+        mg_net_trace("%s to %s: the first bytes %s, %d of them, %llu ms after it was made: %s", proto_of(s), s->trace_to, sending ? "sent" : "received", (int)r,
                      (unsigned long long)((mg_time_monotonic_ns() - s->io_from) / 1000000), text);
     }
     if (r > 0) {
@@ -502,9 +505,9 @@ static void io_said(gsock *s)
     if (s->last_send_err) snprintf(send_err, sizeof(send_err), ", the last send's error %d", s->last_send_err);
     if (s->last_recv_err) snprintf(recv_err, sizeof(recv_err), ", the last receive's error %d", s->last_recv_err);
     if (s->io_first_in) snprintf(first_in, sizeof(first_in), ", %llu ms after it was made", (unsigned long long)((s->io_first_in - s->io_from) / 1000000));
-    mg_net_trace("TCP to %s: closed by the app after %llu ms; sent %llu bytes in %u calls (first %s)%s; received %llu bytes in %u calls (first %s%s)%s%s; "
+    mg_net_trace("%s to %s: closed by the app after %llu ms; sent %llu bytes in %u calls (first %s)%s; received %llu bytes in %u calls (first %s%s)%s%s; "
                  "%u reads or writes would have blocked, %u ran out of SO_RCVTIMEO/SO_SNDTIMEO (%llu/%llu ms)",
-                 s->trace_to, (unsigned long long)((now - s->io_from) / 1000000), (unsigned long long)s->sent, s->sends, out, send_err,
+                 proto_of(s), s->trace_to, (unsigned long long)((now - s->io_from) / 1000000), (unsigned long long)s->sent, s->sends, out, send_err,
                  (unsigned long long)s->received, s->recvs, in, first_in, s->got_end ? ", then the other end's close" : "", recv_err,
                  s->would_block, s->timeouts, (unsigned long long)(s->rcvtimeo / 1000000), (unsigned long long)(s->sndtimeo / 1000000));
 }
@@ -1095,6 +1098,8 @@ static i32 host_recv(gsock *s, u8 *buf, u32 n, int flags, mg_sockaddr *from, int
     for (;;) {
         int err = 0, e;
         i32 r = mg_sock_recv(s->host, buf + done, n - done, host_flags(flags), stream ? NULL : from, said, &err);
+        /* (A datagram socket's peer refused what it was sent: Linux says ECONNREFUSED, Windows WSAECONNRESET.) */
+        if (r < 0 && !stream && err == MG_NE_CONNRESET) err = MG_NE_CONNREFUSED;
         if (r >= 0) {
             if (!stream || r == 0) return (i32)(done + (u32)r);
             done += (u32)r;
@@ -1491,6 +1496,14 @@ static int g_connect(int fd, const void *sa, u32 len)
         /* A datagram socket: its peer is set, or with AF_UNSPEC taken away. */
         if (a.family && (e = addr_fits(s, &a, true)) != 0) goto out;
         if (!mg_sock_connect(s->host, &a, &err)) e = gerr(err);
+        else if (a.family && mg_net_trace_wanted() && !s->io_traced) {
+            /* trace-net: a datagram socket with a peer of its own (QUIC's) is followed as a connection is. */
+            addr_text(&a, s->trace_to, sizeof(s->trace_to));
+            s->io_traced = true;
+            s->io_from = mg_time_monotonic_ns();
+            open_add(s);
+            mg_net_trace("UDP to %s: a peer of its own", s->trace_to);
+        }
         goto out;
     }
     if (s->state == S_CONNECTING) {
