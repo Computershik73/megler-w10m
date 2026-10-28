@@ -6,6 +6,10 @@
 // Why. On Android a ProgressBar always has one, from its style (progress_medium_material, an animated vector), and apps
 // colour it: Instagram's follow button on a profile does getIndeterminateDrawable().setColorFilter(...) and throws
 // "Required value was null" when there is none (FollowChainingButton.A01), which ended the app on opening one's profile.
+// But a subclass that overrides getIndeterminateDrawable gets null, as Android, whose style for it gives none, has it:
+// Material's progress indicators override it to cast what it gives to their own drawable, and Organic Maps'
+// LinearProgressIndicator ended on "ClassCastException: ProgressBar$Spinner" as it was made. And a drawable the app gives
+// that animates itself (Animatable: Material's) is drawn as it is, not turned as the original turns one that does not.
 // Everything else is the original's, unchanged.
 package android.widget;
 
@@ -71,7 +75,23 @@ public class ProgressBar extends View {
     private float dp(float v) { return v * getResources().getDisplayMetrics().density; }
     public synchronized boolean isIndeterminate() { return mIndeterminate; }
     public synchronized void setIndeterminate(boolean i) { if ((!mOnlyIndeterminate || i) && i != mIndeterminate) { mIndeterminate = i; if (i) startAnimation(); else stopAnimation(); invalidate(); } }
-    public Drawable getIndeterminateDrawable() { return mIndeterminateDrawable; }
+    public Drawable getIndeterminateDrawable() { return mIndeterminateDrawable == mSpinner && overridesIndeterminate() ? null : mIndeterminateDrawable; }
+    private static final java.util.Map<Class<?>, Boolean> sOverrides = new java.util.concurrent.ConcurrentHashMap<>();
+    /* Whether this view's class overrides getIndeterminateDrawable (a covariant override's bridge method counts). */
+    private boolean overridesIndeterminate() {
+        Class<?> k = getClass();
+        if (k == ProgressBar.class) return false;
+        Boolean o = sOverrides.get(k);
+        if (o == null) {
+            try {
+                o = k.getMethod("getIndeterminateDrawable").getDeclaringClass() != ProgressBar.class;
+            } catch (NoSuchMethodException e) {
+                o = false;
+            }
+            sOverrides.put(k, o);
+        }
+        return o;
+    }
     public void setIndeterminateDrawable(Drawable d) { if (mIndeterminateDrawable != null) mIndeterminateDrawable.setCallback(null); mAppIndeterminate = d != null && d != mSpinner; mIndeterminateDrawable = d != null ? d : mSpinner; mIndeterminateDrawable.setCallback(this); requestLayout(); invalidate(); }
     public void setIndeterminateDrawableTiled(Drawable d) { setIndeterminateDrawable(d); }
     public void setIndeterminateTintList(ColorStateList t) { mIndeterminateTint = t; invalidate(); }
@@ -172,7 +192,7 @@ public class ProgressBar extends View {
         long t = android.os.SystemClock.uptimeMillis() - mStart;
         if (mIndeterminate) {
             if (mIndeterminateDrawable != null && mAppIndeterminate) {
-                if (mIndeterminateDrawable instanceof AnimationDrawable) mIndeterminateDrawable.draw(c);
+                if (mIndeterminateDrawable instanceof AnimationDrawable || mIndeterminateDrawable instanceof Animatable) mIndeterminateDrawable.draw(c);
                 else { c.rotate((t % 1333) / 1333f * 360f, w / 2f, h / 2f); mIndeterminateDrawable.draw(c); }
             } else drawSpinner(c, w, h, t);
             if (mAnimating) postInvalidateOnAnimation();

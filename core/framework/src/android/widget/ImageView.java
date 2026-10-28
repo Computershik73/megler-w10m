@@ -186,9 +186,16 @@ public class ImageView extends View {
         default: return size;
         }
     }
-    @Override protected boolean setFrame(int l, int t, int r, int b) { boolean changed = super.setFrame(l, t, r, b); configureBounds(); return changed; }
+    /*
+     * Whether the view has been laid out once: as Android's, the bounds and the draw matrix are worked out only from then on.
+     * Before, a matrix set before the first layout (Material's FloatingActionButton sets its icon's as it is made, then makes
+     * its scale type MATRIX) was turned by FIT_CENTER, against a view of no size, into a matrix of nothing -- the matrix it
+     * shares -- and the button drew no icon (Organic Maps' map buttons).
+     */
+    private boolean mHaveFrame;
+    @Override protected boolean setFrame(int l, int t, int r, int b) { boolean changed = super.setFrame(l, t, r, b); mHaveFrame = true; configureBounds(); return changed; }
     private void configureBounds() {
-        if (mDrawable == null) return;
+        if (mDrawable == null || !mHaveFrame) return;
         int dwidth = mDrawableWidth, dheight = mDrawableHeight;
         int vwidth = getWidth() - getPaddingLeft() - getPaddingRight(), vheight = getHeight() - getPaddingTop() - getPaddingBottom();
         boolean fits = (dwidth < 0 || vwidth == dwidth) && (dheight < 0 || vheight == dheight);

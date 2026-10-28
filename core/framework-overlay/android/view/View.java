@@ -539,6 +539,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public boolean isVerticalFadingEdgeEnabled() { return false; }
     public boolean isHorizontalFadingEdgeEnabled() { return false; }
     public int getVerticalFadingEdgeLength() { return 0; }
+    /** The colour a view says it is drawn solid in, for its fading edges: none (0), as Android's View answers unless overridden. */
+    public int getSolidColor() { return 0; }
     public int getHorizontalFadingEdgeLength() { return 0; }
     protected float getTopFadingEdgeStrength() { return 0; }
     protected float getBottomFadingEdgeStrength() { return 0; }

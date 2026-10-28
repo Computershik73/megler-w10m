@@ -25,7 +25,11 @@
 // goes to the scrap heap after it. The difference was felt: Apktool M's file list starts a task in getView that sets a row's
 // size text when it ends; the text asked for a layout, the layout bound every row again, every row started its task again --
 // a layout and a picture every frame, the main thread never idle and the heap growing by megabytes a second, on the phone
-// until it ran out of memory. Everything else is the original's, unchanged.
+// until it ran out of memory.
+//
+// And in onInterceptTouchEvent, which no longer unpresses the row under the pointer when it goes up: a row that is clickable
+// itself (its own OnClickListener) has the event after the list, and clicks only while pressed. Play Store's drawer's rows
+// never clicked, nor any list's row of that kind. Everything else is the original's, unchanged.
 package android.widget;
 
 import android.content.Context;
@@ -444,7 +448,9 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Fi
             }
             break;
         case MotionEvent.ACTION_CANCEL: case MotionEvent.ACTION_UP:
-            mTouchMode = TOUCH_MODE_REST; mActivePointerId = -1; recycleVelocityTracker(); clearPressed(); break;
+            // The row under the pointer keeps its pressed state: a row of its own that is clickable (one with an OnClickListener)
+            // has this event after this, and clicks only if still pressed. Android's list does not touch it here either.
+            mTouchMode = TOUCH_MODE_REST; mActivePointerId = -1; recycleVelocityTracker(); break;
         }
         return false;
     }
