@@ -1774,6 +1774,14 @@ static void natives_windows(const int tap_at[2])
     snprintf(trace, sizeof(trace), "; at %d,%d %dx%d, said ", full[0], full[1], full[2], full[3]);
     CHECK(line >= 0 && strstr(line_at(line), trace) && strstr(line_at(line), GL.refuse ? " s ago, composed here; " : " s ago, composed by the shell; ")
           && strstr(line_at(line), "; the views' alpha over it ") && strstr(line_at(line), " s ago: 00 00 00 00 / 00 00 00 00 / 00 00 00 00 / 00 00 00 00"));
+    /*
+     * Its EGL surface destroyed by the main thread while a thread of the library's had it current (HERE WeGo's map): the destroy
+     * taken, the surface still that thread's to query, draw on and swap, and ended only when it let it go.
+     */
+    snprintf(text, sizeof(text), "I/NativesWindow: texture-egl-elsewhere made=1 destroyed=1 queried=1 width=%d swapped=1 error=0x3000 released=1", texture[2]);
+    CHECK(find_line(text, 0) >= 0);
+    CHECK(find_line("egl: a window surface destroyed while it is current on a thread: ended once no thread has it current", 0) >= 0);
+    CHECK(find_line("egl: a window surface destroyed while it was current is ended now that no thread has it current", 0) >= 0);
     /* The texture drawn once with EGL from the main thread: read back, turned the right way up, given to the texture. */
     snprintf(text, sizeof(text), "I/NativesWindow: texture-egl surface %dx%d made=1 swapped=1 error=0x3000", texture[2], texture[3]);
     CHECK(find_line(text, 0) >= 0);

@@ -94,6 +94,7 @@ final class WindowTest {
         acted = said;
         Log.i(T, "tapped after phase " + acted);
         if (acted == 1) {
+            if (textureSurface != null) Log.i(T, "texture-egl-elsewhere " + Windows.textureEglElsewhere(textureSurface));
             if (textureSurface != null) Log.i(T, "texture-egl " + Windows.textureEgl(textureSurface));
             fullWidth = eglView.getWidth();
             fullHeight = eglView.getHeight();

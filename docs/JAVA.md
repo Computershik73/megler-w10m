@@ -2668,8 +2668,17 @@ and destroys the old. `eglMakeCurrent`, `eglQuerySurface`,
 `eglSurfaceAttrib`, `eglSwapBuffers` and `eglDestroySurface` are given the
 pbuffer for the app's surface, and `eglGetCurrentSurface` gives the app's
 back. A swap of a surface that is not current on the calling thread is
-`EGL_BAD_SURFACE`, as EGL has it. A window with an EGL surface on it cannot be
-locked, and a locked one gets no EGL surface, as on Android.
+`EGL_BAD_SURFACE`, as EGL has it. A surface destroyed while it is current on
+some thread ends only when the last thread that has it current lets it go, as
+EGL defers it: the layer counts the threads each surface is current on. HERE
+WeGo's UI thread destroys its map's surface and makes a new one while its
+render thread is still drawing a frame in the old; ended at once, the
+pbuffer and the shell's texture went from under that frame and ANGLE faulted
+(`Framebuffer11::markAttachmentsDirty`, packages 498 and 499). The natives
+app's `texture-egl-elsewhere` destroys a surface another thread has current,
+which then queries, draws on and swaps it before it lets it go. A window with
+an EGL surface on it cannot be locked, and a locked one gets no EGL surface,
+as on Android.
 
 **In software.** `ANativeWindow_lock` gives a buffer of the window's own
 memory, `RGBA_8888`, `RGBX_8888` or `RGB_565` as the window's format says, the

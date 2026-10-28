@@ -24,4 +24,6 @@ final class Windows {
     static native String textureLock(Surface surface);
     /** The same drawn once with EGL on the calling thread. What the surface was. */
     static native String textureEgl(Surface surface);
+    /** Its EGL surface destroyed by the calling thread while another thread has it current and then draws on it. What each step gave. */
+    static native String textureEglElsewhere(Surface surface);
 }

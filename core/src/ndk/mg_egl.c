@@ -480,6 +480,8 @@ typedef struct surface {
     int width, height;
     bool from_host;                    /* its texture is the shell's */
     void *native;                      /* the window's own surface (mg_nwindow_ops.egl_create); NULL for one of EGL's */
+    int current;                       /* a window's own: the threads it is current on, as draw and as read, each counted */
+    bool doomed;                       /* eglDestroySurface came while it was current: it ends once the last thread lets it go */
 } surface;
 static surface g_surfaces[16];
 static mg_lock g_surfaces_lock = MG_LOCK_INIT;
@@ -883,20 +885,62 @@ static EGLSurface g_eglCreateWindowSurface(EGLDisplay d, EGLConfig config, mg_nw
     }
 }
 
+/* A window's own surface ended: with the window's part of it, and the entry is free again. */
+static void window_surface_end(surface *w)
+{
+    mg_nwindow *window = w->window;
+    void *native = w->native;
+    free_entry(w);
+    window->ops->egl_destroy(native);
+    mg_nwindow_release(window);
+}
+
+/*
+ * A window's own surface made current on the calling thread, or no longer: counted, and one that eglDestroySurface was
+ * asked to end while it was current somewhere ends when the last thread lets it go. EGL defers it so, and Android's does:
+ * HERE WeGo's UI thread destroys its map's surface and makes a new one while its render thread is still drawing a frame in
+ * the old one, which it makes current again only after. Ended at once, the surface's texture and EGL's own went from under
+ * that frame, and ANGLE ended the app (Framebuffer11::markAttachmentsDirty at address 4, packages 498 and 499).
+ */
+static void surface_hold(surface *s)
+{
+    if (!s) return;
+    mg_lock_acquire(&g_surfaces_lock);
+    s->current++;
+    mg_lock_release(&g_surfaces_lock);
+}
+
+static void surface_let_go(surface *s)
+{
+    bool end;
+    if (!s) return;
+    mg_lock_acquire(&g_surfaces_lock);
+    if (s->current > 0) s->current--;
+    end = s->current == 0 && s->doomed && s->native;
+    mg_lock_release(&g_surfaces_lock);
+    if (end) {
+        mg_info("egl: a window surface destroyed while it was current is ended now that no thread has it current");
+        window_surface_end(s);
+    }
+}
+
 static EGLBoolean g_eglDestroySurface(EGLDisplay d, EGLSurface handle)
 {
     fn_destroy_surface real = A(fn_destroy_surface, "eglDestroySurface");
     surface *w = window_surface(handle), *s;
     EGLBoolean ok;
     if (w) {
-        /* A window's own: it ends with the window's part of it, and the entry is free again. */
-        mg_nwindow *window = w->window;
-        void *native = w->native;
-        if (t_draw == w) t_draw = NULL;
-        if (t_read == w) t_read = NULL;
-        free_entry(w);
-        window->ops->egl_destroy(native);
-        mg_nwindow_release(window);
+        bool later;
+        mg_lock_acquire(&g_surfaces_lock);
+        later = w->current > 0;
+        if (later) w->doomed = true;
+        mg_lock_release(&g_surfaces_lock);
+        if (later) {
+            static volatile i32 said;
+            if (mg_atomic_add(&said, 1) < 10) mg_info("egl: a window surface destroyed while it is current on a thread: ended once no thread has it current, as EGL has it");
+            return 1;
+        }
+        window_surface_end(w);
         return 1;
     }
     s = surface_of(handle);
@@ -1067,8 +1111,13 @@ static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface rea
     if (!real) return 0;
     ok = real(d, wd ? window_real(wd, NULL, NULL) : draw, wr ? window_real(wr, NULL, NULL) : read, ctx);
     if (ok) {
+        surface *was_draw = t_draw, *was_read = t_read;
         t_draw = ctx ? wd : NULL;
         t_read = ctx ? wr : NULL;
+        surface_hold(t_draw);
+        surface_hold(t_read);
+        surface_let_go(was_draw);
+        surface_let_go(was_read);
         if (ctx && gl_errors_wanted()) gl_debug_context(ctx);
     } else {
         refused(wd || wr ? "eglMakeCurrent of a window surface on a view's window" : "eglMakeCurrent", &said);
