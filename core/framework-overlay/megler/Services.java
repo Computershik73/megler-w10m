@@ -156,6 +156,7 @@ public final class Services {
         case Context.STORAGE_SERVICE: return new android.os.storage.StorageManager();
         case Context.TELEPHONY_SERVICE: return new android.telephony.TelephonyManager();
         case Context.JOB_SCHEDULER_SERVICE: return new android.app.job.JobScheduler.Impl();
+        case Context.ROLLBACK_SERVICE: return new android.content.rollback.RollbackManager();
         case Context.APP_OPS_SERVICE: return new android.app.AppOpsManager();
         case Context.INPUT_SERVICE: return new android.hardware.input.InputManager();
         default: return null;

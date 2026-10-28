@@ -230,7 +230,7 @@ public class UserManager {
     public int getCredentialOwnerProfile(int p0) { return 0; }
     public int getCurrentAllowedNumberOfUsers(java.lang.String p0) { return 0; }
     public android.os.Bundle getDefaultGuestRestrictions() { return (android.os.Bundle) meglerFill.get("DefaultGuestRestrictions"); }
-    public int[] getEnabledProfileIds(int p0) { return null; }
+    public int[] getEnabledProfileIds(int p0) { return new int[] { p0 }; }
     public java.util.List getEnabledProfiles() { return new java.util.ArrayList(); }
     public java.util.List getEnabledProfiles(int p0) { return new java.util.ArrayList(); }
     public java.util.List getGuestUsers() { return new java.util.ArrayList(); }
@@ -241,9 +241,9 @@ public class UserManager {
     public android.content.pm.UserInfo getPrimaryUser() { return null; }
     public int getProcessUserId() { return 0; }
     public java.lang.String getProfileAccessibilityString(int p0) { return null; }
-    public int[] getProfileIds(int p0, boolean p1) { return null; }
-    public int[] getProfileIdsExcludingHidden(int p0, boolean p1) { return null; }
-    public int[] getProfileIdsWithDisabled(int p0) { return null; }
+    public int[] getProfileIds(int p0, boolean p1) { return new int[] { p0 }; }
+    public int[] getProfileIdsExcludingHidden(int p0, boolean p1) { return new int[] { p0 }; }
+    public int[] getProfileIdsWithDisabled(int p0) { return new int[] { p0 }; }
     public java.lang.String getProfileLabel() { return null; }
     public android.content.pm.UserInfo getProfileParent(int p0) { return null; }
     public android.os.UserHandle getProfileParent(android.os.UserHandle p0) { return null; }
@@ -255,7 +255,8 @@ public class UserManager {
     public java.lang.String getSeedAccountName() { return null; }
     public android.os.PersistableBundle getSeedAccountOptions() { return null; }
     public java.lang.String getSeedAccountType() { return null; }
-    public long[] getSerialNumbersOfUsers(boolean p0) { return null; }
+    /** The phone's one user, 0, whose serial number is 0 (Play Store counts them before it installs). */
+    public long[] getSerialNumbersOfUsers(boolean p0) { return new long[] { 0 }; }
     public java.lang.String getUserAccount(int p0) { return null; }
     public android.graphics.drawable.Drawable getUserBadge() { return null; }
     public int getUserBadgeColor(int p0) { return 0; }
@@ -264,13 +265,13 @@ public class UserManager {
     public int getUserBadgeResId(int p0) { return 0; }
     public int getUserCount() { return 0; }
     public long getUserCreationTime(android.os.UserHandle p0) { return 0L; }
-    public android.os.UserHandle getUserForSerialNumber(long p0) { return null; }
+    public android.os.UserHandle getUserForSerialNumber(long p0) { return p0 == 0 ? UserHandle.getUserHandleForUid(0) : null; }
     public int getUserHandle(int p0) { return 0; }
     public java.util.List getUserHandles(boolean p0) { return new java.util.ArrayList(); }
     public android.graphics.Bitmap getUserIcon() { return (android.graphics.Bitmap) meglerFill.get("UserIcon"); }
     public android.graphics.Bitmap getUserIcon(int p0) { return null; }
     public int getUserIconBadgeResId(int p0) { return 0; }
-    public android.content.pm.UserInfo getUserInfo(int p0) { return null; }
+    public android.content.pm.UserInfo getUserInfo(int p0) { return p0 == 0 ? new android.content.pm.UserInfo(0) : null; }
     public int getUserLogoutability(int p0) { return 0; }
     public int getUserRemovability(int p0) { return 0; }
     public int getUserRestrictionSource(java.lang.String p0, android.os.UserHandle p1) { return 0; }
@@ -283,9 +284,9 @@ public class UserManager {
     public int getUserSwitchability(android.os.UserHandle p0) { return 0; }
     public java.lang.String getUserType() { return null; }
     public long getUserUnlockRealtime() { return 0L; }
-    public java.util.List getUsers() { return new java.util.ArrayList(); }
-    public java.util.List getUsers(boolean p0) { return new java.util.ArrayList(); }
-    public java.util.List getUsers(boolean p0, boolean p1, boolean p2) { return new java.util.ArrayList(); }
+    public java.util.List getUsers() { return java.util.Collections.singletonList(new android.content.pm.UserInfo(0)); }
+    public java.util.List getUsers(boolean p0) { return getUsers(); }
+    public java.util.List getUsers(boolean p0, boolean p1, boolean p2) { return getUsers(); }
     public java.util.Set getVisibleUsers() { return new java.util.HashSet(); }
     public boolean hasBadge() { return false; }
     public boolean hasBadge(int p0) { return false; }

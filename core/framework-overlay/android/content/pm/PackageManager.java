@@ -367,6 +367,8 @@ public class PackageManager {
     public boolean canRequestPackageInstalls() { return true; }
     private final PackageInstaller meglerInstaller = new PackageInstaller();
     public PackageInstaller getPackageInstaller() { return meglerInstaller; }
+    /** The ART manager (a system API): no runtime profiles here (android.content.pm.dex.ArtManager); Play Store's profile job asks. */
+    public android.content.pm.dex.ArtManager getArtManager() { return new android.content.pm.dex.ArtManager(); }
     public android.content.pm.ModuleInfo getModuleInfo(String pkg, int flags) throws NameNotFoundException { throw new NameNotFoundException(pkg); }
     public List<SharedLibraryInfo> getSharedLibraries(int flags) { return new ArrayList<>(); }
     public boolean isPackageSuspended() { return false; }
