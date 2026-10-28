@@ -1,0 +1,22 @@
+    // Megler: Java 9's two default methods, which Android 14's Checksum has. Code built for it calls them through the
+    // interface, and java.util.zip.CRC32C (added beside this) is one of its implementations.
+    default void update(byte[] b) {
+        update(b, 0, b.length);
+    }
+
+    default void update(java.nio.ByteBuffer buffer) {
+        int pos = buffer.position(), limit = buffer.limit();
+        if (pos > limit) return;
+        if (buffer.hasArray()) {
+            update(buffer.array(), buffer.arrayOffset() + pos, limit - pos);
+        } else {
+            byte[] chunk = new byte[Math.min(limit - pos, 4096)];
+            while (pos < limit) {
+                int n = Math.min(chunk.length, limit - pos);
+                buffer.get(chunk, 0, n);
+                update(chunk, 0, n);
+                pos += n;
+            }
+        }
+        buffer.position(limit);
+    }
