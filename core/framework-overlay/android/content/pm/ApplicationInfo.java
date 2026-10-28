@@ -45,7 +45,7 @@ public class ApplicationInfo extends PackageItemInfo implements android.os.Parce
             megler.Manifest.read();
             ApplicationInfo a = new ApplicationInfo();
             a.packageName = a.processName = megler.Native.packageName();
-            a.dataDir = a.deviceProtectedDataDir = megler.Native.dataDir();
+            a.dataDir = a.deviceProtectedDataDir = a.credentialProtectedDataDir = megler.Native.dataDir();
             a.sourceDir = a.publicSourceDir = megler.Native.apkPath();
             // the splits, as Android lists them: SoLoader and Play's libraries look for native code and assets in them
             String[] sp = megler.Native.splitPaths();

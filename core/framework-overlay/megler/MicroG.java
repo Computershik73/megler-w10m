@@ -83,8 +83,18 @@ public final class MicroG {
             String action = i.getAction();
             if (action == null || action.startsWith("android.") || Manifest.resolve(i) != null) return null;
         } else if (!GooglePackages.GMS.equals(pkg)) return null;
-        Manifest.Component c = Manifest.resolveIn(g.activities, i);
-        return c != null && c.enabled ? c : null;
+        java.util.ArrayList<Manifest.Component> on = new java.util.ArrayList<>();
+        for (Manifest.Component c : g.activities) if (enabled(c)) on.add(c);
+        return Manifest.resolveIn(on, i);
+    }
+    /* Whether one of GmsCore's components is enabled: as GmsCore set it while it ran (PackageManager.setComponentEnabledSetting,
+       which the app's package manager keeps), else as its manifest says. GmsCore enables a module's activities when it sets
+       the module up, and its manifest has them off: its account settings (SettingsLoaderActivity, VIEW_SETTINGS) went to
+       GmsCore's own package, which showed an empty screen, where it is an activity of GmsCore's hosted here. */
+    static boolean enabled(Manifest.Component c) {
+        int s = ContextImpl.app().getPackageManager().getComponentEnabledSetting(new android.content.ComponentName(GooglePackages.GMS, c.name));
+        return s == android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            || (s == android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && c.enabled);
     }
     /** Whether a component is one of GmsCore's activities (activity), which run in its scope here. */
     public static boolean hosts(Manifest.Component c) { MicroG g = get(); return g != null && c != null && g.activities.contains(c); }
@@ -141,6 +151,11 @@ public final class MicroG {
         // for its private files too. Where there is none, it is this app's own.
         File shared = new File(SHARED);
         a.dataDir = shared.isDirectory() ? new File(shared, GooglePackages.GMS).getPath() : new File(Native.dataDir(), "megler-services/" + GooglePackages.GMS).getPath();
+        // And its two storages' folders, as Android names them: the device protected one is where its contexts keep it
+        // (PackageContext.getDataDir). GmsCore's DataDirPermissionsHelper makes a File of each when the phone has started, and with null
+        // its executor's thread ended on a NullPointerException.
+        a.credentialProtectedDataDir = a.dataDir;
+        a.deviceProtectedDataDir = new File(a.dataDir, "device_protected").getPath();
         a.nativeLibraryDir = APK + "!/lib/armeabi-v7a";
         a.enabled = true; a.uid = android.os.Process.myUid();
         a.flags = ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_INSTALLED | ApplicationInfo.FLAG_HAS_CODE;
@@ -201,6 +216,7 @@ public final class MicroG {
                 else if (key != null && p.getAttributeValue(NS, "value") != null) current.info.metaData.putString(key, p.getAttributeValue(NS, "value"));
             } else if ((current != null || receiver != null) && "intent-filter".equals(tag)) {
                 filter = new IntentFilter(); (current != null ? current.filters : receiver.filters).add(filter);
+                filter.setPriority(p.getAttributeIntValue(NS, "priority", 0));
             } else if (filter != null && "action".equals(tag)) filter.addAction(p.getAttributeValue(NS, "name"));
             else if (filter != null && "category".equals(tag)) filter.addCategory(p.getAttributeValue(NS, "name"));
         }
@@ -216,18 +232,29 @@ public final class MicroG {
         context = new PackageContext(resources);
         android.util.Log.i("MicroG", "GmsCore " + info.versionName + ": " + services.size() + " services, " + receivers.size() + " receivers, " + providers.size() + " providers");
     }
+    /*
+     * The service an intent names, or the one whose filter takes its action with the highest priority (the first of those
+     * in the manifest), as PackageManager.resolveService chooses. Google Play services 26 declares an action of an API in a
+     * service of its own and again in a Chimera proxy with priority -500 (GmsApiService): the proxy came first in the
+     * manifest for some (Google Pay's), and took them.
+     */
     private Entry find(Intent i, boolean internal) {
         if (i == null || !info.applicationInfo.enabled) return null;
         String pkg = i.getComponent() == null ? i.getPackage() : i.getComponent().getPackageName();
         if (pkg != null && !info.packageName.equals(pkg)) return null;
+        Entry best = null;
+        int bestPriority = Integer.MIN_VALUE;
         for (Entry e : services) {
             if (!e.info.enabled || (!internal && !e.info.exported)) continue;
             if (i.getComponent() != null) { if (e.info.name.equals(i.getComponent().getClassName())) return e; }
             else for (IntentFilter f : e.filters) {
-                if (f.hasAction(i.getAction()) && f.matchCategories(i.getCategories()) == null) return e;
+                if (f.hasAction(i.getAction()) && f.matchCategories(i.getCategories()) == null && f.getPriority() > bestPriority) {
+                    best = e;
+                    bestPriority = f.getPriority();
+                }
             }
         }
-        return null;
+        return best;
     }
     public static ServiceInfo resolve(Intent i) { MicroG g = get(); Entry e = g == null ? null : g.find(i, false); return e == null ? null : e.info; }
     /**
@@ -286,14 +313,35 @@ public final class MicroG {
         } catch (Exception e) { throw new IllegalStateException("Loading GmsCore", e); }
         return loader;
     }
+    /*
+     * A service whose making failed is not made again for a while (RESTART_DELAY_MS), as Android's activity manager waits
+     * before it starts a crashed service again: Google Play services 26's location service failed as it was made (a class
+     * of Android's that was not here), its clients asked for it again at once, and it was made and failed 2500 times in 43
+     * seconds while Play Store started. Meanwhile a start or a binding of it fails at once, said once.
+     */
+    private static final long RESTART_DELAY_MS = 10000;
+    private final HashMap<String, Long> failedAt = new HashMap<>();
+    private final Set<String> boundActions = Collections.synchronizedSet(new HashSet<>());
+    private static final class NotRestartedYet extends IllegalStateException {
+        NotRestartedYet(String name) { super(name + " failed as it was made, and is not made again yet"); }
+    }
     /* (running is changed on the main thread and read by stop and stopSelf on any thread: they lock it.) */
     private Running create(Entry e) throws Exception {
         Running r;
         synchronized (running) { r = running.get(e.info.name); }
         if (r != null) return r;
+        synchronized (failedAt) {
+            Long at = failedAt.get(e.info.name);
+            if (at != null && android.os.SystemClock.uptimeMillis() - at < RESTART_DELAY_MS) throw new NotRestartedYet(e.info.name);
+        }
         application();
-        r = new Running(); r.service = (Service) loader().loadClass(e.info.name).newInstance();
-        r.service.meglerAttach(context); r.service.onCreate();
+        try {
+            r = new Running(); r.service = (Service) loader().loadClass(e.info.name).newInstance();
+            r.service.meglerAttach(context); r.service.onCreate();
+        } catch (Exception | Error t) {
+            synchronized (failedAt) { failedAt.put(e.info.name, android.os.SystemClock.uptimeMillis()); }
+            throw t;
+        }
         synchronized (running) { running.put(e.info.name, r); }
         return r;
     }
@@ -445,9 +493,21 @@ public final class MicroG {
 
     public static boolean bind(Context from, Intent intent, ServiceConnection conn) {
         MicroG g = get(); Entry e = g == null ? null : g.find(intent, GooglePackages.GMS.equals(from.getPackageName()));
-        if (e == null) return false;
+        if (e == null) {
+            // a binding meant for Google Play services that none of its services takes: said, as the caller often says only that
+            // it could not bind (its authenticator: "Unable to bind to auth delegate service")
+            ComponentName c = intent == null ? null : intent.getComponent();
+            if (g != null && c != null && (GooglePackages.GMS.equals(c.getPackageName()) || c.getClassName().startsWith("com.google.android.gms.")))
+                android.util.Log.w("MicroG", "no service of Google Play services binds " + c.flattenToShortString() + " for " + from.getPackageName()
+                    + (g.info.applicationInfo.enabled ? "" : ": the package is disabled"));
+            return false;
+        }
         Intent copy = new Intent(intent);
         Binding pending = new Binding(null, copy);
+        // which service an action is bound to, once each: what a client's "Unexpected service id" (a broker that does not
+        // serve the API asked of it) is to be read against
+        if (intent.getComponent() == null && intent.getAction() != null && g.boundActions.add(intent.getAction()))
+            android.util.Log.i("MicroG", "binding " + intent.getAction() + ": " + e.info.name);
         synchronized (g.bindings) {
             if (g.bindings.containsKey(conn)) return true;
             g.bindings.put(conn, pending);
@@ -457,8 +517,11 @@ public final class MicroG {
             ComponentName name = new ComponentName(GooglePackages.GMS, e.info.name);
             try {
                 Running r = g.create(e);
-                String key = copy.getAction() == null ? "" : copy.getAction();
-                if (!r.binders.containsKey(key)) r.binders.put(key, r.service.onBind(copy));
+                String key = bindKey(copy);
+                if (!r.binders.containsKey(key)) {
+                    r.binders.put(key, r.service.onBind(copy));
+                    android.util.Log.i("MicroG", "bound " + e.info.name + " for " + key);
+                }
                 IBinder binder = r.binders.get(key);
                 synchronized (g.bindings) {
                     if (g.bindings.get(conn) != pending) { g.destroyIfUnused(r); return; }
@@ -466,12 +529,37 @@ public final class MicroG {
                 }
                 if (binder == null) conn.onNullBinding(name); else conn.onServiceConnected(name, binder);
             } catch (Throwable t) {
-                android.util.Log.e("MicroG", "Binding " + e.info.name + " failed", t);
+                if (!(t instanceof NotRestartedYet)) android.util.Log.e("MicroG", "Binding " + e.info.name + " failed", t);
                 synchronized (g.bindings) { if (g.bindings.get(conn) != pending) return; }
                 conn.onNullBinding(name);
             }
         });
         return true;
+    }
+    /*
+     * Which bindings of a service share one binder: those whose intents are the same as Android's Intent.filterEquals has it
+     * (its action, data, type, identifier and categories; not its extras), for each of which Android calls onBind once. They
+     * were told apart by the action alone. GmsCore's container services (GmsApiService, the bound brokers) serve every API of
+     * the modules they hold, one broker each, and the intent a client is given for an API (the chimera provider's dynamic
+     * lookup) is told from another's by more than its action: a broker made for one API was handed to clients of others, and
+     * refused them ("Unexpected service id: 343" to GoogleAuth.API, 40, 41, 270...) -- Google Play services' own sign-in did
+     * not connect, and WhatsApp's search for its Google Drive backup failed until it took too long.
+     */
+    public static String bindKey(Intent i) {
+        StringBuilder k = new StringBuilder();
+        k.append(i.getAction() == null ? "" : i.getAction());
+        if (i.getData() != null) k.append(" data=").append(i.getData());
+        if (i.getType() != null) k.append(" type=").append(i.getType());
+        String id = identifierOf(i);
+        if (id != null) k.append(" id=").append(id);
+        if (i.getCategories() != null && !i.getCategories().isEmpty()) {
+            java.util.TreeSet<String> c = new java.util.TreeSet<>(i.getCategories());
+            k.append(" categories=").append(c);
+        }
+        return k.toString();
+    }
+    private static String identifierOf(Intent i) {
+        try { return (String) Intent.class.getMethod("getIdentifier").invoke(i); } catch (Throwable t) { return null; }
     }
     public static boolean unbind(ServiceConnection conn) {
         MicroG g = get(); if (g == null) return false;
@@ -499,7 +587,7 @@ public final class MicroG {
         Intent copy = new Intent(intent);
         Services.postStart(g.startIds, e.info.name, id -> {
             try { Running r = g.create(e); r.started = true; r.starts++; r.service.onStartCommand(copy, 0, id); }
-            catch (Throwable t) { android.util.Log.e("MicroG", "Starting " + e.info.name + " failed", t); }
+            catch (Throwable t) { if (!(t instanceof NotRestartedYet)) android.util.Log.e("MicroG", "Starting " + e.info.name + " failed", t); }
         });
         return new ComponentName(GooglePackages.GMS, e.info.name);
     }
@@ -575,6 +663,11 @@ public final class MicroG {
         @Override public Context createPackageContext(String pkg, int flags) throws PackageManager.NameNotFoundException {
             return getPackageName().equals(pkg) ? this : super.createPackageContext(pkg, flags);
         }
+        // An attribution context and a split's are this package's still: a wrapper asks its base, which here is the app's, and
+        // Google Play services 26, which makes an attribution context for much of its work, then bound its own services as
+        // the app (Play Store's sign-in: "Unable to bind to auth delegate service").
+        @Override public Context createAttributionContext(String tag) { return this; }
+        @Override public Context createContextForSplit(String split) { return this; }
         @Override public boolean bindService(Intent i, ServiceConnection c, int flags) { return Services.bind(this, i, c); }
         @Override public ComponentName startService(Intent i) { return Services.start(this, i); }
         @Override public boolean stopService(Intent i) { return Services.stop(i); }

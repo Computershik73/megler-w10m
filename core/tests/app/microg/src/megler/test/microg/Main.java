@@ -400,6 +400,22 @@ public class Main extends Activity {
                 check(new Messenger(binder).getBinder() == binder, "Messenger over the registration binder");
                 check(gmsBroadcastContext, "microG receiver got its registration context");
                 check(gmsFlaggedBroadcastContext, "microG flagged receiver got its registration context");
+                // GmsCore's two storages' folders in its ApplicationInfo, as Android gives them (by reflection: hidden in the SDK)
+                android.content.pm.ApplicationInfo gmsInfo = getPackageManager().getApplicationInfo("com.google.android.gms", 0);
+                Object credential = android.content.pm.ApplicationInfo.class.getField("credentialProtectedDataDir").get(gmsInfo);
+                Object device = android.content.pm.ApplicationInfo.class.getField("deviceProtectedDataDir").get(gmsInfo);
+                check(gmsInfo.dataDir.equals(credential) && device != null && !device.equals(credential), "storage folders: " + credential + " / " + device);
+                // bindings of a GmsCore service share a binder as Android's Intent.filterEquals has it: told apart by their data
+                // and categories as well as their action, and not by their extras (megler.MicroG.bindKey, by reflection)
+                java.lang.reflect.Method key = Class.forName("megler.MicroG").getMethod("bindKey", Intent.class);
+                Intent one = new Intent("com.example.API.START").setData(android.net.Uri.parse("chimera-action:one"));
+                Intent two = new Intent("com.example.API.START").setData(android.net.Uri.parse("chimera-action:two"));
+                Intent oneAgain = new Intent(one).putExtra("extra", 1);
+                check(!key.invoke(null, one).equals(key.invoke(null, two)) && key.invoke(null, one).equals(key.invoke(null, oneAgain)),
+                      "binding keys: " + key.invoke(null, one) + " / " + key.invoke(null, two));
+                // the app's uid has the GmsCore it hosts among its packages, as a shared user id has (GmsCore checks it of callers)
+                java.util.List<String> sharing = java.util.Arrays.asList(getPackageManager().getPackagesForUid(android.os.Process.myUid()));
+                check(sharing.contains(getPackageName()) && sharing.contains("com.google.android.gms"), "the app's uid's packages: " + sharing);
                 unbindService(this);
                 done = true;
                 Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources, dynamite modules, accounts, GCM's messenger and receiver context");
