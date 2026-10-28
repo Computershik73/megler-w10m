@@ -82,6 +82,9 @@ public final class ViewRoot implements ViewParent {
     private int mAdjust = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
     private boolean mDumpTimer;
     private boolean mLayoutRequested = true, mFirst = true, mRemoved, mHasFocus = true, mInLayout, mInsetsDirty = true;
+    /* A window of an activity's other than its own (a dialog, a popup) while that activity is stopped: hidden, as Android's
+       window manager hides the windows of a token that is not visible (ownerStopped). */
+    private boolean mOwnerStopped;
     /** What of this window is to be drawn again, in its own coordinates; or all of it. */
     private final Rect mDirty = new Rect();
     private boolean mDirtyAll = true;
@@ -113,8 +116,11 @@ public final class ViewRoot implements ViewParent {
         android.app.Activity owner = lp != null && lp.type == WindowManager.LayoutParams.TYPE_BASE_APPLICATION ? activityOf(v.getContext()) : null;
         if (owner != null) for (int i = 0; i < sRoots.size(); i++) if (activityOf(sRoots.get(i).mView.getContext()) == owner) { at = i; break; }
         boolean under = at < sRoots.size();
+        // A dialog of an activity that is stopped comes up hidden, and shows when the activity is on the screen again.
+        android.app.Activity of = r.ofToken() ? activityOf(v.getContext()) : null;
+        if (of != null && of.meglerWindowsHidden()) { r.mOwnerStopped = true; r.mHasFocus = false; }
         sRoots.add(at, r);
-        if (under) for (int i = at + 1; i < sRoots.size(); i++) if (sRoots.get(i).focusable()) { r.mHasFocus = false; break; }
+        if (under) for (int i = at + 1; i < sRoots.size(); i++) if (sRoots.get(i).focusable() && !sRoots.get(i).mOwnerStopped) { r.mHasFocus = false; break; }
         if (v.getLayoutParams() == null) v.setLayoutParams(r.mLp);
         sFullRedraw = true;
         r.attach();
@@ -200,12 +206,71 @@ public final class ViewRoot implements ViewParent {
         if (hadFocus) {
             for (int i = sRoots.size() - 1; i >= 0; i--) {
                 ViewRoot o = sRoots.get(i);
-                if (o.focusable()) { if (!o.mHasFocus) { o.mHasFocus = true; o.mView.dispatchWindowFocusChanged(true); o.mObserver.meglerWindowFocus(true); } break; }
+                if (o.focusable() && !o.mOwnerStopped) { if (!o.mHasFocus) { o.mHasFocus = true; o.mView.dispatchWindowFocusChanged(true); o.mObserver.meglerWindowFocus(true); } break; }
             }
         }
         scheduleFrame();
     }
     public void setLayoutParams(WindowManager.LayoutParams lp) { mLp.copyFrom(lp); mView.setLayoutParams(mLp); mLayoutRequested = true; sFullRedraw = true; scheduleFrame(); }
+
+    /*
+     * The windows an activity opened besides its own -- its dialogs and popups -- hidden while it is stopped and shown again
+     * when it is on the screen (Activity.meglerStop, makeVisible), as Android hides a token's windows: they are not drawn and
+     * take no touches, keys or focus, and stay attached. They were drawn all the while: WhatsApp's progress dialog of its
+     * phone number screen showed through the screens after it.
+     */
+    public static void ownerStopped(android.app.Activity a, boolean stopped) {
+        boolean any = false;
+        for (ViewRoot r : sRoots) {
+            if (r.mRemoved || r.mOwnerStopped == stopped || !r.ofToken() || activityOf(r.mView.getContext()) != a) continue;
+            r.mOwnerStopped = stopped;
+            r.mView.dispatchWindowVisibilityChanged(stopped ? View.GONE : View.VISIBLE);
+            any = true;
+        }
+        if (!any) return;
+        if (sTouchTarget != null && sTouchTarget.mOwnerStopped) sTouchTarget = null;
+        refocus();
+        sFullRedraw = true;
+        scheduleFrame();
+    }
+
+    /*
+     * The windows an activity that has been destroyed still had besides its own, removed, as Android's
+     * WindowManagerGlobal.closeAll removes them ("has leaked window"); how many. A dialog an activity left showing as it
+     * finished stayed in the list of windows, drawn with whatever came after it: WhatsApp's progress dialog of its phone
+     * number screen.
+     */
+    public static int closeAll(android.app.Activity a) {
+        int n = 0;
+        for (ViewRoot r : new ArrayList<>(sRoots)) {
+            if (r.mRemoved || !r.ofToken() || activityOf(r.mView.getContext()) != a) continue;
+            android.util.Log.w("Megler", "the activity " + a.getClass().getName() + " ended with a window of its still there (Android: it has leaked window "
+                               + r.mView.getClass().getName() + "): removed");
+            r.remove();
+            n++;
+        }
+        return n;
+    }
+
+    /* One of an activity's windows besides its own: a dialog (an application window) or a panel or popup (a sub-window), which
+       go with the activity's token on Android -- not a system window such as a toast, which outlives the activity. */
+    private boolean ofToken() { return mLp.type > WindowManager.LayoutParams.TYPE_BASE_APPLICATION && mLp.type < WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW; }
+
+    /* The window focus where Android's window manager puts it: the top window that can take it and is not hidden. */
+    private static void refocus() {
+        ViewRoot top = null;
+        for (int i = sRoots.size() - 1; i >= 0 && top == null; i--) {
+            ViewRoot r = sRoots.get(i);
+            if (!r.mRemoved && !r.mOwnerStopped && r.focusable()) top = r;
+        }
+        for (ViewRoot r : sRoots) {
+            boolean want = r == top;
+            if (r.mHasFocus == want) continue;
+            r.mHasFocus = want;
+            r.mView.dispatchWindowFocusChanged(want);
+            r.mObserver.meglerWindowFocus(want);
+        }
+    }
     public WindowManager.LayoutParams layoutParams() { return mLp; }
     private boolean focusable() { return (mLp.flags & WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) == 0; }
 
@@ -459,7 +524,7 @@ public final class ViewRoot implements ViewParent {
         Rect part = sPart;
         part.setEmpty();
         for (ViewRoot r : roots) {
-            if (r.mRemoved) continue;
+            if (r.mRemoved || r.mOwnerStopped) continue;
             if (r.mDirtyAll) whole = true;
             else if (!r.mDirty.isEmpty()) { sScratch.set(r.mDirty); sScratch.offset(r.mX, r.mY); part.union(sScratch); }
         }
@@ -553,7 +618,7 @@ public final class ViewRoot implements ViewParent {
         Paint dim = null;
         boolean drew = false;
         for (ViewRoot r : roots) {
-            if (r.mRemoved || r.mView.getVisibility() != View.VISIBLE) continue;
+            if (r.mRemoved || r.mOwnerStopped || r.mView.getVisibility() != View.VISIBLE) continue;
             if ((r.mLp.flags & WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0 && r.mLp.dimAmount > 0) {
                 if (dim == null) dim = new Paint();
                 dim.setColor(Color.argb(Math.round(Math.min(1, r.mLp.dimAmount) * 0.6f * 255), 0, 0, 0));
@@ -587,7 +652,7 @@ public final class ViewRoot implements ViewParent {
             float x = e.getRawX(), y = e.getRawY();
             for (int i = sRoots.size() - 1; i >= 0; i--) {
                 ViewRoot r = sRoots.get(i);
-                if (r.mView.getVisibility() != View.VISIBLE || (r.mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0) continue;
+                if (r.mOwnerStopped || r.mView.getVisibility() != View.VISIBLE || (r.mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0) continue;
                 boolean inside = x >= r.mX && y >= r.mY && x < r.mX + r.mW && y < r.mY + r.mH;
                 boolean modal = (r.mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL) == 0;
                 if (inside || modal) {
@@ -618,7 +683,7 @@ public final class ViewRoot implements ViewParent {
     public static boolean dispatchKey(KeyEvent e) {
         for (int i = sRoots.size() - 1; i >= 0; i--) {
             ViewRoot r = sRoots.get(i);
-            if (!r.focusable() || r.mView.getVisibility() != View.VISIBLE) continue;
+            if (!r.focusable() || r.mOwnerStopped || r.mView.getVisibility() != View.VISIBLE) continue;
             if (r.mView.dispatchKeyEventPreIme(e)) return true;
             return r.mView.dispatchKeyEvent(e);
         }
@@ -627,7 +692,7 @@ public final class ViewRoot implements ViewParent {
     public static boolean dispatchGeneric(MotionEvent e) {
         for (int i = sRoots.size() - 1; i >= 0; i--) {
             ViewRoot r = sRoots.get(i);
-            if (r.mView.getVisibility() != View.VISIBLE) continue;
+            if (r.mOwnerStopped || r.mView.getVisibility() != View.VISIBLE) continue;
             MotionEvent l = MotionEvent.obtain(e);
             l.offsetLocation(-r.mX, -r.mY);
             return r.mView.dispatchGenericMotionEvent(l);
@@ -662,7 +727,7 @@ public final class ViewRoot implements ViewParent {
 
     /** The window touches go to: the top one that takes them (a toast does not). */
     public static ViewRoot topTouchable() {
-        for (int i = sRoots.size() - 1; i >= 0; i--) if ((sRoots.get(i).mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) == 0) return sRoots.get(i);
+        for (int i = sRoots.size() - 1; i >= 0; i--) if ((sRoots.get(i).mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) == 0 && !sRoots.get(i).mOwnerStopped) return sRoots.get(i);
         return null;
     }
     public static ViewRoot top() { return sRoots.isEmpty() ? null : sRoots.get(sRoots.size() - 1); }
@@ -670,7 +735,7 @@ public final class ViewRoot implements ViewParent {
     public static View keyFocus() {
         for (int i = sRoots.size() - 1; i >= 0; i--) {
             ViewRoot r = sRoots.get(i);
-            if (r.focusable() && r.mView.getVisibility() == View.VISIBLE) return r.mFocused;
+            if (r.focusable() && !r.mOwnerStopped && r.mView.getVisibility() == View.VISIBLE) return r.mFocused;
         }
         return null;
     }

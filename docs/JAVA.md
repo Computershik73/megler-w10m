@@ -4390,6 +4390,27 @@ on a looper thread of its own and takes it back with `next()`.
   when the activity started for a result is floating (a dialog's theme),
   Android shows the one under it too; here its window waits as well, since
   a window added later would lie above the dialog.
+  And the managed dialogs: `showDialog` makes a dialog once by
+  `onCreateDialog(id, args)`, keeps it by its id, and prepares
+  (`onPrepareDialog`) and shows it at each call; `dismissDialog` dismisses it
+  (and throws for an id never shown, as Android does) and `removeDialog`
+  forgets it. They did nothing: WhatsApp asks whether the phone number is
+  right with `showDialog(21)` when one taps Next, and nothing came of it
+  (package 479). The data app's "managed-dialog" step makes, shows again,
+  dismisses, removes and makes again. `onDestroy` dismisses them, as
+  Android's does.
+  And the activity's other windows, its dialogs and popups (application
+  windows and sub-windows; not system windows such as a toast, which outlive
+  it): hidden while it is stopped and shown again when its own window is
+  (`megler.ViewRoot.ownerStopped`, from `meglerStop` and `makeVisible`) --
+  not drawn, no touches, keys or focus, still attached, told
+  `onWindowVisibilityChanged` -- and removed once it is destroyed, with a
+  line in the log (`ViewRoot.closeAll`, as `WindowManagerGlobal.closeAll`
+  removes a destroyed activity's "leaked" windows). They were drawn all the
+  while: WhatsApp's progress dialog of its phone number screen stayed in the
+  list of windows after that screen had gone, and showed through the screens
+  after it (package 481). The data app's "dialog-of-stopped" step hides a dialog,
+  shows it again and removes it.
 - `megler/AppRunner.java`, `startActivity` with `FLAG_ACTIVITY_CLEAR_TOP` for
   an activity already in the stack, as Android does it. The activities above
   it go. Then, when its launch mode is standard and the intent has no

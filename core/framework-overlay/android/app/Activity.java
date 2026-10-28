@@ -157,6 +157,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             each(c -> c.onActivityPostStopped(this));
         }
         if (mWindow != null && mWindow.peekDecorView() != null) { megler.ViewRoot r = megler.ViewRoot.of(mWindow.peekDecorView()); if (r != null) r.remove(); }
+        /* its dialogs and popups hidden with it, as Android hides the windows of a token not visible (makeVisible shows them) */
+        if (!mWindowsHidden) { mWindowsHidden = true; megler.ViewRoot.ownerStopped(this, true); }
     }
     public final void meglerDestroy() {
         each(c -> c.onActivityPreDestroyed(this));
@@ -165,7 +167,12 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         if (mLoaders != null) mLoaders.doDestroy();
         each(c -> c.onActivityPostDestroyed(this));
         if (mWindow != null) mWindow.meglerDestroy();
+        /* the windows it left open go with it, as ActivityThread.handleDestroyActivity has WindowManagerGlobal.closeAll remove them */
+        megler.ViewRoot.closeAll(this);
     }
+    /* Whether its windows other than its own are hidden: it was stopped and is not on the screen again (ViewRoot.ownerStopped). */
+    private boolean mWindowsHidden;
+    public final boolean meglerWindowsHidden() { return mWindowsHidden; }
     public final void meglerBack() { onBackPressedMegler(); }
     /* Whether it was started and not stopped since (AppRunner starts the activity below again when not); its window may be waiting (mStartedActivity). */
     public final boolean meglerVisible() { return mStarted || windowShown(); }
@@ -181,6 +188,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         View decor = getWindow().getDecorView();
         if (megler.ViewRoot.of(decor) == null) getWindowManager().addView(decor, getWindow().getAttributes());
         decor.setVisibility(View.VISIBLE);
+        if (mWindowsHidden) { mWindowsHidden = false; megler.ViewRoot.ownerStopped(this, false); }
     }
     private void onBackPressedMegler() {
         if (getWindow().meglerDispatchBack()) return;
@@ -202,7 +210,15 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     protected void onPostResume() { if (mActionBar != null) mActionBar.setShowHideAnimationEnabled(true); }
     protected void onPause() { mCalled = true; for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivityPaused(this); }
     protected void onStop() { mCalled = true; for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivityStopped(this); }
-    protected void onDestroy() { mCalled = true; for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivityDestroyed(this); }
+    protected void onDestroy() {
+        mCalled = true;
+        /* the managed dialogs dismissed, as Android's onDestroy dismisses them */
+        if (mManagedDialogs != null) {
+            for (int i = 0; i < mManagedDialogs.size(); i++) { Dialog d = mManagedDialogs.valueAt(i); if (d.isShowing()) d.dismiss(); }
+            mManagedDialogs = null;
+        }
+        for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivityDestroyed(this);
+    }
     protected void onSaveInstanceState(Bundle out) { for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivitySaveInstanceState(this, out); }
     public void onSaveInstanceState(Bundle out, android.os.PersistableBundle p) { onSaveInstanceState(out); }
     protected void onRestoreInstanceState(Bundle state) {}
@@ -421,11 +437,41 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void onAttachFragment(Fragment f) {}
     private LoaderManagerImpl mLoaders;
     public LoaderManager getLoaderManager() { if (mLoaders == null) mLoaders = new LoaderManagerImpl(mStarted); return mLoaders; }
-    public void showDialog(int id) {}
-    public final boolean showDialog(int id, Bundle args) { return false; }
-    public void dismissDialog(int id) {}
-    public void removeDialog(int id) {}
+    /*
+     * The activity's managed dialogs (showDialog, dismissDialog, removeDialog), as Android keeps them: made once by
+     * onCreateDialog(id, args), kept by id, prepared (onPrepareDialog) and shown at each showDialog. They did nothing here:
+     * WhatsApp asks "is this the right number?" through showDialog(21) when one taps Next on its phone number, and nothing
+     * came up, so the registration went no further.
+     */
+    private android.util.SparseArray<Dialog> mManagedDialogs;
+    public final void showDialog(int id) { showDialog(id, null); }
+    public final boolean showDialog(int id, Bundle args) {
+        if (mManagedDialogs == null) mManagedDialogs = new android.util.SparseArray<>();
+        Dialog d = mManagedDialogs.get(id);
+        if (d == null) {
+            d = onCreateDialog(id, args);
+            if (d == null) return false;
+            mManagedDialogs.put(id, d);
+        }
+        onPrepareDialog(id, d, args);
+        d.show();
+        return true;
+    }
+    public void dismissDialog(int id) {
+        Dialog d = mManagedDialogs == null ? null : mManagedDialogs.get(id);
+        if (d == null) throw new IllegalArgumentException("no dialog with id " + id + " was ever shown via Activity#showDialog");
+        d.dismiss();
+    }
+    public void removeDialog(int id) {
+        Dialog d = mManagedDialogs == null ? null : mManagedDialogs.get(id);
+        if (d == null) return;
+        d.dismiss();
+        mManagedDialogs.remove(id);
+    }
     protected Dialog onCreateDialog(int id) { return null; }
+    protected Dialog onCreateDialog(int id, Bundle args) { return onCreateDialog(id); }
+    protected void onPrepareDialog(int id, Dialog dialog) { dialog.setOwnerActivity(this); }
+    protected void onPrepareDialog(int id, Dialog dialog, Bundle args) { onPrepareDialog(id, dialog); }
     public boolean releaseInstance() { return false; }
     public void setLocusContext(android.content.LocusId id, Bundle b) {}
     public boolean showAssist(Bundle args) { return false; }
@@ -578,7 +624,6 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public android.database.Cursor managedQuery(android.net.Uri p0, java.lang.String[] p1, java.lang.String p2, java.lang.String[] p3, java.lang.String p4) { return null; }
             public void onActivityResult(int p0, int p1, android.content.Intent p2, android.app.ComponentCaller p3) {}
             public void onBackgroundVisibleBehindChanged(boolean p0) {}
-            protected android.app.Dialog onCreateDialog(int p0, android.os.Bundle p1) { return null; }
             public void onCreateNavigateUpTaskStack(android.app.TaskStackBuilder p0) {}
             public boolean onCreateThumbnail(android.graphics.Bitmap p0, android.graphics.Canvas p1) { return false; }
             public void onLocalVoiceInteractionStopped() {}
@@ -590,8 +635,6 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public boolean onPictureInPictureRequested() { return false; }
             public void onPictureInPictureUiStateChanged(android.app.PictureInPictureUiState p0) {}
             public void onPostCreate(android.os.Bundle p0, android.os.PersistableBundle p1) {}
-            protected void onPrepareDialog(int p0, android.app.Dialog p1) {}
-            protected void onPrepareDialog(int p0, android.app.Dialog p1, android.os.Bundle p2) {}
             public void onPrepareNavigateUpTaskStack(android.app.TaskStackBuilder p0) {}
             public void onProvideAssistContent(android.app.assist.AssistContent p0) {}
             public android.net.Uri onProvideReferrer() { return null; }
