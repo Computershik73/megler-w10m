@@ -21,6 +21,7 @@
 #include <math.h>
 #include <stdio.h>
 
+#include "../src/arm/mg_kuser.h"
 #include "../src/arm/mg_stubs.h"
 #include "../src/bionic/mg_bionic.h"
 #include "../src/bionic/mg_fd.h"
@@ -3111,6 +3112,64 @@ static void arsc_string_seen(const u8 *s, size_t len, void *user)
 }
 
 /*
+ * The kernel's user helpers done in their place (arm/mg_kuser.h): __kuser_get_tls gives the thread pointer, the barrier
+ * returns, each to the caller's lr; __kuser_cmpxchg and __kuser_cmpxchg64 swap when the value is the old one (r0 0, C set)
+ * and leave it otherwise (r0 not 0, C clear) -- on a host whose addresses fit in a register; and a load of the version at
+ * 0xffff0ffc, in each form old code reads it, gives 5 and goes on past the load, its base written back where it says so.
+ * An address that is no helper, and a load of another address, are not taken.
+ */
+static void test_kuser(void)
+{
+    u32 r[16], cpsr = 0;
+    mg_addr resume = 0, next = 0;
+    u32 aligned;                       /* the instruction's bytes on a word, as code is */
+    u8 *code = (u8 *)&aligned;
+    say("the kernel's user helpers");
+    memset(r, 0, sizeof(r));
+    r[14] = 0x12345679u;
+    CHECK(mg_kuser_call(0xffff0fe0u, r, &cpsr, 0xabcd0000u, &resume) && r[0] == 0xabcd0000u && resume == 0x12345679u);
+    CHECK(mg_kuser_call(0xffff0fa0u, r, &cpsr, 0, &resume) && resume == 0x12345679u);
+    CHECK(!mg_kuser_call(0xffff0f00u, r, &cpsr, 0, &resume));
+    if (sizeof(void *) == 4) {
+        static volatile i32 word = 7;
+        static volatile i64 wide = 70;
+        static i64 old64, new64;
+        r[0] = 7; r[1] = 9; r[2] = (u32)(mg_addr)&word;
+        CHECK(mg_kuser_call(0xffff0fc0u, r, &cpsr, 0, &resume) && r[0] == 0 && word == 9 && (cpsr & 0x20000000u));
+        r[0] = 7; r[1] = 11; r[2] = (u32)(mg_addr)&word;
+        CHECK(mg_kuser_call(0xffff0fc0u, r, &cpsr, 0, &resume) && r[0] != 0 && word == 9 && !(cpsr & 0x20000000u));
+        old64 = 70; new64 = 90;
+        r[0] = (u32)(mg_addr)&old64; r[1] = (u32)(mg_addr)&new64; r[2] = (u32)(mg_addr)&wide;
+        CHECK(mg_kuser_call(0xffff0f60u, r, &cpsr, 0, &resume) && r[0] == 0 && wide == 90 && (cpsr & 0x20000000u));
+    }
+    /* ldr r0, [r1, #28] (Thumb, 16 bits), r1 = 0xffff0fe0 */
+    memset(r, 0, sizeof(r));
+    r[1] = 0xffff0fe0u;
+    code[0] = 0xc8; code[1] = 0x69;
+    CHECK(mg_kuser_read(0xffff0ffcu, code, true, r, &next) && r[0] == MG_KUSER_VERSION && next == ((mg_addr)code + 2) + 1);
+    /* ldr.w r2, [r3, #0xffc] (Thumb, 32 bits), r3 = 0xffff0000 */
+    memset(r, 0, sizeof(r));
+    r[3] = 0xffff0000u;
+    code[0] = 0xd3; code[1] = 0xf8; code[2] = 0xfc; code[3] = 0x2f;
+    CHECK(mg_kuser_read(0xffff0ffcu, code, true, r, &next) && r[2] == MG_KUSER_VERSION && next == ((mg_addr)code + 4) + 1);
+    /* ldr r4, [r5, #-4]! (Thumb, 32 bits, written back), r5 = 0xffff1000 */
+    memset(r, 0, sizeof(r));
+    r[5] = 0xffff1000u;
+    code[0] = 0x55; code[1] = 0xf8; code[2] = 0x04; code[3] = 0x4d;
+    CHECK(mg_kuser_read(0xffff0ffcu, code, true, r, &next) && r[4] == MG_KUSER_VERSION && r[5] == 0xffff0ffcu);
+    /* ldr r0, [r0, #-3] where r0 = 0xffff0fff: ARM, LDR (immediate), offset, not written back */
+    memset(r, 0, sizeof(r));
+    r[0] = 0xffff0fffu;
+    code[0] = 0x03; code[1] = 0x00; code[2] = 0x10; code[3] = 0xe5;
+    CHECK(mg_kuser_read(0xffff0ffcu, code, false, r, &next) && r[0] == MG_KUSER_VERSION && next == (mg_addr)code + 4);
+    /* the same load of another address is not taken */
+    memset(r, 0, sizeof(r));
+    r[1] = 0xffff0f00u;
+    code[0] = 0xc8; code[1] = 0x69;
+    CHECK(!mg_kuser_read(0xffff0ffcu, code, true, r, &next));
+}
+
+/*
  * A resource table cut down to the phone's language and English (mg_arsc_keep_languages), on microG's GmsCore's (80
  * languages): much smaller; the resources it keeps have the same strings in the same order as in the whole table; nothing
  * more goes the second time; a table that is not one is left alone.
@@ -3183,6 +3242,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_appx_manifest();
     test_appx_pri();
     test_arsc(libdir);
+    test_kuser();
     test_palette();
     test_mmap_commit();
     test_mmap_file(scratch);

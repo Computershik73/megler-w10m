@@ -2,6 +2,7 @@
 #include "mg_core.h"
 #include "ndk/mg_egl.h"
 
+#include "arm/mg_kuser.h"
 #include "arm/mg_stubs.h"
 #include "bionic/mg_bionic.h"
 #include "host/mg_host.h"
@@ -73,6 +74,22 @@ static bool on_fault(mg_fault *f)
     const void *sym_addr = NULL, *base = NULL;
     char report[4000];
     mg_addr pc = f->regs ? (f->regs[15] & ~1u) : 0;
+#if MG_HOST_ARM32
+    /* The kernel's user helpers, which Windows has no page of (arm/mg_kuser.h): a call of one, or a read of their version. */
+    if (f->kind == MG_FAULT_ACCESS && f->regs && (f->address & 0xfffff000u) == 0xffff0000u) {
+        mg_addr resume = 0;
+        bool thumb = (f->regs[15] & 1u) || (f->cpsr && (*f->cpsr & 0x20u));
+        bool done = f->exec ? mg_kuser_call(f->address, f->regs, f->cpsr, (u32)(mg_addr)mg_guest_tp_get(), &resume)
+                            : !f->write && mg_kuser_read(f->address, (const u8 *)pc, thumb, f->regs, &resume);
+        if (done) {
+            static volatile i32 said;
+            if (!said && !mg_atomic_xchg(&said, 1))
+                mg_info("the kernel's user helpers at 0xffff0000 are called (old ARM code's atomics, barrier, TLS): each call is a fault, done in its place");
+            mg_fault_resume_at(f, resume);
+            return true;
+        }
+    }
+#endif
     if (f->kind == MG_FAULT_ILLEGAL && f->regs) {
         mg_addr target = 0;
         if (mg_patch_svc_target(pc, &target)) {

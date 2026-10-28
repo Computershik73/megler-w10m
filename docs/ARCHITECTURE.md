@@ -193,6 +193,24 @@ exception path with this wrapper still needs a phone run.
 The diagnostic flag `trap-svc` instead writes an unregistered `udf #165` and
 leaves the fault fatal, named by library and offset in the crash report.
 
+### The kernel's user helpers
+
+Linux maps a page of code at `0xffff0000` into every ARM process, which old
+code calls for what ARMv5 had no instructions for: `__kuser_cmpxchg64`
+(`0xffff0f60`), `__kuser_memory_barrier` (`0xffff0fa0`), `__kuser_cmpxchg`
+(`0xffff0fc0`), `__kuser_get_tls` (`0xffff0fe0`), and the helpers' version
+word at `0xffff0ffc`. Windows has its kernel there, so a call faults on
+executing the helper's address; the fault handler does the helper
+(`arm/mg_kuser.c`: the swap with an interlocked operation, r0 0 and C set when
+it swapped; the thread pointer; a full barrier) and resumes at the caller's
+`lr`. A read of the version faults on reading it: the load is decoded (Thumb's
+16-bit `ldr` with an immediate or a register, `ldr.w` with 12 bits, `ldr` with
+8 bits and writeback, ARM's `ldr`), given 5, and the thread goes on past it.
+Each call is a fault, so code that calls them in a tight loop is slow, not
+wrong. The Weather Channel's `libsqliteJni.so` called the barrier and ended
+the app (package 501). `mg_tests`' "the kernel's user helpers" checks each
+helper and each form of load.
+
 ### A fault in another process's code
 
 A fault the layer cannot repair ends the app: the thread is parked, the crash
