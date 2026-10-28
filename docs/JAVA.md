@@ -3781,8 +3781,10 @@ keeps a local reference in a local, which is what local references are for.
 
 **When it runs.**
 - When an allocation finds that more than the budget has been allocated since
-  the last collection. The budget is the larger of 8 MB and three quarters of
-  what survived the last one. The bytes of bitmaps made since then count too
+  the last collection. The budget is the larger of 8 MB and half of what
+  survived the last one (three quarters before: Play Store with Google Play
+  services had 350 MB of heap at each collection for 200 MB that lived). The
+  bytes of bitmaps made since then count too
   (`mg_java_gfx_stats`), since that memory is freed only through the objects.
 - `System.gc()` and `Runtime.gc()` (today they do nothing).
 - Before an `OutOfMemoryError`. If an allocation would pass the heap's limit,
@@ -3875,10 +3877,14 @@ cached UTF-8, the `fields` array of a stand-in object.
 3. The audit of C roots, the sweep, the trigger and `System.gc()`. (Done.
    The sweep frees the cells and large objects nothing reached, and what
    they own besides themselves: the monitor, a string's UTF-8, the JNI
-   fields. An empty block becomes a spare for any class.
+   fields. An empty block becomes a spare for any class. Past the first 128
+   spare blocks (8 MB), a spare block's memory after its first page, which
+   holds its header, goes back to the host, and is committed again, zero,
+   when the block gets a class: the heap's arenas no longer stay committed at
+   the most the heap ever had.
    - `alloc_raw` collects when the bytes made since the last collection pass
-     the budget: the larger of 8 MB and three quarters of what lived after
-     the last one. Native memory registered since counts too
+     the budget: the larger of 8 MB and half of what lived after the last
+     one. Native memory registered since counts too
      (`VMRuntime.registerNativeAllocation`, and every bitmap's pixels from
      `mg_java_gfx.c`). It collects once more before an allocation fails.
    - `Runtime.gc()` collects.

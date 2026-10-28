@@ -2,8 +2,8 @@
  * The collector: a non-moving mark and sweep that stops the world (docs/JAVA.md, "The collector"). It stops every other
  * thread of the runtime's where it is, follows references from the roots, lets the threads go on, and frees what it did
  * not reach (mg_dvm_gc); or only counts it (mg_dvm_gc_census). It runs on the allocating thread when enough has been made
- * since the last collection (the larger of 8 MB and three quarters of what lived after it, native memory registered
- * counted in), on System.gc(), and before an allocation fails.
+ * since the last collection (the larger of 8 MB and half of what lived after it, native memory registered counted in), on
+ * System.gc(), and before an allocation fails.
  *
  * Roots, and how each is read:
  *  - exactly: every linked class's static fields of reference type, its Class object and the error its initialisation
@@ -453,14 +453,18 @@ bool mg_dvm_gc_counted(size_t bytes)
 /* The world stopped, everything reachable marked; `sweep`: and what is not, freed. False when not every thread could be stopped. */
 static void reference_work(void);
 
+static u64 g_large_said_ns;
+
 static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
 {
+    char large[600];
     u64 t0, t1 = 0, t2 = 0, t3;
     u32 objects;
     void **stack;
     mg_jobj **found;
     int i;
     bool ok, clear_soft = !strcmp(reason, "out of memory");
+    large[0] = 0;
     memset(out, 0, sizeof(*out));
     if (!g_dvm.running || t_collecting) return false;
     mg_lock_acquire(&g_gc_lock);
@@ -527,11 +531,18 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
         mg_dvm_heap_sweep(mg_dvm_object_dying, g_poison, &out->freed_objects, &out->freed_bytes);
         t3 = mg_time_monotonic_ns();
         out->sweep_ns = t3 - t2;
-        g_budget = out->live_bytes * 3 / 4 > g_min_budget ? out->live_bytes * 3 / 4 : g_min_budget;
+        /*
+         * Half what lived: three quarters had Play Store with Google Play services at 350 MB of heap before each collection,
+         * for 200 that lived, in a process whose 2 GB the WebView needs too.
+         */
+        g_budget = out->live_bytes / 2 > g_min_budget ? out->live_bytes / 2 : g_min_budget;
         mg_atomic_xchg(&g_since, 0);
         mg_atomic_xchg(&g_native_since, 0);
+        /* What the large objects are, when they are many (at most once in 30 s): Play Store's took 156 MB. */
+        if (t3 - g_large_said_ns > 30000000000ull && mg_dvm_heap_large_report(large, sizeof(large), 6)) g_large_said_ns = t3;
     }
     mg_dvm_heap_unlock();
+    if (large[0]) mg_info("gc: the large objects (over 2 KB each) by class: %s", large);
     if (ok) {
         mg_atomic_add(&g_collections, 1);
         g_pause_ns += out->stop_ns + out->mark_ns + out->sweep_ns;

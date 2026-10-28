@@ -578,10 +578,14 @@ void *mg_dvm_heap_find(mg_addr p);
 void mg_dvm_heap_lock(void);
 void mg_dvm_heap_unlock(void);
 typedef struct mg_dvm_heap_info {
-    u64 small_bytes, large_bytes, reserved;   /* in cells in use; in large objects; the host's memory the blocks take */
+    u64 small_bytes, large_bytes, reserved;   /* in cells in use; in large objects; the host's memory the blocks take (committed) */
     u32 large_objects, objects;
 } mg_dvm_heap_info;
 void mg_dvm_heap_stats(mg_dvm_heap_info *out);
+/* The large objects' bytes by class, the most first, when they take more than 32 MB (mg_dvm_heap.c); with the heap's lock held. */
+bool mg_dvm_heap_large_report(char *out, size_t cap, int top);
+/* The bytes of the apps' DEX files (mg_dvm_apk.c): read into the process's memory, and views of the APKs that store them. */
+void mg_dvm_dex_memory(u64 *read, u64 *viewed);
 /* The collector's, with the heap's lock held: objects in it; an object's mark set (true when it was not set before), read, all cleared. */
 u32 mg_dvm_heap_objects(void);
 bool mg_dvm_heap_set_mark(void *o);

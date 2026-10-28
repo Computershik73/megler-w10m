@@ -121,6 +121,56 @@ static void test_gc_collect(void)
     CHECK(!strcmp(mg_dvm_string_utf8(kept), "kept on the stack"));
 }
 
+/*
+ * Blocks a collection leaves empty go back to the host past the first 8 MB of them (mg_dvm_heap.c): 40 MB of small arrays
+ * made and let go, then collected without the tests' poison (which keeps every freed cell from use), leave the heap's
+ * memory at most 20 MB above where it was; and what is made after is made in blocks committed again, as zero memory.
+ */
+static void test_gc_gives_back(void)
+{
+    mg_dvm_gc_result r;
+    mg_dvm_heap_info before, made, after;
+    mg_jobj *volatile late;
+    int i;
+    say("the collector: empty blocks past a few go back to the host");
+    mg_dvm_gc_set_poison(false);
+    mg_dvm_gc_set_min_budget(64u << 20);
+    CHECK(mg_dvm_gc("test before", &r));
+    mg_dvm_heap_stats(&before);
+    for (i = 0; i < 40 * 1024; i++) mg_dvm_new_array("[B", 1000);
+    mg_dvm_heap_stats(&made);
+    CHECK(mg_dvm_gc("test after", &r));
+    mg_dvm_heap_stats(&after);
+    say("  the blocks' memory: %u MB before, %u MB with 40 MB made, %u MB once collected", (unsigned)(before.reserved >> 20), (unsigned)(made.reserved >> 20),
+        (unsigned)(after.reserved >> 20));
+    CHECK(made.reserved >= before.reserved + (36u << 20));
+    CHECK(after.reserved <= before.reserved + (20u << 20));
+    for (i = 0; i < 20 * 1024; i++) mg_dvm_new_array("[B", 1000);
+    late = mg_dvm_new_array("[B", 1000);
+    CHECK(late && mg_dvm_array_length(late) == 1000);
+    /* And what the large objects are, by class, once they take more than 32 MB: 36 arrays of 1 MB held come first. */
+    {
+        static mg_jobj *held[36];
+        static bool rooted;
+        char report[600];
+        bool said;
+        for (i = 0; i < (int)MG_COUNT(held); i++) {
+            held[i] = mg_dvm_new_array("[B", 1 << 20);
+            if (!rooted) mg_dvm_add_root(&held[i]);
+        }
+        rooted = true;
+        mg_dvm_heap_lock();
+        said = mg_dvm_heap_large_report(report, sizeof(report), 6);
+        mg_dvm_heap_unlock();
+        say("  the large objects by class: %s", said ? report : "(not said)");
+        CHECK(said && !strncmp(report, "[B ", 3) && atof(report + 3) >= 36.0);
+        /* (The roots stay, holding nothing.) */
+        for (i = 0; i < (int)MG_COUNT(held); i++) held[i] = NULL;
+    }
+    mg_dvm_gc_set_min_budget(1u << 20);
+    mg_dvm_gc_set_poison(true);
+}
+
 void test_gc(void)
 {
     mg_jobj *small = mg_dvm_new_array("[B", 10), *mid = mg_dvm_new_array("[I", 300), *big = mg_dvm_new_array("[J", 2000);
@@ -142,4 +192,5 @@ void test_gc(void)
     mg_dvm_heap_unlock();
     test_gc_census();
     test_gc_collect();
+    test_gc_gives_back();
 }

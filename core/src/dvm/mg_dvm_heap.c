@@ -8,10 +8,17 @@
  * time in arenas of 1 MB from the host. Large objects are one allocation each from the C heap, kept in an array sorted by
  * address. An address is looked up by binary search, over the arenas and then within the large objects.
  *
+ * A block a collection leaves empty is a spare one; past the first SPARE_COMMITTED of them, a spare block's memory after
+ * its first page (which has its header, all that the lists and the collector read of a spare block) is given back to the
+ * host, and committed again, zero, when the block is given a class. The arenas stayed committed whole before, at the most
+ * the heap had ever had: 350 MB in Play Store with Google Play services, which a collection had brought down to 200.
+ *
  * One lock covers it all. The collector takes it before it stops the other threads, so no thread can be stopped halfway
  * through the lists.
  */
 #include "mg_dvm_internal.h"
+
+#include <stdio.h>
 
 #define BLOCK_SIZE 65536u
 #define ARENA_BLOCKS 16u
@@ -36,6 +43,7 @@ typedef struct block {
     u32 recip;                         /* 2^32 / cell, rounded up: a cell's index without a division (cell_index) */
     u8 *first;                         /* the first cell */
     free_cell *free;                   /* cells given back, to hand out again */
+    bool bare;                         /* a spare block whose memory past its first page went back to the host */
     struct block *next;                /* the next block of the same class that has room */
     u32 inuse[BITMAP_WORDS], mark[BITMAP_WORDS];
 } block;
@@ -55,7 +63,9 @@ static large *g_large;                 /* sorted by start */
 static u32 g_nlarge, g_large_cap;
 static u8 g_class_of[MAX_SMALL / 16 + 1];
 static volatile i32 g_classes_ready;
-static u64 g_small_bytes, g_large_bytes, g_reserved;
+static u64 g_small_bytes, g_large_bytes, g_reserved, g_bare;
+/* Spare blocks kept committed, ready for the next classes asked for (8 MB); the others' memory goes back (see the top). */
+#define SPARE_COMMITTED 128u
 static u32 g_objects;                  /* cells in use and large objects */
 static mg_addr g_lo = ~(mg_addr)0, g_hi;   /* every object lies in [g_lo, g_hi) */
 
@@ -125,6 +135,11 @@ static block *new_block(int c)
     u32 header;
     if (!g_spare && !add_arena()) return NULL;
     b = g_spare;
+    if (b->bare) {
+        if (!mg_mem_commit((u8 *)b + MG_PAGE, BLOCK_SIZE - MG_PAGE, MG_PROT_RW)) return NULL;
+        b->bare = false;
+        g_bare -= BLOCK_SIZE - MG_PAGE;
+    }
     g_spare = b->next;
     header = (u32)MG_ALIGN_UP(sizeof(block), (size_t)16);
     b->cls = c;
@@ -392,6 +407,56 @@ void mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, 
         else free(l->start);
     }
     g_nlarge = kept;
+    /* Spare blocks past the first few: their memory past the header's page back to the host. */
+    {
+        block *b;
+        u32 n = 0;
+        for (b = g_spare; b; b = b->next)
+            if (!b->bare && ++n > SPARE_COMMITTED && mg_mem_decommit((u8 *)b + MG_PAGE, BLOCK_SIZE - MG_PAGE)) {
+                b->bare = true;
+                g_bare += BLOCK_SIZE - MG_PAGE;
+            }
+    }
+}
+
+/*
+ * What the large objects are when they take more than 32 MB: their bytes by class, the most first, the first `top` of
+ * them ("[B 120.3 MB in 310, ..."). False, and nothing written, below that. With the heap's lock held.
+ */
+bool mg_dvm_heap_large_report(char *out, size_t cap, int top)
+{
+    struct {
+        const mg_dvm_class *c;
+        u64 bytes;
+        u32 n;
+    } k[64];
+    u32 nk = 0, i, j;
+    size_t n = 0;
+    if (!cap) return false;
+    out[0] = 0;
+    if (g_large_bytes < ((u64)32 << 20)) return false;
+    for (i = 0; i < g_nlarge; i++) {
+        const mg_dvm_class *c = mg_dvm_class_of((const mg_jobj *)(const void *)g_large[i].start);
+        for (j = 0; j < nk && k[j].c != c; j++) {}
+        if (j == nk) {
+            if (nk == MG_COUNT(k)) continue;
+            k[nk].c = c;
+            k[nk].bytes = 0;
+            k[nk].n = 0;
+            nk++;
+        }
+        k[j].bytes += g_large[i].size;
+        k[j].n++;
+    }
+    for (; top > 0 && nk && n + 80 < cap; top--) {
+        u32 best = 0;
+        for (j = 1; j < nk; j++)
+            if (k[j].bytes > k[best].bytes) best = j;
+        n += (size_t)snprintf(out + n, cap - n, "%s%s %.1f MB in %u", n ? ", " : "", k[best].c && k[best].c->name ? k[best].c->name : "?",
+                              (double)k[best].bytes / 1048576.0, (unsigned)k[best].n);
+        k[best] = k[--nk];
+    }
+    return true;
 }
 
 void mg_dvm_heap_each_marked(void (*fn)(void *o))
@@ -415,7 +480,7 @@ void mg_dvm_heap_stats(mg_dvm_heap_info *out)
     mg_lock_acquire(&g_heap_lock);
     out->small_bytes = g_small_bytes;
     out->large_bytes = g_large_bytes;
-    out->reserved = g_reserved;
+    out->reserved = g_reserved - g_bare;
     out->large_objects = g_nlarge;
     out->objects = g_objects;
     mg_lock_release(&g_heap_lock);
