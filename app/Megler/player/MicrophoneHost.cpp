@@ -89,7 +89,12 @@ bool askWindows() {
             settings.StreamingCaptureMode(winrt::Windows::Media::Capture::StreamingCaptureMode::Audio);
             state->capture = winrt::Windows::Media::Capture::MediaCapture();
             IAsyncAction op = state->capture.InitializeAsync(settings);
-            op.Completed([state, finish](const IAsyncAction& done, AsyncStatus status) {
+            /*
+             * The answer comes on a thread of Windows.Media's, not the one that made the capture: the capture is not touched
+             * here. Its QueryInterface for IClosable answered null from there, and Close() through that null ended Yandex
+             * Maps (package 499, as it asked for the microphone).
+             */
+            op.Completed([finish](const IAsyncAction& done, AsyncStatus status) {
                 bool yes = status == AsyncStatus::Completed;
                 if (!yes) {
                     try {
@@ -97,11 +102,6 @@ bool askWindows() {
                     } catch (const winrt::hresult_error& e) {
                         shellLog::write(format("microphone: Windows said no (0x%08X)", unsigned(e.code())));
                     }
-                }
-                // (The capture was only the question; the graph hears the microphone.)
-                try {
-                    state->capture.Close();
-                } catch (...) {
                 }
                 finish(yes);
             });
@@ -114,12 +114,28 @@ bool askWindows() {
         dispatcher.RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, ask);
     else
         ask();
-    std::unique_lock<std::mutex> lock(state->mutex);
-    if (!state->cv.wait_for(lock, std::chrono::seconds(170), [&state] { return state->done; })) {
-        shellLog::write("microphone: neither the UI thread nor Windows answered within 170 seconds");
-        return false;
+    bool yes;
+    {
+        std::unique_lock<std::mutex> lock(state->mutex);
+        if (!state->cv.wait_for(lock, std::chrono::seconds(170), [&state] { return state->done; })) {
+            shellLog::write("microphone: neither the UI thread nor Windows answered within 170 seconds");
+            return false;
+        }
+        yes = state->yes;
     }
-    return state->yes;
+    // The capture was only the question (the graph hears the microphone): closed and let go where it was made.
+    auto close = [state] {
+        try {
+            if (auto closable = state->capture.try_as<winrt::Windows::Foundation::IClosable>()) closable.Close();
+        } catch (...) {
+        }
+        state->capture = nullptr;
+    };
+    if (dispatcher)
+        dispatcher.RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, close);
+    else
+        close();
+    return yes;
 }
 
 /// A quantum's frame from the graph: 32-bit float, the channels asked for, made 16-bit for the core.
