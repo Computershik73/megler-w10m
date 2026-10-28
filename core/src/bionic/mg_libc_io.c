@@ -1867,6 +1867,16 @@ static int g_fail_link(const char *a, const char *b)
     mg_set_errno(GE_PERM);
     return -1;
 }
+/*
+ * And their *at forms, which Flutter's engine (dart:io) imports: as this file's other *at calls, the path as it is, its
+ * directory descriptor not looked at. Each was missing, and its first call would have ended in the unresolved stub.
+ */
+static i32 g_readlinkat(int dirfd, const char *path, char *buf, size_t n) { (void)dirfd; return g_readlink(path, buf, n); }
+static int g_symlinkat(const char *target, int dirfd, const char *path) { (void)dirfd; return g_fail_link(target, path); }
+static int g_utimensat(int dirfd, const char *path, const void *times, int flags) { (void)dirfd; (void)flags; return g_utime(path, times); }
+static int g_futimens(int fd, const void *times) { return g_futimes(fd, times); }
+/* (And futimesat, which libcore's natives look up by name: Yandex Maps' log said it was not there.) */
+static int g_futimesat(int dirfd, const char *path, const void *times) { (void)dirfd; return g_utime(path, times); }
 static int g_umask(int mask) { (void)mask; return 022; }
 /* The checked forms a library built with _FORTIFY_SOURCE calls: the same, the buffer's size being the caller's business. */
 static int g_umask_chk(int mask) { return g_umask(mask); }
@@ -2972,7 +2982,9 @@ const mg_sym mg_tab_io[] = {
     IO("sendfile", g_sendfile), IO("sendfile64", g_sendfile64), IO("posix_fallocate64", g_posix_fallocate64), IO("splice", g_io_nosys),
     IO("mkfifo", g_io_perm), IO("mknod", g_io_perm), IO("pathconf", g_pathconf), IO("fpathconf", g_fpathconf),
     IO("getxattr", g_io_notsup), IO("setxattr", g_io_notsup), IO("listxattr", g_io_notsup), IO("removexattr", g_io_notsup),
-    IO("inotify_init", g_io_nosys), IO("inotify_add_watch", g_io_nosys), IO("inotify_rm_watch", g_io_nosys),
+    IO("inotify_init", g_io_nosys), IO("inotify_init1", g_io_nosys), IO("inotify_add_watch", g_io_nosys), IO("inotify_rm_watch", g_io_nosys),
+    /* (close_range is for a child about to exec, and no child is started here.) */
+    IO("close_range", g_io_nosys),
     IO("tcgetattr", g_io_notty), IO("tcsetattr", g_io_notty), IO("tcdrain", g_io_notty), IO("tcsendbreak", g_io_notty),
     IO("readv", g_readv), IO("writev", g_writev), IO("lseek", g_lseek), IO("lseek64", g_lseek64),
     IO("ftruncate", g_ftruncate), IO("ftruncate64", g_ftruncate64), IO("truncate", g_truncate),
@@ -2990,6 +3002,7 @@ const mg_sym mg_tab_io[] = {
     IO("chdir", g_chdir), IO("getcwd", g_getcwd), IO("realpath", g_realpath), IO("readlink", g_readlink),
     IO("chmod", g_ok_path), IO("fchmod", g_fchmod), IO("chown", g_chown), IO("lchown", g_chown), IO("utime", g_utime),
     IO("utimes", g_utime), IO("lutimes", g_utime), IO("futimes", g_futimes), IO("link", g_fail_link), IO("symlink", g_fail_link),
+    IO("readlinkat", g_readlinkat), IO("symlinkat", g_symlinkat), IO("utimensat", g_utimensat), IO("futimens", g_futimens), IO("futimesat", g_futimesat),
     IO("umask", g_umask), IO("flock", g_flock),
     IO("fchown", g_ok_fd),
     IO("opendir", g_opendir), IO("fdopendir", g_fdopendir), IO("readdir", g_readdir), IO("readdir64", g_readdir),
