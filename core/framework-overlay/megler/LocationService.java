@@ -15,6 +15,10 @@
 // that the next call finds one, as on a phone something has always just asked. Until the user has been asked, the location
 // counts as on (they are asked in the background then), so that an app that first checks isProviderEnabled("gps") goes on
 // to ask for it.
+//
+// The log says each request as it comes, whose it is (the listener's class, the PendingIntent's package, the consumer's class)
+// and how often, and the first fix each is handed: whether an app that finds no location asked at all, and whether a fix
+// reached what it asked through (Google Play services' fused provider asks here for the app). At most 40 lines a run.
 package megler;
 
 import android.app.PendingIntent;
@@ -59,6 +63,7 @@ public final class LocationService {
     private static Thread sWorker;
     private static long sWarmUntil;
     private static boolean sAsking;
+    private static int sSaid;
 
     private LocationService() {}
 
@@ -188,7 +193,24 @@ public final class LocationService {
         e.execute(() -> listener.onFlushComplete(requestCode));
     }
 
+    private static String whose(Request r) {
+        if (r.listener != null) return r.listener.getClass().getName();
+        if (r.pending != null) return "a PendingIntent of " + r.pending.getCreatorPackage();
+        return r.consumer != null ? r.consumer.getClass().getName() : "?";
+    }
+
+    private static void say(String what) {
+        synchronized (LOCK) {
+            if (sSaid >= 40) return;
+            sSaid++;
+        }
+        android.util.Log.i("MeglerLocation", what);
+    }
+
     private static void add(Request r, LocationListener sameListener, PendingIntent samePending) {
+        say(r.consumer != null ? "one fix (getCurrentLocation) of " + r.provider + " for " + whose(r)
+                : r.provider + " every " + r.minTimeMs + " ms" + (r.minDistanceM > 0 ? " and " + r.minDistanceM + " m" : "")
+                  + (r.remaining > 0 ? ", " + r.remaining + " updates," : "") + " for " + whose(r));
         synchronized (LOCK) {
             for (int i = REQUESTS.size() - 1; i >= 0; i--) {
                 Request o = REQUESTS.get(i);
@@ -239,12 +261,12 @@ public final class LocationService {
                         if (started >= 0) LocationNative.stop();
                         started = -1;
                         sWorker = null;
-                        for (Request r : expired) r.executor.execute(() -> r.consumer.accept(null));
+                        for (Request r : expired) expire(r);
                         return;
                     }
                     now = new ArrayList<>(REQUESTS);
                 }
-                for (Request r : expired) r.executor.execute(() -> r.consumer.accept(null));
+                for (Request r : expired) expire(r);
                 if (t - accessAt >= 2000) {
                     access = LocationNative.access(false);
                     accessAt = t;
@@ -286,6 +308,11 @@ public final class LocationService {
         }
     }
 
+    private static void expire(Request r) {
+        say("no fix within " + CURRENT_TIMEOUT_MS / 1000 + " s for " + whose(r));
+        r.executor.execute(() -> r.consumer.accept(null));
+    }
+
     private static void deliver(ArrayList<Request> now, double[] f, long t) {
         long fixTime = (long) f[7];
         if (System.currentTimeMillis() - fixTime > STALE_MS) return;
@@ -294,6 +321,7 @@ public final class LocationService {
             if (t - r.deliveredAt < r.minTimeMs - 100) continue;
             Location loc = toLocation(f, r.provider);
             if (r.minDistanceM > 0 && r.delivered != null && loc.distanceTo(r.delivered) < r.minDistanceM) continue;
+            if (r.delivered == null) say("the first fix for " + whose(r) + ", " + Math.round(loc.getAccuracy()) + " m accurate, " + (System.currentTimeMillis() - fixTime) + " ms old");
             r.fixTime = fixTime;
             r.deliveredAt = t;
             r.delivered = loc;
