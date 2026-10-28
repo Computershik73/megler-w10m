@@ -639,6 +639,8 @@ typedef struct mg_host_address_kinds {
 /* The threads mg_thread_start started that run now: each has the stack it was given, 1 MB of addresses or more. */
 u32 mg_thread_live_count(void);
 bool mg_host_address_census(mg_host_address_kinds *k);
+/* The bytes of [base, base + size) reserved and not committed; 0 where the host cannot say. */
+u64 mg_host_reserved_in(const void *base, size_t size);
 /*
  * The `n` largest free stretches of the address space, in megabytes, largest first, 0 past the last. Two allocations of
  * one size need two stretches of it: Chromium in a single process maps each image it decodes twice. False where the

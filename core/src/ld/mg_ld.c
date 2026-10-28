@@ -1339,6 +1339,17 @@ size_t mg_ld_lib_extent(const mg_lib *lib) { return lib->map_size + (lib->placed
 const char *mg_ld_lib_name(const mg_lib *lib) { return lib->name; }
 void mg_ld_get_stats(const mg_lib *lib, mg_ld_stats *out) { *out = lib->stats; }
 
+u64 mg_ld_reserved_bytes(void)
+{
+    mg_lib *l;
+    u64 n = 0;
+    mg_lock_acquire(&g_lock);
+    for (l = g_libs; l; l = l->next)
+        if (l->map) n += mg_host_reserved_in(l->map, l->map_size);
+    mg_lock_release(&g_lock);
+    return n;
+}
+
 u64 mg_ld_image_bytes(void)
 {
     u64 n;

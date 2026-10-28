@@ -281,6 +281,18 @@ static void region_mark(region *r, size_t offset, size_t size, bool on)
 static region *g_regions;
 static mg_lock g_region_lock = MG_LOCK_INIT;
 
+void mg_g_mapped_addresses(u64 *spanned, u64 *reserved)
+{
+    region *r;
+    *spanned = *reserved = 0;
+    mg_lock_acquire(&g_region_lock);
+    for (r = g_regions; r; r = r->next) {
+        *spanned += r->size;
+        *reserved += mg_host_reserved_in(r->base, r->size);
+    }
+    mg_lock_release(&g_region_lock);
+}
+
 /*
  * Marks pages of [offset, offset + size) of a region as given back by madvise or not, as region_mark marks; only pages the
  * app has are marked. g_gone counts them in every region, so that nothing is looked up while there are none. Under the lock.

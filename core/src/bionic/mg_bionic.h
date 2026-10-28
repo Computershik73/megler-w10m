@@ -187,6 +187,8 @@ void mg_signals_thread_gone(mg_gthread *t);
 void *mg_g_malloc(size_t n);
 /* What the guest has asked malloc, calloc, realloc and memalign for and not freed, in bytes. */
 u64 mg_g_malloc_bytes(void);
+/* The addresses the app's mappings (mmap) span, and the bytes of them reserved and not committed. */
+void mg_g_mapped_addresses(u64 *spanned, u64 *reserved);
 void *mg_g_calloc(size_t n, size_t m);
 void *mg_g_realloc(void *p, size_t n);
 void mg_g_free(void *p);

@@ -1480,6 +1480,19 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
                     (unsigned)(c_peak >> 10), (unsigned)(s.meta_bytes >> 20), (unsigned)(s.meta_classes >> 20), (unsigned)(s.meta_methods >> 20),
                     (unsigned)(s.meta_fields >> 20), (unsigned)(s.meta_vtables >> 20), (unsigned)(s.meta_dex >> 20), (unsigned)(s.meta_names >> 20),
                     (unsigned)(s.meta_pools >> 20), (unsigned)gpu_used, (unsigned)gpu_budget);
+            {
+                /* And the reserved, by whose it is, where the core can tell: what is left is the stacks and the DLLs' own. */
+                u64 frames_reserved = 0, frames_committed = 0, deepest = 0, spanned = 0, mapped_reserved = 0, libs_reserved = mg_ld_reserved_bytes(), known;
+                mg_dvm_frame_census(&frames_reserved, &frames_committed, &deepest);
+                mg_g_mapped_addresses(&spanned, &mapped_reserved);
+                known = (frames_reserved - frames_committed) + mapped_reserved + libs_reserved;
+                mg_info("java: of the private memory reserved and not committed: the frame stacks' %u MB (of the %u MB their segments reserve; "
+                        "the deepest thread's frames %u KB now), the app's mappings' %u MB (of the %u MB they span), its libraries' %u MB, "
+                        "the rest %u MB (thread stacks, the shell's and the system's DLLs')",
+                        (unsigned)((frames_reserved - frames_committed) >> 20), (unsigned)(frames_reserved >> 20), (unsigned)(deepest >> 10),
+                        (unsigned)(mapped_reserved >> 20), (unsigned)(spanned >> 20), (unsigned)(libs_reserved >> 20),
+                        (unsigned)(((u64)k.private_reserved_mb << 20) > known ? (((u64)k.private_reserved_mb << 20) - known) >> 20 : 0));
+            }
         }
     }
 }

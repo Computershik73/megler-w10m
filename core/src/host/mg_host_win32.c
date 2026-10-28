@@ -3158,6 +3158,21 @@ bool mg_host_address_census(mg_host_address_kinds *k)
     return true;
 }
 
+u64 mg_host_reserved_in(const void *base, size_t size)
+{
+    MEMORY_BASIC_INFORMATION info;
+    mg_addr at = (mg_addr)base, end = (mg_addr)base + size;
+    u64 n = 0;
+    while (at < end && VirtualQuery((LPCVOID)at, &info, sizeof(info)) == sizeof(info) && info.RegionSize) {
+        mg_addr lo = (mg_addr)info.BaseAddress, hi = lo + (mg_addr)info.RegionSize;
+        if (lo < at) lo = at;
+        if (hi > end) hi = end;
+        if (info.State == MEM_RESERVE && hi > lo) n += hi - lo;
+        at = (mg_addr)info.BaseAddress + (mg_addr)info.RegionSize;
+    }
+    return n;
+}
+
 bool mg_host_free_stretches(u32 *mb, int n)
 {
     MEMORY_BASIC_INFORMATION info;

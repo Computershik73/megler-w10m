@@ -1568,6 +1568,13 @@ bool mg_host_address_census(mg_host_address_kinds *k)
     return false;
 }
 
+u64 mg_host_reserved_in(const void *base, size_t size)
+{
+    (void)base;
+    (void)size;
+    return 0;
+}
+
 bool mg_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb)
 {
     (void)device; (void)budget_mb; (void)used_mb;
