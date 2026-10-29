@@ -36,6 +36,13 @@ std::wstring sharedFolder();
 /// Remember an installed microG APK for clients of the same publisher; no service APK is bundled into each client.
 bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullName, bool replace = false);
 void unregisterServiceApk(const std::string& installedFullName);
+/// The copies of Google Play services' APK in <shared>\services that are not the registered one, removed: one was made for
+/// each install of its package (every Update All), some 266 MB each, and none ever went. A copy a running app still has
+/// open, which Windows does not let go, stays until the next time. Slow: off the UI thread.
+void removeUnusedServiceCopies();
+/// What the shared folder holds, said in the log once a run: each of its folders' size (an app's own storage the largest).
+/// The Device Portal cannot look there. Slow: off the UI thread.
+void logSharedSpace();
 std::wstring serviceApk();
 std::wstring gsfApk();
 

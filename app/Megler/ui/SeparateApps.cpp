@@ -136,8 +136,11 @@ void list() {
         gListing = false;
         gGeneration++;
     }
-    // What the packages no longer need: the Android files of builds none of them is of (after Update All, the older ones').
+    // What the packages no longer need: the Android files of builds none of them is of (after Update All, the older ones'),
+    // and the copies of Google Play services' APK but the one registered. Then what the shared folder holds, once a run.
     if (ok) appPackage::removeUnusedAndroidRoots(apps);
+    appPackage::removeUnusedServiceCopies();
+    appPackage::logSharedSpace();
 }
 
 /// One job. Off the UI thread.

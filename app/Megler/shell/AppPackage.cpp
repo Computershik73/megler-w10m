@@ -592,6 +592,7 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     if (!files::write(record + L".part", "package=" + installedFullName + "\ncache=" + token + "\n") ||
         !files::move(record + L".part", record)) return false;
     shellLog::write("microG: registered separately installed " + installedFullName);
+    removeUnusedServiceCopies();
     return true;
 }
 
@@ -755,6 +756,60 @@ void removeUnusedAndroidRoots(const std::vector<InstalledApp>& installed) {
         else
             shellLog::write("app package: Android's files of " + version + " could not all be removed from the shared folder");
     }
+}
+
+void removeUnusedServiceCopies() {
+    if (isSingleApp()) return;
+    const std::wstring shared = sharedFolder();
+    if (shared.empty()) return;
+    std::string record;
+    const std::string keep = files::read(shared + L"\\services\\gms-package.txt", record) ? iniValue(record, "cache") : std::string();
+    uint64_t freed = 0;
+    int removed = 0, left = 0;
+    for (const auto& name : files::listFolders(shared + L"\\services", L"*")) {
+        // Only the copies' folders, named by their tokens (hexadecimal and '-'): gsf and the registered copy stay.
+        const std::string token = narrow(name);
+        if (token.empty() || token == keep || token.find_first_not_of("0123456789abcdef-") != std::string::npos) continue;
+        const std::wstring folder = shared + L"\\services\\" + name;
+        const uint64_t size = treeSize(folder);
+        if (files::removeTree(folder)) {
+            freed += size;
+            removed++;
+        } else {
+            left++;
+        }
+    }
+    if (removed || left)
+        shellLog::write(format("microG: %d older copies of Google Play services' APK removed from the shared folder (%s)", removed,
+                               formattedByteCount(freed).c_str()) +
+                        (left ? format("; %d still open in an app, left for the next time", left) : std::string()));
+}
+
+void logSharedSpace() {
+    static std::atomic<bool> said{false};
+    if (isSingleApp() || said.exchange(true)) return;
+    const std::wstring shared = sharedFolder();
+    if (shared.empty()) return;
+    uint64_t total = files::folderSize(shared);
+    std::string parts;
+    for (const auto& name : files::listFolders(shared, L"*")) {
+        const uint64_t size = treeSize(shared + L"\\" + name);
+        total += size;
+        parts += format("%s%s %s", parts.empty() ? "" : ", ", narrow(name).c_str(), formattedByteCount(size).c_str());
+    }
+    shellLog::write("storage: the shared folder holds " + formattedByteCount(total) + ": " + parts);
+    // Its apps' own storage, the largest five.
+    std::vector<std::pair<uint64_t, std::string>> apps;
+    for (const auto& name : files::listFolders(shared + L"\\apps", L"*")) apps.push_back({treeSize(shared + L"\\apps\\" + name), narrow(name)});
+    std::sort(apps.begin(), apps.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    std::string largest;
+    for (size_t i = 0; i < apps.size() && i < 5; i++)
+        largest += format("%s%s %s", largest.empty() ? "" : ", ", apps[i].second.c_str(), formattedByteCount(apps[i].first).c_str());
+    if (!largest.empty()) shellLog::write("storage: the apps' storage there, the largest: " + largest);
+    int copies = 0;
+    for (const auto& name : files::listFolders(shared + L"\\services", L"*"))
+        if (narrow(name).find_first_not_of("0123456789abcdef-") == std::string::npos) copies++;
+    shellLog::write(format("storage: %d copies of Google Play services' APK in the shared folder's services", copies));
 }
 
 std::wstring installedApk(const std::string& fullName) {
