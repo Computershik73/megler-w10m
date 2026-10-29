@@ -785,6 +785,34 @@ void removeUnusedServiceCopies() {
                         (left ? format("; %d still open in an app, left for the next time", left) : std::string()));
 }
 
+void removeOldHandedApks() {
+    if (isSingleApp()) return;
+    const std::wstring shared = sharedFolder();
+    if (shared.empty()) return;
+    const std::wstring incoming = shared + L"\\incoming";
+    FILETIME now;
+    GetSystemTimeAsFileTime(&now);
+    const uint64_t nowTicks = (uint64_t(now.dwHighDateTime) << 32) | now.dwLowDateTime, hour = 36000000000ull;
+    uint64_t freed = 0;
+    int removed = 0;
+    for (const auto& name : files::list(incoming, L"*")) {
+        const std::wstring path = incoming + L"\\" + name;
+        WIN32_FILE_ATTRIBUTE_DATA data = {};
+        if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) continue;
+        const uint64_t written = (uint64_t(data.ftLastWriteTime.dwHighDateTime) << 32) | data.ftLastWriteTime.dwLowDateTime;
+        // A fresh one may still wait for its request's answer.
+        if (written + hour > nowTicks) continue;
+        const uint64_t size = (uint64_t(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
+        if (files::remove(path)) {
+            freed += size;
+            removed++;
+        }
+    }
+    if (removed)
+        shellLog::write(format("import: %d APKs apps had handed over removed from the shared folder's incoming (%s)", removed,
+                               formattedByteCount(freed).c_str()));
+}
+
 void logSharedSpace() {
     static std::atomic<bool> said{false};
     if (isSingleApp() || said.exchange(true)) return;

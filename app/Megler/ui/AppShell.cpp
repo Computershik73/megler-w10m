@@ -852,20 +852,32 @@ void AppShell::installApkFile(winrt::Windows::Storage::StorageFile const& file) 
 
 void AppShell::installApkPath(const std::wstring& path, const std::string& name, const std::string& from) {
     shellLog::write("import: " + from + " asks to install " + name + " (" + narrow(path) + ")");
+    /*
+     * An APK an app's own package handed over (the shared folder's incoming\, player/SystemHost.cpp) goes once its request is
+     * answered, whatever the answer: the library has a copy of its own (or its base and splits) by then, and an app that
+     * asks again hands it over again. None ever went, and they added up (499 MB on 2026-10-30).
+     */
+    const std::wstring shared = appPackage::sharedFolder(), incoming = shared + L"\\incoming\\";
+    const bool handed = !shared.empty() && path.size() > incoming.size() && _wcsnicmp(path.c_str(), incoming.c_str(), incoming.size()) == 0;
+    const auto drop = [path, handed] {
+        if (handed) files::remove(path);
+    };
     // What becomes of it is told to the app that asked (library/PhoneAppsList.h): its installer session waits for it.
     if (import_->active) {
         phoneAppsList::installOutcome(name, "busy", "Megler is installing another APK. Ask again when it is done.");
         alert("Another APK Is on Its Way", "Megler is installing an APK already. Ask " + from + " again when it is done.");
+        drop();
         return;
     }
     std::weak_ptr<AppShell> weak = weak_from_this();
     confirm("Install " + name + "?", from + " wants to install this app. Megler reads it, tells you whether it can run here, and installs it "
                                             "as an app of the phone's own.",
             "Install", false,
-            [this, weak, path, name] {
+            [this, weak, path, name, drop] {
                 if (!weak.lock()) return;
                 if (import_->active) {
                     phoneAppsList::installOutcome(name, "busy", "Megler is installing another APK. Ask again when it is done.");
+                    drop();
                     return;
                 }
                 *import_ = ImportProgress();
@@ -873,7 +885,8 @@ void AppShell::installApkPath(const std::wstring& path, const std::string& name,
                 ApkSource source;
                 source.path = path;
                 source.name = name;
-                installFrom(weak, import_, std::move(source), [weak, name](std::string id, std::string error) {
+                installFrom(weak, import_, std::move(source), [weak, name, drop](std::string id, std::string error) {
+                    drop();
                     auto self = weak.lock();
                     if (!error.empty()) {
                         phoneAppsList::installOutcome(name, "failed", error);
@@ -883,7 +896,10 @@ void AppShell::installApkPath(const std::wstring& path, const std::string& name,
                     }
                 });
             },
-            [name] { phoneAppsList::installOutcome(name, "declined", "Not installed: Megler was told no."); });
+            [name, drop] {
+                drop();
+                phoneAppsList::installOutcome(name, "declined", "Not installed: Megler was told no.");
+            });
 }
 
 void AppShell::uninstallApp(const std::string& package, const std::string& from) {
