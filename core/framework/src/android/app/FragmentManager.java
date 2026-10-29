@@ -60,7 +60,17 @@ public class FragmentManager {
     }
     /** A fragment brought up to the host's state. */
     private void raise(Fragment f) {
-        if (mHostState >= HOST_ACTIVITY_CREATED && !f.mMeglerActivityCreated) { f.mMeglerActivityCreated = true; f.onActivityCreated(null); f.onViewStateRestored(null); }
+        if (mHostState >= HOST_ACTIVITY_CREATED && !f.mMeglerActivityCreated) {
+            f.mMeglerActivityCreated = true;
+            Bundle saved = f.mMeglerRestored;
+            f.mMeglerRestored = null;
+            f.onActivityCreated(saved);
+            if (saved != null && f.mView != null) {
+                android.util.SparseArray<android.os.Parcelable> views = saved.getSparseParcelableArray(VIEW_STATE);
+                if (views != null) f.mView.restoreHierarchyState(views);
+            }
+            f.onViewStateRestored(saved);
+        }
         if (mHostState >= HOST_STARTED && !f.mStarted) { f.onStart(); f.mStarted = true; }
         if (mHostState >= HOST_RESUMED && !f.mResumed) { f.onResume(); f.mResumed = true; }
     }
@@ -79,7 +89,19 @@ public class FragmentManager {
     public void removeOnBackStackChangedListener(OnBackStackChangedListener l) { mListeners.remove(l); }
     public void putFragment(Bundle b, String k, Fragment f) {}
     public Fragment getFragment(Bundle b, String k) { return null; }
-    public Fragment.SavedState saveFragmentInstanceState(Fragment f) { return null; }
+    /** The fragment's onSaveInstanceState (and its view's), to create another from with setInitialSavedState; null when it says nothing. */
+    public Fragment.SavedState saveFragmentInstanceState(Fragment f) {
+        if (f.mFragmentManager != this) throw new IllegalStateException("Fragment " + f + " is not currently in the FragmentManager");
+        Bundle out = new Bundle();
+        f.onSaveInstanceState(out);
+        if (f.mView != null) {
+            android.util.SparseArray<android.os.Parcelable> views = new android.util.SparseArray<>();
+            f.mView.saveHierarchyState(views);
+            if (views.size() > 0) out.putSparseParcelableArray(VIEW_STATE, views);
+        }
+        return out.isEmpty() ? null : new Fragment.SavedState(out);
+    }
+    static final String VIEW_STATE = "android:view_state";
     public boolean isDestroyed() { return mActivity.isDestroyed(); }
     public boolean isStateSaved() { return false; }
     public void registerFragmentLifecycleCallbacks(FragmentLifecycleCallbacks c, boolean r) {}
@@ -114,14 +136,22 @@ public class FragmentManager {
         mAdded.add(f);
         f.onAttach((Context) mActivity); f.onAttach(mActivity);
         mActivity.onAttachFragment(f);
-        f.onCreate(f.mArguments);
+        /*
+         * Created from its saved state (setInitialSavedState), or from none: null, as on Android, for a new fragment. Its
+         * arguments were passed here, and a fragment that reads its saved state when it has one read nothing: Gmail's
+         * conversation view found no ConversationViewState in its arguments and every message stayed loading (package 515).
+         */
+        Bundle saved = f.mSavedFragmentState;
+        f.mSavedFragmentState = null;
+        f.mMeglerRestored = saved;
+        f.onCreate(saved);
         ViewGroup container = containerId != 0 ? (ViewGroup) mActivity.findViewById(containerId) : null;
         f.mContainer = container;
-        View v = f.onCreateView(mActivity.getLayoutInflater(), container, null);
+        View v = f.onCreateView(mActivity.getLayoutInflater(), container, saved);
         f.mView = v;
         if (v != null) {
             if (container != null && v.getParent() == null) container.addView(v);
-            f.onViewCreated(v, null);
+            f.onViewCreated(v, saved);
             if (f.mHidden) v.setVisibility(View.GONE);
         }
         raise(f);

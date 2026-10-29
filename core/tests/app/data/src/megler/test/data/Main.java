@@ -826,6 +826,49 @@ public class Main extends Activity {
             detail = "own=" + (a != null) + " adapter=" + adapter + " clicked=" + clicked[0] + " made=" + found;
             return a != null && adapter && clicked[0] == 1 && found;
         });
+        // A platform fragment's saved state as Android has it: none (null) for a new fragment, whatever its arguments, and what
+        // saveFragmentInstanceState kept of one, through a parcel, for another made with setInitialSavedState (onCreate and
+        // onCreateView; onActivityCreated comes after the activity's onCreate, where the steps run). Gmail's conversation view was
+        // given its arguments as its saved state and found no view state there.
+        step("fragment-saved-state", () -> {
+            final Bundle[] seen = new Bundle[3];
+            final boolean[] firstCreated = new boolean[1];
+            Bundle args = new Bundle();
+            args.putString("given", "an argument");
+            android.app.Fragment first = new android.app.Fragment() {
+                @Override public void onCreate(Bundle saved) { super.onCreate(saved); seen[0] = saved; firstCreated[0] = true; }
+                @Override public void onSaveInstanceState(Bundle out) { out.putString("kept", "by the first"); }
+            };
+            first.setArguments(args);
+            android.app.FragmentManager fm = getFragmentManager();
+            fm.beginTransaction().add(first, "saved-first").commit();
+            fm.executePendingTransactions();
+            android.app.Fragment.SavedState kept = fm.saveFragmentInstanceState(first);
+            fm.beginTransaction().remove(first).commit();
+            fm.executePendingTransactions();
+            android.app.Fragment.SavedState back = null;
+            if (kept != null) {
+                android.os.Parcel p = android.os.Parcel.obtain();
+                kept.writeToParcel(p, 0);
+                p.setDataPosition(0);
+                back = android.app.Fragment.SavedState.CREATOR.createFromParcel(p, getClassLoader());
+                p.recycle();
+            }
+            android.app.Fragment second = new android.app.Fragment() {
+                @Override public void onCreate(Bundle saved) { super.onCreate(saved); seen[1] = saved; }
+                @Override public android.view.View onCreateView(android.view.LayoutInflater i, android.view.ViewGroup c, Bundle saved) { seen[2] = saved; return null; }
+            };
+            second.setInitialSavedState(back);
+            fm.beginTransaction().add(second, "saved-second").commit();
+            fm.executePendingTransactions();
+            fm.beginTransaction().remove(second).commit();
+            fm.executePendingTransactions();
+            boolean fresh = firstCreated[0] && seen[0] == null && first.getArguments() == args;
+            boolean restored = back != null && seen[1] != null && "by the first".equals(seen[1].getString("kept")) && seen[2] == seen[1];
+            detail = "fresh=" + fresh + " first=" + seen[0] + " kept=" + (kept != null) + " parcelled=" + (back != null) + " second="
+                     + (seen[1] == null ? "null" : seen[1].getString("kept")) + " view=" + (seen[2] == seen[1]);
+            return fresh && restored;
+        });
         // A HandlerThread's looper, as Android gives it: null at once for a thread not started and for one that ended (Facebook's
         // stories loader asked one of those, and waited for good); the thread's own once it runs, with its id.
         step("handler-thread", () -> {
