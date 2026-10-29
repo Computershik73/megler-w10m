@@ -128,6 +128,7 @@ public final class AppRunner {
         Looper.setInputSink(AppRunner::deliver);
         applyInsets();
         app.onCreate();
+        Syncs.started();
         Manifest.Component launcher = Manifest.activity(activityClass);
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         // started through the launcher's alias, the activity's component is the alias (Android compares that, not the class, when

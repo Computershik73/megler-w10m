@@ -238,6 +238,34 @@ public final class Syncs {
         }
     }
 
+    /**
+     * The app has started (AppRunner, after Application.onCreate): its adapters' syncs, a few seconds later, as the switches
+     * have them. On Android the system starts them, not the app: an account an adapter does not know yet is initialized when the
+     * system starts (Gmail's gmail-ls never was here: it asks the system for none, package 513), and an account the adapter
+     * syncs is synced while the app is not running, by its periodic syncs and by tickles from the servers. Here what runs them
+     * lives only as long as the app, so they run when it starts.
+     */
+    public static void started() {
+        handler().postDelayed(() -> {
+            try {
+                request(null, null, new Bundle());
+            } catch (RuntimeException e) {
+                android.util.Log.w(TAG, "the syncs at the start could not be asked for", e);
+            }
+        }, 5000);
+    }
+
+    /** An account added (megler.Accounts): its adapters' syncs, as Android's SyncManager starts them for an account added. */
+    public static void added(final Account account) {
+        handler().post(() -> {
+            try {
+                request(account, null, new Bundle());
+            } catch (RuntimeException e) {
+                android.util.Log.w(TAG, "the syncs of an account added could not be asked for", e);
+            }
+        });
+    }
+
     /** requestSync: the account's sync of the authority, or every account's of the adapter's type (null), or every authority's (null). */
     public static void request(Account account, String authority, Bundle extras) {
         final Bundle given = extras != null ? new Bundle(extras) : new Bundle();

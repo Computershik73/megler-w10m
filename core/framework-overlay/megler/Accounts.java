@@ -241,7 +241,7 @@ public final class Accounts {
     }
     private static void changed() {
         ArrayList<Runnable> all;
-        final ArrayList<Account> gone = new ArrayList<>();
+        final ArrayList<Account> gone = new ArrayList<>(), came = new ArrayList<>();
         synchronized (Accounts.class) {
             ArrayList<Account> now = current();
             String passwords = passwords();
@@ -253,11 +253,14 @@ public final class Accounts {
              */
             if (sTold != null && sTold.equals(now) && passwords.equals(sToldPasswords)) return;
             if (sTold != null) for (Account a : sTold) if (!now.contains(a)) gone.add(a);
+            if (sTold != null) for (Account a : now) if (!sTold.contains(a)) came.add(a);
             sTold = now;
             sToldPasswords = passwords;
         }
         synchronized (sListeners) { all = new ArrayList<>(sListeners); }
         for (Runnable r : all) WATCH.post(r);
+        // An account added is synced by the app's adapters of its type, as Android's SyncManager syncs it (megler.Syncs).
+        for (Account a : came) Syncs.added(a);
         Context app = AppRunner.application() != null ? AppRunner.application() : ContextImpl.app();
         if (app != null) WATCH.post(() -> {
             Broadcasts.send(app, new Intent(android.accounts.AccountManager.LOGIN_ACCOUNTS_CHANGED_ACTION));
