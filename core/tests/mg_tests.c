@@ -3077,6 +3077,23 @@ static void test_sqlite(const char *scratch)
     CHECK(sq_int(a, "SELECT count(*) FROM t") == 5 && sq_int(a, "SELECT v FROM t WHERE id = 1") == 0);
     CHECK_INT(sqlite3_exec(a, "DELETE FROM t", NULL, NULL, NULL), SQLITE_READONLY);
     sqlite3_close(a);
+    {
+        /* A file named in the app's SQL by the app's path (Gmail's EmailProvider attaches its bodies' database so): the
+           host's file under that path is the one opened and made. */
+        char *attached = mg_sprintf("%s/sqlite-attached.db", scratch);
+        mg_path_remove(attached, NULL);
+        mg_fs_mount("/data/data/megler.sqlite.test", scratch);
+        a = NULL;
+        /* (An attached file is opened as the database it is attached to was: one that may be made, as Android opens its.) */
+        CHECK_INT(sqlite3_open_v2(path, &a, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL), SQLITE_OK);
+        CHECK_INT(sqlite3_exec(a, "ATTACH '/data/data/megler.sqlite.test/sqlite-attached.db' AS att; CREATE TABLE att.u(x); INSERT INTO att.u VALUES(7);",
+                               NULL, NULL, NULL), SQLITE_OK);
+        CHECK_INT(sq_int(a, "SELECT x FROM att.u"), 7);
+        sqlite3_close(a);
+        CHECK(mg_path_stat(attached, &fs, NULL) && fs.size >= 1024);
+        mg_path_remove(attached, NULL);
+        free(attached);
+    }
     /* A database in memory, with a full-text table, as Android's build has them; and the clock. */
     CHECK_INT(sqlite3_open_v2(":memory:", &m, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL), SQLITE_OK);
     CHECK_INT(sqlite3_exec(m, "CREATE VIRTUAL TABLE f USING fts4(body); INSERT INTO f VALUES('a quick brown fox'), ('a lazy dog'), ('quick, quick');", NULL, NULL, NULL), SQLITE_OK);

@@ -108,6 +108,11 @@ int mg_fd_wait_locked(u64 timeout_ns);
 
 /* Where a prefix of Android's file system is on the host. */
 void mg_fs_mount(const char *guest_prefix, const char *host_dir);
+/*
+ * The host's path for a path of the app's under one of its mounts (not "/" alone): /data/data/<package>/..., /sdcard/...;
+ * NULL for any other path, the host's own among them. Freed by the caller.
+ */
+char *mg_fs_app_path_host(const char *path);
 
 #ifdef __cplusplus
 }

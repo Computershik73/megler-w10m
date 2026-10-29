@@ -343,6 +343,18 @@ char *mg_fs_host_path(const char *guest_path)
     return h;
 }
 
+char *mg_fs_app_path_host(const char *path)
+{
+    char *g, *h = NULL;
+    const mount *m;
+    if (!path || path[0] != '/') return NULL;
+    g = normalize(path);
+    m = g ? mount_of(g) : NULL;
+    if (m && m->glen > 1) h = host_of_normal(g);
+    free(g);
+    return h;
+}
+
 /* ------------------------------------------------------- made-up files */
 
 typedef struct textbuf {
