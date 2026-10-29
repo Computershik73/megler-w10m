@@ -58,6 +58,13 @@ bool mg_dvm_start(const char *const *boot, int nboot);
  */
 bool mg_dvm_start_android(const char *root);
 /*
+ * The framework's methods that are signatures alone (tools/list-stubs.py: "<class> <name> <descriptor>" a line, sorted),
+ * read from `path` before the framework's classes are linked: each is marked as it is linked, and its first call is said
+ * in the log ("api: ... is a stub here"), so that what an app needs of Android 14 that Megler does not do shows. False
+ * when the file is not there (nothing is marked).
+ */
+bool mg_dvm_stubs_load(const char *path);
+/*
  * Class loaders. There is one class path and no loading through a loader:
  * every class is found by name wherever it was added. But an app's classes
  * must say they come from the app's loader (Class.getClassLoader: resources

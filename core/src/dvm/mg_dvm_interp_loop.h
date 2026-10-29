@@ -539,6 +539,8 @@ int DVM_LOOP(mg_dvm_thread *t, mg_dvm_frame *f, mg_jvalue *ret)
             }
             break;
         }
+        /* A framework method that is its signature alone: its first call said (before a trivial body is done in place). */
+        if (target->stub) mg_dvm_stub_called(m, target);
         /* One the interpreter does itself, when its arguments allow (not while every instruction is watched: the trace, the profile). */
         if (target->intrinsic && !g_dvm.slow && intrinsic(t, target->intrinsic, inv_argv, &result)) NEXT(3);
         /* A method whose body is trivial, done in place; counted as the instructions it would have executed. */

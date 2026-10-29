@@ -117,6 +117,9 @@ echo "framework: $ORIGINALS files of the original's, $(wc -l < "$OUT/overlay.txt
   || { grep -v '^Note:\|^warning:' "$OUT/javac.log" | head -60 >&2; echo "javac failed (build/framework/javac.log)" >&2; exit 1; }
 (cd "$OUT/classes" && "$JDK/bin/jar" cf ../classes.jar .)
 echo "framework: $(find "$OUT/classes" -name '*.class' | wc -l) classes compiled"
+# The methods that are signatures alone, for the runtime to say when an app first calls one (tools/list-stubs.py).
+python "$ROOT/tools/list-stubs.py" "$(m "$OUT/classes")" "$(m "$OUT/sources.txt")" "$(m "$FW")" "$(m "$OVERLAY")" "$(m "$OUT/megler-stubs.txt")" \
+  || { echo "tools/list-stubs.py failed" >&2; exit 1; }
 # --min-api 26 as the original: interfaces keep their default and static methods; lambdas become classes.
 "$JDK/bin/java" -cp "$(m "$D8")" com.android.tools.r8.D8 --release --min-api 26 --lib "$(m "$LIB")" --output "$(m "$OUT/dex")" "$(m "$OUT/classes.jar")" 2> "$OUT/d8.log" \
   || { head -40 "$OUT/d8.log" >&2; echo "d8 failed (build/framework/d8.log)" >&2; exit 1; }

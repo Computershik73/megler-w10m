@@ -175,6 +175,8 @@ struct mg_dvm_method {
     u32 meter_calls, meter_avg;
     /* One of the library's methods the interpreter does itself when it can (mg_dvm_interp.c, "intrinsics"): its number, or 0. */
     u8 intrinsic;
+    /* 1: a framework method that is its signature alone (megler-stubs.txt, mg_dvm_stubs_load) whose first call is still to be said. */
+    volatile u8 stub;
     /*
      * What the whole body is when it is one of the trivial shapes a call does in place (mg_dvm_interp.c, "trivial
      * methods"): 0 not looked at yet. One word, written once with all of it -- the shape, the instruction that does the
@@ -554,6 +556,10 @@ bool mg_dvm_in_frames(const mg_dvm_thread *t, const void *p, size_t size);
 void mg_dvm_monitor_trace_start(void);
 void mg_dvm_stacks_trace_start(void);
 void mg_dvm_call_trace_add(const char *prefix);
+/* mg_dvm_class.c: whether a framework method is one of the signatures alone of megler-stubs.txt (mg_dvm_stubs_load). */
+bool mg_dvm_stub_listed(const char *cls, const char *name, const char *sig);
+/* mg_dvm_interp.c: the first call of a method marked a stub, said in the log with its caller (NULL: called from C). */
+void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m);
 /* For the collector, with the runtime's lock held: every thread there is, and every interned string. */
 void mg_dvm_threads_each(void (*fn)(mg_dvm_thread *t, void *user), void *user);
 void mg_dvm_interned_each(void (*fn)(mg_jobj *s, void *user), void *user);

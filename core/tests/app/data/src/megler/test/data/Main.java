@@ -869,6 +869,12 @@ public class Main extends Activity {
                      + (seen[1] == null ? "null" : seen[1].getString("kept")) + " view=" + (seen[2] == seen[1]);
             return fresh && restored;
         });
+        // A framework method that is its signature alone, called on purpose: the runtime says its first call, with this caller
+        // (mg_dvm_stub_called; the test looks for the line). Fragment.getEnterTransition is one of the generated members.
+        step("stub-said", () -> {
+            android.app.Fragment f = new android.app.Fragment();
+            return f.getEnterTransition() == null;
+        });
         // A HandlerThread's looper, as Android gives it: null at once for a thread not started and for one that ended (Facebook's
         // stories loader asked one of those, and waited for good); the thread's own once it runs, with its id.
         step("handler-thread", () -> {

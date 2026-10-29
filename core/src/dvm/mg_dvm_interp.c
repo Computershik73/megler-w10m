@@ -146,6 +146,25 @@ static void call_trace_strings(const mg_dvm_method *m, const mg_dvm_reg *argv, u
     }
 }
 
+/*
+ * The first call of a framework method that is its signature alone (mg_dvm_stubs_load), said with who called it: what an
+ * app needs of Android 14 that Megler does not do. Gmail's sync and its conversation view stayed empty or loading, with
+ * nothing in the log, on calls of such methods (ContentResolver's sync, FragmentManager's saved state). Once a method a
+ * run (two threads at once may both say it), at most 800 lines a run.
+ */
+static volatile i32 g_stub_lines;
+
+void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m)
+{
+    if (!m->stub) return;
+    m->stub = 0;
+    if (mg_atomic_add(&g_stub_lines, 1) > 800) return;
+    if (caller)
+        mg_info("api: %s.%s%s is a stub here (its signature alone), first called from %s.%s", m->cls->name, m->name, m->sig, caller->cls->name, caller->name);
+    else
+        mg_info("api: %s.%s%s is a stub here (its signature alone), first called from native code or the runtime", m->cls->name, m->name, m->sig);
+}
+
 static void call_trace_enter(mg_dvm_thread *t, mg_dvm_method *m, const char *how, const mg_dvm_reg *argv, u32 argc)
 {
     char strings[400];
@@ -1136,6 +1155,7 @@ bool mg_dvm_invoke(mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_
         }
         if (g_dvm.trace >= 2) mg_info("dvm: %*s-> %s.%s%s (from C)", t->depth, "", m->cls->name, m->name, m->sig);
         if (g_call_trace) call_trace_enter(t, m, " (from C)", NULL, 0);
+        if (m->stub) mg_dvm_stub_called(NULL, m);
         ok = interpret(t, f, ret);
     }
     t->c_depth--;

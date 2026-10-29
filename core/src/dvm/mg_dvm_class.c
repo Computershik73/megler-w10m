@@ -12,6 +12,7 @@
 #include "mg_dvm_internal.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 mg_dvm_globals g_dvm;
 
@@ -534,6 +535,53 @@ static void free_unlinked(mg_dvm_class *c)
     free(c);
 }
 
+/*
+ * The framework's methods that are signatures alone (mg_dvm_stubs_load): the file's lines, sorted as strcmp sorts them,
+ * "<class> <name> <descriptor>". Read once, before any of the framework's classes is linked; looked up as a method of an
+ * android/ or javax/ class is read.
+ */
+static char *g_stub_text;
+static const char **g_stubs;
+static size_t g_nstubs;
+
+static int stub_cmp(const void *a, const void *b) { return strcmp(*(const char *const *)a, *(const char *const *)b); }
+
+bool mg_dvm_stubs_load(const char *path)
+{
+    size_t size = 0, n = 0, cap = 0;
+    char *p, *line;
+    u8 *text = mg_file_read_all(path, &size);
+    if (!text) return false;
+    g_stub_text = (char *)text;
+    g_stub_text[size] = 0;
+    for (p = g_stub_text; *p; p++) n += *p == '\n';
+    cap = n + 1;
+    g_stubs = (const char **)mg_alloc(sizeof(*g_stubs) * cap);
+    n = 0;
+    for (line = g_stub_text; *line && n < cap;) {
+        char *end = strchr(line, '\n');
+        if (end) *end = 0;
+        if (end && end > line && end[-1] == '\r') end[-1] = 0;
+        if (*line) g_stubs[n++] = line;
+        if (!end) break;
+        line = end + 1;
+    }
+    qsort((void *)g_stubs, n, sizeof(*g_stubs), stub_cmp);
+    g_nstubs = n;
+    mg_info("api: %u of the framework's methods are their signatures alone here; the first call of each is said (\"api: ... is a stub here\")",
+            (unsigned)n);
+    return true;
+}
+
+bool mg_dvm_stub_listed(const char *cls, const char *name, const char *sig)
+{
+    char key[512];
+    const char *k = key;
+    if (!g_nstubs || (strncmp(cls, "android/", 8) && strncmp(cls, "javax/", 6))) return false;
+    if (snprintf(key, sizeof(key), "%s %s %s", cls, name, sig) >= (int)sizeof(key)) return false;
+    return bsearch(&k, g_stubs, g_nstubs, sizeof(*g_stubs), stub_cmp) != NULL;
+}
+
 static bool read_method(mg_dvm_class *c, mg_dvm_method *m, u32 idx, u32 flags, u32 code_off, link_error *err)
 {
     mg_dvm_dex *d = c->dex;
@@ -551,6 +599,7 @@ static bool read_method(mg_dvm_class *c, mg_dvm_method *m, u32 idx, u32 flags, u
     m->sig = mg_dvm_dex_proto_sig(d, mg_dvm_rd16(mi + 2));
     m->shorty = mg_dvm_dex_proto_shorty(d, mg_dvm_rd16(mi + 2));
     m->nparams = (u16)(strlen(m->shorty) ? strlen(m->shorty) - 1 : 0);
+    if (code_off && mg_dvm_stub_listed(c->name, m->name, m->sig)) m->stub = 1;
     if (code_off) {
         const u8 *ci = d->b + code_off;
         u32 words = 0;

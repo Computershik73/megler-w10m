@@ -1777,6 +1777,14 @@ static void add_platform_framework(void)
     else mg_warn("java: an app of the platform's own, and Android 9's framework is not in the Android root (framework/platform-framework.dex)");
 }
 
+/* The framework's methods that are signatures alone, beside it in the Android root: each one's first call is said (mg_dvm_stubs_load). */
+static void stubs_load(void)
+{
+    char *path = mg_sprintf("%s/framework/megler-stubs.txt", J.root);
+    if (!mg_dvm_stubs_load(path)) mg_info("api: no list of the framework's methods that are signatures alone (%s): their calls are not said", path);
+    free(path);
+}
+
 static void main_thread(void *arg)
 {
     char *framework = mg_sprintf("%s/framework/megler-framework.dex", J.root), *res = mg_sprintf("%s/framework/framework-res.apk", J.root);
@@ -1788,7 +1796,7 @@ static void main_thread(void *arg)
     mg_gthread_self();
     why[0] = 0;
     if (!mg_dvm_start_android(J.root)) snprintf(why, sizeof(why), "the Java runtime did not start on the Android root %s", J.root);
-    else if (!mg_dvm_add_dex_file(framework)) snprintf(why, sizeof(why), "the Java framework is not in the Android root (%s)", framework);
+    else if (stubs_load(), !mg_dvm_add_dex_file(framework)) snprintf(why, sizeof(why), "the Java framework is not in the Android root (%s)", framework);
     else if (add_platform_framework(), mg_dvm_app_follows(), add_shared_libraries(), mg_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
     if (!why[0]) {
         mg_jvalue sdk;
