@@ -85,6 +85,7 @@ public class Main extends Activity {
         }
         PackageInfo pi = WebView.getCurrentWebViewPackage();
         Log.i(T, "provider ok package=" + (pi != null ? pi.packageName + " " + pi.versionName : "none") + " ms=" + (SystemClock.uptimeMillis() - started));
+        glue();
         web.getSettings().setJavaScriptEnabled(true);
         web.addJavascriptInterface(new Bridge(), "megler");
         web.setWebViewClient(new Client());
@@ -100,6 +101,32 @@ public class Main extends Activity {
         Log.i(T, "user-agent-default " + (web.getSettings().getUserAgentString().equals(defaultAgent) ? "ok" : "FAILED " + defaultAgent));
         stage = 1;
         web.loadUrl(base + "/page");
+    }
+
+    /*
+     * androidx.webkit's way to the WebView's support-library glue (WebViewGlueCommunicator): the glue's class by name through
+     * WebView.getWebViewClassLoader(), the provider factory it makes, and that factory's features asked through the boundary
+     * interface the app carries. Where it is not found, androidx.webkit has no feature of the WebView's: Yandex Maps' profile
+     * screen ended in WebSettingsCompat.setAlgorithmicDarkeningAllowed with an UnsupportedOperationException.
+     */
+    private void glue() {
+        try {
+            Class<?> c = Class.forName("org.chromium.support_lib_glue.SupportLibReflectionUtil", false, WebView.getWebViewClassLoader());
+            Object factory = c.getDeclaredMethod("createWebViewProviderFactory").invoke(null);
+            java.lang.reflect.Method m = org.chromium.support_lib_boundary.WebViewProviderFactoryBoundaryInterface.class.getMethod("getSupportedFeatures");
+            String[] features = (String[]) ((java.lang.reflect.InvocationHandler) factory).invoke(null, m, null);
+            boolean dark = java.util.Arrays.asList(features).contains("ALGORITHMIC_DARKENING");
+            Log.i(T, "glue " + (features.length > 0 && dark ? "ok" : "FAILED") + " features=" + features.length + " algorithmic-darkening=" + dark);
+        } catch (Throwable t) {
+            ClassLoader l = WebView.getWebViewClassLoader();
+            String provider;
+            try {
+                provider = Class.forName("com.android.webview.chromium.WebViewChromiumFactoryProvider", false, l) + " of " + Class.forName("com.android.webview.chromium.WebViewChromiumFactoryProvider", false, l).getClassLoader();
+            } catch (Throwable p) {
+                provider = p.toString();
+            }
+            Log.e(T, "glue FAILED " + t + " loader=" + l + " provider=" + provider, t);
+        }
     }
 
     private final class Client extends WebViewClient {

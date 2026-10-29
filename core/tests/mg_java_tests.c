@@ -2857,6 +2857,10 @@ static int run_webview(void)
     }
     line = find_line("I/WebViewTest: provider ok", 0);
     if (line >= 0) say("  %s", strstr(line_at(line), "provider ok"));
+    /* androidx.webkit's way to the WebView's support-library glue: found, and its features asked. */
+    line = find_line("I/WebViewTest: glue ", 0);
+    if (line >= 0) say("  %s", strstr(line_at(line), "glue "));
+    CHECK(find_line("I/WebViewTest: glue ok", 0) >= 0);
     /* The WebView's own word on how it runs: in this process, its renderer not in one of its own. */
     CHECK(find_line("multiprocess=false", 0) >= 0);
     {

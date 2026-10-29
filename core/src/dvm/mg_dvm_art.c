@@ -1470,6 +1470,21 @@ N(Class_getPrimitiveClass)
 }
 
 /* classForName: service loaders have their own namespace; existing loaders retain the app path. */
+/*
+ * A loader whose class is the app's own or a service's -- a subclass of ClassLoader that is not the platform's: Class.forName
+ * asks it, with loadClass, as Android asks every loader. Chromium's WebView answers WebView.getWebViewClassLoader with a loader
+ * of its own (WV.lP) over its scope's; looked for in the app's scope instead, androidx.webkit's way to the WebView's
+ * support-library glue found nothing, the app had none of the WebView's features, and Yandex Maps' profile screen ended in
+ * WebSettingsCompat.setAlgorithmicDarkeningAllowed with an UnsupportedOperationException (package 508).
+ */
+static bool asked_loader(mg_jobj *loader)
+{
+    mg_dvm_class *k;
+    if (!loader || loader == g_dvm.app_loader) return false;
+    k = mg_dvm_class_of(loader);
+    return k && (k->scope > 0 || mg_dvm_class_is_app(k));
+}
+
 N(Class_classForName)
 {
     const char *given = mg_dvm_string_utf8(c->args[0].l);
@@ -1480,7 +1495,7 @@ N(Class_classForName)
         npe("name == null");
         return;
     }
-    if (scope) {
+    if (scope || asked_loader(c->args[2].l)) {
         mg_jvalue out = {0}, args[2] = {{0}, {0}};
         args[0].l = c->args[0].l;
         if (mg_dvm_call_virtual(c->args[2].l, "loadClass", "(Ljava/lang/String;Z)Ljava/lang/Class;", args, &out)) {
