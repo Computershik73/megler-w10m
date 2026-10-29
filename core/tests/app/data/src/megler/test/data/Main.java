@@ -767,6 +767,26 @@ public class Main extends Activity {
             detail = "earpiece=" + earpiece + " speaker=" + speaker + " devices=" + devices.size() + " chosen=" + chosen + " mode=" + am.getMode();
             return earpiece && speaker && devices.size() == 2 && chosen && am.getMode() == android.media.AudioManager.MODE_NORMAL;
         });
+        // TextUtils.expandTemplate as Android has it: a SpannableStringBuilder (Gmail casts it to one), the template's spans
+        // kept, ^1 to ^9 replaced and ^^ made ^; a value it does not have asked for is an IllegalArgumentException.
+        step("expand-template", () -> {
+            android.text.SpannableString t = new android.text.SpannableString("^1 has ^2 ^^ points");
+            Object bold = new android.text.style.StyleSpan(android.graphics.Typeface.BOLD);
+            t.setSpan(bold, 3, 6, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            CharSequence out = android.text.TextUtils.expandTemplate(t, "Ann", "10");
+            boolean builder = out instanceof android.text.SpannableStringBuilder;
+            android.text.Spanned sp = (android.text.Spanned) out;
+            boolean kept = sp.getSpanStart(bold) == 4 && sp.getSpanEnd(bold) == 7;
+            boolean refused;
+            try {
+                android.text.TextUtils.expandTemplate("^3", "a");
+                refused = false;
+            } catch (IllegalArgumentException e) {
+                refused = true;
+            }
+            detail = "text=" + out + " builder=" + builder + " span=" + sp.getSpanStart(bold) + ".." + sp.getSpanEnd(bold) + " refused=" + refused;
+            return builder && "Ann has 10 ^ points".equals(out.toString()) && kept && refused;
+        });
         // A HandlerThread's looper, as Android gives it: null at once for a thread not started and for one that ended (Facebook's
         // stories loader asked one of those, and waited for good); the thread's own once it runs, with its id.
         step("handler-thread", () -> {
