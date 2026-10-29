@@ -843,7 +843,7 @@ void installCopiedUpdate() {
             if (files::read(tried, record)) {
                 int tries = 0;
                 for (size_t at = record.find(" installs "); at != std::string::npos; at = record.find(" installs ", at + 1)) tries++;
-                if (record.find("result: ") != std::string::npos || tries >= 3) {
+                if (record.find("\nresult: ") != std::string::npos || tries >= 3) {
                     shellLog::write(format("update: Megler %s in Pictures\\Megler was tried %d time%s already (%s)", best.c_str(), tries,
                                            tries == 1 ? "" : "s", narrow(tried).c_str()));
                     return;
@@ -865,7 +865,10 @@ void installCopiedUpdate() {
                             "): installed through the Device Portal, which closes this Megler");
             const PortalResult result = installThroughPortal(made, [](const std::string& step) { shellLog::write("update: " + step); });
             shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
-            files::append(tried, "result: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said + "\r\n");
+            // A portal that could not be reached, or dropped the connection while the package went (0x80072eff, 512), said nothing
+            // of the package: that try is one without a result, made again.
+            const bool unreached = !result.ok && result.said.rfind("The Device Portal could not be reached", 0) == 0;
+            files::append(tried, std::string(unreached ? "no result: " : "result: ") + (result.ok ? "installed: " : "not installed: ") + result.said + "\r\n");
         } catch (hresult_error const& e) {
             shellLog::write(format("update: Pictures\\Megler could not be read: 0x%08x ", unsigned(e.code())) + narrow(e.message()));
         }
