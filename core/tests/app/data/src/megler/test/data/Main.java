@@ -787,6 +787,45 @@ public class Main extends Activity {
             detail = "text=" + out + " builder=" + builder + " span=" + sp.getSpanStart(bold) + ".." + sp.getSpanEnd(bold) + " refused=" + refused;
             return builder && "Ann has 10 ^ points".equals(out.toString()) && kept && refused;
         });
+        // A ListFragment as Android's: a list of its own when it makes no view of its own (getListView, an adapter set on it, a
+        // row's click to onListItemClick), and the android.R.id.list of a view it makes itself (Gmail's folder list).
+        step("list-fragment", () -> {
+            final int[] clicked = { -1 };
+            final android.widget.BaseAdapter rows = new android.widget.BaseAdapter() {
+                @Override public int getCount() { return 2; }
+                @Override public Object getItem(int position) { return "row " + position; }
+                @Override public long getItemId(int position) { return position; }
+                @Override public android.view.View getView(int position, android.view.View convert, android.view.ViewGroup parent) {
+                    TextView t = new TextView(parent.getContext());
+                    t.setText("row " + position);
+                    return t;
+                }
+            };
+            android.app.ListFragment own = new android.app.ListFragment() {
+                @Override public void onListItemClick(android.widget.ListView l, android.view.View v, int position, long id) { clicked[0] = position; }
+            };
+            android.app.ListFragment made = new android.app.ListFragment() {
+                @Override public android.view.View onCreateView(android.view.LayoutInflater inflater, android.view.ViewGroup container, Bundle saved) {
+                    android.widget.LinearLayout layout = new android.widget.LinearLayout(inflater.getContext());
+                    android.widget.ListView list = new android.widget.ListView(inflater.getContext());
+                    list.setId(android.R.id.list);
+                    layout.addView(list);
+                    return layout;
+                }
+            };
+            android.app.FragmentManager fm = getFragmentManager();
+            fm.beginTransaction().add(own, "own-list").add(made, "made-list").commit();
+            fm.executePendingTransactions();
+            android.widget.ListView a = own.getListView(), b = made.getListView();
+            own.setListAdapter(rows);
+            boolean adapter = a != null && a.getAdapter() == rows && own.getListAdapter() == rows;
+            if (a != null) a.performItemClick(null, 1, 1);
+            boolean found = b != null && b.getId() == android.R.id.list && b.getParent() instanceof android.widget.LinearLayout;
+            fm.beginTransaction().remove(own).remove(made).commit();
+            fm.executePendingTransactions();
+            detail = "own=" + (a != null) + " adapter=" + adapter + " clicked=" + clicked[0] + " made=" + found;
+            return a != null && adapter && clicked[0] == 1 && found;
+        });
         // A HandlerThread's looper, as Android gives it: null at once for a thread not started and for one that ended (Facebook's
         // stories loader asked one of those, and waited for good); the thread's own once it runs, with its id.
         step("handler-thread", () -> {
