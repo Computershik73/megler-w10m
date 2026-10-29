@@ -1206,7 +1206,8 @@ public class Main extends Activity {
         // of its own with the provider's client, after the account was made syncable by the adapter's autoInitialize (run 1).
         step("sync", () -> {
             final android.accounts.AccountManager am = android.accounts.AccountManager.get(this);
-            final android.accounts.Account a = new android.accounts.Account("synced", "megler.test.account");
+            // (An account type of its own: the account stays for the second run, and "account-removed" counts those of its type.)
+            final android.accounts.Account a = new android.accounts.Account("synced", "megler.test.synced");
             if (am.getAccountsByType(a.type).length == 0) am.addAccountExplicitly(a, null, null);
             android.content.SyncAdapterType type = null;
             android.content.SyncAdapterType[] types = android.content.ContentResolver.getSyncAdapterTypes();
