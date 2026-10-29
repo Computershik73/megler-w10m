@@ -47,6 +47,14 @@
         <service android:name=".Main$Again" android:exported="false" />
         <service android:name=".Main$Elsewhere" android:exported="false" android:process=":elsewhere" />
         <service android:name=".Main$Work" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <!-- A sync adapter and the provider it syncs (Main's step "sync"), as Gmail has them. -->
+        <provider android:name=".Main$Synced" android:authorities="megler.test.sync" android:exported="false" />
+        <service android:name=".Main$SyncService" android:exported="false">
+            <intent-filter>
+                <action android:name="android.content.SyncAdapter" />
+            </intent-filter>
+            <meta-data android:name="android.content.SyncAdapter" android:resource="@xml/syncadapter" />
+        </service>
         <receiver android:name=".Main$Remote" android:process=":remote" android:exported="false">
             <intent-filter>
                 <action android:name="megler.test.RELAY" />

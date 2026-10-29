@@ -1197,6 +1197,33 @@ public class Main extends Activity {
             }, f);
             return am.addAccountExplicitly(a, null, null) && am.removeAccountExplicitly(a) && am.getAccountsByType(a.type).length == 0;
         });
+        // The app's sync adapter, run as Android runs it (Gmail's folders stayed empty, its sync off and not to be turned on): the
+        // adapter's type read from its XML, the switches on and kept, and a sync asked for that reaches onPerformSync on a thread
+        // of its own with the provider's client, after the account was made syncable by the adapter's autoInitialize (run 1).
+        step("sync", () -> {
+            final android.accounts.AccountManager am = android.accounts.AccountManager.get(this);
+            final android.accounts.Account a = new android.accounts.Account("synced", "megler.test.account");
+            if (am.getAccountsByType(a.type).length == 0) am.addAccountExplicitly(a, null, null);
+            android.content.SyncAdapterType type = null;
+            android.content.SyncAdapterType[] types = android.content.ContentResolver.getSyncAdapterTypes();
+            for (android.content.SyncAdapterType t : types != null ? types : new android.content.SyncAdapterType[0])
+                if ("megler.test.sync".equals(t.authority)) type = t;
+            boolean typed = type != null && a.type.equals(type.accountType) && type.isUserVisible() && !type.supportsUploading() && !type.isAlwaysSyncable();
+            int syncable = android.content.ContentResolver.getIsSyncable(a, "megler.test.sync");
+            boolean master = android.content.ContentResolver.getMasterSyncAutomatically();
+            android.content.ContentResolver.setSyncAutomatically(a, "megler.test.sync", false);
+            boolean off = !android.content.ContentResolver.getSyncAutomatically(a, "megler.test.sync");
+            android.content.ContentResolver.setSyncAutomatically(a, "megler.test.sync", true);
+            boolean on = android.content.ContentResolver.getSyncAutomatically(a, "megler.test.sync");
+            final Object listening = android.content.ContentResolver.addStatusChangeListener(android.content.ContentResolver.SYNC_OBSERVER_TYPE_ACTIVE, which -> syncSeen++);
+            Bundle extras = new Bundle();
+            extras.putBoolean(android.content.ContentResolver.SYNC_EXTRAS_MANUAL, true);
+            extras.putBoolean(android.content.ContentResolver.SYNC_EXTRAS_EXPEDITED, true);
+            android.content.ContentResolver.requestSync(a, "megler.test.sync", extras);
+            detail = "types=" + (types == null ? "null" : types.length) + " typed=" + typed + " syncable=" + syncable + " master=" + master + " off=" + off + " on=" + on
+                     + " listening=" + (listening != null);
+            return typed && syncable == (run == 1 ? -1 : 1) && master && off && on && listening != null;
+        });
         step("package-installer", () -> {
             android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
             return installer != null && installer == getPackageManager().getPackageInstaller()
@@ -2641,6 +2668,44 @@ public class Main extends Activity {
         Forward(android.os.IBinder inner) { this.inner = inner; attachInterface(null, "android.os.IMessenger"); }
         @Override protected boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags) throws android.os.RemoteException {
             return inner.transact(code, data, reply, flags);
+        }
+    }
+
+    static volatile int syncSeen;
+    static volatile boolean syncSaid;
+
+    /** The provider Main's sync adapter syncs: it holds nothing. */
+    public static final class Synced extends android.content.ContentProvider {
+        @Override public boolean onCreate() { return true; }
+        @Override public android.database.Cursor query(android.net.Uri u, String[] p, String s, String[] a, String o) { return null; }
+        @Override public String getType(android.net.Uri u) { return null; }
+        @Override public android.net.Uri insert(android.net.Uri u, android.content.ContentValues v) { return null; }
+        @Override public int delete(android.net.Uri u, String s, String[] a) { return 0; }
+        @Override public int update(android.net.Uri u, android.content.ContentValues v, String s, String[] a) { return 0; }
+    }
+
+    /** The service of Main's sync adapter, which hands out the adapter's binder as Android's sync adapters do. */
+    public static final class SyncService extends android.app.Service {
+        private static SyncAdapter sAdapter;
+        @Override public void onCreate() { synchronized (SyncService.class) { if (sAdapter == null) sAdapter = new SyncAdapter(getApplicationContext()); } }
+        @Override public android.os.IBinder onBind(android.content.Intent i) { return sAdapter.getSyncAdapterBinder(); }
+    }
+
+    /** Says how the sync it was given went: once, the first that is not an initialization. */
+    static final class SyncAdapter extends android.content.AbstractThreadedSyncAdapter {
+        SyncAdapter(Context c) { super(c, true); }
+        @Override public void onPerformSync(android.accounts.Account account, Bundle extras, String authority, android.content.ContentProviderClient provider,
+                                            android.content.SyncResult result) {
+            result.stats.numInserts++;
+            if (syncSaid) return;
+            syncSaid = true;
+            boolean elsewhere = android.os.Looper.myLooper() != android.os.Looper.getMainLooper();
+            int syncable = android.content.ContentResolver.getIsSyncable(account, authority);
+            boolean active = android.content.ContentResolver.isSyncActive(account, authority);
+            boolean held = elsewhere && provider != null && "megler.test.sync".equals(authority) && "synced".equals(account.name) && syncable == 1 && active
+                           && !extras.getBoolean(android.content.ContentResolver.SYNC_EXTRAS_INITIALIZE, false);
+            Log.i("DataTest", "sync-performed " + (held ? "ok" : "FAILED") + " thread=" + Thread.currentThread().getName() + " provider=" + (provider != null)
+                  + " syncable=" + syncable + " active=" + active + " seen=" + syncSeen + " extras=" + extras.keySet());
         }
     }
 
