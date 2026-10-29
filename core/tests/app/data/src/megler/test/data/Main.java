@@ -1178,7 +1178,8 @@ public class Main extends Activity {
             return before && p.edit().putInt(key, 7).putString("with space", "x y").commit();
         });
         // An account removed is told as Android 8 and later tell it: ACCOUNT_REMOVED with its name and type, and
-        // LOGIN_ACCOUNTS_CHANGED (Play Store learns so, through Google Play services, that its account is gone).
+        // LOGIN_ACCOUNTS_CHANGED (Play Store learns so, through Google Play services, that its account is gone). Its user data and
+        // an auth token set in between are told to no one: LOGIN_ACCOUNTS_CHANGED twice, for the account added and removed.
         step("account-removed", () -> {
             final android.accounts.AccountManager am = android.accounts.AccountManager.get(this);
             final android.accounts.Account a = new android.accounts.Account("removed by run " + run, "megler.test.account");
@@ -1190,12 +1191,15 @@ public class Main extends Activity {
                 @Override public void onReceive(Context c, android.content.Intent i) {
                     if (android.accounts.AccountManager.LOGIN_ACCOUNTS_CHANGED_ACTION.equals(i.getAction())) { changes[0]++; return; }
                     removed[0] = i.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME) + "/" + i.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_TYPE);
-                    boolean held = (a.name + "/" + a.type).equals(removed[0]) && changes[0] >= 1;
+                    boolean held = (a.name + "/" + a.type).equals(removed[0]) && changes[0] == 2;
                     Log.i("DataTest", "account-removed-broadcast " + (held ? "ok" : "FAILED") + " removed=" + removed[0] + " changes=" + changes[0]);
                     c.unregisterReceiver(this);
                 }
             }, f);
-            return am.addAccountExplicitly(a, null, null) && am.removeAccountExplicitly(a) && am.getAccountsByType(a.type).length == 0;
+            if (!am.addAccountExplicitly(a, null, null)) return false;
+            am.setUserData(a, "kept", "for a while");
+            am.setAuthToken(a, "megler.test.token", "token of run " + run);
+            return am.removeAccountExplicitly(a) && am.getAccountsByType(a.type).length == 0;
         });
         // The app's sync adapter, run as Android runs it (Gmail's folders stayed empty, its sync off and not to be turned on): the
         // adapter's type read from its XML, the switches on and kept, and a sync asked for that reaches onPerformSync on a thread

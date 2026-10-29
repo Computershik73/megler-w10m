@@ -83,7 +83,7 @@ public final class Accounts {
         }
         sEntries.clear();
         sEntries.addAll(read);
-        if (sTold == null) sTold = current();
+        if (sTold == null) { sTold = current(); sToldPasswords = passwords(); }
         return true;
     }
     private static void map(JSONObject o, Map<String, String> into) throws org.json.JSONException {
@@ -227,6 +227,13 @@ public final class Accounts {
     };
     /* The accounts the last change was told of (first: those first read): what is gone since is told as removed. */
     private static ArrayList<Account> sTold;
+    /* And their passwords then (as hashes): a password set is told too, as Android tells it (setPassword). */
+    private static String sToldPasswords;
+    private static String passwords() {
+        StringBuilder sb = new StringBuilder();
+        for (Entry e : sEntries) sb.append(e.password == null ? "-" : Integer.toHexString(e.password.hashCode())).append(',');
+        return sb.toString();
+    }
     private static ArrayList<Account> current() {
         ArrayList<Account> now = new ArrayList<>();
         for (Entry e : sEntries) now.add(new Account(e.name, e.type));
@@ -237,8 +244,17 @@ public final class Accounts {
         final ArrayList<Account> gone = new ArrayList<>();
         synchronized (Accounts.class) {
             ArrayList<Account> now = current();
+            String passwords = passwords();
+            /*
+             * Only a change of the accounts themselves or of a password, as on Android (AccountManagerService): user data and
+             * auth tokens set are told to no one. Each was told as LOGIN_ACCOUNTS_CHANGED, and Google Play services sets them
+             * all the time: Gmail ran its LoginAccountsChangedJob over and over, its account looked at again each time, and
+             * its refresh went on for good (package 512).
+             */
+            if (sTold != null && sTold.equals(now) && passwords.equals(sToldPasswords)) return;
             if (sTold != null) for (Account a : sTold) if (!now.contains(a)) gone.add(a);
             sTold = now;
+            sToldPasswords = passwords;
         }
         synchronized (sListeners) { all = new ArrayList<>(sListeners); }
         for (Runnable r : all) WATCH.post(r);
