@@ -681,6 +681,66 @@ static void compile_invoke(emitter *e, u32 pc)
 }
 
 /*
+ * The intrinsics that are a few instructions (mg_dvm_interp.c, "intrinsics"), in the code: String.length, isEmpty and
+ * charAt, Math.min, max and abs of ints, Math.sqrt. A null string or an index out of its bounds goes by the call
+ * (mg_dvm_jit_invoke), which throws as the interpreter would; the others cannot fail. False, with nothing emitted, for the
+ * rest. The string's receiver is in r0, checked for null, when `kind` is not static.
+ */
+static bool intrinsic_in_code(emitter *e, u8 id, u32 count, u32 a0, u32 a1, u32 *fails, u8 *conds, u32 *nfails)
+{
+    switch (id) {
+    case INTR_STRING_LENGTH:
+        ldr_imm(e, R1, R0, (u32)offsetof(mg_jobj, u.str.len16));
+        str_imm(e, R1, R5, JIT_CTX_RESULT);
+        return true;
+    case INTR_STRING_ISEMPTY:
+        ldr_imm(e, R1, R0, (u32)offsetof(mg_jobj, u.str.len16));
+        mov_imm(e, R2, 0);                                       /* movw: the flags left as they are */
+        cmp_imm(e, R1, 0);
+        e16(e, 0xBF08);                                          /* it eq */
+        e16(e, 0x2201);                                          /*   moveq r2, #1 */
+        str_imm(e, R2, R5, JIT_CTX_RESULT);
+        return true;
+    case INTR_STRING_CHARAT:
+        if (count < 2) return false;
+        ldr_v(e, R1, a1);
+        ldr_imm(e, R2, R0, (u32)offsetof(mg_jobj, u.str.len16));
+        cmp_reg(e, R1, R2);
+        conds[*nfails] = C_HS;
+        fails[(*nfails)++] = local_branch(e);
+        ldr_imm(e, R3, R0, (u32)offsetof(mg_jobj, u.str.u16));
+        element(e, false, 3);                                    /* r2 = r3[r1], a halfword */
+        str_imm(e, R2, R5, JIT_CTX_RESULT);
+        return true;
+    case INTR_MIN_I: case INTR_MAX_I:
+        if (count < 2) return false;
+        ldr_v(e, R0, a0);
+        ldr_v(e, R1, a1);
+        cmp_reg(e, R0, R1);
+        e16(e, id == INTR_MIN_I ? 0xBFC8 : 0xBFB8);              /* it gt (min), it lt (max) */
+        e16(e, 0x4608);                                          /*   mov r0, r1 */
+        str_imm(e, R0, R5, JIT_CTX_RESULT);
+        return true;
+    case INTR_ABS_I:
+        if (count < 1) return false;
+        ldr_v(e, R0, a0);
+        cmp_imm(e, R0, 0);
+        e16(e, 0xBFB8);                                          /* it lt */
+        e32(e, 0xF1C0, 0x0000);                                  /*   rsblt r0, r0, #0 */
+        str_imm(e, R0, R5, JIT_CTX_RESULT);
+        return true;
+    case INTR_SQRT:
+        if (count < 2) return false;
+        vldr_d(e, 0, a0);
+        e32(e, 0xEEB1, 0x0BC0);                                  /* vsqrt.f64 d0, d0 */
+        e32(e, 0xED80 | R5, 0x0B00 | (JIT_CTX_RESULT / 4));      /* vstr d0, [r5, #result] */
+        return true;
+    default:
+        return false;
+    }
+}
+
+/*
  * A call of a method whose whole body is trivial (mg_dvm_interp.c, "trivial methods": empty, a constant returned, a getter,
  * a setter, a static getter), done in the code as the interpreter's call does it in place, without mg_dvm_jit_invoke and
  * its C call: the method the invoke names, which the interpreter's calls resolved, and its shape, which its first call
@@ -699,10 +759,9 @@ static bool inline_call(emitter *e, const mg_dvm_method *m, u32 pc)
     int kind = (int)(op - (range ? 0x74u : 0x6eu)), fk = 0;
     const mg_dvm_method *target;
     const mg_dvm_field *fld = NULL;
-    struct {
-        u32 at;
-        u8 cond;
-    } fails[4];
+    u32 fails[4];
+    u8 conds[4];
+    u8 intrinsic;
     if (kind != DVM_INVOKE_VIRTUAL && kind != DVM_INVOKE_DIRECT && kind != DVM_INVOKE_STATIC) return false;
     if (range) {
         count = (u32)w >> 8;
@@ -715,11 +774,20 @@ static bool inline_call(emitter *e, const mg_dvm_method *m, u32 pc)
     }
     target = idx < d->nmeth ? d->mcache[idx] : NULL;
     if (!target || ((target->flags & DVM_ACC_STATIC) != 0) != (kind == DVM_INVOKE_STATIC)) return false;
-    if ((target->cls->flags & DVM_ACC_INTERFACE) || target->stub || target->intrinsic || !target->insns) return false;
+    if ((target->cls->flags & DVM_ACC_INTERFACE) || target->stub) return false;
     if (kind == DVM_INVOKE_STATIC ? target->cls->state != DVM_CS_INITIALIZED : !count) return false;
+    intrinsic = target->intrinsic;
     shape = target->shape;
     sop = SHAPE_OP(shape);
-    switch (SHAPE_OF(shape)) {
+    if (intrinsic) {
+        /* (Those in the code: what intrinsic_in_code does.) */
+        if (intrinsic != INTR_STRING_LENGTH && intrinsic != INTR_STRING_ISEMPTY && intrinsic != INTR_STRING_CHARAT && intrinsic != INTR_MIN_I
+            && intrinsic != INTR_MAX_I && intrinsic != INTR_ABS_I && intrinsic != INTR_SQRT)
+            return false;
+        if ((intrinsic == INTR_STRING_CHARAT || intrinsic == INTR_MIN_I || intrinsic == INTR_MAX_I || intrinsic == INTR_SQRT) && count < 2) return false;
+    } else if (!target->insns) {
+        return false;
+    } else switch (SHAPE_OF(shape)) {
     case SHAPE_EMPTY: case SHAPE_CONST: break;
     case SHAPE_STATIC_GETTER:
         fld = target->shape_field;
@@ -738,32 +806,36 @@ static bool inline_call(emitter *e, const mg_dvm_method *m, u32 pc)
     if (kind != DVM_INVOKE_STATIC) {
         ldr_v(e, R0, self);
         cmp_imm(e, R0, 0);
-        fails[nfails].cond = C_EQ;
-        fails[nfails++].at = local_branch(e);
-        if (kind == DVM_INVOKE_VIRTUAL && target->vidx >= 0) {
+        conds[nfails] = C_EQ;
+        fails[nfails++] = local_branch(e);
+        /* (Not for a final method, or one of a final class such as String: nothing can override it.) */
+        if (kind == DVM_INVOKE_VIRTUAL && target->vidx >= 0 && !((target->flags | target->cls->flags) & DVM_ACC_FINAL)) {
             ldr_imm(e, R1, R0, (u32)offsetof(mg_dvm_obj, cls));
             ldr_imm(e, R2, R1, (u32)offsetof(mg_dvm_class, nvtab));
             mov_imm(e, R3, (u32)target->vidx);
             cmp_reg(e, R3, R2);
-            fails[nfails].cond = C_HS;
-            fails[nfails++].at = local_branch(e);
+            conds[nfails] = C_HS;
+            fails[nfails++] = local_branch(e);
             ldr_imm(e, R1, R1, (u32)offsetof(mg_dvm_class, vtab));
             e32(e, 0xF850 | R1, (R1 << 12) | (2u << 4) | R3);    /* ldr r1, [r1, r3, lsl #2] */
             mov_imm(e, R2, (u32)(mg_addr)target);
             cmp_reg(e, R1, R2);
-            fails[nfails].cond = C_NE;
-            fails[nfails++].at = local_branch(e);
+            conds[nfails] = C_NE;
+            fails[nfails++] = local_branch(e);
         }
-        if (fld && SHAPE_OF(shape) != SHAPE_STATIC_GETTER) {
+        if (!intrinsic && fld && SHAPE_OF(shape) != SHAPE_STATIC_GETTER) {
             ldr_imm(e, R1, R0, (u32)offsetof(mg_dvm_obj, cls));
             ldr_imm(e, R1, R1, (u32)offsetof(mg_dvm_class, nslots));
             mov_imm(e, R2, fld->slot);
             cmp_reg(e, R2, R1);
-            fails[nfails].cond = C_HS;
-            fails[nfails++].at = local_branch(e);
+            conds[nfails] = C_HS;
+            fails[nfails++] = local_branch(e);
         }
     }
-    switch (SHAPE_OF(shape)) {
+    if (intrinsic) {
+        /* (Checked above that it is one of those: this emits it.) */
+        intrinsic_in_code(e, intrinsic, count, self, value, fails, conds, &nfails);
+    } else switch (SHAPE_OF(shape)) {
     case SHAPE_CONST:
         mov_imm(e, R0, (u32)SHAPE_VALUE(shape));
         str_imm(e, R0, R5, JIT_CTX_RESULT);
@@ -791,7 +863,7 @@ static bool inline_call(emitter *e, const mg_dvm_method *m, u32 pc)
     }
     if (nfails) {
         done = local_branch(e);
-        for (i = 0; i < nfails; i++) local_to(e, fails[i].at, fails[i].cond);
+        for (i = 0; i < nfails; i++) local_to(e, fails[i], conds[i]);
         compile_invoke(e, pc);
         local_to(e, done, C_AL);
     }

@@ -230,6 +230,26 @@ static i32 jit_inlined(i32 n)
 /* Java's conversions of floating point to int: toward zero, saturated, NaN 0. */
 static i32 java_d2i(double v) { return v != v ? 0 : v >= 2147483647.0 ? 2147483647 : v <= -2147483648.0 ? (i32)0x80000000u : (i32)v; }
 
+static i32 jit_intrinsics(const char *s)
+{
+    i32 n = (i32)strlen(s), i;
+    u32 sum = 0;
+    for (i = 0; i <= n; i++) {
+        if (i == n) {
+            sum += 1000;
+            continue;
+        }
+        sum += (u8)s[i];
+        sum += (u32)n;
+        sum += n == 0;
+        sum += (u32)(i - 5 < 0 ? 5 - i : i - 5);
+        sum += (u32)(i - 5);
+        sum ^= (u32)i;
+        sum += (u32)java_d2i(sqrt((double)i) * 10.0);
+    }
+    return (i32)sum;
+}
+
 static i64 java_d2l(double v) { return v != v ? 0 : v >= 9223372036854775808.0 ? INT64_MAX : v <= -9223372036854775808.0 ? INT64_MIN : (i64)v; }
 static i64 java_ldiv(i64 a, i64 b) { return a == INT64_MIN && b == -1 ? a : a / b; }
 static i64 java_lrem(i64 a, i64 b) { return a == INT64_MIN && b == -1 ? 0 : a % b; }
@@ -469,6 +489,10 @@ static void test_jit(void)
     A[1].j = (i64)0x0123456789abcdefll;
     CHECK(call("t/Jit", "byCalls", "(IJ)J").j == jit_by_calls(40, (i64)0x0123456789abcdefll));
     CHECK_STR(thrown(), "");
+    /* Intrinsics in the code; charAt past the end goes by the call, which throws. */
+    A[0].l = mg_dvm_new_string("compiled code reads this string");
+    CHECK_INT(call("t/Jit", "intrinsics", "(Ljava/lang/String;)I").i, jit_intrinsics("compiled code reads this string"));
+    CHECK_STR(thrown(), "");
     /* Trivial methods called from a compiled loop, done in the code: an override and a null object go by the call instead. */
     {
         u32 in_place = g_dvm_jit_in_place;
@@ -491,7 +515,7 @@ static void test_jit(void)
             { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" }, { "fields", "(I)I" }, { "callsInLoop", "(I)I" },
             { "callKinds", "(I)I" }, { "catchInLoop", "(I)I" }, { "deepCalls", "(I)I" }, { "longs", "(IJ)J" }, { "switches", "(I)I" },
             { "objects", "(I)I" }, { "storeFails", "(I)I" }, { "castFails", "(I)I" }, { "inlined", "(I)I" }, { "firstAbove", "([II)I" },
-            { "floats", "(I)D" }, { "byCalls", "(IJ)J" },
+            { "floats", "(I)D" }, { "byCalls", "(IJ)J" }, { "intrinsics", "(Ljava/lang/String;)I" },
         };
         size_t k;
         for (k = 0; k < MG_COUNT(compiled); k++) {

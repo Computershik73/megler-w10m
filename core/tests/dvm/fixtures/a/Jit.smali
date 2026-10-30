@@ -910,3 +910,54 @@
     :done
     return-wide v2
 .end method
+
+# String.length, isEmpty and charAt, Math.abs, min and max of ints and Math.sqrt called in a compiled loop, done in the code
+# (mg_dvm_jit.c, intrinsic_in_code). The last turn's charAt is past the end: its StringIndexOutOfBoundsException, from the
+# call the code falls back to, is caught in the loop, 1000 (jit_intrinsics in mg_dvm_tests.c says it in C).
+.method public static intrinsics(Ljava/lang/String;)I
+    .registers 10
+    const/4 v0, 0x0
+    const/4 v1, 0x0
+    invoke-virtual {p0}, Ljava/lang/String;->length()I
+    move-result v2
+    :loop
+    if-gt v1, v2, :done
+    :try_start
+    invoke-virtual {p0, v1}, Ljava/lang/String;->charAt(I)C
+    move-result v3
+    :try_end
+    .catch Ljava/lang/StringIndexOutOfBoundsException; {:try_start .. :try_end} :caught
+    add-int/2addr v0, v3
+    invoke-virtual {p0}, Ljava/lang/String;->length()I
+    move-result v3
+    add-int/2addr v0, v3
+    invoke-virtual {p0}, Ljava/lang/String;->isEmpty()Z
+    move-result v3
+    add-int/2addr v0, v3
+    add-int/lit8 v4, v1, -0x5
+    invoke-static {v4}, Ljava/lang/Math;->abs(I)I
+    move-result v3
+    add-int/2addr v0, v3
+    invoke-static {v1, v4}, Ljava/lang/Math;->min(II)I
+    move-result v3
+    add-int/2addr v0, v3
+    invoke-static {v4, v1}, Ljava/lang/Math;->max(II)I
+    move-result v3
+    xor-int/2addr v0, v3
+    int-to-double v5, v1
+    invoke-static {v5, v6}, Ljava/lang/Math;->sqrt(D)D
+    move-result-wide v5
+    const-wide/high16 v7, 0x4024000000000000L
+    mul-double/2addr v5, v7
+    double-to-int v3, v5
+    add-int/2addr v0, v3
+    :next
+    add-int/lit8 v1, v1, 0x1
+    goto :loop
+    :caught
+    move-exception v3
+    add-int/lit16 v0, v0, 0x3e8
+    goto :next
+    :done
+    return v0
+.end method

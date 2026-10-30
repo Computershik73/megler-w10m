@@ -214,6 +214,12 @@ enum { SHAPE_UNKNOWN, SHAPE_REGULAR, SHAPE_EMPTY, SHAPE_CONST, SHAPE_GETTER, SHA
 #define SHAPE_OP(w) (((w) >> 8) & 0xFFu)
 #define SHAPE_VALUE(w) ((i32)(i16)((w) >> 16))
 
+/* The library's methods the interpreter does itself (mg_dvm_interp.c, "intrinsics"), as m->intrinsic numbers them. */
+enum {
+    INTR_NONE, INTR_STRING_CHARAT, INTR_STRING_LENGTH, INTR_STRING_ISEMPTY, INTR_STRING_EQUALS, INTR_STRING_HASHCODE, INTR_ARRAYCOPY,
+    INTR_MIN_I, INTR_MAX_I, INTR_ABS_I, INTR_MIN_J, INTR_MAX_J, INTR_ABS_J, INTR_SQRT, INTR_GETCLASS, INTR_CURRENT_THREAD,
+};
+
 /* mg_dvm.c: a method's profile counts, made the first time they are wanted. */
 mg_dvm_method_prof *mg_dvm_prof_make(mg_dvm_method *m);
 static inline mg_dvm_method_prof *mg_dvm_prof(mg_dvm_method *m) { mg_dvm_method_prof *p = m->prof; return p ? p : mg_dvm_prof_make(m); }

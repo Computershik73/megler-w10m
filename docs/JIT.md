@@ -77,7 +77,9 @@ interpreter's on the host's stack; an exception it ends with sends the frame bac
 invoke; where the host's stack has too little left for another loop (deep recursion through compiled code) the call is the
 interpreter's, without one. A call of a trivial method (empty, a constant, a getter, a setter, a static getter: the
 interpreter's "trivial methods") is done in the code itself, after a check that the object's class has that very method
-in its slot; an override, a null object, an object without the field go by `mg_dvm_jit_invoke`.
+in its slot (not for a final method or class, which nothing overrides); an override, a null object, an object without the
+field go by `mg_dvm_jit_invoke`. So do the intrinsics that are a few instructions: String.length, isEmpty and charAt (a
+null string or an index out of bounds by the call, which throws), Math.min, max and abs of ints, Math.sqrt.
 
 A method is compiled when the jumps back it takes and the calls of it made by then reach 1000. Its code is entered at the
 head of a loop compiled whole -- a loop that hands back at every turn costs more than it saves -- and at its start, for

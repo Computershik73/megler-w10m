@@ -501,11 +501,6 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
  * charAt calls), hashCode (the same, once); System.arraycopy; Math.min, max and abs of int and long, and sqrt;
  * Object.getClass; Thread.currentThread.
  */
-enum {
-    INTR_NONE, INTR_STRING_CHARAT, INTR_STRING_LENGTH, INTR_STRING_ISEMPTY, INTR_STRING_EQUALS, INTR_STRING_HASHCODE, INTR_ARRAYCOPY,
-    INTR_MIN_I, INTR_MAX_I, INTR_ABS_I, INTR_MIN_J, INTR_MAX_J, INTR_ABS_J, INTR_SQRT, INTR_GETCLASS, INTR_CURRENT_THREAD,
-};
-
 /* String's hash field, the slot String.hashCode keeps its result in. */
 static u32 g_string_hash_slot = ~0u;
 
