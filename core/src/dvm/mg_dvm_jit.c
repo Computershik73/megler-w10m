@@ -693,6 +693,14 @@ static bool intrinsic_in_code(emitter *e, u8 id, u32 count, u32 a0, u32 a1, u32 
         ldr_imm(e, R1, R0, (u32)offsetof(mg_jobj, u.str.len16));
         str_imm(e, R1, R5, JIT_CTX_RESULT);
         return true;
+    case INTR_REFERENT: {
+        /* Reference.getReferent: the referent's slot (a reference object always has it, as a subclass of Reference). */
+        u32 off = (u32)MG_DVM_HEADER + g_dvm_referent_slot * (u32)sizeof(mg_jvalue);
+        if (g_dvm_referent_slot == ~0u || off + 4 >= 4096) return false;
+        ldr_imm(e, R1, R0, off);
+        str_imm(e, R1, R5, JIT_CTX_RESULT);
+        return true;
+    }
     case INTR_STRING_ISEMPTY:
         ldr_imm(e, R1, R0, (u32)offsetof(mg_jobj, u.str.len16));
         mov_imm(e, R2, 0);                                       /* movw: the flags left as they are */
@@ -782,7 +790,9 @@ static bool inline_call(emitter *e, const mg_dvm_method *m, u32 pc)
     if (intrinsic) {
         /* (Those in the code: what intrinsic_in_code does.) */
         if (intrinsic != INTR_STRING_LENGTH && intrinsic != INTR_STRING_ISEMPTY && intrinsic != INTR_STRING_CHARAT && intrinsic != INTR_MIN_I
-            && intrinsic != INTR_MAX_I && intrinsic != INTR_ABS_I && intrinsic != INTR_SQRT)
+            && intrinsic != INTR_MAX_I && intrinsic != INTR_ABS_I && intrinsic != INTR_SQRT && intrinsic != INTR_REFERENT)
+            return false;
+        if (intrinsic == INTR_REFERENT && (g_dvm_referent_slot == ~0u || (u32)MG_DVM_HEADER + g_dvm_referent_slot * (u32)sizeof(mg_jvalue) + 4 >= 4096))
             return false;
         if ((intrinsic == INTR_STRING_CHARAT || intrinsic == INTR_MIN_I || intrinsic == INTR_MAX_I || intrinsic == INTR_SQRT) && count < 2) return false;
     } else if (!target->insns) {

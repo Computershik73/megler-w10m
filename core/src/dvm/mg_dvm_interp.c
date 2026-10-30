@@ -505,6 +505,7 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
  */
 /* String's hash field, the slot String.hashCode keeps its result in. */
 static u32 g_string_hash_slot = ~0u;
+u32 g_dvm_referent_slot = ~0u;
 
 static void mark_intrinsic(const char *cls, const char *name, const char *sig, bool is_static, u8 id)
 {
@@ -535,6 +536,19 @@ void mg_dvm_intrinsics_start(void)
     mark_intrinsic("java/lang/Math", "sqrt", "(D)D", true, INTR_SQRT);
     mark_intrinsic("java/lang/Object", "getClass", "()Ljava/lang/Class;", false, INTR_GETCLASS);
     mark_intrinsic("java/lang/Thread", "currentThread", "()Ljava/lang/Thread;", true, INTR_CURRENT_THREAD);
+    /*
+     * Reference.getReferent, what WeakReference.get and SoftReference.get call: a native method that found the field by its
+     * name at every call, 5% of Yandex Maps' main thread (package 530). Its slot read in place.
+     */
+    {
+        mg_dvm_class *ref = mg_dvm_class_exists("java/lang/ref/Reference") ? mg_dvm_find_class("java/lang/ref/Reference") : NULL;
+        mg_dvm_field *referent = ref ? mg_dvm_find_field_typed(ref, "referent", "Ljava/lang/Object;", false) : NULL;
+        if (!ref) mg_dvm_clear_pending();
+        if (referent && referent->slot < ref->nslots) {
+            g_dvm_referent_slot = referent->slot;
+            mark_intrinsic("java/lang/ref/Reference", "getReferent", "()Ljava/lang/Object;", false, INTR_REFERENT);
+        }
+    }
 }
 
 /* System.arraycopy's work when nothing about it can throw: false to have the method called instead. */
@@ -624,6 +638,10 @@ static bool intrinsic(mg_dvm_thread *t, u8 id, const mg_dvm_reg *a, mg_jvalue *r
     case INTR_CURRENT_THREAD:
         if (!t->peer) return false;
         r->l = t->peer;
+        return true;
+    case INTR_REFERENT:
+        if (g_dvm_referent_slot >= mg_dvm_class_of(s)->nslots) return false;
+        r->l = mg_dvm_slots(s)[g_dvm_referent_slot].l;
         return true;
     default: return false;
     }

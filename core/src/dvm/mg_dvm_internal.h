@@ -218,7 +218,10 @@ enum { SHAPE_UNKNOWN, SHAPE_REGULAR, SHAPE_EMPTY, SHAPE_CONST, SHAPE_GETTER, SHA
 enum {
     INTR_NONE, INTR_STRING_CHARAT, INTR_STRING_LENGTH, INTR_STRING_ISEMPTY, INTR_STRING_EQUALS, INTR_STRING_HASHCODE, INTR_ARRAYCOPY,
     INTR_MIN_I, INTR_MAX_I, INTR_ABS_I, INTR_MIN_J, INTR_MAX_J, INTR_ABS_J, INTR_SQRT, INTR_GETCLASS, INTR_CURRENT_THREAD,
+    INTR_REFERENT,
 };
+/* java.lang.ref.Reference's referent field's slot, for INTR_REFERENT (Reference.getReferent); ~0 when it has none. */
+extern u32 g_dvm_referent_slot;
 
 /* mg_dvm.c: a method's profile counts, made the first time they are wanted. */
 mg_dvm_method_prof *mg_dvm_prof_make(mg_dvm_method *m);
