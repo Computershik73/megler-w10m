@@ -428,7 +428,7 @@ static void test_jit(void)
     {
         mg_dvm_class *ac = mg_dvm_find_class("t/Arith");
         mg_dvm_method *sum = ac ? mg_dvm_find_method(ac, "sum", "(II)I", true) : NULL;
-        CHECK(sum && sum->jit && sum->jit->entry[0]);
+        CHECK(sum && sum->jit && mg_dvm_jit_entry(sum->jit, 0));
     }
     /*
      * With the threshold above 1, a small method's code waits on the page being filled, interpreted meanwhile, until the
@@ -447,7 +447,7 @@ static void test_jit(void)
             A[0].i = i + 10;
             CHECK_INT(call("t/Jit", "callWaits", "(I)I").i, ((i + 11) * 3) ^ 5);
         }
-        CHECK(w && w->jit_state == 1 && w->jit && w->jit->entry[0]);
+        CHECK(w && w->jit_state == 1 && w->jit && mg_dvm_jit_entry(w->jit, 0));
     }
 #else
     (void)c;

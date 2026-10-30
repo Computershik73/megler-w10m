@@ -614,10 +614,28 @@ struct mg_dvm_jit_code {
     size_t size;
     /* 0: handed back at ctx->pc; 1: an exception is pending, thrown at ctx->pc; 2: returned, its value in ctx->result */
     int (*run)(mg_dvm_jit_ctx *ctx, const void *entry);
-    /* by pc: where the code is entered, as its halfword in the code +1 (0: none): a loop compiled whole, the method's start */
-    u32 *entry;
-    u32 ninsns;
+    /*
+     * Where the code is entered, in the order of their pcs: the heads of the loops compiled whole and the method's start,
+     * each with its halfword in the code +1. (A table by pc took four bytes for every instruction of the method, for the
+     * one to three entries most have.)
+     */
+    u32 nentries;
+    struct mg_dvm_jit_entry {
+        u32 pc, at;
+    } entries[];
 };
+/* The code's entry at `pc`, as its halfword +1; 0 for none. */
+static inline u32 mg_dvm_jit_entry(const mg_dvm_jit_code *c, u32 pc)
+{
+    u32 lo = 0, hi = c->nentries;
+    while (lo < hi) {
+        u32 mid = (lo + hi) / 2;
+        if (c->entries[mid].pc < pc) lo = mid + 1;
+        else if (c->entries[mid].pc > pc) hi = mid;
+        else return c->entries[mid].at;
+    }
+    return 0;
+}
 extern u32 g_dvm_jit_threshold;      /* jumps back before a method is compiled; 0 off (the flag no-jit, or no JIT on this host) */
 extern u32 g_dvm_jit_in_place;       /* calls of trivial methods compiled to be done in the code (inline_call), for the tests */
 void mg_dvm_jit_start(bool on, u32 threshold, bool trace);
@@ -651,7 +669,7 @@ static inline int mg_dvm_jit_back(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_meth
 {
     mg_dvm_jit_code *c = m->jit;
     if (c) {
-        u32 at = pc < c->ninsns ? c->entry[pc] : 0;
+        u32 at = mg_dvm_jit_entry(c, pc);
         return at ? mg_dvm_jit_run(t, f, c, regs, at, next, res) : 0;
     }
     if (!g_dvm_jit_threshold || (m->jit_state && m->jit_state != 3)) return 0;

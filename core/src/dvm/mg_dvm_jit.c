@@ -1026,7 +1026,6 @@ static void fill_done(void)
             publish(g_waiting[i].m, g_waiting[i].c);
         } else {
             refuse(g_waiting[i].m);
-            free(g_waiting[i].c->entry);
             free(g_waiting[i].c);
         }
     }
@@ -1188,17 +1187,17 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
         if (!to || !put_branch(e.b, x->at, to - 1, x->cond)) goto out;
     }
     bytes = (size_t)e.n * 2;
-    c = (mg_dvm_jit_code *)calloc(1, sizeof(*c));
+    for (pc = 0, i = 0; pc < m->ninsns; pc++) i += target[pc] && code_at[pc];
+    c = (mg_dvm_jit_code *)calloc(1, sizeof(*c) + sizeof(c->entries[0]) * i);
     if (!c) goto out;
     c->size = bytes;
-    c->ninsns = m->ninsns;
-    c->entry = code_at;
-    code_at = NULL;
     for (pc = 0; pc < m->ninsns; pc++)
-        if (!target[pc]) c->entry[pc] = 0;
+        if (target[pc] && code_at[pc]) {
+            c->entries[c->nentries].pc = pc;
+            c->entries[c->nentries++].at = code_at[pc];
+        }
     /* Published, or waiting for its page (fill_done), from here on. */
     if (!place(m, c, e.b, bytes)) {
-        free(c->entry);
         free(c);
         c = NULL;
         goto out;
@@ -1238,7 +1237,7 @@ int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm
         c = m->jit;
         if (!c) return 0;
     }
-    if (pc >= c->ninsns || !(at = c->entry[pc])) return 0;
+    if (!(at = mg_dvm_jit_entry(c, pc))) return 0;
     return mg_dvm_jit_run(t, f, c, regs, at, next, res);
 }
 
