@@ -1412,14 +1412,15 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
         mg_strlcpy(redrawn, "nothing drawn", sizeof(redrawn));
     /*
      * Where Java's time went besides the shell's drawing. The shell's drawing, present and the waits all happen inside native
-     * methods, so the other natives are what is left of the natives' time without them. Interpreting is the rest: the time
-     * outside native methods, allocation and waits for monitors -- bytecode, calls and returns, resolution, the
-     * interpreter's own work. The pace is the instructions over that time. And what every thread executed.
+     * methods, so the other natives are what is left of the natives' time without them. Bytecode is the rest: the time
+     * outside native methods, allocation and waits for monitors -- interpreted and compiled (mg_dvm_jit.c), calls and returns,
+     * resolution, the interpreter's own work. The instructions counted are the interpreter's alone (compiled code counts
+     * none), so their pace over that time says how much of it was interpreted. And what every thread's interpreter executed.
      */
     other = native > host + present + waited ? native - host - present - waited : 0;
     interpreted = wall > native + alloc + blocked ? wall - native - alloc - blocked : 0;
     snprintf(rates, sizeof(rates), "in other native methods %.1f (%.0f calls), allocating %.1f (%.0f objects), waiting for monitors %.1f, "
-             "interpreting %.1f at %.1f M instructions/s; %.1f M instructions on all threads",
+             "bytecode %.1f, interpreted and compiled (%.1f M instructions a second interpreted); %.1f M instructions interpreted on all threads",
              per_frame_ms(other, n), n ? (double)natives / n : 0.0, per_frame_ms(alloc, n), n ? (double)allocs / n : 0.0, per_frame_ms(blocked, n),
              per_frame_ms(interpreted, n), interpreted ? (double)executed * 1e3 / (double)interpreted : 0.0,
              (double)(mg_dvm_executed_all() - w->all_executed) / 1e6);
