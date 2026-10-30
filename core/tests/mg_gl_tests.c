@@ -1073,6 +1073,51 @@ static void turn_clearing(void *p)
     mg_atomic_xchg(&s->done, 1);
 }
 
+/*
+ * A pbuffer and a context destroyed while current (mg_egl.c, doom): EGL ends them once no thread has them current, and so
+ * does the layer -- a thread's turn makes nothing current for a moment, which ANGLE took for letting them go (Yandex Maps'
+ * end in ANGLE, package 528). The stand-in ends at once what it is asked to: they are still there after the destroys, and
+ * gone after the make-current of nothing.
+ */
+static void test_doomed(void)
+{
+    typedef void *(*display_fn)(void *);
+    typedef unsigned (*init_fn)(void *, int *, int *);
+    typedef void *(*create_fn)(void *, void *, void *, const int *);
+    typedef void *(*pbuffer_fn)(void *, void *, const int *);
+    typedef unsigned (*destroy_fn)(void *, void *);
+    typedef unsigned (*make_fn)(void *, void *, void *, void *);
+    static const int es2[] = { 0x3098, 2, 0x3038 }, size[] = { 0x3057, 4, 0x3056, 4, 0x3038 };
+    display_fn get_display = (display_fn)mg_egl_resolve("eglGetDisplay");
+    init_fn initialize = (init_fn)mg_egl_resolve("eglInitialize");
+    create_fn create = (create_fn)mg_egl_resolve("eglCreateContext");
+    pbuffer_fn pbuffer = (pbuffer_fn)mg_egl_resolve("eglCreatePbufferSurface");
+    destroy_fn destroy = (destroy_fn)mg_egl_resolve("eglDestroyContext"), destroy_surface = (destroy_fn)mg_egl_resolve("eglDestroySurface");
+    make_fn make = (make_fn)mg_egl_resolve("eglMakeCurrent");
+    mg_gl_standin_stats a, b, c;
+    int major = 0, minor = 0;
+    void *d, *ctx, *pb;
+    say("A pbuffer and a context destroyed while current: ended once let go");
+    CHECK(get_display && initialize && create && pbuffer && destroy && destroy_surface && make);
+    if (!get_display || !initialize || !create || !pbuffer || !destroy || !destroy_surface || !make) return;
+    d = get_display(NULL);
+    CHECK(d && initialize(d, &major, &minor));
+    ctx = create(d, NULL, NULL, es2);
+    pb = pbuffer(d, NULL, size);
+    CHECK(ctx && pb);
+    if (!ctx || !pb) return;
+    CHECK(make(d, pb, pb, ctx));
+    mg_gl_standin_stats_get(&a);
+    CHECK(destroy_surface(d, pb) && destroy(d, ctx));
+    mg_gl_standin_stats_get(&b);
+    CHECK(b.surfaces_alive == a.surfaces_alive && b.contexts_alive == a.contexts_alive);
+    CHECK(make(d, NULL, NULL, NULL));
+    mg_gl_standin_stats_get(&c);
+    CHECK(c.surfaces_alive == a.surfaces_alive - 1 && c.contexts_alive == a.contexts_alive - 1);
+    say("  alive: %d surfaces and %d contexts before, %d and %d after the destroys, %d and %d once let go", (int)a.surfaces_alive, (int)a.contexts_alive,
+        (int)b.surfaces_alive, (int)b.contexts_alive, (int)c.surfaces_alive, (int)c.contexts_alive);
+}
+
 static void test_turns(void)
 {
 #if MG_HOST_ARM32
@@ -1147,6 +1192,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_hardware_buffers();
     test_webview_display();
     test_fence_syncs();
+    test_doomed();
     test_turns();
     test_calls();
     test_buffers();

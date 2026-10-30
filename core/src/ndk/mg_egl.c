@@ -1055,6 +1055,89 @@ static void window_surface_end(surface *w)
 }
 
 /*
+ * What each thread has current, by its id, as ANGLE was given it (turn_bound), and the surfaces and contexts eglDestroySurface
+ * and eglDestroyContext were asked to end while a thread had them current. EGL ends such a one once no thread has it
+ * current, and ANGLE does so; but a thread's turn (turn_refresh) makes nothing current on it for a moment, which ANGLE took
+ * for the thread letting go: it ended the pbuffer or the context there, and the next moment it was made current again,
+ * ended. Yandex Maps' map ended in ANGLE so, an access at address 4, on the first turns after a second thread's context
+ * (package 528). They are ended here, ANGLE asked only once no thread has them current. A thread that ends with something
+ * current keeps its slot, which is only compared, never followed. (Window surfaces have their own: surface_hold.)
+ */
+#define BINDINGS 64
+static struct {
+    u32 tid;
+    EGLSurface draw, read;
+    EGLContext ctx;
+} g_bindings[BINDINGS];
+static struct {
+    EGLDisplay d;
+    void *h;
+    bool context;
+} g_doomed[32];
+static volatile i32 g_ndoomed;
+static mg_lock g_bindings_lock = MG_LOCK_INIT;
+
+/* Whether a thread has the surface (or the context) current. With g_bindings_lock held. */
+static bool bound_anywhere(const void *h, bool context)
+{
+    int i;
+    for (i = 0; i < BINDINGS; i++) {
+        if (!g_bindings[i].tid) continue;
+        if (context ? g_bindings[i].ctx == h : (g_bindings[i].draw == h || g_bindings[i].read == h)) return true;
+    }
+    return false;
+}
+
+/* What the calling thread has current now (nothing: its slot freed). */
+static void binding_set(EGLSurface draw, EGLSurface read, EGLContext ctx)
+{
+    u32 me = mg_thread_self_id();
+    int i, free_at = -1;
+    mg_lock_acquire(&g_bindings_lock);
+    for (i = 0; i < BINDINGS; i++) {
+        if (g_bindings[i].tid == me) break;
+        if (!g_bindings[i].tid && free_at < 0) free_at = i;
+    }
+    if (i == BINDINGS) i = ctx ? free_at : -1;
+    if (i >= 0) {
+        g_bindings[i].tid = ctx ? me : 0;
+        g_bindings[i].draw = ctx ? draw : NULL;
+        g_bindings[i].read = ctx ? read : NULL;
+        g_bindings[i].ctx = ctx;
+    }
+    mg_lock_release(&g_bindings_lock);
+}
+
+/* A pbuffer or a context to end that a thread has current: put off, true; false to end it now. */
+static bool doom(EGLDisplay d, void *h, bool context)
+{
+    bool later = false;
+    int i;
+    if (!h) return false;
+    mg_lock_acquire(&g_bindings_lock);
+    if (bound_anywhere(h, context)) {
+        for (i = 0; i < g_ndoomed; i++)
+            if (g_doomed[i].h == h && g_doomed[i].context == context) break;
+        if (i < g_ndoomed) {
+            later = true;
+        } else if (g_ndoomed < (i32)MG_COUNT(g_doomed)) {
+            g_doomed[g_ndoomed].d = d;
+            g_doomed[g_ndoomed].h = h;
+            g_doomed[g_ndoomed].context = context;
+            g_ndoomed++;
+            later = true;
+        }
+    }
+    mg_lock_release(&g_bindings_lock);
+    if (later) {
+        static volatile i32 said;
+        if (mg_atomic_add(&said, 1) < 10)
+            mg_info("egl: a %s destroyed while it is current on a thread: ended once no thread has it current, as EGL has it", context ? "context" : "pbuffer");
+    }
+    return later;
+}
+
+/*
  * A window's own surface made current on the calling thread, or no longer: counted, and one that eglDestroySurface was
  * asked to end while it was current somewhere ends when the last thread lets it go. EGL defers it so, and Android's does:
  * HERE WeGo's UI thread destroys its map's surface and makes a new one while its render thread is still drawing a frame in
@@ -1083,11 +1166,24 @@ static void surface_let_go(surface *s)
     }
 }
 
-static EGLBoolean g_eglDestroySurface(EGLDisplay d, EGLSurface handle)
+/* A surface of EGL's own (not a window's) ended: ANGLE's, and the entry the layer kept for it. */
+static EGLBoolean surface_end_now(EGLDisplay d, EGLSurface handle)
 {
     fn_destroy_surface real = A(fn_destroy_surface, "eglDestroySurface");
-    surface *w = window_surface(handle), *s;
-    EGLBoolean ok;
+    surface *s = surface_of(handle);
+    EGLBoolean ok = real ? real(d, handle) : 0;
+    if (s) {
+        const megler_run_config *run = mg_run_config();
+        if (s->from_host && run->window.release_target) shell_release_target();
+        if (s->window) mg_nwindow_release(s->window);
+        free_entry(s);
+    }
+    return ok;
+}
+
+static EGLBoolean g_eglDestroySurface(EGLDisplay d, EGLSurface handle)
+{
+    surface *w = window_surface(handle);
     if (w) {
         bool later;
         mg_lock_acquire(&g_surfaces_lock);
@@ -1102,15 +1198,46 @@ static EGLBoolean g_eglDestroySurface(EGLDisplay d, EGLSurface handle)
         window_surface_end(w);
         return 1;
     }
-    s = surface_of(handle);
-    ok = real ? real(d, handle) : 0;
-    if (s) {
-        const megler_run_config *run = mg_run_config();
-        if (s->from_host && run->window.release_target) shell_release_target();
-        if (s->window) mg_nwindow_release(s->window);
-        free_entry(s);
+    if (doom(d, handle, false)) return 1;
+    return surface_end_now(d, handle);
+}
+
+static EGLBoolean g_eglDestroyContext(EGLDisplay d, EGLContext ctx)
+{
+    fn_destroy_context real = A(fn_destroy_context, "eglDestroyContext");
+    if (doom(d, ctx, true)) return 1;
+    return real ? real(d, ctx) : 0;
+}
+
+/* After a thread's make-current: what was put off and no thread has current any more, ended now (in the thread's turn). */
+static void doomed_sweep(void)
+{
+    if (!g_ndoomed) return;
+    for (;;) {
+        EGLDisplay d = NULL;
+        void *h = NULL;
+        bool context = false, found = false;
+        int i;
+        mg_lock_acquire(&g_bindings_lock);
+        for (i = 0; i < g_ndoomed; i++)
+            if (!bound_anywhere(g_doomed[i].h, g_doomed[i].context)) {
+                d = g_doomed[i].d;
+                h = g_doomed[i].h;
+                context = g_doomed[i].context;
+                g_doomed[i] = g_doomed[g_ndoomed - 1];
+                g_ndoomed--;
+                found = true;
+                break;
+            }
+        mg_lock_release(&g_bindings_lock);
+        if (!found) return;
+        if (context) {
+            fn_destroy_context real = A(fn_destroy_context, "eglDestroyContext");
+            if (real) real(d, (EGLContext)h);
+        } else {
+            surface_end_now(d, (EGLSurface)h);
+        }
     }
-    return ok;
 }
 
 static EGLBoolean g_eglQuerySurface(EGLDisplay d, EGLSurface handle, EGLint attrib, EGLint *value)
@@ -1414,6 +1541,8 @@ static void turn_bound(EGLDisplay d, EGLSurface draw, EGLSurface read, EGLContex
         mg_atomic_add(&g->threads, 1);
         g->last = ctx;
     }
+    binding_set(draw, read, ctx);
+    doomed_sweep();
 }
 
 /* After a lent job: ANGLE last had the job's context current, and this thread goes on in its turn with its own. */
@@ -2179,6 +2308,7 @@ static const mg_sym g_egl_overrides[] = {
     MG_WRAP("eglCreatePbufferSurface", g_eglCreatePbufferSurface),
     MG_WRAP("eglCreateContext", g_eglCreateContext),
     MG_WRAP("eglDestroySurface", g_eglDestroySurface),
+    MG_WRAP("eglDestroyContext", g_eglDestroyContext),
     MG_WRAP("eglQuerySurface", g_eglQuerySurface),
     MG_WRAP("eglSwapBuffers", g_eglSwapBuffers),
     MG_WRAP("eglMakeCurrent", g_eglMakeCurrent),
