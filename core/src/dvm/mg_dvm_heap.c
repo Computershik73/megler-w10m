@@ -6,7 +6,8 @@
  * Small objects, up to 2 KB, are cells in blocks of 64 KB. Each block holds one size class, and keeps a bitmap of the
  * cells in use, a bitmap of marks, a free list and how far it has handed out cells from its start. Blocks come sixteen at a
  * time in arenas of 1 MB from the host. Large objects are one allocation each from the C heap, kept in an array sorted by
- * address. An address is looked up by binary search, over the arenas and then within the large objects.
+ * address. An address's arena is found from a table of the megabytes of addresses (g_arena_starting), a large object by
+ * binary search.
  *
  * A block a collection leaves empty is a spare one; past the first SPARE_COMMITTED of them, a spare block's memory after
  * its first page (which has its header, all that the lists and the collector read of a spare block) is given back to the
@@ -69,6 +70,18 @@ static u64 g_small_bytes, g_large_bytes, g_reserved, g_bare;
 static u32 g_objects;                  /* cells in use and large objects */
 static mg_addr g_lo = ~(mg_addr)0, g_hi;   /* every object lies in [g_lo, g_hi) */
 
+/*
+ * Which arena an address is in, without a search: the arena that starts in each megabyte of 32-bit addresses (an arena is
+ * a megabyte long, so no two start in the same one), and an address is in the one that starts in its own megabyte, below
+ * it, or in the one that starts in the megabyte before. The collector asks for every reference it follows and every word
+ * of the stacks it scans; the binary search over Yandex Maps' 160 arenas took eight steps each time. Arenas above 4 GB (a
+ * 64-bit host's) are not in it, and those hosts search (g_arenas_high).
+ */
+#define ARENA_SHIFT 20
+_Static_assert(ARENA_SIZE == 1u << ARENA_SHIFT, "an arena is a megabyte");
+static u8 *g_arena_starting[1u << (32 - ARENA_SHIFT)];
+static bool g_arenas_high;
+
 static void widen(mg_addr start, size_t size)
 {
     if (start < g_lo) g_lo = start;
@@ -108,6 +121,8 @@ static bool add_arena(void)
     for (at = g_narenas; at > 0 && g_arenas[at - 1] > a; at--) g_arenas[at] = g_arenas[at - 1];
     g_arenas[at] = a;
     g_narenas++;
+    if ((u64)(mg_addr)a + ARENA_SIZE <= ((u64)1 << 32)) g_arena_starting[(u32)((mg_addr)a >> ARENA_SHIFT)] = a;
+    else g_arenas_high = true;
     g_reserved += ARENA_SIZE;
     widen((mg_addr)a, ARENA_SIZE);
     /* Spare blocks are handed out lowest first. */
@@ -238,18 +253,29 @@ void *mg_dvm_heap_alloc(size_t size)
 }
 
 /* The block an address is in, or NULL. With the heap's lock held. */
+static inline block *block_in(u8 *a, mg_addr p)
+{
+    block *b = (block *)(void *)(a + ((p - (mg_addr)a) / BLOCK_SIZE) * BLOCK_SIZE);
+    return b->magic == BLOCK_MAGIC && b->cls >= 0 ? b : NULL;
+}
+
 static block *block_of(mg_addr p)
 {
     u32 lo = 0, hi = g_narenas;
+    if ((u64)p < ((u64)1 << 32)) {
+        u32 m = (u32)(p >> ARENA_SHIFT);
+        u8 *a = g_arena_starting[m];
+        if (a && p >= (mg_addr)a) return block_in(a, p);
+        a = m ? g_arena_starting[m - 1] : NULL;
+        if (a && p < (mg_addr)a + ARENA_SIZE) return block_in(a, p);
+        if (!g_arenas_high) return NULL;
+    }
     while (lo < hi) {
         u32 mid = (lo + hi) / 2;
         mg_addr a = (mg_addr)g_arenas[mid];
         if (p < a) hi = mid;
         else if (p >= a + ARENA_SIZE) lo = mid + 1;
-        else {
-            block *b = (block *)(void *)(a + ((p - a) / BLOCK_SIZE) * BLOCK_SIZE);
-            return b->magic == BLOCK_MAGIC && b->cls >= 0 ? b : NULL;
-        }
+        else return block_in(g_arenas[mid], p);
     }
     return NULL;
 }
