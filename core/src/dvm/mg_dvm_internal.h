@@ -240,7 +240,9 @@ struct mg_dvm_class {
     int nifaces;
     mg_dvm_field *sfields, *ifields;
     int nsfields, nifields;
+    /* Its static fields' values by slot: those of reference type first, nsrefs of them (what the collector reads). */
     mg_jvalue *statics;
+    int nsrefs;
     u32 nslots;                        /* instance slots, the superclasses' included */
     mg_dvm_method *direct, *virt;      /* direct: static, private, constructors */
     int ndirect, nvirt;

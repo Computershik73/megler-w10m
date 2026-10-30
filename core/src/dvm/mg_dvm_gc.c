@@ -432,10 +432,8 @@ static void class_roots(mg_dvm_class *c, void *user)
     reach_ref(c->mirror, NULL);
     reach_ref(c->init_error, NULL);
     if (!c->statics) return;
-    for (i = 0; i < c->nsfields; i++) {
-        const mg_dvm_field *f = &c->sfields[i];
-        if ((f->type[0] == 'L' || f->type[0] == '[') && f->slot < (u32)c->nsfields) reach_ref(c->statics[f->slot].l, NULL);
-    }
+    /* (The static slots of references come first: mg_dvm_class.c.) */
+    for (i = 0; i < c->nsrefs; i++) reach_ref(c->statics[i].l, NULL);
 }
 
 static void exact_thread_roots(mg_dvm_thread *t, void *user)

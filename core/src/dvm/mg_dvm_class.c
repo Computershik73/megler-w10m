@@ -769,7 +769,20 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
             }
         }
     }
-    if (c->nsfields) c->statics = (mg_jvalue *)mg_dvm_meta_alloc_kind(sizeof(mg_jvalue) * (size_t)c->nsfields, DVM_META_FIELD);
+    if (c->nsfields) {
+        /*
+         * The static slots again, those of references first: the collector reads statics[0 .. nsrefs) of every linked
+         * class and nothing else, where it read every static field's type (some 40,000 classes in Yandex Maps, a cache
+         * miss a field, with the world stopped). init_statics fills them by field.
+         */
+        u32 next = 0;
+        for (i = 0; i < c->nsfields; i++)
+            if (c->sfields[i].type[0] == 'L' || c->sfields[i].type[0] == '[') c->sfields[i].slot = next++;
+        c->nsrefs = (int)next;
+        for (i = 0; i < c->nsfields; i++)
+            if (c->sfields[i].type[0] != 'L' && c->sfields[i].type[0] != '[') c->sfields[i].slot = next++;
+        c->statics = (mg_jvalue *)mg_dvm_meta_alloc_kind(sizeof(mg_jvalue) * (size_t)c->nsfields, DVM_META_FIELD);
+    }
 
     /*
      * The vtable: the superclass's, a method of the same name and signature
@@ -1371,7 +1384,7 @@ static bool init_statics(mg_dvm_class *c)
     end = d->b + d->size;
     n = mg_dvm_uleb(&p);
     for (i = 0; i < n && (int)i < c->nsfields; i++)
-        if (!read_static_value(d, &p, end, &c->statics[i])) return false;
+        if (!read_static_value(d, &p, end, &c->statics[c->sfields[i].slot])) return false;
     return true;
 }
 
