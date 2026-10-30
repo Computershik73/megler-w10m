@@ -266,6 +266,24 @@ static void test_jit(void)
     CHECK_INT(call("t/Jit", "readTo", "([II)I").i, 465);
     A[0].i = 50;
     CHECK_INT(call("t/Jit", "callsInLoop", "(I)I").i, 1225);
+    /* Fields of every width, an object one and static ones, read and written by a compiled loop. */
+    {
+        i32 n = 300, k, ii = 0, total = 0;
+        i8 b = 0;
+        u16 ch = 0;
+        i16 sh = 0;
+        u8 z = 0;
+        for (k = 0; k < n; k++) {
+            ii += k;
+            b = (i8)(b + 7);
+            ch = (u16)(ch + 1000);
+            sh = (i16)(sh + 1000);
+            z ^= 1;
+            total += k;
+        }
+        A[0].i = n;
+        CHECK_INT(call("t/Jit", "fields", "(I)I").i, ii + b + ch + sh + z + total);
+    }
     A[0].i = 10;
     A[1].j = (i64)0x123456789abcdef0ll;
     CHECK(call("t/Jit", "wideMoves", "(IJ)J").j == (i64)0x123456789abcdef0ll);
@@ -276,7 +294,7 @@ static void test_jit(void)
     {
         static const struct { const char *name, *sig; } compiled[] = {
             { "sum", "([I)I" }, { "fill", "([I[B[C[SI)I" }, { "mix", "(II)I" }, { "conditions", "(I)I" }, { "divideAll", "(I[I)I" },
-            { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" },
+            { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" }, { "fields", "(I)I" },
         };
         size_t k;
         mg_dvm_method *calls;

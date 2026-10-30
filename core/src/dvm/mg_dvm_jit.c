@@ -233,6 +233,94 @@ static void element(emitter *e, bool store, int kind)
     e32(e, (u32)(store ? stores[kind] : loads[kind]) | R3, (R2 << 12) | ((u32)shifts[kind] << 4) | R1);
 }
 
+/* A field's value at [rn + off]: loaded into rt (kind: 0 word, 1 byte, 2 signed byte, 3 halfword, 4 signed halfword) or stored from it. */
+static void field_access(emitter *e, bool store, int kind, int rt, int rn, u32 off)
+{
+    static const u16 loads[] = { 0xF8D0, 0xF890, 0xF990, 0xF8B0, 0xF9B0 }, stores[] = { 0xF8C0, 0xF880, 0xF880, 0xF8A0, 0xF8A0 };
+    e32(e, (u32)(store ? stores[kind] : loads[kind]) | (u32)rn, ((u32)rt << 12) | off);
+}
+
+/* What each of iget..iget-short and iput..iput-short moves: its kind (field_access), or 5 for a long or double (two words). */
+static const u8 k_field_kind[7] = { 0, 5, 0, 1, 2, 3, 4 };
+
+/*
+ * iget and iput of a field resolved by now (the loop ran in the interpreter first): the object checked for null and for
+ * having the slot (an object the runtime keeps its fields for by name does not: the interpreter's slotless_field), each
+ * failure an exit; then the slot itself, as the interpreter's field_slot finds it.
+ */
+static bool instance_field(emitter *e, const mg_dvm_method *m, u32 pc, u32 op, u32 a4, u32 b4, u32 idx)
+{
+    mg_dvm_dex *d = m->cls->dex;
+    mg_dvm_field *fld = idx < d->nfield ? d->fcache[idx] : NULL;
+    bool store = op >= 0x59;
+    u8 kind = k_field_kind[op - (store ? 0x59 : 0x52)];
+    u32 off;
+    if (!fld || (fld->flags & DVM_ACC_STATIC)) return false;
+    off = (u32)MG_DVM_HEADER + fld->slot * (u32)sizeof(mg_jvalue);
+    if (off + 4 >= 4096 || fld->slot > 0xFFFF) return false;
+    ldr_v(e, R0, b4);
+    cmp_imm(e, R0, 0);
+    fix(e, FIX_EXIT, pc, C_EQ);
+    ldr_imm(e, R1, R0, (u32)offsetof(mg_dvm_obj, cls));
+    ldr_imm(e, R1, R1, (u32)offsetof(mg_dvm_class, nslots));
+    mov_imm(e, R2, fld->slot);
+    cmp_reg(e, R2, R1);
+    fix(e, FIX_EXIT, pc, C_HS);
+    if (kind == 5) {
+        if (store) {
+            ldr_v(e, R2, a4);
+            ldr_v(e, R3, a4 + 1);
+            field_access(e, true, 0, R2, R0, off);
+            field_access(e, true, 0, R3, R0, off + 4);
+        } else {
+            field_access(e, false, 0, R2, R0, off);
+            field_access(e, false, 0, R3, R0, off + 4);
+            str_v(e, R2, a4);
+            str_v(e, R3, a4 + 1);
+        }
+    } else if (store) {
+        ldr_v(e, R2, a4);
+        field_access(e, true, kind, R2, R0, off);
+    } else {
+        field_access(e, false, kind, R2, R0, off);
+        str_v(e, R2, a4);
+    }
+    return true;
+}
+
+/* sget and sput of a field of a class initialised by now: its slot's address is the code's own constant. */
+static bool static_field(emitter *e, const mg_dvm_method *m, u32 op, u32 aa, u32 idx)
+{
+    mg_dvm_dex *d = m->cls->dex;
+    mg_dvm_field *fld = idx < d->nfield ? d->fcache[idx] : NULL;
+    bool store = op >= 0x67;
+    u8 kind = k_field_kind[op - (store ? 0x67 : 0x60)];
+    mg_jvalue *slot;
+    if (!fld || !(fld->flags & DVM_ACC_STATIC) || fld->cls->state != DVM_CS_INITIALIZED || !fld->cls->statics) return false;
+    slot = &fld->cls->statics[fld->slot];
+    mov_imm(e, R0, (u32)(mg_addr)slot);
+    if (kind == 5) {
+        if (store) {
+            ldr_v(e, R2, aa);
+            ldr_v(e, R3, aa + 1);
+            field_access(e, true, 0, R2, R0, 0);
+            field_access(e, true, 0, R3, R0, 4);
+        } else {
+            field_access(e, false, 0, R2, R0, 0);
+            field_access(e, false, 0, R3, R0, 4);
+            str_v(e, R2, aa);
+            str_v(e, R3, aa + 1);
+        }
+    } else if (store) {
+        ldr_v(e, R2, aa);
+        field_access(e, true, kind, R2, R0, 0);
+    } else {
+        field_access(e, false, kind, R2, R0, 0);
+        str_v(e, R2, aa);
+    }
+    return true;
+}
+
 /* One instruction; false when it is an exit. */
 static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
 {
@@ -294,6 +382,12 @@ static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
         element(e, true, kinds[op - 0x4b]);
         return true;
     }
+    case 0x52: case 0x53: case 0x54: case 0x55: case 0x56: case 0x57: case 0x58:     /* iget, -wide, -object, -boolean, -byte, -char, -short */
+    case 0x59: case 0x5a: case 0x5b: case 0x5c: case 0x5d: case 0x5e: case 0x5f:     /* iput, and the same */
+        return instance_field(e, m, pc, op, a4, b4, F(1));
+    case 0x60: case 0x61: case 0x62: case 0x63: case 0x64: case 0x65: case 0x66:     /* sget, and the same */
+    case 0x67: case 0x68: case 0x69: case 0x6a: case 0x6b: case 0x6c: case 0x6d:     /* sput, and the same */
+        return static_field(e, m, op, aa, F(1));
     case 0x7b: ldr_v(e, R1, b4); e32(e, 0xF1C0 | R1, (R0 << 8)); str_v(e, R0, a4); return true;     /* neg-int */
     case 0x7c: ldr_v(e, R1, b4); e32(e, 0xEA6F, (R0 << 8) | R1); str_v(e, R0, a4); return true;     /* not-int */
     case 0x8d: ldr_v(e, R1, b4); e32(e, 0xFA4F, 0xF080 | (R0 << 8) | R1); str_v(e, R0, a4); return true; /* int-to-byte */

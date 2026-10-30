@@ -288,3 +288,69 @@
     :done
     return-wide v0
 .end method
+
+# Fields in a loop: iget and iput of every width, an object field, sget and sput (the class initialised before the loop).
+# Returns i + b + c + s + z + total, or -1 when the object field or the long ones did not keep what was put.
+.method public static fields(I)I
+    .registers 8
+    new-instance v0, Lt/JitPoint;
+    invoke-direct {v0}, Lt/JitPoint;-><init>()V
+    const-wide v4, 0x1122334455667788L
+    iput-wide v4, v0, Lt/JitPoint;->j:J
+    const/4 v1, 0x0
+    sput v1, Lt/JitPoint;->total:I
+    sput-wide v4, Lt/JitPoint;->wide:J
+    :loop
+    if-ge v1, p0, :done
+    iget v2, v0, Lt/JitPoint;->i:I
+    add-int/2addr v2, v1
+    iput v2, v0, Lt/JitPoint;->i:I
+    iget-byte v3, v0, Lt/JitPoint;->b:B
+    add-int/lit8 v3, v3, 0x7
+    iput-byte v3, v0, Lt/JitPoint;->b:B
+    iget-char v3, v0, Lt/JitPoint;->c:C
+    add-int/lit16 v3, v3, 0x3e8
+    iput-char v3, v0, Lt/JitPoint;->c:C
+    iget-short v3, v0, Lt/JitPoint;->s:S
+    add-int/lit16 v3, v3, 0x3e8
+    iput-short v3, v0, Lt/JitPoint;->s:S
+    iget-boolean v3, v0, Lt/JitPoint;->z:Z
+    xor-int/lit8 v3, v3, 0x1
+    iput-boolean v3, v0, Lt/JitPoint;->z:Z
+    iget-wide v4, v0, Lt/JitPoint;->j:J
+    iput-wide v4, v0, Lt/JitPoint;->j:J
+    sget-wide v4, Lt/JitPoint;->wide:J
+    sput-wide v4, Lt/JitPoint;->wide:J
+    iput-object v0, v0, Lt/JitPoint;->o:Ljava/lang/Object;
+    iget-object v3, v0, Lt/JitPoint;->o:Ljava/lang/Object;
+    sget v3, Lt/JitPoint;->total:I
+    add-int/2addr v3, v1
+    sput v3, Lt/JitPoint;->total:I
+    add-int/lit8 v1, v1, 0x1
+    goto :loop
+    :done
+    iget-object v3, v0, Lt/JitPoint;->o:Ljava/lang/Object;
+    if-ne v3, v0, :bad
+    iget-wide v4, v0, Lt/JitPoint;->j:J
+    const-wide v2, 0x1122334455667788L
+    cmp-long v6, v4, v2
+    if-nez v6, :bad
+    sget-wide v4, Lt/JitPoint;->wide:J
+    cmp-long v6, v4, v2
+    if-nez v6, :bad
+    iget v2, v0, Lt/JitPoint;->i:I
+    iget-byte v3, v0, Lt/JitPoint;->b:B
+    add-int/2addr v2, v3
+    iget-char v3, v0, Lt/JitPoint;->c:C
+    add-int/2addr v2, v3
+    iget-short v3, v0, Lt/JitPoint;->s:S
+    add-int/2addr v2, v3
+    iget-boolean v3, v0, Lt/JitPoint;->z:Z
+    add-int/2addr v2, v3
+    sget v3, Lt/JitPoint;->total:I
+    add-int/2addr v2, v3
+    return v2
+    :bad
+    const/4 v2, -0x1
+    return v2
+.end method

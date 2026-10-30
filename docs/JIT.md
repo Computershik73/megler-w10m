@@ -61,7 +61,9 @@ phone's Self-test gives the phone's.
 
 The first stage is in `core/src/dvm/mg_dvm_jit.c`: moves and constants, int arithmetic and logic in every form (division
 and remainder with the divisor checked), the shifts' counts masked, `if-*`, `if-*z` and `goto`, `array-length`, `aget`
-and `aput` of ints, bytes, chars, shorts and booleans and `aget-object`, each with the interpreter's checks. A method is
+and `aput` of ints, bytes, chars, shorts and booleans and `aget-object`, each with the interpreter's checks; `iget` and
+`iput` of every width of a field resolved by then (the object checked for null and for having the slot), `sget` and
+`sput` of a class initialised by then (the slot's address a constant of the code). A method is
 compiled at the 1000th jump back it takes; a loop is entered only when it is compiled whole, from its head to its jump
 back: a loop whose body calls out would go in and out at every turn, which in the benchmark made Math.min's and
 Integer.valueOf's loops twice as slow. Such loops, and every method with no loop compiled whole, stay the interpreter's.
@@ -70,5 +72,5 @@ Under qemu-arm (ns a turn, interpreted then compiled): int arithmetic 131 to 5, 
 String.indexOf 80 to 3; the items whose loops call out are as they were. The tests (`t.Jit`, mg_dvm_tests.c) run every
 compiled instruction and hand-back, and the whole main suite passes with every loop compiled (MEGLER_JIT_THRESHOLD=1).
 
-Next: fields (`iget`, `iput` of a resolved field, inline), calls compiled as calls into the interpreter so that loops
-which call out can be compiled whole, long arithmetic, `packed-switch`.
+Next: calls compiled as calls into the interpreter so that loops which call out can be compiled whole, long arithmetic,
+`packed-switch`.
