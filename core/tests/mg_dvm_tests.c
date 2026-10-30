@@ -227,6 +227,45 @@ static i32 jit_inlined(i32 n)
     return s;
 }
 
+/* Java's conversions of floating point to int: toward zero, saturated, NaN 0. */
+static i32 java_d2i(double v) { return v != v ? 0 : v >= 2147483647.0 ? 2147483647 : v <= -2147483648.0 ? (i32)0x80000000u : (i32)v; }
+
+static double jit_floats(i32 n)
+{
+    float f = 0.5f, x, g, h;
+    double d = 0.25, y, e, arr[4] = { 0, 0, 0, 0 };
+    u32 k = 0;
+    i32 i;
+    for (i = 0; i < n; i++) {
+        x = (float)i;
+        f = f * 0.75f;
+        f = f + x / 3.0f;
+        f = f - 0.25f;
+        y = (double)i;
+        d = d * 0.5;
+        d = d + y / 7.0;
+        d = d - (double)f;
+        k += (u32)java_d2i(f);
+        k += (u32)java_d2i(d * 3.0);
+        k += (u32)(f < x ? -1 : f > x ? 1 : f == x ? 0 : -1);
+        k += (u32)(d < y ? -1 : d > y ? 1 : d == y ? 0 : 1);
+        g = (float)d;
+        k += (u32)-1;                  /* cmpl-float g, NaN */
+        k += 1;                        /* cmpg-float NaN, g */
+        h = g * g;
+        h = h - g;
+        k += (u32)java_d2i(h);
+        arr[i & 3] = d;
+        e = arr[(i + 1) & 3] * 0.25;
+        d = d + e;
+        e = d - e;
+        d = d + e;
+        d = d * 0.25;
+        d = d / 4.0;
+    }
+    return d + (double)f + (double)(i32)k;
+}
+
 static i64 jit_longs(i32 n, i64 seed)
 {
     u64 v0 = (u64)seed, v2 = 0, v6, v8;
@@ -394,6 +433,9 @@ static void test_jit(void)
     A[1].j = (i64)0x123456789abcdef0ll;
     CHECK(call("t/Jit", "wideMoves", "(IJ)J").j == (i64)0x123456789abcdef0ll);
     CHECK_STR(thrown(), "");
+    /* Floating point in a compiled loop, against C. */
+    A[0].i = 300;
+    CHECK(call("t/Jit", "floats", "(I)D").d == jit_floats(300));
     /* Trivial methods called from a compiled loop, done in the code: an override and a null object go by the call instead. */
     {
         u32 in_place = g_dvm_jit_in_place;
@@ -416,6 +458,7 @@ static void test_jit(void)
             { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" }, { "fields", "(I)I" }, { "callsInLoop", "(I)I" },
             { "callKinds", "(I)I" }, { "catchInLoop", "(I)I" }, { "deepCalls", "(I)I" }, { "longs", "(IJ)J" }, { "switches", "(I)I" },
             { "objects", "(I)I" }, { "storeFails", "(I)I" }, { "castFails", "(I)I" }, { "inlined", "(I)I" }, { "firstAbove", "([II)I" },
+            { "floats", "(I)D" },
         };
         size_t k;
         for (k = 0; k < MG_COUNT(compiled); k++) {

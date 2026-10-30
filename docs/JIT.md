@@ -62,8 +62,9 @@ phone's Self-test gives the phone's.
 `core/src/dvm/mg_dvm_jit.c` compiles: moves and constants (`const-wide` and `const-string` of a string already made
 included); int arithmetic and logic in every form (division and remainder with the divisor checked, the shifts' counts
 masked); long arithmetic but division and remainder (add, sub, mul, and, or, xor, the three shifts by any count, neg,
-not, `int-to-long`, `long-to-int`, `cmp-long`); `if-*`, `if-*z`, `goto`, `packed-switch` and `sparse-switch` of up to 64
-keys; `array-length`, `aget` and `aput` of ints, bytes, chars, shorts and booleans and `aget-object`; `iget` and `iput`
+not, `int-to-long`, `long-to-int`, `cmp-long`); float and double arithmetic but the remainder, in VFP (add, sub, mul, div,
+neg, `cmpl` and `cmpg`, the conversions between int, float and double, toward zero and saturated as Java says); `if-*`, `if-*z`, `goto`, `packed-switch` and `sparse-switch` of up to 64
+keys; `array-length`, `aget` and `aput` of ints, bytes, chars, shorts, booleans, floats, longs and doubles and `aget-object`; `iget` and `iput`
 of every width of a field resolved by then, `sget` and `sput` of a class initialised by then; calls of every kind with
 their `move-result`; the returns; and through `mg_dvm_jit_op` (mg_dvm_interp.c) `new-instance`, `new-array`, `const-class`, the
 monitors, `aput-object` with its store check, `check-cast` and `instance-of` -- these two in the code itself when the
@@ -80,7 +81,10 @@ A method is compiled when the jumps back it takes and the calls of it made by th
 head of a loop compiled whole -- a loop that hands back at every turn costs more than it saves -- and at its start, for
 its calls, when the code there does some work before it hands anything back (four instructions in a row, or a return):
 the interpreter's call (do_invoke) and the compiled one (`mg_dvm_jit_invoke`) go in there, and a compiled return ends the
-call with no loop of the interpreter's. Code goes on pages of an arena of the process's, each method on its own.
+call with no loop of the interpreter's. Code goes on pages of an arena of the process's: code under half a page on the
+page being filled, with other methods', which is made executable once the next does not fit or 200 ms after its first
+(the method interpreted meanwhile), larger code on pages of its own. The data app's 536 methods are 377 KB of code: 2.2 MB
+of pages each on its own, some 480 KB shared.
 
 Under qemu-arm (ns a turn, interpreted then compiled): int arithmetic 141 to 5, iget and iput 217 to 15, sget and sput 119
 to 4, aget and aput of an int[256] 228 to 17, String.indexOf 81 to 3, String.charAt 256 to 97, String.hashCode 187 to 94,
@@ -89,4 +93,4 @@ compiled instruction and hand-back, calls of each kind with their results, a cal
 recursion 3000 deep through compiled calls, long arithmetic against C, and both switches; the whole main suite passes with
 every loop compiled (MEGLER_JIT_THRESHOLD=1).
 
-Next: floating point (VFP); several small methods' code on one page.
+Next: a long's division and conversions to and from floating point, by calls; `rem-float` and `rem-double`.

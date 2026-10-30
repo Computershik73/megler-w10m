@@ -4,7 +4,8 @@
  * The code works on the frame's own registers, in memory, as the interpreter does: r4 holds them throughout, every
  * instruction loads what it reads from them and stores what it writes, so that at any instruction the code can stop and
  * hand the frame back -- "go on at this pc" -- and the interpreter goes on with nothing to rebuild. Whatever the compiler
- * does not do (returns, allocation, exceptions, floating-point values, long division) is such a hand-back, an exit, and so
+ * does not do (exceptions, long division, a remainder of floating point, a long's conversions to and from it) is such a
+ * hand-back, an exit, and so
  * is anything that would throw: a null or an index out of bounds sends the frame back to the instruction that throws, and
  * the interpreter throws it. A call is made through mg_dvm_jit_invoke (mg_dvm_interp.c), which does it as the interpreter
  * would and keeps its result for the move-result after it; one that throws sends the frame back with the exception pending.
@@ -510,6 +511,77 @@ static bool compile_switch(emitter *e, const mg_dvm_method *m, u32 pc, u32 op, u
     return true;
 }
 
+/* ------------------------------------------------------------------ floating point */
+
+/*
+ * VFP: s0 to s3 (d0, d1) hold an instruction's values, loaded from the frame's registers and stored back, nothing kept in
+ * them from one instruction to the next (they are the caller's to save: a call made from the code may change them). The
+ * frame's registers are within VLDR's reach: an instruction with a double names registers under 256. The arithmetic is
+ * the host's, as the interpreter's C does it with the same FPSCR; a conversion to int is VCVT's round toward zero, which
+ * saturates and makes NaN 0, as Java says.
+ */
+static void vldr_s(emitter *e, u32 s, u32 v) { e32(e, 0xED90 | ((s & 1) << 6) | R4, ((s >> 1) << 12) | 0x0A00 | v); }
+static void vstr_s(emitter *e, u32 s, u32 v) { e32(e, 0xED80 | ((s & 1) << 6) | R4, ((s >> 1) << 12) | 0x0A00 | v); }
+static void vldr_d(emitter *e, u32 d, u32 v) { e32(e, 0xED90 | R4, (d << 12) | 0x0B00 | v); }
+static void vstr_d(emitter *e, u32 d, u32 v) { e32(e, 0xED80 | R4, (d << 12) | 0x0B00 | v); }
+
+/* vd = va op vb, op 0 add, 1 sub, 2 mul, 3 div: s0 = s0 op s1, or d0 = d0 op d1. */
+static void vfp_arith(emitter *e, u32 op, bool dbl, u32 vd, u32 va, u32 vb)
+{
+    static const u16 ops[] = { 0xEE30, 0xEE30, 0xEE20, 0xEE80 };
+    if (dbl) {
+        vldr_d(e, 0, va);
+        vldr_d(e, 1, vb);
+        e32(e, ops[op], (op == 1 ? 0x40u : 0u) | 0x0B01);
+        vstr_d(e, 0, vd);
+    } else {
+        vldr_s(e, 0, va);
+        vldr_s(e, 1, vb);
+        e32(e, ops[op], (op == 1 ? 0x40u : 0u) | 0x0A20);
+        vstr_s(e, 0, vd);
+    }
+}
+
+/* cmpl and cmpg: -1, 0 or 1, and for NaN either side -1 (cmpl) or 1 (cmpg). */
+static void vfp_compare(emitter *e, bool dbl, bool greater, u32 vd, u32 va, u32 vb)
+{
+    mov_imm(e, R0, 0);                                           /* movw: the flags left as they are */
+    if (dbl) {
+        vldr_d(e, 0, va);
+        vldr_d(e, 1, vb);
+        e32(e, 0xEEB4, 0x0B41);                                  /* vcmp.f64 d0, d1 */
+    } else {
+        vldr_s(e, 0, va);
+        vldr_s(e, 1, vb);
+        e32(e, 0xEEB4, 0x0A60);                                  /* vcmp.f32 s0, s1 */
+    }
+    e32(e, 0xEEF1, 0xFA10);                                      /* vmrs APSR_nzcv, fpscr */
+    e16(e, 0xBFC8);                                              /* it gt */
+    e16(e, 0x2001);                                              /*   movgt r0, #1 */
+    e16(e, 0xBF48);                                              /* it mi */
+    e32(e, 0xF06F, 0x0000);                                      /*   mvnmi r0, #0 */
+    e16(e, 0xBF68);                                              /* it vs: unordered */
+    if (greater) e16(e, 0x2001);                                 /*   movvs r0, #1 */
+    else e32(e, 0xF06F, 0x0000);                                 /*   mvnvs r0, #0 */
+    str_v(e, R0, vd);
+}
+
+/* The conversions VFP has (not those of a long): vA = (kind) vB. False for the others. */
+static bool vfp_convert(emitter *e, u32 op, u32 va, u32 vb)
+{
+    switch (op) {
+    case 0x82: vldr_s(e, 1, vb); e32(e, 0xEEB8, 0x0AE0); vstr_s(e, 0, va); return true;    /* int-to-float: vcvt.f32.s32 s0, s1 */
+    case 0x83: vldr_s(e, 1, vb); e32(e, 0xEEB8, 0x0BE0); vstr_d(e, 0, va); return true;    /* int-to-double: vcvt.f64.s32 d0, s1 */
+    case 0x87: vldr_s(e, 1, vb); e32(e, 0xEEBD, 0x0AE0); vstr_s(e, 0, va); return true;    /* float-to-int: vcvt.s32.f32 s0, s1 */
+    case 0x89: vldr_s(e, 2, vb); e32(e, 0xEEB7, 0x0AC1); vstr_d(e, 0, va); return true;    /* float-to-double: vcvt.f64.f32 d0, s2 */
+    case 0x8a: vldr_d(e, 1, vb); e32(e, 0xEEBD, 0x0BC1); vstr_s(e, 0, va); return true;    /* double-to-int: vcvt.s32.f64 s0, d1 */
+    case 0x8c: vldr_d(e, 1, vb); e32(e, 0xEEB7, 0x0BC1); vstr_s(e, 0, va); return true;    /* double-to-float: vcvt.f32.f64 s0, d1 */
+    case 0x7f: vldr_s(e, 0, vb); e32(e, 0xEEB1, 0x0A40); vstr_s(e, 0, va); return true;    /* neg-float: vneg.f32 s0, s0 */
+    case 0x80: vldr_d(e, 0, vb); e32(e, 0xEEB1, 0x0B40); vstr_d(e, 0, va); return true;    /* neg-double: vneg.f64 d0, d0 */
+    default: return false;
+    }
+}
+
 /* ------------------------------------------------------------------ calls */
 
 /*
@@ -773,6 +845,27 @@ static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
         return true;
     case 0x2b: case 0x2c: return compile_switch(e, m, pc, op, aa, (i32)(F(1) | F(2) << 16));
     case 0x31: cmp_long(e, aa, F(1) & 0xFF, F(1) >> 8); return true;
+    case 0x2d: case 0x2e: case 0x2f: case 0x30:                  /* cmpl-float, cmpg-float, cmpl-double, cmpg-double */
+        vfp_compare(e, op >= 0x2f, op == 0x2e || op == 0x30, aa, F(1) & 0xFF, F(1) >> 8);
+        return true;
+    case 0x7f: case 0x80: case 0x82: case 0x83: case 0x87: case 0x89: case 0x8a: case 0x8c:
+        return vfp_convert(e, op, a4, b4);
+    case 0x45:                                                   /* aget-wide: the element at r3 + r1 * 8 */
+        array_checks(e, pc, F(1) & 0xFF, F(1) >> 8, 8);
+        e32(e, 0xEB03, (R3 << 8) | (3u << 6) | R1);              /* add r3, r3, r1, lsl #3 */
+        ldr_imm(e, R0, R3, 0);
+        ldr_imm(e, R1, R3, 4);
+        str_v(e, R0, aa);
+        str_v(e, R1, aa + 1);
+        return true;
+    case 0x4c:                                                   /* aput-wide */
+        array_checks(e, pc, F(1) & 0xFF, F(1) >> 8, 8);
+        e32(e, 0xEB03, (R3 << 8) | (3u << 6) | R1);
+        ldr_v(e, R0, aa);
+        ldr_v(e, R1, aa + 1);
+        str_imm(e, R0, R3, 0);
+        str_imm(e, R1, R3, 4);
+        return true;
     case 0x6e: case 0x6f: case 0x70: case 0x71: case 0x72:
     case 0x74: case 0x75: case 0x76: case 0x77: case 0x78:
         if (!inline_call(e, m, pc)) compile_invoke(e, pc);
@@ -866,6 +959,14 @@ static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
         return true;
     }
     if (op >= 0x9b && op <= 0xa5) return long_op(e, op - 0x9b, aa, F(1) & 0xFF, F(1) >> 8);    /* long binop vAA, vBB, vCC */
+    if ((op >= 0xa6 && op <= 0xa9) || (op >= 0xab && op <= 0xae)) {                             /* float and double binop vAA, vBB, vCC */
+        vfp_arith(e, (op - 0xa6) % 5, op >= 0xab, aa, F(1) & 0xFF, F(1) >> 8);
+        return true;
+    }
+    if ((op >= 0xc6 && op <= 0xc9) || (op >= 0xcb && op <= 0xce)) {                             /* their /2addr vA, vB */
+        vfp_arith(e, (op - 0xc6) % 5, op >= 0xcb, a4, a4, b4);
+        return true;
+    }
     if (op >= 0xbb && op <= 0xc5) return long_op(e, op - 0xbb, a4, a4, b4);                    /* long binop/2addr vA, vB */
     if (op >= 0xb0 && op <= 0xba) {                              /* binop/2addr vA, vB */
         ldr_v(e, R1, a4);

@@ -764,3 +764,82 @@
     move-result v0
     return v0
 .end method
+
+# Floating point in a compiled loop: float and double arithmetic in both forms, cmpl and cmpg (NaN among them), the
+# conversions between int, float and double, neg, and a double[] read and written (jit_floats in mg_dvm_tests.c says the
+# same in C).
+.method public static floats(I)D
+    .registers 13
+    const/high16 v0, 0x3f000000
+    const-wide/high16 v1, 0x3fd0000000000000L
+    const/4 v3, 0x0
+    const/4 v4, 0x0
+    const/4 v5, 0x4
+    new-array v11, v5, [D
+    :loop
+    if-ge v4, p0, :done
+    int-to-float v5, v4
+    const/high16 v10, 0x3f400000
+    mul-float/2addr v0, v10
+    const/high16 v10, 0x40400000
+    div-float v10, v5, v10
+    add-float/2addr v0, v10
+    const/high16 v10, 0x3e800000
+    sub-float/2addr v0, v10
+    int-to-double v6, v4
+    const-wide/high16 v8, 0x3fe0000000000000L
+    mul-double/2addr v1, v8
+    const-wide/high16 v8, 0x401c000000000000L
+    div-double v8, v6, v8
+    add-double/2addr v1, v8
+    float-to-double v8, v0
+    sub-double/2addr v1, v8
+    float-to-int v10, v0
+    add-int/2addr v3, v10
+    const-wide/high16 v8, 0x4008000000000000L
+    mul-double v8, v1, v8
+    double-to-int v10, v8
+    add-int/2addr v3, v10
+    cmpl-float v10, v0, v5
+    add-int/2addr v3, v10
+    cmpg-double v10, v1, v6
+    add-int/2addr v3, v10
+    neg-float v0, v0
+    neg-float v0, v0
+    neg-double v1, v1
+    neg-double v1, v1
+    double-to-float v5, v1
+    const/high16 v10, 0x7fc00000
+    cmpl-float v10, v5, v10
+    add-int/2addr v3, v10
+    const/high16 v10, 0x7fc00000
+    cmpg-float v10, v10, v5
+    add-int/2addr v3, v10
+    cmpl-double v10, v1, v1
+    add-int/2addr v3, v10
+    mul-float v10, v5, v5
+    sub-float/2addr v10, v5
+    float-to-int v10, v10
+    add-int/2addr v3, v10
+    and-int/lit8 v10, v4, 0x3
+    aput-wide v1, v11, v10
+    add-int/lit8 v10, v4, 0x1
+    and-int/lit8 v10, v10, 0x3
+    aget-wide v6, v11, v10
+    const-wide/high16 v8, 0x3fd0000000000000L
+    mul-double/2addr v6, v8
+    add-double/2addr v1, v6
+    sub-double v6, v1, v6
+    add-double/2addr v1, v6
+    mul-double/2addr v1, v8
+    const-wide/high16 v8, 0x4010000000000000L
+    div-double/2addr v1, v8
+    add-int/lit8 v4, v4, 0x1
+    goto :loop
+    :done
+    float-to-double v6, v0
+    add-double/2addr v1, v6
+    int-to-double v6, v3
+    add-double/2addr v1, v6
+    return-wide v1
+.end method
