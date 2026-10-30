@@ -190,6 +190,8 @@ typedef struct mg_dvm_gc_result {
     u32 markers, sweepers;                   /* threads that marked at once, at the most; that swept */
     u64 stop_ns, mark_ns, sweep_ns;
     u64 roots_ns, stacks_ns;                 /* of the mark: the exact roots, and the conservative scan of the stacks */
+    u64 classes_ns, strings_ns, jni_ns;      /* of the exact roots: the classes', the interned strings', the JNI layer's */
+    u32 classes, strings, jni_roots;         /* how many of each were read */
 } mg_dvm_gc_result;
 /* A collection that marks only: what is reachable, counted, nothing freed. False when not every thread could be stopped. */
 bool mg_dvm_gc_census(mg_dvm_gc_result *out);

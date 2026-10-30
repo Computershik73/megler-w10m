@@ -153,6 +153,8 @@ typedef struct gc_state {
     u32 cleared, enqueued, finalizable;
     u32 markers;                       /* threads that marked at once, at the most */
     u64 roots_ns, stacks_ns;           /* the mark's time on the exact roots and on the conservative scan, the rest following */
+    u64 classes_ns, strings_ns, jni_ns;
+    u32 classes, strings, jni_roots;
 } gc_state;
 
 static gc_state G;
@@ -429,6 +431,7 @@ static void class_roots(mg_dvm_class *c, void *user)
 {
     int i;
     (void)user;
+    G.classes++;
     reach_ref(c->mirror, NULL);
     reach_ref(c->init_error, NULL);
     if (!c->statics) return;
@@ -625,20 +628,33 @@ static void process_references(bool clear_soft)
 }
 
 /* Everything reachable marked; the counts in G. With the runtime's locks held and the other threads stopped. */
+/* A root of a kind counted apart (G.strings, G.jni_roots, by `user`). */
+static void reach_counted(mg_jobj *o, void *user)
+{
+    (*(u32 *)user)++;
+    reach(&G.main, o);
+}
+
 static void mark(void)
 {
     u32 i;
-    u64 t0 = mg_time_monotonic_ns(), t1;
+    u64 t0 = mg_time_monotonic_ns(), t1, t2;
     mg_dvm_each_linked_locked(class_roots, NULL);
+    t1 = mg_time_monotonic_ns();
+    G.classes_ns = t1 - t0;
     /*
      * The interned strings, among them every DEX file's string constants resolved (mg_dvm_const_string keeps the interned
      * copy): those files' tables of them, a word for every string they have (Yandex Maps' sixteen files), are not walked.
      */
-    mg_dvm_interned_each(reach_ref, NULL);
+    mg_dvm_interned_each(reach_counted, &G.strings);
+    t2 = mg_time_monotonic_ns();
+    G.strings_ns = t2 - t1;
     mg_dvm_threads_each(exact_thread_roots, NULL);
     mg_dvm_proxy_roots(reach_ref, NULL);
     mg_dvm_object_roots(reach_ref, NULL);
-    mg_jni_gc_roots(reach_ref, NULL);
+    t1 = mg_time_monotonic_ns();
+    mg_jni_gc_roots(reach_counted, &G.jni_roots);
+    G.jni_ns = mg_time_monotonic_ns() - t1;
     for (i = 0; i < (u32)g_nroots && i < MAX_ROOTS; i++)
         if (g_roots[i]) reach_ref(*g_roots[i], NULL);
     /* What waits for the reference thread: objects to finalize, and the references it has not handed on yet. */
@@ -796,6 +812,12 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
         out->markers = G.markers;
         out->roots_ns = G.roots_ns;
         out->stacks_ns = G.stacks_ns;
+        out->classes_ns = G.classes_ns;
+        out->strings_ns = G.strings_ns;
+        out->jni_ns = G.jni_ns;
+        out->classes = G.classes;
+        out->strings = G.strings;
+        out->jni_roots = G.jni_roots;
         out->threads_stopped = (u32)g_nstopped;
         out->stop_ns = t1 - t0;
         out->mark_ns = t2 - t1;
@@ -908,11 +930,12 @@ bool mg_dvm_gc(const char *reason, mg_dvm_gc_result *out)
         return false;
     }
     if (!r.objects) return true;
-    mg_info("gc: %s: %.1f ms (stop %.1f, mark %.1f by %u threads: the exact roots %.1f, the stacks %.1f, the rest following references; "
-            "sweep %.1f by %u); freed %.1f MB (%u objects), live %.1f MB (%u objects); %u threads stopped; "
-            "%.2f MB (%u objects) found only through a conservative root",
+    mg_info("gc: %s: %.1f ms (stop %.1f, mark %.1f by %u threads: the exact roots %.1f -- %u classes %.1f, %u interned strings %.1f, %u of the "
+            "JNI layer's %.1f --, the stacks %.1f, the rest following references; sweep %.1f by %u); freed %.1f MB (%u objects), live %.1f MB "
+            "(%u objects); %u threads stopped; %.2f MB (%u objects) found only through a conservative root",
             reason, (double)(r.stop_ns + r.mark_ns + r.sweep_ns) / 1e6, (double)r.stop_ns / 1e6, (double)r.mark_ns / 1e6, (unsigned)r.markers,
-            (double)r.roots_ns / 1e6, (double)r.stacks_ns / 1e6, (double)r.sweep_ns / 1e6, (unsigned)r.sweepers,
+            (double)r.roots_ns / 1e6, (unsigned)r.classes, (double)r.classes_ns / 1e6, (unsigned)r.strings, (double)r.strings_ns / 1e6,
+            (unsigned)r.jni_roots, (double)r.jni_ns / 1e6, (double)r.stacks_ns / 1e6, (double)r.sweep_ns / 1e6, (unsigned)r.sweepers,
             (double)r.freed_bytes / 1048576.0, (unsigned)r.freed_objects, (double)r.live_bytes / 1048576.0, (unsigned)r.live_objects,
             (unsigned)r.threads_stopped, (double)r.conservative_bytes / 1048576.0, (unsigned)r.conservative);
     return true;
