@@ -582,6 +582,9 @@ static bool write_stored_apk(const char *path, const char *name, const u8 *data,
  * An APK's DEX file that it stores as it is: registered by its classes' names, not viewed until the first of its classes is
  * linked, and viewed then. One that changed on the disk after its classes were registered (here: a byte of it, in a scope of
  * its own, as a service's module's) is not taken: its class is a NoClassDefFoundError, and nothing else is the worse for it.
+ * The same file registered for scopes of their own (an app's processes'), 12 first: 14 takes the names 12 has in its pool, 13
+ * those in 12's view once 12's class is linked; each scope has a class of its own, all three over the one view, which the
+ * file registered for the app (scope 0) shares too.
  */
 void test_lazy_dex(const char *fixtures, const char *scratch)
 {
@@ -592,6 +595,7 @@ void test_lazy_dex(const char *fixtures, const char *scratch)
     size_t size = 0, at = 0, k;
     u8 *dex = NULL;
     u64 read0 = 0, viewed0 = 0, read1 = 0, viewed1 = 0;
+    mg_dvm_class *k12, *k13, *k14;
     say("DEX files viewed once a class of them is linked");
     for (k = 0; k < MG_COUNT(files) && !dex; k++) {
         if (mg_dvm_class_exists(files[k][1]) || mg_dvm_class_exists_scope(files[k][1], 15)) continue;
@@ -622,6 +626,23 @@ void test_lazy_dex(const char *fixtures, const char *scratch)
     CHECK(!strncmp(thrown(), "java.lang.NoClassDefFoundError: ", 32));
     CHECK(write_stored_apk(good, "classes.dex", dex, size, &at));
     mg_dvm_dex_memory(&read0, &viewed0);
+    CHECK_INT(mg_dvm_add_apk_scope(good, 12), 1);
+    CHECK_INT(mg_dvm_add_apk_scope(good, 14), 1);
+    CHECK(mg_dvm_class_exists_scope(cls, 12) && mg_dvm_class_exists_scope(cls, 14));
+    mg_dvm_dex_memory(&read1, &viewed1);
+    CHECK(read1 == read0 && viewed1 == viewed0);
+    k12 = mg_dvm_find_class_scope(cls, 12);
+    CHECK_STR(thrown(), "");
+    mg_dvm_dex_memory(&read1, &viewed1);
+    CHECK(read1 == read0 && viewed1 >= viewed0 + size);
+    CHECK_INT(mg_dvm_add_apk_scope(good, 13), 1);
+    k13 = mg_dvm_find_class_scope(cls, 13);
+    k14 = mg_dvm_find_class_scope(cls, 14);
+    CHECK_STR(thrown(), "");
+    CHECK(k12 && k13 && k14 && k12 != k13 && k13 != k14 && k12 != k14);
+    CHECK(k12 && k13 && k14 && k13->dex->b == k12->dex->b && k14->dex->b == k12->dex->b);
+    mg_dvm_dex_memory(&read0, &viewed0);
+    CHECK(viewed0 == viewed1);
     CHECK_INT(mg_dvm_add_apk(good), 1);
     mg_dvm_dex_memory(&read1, &viewed1);
     CHECK(read1 == read0 && viewed1 == viewed0);
@@ -631,7 +652,7 @@ void test_lazy_dex(const char *fixtures, const char *scratch)
     CHECK(mg_dvm_find_class(cls) != NULL);
     CHECK_STR(thrown(), "");
     mg_dvm_dex_memory(&read1, &viewed1);
-    CHECK(read1 == read0 && viewed1 >= viewed0 + size);
+    CHECK(read1 == read0 && viewed1 == viewed0);
 done:
     free(dex);
     free(good);

@@ -585,6 +585,11 @@ mg_dvm_dex *mg_dvm_dex_open_lazy(const u8 *b, size_t size, const char *label, co
 bool mg_dvm_dex_ready(mg_dvm_dex *d);
 /* Whether a DEX file of these bytes of that file is the runtime's already (registered, viewed or not). */
 bool mg_dvm_dex_known(const char *map_path, u64 map_at, size_t size);
+/*
+ * Another registered DEX file of the same bytes of the same file as lazy `d`, whose classes' names are at hand: in its pool
+ * (`names`) or in its view, which stays. NULL when there is none. With the runtime's lock held.
+ */
+mg_dvm_dex *mg_dvm_dex_twin(const mg_dvm_dex *d);
 /* mg_dvm.c: such a file added to the class path, of the app or of a scope (`scope` > 0). */
 bool mg_dvm_add_dex_lazy(const void *data, size_t size, const char *label, int scope, const char *map_path, u64 map_at);
 /* mg_dvm_apk.c: bytes of DEX files viewed now, for the memory line. */

@@ -161,11 +161,31 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
 {
     u32 i, added = 0;
     size_t pooled = 0, at = 0;
+    mg_dvm_dex *twin = NULL;
+    bool copied = false;
     if (d->scope == 0 && !d->app)
         for (i = 0; i < MG_COUNT(k_own); i++)
             if (strstr(d->name, k_own[i].file)) d->own = k_own[i].package;
+    /*
+     * The same file registered already, for another scope (a process's of the app's own APK, Yandex Maps' :AppMetrica): its
+     * names serve, in one block copied from its pool, or read in its view, which stays and needs no copy. Each name was read
+     * from the file again, a page of its table here and one of its strings there: Yandex Maps' sixteen files took 0.3 s of the
+     * main thread and 8 MB more of names (package 531).
+     */
+    if (d->lazy && !d->own) {
+        mg_dvm_lock();
+        twin = mg_dvm_dex_twin(d);
+        if (twin && twin->names) {
+            d->names_size = twin->names_size;
+            d->names = (char *)memcpy(mg_dvm_meta_alloc_kind(d->names_size, DVM_META_POOL), twin->names, d->names_size);
+            copied = true;
+        } else if (twin) {
+            d->b = twin->b;
+        }
+        mg_dvm_unlock();
+    }
     /* A file viewed only for now (mg_dvm_dex_open_lazy): its classes' descriptors are copied, one block for all of them. */
-    if (d->lazy) {
+    if (d->lazy && !twin) {
         for (i = 0; i < d->ncls; i++) pooled += strlen(mg_dvm_dex_type(d, mg_dvm_rd32(d->b + d->cls_off + 32 * i))) + 1;
         d->names_size = pooled ? pooled : 1;
         d->names = (char *)mg_dvm_meta_alloc_kind(d->names_size, DVM_META_POOL);
@@ -174,12 +194,22 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
     if (g_ndexes < (int)MG_COUNT(g_dexes)) g_dexes[g_ndexes++] = d;
     d->cdef_first = g_ncdefs;
     for (i = 0; i < d->ncls; i++) {
-        const char *desc = mg_dvm_dex_type(d, mg_dvm_rd32(d->b + d->cls_off + 32 * i));
-        size_t n = strlen(desc);
-        if (d->names && at + n + 1 <= pooled) {
-            memcpy(d->names + at, desc, n + 1);
+        const char *desc;
+        size_t n;
+        if (copied) {
+            /* (The pool has every class's descriptor, in the order of the definitions.) */
+            if (at >= d->names_size) break;
             desc = d->names + at;
+            n = strlen(desc);
             at += n + 1;
+        } else {
+            desc = mg_dvm_dex_type(d, mg_dvm_rd32(d->b + d->cls_off + 32 * i));
+            n = strlen(desc);
+            if (d->names && at + n + 1 <= pooled) {
+                memcpy(d->names + at, desc, n + 1);
+                desc = d->names + at;
+                at += n + 1;
+            }
         }
         const char *name;
         const cdef *existing;
@@ -212,7 +242,8 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
     }
     d->cdef_end = g_ncdefs;
     mg_dvm_unlock();
-    mg_info("dvm: %s: %u classes (%u new), %u methods, %u strings", d->name, (unsigned)d->ncls, (unsigned)added, (unsigned)d->nmeth, (unsigned)d->nstr);
+    mg_info("dvm: %s: %u classes (%u new), %u methods, %u strings%s", d->name, (unsigned)d->ncls, (unsigned)added, (unsigned)d->nmeth, (unsigned)d->nstr,
+            copied ? "; the names another scope's copy of it has" : twin ? "; the names in another scope's view of it" : "");
 }
 
 /*

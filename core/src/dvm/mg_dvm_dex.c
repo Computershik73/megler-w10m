@@ -172,6 +172,15 @@ static mg_dvm_dex *same_file(const char *map_path, u64 map_at, size_t size, cons
 
 bool mg_dvm_dex_known(const char *map_path, u64 map_at, size_t size) { return map_path && same_file(map_path, map_at, size, NULL, false) != NULL; }
 
+mg_dvm_dex *mg_dvm_dex_twin(const mg_dvm_dex *d)
+{
+    mg_dvm_dex *o;
+    if (!d->lazy || !d->map_path) return NULL;
+    o = same_file(d->map_path, d->map_at, d->map_size, d, false);
+    if (!o || o->checksum != d->checksum || o->size != d->size || o->ncls != d->ncls || o->cls_off != d->cls_off || o->own) return NULL;
+    return o->names || (!o->lazy && o->b) ? o : NULL;
+}
+
 bool mg_dvm_dex_ready(mg_dvm_dex *d)
 {
     mg_file *f;
