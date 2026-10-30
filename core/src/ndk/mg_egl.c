@@ -355,6 +355,164 @@ static void tell_version(const char *extensions, const char *version)
     }
 }
 
+/* ------------------------------------------------------------- ANGLE's programs kept on disk */
+
+/*
+ * EGL_ANDROID_blob_cache on the app's display: ANGLE hands over each program it links -- its shaders translated to HLSL
+ * and compiled by d3dcompiler, which on the phone takes tens to hundreds of milliseconds a program -- and asks for it
+ * again before it links the same one. On Android the system's EGL keeps those for every app (its shader cache); here no
+ * one did, and every start of a game or of a map compiled every shader again. Each entry is a file of the app's data,
+ * angle-cache\<the key's hash>.blob: "MGBC", the key's and the value's sizes, the key (compared, as two keys may share a
+ * hash), the value. Written beside, then renamed over. At most BLOB_CACHE_MAX bytes: past that the folder is emptied
+ * and fills again. The WebView's display is left to Chromium, which keeps its own.
+ */
+typedef intptr_t blob_size;
+typedef void (*fn_set_blob)(const void *key, blob_size key_size, const void *value, blob_size value_size);
+typedef blob_size (*fn_get_blob)(const void *key, blob_size key_size, void *value, blob_size value_size);
+typedef void (*fn_set_blob_funcs)(EGLDisplay, fn_set_blob, fn_get_blob);
+#define BLOB_CACHE_MAX (48u << 20)
+static mg_lock g_blob_lock = MG_LOCK_INIT;
+static char g_blob_dir[600];
+static u64 g_blob_bytes;
+static bool g_blob_counted;
+static volatile i32 g_blob_hits, g_blob_misses, g_blob_stores;
+
+static u64 blob_hash(const void *key, blob_size size)
+{
+    const u8 *p = (const u8 *)key;
+    u64 h = 1469598103934665603ull;
+    blob_size i;
+    for (i = 0; i < size; i++) h = (h ^ p[i]) * 1099511628211ull;
+    return h;
+}
+
+static void blob_path(char *out, size_t size, const void *key, blob_size key_size)
+{
+    snprintf(out, size, "%s/%016llx.blob", g_blob_dir, (unsigned long long)blob_hash(key, key_size));
+}
+
+static void blob_count_one(const char *name, bool is_dir, void *user)
+{
+    char path[700];
+    mg_stat st;
+    (void)user;
+    if (is_dir) return;
+    snprintf(path, sizeof(path), "%s/%s", g_blob_dir, name);
+    if (mg_path_stat(path, &st, NULL)) g_blob_bytes += st.size;
+}
+
+static void blob_remove_one(const char *name, bool is_dir, void *user)
+{
+    char path[700];
+    (void)user;
+    if (is_dir) return;
+    snprintf(path, sizeof(path), "%s/%s", g_blob_dir, name);
+    mg_path_remove(path, NULL);
+}
+
+static blob_size blob_get(const void *key, blob_size key_size, void *value, blob_size value_size)
+{
+    char path[700];
+    size_t size = 0;
+    u8 *data;
+    u32 ks, vs;
+    blob_size found = 0;
+    if (!key || key_size <= 0) return 0;
+    blob_path(path, sizeof(path), key, key_size);
+    mg_lock_acquire(&g_blob_lock);
+    data = mg_file_read_all(path, &size);
+    mg_lock_release(&g_blob_lock);
+    if (data && size >= 12 && !memcmp(data, "MGBC", 4)) {
+        memcpy(&ks, data + 4, 4);
+        memcpy(&vs, data + 8, 4);
+        if ((blob_size)ks == key_size && 12ull + ks + vs == size && !memcmp(data + 12, key, (size_t)ks)) {
+            found = (blob_size)vs;
+            /* Asked with room enough, it is copied; asked with less (or none), its size alone is the answer. */
+            if (value && value_size >= found) memcpy(value, data + 12 + ks, vs);
+        }
+    }
+    free(data);
+    if (found && value) {
+        i32 n = mg_atomic_add(&g_blob_hits, 1);
+        if (n == 1 || n == 10 || n == 100 || n == 1000)
+            mg_info("egl: ANGLE's program cache: %d programs found there, %d not, %d kept", (int)n, (int)g_blob_misses, (int)g_blob_stores);
+    } else if (!found) {
+        mg_atomic_add(&g_blob_misses, 1);
+    }
+    return found;
+}
+
+static void blob_set(const void *key, blob_size key_size, const void *value, blob_size value_size)
+{
+    char path[700], next[720];
+    u8 *data;
+    u32 ks = (u32)key_size, vs = (u32)value_size;
+    size_t size;
+    if (!key || key_size <= 0 || !value || value_size <= 0 || (u64)key_size + (u64)value_size > BLOB_CACHE_MAX / 4) return;
+    size = 12 + (size_t)ks + vs;
+    data = (u8 *)malloc(size);
+    if (!data) return;
+    memcpy(data, "MGBC", 4);
+    memcpy(data + 4, &ks, 4);
+    memcpy(data + 8, &vs, 4);
+    memcpy(data + 12, key, ks);
+    memcpy(data + 12 + ks, value, vs);
+    blob_path(path, sizeof(path), key, key_size);
+    snprintf(next, sizeof(next), "%s.new", path);
+    mg_lock_acquire(&g_blob_lock);
+    if (!g_blob_counted) {
+        g_blob_counted = true;
+        g_blob_bytes = 0;
+        mg_path_list(g_blob_dir, blob_count_one, NULL, NULL);
+    }
+    if (g_blob_bytes + size > BLOB_CACHE_MAX) {
+        mg_info("egl: ANGLE's program cache reached %u MB: emptied, to fill again", (unsigned)(g_blob_bytes >> 20));
+        mg_path_list(g_blob_dir, blob_remove_one, NULL, NULL);
+        g_blob_bytes = 0;
+    }
+    if (mg_file_write_all(next, data, size) && mg_path_rename(next, path, NULL)) {
+        i32 n = mg_atomic_add(&g_blob_stores, 1);
+        g_blob_bytes += size;
+        if (n == 1 || n == 10 || n == 100 || n == 1000)
+            mg_info("egl: ANGLE's program cache: %d programs kept, %u KB in all", (int)n, (unsigned)(g_blob_bytes >> 10));
+    } else {
+        mg_path_remove(next, NULL);
+    }
+    mg_lock_release(&g_blob_lock);
+    free(data);
+}
+
+/*
+ * The app's display given the cache, before its first context is made (g_eglCreateContext): a program is linked in a
+ * context, and the functions may be given a display once. Tried until a display that has the extension takes them.
+ */
+static volatile bool g_blob_started;
+static mg_lock g_blob_start_lock = MG_LOCK_INIT;
+static EGLDisplay display(void);
+
+static void blob_cache_offer(EGLDisplay d)
+{
+    fn_set_blob_funcs set;
+    fn_query_string qs;
+    const char *data = megler_data_dir(), *extensions;
+    if (g_blob_started || !d || d != display() || !data || !*data) return;
+    mg_lock_acquire(&g_blob_start_lock);
+    qs = A(fn_query_string, "eglQueryString");
+    extensions = qs ? qs(d, EGL_EXTENSIONS) : NULL;
+    set = A(fn_set_blob_funcs, "eglSetBlobCacheFuncsANDROID");
+    if (!g_blob_started && extensions && strstr(extensions, "EGL_ANDROID_blob_cache") && set && !mg_flag("no-angle-cache")) {
+        snprintf(g_blob_dir, sizeof(g_blob_dir), "%s/angle-cache", data);
+        if (!mg_path_mkdirs(g_blob_dir)) {
+            mg_warn("egl: no folder for ANGLE's program cache (%s): its programs are compiled at each start", g_blob_dir);
+        } else {
+            set(d, blob_set, blob_get);
+            g_blob_started = true;
+            mg_info("egl: ANGLE's programs kept in %s (EGL_ANDROID_blob_cache), at most %u MB", g_blob_dir, BLOB_CACHE_MAX >> 20);
+        }
+    }
+    mg_lock_release(&g_blob_start_lock);
+}
+
 /* The display, initialised; NULL when ANGLE cannot make one. */
 static EGLDisplay display(void)
 {
@@ -749,6 +907,7 @@ static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext 
         const char *ext = qs ? qs(d, EGL_EXTENSIONS) : NULL;
         no_config = ext && strstr(ext, "EGL_KHR_no_config_context") ? 1 : 0;
     }
+    if (!g_blob_started) blob_cache_offer(d);
     made = real(d, no_config ? NULL : config, share, attribs);
     if (!made) refused("eglCreateContext", &said);
     return made;

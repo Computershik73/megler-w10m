@@ -139,7 +139,7 @@ static const char *e_QueryString(void *d, int name)
 {
     (void)d;
     return name == 0x3055 ? "EGL_KHR_no_config_context EGL_KHR_surfaceless_context EGL_KHR_create_context EGL_ANGLE_query_surface_pointer "
-                            "EGL_ANGLE_surface_d3d_texture_2d_share_handle EGL_KHR_image_base EGL_KHR_gl_texture_2D_image"
+                            "EGL_ANGLE_surface_d3d_texture_2d_share_handle EGL_KHR_image_base EGL_KHR_gl_texture_2D_image EGL_ANDROID_blob_cache"
            : name == 0x3053 ? "Megler (stand-in)"
                             : "1.5 (stand-in)";
 }
@@ -291,6 +291,42 @@ static unsigned e_SwapBuffers(void *d, void *s)
     return 1;
 }
 static unsigned e_SwapInterval(void *d, int interval) { (void)d; (void)interval; return 1; }
+/* EGL_ANDROID_blob_cache: the functions the layer gives (mg_egl.c, ANGLE's programs kept on disk), kept for mg_gl_standin_blob_check. */
+typedef void (*standin_set_blob)(const void *key, intptr_t key_size, const void *value, intptr_t value_size);
+typedef intptr_t (*standin_get_blob)(const void *key, intptr_t key_size, void *value, intptr_t value_size);
+static standin_set_blob g_blob_set;
+static standin_get_blob g_blob_get;
+static void e_SetBlobCacheFuncs(void *d, standin_set_blob set, standin_get_blob get)
+{
+    (void)d;
+    g_blob_set = set;
+    g_blob_get = get;
+}
+
+bool mg_gl_standin_blob_given(void) { return g_blob_set && g_blob_get; }
+
+int mg_gl_standin_blob_check(void)
+{
+    static const char key[] = "program: attribute vec4 aPosition; uniform vec4 uColor;", other[] = "another program";
+    char value[300], back[300];
+    intptr_t size;
+    int i;
+    if (!g_blob_set || !g_blob_get) return 0;
+    for (i = 0; i < (int)sizeof(value); i++) value[i] = (char)(i * 7 + 3);
+    g_blob_set(key, sizeof(key), value, sizeof(value));
+    /* Asked with no room, the size; with room, the value; another key, nothing; a key of another size, nothing. */
+    if (g_blob_get(key, sizeof(key), NULL, 0) != (intptr_t)sizeof(value)) return 2;
+    memset(back, 0, sizeof(back));
+    size = g_blob_get(key, sizeof(key), back, sizeof(back));
+    if (size != (intptr_t)sizeof(value) || memcmp(back, value, sizeof(value))) return 3;
+    if (g_blob_get(other, sizeof(other), back, sizeof(back)) != 0) return 4;
+    if (g_blob_get(key, sizeof(key) - 1, back, sizeof(back)) != 0) return 5;
+    /* Kept again, the new value is the one found. */
+    value[0] = 'X';
+    g_blob_set(key, sizeof(key), value, 10);
+    if (g_blob_get(key, sizeof(key), back, sizeof(back)) != 10 || back[0] != 'X') return 6;
+    return 0;
+}
 static unsigned e_QuerySurface(void *d, void *surface, int attrib, int *value)
 {
     sb_surface *s = (sb_surface *)surface;
@@ -1222,7 +1258,8 @@ void *mg_gl_standin(const char *name)
         { "eglChooseConfig", (void *)e_ChooseConfig }, { "eglGetConfigAttrib", (void *)e_GetConfigAttrib }, { "eglCreateContext", (void *)e_CreateContext },
         { "eglDestroyContext", (void *)e_DestroyContext }, { "eglCreatePbufferSurface", (void *)e_CreatePbuffer },
         { "eglDestroySurface", (void *)e_DestroySurface }, { "eglMakeCurrent", (void *)e_MakeCurrent }, { "eglGetCurrentContext", (void *)e_GetCurrentContext },
-        { "eglSwapBuffers", (void *)e_SwapBuffers }, { "eglSwapInterval", (void *)e_SwapInterval }, { "eglQuerySurface", (void *)e_QuerySurface },
+        { "eglSwapBuffers", (void *)e_SwapBuffers }, { "eglSwapInterval", (void *)e_SwapInterval },
+        { "eglSetBlobCacheFuncsANDROID", (void *)e_SetBlobCacheFuncs }, { "eglQuerySurface", (void *)e_QuerySurface },
         { "eglQuerySurfacePointerANGLE", (void *)e_QuerySurfacePointer }, { "meglerKeyedMutexANGLE", (void *)e_KeyedMutex },
         { "eglBindAPI", (void *)e_BindAPI }, { "eglReleaseThread", (void *)e_True }, { "eglWaitClient", (void *)e_True },
         { "eglGetConfigs", (void *)e_GetConfigs }, { "eglGetCurrentSurface", (void *)e_GetCurrentSurface },

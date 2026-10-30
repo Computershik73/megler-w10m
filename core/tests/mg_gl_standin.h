@@ -25,6 +25,13 @@ extern "C" {
 
 /* For mg_egl_set_provider. */
 void *mg_gl_standin(const char *name);
+/*
+ * EGL_ANDROID_blob_cache, which the stand-in lists: whether the layer gave it its functions, and those functions tried --
+ * a value kept and found again, its size alone when asked with no room, nothing for another key, a value kept again
+ * replacing it. 0 when they did all that (or none was given); otherwise which of them failed.
+ */
+bool mg_gl_standin_blob_given(void);
+int mg_gl_standin_blob_check(void);
 
 typedef struct mg_gl_standin_stats {
     i32 contexts, contexts_alive, surfaces, surfaces_alive;

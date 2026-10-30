@@ -23,6 +23,8 @@
 #include "mg_gfx_tests.h"
 #include "mg_gl_standin.h"
 
+const char *megler_data_dir(void);
+
 static int t_checks, t_failed;
 static mg_test_sink t_sink;
 static void *t_sink_user;
@@ -855,6 +857,15 @@ static void test_window(void)
         EGL("swap", "(JJIIII)Z", 6, J(surf), J(x), I(10), I(8), I(40), I(20));
         CHECK_HEX(window_pixel(45, 12), 0xFF0000);
         CHECK_HEX(window_pixel(30, 12), 0x00FF00);
+    }
+    /*
+     * ANGLE's programs kept on disk (mg_egl.c, EGL_ANDROID_blob_cache, which the stand-in lists): given their functions when
+     * the app has a data folder, they keep a program and find it again.
+     */
+    {
+        const char *data = megler_data_dir();
+        if (data && *data) CHECK(mg_gl_standin_blob_given());
+        CHECK(mg_gl_standin_blob_check() == 0);
     }
     /* The app's own framebuffer and (OpenGL ES 3) pack buffer bound at the swap: the frame is still the surface's, and both are bound after. */
     mg_gl_standin_reset(false, false);
