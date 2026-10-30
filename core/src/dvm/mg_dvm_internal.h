@@ -600,6 +600,8 @@ extern u32 g_dvm_jit_threshold;      /* jumps back before a method is compiled; 
 void mg_dvm_jit_start(bool on, u32 threshold, bool trace);
 /* mg_dvm_interp.c: an invoke done for compiled code; 0 done, 1 thrown, 2 the interpreter's to do (nothing done). */
 int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res);
+/* mg_dvm_interp.c: const-class, the monitors, check-cast, instance-of, new-instance, new-array, aput-object for compiled code; the same answers. */
+int mg_dvm_jit_op(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc);
 int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next);
 /* At a jump back: 0 nothing run; 1 run, the interpreter goes on at *next; 2 run, and an exception is pending, thrown at *next. */
 static inline int mg_dvm_jit_run(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_jit_code *c, mg_dvm_reg *regs, u32 at, u32 *next)

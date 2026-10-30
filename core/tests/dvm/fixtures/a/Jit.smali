@@ -554,3 +554,113 @@
         0x31 -> :s2
     .end sparse-switch
 .end method
+
+# Objects in a compiled loop: new-instance with its constructor called, instance-of, check-cast, a call on it, new-array
+# and its length, aput-object and aget-object, a monitor taken and let go, const-class; instance-of and check-cast of the
+# very class and of null (the code's own answer) and of an interface (the runtime's). Each turn adds 3 + i + (i & 7).
+.method public static objects(I)I
+    .registers 10
+    const/4 v0, 0x0
+    const/4 v1, 0x0
+    const/4 v2, 0x4
+    new-array v3, v2, [Ljava/lang/Object;
+    :loop
+    if-ge v1, p0, :done
+    new-instance v4, Lt/Blob;
+    invoke-direct {v4, v1}, Lt/Blob;-><init>(I)V
+    instance-of v5, v4, Lt/HasArea;
+    add-int/2addr v0, v5
+    instance-of v5, v4, Lt/Blob;
+    add-int/2addr v0, v5
+    const/4 v6, 0x0
+    instance-of v5, v6, Lt/Blob;
+    add-int/2addr v0, v5
+    check-cast v6, Lt/Blob;
+    check-cast v4, Lt/Blob;
+    invoke-virtual {v4}, Lt/Blob;->area()I
+    move-result v5
+    add-int/2addr v0, v5
+    and-int/lit8 v5, v1, 0x7
+    new-array v6, v5, [I
+    array-length v5, v6
+    add-int/2addr v0, v5
+    and-int/lit8 v5, v1, 0x3
+    aput-object v4, v3, v5
+    aget-object v6, v3, v5
+    if-ne v6, v4, :bad
+    monitor-enter v4
+    add-int/lit8 v0, v0, 0x1
+    monitor-exit v4
+    const-class v6, Lt/Blob;
+    if-eqz v6, :bad
+    add-int/lit8 v1, v1, 0x1
+    goto :loop
+    :done
+    return v0
+    :bad
+    const/4 v0, -0x1
+    return v0
+.end method
+
+# A String stored into a Blob[] at turn 3 of a compiled loop: ArrayStoreException, caught after the loop; 1000 + the turn.
+.method public static storeFails(I)I
+    .registers 8
+    const/4 v0, 0x4
+    new-array v1, v0, [Lt/Blob;
+    const-string v2, "x"
+    new-instance v3, Lt/Blob;
+    const/4 v4, 0x1
+    invoke-direct {v3, v4}, Lt/Blob;-><init>(I)V
+    const/4 v4, 0x0
+    :try_start
+    :loop
+    if-ge v4, p0, :done
+    move-object v5, v3
+    const/4 v6, 0x3
+    if-ne v4, v6, :store
+    move-object v5, v2
+    :store
+    and-int/lit8 v6, v4, 0x3
+    aput-object v5, v1, v6
+    add-int/lit8 v4, v4, 0x1
+    goto :loop
+    :try_end
+    .catch Ljava/lang/ArrayStoreException; {:try_start .. :try_end} :handler
+    :done
+    const/4 v0, -0x1
+    return v0
+    :handler
+    move-exception v5
+    add-int/lit16 v0, v4, 0x3e8
+    return v0
+.end method
+
+# A String cast to Blob at turn 5 of a compiled loop: ClassCastException, caught after the loop; 2000 + the turn.
+.method public static castFails(I)I
+    .registers 8
+    const-string v2, "y"
+    new-instance v3, Lt/Blob;
+    const/4 v4, 0x1
+    invoke-direct {v3, v4}, Lt/Blob;-><init>(I)V
+    const/4 v4, 0x0
+    :try_start
+    :loop
+    if-ge v4, p0, :done
+    move-object v5, v3
+    const/4 v6, 0x5
+    if-ne v4, v6, :cast
+    move-object v5, v2
+    :cast
+    check-cast v5, Lt/Blob;
+    add-int/lit8 v4, v4, 0x1
+    goto :loop
+    :try_end
+    .catch Ljava/lang/ClassCastException; {:try_start .. :try_end} :handler
+    :done
+    const/4 v0, -0x1
+    return v0
+    :handler
+    move-exception v5
+    add-int/lit16 v0, v4, 0x7d0
+    return v0
+.end method

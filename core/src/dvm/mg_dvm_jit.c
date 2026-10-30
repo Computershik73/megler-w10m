@@ -522,6 +522,63 @@ static void compile_invoke(emitter *e, u32 pc)
     fix(e, FIX_EXIT, pc, C_EQ);
 }
 
+/*
+ * const-class, the monitors, check-cast, instance-of, new-instance, new-array, aput-object: mg_dvm_jit_op(t, f, pc), which
+ * does it on the frame's registers as the interpreter does; 1 back is an exception pending, 2 one it leaves to the interpreter.
+ */
+static void compile_runtime_op(emitter *e, u32 pc)
+{
+    mov_imm(e, R2, pc);
+    ldr_imm(e, R0, R5, JIT_CTX_T);
+    ldr_imm(e, R1, R5, JIT_CTX_F);
+    mov_imm(e, R12, (u32)(mg_addr)mg_dvm_jit_op);
+    e16(e, 0x47E0);                                             /* blx r12 */
+    cmp_imm(e, R0, 1);
+    fix(e, FIX_THROW, pc, C_EQ);
+    cmp_imm(e, R0, 2);
+    fix(e, FIX_EXIT, pc, C_EQ);
+}
+
+/*
+ * check-cast and instance-of: in the code when the object is null or of the very class named (resolved by now: its pointer a
+ * constant), mg_dvm_jit_op for the rest (a subclass, an interface, a class not yet resolved).
+ */
+static void compile_type_test(emitter *e, const mg_dvm_method *m, u32 pc, u32 op, u32 vo, u32 vd, u32 idx)
+{
+    mg_dvm_dex *d = m->cls->dex;
+    mg_dvm_class *c = idx < d->ntype ? d->tcache[idx] : NULL;
+    u32 null_done, same_done, slow_done;
+    if (!c) {
+        compile_runtime_op(e, pc);
+        return;
+    }
+    ldr_v(e, R0, vo);
+    cmp_imm(e, R0, 0);
+    null_done = local_branch(e);
+    ldr_imm(e, R1, R0, (u32)offsetof(mg_dvm_obj, cls));
+    mov_imm(e, R2, (u32)(mg_addr)c);
+    cmp_reg(e, R1, R2);
+    same_done = local_branch(e);
+    compile_runtime_op(e, pc);
+    slow_done = local_branch(e);
+    if (op == 0x20) {
+        /* instance-of: 0 for null, 1 for the very class */
+        u32 one_done;
+        local_to(e, null_done, C_EQ);
+        mov_imm(e, R0, 0);
+        one_done = local_branch(e);
+        local_to(e, same_done, C_EQ);
+        mov_imm(e, R0, 1);
+        local_to(e, one_done, C_AL);
+        str_v(e, R0, vd);
+        local_to(e, slow_done, C_AL);
+    } else {
+        local_to(e, null_done, C_EQ);
+        local_to(e, same_done, C_EQ);
+        local_to(e, slow_done, C_AL);
+    }
+}
+
 /* One instruction; false when it is an exit. */
 static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
 {
@@ -561,6 +618,11 @@ static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
         str_v(e, R0, aa);
         return true;
     }
+    case 0x1f: compile_type_test(e, m, pc, op, aa, 0, F(1)); return true;      /* check-cast vAA */
+    case 0x20: compile_type_test(e, m, pc, op, b4, a4, F(1)); return true;     /* instance-of vA, vB */
+    case 0x1c: case 0x1d: case 0x1e: case 0x22: case 0x23: case 0x4d:
+        compile_runtime_op(e, pc);
+        return true;
     case 0x2b: case 0x2c: return compile_switch(e, m, pc, op, aa, (i32)(F(1) | F(2) << 16));
     case 0x31: cmp_long(e, aa, F(1) & 0xFF, F(1) >> 8); return true;
     case 0x6e: case 0x6f: case 0x70: case 0x71: case 0x72:

@@ -1261,6 +1261,112 @@ int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
     return ok ? 0 : 1;
 }
 
+/* A type an instruction names, resolved as RESOLVE_TYPE does; NULL with an exception pending. */
+static mg_dvm_class *jit_type(mg_dvm_dex *dex, u32 idx)
+{
+    mg_dvm_class *c = idx < dex->ntype ? dex->tcache[idx] : NULL;
+    return c ? c : mg_dvm_resolve_type(dex, idx);
+}
+
+/*
+ * For compiled code (mg_dvm_jit.c): one of the instructions that make objects, look at their classes or lock them --
+ * const-class, monitor-enter and -exit, check-cast, instance-of, new-instance, new-array, aput-object -- done at `pc` of
+ * frame f as the interpreter's loop does it, on the frame's registers. 0 done; 1 thrown (pending, f->pc this one's); 2
+ * another instruction, the interpreter's.
+ */
+int mg_dvm_jit_op(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc)
+{
+    mg_dvm_method *m = f->m;
+    mg_dvm_dex *dex = m->cls->dex;
+    const u16 *insns = m->insns;
+    mg_dvm_reg *regs = f->regs;
+    u16 w = insns[pc];
+    u32 a4 = ((u32)w >> 8) & 0xF, b4 = (u32)w >> 12, aa = (u32)w >> 8;
+    mg_dvm_class *c;
+    mg_jobj *o;
+    (void)t;
+    f->pc = pc;
+    switch (w & 0xFF) {
+    case 0x1c:                                                   /* const-class */
+        if (!(c = jit_type(dex, insns[pc + 1])) || !(o = mg_dvm_mirror(c))) return 1;
+        regs[aa] = (mg_dvm_reg)o;
+        return 0;
+    case 0x1d:                                                   /* monitor-enter */
+        if (!(o = (mg_jobj *)regs[aa])) {
+            mg_dvm_throw("java/lang/NullPointerException", "monitor-enter on null");
+            return 1;
+        }
+        mg_dvm_monitor_enter(o);
+        return 0;
+    case 0x1e:                                                   /* monitor-exit */
+        if (!(o = (mg_jobj *)regs[aa])) {
+            mg_dvm_throw("java/lang/NullPointerException", "monitor-exit on null");
+            return 1;
+        }
+        if (!mg_dvm_monitor_exit(o)) {
+            mg_dvm_throw("java/lang/IllegalMonitorStateException", "monitor-exit on an object this thread has not locked");
+            return 1;
+        }
+        return 0;
+    case 0x1f:                                                   /* check-cast */
+        if (!(o = (mg_jobj *)regs[aa])) return 0;
+        if (!(c = jit_type(dex, insns[pc + 1]))) return 1;
+        if (mg_dvm_class_of(o) != c && !mg_dvm_assignable(mg_dvm_class_of(o), c)) {
+            mg_dvm_throw("java/lang/ClassCastException", "%s cannot be cast to %s", mg_dvm_class_of(o)->name, c->name);
+            return 1;
+        }
+        return 0;
+    case 0x20:                                                   /* instance-of */
+        if (!(o = (mg_jobj *)regs[b4])) {
+            regs[a4] = 0;
+            return 0;
+        }
+        if (!(c = jit_type(dex, insns[pc + 1]))) return 1;
+        regs[a4] = (mg_dvm_reg)(u32)(mg_dvm_class_of(o) == c || mg_dvm_assignable(mg_dvm_class_of(o), c));
+        return 0;
+    case 0x22:                                                   /* new-instance */
+        if (!(c = jit_type(dex, insns[pc + 1]))) return 1;
+        if (c->state != DVM_CS_INITIALIZED && !mg_dvm_ensure_init(c)) return 1;
+        if (!(o = mg_dvm_alloc_object(c))) return 1;
+        regs[aa] = (mg_dvm_reg)o;
+        return 0;
+    case 0x23:                                                   /* new-array */
+        if (!(c = jit_type(dex, insns[pc + 1]))) return 1;
+        if (c->name[0] != '[') {
+            mg_dvm_throw("java/lang/VerifyError", "new-array of %s", c->name);
+            return 1;
+        }
+        if (!(o = mg_dvm_alloc_array(c, (i32)(u32)regs[b4]))) return 1;
+        regs[a4] = (mg_dvm_reg)o;
+        return 0;
+    case 0x4d: {                                                 /* aput-object */
+        u16 bc = insns[pc + 1];
+        mg_jobj *a = (mg_jobj *)regs[bc & 0xFF], *v = (mg_jobj *)regs[aa];
+        i32 i = (i32)(u32)regs[bc >> 8];
+        if (!a) {
+            mg_dvm_throw("java/lang/NullPointerException", "Attempt to write to a null array");
+            return 1;
+        }
+        if (a->kind != MG_J_OBJ_ARRAY) {
+            mg_dvm_throw("java/lang/InternalError", "%s on a %s", mg_dvm_insn_name(w), mg_dvm_class_of(a)->name);
+            return 1;
+        }
+        if ((u32)i >= (u32)mg_dvm_array_length(a)) {
+            mg_dvm_throw("java/lang/ArrayIndexOutOfBoundsException", "length=%d; index=%d", (int)mg_dvm_array_length(a), (int)i);
+            return 1;
+        }
+        if (v && !mg_dvm_is_instance(v, mg_dvm_class_of(a)->component)) {
+            mg_dvm_throw("java/lang/ArrayStoreException", "%s cannot be stored in an array of type %s", mg_dvm_class_of(v)->name, mg_dvm_class_of(a)->name);
+            return 1;
+        }
+        a->u.oarr.v[i] = v;
+        return 0;
+    }
+    default:
+        return 2;
+    }
+}
+
 bool mg_dvm_invoke(mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_jvalue *ret)
 {
     mg_dvm_thread *t = mg_dvm_self();

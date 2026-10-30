@@ -64,8 +64,10 @@ included); int arithmetic and logic in every form (division and remainder with t
 masked); long arithmetic but division and remainder (add, sub, mul, and, or, xor, the three shifts by any count, neg,
 not, `int-to-long`, `long-to-int`, `cmp-long`); `if-*`, `if-*z`, `goto`, `packed-switch` and `sparse-switch` of up to 64
 keys; `array-length`, `aget` and `aput` of ints, bytes, chars, shorts and booleans and `aget-object`; `iget` and `iput`
-of every width of a field resolved by then, `sget` and `sput` of a class initialised by then; and calls of every kind with
-their `move-result`. A call goes through `mg_dvm_jit_invoke` (mg_dvm_interp.c), which finds the method as the
+of every width of a field resolved by then, `sget` and `sput` of a class initialised by then; calls of every kind with
+their `move-result`; and through `mg_dvm_jit_op` (mg_dvm_interp.c) `new-instance`, `new-array`, `const-class`, the
+monitors, `aput-object` with its store check, `check-cast` and `instance-of` -- these two in the code itself when the
+object is null or of the very class named. A call goes through `mg_dvm_jit_invoke` (mg_dvm_interp.c), which finds the method as the
 interpreter's do_invoke does and does it as it would -- an intrinsic or a trivial body in place, a native method called,
 bytecode run to its return in a loop of its own on the host's stack; an exception it ends with sends the frame back to the
 interpreter, pending, at the invoke; where the host's stack has too little left for another loop (deep recursion through
@@ -81,5 +83,6 @@ compiled instruction and hand-back, calls of each kind with their results, a cal
 recursion 3000 deep through compiled calls, long arithmetic against C, and both switches; the whole main suite passes with
 every loop compiled (MEGLER_JIT_THRESHOLD=1).
 
-Next: allocation, `check-cast`, `instance-of`, the monitors and `aput-object` through helpers, so that the loops that
-make objects are compiled whole; floating point (VFP); a call to a compiled method straight into its code.
+Next: floating point (VFP); a call to a compiled method straight into its code, and its returns compiled, so that a
+loop calling bytecode does not pay for a loop of the interpreter's at every call (the benchmark's ArrayList iterator is
+some 10% slower compiled than interpreted for that).

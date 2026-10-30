@@ -367,6 +367,15 @@ static void test_jit(void)
     CHECK(call("t/Jit", "longs", "(IJ)J").j == jit_longs(500, (i64)0x0123456789abcdefll));
     A[0].i = 777;
     CHECK_INT(call("t/Jit", "switches", "(I)I").i, jit_switches(777));
+    /* Objects made, cast, locked and stored from a compiled loop; a store and a cast that fail thrown from it. */
+    for (want = 0, i = 0; i < 100; i++) want += 3 + i + (i & 7);
+    A[0].i = 100;
+    CHECK_INT(call("t/Jit", "objects", "(I)I").i, want);
+    A[0].i = 10;
+    CHECK_INT(call("t/Jit", "storeFails", "(I)I").i, 1003);
+    A[0].i = 10;
+    CHECK_INT(call("t/Jit", "castFails", "(I)I").i, 2005);
+    CHECK_STR(thrown(), "");
     A[0].i = 10;
     A[1].j = (i64)0x123456789abcdef0ll;
     CHECK(call("t/Jit", "wideMoves", "(IJ)J").j == (i64)0x123456789abcdef0ll);
@@ -379,6 +388,7 @@ static void test_jit(void)
             { "sum", "([I)I" }, { "fill", "([I[B[C[SI)I" }, { "mix", "(II)I" }, { "conditions", "(I)I" }, { "divideAll", "(I[I)I" },
             { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" }, { "fields", "(I)I" }, { "callsInLoop", "(I)I" },
             { "callKinds", "(I)I" }, { "catchInLoop", "(I)I" }, { "deepCalls", "(I)I" }, { "longs", "(IJ)J" }, { "switches", "(I)I" },
+            { "objects", "(I)I" }, { "storeFails", "(I)I" }, { "castFails", "(I)I" },
         };
         size_t k;
         for (k = 0; k < MG_COUNT(compiled); k++) {
