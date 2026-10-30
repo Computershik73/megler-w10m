@@ -488,6 +488,33 @@ static void whole_loops(const mg_dvm_method *m, const u8 *handback, u8 *target)
     free(whole);
 }
 
+/*
+ * Memory for code: pages of an arena of the process's, reserved a megabyte at a time and committed as code comes, each
+ * method's code on pages of its own (written, then made executable once: the phone never has a page both). A method on
+ * an allocation of its own took 64 KB of addresses (Windows' granularity) for a few hundred bytes of code, and Yandex
+ * Maps has addresses to spare for nothing. Under g_jit_lock.
+ */
+#define JIT_ARENA (1u << 20)
+static u8 *g_arena;
+static size_t g_arena_used;
+
+static u8 *code_pages(size_t bytes)
+{
+    size_t need = (bytes + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1);
+    u8 *p;
+    if (need > JIT_ARENA / 4) return (u8 *)mg_mem_alloc(need);
+    if (!g_arena || g_arena_used + need > JIT_ARENA) {
+        u8 *a = (u8 *)mg_mem_reserve(JIT_ARENA);
+        if (!a) return NULL;
+        g_arena = a;
+        g_arena_used = 0;
+    }
+    p = g_arena + g_arena_used;
+    if (!mg_mem_commit(p, need, MG_PROT_RW)) return NULL;
+    g_arena_used += need;
+    return p;
+}
+
 static mg_dvm_jit_code *compile(mg_dvm_method *m)
 {
     emitter e;
@@ -526,6 +553,15 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
         pc += n;
     }
     if (!compiled || e.failed) goto out;
+    /*
+     * Entered only at the head of a loop compiled whole, from its head to its jump back with no instruction handed back
+     * in between: a loop whose body calls out (a call, an allocation) would go in and out at every turn, which costs more
+     * than what it saves (the benchmark's Math.min, Integer.valueOf: twice as slow). Those stay the interpreter's, and a
+     * method with no such loop is not kept: known before any code memory is taken.
+     */
+    whole_loops(m, handback, target);
+    for (pc = 0; pc < m->ninsns; pc++) loops += target[pc];
+    if (!loops) goto out;
     /* The exits of the checks and the jump-back stubs, after the code: r0 = the instruction's pc, to the way out. (Each
        instruction's code goes on into the next one's; the last never ends that way, which bytecode cannot.) */
     for (i = 0; i < e.nfx; i++) {
@@ -562,13 +598,11 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
         if (!to || !put_branch(e.b, x->at, to - 1, x->cond)) goto out;
     }
     bytes = (size_t)e.n * 2;
-    pages = (u8 *)mg_mem_alloc((bytes + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1));
+    pages = code_pages(bytes);
     if (!pages) goto out;
     memcpy(pages, e.b, bytes);
-    if (!mg_mem_protect(pages, (bytes + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1), MG_PROT_RX)) {
-        mg_mem_release(pages, (bytes + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1));
-        goto out;
-    }
+    /* (Pages a failure leaves behind stay in the arena, unused: they are never given out again.) */
+    if (!mg_mem_protect(pages, (bytes + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1), MG_PROT_RX)) goto out;
     mg_icache_flush(pages, bytes);
     c = (mg_dvm_jit_code *)calloc(1, sizeof(*c));
     if (!c) goto out;
@@ -578,23 +612,8 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
     c->ninsns = m->ninsns;
     c->entry = code_at;
     code_at = NULL;
-    /*
-     * Entered only at the head of a loop compiled whole, from its head to its jump back with no instruction handed back
-     * in between: a loop whose body calls out (a call, an allocation) would go in and out at every turn, which costs more
-     * than what it saves (the benchmark's Math.min, Integer.valueOf: twice as slow). Those stay the interpreter's.
-     */
-    whole_loops(m, handback, target);
-    for (pc = 0; pc < m->ninsns; pc++) {
+    for (pc = 0; pc < m->ninsns; pc++)
         if (!target[pc]) c->entry[pc] = 0;
-        else loops++;
-    }
-    if (!loops) {
-        mg_mem_release(c->pages, (bytes + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1));
-        free(c->entry);
-        free(c);
-        c = NULL;
-        goto out;
-    }
     if (g_jit_trace)
         mg_info("jit: %s.%s%s compiled: %u instructions, %u of them handed back, %u loops entered, %u bytes of Thumb-2", m->cls->name,
                 m->name, m->sig, (unsigned)(compiled + exits), (unsigned)exits, (unsigned)loops, (unsigned)bytes);
