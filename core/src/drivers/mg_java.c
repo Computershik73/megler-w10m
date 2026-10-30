@@ -1512,6 +1512,15 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
             }
         }
     }
+    {
+        /* The JIT's work (mg_dvm_jit.c): how much of the app runs compiled, and what its code takes. */
+        mg_dvm_jit_stats j;
+        mg_dvm_jit_census(&j);
+        if (j.methods || j.refused)
+            mg_info("java: the JIT: %u methods compiled (%u of them waiting for their page to be made executable), %u not worth it; "
+                    "%u KB of code on %u KB of pages",
+                    (unsigned)j.methods, (unsigned)j.waiting, (unsigned)j.refused, (unsigned)(j.code_bytes >> 10), (unsigned)(j.page_bytes >> 10));
+    }
 }
 
 /* megler.Native.frameMark(phase, redrawn), from megler.ViewRoot.doFrame on the main thread. */

@@ -639,6 +639,12 @@ static inline u32 mg_dvm_jit_entry(const mg_dvm_jit_code *c, u32 pc)
 extern u32 g_dvm_jit_threshold;      /* jumps back before a method is compiled; 0 off (the flag no-jit, or no JIT on this host) */
 extern u32 g_dvm_jit_in_place;       /* calls of trivial methods compiled to be done in the code (inline_call), for the tests */
 void mg_dvm_jit_start(bool on, u32 threshold, bool trace);
+/* What the JIT has made so far, for the log: methods compiled (and of them waiting for their page), refused, its code and the pages it is on. */
+typedef struct mg_dvm_jit_stats {
+    u32 methods, waiting, refused;
+    u64 code_bytes, page_bytes;
+} mg_dvm_jit_stats;
+void mg_dvm_jit_census(mg_dvm_jit_stats *out);
 /* mg_dvm_interp.c: an invoke done for compiled code; 0 done, 1 thrown, 2 the interpreter's to do (nothing done). */
 int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res);
 /* mg_dvm_interp.c: const-class, the monitors, check-cast, instance-of, new-instance, new-array, aput-object for compiled code; the same answers. */

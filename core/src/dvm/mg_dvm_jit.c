@@ -35,6 +35,7 @@ u32 g_dvm_jit_threshold;
 u32 g_dvm_jit_in_place;
 static bool g_jit_trace;
 static volatile i32 g_jit_methods, g_jit_refused;
+static u64 g_code_bytes, g_page_bytes;  /* the code compiled, and the pages committed for it (under g_jit_lock) */
 
 #if defined(__arm__) || defined(_M_ARM)
 
@@ -1152,7 +1153,11 @@ static u8 *code_pages(size_t bytes)
 {
     size_t need = (bytes + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1);
     u8 *p;
-    if (need > JIT_ARENA / 4) return (u8 *)mg_mem_alloc(need);
+    if (need > JIT_ARENA / 4) {
+        p = (u8 *)mg_mem_alloc(need);
+        if (p) g_page_bytes += need;
+        return p;
+    }
     if (!g_arena || g_arena_used + need > JIT_ARENA) {
         u8 *a = (u8 *)mg_mem_reserve(JIT_ARENA);
         if (!a) return NULL;
@@ -1162,6 +1167,7 @@ static u8 *code_pages(size_t bytes)
     p = g_arena + g_arena_used;
     if (!mg_mem_commit(p, need, MG_PROT_RW)) return NULL;
     g_arena_used += need;
+    g_page_bytes += need;
     return p;
 }
 
@@ -1223,6 +1229,7 @@ static void fill_done(void)
 static bool place(mg_dvm_method *m, mg_dvm_jit_code *c, const u16 *code, size_t bytes)
 {
     u8 *p;
+    g_code_bytes += bytes;
     if (bytes > JIT_SHARED) {
         size_t span = (bytes + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1);
         p = code_pages(bytes);
@@ -1406,6 +1413,17 @@ out:
 
 static mg_lock g_jit_lock = MG_LOCK_INIT;
 
+void mg_dvm_jit_census(mg_dvm_jit_stats *out)
+{
+    mg_lock_acquire(&g_jit_lock);
+    out->methods = (u32)g_jit_methods + g_nwaiting;
+    out->waiting = g_nwaiting;
+    out->refused = (u32)g_jit_refused;
+    out->code_bytes = g_code_bytes;
+    out->page_bytes = g_page_bytes;
+    mg_lock_release(&g_jit_lock);
+}
+
 int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next, mg_jvalue *res)
 {
     mg_dvm_jit_code *c = m->jit;
@@ -1435,6 +1453,8 @@ void mg_dvm_jit_start(bool on, u32 threshold, bool trace)
     g_jit_trace = trace;
     g_dvm_jit_threshold = 0;
 }
+
+void mg_dvm_jit_census(mg_dvm_jit_stats *out) { memset(out, 0, sizeof(*out)); }
 
 int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next, mg_jvalue *res)
 {
