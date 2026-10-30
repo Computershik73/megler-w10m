@@ -1524,6 +1524,75 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
     }
 }
 
+/*
+ * Where the main thread's time goes: every 5 ms the method it runs (mg_dvm_thread.running, which it writes itself: always
+ * a method or nothing), counted, and every 10 s the ones counted most said, with their share of the samples -- a native
+ * one marked, the looper's wait among them. Yandex Maps' main thread took 15 s after its first picture to draw much else,
+ * its time bytecode and 100,000 native calls, and nothing said whose.
+ */
+#define HOT_SLOTS 4096
+static struct {
+    const mg_dvm_method *m;
+    u32 n;
+} g_hot[HOT_SLOTS];
+
+static void hot_say(u32 samples, u32 outside)
+{
+    char line[1400];
+    size_t at;
+    int k;
+    at = (size_t)snprintf(line, sizeof(line), "hot: the main thread, %u samples in 10 s: outside Java %u%%", (unsigned)samples,
+                          (unsigned)(samples ? outside * 100 / samples : 0));
+    for (k = 0; k < 14 && at + 160 < sizeof(line); k++) {
+        u32 best = 0, i, at_best = 0;
+        for (i = 0; i < HOT_SLOTS; i++)
+            if (g_hot[i].m && g_hot[i].n > best) {
+                best = g_hot[i].n;
+                at_best = i;
+            }
+        if (!best || best * 100 < samples) break;
+        at += (size_t)snprintf(line + at, sizeof(line) - at, ", %u%% %s.%s%s", (unsigned)(best * 100 / samples), g_hot[at_best].m->cls->name,
+                               g_hot[at_best].m->name, (g_hot[at_best].m->flags & DVM_ACC_NATIVE) ? " (native)" : "");
+        g_hot[at_best].n = 0;
+    }
+    mg_info("%s", line);
+}
+
+static void hot_main(void *arg)
+{
+    u32 samples = 0, outside = 0;
+    u64 since = mg_time_monotonic_ns();
+    (void)arg;
+    for (;;) {
+        const mg_dvm_thread *t = M.thread;
+        const mg_dvm_method *m = t ? t->running : NULL;
+        u64 now;
+        mg_sleep_ns(5000000ull);
+        samples++;
+        if (!m) {
+            outside++;
+        } else {
+            u32 i = (u32)(((mg_addr)m >> 4) * 2654435761u) & (HOT_SLOTS - 1), tries;
+            for (tries = 0; tries < 64 && g_hot[i].m && g_hot[i].m != m; tries++) i = (i + 1) & (HOT_SLOTS - 1);
+            if (!g_hot[i].m) g_hot[i].m = m;
+            if (g_hot[i].m == m) g_hot[i].n++;
+        }
+        now = mg_time_monotonic_ns();
+        if (now - since >= 10000000000ull) {
+            hot_say(samples, outside);
+            memset(g_hot, 0, sizeof(g_hot));
+            samples = outside = 0;
+            since = now;
+        }
+    }
+}
+
+static void hot_start(void)
+{
+    mg_thread *t = mg_thread_start(hot_main, NULL, (size_t)64 << 10, "hot");
+    if (t) mg_thread_detach(t);
+}
+
 /* megler.Native.frameMark(phase, redrawn), from megler.ViewRoot.doFrame on the main thread. */
 N(Native_frameMark)
 {
@@ -1534,6 +1603,7 @@ N(Native_frameMark)
     meter_read(&now);
     if (!M.thread) {
         M.thread = self;
+        hot_start();
         M.last = now;
         M.part = PART_BETWEEN;
         meter_start(&M.window, now.wall);

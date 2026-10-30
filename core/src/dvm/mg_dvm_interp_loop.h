@@ -28,6 +28,7 @@ int DVM_LOOP(mg_dvm_thread *t, mg_dvm_frame *f, mg_jvalue *ret)
     /* Instructions executed, given to the thread at each native call and at the way out (mg_dvm_thread_costs). */
     u32 executed = 0;
     result.j = 0;
+    t->running = m;
 
     for (;;) {
         w = insns[pc];

@@ -304,6 +304,11 @@ typedef struct mg_dvm_stack_seg {
 } mg_dvm_stack_seg;
 
 struct mg_dvm_thread {
+    /*
+     * The method the thread runs now, as it writes it itself at each call, return and native call: always a method, or
+     * NULL outside Java. What the profile of the main thread samples (mg_java.c, "hot").
+     */
+    mg_dvm_method *volatile running;
     mg_dvm_reg *stack, *stack_end;     /* the current segment of frames and registers; grows up */
     size_t stack_committed;            /* words of it backed by memory: reserved whole, committed as it grows (stack_grow) */
     size_t stack_words;                /* words of the current segment reserved */

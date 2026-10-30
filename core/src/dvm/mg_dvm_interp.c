@@ -411,6 +411,7 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     /* The frame is what a stack trace shows of a native method; the parameters are laid out above it. */
     f = push_frame(t, m, argv ? ((size_t)m->nparams * sizeof(mg_jvalue) + 8) / sizeof(mg_dvm_reg) + 1 : 0);
     if (!f) { mg_ld_set_scope(library_scope); return false; }
+    t->running = m;
     if (argv) {
         mg_jvalue *made = (mg_jvalue *)(void *)MG_ALIGN_UP((mg_addr)f->regs, (mg_addr)8);
         marshal(m, argv, made);
@@ -482,6 +483,7 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     if (sync) mg_dvm_monitor_exit(sync);
     if (native_started) mg_dvm_prof(m)->ns += mg_time_monotonic_ns() - native_started;
     pop_frame(t);
+    t->running = t->top ? t->top->m : NULL;
     normalise(m->shorty[0], result);
     mg_ld_set_scope(library_scope);
     return t->pending == NULL;
@@ -961,7 +963,7 @@ static const u16 *payload_at(const mg_dvm_method *m, u32 pc, i32 off, u16 ident)
     }
 /* Whatever may throw or call out records where it is first: a stack trace reads it, and so does the search for a handler. */
 #define THROW(...) { f->pc = pc; mg_dvm_throw(__VA_ARGS__); goto exception; }
-#define LOAD_FRAME() (m = f->m, insns = m->insns, regs = f->regs, dex = m->cls->dex)
+#define LOAD_FRAME() (m = f->m, insns = m->insns, regs = f->regs, dex = m->cls->dex, t->running = m)
 #define RESOLVE_TYPE(var, idx)                                    \
     {                                                             \
         u32 i_ = (idx);                                           \
@@ -1115,7 +1117,10 @@ static bool interpret(mg_dvm_thread *t, mg_dvm_frame *f, mg_jvalue *ret)
 {
     for (;;) {
         int r = g_dvm.slow ? mg_dvm_interpret_watched(t, f, ret) : mg_dvm_interpret(t, f, ret);
-        if (r != DVM_SWITCH) return r == DVM_RETURNED;
+        if (r != DVM_SWITCH) {
+            t->running = t->top ? t->top->m : NULL;
+            return r == DVM_RETURNED;
+        }
         f = t->top;
     }
 }
@@ -1258,7 +1263,9 @@ int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
      */
     if (!target->ntries) {
         u32 next;
-        int ran = mg_dvm_jit_back(t, nf, target, nf->regs, 0, &next, res);
+        int ran;
+        t->running = target;
+        ran = mg_dvm_jit_back(t, nf, target, nf->regs, 0, &next, res);
         if (ran == 2 || ran == 3) {
             if (g_call_trace) {
                 if (ran == 3) call_trace_return(t, target, res);
@@ -1266,6 +1273,7 @@ int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
             }
             if (nf->sync) mg_dvm_monitor_exit(nf->sync);
             pop_frame(t);
+            t->running = m;
             t->c_depth--;
             return ran == 3 ? 0 : 1;
         }
