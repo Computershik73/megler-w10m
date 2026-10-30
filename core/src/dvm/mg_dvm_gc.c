@@ -152,6 +152,7 @@ typedef struct gc_state {
     u32 cap_found;
     u32 cleared, enqueued, finalizable;
     u32 markers;                       /* threads that marked at once, at the most */
+    u64 roots_ns, stacks_ns;           /* the mark's time on the exact roots and on the conservative scan, the rest following */
 } gc_state;
 
 static gc_state G;
@@ -242,7 +243,7 @@ static void follow_main(void *p) { follow(&G.main, p); }
  * collection. Yandex Maps' collections marked 770,000 objects in 325 ms on one thread, every five seconds. The flag
  * no-parallel-gc keeps it on the one.
  */
-#define MAX_HELPERS 3
+#define MAX_HELPERS (MG_DVM_GC_WORKERS - 1)
 #define HELPER_STACK 16384u            /* entries in a marking thread's own stack */
 #define PARALLEL_MIN 2048u             /* objects waiting before the mark is shared */
 #define CHUNK 256u
@@ -256,6 +257,8 @@ static void **g_pool;                  /* the collecting thread's stack while sh
 static volatile u32 g_npool;
 static u32 g_pool_cap, g_generation, g_finished;
 static int g_working, g_idle;          /* threads marking this time; of them, those with nothing to do */
+static void (*g_round_fn)(void *arg, int worker);   /* what the helpers do this round (run_round) */
+static void *g_round_arg;
 static volatile i32 g_any_idle;
 static bool g_done;
 
@@ -309,7 +312,7 @@ static void mark_shared(marker *k)
 
 static void helper_main(void *arg)
 {
-    marker *k = (marker *)arg;
+    int worker = (int)((marker *)arg - g_markers);
     /*
      * From the first round: the helpers are made before any (helpers_start), and one that starts running late must still
      * take its part in it, which the others wait for.
@@ -320,7 +323,7 @@ static void helper_main(void *arg)
         while (g_generation == seen) mg_cond_wait(&g_mark_start, &g_mark_lock);
         seen = g_generation;
         mg_lock_release(&g_mark_lock);
-        mark_shared(k);
+        g_round_fn(g_round_arg, worker);
         mg_lock_acquire(&g_mark_lock);
         g_finished++;
         mg_cond_signal(&g_mark_end);
@@ -350,6 +353,38 @@ static void helpers_start(void)
     }
 }
 
+/* `fn` run by the collecting thread (worker 0) and every helper at once, until each has returned. */
+static void run_round(void (*fn)(void *arg, int worker), void *arg)
+{
+    mg_lock_acquire(&g_mark_lock);
+    g_round_fn = fn;
+    g_round_arg = arg;
+    g_finished = 0;
+    g_generation++;
+    mg_cond_broadcast(&g_mark_start);
+    mg_lock_release(&g_mark_lock);
+    fn(arg, 0);
+    mg_lock_acquire(&g_mark_lock);
+    while (g_finished < (u32)g_nhelpers) mg_cond_wait(&g_mark_end, &g_mark_lock);
+    mg_lock_release(&g_mark_lock);
+}
+
+int mg_dvm_gc_share(void (*fn)(void *arg, int worker), void *arg)
+{
+    if (!g_nhelpers) {
+        fn(arg, 0);
+        return 1;
+    }
+    run_round(fn, arg);
+    return g_nhelpers + 1;
+}
+
+static void mark_round(void *arg, int worker)
+{
+    (void)arg;
+    mark_shared(&g_markers[worker]);
+}
+
 /* The collecting thread's stack drained by it and the helpers together. */
 static void drain_shared(void)
 {
@@ -370,14 +405,8 @@ static void drain_shared(void)
     g_idle = 0;
     g_any_idle = 0;
     g_done = false;
-    g_finished = 0;
-    g_generation++;
-    mg_cond_broadcast(&g_mark_start);
     mg_lock_release(&g_mark_lock);
-    mark_shared(&g_markers[0]);
-    mg_lock_acquire(&g_mark_lock);
-    while (g_finished < (u32)g_nhelpers) mg_cond_wait(&g_mark_end, &g_mark_lock);
-    mg_lock_release(&g_mark_lock);
+    run_round(mark_round, NULL);
     g_parallel = false;
     for (i = 0; i <= g_nhelpers; i++) {
         marker *k = &g_markers[i];
@@ -554,6 +583,7 @@ static void mark(void)
 {
     mg_dvm_dex *d;
     u32 i, k;
+    u64 t0 = mg_time_monotonic_ns(), t1;
     mg_dvm_each_linked_locked(class_roots, NULL);
     for (i = 0; (d = mg_dvm_dex_at(i)) != NULL; i++)
         if (d->scache)
@@ -568,10 +598,13 @@ static void mark(void)
     /* What waits for the reference thread: objects to finalize, and the references it has not handed on yet. */
     for (i = 0; i < g_nto_finalize; i++) reach_ref(g_to_finalize[i], NULL);
     reach_ref(g_pending_refs, NULL);
+    G.roots_ns = mg_time_monotonic_ns() - t0;
     drain();
     /* What only the conservative scans find, counted apart: the next phone log says how much that is. */
     G.main.counting_conservative = true;
+    t1 = mg_time_monotonic_ns();
     conservative_roots();
+    G.stacks_ns = mg_time_monotonic_ns() - t1;
     drain();
     G.main.counting_conservative = false;
     while (G.overflow) {
@@ -718,6 +751,8 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
         out->conservative = G.main.conservative;
         out->conservative_bytes = G.main.conservative_bytes;
         out->markers = G.markers;
+        out->roots_ns = G.roots_ns;
+        out->stacks_ns = G.stacks_ns;
         out->threads_stopped = (u32)g_nstopped;
         out->stop_ns = t1 - t0;
         out->mark_ns = t2 - t1;
@@ -727,7 +762,7 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
     mg_dvm_unlock();
     /* The others go on; the heap stays locked while what nothing reached is freed, so nothing is made meanwhile. */
     if (ok && sweep) {
-        mg_dvm_heap_sweep(mg_dvm_object_dying, g_poison, &out->freed_objects, &out->freed_bytes);
+        out->sweepers = mg_dvm_heap_sweep(mg_dvm_object_dying, g_poison, &out->freed_objects, &out->freed_bytes);
         t3 = mg_time_monotonic_ns();
         out->sweep_ns = t3 - t2;
         /*
@@ -830,10 +865,11 @@ bool mg_dvm_gc(const char *reason, mg_dvm_gc_result *out)
         return false;
     }
     if (!r.objects) return true;
-    mg_info("gc: %s: %.1f ms (stop %.1f, mark %.1f by %u threads, sweep %.1f); freed %.1f MB (%u objects), live %.1f MB (%u objects); %u threads stopped; "
+    mg_info("gc: %s: %.1f ms (stop %.1f, mark %.1f by %u threads: the exact roots %.1f, the stacks %.1f, the rest following references; "
+            "sweep %.1f by %u); freed %.1f MB (%u objects), live %.1f MB (%u objects); %u threads stopped; "
             "%.2f MB (%u objects) found only through a conservative root",
             reason, (double)(r.stop_ns + r.mark_ns + r.sweep_ns) / 1e6, (double)r.stop_ns / 1e6, (double)r.mark_ns / 1e6, (unsigned)r.markers,
-            (double)r.sweep_ns / 1e6,
+            (double)r.roots_ns / 1e6, (double)r.stacks_ns / 1e6, (double)r.sweep_ns / 1e6, (unsigned)r.sweepers,
             (double)r.freed_bytes / 1048576.0, (unsigned)r.freed_objects, (double)r.live_bytes / 1048576.0, (unsigned)r.live_objects,
             (unsigned)r.threads_stopped, (double)r.conservative_bytes / 1048576.0, (unsigned)r.conservative);
     return true;

@@ -768,7 +768,14 @@ bool mg_dvm_heap_set_mark_shared(void *o);
 bool mg_dvm_heap_is_marked(const void *o);
 void mg_dvm_heap_clear_marks(void);
 void mg_dvm_heap_each_marked(void (*fn)(void *o));
-void mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes);
+/* ...and the sweep, shared among the collector's threads (mg_dvm_gc_share); how many there were. */
+u32 mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes);
+/*
+ * mg_dvm_gc.c: `fn` run at once by the collecting thread (worker 0) and each of the collector's helper threads (1 on),
+ * until every one has returned; with its lock held, while the helpers have nothing else to do. How many ran it.
+ */
+#define MG_DVM_GC_WORKERS 4
+int mg_dvm_gc_share(void (*fn)(void *arg, int worker), void *arg);
 /* mg_dvm_object.c: what an object the collector frees owns besides itself (its monitor, a string's UTF-8, JNI fields), freed. */
 void mg_dvm_object_dying(void *o);
 /* An allocation of `bytes` is counted toward the next collection: true when one is due now (the caller then runs mg_dvm_gc). */

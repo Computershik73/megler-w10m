@@ -179,7 +179,9 @@ static void test_gc_parallel(void)
         CHECK(mg_dvm_gc("the parallel test", &r));
         CHECK_INT((i32)graph_damage(), 0);
     }
-    say("  marked by %u threads: %u live objects in %.1f ms", (unsigned)r.markers, (unsigned)r.live_objects, (double)r.mark_ns / 1e6);
+    say("  marked by %u threads: %u live objects in %.1f ms (the exact roots %.1f, the stacks %.1f); swept by %u in %.1f ms", (unsigned)r.markers,
+        (unsigned)r.live_objects, (double)r.mark_ns / 1e6, (double)r.roots_ns / 1e6, (double)r.stacks_ns / 1e6, (unsigned)r.sweepers,
+        (double)r.sweep_ns / 1e6);
     CHECK(r.live_objects >= 160000);
     g_graph = NULL;
 }

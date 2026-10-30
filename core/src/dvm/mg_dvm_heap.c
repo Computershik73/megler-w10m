@@ -393,43 +393,91 @@ void mg_dvm_heap_clear_marks(void)
 u32 mg_dvm_heap_objects(void) { return g_objects; }
 
 /*
+ * The sweep of the blocks, shared among the collector's threads (mg_dvm_gc_share): each takes the next block until there is
+ * none, and finds its dead cells a word of the bitmaps at a time (in use and not marked). What each freed is its own count,
+ * added up after. `dying` frees only C memory an object owns, which any thread may.
+ */
+typedef struct sweep_share {
+    u64 objects, bytes;
+} sweep_share;
+
+static struct {
+    void (*dying)(void *o);
+    bool poison;
+    volatile i32 next;
+    u32 total;
+    sweep_share share[MG_DVM_GC_WORKERS];
+} S;
+
+static void sweep_block(block *b, sweep_share *s)
+{
+    u32 words = (b->bump + 31) / 32, w, j;
+    for (w = 0; w < words; w++) {
+        u32 dead = b->inuse[w] & ~b->mark[w];
+        if (!dead) continue;
+        b->inuse[w] &= ~dead;
+        for (j = 0; dead; j++, dead >>= 1) {
+            u8 *cell;
+            if (!(dead & 1)) continue;
+            cell = b->first + (size_t)(w * 32 + j) * b->cell;
+            S.dying(cell);
+            b->used--;
+            s->objects++;
+            s->bytes += b->cell;
+            if (S.poison) {
+                /* Not in use, and not on the free list: never handed out again. */
+                memset(cell, 0xDB, b->cell);
+            } else {
+                ((free_cell *)(void *)cell)->next = b->free;
+                b->free = (free_cell *)(void *)cell;
+            }
+        }
+    }
+    memset(b->mark, 0, sizeof(b->mark));
+}
+
+static void sweep_some(void *arg, int worker)
+{
+    sweep_share *s = &S.share[worker];
+    (void)arg;
+    for (;;) {
+        u32 at = (u32)(mg_atomic_add(&S.next, 1) - 1);
+        block *b;
+        if (at >= S.total) return;
+        b = (block *)(void *)(g_arenas[at / ARENA_BLOCKS] + (size_t)(at % ARENA_BLOCKS) * BLOCK_SIZE);
+        if (b->cls >= 0) sweep_block(b, s);
+    }
+}
+
+/*
  * The sweep, with the heap's lock held: every object in use and not marked is handed to `dying` (which frees what it owns
  * besides itself) and its memory is freed -- a cell to its block's free list, a large object to the C heap -- and every
  * mark is cleared for the next collection. Then the lists of blocks with room are made again, and a block left empty
  * becomes a spare one, for any class. `poison`: freed memory is filled with 0xDB and never handed out again, so that a use
- * after it is freed shows (the tests' way to find a root the collector missed).
+ * after it is freed shows (the tests' way to find a root the collector missed). Yandex Maps' sweeps took 30 to 45 ms on
+ * one thread, the heap locked meanwhile.
  */
-void mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes)
+u32 mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes)
 {
-    u32 i, k, c, kept = 0;
-    int cl;
+    u32 i, k, kept = 0, workers;
+    int cl, w;
+    memset(&S, 0, sizeof(S));
+    S.dying = dying;
+    S.poison = poison;
+    S.total = g_narenas * ARENA_BLOCKS;
+    workers = (u32)mg_dvm_gc_share(sweep_some, NULL);
     *freed_objects = *freed_bytes = 0;
+    for (w = 0; w < MG_DVM_GC_WORKERS; w++) {
+        *freed_objects += S.share[w].objects;
+        *freed_bytes += S.share[w].bytes;
+    }
+    g_objects -= (u32)*freed_objects;
+    g_small_bytes -= *freed_bytes;
     for (cl = 0; cl < NCLASSES; cl++) g_room[cl] = NULL;
     for (i = 0; i < g_narenas; i++)
         for (k = 0; k < ARENA_BLOCKS; k++) {
             block *b = (block *)(void *)(g_arenas[i] + (size_t)k * BLOCK_SIZE);
             if (b->cls < 0) continue;
-            for (c = 0; c < b->bump; c++) {
-                u32 w = c >> 5, bit = 1u << (c & 31);
-                u8 *cell;
-                if (!(b->inuse[w] & bit) || (b->mark[w] & bit)) continue;
-                cell = b->first + (size_t)c * b->cell;
-                dying(cell);
-                b->inuse[w] &= ~bit;
-                b->used--;
-                g_objects--;
-                g_small_bytes -= b->cell;
-                (*freed_objects)++;
-                *freed_bytes += b->cell;
-                if (poison) {
-                    /* Not in use, and not on the free list: never handed out again. */
-                    memset(cell, 0xDB, b->cell);
-                } else {
-                    ((free_cell *)(void *)cell)->next = b->free;
-                    b->free = (free_cell *)(void *)cell;
-                }
-            }
-            memset(b->mark, 0, sizeof(b->mark));
             if (b->used == 0 && !poison) {
                 /* Empty: any class may have it. */
                 b->cls = -1;
@@ -468,6 +516,7 @@ void mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, 
                 g_bare += BLOCK_SIZE - MG_PAGE;
             }
     }
+    return workers;
 }
 
 /*
