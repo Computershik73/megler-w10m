@@ -29,6 +29,7 @@
 #include <string.h>
 
 u32 g_dvm_jit_threshold;
+u32 g_dvm_jit_in_place;
 static bool g_jit_trace;
 static volatile i32 g_jit_methods, g_jit_refused;
 
@@ -70,6 +71,7 @@ typedef struct emitter {
     u32 n, cap;
     fixup *fx;
     u32 nfx, capfx;
+    u32 in_place;                      /* calls of trivial methods done in the code (inline_call) */
     bool failed;
 } emitter;
 
@@ -146,6 +148,7 @@ static void local_to(emitter *e, u32 at, u8 cond)
 static void ldr_v(emitter *e, int rt, u32 v) { e32(e, 0xF8D0 | R4, ((u32)rt << 12) | (v * 4)); }
 static void str_v(emitter *e, int rt, u32 v) { e32(e, 0xF8C0 | R4, ((u32)rt << 12) | (v * 4)); }
 static void ldr_imm(emitter *e, int rt, int rn, u32 off) { e32(e, 0xF8D0 | (u32)rn, ((u32)rt << 12) | off); }
+static void str_imm(emitter *e, int rt, int rn, u32 off) { e32(e, 0xF8C0 | (u32)rn, ((u32)rt << 12) | off); }
 static void ldrb_imm(emitter *e, int rt, int rn, u32 off) { e32(e, 0xF890 | (u32)rn, ((u32)rt << 12) | off); }
 
 static void mov_imm(emitter *e, int rd, u32 v)
@@ -523,6 +526,125 @@ static void compile_invoke(emitter *e, u32 pc)
 }
 
 /*
+ * A call of a method whose whole body is trivial (mg_dvm_interp.c, "trivial methods": empty, a constant returned, a getter,
+ * a setter, a static getter), done in the code as the interpreter's call does it in place, without mg_dvm_jit_invoke and
+ * its C call: the method the invoke names, which the interpreter's calls resolved, and its shape, which its first call
+ * found (the loop ran interpreted before it was compiled). A virtual call checks that the object's class has that very
+ * method in its slot. An object that is null, of a class that overrides the method, or without the getter's or setter's
+ * field slot goes by mg_dvm_jit_invoke, which throws or runs the method as the interpreter would. False, with nothing
+ * emitted: not such a call, which goes by mg_dvm_jit_invoke whole.
+ */
+static bool inline_call(emitter *e, const mg_dvm_method *m, u32 pc)
+{
+    const u16 *insns = m->insns;
+    mg_dvm_dex *d = m->cls->dex;
+    u16 w = insns[pc];
+    u32 op = w & 0xFF, idx = insns[pc + 1], count, self, value, shape, sop, off = 0, i, nfails = 0, done;
+    bool range = op >= 0x74;
+    int kind = (int)(op - (range ? 0x74u : 0x6eu)), fk = 0;
+    const mg_dvm_method *target;
+    const mg_dvm_field *fld = NULL;
+    struct {
+        u32 at;
+        u8 cond;
+    } fails[4];
+    if (kind != DVM_INVOKE_VIRTUAL && kind != DVM_INVOKE_DIRECT && kind != DVM_INVOKE_STATIC) return false;
+    if (range) {
+        count = (u32)w >> 8;
+        self = insns[pc + 2];
+        value = self + 1;
+    } else {
+        count = (u32)w >> 12;
+        self = insns[pc + 2] & 0xFu;
+        value = ((u32)insns[pc + 2] >> 4) & 0xFu;
+    }
+    target = idx < d->nmeth ? d->mcache[idx] : NULL;
+    if (!target || ((target->flags & DVM_ACC_STATIC) != 0) != (kind == DVM_INVOKE_STATIC)) return false;
+    if ((target->cls->flags & DVM_ACC_INTERFACE) || target->stub || target->intrinsic || !target->insns) return false;
+    if (kind == DVM_INVOKE_STATIC ? target->cls->state != DVM_CS_INITIALIZED : !count) return false;
+    shape = target->shape;
+    sop = SHAPE_OP(shape);
+    switch (SHAPE_OF(shape)) {
+    case SHAPE_EMPTY: case SHAPE_CONST: break;
+    case SHAPE_STATIC_GETTER:
+        fld = target->shape_field;
+        if (!fld || fld->cls->state != DVM_CS_INITIALIZED || !fld->cls->statics) return false;
+        fk = k_field_kind[sop - 0x60];
+        break;
+    case SHAPE_GETTER: case SHAPE_SETTER:
+        fld = target->shape_field;
+        if (!fld || fld->slot > 0xFFFF || (SHAPE_OF(shape) == SHAPE_SETTER && count < 2)) return false;
+        off = (u32)MG_DVM_HEADER + fld->slot * (u32)sizeof(mg_jvalue);
+        if (off + 4 >= 4096) return false;
+        fk = k_field_kind[sop - (SHAPE_OF(shape) == SHAPE_SETTER ? 0x59 : 0x52)];
+        break;
+    default: return false;
+    }
+    if (kind != DVM_INVOKE_STATIC) {
+        ldr_v(e, R0, self);
+        cmp_imm(e, R0, 0);
+        fails[nfails].cond = C_EQ;
+        fails[nfails++].at = local_branch(e);
+        if (kind == DVM_INVOKE_VIRTUAL && target->vidx >= 0) {
+            ldr_imm(e, R1, R0, (u32)offsetof(mg_dvm_obj, cls));
+            ldr_imm(e, R2, R1, (u32)offsetof(mg_dvm_class, nvtab));
+            mov_imm(e, R3, (u32)target->vidx);
+            cmp_reg(e, R3, R2);
+            fails[nfails].cond = C_HS;
+            fails[nfails++].at = local_branch(e);
+            ldr_imm(e, R1, R1, (u32)offsetof(mg_dvm_class, vtab));
+            e32(e, 0xF850 | R1, (R1 << 12) | (2u << 4) | R3);    /* ldr r1, [r1, r3, lsl #2] */
+            mov_imm(e, R2, (u32)(mg_addr)target);
+            cmp_reg(e, R1, R2);
+            fails[nfails].cond = C_NE;
+            fails[nfails++].at = local_branch(e);
+        }
+        if (fld && SHAPE_OF(shape) != SHAPE_STATIC_GETTER) {
+            ldr_imm(e, R1, R0, (u32)offsetof(mg_dvm_obj, cls));
+            ldr_imm(e, R1, R1, (u32)offsetof(mg_dvm_class, nslots));
+            mov_imm(e, R2, fld->slot);
+            cmp_reg(e, R2, R1);
+            fails[nfails].cond = C_HS;
+            fails[nfails++].at = local_branch(e);
+        }
+    }
+    switch (SHAPE_OF(shape)) {
+    case SHAPE_CONST:
+        mov_imm(e, R0, (u32)SHAPE_VALUE(shape));
+        str_imm(e, R0, R5, JIT_CTX_RESULT);
+        break;
+    case SHAPE_STATIC_GETTER:
+        mov_imm(e, R0, (u32)(mg_addr)&fld->cls->statics[fld->slot]);
+        /* fall through: read as a getter's field, at offset 0 */
+    case SHAPE_GETTER:
+        if (fk == 5) {
+            field_access(e, false, 0, R2, R0, off);
+            field_access(e, false, 0, R3, R0, off + 4);
+            str_imm(e, R2, R5, JIT_CTX_RESULT);
+            str_imm(e, R3, R5, JIT_CTX_RESULT + 4);
+        } else {
+            field_access(e, false, fk, R2, R0, off);
+            str_imm(e, R2, R5, JIT_CTX_RESULT);
+        }
+        break;
+    case SHAPE_SETTER:
+        ldr_v(e, R2, value);
+        field_access(e, true, fk, R2, R0, off);
+        break;
+    default:                                                     /* empty */
+        break;
+    }
+    if (nfails) {
+        done = local_branch(e);
+        for (i = 0; i < nfails; i++) local_to(e, fails[i].at, fails[i].cond);
+        compile_invoke(e, pc);
+        local_to(e, done, C_AL);
+    }
+    e->in_place++;
+    return true;
+}
+
+/*
  * const-class, the monitors, check-cast, instance-of, new-instance, new-array, aput-object: mg_dvm_jit_op(t, f, pc), which
  * does it on the frame's registers as the interpreter does; 1 back is an exception pending, 2 one it leaves to the interpreter.
  */
@@ -627,7 +749,7 @@ static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
     case 0x31: cmp_long(e, aa, F(1) & 0xFF, F(1) >> 8); return true;
     case 0x6e: case 0x6f: case 0x70: case 0x71: case 0x72:
     case 0x74: case 0x75: case 0x76: case 0x77: case 0x78:
-        compile_invoke(e, pc);
+        if (!inline_call(e, m, pc)) compile_invoke(e, pc);
         return true;
     case 0x7d:                                                   /* neg-long: 0 - (hi:lo) */
         ldr_v(e, R0, b4);
@@ -946,9 +1068,11 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
     code_at = NULL;
     for (pc = 0; pc < m->ninsns; pc++)
         if (!target[pc]) c->entry[pc] = 0;
+    g_dvm_jit_in_place += e.in_place;
     if (g_jit_trace)
-        mg_info("jit: %s.%s%s compiled: %u instructions, %u of them handed back, %u calls, %u loops entered, %u bytes of Thumb-2",
-                m->cls->name, m->name, m->sig, (unsigned)(compiled + exits), (unsigned)exits, (unsigned)calls, (unsigned)loops, (unsigned)bytes);
+        mg_info("jit: %s.%s%s compiled: %u instructions, %u of them handed back, %u calls (%u done in the code), %u loops entered, %u bytes of Thumb-2",
+                m->cls->name, m->name, m->sig, (unsigned)(compiled + exits), (unsigned)exits, (unsigned)calls, (unsigned)e.in_place, (unsigned)loops,
+                (unsigned)bytes);
 out:
     free(code_at);
     free(exit_at);

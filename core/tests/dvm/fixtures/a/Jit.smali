@@ -664,3 +664,68 @@
     add-int/lit16 v0, v4, 0x7d0
     return v0
 .end method
+
+# Calls of trivial methods in a loop, done in the code (mg_dvm_jit.c, inline_call). Each turn sets and gets i through an
+# object that is a JitShape three turns in four and a JitShapeMore the fourth (whose getI overrides, adding 100), and adds
+# seven(), total() (5), getC() after setC(i), the low word of getJ() (0x1234) and calls touch(); getO() of the JitShapeMore
+# is itself. At turn 50 the object is null: the NullPointerException of setI's call is caught in the loop, 1000.
+.method public static inlined(I)I
+    .registers 9
+    new-instance v0, Lt/JitShape;
+    invoke-direct {v0}, Lt/JitShape;-><init>()V
+    new-instance v1, Lt/JitShapeMore;
+    invoke-direct {v1}, Lt/JitShapeMore;-><init>()V
+    const/4 v2, 0x5
+    sput v2, Lt/JitShape;->total:I
+    const/4 v2, 0x0
+    const/4 v3, 0x0
+    :loop
+    if-ge v2, p0, :done
+    move-object v4, v0
+    and-int/lit8 v5, v2, 0x3
+    const/4 v6, 0x3
+    if-ne v5, v6, :plain
+    move-object v4, v1
+    :plain
+    const/16 v6, 0x32
+    if-ne v2, v6, :call
+    const/4 v4, 0x0
+    :call
+    :try_start
+    invoke-virtual {v4, v2}, Lt/JitShape;->setI(I)V
+    invoke-virtual {v4}, Lt/JitShape;->getI()I
+    move-result v5
+    :try_end
+    .catch Ljava/lang/NullPointerException; {:try_start .. :try_end} :caught
+    add-int/2addr v3, v5
+    invoke-virtual {v0}, Lt/JitShape;->seven()I
+    move-result v5
+    add-int/2addr v3, v5
+    invoke-static {}, Lt/JitShape;->total()I
+    move-result v5
+    add-int/2addr v3, v5
+    invoke-virtual {v0, v2}, Lt/JitShape;->setC(C)V
+    invoke-virtual {v0}, Lt/JitShape;->getC()C
+    move-result v5
+    add-int/2addr v3, v5
+    invoke-virtual {v0}, Lt/JitShape;->touch()V
+    invoke-virtual {v0}, Lt/JitShape;->getJ()J
+    move-result-wide v6
+    long-to-int v5, v6
+    add-int/2addr v3, v5
+    invoke-virtual {v1}, Lt/JitShape;->getO()Ljava/lang/Object;
+    move-result-object v5
+    if-ne v5, v1, :bad
+    :next
+    add-int/lit8 v2, v2, 0x1
+    goto :loop
+    :caught
+    move-exception v5
+    add-int/lit16 v3, v3, 0x3e8
+    goto :next
+    :done
+    return v3
+    :bad
+    const/4 v3, -0x1
+    return v3
+.end method

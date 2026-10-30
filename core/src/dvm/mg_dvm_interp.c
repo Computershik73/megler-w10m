@@ -643,18 +643,12 @@ static bool intrinsic(mg_dvm_thread *t, u8 id, const mg_dvm_reg *a, mg_jvalue *r
  * as before, so anything that throws throws from the method's own frame. Not while every instruction is watched (the
  * trace, the step limit, the profile): those see each method's own instructions.
  */
-enum { SHAPE_UNKNOWN, SHAPE_REGULAR, SHAPE_EMPTY, SHAPE_CONST, SHAPE_GETTER, SHAPE_SETTER, SHAPE_STATIC_GETTER };
-
 /* The return instruction that goes with each iget and sget kind: return, return-wide, return-object. */
 static u16 return_for(u32 op)
 {
     u32 k = op >= 0x60 ? op - 0x60 : op - 0x52;
     return k == 1 ? 0x10 : k == 2 ? 0x11 : 0x0f;
 }
-
-#define SHAPE_OF(w) ((w) & 0xFFu)
-#define SHAPE_OP(w) (((w) >> 8) & 0xFFu)
-#define SHAPE_VALUE(w) ((i32)(i16)((w) >> 16))
 
 static MG_NOINLINE void classify(mg_dvm_method *m)
 {

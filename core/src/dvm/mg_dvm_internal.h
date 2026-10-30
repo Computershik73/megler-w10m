@@ -204,6 +204,15 @@ typedef struct mg_dvm_native_info {
 /* mg_dvm_class.c: the method's native part, made the first time it is wanted (published with an interlocked exchange). */
 mg_dvm_native_info *mg_dvm_native_of(mg_dvm_method *m);
 
+/*
+ * The shapes of a whole body that a call does in place (mg_dvm_interp.c, "trivial methods"; mg_dvm_jit.c, inline_call), and
+ * the parts of a method's shape word: the shape, the instruction that does the work, a constant.
+ */
+enum { SHAPE_UNKNOWN, SHAPE_REGULAR, SHAPE_EMPTY, SHAPE_CONST, SHAPE_GETTER, SHAPE_SETTER, SHAPE_STATIC_GETTER };
+#define SHAPE_OF(w) ((w) & 0xFFu)
+#define SHAPE_OP(w) (((w) >> 8) & 0xFFu)
+#define SHAPE_VALUE(w) ((i32)(i16)((w) >> 16))
+
 /* mg_dvm.c: a method's profile counts, made the first time they are wanted. */
 mg_dvm_method_prof *mg_dvm_prof_make(mg_dvm_method *m);
 static inline mg_dvm_method_prof *mg_dvm_prof(mg_dvm_method *m) { mg_dvm_method_prof *p = m->prof; return p ? p : mg_dvm_prof_make(m); }
@@ -608,6 +617,7 @@ struct mg_dvm_jit_code {
     u32 ninsns;
 };
 extern u32 g_dvm_jit_threshold;      /* jumps back before a method is compiled; 0 off (the flag no-jit, or no JIT on this host) */
+extern u32 g_dvm_jit_in_place;       /* calls of trivial methods compiled to be done in the code (inline_call), for the tests */
 void mg_dvm_jit_start(bool on, u32 threshold, bool trace);
 /* mg_dvm_interp.c: an invoke done for compiled code; 0 done, 1 thrown, 2 the interpreter's to do (nothing done). */
 int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res);

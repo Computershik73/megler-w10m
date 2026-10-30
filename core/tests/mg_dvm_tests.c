@@ -220,6 +220,13 @@ static i32 jit_catch_in_loop(i32 n)
     return s;
 }
 
+static i32 jit_inlined(i32 n)
+{
+    i32 s = 0, i;
+    for (i = 0; i < n; i++) s += i == 50 ? 1000 : i + ((i & 3) == 3 ? 100 : 0) + 7 + 5 + i + 0x1234;
+    return s;
+}
+
 static i64 jit_longs(i32 n, i64 seed)
 {
     u64 v0 = (u64)seed, v2 = 0, v6, v8;
@@ -380,6 +387,19 @@ static void test_jit(void)
     A[1].j = (i64)0x123456789abcdef0ll;
     CHECK(call("t/Jit", "wideMoves", "(IJ)J").j == (i64)0x123456789abcdef0ll);
     CHECK_STR(thrown(), "");
+    /* Trivial methods called from a compiled loop, done in the code: an override and a null object go by the call instead. */
+    {
+        u32 in_place = g_dvm_jit_in_place;
+        A[0].i = 120;
+        CHECK_INT(call("t/Jit", "inlined", "(I)I").i, jit_inlined(120));
+        CHECK_STR(thrown(), "");
+#if defined(__arm__) || defined(_M_ARM)
+        /* setI, getI, seven, total, setC, getC, touch, getJ, getO */
+        CHECK_INT((i32)(g_dvm_jit_in_place - in_place), 9);
+#else
+        (void)in_place;
+#endif
+    }
     /* Compiled, where the host runs Thumb-2. */
     c = mg_dvm_find_class("t/Jit");
 #if defined(__arm__) || defined(_M_ARM)
@@ -388,7 +408,7 @@ static void test_jit(void)
             { "sum", "([I)I" }, { "fill", "([I[B[C[SI)I" }, { "mix", "(II)I" }, { "conditions", "(I)I" }, { "divideAll", "(I[I)I" },
             { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" }, { "fields", "(I)I" }, { "callsInLoop", "(I)I" },
             { "callKinds", "(I)I" }, { "catchInLoop", "(I)I" }, { "deepCalls", "(I)I" }, { "longs", "(IJ)J" }, { "switches", "(I)I" },
-            { "objects", "(I)I" }, { "storeFails", "(I)I" }, { "castFails", "(I)I" },
+            { "objects", "(I)I" }, { "storeFails", "(I)I" }, { "castFails", "(I)I" }, { "inlined", "(I)I" },
         };
         size_t k;
         for (k = 0; k < MG_COUNT(compiled); k++) {
