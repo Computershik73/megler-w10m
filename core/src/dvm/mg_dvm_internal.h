@@ -312,6 +312,8 @@ struct mg_dvm_thread {
      * NULL outside Java. What the profile of the main thread samples (mg_java.c, "hot").
      */
     mg_dvm_method *volatile running;
+    /* The method that made the thread's latest native call, written before `running` is: whose wait a wait is (the same). */
+    mg_dvm_method *volatile running_from;
     mg_dvm_reg *stack, *stack_end;     /* the current segment of frames and registers; grows up */
     size_t stack_committed;            /* words of it backed by memory: reserved whole, committed as it grows (stack_grow) */
     size_t stack_words;                /* words of the current segment reserved */

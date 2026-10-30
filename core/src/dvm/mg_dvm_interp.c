@@ -409,6 +409,7 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
         nat = m->nat;
     }
     /* The frame is what a stack trace shows of a native method; the parameters are laid out above it. */
+    t->running_from = t->top ? t->top->m : NULL;
     f = push_frame(t, m, argv ? ((size_t)m->nparams * sizeof(mg_jvalue) + 8) / sizeof(mg_dvm_reg) + 1 : 0);
     if (!f) { mg_ld_set_scope(library_scope); return false; }
     t->running = m;

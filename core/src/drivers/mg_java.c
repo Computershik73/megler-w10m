@@ -1549,6 +1549,7 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
 #define HOT_SLOTS 4096
 static struct {
     const mg_dvm_method *m;
+    const mg_dvm_method *from; /* a native method's caller (mg_dvm_thread.running_from): Object.wait's 10% was nobody's */
     u32 n;
 } g_hot[HOT_SLOTS];
 
@@ -1559,12 +1560,12 @@ static struct {
  */
 static void hot_say(u32 samples, u32 outside, u32 collecting)
 {
-    char line[1400];
+    char line[2400];
     size_t at;
     int k;
     at = (size_t)snprintf(line, sizeof(line), "hot: the main thread, %u samples in 10 s: outside Java %u%%, the collector %u%%", (unsigned)samples,
                           (unsigned)(samples ? outside * 100 / samples : 0), (unsigned)(samples ? collecting * 100 / samples : 0));
-    for (k = 0; k < 14 && at + 160 < sizeof(line); k++) {
+    for (k = 0; k < 14 && at + 240 < sizeof(line); k++) {
         u32 best = 0, i, at_best = 0;
         for (i = 0; i < HOT_SLOTS; i++)
             if (g_hot[i].m && g_hot[i].n > best) {
@@ -1572,8 +1573,12 @@ static void hot_say(u32 samples, u32 outside, u32 collecting)
                 at_best = i;
             }
         if (!best || best * 100 < samples) break;
-        at += (size_t)snprintf(line + at, sizeof(line) - at, ", %u%% %s.%s%s", (unsigned)(best * 100 / samples), g_hot[at_best].m->cls->name,
-                               g_hot[at_best].m->name, (g_hot[at_best].m->flags & DVM_ACC_NATIVE) ? " (native)" : "");
+        if (g_hot[at_best].from)
+            at += (size_t)snprintf(line + at, sizeof(line) - at, ", %u%% %s.%s (native, from %s.%s)", (unsigned)(best * 100 / samples),
+                                   g_hot[at_best].m->cls->name, g_hot[at_best].m->name, g_hot[at_best].from->cls->name, g_hot[at_best].from->name);
+        else
+            at += (size_t)snprintf(line + at, sizeof(line) - at, ", %u%% %s.%s%s", (unsigned)(best * 100 / samples), g_hot[at_best].m->cls->name,
+                                   g_hot[at_best].m->name, (g_hot[at_best].m->flags & DVM_ACC_NATIVE) ? " (native)" : "");
         g_hot[at_best].n = 0;
     }
     mg_info("%s", line);
@@ -1586,21 +1591,25 @@ static void hot_main(void *arg)
     (void)arg;
     for (;;) {
         const mg_dvm_thread *t;
-        const mg_dvm_method *m;
+        const mg_dvm_method *m, *from = NULL;
         u64 now;
         mg_sleep_ns(5000000ull);
         t = M.thread;
         m = t ? t->running : NULL;
+        if (m && (m->flags & DVM_ACC_NATIVE)) from = t->running_from;
         samples++;
         if (mg_dvm_gc_busy()) {
             collecting++;
         } else if (!m) {
             outside++;
         } else {
-            u32 i = (u32)(((mg_addr)m >> 4) * 2654435761u) & (HOT_SLOTS - 1), tries;
-            for (tries = 0; tries < 64 && g_hot[i].m && g_hot[i].m != m; tries++) i = (i + 1) & (HOT_SLOTS - 1);
-            if (!g_hot[i].m) g_hot[i].m = m;
-            if (g_hot[i].m == m) g_hot[i].n++;
+            u32 i = (u32)((((mg_addr)m >> 4) ^ ((mg_addr)from >> 2)) * 2654435761u) & (HOT_SLOTS - 1), tries;
+            for (tries = 0; tries < 64 && g_hot[i].m && (g_hot[i].m != m || g_hot[i].from != from); tries++) i = (i + 1) & (HOT_SLOTS - 1);
+            if (!g_hot[i].m) {
+                g_hot[i].m = m;
+                g_hot[i].from = from;
+            }
+            if (g_hot[i].m == m && g_hot[i].from == from) g_hot[i].n++;
         }
         now = mg_time_monotonic_ns();
         if (now - since >= 10000000000ull) {
