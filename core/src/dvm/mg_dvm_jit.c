@@ -954,10 +954,10 @@ static void whole_loops(const mg_dvm_method *m, const u8 *handback, u8 *target)
 }
 
 /*
- * Memory for code: pages of an arena of the process's, reserved a megabyte at a time and committed as code comes, each
- * method's code on pages of its own (written, then made executable once: the phone never has a page both). A method on
- * an allocation of its own took 64 KB of addresses (Windows' granularity) for a few hundred bytes of code, and Yandex
- * Maps has addresses to spare for nothing. Under g_jit_lock.
+ * Memory for code: pages of an arena of the process's, reserved a megabyte at a time and committed as code comes (written,
+ * then made executable once: the phone never has a page both). A method on an allocation of its own took 64 KB of
+ * addresses (Windows' granularity) for a few hundred bytes of code, and Yandex Maps has addresses to spare for nothing.
+ * Under g_jit_lock.
  */
 #define JIT_ARENA (1u << 20)
 static u8 *g_arena;
@@ -980,6 +980,98 @@ static u8 *code_pages(size_t bytes)
     return p;
 }
 
+/*
+ * Small methods' code shares pages: most are a few hundred bytes, and the data app's 536 methods came to 377 KB of code
+ * on 2.2 MB of pages, each on pages of its own. Code under half a page is written to the page being filled, which is
+ * made executable, and its methods given their code, once the next one does not fit or JIT_WAIT_NS after its first --
+ * looked at by the next compile and by a waiting method's own calls and jumps back (mg_dvm_jit_back, every threshold's
+ * worth of them). A page is never written once it is executable, so a method waits that long interpreted. With the
+ * threshold at 1 (the tests: every method compiled at its first call or jump back) nothing waits. Under g_jit_lock.
+ */
+#define JIT_SHARED (MG_PAGE / 2)
+#define JIT_WAIT_NS 200000000ull
+static u8 *g_fill;
+static size_t g_fill_used;
+static u64 g_fill_since;
+static struct {
+    mg_dvm_method *m;
+    mg_dvm_jit_code *c;
+} g_waiting[MG_PAGE / 32];
+static u32 g_nwaiting;
+
+static void publish(mg_dvm_method *m, mg_dvm_jit_code *c)
+{
+    /* Published whole: the code and its tables before the pointer (an interlocked exchange is a barrier). */
+    mg_atomic_cas_ptr((void *volatile *)&m->jit, NULL, c);
+    m->jit_state = 1;
+    mg_atomic_add(&g_jit_methods, 1);
+}
+
+static void refuse(mg_dvm_method *m)
+{
+    m->jit_state = 2;
+    mg_atomic_add(&g_jit_refused, 1);
+}
+
+/* The page being filled made executable, and the methods on it given their code. */
+static void fill_done(void)
+{
+    u32 i;
+    bool ok;
+    if (!g_fill) return;
+    ok = mg_mem_protect(g_fill, MG_PAGE, MG_PROT_RX);
+    if (ok) mg_icache_flush(g_fill, g_fill_used);
+    for (i = 0; i < g_nwaiting; i++) {
+        if (ok) {
+            publish(g_waiting[i].m, g_waiting[i].c);
+        } else {
+            refuse(g_waiting[i].m);
+            free(g_waiting[i].c->entry);
+            free(g_waiting[i].c);
+        }
+    }
+    g_nwaiting = 0;
+    g_fill = NULL;
+    g_fill_used = 0;
+}
+
+/* A method's code put where it runs from: on pages of its own, published at once, or on the page being filled. False: no memory. */
+static bool place(mg_dvm_method *m, mg_dvm_jit_code *c, const u16 *code, size_t bytes)
+{
+    u8 *p;
+    if (bytes > JIT_SHARED) {
+        size_t span = (bytes + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1);
+        p = code_pages(bytes);
+        /* (Pages a failure leaves behind stay in the arena, unused: they are never given out again.) */
+        if (!p) return false;
+        memcpy(p, code, bytes);
+        if (!mg_mem_protect(p, span, MG_PROT_RX)) return false;
+        mg_icache_flush(p, bytes);
+        c->pages = p;
+        c->run = (int (*)(mg_dvm_jit_ctx *, const void *))(void *)((mg_addr)p | 1);
+        publish(m, c);
+        return true;
+    }
+    if (g_fill && (g_fill_used + bytes > MG_PAGE || g_nwaiting == MG_COUNT(g_waiting))) fill_done();
+    if (!g_fill) {
+        g_fill = code_pages(MG_PAGE);
+        if (!g_fill) return false;
+        g_fill_used = 0;
+        g_fill_since = mg_time_monotonic_ns();
+    }
+    p = g_fill + g_fill_used;
+    memcpy(p, code, bytes);
+    g_fill_used = (g_fill_used + bytes + 3) & ~(size_t)3;
+    c->pages = p;
+    c->run = (int (*)(mg_dvm_jit_ctx *, const void *))(void *)((mg_addr)p | 1);
+    g_waiting[g_nwaiting].m = m;
+    g_waiting[g_nwaiting].c = c;
+    g_nwaiting++;
+    m->jit_state = 3;
+    if (g_dvm_jit_threshold <= 1) fill_done();
+    return true;
+}
+
 static mg_dvm_jit_code *compile(mg_dvm_method *m)
 {
     emitter e;
@@ -989,7 +1081,6 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
     u8 *target = NULL, *handback = NULL;
     mg_dvm_jit_code *c = NULL;
     size_t bytes;
-    u8 *pages;
     if (!m->insns || m->regs > 1000 || m->ninsns == 0 || m->ninsns > 65535) return NULL;
     memset(&e, 0, sizeof(e));
     code_at = (u32 *)calloc(m->ninsns, sizeof(u32));
@@ -1097,22 +1188,21 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
         if (!to || !put_branch(e.b, x->at, to - 1, x->cond)) goto out;
     }
     bytes = (size_t)e.n * 2;
-    pages = code_pages(bytes);
-    if (!pages) goto out;
-    memcpy(pages, e.b, bytes);
-    /* (Pages a failure leaves behind stay in the arena, unused: they are never given out again.) */
-    if (!mg_mem_protect(pages, (bytes + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1), MG_PROT_RX)) goto out;
-    mg_icache_flush(pages, bytes);
     c = (mg_dvm_jit_code *)calloc(1, sizeof(*c));
     if (!c) goto out;
-    c->pages = pages;
     c->size = bytes;
-    c->run = (int (*)(mg_dvm_jit_ctx *, const void *))(void *)((mg_addr)pages | 1);
     c->ninsns = m->ninsns;
     c->entry = code_at;
     code_at = NULL;
     for (pc = 0; pc < m->ninsns; pc++)
         if (!target[pc]) c->entry[pc] = 0;
+    /* Published, or waiting for its page (fill_done), from here on. */
+    if (!place(m, c, e.b, bytes)) {
+        free(c->entry);
+        free(c);
+        c = NULL;
+        goto out;
+    }
     g_dvm_jit_in_place += e.in_place;
     if (g_jit_trace)
         mg_info("jit: %s.%s%s compiled: %u instructions, %u of them handed back, %u calls (%u done in the code), %u loops entered%s, %u bytes of Thumb-2",
@@ -1137,20 +1227,13 @@ int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm
     mg_dvm_jit_code *c = m->jit;
     u32 at;
     if (!c) {
-        if (m->jit_state) return 0;
+        if (m->jit_state == 1 || m->jit_state == 2) return 0;
         mg_lock_acquire(&g_jit_lock);
-        if (!m->jit_state) {
-            c = compile(m);
-            if (c) {
-                /* Published whole: the code and its tables before the pointer (an interlocked exchange is a barrier). */
-                mg_atomic_cas_ptr((void *volatile *)&m->jit, NULL, c);
-                m->jit_state = 1;
-                mg_atomic_add(&g_jit_methods, 1);
-            } else {
-                m->jit_state = 2;
-                mg_atomic_add(&g_jit_refused, 1);
-            }
-        }
+        if (!m->jit_state && !compile(m)) refuse(m);
+        /* Its page, and the methods' with it, made executable once they have waited long enough. */
+        if (g_nwaiting && mg_time_monotonic_ns() - g_fill_since >= JIT_WAIT_NS) fill_done();
+        /* Still waiting: looked at again after as many more calls and jumps back. */
+        if (m->jit_state == 3) m->jit_backs = 0;
         mg_lock_release(&g_jit_lock);
         c = m->jit;
         if (!c) return 0;

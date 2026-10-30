@@ -430,6 +430,25 @@ static void test_jit(void)
         mg_dvm_method *sum = ac ? mg_dvm_find_method(ac, "sum", "(II)I", true) : NULL;
         CHECK(sum && sum->jit && sum->jit->entry[0]);
     }
+    /*
+     * With the threshold above 1, a small method's code waits on the page being filled, interpreted meanwhile, until the
+     * page is made executable: here once 200 ms have passed, at its next threshold's worth of calls.
+     */
+    {
+        mg_dvm_method *w = c ? mg_dvm_find_method(c, "waits", "(I)I", true) : NULL;
+        mg_dvm_jit_start(true, 2, false);
+        for (i = 0; i < 2; i++) {
+            A[0].i = i;
+            CHECK_INT(call("t/Jit", "callWaits", "(I)I").i, ((i + 1) * 3) ^ 5);
+        }
+        CHECK(w && w->jit_state == 3 && !w->jit);
+        mg_sleep_ns(250000000ull);
+        for (i = 0; i < 2; i++) {
+            A[0].i = i + 10;
+            CHECK_INT(call("t/Jit", "callWaits", "(I)I").i, ((i + 11) * 3) ^ 5);
+        }
+        CHECK(w && w->jit_state == 1 && w->jit && w->jit->entry[0]);
+    }
 #else
     (void)c;
 #endif

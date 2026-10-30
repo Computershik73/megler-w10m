@@ -172,7 +172,8 @@ struct mg_dvm_method {
     mg_dvm_method_prof *volatile prof; /* the profile's counts of it, NULL until it counts it (mg_dvm_prof) */
     /*
      * The JIT (mg_dvm_jit.c, docs/JIT.md): jumps back taken and calls of it made in the interpreter, until it is compiled;
-     * whether it was tried (1 compiled, 2 not to be); and its code, NULL until it is compiled.
+     * whether it was tried (1 compiled, 2 not to be, 3 compiled and its page not executable yet); and its code, NULL until
+     * it can run.
      */
     u16 jit_backs;
     volatile u8 jit_state;
@@ -609,7 +610,7 @@ typedef struct mg_dvm_jit_ctx {
     mg_jvalue result;
 } mg_dvm_jit_ctx;
 struct mg_dvm_jit_code {
-    u8 *pages;                         /* the code, read and run */
+    u8 *pages;                         /* the code, read and run: on pages of its own, or among other methods' */
     size_t size;
     /* 0: handed back at ctx->pc; 1: an exception is pending, thrown at ctx->pc; 2: returned, its value in ctx->result */
     int (*run)(mg_dvm_jit_ctx *ctx, const void *entry);
@@ -653,7 +654,7 @@ static inline int mg_dvm_jit_back(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_meth
         u32 at = pc < c->ninsns ? c->entry[pc] : 0;
         return at ? mg_dvm_jit_run(t, f, c, regs, at, next, res) : 0;
     }
-    if (!g_dvm_jit_threshold || m->jit_state) return 0;
+    if (!g_dvm_jit_threshold || (m->jit_state && m->jit_state != 3)) return 0;
     if (++m->jit_backs < g_dvm_jit_threshold) return 0;
     return mg_dvm_jit_enter(t, f, m, regs, pc, next, res);
 }

@@ -747,3 +747,20 @@
     const/4 v0, -0x1
     return v0
 .end method
+
+# A method without loops for the test of code that waits for its page (mg_dvm_jit.c, place): ((n + 1) * 3) ^ 5, called
+# from callWaits so that its calls are counted (a call from C is not).
+.method public static waits(I)I
+    .registers 2
+    add-int/lit8 v0, p0, 0x1
+    mul-int/lit8 v0, v0, 0x3
+    xor-int/lit8 v0, v0, 0x5
+    return v0
+.end method
+
+.method public static callWaits(I)I
+    .registers 2
+    invoke-static {p0}, Lt/Jit;->waits(I)I
+    move-result v0
+    return v0
+.end method
