@@ -3991,7 +3991,9 @@ keeps a local reference in a local, which is what local references are for.
   Maps' mark took 325 ms for 770,000 objects on one thread. The flag
   `no-parallel-gc` keeps it on one.
 - *Sweep*: after the world goes on, under the heap's lock. Objects allocated
-  while it runs are born marked.
+  while it runs are born marked. The same helpers share it, a block at a
+  time; and the threads are stopped and resumed by all of them at once, each
+  taking the next thread of a list made first.
 - No generations and no compaction. Fragmentation is limited by size classes.
 
 **The heap.** It is no longer the C heap.

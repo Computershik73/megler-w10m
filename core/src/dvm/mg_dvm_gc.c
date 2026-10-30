@@ -445,17 +445,22 @@ static void exact_thread_roots(mg_dvm_thread *t, void *user)
     reach_word((mg_addr)t->scratch.l);
 }
 
-/* The threads stopped for this collection, with their registers. */
-#define MAX_STOPPED 512
+/*
+ * The threads stopped for this collection, with their registers. They are listed first, then stopped -- and resumed after
+ * -- by the collecting thread and its helpers at once, each taking the next one: stopping Yandex Maps' 250 threads one
+ * after another took 10 to 50 ms of every pause (package 526), a wait for each to be stopped.
+ */
+#define MAX_STOPPED 1024
 static struct {
     mg_dvm_thread *t;
     mg_thread_regs regs;
 } g_stopped[MAX_STOPPED];
 static int g_nstopped;
+static volatile i32 g_stop_next;
 static mg_dvm_thread *g_collector;
 static bool g_stop_failed;
 
-static void stop_thread(mg_dvm_thread *t, void *user)
+static void list_thread(mg_dvm_thread *t, void *user)
 {
     (void)user;
     if (t == g_collector) return;
@@ -464,11 +469,54 @@ static void stop_thread(mg_dvm_thread *t, void *user)
         g_stop_failed = true;
         return;
     }
-    if (!mg_thread_suspend(t->host, &g_stopped[g_nstopped].regs)) {
+    g_stopped[g_nstopped++].t = t;
+}
+
+static void stop_some(void *arg, int worker)
+{
+    (void)arg;
+    (void)worker;
+    for (;;) {
+        i32 i = mg_atomic_add(&g_stop_next, 1) - 1;
+        if (i >= g_nstopped) return;
         /* Gone: a thread that ended without the host's hook (one the host did not start). Nothing of it is scanned. */
+        if (!mg_thread_suspend(g_stopped[i].t->host, &g_stopped[i].regs)) g_stopped[i].t = NULL;
+    }
+}
+
+static void resume_some(void *arg, int worker)
+{
+    (void)arg;
+    (void)worker;
+    for (;;) {
+        i32 i = mg_atomic_add(&g_stop_next, 1) - 1;
+        if (i >= g_nstopped) return;
+        mg_thread_resume(g_stopped[i].t->host);
+    }
+}
+
+/* Every thread of the runtime's but this one stopped, those gone left out; none when one of them cannot be. */
+static void stop_threads(void)
+{
+    int i, kept = 0;
+    g_nstopped = 0;
+    g_stop_failed = false;
+    mg_dvm_threads_each(list_thread, NULL);
+    if (g_stop_failed) {
+        g_nstopped = 0;
         return;
     }
-    g_stopped[g_nstopped++].t = t;
+    g_stop_next = 0;
+    mg_dvm_gc_share(stop_some, NULL);
+    for (i = 0; i < g_nstopped; i++)
+        if (g_stopped[i].t) g_stopped[kept++] = g_stopped[i];
+    g_nstopped = kept;
+}
+
+static void resume_threads(void)
+{
+    g_stop_next = 0;
+    mg_dvm_gc_share(resume_some, NULL);
 }
 
 /*
@@ -688,7 +736,6 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
     u32 objects;
     void **stack;
     mg_jobj **found;
-    int i;
     bool ok, clear_soft = !strcmp(reason, "out of memory");
     large[0] = 0;
     memset(out, 0, sizeof(*out));
@@ -730,9 +777,7 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
         G.markers = 1;
         G.found = found;
         G.cap_found = (u32)g_references + 64;
-        g_nstopped = 0;
-        g_stop_failed = false;
-        mg_dvm_threads_each(stop_thread, NULL);
+        stop_threads();
         t1 = mg_time_monotonic_ns();
         ok = !g_stop_failed;
         if (ok) {
@@ -741,7 +786,7 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
             /* A census decides nothing: what it found stays as it is. */
             if (sweep && g_referent >= 0) process_references(clear_soft);
         }
-        for (i = 0; i < g_nstopped; i++) mg_thread_resume(g_stopped[i].t->host);
+        resume_threads();
         t2 = mg_time_monotonic_ns();
         out->objects = objects;
         out->live_objects = G.main.marked;
