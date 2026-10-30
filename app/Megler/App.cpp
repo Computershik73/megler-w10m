@@ -67,6 +67,7 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
             shellLog::write("app: suspending");
             session::setSuspended(true);
             if (shell_) shell_->suspending();
+            shellLog::flush();
         });
         Resuming([this](auto&&, auto&&) {
             shellLog::write("app: resuming");
@@ -76,7 +77,10 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
             phoneEvents::check();
         });
         try {
-            CoreApplication::Exiting([](auto&&, auto&&) { shellLog::write("app: exiting"); });
+            CoreApplication::Exiting([](auto&&, auto&&) {
+                shellLog::write("app: exiting");
+                shellLog::flush();
+            });
         } catch (const hresult_error&) {
         }
     }
