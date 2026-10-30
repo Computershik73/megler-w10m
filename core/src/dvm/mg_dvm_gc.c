@@ -7,7 +7,7 @@
  *
  * Roots, and how each is read:
  *  - exactly: every linked class's static fields of reference type, its Class object and the error its initialisation
- *    threw; each DEX file's resolved string constants and the interned strings; each thread's pending exception, its
+ *    threw; the interned strings (each DEX file's resolved string constants among them); each thread's pending exception, its
  *    java.lang.Thread and its scratch value; the proxies' method arrays; the JNI layer's global (and weak global)
  *    references, reflected methods and stand-in statics (mg_jni_gc_roots); the runtime's preallocated OutOfMemoryError and
  *    the app's class loader; and what C code registered (mg_dvm_add_root);
@@ -581,13 +581,13 @@ static void process_references(bool clear_soft)
 /* Everything reachable marked; the counts in G. With the runtime's locks held and the other threads stopped. */
 static void mark(void)
 {
-    mg_dvm_dex *d;
-    u32 i, k;
+    u32 i;
     u64 t0 = mg_time_monotonic_ns(), t1;
     mg_dvm_each_linked_locked(class_roots, NULL);
-    for (i = 0; (d = mg_dvm_dex_at(i)) != NULL; i++)
-        if (d->scache)
-            for (k = 0; k < d->nstr; k++) reach_ref(d->scache[k], NULL);
+    /*
+     * The interned strings, among them every DEX file's string constants resolved (mg_dvm_const_string keeps the interned
+     * copy): those files' tables of them, a word for every string they have (Yandex Maps' sixteen files), are not walked.
+     */
     mg_dvm_interned_each(reach_ref, NULL);
     mg_dvm_threads_each(exact_thread_roots, NULL);
     mg_dvm_proxy_roots(reach_ref, NULL);

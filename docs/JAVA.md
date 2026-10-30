@@ -4031,8 +4031,9 @@ keeps a local reference in a local, which is what local references are for.
     `is_object` flags.
   - Every linked class: its statics (typed by their fields), its `Class`
     object, its `init_error`. Classes are never unloaded.
-  - The runtime's tables: interned strings, each DEX file's resolved string
-    constants (`scache`), reflection's `Method`/`Field` objects (kept for good,
+  - The runtime's tables: interned strings (each DEX file's resolved string
+    constants, `scache`, are interned ones, and not walked apart),
+    reflection's `Method`/`Field` objects (kept for good,
     one per member), proxy classes' method arrays, the preallocated
     `OutOfMemoryError`.
   - Each thread's pending exception, `peer` (its `java.lang.Thread`) and
