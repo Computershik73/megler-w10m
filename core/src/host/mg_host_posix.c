@@ -206,9 +206,12 @@ struct mg_thread {
     pthread_t t;
     mg_thread_fn fn;
     void *arg;
-    /* Stopped for the collector (mg_thread_suspend): its registers as the signal found them, and whether it may go on. */
+    /*
+     * Stopped for the collector (mg_thread_suspend): its registers as the signal found them, whether it may go on, and
+     * whether its handler is in its wait (1 from the registers' saving until it leaves the wait).
+     */
     mg_thread_regs regs;
-    volatile i32 go_on;
+    volatile i32 go_on, stopped;
 };
 
 static MG_THREAD_LOCAL mg_thread *t_current;
@@ -293,14 +296,14 @@ void mg_thread_set_interrupt(void (*fn)(void), bool (*in_guest_code)(mg_addr pc)
 }
 
 /*
- * Stopping a thread for the collector: a signal whose handler saves the registers the thread was stopped with, says so, and
- * waits for the other signal (sigsuspend, which a handler may call) until it is told to go on, and says it goes on. One
- * thread is stopped or resumed at a time, so one semaphore says "stopped" and one "going on": mg_thread_resume returns only
- * once the handler has left its wait, so that the next mg_thread_suspend cannot find it still there.
+ * Stopping a thread for the collector: a signal whose handler saves the registers the thread was stopped with, says so in
+ * the thread's own flag, and waits for the other signal (sigsuspend, which a handler may call) until it is told to go on,
+ * and clears the flag as it goes on: mg_thread_resume returns only once the handler has left its wait, so that the next
+ * mg_thread_suspend cannot find it still there. A flag of each thread's (they were two semaphores for all) lets the
+ * collector's helpers stop and resume several threads at once.
  */
 #define SUSPEND_SIGNAL (SIGRTMIN + 7)
 #define RESUME_SIGNAL (SIGRTMIN + 8)
-static sem_t g_stopped, g_going_on;
 static pthread_once_t g_suspend_once = PTHREAD_ONCE_INIT;
 
 static void on_resume(int sig) { (void)sig; }
@@ -345,17 +348,15 @@ static void on_suspend(int sig, siginfo_t *si, void *ctx)
 #endif
     sigfillset(&wait_for);
     sigdelset(&wait_for, RESUME_SIGNAL);
-    sem_post(&g_stopped);
+    mg_atomic_xchg(&t->stopped, 1);
     while (!t->go_on) sigsuspend(&wait_for);
-    sem_post(&g_going_on);
+    mg_atomic_xchg(&t->stopped, 0);
     errno = saved;
 }
 
 static void suspend_setup(void)
 {
     struct sigaction sa;
-    sem_init(&g_stopped, 0, 0);
-    sem_init(&g_going_on, 0, 0);
     memset(&sa, 0, sizeof(sa));
     sa.sa_sigaction = on_suspend;
     sa.sa_flags = SA_SIGINFO | SA_RESTART;
@@ -375,7 +376,8 @@ bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out)
     pthread_once(&g_suspend_once, suspend_setup);
     t->go_on = 0;
     if (pthread_kill(t->t, SUSPEND_SIGNAL) != 0) return false;
-    while (sem_wait(&g_stopped) != 0 && errno == EINTR) { }
+    /* (An interlocked read: the registers were saved before the flag was set.) */
+    while (mg_atomic_cas(&t->stopped, 1, 1) != 1) sched_yield();
     *out = t->regs;
     return true;
 }
@@ -385,7 +387,7 @@ void mg_thread_resume(mg_thread *t)
     if (!t) return;
     mg_atomic_xchg(&t->go_on, 1);
     if (pthread_kill(t->t, RESUME_SIGNAL) != 0) return;
-    while (sem_wait(&g_going_on) != 0 && errno == EINTR) { }
+    while (mg_atomic_cas(&t->stopped, 0, 0) != 0) sched_yield();
 }
 
 /* (Whether it found the thread in guest code is not known here: true means only that it was asked.) */
