@@ -3981,7 +3981,15 @@ keeps a local reference in a local, which is what local references are for.
   from it.
 - *Mark*: the world stopped, from the roots below, with an explicit mark stack.
   The mark stack is allocated before the stop, sized by the count of live
-  objects.
+  objects. Once it holds enough (2048 objects), the mark is shared with helper
+  threads of the collector's own, one fewer than the processors and three at
+  the most: the stack becomes a pool they take chunks of into stacks of their
+  own, a mark bit is set with an interlocked compare-and-swap so that each
+  object is pushed once, and a thread with more than it needs gives half back
+  when another has nothing. The helpers are made with their stacks before the
+  first collection, so nothing is allocated while the world is stopped. Yandex
+  Maps' mark took 325 ms for 770,000 objects on one thread. The flag
+  `no-parallel-gc` keeps it on one.
 - *Sweep*: after the world goes on, under the heap's lock. Objects allocated
   while it runs are born marked.
 - No generations and no compaction. Fragmentation is limited by size classes.

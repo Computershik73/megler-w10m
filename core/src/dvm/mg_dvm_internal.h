@@ -763,6 +763,8 @@ void mg_dvm_dex_memory(u64 *read, u64 *viewed);
 /* The collector's, with the heap's lock held: objects in it; an object's mark set (true when it was not set before), read, all cleared. */
 u32 mg_dvm_heap_objects(void);
 bool mg_dvm_heap_set_mark(void *o);
+/* The same with an interlocked compare-and-swap, for threads that mark at once (mg_dvm_gc.c): one of them sets it. */
+bool mg_dvm_heap_set_mark_shared(void *o);
 bool mg_dvm_heap_is_marked(const void *o);
 void mg_dvm_heap_clear_marks(void);
 void mg_dvm_heap_each_marked(void (*fn)(void *o));

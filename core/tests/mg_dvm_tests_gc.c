@@ -122,6 +122,69 @@ static void test_gc_collect(void)
 }
 
 /*
+ * The mark shared among threads (mg_dvm_gc.c, "marking in parallel"): a graph of some 160,000 objects -- 400 arrays of 300
+ * arrays of ints, and a chain 20,000 long of two-element arrays, each with an int[] of its place -- held by one root, made
+ * among garbage, and collected three times. Every int still reads as it was written (the tests' poison would show an object
+ * freed too early), and the chain is whole.
+ */
+static mg_jobj *g_graph;
+
+static u32 graph_damage(void)
+{
+    u32 bad = 0, i, k, n;
+    mg_jobj *node;
+    for (i = 0; i < 400; i++) {
+        mg_jobj *row = g_graph->u.oarr.v[i];
+        for (k = 0; k < 300; k++) {
+            const i32 *v = (const i32 *)row->u.oarr.v[k]->u.arr.data;
+            bad += v[0] != (i32)i || v[1] != (i32)k || v[2] != (i32)(i * k);
+        }
+    }
+    for (node = g_graph->u.oarr.v[400], n = 0; node && n <= 20000; node = node->u.oarr.v[0], n++)
+        bad += ((const i32 *)node->u.oarr.v[1]->u.arr.data)[0] != (i32)n;
+    return bad + (n != 20000);
+}
+
+static void test_gc_parallel(void)
+{
+    mg_dvm_gc_result r;
+    mg_jobj *volatile chain = NULL;
+    u32 i, k, round;
+    say("the collector: the mark shared among threads, over a graph of 160,000 objects");
+    g_graph = mg_dvm_new_array("[Ljava/lang/Object;", 401);
+    mg_dvm_add_root(&g_graph);
+    for (i = 0; i < 400; i++) {
+        mg_jobj *row = mg_dvm_new_array("[Ljava/lang/Object;", 300);
+        g_graph->u.oarr.v[i] = row;
+        for (k = 0; k < 300; k++) {
+            mg_jobj *v = mg_dvm_new_array("[I", 3);
+            ((i32 *)v->u.arr.data)[0] = (i32)i;
+            ((i32 *)v->u.arr.data)[1] = (i32)k;
+            ((i32 *)v->u.arr.data)[2] = (i32)(i * k);
+            row->u.oarr.v[k] = v;
+            if (!(k & 7)) mg_dvm_new_array("[B", 24);           /* garbage among them */
+        }
+    }
+    for (i = 20000; i-- > 0;) {
+        mg_jobj *node = mg_dvm_new_array("[Ljava/lang/Object;", 2), *place;
+        node->u.oarr.v[0] = chain;
+        chain = node;
+        place = mg_dvm_new_array("[I", 1);
+        ((i32 *)place->u.arr.data)[0] = (i32)i;
+        node->u.oarr.v[1] = place;
+    }
+    g_graph->u.oarr.v[400] = chain;
+    chain = NULL;
+    for (round = 0; round < 3; round++) {
+        CHECK(mg_dvm_gc("the parallel test", &r));
+        CHECK_INT((i32)graph_damage(), 0);
+    }
+    say("  marked by %u threads: %u live objects in %.1f ms", (unsigned)r.markers, (unsigned)r.live_objects, (double)r.mark_ns / 1e6);
+    CHECK(r.live_objects >= 160000);
+    g_graph = NULL;
+}
+
+/*
  * Blocks a collection leaves empty go back to the host past the first 8 MB of them (mg_dvm_heap.c): 40 MB of small arrays
  * made and let go, then collected without the tests' poison (which keeps every freed cell from use), leave the heap's
  * memory at most 20 MB above where it was; and what is made after is made in blocks committed again, as zero memory.
@@ -192,5 +255,6 @@ void test_gc(void)
     mg_dvm_heap_unlock();
     test_gc_census();
     test_gc_collect();
+    test_gc_parallel();
     test_gc_gives_back();
 }

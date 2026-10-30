@@ -18,12 +18,14 @@
  *
  * Between the stop and the resume nothing is allocated, freed or logged: a stopped thread may hold the C library's heap lock
  * or the log's. The mark stack is allocated before the stop, as large as the heap has objects, so it cannot run out; should
- * it all the same, the overflow is finished by going over the heap for marked objects instead of allocating.
+ * it all the same, the overflow is finished by going over the heap for marked objects instead of allocating. The mark is
+ * shared with helper threads of the collector's own once there is enough of it ("marking in parallel").
  */
 #include <setjmp.h>
 #include <stdio.h>
 
 #include "mg_dvm_internal.h"
+#include "../mg_core.h"
 
 /* ------------------------------------------------------------ the C roots */
 
@@ -134,30 +136,41 @@ void mg_dvm_gc_born(mg_jobj *o)
 
 /* ---------------------------------------------------------------- marking */
 
-typedef struct gc_state {
+/* One thread's marking: its stack of objects whose references are still to be followed, and what it marked. */
+typedef struct marker {
     void **stack;
     u32 n, cap;
-    bool overflow;
     u64 marked, marked_bytes, conservative, conservative_bytes;   /* objects marked; their bytes; marked first by a conservative root */
     bool counting_conservative;
+} marker;
+
+typedef struct gc_state {
+    marker main;                       /* the collecting thread's, its stack with room for every object there is */
+    bool overflow;
     mg_jobj **found;                   /* reference objects whose referent was not followed, to decide about after marking */
-    u32 nfound, cap_found;
+    volatile i32 nfound;
+    u32 cap_found;
     u32 cleared, enqueued, finalizable;
+    u32 markers;                       /* threads that marked at once, at the most */
 } gc_state;
 
 static gc_state G;
+static volatile bool g_parallel;       /* the mark shared with the helpers right now: marks set with an interlocked exchange */
+
+static void spill(marker *k);
 
 /* An object reached: marked, and its references to follow later. `o` is an object's start, or anything else (ignored: nothing is read of it before the heap has said it is an object). */
-static void reach(void *o)
+static void reach(marker *k, void *o)
 {
-    if (!o || !mg_dvm_heap_set_mark(o)) return;
-    G.marked++;
-    G.marked_bytes += MG_DVM_OBJ(o)->size;
-    if (G.counting_conservative) {
-        G.conservative++;
-        G.conservative_bytes += MG_DVM_OBJ(o)->size;
+    if (!o || !(g_parallel ? mg_dvm_heap_set_mark_shared(o) : mg_dvm_heap_set_mark(o))) return;
+    k->marked++;
+    k->marked_bytes += MG_DVM_OBJ(o)->size;
+    if (k->counting_conservative) {
+        k->conservative++;
+        k->conservative_bytes += MG_DVM_OBJ(o)->size;
     }
-    if (G.n < G.cap) G.stack[G.n++] = o;
+    if (k->n == k->cap && k != &G.main) spill(k);
+    if (k->n < k->cap) k->stack[k->n++] = o;
     else G.overflow = true;
 }
 
@@ -165,11 +178,23 @@ static void reach(void *o)
 static void reach_ref(mg_jobj *o, void *user)
 {
     (void)user;
-    reach(o);
+    reach(&G.main, o);
 }
 
 /* A word that may point into an object. */
-static void reach_word(mg_addr w) { reach(mg_dvm_heap_find(w)); }
+static void reach_word(mg_addr w) { reach(&G.main, mg_dvm_heap_find(w)); }
+
+/* A reference object whose referent is decided about after marking, kept in the list; false when it has no room left. */
+static bool found_add(mg_jobj *r)
+{
+    i32 at = mg_atomic_add(&G.nfound, 1) - 1;
+    if ((u32)at < G.cap_found) {
+        G.found[at] = r;
+        return true;
+    }
+    mg_atomic_add(&G.nfound, -1);
+    return false;
+}
 
 static void scan_words(mg_addr from, mg_addr to)
 {
@@ -178,35 +203,196 @@ static void scan_words(mg_addr from, mg_addr to)
     for (p = from; p + sizeof(mg_addr) <= to; p += sizeof(mg_addr)) reach_word(*(const mg_addr *)p);
 }
 
-static void follow(void *p)
+static void follow(marker *k, void *p)
 {
     mg_dvm_obj *o = (mg_dvm_obj *)p;
     mg_jobj *j = &o->j;
     u32 i;
     if (j->kind == MG_J_OBJ_ARRAY) {
-        for (i = 0; i < j->u.oarr.len; i++) reach_ref(j->u.oarr.v[i], NULL);
+        for (i = 0; i < j->u.oarr.len; i++) reach(k, j->u.oarr.v[i]);
     } else if (j->kind != MG_J_PRIM_ARRAY && j->kind != MG_J_STRING && o->cls && o->cls->ref_slots_ready) {
         mg_jvalue *slots = mg_dvm_slots(j);
         bool reference = o->cls->gc_ref && g_referent >= 0 && g_pending_next >= 0;
         for (i = 0; i < o->cls->nref_slots; i++) {
             /* A reference's referent is not followed: it is decided about after marking (process_references). */
             if (reference && o->cls->ref_slots[i] == (u32)g_referent) continue;
-            reach_ref(slots[o->cls->ref_slots[i]].l, NULL);
+            reach(k, slots[o->cls->ref_slots[i]].l);
         }
         if (reference && slots[g_referent].l) {
             /* One already waiting to be enqueued (pendingNext set) keeps its referent as it is; so does one the list has no room for. */
-            if (!slots[g_pending_next].l && G.nfound < G.cap_found) G.found[G.nfound++] = j;
-            else reach_ref(slots[g_referent].l, NULL);
+            if (slots[g_pending_next].l || !found_add(j)) reach(k, slots[g_referent].l);
         }
     }
     if (j->fields)
         for (i = 0; i < (u32)j->nfields; i++)
-            if (j->fields[i].is_object) reach_ref(j->fields[i].v.l, NULL);
+            if (j->fields[i].is_object) reach(k, j->fields[i].v.l);
+}
+
+static void follow_main(void *p) { follow(&G.main, p); }
+
+/* ------------------------------------------------------ marking in parallel */
+
+/*
+ * The mark is shared with helper threads of the collector's own -- one fewer than the processors, three at the most --
+ * once the collecting thread's stack holds enough to share: that stack becomes a pool, each thread takes a chunk of it at a
+ * time into a stack of its own and follows references from there, gives half of its stack back when another thread has
+ * nothing left (or its own is full), and the mark is done when every thread has nothing and the pool is empty. A mark is
+ * set with an interlocked compare-and-swap meanwhile, so that each object is pushed by one thread. The helpers are not the
+ * runtime's threads (nothing stops them), and neither allocate nor log: their stacks are made with them, before the first
+ * collection. Yandex Maps' collections marked 770,000 objects in 325 ms on one thread, every five seconds. The flag
+ * no-parallel-gc keeps it on the one.
+ */
+#define MAX_HELPERS 3
+#define HELPER_STACK 16384u            /* entries in a marking thread's own stack */
+#define PARALLEL_MIN 2048u             /* objects waiting before the mark is shared */
+#define CHUNK 256u
+
+static marker g_markers[MAX_HELPERS + 1];    /* [0]: the collecting thread's own while the mark is shared */
+static int g_nhelpers;
+static bool g_helpers_tried;
+static mg_lock g_mark_lock = MG_LOCK_INIT;
+static mg_cond g_mark_start = MG_COND_INIT, g_mark_work = MG_COND_INIT, g_mark_end = MG_COND_INIT;
+static void **g_pool;                  /* the collecting thread's stack while shared; under g_mark_lock */
+static volatile u32 g_npool;
+static u32 g_pool_cap, g_generation, g_finished;
+static int g_working, g_idle;          /* threads marking this time; of them, those with nothing to do */
+static volatile i32 g_any_idle;
+static bool g_done;
+
+/* Half of a marking thread's stack to the pool, for the others (its own full, or another one idle). */
+static void spill(marker *k)
+{
+    u32 half = k->n / 2;
+    mg_lock_acquire(&g_mark_lock);
+    if (g_npool + half > g_pool_cap) half = g_pool_cap - g_npool;
+    memcpy(g_pool + g_npool, k->stack + k->n - half, sizeof(void *) * half);
+    g_npool += half;
+    k->n -= half;
+    if (g_idle) mg_cond_broadcast(&g_mark_work);
+    mg_lock_release(&g_mark_lock);
+}
+
+/* A thread's share of the mark: until every thread has nothing left and the pool is empty. */
+static void mark_shared(marker *k)
+{
+    for (;;) {
+        while (k->n) {
+            void *o = k->stack[--k->n];
+            follow(k, o);
+            if (g_any_idle && !g_npool && k->n > 64) spill(k);
+        }
+        mg_lock_acquire(&g_mark_lock);
+        for (;;) {
+            if (g_npool) {
+                u32 take = g_npool < CHUNK ? g_npool : CHUNK;
+                g_npool -= take;
+                memcpy(k->stack, g_pool + g_npool, sizeof(void *) * take);
+                k->n = take;
+                break;
+            }
+            if (g_done) break;
+            g_idle++;
+            mg_atomic_xchg(&g_any_idle, 1);
+            if (g_idle == g_working) {
+                g_done = true;
+                mg_cond_broadcast(&g_mark_work);
+                break;
+            }
+            mg_cond_wait(&g_mark_work, &g_mark_lock);
+            g_idle--;
+            if (!g_idle) mg_atomic_xchg(&g_any_idle, 0);
+        }
+        mg_lock_release(&g_mark_lock);
+        if (!k->n) return;
+    }
+}
+
+static void helper_main(void *arg)
+{
+    marker *k = (marker *)arg;
+    /*
+     * From the first round: the helpers are made before any (helpers_start), and one that starts running late must still
+     * take its part in it, which the others wait for.
+     */
+    u32 seen = 0;
+    for (;;) {
+        mg_lock_acquire(&g_mark_lock);
+        while (g_generation == seen) mg_cond_wait(&g_mark_start, &g_mark_lock);
+        seen = g_generation;
+        mg_lock_release(&g_mark_lock);
+        mark_shared(k);
+        mg_lock_acquire(&g_mark_lock);
+        g_finished++;
+        mg_cond_signal(&g_mark_end);
+        mg_lock_release(&g_mark_lock);
+    }
+}
+
+/* The helpers, once, before any collection stops anything (they are made with their stacks). */
+static void helpers_start(void)
+{
+    int want, i;
+    if (g_helpers_tried) return;
+    g_helpers_tried = true;
+    want = mg_cpu_count() - 1;
+    if (want > MAX_HELPERS) want = MAX_HELPERS;
+    if (want < 1 || mg_flag("no-parallel-gc")) return;
+    for (i = 0; i <= want; i++) {
+        g_markers[i].stack = (void **)malloc(sizeof(void *) * HELPER_STACK);
+        if (!g_markers[i].stack) break;
+        g_markers[i].cap = HELPER_STACK;
+        if (i) {
+            mg_thread *th = mg_thread_start(helper_main, &g_markers[i], (size_t)64 << 10, "gc marker");
+            if (!th) break;
+            mg_thread_detach(th);
+            g_nhelpers = i;
+        }
+    }
+}
+
+/* The collecting thread's stack drained by it and the helpers together. */
+static void drain_shared(void)
+{
+    int i;
+    g_pool = G.main.stack;
+    g_npool = G.main.n;
+    g_pool_cap = G.main.cap;
+    G.main.n = 0;
+    for (i = 0; i <= g_nhelpers; i++) {
+        marker *k = &g_markers[i];
+        k->n = 0;
+        k->marked = k->marked_bytes = k->conservative = k->conservative_bytes = 0;
+        k->counting_conservative = G.main.counting_conservative;
+    }
+    g_parallel = true;
+    mg_lock_acquire(&g_mark_lock);
+    g_working = g_nhelpers + 1;
+    g_idle = 0;
+    g_any_idle = 0;
+    g_done = false;
+    g_finished = 0;
+    g_generation++;
+    mg_cond_broadcast(&g_mark_start);
+    mg_lock_release(&g_mark_lock);
+    mark_shared(&g_markers[0]);
+    mg_lock_acquire(&g_mark_lock);
+    while (g_finished < (u32)g_nhelpers) mg_cond_wait(&g_mark_end, &g_mark_lock);
+    mg_lock_release(&g_mark_lock);
+    g_parallel = false;
+    for (i = 0; i <= g_nhelpers; i++) {
+        marker *k = &g_markers[i];
+        G.main.marked += k->marked;
+        G.main.marked_bytes += k->marked_bytes;
+        G.main.conservative += k->conservative;
+        G.main.conservative_bytes += k->conservative_bytes;
+    }
+    G.markers = (u32)g_nhelpers + 1;
 }
 
 static void drain(void)
 {
-    while (G.n) follow(G.stack[--G.n]);
+    if (g_nhelpers && G.main.n >= PARALLEL_MIN) drain_shared();
+    while (G.main.n) follow(&G.main, G.main.stack[--G.main.n]);
 }
 
 /* What the classes hold: statics of reference type, the Class object, the error of a failed initialisation. */
@@ -328,11 +514,11 @@ static void process_references(bool clear_soft)
 {
     u32 i;
     if (!clear_soft) {
-        for (i = 0; i < G.nfound; i++)
+        for (i = 0; i < (u32)G.nfound; i++)
             if (mg_dvm_class_of(G.found[i])->gc_ref == 1) reach_ref(mg_dvm_slots(G.found[i])[g_referent].l, NULL);
         drain();
     }
-    for (i = 0; i < G.nfound; i++) {
+    for (i = 0; i < (u32)G.nfound; i++) {
         mg_jobj *r = G.found[i];
         mg_jvalue *slots = mg_dvm_slots(r);
         if (mg_dvm_class_of(r)->gc_ref == 3 || !slots[g_referent].l || mg_dvm_heap_is_marked(slots[g_referent].l)) continue;
@@ -353,7 +539,7 @@ static void process_references(bool clear_soft)
         reach_ref(o, NULL);
     }
     drain();
-    for (i = 0; i < G.nfound; i++) {
+    for (i = 0; i < (u32)G.nfound; i++) {
         mg_jobj *r = G.found[i];
         mg_jvalue *slots = mg_dvm_slots(r);
         if (mg_dvm_class_of(r)->gc_ref != 3 || !slots[g_referent].l || mg_dvm_heap_is_marked(slots[g_referent].l)) continue;
@@ -384,10 +570,10 @@ static void mark(void)
     reach_ref(g_pending_refs, NULL);
     drain();
     /* What only the conservative scans find, counted apart: the next phone log says how much that is. */
-    G.counting_conservative = true;
+    G.main.counting_conservative = true;
     conservative_roots();
     drain();
-    G.counting_conservative = false;
+    G.main.counting_conservative = false;
     while (G.overflow) {
         G.overflow = false;
         heap_rescan_marked();
@@ -399,10 +585,10 @@ static void heap_rescan_marked(void)
 {
     u64 before;
     do {
-        before = G.marked;
-        mg_dvm_heap_each_marked(follow);
+        before = G.main.marked;
+        mg_dvm_heap_each_marked(follow_main);
         drain();
-    } while (G.marked != before || G.overflow);
+    } while (G.main.marked != before || G.overflow);
 }
 
 void mg_dvm_gc_thread_gone(mg_dvm_thread *t) { (void)t; }
@@ -477,6 +663,8 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
     memset(out, 0, sizeof(*out));
     if (!g_dvm.running || t_collecting) return false;
     mg_lock_acquire(&g_gc_lock);
+    /* (Under the collector's lock: two threads that collect at once for the first time start one set of helpers.) */
+    helpers_start();
     /* Two threads that found it due at once: the second has nothing left to do. */
     if (sweep && !strcmp(reason, "allocation") && !due()) {
         mg_lock_release(&g_gc_lock);
@@ -506,8 +694,9 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
     ok = stack != NULL && found != NULL;
     if (ok) {
         memset(&G, 0, sizeof(G));
-        G.stack = stack;
-        G.cap = objects + 64;
+        G.main.stack = stack;
+        G.main.cap = objects + 64;
+        G.markers = 1;
         G.found = found;
         G.cap_found = (u32)g_references + 64;
         g_nstopped = 0;
@@ -524,10 +713,11 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
         for (i = 0; i < g_nstopped; i++) mg_thread_resume(g_stopped[i].t->host);
         t2 = mg_time_monotonic_ns();
         out->objects = objects;
-        out->live_objects = G.marked;
-        out->live_bytes = G.marked_bytes;
-        out->conservative = G.conservative;
-        out->conservative_bytes = G.conservative_bytes;
+        out->live_objects = G.main.marked;
+        out->live_bytes = G.main.marked_bytes;
+        out->conservative = G.main.conservative;
+        out->conservative_bytes = G.main.conservative_bytes;
+        out->markers = G.markers;
         out->threads_stopped = (u32)g_nstopped;
         out->stop_ns = t1 - t0;
         out->mark_ns = t2 - t1;
@@ -640,9 +830,10 @@ bool mg_dvm_gc(const char *reason, mg_dvm_gc_result *out)
         return false;
     }
     if (!r.objects) return true;
-    mg_info("gc: %s: %.1f ms (stop %.1f, mark %.1f, sweep %.1f); freed %.1f MB (%u objects), live %.1f MB (%u objects); %u threads stopped; "
+    mg_info("gc: %s: %.1f ms (stop %.1f, mark %.1f by %u threads, sweep %.1f); freed %.1f MB (%u objects), live %.1f MB (%u objects); %u threads stopped; "
             "%.2f MB (%u objects) found only through a conservative root",
-            reason, (double)(r.stop_ns + r.mark_ns + r.sweep_ns) / 1e6, (double)r.stop_ns / 1e6, (double)r.mark_ns / 1e6, (double)r.sweep_ns / 1e6,
+            reason, (double)(r.stop_ns + r.mark_ns + r.sweep_ns) / 1e6, (double)r.stop_ns / 1e6, (double)r.mark_ns / 1e6, (unsigned)r.markers,
+            (double)r.sweep_ns / 1e6,
             (double)r.freed_bytes / 1048576.0, (unsigned)r.freed_objects, (double)r.live_bytes / 1048576.0, (unsigned)r.live_objects,
             (unsigned)r.threads_stopped, (double)r.conservative_bytes / 1048576.0, (unsigned)r.conservative);
     return true;

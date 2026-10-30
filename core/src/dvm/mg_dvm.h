@@ -187,6 +187,7 @@ typedef struct mg_dvm_gc_result {
     u64 freed_objects, freed_bytes;
     u32 cleared, enqueued, to_finalize;      /* references cleared, of them enqueued; objects found to finalize */
     u32 threads_stopped;
+    u32 markers;                             /* threads that marked at once, at the most */
     u64 stop_ns, mark_ns, sweep_ns;
 } mg_dvm_gc_result;
 /* A collection that marks only: what is reachable, counted, nothing freed. False when not every thread could be stopped. */

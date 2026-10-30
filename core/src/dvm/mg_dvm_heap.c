@@ -52,7 +52,7 @@ typedef struct block {
 typedef struct large {
     u8 *start;
     size_t size;
-    bool mark;
+    volatile i32 mark;
 } large;
 
 static mg_lock g_heap_lock = MG_LOCK_INIT;
@@ -238,7 +238,7 @@ static void *large_alloc(size_t size)
     memmove(&g_large[lo + 1], &g_large[lo], sizeof(*g_large) * (g_nlarge - lo));
     g_large[lo].start = p;
     g_large[lo].size = size;
-    g_large[lo].mark = false;
+    g_large[lo].mark = 0;
     g_nlarge++;
     g_objects++;
     g_large_bytes += size;
@@ -337,8 +337,33 @@ bool mg_dvm_heap_set_mark(void *o)
     } else {
         large *l = large_at(o);
         if (!l || l->mark) return false;
-        l->mark = true;
+        l->mark = 1;
         return true;
+    }
+}
+
+bool mg_dvm_heap_set_mark_shared(void *o)
+{
+    block *b;
+    if ((mg_addr)o < g_lo || (mg_addr)o >= g_hi) return false;
+    b = block_of((mg_addr)o);
+    if (b) {
+        u32 index, bit, old;
+        volatile i32 *word;
+        if ((u8 *)o < b->first) return false;
+        index = cell_index(b, (size_t)((u8 *)o - b->first));
+        if ((size_t)index * b->cell != (size_t)((u8 *)o - b->first)) return false;
+        bit = 1u << (index & 31);
+        if (index >= b->bump || !(b->inuse[index >> 5] & bit)) return false;
+        word = (volatile i32 *)&b->mark[index >> 5];
+        for (;;) {
+            old = (u32)*word;
+            if (old & bit) return false;
+            if ((u32)mg_atomic_cas(word, (i32)old, (i32)(old | bit)) == old) return true;
+        }
+    } else {
+        large *l = large_at(o);
+        return l && !l->mark && mg_atomic_cas(&l->mark, 0, 1) == 0;
     }
 }
 
@@ -362,7 +387,7 @@ void mg_dvm_heap_clear_marks(void)
             block *b = (block *)(void *)(g_arenas[i] + (size_t)k * BLOCK_SIZE);
             if (b->cls >= 0) memset(b->mark, 0, sizeof(b->mark));
         }
-    for (i = 0; i < g_nlarge; i++) g_large[i].mark = false;
+    for (i = 0; i < g_nlarge; i++) g_large[i].mark = 0;
 }
 
 u32 mg_dvm_heap_objects(void) { return g_objects; }
@@ -420,7 +445,7 @@ void mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, 
     for (i = 0; i < g_nlarge; i++) {
         large *l = &g_large[i];
         if (l->mark) {
-            l->mark = false;
+            l->mark = 0;
             g_large[kept++] = *l;
             continue;
         }
