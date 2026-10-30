@@ -162,7 +162,8 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
     u32 i, added = 0;
     size_t pooled = 0, at = 0;
     mg_dvm_dex *twin = NULL;
-    bool copied = false;
+    /* The pool given whole (mg_dvm_add_dex_lazy): read in it, one name after another. */
+    bool copied = d->lazy && d->names != NULL;
     if (d->scope == 0 && !d->app)
         for (i = 0; i < MG_COUNT(k_own); i++)
             if (strstr(d->name, k_own[i].file)) d->own = k_own[i].package;
@@ -172,7 +173,7 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
      * from the file again, a page of its table here and one of its strings there: Yandex Maps' sixteen files took 0.3 s of the
      * main thread and 8 MB more of names (package 531).
      */
-    if (d->lazy && !d->own) {
+    if (d->lazy && !d->own && !copied) {
         mg_dvm_lock();
         twin = mg_dvm_dex_twin(d);
         if (twin && twin->names) {
@@ -185,7 +186,7 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
         mg_dvm_unlock();
     }
     /* A file viewed only for now (mg_dvm_dex_open_lazy): its classes' descriptors are copied, one block for all of them. */
-    if (d->lazy && !twin) {
+    if (d->lazy && !twin && !copied) {
         for (i = 0; i < d->ncls; i++) pooled += strlen(mg_dvm_dex_type(d, mg_dvm_rd32(d->b + d->cls_off + 32 * i))) + 1;
         d->names_size = pooled ? pooled : 1;
         d->names = (char *)mg_dvm_meta_alloc_kind(d->names_size, DVM_META_POOL);

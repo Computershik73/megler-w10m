@@ -176,12 +176,95 @@ static u8 *cached_view_of(const mg_zip *z, const mg_zip_entry *e, const char *ap
     return p;
 }
 
+/*
+ * The names of a DEX file's classes kept in the data folder's dex-names, as <APK>-<entry>-<its checksum>-<its size>: the pool
+ * its registration keeps (mg_dvm_dex_names), read in one go at the next start rather than a page of the file's tables here and
+ * one of its strings there. Registering Yandex Maps' sixteen took 0.75 s of the main thread at every start, Google Play
+ * services' fifteen 0.64 s more when the app first asked for them (package 531). The file of an older version of the same APK
+ * and entry is removed when the new one is made; one that does not answer the DEX file's header is not taken.
+ */
+#define NAMES_MAGIC 0x4E44474Du /* "MGDN" */
+typedef struct names_head {
+    u32 magic, version, checksum, size, ncls, pool;
+} names_head;
+
+static char *names_path(const char *apk_base, const char *entry, const u8 *dex, char **dir)
+{
+    const char *root = megler_data_dir();
+    *dir = NULL;
+    if (!root || !root[0]) return NULL;
+    *dir = mg_sprintf("%s/dex-names", root);
+    return mg_sprintf("%s/%.100s-%s-%08x-%u", *dir, apk_base, entry, (unsigned)mg_dvm_rd32(dex + 8), (unsigned)mg_dvm_rd32(dex + 32));
+}
+
+static char *names_kept(const char *path, const u8 *dex, size_t *pool_size)
+{
+    size_t n = 0, i;
+    u32 ends = 0;
+    u8 *f;
+    names_head h;
+    char *pool;
+    *pool_size = 0;
+    if (!path || !(f = mg_file_read_all(path, &n))) return NULL;
+    memset(&h, 0, sizeof(h));
+    if (n > sizeof(h)) memcpy(&h, f, sizeof(h));
+    if (h.magic != NAMES_MAGIC || h.version != 1 || h.checksum != mg_dvm_rd32(dex + 8) || h.size != mg_dvm_rd32(dex + 32) || h.ncls != mg_dvm_rd32(dex + 0x60)
+        || (size_t)h.pool != n - sizeof(h) || f[n - 1] != 0) {
+        free(f);
+        return NULL;
+    }
+    for (i = sizeof(h); i < n; i++) ends += f[i] == 0;
+    if (ends != (h.ncls ? h.ncls : 1)) {
+        free(f);
+        return NULL;
+    }
+    pool = (char *)mg_dvm_meta_alloc_kind(h.pool, DVM_META_POOL);
+    memcpy(pool, f + sizeof(h), h.pool);
+    free(f);
+    *pool_size = h.pool;
+    return pool;
+}
+
+static bool names_keep(const char *dir, const char *path, const char *apk_base, const char *entry, const u8 *dex, const char *pool, size_t pool_size)
+{
+    names_head h;
+    older_files o;
+    const char *slash = strrchr(path, '/');
+    char *tmp = mg_sprintf("%s.%u.part", path, (unsigned)mg_thread_self_id());
+    u8 *buf = (u8 *)malloc(sizeof(h) + pool_size);
+    bool kept = false;
+    int err = 0;
+    h.magic = NAMES_MAGIC;
+    h.version = 1;
+    h.checksum = mg_dvm_rd32(dex + 8);
+    h.size = mg_dvm_rd32(dex + 32);
+    h.ncls = mg_dvm_rd32(dex + 0x60);
+    h.pool = (u32)pool_size;
+    if (buf) {
+        memcpy(buf, &h, sizeof(h));
+        memcpy(buf + sizeof(h), pool, pool_size);
+        mg_path_mkdirs(dir);
+        kept = mg_file_write_all(tmp, buf, sizeof(h) + pool_size) && mg_path_rename(tmp, path, &err);
+        if (!kept) mg_path_remove(tmp, &err);
+    }
+    free(buf);
+    free(tmp);
+    if (kept) {
+        o.dir = dir;
+        o.apk = apk_base;
+        o.entry = entry;
+        o.keep = slash ? slash + 1 : path;
+        mg_path_list(dir, remove_older, &o, &err);
+    }
+    return kept;
+}
+
 int mg_dvm_add_apk_scope(const char *path, int scope)
 {
     const char *slash = strrchr(path, '/'), *back = strrchr(path, '\\'), *base;
     mg_zip z;
     char err[160];
-    int added = 0, shared = 0, viewed = 0, kept = 0, made_now = 0, i;
+    int added = 0, shared = 0, viewed = 0, kept = 0, made_now = 0, names_read = 0, names_made = 0, i;
     if (back && (!slash || back > slash)) slash = back;
     base = slash ? slash + 1 : path;
     if (!mg_zip_open(&z, path, err, sizeof(err))) {
@@ -228,8 +311,24 @@ int mg_dvm_add_apk_scope(const char *path, int scope)
          * as before.
          */
         if (view) {
-            /* (The same file registered for another scope already: the two share one view, once either is needed.) */
-            bool known = mg_dvm_dex_known(v.path, v.at, size), lazy = mg_dvm_add_dex_lazy(data, size, label, scope, v.path, v.at);
+            /* (The same file registered for another scope already: the two share one view, once either is needed, and its names.) */
+            bool known = mg_dvm_dex_known(v.path, v.at, size), lazy;
+            char *names = NULL, *names_file = NULL, *names_dir = NULL;
+            size_t names_size = 0;
+            if (!known && size >= 0x70) {
+                names_file = names_path(base, name, data, &names_dir);
+                names = names_kept(names_file, data, &names_size);
+                if (names) {
+                    names_read++;
+                } else if ((names = mg_dvm_dex_names(data, size, &names_size)) != NULL && names_file
+                           && names_keep(names_dir, names_file, base, name, data, names, names_size)) {
+                    names_made++;
+                }
+            }
+            free(names_file);
+            free(names_dir);
+            lazy = mg_dvm_add_dex_lazy(data, size, label, scope, v.path, v.at, names, names_size);
+            if (!lazy && names) mg_dvm_meta_free_kind(names, names_size, DVM_META_POOL);
             mg_section_unmap(v.base, v.mapped);
             free(v.path);
             if (lazy) {
@@ -261,7 +360,8 @@ int mg_dvm_add_apk_scope(const char *path, int scope)
     mg_zip_close(&z);
     if (shared) mg_info("dvm: %s: %d of its DEX files are the ones read before, shared", base, shared);
     if (viewed) mg_info("dvm: %s: %d of its DEX files are views of files, each viewed once a class of it is needed: %d of the APK, which stores "
-                        "them as they are, %d inflated into the data folder's dex (%d of them now)", base, viewed, viewed - kept, kept, made_now);
+                        "them as they are, %d inflated into the data folder's dex (%d of them now); the names of their classes: %d from the data "
+                        "folder's dex-names, %d kept there now", base, viewed, viewed - kept, kept, made_now, names_read, names_made);
     return added;
 }
 

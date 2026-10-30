@@ -582,6 +582,12 @@ const char *mg_dvm_defined_name(u32 i, mg_dvm_dex **dex);
  * `map_at` when the first of its classes is linked, checks it, and makes its caches. With the runtime's lock held.
  */
 mg_dvm_dex *mg_dvm_dex_open_lazy(const u8 *b, size_t size, const char *label, const char *map_path, u64 map_at);
+/*
+ * The descriptors of a DEX file's classes in the order of its definitions, end to end, each ended by a zero: the pool a file
+ * registered by its classes' names keeps (`names`), made in one pass over its tables; DVM_META_POOL memory of `*pool_size`
+ * bytes. NULL when the bytes are not a DEX file.
+ */
+char *mg_dvm_dex_names(const u8 *b, size_t size, size_t *pool_size);
 bool mg_dvm_dex_ready(mg_dvm_dex *d);
 /* Whether a DEX file of these bytes of that file is the runtime's already (registered, viewed or not). */
 bool mg_dvm_dex_known(const char *map_path, u64 map_at, size_t size);
@@ -590,8 +596,11 @@ bool mg_dvm_dex_known(const char *map_path, u64 map_at, size_t size);
  * (`names`) or in its view, which stays. NULL when there is none. With the runtime's lock held.
  */
 mg_dvm_dex *mg_dvm_dex_twin(const mg_dvm_dex *d);
-/* mg_dvm.c: such a file added to the class path, of the app or of a scope (`scope` > 0). */
-bool mg_dvm_add_dex_lazy(const void *data, size_t size, const char *label, int scope, const char *map_path, u64 map_at);
+/*
+ * mg_dvm.c: such a file added to the class path, of the app or of a scope (`scope` > 0). `names`, when not NULL, is its pool
+ * (mg_dvm_dex_names), which the file takes when it is added; else the names are read from the file.
+ */
+bool mg_dvm_add_dex_lazy(const void *data, size_t size, const char *label, int scope, const char *map_path, u64 map_at, char *names, size_t names_size);
 /* mg_dvm_apk.c: bytes of DEX files viewed now, for the memory line. */
 void mg_dvm_dex_viewed(u64 bytes);
 

@@ -159,6 +159,43 @@ mg_dvm_dex *mg_dvm_dex_open_lazy(const u8 *b, size_t size, const char *label, co
     return d;
 }
 
+char *mg_dvm_dex_names(const u8 *b, size_t size, size_t *pool_size)
+{
+    mg_dvm_dex *d = dex_header(b, size, "a DEX file", false);
+    char *buf, *pool = NULL;
+    size_t cap, at = 0;
+    u32 i;
+    *pool_size = 0;
+    if (!d) return NULL;
+    cap = (size_t)d->ncls * 48 + 16;
+    buf = (char *)malloc(cap);
+    for (i = 0; buf && i < d->ncls; i++) {
+        const char *desc = mg_dvm_dex_type(d, mg_dvm_rd32(b + d->cls_off + 32 * i));
+        size_t n = strlen(desc) + 1;
+        if (at + n > cap) {
+            char *grown = (char *)realloc(buf, (at + n) * 2);
+            if (!grown) {
+                free(buf);
+                buf = NULL;
+                break;
+            }
+            buf = grown;
+            cap = (at + n) * 2;
+        }
+        memcpy(buf + at, desc, n);
+        at += n;
+    }
+    if (buf) {
+        *pool_size = at ? at : 1;
+        pool = (char *)mg_dvm_meta_alloc_kind(*pool_size, DVM_META_POOL);
+        if (at) memcpy(pool, buf, at);
+        else pool[0] = 0;
+    }
+    free(buf);
+    mg_dvm_meta_free_kind(d, sizeof(*d), DVM_META_DEX);
+    return pool;
+}
+
 /* Another of the runtime's DEX files that is the same bytes of the same file: viewed already, when `viewed` says so. */
 static mg_dvm_dex *same_file(const char *map_path, u64 map_at, size_t size, const mg_dvm_dex *not_this, bool viewed)
 {
