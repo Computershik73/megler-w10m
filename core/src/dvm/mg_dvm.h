@@ -209,6 +209,8 @@ void mg_dvm_gc_set_min_budget(u64 bytes);
 void mg_dvm_gc_native(i64 bytes);
 /* Collections made so far and the time they took, for the frame meter. */
 void mg_dvm_gc_totals(u64 *collections, u64 *pause_ns);
+/* Whether a collection is under way now (the world stopped, or the heap being swept): for the main thread's sampler. */
+bool mg_dvm_gc_busy(void);
 /* Bytes of the objects in the heap now (live since the last collection, and what was made after it). */
 u64 mg_dvm_live_bytes(void);
 /* Returns once the objects found to finalize so far have been finalized (Runtime.runFinalization), or after ten seconds. */

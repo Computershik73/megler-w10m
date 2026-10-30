@@ -764,6 +764,9 @@ static u64 g_budget = MIN_BUDGET, g_min_budget = MIN_BUDGET;
 /* For the frame meter and the log: collections made, and the time the world stood still in them. */
 static volatile i32 g_collections;
 static u64 g_pause_ns;
+static volatile i32 g_busy;
+
+bool mg_dvm_gc_busy(void) { return g_busy != 0; }
 
 void mg_dvm_gc_enable(bool on) { g_enabled = on; }
 void mg_dvm_gc_set_poison(bool on) { g_poison = on; }
@@ -826,6 +829,7 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
         return true;
     }
     t_collecting = true;
+    g_busy = 1;
     t0 = mg_time_monotonic_ns();
     g_collector = mg_dvm_self();
     mg_dvm_lock();
@@ -903,6 +907,7 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
         if (t3 - g_large_said_ns > 30000000000ull && mg_dvm_heap_large_report(large, sizeof(large), 6)) g_large_said_ns = t3;
     }
     mg_dvm_heap_unlock();
+    g_busy = 0;
     if (large[0]) mg_info("gc: the large objects (over 2 KB each) by class: %s", large);
     if (ok) {
         mg_atomic_add(&g_collections, 1);

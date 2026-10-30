@@ -1552,13 +1552,18 @@ static struct {
     u32 n;
 } g_hot[HOT_SLOTS];
 
-static void hot_say(u32 samples, u32 outside)
+/*
+ * `collecting`: the samples taken while a collection was under way, whatever the main thread's method; the thread is stopped
+ * then, or waits for the heap to make an object. Each was the method that made an object when the heap was due, 9% of Yandex
+ * Maps' main thread "in" String.toCharArray (package 531).
+ */
+static void hot_say(u32 samples, u32 outside, u32 collecting)
 {
     char line[1400];
     size_t at;
     int k;
-    at = (size_t)snprintf(line, sizeof(line), "hot: the main thread, %u samples in 10 s: outside Java %u%%", (unsigned)samples,
-                          (unsigned)(samples ? outside * 100 / samples : 0));
+    at = (size_t)snprintf(line, sizeof(line), "hot: the main thread, %u samples in 10 s: outside Java %u%%, the collector %u%%", (unsigned)samples,
+                          (unsigned)(samples ? outside * 100 / samples : 0), (unsigned)(samples ? collecting * 100 / samples : 0));
     for (k = 0; k < 14 && at + 160 < sizeof(line); k++) {
         u32 best = 0, i, at_best = 0;
         for (i = 0; i < HOT_SLOTS; i++)
@@ -1576,16 +1581,20 @@ static void hot_say(u32 samples, u32 outside)
 
 static void hot_main(void *arg)
 {
-    u32 samples = 0, outside = 0;
+    u32 samples = 0, outside = 0, collecting = 0;
     u64 since = mg_time_monotonic_ns();
     (void)arg;
     for (;;) {
-        const mg_dvm_thread *t = M.thread;
-        const mg_dvm_method *m = t ? t->running : NULL;
+        const mg_dvm_thread *t;
+        const mg_dvm_method *m;
         u64 now;
         mg_sleep_ns(5000000ull);
+        t = M.thread;
+        m = t ? t->running : NULL;
         samples++;
-        if (!m) {
+        if (mg_dvm_gc_busy()) {
+            collecting++;
+        } else if (!m) {
             outside++;
         } else {
             u32 i = (u32)(((mg_addr)m >> 4) * 2654435761u) & (HOT_SLOTS - 1), tries;
@@ -1595,10 +1604,10 @@ static void hot_main(void *arg)
         }
         now = mg_time_monotonic_ns();
         if (now - since >= 10000000000ull) {
-            hot_say(samples, outside);
+            hot_say(samples, outside, collecting);
             meter_census();
             memset(g_hot, 0, sizeof(g_hot));
-            samples = outside = 0;
+            samples = outside = collecting = 0;
             since = now;
         }
     }
