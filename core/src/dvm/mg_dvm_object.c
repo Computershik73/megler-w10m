@@ -473,14 +473,19 @@ const char *mg_dvm_string_utf8(mg_jobj *s)
     return s->u.str.utf8;
 }
 
+/*
+ * The interned strings: a table of their hashes and the strings, open-addressed and grown to stay at most half full, under
+ * the runtime's lock. It was 4096 lists of nodes each allocated on its own: an app's tens of thousands of strings made each
+ * lookup (a string constant's first use, String.intern) walk a list a dozen long, and each collection walk every node, a
+ * cache miss each, with the world stopped.
+ */
 typedef struct interned {
-    mg_jobj *s;
     u32 hash;
-    struct interned *next;
+    mg_jobj *s;                        /* NULL: an empty slot */
 } interned;
 
-#define INTERN_BUCKETS 4096
-static interned *g_interned[INTERN_BUCKETS];
+static interned *g_interned;
+static u32 g_intern_cap, g_intern_n;   /* slots, a power of two; strings in them */
 
 static u32 hash_utf16(const u16 *s, i32 n)
 {
@@ -490,33 +495,59 @@ static u32 hash_utf16(const u16 *s, i32 n)
     return h;
 }
 
+/* The table twice as large, every string in it again. False when there is no memory for it. */
+static bool intern_grow(void)
+{
+    u32 cap = g_intern_cap ? g_intern_cap * 2 : 4096, i, k;
+    interned *t = (interned *)calloc(cap, sizeof(*t));
+    if (!t) return false;
+    for (i = 0; i < g_intern_cap; i++) {
+        if (!g_interned[i].s) continue;
+        for (k = g_interned[i].hash & (cap - 1); t[k].s; k = (k + 1) & (cap - 1)) {}
+        t[k] = g_interned[i];
+    }
+    free(g_interned);
+    g_interned = t;
+    g_intern_cap = cap;
+    return true;
+}
+
 mg_jobj *mg_dvm_intern_string(mg_jobj *s)
 {
-    interned *e;
-    u32 h;
+    mg_jobj *kept = s;
+    bool found = false;
+    u32 h, k;
     if (!s || s->kind != MG_J_STRING) return s;
     h = hash_utf16(s->u.str.u16, s->u.str.len16);
     mg_dvm_lock();
-    for (e = g_interned[h % INTERN_BUCKETS]; e; e = e->next)
-        if (e->hash == h && e->s->u.str.len16 == s->u.str.len16 && !memcmp(e->s->u.str.u16, s->u.str.u16, (size_t)s->u.str.len16 * 2)) break;
-    if (!e) {
-        e = (interned *)mg_alloc(sizeof(*e));
-        e->s = s;
-        e->hash = h;
-        e->next = g_interned[h % INTERN_BUCKETS];
-        g_interned[h % INTERN_BUCKETS] = e;
+    /* (No memory to grow it, and no room left: the string as it is, not interned.) */
+    if ((g_intern_n + 1) * 2 > g_intern_cap && !intern_grow() && g_intern_n + 1 >= g_intern_cap) {
+        mg_dvm_unlock();
+        return s;
+    }
+    for (k = h & (g_intern_cap - 1); g_interned[k].s; k = (k + 1) & (g_intern_cap - 1)) {
+        mg_jobj *e = g_interned[k].s;
+        if (g_interned[k].hash == h && e->u.str.len16 == s->u.str.len16 && !memcmp(e->u.str.u16, s->u.str.u16, (size_t)s->u.str.len16 * 2)) {
+            kept = e;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        g_interned[k].hash = h;
+        g_interned[k].s = s;
+        g_intern_n++;
         mg_atomic_add(&g_dvm.n_interned, 1);
     }
     mg_dvm_unlock();
-    return e->s;
+    return kept;
 }
 
 void mg_dvm_interned_each(void (*fn)(mg_jobj *s, void *user), void *user)
 {
-    interned *e;
-    size_t i;
-    for (i = 0; i < INTERN_BUCKETS; i++)
-        for (e = g_interned[i]; e; e = e->next) fn(e->s, user);
+    u32 i;
+    for (i = 0; i < g_intern_cap; i++)
+        if (g_interned[i].s) fn(g_interned[i].s, user);
 }
 
 mg_jobj *mg_dvm_const_string(mg_dvm_dex *d, u32 idx)

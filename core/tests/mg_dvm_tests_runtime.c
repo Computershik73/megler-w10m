@@ -478,6 +478,34 @@ static void test_refused(const char *fixtures)
     CHECK_INT(stats.classes_defined, dexes_classes);
 }
 
+/*
+ * The interned strings' table as it grows (mg_dvm_object.c): 20,000 strings interned, each one a string of its own; the same
+ * texts interned again from new copies, the same objects; an interned string interned again, itself, not counted twice.
+ */
+static void test_interned(void)
+{
+    static mg_jobj *first[20000];
+    char text[40];
+    u32 i, before = (u32)g_dvm.n_interned, differ = 0, same = 0;
+    say("the interned strings: 20,000 of them, the table grown on the way");
+    for (i = 0; i < MG_COUNT(first); i++) {
+        snprintf(text, sizeof(text), "interned, the table growing %u", (unsigned)i);
+        first[i] = mg_dvm_intern_string(mg_dvm_new_string(text));
+    }
+    for (i = 0; i < MG_COUNT(first); i++) {
+        mg_jobj *again;
+        snprintf(text, sizeof(text), "interned, the table growing %u", (unsigned)i);
+        again = mg_dvm_intern_string(mg_dvm_new_string(text));
+        same += again == first[i];
+        differ += i && first[i] != first[i - 1];
+        same += mg_dvm_intern_string(first[i]) == first[i];
+    }
+    CHECK_INT((i32)same, (i32)(2 * MG_COUNT(first)));
+    CHECK_INT((i32)differ, (i32)(MG_COUNT(first) - 1));
+    /* (Another thread of the tests' may intern a few meanwhile; twice as many would be the strings counted again.) */
+    CHECK((u32)g_dvm.n_interned - before >= MG_COUNT(first) && (u32)g_dvm.n_interned - before < MG_COUNT(first) + 500);
+}
+
 static void test_misc(void)
 {
     mg_dvm_stats stats;
@@ -618,5 +646,6 @@ void test_runtime(const char *fixtures)
     test_threads();
     test_limits();
     test_refused(fixtures);
+    test_interned();
     test_misc();
 }
