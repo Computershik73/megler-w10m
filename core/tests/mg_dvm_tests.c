@@ -152,6 +152,149 @@ static void test_arith(void)
     CHECK_STR(thrown(), "java.lang.NoClassDefFoundError: t/Nowhere");
 }
 
+/* ---------------------------------------------------------------- t.Jit */
+
+/* What t.Jit.mix computes, in C with Java's wrapping arithmetic: the answer its compiled code must give. */
+static i32 jit_mix(i32 n, i32 k)
+{
+    u32 v0 = (u32)k, v2, v3, v4, v5, v6;
+    i32 v1;
+    for (v1 = 0; v1 < n; v1++) {
+        u32 s = (u32)v1 & 31;
+        v2 = v0 + (u32)v1;
+        v3 = v2 - (u32)k;
+        v2 = v3 * v2;
+        v2 ^= v0;
+        v3 = (u32)v1 | 1;
+        v4 = (u32)((i32)v2 / (i32)v3);
+        v5 = (u32)((i32)v2 % (i32)v3);
+        v4 += v5;
+        v5 = v4 << s;
+        v3 = (u32)((i32)v2 >> s);
+        v6 = v2 >> s;
+        v5 ^= v3;
+        v5 += v6;
+        v3 = v5 & 0x7f;
+        v6 = ~v5;
+        v6 = 0u - v6;
+        v6 -= v3;
+        v3 = 0x1234u - v6;
+        v3 = 0x11u - v3;
+        v3 = v3 * (u32)-3;
+        v4 = (u32)((i32)v3 / 7);
+        v5 = (u32)((i32)v3 % 0x65);
+        v4 += v5;
+        v5 = v4 << 1;
+        v6 = (u32)((i32)v4 >> 3);
+        v3 = v4 >> 31;
+        v5 += v6;
+        v5 += v3;
+        v0 = v5 & v2;
+        v0 |= v5;
+    }
+    return (i32)v0;
+}
+
+static mg_jobj *jit_array(const char *cls, i32 len) { return mg_dvm_new_array(cls, len); }
+
+/*
+ * The JIT (mg_dvm_jit.c, docs/JIT.md) with its threshold at 1: each of t.Jit's loops compiled at its first jump back,
+ * and what they return as Java says. Exits too: a divisor of zero, an index out of bounds and a null array inside a
+ * compiled loop throw as interpreted; a loop whose body calls out is left to the interpreter. Where the host runs no Thumb-2
+ * (x64) nothing is compiled and the same answers are the interpreter's.
+ */
+static void test_jit(void)
+{
+    u32 was = g_dvm_jit_threshold;
+    mg_jobj *ints, *bytes, *chars, *shorts, *flags;
+    mg_dvm_class *c;
+    i32 i, want;
+    say("the JIT: loops compiled at their first jump back");
+    mg_dvm_jit_start(true, 1, false);
+    ints = jit_array("[I", 40);
+    bytes = jit_array("[B", 40);
+    chars = jit_array("[C", 40);
+    shorts = jit_array("[S", 40);
+    flags = jit_array("[Z", 7);
+    CHECK(ints && bytes && chars && shorts && flags);
+    if (!ints || !bytes || !chars || !shorts || !flags) return;
+    /* Filled by the compiled loop at k = 1000: ints i*1000, bytes, chars and shorts their truncations. */
+    A[0].l = ints;
+    A[1].l = bytes;
+    A[2].l = chars;
+    A[3].l = shorts;
+    A[4].i = 1000;
+    want = 0;
+    for (i = 0; i < 40; i++) want += i * 1000 + (i8)(i * 1000) + (u16)(i * 1000) + (i16)(i * 1000);
+    CHECK_INT(call("t/Jit", "fill", "([I[B[C[SI)I").i, want);
+    CHECK_INT(((i32 *)ints->u.arr.data)[39], 39000);
+    CHECK_INT(((i8 *)bytes->u.arr.data)[39], (i8)39000);
+    CHECK_INT(((u16 *)chars->u.arr.data)[39], (u16)39000);
+    CHECK_INT(((i16 *)shorts->u.arr.data)[39], (i16)39000);
+    for (i = 0; i < 7; i++) ((u8 *)flags->u.arr.data)[i] = (u8)(i % 3 == 0);
+    A[0].l = flags;
+    CHECK_INT(call("t/Jit", "countTrue", "([Z)I").i, 3);
+    A[0].i = 300;
+    A[1].i = 12345;
+    CHECK_INT(call("t/Jit", "mix", "(II)I").i, jit_mix(300, 12345));
+    A[0].i = 77;
+    A[1].i = -9;
+    CHECK_INT(call("t/Jit", "mix", "(II)I").i, jit_mix(77, -9));
+    A[0].i = 3;
+    CHECK_INT(call("t/Jit", "minOverMinusOne", "(I)I").i, (i32)(3u * 0x80000000u));
+    for (want = 0, i = -5; i <= 5; i++)
+        want += (i < 0 ? 1 : 0) + (i > 0 ? 2 : 0) + (i == 0 ? 4 : 0) + (i >= 0 ? 8 : 0) + (i <= 0 ? 0x10 : 0) + (i != 0 ? 0x20 : 0) +
+                (i >= 0 ? 0x40 : 0) + (i > 0 ? 0x80 : 0) + (i != 0 ? 0x100 : 0) + (i == 0 ? 0x200 : 0) + (i < 0 ? 0x400 : 0);
+    A[0].i = 5;
+    CHECK_INT(call("t/Jit", "conditions", "(I)I").i, want);
+    /* A divisor of zero among them, the index past the end, a null array: thrown from inside the compiled loops. */
+    for (i = 0; i < 40; i++) ((i32 *)ints->u.arr.data)[i] = i < 30 ? i + 1 : 0;
+    A[0].i = 100000;
+    A[1].l = ints;
+    CHECK_INT(call("t/Jit", "divideAll", "(I[I)I").i, 0);
+    CHECK_STR(thrown(), "java.lang.ArithmeticException: divide by zero");
+    A[0].l = ints;
+    A[1].i = 41;
+    CHECK_INT(call("t/Jit", "readTo", "([II)I").i, 0);
+    CHECK_STR(thrown(), "java.lang.ArrayIndexOutOfBoundsException: length=40; index=40");
+    A[0].l = NULL;
+    A[1].i = 3;
+    call("t/Jit", "readTo", "([II)I");
+    CHECK_STR(thrown(), "java.lang.NullPointerException: Attempt to read from a null array");
+    A[0].l = ints;
+    A[1].i = 30;
+    CHECK_INT(call("t/Jit", "readTo", "([II)I").i, 465);
+    A[0].i = 50;
+    CHECK_INT(call("t/Jit", "callsInLoop", "(I)I").i, 1225);
+    A[0].i = 10;
+    A[1].j = (i64)0x123456789abcdef0ll;
+    CHECK(call("t/Jit", "wideMoves", "(IJ)J").j == (i64)0x123456789abcdef0ll);
+    CHECK_STR(thrown(), "");
+    /* Compiled, where the host runs Thumb-2. */
+    c = mg_dvm_find_class("t/Jit");
+#if defined(__arm__) || defined(_M_ARM)
+    {
+        static const struct { const char *name, *sig; } compiled[] = {
+            { "sum", "([I)I" }, { "fill", "([I[B[C[SI)I" }, { "mix", "(II)I" }, { "conditions", "(I)I" }, { "divideAll", "(I[I)I" },
+            { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" },
+        };
+        size_t k;
+        mg_dvm_method *calls;
+        for (k = 0; k < MG_COUNT(compiled); k++) {
+            mg_dvm_method *m = c ? mg_dvm_find_method(c, compiled[k].name, compiled[k].sig, true) : NULL;
+            CHECK(m && m->jit_state == 1 && m->jit);
+            if (!m || !m->jit) say("  t.Jit.%s%s was not compiled", compiled[k].name, compiled[k].sig);
+        }
+        /* A loop that calls out at every turn is left to the interpreter: going in and out would cost more than it saves. */
+        calls = c ? mg_dvm_find_method(c, "callsInLoop", "(I)I", true) : NULL;
+        CHECK(calls && calls->jit_state == 2 && !calls->jit);
+    }
+#else
+    (void)c;
+#endif
+    g_dvm_jit_threshold = was;
+}
+
 /* ------------------------------------------------------------- two files */
 
 static void test_two_files(void)
@@ -265,6 +408,7 @@ int mg_dvm_tests_run(const mg_dvm_test_config *config, mg_test_sink sink, void *
         mg_dvm_set_trace(config->trace);
         test_ops();
         test_arith();
+        test_jit();
         test_two_files();
         test_language();
         test_runtime(config->fixtures);

@@ -3,6 +3,7 @@
 #include "../mg_core.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 bool mg_dvm_running(void) { return g_dvm.running; }
 
@@ -296,6 +297,16 @@ bool mg_dvm_start(const char *const *boot, int nboot)
     }
     mg_dvm_objects_start();
     if (g_dvm.libcore) mg_dvm_intrinsics_start();
+    /*
+     * The JIT (mg_dvm_jit.c): on unless the flag no-jit says otherwise; trace-jit says each method compiled. The tests set
+     * MEGLER_JIT_THRESHOLD (1: every loop compiled at its first jump back) to run their code compiled, and MEGLER_JIT_TRACE=1.
+     */
+    {
+        const char *t = getenv("MEGLER_JIT_THRESHOLD");
+        u32 threshold = t && *t ? (u32)strtoul(t, NULL, 10) : 1000;
+        const char *trace = getenv("MEGLER_JIT_TRACE");
+        mg_dvm_jit_start(!mg_flag("no-jit") && threshold > 0, threshold, mg_flag("trace-jit") || (trace && *trace == '1'));
+    }
     /* From here on allocation collects when enough has been made (mg_dvm_gc.c). */
     mg_dvm_gc_enable(true);
     return true;

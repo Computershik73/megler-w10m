@@ -959,7 +959,10 @@ static const u16 *payload_at(const mg_dvm_method *m, u32 pc, i32 off, u16 ident)
 #define JUMP(off)                                                                    \
     {                                                                                \
         u32 to_ = (u32)((i32)pc + (i32)(off));                                       \
-        if ((i32)(off) <= 0) SAFEPOINT(to_);                                         \
+        if ((i32)(off) <= 0) {                                                       \
+            SAFEPOINT(to_);                                                          \
+            JIT_BACK(to_);                                                           \
+        }                                                                            \
         pc = to_;                                                                    \
         continue;                                                                    \
     }
@@ -1077,10 +1080,24 @@ enum { DVM_THREW, DVM_RETURNED, DVM_SWITCH };
         f->pc = (at);                                                                \
         goto switch_loop;                                                            \
     }
+/*
+ * A jump back: the method's compiled code run from the target when it has some there (mg_dvm_jit.c), until it hands the
+ * frame back at the pc the loop goes on at. (Only in the plain loop: nothing compiled runs while instructions are watched.)
+ */
+#define JIT_BACK(at)                                                                 \
+    {                                                                                \
+        u32 next_;                                                                   \
+        if (mg_dvm_jit_back(m, regs, (at), &next_)) {                                \
+            pc = next_;                                                              \
+            continue;                                                                \
+        }                                                                            \
+    }
 #include "mg_dvm_interp_loop.h"
 #undef DVM_LOOP
 #undef DVM_WATCHED
 #undef SAFEPOINT
+#undef JIT_BACK
+#define JIT_BACK(at)
 #define DVM_LOOP mg_dvm_interpret_watched
 #define DVM_WATCHED 1
 #define SAFEPOINT(at)                                                                \

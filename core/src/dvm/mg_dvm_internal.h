@@ -178,6 +178,13 @@ struct mg_dvm_method {
     /* 1: a framework method that is its signature alone (megler-stubs.txt, mg_dvm_stubs_load) whose first call is still to be said. */
     volatile u8 stub;
     /*
+     * The JIT (mg_dvm_jit.c, docs/JIT.md): jumps back taken in the interpreter, until it is compiled; whether it was tried
+     * (1 compiled, 2 not to be); and its code, NULL until it is compiled.
+     */
+    u16 jit_backs;
+    volatile u8 jit_state;
+    struct mg_dvm_jit_code *volatile jit;
+    /*
      * What the whole body is when it is one of the trivial shapes a call does in place (mg_dvm_interp.c, "trivial
      * methods"): 0 not looked at yet. One word, written once with all of it -- the shape, the instruction that does the
      * work, a constant -- so that another thread sees it whole; the field is written before it.
@@ -560,6 +567,36 @@ void mg_dvm_call_trace_add(const char *prefix);
 bool mg_dvm_stub_listed(const char *cls, const char *name, const char *sig);
 /* mg_dvm_interp.c: the first call of a method marked a stub, said in the log with its caller (NULL: called from C). */
 void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m);
+
+/*
+ * mg_dvm_jit.c (docs/JIT.md): the method compiled to Thumb-2 once its jumps back pass the threshold, and run from `pc`, a
+ * branch target, on the frame's registers until it hands the frame back: true with *next the pc the interpreter goes on
+ * at; false when there is no code to run there (nothing done). Where there is no JIT (x64), always false.
+ */
+typedef struct mg_dvm_jit_code mg_dvm_jit_code;
+struct mg_dvm_jit_code {
+    u8 *pages;                         /* the code, read and run */
+    size_t size;
+    int (*run)(mg_dvm_reg *regs, const void *entry, u32 *pc_out, const volatile i32 *slow);
+    u32 *entry;                        /* by pc: where a loop wholly compiled is entered, as its halfword in the code +1 (0: none) */
+    u32 ninsns;
+};
+extern u32 g_dvm_jit_threshold;      /* jumps back before a method is compiled; 0 off (the flag no-jit, or no JIT on this host) */
+void mg_dvm_jit_start(bool on, u32 threshold, bool trace);
+bool mg_dvm_jit_enter(mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next);
+static inline bool mg_dvm_jit_back(mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next)
+{
+    mg_dvm_jit_code *c = m->jit;
+    if (c) {
+        u32 at = pc < c->ninsns ? c->entry[pc] : 0;
+        if (!at) return false;
+        c->run(regs, c->pages + (size_t)(at - 1) * 2 + 1, next, &g_dvm.slow);
+        return true;
+    }
+    if (!g_dvm_jit_threshold || m->jit_state) return false;
+    if (++m->jit_backs < g_dvm_jit_threshold) return false;
+    return mg_dvm_jit_enter(m, regs, pc, next);
+}
 /* For the collector, with the runtime's lock held: every thread there is, and every interned string. */
 void mg_dvm_threads_each(void (*fn)(mg_dvm_thread *t, void *user), void *user);
 void mg_dvm_interned_each(void (*fn)(mg_jobj *s, void *user), void *user);
