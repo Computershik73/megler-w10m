@@ -1043,8 +1043,9 @@ static void extend_ssl_parameters(mg_dvm_class *cls)
         m->insns = NULL;
         m->ninsns = 0;
         m->flags |= DVM_ACC_NATIVE;
-        m->native = functions[i];
-        m->bound = true;
+        g_ssl_parameters_original[i].nat = NULL;
+        mg_dvm_native_of(m)->native = functions[i];
+        m->nat->bound = true;
     }
 }
 
@@ -1080,8 +1081,8 @@ static void own_run_finalization(mg_dvm_class *c)
     m->insns = NULL;
     m->ninsns = 0;
     m->flags |= DVM_ACC_NATIVE;
-    m->native = VMRuntime_runFinalization;
-    m->bound = true;
+    mg_dvm_native_of(m)->native = VMRuntime_runFinalization;
+    m->nat->bound = true;
 }
 
 static void before_init(mg_dvm_class *c)

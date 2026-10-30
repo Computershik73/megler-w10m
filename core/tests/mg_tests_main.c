@@ -448,7 +448,7 @@ static int natives_mode(char **argv)
                     ref_add(&nobody, name);
                     /* Each by its name, but for conscrypt's 280, which are one fact: its library is not there, or did not load. */
                     if (strcmp(name, "com/android/org/conscrypt/NativeCrypto")) printf("  nobody answers %s.%s%s\n", name, m->name, m->sig);
-                } else if (m->native) {
+                } else if (m->nat && m->nat->native) {
                     in_c++;
                 } else {
                     in_library++;

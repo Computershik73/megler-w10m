@@ -337,17 +337,29 @@ static void pretty_method(const mg_dvm_method *m, char *out, size_t n)
     snprintf(out + k, k < n ? n - k : 0, ")");
 }
 
+mg_dvm_native_info *mg_dvm_native_of(mg_dvm_method *m)
+{
+    mg_dvm_native_info *n = m->nat, *made, *was;
+    if (n) return n;
+    made = (mg_dvm_native_info *)mg_dvm_meta_alloc_kind(sizeof(*made), DVM_META_METHOD);
+    memset(made, 0, sizeof(*made));
+    was = (mg_dvm_native_info *)mg_atomic_cas_ptr((void *volatile *)&m->nat, NULL, made);
+    /* (Two threads at once: the other's is the method's, and this one is left, a few bytes.) */
+    return was ? was : made;
+}
+
 bool mg_dvm_bind_native(mg_dvm_method *m)
 {
+    mg_dvm_native_info *n = mg_dvm_native_of(m);
     mg_jhle_fn fn;
-    void *jni = m->jni;
-    if (m->native) return true;
+    void *jni = n->jni;
+    if (n->native) return true;
     /* What was registered here in C comes before a library's function, whichever was there first. */
     mg_dvm_lock();
     fn = registered(m->cls->name, m->name, m->sig);
     mg_dvm_unlock();
     if (!fn && jni) {
-        m->bound = true;
+        n->bound = true;
         return true;
     }
     if (!fn && g_dvm.jni.find) jni = g_dvm.jni.find(m->cls->name, m->name, m->sig, mg_dvm_class_is_app(m->cls));
@@ -368,9 +380,9 @@ bool mg_dvm_bind_native(mg_dvm_method *m)
         return mg_dvm_throw("java/lang/UnsatisfiedLinkError", "No implementation found for %s%s%s%s", pretty, tried[0] ? " (tried " : "", tried, tried[0] ? ")" : "");
     }
     if (g_dvm.trace >= 1) mg_info("dvm: native %s.%s%s bound to %s", m->cls->name, m->name, m->sig, fn ? "a C implementation" : "the app's library");
-    if (fn) m->native = fn;
-    else m->jni = jni;
-    m->bound = true;
+    if (fn) n->native = fn;
+    else n->jni = jni;
+    n->bound = true;
     return true;
 }
 
@@ -1047,7 +1059,7 @@ bool mg_dvm_native_registered(mg_dvm_class *c, const char *name, const char *sig
         int n = group ? c->nvirt : c->ndirect;
         for (i = 0; i < n; i++) {
             if (list[i].name != iname || list[i].sig != isig || !(list[i].flags & DVM_ACC_NATIVE)) continue;
-            list[i].jni = fn;
+            mg_dvm_native_of(&list[i])->jni = fn;
             return true;
         }
     }
@@ -1538,8 +1550,8 @@ mg_dvm_class *mg_dvm_make_proxy_class(const char *name, mg_dvm_class *super, mg_
     c->direct[0].flags = DVM_ACC_PUBLIC | DVM_ACC_CONSTRUCTOR | DVM_ACC_NATIVE;
     c->direct[0].nparams = 1;
     c->direct[0].vidx = -1;
-    c->direct[0].native = construct;
-    c->direct[0].bound = true;
+    mg_dvm_native_of(&c->direct[0])->native = construct;
+    c->direct[0].nat->bound = true;
     c->nvirt = nmethods;
     c->virt = (mg_dvm_method *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_method) * (size_t)(nmethods + 1), DVM_META_METHOD);
     inherited = super->nvtab;
@@ -1556,8 +1568,8 @@ mg_dvm_class *mg_dvm_make_proxy_class(const char *name, mg_dvm_class *super, mg_
         m->nparams = like[i]->nparams;
         m->flags = DVM_ACC_PUBLIC | DVM_ACC_FINAL | DVM_ACC_NATIVE;
         m->idx = (u32)i;                                             /* which of the methods it stands for */
-        m->native = invoke;
-        m->bound = true;
+        mg_dvm_native_of(m)->native = invoke;
+        m->nat->bound = true;
         /* The three of Object that a handler answers (equals, hashCode, toString) take their places in the vtable; the rest are new. */
         for (k = 0; k < inherited && slot < 0; k++)
             if (c->vtab[k]->name == m->name && c->vtab[k]->sig == m->sig) slot = k;

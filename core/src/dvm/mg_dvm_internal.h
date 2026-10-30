@@ -163,20 +163,13 @@ struct mg_dvm_method {
     const u8 *code;                    /* the code item */
     i32 vidx;                          /* vtable slot, or -1 */
     u16 nparams;
-    mg_jhle_fn native;                 /* a native method's implementation in C, once bound */
-    void *jni;                         /* or its function in a library of the app's: registered by it, or found by its JNI name */
-    bool bound;                        /* which of the two it is to be has been settled */
-    i8 critical;                       /* a library's function that takes its arguments alone (@CriticalNative): 1 yes, -1 no, 0 not looked at */
-    mg_dvm_method_prof *volatile prof; /* the profile's counts of it, NULL until it counts it (mg_dvm_prof) */
-    /*
-     * The meter's time of a native method (mg_dvm_thread_costs): its calls from bytecode, and what one of them takes on
-     * average, in the host's ticks. A method whose calls are short is not timed every time (see invoke_native).
-     */
-    u32 meter_calls, meter_avg;
     /* One of the library's methods the interpreter does itself when it can (mg_dvm_interp.c, "intrinsics"): its number, or 0. */
     u8 intrinsic;
     /* 1: a framework method that is its signature alone (megler-stubs.txt, mg_dvm_stubs_load) whose first call is still to be said. */
     volatile u8 stub;
+    /* A native method's binding and the meter of its calls (mg_dvm_native_of); NULL for one never bound, and for bytecode. */
+    struct mg_dvm_native_info *volatile nat;
+    mg_dvm_method_prof *volatile prof; /* the profile's counts of it, NULL until it counts it (mg_dvm_prof) */
     /*
      * The JIT (mg_dvm_jit.c, docs/JIT.md): jumps back taken in the interpreter, until it is compiled; whether it was tried
      * (1 compiled, 2 not to be); and its code, NULL until it is compiled.
@@ -192,6 +185,24 @@ struct mg_dvm_method {
     volatile u32 shape;
     mg_dvm_field *volatile shape_field;
 };
+
+/*
+ * What only a native method needs, apart from the rest of its method so that every other method (most of them, some 450,000
+ * in Yandex Maps' process, at 96 bytes each before) is 20 bytes smaller: made when it is first bound or registered.
+ */
+typedef struct mg_dvm_native_info {
+    mg_jhle_fn native;                 /* its implementation in C, once bound */
+    void *jni;                         /* or its function in a library of the app's: registered by it, or found by its JNI name */
+    bool bound;                        /* which of the two it is to be has been settled */
+    i8 critical;                       /* a library's function that takes its arguments alone (@CriticalNative): 1 yes, -1 no, 0 not looked at */
+    /*
+     * The meter's time of it (mg_dvm_thread_costs): its calls from bytecode, and what one of them takes on average, in the
+     * host's ticks. A method whose calls are short is not timed every time (see invoke_native).
+     */
+    u32 meter_calls, meter_avg;
+} mg_dvm_native_info;
+/* mg_dvm_class.c: the method's native part, made the first time it is wanted (published with an interlocked exchange). */
+mg_dvm_native_info *mg_dvm_native_of(mg_dvm_method *m);
 
 /* mg_dvm.c: a method's profile counts, made the first time they are wanted. */
 mg_dvm_method_prof *mg_dvm_prof_make(mg_dvm_method *m);

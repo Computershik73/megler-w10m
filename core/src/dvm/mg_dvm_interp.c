@@ -374,7 +374,7 @@ static void normalise(char kind, mg_jvalue *v)
 #define SHORT_NATIVE_NS 4000
 static u64 g_short_native_ticks;
 
-static inline bool native_timed(mg_dvm_method *m)
+static inline bool native_timed(mg_dvm_native_info *m)
 {
     u32 n = m->meter_calls++;
     if (!g_short_native_ticks) {
@@ -384,7 +384,7 @@ static inline bool native_timed(mg_dvm_method *m)
     return n < 64 || (n & 63) == 0 || m->meter_avg >= g_short_native_ticks;
 }
 
-static inline void native_time(mg_dvm_thread *t, mg_dvm_method *m, u64 started)
+static inline void native_time(mg_dvm_thread *t, mg_dvm_native_info *m, u64 started)
 {
     u64 d = mg_time_ticks() - started;
     t->native_ticks += d;
@@ -396,6 +396,7 @@ static inline void native_time(mg_dvm_thread *t, mg_dvm_method *m, u64 started)
 static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, const mg_dvm_reg *argv, const mg_jvalue *cparams, mg_jvalue *result)
 {
     mg_dvm_frame *f;
+    mg_dvm_native_info *nat = m->nat;
     mg_jobj *sync = NULL, *target;
     const mg_jvalue *params = cparams;
     u64 native_started = 0, call_started = 0;
@@ -403,7 +404,10 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     int library_scope = mg_ld_set_scope(m->cls->scope);
     if ((mg_addr)&f < t->c_stack_min) t->c_stack_min = (mg_addr)&f;
     result->j = 0;
-    if (!m->bound && !mg_dvm_bind_native(m)) { mg_ld_set_scope(library_scope); return false; }
+    if (!(nat && nat->bound)) {
+        if (!mg_dvm_bind_native(m)) { mg_ld_set_scope(library_scope); return false; }
+        nat = m->nat;
+    }
     /* The frame is what a stack trace shows of a native method; the parameters are laid out above it. */
     f = push_frame(t, m, argv ? ((size_t)m->nparams * sizeof(mg_jvalue) + 8) / sizeof(mg_dvm_reg) + 1 : 0);
     if (!f) { mg_ld_set_scope(library_scope); return false; }
@@ -424,11 +428,11 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     /* The always-on count (mg_dvm_thread_costs): the outermost native method's time; one called back from it is in it. */
     outermost = t->native_depth++ == 0;
     if (outermost) {
-        timed = native_timed(m);
+        timed = native_timed(nat);
         if (timed) call_started = mg_time_ticks();
     }
     t->natives++;
-    if (m->native) {
+    if (nat->native) {
         mg_jcall c;
         memset(&c, 0, sizeof(c));
         c.self = is_static ? NULL : self;
@@ -436,13 +440,13 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
         c.name = m->name;
         c.sig = m->sig;
         c.args = params;
-        m->native(&c);
+        nat->native(&c);
         *result = c.ret;
     } else if (g_dvm.jni.call) {
         /* A library's function. One marked @CriticalNative is called with its arguments alone, as Android calls it. */
-        if (!m->critical) m->critical = is_static && mg_dvm_method_annotated(m, "Ldalvik/annotation/optimization/CriticalNative;") ? 1 : -1;
-        if (m->critical > 0 && g_dvm.jni.call_bare) {
-            *result = g_dvm.jni.call_bare(m->jni, m->sig, params);
+        if (!nat->critical) nat->critical = is_static && mg_dvm_method_annotated(m, "Ldalvik/annotation/optimization/CriticalNative;") ? 1 : -1;
+        if (nat->critical > 0 && g_dvm.jni.call_bare) {
+            *result = g_dvm.jni.call_bare(nat->jni, m->sig, params);
         } else {
             /*
              * Code Android runs in a process of its own, not the app's: a service's (its class, or the loader its dex came
@@ -454,14 +458,14 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
             if (!scope && !mg_dvm_class_is_app(m->cls)) scope = t->owner_scope;
             if (scope > 0 && g_dvm.jni.call_guarded) {
                 bool faulted = false;
-                *result = g_dvm.jni.call_guarded(m->jni, target, m->sig, params, &faulted);
+                *result = g_dvm.jni.call_guarded(nat->jni, target, m->sig, params, &faulted);
                 if (faulted) {
                     mg_warn("dvm: %s.%s%s faulted in its native code; the call ends with an exception, as the process of the code would end on Android", m->cls->name, m->name, m->sig);
                     mg_dvm_throw("java/lang/RuntimeException", "%s.%s%s faulted in its native code: the process it runs in on Android would have ended",
                                  m->cls->name, m->name, m->sig);
                 }
             } else {
-                *result = g_dvm.jni.call(m->jni, target, m->sig, params);
+                *result = g_dvm.jni.call(nat->jni, target, m->sig, params);
             }
         }
         /* What a library hands back as an object must be one of the runtime's; the JNI layer has others, from before it started. */
@@ -473,8 +477,8 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
         mg_dvm_throw("java/lang/UnsatisfiedLinkError", "%s.%s%s is in a library, and the way to it is gone", m->cls->name, m->name, m->sig);
     }
     --t->native_depth;
-    if (timed) native_time(t, m, call_started);
-    else if (outermost) t->native_ticks += m->meter_avg;
+    if (timed) native_time(t, nat, call_started);
+    else if (outermost) t->native_ticks += nat->meter_avg;
     if (sync) mg_dvm_monitor_exit(sync);
     if (native_started) mg_dvm_prof(m)->ns += mg_time_monotonic_ns() - native_started;
     pop_frame(t);

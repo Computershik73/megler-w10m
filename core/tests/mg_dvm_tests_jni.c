@@ -225,9 +225,11 @@ static void test_env(void)
         if (sizeof(mg_addr) == 4) {
             /* The table is the guest's, of 32-bit words: it can only be made here where a pointer is one. */
             CHECK_INT(J(215, i32 (*)(ENV, mg_jobj *, const void *, i32))(E, find("t/Natives"), table, 2), 0);
-            CHECK(bound && bound->jni == (void *)(mg_addr)0x1234);
-            bound->jni = NULL;
-            bound->bound = false;
+            CHECK(bound && bound->nat && bound->nat->jni == (void *)(mg_addr)0x1234);
+            if (bound && bound->nat) {
+                bound->nat->jni = NULL;
+                bound->nat->bound = false;
+            }
         }
         CHECK(bound != NULL && !check());
     }
