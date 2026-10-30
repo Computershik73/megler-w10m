@@ -306,6 +306,10 @@ static bool alias_loader(mg_jobj *loader, int scope, const char *source)
     }
     return true;
 }
+/* org.apache.http.legacy.dex's bytes, read once for every scope that has it (each read it again, 0.7 MB). */
+static u8 *g_legacy_dex;
+static size_t g_legacy_size;
+
 N(ServiceClassLoader_openApk) {
     const char *path = mg_dvm_string_utf8(c->args[0].l);
     char *host;
@@ -329,11 +333,26 @@ N(ServiceClassLoader_openApk) {
     /* A separately loaded service may declare Android's optional Apache HTTP
        library even when its client does not. Keep that library in the service
        scope so it cannot resolve client classes or displace client libraries. */
-    legacy = mg_sprintf("%s/framework/org.apache.http.legacy.dex", g_dvm.android_root ? g_dvm.android_root : ".");
-    legacy_dex = mg_file_read_all(legacy, &legacy_size);
-    if (legacy_dex && !mg_dvm_add_dex_scope(legacy_dex, legacy_size, "org.apache.http.legacy.dex", scope))
-        free(legacy_dex);
-    free(legacy);
+    mg_dvm_lock();
+    legacy_dex = g_legacy_dex;
+    legacy_size = g_legacy_size;
+    mg_dvm_unlock();
+    if (!legacy_dex) {
+        legacy = mg_sprintf("%s/framework/org.apache.http.legacy.dex", g_dvm.android_root ? g_dvm.android_root : ".");
+        legacy_dex = mg_file_read_all(legacy, &legacy_size);
+        free(legacy);
+        mg_dvm_lock();
+        if (!g_legacy_dex && legacy_dex) {
+            g_legacy_dex = legacy_dex;
+            g_legacy_size = legacy_size;
+        } else if (legacy_dex) {
+            free(legacy_dex);
+            legacy_dex = g_legacy_dex;
+            legacy_size = g_legacy_size;
+        }
+        mg_dvm_unlock();
+    }
+    if (legacy_dex) mg_dvm_add_dex_scope(legacy_dex, legacy_size, "org.apache.http.legacy.dex", scope);
     g_service_apks[scope] = mg_strdup(path);
     c->ret.i = scope;
 }
