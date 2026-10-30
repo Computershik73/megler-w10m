@@ -565,6 +565,9 @@ u32 mg_dvm_dex_count(void);
 void mg_dvm_each_linked(void (*fn)(mg_dvm_class *c, void *user), void *user);
 /* The same for the collector: with the runtime's lock held and the other threads stopped, so nothing is allocated. */
 void mg_dvm_each_linked_locked(void (*fn)(mg_dvm_class *c, void *user), void *user);
+/* The same for the buckets [from, to) of the class table, of mg_dvm_class_buckets (the collector's threads share them so). */
+void mg_dvm_each_linked_part(u32 from, u32 to, void (*fn)(mg_dvm_class *c, void *user), void *user);
+u32 mg_dvm_class_buckets(void);
 mg_dvm_dex *mg_dvm_dex_at(u32 i);
 const char *mg_dvm_defined_name(u32 i, mg_dvm_dex **dex);
 
@@ -698,6 +701,9 @@ static inline int mg_dvm_jit_back(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_meth
 /* For the collector, with the runtime's lock held: every thread there is, and every interned string. */
 void mg_dvm_threads_each(void (*fn)(mg_dvm_thread *t, void *user), void *user);
 void mg_dvm_interned_each(void (*fn)(mg_jobj *s, void *user), void *user);
+/* The same for the slots [from, to) of the interned strings' table, of mg_dvm_interned_slots. */
+void mg_dvm_interned_part(u32 from, u32 to, void (*fn)(mg_jobj *s, void *user), void *user);
+u32 mg_dvm_interned_slots(void);
 /* The objects the C side of the runtime keeps: the preallocated OutOfMemoryError, the app's class loader. */
 void mg_dvm_object_roots(void (*fn)(mg_jobj *o, void *user), void *user);
 /* mg_dvm_art_reflect.c: the Method[] kept beside each proxy class. */

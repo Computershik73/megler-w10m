@@ -1532,6 +1532,17 @@ void mg_dvm_each_linked_locked(void (*fn)(mg_dvm_class *c, void *user), void *us
         for (c = g_classes[i]; c; c = c->next) fn(c, user);
 }
 
+void mg_dvm_each_linked_part(u32 from, u32 to, void (*fn)(mg_dvm_class *c, void *user), void *user)
+{
+    mg_dvm_class *c;
+    u32 i;
+    if (to > CLASS_BUCKETS) to = CLASS_BUCKETS;
+    for (i = from; i < to; i++)
+        for (c = g_classes[i]; c; c = c->next) fn(c, user);
+}
+
+u32 mg_dvm_class_buckets(void) { return CLASS_BUCKETS; }
+
 mg_dvm_dex *mg_dvm_dex_at(u32 i) { return i < (u32)g_ndexes ? g_dexes[i] : NULL; }
 
 mg_dvm_class *mg_dvm_make_proxy_class(const char *name, mg_dvm_class *super, mg_dvm_class **ifaces, int nifaces, mg_dvm_method *const *like, int nmethods,

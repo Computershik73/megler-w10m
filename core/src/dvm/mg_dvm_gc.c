@@ -142,6 +142,7 @@ typedef struct marker {
     u32 n, cap;
     u64 marked, marked_bytes, conservative, conservative_bytes;   /* objects marked; their bytes; marked first by a conservative root */
     bool counting_conservative;
+    u32 classes, strings;              /* exact roots read: classes, interned strings */
 } marker;
 
 typedef struct gc_state {
@@ -155,6 +156,7 @@ typedef struct gc_state {
     u64 roots_ns, stacks_ns;           /* the mark's time on the exact roots and on the conservative scan, the rest following */
     u64 classes_ns, strings_ns, jni_ns;
     u32 classes, strings, jni_roots;
+    bool roots_shared;                 /* the classes and the interned strings read by all the threads (classes_ns their time with what they hold) */
 } gc_state;
 
 static gc_state G;
@@ -387,8 +389,40 @@ static void mark_round(void *arg, int worker)
     mark_shared(&g_markers[worker]);
 }
 
-/* The collecting thread's stack drained by it and the helpers together. */
-static void drain_shared(void)
+/*
+ * The exact roots of the classes and the interned strings, shared: the class table's buckets and the interned strings'
+ * slots in parts, each thread taking the next part and marking into its own stack, then the mark going on shared
+ * (mark_shared). On the one thread they were Yandex Maps' 55,000 classes in 23 ms and 42,000 strings in 12, of a 140 ms
+ * mark (package 528).
+ */
+#define ROOT_BUCKETS 1024u
+#define ROOT_SLOTS 2048u
+static volatile i32 g_root_next;
+static u32 g_root_class_parts, g_root_string_parts;
+
+static void class_roots(mg_dvm_class *c, void *user);
+static void string_root(mg_jobj *s, void *user);
+
+static void roots_round(void *arg, int worker)
+{
+    marker *k = &g_markers[worker];
+    (void)arg;
+    for (;;) {
+        u32 p = (u32)(mg_atomic_add(&g_root_next, 1) - 1);
+        if (p < g_root_class_parts) {
+            mg_dvm_each_linked_part(p * ROOT_BUCKETS, (p + 1) * ROOT_BUCKETS, class_roots, k);
+        } else if (p < g_root_class_parts + g_root_string_parts) {
+            p -= g_root_class_parts;
+            mg_dvm_interned_part(p * ROOT_SLOTS, (p + 1) * ROOT_SLOTS, string_root, k);
+        } else {
+            break;
+        }
+    }
+    mark_shared(k);
+}
+
+/* A round (mark_round, roots_round) by the collecting thread and the helpers, the collecting thread's stack their pool. */
+static void shared(void (*round)(void *arg, int worker))
 {
     int i;
     g_pool = G.main.stack;
@@ -399,6 +433,7 @@ static void drain_shared(void)
         marker *k = &g_markers[i];
         k->n = 0;
         k->marked = k->marked_bytes = k->conservative = k->conservative_bytes = 0;
+        k->classes = k->strings = 0;
         k->counting_conservative = G.main.counting_conservative;
     }
     g_parallel = true;
@@ -408,7 +443,7 @@ static void drain_shared(void)
     g_any_idle = 0;
     g_done = false;
     mg_lock_release(&g_mark_lock);
-    run_round(mark_round, NULL);
+    run_round(round, NULL);
     g_parallel = false;
     for (i = 0; i <= g_nhelpers; i++) {
         marker *k = &g_markers[i];
@@ -416,9 +451,14 @@ static void drain_shared(void)
         G.main.marked_bytes += k->marked_bytes;
         G.main.conservative += k->conservative;
         G.main.conservative_bytes += k->conservative_bytes;
+        G.main.classes += k->classes;
+        G.main.strings += k->strings;
     }
     G.markers = (u32)g_nhelpers + 1;
 }
+
+/* The collecting thread's stack drained by it and the helpers together. */
+static void drain_shared(void) { shared(mark_round); }
 
 static void drain(void)
 {
@@ -429,14 +469,21 @@ static void drain(void)
 /* What the classes hold: statics of reference type, the Class object, the error of a failed initialisation. */
 static void class_roots(mg_dvm_class *c, void *user)
 {
+    marker *k = user ? (marker *)user : &G.main;
     int i;
-    (void)user;
-    G.classes++;
-    reach_ref(c->mirror, NULL);
-    reach_ref(c->init_error, NULL);
+    k->classes++;
+    reach(k, c->mirror);
+    reach(k, c->init_error);
     if (!c->statics) return;
     /* (The static slots of references come first: mg_dvm_class.c.) */
-    for (i = 0; i < c->nsrefs; i++) reach_ref(c->statics[i].l, NULL);
+    for (i = 0; i < c->nsrefs; i++) reach(k, c->statics[i].l);
+}
+
+static void string_root(mg_jobj *s, void *user)
+{
+    marker *k = user ? (marker *)user : &G.main;
+    k->strings++;
+    reach(k, s);
 }
 
 static void exact_thread_roots(mg_dvm_thread *t, void *user)
@@ -639,16 +686,20 @@ static void mark(void)
 {
     u32 i;
     u64 t0 = mg_time_monotonic_ns(), t1, t2;
-    mg_dvm_each_linked_locked(class_roots, NULL);
-    t1 = mg_time_monotonic_ns();
-    G.classes_ns = t1 - t0;
     /*
-     * The interned strings, among them every DEX file's string constants resolved (mg_dvm_const_string keeps the interned
-     * copy): those files' tables of them, a word for every string they have (Yandex Maps' sixteen files), are not walked.
+     * The classes and the interned strings, among them every DEX file's string constants resolved (mg_dvm_const_string keeps
+     * the interned copy: those files' tables of them, a word for every string they have, are not walked). With helpers
+     * they are shared, after the other roots ("the exact roots ... shared").
      */
-    mg_dvm_interned_each(reach_counted, &G.strings);
-    t2 = mg_time_monotonic_ns();
-    G.strings_ns = t2 - t1;
+    G.roots_shared = g_nhelpers > 0;
+    if (!G.roots_shared) {
+        mg_dvm_each_linked_locked(class_roots, NULL);
+        t1 = mg_time_monotonic_ns();
+        G.classes_ns = t1 - t0;
+        mg_dvm_interned_each(string_root, NULL);
+        t2 = mg_time_monotonic_ns();
+        G.strings_ns = t2 - t1;
+    }
     mg_dvm_threads_each(exact_thread_roots, NULL);
     mg_dvm_proxy_roots(reach_ref, NULL);
     mg_dvm_object_roots(reach_ref, NULL);
@@ -661,6 +712,16 @@ static void mark(void)
     for (i = 0; i < g_nto_finalize; i++) reach_ref(g_to_finalize[i], NULL);
     reach_ref(g_pending_refs, NULL);
     G.roots_ns = mg_time_monotonic_ns() - t0;
+    if (G.roots_shared) {
+        t1 = mg_time_monotonic_ns();
+        g_root_next = 0;
+        g_root_class_parts = (mg_dvm_class_buckets() + ROOT_BUCKETS - 1) / ROOT_BUCKETS;
+        g_root_string_parts = (mg_dvm_interned_slots() + ROOT_SLOTS - 1) / ROOT_SLOTS;
+        shared(roots_round);
+        G.classes_ns = mg_time_monotonic_ns() - t1;
+    }
+    G.classes = G.main.classes;
+    G.strings = G.main.strings;
     drain();
     /* What only the conservative scans find, counted apart: the next phone log says how much that is. */
     G.main.counting_conservative = true;
@@ -818,6 +879,7 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
         out->classes = G.classes;
         out->strings = G.strings;
         out->jni_roots = G.jni_roots;
+        out->roots_shared = G.roots_shared;
         out->threads_stopped = (u32)g_nstopped;
         out->stop_ns = t1 - t0;
         out->mark_ns = t2 - t1;
@@ -930,14 +992,23 @@ bool mg_dvm_gc(const char *reason, mg_dvm_gc_result *out)
         return false;
     }
     if (!r.objects) return true;
-    mg_info("gc: %s: %.1f ms (stop %.1f, mark %.1f by %u threads: the exact roots %.1f -- %u classes %.1f, %u interned strings %.1f, %u of the "
-            "JNI layer's %.1f --, the stacks %.1f, the rest following references; sweep %.1f by %u); freed %.1f MB (%u objects), live %.1f MB "
-            "(%u objects); %u threads stopped; %.2f MB (%u objects) found only through a conservative root",
+    {
+        char roots[200];
+        if (r.roots_shared)
+            snprintf(roots, sizeof(roots), "the exact roots %.1f -- %u of the JNI layer's %.1f --, then %u classes and %u interned strings and what they hold %.1f",
+                     (double)r.roots_ns / 1e6, (unsigned)r.jni_roots, (double)r.jni_ns / 1e6, (unsigned)r.classes, (unsigned)r.strings,
+                     (double)r.classes_ns / 1e6);
+        else
+            snprintf(roots, sizeof(roots), "the exact roots %.1f -- %u classes %.1f, %u interned strings %.1f, %u of the JNI layer's %.1f --",
+                     (double)r.roots_ns / 1e6, (unsigned)r.classes, (double)r.classes_ns / 1e6, (unsigned)r.strings, (double)r.strings_ns / 1e6,
+                     (unsigned)r.jni_roots, (double)r.jni_ns / 1e6);
+    mg_info("gc: %s: %.1f ms (stop %.1f, mark %.1f by %u threads: %s, the stacks %.1f, the rest following references; sweep %.1f by %u); freed "
+            "%.1f MB (%u objects), live %.1f MB (%u objects); %u threads stopped; %.2f MB (%u objects) found only through a conservative root",
             reason, (double)(r.stop_ns + r.mark_ns + r.sweep_ns) / 1e6, (double)r.stop_ns / 1e6, (double)r.mark_ns / 1e6, (unsigned)r.markers,
-            (double)r.roots_ns / 1e6, (unsigned)r.classes, (double)r.classes_ns / 1e6, (unsigned)r.strings, (double)r.strings_ns / 1e6,
-            (unsigned)r.jni_roots, (double)r.jni_ns / 1e6, (double)r.stacks_ns / 1e6, (double)r.sweep_ns / 1e6, (unsigned)r.sweepers,
+            roots, (double)r.stacks_ns / 1e6, (double)r.sweep_ns / 1e6, (unsigned)r.sweepers,
             (double)r.freed_bytes / 1048576.0, (unsigned)r.freed_objects, (double)r.live_bytes / 1048576.0, (unsigned)r.live_objects,
             (unsigned)r.threads_stopped, (double)r.conservative_bytes / 1048576.0, (unsigned)r.conservative);
+    }
     return true;
 }
 

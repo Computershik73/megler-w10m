@@ -550,6 +550,16 @@ void mg_dvm_interned_each(void (*fn)(mg_jobj *s, void *user), void *user)
         if (g_interned[i].s) fn(g_interned[i].s, user);
 }
 
+void mg_dvm_interned_part(u32 from, u32 to, void (*fn)(mg_jobj *s, void *user), void *user)
+{
+    u32 i;
+    if (to > g_intern_cap) to = g_intern_cap;
+    for (i = from; i < to; i++)
+        if (g_interned[i].s) fn(g_interned[i].s, user);
+}
+
+u32 mg_dvm_interned_slots(void) { return g_intern_cap; }
+
 mg_jobj *mg_dvm_const_string(mg_dvm_dex *d, u32 idx)
 {
     mg_jobj *s;
