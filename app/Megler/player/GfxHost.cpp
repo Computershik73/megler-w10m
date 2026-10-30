@@ -383,6 +383,10 @@ struct State {
     // ... and the window's pictures shown without the memory, and the read-backs of such a window's canvas, which come only
     // when something reads its memory.
     std::atomic<uint64_t> shown{0}, showTicks{0}, windowReadBacks{0}, windowReadBackPixels{0}, windowReadBackTicks{0};
+    // The drawings on the graphics processor ended (EndDraw), by what ended them, and the time in each: Yandex Maps' frames
+    // ended some 21 a frame, 2 ms each (package 531), and the line says which.
+    enum EndWhy { endPresent, endFlush, endEffects, endBackdrop, endUpload, endReadBack, endLayerMode, endLayerBlur, endSweep, endCompose, endOther, endWhys };
+    std::atomic<uint64_t> endsBy[endWhys] = {}, endTicksBy[endWhys] = {};
     std::mutex statsMutex;
     uint64_t statsAt = 0; // when the last line was written (ticks); 0: never
     struct Totals {
@@ -390,6 +394,7 @@ struct State {
                  composedPixels = 0, sessionPixels = 0, uploads = 0, uploadPixels = 0, uploadTicks = 0, readBacks = 0, readBackPixels = 0,
                  readBackTicks = 0, byEffects = 0, throughMemory = 0, keptMade = 0, keptReused = 0, shown = 0, showTicks = 0, windowReadBacks = 0,
                  windowReadBackPixels = 0, windowReadBackTicks = 0, glFrames = 0, glWaitTicks = 0;
+        uint64_t endsBy[endWhys] = {}, endTicksBy[endWhys] = {};
     } statsLast;
 };
 
@@ -945,8 +950,8 @@ struct GpuContext {
     Ref<ID2D1Effect> effects[roles];
     ID2D1Effect* effect(Role role);
 
-    /// Nothing drawing through it, and what was drawn handed over.
-    void finish();
+    /// Nothing drawing through it, and what was drawn handed over; `why` (State::EndWhy) for the log's count.
+    void finish(int why);
 };
 
 ID2D1Effect* GpuContext::effect(Role role) {
@@ -1003,7 +1008,7 @@ void giveContext(GpuContext* c) {
     if (!c) return;
     State& s = G();
     if (!gpuGone()) {
-        c->finish();
+        c->finish(State::endOther);
         c->dc->SetTarget(nullptr);
         c->target = nullptr;
         // (The effects let go of the canvas's bitmaps they were last given.)
@@ -1101,7 +1106,7 @@ struct Surface {
     /// processor, since the next canvas's context may draw into them first.
     void giveBackGpu() {
         if (!gc) return;
-        gc->finish();
+        gc->finish(State::endOther);
         unbind();
         giveBitmap(std::move(gpu), false);
         giveBitmap(std::move(readable), true);
@@ -1113,7 +1118,7 @@ struct Surface {
     /// made where it was.
     void unbind() {
         if (!gc || !gpu || gc->target != gpu.get()) return;
-        gc->finish();
+        gc->finish(State::endOther);
         gc->dc->SetTarget(nullptr);
         gc->target = nullptr;
     }
@@ -1151,7 +1156,7 @@ struct Surface {
     void upload(Box box) {
         box.intersect(bounds());
         if (box.empty() || !px || !gpu || gpuGone()) return;
-        gc->finish();
+        gc->finish(State::endUpload);
         const uint64_t from = ticksNow();
         const D2D1_RECT_U rect = D2D1::RectU(UINT32(box.l - ox), UINT32(box.t - oy), UINT32(box.r - ox), UINT32(box.b - oy));
         const HRESULT hr = gpu->CopyFromMemory(&rect, px + size_t(box.t - oy) * size_t(stride) + size_t(box.l - ox) * 4, UINT32(stride));
@@ -1174,7 +1179,7 @@ struct Surface {
         gpuAhead = Box();
         if (box.empty()) return true;
         if (gpuGone()) return false;
-        gc->finish();
+        gc->finish(State::endReadBack);
         const uint64_t from = ticksNow();
         struct Timed {
             uint64_t from;
@@ -1374,7 +1379,7 @@ struct Surface {
     /// the graphics processor, handed to it: pull() reads it back.
     void end() {
         if (gc) {
-            if (drawing) gc->finish();
+            if (drawing) gc->finish(State::endFlush);
             return;
         }
         if (!drawing) return;
@@ -1431,13 +1436,17 @@ struct Surface {
     }
 };
 
-void GpuContext::finish() {
+void GpuContext::finish(int why) {
     if (owner) owner->detach();
     if (!inDraw) return;
     inDraw = false;
     const uint64_t from = ticksNow();
     const HRESULT hr = dc->EndDraw();
-    G().endTicks += ticksNow() - from;
+    const uint64_t took = ticksNow() - from;
+    State& s = G();
+    s.endTicks += took;
+    s.endsBy[why]++;
+    s.endTicksBy[why] += took;
     if (FAILED(hr)) gpuFailed("ID2D1DeviceContext::EndDraw", hr);
 }
 
@@ -2384,7 +2393,7 @@ bool gpuPut(Canvas& cv, Surface& target, const Box& box, ID2D1Image* a, ID2D1Ima
         // What is there now, copied: the effects read the copy and their result replaces the box.
         Surface* d = workSurface(cv, Canvas::workD, box, true);
         if (!d) return false;
-        g.finish();
+        g.finish(State::endBackdrop);
         const D2D1_POINT_2U origin = D2D1::Point2U(0, 0);
         const D2D1_RECT_U from = D2D1::RectU(UINT32(box.l - target.ox), UINT32(box.t - target.oy), UINT32(box.r - target.ox), UINT32(box.b - target.oy));
         const HRESULT hr = d->gpu->CopyFromBitmap(&origin, target.gpu.get(), &from);
@@ -2461,7 +2470,7 @@ bool gpuPut(Canvas& cv, Surface& target, const Box& box, ID2D1Image* a, ID2D1Ima
     ++G().byEffects;
     // What the effects were given is handed to the processor before the next call gives them other inputs, and before the
     // work surfaces are drawn into or copied into again.
-    g.finish();
+    g.finish(State::endEffects);
     return true;
 }
 
@@ -2484,7 +2493,7 @@ Ref<ID2D1Image> gpuColours(Canvas& cv, const Box& box, const megler_gfx_paint& p
         const uint32_t alpha = paint.color >> 24;
         for (int y = box.t; y < box.b; y++)
             for (int x = box.l; x < box.r; x++) pixels[size_t(y - box.t) * size_t(box.width()) + size_t(x - box.l)] = faded(sweepAt(*shader, back, x, y), alpha);
-        g.finish();
+        g.finish(State::endSweep);
         const D2D1_RECT_U all = D2D1::RectU(0, 0, UINT32(box.width()), UINT32(box.height()));
         const HRESULT hr = s->gpu->CopyFromMemory(&all, pixels.data(), UINT32(box.width()) * 4);
         ++G().uploads;
@@ -2617,7 +2626,7 @@ bool gpuRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, int 
     GpuContext& g = *cv.gc;
     Surface* s = workSurface(cv, Canvas::workS, box, true);
     if (!s) return false;
-    g.finish();
+    g.finish(State::endLayerMode);
     const D2D1_POINT_2U origin = D2D1::Point2U(0, 0);
     const D2D1_RECT_U from = D2D1::RectU(UINT32(box.l - layer.ox), UINT32(box.t - layer.oy), UINT32(box.r - layer.ox), UINT32(box.b - layer.oy));
     const HRESULT hr = s->gpu->CopyFromBitmap(&origin, layer.gpu.get(), &from);
@@ -2660,7 +2669,7 @@ bool gpuBlurRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, 
     GpuContext& g = *cv.gc;
     Surface* s = workSurface(cv, Canvas::workS, box, true);
     if (!s) return false;
-    g.finish();
+    g.finish(State::endLayerBlur);
     const D2D1_POINT_2U origin = D2D1::Point2U(0, 0);
     const D2D1_RECT_U from = D2D1::RectU(UINT32(box.l - layer.ox), UINT32(box.t - layer.oy), UINT32(box.r - layer.ox), UINT32(box.b - layer.oy));
     const HRESULT hr = s->gpu->CopyFromBitmap(&origin, layer.gpu.get(), &from);
@@ -3007,6 +3016,10 @@ void noteDrawing() {
     t.windowReadBackTicks = s.windowReadBackTicks;
     t.glFrames = s.glFrames;
     t.glWaitTicks = s.glWaitTicks;
+    for (int k = 0; k < State::endWhys; k++) {
+        t.endsBy[k] = s.endsBy[k];
+        t.endTicksBy[k] = s.endTicksBy[k];
+    }
     const State::Totals& l = s.statsLast;
     typedef unsigned long long ull;
     if (s.statsAt && t.sessions != l.sessions && s.gpu && !gpuGone()) {
@@ -3036,6 +3049,19 @@ void noteDrawing() {
             ticksToMs((t.readBackTicks - l.readBackTicks) - (t.windowReadBackTicks - l.windowReadBackTicks)), ull(windowBacks),
             double(t.windowReadBackPixels - l.windowReadBackPixels) / 1e6, ticksToMs(t.windowReadBackTicks - l.windowReadBackTicks),
             ull(t.keptMade - l.keptMade), ull(t.keptReused - l.keptReused), keptCount, double(keptBytes) / 1048576.0);
+        static const char* const whys[State::endWhys] = {"the window's picture shown", "a canvas flushed", "a call drawn by the effects",
+                                                         "the picture copied for the effects", "an upload", "a read-back",
+                                                         "a layer put on by a mode", "a layer put on blurred", "a sweep's colours",
+                                                         "OpenGL ES frames composed", "other"};
+        char ends[700];
+        size_t used = 0;
+        for (int k = 0; k < State::endWhys && used + 100 < sizeof(ends); k++) {
+            const uint64_t n = t.endsBy[k] - l.endsBy[k];
+            if (!n) continue;
+            used += size_t(snprintf(ends + used, sizeof(ends) - used, "%s%s %llu (%.1f ms)", used ? ", " : "", whys[k], ull(n),
+                                    ticksToMs(t.endTicksBy[k] - l.endTicksBy[k])));
+        }
+        if (used) say("the drawings ended, by what ended them: %s", ends);
     } else if (s.statsAt && t.sessions != l.sessions) {
         const double seconds = ticksToMs(now - s.statsAt) / 1000.0;
         const uint64_t sessions = t.sessions - l.sessions;
@@ -3407,7 +3433,7 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
             Composition& comp = composition();
             std::lock_guard<std::mutex> lock(comp.mutex);
             if (comp.layered) {
-                cv->gc->finish();
+                cv->gc->finish(State::endCompose);
                 bool fresh = false;
                 if (!comp.views || comp.width != cv->memoryW || comp.height != cv->memoryH) {
                     comp.views = gpuBitmap(cv->memoryW, cv->memoryH, D2D1_BITMAP_OPTIONS_NONE);
@@ -3471,7 +3497,10 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
         g.inDraw = false;
         const uint64_t ending = ticksNow();
         const HRESULT hr = g.dc->EndDraw();
-        s.endTicks += ticksNow() - ending;
+        const uint64_t took = ticksNow() - ending;
+        s.endTicks += took;
+        s.endsBy[State::endPresent]++;
+        s.endTicksBy[State::endPresent] += took;
         if (FAILED(hr)) {
             gpuFailed("ID2D1DeviceContext::EndDraw", hr);
             return;
