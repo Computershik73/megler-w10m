@@ -1076,8 +1076,8 @@ static void turn_clearing(void *p)
 /*
  * A pbuffer and a context destroyed while current (mg_egl.c, doom): EGL ends them once no thread has them current, and so
  * does the layer -- a thread's turn makes nothing current for a moment, which ANGLE took for letting them go (Yandex Maps'
- * end in ANGLE, package 528). The stand-in ends at once what it is asked to: they are still there after the destroys, and
- * gone after the make-current of nothing.
+ * end in ANGLE, package 528). The stand-in ends at once what it is asked to: the pbuffer is still there after its destroy;
+ * the context destroyed by the thread that has it current is let go of there and ended, and the pbuffer with it.
  */
 static void test_doomed(void)
 {
@@ -1108,9 +1108,10 @@ static void test_doomed(void)
     if (!ctx || !pb) return;
     CHECK(make(d, pb, pb, ctx));
     mg_gl_standin_stats_get(&a);
-    CHECK(destroy_surface(d, pb) && destroy(d, ctx));
+    CHECK(destroy_surface(d, pb));
     mg_gl_standin_stats_get(&b);
     CHECK(b.surfaces_alive == a.surfaces_alive && b.contexts_alive == a.contexts_alive);
+    CHECK(destroy(d, ctx));
     CHECK(make(d, NULL, NULL, NULL));
     mg_gl_standin_stats_get(&c);
     CHECK(c.surfaces_alive == a.surfaces_alive - 1 && c.contexts_alive == a.contexts_alive - 1);

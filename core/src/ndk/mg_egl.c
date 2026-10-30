@@ -910,6 +910,7 @@ static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext 
     if (!g_blob_started) blob_cache_offer(d);
     made = real(d, no_config ? NULL : config, share, attribs);
     if (!made) refused("eglCreateContext", &said);
+    mg_trace("eglCreateContext -> %p", made);
     return made;
 }
 
@@ -1184,6 +1185,7 @@ static EGLBoolean surface_end_now(EGLDisplay d, EGLSurface handle)
 static EGLBoolean g_eglDestroySurface(EGLDisplay d, EGLSurface handle)
 {
     surface *w = window_surface(handle);
+    mg_trace("eglDestroySurface(%p)%s", handle, w ? ", a window's" : "");
     if (w) {
         bool later;
         mg_lock_acquire(&g_surfaces_lock);
@@ -1202,9 +1204,25 @@ static EGLBoolean g_eglDestroySurface(EGLDisplay d, EGLSurface handle)
     return surface_end_now(d, handle);
 }
 
+static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface read, EGLContext ctx);
+static EGLContext turn_own_ctx(void);
+
+/*
+ * A context destroyed: put off while another thread has it current (doom). The calling thread's own current one is let
+ * go of on it first, and ended now: an app that destroys the context it has current is done with it (Yandex Maps' map
+ * probes OpenGL ES 3 so as it starts), and kept current it counted as a second thread with a context for the whole run,
+ * which had every frame of its map's thread made current again after the other's turns -- where ANGLE ended it (package
+ * 530).
+ */
 static EGLBoolean g_eglDestroyContext(EGLDisplay d, EGLContext ctx)
 {
     fn_destroy_context real = A(fn_destroy_context, "eglDestroyContext");
+    mg_trace("eglDestroyContext(%p)%s", ctx, ctx && turn_own_ctx() == ctx ? ", current here" : "");
+    if (ctx && turn_own_ctx() == ctx) {
+        static volatile i32 said;
+        if (mg_atomic_add(&said, 1) < 5) mg_info("egl: a thread destroyed the context it has current: let go of on that thread, and ended");
+        g_eglMakeCurrent(d, NULL, NULL, NULL);
+    }
     if (doom(d, ctx, true)) return 1;
     return real ? real(d, ctx) : 0;
 }
@@ -1438,6 +1456,7 @@ typedef struct turn_thread {
 static MG_THREAD_LOCAL turn_thread t_turn;
 
 static gl_turn *turn_of(EGLDisplay d) { return d && d == g_webview_display ? &g_turn_web : &g_turn_app; }
+static EGLContext turn_own_ctx(void) { return t_turn.ctx; }
 
 /* The calling thread's context made current again for its turn: none, then its own, and ANGLE sets its whole state again. */
 static void turn_refresh(turn_thread *t, gl_turn *g)
@@ -1445,6 +1464,7 @@ static void turn_refresh(turn_thread *t, gl_turn *g)
     fn_make_current make = A(fn_make_current, "eglMakeCurrent");
     u64 t0 = mg_time_monotonic_ns();
     i32 n;
+    mg_trace("turn: ctx %p (draw %p, read %p) made current again after %p's", t->ctx, t->draw, t->read, g->last);
     if (!make || !make(t->dpy, NULL, NULL, NULL) || !make(t->dpy, t->draw, t->read, t->ctx)) {
         static volatile i32 said;
         if (mg_atomic_add(&said, 1) <= 5) mg_warn("egl: a thread's context could not be made current again for its turn on %s display", g->whose);
@@ -1697,6 +1717,7 @@ static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface rea
     turn_begin();
     turn_before(d, ctx);
     ok = real(d, real_draw, real_read, ctx);
+    mg_trace("eglMakeCurrent(draw %p, read %p, ctx %p) -> %d", real_draw, real_read, ctx, (int)ok);
     if (ok) {
         surface *was_draw = t_draw, *was_read = t_read;
         t_draw = ctx ? wd : NULL;
