@@ -90,6 +90,11 @@ public final class ViewRoot implements ViewParent {
     private boolean mDirtyAll = true;
     /** The whole screen is to be drawn at the next frame: a window came, went, moved or changed its size. */
     private static boolean sFullRedraw = true, sDrawingPart;
+    /* Why the next frame draws the whole screen (fullRedraw): what the log's MeglerViews line names. */
+    private static String sFullWhy;
+    private static void fullRedraw(String why) { sFullRedraw = true; if (sFullWhy == null) sFullWhy = why; }
+    private static int sMovesSaid;
+    private String windowName() { return mView.getClass().getName() + (mLp.type >= 1000 ? " (window type " + mLp.type + ")" : ""); }
     private static final Rect sPart = new Rect(), sScratch = new Rect();
     private View mFocused;
     private final ViewTreeObserver mObserver = new ViewTreeObserver();
@@ -122,7 +127,7 @@ public final class ViewRoot implements ViewParent {
         sRoots.add(at, r);
         if (under) for (int i = at + 1; i < sRoots.size(); i++) if (sRoots.get(i).focusable() && !sRoots.get(i).mOwnerStopped) { r.mHasFocus = false; break; }
         if (v.getLayoutParams() == null) v.setLayoutParams(r.mLp);
-        sFullRedraw = true;
+        fullRedraw("a window added: " + r.windowName());
         r.attach();
         if (r.mHasFocus) for (ViewRoot o : sRoots) if (o != r && o.mHasFocus && r.focusable()) { o.mHasFocus = false; o.mView.dispatchWindowFocusChanged(false); o.mObserver.meglerWindowFocus(false); }
         scheduleFrame();
@@ -185,7 +190,7 @@ public final class ViewRoot implements ViewParent {
         if (pan != mPan) {
             mPan = pan;
             mY = mLaidY - mPan;
-            sFullRedraw = true;
+            fullRedraw("a window panned for the keyboard: " + windowName());
         }
     }
     private void attach() {
@@ -197,7 +202,7 @@ public final class ViewRoot implements ViewParent {
     public void remove() {
         if (mRemoved) return;
         mRemoved = true;
-        sFullRedraw = true;
+        fullRedraw("a window removed: " + windowName());
         boolean hadFocus = mHasFocus;
         sRoots.remove(this);
         if (sTouchTarget == this) sTouchTarget = null;
@@ -211,7 +216,19 @@ public final class ViewRoot implements ViewParent {
         }
         scheduleFrame();
     }
-    public void setLayoutParams(WindowManager.LayoutParams lp) { mLp.copyFrom(lp); mView.setLayoutParams(mLp); mLayoutRequested = true; sFullRedraw = true; scheduleFrame(); }
+    /*
+     * WindowManager.updateViewLayout. The whole screen is drawn again only for what changes how the window looks apart from
+     * where it is and its size, which the next layout compares (performLayout): Yandex Maps updated a window's parameters in
+     * nearly every frame, each a whole screen drawn again (package 530).
+     */
+    public void setLayoutParams(WindowManager.LayoutParams lp) {
+        boolean looks = lp.type != mLp.type || lp.flags != mLp.flags || lp.format != mLp.format || lp.alpha != mLp.alpha || lp.dimAmount != mLp.dimAmount;
+        mLp.copyFrom(lp);
+        mView.setLayoutParams(mLp);
+        mLayoutRequested = true;
+        if (looks) fullRedraw("a window's parameters changed: " + windowName());
+        scheduleFrame();
+    }
 
     /*
      * The windows an activity opened besides its own -- its dialogs and popups -- hidden while it is stopped and shown again
@@ -230,7 +247,7 @@ public final class ViewRoot implements ViewParent {
         if (!any) return;
         if (sTouchTarget != null && sTouchTarget.mOwnerStopped) sTouchTarget = null;
         refocus();
-        sFullRedraw = true;
+        fullRedraw("an activity's windows hidden or shown again");
         scheduleFrame();
     }
 
@@ -549,7 +566,12 @@ public final class ViewRoot implements ViewParent {
                     area.set(sInsets[0], sInsets[1], sw - sInsets[2], sh - Math.max(sInsets[3], ime));
                 Gravity.apply(g, w, h, area, mLp.x, mLp.y, out);
             }
-            if (out.left != mX || out.top != mLaidY || w != mW || h != mH) sFullRedraw = true;
+            if (out.left != mX || out.top != mLaidY || w != mW || h != mH) {
+                fullRedraw("a window moved or resized: " + windowName());
+                if (sMovesSaid++ < 10)
+                    android.util.Log.i("MeglerViews", "a window moved or resized: " + windowName() + " " + mW + "x" + mH + " at " + mX + "," + mLaidY + " to " + w
+                                       + "x" + h + " at " + out.left + "," + out.top);
+            }
             mX = out.left; mLaidY = out.top; mY = mLaidY - mPan; mW = w; mH = h;
             mView.layout(0, 0, w, h);
         } finally { mInLayout = false; }
@@ -591,7 +613,8 @@ public final class ViewRoot implements ViewParent {
             else if (!r.mDirty.isEmpty()) { sScratch.set(r.mDirty); sScratch.offset(r.mX, r.mY); part.union(sScratch); }
         }
         for (ViewRoot r : roots) { r.mDirty.setEmpty(); r.mDirtyAll = false; }
-        if (sFullRedraw) noteDirtier("windows added, removed, moved or resized", Float.MAX_VALUE);
+        if (sFullRedraw) noteDirtier(sFullWhy != null ? sFullWhy : "windows added, removed, moved or resized", Float.MAX_VALUE);
+        sFullWhy = null;
         sFullRedraw = false;
         countDirtier(whole ? sw * sh : (part.isEmpty() ? 0 : Math.min(part.width(), sw) * Math.min(part.height(), sh)), sw * sh);
         if (!whole) {
