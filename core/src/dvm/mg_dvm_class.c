@@ -536,37 +536,47 @@ static void free_unlinked(mg_dvm_class *c)
 }
 
 /*
- * The framework's methods that are signatures alone (mg_dvm_stubs_load): the file's lines, sorted as strcmp sorts them,
- * "<class> <name> <descriptor>". Read once, before any of the framework's classes is linked; looked up as a method of an
- * android/ or javax/ class is read.
+ * The framework's methods that are signatures alone (mg_dvm_stubs_load), as the 64-bit hashes (FNV-1a) of the file's lines,
+ * "<class> <name> <descriptor>", sorted: 160 KB where the lines themselves were 1.9 MB in every app's process. Read once,
+ * before any of the framework's classes is linked; looked up as a method of an android/ or javax/ class is read. (Two
+ * lines with one hash would mark a method more: nothing worse than one line too many in the log.)
  */
-static char *g_stub_text;
-static const char **g_stubs;
+static u64 *g_stubs;
 static size_t g_nstubs;
 
-static int stub_cmp(const void *a, const void *b) { return strcmp(*(const char *const *)a, *(const char *const *)b); }
+static u64 stub_hash(const char *s, size_t n)
+{
+    u64 h = 1469598103934665603ull;
+    size_t i;
+    for (i = 0; i < n; i++) h = (h ^ (u8)s[i]) * 1099511628211ull;
+    return h;
+}
+
+static int stub_cmp(const void *a, const void *b)
+{
+    u64 x = *(const u64 *)a, y = *(const u64 *)b;
+    return x < y ? -1 : x > y;
+}
 
 bool mg_dvm_stubs_load(const char *path)
 {
     size_t size = 0, n = 0, cap = 0;
-    char *p, *line;
+    const char *line, *end, *stop;
     u8 *text = mg_file_read_all(path, &size);
     if (!text) return false;
-    g_stub_text = (char *)text;
-    g_stub_text[size] = 0;
-    for (p = g_stub_text; *p; p++) n += *p == '\n';
-    cap = n + 1;
-    g_stubs = (const char **)mg_alloc(sizeof(*g_stubs) * cap);
-    n = 0;
-    for (line = g_stub_text; *line && n < cap;) {
-        char *end = strchr(line, '\n');
-        if (end) *end = 0;
-        if (end && end > line && end[-1] == '\r') end[-1] = 0;
-        if (*line) g_stubs[n++] = line;
-        if (!end) break;
-        line = end + 1;
+    stop = (const char *)text + size;
+    for (line = (const char *)text; line < stop; line++) cap += *line == '\n';
+    g_stubs = (u64 *)mg_alloc(sizeof(*g_stubs) * (cap + 1));
+    for (line = (const char *)text; line < stop && n <= cap; line = end + 1) {
+        size_t len;
+        end = (const char *)memchr(line, '\n', (size_t)(stop - line));
+        if (!end) end = stop;
+        len = (size_t)(end - line);
+        if (len && line[len - 1] == '\r') len--;
+        if (len) g_stubs[n++] = stub_hash(line, len);
     }
-    qsort((void *)g_stubs, n, sizeof(*g_stubs), stub_cmp);
+    free(text);
+    qsort(g_stubs, n, sizeof(*g_stubs), stub_cmp);
     g_nstubs = n;
     mg_info("api: %u of the framework's methods are their signatures alone here; the first call of each is said (\"api: ... is a stub here\")",
             (unsigned)n);
@@ -576,10 +586,13 @@ bool mg_dvm_stubs_load(const char *path)
 bool mg_dvm_stub_listed(const char *cls, const char *name, const char *sig)
 {
     char key[512];
-    const char *k = key;
+    int n;
+    u64 h;
     if (!g_nstubs || (strncmp(cls, "android/", 8) && strncmp(cls, "javax/", 6))) return false;
-    if (snprintf(key, sizeof(key), "%s %s %s", cls, name, sig) >= (int)sizeof(key)) return false;
-    return bsearch(&k, g_stubs, g_nstubs, sizeof(*g_stubs), stub_cmp) != NULL;
+    n = snprintf(key, sizeof(key), "%s %s %s", cls, name, sig);
+    if (n <= 0 || n >= (int)sizeof(key)) return false;
+    h = stub_hash(key, (size_t)n);
+    return bsearch(&h, g_stubs, g_nstubs, sizeof(*g_stubs), stub_cmp) != NULL;
 }
 
 static bool read_method(mg_dvm_class *c, mg_dvm_method *m, u32 idx, u32 flags, u32 code_off, link_error *err)
