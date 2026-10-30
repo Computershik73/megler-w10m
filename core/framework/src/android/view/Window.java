@@ -179,9 +179,24 @@ public class Window {
     public void setTitleColor(int c) {}
     public void setBackgroundDrawable(Drawable d) { mBackgroundSet = true; mBackground = d; if (mDecor != null) mDecor.setWindowBackground(d); }
     public void setBackgroundDrawableResource(int id) { setBackgroundDrawable(mContext.getDrawable(id)); }
-    public void setStatusBarColor(int c) { mStatusBarColorSet = true; mStatusBarColor = c; if (mDecor != null) mDecor.invalidate(); }
+    /*
+     * The bars' colours: their strips drawn again (megler.DecorView.meglerBarChanged), nothing when the colour is the same. They
+     * were the whole window's every time, and Yandex Maps sets the status bar's colour as its map moves: the whole screen drawn
+     * again 54 times in ten seconds (package 531).
+     */
+    public void setStatusBarColor(int c) {
+        boolean same = mStatusBarColorSet && mStatusBarColor == c;
+        mStatusBarColorSet = true;
+        mStatusBarColor = c;
+        if (mDecor != null && !same) mDecor.meglerBarChanged(true);
+    }
     public int getStatusBarColor() { ensureStyle(); return mStatusBarColor; }
-    public void setNavigationBarColor(int c) { mNavigationBarColorSet = true; mNavigationBarColor = c; if (mDecor != null) mDecor.invalidate(); }
+    public void setNavigationBarColor(int c) {
+        boolean same = mNavigationBarColorSet && mNavigationBarColor == c;
+        mNavigationBarColorSet = true;
+        mNavigationBarColor = c;
+        if (mDecor != null && !same) mDecor.meglerBarChanged(false);
+    }
     public int getNavigationBarColor() { ensureStyle(); return mNavigationBarColor; }
     public void setNavigationBarDividerColor(int c) {}
     public void setStatusBarContrastEnforced(boolean e) {}

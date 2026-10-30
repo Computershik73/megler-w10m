@@ -96,6 +96,8 @@ public final class DecorView extends FrameLayout {
     /** The window background; its padding (a Material dialog's InsetDrawable: the card inset from the window's edges) keeps the
      *  content inside it, as View.setBackground does on Android. */
     public void setWindowBackground(Drawable d) {
+        /* (The same drawable again: nothing, as View.setBackground on Android; one that changes says so itself, invalidateDrawable.) */
+        if (d == mBackground) return;
         mBackground = d;
         Rect p = new Rect();
         if (d != null) { d.setCallback(this); if (!d.getPadding(p)) p.setEmpty(); }
@@ -104,6 +106,26 @@ public final class DecorView extends FrameLayout {
         requestLayout();
     }
     @Override protected boolean verifyDrawable(Drawable who) { return who == mBackground || super.verifyDrawable(who); }
+    /*
+     * The whole window asked to be drawn again: the 50th time, the 100th, 200th, 400th and 800th said with who asked, in the
+     * log (MeglerViews) -- past the window's setting up, which asks a few times -- since a decor that asks so in every frame
+     * has the whole screen drawn in every frame.
+     */
+    private static int sWholeAsked;
+    @Override public void invalidate() {
+        int n = ++sWholeAsked;
+        if (n == 50 || n == 100 || n == 200 || n == 400 || n == 800)
+            android.util.Log.i("MeglerViews", "the whole window asked to be drawn again, the " + n + "th time, by", new Throwable());
+        super.invalidate();
+    }
+    /** A bar's colour changed (Window.setStatusBarColor, setNavigationBarColor): the strip draw paints it over, when there is one. */
+    public void meglerBarChanged(boolean status) {
+        if (status) {
+            if (mInsetTop > 0) invalidate(0, 0, getWidth(), mInsetTop);
+        } else if (mInsetBottom > 0) {
+            invalidate(0, getHeight() - mInsetBottom, getWidth(), getHeight());
+        }
+    }
 
     /** The views between the decor and the content: an action bar when asked for, then the content frame. */
     public FrameLayout makeContent(boolean actionBar, CharSequence title) {
