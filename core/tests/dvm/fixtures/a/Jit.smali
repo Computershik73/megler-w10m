@@ -843,3 +843,70 @@
     add-double/2addr v1, v6
     return-wide v1
 .end method
+
+# By calls from a compiled loop (mg_dvm_jit.c, "by calls"): a long's division and remainder in both forms, a long's
+# conversions to and from float and double, a float's and a double's remainder in both forms. The divisor is i - 7: at turn
+# 7 it is zero, and the ArithmeticException is caught in the loop, 1000 (jit_by_calls in mg_dvm_tests.c says it in C).
+.method public static byCalls(IJ)J
+    .registers 14
+    move-wide v0, p1
+    const-wide/16 v2, 0x0
+    const/4 v4, 0x0
+    :loop
+    if-ge v4, p0, :done
+    add-int/lit8 v5, v4, -0x7
+    int-to-long v6, v5
+    :try_start
+    div-long v8, v0, v6
+    :try_end
+    .catch Ljava/lang/ArithmeticException; {:try_start .. :try_end} :caught
+    add-long/2addr v2, v8
+    rem-long v8, v0, v6
+    xor-long/2addr v2, v8
+    move-wide v8, v0
+    div-long/2addr v8, v6
+    sub-long/2addr v2, v8
+    move-wide v8, v0
+    rem-long/2addr v8, v6
+    add-long/2addr v2, v8
+    long-to-float v5, v0
+    float-to-long v8, v5
+    add-long/2addr v2, v8
+    long-to-double v8, v0
+    double-to-long v8, v8
+    xor-long/2addr v2, v8
+    int-to-float v5, v4
+    const/high16 v10, 0x40400000
+    rem-float v5, v5, v10
+    float-to-long v8, v5
+    add-long/2addr v2, v8
+    int-to-float v5, v4
+    const/high16 v10, 0x40e00000
+    rem-float/2addr v5, v10
+    float-to-long v8, v5
+    xor-long/2addr v2, v8
+    int-to-double v6, v4
+    const-wide/high16 v8, 0x4020000000000000L
+    rem-double v6, v6, v8
+    double-to-long v8, v6
+    add-long/2addr v2, v8
+    int-to-double v6, v4
+    const-wide/high16 v8, 0x4014000000000000L
+    rem-double/2addr v6, v8
+    double-to-long v8, v6
+    sub-long/2addr v2, v8
+    const-wide v8, 0x5851f42d4c957f2dL
+    mul-long/2addr v0, v8
+    const-wide v8, 0x14057b7ef767814fL
+    add-long/2addr v0, v8
+    :next
+    add-int/lit8 v4, v4, 0x1
+    goto :loop
+    :caught
+    move-exception v5
+    const-wide/16 v8, 0x3e8
+    add-long/2addr v2, v8
+    goto :next
+    :done
+    return-wide v2
+.end method

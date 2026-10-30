@@ -61,9 +61,11 @@ phone's Self-test gives the phone's.
 
 `core/src/dvm/mg_dvm_jit.c` compiles: moves and constants (`const-wide` and `const-string` of a string already made
 included); int arithmetic and logic in every form (division and remainder with the divisor checked, the shifts' counts
-masked); long arithmetic but division and remainder (add, sub, mul, and, or, xor, the three shifts by any count, neg,
-not, `int-to-long`, `long-to-int`, `cmp-long`); float and double arithmetic but the remainder, in VFP (add, sub, mul, div,
-neg, `cmpl` and `cmpg`, the conversions between int, float and double, toward zero and saturated as Java says); `if-*`, `if-*z`, `goto`, `packed-switch` and `sparse-switch` of up to 64
+masked); long arithmetic (add, sub, mul, and, or, xor, the three shifts by any count, neg, not, `int-to-long`,
+`long-to-int`, `cmp-long`); float and double arithmetic in VFP (add, sub, mul, div, neg, `cmpl` and `cmpg`, the
+conversions between int, float and double, toward zero and saturated as Java says); and by calls of small functions of
+the runtime's, a long's division and remainder (the divisor checked), a float's and a double's remainder, a long's
+conversions to and from them; `if-*`, `if-*z`, `goto`, `packed-switch` and `sparse-switch` of up to 64
 keys; `array-length`, `aget` and `aput` of ints, bytes, chars, shorts, booleans, floats, longs and doubles and `aget-object`; `iget` and `iput`
 of every width of a field resolved by then, `sget` and `sput` of a class initialised by then; calls of every kind with
 their `move-result`; the returns; and through `mg_dvm_jit_op` (mg_dvm_interp.c) `new-instance`, `new-array`, `const-class`, the
@@ -93,4 +95,4 @@ compiled instruction and hand-back, calls of each kind with their results, a cal
 recursion 3000 deep through compiled calls, long arithmetic against C, and both switches; the whole main suite passes with
 every loop compiled (MEGLER_JIT_THRESHOLD=1).
 
-Next: a long's division and conversions to and from floating point, by calls; `rem-float` and `rem-double`.
+Next: what the phone's logs say is handed back most.

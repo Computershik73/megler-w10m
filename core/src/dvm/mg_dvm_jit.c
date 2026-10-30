@@ -4,8 +4,7 @@
  * The code works on the frame's own registers, in memory, as the interpreter does: r4 holds them throughout, every
  * instruction loads what it reads from them and stores what it writes, so that at any instruction the code can stop and
  * hand the frame back -- "go on at this pc" -- and the interpreter goes on with nothing to rebuild. Whatever the compiler
- * does not do (exceptions, long division, a remainder of floating point, a long's conversions to and from it) is such a
- * hand-back, an exit, and so
+ * does not do (exceptions, the rarer instructions) is such a hand-back, an exit, and so
  * is anything that would throw: a null or an index out of bounds sends the frame back to the instruction that throws, and
  * the interpreter throws it. A call is made through mg_dvm_jit_invoke (mg_dvm_interp.c), which does it as the interpreter
  * would and keeps its result for the move-result after it; one that throws sends the frame back with the exception pending.
@@ -26,6 +25,7 @@
  */
 #include "mg_dvm_internal.h"
 
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -582,6 +582,83 @@ static bool vfp_convert(emitter *e, u32 op, u32 va, u32 vb)
     }
 }
 
+/* ------------------------------------------------------------------ by calls */
+
+/*
+ * What has no instruction of its own -- a long's division and remainder, a float's and a double's remainder, a long's
+ * conversions to and from them -- by a call of a small function of the runtime's, its arguments and result where the
+ * hard-float procedure call standard has them (a long in r0:r1 and r2:r3, a float in s0 and s1, a double in d0 and d1),
+ * with Java's answers where C's differ: MIN_VALUE / -1, a conversion of NaN or of what is out of range.
+ */
+static i64 jit_div_long(i64 a, i64 b) { return a == INT64_MIN && b == -1 ? a : a / b; }
+static i64 jit_rem_long(i64 a, i64 b) { return a == INT64_MIN && b == -1 ? 0 : a % b; }
+static float jit_rem_float(float a, float b) { return fmodf(a, b); }
+static double jit_rem_double(double a, double b) { return fmod(a, b); }
+static float jit_long_to_float(i64 v) { return (float)v; }
+static double jit_long_to_double(i64 v) { return (double)v; }
+static i64 jit_double_to_long(double v)
+{
+    if (v != v) return 0;
+    if (v >= 9223372036854775808.0) return INT64_MAX;
+    if (v <= -9223372036854775808.0) return INT64_MIN;
+    return (i64)v;
+}
+static i64 jit_float_to_long(float v) { return jit_double_to_long((double)v); }
+
+static void call_c(emitter *e, mg_addr fn)
+{
+    mov_imm(e, R12, (u32)fn);
+    e16(e, 0x47E0);                                              /* blx r12 */
+}
+
+/* div-long and rem-long: vd = va op vb, a divisor of zero an exit (the interpreter throws ArithmeticException). */
+static void long_divide(emitter *e, u32 pc, bool rem, u32 vd, u32 va, u32 vb)
+{
+    ldr_v(e, R2, vb);
+    ldr_v(e, R3, vb + 1);
+    e32(e, 0xEA52, (R12 << 8) | R3);                             /* orrs r12, r2, r3 */
+    fix(e, FIX_EXIT, pc, C_EQ);
+    ldr_v(e, R0, va);
+    ldr_v(e, R1, va + 1);
+    call_c(e, rem ? (mg_addr)jit_rem_long : (mg_addr)jit_div_long);
+    str_v(e, R0, vd);
+    str_v(e, R1, vd + 1);
+}
+
+/* rem-float and rem-double: vd = va % vb. */
+static void float_remainder(emitter *e, bool dbl, u32 vd, u32 va, u32 vb)
+{
+    if (dbl) {
+        vldr_d(e, 0, va);
+        vldr_d(e, 1, vb);
+        call_c(e, (mg_addr)jit_rem_double);
+        vstr_d(e, 0, vd);
+    } else {
+        vldr_s(e, 0, va);
+        vldr_s(e, 1, vb);
+        call_c(e, (mg_addr)jit_rem_float);
+        vstr_s(e, 0, vd);
+    }
+}
+
+/* long-to-float, long-to-double, float-to-long, double-to-long: vA = (kind) vB. */
+static void long_convert(emitter *e, u32 op, u32 va, u32 vb)
+{
+    if (op == 0x85 || op == 0x86) {
+        ldr_v(e, R0, vb);
+        ldr_v(e, R1, vb + 1);
+        call_c(e, op == 0x85 ? (mg_addr)jit_long_to_float : (mg_addr)jit_long_to_double);
+        if (op == 0x85) vstr_s(e, 0, va);
+        else vstr_d(e, 0, va);
+    } else {
+        if (op == 0x88) vldr_s(e, 0, vb);
+        else vldr_d(e, 0, vb);
+        call_c(e, op == 0x88 ? (mg_addr)jit_float_to_long : (mg_addr)jit_double_to_long);
+        str_v(e, R0, va);
+        str_v(e, R1, va + 1);
+    }
+}
+
 /* ------------------------------------------------------------------ calls */
 
 /*
@@ -850,6 +927,13 @@ static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
         return true;
     case 0x7f: case 0x80: case 0x82: case 0x83: case 0x87: case 0x89: case 0x8a: case 0x8c:
         return vfp_convert(e, op, a4, b4);
+    case 0x85: case 0x86: case 0x88: case 0x8b:                  /* long-to-float, -double; float-, double-to-long */
+        long_convert(e, op, a4, b4);
+        return true;
+    case 0x9e: case 0x9f: long_divide(e, pc, op == 0x9f, aa, F(1) & 0xFF, F(1) >> 8); return true;     /* div-long, rem-long */
+    case 0xbe: case 0xbf: long_divide(e, pc, op == 0xbf, a4, a4, b4); return true;                       /* and /2addr */
+    case 0xaa: case 0xaf: float_remainder(e, op == 0xaf, aa, F(1) & 0xFF, F(1) >> 8); return true;    /* rem-float, rem-double */
+    case 0xca: case 0xcf: float_remainder(e, op == 0xcf, a4, a4, b4); return true;                     /* and /2addr */
     case 0x45:                                                   /* aget-wide: the element at r3 + r1 * 8 */
         array_checks(e, pc, F(1) & 0xFF, F(1) >> 8, 8);
         e32(e, 0xEB03, (R3 << 8) | (3u << 6) | R1);              /* add r3, r3, r1, lsl #3 */

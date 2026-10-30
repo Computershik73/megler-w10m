@@ -230,6 +230,35 @@ static i32 jit_inlined(i32 n)
 /* Java's conversions of floating point to int: toward zero, saturated, NaN 0. */
 static i32 java_d2i(double v) { return v != v ? 0 : v >= 2147483647.0 ? 2147483647 : v <= -2147483648.0 ? (i32)0x80000000u : (i32)v; }
 
+static i64 java_d2l(double v) { return v != v ? 0 : v >= 9223372036854775808.0 ? INT64_MAX : v <= -9223372036854775808.0 ? INT64_MIN : (i64)v; }
+static i64 java_ldiv(i64 a, i64 b) { return a == INT64_MIN && b == -1 ? a : a / b; }
+static i64 java_lrem(i64 a, i64 b) { return a == INT64_MIN && b == -1 ? 0 : a % b; }
+
+static i64 jit_by_calls(i32 n, i64 seed)
+{
+    u64 a = (u64)seed, s = 0;
+    i32 i;
+    for (i = 0; i < n; i++) {
+        i64 dv = (i64)(i - 7);
+        if (!dv) {
+            s += 1000;
+            continue;
+        }
+        s += (u64)java_ldiv((i64)a, dv);
+        s ^= (u64)java_lrem((i64)a, dv);
+        s -= (u64)java_ldiv((i64)a, dv);
+        s += (u64)java_lrem((i64)a, dv);
+        s += (u64)java_d2l((double)(float)(i64)a);
+        s ^= (u64)java_d2l((double)(i64)a);
+        s += (u64)java_d2l((double)fmodf((float)i, 3.0f));
+        s ^= (u64)java_d2l((double)fmodf((float)i, 7.0f));
+        s += (u64)java_d2l(fmod((double)i, 8.0));
+        s -= (u64)java_d2l(fmod((double)i, 5.0));
+        a = a * 0x5851f42d4c957f2dull + 0x14057b7ef767814full;
+    }
+    return (i64)s;
+}
+
 static double jit_floats(i32 n)
 {
     float f = 0.5f, x, g, h;
@@ -433,9 +462,13 @@ static void test_jit(void)
     A[1].j = (i64)0x123456789abcdef0ll;
     CHECK(call("t/Jit", "wideMoves", "(IJ)J").j == (i64)0x123456789abcdef0ll);
     CHECK_STR(thrown(), "");
-    /* Floating point in a compiled loop, against C. */
+    /* Floating point in a compiled loop, against C; what it does by calls, a divisor of zero among them. */
     A[0].i = 300;
     CHECK(call("t/Jit", "floats", "(I)D").d == jit_floats(300));
+    A[0].i = 40;
+    A[1].j = (i64)0x0123456789abcdefll;
+    CHECK(call("t/Jit", "byCalls", "(IJ)J").j == jit_by_calls(40, (i64)0x0123456789abcdefll));
+    CHECK_STR(thrown(), "");
     /* Trivial methods called from a compiled loop, done in the code: an override and a null object go by the call instead. */
     {
         u32 in_place = g_dvm_jit_in_place;
@@ -458,7 +491,7 @@ static void test_jit(void)
             { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" }, { "fields", "(I)I" }, { "callsInLoop", "(I)I" },
             { "callKinds", "(I)I" }, { "catchInLoop", "(I)I" }, { "deepCalls", "(I)I" }, { "longs", "(IJ)J" }, { "switches", "(I)I" },
             { "objects", "(I)I" }, { "storeFails", "(I)I" }, { "castFails", "(I)I" }, { "inlined", "(I)I" }, { "firstAbove", "([II)I" },
-            { "floats", "(I)D" },
+            { "floats", "(I)D" }, { "byCalls", "(IJ)J" },
         };
         size_t k;
         for (k = 0; k < MG_COUNT(compiled); k++) {
