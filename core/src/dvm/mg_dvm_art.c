@@ -580,12 +580,14 @@ N(Thread_nativeCreate)
     /*
      * Java's frames are not on this stack (the frame stack holds them); it is only what C and native methods use, which the
      * guard in mg_dvm_invoke (c_stack_low, 48 KB above the bottom) turns into a catchable StackOverflowError before it runs
-     * out. Measured deepest over a heavy app of 213 threads: 23 KB; the data app: 7 KB. 256 KB leaves a tenfold margin and,
-     * committed whole for Android code (mg_thread_whole_stack), is 768 KB less memory a thread than the 1 MB this once gave
-     * -- ~190 MB for an app of 253 threads. A thread that asks for more than 256 KB still gets what it asked, for native
-     * code that wants a deep stack of its own.
+     * out. Measured deepest over a heavy app of 213 threads: 23 KB; Yandex Maps' 231 threads: 32 KB; the data app: 7 KB.
+     * 160 KB leaves 112 KB above the guard, three and a half times the deepest, and, committed whole for Android code
+     * (mg_thread_whole_stack), is memory and addresses: 256 KB each held 57 MB of Yandex Maps' 2 GB of addresses, where
+     * Direct3D found no room left for a texture and the app ended in GL_OUT_OF_MEMORY (packages 489, 522). Compiled code's
+     * calls (mg_dvm_jit_invoke) stop going deeper on this stack 32 KB above the guard. A thread that asks for more than 160 KB
+     * still gets what it asked, for native code that wants a deep stack of its own.
      */
-    th = mg_thread_start(thread_main, s, stack > (256 << 10) ? (size_t)stack : (size_t)256 << 10, "java");
+    th = mg_thread_start(thread_main, s, stack > (160 << 10) ? (size_t)stack : (size_t)160 << 10, "java");
     if (!th) {
         free(s);
         set_long(peer, "nativePeer", 0);
