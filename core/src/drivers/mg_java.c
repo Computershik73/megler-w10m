@@ -1373,57 +1373,18 @@ static void meter_advance(const meter_sum *now)
 
 static double per_frame_ms(u64 ns, u32 frames) { return frames ? (double)ns / 1e6 / frames : 0; }
 
-static void meter_line(const char *what, const meter_window *w, u64 now)
+/*
+ * The memory's lines: what the process holds and what holds its addresses, and the JIT's work. They walk the whole address
+ * space (VirtualQuery) and every thread: some 300 ms of the main thread every five seconds when the frames line said them,
+ * the frame meter (Native.frameMark) 6% of Yandex Maps' main thread (package 530). Said every ten seconds by the sampler's
+ * thread (hot_main), and once at the run's end.
+ */
+static void meter_census(void)
 {
+    u64 process = mg_mem_usage();
     mg_dvm_stats s;
-    u64 busy[PARTS], java = 0, host = 0, present = 0, waited = 0, executed = 0, elapsed = now - w->started, screen;
-    u64 native = 0, natives = 0, alloc = 0, allocs = 0, blocked = 0, wall = 0, other, interpreted, live_bytes;
-    u64 bitmap_bytes = 0, list_bytes = 0, process = mg_mem_usage(), collections = 0, collecting_ns = 0;
-    u32 bitmaps = 0, nodes = 0, n = w->frames;
-    char of[40], redrawn[60], rates[300], mem[480], gc[120];
-    int i;
-    for (i = 0; i < PARTS; i++) {
-        const meter_sum *p = &w->part[i];
-        /* The main thread's time in this part less its waiting and its presenting: Java, the shell's drawing included. */
-        busy[i] = p->wall > p->waited + p->present ? p->wall - p->waited - p->present : 0;
-        java += busy[i];
-        host += p->host;
-        present += p->present;
-        waited += p->waited;
-        executed += p->executed;
-        native += p->native;
-        natives += p->natives;
-        alloc += p->alloc;
-        allocs += p->allocs;
-        blocked += p->blocked;
-        wall += p->wall;
-    }
+    char mem[480];
     mg_dvm_get_stats(&s);
-    live_bytes = mg_dvm_live_bytes();
-    mg_java_gfx_stats(&bitmap_bytes, &bitmaps);
-    /* And what RenderNodes and Pictures take: their display lists, which are the core's memory as bitmaps are. */
-    mg_java_gfx_list_stats(&list_bytes, NULL, &nodes);
-    screen = (u64)(J.config->width > 0 ? J.config->width : 0) * (u64)(J.config->height > 0 ? J.config->height : 0);
-    of[0] = 0;
-    if (w->drawn != n) snprintf(of, sizeof(of), " of %u frames", (unsigned)n);
-    if (w->drawn && screen)
-        snprintf(redrawn, sizeof(redrawn), "redrawn %u%% of the screen a frame", (unsigned)(w->redrawn * 100 / (screen * w->drawn)));
-    else
-        mg_strlcpy(redrawn, "nothing drawn", sizeof(redrawn));
-    /*
-     * Where Java's time went besides the shell's drawing. The shell's drawing, present and the waits all happen inside native
-     * methods, so the other natives are what is left of the natives' time without them. Bytecode is the rest: the time
-     * outside native methods, allocation and waits for monitors -- interpreted and compiled (mg_dvm_jit.c), calls and returns,
-     * resolution, the interpreter's own work. The instructions counted are the interpreter's alone (compiled code counts
-     * none), so their pace over that time says how much of it was interpreted. And what every thread's interpreter executed.
-     */
-    other = native > host + present + waited ? native - host - present - waited : 0;
-    interpreted = wall > native + alloc + blocked ? wall - native - alloc - blocked : 0;
-    snprintf(rates, sizeof(rates), "in other native methods %.1f (%.0f calls), allocating %.1f (%.0f objects), waiting for monitors %.1f, "
-             "bytecode %.1f, interpreted and compiled (%.1f M instructions a second interpreted); %.1f M instructions interpreted on all threads",
-             per_frame_ms(other, n), n ? (double)natives / n : 0.0, per_frame_ms(alloc, n), n ? (double)allocs / n : 0.0, per_frame_ms(blocked, n),
-             per_frame_ms(interpreted, n), interpreted ? (double)executed * 1e3 / (double)interpreted : 0.0,
-             (double)(mg_dvm_executed_all() - w->all_executed) / 1e6);
     mem[0] = 0;
     if (process) {
         /* And the parts of it the core can name: the Java heap's memory, the DEX files, what madvise has given back. */
@@ -1452,18 +1413,6 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
                          (unsigned)largest, (unsigned)reserved, (unsigned)committed);
         }
     }
-    /* The collector, as its own part: what it took in the time the line covers, every thread of the runtime's stopped for most of it. */
-    mg_dvm_gc_totals(&collections, &collecting_ns);
-    snprintf(gc, sizeof(gc), "collecting %.1f ms in %u collections", (double)(collecting_ns - w->collecting_ns) / 1e6, (unsigned)(collections - w->collections));
-    mg_info("java: frames %s%.1f s: %u drawn%s, %.1f ms of work each on average (the longest frame %.1f without input and messages): Java %.1f "
-            "(input and messages %.1f, measure and layout %.1f, "
-            "draw traversal %.1f), of it in the shell's drawing %.1f, %s; present %.1f; idle %u%%; %s; heap %u MB (objects %u live, %u "
-            "made in these %.1f s; bitmaps %u; display lists %u KB, %u nodes); %s",
-            what, (double)elapsed / 1e9, (unsigned)w->drawn, of, per_frame_ms(java + present, n), per_frame_ms(w->longest, 1), per_frame_ms(java, n),
-            per_frame_ms(busy[PART_BETWEEN], n), per_frame_ms(busy[PART_LAYOUT], n), per_frame_ms(busy[PART_DRAW], n), per_frame_ms(host, n), rates,
-            per_frame_ms(present, n), (unsigned)(elapsed ? waited * 100 / elapsed : 0), gc,
-            (unsigned)((live_bytes + bitmap_bytes) >> 20), (unsigned)(live_bytes >> 20), (unsigned)((s.object_bytes - w->object_bytes) >> 20),
-            (double)elapsed / 1e9, (unsigned)(bitmap_bytes >> 20), (unsigned)(list_bytes >> 10), (unsigned)nodes, redrawn);
     /* Its own line, which the frames line had no room left for. */
     if (mem[0]) mg_info("java: memory: %s", mem);
     /*
@@ -1524,6 +1473,73 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
     }
 }
 
+static void meter_line(const char *what, const meter_window *w, u64 now)
+{
+    mg_dvm_stats s;
+    u64 busy[PARTS], java = 0, host = 0, present = 0, waited = 0, executed = 0, elapsed = now - w->started, screen;
+    u64 native = 0, natives = 0, alloc = 0, allocs = 0, blocked = 0, wall = 0, other, interpreted, live_bytes;
+    u64 bitmap_bytes = 0, list_bytes = 0, collections = 0, collecting_ns = 0;
+    u32 bitmaps = 0, nodes = 0, n = w->frames;
+    char of[40], redrawn[60], rates[300], gc[120];
+    int i;
+    for (i = 0; i < PARTS; i++) {
+        const meter_sum *p = &w->part[i];
+        /* The main thread's time in this part less its waiting and its presenting: Java, the shell's drawing included. */
+        busy[i] = p->wall > p->waited + p->present ? p->wall - p->waited - p->present : 0;
+        java += busy[i];
+        host += p->host;
+        present += p->present;
+        waited += p->waited;
+        executed += p->executed;
+        native += p->native;
+        natives += p->natives;
+        alloc += p->alloc;
+        allocs += p->allocs;
+        blocked += p->blocked;
+        wall += p->wall;
+    }
+    mg_dvm_get_stats(&s);
+    live_bytes = mg_dvm_live_bytes();
+    mg_java_gfx_stats(&bitmap_bytes, &bitmaps);
+    /* And what RenderNodes and Pictures take: their display lists, which are the core's memory as bitmaps are. */
+    mg_java_gfx_list_stats(&list_bytes, NULL, &nodes);
+    screen = (u64)(J.config->width > 0 ? J.config->width : 0) * (u64)(J.config->height > 0 ? J.config->height : 0);
+    of[0] = 0;
+    if (w->drawn != n) snprintf(of, sizeof(of), " of %u frames", (unsigned)n);
+    if (w->drawn && screen)
+        snprintf(redrawn, sizeof(redrawn), "redrawn %u%% of the screen a frame", (unsigned)(w->redrawn * 100 / (screen * w->drawn)));
+    else
+        mg_strlcpy(redrawn, "nothing drawn", sizeof(redrawn));
+    /*
+     * Where Java's time went besides the shell's drawing. The shell's drawing, present and the waits all happen inside native
+     * methods, so the other natives are what is left of the natives' time without them. Bytecode is the rest: the time
+     * outside native methods, allocation and waits for monitors -- interpreted and compiled (mg_dvm_jit.c), calls and returns,
+     * resolution, the interpreter's own work. The instructions counted are the interpreter's alone (compiled code counts
+     * none), so their pace over that time says how much of it was interpreted. And what every thread's interpreter executed.
+     */
+    other = native > host + present + waited ? native - host - present - waited : 0;
+    interpreted = wall > native + alloc + blocked ? wall - native - alloc - blocked : 0;
+    snprintf(rates, sizeof(rates), "in other native methods %.1f (%.0f calls), allocating %.1f (%.0f objects), waiting for monitors %.1f, "
+             "bytecode %.1f, interpreted and compiled (%.1f M instructions a second interpreted); %.1f M instructions interpreted on all threads",
+             per_frame_ms(other, n), n ? (double)natives / n : 0.0, per_frame_ms(alloc, n), n ? (double)allocs / n : 0.0, per_frame_ms(blocked, n),
+             per_frame_ms(interpreted, n), interpreted ? (double)executed * 1e3 / (double)interpreted : 0.0,
+             (double)(mg_dvm_executed_all() - w->all_executed) / 1e6);
+    /* The collector, as its own part: what it took in the time the line covers, every thread of the runtime's stopped for most of it. */
+    mg_dvm_gc_totals(&collections, &collecting_ns);
+    snprintf(gc, sizeof(gc), "collecting %.1f ms in %u collections", (double)(collecting_ns - w->collecting_ns) / 1e6, (unsigned)(collections - w->collections));
+    mg_info("java: frames %s%.1f s: %u drawn%s, %.1f ms of work each on average (the longest frame %.1f without input and messages): Java %.1f "
+            "(input and messages %.1f, measure and layout %.1f, "
+            "draw traversal %.1f), of it in the shell's drawing %.1f, %s; present %.1f; idle %u%%; %s; heap %u MB (objects %u live, %u "
+            "made in these %.1f s; bitmaps %u; display lists %u KB, %u nodes); %s",
+            what, (double)elapsed / 1e9, (unsigned)w->drawn, of, per_frame_ms(java + present, n), per_frame_ms(w->longest, 1), per_frame_ms(java, n),
+            per_frame_ms(busy[PART_BETWEEN], n), per_frame_ms(busy[PART_LAYOUT], n), per_frame_ms(busy[PART_DRAW], n), per_frame_ms(host, n), rates,
+            per_frame_ms(present, n), (unsigned)(elapsed ? waited * 100 / elapsed : 0), gc,
+            (unsigned)((live_bytes + bitmap_bytes) >> 20), (unsigned)(live_bytes >> 20), (unsigned)((s.object_bytes - w->object_bytes) >> 20),
+            (double)elapsed / 1e9, (unsigned)(bitmap_bytes >> 20), (unsigned)(list_bytes >> 10), (unsigned)nodes, redrawn);
+    /* The memory's lines, at the end of the run here; meanwhile the sampler's thread says them (hot_main), off the main thread. */
+    if (what[0]) meter_census();
+}
+
 /*
  * Where the main thread's time goes: every 5 ms the method it runs (mg_dvm_thread.running, which it writes itself: always
  * a method or nothing), counted, and every 10 s the ones counted most said, with their share of the samples -- a native
@@ -1580,6 +1596,7 @@ static void hot_main(void *arg)
         now = mg_time_monotonic_ns();
         if (now - since >= 10000000000ull) {
             hot_say(samples, outside);
+            meter_census();
             memset(g_hot, 0, sizeof(g_hot));
             samples = outside = 0;
             since = now;
