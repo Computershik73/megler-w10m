@@ -587,6 +587,8 @@ int DVM_LOOP(mg_dvm_thread *t, mg_dvm_frame *f, mg_jvalue *ret)
         f = nf;
         LOAD_FRAME();
         pc = 0;
+        /* Its compiled code, when its start is an entry: run until it returns or hands the frame back. */
+        JIT_BACK(0)
         continue;
     }
 

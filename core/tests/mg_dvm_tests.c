@@ -339,6 +339,13 @@ static void test_jit(void)
     A[0].l = ints;
     A[1].i = 30;
     CHECK_INT(call("t/Jit", "readTo", "([II)I").i, 465);
+    /* A return from inside a compiled loop: the code ends the call itself. */
+    A[0].l = ints;
+    A[1].i = 20;
+    CHECK_INT(call("t/Jit", "firstAbove", "([II)I").i, 20);
+    A[0].l = ints;
+    A[1].i = 100;
+    CHECK_INT(call("t/Jit", "firstAbove", "([II)I").i, -1);
     A[0].i = 50;
     CHECK_INT(call("t/Jit", "callsInLoop", "(I)I").i, 1225);
     /* Fields of every width, an object one and static ones, read and written by a compiled loop. */
@@ -408,7 +415,7 @@ static void test_jit(void)
             { "sum", "([I)I" }, { "fill", "([I[B[C[SI)I" }, { "mix", "(II)I" }, { "conditions", "(I)I" }, { "divideAll", "(I[I)I" },
             { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" }, { "fields", "(I)I" }, { "callsInLoop", "(I)I" },
             { "callKinds", "(I)I" }, { "catchInLoop", "(I)I" }, { "deepCalls", "(I)I" }, { "longs", "(IJ)J" }, { "switches", "(I)I" },
-            { "objects", "(I)I" }, { "storeFails", "(I)I" }, { "castFails", "(I)I" }, { "inlined", "(I)I" },
+            { "objects", "(I)I" }, { "storeFails", "(I)I" }, { "castFails", "(I)I" }, { "inlined", "(I)I" }, { "firstAbove", "([II)I" },
         };
         size_t k;
         for (k = 0; k < MG_COUNT(compiled); k++) {
@@ -416,6 +423,12 @@ static void test_jit(void)
             CHECK(m && m->jit_state == 1 && m->jit);
             if (!m || !m->jit) say("  t.Jit.%s%s was not compiled", compiled[k].name, compiled[k].sig);
         }
+    }
+    /* A method without loops that compiled loops call, compiled for its calls: entered at its start, its return compiled. */
+    {
+        mg_dvm_class *ac = mg_dvm_find_class("t/Arith");
+        mg_dvm_method *sum = ac ? mg_dvm_find_method(ac, "sum", "(II)I", true) : NULL;
+        CHECK(sum && sum->jit && sum->jit->entry[0]);
     }
 #else
     (void)c;

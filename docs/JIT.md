@@ -65,16 +65,22 @@ masked); long arithmetic but division and remainder (add, sub, mul, and, or, xor
 not, `int-to-long`, `long-to-int`, `cmp-long`); `if-*`, `if-*z`, `goto`, `packed-switch` and `sparse-switch` of up to 64
 keys; `array-length`, `aget` and `aput` of ints, bytes, chars, shorts and booleans and `aget-object`; `iget` and `iput`
 of every width of a field resolved by then, `sget` and `sput` of a class initialised by then; calls of every kind with
-their `move-result`; and through `mg_dvm_jit_op` (mg_dvm_interp.c) `new-instance`, `new-array`, `const-class`, the
+their `move-result`; the returns; and through `mg_dvm_jit_op` (mg_dvm_interp.c) `new-instance`, `new-array`, `const-class`, the
 monitors, `aput-object` with its store check, `check-cast` and `instance-of` -- these two in the code itself when the
 object is null or of the very class named. A call goes through `mg_dvm_jit_invoke` (mg_dvm_interp.c), which finds the method as the
 interpreter's do_invoke does and does it as it would -- an intrinsic or a trivial body in place, a native method called,
-bytecode run to its return in a loop of its own on the host's stack; an exception it ends with sends the frame back to the
-interpreter, pending, at the invoke; where the host's stack has too little left for another loop (deep recursion through
-compiled code) the call is the interpreter's, without one.
+bytecode run to its return -- in the callee's own compiled code when it has some at its start, else in a loop of the
+interpreter's on the host's stack; an exception it ends with sends the frame back to the interpreter, pending, at the
+invoke; where the host's stack has too little left for another loop (deep recursion through compiled code) the call is the
+interpreter's, without one. A call of a trivial method (empty, a constant, a getter, a setter, a static getter: the
+interpreter's "trivial methods") is done in the code itself, after a check that the object's class has that very method
+in its slot; an override, a null object, an object without the field go by `mg_dvm_jit_invoke`.
 
-A method is compiled at the 1000th jump back it takes, and a loop entered only when it is compiled whole: a loop that
-hands back at every turn costs more than it saves. Code goes on pages of an arena of the process's, each method on its own.
+A method is compiled when the jumps back it takes and the calls of it made by then reach 1000. Its code is entered at the
+head of a loop compiled whole -- a loop that hands back at every turn costs more than it saves -- and at its start, for
+its calls, when the code there does some work before it hands anything back (four instructions in a row, or a return):
+the interpreter's call (do_invoke) and the compiled one (`mg_dvm_jit_invoke`) go in there, and a compiled return ends the
+call with no loop of the interpreter's. Code goes on pages of an arena of the process's, each method on its own.
 
 Under qemu-arm (ns a turn, interpreted then compiled): int arithmetic 141 to 5, iget and iput 217 to 15, sget and sput 119
 to 4, aget and aput of an int[256] 228 to 17, String.indexOf 81 to 3, String.charAt 256 to 97, String.hashCode 187 to 94,
@@ -83,6 +89,4 @@ compiled instruction and hand-back, calls of each kind with their results, a cal
 recursion 3000 deep through compiled calls, long arithmetic against C, and both switches; the whole main suite passes with
 every loop compiled (MEGLER_JIT_THRESHOLD=1).
 
-Next: floating point (VFP); a call to a compiled method straight into its code, and its returns compiled, so that a
-loop calling bytecode does not pay for a loop of the interpreter's at every call (the benchmark's ArrayList iterator is
-some 10% slower compiled than interpreted for that).
+Next: floating point (VFP); several small methods' code on one page.

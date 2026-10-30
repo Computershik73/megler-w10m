@@ -1079,14 +1079,16 @@ enum { DVM_THREW, DVM_RETURNED, DVM_SWITCH };
         goto switch_loop;                                                            \
     }
 /*
- * A jump back: the method's compiled code run from the target when it has some there (mg_dvm_jit.c), until it hands the
- * frame back at the pc the loop goes on at. (Only in the plain loop: nothing compiled runs while instructions are watched.)
+ * A jump back, or a call's start: the method's compiled code run from there when it has some there (mg_dvm_jit.c), until
+ * it hands the frame back at the pc the loop goes on at, or returns. (Only in the plain loop: nothing compiled runs while
+ * instructions are watched.)
  */
 #define JIT_BACK(at)                                                                 \
     {                                                                                \
         u32 next_;                                                                   \
-        int ran_ = mg_dvm_jit_back(t, f, m, regs, (at), &next_);                     \
+        int ran_ = mg_dvm_jit_back(t, f, m, regs, (at), &next_, &result);            \
         if (ran_) {                                                                  \
+            if (ran_ == 3) goto do_return;                                           \
             pc = next_;                                                              \
             if (ran_ == 2) {                                                         \
                 f->pc = pc;                                                          \
@@ -1254,6 +1256,26 @@ int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
         if (nf->sync) mg_dvm_monitor_enter(nf->sync);
     }
     if (g_call_trace) call_trace_enter(t, target, " (compiled)", argv, count);
+    /*
+     * Its own compiled code from its start, when it has some there (its calls counted toward compiling it): a return there
+     * is the call's end, with no loop of the interpreter's. Not for a method with handlers, whose exceptions the
+     * interpreter's loop decides about; one without simply passes them to its caller, as the loop would.
+     */
+    if (!target->ntries) {
+        u32 next;
+        int ran = mg_dvm_jit_back(t, nf, target, nf->regs, 0, &next, res);
+        if (ran == 2 || ran == 3) {
+            if (g_call_trace) {
+                if (ran == 3) call_trace_return(t, target, res);
+                else call_trace_unwind(t, target, t->pending);
+            }
+            if (nf->sync) mg_dvm_monitor_exit(nf->sync);
+            pop_frame(t);
+            t->c_depth--;
+            return ran == 3 ? 0 : 1;
+        }
+        if (ran == 1) nf->pc = next;
+    }
     ok = interpret(t, nf, res);
     t->c_depth--;
     return ok ? 0 : 1;

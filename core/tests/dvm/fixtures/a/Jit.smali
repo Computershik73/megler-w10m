@@ -729,3 +729,21 @@
     const/4 v3, -0x1
     return v3
 .end method
+
+# A loop that returns from inside, compiled whole now that returns are: the index of the first element above the limit, or -1.
+.method public static firstAbove([II)I
+    .registers 5
+    const/4 v0, 0x0
+    array-length v1, p0
+    :loop
+    if-ge v0, v1, :none
+    aget v2, p0, v0
+    if-le v2, p1, :next
+    return v0
+    :next
+    add-int/lit8 v0, v0, 0x1
+    goto :loop
+    :none
+    const/4 v0, -0x1
+    return v0
+.end method

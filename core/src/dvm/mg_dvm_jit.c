@@ -11,13 +11,15 @@
  * No safepoints: the collector stops threads from outside and reads their registers and stacks conservatively, and moves
  * nothing (mg_dvm_gc.c).
  *
- * Entered from the interpreter's plain loop at a jump back (mg_dvm_jit_back), at the head of a loop compiled whole. A jump
- * back in the code looks at g_dvm.slow first and hands the frame back at the target when anything watches the instructions
- * (the watched loop runs then).
+ * Entered from the interpreter's plain loop at a jump back (mg_dvm_jit_back), at the head of a loop compiled whole, and at a
+ * method's start when it is called, from the interpreter or from compiled code, if the code there does some work before it
+ * hands anything back. A jump back in the code looks at g_dvm.slow first and hands the frame back at the target when
+ * anything watches the instructions (the watched loop runs then). Returns are compiled: the interpreter, or the compiled
+ * call, ends the call with the value the code leaves.
  *
  *   int code(mg_dvm_jit_ctx *ctx, const void *entry)
  *     r5 ctx, r4 ctx->regs, r7 ctx->slow; returns 0 with ctx->pc where the interpreter goes on, 1 with ctx->pc where the
- *     exception pending was thrown.
+ *     exception pending was thrown, 2 with the method's value in ctx->result.
  *
  * Only where the host runs Thumb-2: the phone, and the ARM tests under qemu-arm. Elsewhere nothing is compiled.
  */
@@ -62,8 +64,11 @@ typedef struct fixup {
     u8 kind, cond;                     /* FIX_*; the condition (14: always) */
 } fixup;
 
-/* To a pc's code, its exit, its jump back's check, the way out; and for a call that threw, its pc's throw and the way out with it. */
-enum { FIX_CODE, FIX_EXIT, FIX_BACK, FIX_EPILOGUE, FIX_THROW, FIX_THROW_EPILOGUE };
+/*
+ * To a pc's code, its exit, its jump back's check, the way out; for a call that threw, its pc's throw and the way out with
+ * it; and the way out of a return.
+ */
+enum { FIX_CODE, FIX_EXIT, FIX_BACK, FIX_EPILOGUE, FIX_THROW, FIX_THROW_EPILOGUE, FIX_RETURN };
 enum { C_EQ = 0, C_NE = 1, C_HS = 2, C_LO = 3, C_MI = 4, C_PL = 5, C_HI = 8, C_GE = 10, C_LT = 11, C_GT = 12, C_LE = 13, C_AL = 14 };
 
 typedef struct emitter {
@@ -718,6 +723,27 @@ static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
     case 0x04: ldr_v(e, R0, b4); ldr_v(e, R1, b4 + 1); str_v(e, R0, a4); str_v(e, R1, a4 + 1); return true;
     case 0x05: ldr_v(e, R0, F(1)); ldr_v(e, R1, F(1) + 1); str_v(e, R0, aa); str_v(e, R1, aa + 1); return true;
     case 0x06: ldr_v(e, R0, F(2)); ldr_v(e, R1, F(2) + 1); str_v(e, R0, F(1)); str_v(e, R1, F(1) + 1); return true;
+    case 0x0e:                                                   /* return-void, and the others: the value for ctx->result */
+        mov_imm(e, R0, 0);
+        mov_imm(e, R1, 0);
+        str_imm(e, R0, R5, JIT_CTX_RESULT);
+        str_imm(e, R1, R5, JIT_CTX_RESULT + 4);
+        fix(e, FIX_RETURN, pc, C_AL);
+        return true;
+    case 0x0f: case 0x11:                                        /* return, return-object */
+        ldr_v(e, R0, aa);
+        mov_imm(e, R1, 0);
+        str_imm(e, R0, R5, JIT_CTX_RESULT);
+        str_imm(e, R1, R5, JIT_CTX_RESULT + 4);
+        fix(e, FIX_RETURN, pc, C_AL);
+        return true;
+    case 0x10:                                                   /* return-wide */
+        ldr_v(e, R0, aa);
+        ldr_v(e, R1, aa + 1);
+        str_imm(e, R0, R5, JIT_CTX_RESULT);
+        str_imm(e, R1, R5, JIT_CTX_RESULT + 4);
+        fix(e, FIX_RETURN, pc, C_AL);
+        return true;
     case 0x0a: case 0x0c: ldr_imm(e, R0, R5, JIT_CTX_RESULT); str_v(e, R0, aa); return true;   /* move-result, -object: a compiled call's */
     case 0x0b: ldr_imm(e, R0, R5, JIT_CTX_RESULT); ldr_imm(e, R1, R5, JIT_CTX_RESULT + 4); str_v(e, R0, aa); str_v(e, R1, aa + 1); return true;
     case 0x16: case 0x17: case 0x18: case 0x19: {               /* const-wide/16, /32, const-wide, /high16 */
@@ -957,7 +983,9 @@ static u8 *code_pages(size_t bytes)
 static mg_dvm_jit_code *compile(mg_dvm_method *m)
 {
     emitter e;
-    u32 *code_at = NULL, *exit_at = NULL, *back_at = NULL, *throw_at = NULL, pc, i, epilogue, thrown, compiled = 0, exits = 0, loops = 0, calls = 0;
+    u32 *code_at = NULL, *exit_at = NULL, *back_at = NULL, *throw_at = NULL, pc, i, epilogue, thrown, returned, compiled = 0, exits = 0, loops = 0,
+        calls = 0, run = 0;
+    bool start;
     u8 *target = NULL, *handback = NULL;
     mg_dvm_jit_code *c = NULL;
     size_t bytes;
@@ -1004,7 +1032,19 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
      */
     whole_loops(m, handback, target);
     for (pc = 0; pc < m->ninsns; pc++) loops += target[pc];
-    if (!loops) goto out;
+    /*
+     * Its start an entry too, for its calls, when the code there does some work before it hands anything back: four
+     * instructions in a row, or a return. (Fewer, and going in and out of the code costs more than it saves.)
+     */
+    for (pc = 0; pc < m->ninsns && !handback[pc] && run < 4;) {
+        u32 n = mg_dvm_insn_units(m->insns, m->ninsns, pc), op = m->insns[pc] & 0xFF;
+        if (!n) break;
+        run = op >= 0x0e && op <= 0x11 ? 4 : run + 1;
+        pc += n;
+    }
+    start = run >= 4;
+    if (start) target[0] = 1;
+    if (!loops && !start) goto out;
     /* The exits of the checks and the jump-back stubs, after the code: r0 = the instruction's pc, to the way out. (Each
        instruction's code goes on into the next one's; the last never ends that way, which bytecode cannot.) */
     for (i = 0; i < e.nfx; i++) {
@@ -1036,6 +1076,10 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
     e16(&e, 0x60A8);                   /* str r0, [r5, #8] */
     e16(&e, 0x2001);                   /* movs r0, #1 */
     e16(&e, 0xBDF8);                   /* pop {r3-r7, pc} */
+    /* And from a return, its value in ctx->result: return 2. */
+    returned = e.n;
+    e16(&e, 0x2002);                   /* movs r0, #2 */
+    e16(&e, 0xBDF8);                   /* pop {r3-r7, pc} */
     if (e.failed) goto out;
     for (i = 0; i < e.nfx; i++) {
         fixup *x = &e.fx[i];
@@ -1046,6 +1090,7 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
         case FIX_BACK: to = x->pc < m->ninsns ? back_at[x->pc] : 0; break;
         case FIX_THROW: to = throw_at[x->pc]; break;
         case FIX_THROW_EPILOGUE: to = thrown + 1; break;
+        case FIX_RETURN: to = returned + 1; break;
         default: to = epilogue + 1; break;
         }
         /* A branch to the middle of an instruction or outside the method: not compiled. */
@@ -1070,9 +1115,9 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
         if (!target[pc]) c->entry[pc] = 0;
     g_dvm_jit_in_place += e.in_place;
     if (g_jit_trace)
-        mg_info("jit: %s.%s%s compiled: %u instructions, %u of them handed back, %u calls (%u done in the code), %u loops entered, %u bytes of Thumb-2",
+        mg_info("jit: %s.%s%s compiled: %u instructions, %u of them handed back, %u calls (%u done in the code), %u loops entered%s, %u bytes of Thumb-2",
                 m->cls->name, m->name, m->sig, (unsigned)(compiled + exits), (unsigned)exits, (unsigned)calls, (unsigned)e.in_place, (unsigned)loops,
-                (unsigned)bytes);
+                start ? " and its start" : "", (unsigned)bytes);
 out:
     free(code_at);
     free(exit_at);
@@ -1087,7 +1132,7 @@ out:
 
 static mg_lock g_jit_lock = MG_LOCK_INIT;
 
-int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next)
+int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next, mg_jvalue *res)
 {
     mg_dvm_jit_code *c = m->jit;
     u32 at;
@@ -1111,7 +1156,7 @@ int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm
         if (!c) return 0;
     }
     if (pc >= c->ninsns || !(at = c->entry[pc])) return 0;
-    return mg_dvm_jit_run(t, f, c, regs, at, next);
+    return mg_dvm_jit_run(t, f, c, regs, at, next, res);
 }
 
 #else
@@ -1124,13 +1169,14 @@ void mg_dvm_jit_start(bool on, u32 threshold, bool trace)
     g_dvm_jit_threshold = 0;
 }
 
-int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next)
+int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next, mg_jvalue *res)
 {
     (void)t;
     (void)f;
     (void)regs;
     (void)pc;
     (void)next;
+    (void)res;
     m->jit_state = 2;
     return 0;
 }
