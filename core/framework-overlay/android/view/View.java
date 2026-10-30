@@ -1043,7 +1043,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         RectF box = new RectF(l, t, r, b);
         View v = this;
         for (;;) {
-            if (v.mAnimation != null) { root.invalidate(); return; }
+            if (v.mAnimation != null) { root.invalidate(this); return; }
             ViewGroup p = v.mParent;
             if (p != null && p.getClipChildren() && !box.intersect(0, 0, v.getWidth(), v.getHeight())) return;
             if (!v.hasIdentityMatrix()) v.getMatrix().mapRect(box);
@@ -1053,13 +1053,27 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
             if (v.mVisibility != VISIBLE && v.mAnimation == null) return;
             box.offset(-v.mScrollX, -v.mScrollY);
         }
-        if (v.mRoot == root) root.meglerDirty(box);
+        if (v.mRoot == root) root.meglerDirty(box, this);
     }
-    public void postInvalidate() { if (mRoot != null) mRoot.invalidateFromAnyThread(); }
-    public void postInvalidate(int l, int t, int r, int b) { postInvalidate(); }
+    /*
+     * Megler: the view's own invalidation, or a rectangle's of it, from any thread: done on the main thread, as Android's
+     * posts it there. It was the whole window's (ViewRoot.invalidateFromAnyThread), so a view that animated itself with
+     * postInvalidateOnAnimation -- a progress indicator, a counter, a custom view's animator -- had the whole screen drawn
+     * again in every frame: Yandex Maps redrew 100% of the screen ten times a second (package 527).
+     */
+    public void postInvalidate() {
+        if (mRoot == null) return;
+        if (Looper.myLooper() == Looper.getMainLooper()) invalidate();
+        else megler.ViewRoot.mainHandler().post(this::invalidate);
+    }
+    public void postInvalidate(int l, int t, int r, int b) {
+        if (mRoot == null) return;
+        if (Looper.myLooper() == Looper.getMainLooper()) invalidate(l, t, r, b);
+        else megler.ViewRoot.mainHandler().post(() -> invalidate(l, t, r, b));
+    }
     public void postInvalidateDelayed(long ms) { postDelayed(this::invalidate, ms); }
     public void postInvalidateOnAnimation() { postInvalidate(); }
-    public void postInvalidateOnAnimation(int l, int t, int r, int b) { postInvalidate(); }
+    public void postInvalidateOnAnimation(int l, int t, int r, int b) { postInvalidate(l, t, r, b); }
     public void invalidateDrawableMegler() { invalidate(); }
     protected void onDraw(Canvas c) {}
     protected void dispatchDraw(Canvas c) {}

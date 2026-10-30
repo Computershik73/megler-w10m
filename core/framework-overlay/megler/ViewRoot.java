@@ -293,17 +293,60 @@ public final class ViewRoot implements ViewParent {
     public KeyEvent.DispatcherState keyDispatcherState() { return mKeyState; }
     public void keepScreenOn(boolean on) {}
     /** All of the window is to be drawn again. */
-    public void invalidate() { mDirtyAll = true; scheduleFrame(); }
+    public void invalidate() { mDirtyAll = true; noteDirtier("the window", Float.MAX_VALUE); scheduleFrame(); }
+    /** The whole window, for a view of it (one with an animation running: View.meglerDirty). */
+    public void invalidate(View cause) { mDirtyAll = true; noteDirtier(cause.getClass().getName(), Float.MAX_VALUE); scheduleFrame(); }
     public void invalidateFromAnyThread() { if (Looper.myLooper() == Looper.getMainLooper()) invalidate(); else mainHandler().post(this::invalidate); }
     /** A rectangle of the window, in its own coordinates (View.meglerDirty), is to be drawn again; nothing when none of it is in the window. */
-    public void meglerDirty(RectF box) {
+    public void meglerDirty(RectF box, View cause) {
         if (!mDirtyAll) {
             int l = Math.max(0, (int) Math.floor(box.left)), t = Math.max(0, (int) Math.floor(box.top));
             int r = Math.min(mW, (int) Math.ceil(box.right)), b = Math.min(mH, (int) Math.ceil(box.bottom));
             if (l >= r || t >= b) return;
             mDirty.union(l, t, r, b);
+            noteDirtier(cause, (float) (r - l) * (b - t));
         }
         scheduleFrame();
+    }
+    /*
+     * Which views have most of the screen drawn again: in each frame that draws half the screen or more, the view (by its
+     * class) that asked for the largest rectangle, counted, and the three counted most said every ten seconds
+     * (I/MeglerViews). Yandex Maps redrew the whole screen in every frame, and nothing said for which view.
+     */
+    private static String sDirtier;
+    private static View sDirtierView;
+    private static float sDirtierArea;
+    private static final java.util.HashMap<String, int[]> sDirtiers = new java.util.HashMap<>();
+    private static long sDirtiersSaid;
+    private static void noteDirtier(View cause, float area) {
+        if (cause != null && area > sDirtierArea) { sDirtierView = cause; sDirtier = null; sDirtierArea = area; }
+    }
+    private static void noteDirtier(String cause, float area) {
+        if (area > sDirtierArea) { sDirtier = cause; sDirtierView = null; sDirtierArea = area; }
+    }
+    private static void countDirtier(int redrawn, int screen) {
+        String who = sDirtierView != null ? sDirtierView.getClass().getName() : sDirtier;
+        sDirtier = null;
+        sDirtierView = null;
+        sDirtierArea = 0;
+        if (who != null && redrawn * 2L >= screen) {
+            int[] n = sDirtiers.get(who);
+            if (n == null) sDirtiers.put(who, n = new int[1]);
+            n[0]++;
+        }
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - sDirtiersSaid < 10000 || sDirtiers.isEmpty()) return;
+        sDirtiersSaid = now;
+        StringBuilder b = new StringBuilder("frames that drew half the screen or more, in 10 s, by the view that asked for the most:");
+        for (int k = 0; k < 3 && !sDirtiers.isEmpty(); k++) {
+            String best = null;
+            int most = 0;
+            for (java.util.Map.Entry<String, int[]> e : sDirtiers.entrySet()) if (e.getValue()[0] > most) { most = e.getValue()[0]; best = e.getKey(); }
+            b.append(k == 0 ? " " : ", ").append(best).append(' ').append(most);
+            sDirtiers.remove(best);
+        }
+        sDirtiers.clear();
+        android.util.Log.i("MeglerViews", b.toString());
     }
     /** Whether the frame being drawn draws only part of the screen (View.drawFromParent then skips what lies outside it). */
     public static boolean meglerDrawingPart() { return sDrawingPart; }
@@ -548,7 +591,9 @@ public final class ViewRoot implements ViewParent {
             else if (!r.mDirty.isEmpty()) { sScratch.set(r.mDirty); sScratch.offset(r.mX, r.mY); part.union(sScratch); }
         }
         for (ViewRoot r : roots) { r.mDirty.setEmpty(); r.mDirtyAll = false; }
+        if (sFullRedraw) noteDirtier("windows added, removed, moved or resized", Float.MAX_VALUE);
         sFullRedraw = false;
+        countDirtier(whole ? sw * sh : (part.isEmpty() ? 0 : Math.min(part.width(), sw) * Math.min(part.height(), sh)), sw * sh);
         if (!whole) {
             sRedrawn = 0;
             if (!sPresentedAny || !part.intersect(0, 0, sw, sh)) return;      /* nothing visible changed: the screen is as it was */
