@@ -1087,8 +1087,13 @@ enum { DVM_THREW, DVM_RETURNED, DVM_SWITCH };
 #define JIT_BACK(at)                                                                 \
     {                                                                                \
         u32 next_;                                                                   \
-        if (mg_dvm_jit_back(m, regs, (at), &next_)) {                                \
+        int ran_ = mg_dvm_jit_back(t, f, m, regs, (at), &next_);                     \
+        if (ran_) {                                                                  \
             pc = next_;                                                              \
+            if (ran_ == 2) {                                                         \
+                f->pc = pc;                                                          \
+                goto exception;                                                      \
+            }                                                                        \
             continue;                                                                \
         }                                                                            \
     }
@@ -1118,6 +1123,142 @@ static bool interpret(mg_dvm_thread *t, mg_dvm_frame *f, mg_jvalue *ret)
         if (r != DVM_SWITCH) return r == DVM_RETURNED;
         f = t->top;
     }
+}
+
+/*
+ * The invoke at `pc` of frame f, done for compiled code (mg_dvm_jit.c, docs/JIT.md "calls"): the method found as do_invoke
+ * finds it, then done as do_invoke does it -- an intrinsic or a trivial body in place, a native method called, bytecode run
+ * to its return in a loop of its own on the host's stack (where do_invoke would have gone on in the same loop) -- with the
+ * result in *res, for the move-result after it. 0 done; 1 thrown (pending, f->pc the invoke's); 2 the interpreter's to do,
+ * nothing having happened yet: instructions watched, the host's stack too low for another loop (deep recursion through
+ * compiled code goes on interpreted, without one), new String, a kind compiled code does not ask for.
+ */
+int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
+{
+    mg_dvm_method *m = f->m, *ref, *target;
+    mg_dvm_dex *dex = m->cls->dex;
+    const u16 *insns = m->insns;
+    mg_dvm_reg *regs = f->regs, five[5];
+    const mg_dvm_reg *argv;
+    u16 w = insns[pc];
+    u32 op = w & 0xFF, idx = insns[pc + 1], count;
+    int kind;
+    mg_jobj *self = NULL;
+    mg_dvm_frame *nf;
+    bool ok;
+    res->j = 0;
+    if (g_dvm.slow || t->c_depth >= DVM_MAX_C_DEPTH - 8 || (t->c_stack_low && (mg_addr)&five < t->c_stack_low + 32u * 1024u)) return 2;
+    if (op >= 0x6e && op <= 0x72) {
+        u16 list = insns[pc + 2];
+        u32 b = (u32)w >> 12;
+        kind = (int)(op - 0x6e);
+        count = b > 5 ? 5 : b;
+        switch (count) {
+        case 5: five[4] = regs[((u32)w >> 8) & 0xF]; /* fall through */
+        case 4: five[3] = regs[list >> 12]; /* fall through */
+        case 3: five[2] = regs[(list >> 8) & 0xF]; /* fall through */
+        case 2: five[1] = regs[(list >> 4) & 0xF]; /* fall through */
+        case 1: five[0] = regs[list & 0xF]; /* fall through */
+        default: break;
+        }
+        argv = five;
+    } else if (op >= 0x74 && op <= 0x78) {
+        kind = (int)(op - 0x74);
+        count = (u32)w >> 8;
+        argv = regs + insns[pc + 2];
+    } else {
+        return 2;
+    }
+    f->pc = pc;
+    ref = idx < dex->nmeth ? dex->mcache[idx] : NULL;
+    if (!ref || ((ref->flags & DVM_ACC_STATIC) != 0) != (kind == DVM_INVOKE_STATIC)) {
+        ref = mg_dvm_resolve_method(dex, idx, kind);
+        if (!ref) return 1;
+    }
+    target = ref;
+    if (kind != DVM_INVOKE_STATIC) {
+        self = count ? (mg_jobj *)argv[0] : NULL;
+        if (!self) {
+            mg_dvm_throw("java/lang/NullPointerException", "Attempt to invoke %s method '%s.%s%s' on a null object reference",
+                         kind == DVM_INVOKE_INTERFACE ? "interface" : kind == DVM_INVOKE_DIRECT ? "direct" : "virtual", ref->cls->name, ref->name, ref->sig);
+            return 1;
+        }
+    }
+    switch (kind) {
+    case DVM_INVOKE_VIRTUAL: case DVM_INVOKE_INTERFACE: {
+        mg_dvm_class *rc = mg_dvm_class_of(self);
+        if (!(ref->cls->flags & DVM_ACC_INTERFACE) && ref->vidx < 0) break;
+        if (!(ref->cls->flags & DVM_ACC_INTERFACE) && ref->vidx < rc->nvtab) {
+            target = rc->vtab[ref->vidx];
+        } else {
+            u32 slot = (u32)(((mg_addr)ref->name >> 3) ^ ((mg_addr)ref->sig >> 5)) % DVM_ICACHE;
+            target = rc->icache[slot];
+            if (!target || target->name != ref->name || target->sig != ref->sig) {
+                target = mg_dvm_find_virtual(rc, ref->name, ref->sig);
+                if (!target) {
+                    mg_dvm_throw("java/lang/IncompatibleClassChangeError", "%s does not implement %s.%s%s", rc->name, ref->cls->name, ref->name, ref->sig);
+                    return 1;
+                }
+                rc->icache[slot] = target;
+            }
+        }
+        break;
+    }
+    case DVM_INVOKE_SUPER: {
+        mg_dvm_class *sc = m->cls->super;
+        if (ref->cls->flags & DVM_ACC_INTERFACE) break;
+        if (sc && ref->vidx >= 0 && ref->vidx < sc->nvtab) target = sc->vtab[ref->vidx];
+        else target = sc ? mg_dvm_find_virtual(sc, ref->name, ref->sig) : NULL;
+        if (!target) {
+            mg_dvm_throw("java/lang/NoSuchMethodError", "%s.%s%s above %s", ref->cls->name, ref->name, ref->sig, m->cls->name);
+            return 1;
+        }
+        break;
+    }
+    case DVM_INVOKE_STATIC:
+        if (target->cls->state != DVM_CS_INITIALIZED && !mg_dvm_ensure_init(target->cls)) return 1;
+        break;
+    default:                                                     /* direct */
+        if (self->kind == MG_J_STRING && ref->cls == g_dvm.c_string && ref->name[0] == '<') return 2;
+        break;
+    }
+    if (target->stub) mg_dvm_stub_called(m, target);
+    if (target->intrinsic && intrinsic(t, target->intrinsic, argv, res)) return 0;
+    if (target->shape != SHAPE_REGULAR && target->insns) {
+        u32 shape;
+        if (target->shape == SHAPE_UNKNOWN) classify(target);
+        shape = target->shape;
+        if (SHAPE_OF(shape) != SHAPE_REGULAR && trivial(target, shape, argv, res)) return 0;
+    }
+    if (!target->insns) {
+        if (!(target->flags & DVM_ACC_NATIVE)) {
+            mg_dvm_throw("java/lang/AbstractMethodError", "%s.%s%s", target->cls->name, target->name, target->sig);
+            return 1;
+        }
+        return invoke_native(t, target, self, argv, NULL, res) ? 0 : 1;
+    }
+    t->c_depth++;
+    nf = push_frame(t, target, target->regs);
+    if (!nf) {
+        t->c_depth--;
+        return 1;
+    }
+    nf->entry = true;
+    {
+        u32 base = (u32)target->regs - target->ins, n = count < target->ins ? count : target->ins, k;
+        mg_dvm_reg *to = nf->regs;
+        for (k = 0; k < base; k++) to[k] = 0;
+        for (k = 0; k < n; k++) to[base + k] = argv[k];
+        for (k = base + n; k < target->regs; k++) to[k] = 0;
+    }
+    if (target->flags & DVM_ACC_SYNCHRONIZED) {
+        nf->sync = (target->flags & DVM_ACC_STATIC) ? mg_dvm_mirror(target->cls) : self;
+        if (nf->sync) mg_dvm_monitor_enter(nf->sync);
+    }
+    if (g_call_trace) call_trace_enter(t, target, " (compiled)", argv, count);
+    ok = interpret(t, nf, res);
+    t->c_depth--;
+    return ok ? 0 : 1;
 }
 
 bool mg_dvm_invoke(mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_jvalue *ret)

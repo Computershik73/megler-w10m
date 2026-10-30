@@ -59,18 +59,27 @@ phone's Self-test gives the phone's.
 
 ## Where it stands
 
-The first stage is in `core/src/dvm/mg_dvm_jit.c`: moves and constants, int arithmetic and logic in every form (division
-and remainder with the divisor checked), the shifts' counts masked, `if-*`, `if-*z` and `goto`, `array-length`, `aget`
-and `aput` of ints, bytes, chars, shorts and booleans and `aget-object`, each with the interpreter's checks; `iget` and
-`iput` of every width of a field resolved by then (the object checked for null and for having the slot), `sget` and
-`sput` of a class initialised by then (the slot's address a constant of the code). A method is
-compiled at the 1000th jump back it takes; a loop is entered only when it is compiled whole, from its head to its jump
-back: a loop whose body calls out would go in and out at every turn, which in the benchmark made Math.min's and
-Integer.valueOf's loops twice as slow. Such loops, and every method with no loop compiled whole, stay the interpreter's.
+`core/src/dvm/mg_dvm_jit.c` compiles: moves and constants (`const-wide` and `const-string` of a string already made
+included); int arithmetic and logic in every form (division and remainder with the divisor checked, the shifts' counts
+masked); long arithmetic but division and remainder (add, sub, mul, and, or, xor, the three shifts by any count, neg,
+not, `int-to-long`, `long-to-int`, `cmp-long`); `if-*`, `if-*z`, `goto`, `packed-switch` and `sparse-switch` of up to 64
+keys; `array-length`, `aget` and `aput` of ints, bytes, chars, shorts and booleans and `aget-object`; `iget` and `iput`
+of every width of a field resolved by then, `sget` and `sput` of a class initialised by then; and calls of every kind with
+their `move-result`. A call goes through `mg_dvm_jit_invoke` (mg_dvm_interp.c), which finds the method as the
+interpreter's do_invoke does and does it as it would -- an intrinsic or a trivial body in place, a native method called,
+bytecode run to its return in a loop of its own on the host's stack; an exception it ends with sends the frame back to the
+interpreter, pending, at the invoke; where the host's stack has too little left for another loop (deep recursion through
+compiled code) the call is the interpreter's, without one.
 
-Under qemu-arm (ns a turn, interpreted then compiled): int arithmetic 131 to 5, aget and aput of an int[256] 228 to 17,
-String.indexOf 80 to 3; the items whose loops call out are as they were. The tests (`t.Jit`, mg_dvm_tests.c) run every
-compiled instruction and hand-back, and the whole main suite passes with every loop compiled (MEGLER_JIT_THRESHOLD=1).
+A method is compiled at the 1000th jump back it takes, and a loop entered only when it is compiled whole: a loop that
+hands back at every turn costs more than it saves. Code goes on pages of an arena of the process's, each method on its own.
 
-Next: calls compiled as calls into the interpreter so that loops which call out can be compiled whole, long arithmetic,
-`packed-switch`.
+Under qemu-arm (ns a turn, interpreted then compiled): int arithmetic 141 to 5, iget and iput 217 to 15, sget and sput 119
+to 4, aget and aput of an int[256] 228 to 17, String.indexOf 81 to 3, String.charAt 256 to 97, String.hashCode 187 to 94,
+System.arraycopy 225 to 145, Math.min, max, abs 385 to 272; nothing slower. The tests (`t.Jit`, mg_dvm_tests.c) run every
+compiled instruction and hand-back, calls of each kind with their results, a callee's exception caught in the loop,
+recursion 3000 deep through compiled calls, long arithmetic against C, and both switches; the whole main suite passes with
+every loop compiled (MEGLER_JIT_THRESHOLD=1).
+
+Next: allocation, `check-cast`, `instance-of`, the monitors and `aput-object` through helpers, so that the loops that
+make objects are compiled whole; floating point (VFP); a call to a compiled method straight into its code.

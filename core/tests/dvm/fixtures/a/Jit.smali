@@ -354,3 +354,203 @@
     const/4 v2, -0x1
     return v2
 .end method
+
+# Calls of each kind in a compiled loop, their results through move-result: an interface method and a virtual one (trivial
+# getters, done in place), a static one by both forms of invoke, a long returned, and String.length (an intrinsic).
+.method public static callKinds(I)I
+    .registers 10
+    new-instance v0, Lt/Blob;
+    const/4 v1, 0x3
+    invoke-direct {v0, v1}, Lt/Blob;-><init>(I)V
+    const-string v4, "abcd"
+    const/4 v1, 0x0
+    const/4 v2, 0x0
+    :loop
+    if-ge v1, p0, :done
+    invoke-interface {v0}, Lt/HasArea;->area()I
+    move-result v3
+    add-int/2addr v2, v3
+    invoke-virtual {v0}, Lt/Blob;->hashCode()I
+    move-result v3
+    add-int/2addr v2, v3
+    invoke-static {v1, v2}, Lt/Arith;->sum(II)I
+    move-result v3
+    add-int/2addr v2, v3
+    invoke-static/range {v1 .. v2}, Lt/Arith;->sum(II)I
+    move-result v3
+    xor-int/2addr v2, v3
+    invoke-virtual {v4}, Ljava/lang/String;->length()I
+    move-result v3
+    add-int/2addr v2, v3
+    invoke-static {v1}, Lt/Jit;->wide(I)J
+    move-result-wide v6
+    long-to-int v3, v6
+    add-int/2addr v2, v3
+    const-string v5, "abcd"
+    if-ne v5, v4, :bad
+    add-int/lit8 v1, v1, 0x1
+    goto :loop
+    :done
+    return v2
+    :bad
+    const/4 v2, -0x1
+    return v2
+.end method
+
+.method public static wide(I)J
+    .registers 3
+    int-to-long v0, p0
+    const-wide/16 v0, 0x0
+    int-to-long v0, p0
+    return-wide v0
+.end method
+
+# A callee that throws inside a compiled loop, caught by the loop's own handler: 100 / (i - 2) summed, 1000 for the zero.
+.method public static catchInLoop(I)I
+    .registers 6
+    const/4 v0, 0x0
+    const/4 v1, 0x0
+    const/16 v4, 0x64
+    :loop
+    if-ge v1, p0, :done
+    add-int/lit8 v2, v1, -0x2
+    :try_start
+    invoke-static {v4, v2}, Lt/Exc;->wrongCatch(II)I
+    move-result v3
+    :try_end
+    .catch Ljava/lang/ArithmeticException; {:try_start .. :try_end} :handler
+    add-int/2addr v0, v3
+    :next
+    add-int/lit8 v1, v1, 0x1
+    goto :loop
+    :handler
+    move-exception v3
+    add-int/lit16 v0, v0, 0x3e8
+    goto :next
+    :done
+    return v0
+.end method
+
+# Recursion through compiled calls, n deep: each level goes round a short loop first, so that its code is entered, and
+# makes the call from the code. Past the depth the host's stack allows another loop for, the calls go on interpreted; the
+# answer is n either way.
+.method public static deepCalls(I)I
+    .registers 4
+    if-gtz p0, :more
+    const/4 v0, 0x0
+    return v0
+    :more
+    const/4 v1, 0x0
+    const/4 v2, 0x2
+    :warm
+    if-ge v1, v2, :go
+    add-int/lit8 v1, v1, 0x1
+    goto :warm
+    :go
+    add-int/lit8 v2, p0, -0x1
+    invoke-static {v2}, Lt/Jit;->deepCalls(I)I
+    move-result v0
+    add-int/lit8 v0, v0, 0x1
+    return v0
+.end method
+
+# Long arithmetic in a compiled loop: a 64-bit LCG (mul-long, add-long), shifts of each kind by counts below and above 32,
+# and, or, xor, neg, not, int-to-long, long-to-int and cmp-long, all folded into one long.
+.method public static longs(IJ)J
+    .registers 16
+    move-wide v0, p1
+    const-wide/16 v2, 0x0
+    const/4 v4, 0x0
+    :loop
+    if-ge v4, p0, :done
+    const-wide v6, 0x5851f42d4c957f2dL
+    mul-long/2addr v0, v6
+    const-wide v6, 0x14057b7ef767814fL
+    add-long/2addr v0, v6
+    and-int/lit8 v5, v4, 0x3f
+    ushr-long v6, v0, v5
+    xor-long/2addr v2, v6
+    shl-long v6, v0, v5
+    add-long/2addr v2, v6
+    shr-long v6, v0, v5
+    sub-long/2addr v2, v6
+    or-long v8, v0, v2
+    and-long v6, v8, v0
+    xor-long/2addr v2, v6
+    neg-long v6, v2
+    not-long v8, v6
+    add-long/2addr v2, v8
+    int-to-long v6, v4
+    add-long/2addr v2, v6
+    long-to-int v5, v2
+    int-to-long v6, v5
+    xor-long/2addr v2, v6
+    cmp-long v5, v0, v2
+    int-to-long v6, v5
+    add-long/2addr v2, v6
+    const-wide/high16 v6, 0x4000000000000000L
+    cmp-long v5, v2, v6
+    int-to-long v6, v5
+    add-long/2addr v2, v6
+    add-int/lit8 v4, v4, 0x1
+    goto :loop
+    :done
+    add-long/2addr v0, v2
+    return-wide v0
+.end method
+
+# Switches in a compiled loop: a packed one over i % 6 - 1 (keys -1 to 3, 4 missing it) and a sparse one over i * 7 % 50.
+.method public static switches(I)I
+    .registers 6
+    const/4 v0, 0x0
+    const/4 v1, 0x0
+    :loop
+    if-ge v1, p0, :done
+    rem-int/lit8 v2, v1, 0x6
+    add-int/lit8 v2, v2, -0x1
+    packed-switch v2, :ptable
+    add-int/lit8 v0, v0, 0x1
+    goto :sparse
+    :p0
+    add-int/lit8 v0, v0, 0xa
+    goto :sparse
+    :p1
+    add-int/lit8 v0, v0, 0x14
+    :p2
+    add-int/lit8 v0, v0, 0x1e
+    goto :sparse
+    :p3
+    add-int/lit8 v0, v0, 0x28
+    :sparse
+    mul-int/lit8 v2, v1, 0x7
+    rem-int/lit8 v2, v2, 0x32
+    sparse-switch v2, :stable
+    add-int/lit8 v0, v0, 0x2
+    goto :next
+    :s0
+    add-int/lit16 v0, v0, 0x64
+    goto :next
+    :s1
+    add-int/lit16 v0, v0, 0xc8
+    goto :next
+    :s2
+    add-int/lit16 v0, v0, 0x12c
+    :next
+    add-int/lit8 v1, v1, 0x1
+    goto :loop
+    :done
+    return v0
+    :ptable
+    .packed-switch -0x1
+        :p0
+        :p1
+        :p2
+        :p3
+    .end packed-switch
+    :stable
+    .sparse-switch
+        0x0 -> :s0
+        0x7 -> :s1
+        0x31 -> :s2
+    .end sparse-switch
+.end method

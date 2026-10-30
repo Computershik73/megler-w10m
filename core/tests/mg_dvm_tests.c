@@ -197,10 +197,78 @@ static i32 jit_mix(i32 n, i32 k)
 
 static mg_jobj *jit_array(const char *cls, i32 len) { return mg_dvm_new_array(cls, len); }
 
+/* What t.Jit's call, long and switch loops return, computed here with Java's arithmetic. */
+static i32 jit_call_kinds(i32 n)
+{
+    u32 v2 = 0;
+    i32 i;
+    for (i = 0; i < n; i++) {
+        v2 += 3;                       /* area() */
+        v2 += 3;                       /* hashCode() */
+        v2 += (u32)i + v2;             /* sum(i, v2) */
+        v2 ^= (u32)i + v2;             /* sum/range */
+        v2 += 4;                       /* "abcd".length() */
+        v2 += (u32)i;                  /* (int) wide(i) */
+    }
+    return (i32)v2;
+}
+
+static i32 jit_catch_in_loop(i32 n)
+{
+    i32 s = 0, i;
+    for (i = 0; i < n; i++) s += i == 2 ? 1000 : 100 / (i - 2);
+    return s;
+}
+
+static i64 jit_longs(i32 n, i64 seed)
+{
+    u64 v0 = (u64)seed, v2 = 0, v6, v8;
+    i32 i, c;
+    for (i = 0; i < n; i++) {
+        u32 s = (u32)i & 63;
+        v0 = v0 * 0x5851f42d4c957f2dull + 0x14057b7ef767814full;
+        v2 ^= v0 >> s;
+        v2 += v0 << s;
+        v2 -= (u64)((i64)v0 >> s);
+        v8 = v0 | v2;
+        v6 = v8 & v0;
+        v2 ^= v6;
+        v6 = (u64)0 - v2;
+        v8 = ~v6;
+        v2 += v8;
+        v2 += (u64)(i64)i;
+        v2 ^= (u64)(i64)(i32)(u32)v2;
+        c = (i64)v0 < (i64)v2 ? -1 : (i64)v0 > (i64)v2 ? 1 : 0;
+        v2 += (u64)(i64)c;
+        c = (i64)v2 < (i64)0x4000000000000000ll ? -1 : (i64)v2 > (i64)0x4000000000000000ll ? 1 : 0;
+        v2 += (u64)(i64)c;
+    }
+    return (i64)(v0 + v2);
+}
+
+static i32 jit_switches(i32 n)
+{
+    i32 s = 0, i;
+    for (i = 0; i < n; i++) {
+        i32 k;
+        switch (i % 6 - 1) {
+        case -1: s += 10; break;
+        case 0: s += 20 + 30; break;
+        case 1: s += 30; break;
+        case 2: s += 40; break;
+        default: s += 1; break;
+        }
+        k = i * 7 % 50;
+        s += k == 0 ? 100 : k == 7 ? 200 : k == 49 ? 300 : 2;
+    }
+    return s;
+}
+
 /*
  * The JIT (mg_dvm_jit.c, docs/JIT.md) with its threshold at 1: each of t.Jit's loops compiled at its first jump back,
  * and what they return as Java says. Exits too: a divisor of zero, an index out of bounds and a null array inside a
- * compiled loop throw as interpreted; a loop whose body calls out is left to the interpreter. Where the host runs no Thumb-2
+ * compiled loop throw as interpreted; calls made from compiled code, their exceptions and deep recursion through them; long
+ * arithmetic and switches. Where the host runs no Thumb-2
  * (x64) nothing is compiled and the same answers are the interpreter's.
  */
 static void test_jit(void)
@@ -284,6 +352,21 @@ static void test_jit(void)
         A[0].i = n;
         CHECK_INT(call("t/Jit", "fields", "(I)I").i, ii + b + ch + sh + z + total);
     }
+    /* Calls of each kind from a compiled loop, a callee's exception caught by the loop's own handler, recursion through
+       compiled calls deeper than the host's stack takes loops for, long arithmetic, and both switches. */
+    A[0].i = 200;
+    CHECK_INT(call("t/Jit", "callKinds", "(I)I").i, jit_call_kinds(200));
+    A[0].i = 9;
+    CHECK_INT(call("t/Jit", "catchInLoop", "(I)I").i, jit_catch_in_loop(9));
+    CHECK_STR(thrown(), "");
+    A[0].i = 3000;
+    CHECK_INT(call("t/Jit", "deepCalls", "(I)I").i, 3000);
+    CHECK_STR(thrown(), "");
+    A[0].i = 500;
+    A[1].j = (i64)0x0123456789abcdefll;
+    CHECK(call("t/Jit", "longs", "(IJ)J").j == jit_longs(500, (i64)0x0123456789abcdefll));
+    A[0].i = 777;
+    CHECK_INT(call("t/Jit", "switches", "(I)I").i, jit_switches(777));
     A[0].i = 10;
     A[1].j = (i64)0x123456789abcdef0ll;
     CHECK(call("t/Jit", "wideMoves", "(IJ)J").j == (i64)0x123456789abcdef0ll);
@@ -294,18 +377,15 @@ static void test_jit(void)
     {
         static const struct { const char *name, *sig; } compiled[] = {
             { "sum", "([I)I" }, { "fill", "([I[B[C[SI)I" }, { "mix", "(II)I" }, { "conditions", "(I)I" }, { "divideAll", "(I[I)I" },
-            { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" }, { "fields", "(I)I" },
+            { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" }, { "fields", "(I)I" }, { "callsInLoop", "(I)I" },
+            { "callKinds", "(I)I" }, { "catchInLoop", "(I)I" }, { "deepCalls", "(I)I" }, { "longs", "(IJ)J" }, { "switches", "(I)I" },
         };
         size_t k;
-        mg_dvm_method *calls;
         for (k = 0; k < MG_COUNT(compiled); k++) {
             mg_dvm_method *m = c ? mg_dvm_find_method(c, compiled[k].name, compiled[k].sig, true) : NULL;
             CHECK(m && m->jit_state == 1 && m->jit);
             if (!m || !m->jit) say("  t.Jit.%s%s was not compiled", compiled[k].name, compiled[k].sig);
         }
-        /* A loop that calls out at every turn is left to the interpreter: going in and out would cost more than it saves. */
-        calls = c ? mg_dvm_find_method(c, "callsInLoop", "(I)I", true) : NULL;
-        CHECK(calls && calls->jit_state == 2 && !calls->jit);
     }
 #else
     (void)c;

@@ -4,17 +4,20 @@
  * The code works on the frame's own registers, in memory, as the interpreter does: r4 holds them throughout, every
  * instruction loads what it reads from them and stores what it writes, so that at any instruction the code can stop and
  * hand the frame back -- "go on at this pc" -- and the interpreter goes on with nothing to rebuild. Whatever the compiler
- * does not do (calls, returns, allocation, exceptions, wide and floating-point values, fields for now) is such a hand-back,
- * an exit, and so is anything that would throw: a null or an index out of bounds sends the frame back to the instruction
- * that throws, and the interpreter throws it. No safepoints: the collector stops threads from outside and reads their
- * registers and stacks conservatively, and moves nothing (mg_dvm_gc.c).
+ * does not do (returns, allocation, exceptions, floating-point values, long division) is such a hand-back, an exit, and so
+ * is anything that would throw: a null or an index out of bounds sends the frame back to the instruction that throws, and
+ * the interpreter throws it. A call is made through mg_dvm_jit_invoke (mg_dvm_interp.c), which does it as the interpreter
+ * would and keeps its result for the move-result after it; one that throws sends the frame back with the exception pending.
+ * No safepoints: the collector stops threads from outside and reads their registers and stacks conservatively, and moves
+ * nothing (mg_dvm_gc.c).
  *
- * Entered from the interpreter's plain loop at a jump back (mg_dvm_jit_back), at the jump's target: every branch target is
- * an entry, and pc 0. A jump back in the code looks at g_dvm.slow first and hands the frame back at the target when
- * anything watches the instructions (the watched loop runs then).
+ * Entered from the interpreter's plain loop at a jump back (mg_dvm_jit_back), at the head of a loop compiled whole. A jump
+ * back in the code looks at g_dvm.slow first and hands the frame back at the target when anything watches the instructions
+ * (the watched loop runs then).
  *
- *   int code(mg_dvm_reg *regs, const void *entry, u32 *pc_out, const volatile i32 *slow)
- *     r4 regs, r6 pc_out, r7 slow; returns 0 with *pc_out where the interpreter goes on.
+ *   int code(mg_dvm_jit_ctx *ctx, const void *entry)
+ *     r5 ctx, r4 ctx->regs, r7 ctx->slow; returns 0 with ctx->pc where the interpreter goes on, 1 with ctx->pc where the
+ *     exception pending was thrown.
  *
  * Only where the host runs Thumb-2: the phone, and the ARM tests under qemu-arm. Elsewhere nothing is compiled.
  */
@@ -35,6 +38,13 @@ static volatile i32 g_jit_methods, g_jit_refused;
 typedef char jit_array_data_same[offsetof(mg_jobj, u.arr.data) == offsetof(mg_jobj, u.oarr.v) ? 1 : -1];
 typedef char jit_array_len_same[offsetof(mg_jobj, u.arr.len) == offsetof(mg_jobj, u.oarr.len) ? 1 : -1];
 typedef char jit_register_word[sizeof(mg_dvm_reg) == 4 ? 1 : -1];
+/* Where the code finds what mg_dvm_jit_ctx holds. */
+enum { JIT_CTX_REGS = 0, JIT_CTX_SLOW = 4, JIT_CTX_PC = 8, JIT_CTX_T = 12, JIT_CTX_F = 16, JIT_CTX_RESULT = 24 };
+typedef char jit_ctx_layout[offsetof(mg_dvm_jit_ctx, regs) == JIT_CTX_REGS && offsetof(mg_dvm_jit_ctx, slow) == JIT_CTX_SLOW &&
+                                    offsetof(mg_dvm_jit_ctx, pc) == JIT_CTX_PC && offsetof(mg_dvm_jit_ctx, t) == JIT_CTX_T &&
+                                    offsetof(mg_dvm_jit_ctx, f) == JIT_CTX_F && offsetof(mg_dvm_jit_ctx, result) == JIT_CTX_RESULT
+                                ? 1
+                                : -1];
 
 void mg_dvm_jit_start(bool on, u32 threshold, bool trace)
 {
@@ -51,8 +61,9 @@ typedef struct fixup {
     u8 kind, cond;                     /* FIX_*; the condition (14: always) */
 } fixup;
 
-enum { FIX_CODE, FIX_EXIT, FIX_BACK, FIX_EPILOGUE };
-enum { C_EQ = 0, C_NE = 1, C_HS = 2, C_LO = 3, C_GE = 10, C_LT = 11, C_GT = 12, C_LE = 13, C_AL = 14 };
+/* To a pc's code, its exit, its jump back's check, the way out; and for a call that threw, its pc's throw and the way out with it. */
+enum { FIX_CODE, FIX_EXIT, FIX_BACK, FIX_EPILOGUE, FIX_THROW, FIX_THROW_EPILOGUE };
+enum { C_EQ = 0, C_NE = 1, C_HS = 2, C_LO = 3, C_MI = 4, C_PL = 5, C_HI = 8, C_GE = 10, C_LT = 11, C_GT = 12, C_LE = 13, C_AL = 14 };
 
 typedef struct emitter {
     u16 *b;
@@ -117,8 +128,20 @@ static bool put_branch(u16 *b, u32 at, u32 to, u8 cond)
     return true;
 }
 
-/* Registers: r0 to r3 for values, r4 the frame's registers, r6 pc_out, r7 the slow flag. */
-enum { R0, R1, R2, R3, R4, R5, R6, R7 };
+/* Registers: r0 to r3 and r12 for values, r4 the frame's registers, r5 the context, r7 the slow flag. */
+enum { R0, R1, R2, R3, R4, R5, R6, R7, R12 = 12 };
+
+/* A branch inside one instruction's code: its place kept, and written with its condition once its label is reached (local_to). */
+static u32 local_branch(emitter *e)
+{
+    u32 at = e->n;
+    e32(e, 0, 0);
+    return at;
+}
+static void local_to(emitter *e, u32 at, u8 cond)
+{
+    if (!e->failed && !put_branch(e->b, at, e->n, cond)) e->failed = true;
+}
 
 static void ldr_v(emitter *e, int rt, u32 v) { e32(e, 0xF8D0 | R4, ((u32)rt << 12) | (v * 4)); }
 static void str_v(emitter *e, int rt, u32 v) { e32(e, 0xF8C0 | R4, ((u32)rt << 12) | (v * 4)); }
@@ -321,6 +344,184 @@ static bool static_field(emitter *e, const mg_dvm_method *m, u32 op, u32 aa, u32
     return true;
 }
 
+/* ------------------------------------------------------------------ longs */
+
+/* The register-specified shifts, rd = rn op rm (ARM's: by the low byte of rm, 32 and more shifting everything out, or in, for ASR, the sign). */
+static void lsl_r(emitter *e, int rd, int rn, int rm) { e32(e, 0xFA00 | (u32)rn, 0xF000 | ((u32)rd << 8) | (u32)rm); }
+static void lsr_r(emitter *e, int rd, int rn, int rm) { e32(e, 0xFA20 | (u32)rn, 0xF000 | ((u32)rd << 8) | (u32)rm); }
+static void asr_r(emitter *e, int rd, int rn, int rm) { e32(e, 0xFA40 | (u32)rn, 0xF000 | ((u32)rd << 8) | (u32)rm); }
+static void orr_r(emitter *e, int rd, int rn, int rm) { e32(e, 0xEA40 | (u32)rn, ((u32)rd << 8) | (u32)rm); }
+/* rd = imm - rn, rd = rn - imm (S: the flags set), for imm under 256 */
+static void rsb_i(emitter *e, int rd, int rn, u32 imm) { e32(e, 0xF1C0 | (u32)rn, ((u32)rd << 8) | imm); }
+static void sub_i(emitter *e, int rd, int rn, u32 imm, bool s) { e32(e, (s ? 0xF1B0 : 0xF1A0) | (u32)rn, ((u32)rd << 8) | imm); }
+
+/*
+ * A long operation of the pairs vA and vB into vD (op as numbered from add-long: add, sub, mul, div, rem, and, or, xor,
+ * shl, shr, ushr; the shifts by the int vB). False for division and remainder: they stay the interpreter's.
+ */
+static bool long_op(emitter *e, u32 op, u32 vd, u32 va, u32 vb)
+{
+    if (op == 3 || op == 4) return false;
+    ldr_v(e, R0, va);
+    ldr_v(e, R1, va + 1);
+    if (op >= 8) {
+        ldr_v(e, R2, vb);
+        e32(e, 0xF000 | R2, (R2 << 8) | 0x3F);                  /* and r2, r2, #63 */
+        switch (op) {
+        case 8:                                                  /* hi = hi << n | lo >> (32 - n) | lo << (n - 32); lo <<= n */
+            lsl_r(e, R1, R1, R2);
+            rsb_i(e, R3, R2, 32);
+            lsr_r(e, R3, R0, R3);
+            orr_r(e, R1, R1, R3);
+            sub_i(e, R3, R2, 32, false);
+            lsl_r(e, R3, R0, R3);
+            orr_r(e, R1, R1, R3);
+            lsl_r(e, R0, R0, R2);
+            break;
+        case 10:                                                 /* lo = lo >> n | hi << (32 - n) | hi >> (n - 32); hi >>>= n */
+            lsr_r(e, R0, R0, R2);
+            rsb_i(e, R3, R2, 32);
+            lsl_r(e, R3, R1, R3);
+            orr_r(e, R0, R0, R3);
+            sub_i(e, R3, R2, 32, false);
+            lsr_r(e, R3, R1, R3);
+            orr_r(e, R0, R0, R3);
+            lsr_r(e, R1, R1, R2);
+            break;
+        default:                                                 /* shr: as ushr below 32; from 32 on, lo = hi >> (n - 32) with the sign */
+            lsr_r(e, R0, R0, R2);
+            rsb_i(e, R3, R2, 32);
+            lsl_r(e, R3, R1, R3);
+            orr_r(e, R0, R0, R3);
+            sub_i(e, R3, R2, 32, true);
+            e16(e, 0xBF58);                                      /* it pl */
+            asr_r(e, R0, R1, R3);
+            asr_r(e, R1, R1, R2);
+            break;
+        }
+    } else {
+        ldr_v(e, R2, vb);
+        ldr_v(e, R3, vb + 1);
+        switch (op) {
+        case 0:
+            e32(e, 0xEB10 | R0, (R0 << 8) | R2);                 /* adds r0, r0, r2 */
+            e32(e, 0xEB40 | R1, (R1 << 8) | R3);                 /* adc r1, r1, r3 */
+            break;
+        case 1:
+            e32(e, 0xEBB0 | R0, (R0 << 8) | R2);                 /* subs r0, r0, r2 */
+            e32(e, 0xEB60 | R1, (R1 << 8) | R3);                 /* sbc r1, r1, r3 */
+            break;
+        case 2:
+            /* (hi:lo) = lo*lo' + (hi*lo' + lo*hi') << 32 */
+            e32(e, 0xFB00 | R1, 0xF000 | (R1 << 8) | R2);        /* mul r1, r1, r2 */
+            e32(e, 0xFB00 | R0, (R1 << 12) | (R1 << 8) | R3);    /* mla r1, r0, r3, r1 */
+            e32(e, 0xFBA0 | R0, (R0 << 12) | (R12 << 8) | R2);   /* umull r0, r12, r0, r2 */
+            e32(e, 0xEB00 | R1, (R1 << 8) | R12);                /* add r1, r1, r12 */
+            break;
+        case 5: data_op(e, OP_AND, R0, R0, R2); data_op(e, OP_AND, R1, R1, R3); break;
+        case 6: data_op(e, OP_OR, R0, R0, R2); data_op(e, OP_OR, R1, R1, R3); break;
+        default: data_op(e, OP_XOR, R0, R0, R2); data_op(e, OP_XOR, R1, R1, R3); break;
+        }
+    }
+    str_v(e, R0, vd);
+    str_v(e, R1, vd + 1);
+    return true;
+}
+
+/* cmp-long: -1, 0 or 1 into vD, the high words compared signed, the low ones unsigned. */
+static void cmp_long(emitter *e, u32 vd, u32 va, u32 vb)
+{
+    u32 lt, gt, lo, hi, zero_done, minus_done;
+    ldr_v(e, R0, va);
+    ldr_v(e, R1, va + 1);
+    ldr_v(e, R2, vb);
+    ldr_v(e, R3, vb + 1);
+    cmp_reg(e, R1, R3);
+    lt = local_branch(e);
+    gt = local_branch(e);
+    cmp_reg(e, R0, R2);
+    lo = local_branch(e);
+    hi = local_branch(e);
+    mov_imm(e, R0, 0);
+    zero_done = local_branch(e);
+    local_to(e, lt, C_LT);
+    local_to(e, lo, C_LO);
+    mov_imm(e, R0, 0xFFFFFFFFu);
+    minus_done = local_branch(e);
+    local_to(e, gt, C_GT);
+    local_to(e, hi, C_HI);
+    mov_imm(e, R0, 1);
+    local_to(e, zero_done, C_AL);
+    local_to(e, minus_done, C_AL);
+    str_v(e, R0, vd);
+}
+
+/* ------------------------------------------------------------------ switches */
+
+/* The payload of a switch at pc + off: its size checked, NULL when it is not the kind asked for or does not lie in the method. */
+static const u16 *switch_payload(const mg_dvm_method *m, u32 pc, i32 off, u16 ident, u32 *size)
+{
+    i64 at = (i64)pc + off;
+    const u16 *p;
+    u32 n, units;
+    if (at < 0 || at + 2 > (i64)m->ninsns || m->insns[at] != ident) return NULL;
+    p = m->insns + at;
+    n = p[1];
+    units = ident == 0x0100 ? 4 + n * 2 : 2 + n * 4;
+    if (at + units > (i64)m->ninsns) return NULL;
+    *size = n;
+    return p;
+}
+static i32 rd32(const u16 *p) { return (i32)((u32)p[0] | (u32)p[1] << 16); }
+
+/* packed-switch and sparse-switch: the value compared with each key (at most 64 of them), on to the next instruction for none. */
+static bool compile_switch(emitter *e, const mg_dvm_method *m, u32 pc, u32 op, u32 va, i32 off)
+{
+    u32 n, i;
+    const u16 *p = switch_payload(m, pc, off, op == 0x2b ? 0x0100 : 0x0200, &n);
+    if (!p || n > 64) return false;
+    ldr_v(e, R0, va);
+    if (op == 0x2b) {
+        i32 first = rd32(p + 2);
+        mov_imm(e, R1, (u32)first);
+        data_op(e, OP_SUB, R0, R0, R1);
+        for (i = 0; i < n; i++) {
+            i32 to = rd32(p + 4 + 2 * i);
+            if (i < 256) cmp_imm(e, R0, i);
+            else { mov_imm(e, R1, i); cmp_reg(e, R0, R1); }
+            branch_to(e, pc, (u32)((i32)pc + to), C_EQ);
+        }
+    } else {
+        for (i = 0; i < n; i++) {
+            i32 key = rd32(p + 2 + 2 * i), to = rd32(p + 2 + 2 * n + 2 * i);
+            if (key >= 0 && key < 256) cmp_imm(e, R0, (u32)key);
+            else { mov_imm(e, R1, (u32)key); cmp_reg(e, R0, R1); }
+            branch_to(e, pc, (u32)((i32)pc + to), C_EQ);
+        }
+    }
+    return true;
+}
+
+/* ------------------------------------------------------------------ calls */
+
+/*
+ * An invoke: mg_dvm_jit_invoke(t, f, pc, &ctx->result), which does the call as the interpreter would; 1 back is an exception
+ * pending (out, thrown here), 2 a call it leaves to the interpreter (out at the invoke, nothing done).
+ */
+static void compile_invoke(emitter *e, u32 pc)
+{
+    mov_imm(e, R2, pc);
+    ldr_imm(e, R0, R5, JIT_CTX_T);
+    ldr_imm(e, R1, R5, JIT_CTX_F);
+    e32(e, 0xF200 | R5, (R3 << 8) | JIT_CTX_RESULT);           /* addw r3, r5, #result */
+    mov_imm(e, R12, (u32)(mg_addr)mg_dvm_jit_invoke);
+    e16(e, 0x47E0);                                             /* blx r12 */
+    cmp_imm(e, R0, 1);
+    fix(e, FIX_THROW, pc, C_EQ);
+    cmp_imm(e, R0, 2);
+    fix(e, FIX_EXIT, pc, C_EQ);
+}
+
 /* One instruction; false when it is an exit. */
 static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
 {
@@ -338,6 +539,58 @@ static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
     case 0x04: ldr_v(e, R0, b4); ldr_v(e, R1, b4 + 1); str_v(e, R0, a4); str_v(e, R1, a4 + 1); return true;
     case 0x05: ldr_v(e, R0, F(1)); ldr_v(e, R1, F(1) + 1); str_v(e, R0, aa); str_v(e, R1, aa + 1); return true;
     case 0x06: ldr_v(e, R0, F(2)); ldr_v(e, R1, F(2) + 1); str_v(e, R0, F(1)); str_v(e, R1, F(1) + 1); return true;
+    case 0x0a: case 0x0c: ldr_imm(e, R0, R5, JIT_CTX_RESULT); str_v(e, R0, aa); return true;   /* move-result, -object: a compiled call's */
+    case 0x0b: ldr_imm(e, R0, R5, JIT_CTX_RESULT); ldr_imm(e, R1, R5, JIT_CTX_RESULT + 4); str_v(e, R0, aa); str_v(e, R1, aa + 1); return true;
+    case 0x16: case 0x17: case 0x18: case 0x19: {               /* const-wide/16, /32, const-wide, /high16 */
+        u64 v = op == 0x16 ? (u64)(i64)(i16)F(1)
+                : op == 0x17 ? (u64)(i64)(i32)(F(1) | F(2) << 16)
+                : op == 0x18 ? (u64)F(1) | (u64)F(2) << 16 | (u64)F(3) << 32 | (u64)F(4) << 48
+                             : (u64)F(1) << 48;
+        mov_imm(e, R0, (u32)v);
+        mov_imm(e, R1, (u32)(v >> 32));
+        str_v(e, R0, aa);
+        str_v(e, R1, aa + 1);
+        return true;
+    }
+    case 0x1a: case 0x1b: {                                      /* const-string, /jumbo: one already made (interned, never freed) */
+        mg_dvm_dex *d = m->cls->dex;
+        u32 idx = op == 0x1a ? F(1) : F(1) | F(2) << 16;
+        mg_jobj *s = idx < d->nstr ? d->scache[idx] : NULL;
+        if (!s) return false;
+        mov_imm(e, R0, (u32)(mg_addr)s);
+        str_v(e, R0, aa);
+        return true;
+    }
+    case 0x2b: case 0x2c: return compile_switch(e, m, pc, op, aa, (i32)(F(1) | F(2) << 16));
+    case 0x31: cmp_long(e, aa, F(1) & 0xFF, F(1) >> 8); return true;
+    case 0x6e: case 0x6f: case 0x70: case 0x71: case 0x72:
+    case 0x74: case 0x75: case 0x76: case 0x77: case 0x78:
+        compile_invoke(e, pc);
+        return true;
+    case 0x7d:                                                   /* neg-long: 0 - (hi:lo) */
+        ldr_v(e, R0, b4);
+        ldr_v(e, R1, b4 + 1);
+        e32(e, 0xF1D0 | R0, (R0 << 8));                          /* rsbs r0, r0, #0 */
+        mov_imm(e, R2, 0);
+        e32(e, 0xEB60 | R2, (R1 << 8) | R1);                     /* sbc r1, r2, r1 */
+        str_v(e, R0, a4);
+        str_v(e, R1, a4 + 1);
+        return true;
+    case 0x7e:                                                   /* not-long */
+        ldr_v(e, R0, b4);
+        ldr_v(e, R1, b4 + 1);
+        e32(e, 0xEA6F, (R0 << 8) | R0);
+        e32(e, 0xEA6F, (R1 << 8) | R1);
+        str_v(e, R0, a4);
+        str_v(e, R1, a4 + 1);
+        return true;
+    case 0x81:                                                   /* int-to-long: the sign into the high word */
+        ldr_v(e, R0, b4);
+        e32(e, 0xEA4F, (7u << 12) | (R1 << 8) | (3u << 6) | (2u << 4) | R0);     /* asr r1, r0, #31 */
+        str_v(e, R0, a4);
+        str_v(e, R1, a4 + 1);
+        return true;
+    case 0x84: ldr_v(e, R0, b4); str_v(e, R0, a4); return true;  /* long-to-int: the low word */
     case 0x12: mov_imm(e, R0, (u32)((i32)(i16)w >> 12)); str_v(e, R0, a4); return true;
     case 0x13: mov_imm(e, R0, (u32)(i32)(i16)F(1)); str_v(e, R0, aa); return true;
     case 0x14: mov_imm(e, R0, F(1) | F(2) << 16); str_v(e, R0, aa); return true;
@@ -402,6 +655,8 @@ static bool compile_insn(emitter *e, const mg_dvm_method *m, u32 pc)
         arith(e, pc, bin_op(op - 0x90), aa, R1, R2);
         return true;
     }
+    if (op >= 0x9b && op <= 0xa5) return long_op(e, op - 0x9b, aa, F(1) & 0xFF, F(1) >> 8);    /* long binop vAA, vBB, vCC */
+    if (op >= 0xbb && op <= 0xc5) return long_op(e, op - 0xbb, a4, a4, b4);                    /* long binop/2addr vA, vB */
     if (op >= 0xb0 && op <= 0xba) {                              /* binop/2addr vA, vB */
         ldr_v(e, R1, a4);
         ldr_v(e, R2, b4);
@@ -518,7 +773,7 @@ static u8 *code_pages(size_t bytes)
 static mg_dvm_jit_code *compile(mg_dvm_method *m)
 {
     emitter e;
-    u32 *code_at = NULL, *exit_at = NULL, *back_at = NULL, pc, i, epilogue, compiled = 0, exits = 0, loops = 0;
+    u32 *code_at = NULL, *exit_at = NULL, *back_at = NULL, *throw_at = NULL, pc, i, epilogue, thrown, compiled = 0, exits = 0, loops = 0, calls = 0;
     u8 *target = NULL, *handback = NULL;
     mg_dvm_jit_code *c = NULL;
     size_t bytes;
@@ -530,20 +785,24 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
     back_at = (u32 *)calloc(m->ninsns, sizeof(u32));
     target = (u8 *)calloc(m->ninsns, 1);
     handback = (u8 *)calloc(m->ninsns, 1);
-    if (!code_at || !exit_at || !back_at || !target || !handback) goto out;
+    throw_at = (u32 *)calloc(m->ninsns, sizeof(u32));
+    if (!code_at || !exit_at || !back_at || !target || !handback || !throw_at) goto out;
     mark_targets(m, target);
-    /* The way in: push {r4-r7, lr}; r4 = regs, r6 = pc_out, r7 = slow; bx r1 (the entry). */
-    e16(&e, 0xB5F0);
-    e16(&e, 0x4604);
-    e16(&e, 0x4616);
-    e16(&e, 0x461F);
+    /* The way in: push {r3-r7, lr} (six words: the stack stays 8-byte aligned for the calls); r5 = ctx, r4 = ctx->regs,
+       r7 = ctx->slow; bx r1 (the entry). */
+    e16(&e, 0xB5F8);
+    e16(&e, 0x4605);
+    e16(&e, 0x682C);
+    e16(&e, 0x686F);
     e16(&e, 0x4708);
     for (pc = 0; pc < m->ninsns;) {
         u32 n = mg_dvm_insn_units(m->insns, m->ninsns, pc);
         if (!n) break;
         code_at[pc] = e.n + 1;
         if (compile_insn(&e, m, pc)) {
+            u32 op = m->insns[pc] & 0xFF;
             compiled++;
+            calls += (op >= 0x6e && op <= 0x72) || (op >= 0x74 && op <= 0x78);
         } else {
             exits++;
             handback[pc] = 1;
@@ -570,6 +829,11 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
             exit_at[at] = e.n + 1;
             mov_imm(&e, R0, at);
             fix(&e, FIX_EPILOGUE, 0, C_AL);
+        } else if (e.fx[i].kind == FIX_THROW && !throw_at[at]) {
+            /* A call that threw: out with the exception pending, at the invoke. */
+            throw_at[at] = e.n + 1;
+            mov_imm(&e, R0, at);
+            fix(&e, FIX_THROW_EPILOGUE, 0, C_AL);
         } else if (e.fx[i].kind == FIX_BACK && !back_at[at] && at < m->ninsns) {
             /* A jump back: on to the target, unless the instructions are watched (g_dvm.slow): then out at the target. */
             back_at[at] = e.n + 1;
@@ -579,11 +843,15 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
             fix(&e, FIX_CODE, at, C_AL);
         }
     }
-    /* The way out: *pc_out = r0; return 0. */
+    /* The way out: ctx->pc = r0; return 0. And with an exception pending: return 1. */
     epilogue = e.n;
-    e16(&e, 0x6030);                   /* str r0, [r6] */
+    e16(&e, 0x60A8);                   /* str r0, [r5, #8] */
     e16(&e, 0x2000);                   /* movs r0, #0 */
-    e16(&e, 0xBDF0);                   /* pop {r4-r7, pc} */
+    e16(&e, 0xBDF8);                   /* pop {r3-r7, pc} */
+    thrown = e.n;
+    e16(&e, 0x60A8);                   /* str r0, [r5, #8] */
+    e16(&e, 0x2001);                   /* movs r0, #1 */
+    e16(&e, 0xBDF8);                   /* pop {r3-r7, pc} */
     if (e.failed) goto out;
     for (i = 0; i < e.nfx; i++) {
         fixup *x = &e.fx[i];
@@ -592,6 +860,8 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
         case FIX_CODE: to = x->pc < m->ninsns ? code_at[x->pc] : 0; break;
         case FIX_EXIT: to = exit_at[x->pc]; break;
         case FIX_BACK: to = x->pc < m->ninsns ? back_at[x->pc] : 0; break;
+        case FIX_THROW: to = throw_at[x->pc]; break;
+        case FIX_THROW_EPILOGUE: to = thrown + 1; break;
         default: to = epilogue + 1; break;
         }
         /* A branch to the middle of an instruction or outside the method: not compiled. */
@@ -608,19 +878,20 @@ static mg_dvm_jit_code *compile(mg_dvm_method *m)
     if (!c) goto out;
     c->pages = pages;
     c->size = bytes;
-    c->run = (int (*)(mg_dvm_reg *, const void *, u32 *, const volatile i32 *))(void *)((mg_addr)pages | 1);
+    c->run = (int (*)(mg_dvm_jit_ctx *, const void *))(void *)((mg_addr)pages | 1);
     c->ninsns = m->ninsns;
     c->entry = code_at;
     code_at = NULL;
     for (pc = 0; pc < m->ninsns; pc++)
         if (!target[pc]) c->entry[pc] = 0;
     if (g_jit_trace)
-        mg_info("jit: %s.%s%s compiled: %u instructions, %u of them handed back, %u loops entered, %u bytes of Thumb-2", m->cls->name,
-                m->name, m->sig, (unsigned)(compiled + exits), (unsigned)exits, (unsigned)loops, (unsigned)bytes);
+        mg_info("jit: %s.%s%s compiled: %u instructions, %u of them handed back, %u calls, %u loops entered, %u bytes of Thumb-2",
+                m->cls->name, m->name, m->sig, (unsigned)(compiled + exits), (unsigned)exits, (unsigned)calls, (unsigned)loops, (unsigned)bytes);
 out:
     free(code_at);
     free(exit_at);
     free(back_at);
+    free(throw_at);
     free(target);
     free(handback);
     free(e.b);
@@ -630,12 +901,12 @@ out:
 
 static mg_lock g_jit_lock = MG_LOCK_INIT;
 
-bool mg_dvm_jit_enter(mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next)
+int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next)
 {
     mg_dvm_jit_code *c = m->jit;
     u32 at;
     if (!c) {
-        if (m->jit_state) return false;
+        if (m->jit_state) return 0;
         mg_lock_acquire(&g_jit_lock);
         if (!m->jit_state) {
             c = compile(m);
@@ -651,11 +922,10 @@ bool mg_dvm_jit_enter(mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next)
         }
         mg_lock_release(&g_jit_lock);
         c = m->jit;
-        if (!c) return false;
+        if (!c) return 0;
     }
-    if (pc >= c->ninsns || !(at = c->entry[pc])) return false;
-    c->run(regs, c->pages + (size_t)(at - 1) * 2 + 1, next, &g_dvm.slow);
-    return true;
+    if (pc >= c->ninsns || !(at = c->entry[pc])) return 0;
+    return mg_dvm_jit_run(t, f, c, regs, at, next);
 }
 
 #else
@@ -668,13 +938,15 @@ void mg_dvm_jit_start(bool on, u32 threshold, bool trace)
     g_dvm_jit_threshold = 0;
 }
 
-bool mg_dvm_jit_enter(mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next)
+int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next)
 {
+    (void)t;
+    (void)f;
     (void)regs;
     (void)pc;
     (void)next;
     m->jit_state = 2;
-    return false;
+    return 0;
 }
 
 #endif

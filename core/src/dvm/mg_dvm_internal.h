@@ -574,28 +574,57 @@ void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m);
  * at; false when there is no code to run there (nothing done). Where there is no JIT (x64), always false.
  */
 typedef struct mg_dvm_jit_code mg_dvm_jit_code;
+/*
+ * What compiled code is run with (r5 holds it): the frame's registers, the flag that says instructions are watched, the pc
+ * it hands the frame back at, the thread and the frame for the calls it makes (mg_dvm_jit_invoke), and the result of the
+ * last call, which move-result reads. Its layout is the code's (mg_dvm_jit.c, JIT_CTX_*).
+ */
+typedef struct mg_dvm_jit_ctx {
+    mg_dvm_reg *regs;
+    const volatile i32 *slow;
+    u32 pc;
+    mg_dvm_thread *t;
+    mg_dvm_frame *f;
+    u32 unused;
+    mg_jvalue result;
+} mg_dvm_jit_ctx;
 struct mg_dvm_jit_code {
     u8 *pages;                         /* the code, read and run */
     size_t size;
-    int (*run)(mg_dvm_reg *regs, const void *entry, u32 *pc_out, const volatile i32 *slow);
+    /* 0: handed back at ctx->pc; 1: an exception is pending, thrown at ctx->pc */
+    int (*run)(mg_dvm_jit_ctx *ctx, const void *entry);
     u32 *entry;                        /* by pc: where a loop wholly compiled is entered, as its halfword in the code +1 (0: none) */
     u32 ninsns;
 };
 extern u32 g_dvm_jit_threshold;      /* jumps back before a method is compiled; 0 off (the flag no-jit, or no JIT on this host) */
 void mg_dvm_jit_start(bool on, u32 threshold, bool trace);
-bool mg_dvm_jit_enter(mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next);
-static inline bool mg_dvm_jit_back(mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next)
+/* mg_dvm_interp.c: an invoke done for compiled code; 0 done, 1 thrown, 2 the interpreter's to do (nothing done). */
+int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res);
+int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next);
+/* At a jump back: 0 nothing run; 1 run, the interpreter goes on at *next; 2 run, and an exception is pending, thrown at *next. */
+static inline int mg_dvm_jit_run(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_jit_code *c, mg_dvm_reg *regs, u32 at, u32 *next)
+{
+    mg_dvm_jit_ctx ctx;
+    int r;
+    ctx.regs = regs;
+    ctx.slow = &g_dvm.slow;
+    ctx.pc = 0;
+    ctx.t = t;
+    ctx.f = f;
+    r = c->run(&ctx, c->pages + (size_t)(at - 1) * 2 + 1);
+    *next = ctx.pc;
+    return r ? 2 : 1;
+}
+static inline int mg_dvm_jit_back(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next)
 {
     mg_dvm_jit_code *c = m->jit;
     if (c) {
         u32 at = pc < c->ninsns ? c->entry[pc] : 0;
-        if (!at) return false;
-        c->run(regs, c->pages + (size_t)(at - 1) * 2 + 1, next, &g_dvm.slow);
-        return true;
+        return at ? mg_dvm_jit_run(t, f, c, regs, at, next) : 0;
     }
-    if (!g_dvm_jit_threshold || m->jit_state) return false;
-    if (++m->jit_backs < g_dvm_jit_threshold) return false;
-    return mg_dvm_jit_enter(m, regs, pc, next);
+    if (!g_dvm_jit_threshold || m->jit_state) return 0;
+    if (++m->jit_backs < g_dvm_jit_threshold) return 0;
+    return mg_dvm_jit_enter(t, f, m, regs, pc, next);
 }
 /* For the collector, with the runtime's lock held: every thread there is, and every interned string. */
 void mg_dvm_threads_each(void (*fn)(mg_dvm_thread *t, void *user), void *user);
