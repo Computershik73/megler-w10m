@@ -3012,6 +3012,14 @@ static void node_play(gcanvas *v, gnode *n, int depth)
         dl_unref(l);
         return;
     }
+    /*
+     * Nothing of it can show where the clip is empty: a view's list under a parent that clips it away while part of the screen
+     * is drawn (the views' lists: android.view.View, overlaid), every call of it skipped.
+     */
+    if (cv_state(v)->empty) {
+        dl_unref(l);
+        return;
+    }
     w = n->right - n->left;
     h = n->bottom - n->top;
     d0 = v->depth;
