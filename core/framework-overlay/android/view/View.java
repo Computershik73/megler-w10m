@@ -427,6 +427,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     }
     void dispatchDetachedFromWindow() {
         if (mRoot == null) return;                  /* never attached (or already detached): listeners must not hear a second detach */
+        // Megler: its display list let go; recorded again if it is drawn again
+        if (mMeglerNode != null) mMeglerNode.discardDisplayList();
+        mMeglerListValid = false;
         if (mOverlay != null) mOverlay.meglerDetached();
         if (mAnimator != null) mAnimator.cancel();
         onWindowVisibilityChanged(GONE);
@@ -1038,6 +1041,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
      */
     final void meglerDirty(float l, float t, float r, float b, boolean self) {
         megler.ViewRoot root = mRoot;
+        // Megler: the list that draws what changed is to be recorded again -- this view's own, or its parent's for its place
+        if (self) meglerListInvalid();
+        else if (mParent != null) mParent.meglerListInvalid();
         if (root == null) return;
         if (self && mVisibility != VISIBLE && mAnimation == null) return;
         RectF box = new RectF(l, t, r, b);
@@ -1147,6 +1153,11 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
             if (mLayerPaint != null) a = a * mLayerPaint.getAlpha() / 255;
             c.saveLayerAlpha(0, 0, w, h, a);
         }
+        if (w > 0 && h > 0 && meglerListable() && meglerListsOn()) {
+            meglerDrawList(c, w, h);
+            c.restoreToCount(save);
+            return;
+        }
         c.translate(-mScrollX, -mScrollY);
         megler.ViewRoot.ScreenCanvas screen = c instanceof megler.ViewRoot.ScreenCanvas ? (megler.ViewRoot.ScreenCanvas) c : null;
         long was = screen != null ? screen.meglerViewSize(w, h) : 0;
@@ -1156,6 +1167,91 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
             if (screen != null) screen.meglerViewSizeBack(was);
         }
         c.restoreToCount(save);
+    }
+
+    /*
+     * Megler: display lists, as Android's views have (each its RenderNode, hardware acceleration being on for every app
+     * written for Android 4 or later). A view's draw() -- its background, onDraw, its children, its foreground -- is recorded
+     * into a list of its own, of its own size, and the list is drawn where the view is drawn (drawFromParent) until something
+     * makes it invalid; a parent's list draws each child's list by reference, so a child drawn again leaves its parent's list
+     * as it is. Before a frame is drawn every invalid list under a valid one is recorded again where it stands
+     * (meglerUpdateLists, as Android's updateDisplayListIfDirty). The original drew every view again whenever any part of
+     * the screen over it was drawn: Yandex Maps' sheet of cards and its controls had their Java drawing run again in nearly
+     * every frame as the map under them moved (package 537). Where the list goes invalid:
+     *  - the view's own invalidation (invalidate, invalidateDrawable, a scroll): its list;
+     *  - a change of where its parent draws it -- moved, transformed, shown or hidden, made translucent (invalidateParent),
+     *    a child added or removed (ViewGroup, overlaid): the parent's list;
+     *  - a view without a list of its own (a SurfaceView, a TextureView, a WebView, whose pictures come from elsewhere) makes
+     *    the list it was recorded into invalid instead;
+     *  - a new size: recorded again at it. Detached from the window: the list let go.
+     * The flag no-view-lists draws every view again as before.
+     */
+    private android.graphics.RenderNode mMeglerNode;
+    private boolean mMeglerListValid;
+    /** A list below this view is invalid: the way down to it, for meglerUpdateLists. */
+    boolean mMeglerSubtreeInvalid;
+    private static int sMeglerLists = -1;
+
+    static boolean meglerListsOn() {
+        if (sMeglerLists < 0) sMeglerLists = megler.Native.flag("no-view-lists") ? 0 : 1;
+        return sMeglerLists > 0;
+    }
+
+    /** Whether this view draws through a list of its own: not a surface's, a texture's or a WebView's. */
+    boolean meglerListable() {
+        return !(this instanceof SurfaceView) && !(this instanceof TextureView) && !(this instanceof android.webkit.WebView);
+    }
+
+    /** The list of the nearest view at or above this one that keeps one made invalid, and the way down to it noted. */
+    final void meglerListInvalid() {
+        View v = this;
+        while (v != null && !v.meglerListable()) v = v.mParent;
+        if (v == null) return;
+        v.mMeglerListValid = false;
+        for (View p = v.mParent; p != null && !p.mMeglerSubtreeInvalid; p = p.mParent) p.mMeglerSubtreeInvalid = true;
+    }
+
+    private void meglerDrawList(Canvas c, int w, int h) {
+        android.graphics.RenderNode n = mMeglerNode;
+        if (n == null) {
+            n = new android.graphics.RenderNode(getClass().getName());
+            n.setClipToBounds(false);
+            mMeglerNode = n;
+        }
+        if (!mMeglerListValid || !n.hasDisplayList() || n.getWidth() != w || n.getHeight() != h) meglerRecord(n, w, h);
+        c.drawRenderNode(n);
+    }
+
+    private void meglerRecord(android.graphics.RenderNode n, int w, int h) {
+        n.setPosition(0, 0, w, h);
+        // (Valid before it is recorded: an invalidation while it is, an animation's, makes it invalid again.)
+        mMeglerListValid = true;
+        Canvas rc = n.meglerBeginViewRecording(w, h);
+        try {
+            rc.translate(-mScrollX, -mScrollY);
+            draw(rc);
+        } finally {
+            n.endRecording();
+        }
+    }
+
+    /** Megler: before a frame, every invalid list of this view's subtree under a valid one recorded again where it stands. */
+    public void meglerUpdateLists() {
+        android.graphics.RenderNode n = mMeglerNode;
+        if (n != null && !mMeglerListValid && n.hasDisplayList() && mVisibility == VISIBLE) {
+            int w = getWidth(), h = getHeight();
+            if (w > 0 && h > 0) meglerRecord(n, w, h);
+        }
+        if (mMeglerSubtreeInvalid) {
+            mMeglerSubtreeInvalid = false;
+            if (this instanceof ViewGroup) {
+                ViewGroup g = (ViewGroup) this;
+                for (int i = 0; i < g.getChildCount(); i++) {
+                    View ch = g.getChildAt(i);
+                    if (ch != null) ch.meglerUpdateLists();
+                }
+            }
+        }
     }
 
     // ---- scrolling

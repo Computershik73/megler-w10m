@@ -7,8 +7,10 @@ package android.graphics;
 public final class RecordingCanvas extends BaseRecordingCanvas {
     public static final int MAX_BITMAP_SIZE = 100 * 1024 * 1024;
     public RenderNode mNode;
+    /* Megler: a view's own list (RenderNode.meglerBeginViewRecording), which says what the screen's canvas says it is. */
+    boolean mMeglerView;
     RecordingCanvas(RenderNode node, long recording, int width, int height) { super(recording, width, height); mNode = node; }
-    @Override public boolean isHardwareAccelerated() { return true; }
+    @Override public boolean isHardwareAccelerated() { return !mMeglerView; }
     public boolean isRecordingFor(Object o) { return o == mNode; }
     public void enableZ() {}
     public void disableZ() {}

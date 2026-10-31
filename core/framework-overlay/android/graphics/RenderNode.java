@@ -74,6 +74,15 @@ public final class RenderNode {
         return mCanvas;
     }
     public RecordingCanvas beginRecording() { return beginRecording(getWidth(), getHeight()); }
+    /**
+     * Megler: a view's display list being recorded (android.view.View, overlaid): a canvas that says it is not hardware
+     * accelerated, as the screen's canvas the views drew on says, so that a view draws as it drew there.
+     */
+    public RecordingCanvas meglerBeginViewRecording(int width, int height) {
+        RecordingCanvas c = beginRecording(width, height);
+        c.mMeglerView = true;
+        return c;
+    }
     public RecordingCanvas start(int width, int height) { return beginRecording(width, height); }
     public void endRecording() {
         if (mCanvas == null) throw new IllegalStateException("No recording in progress, forgot to call #beginRecording()?");

@@ -613,6 +613,8 @@ public final class ViewRoot implements ViewParent {
             else if (!r.mDirty.isEmpty()) { sScratch.set(r.mDirty); sScratch.offset(r.mX, r.mY); part.union(sScratch); }
         }
         for (ViewRoot r : roots) { r.mDirty.setEmpty(); r.mDirtyAll = false; }
+        // The views' display lists that went invalid under valid ones, recorded again before anything is drawn (View, overlaid)
+        for (ViewRoot r : roots) if (!r.mRemoved && !r.mOwnerStopped) r.mView.meglerUpdateLists();
         if (sFullRedraw) noteDirtier(sFullWhy != null ? sFullWhy : "windows added, removed, moved or resized", Float.MAX_VALUE);
         sFullWhy = null;
         sFullRedraw = false;

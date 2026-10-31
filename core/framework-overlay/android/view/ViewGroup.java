@@ -175,6 +175,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         mChildren[index] = child;
         mChildrenCount++;
         child.mParent = this;
+        meglerListInvalid();
         if (child.hasFocus()) requestChildFocus(child, child.findFocus());
         if (mRoot != null) {
             child.dispatchAttachedToWindow(mRoot, getVisibility());
@@ -193,6 +194,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         System.arraycopy(mChildren, index, mChildren, index + 1, mChildrenCount - index);
         mChildren[index] = child; mChildrenCount++;
         child.mParent = this;
+        meglerListInvalid();
         /* a child detached from its parent stays attached to the window; one that never was joins it now, so the tree stays consistent */
         if (mRoot != null && !child.isAttachedToWindow()) child.dispatchAttachedToWindow(mRoot, getVisibility());
     }
@@ -203,6 +205,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     private void removeFromArray(int index) {
         System.arraycopy(mChildren, index + 1, mChildren, index, mChildrenCount - index - 1);
         mChildren[--mChildrenCount] = null;
+        meglerListInvalid();
     }
     public void removeView(View v) { int i = indexOfChild(v); if (i >= 0) { removeViewInternal(i); requestLayout(); invalidate(); } }
     public void removeViewInLayout(View v) { int i = indexOfChild(v); if (i >= 0) removeViewInternal(i); }
@@ -250,7 +253,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     protected LayoutParams generateLayoutParams(LayoutParams p) { return p; }
     protected LayoutParams generateDefaultLayoutParams() { return new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT); }
     public void bringChildToFront(View child) { int i = indexOfChild(child); if (i >= 0) { removeFromArray(i); addInArray(child, mChildrenCount); requestLayout(); invalidate(); } }
-    private void addInArray(View child, int index) { if (mChildrenCount == mChildren.length) mChildren = java.util.Arrays.copyOf(mChildren, mChildrenCount * 2 + 4); System.arraycopy(mChildren, index, mChildren, index + 1, mChildrenCount - index); mChildren[index] = child; mChildrenCount++; }
+    private void addInArray(View child, int index) { if (mChildrenCount == mChildren.length) mChildren = java.util.Arrays.copyOf(mChildren, mChildrenCount * 2 + 4); System.arraycopy(mChildren, index, mChildren, index + 1, mChildrenCount - index); mChildren[index] = child; mChildrenCount++; meglerListInvalid(); }
     public void setLayoutTransition(android.animation.LayoutTransition t) { mTransition = t; }
     public android.animation.LayoutTransition getLayoutTransition() { return mTransition; }
     public void setLayoutAnimation(LayoutAnimationController c) { mLayoutAnimation = c; }
