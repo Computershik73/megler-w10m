@@ -12,6 +12,12 @@
     public static native boolean micStart(int rate, int channels);
     public static native void micStop();
     public static native int micRead(short[] b, int off, int n, boolean blocking);
+    /** The phone's check of its user (megler_biometric_host, core/src/drivers/mg_java.c), for megler.Biometrics: whether it
+     *  can (0 ready, 1 not set up, 2 none); its dialog with the message, blocking until the user is done (0 verified,
+     *  1 canceled, 2 locked out, 3 could not check); and that dialog closed from another thread. */
+    public static native int biometricAvailable();
+    public static native int biometricVerify(String message);
+    public static native void biometricCancel();
     /** Where the app's sound is to go, as its AudioManager has it: 0 as ever, 1 the earpiece, 2 the loudspeaker, for a
      *  call (megler_audio_host.route, core/src/drivers/mg_java.c). */
     public static native void audioRoute(int route);

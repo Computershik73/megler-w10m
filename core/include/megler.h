@@ -1470,6 +1470,27 @@ typedef struct megler_microphone_host {
 /* What the microphone heard: `frames` frames of the channels start was asked for, interleaved. */
 void megler_microphone_push(const int16_t *samples, int frames);
 
+/*
+ * The phone's check of its user, for a Java app's BiometricPrompt, BiometricManager and FingerprintManager (Windows Hello:
+ * a fingerprint, the iris, a face or the PIN). Called on the app's threads, never its main thread; each may block:
+ *   available  whether the phone can check its user: MEGLER_BIOMETRIC_READY, NOT_SET_UP (it could, but the user has set
+ *              nothing up) or NONE (nothing on the phone checks).
+ *   verify     the phone's own dialog, with the message (UTF-8: what the app's prompt says), until the user is done:
+ *              MEGLER_BIOMETRIC_VERIFIED, CANCELED (the user said no), LOCKED (too many tries) or UNAVAILABLE (not set up,
+ *              busy, refused by policy).
+ *   cancel     the dialog of a verify that runs, closed: the app no longer wants it (its CancellationSignal); that verify
+ *              returns CANCELED.
+ * May be left zero: the app is told the phone has nothing that checks its user.
+ */
+enum { MEGLER_BIOMETRIC_READY = 0, MEGLER_BIOMETRIC_NOT_SET_UP = 1, MEGLER_BIOMETRIC_NONE = 2 };
+enum { MEGLER_BIOMETRIC_VERIFIED = 0, MEGLER_BIOMETRIC_CANCELED = 1, MEGLER_BIOMETRIC_LOCKED = 2, MEGLER_BIOMETRIC_UNAVAILABLE = 3 };
+typedef struct megler_biometric_host {
+    void *user;
+    int (*available)(void *user);
+    int (*verify)(void *user, const char *message);
+    void (*cancel)(void *user);
+} megler_biometric_host;
+
 typedef struct megler_run_config {
     const char *apk_path;
     /* Optional installed microG APK. Opened as the service package; no copy in each client. */
@@ -1501,6 +1522,8 @@ typedef struct megler_run_config {
     megler_location_host location;
     /* The phone's microphone for a Java app's AudioRecord (see megler_microphone_host). May be left zero: silence. */
     megler_microphone_host microphone;
+    /* The phone's check of its user for a Java app's BiometricPrompt (see megler_biometric_host). May be left zero: none. */
+    megler_biometric_host biometric;
     /*
      * Drawing for an app whose user interface is Java (see megler_gfx_host). All of it may be left NULL: such an app still starts,
      * lays its views out and takes input, but nothing is drawn (its bitmaps hold only what the layer does itself: erasing, single

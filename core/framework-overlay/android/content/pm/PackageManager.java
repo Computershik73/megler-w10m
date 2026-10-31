@@ -5,7 +5,8 @@
 // original said no camera at all, and a scanner that asks before it opens one
 // (VK mp3 mod's QR sign-in among them) would not offer to scan. Likewise the
 // location (android.hardware.location, .gps, .network), wherever the shell can
-// find the phone (megler.LocationNative). And getSystemAvailableFeatures lists those same
+// find the phone (megler.LocationNative). And a fingerprint sensor (android.hardware.fingerprint)
+// where Windows Hello can check the user (megler.Biometrics). And getSystemAvailableFeatures lists those same
 // features and the OpenGL ES version, and getSystemSharedLibraryNames the legacy
 // Apache HTTP client, where both said nothing.
 // And getPackageInfo names the app's split APKs (splitNames, splitRevisionCodes),
@@ -187,6 +188,9 @@ public class PackageManager {
         // the network's alike, as LocationManager offers both.
         if (name.equals(FEATURE_LOCATION) || name.equals(FEATURE_LOCATION_GPS) || name.equals(FEATURE_LOCATION_NETWORK))
             return megler.LocationNative.access(false) != megler.LocationNative.NONE;
+        // The phone's check of its user (megler.Biometrics, Windows Hello: the iris, a fingerprint, the PIN) stands for a
+        // fingerprint sensor, as FingerprintManager and BiometricPrompt use it.
+        if (name.equals(FEATURE_FINGERPRINT)) return megler.Biometrics.available() != megler.Biometrics.NONE;
         return false;
     }
     /*

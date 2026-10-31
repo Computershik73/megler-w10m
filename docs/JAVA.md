@@ -5338,6 +5338,29 @@ encodes as it records (AAC, AMR), is not done yet. The data app's step
 reads it back; the harness checks it was asked for at 16000 Hz, mono, and let
 go.
 
+### Biometrics: Windows Hello
+
+`BiometricPrompt`, `BiometricManager` and `FingerprintManager` check the
+user with Windows Hello (`megler_biometric_host`, megler.h;
+`player/BiometricHost.cpp`; `megler.Biometrics` in the framework overlay):
+the iris, a fingerprint or the PIN, however the user set it up.
+`canAuthenticate` is `BIOMETRIC_SUCCESS` where `UserConsentVerifier` says
+Windows Hello is available, `BIOMETRIC_ERROR_NONE_ENROLLED` where it is not
+set up, `BIOMETRIC_ERROR_NO_HARDWARE` where the phone has none (asked again
+after five seconds at the most); `FingerprintManager.isHardwareDetected` and
+`hasEnrolledFingerprints`, and `hasSystemFeature("android.hardware.fingerprint")`,
+say the same. `authenticate` shows Windows' own dialog with the prompt's title
+and text, on the UI thread, while a thread of the framework's waits, and tells
+the app's callback on its executor (`FingerprintManager`'s on its handler):
+succeeded, with the `CryptoObject` it was given (concrete now: the stubs'
+was abstract, and Play Store ended in an `InstantiationError` making one);
+the negative button's listener, or `BIOMETRIC_ERROR_USER_CANCELED`, when the
+user cancels; `BIOMETRIC_ERROR_CANCELED` when the app cancels (its
+`CancellationSignal` closes the dialog); `BIOMETRIC_ERROR_LOCKOUT` after too
+many tries; `BIOMETRIC_ERROR_HW_UNAVAILABLE` otherwise. One check at a time.
+Keys that need the user's check (`setUserAuthenticationRequired`) are not
+bound to it: Megler's keystore uses them whenever the app does.
+
 **A call's sound** goes where the app's `AudioManager` says, as on a phone:
 in `MODE_IN_COMMUNICATION` or `MODE_IN_CALL`, or with a communication device
 set, to the earpiece, or to the loudspeaker after `setSpeakerphoneOn(true)` or

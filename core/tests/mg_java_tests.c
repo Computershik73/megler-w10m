@@ -723,6 +723,29 @@ static void mic_stop(void *user)
     snprintf(g_mic_heard + n, sizeof(g_mic_heard) - n, "stop;");
 }
 
+/*
+ * The phone's check of its user (megler_biometric_host), for the data app's step biometric: ready; it verifies the user
+ * when its message has "Sign in" in it, else the user says no. What it was asked is said in g_bio_heard, the message's
+ * lines joined by '|'.
+ */
+static char g_bio_heard[256];
+
+static int bio_available(void *user)
+{
+    (void)user;
+    return MEGLER_BIOMETRIC_READY;
+}
+
+static int bio_verify(void *user, const char *message)
+{
+    size_t n = strlen(g_bio_heard), i;
+    (void)user;
+    snprintf(g_bio_heard + n, sizeof(g_bio_heard) - n, "verify %s;", message);
+    for (i = n; g_bio_heard[i]; i++)
+        if (g_bio_heard[i] == '\n') g_bio_heard[i] = '|';
+    return strstr(message, "Sign in") ? MEGLER_BIOMETRIC_VERIFIED : MEGLER_BIOMETRIC_CANCELED;
+}
+
 static bool system_launch(void *user, const char *package, const char *activity)
 {
     char t[200];
@@ -848,6 +871,10 @@ static bool start(const char *apk, const char *android_root)
     cfg.microphone.start = mic_start;
     cfg.microphone.stop = mic_stop;
     g_mic_heard[0] = 0;
+    /* And a phone that checks its user (bio_verify): the data app's step biometric. */
+    cfg.biometric.available = bio_available;
+    cfg.biometric.verify = bio_verify;
+    g_bio_heard[0] = 0;
     {
         static const megler_cellular us = { true, "Test Operator", "310260", 13, false }, ru = { true, "Test Operator", "25001", 13, false };
         megler_set_cellular(g_script_count && !strcmp(g_script[0], "run:2") ? &ru : &us);
@@ -2107,6 +2134,9 @@ static void system_requests(void)
     /* The microphone was asked for at the rate and channels the app's AudioRecord has, and let go when it stopped. */
     say("  the microphone was asked: %s", g_mic_heard);
     CHECK(strstr(g_mic_heard, "start 16000 1;stop;") != NULL);
+    /* The phone was asked to check the user twice, with each prompt's title and description, in the prompts' order. */
+    say("  the phone's check was asked: %s", g_bio_heard);
+    CHECK(strstr(g_bio_heard, "verify Sign in|to the test;verify Say no;") != NULL);
 }
 
 /*
@@ -2189,7 +2219,7 @@ static int run_data(void)
                                             custom action, as PlaybackStateCompat makes it. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path", "apk-optimization",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an

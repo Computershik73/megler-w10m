@@ -10,6 +10,7 @@
 #include "player/CodecHost.h"
 #include "player/GfxHost.h"
 #include "player/KeyboardHost.h"
+#include "player/BiometricHost.h"
 #include "player/LocationHost.h"
 #include "player/MicrophoneHost.h"
 #include "player/MediaHost.h"
@@ -232,6 +233,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         // (player/LocationHost.h).
         config.location = LocationHost::shared().callbacks();
         config.microphone = MicrophoneHost::shared().callbacks();
+        // A Java app's BiometricPrompt and FingerprintManager: Windows Hello (player/BiometricHost.h).
+        config.biometric = biometricHost::callbacks();
         // For an app that is Java: its drawing, and where Android's libcore and the framework are -- NULL is the folder
         // `android` of the installed package, which is where tools/build-appx.sh --libcore (or --java) puts them. An app
         // with a native engine uses neither.

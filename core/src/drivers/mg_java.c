@@ -776,6 +776,34 @@ N(Native_micRead)
     c->ret.i = got;
 }
 
+/*
+ * The phone's check of its user (megler_biometric_host), for megler.Biometrics: whether it can, and its dialog, which
+ * blocks the thread megler.Biometrics asks on until the user is done; cancel closes it from another.
+ */
+N(Native_biometricAvailable)
+{
+    const megler_biometric_host *h = &J.config->biometric;
+    c->ret.i = h->available ? h->available(h->user) : MEGLER_BIOMETRIC_NONE;
+    mg_info("java: the phone's check of its user: %s", c->ret.i == MEGLER_BIOMETRIC_READY ? "ready" :
+            c->ret.i == MEGLER_BIOMETRIC_NOT_SET_UP ? "not set up" : h->available ? "nothing on the phone checks" : "none here");
+}
+N(Native_biometricVerify)
+{
+    const megler_biometric_host *h = &J.config->biometric;
+    const char *message = c->args[0].l ? text_of(c->args[0].l) : "";
+    static const char *const said[] = { "verified the user", "was canceled", "is locked: too many tries", "could not check" };
+    mg_info("java: the app asks the phone to check its user (\"%s\")%s", message, h->verify ? "" : ": nothing here checks");
+    c->ret.i = h->verify ? h->verify(h->user, message) : MEGLER_BIOMETRIC_UNAVAILABLE;
+    if (c->ret.i < 0 || c->ret.i > MEGLER_BIOMETRIC_UNAVAILABLE) c->ret.i = MEGLER_BIOMETRIC_UNAVAILABLE;
+    mg_info("java: the phone's check %s", said[c->ret.i]);
+}
+N(Native_biometricCancel)
+{
+    const megler_biometric_host *h = &J.config->biometric;
+    (void)c;
+    if (h->cancel) h->cancel(h->user);
+}
+
 /* cellular(): the SIM as the core has it (mg_cellular_read): "1" or "0" for a SIM ready, the operator's name, MCC and MNC,
    the network's type and "1" or "0" for roaming, separated by tabs. */
 N(Native_cellular)
@@ -1114,6 +1142,9 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "micStart", NULL, Native_micStart },
     { "megler/Native", "micStop", NULL, Native_micStop },
     { "megler/Native", "micRead", NULL, Native_micRead },
+    { "megler/Native", "biometricAvailable", NULL, Native_biometricAvailable },
+    { "megler/Native", "biometricVerify", NULL, Native_biometricVerify },
+    { "megler/Native", "biometricCancel", NULL, Native_biometricCancel },
     { "megler/Native", "audioRoute", NULL, Native_audioRoute },
     { "megler/Native", "packageName", NULL, Native_packageName },
     { "megler/Native", "screenWidth", NULL, Native_screenWidth },

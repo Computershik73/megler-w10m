@@ -518,6 +518,39 @@ public class Main extends Activity {
             detail = "got=" + got + " first=" + (got > 0 ? s[0] : -1) + " last=" + (got > 0 ? s[got - 1] : -1);
             return ramp && s[got - 1] != 0;
         });
+        // The phone's check of its user (megler.Biometrics, the harness's bio_verify), as Play Store's fingerprint sign-in
+        // asks it: BiometricManager and FingerprintManager say the phone has it; a prompt with a CryptoObject succeeds and
+        // gives that object back; a prompt the user says no to calls its negative button's listener.
+        step("biometric", () -> {
+            android.hardware.biometrics.BiometricManager bm = getSystemService(android.hardware.biometrics.BiometricManager.class);
+            android.hardware.fingerprint.FingerprintManager fm = (android.hardware.fingerprint.FingerprintManager) getSystemService(FINGERPRINT_SERVICE);
+            boolean can = bm != null && bm.canAuthenticate() == android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS
+                && fm != null && fm.isHardwareDetected() && fm.hasEnrolledFingerprints()
+                && getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_FINGERPRINT);
+            java.security.Signature signature = java.security.Signature.getInstance("SHA256withRSA");
+            android.hardware.biometrics.BiometricPrompt.CryptoObject crypto = new android.hardware.biometrics.BiometricPrompt.CryptoObject(signature);
+            final java.util.concurrent.CountDownLatch first = new java.util.concurrent.CountDownLatch(1), second = new java.util.concurrent.CountDownLatch(1);
+            final Object[] got = new Object[2];
+            java.util.concurrent.Executor now = Runnable::run;
+            new android.hardware.biometrics.BiometricPrompt.Builder(this).setTitle("Sign in").setDescription("to the test")
+                .setNegativeButton("Cancel", now, (d, which) -> { got[0] = "negative"; first.countDown(); }).build()
+                .authenticate(crypto, new android.os.CancellationSignal(), now, new android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                    @Override public void onAuthenticationSucceeded(android.hardware.biometrics.BiometricPrompt.AuthenticationResult r) { got[0] = r.getCryptoObject(); first.countDown(); }
+                    @Override public void onAuthenticationError(int code, CharSequence why) { got[0] = "error " + code; first.countDown(); }
+                });
+            boolean answered = first.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            new android.hardware.biometrics.BiometricPrompt.Builder(this).setTitle("Say no")
+                .setNegativeButton("Cancel", now, (d, which) -> { got[1] = "negative " + which; second.countDown(); }).build()
+                .authenticate(new android.os.CancellationSignal(), now, new android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                    @Override public void onAuthenticationSucceeded(android.hardware.biometrics.BiometricPrompt.AuthenticationResult r) { got[1] = "succeeded"; second.countDown(); }
+                    @Override public void onAuthenticationError(int code, CharSequence why) { got[1] = "error " + code; second.countDown(); }
+                });
+            answered &= second.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            boolean same = got[0] instanceof android.hardware.biometrics.BiometricPrompt.CryptoObject
+                && ((android.hardware.biometrics.BiometricPrompt.CryptoObject) got[0]).getSignature() == signature;
+            detail = "can=" + can + " first=" + (same ? "crypto" : got[0]) + " second=" + got[1];
+            return can && answered && same && ("negative " + android.content.DialogInterface.BUTTON_NEGATIVE).equals(got[1]);
+        });
         // An image matrix set before the view is laid out, then the scale type made MATRIX, as Material's FloatingActionButton
         // does as it is made: once laid out, the view draws by that matrix.
         step("image-matrix-before-layout", () -> {
