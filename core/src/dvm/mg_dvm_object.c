@@ -1066,6 +1066,7 @@ void mg_dvm_object_dying(void *p)
     /* A string AllocObject made and a JNI call of a String constructor filled keeps its text in a buffer of its own (mg_jni.c). */
     if (o->j.kind == MG_J_STRING && o->j.native) free(o->j.native);
     if (o->j.fields) {
+        mg_dvm_gc_fields_gone(&o->j);
         for (i = 0; i < o->j.nfields; i++) free(o->j.fields[i].name);
         free(o->j.fields);
     }

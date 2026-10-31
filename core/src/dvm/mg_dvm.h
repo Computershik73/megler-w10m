@@ -212,6 +212,13 @@ void mg_dvm_gc_native(i64 bytes);
 void mg_dvm_gc_totals(u64 *collections, u64 *pause_ns);
 /* Whether a collection is under way now (the world stopped, or the heap being swept): for the main thread's sampler. */
 bool mg_dvm_gc_busy(void);
+/*
+ * Collections due to allocation marked alongside the app (mg_dvm_gc.c, "marking alongside the app"): on by itself where the
+ * heap's pages are watched for writes; this turns it on or off (the tests, on a host that does not watch, where every
+ * marked object is looked at again). And a wait for the one under way, if any, to end.
+ */
+void mg_dvm_gc_set_alongside(bool on);
+void mg_dvm_gc_alongside_wait(void);
 /* Where objects were made since the last call, sampled every 256 KB each thread makes: a line in the log, and the samples forgotten. */
 void mg_dvm_made_say(void);
 /* Bytes of the objects in the heap now (live since the last collection, and what was made after it). */

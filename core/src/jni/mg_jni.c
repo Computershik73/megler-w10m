@@ -677,6 +677,8 @@ static mg_jvalue *instance_slot(mg_jobj *o, const jfield *f)
     }
     for (i = 0; i < o->nfields; i++)
         if (!strcmp(o->fields[i].name, f->name)) return &o->fields[i].v;
+    /* (The collector follows the fields of the runtime's objects that have them apart: mg_dvm_gc.c.) */
+    if (o->dvm && !o->nfields) mg_dvm_gc_has_fields(o);
     o->fields = (mg_jfield_value *)mg_realloc(o->fields, sizeof(mg_jfield_value) * (size_t)(o->nfields + 1));
     memset(&o->fields[o->nfields], 0, sizeof(mg_jfield_value));
     o->fields[o->nfields].name = mg_strdup(f->name);

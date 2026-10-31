@@ -23,6 +23,7 @@
  */
 #include <setjmp.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "mg_dvm_internal.h"
 #include "../mg_core.h"
@@ -161,13 +162,19 @@ typedef struct gc_state {
 
 static gc_state G;
 static volatile bool g_parallel;       /* the mark shared with the helpers right now: marks set with an interlocked exchange */
+/*
+ * Marking alongside the app (collect_alongside): marks set with an interlocked exchange (the app's threads make objects
+ * marked meanwhile, in the same words), and the JNI layer's by-name fields of an object left for the second stop, where
+ * every object that has them is followed again (they are C memory the layer may move as it adds one).
+ */
+static volatile bool g_alongside;
 
 static void spill(marker *k);
 
 /* An object reached: marked, and its references to follow later. `o` is an object's start, or anything else (ignored: nothing is read of it before the heap has said it is an object). */
 static void reach(marker *k, void *o)
 {
-    if (!o || !(g_parallel ? mg_dvm_heap_set_mark_shared(o) : mg_dvm_heap_set_mark(o))) return;
+    if (!o || !(g_parallel || g_alongside ? mg_dvm_heap_set_mark_shared(o) : mg_dvm_heap_set_mark(o))) return;
     k->marked++;
     k->marked_bytes += MG_DVM_OBJ(o)->size;
     if (k->counting_conservative) {
@@ -228,9 +235,45 @@ static void follow(marker *k, void *p)
             if (slots[g_pending_next].l || !found_add(j)) reach(k, slots[g_referent].l);
         }
     }
-    if (j->fields)
+    if (j->fields && !g_alongside)
         for (i = 0; i < (u32)j->nfields; i++)
             if (j->fields[i].is_object) reach(k, j->fields[i].v.l);
+}
+
+/* The runtime's objects given fields by name (mg_jni.c): their fields followed again at the second stop of marking alongside. */
+static mg_lock g_fields_lock = MG_LOCK_INIT;
+static mg_jobj **g_with_fields;
+static u32 g_nwith_fields, g_cap_with_fields;
+
+void mg_dvm_gc_has_fields(mg_jobj *o)
+{
+    u32 i;
+    mg_lock_acquire(&g_fields_lock);
+    for (i = 0; i < g_nwith_fields && g_with_fields[i] != o; i++) {}
+    if (i == g_nwith_fields) {
+        if (g_nwith_fields == g_cap_with_fields) {
+            u32 cap = g_cap_with_fields ? g_cap_with_fields * 2 : 64;
+            mg_jobj **grown = (mg_jobj **)realloc(g_with_fields, sizeof(*grown) * cap);
+            if (grown) {
+                g_with_fields = grown;
+                g_cap_with_fields = cap;
+            }
+        }
+        if (g_nwith_fields < g_cap_with_fields) g_with_fields[g_nwith_fields++] = o;
+    }
+    mg_lock_release(&g_fields_lock);
+}
+
+void mg_dvm_gc_fields_gone(mg_jobj *o)
+{
+    u32 i;
+    mg_lock_acquire(&g_fields_lock);
+    for (i = 0; i < g_nwith_fields; i++)
+        if (g_with_fields[i] == o) {
+            g_with_fields[i] = g_with_fields[--g_nwith_fields];
+            break;
+        }
+    mg_lock_release(&g_fields_lock);
 }
 
 static void follow_main(void *p) { follow(&G.main, p); }
@@ -878,6 +921,8 @@ static void reference_work(void);
 
 static u64 g_large_said_ns;
 
+static bool cycle_busy(void);
+
 static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
 {
     char large[600];
@@ -889,6 +934,11 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
     large[0] = 0;
     memset(out, 0, sizeof(*out));
     if (!g_dvm.running || t_collecting) return false;
+    /*
+     * A collection alongside the app under way takes the runtime's lock at its stops: a thread that holds it does not wait
+     * for that collection (which holds the collector's lock throughout), nothing collected.
+     */
+    if (cycle_busy() && mg_dvm_lock_mine()) return false;
     mg_lock_acquire(&g_gc_lock);
     /* (Under the collector's lock: two threads that collect at once for the first time start one set of helpers.) */
     helpers_start();
@@ -996,7 +1046,275 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
     return ok;
 }
 
-bool mg_dvm_gc_census(mg_dvm_gc_result *out) { return collect("census", false, out); }
+bool mg_dvm_gc_census(mg_dvm_gc_result *out)
+{
+    mg_dvm_gc_alongside_wait();
+    return collect("census", false, out);
+}
+
+/* ------------------------------------------------- marking alongside the app */
+
+/*
+ * A collection due to allocation marks alongside the app: the world stops twice, briefly, and the marking between is done by
+ * the collector's own thread and its helpers while the app runs. Yandex Maps' collections stopped it for 150 to 250 ms
+ * every few seconds while its map was moved, most of it marking 700,000 objects (package 537).
+ *
+ *  - The first stop: the marks cleared, the arenas' write watch started again, new objects made marked from now on (they
+ *    live: mg_dvm_heap_alloc_black), and every root pushed -- the classes' statics, the interned strings, the threads', the
+ *    JNI layer's, C's, the frames and C stacks scanned conservatively -- nothing followed yet.
+ *  - Alongside: everything they reach marked, by the helpers too, while the app's threads run and make objects.
+ *  - The second stop: every root pushed again, and every marked object on a page of the heap written since the first stop
+ *    followed again -- an app's thread that stored a reference into an object already followed wrote that page -- with every
+ *    marked large object and object with fields by name (memory nothing watches), then everything that reaches marked; the
+ *    references decided about, as in a stopped collection. Then the sweep, the heap locked, as before.
+ *
+ * Where the host does not watch pages for writes the second stop takes every page for written: correct, and a stop as long
+ * as a stopped collection's (the tests turn it on so). A collection that cannot stop every thread at its second stop is
+ * given up, nothing freed.
+ */
+static volatile i32 g_alongside_on = -1;     /* -1: not decided yet (the heap's watch, the flag no-concurrent-gc) */
+static mg_lock g_cycle_lock = MG_LOCK_INIT;
+static mg_cond g_cycle_wake = MG_COND_INIT, g_cycle_done = MG_COND_INIT;
+static volatile bool g_cycle_asked, g_cycle_running;
+static bool g_cycle_thread;
+static u64 g_cycles;
+
+void mg_dvm_gc_set_alongside(bool on) { mg_atomic_xchg(&g_alongside_on, on ? 1 : 0); }
+
+static bool alongside_on(void)
+{
+    /* (MEGLER_GC_ALONGSIDE=1 turns it on where nothing is watched: the tests' whole runs so.) */
+    if (g_alongside_on < 0) {
+        const char *forced = getenv("MEGLER_GC_ALONGSIDE");
+        mg_atomic_xchg(&g_alongside_on, (forced && forced[0] == '1') || (mg_dvm_heap_watched() && !mg_flag("no-concurrent-gc")) ? 1 : 0);
+    }
+    return g_alongside_on > 0;
+}
+
+/* Every root, pushed (not followed): the classes and the interned strings, the other exact roots, the conservative scans. */
+static void roots_pushed(void)
+{
+    u32 i;
+    mg_dvm_each_linked_locked(class_roots, NULL);
+    mg_dvm_interned_each(string_root, NULL);
+    mg_dvm_threads_each(exact_thread_roots, NULL);
+    mg_dvm_proxy_roots(reach_ref, NULL);
+    mg_dvm_object_roots(reach_ref, NULL);
+    mg_jni_gc_roots(reach_counted, &G.jni_roots);
+    for (i = 0; i < (u32)g_nroots && i < MAX_ROOTS; i++)
+        if (g_roots[i]) reach_ref(*g_roots[i], NULL);
+    for (i = 0; i < g_nto_finalize; i++) reach_ref(g_to_finalize[i], NULL);
+    reach_ref(g_pending_refs, NULL);
+    G.main.counting_conservative = true;
+    conservative_roots();
+    G.main.counting_conservative = false;
+}
+
+/* The runtime's locks the collection holds while the world is stopped, so that no stopped thread holds one. */
+static void locks_take(void)
+{
+    mg_dvm_lock();
+    mg_jni_gc_lock(true);
+    mg_lock_acquire(&g_final_lock);
+    mg_dvm_heap_lock();
+}
+
+static void locks_give(bool heap_too)
+{
+    mg_lock_release(&g_final_lock);
+    mg_jni_gc_lock(false);
+    mg_dvm_unlock();
+    if (heap_too) mg_dvm_heap_unlock();
+}
+
+static void follow_with_fields(void)
+{
+    u32 i;
+    mg_lock_acquire(&g_fields_lock);
+    for (i = 0; i < g_nwith_fields; i++)
+        if (mg_dvm_heap_is_marked(g_with_fields[i])) follow(&G.main, g_with_fields[i]);
+    mg_lock_release(&g_fields_lock);
+}
+
+static void collect_alongside(void)
+{
+    u64 t0, t1, t2, t3, t4, t5, t6, t7;
+    u32 objects, written = 0;
+    u64 live = 0;
+    void **stack;
+    mg_jobj **found;
+    char makers[200], large[600];
+    bool ok;
+    mg_dvm_gc_result r;
+    memset(&r, 0, sizeof(r));
+    makers[0] = large[0] = 0;
+    mg_lock_acquire(&g_gc_lock);
+    helpers_start();
+    t_collecting = true;
+    g_collector = NULL;
+    /* The first stop. */
+    t0 = mg_time_monotonic_ns();
+    locks_take();
+    objects = mg_dvm_heap_objects();
+    stack = (void **)malloc(sizeof(void *) * ((size_t)objects + 64));
+    /* (References made alongside are found when their page is looked at again: room for them too.) */
+    found = (mg_jobj **)malloc(sizeof(mg_jobj *) * ((size_t)(u32)g_references * 2 + 1024));
+    if (g_cap_to_finalize < g_nto_finalize + g_nfinalizable) {
+        mg_jobj **grown = (mg_jobj **)realloc(g_to_finalize, sizeof(*grown) * ((size_t)g_nto_finalize + g_nfinalizable + 64));
+        if (grown) {
+            g_to_finalize = grown;
+            g_cap_to_finalize = g_nto_finalize + g_nfinalizable + 64;
+        }
+    }
+    ok = stack != NULL && found != NULL;
+    if (ok) {
+        memset(&G, 0, sizeof(G));
+        G.main.stack = stack;
+        G.main.cap = objects + 64;
+        G.markers = 1;
+        G.found = found;
+        G.cap_found = (u32)g_references * 2 + 1024;
+        g_busy = 1;
+        stop_threads();
+        t1 = mg_time_monotonic_ns();
+        ok = !g_stop_failed;
+        if (ok) {
+            say_makers(makers, sizeof(makers));
+            mg_dvm_heap_clear_marks();
+            mg_dvm_heap_watch_restart();
+            mg_dvm_heap_alloc_black(true);
+            roots_pushed();
+        }
+        resume_threads();
+        g_busy = 0;
+    } else {
+        t1 = t0;
+    }
+    t2 = mg_time_monotonic_ns();
+    locks_give(true);
+    if (!ok) {
+        free(stack);
+        free(found);
+        t_collecting = false;
+        mg_lock_release(&g_gc_lock);
+        mg_warn("gc: alongside: not collected (a thread of the runtime's could not be stopped, or there was no memory for the mark stack)");
+        return;
+    }
+    /* Alongside the app. */
+    g_alongside = true;
+    if (g_nhelpers && G.main.n >= PARALLEL_MIN) drain_shared();
+    while (G.main.n) follow(&G.main, G.main.stack[--G.main.n]);
+    g_alongside = false;
+    t3 = mg_time_monotonic_ns();
+    /* The second stop. */
+    locks_take();
+    t4 = mg_time_monotonic_ns();
+    g_busy = 1;
+    stop_threads();
+    t5 = mg_time_monotonic_ns();
+    ok = !g_stop_failed;
+    if (ok) {
+        roots_pushed();
+        written = mg_dvm_heap_each_written(follow_main);
+        follow_with_fields();
+        drain();
+        while (G.overflow) {
+            G.overflow = false;
+            heap_rescan_marked();
+        }
+        if (g_referent >= 0) process_references(false);
+    }
+    t6 = mg_time_monotonic_ns();
+    resume_threads();
+    t7 = mg_time_monotonic_ns();
+    locks_give(false);
+    /* The heap still locked: nothing is being made, and what is made from now on is made unmarked. */
+    mg_dvm_heap_alloc_black(false);
+    if (ok) {
+        u64 t8;
+        r.sweepers = mg_dvm_heap_sweep(mg_dvm_object_dying, g_poison, &r.freed_objects, &r.freed_bytes);
+        t8 = mg_time_monotonic_ns();
+        r.sweep_ns = t8 - t7;
+        /* (What lives is what the heap holds now: what was made alongside is marked without being counted.) */
+        live = mg_dvm_live_bytes();
+        g_budget = live / 2 > g_min_budget ? live / 2 : g_min_budget;
+        mg_atomic_xchg(&g_since, 0);
+        mg_atomic_xchg(&g_native_since, 0);
+        if (t8 - g_large_said_ns > 30000000000ull && mg_dvm_heap_large_report(large, sizeof(large), 6)) g_large_said_ns = t8;
+    } else {
+        /* Given up: the marks mean nothing now; the next collection clears them. */
+        mg_warn("gc: alongside: a thread of the runtime's could not be stopped the second time: nothing collected this time");
+    }
+    mg_dvm_heap_unlock();
+    g_busy = 0;
+    if (large[0]) mg_info("gc: the large objects (over 2 KB each) by class: %s", large);
+    if (ok) {
+        mg_atomic_add(&g_collections, 1);
+        g_pause_ns += (t2 - t0) + (t7 - t4) + r.sweep_ns;
+        mg_info("gc: alongside the app: stopped %.1f ms and %.1f ms (to stop %.1f and %.1f; the roots, then %u written pages' objects and what "
+                "they reach, %.1f); marked alongside in %.1f ms by %u threads; sweep %.1f by %u; freed %.1f MB (%u objects), live %.1f MB "
+                "(%u objects in all); %u threads stopped%s%s",
+                (double)(t2 - t0) / 1e6, (double)(t7 - t4) / 1e6, (double)(t1 - t0) / 1e6, (double)(t5 - t4) / 1e6, (unsigned)written,
+                (double)(t6 - t5) / 1e6, (double)(t3 - t2) / 1e6, (unsigned)G.markers, (double)r.sweep_ns / 1e6, (unsigned)r.sweepers,
+                (double)r.freed_bytes / 1048576.0, (unsigned)r.freed_objects, (double)live / 1048576.0, (unsigned)mg_dvm_heap_objects(),
+                (unsigned)g_nstopped, makers[0] ? "; made since the last by " : "", makers);
+    }
+    t_collecting = false;
+    free(stack);
+    free(found);
+    mg_lock_release(&g_gc_lock);
+    if (ok && (g_pending_refs || g_nto_finalize)) reference_work();
+}
+
+static void cycle_main(void *arg)
+{
+    (void)arg;
+    for (;;) {
+        mg_lock_acquire(&g_cycle_lock);
+        while (!g_cycle_asked) mg_cond_wait(&g_cycle_wake, &g_cycle_lock);
+        g_cycle_asked = false;
+        g_cycle_running = true;
+        mg_lock_release(&g_cycle_lock);
+        collect_alongside();
+        mg_lock_acquire(&g_cycle_lock);
+        g_cycle_running = false;
+        g_cycles++;
+        mg_cond_broadcast(&g_cycle_done);
+        mg_lock_release(&g_cycle_lock);
+    }
+}
+
+/* A collection alongside the app asked for, its thread started the first time; false when there is no such thread. */
+static bool cycle_ask(void)
+{
+    bool asked = true;
+    mg_lock_acquire(&g_cycle_lock);
+    if (!g_cycle_thread) {
+        mg_thread *t = mg_thread_start(cycle_main, NULL, (size_t)128 << 10, "gc");
+        if (t) {
+            mg_thread_detach(t);
+            g_cycle_thread = true;
+        }
+    }
+    if (!g_cycle_thread) asked = false;
+    else if (!g_cycle_running && !g_cycle_asked) {
+        g_cycle_asked = true;
+        mg_cond_signal(&g_cycle_wake);
+    }
+    mg_lock_release(&g_cycle_lock);
+    return asked;
+}
+
+static bool cycle_busy(void) { return g_cycle_running || g_cycle_asked; }
+
+void mg_dvm_gc_alongside_wait(void)
+{
+    /* (A thread holding the runtime's lock does not wait: the collection's stops take that lock.) */
+    if (mg_dvm_lock_mine() || t_collecting) return;
+    mg_lock_acquire(&g_cycle_lock);
+    while (g_cycle_running || g_cycle_asked) mg_cond_wait(&g_cycle_done, &g_cycle_lock);
+    mg_lock_release(&g_cycle_lock);
+}
 
 /*
  * The reference thread: a thread of the runtime's own, attached to Java as a daemon, that does what Java code must do after a
@@ -1060,7 +1378,17 @@ void mg_dvm_gc_run_finalization(void)
 bool mg_dvm_gc(const char *reason, mg_dvm_gc_result *out)
 {
     mg_dvm_gc_result r;
-    bool ok = collect(reason, true, &r);
+    bool ok;
+    if (!out && !strcmp(reason, "allocation") && alongside_on() && cycle_ask()) {
+        /*
+         * Asked for, and the app goes on. One that makes three budgets' worth before the collection ends waits for it, so
+         * that the heap does not grow without end while it marks.
+         */
+        if ((u64)(u32)g_since > 3 * g_budget) mg_dvm_gc_alongside_wait();
+        return true;
+    }
+    mg_dvm_gc_alongside_wait();
+    ok = collect(reason, true, &r);
     if (out) *out = r;
     if (!ok) {
         mg_warn("gc: %s: not collected (a thread of the runtime's could not be stopped, or there was no memory for the mark stack)", reason);
