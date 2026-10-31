@@ -351,6 +351,9 @@ struct State {
     // Stroke styles, by what they are.
     std::mutex strokeMutex;
     std::unordered_map<uint64_t, Ref<ID2D1StrokeStyle>> strokes;
+    // Gradients' collections of stops, by what made them, their extend mode and their stops (gradientStops).
+    std::mutex gradientMutex;
+    std::unordered_map<std::string, Ref<ID2D1GradientStopCollection>> gradients;
 
     // Fonts out of an app's bytes.
     std::mutex fontMutex;
@@ -1652,6 +1655,34 @@ ID2D1RenderTarget* resourceMaker(bool onGpu) {
 
 Ref<ID2D1Bitmap1> keptBitmap(const megler_gfx_image& image);
 
+/// A gradient's stops made into a collection by `maker`, kept: Yandex Maps made a LinearGradient in one drawing after
+/// another, each stops' collection made anew -- on the graphics processor a texture of its own -- and Gfx.shLinear was 13%
+/// of its main thread (package 536). The same stops and extend mode give the same collection, which the brushes share
+/// (a brush's own matrix and opacity are its own). Null, with `*hr`, when it cannot be made.
+Ref<ID2D1GradientStopCollection> gradientStops(ID2D1RenderTarget* maker, const std::vector<D2D1_GRADIENT_STOP>& stops, D2D1_EXTEND_MODE extend,
+                                               HRESULT* hr) {
+    State& s = G();
+    std::string key(reinterpret_cast<const char*>(&maker), sizeof(maker));
+    key.append(reinterpret_cast<const char*>(&extend), sizeof(extend));
+    key.append(reinterpret_cast<const char*>(stops.data()), stops.size() * sizeof(D2D1_GRADIENT_STOP));
+    *hr = S_OK;
+    {
+        std::lock_guard<std::mutex> lock(s.gradientMutex);
+        auto found = s.gradients.find(key);
+        if (found != s.gradients.end()) return found->second;
+    }
+    Ref<ID2D1GradientStopCollection> made;
+    // Colours as they are (gamma 2.2 is "no conversion"), interpolated straight and premultiplied afterwards, which is what
+    // ID2D1RenderTarget's collection does.
+    *hr = maker->CreateGradientStopCollection(stops.data(), UINT32(stops.size()), D2D1_GAMMA_2_2, extend, made.put());
+    if (FAILED(*hr)) return Ref<ID2D1GradientStopCollection>();
+    std::lock_guard<std::mutex> lock(s.gradientMutex);
+    // (An app can make any number of them: the table is not let grow for ever. One in use is held by its brushes.)
+    if (s.gradients.size() >= 256) s.gradients.clear();
+    s.gradients.emplace(key, made);
+    return made;
+}
+
 ID2D1Brush* Shader::brushFor(bool onGpu) {
     const int k = onGpu ? 1 : 0;
     if (brushes[k] || kind == sweep) return brushes[k].get();
@@ -1667,10 +1698,7 @@ ID2D1Brush* Shader::brushFor(bool onGpu) {
                                           bitmapBrushes[k].put());
         if (SUCCEEDED(hr)) brushes[k] = Ref<ID2D1Brush>(bitmapBrushes[k]);
     } else {
-        Ref<ID2D1GradientStopCollection> collection;
-        // Colours as they are (gamma 2.2 is "no conversion"), interpolated straight and premultiplied afterwards, which is what
-        // ID2D1RenderTarget's collection does.
-        hr = maker->CreateGradientStopCollection(stops.data(), UINT32(stops.size()), D2D1_GAMMA_2_2, extend, collection.put());
+        Ref<ID2D1GradientStopCollection> collection = gradientStops(maker, stops, extend, &hr);
         if (SUCCEEDED(hr) && kind == linear) {
             Ref<ID2D1LinearGradientBrush> brush;
             hr = maker->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(from, to), collection.get(), brush.put());
