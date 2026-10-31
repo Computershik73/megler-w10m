@@ -559,8 +559,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public boolean dispatchNestedFling(float vx, float vy, boolean consumed) { return false; }
     public boolean dispatchNestedPreFling(float vx, float vy) { return false; }
     public int getLayerType() { return mLayerType; }
-    public void setLayerType(int t, Paint p) { mLayerType = t; mLayerPaint = p; invalidate(); }
-    public void setLayerPaint(Paint p) { mLayerPaint = p; invalidate(); }
+    // (The layer, its paint, the clip bounds and the outline's clip are put on by drawFromParent: in the parent's list.)
+    public void setLayerType(int t, Paint p) { mLayerType = t; mLayerPaint = p; invalidate(); invalidateParent(); }
+    public void setLayerPaint(Paint p) { mLayerPaint = p; invalidate(); invalidateParent(); }
     public void buildLayer() {}
     public void setDrawingCacheEnabled(boolean e) {}
     public boolean isDrawingCacheEnabled() { return false; }
@@ -827,14 +828,14 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void getLocationInSurface(int[] out) { getLocationInWindow(out); }
     public void getWindowVisibleDisplayFrame(Rect r) { if (mRoot != null) mRoot.visibleDisplayFrame(r); else r.set(0, 0, megler.Native.screenWidth(), megler.Native.screenHeight()); }
     public void getWindowDisplayFrame(Rect r) { getWindowVisibleDisplayFrame(r); }
-    public void setClipBounds(Rect r) { mClipBounds = r == null ? null : new Rect(r); invalidate(); }
+    public void setClipBounds(Rect r) { mClipBounds = r == null ? null : new Rect(r); invalidate(); invalidateParent(); }
     public Rect getClipBounds() { return mClipBounds == null ? null : new Rect(mClipBounds); }
     public boolean getClipBounds(Rect out) { if (mClipBounds == null) return false; out.set(mClipBounds); return true; }
-    public void setClipToOutline(boolean c) { if (c) mPrivateFlags |= PFLAG_CLIP_TO_OUTLINE; else mPrivateFlags &= ~PFLAG_CLIP_TO_OUTLINE; invalidate(); }
+    public void setClipToOutline(boolean c) { if (c) mPrivateFlags |= PFLAG_CLIP_TO_OUTLINE; else mPrivateFlags &= ~PFLAG_CLIP_TO_OUTLINE; invalidate(); invalidateParent(); }
     public final boolean getClipToOutline() { return (mPrivateFlags & PFLAG_CLIP_TO_OUTLINE) != 0; }
     public void setOutlineProvider(ViewOutlineProvider p) { mOutlineProvider = p; invalidateOutline(); }
     public ViewOutlineProvider getOutlineProvider() { return mOutlineProvider; }
-    public void invalidateOutline() { invalidate(); }
+    public void invalidateOutline() { invalidate(); invalidateParent(); }
     public void setOutlineAmbientShadowColor(int c) {}
     public void setOutlineSpotShadowColor(int c) {}
     public float getElevation() { return mElevation; }
@@ -1040,10 +1041,14 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
      * its children. `self`: as this view's own invalidation, which a view that is not visible does not make.
      */
     final void meglerDirty(float l, float t, float r, float b, boolean self) {
-        megler.ViewRoot root = mRoot;
         // Megler: the list that draws what changed is to be recorded again -- this view's own, or its parent's for its place
         if (self) meglerListInvalid();
         else if (mParent != null) mParent.meglerListInvalid();
+        meglerDamage(l, t, r, b, self);
+    }
+    /** Megler: that rectangle of the view's box drawn again on the screen, every list as it is (meglerDirty without the lists). */
+    final void meglerDamage(float l, float t, float r, float b, boolean self) {
+        megler.ViewRoot root = mRoot;
         if (root == null) return;
         if (self && mVisibility != VISIBLE && mAnimation == null) return;
         RectF box = new RectF(l, t, r, b);
