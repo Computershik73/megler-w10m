@@ -386,6 +386,9 @@ struct State {
     // ... and the window's pictures shown without the memory, and the read-backs of such a window's canvas, which come only
     // when something reads its memory.
     std::atomic<uint64_t> shown{0}, showTicks{0}, windowReadBacks{0}, windowReadBackPixels{0}, windowReadBackTicks{0};
+    // The bitmaps on the graphics processor that canvases draw in and read back through (gpuBitmap) and live now, and their
+    // bytes: told by each one's surface as it goes (GpuTracker), for what of the graphics memory the drawing holds.
+    std::atomic<int64_t> targetsLive{0}, targetBytesLive{0};
     // The drawings on the graphics processor ended (EndDraw), by what ended them, and the time in each: Yandex Maps' frames
     // ended some 21 a frame, 2 ms each (package 531), and the line says which.
     enum EndWhy { endPresent, endFlush, endEffects, endBackdrop, endUpload, endReadBack, endLayerMode, endLayerBlur, endSweep, endCompose, endOther, endWhys };
@@ -405,6 +408,52 @@ State& G() {
     // Never destroyed: an app's threads may still be in a call when the process ends.
     static State* const state = new State();
     return *state;
+}
+
+/// What a bitmap on the graphics processor holds, counted in State's targetsLive and targetBytesLive while its surface
+/// lives: the surface keeps this as its private data and lets it go when it is destroyed.
+class GpuTracker final : public IUnknown {
+public:
+    explicit GpuTracker(int64_t bytes) : bytes_(bytes) {
+        ++G().targetsLive;
+        G().targetBytesLive += bytes;
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** out) override {
+        if (!out) return E_POINTER;
+        if (riid == __uuidof(IUnknown)) {
+            *out = static_cast<IUnknown*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ULONG(++refs_); }
+    ULONG STDMETHODCALLTYPE Release() override {
+        const long left = --refs_;
+        if (!left) delete this;
+        return ULONG(left);
+    }
+
+private:
+    ~GpuTracker() {
+        --G().targetsLive;
+        G().targetBytesLive -= bytes_;
+    }
+    std::atomic<long> refs_{1};
+    int64_t bytes_;
+};
+
+// {9adf8240-8a63-460a-98aa-76f656b7fee8}: GpuTracker's place among a surface's private data.
+constexpr GUID gpuTrackerGuid = {0x9adf8240, 0x8a63, 0x460a, {0x98, 0xaa, 0x76, 0xf6, 0x56, 0xb7, 0xfe, 0xe8}};
+
+/// The bitmap counted as live until its surface goes (GpuTracker).
+void trackGpu(ID2D1Bitmap1* bitmap, int64_t bytes) {
+    Ref<IDXGISurface> surface;
+    if (!bitmap || FAILED(bitmap->GetSurface(surface.put())) || !surface) return;
+    GpuTracker* tracker = new GpuTracker(bytes);
+    surface->SetPrivateDataInterface(gpuTrackerGuid, tracker);
+    tracker->Release();
 }
 
 void emit(const char* text) {
@@ -872,6 +921,8 @@ Ref<ID2D1Bitmap1> gpuBitmap(int w, int h, D2D1_BITMAP_OPTIONS options) {
     if (FAILED(hr)) {
         gpuFailed("ID2D1DeviceContext::CreateBitmap", hr);
         made.reset();
+    } else {
+        trackGpu(made.get(), int64_t(w) * int64_t(h) * 4);
     }
     return made;
 }
@@ -3062,12 +3113,17 @@ void noteDrawing() {
             keptCount = s.kept.size() + s.tinted.size();
             keptBytes = s.keptBytes;
         }
+        uint64_t spareBytes = 0;
+        {
+            std::lock_guard<std::mutex> lock(s.gpuMutex);
+            spareBytes = s.freeBytes;
+        }
         const uint64_t windowBacks = t.windowReadBacks - l.windowReadBacks;
         say("%.1f s (graphics processor): %llu drawings begun and ended (%.1f ms ending them), %llu calls drawn by Direct2D, %llu by its effects, %llu "
             "through memory (%.1f ms), %llu layers (%llu of them blurred); %llu pictures shown without the memory (%.1f ms), %llu OpenGL ES frames composed under them (%.1f "
             "ms waiting for their copies); %llu uploads of %.2f Mpx (%.1f ms); read-backs "
             "(the wait for the processor in them): %llu of other canvases, %.2f Mpx (%.1f ms), %llu of the shown window's, %.2f Mpx (%.1f ms); bitmaps: "
-            "%llu uploaded, %llu drawn from those kept, %zu kept in %.1f MB",
+            "%llu uploaded, %llu drawn from those kept, %zu kept in %.1f MB; canvases' bitmaps there now: %lld in %.1f MB (%.1f MB of them spare)",
             seconds, ull(t.sessions - l.sessions), ticksToMs(t.endTicks - l.endTicks), ull(t.direct - l.direct), ull(t.byEffects - l.byEffects),
             ull(t.throughMemory - l.throughMemory), ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers), ull(t.layerBlurs - l.layerBlurs), ull(t.shown - l.shown),
             ticksToMs(t.showTicks - l.showTicks), ull(t.glFrames - l.glFrames), ticksToMs(t.glWaitTicks - l.glWaitTicks), ull(t.uploads - l.uploads),
@@ -3076,7 +3132,8 @@ void noteDrawing() {
             double((t.readBackPixels - l.readBackPixels) - (t.windowReadBackPixels - l.windowReadBackPixels)) / 1e6,
             ticksToMs((t.readBackTicks - l.readBackTicks) - (t.windowReadBackTicks - l.windowReadBackTicks)), ull(windowBacks),
             double(t.windowReadBackPixels - l.windowReadBackPixels) / 1e6, ticksToMs(t.windowReadBackTicks - l.windowReadBackTicks),
-            ull(t.keptMade - l.keptMade), ull(t.keptReused - l.keptReused), keptCount, double(keptBytes) / 1048576.0);
+            ull(t.keptMade - l.keptMade), ull(t.keptReused - l.keptReused), keptCount, double(keptBytes) / 1048576.0,
+            static_cast<long long>(s.targetsLive.load()), double(s.targetBytesLive.load()) / 1048576.0, double(spareBytes) / 1048576.0);
         static const char* const whys[State::endWhys] = {"the window's picture shown", "a canvas flushed", "a call drawn by the effects",
                                                          "the picture copied for the effects", "an upload", "a read-back",
                                                          "a layer put on by a mode", "a layer put on blurred", "a sweep's colours",
