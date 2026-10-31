@@ -216,24 +216,45 @@ void mg_dvm_object_roots(void (*fn)(mg_jobj *o, void *user), void *user)
 #define MADE_SAMPLE (256u << 10)
 #define MADE_SLOTS 1024
 static struct {
-    const mg_dvm_method *m;
+    const mg_dvm_method *m, *by;
     const mg_dvm_class *c;
     u32 n;
 } g_made[MADE_SLOTS];
 static mg_lock g_made_lock = MG_LOCK_INIT;
 static u32 g_made_samples;
 
-static void made_note(const mg_dvm_method *m, const mg_dvm_class *c, u32 samples)
+/* A method of the platform's own library, which makes objects for whoever calls it: StringBuilder's char[], HashMap's nodes. */
+static bool made_for_others(const mg_dvm_method *m)
 {
-    u32 i = (u32)((((mg_addr)m >> 4) ^ ((mg_addr)c >> 3)) * 2654435761u) & (MADE_SLOTS - 1), tries;
+    const char *n = m->cls->name;
+    return !strncmp(n, "java/", 5) || !strncmp(n, "libcore/", 8) || !strncmp(n, "sun/", 4) || !strncmp(n, "dalvik/", 7);
+}
+
+/*
+ * `m` made an object of `c`; `t`'s frames say the first method above it that is not the platform's library's (`by`): who
+ * the StringBuilder's growing arrays (Arrays.copyOf [C, 16% of what Yandex Maps made) were for. Read by the thread itself.
+ */
+static void made_note(const mg_dvm_thread *t, const mg_dvm_method *m, const mg_dvm_class *c, u32 samples)
+{
+    const mg_dvm_method *by = NULL;
+    const mg_dvm_frame *f;
+    u32 i, tries, depth = 0;
+    if (m && made_for_others(m))
+        for (f = t->top; f && depth < 32; f = f->prev, depth++)
+            if (f->m && !made_for_others(f->m)) {
+                by = f->m;
+                break;
+            }
+    i = (u32)((((mg_addr)m >> 4) ^ ((mg_addr)c >> 3) ^ ((mg_addr)by >> 5)) * 2654435761u) & (MADE_SLOTS - 1);
     mg_lock_acquire(&g_made_lock);
     g_made_samples += samples;
-    for (tries = 0; tries < 64 && g_made[i].c && (g_made[i].m != m || g_made[i].c != c); tries++) i = (i + 1) & (MADE_SLOTS - 1);
+    for (tries = 0; tries < 64 && g_made[i].c && (g_made[i].m != m || g_made[i].c != c || g_made[i].by != by); tries++) i = (i + 1) & (MADE_SLOTS - 1);
     if (!g_made[i].c) {
         g_made[i].m = m;
         g_made[i].c = c;
+        g_made[i].by = by;
     }
-    if (g_made[i].m == m && g_made[i].c == c) g_made[i].n += samples;
+    if (g_made[i].m == m && g_made[i].c == c && g_made[i].by == by) g_made[i].n += samples;
     mg_lock_release(&g_made_lock);
 }
 
@@ -245,7 +266,8 @@ void mg_dvm_made_say(void)
     int k;
     mg_lock_acquire(&g_made_lock);
     all = g_made_samples;
-    at = (size_t)snprintf(line, sizeof(line), "made: %u MB in all, sampled every 256 KB, by the method that made it and the class", (unsigned)(all / 4));
+    at = (size_t)snprintf(line, sizeof(line), "made: %u MB in all, sampled every 256 KB, by the method that made it and the class (and for whom, when it is the platform's)",
+                          (unsigned)(all / 4));
     for (k = 0; k < 14 && all && at + 240 < sizeof(line); k++) {
         u32 best = 0, i, at_best = 0;
         for (i = 0; i < MADE_SLOTS; i++)
@@ -257,6 +279,8 @@ void mg_dvm_made_say(void)
         at += (size_t)snprintf(line + at, sizeof(line) - at, ", %u%% %s%s%s%s %s", (unsigned)(best * 100 / all), g_made[at_best].m ? g_made[at_best].m->cls->name : "(no method)",
                                g_made[at_best].m ? "." : "", g_made[at_best].m ? g_made[at_best].m->name : "",
                                g_made[at_best].m && (g_made[at_best].m->flags & DVM_ACC_NATIVE) ? " (native)" : "", g_made[at_best].c->name);
+        if (g_made[at_best].by)
+            at += (size_t)snprintf(line + at, sizeof(line) - at, " for %s.%s", g_made[at_best].by->cls->name, g_made[at_best].by->name);
         g_made[at_best].n = 0;
     }
     memset(g_made, 0, sizeof(g_made));
@@ -330,7 +354,7 @@ static mg_jobj *alloc_raw(mg_dvm_class *c, int kind, u64 body)
     self->made_bytes += size;
     self->made_sample += (u32)size;
     if (self->made_sample >= MADE_SAMPLE) {
-        made_note(self->running, c, self->made_sample / MADE_SAMPLE);
+        made_note(self, self->running, c, self->made_sample / MADE_SAMPLE);
         self->made_sample %= MADE_SAMPLE;
     }
     if (c->finalizable || c->gc_ref) mg_dvm_gc_born(&o->j);
