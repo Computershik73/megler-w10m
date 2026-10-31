@@ -193,6 +193,7 @@ typedef struct mg_dvm_gc_result {
     u64 classes_ns, strings_ns, jni_ns;      /* of the exact roots: the classes', the interned strings', the JNI layer's */
     u32 classes, strings, jni_roots;         /* how many of each were read */
     bool roots_shared;                       /* the classes and strings read by all the marking threads: classes_ns their time with what they hold */
+    char makers[200];                        /* the threads that made the most since the last collection, and what: "\"GLThread 1\" 30.1 MB, ..." */
 } mg_dvm_gc_result;
 /* A collection that marks only: what is reachable, counted, nothing freed. False when not every thread could be stopped. */
 bool mg_dvm_gc_census(mg_dvm_gc_result *out);

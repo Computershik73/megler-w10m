@@ -804,6 +804,75 @@ bool mg_dvm_gc_counted(size_t bytes)
     return due();
 }
 
+/*
+ * The threads that made the most since the last collection, with the world stopped: the line says whose objects the
+ * collections are for. Yandex Maps' made some 50 MB every 3 s, a collection of 200 ms each time, and its main thread made
+ * a few of them (package 533).
+ */
+#define MAKERS 3
+typedef struct makers {
+    mg_dvm_thread *t[MAKERS];
+    u64 bytes[MAKERS], all;
+} makers;
+
+static void note_maker(mg_dvm_thread *t, void *user)
+{
+    makers *k = (makers *)user;
+    u64 made = t->made_bytes - t->made_at_gc;
+    int i, j;
+    t->made_at_gc = t->made_bytes;
+    k->all += made;
+    for (i = 0; i < MAKERS && (k->t[i] && k->bytes[i] >= made); i++);
+    if (i == MAKERS || !made) return;
+    for (j = MAKERS - 1; j > i; j--) {
+        k->t[j] = k->t[j - 1];
+        k->bytes[j] = k->bytes[j - 1];
+    }
+    k->t[i] = t;
+    k->bytes[i] = made;
+}
+
+/* A thread's name, its java.lang.Thread's (ASCII; another character a ?), or its number. */
+static void maker_name(const mg_dvm_thread *t, char *out, size_t n)
+{
+    const mg_dvm_class *cls;
+    snprintf(out, n, "thread %u", (unsigned)t->id);
+    for (cls = t->peer ? mg_dvm_class_of(t->peer) : NULL; cls; cls = cls->super) {
+        int i;
+        for (i = 0; i < cls->nifields; ++i) {
+            const mg_dvm_field *field = &cls->ifields[i];
+            if (!strcmp(field->name, "name") && !strcmp(field->type, "Ljava/lang/String;")) {
+                const mg_jobj *name = mg_dvm_slots(t->peer)[field->slot].l;
+                if (name && name->kind == MG_J_STRING && n > 3) {
+                    size_t j, len = (size_t)name->u.str.len16;
+                    if (len > n - 3) len = n - 3;
+                    out[0] = '"';
+                    for (j = 0; j < len; ++j) out[1 + j] = name->u.str.u16[j] >= 32 && name->u.str.u16[j] < 127 ? (char)name->u.str.u16[j] : '?';
+                    out[1 + len] = '"';
+                    out[2 + len] = 0;
+                }
+                return;
+            }
+        }
+    }
+}
+
+static void say_makers(char *out, size_t n)
+{
+    makers k;
+    size_t at = 0;
+    int i;
+    memset(&k, 0, sizeof(k));
+    out[0] = 0;
+    mg_dvm_threads_each(note_maker, &k);
+    for (i = 0; i < MAKERS && k.t[i] && at + 60 < n; i++) {
+        char name[48];
+        maker_name(k.t[i], name, sizeof(name));
+        at += (size_t)snprintf(out + at, n - at, "%s%s %.1f MB", i ? ", " : "", name, (double)k.bytes[i] / 1048576.0);
+    }
+    if (at && at + 30 < n) snprintf(out + at, n - at, " (of %.1f MB)", (double)k.all / 1048576.0);
+}
+
 /* The world stopped, everything reachable marked; `sweep`: and what is not, freed. False when not every thread could be stopped. */
 static void reference_work(void);
 
@@ -862,6 +931,7 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
         t1 = mg_time_monotonic_ns();
         ok = !g_stop_failed;
         if (ok) {
+            if (sweep) say_makers(out->makers, sizeof(out->makers));
             mg_dvm_heap_clear_marks();
             mark();
             /* A census decides nothing: what it found stays as it is. */
@@ -1008,11 +1078,12 @@ bool mg_dvm_gc(const char *reason, mg_dvm_gc_result *out)
                      (double)r.roots_ns / 1e6, (unsigned)r.classes, (double)r.classes_ns / 1e6, (unsigned)r.strings, (double)r.strings_ns / 1e6,
                      (unsigned)r.jni_roots, (double)r.jni_ns / 1e6);
     mg_info("gc: %s: %.1f ms (stop %.1f, mark %.1f by %u threads: %s, the stacks %.1f, the rest following references; sweep %.1f by %u); freed "
-            "%.1f MB (%u objects), live %.1f MB (%u objects); %u threads stopped; %.2f MB (%u objects) found only through a conservative root",
+            "%.1f MB (%u objects), live %.1f MB (%u objects); %u threads stopped; %.2f MB (%u objects) found only through a conservative root%s%s",
             reason, (double)(r.stop_ns + r.mark_ns + r.sweep_ns) / 1e6, (double)r.stop_ns / 1e6, (double)r.mark_ns / 1e6, (unsigned)r.markers,
             roots, (double)r.stacks_ns / 1e6, (double)r.sweep_ns / 1e6, (unsigned)r.sweepers,
             (double)r.freed_bytes / 1048576.0, (unsigned)r.freed_objects, (double)r.live_bytes / 1048576.0, (unsigned)r.live_objects,
-            (unsigned)r.threads_stopped, (double)r.conservative_bytes / 1048576.0, (unsigned)r.conservative);
+            (unsigned)r.threads_stopped, (double)r.conservative_bytes / 1048576.0, (unsigned)r.conservative, r.makers[0] ? "; made since the last by " : "",
+            r.makers);
     }
     return true;
 }
