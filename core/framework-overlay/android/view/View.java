@@ -895,7 +895,15 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         }
         return mMatrix;
     }
-    final Matrix inverseMatrix() { getMatrix(); return mInverse; }
+    /* The inverse of the view's matrix, from getMatrix() as the view gives it: a view that gives its own (Telegram's) left
+       the one kept here unmade, and a touch on a transformed child ended the app in a NullPointerException (package 545). */
+    final Matrix inverseMatrix() {
+        Matrix m = getMatrix();
+        if (m == mMatrix && mInverse != null) return mInverse;
+        Matrix inverse = new Matrix();
+        m.invert(inverse);
+        return inverse;
+    }
     public ViewPropertyAnimator animate() { if (mAnimator == null) mAnimator = new ViewPropertyAnimator(this); return mAnimator; }
     public void startAnimation(Animation a) { a.setStartTime(Animation.START_ON_FIRST_FRAME); setAnimation(a); invalidateParent(); }
     public void setAnimation(Animation a) { mAnimation = a; if (a != null) { a.reset(); } }
