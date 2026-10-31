@@ -894,6 +894,78 @@ static EGLSurface g_eglCreatePbufferSurface(EGLDisplay d, EGLConfig config, cons
  * Contexts are made without a configuration where ANGLE allows it, so a
  * context goes with whatever configuration its surface ended up with.
  */
+/*
+ * The app's contexts that live, by share group, for what their objects take (mg_egl_objects_memory): ANGLE counts a share
+ * group's buffers, textures and renderbuffers once, asked of any context in it. Sixteen at most; more go uncounted.
+ */
+static struct { EGLDisplay d; EGLContext ctx; u32 group; } g_live[16];
+static u32 g_live_groups;
+static mg_lock g_live_lock = MG_LOCK_INIT;
+
+static void live_add(EGLDisplay d, EGLContext ctx, EGLContext share)
+{
+    u32 group = 0;
+    size_t i;
+    mg_lock_acquire(&g_live_lock);
+    for (i = 0; share && i < MG_COUNT(g_live); i++)
+        if (g_live[i].ctx == share) group = g_live[i].group;
+    if (!group) group = ++g_live_groups;
+    for (i = 0; i < MG_COUNT(g_live); i++)
+        if (!g_live[i].ctx) {
+            g_live[i].d = d;
+            g_live[i].ctx = ctx;
+            g_live[i].group = group;
+            break;
+        }
+    mg_lock_release(&g_live_lock);
+}
+
+static void live_remove(EGLContext ctx)
+{
+    size_t i;
+    mg_lock_acquire(&g_live_lock);
+    for (i = 0; i < MG_COUNT(g_live); i++)
+        if (g_live[i].ctx == ctx) g_live[i].ctx = NULL;
+    mg_lock_release(&g_live_lock);
+}
+
+bool mg_egl_objects_memory(u32 *mb)
+{
+    enum { CONTEXT_MEMORY_USAGE_ANGLE = 0x3462 };
+    typedef EGLBoolean (*fn_query_context)(EGLDisplay, EGLContext, EGLint, EGLint *);
+    static int known = -1;
+    fn_query_context query;
+    u32 counted[MG_COUNT(g_live)];
+    size_t i, j, ncounted = 0;
+    u64 total = 0;
+    bool any = false;
+    /* (Nothing asked of ANGLE before the app has a context: an app that never draws with OpenGL does not load it for this.) */
+    for (i = 0; i < MG_COUNT(g_live) && !g_live[i].ctx; i++) {}
+    if (i == MG_COUNT(g_live) || !g_display) return false;
+    query = A(fn_query_context, "eglQueryContext");
+    if (known < 0) {
+        fn_query_string qs = A(fn_query_string, "eglQueryString");
+        const char *ext = qs && g_display ? qs(g_display, EGL_EXTENSIONS) : NULL;
+        if (!ext) return false;
+        known = strstr(ext, "EGL_ANGLE_memory_usage_report") ? 1 : 0;
+    }
+    if (!known || !query) return false;
+    mg_lock_acquire(&g_live_lock);
+    for (i = 0; i < MG_COUNT(g_live); i++) {
+        EGLint v[2] = { 0, 0 };
+        if (!g_live[i].ctx) continue;
+        for (j = 0; j < ncounted && counted[j] != g_live[i].group; j++) {}
+        if (j < ncounted) continue;
+        if (!query(g_live[i].d, g_live[i].ctx, CONTEXT_MEMORY_USAGE_ANGLE, v)) continue;
+        counted[ncounted++] = g_live[i].group;
+        total += (u64)(u32)v[0] | (u64)(u32)v[1] << 32;
+        any = true;
+    }
+    mg_lock_release(&g_live_lock);
+    *mb = (u32)(total >> 20);
+    return any;
+}
+
 static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext share, const EGLint *attribs)
 {
     static int no_config = -1;
@@ -910,6 +982,7 @@ static EGLContext g_eglCreateContext(EGLDisplay d, EGLConfig config, EGLContext 
     if (!g_blob_started) blob_cache_offer(d);
     made = real(d, no_config ? NULL : config, share, attribs);
     if (!made) refused("eglCreateContext", &said);
+    else live_add(d, made, share);
     mg_trace("eglCreateContext -> %p", made);
     return made;
 }
@@ -1223,6 +1296,7 @@ static EGLBoolean g_eglDestroyContext(EGLDisplay d, EGLContext ctx)
         if (mg_atomic_add(&said, 1) < 5) mg_info("egl: a thread destroyed the context it has current: let go of on that thread, and ended");
         g_eglMakeCurrent(d, NULL, NULL, NULL);
     }
+    live_remove(ctx);
     if (doom(d, ctx, true)) return 1;
     return real ? real(d, ctx) : 0;
 }

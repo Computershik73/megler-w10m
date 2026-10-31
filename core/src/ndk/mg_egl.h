@@ -68,6 +68,9 @@ void *mg_egl_webview_display(void);
 u32 mg_egl_device_removed(void);
 /* The graphics memory ANGLE's device (the app's display) has used, and its budget, in MB; false while there is no device. */
 bool mg_egl_gpu_memory(u32 *used_mb, u32 *budget_mb);
+/* What the app's OpenGL objects take, as ANGLE estimates it (EGL_ANGLE_memory_usage_report): its buffers, textures and
+   renderbuffers, of every share group of the app's contexts, in MB; false where ANGLE cannot say or there is no context. */
+bool mg_egl_objects_memory(u32 *mb);
 void mg_egl_probe(void (*line)(const char *fmt, ...));
 
 /*
