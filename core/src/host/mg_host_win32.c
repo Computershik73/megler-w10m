@@ -2910,7 +2910,7 @@ int mg_net_name_of(const mg_sockaddr *a, char *name, size_t size)
     return MG_EAI_OK;
 }
 
-int mg_net_interfaces(mg_netif *out, int max)
+static int interfaces_now(mg_netif *out, int max)
 {
     ULONG size = 16 * 1024, r = ERROR_BUFFER_OVERFLOW;
     IP_ADAPTER_ADDRESSES *list = NULL, *ad;
@@ -2961,6 +2961,35 @@ int mg_net_interfaces(mg_netif *out, int max)
         }
     }
     free(list);
+    return n;
+}
+
+/*
+ * The interfaces as they were at most a second ago. GetAdaptersAddresses asks the DHCP client service for each adapter, a
+ * call to another process each time: a thread of Yandex Maps' that listed them over and over (getifaddrs, if_nametoindex)
+ * took 0.3 to 0.6 of a core in dhcpcsvc.dll and IPHLPAPI.DLL (package 534). An interface that comes or goes is seen a
+ * second later at most, as Android's apps see one through its network callbacks a moment after it changed.
+ */
+#define IFS_KEPT 64
+static SRWLOCK g_ifs_lock = SRWLOCK_INIT;
+static mg_netif g_ifs[IFS_KEPT];
+static int g_nifs = -1;
+static ULONGLONG g_ifs_at;
+
+int mg_net_interfaces(mg_netif *out, int max)
+{
+    ULONGLONG now = GetTickCount64();
+    int n;
+    AcquireSRWLockExclusive(&g_ifs_lock);
+    if (g_nifs < 0 || now - g_ifs_at >= 1000) {
+        g_nifs = interfaces_now(g_ifs, IFS_KEPT);
+        g_ifs_at = now;
+    }
+    n = g_nifs;
+    if (n > 0 && max > 0) memcpy(out, g_ifs, sizeof(mg_netif) * (size_t)(n < max ? (n < IFS_KEPT ? n : IFS_KEPT) : (max < IFS_KEPT ? max : IFS_KEPT)));
+    ReleaseSRWLockExclusive(&g_ifs_lock);
+    /* (More than are kept, for a caller that has room for more: listed for it.) A failure is asked about again the next time. */
+    if (n > IFS_KEPT && max > IFS_KEPT) n = interfaces_now(out, max);
     return n;
 }
 
