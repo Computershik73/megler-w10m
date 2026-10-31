@@ -375,6 +375,7 @@ struct mg_dvm_thread {
     u32 made_objects, gc_unsaid;
     u64 made_bytes;
     u64 made_at_gc;                    /* made_bytes at the last collection: what the thread made since, for its line */
+    u32 made_sample;                   /* bytes made since its last sample of where objects are made (mg_dvm_made_say) */
     /* For the collector: the thread as the host knows it, to stop it; its C stack's limits, [stack_lo, stack_hi). */
     mg_thread *host;
     mg_addr stack_lo, stack_hi;

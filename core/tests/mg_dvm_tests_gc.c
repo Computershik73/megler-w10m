@@ -258,5 +258,8 @@ void test_gc(void)
     test_gc_census();
     test_gc_collect();
     test_gc_parallel();
+    /* Where the objects so far were made (the samples of every 256 KB a thread makes), said and forgotten: and so said again with nothing new. */
+    mg_dvm_made_say();
+    mg_dvm_made_say();
     test_gc_gives_back();
 }

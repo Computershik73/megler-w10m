@@ -207,6 +207,64 @@ void mg_dvm_object_roots(void (*fn)(mg_jobj *o, void *user), void *user)
     mg_dvm_loader_roots(fn, user);
 }
 
+/*
+ * Where objects are made: every 256 KB a thread makes, the method it runs then (mg_dvm_thread.running: the native one for
+ * what a native method makes through JNI) and the class of the object, counted; said every ten seconds (mg_java.c's
+ * sampler). Yandex Maps made some 50 MB every 3 s, a collection of 160-250 ms each time, the main thread a half of it, and
+ * the collector's line could say only whose (package 534).
+ */
+#define MADE_SAMPLE (256u << 10)
+#define MADE_SLOTS 1024
+static struct {
+    const mg_dvm_method *m;
+    const mg_dvm_class *c;
+    u32 n;
+} g_made[MADE_SLOTS];
+static mg_lock g_made_lock = MG_LOCK_INIT;
+static u32 g_made_samples;
+
+static void made_note(const mg_dvm_method *m, const mg_dvm_class *c, u32 samples)
+{
+    u32 i = (u32)((((mg_addr)m >> 4) ^ ((mg_addr)c >> 3)) * 2654435761u) & (MADE_SLOTS - 1), tries;
+    mg_lock_acquire(&g_made_lock);
+    g_made_samples += samples;
+    for (tries = 0; tries < 64 && g_made[i].c && (g_made[i].m != m || g_made[i].c != c); tries++) i = (i + 1) & (MADE_SLOTS - 1);
+    if (!g_made[i].c) {
+        g_made[i].m = m;
+        g_made[i].c = c;
+    }
+    if (g_made[i].m == m && g_made[i].c == c) g_made[i].n += samples;
+    mg_lock_release(&g_made_lock);
+}
+
+void mg_dvm_made_say(void)
+{
+    char line[2400];
+    size_t at;
+    u32 all;
+    int k;
+    mg_lock_acquire(&g_made_lock);
+    all = g_made_samples;
+    at = (size_t)snprintf(line, sizeof(line), "made: %u MB in all, sampled every 256 KB, by the method that made it and the class", (unsigned)(all / 4));
+    for (k = 0; k < 14 && all && at + 240 < sizeof(line); k++) {
+        u32 best = 0, i, at_best = 0;
+        for (i = 0; i < MADE_SLOTS; i++)
+            if (g_made[i].c && g_made[i].n > best) {
+                best = g_made[i].n;
+                at_best = i;
+            }
+        if (!best || best * 100 < all) break;
+        at += (size_t)snprintf(line + at, sizeof(line) - at, ", %u%% %s%s%s%s %s", (unsigned)(best * 100 / all), g_made[at_best].m ? g_made[at_best].m->cls->name : "(no method)",
+                               g_made[at_best].m ? "." : "", g_made[at_best].m ? g_made[at_best].m->name : "",
+                               g_made[at_best].m && (g_made[at_best].m->flags & DVM_ACC_NATIVE) ? " (native)" : "", g_made[at_best].c->name);
+        g_made[at_best].n = 0;
+    }
+    memset(g_made, 0, sizeof(g_made));
+    g_made_samples = 0;
+    mg_lock_release(&g_made_lock);
+    if (all) mg_info("%s", line);
+}
+
 static mg_jobj *alloc_raw(mg_dvm_class *c, int kind, u64 body)
 {
     mg_dvm_obj *o = NULL;
@@ -270,6 +328,11 @@ static mg_jobj *alloc_raw(mg_dvm_class *c, int kind, u64 body)
     o->size = (u32)size;
     self->made_objects++;
     self->made_bytes += size;
+    self->made_sample += (u32)size;
+    if (self->made_sample >= MADE_SAMPLE) {
+        made_note(self->running, c, self->made_sample / MADE_SAMPLE);
+        self->made_sample %= MADE_SAMPLE;
+    }
     if (c->finalizable || c->gc_ref) mg_dvm_gc_born(&o->j);
     return &o->j;
 }

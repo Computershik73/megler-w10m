@@ -1614,6 +1614,7 @@ static void hot_main(void *arg)
         now = mg_time_monotonic_ns();
         if (now - since >= 10000000000ull) {
             hot_say(samples, outside, collecting);
+            mg_dvm_made_say();
             meter_census();
             memset(g_hot, 0, sizeof(g_hot));
             samples = outside = collecting = 0;
