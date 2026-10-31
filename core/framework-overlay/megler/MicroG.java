@@ -238,16 +238,58 @@ public final class MicroG {
      * service of its own and again in a Chimera proxy with priority -500 (GmsApiService): the proxy came first in the
      * manifest for some (Google Pay's), and took them.
      */
+    /*
+     * The services by the actions of their filters, in the manifest's order, and by their class names: made at the first
+     * lookup (the manifest's lists do not change after it is read). Each lookup went over the 395 services and their filters,
+     * an iterator each, and MicroG.query's were 2-3% of what Yandex Maps made (package 536).
+     */
+    private HashMap<String, ArrayList<Entry>> byAction;
+    private HashMap<String, Entry> byName;
+    private synchronized void index() {
+        if (byAction != null) return;
+        HashMap<String, ArrayList<Entry>> actions = new HashMap<>();
+        HashMap<String, Entry> names = new HashMap<>();
+        for (int n = 0; n < services.size(); n++) {
+            Entry e = services.get(n);
+            if (!names.containsKey(e.info.name)) names.put(e.info.name, e);
+            for (int k = 0; k < e.filters.size(); k++) {
+                IntentFilter f = e.filters.get(k);
+                for (int a = 0; a < f.countActions(); a++) {
+                    ArrayList<Entry> l = actions.get(f.getAction(a));
+                    if (l == null) actions.put(f.getAction(a), l = new ArrayList<>());
+                    if (l.isEmpty() || l.get(l.size() - 1) != e) l.add(e);
+                }
+            }
+        }
+        byName = names;
+        byAction = actions;
+    }
+    /* The services whose filters have the intent's action (none for none), in the manifest's order. */
+    private List<Entry> withAction(Intent i) {
+        index();
+        List<Entry> l = i.getAction() == null ? null : byAction.get(i.getAction());
+        return l != null ? l : Collections.<Entry>emptyList();
+    }
+    private Entry named(String name) {
+        index();
+        return byName.get(name);
+    }
     private Entry find(Intent i, boolean internal) {
         if (i == null || !info.applicationInfo.enabled) return null;
         String pkg = i.getComponent() == null ? i.getPackage() : i.getComponent().getPackageName();
         if (pkg != null && !info.packageName.equals(pkg)) return null;
+        if (i.getComponent() != null) {
+            Entry e = named(i.getComponent().getClassName());
+            return e != null && e.info.enabled && (internal || e.info.exported) ? e : null;
+        }
         Entry best = null;
         int bestPriority = Integer.MIN_VALUE;
-        for (Entry e : services) {
+        List<Entry> candidates = withAction(i);
+        for (int n = 0; n < candidates.size(); n++) {
+            Entry e = candidates.get(n);
             if (!e.info.enabled || (!internal && !e.info.exported)) continue;
-            if (i.getComponent() != null) { if (e.info.name.equals(i.getComponent().getClassName())) return e; }
-            else for (IntentFilter f : e.filters) {
+            for (int k = 0; k < e.filters.size(); k++) {
+                IntentFilter f = e.filters.get(k);
                 if (f.hasAction(i.getAction()) && f.matchCategories(i.getCategories()) == null && f.getPriority() > bestPriority) {
                     best = e;
                     bestPriority = f.getPriority();
@@ -273,14 +315,19 @@ public final class MicroG {
         ComponentName c = i.getComponent();
         String pkg = c == null ? i.getPackage() : c.getPackageName();
         if (pkg != null && !g.info.packageName.equals(pkg)) return out;
-        for (Entry e : g.services) {
+        if (c != null) {
+            Entry e = g.named(c.getClassName());
+            if (e != null && (e.info.enabled || disabled)) out.add(e.info);
+            return out;
+        }
+        List<Entry> candidates = g.withAction(i);
+        for (int n = 0; n < candidates.size(); n++) {
+            Entry e = candidates.get(n);
             if (!e.info.enabled && !disabled) continue;
-            if (c != null) {
-                if (e.info.name.equals(c.getClassName())) { out.add(e.info); break; }
-                continue;
-            }
-            for (IntentFilter f : e.filters)
+            for (int k = 0; k < e.filters.size(); k++) {
+                IntentFilter f = e.filters.get(k);
                 if (f.hasAction(i.getAction()) && f.matchCategories(i.getCategories()) == null) { (e.info.exported ? out : hidden).add(e.info); break; }
+            }
         }
         out.addAll(hidden);
         return out;
