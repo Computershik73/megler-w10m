@@ -170,6 +170,11 @@ under "Films" below). What it took, beyond what qemu had shown:
     filled and sampled as DXT5, compressing the pixels as they are uploaded: 661 MB
     became 165. It costs some of the picture and nothing has judged how much.
     Flags `plain-textures` and `pack-textures` turn it off and on from the start.
+    And while the process has less than 768 MB of addresses free, a texture of
+    1024x1024 or more is packed whatever was asked for before, glTexImage2D's too:
+    BC1 when its first level is opaque, else DXT5, its mipmaps made here (Yandex
+    Maps' panorama of 2048x2048 textures ended in GL_OUT_OF_MEMORY, packages
+    540 and 543).
   - (Asphalt 9, package 278.) A game made for OpenGL ES 3 ships ETC2, which
     Direct3D does not have: ANGLE decodes it to RGBA8 and keeps it so, 112 MB
     of ETC2 came to 507 MB, and the addresses ran out in the first race (231 MB

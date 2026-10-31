@@ -102,6 +102,8 @@ u64 mg_gltex_held_bytes(void);
 /* Where mg_gltex.c finds the OpenGL functions it calls for itself (ANGLE's own, by name). */
 void mg_gltex_set_host(void *(*resolve)(const char *name));
 /* RGBA8 pixels (rows `stride` bytes apart) to DXT5 blocks; a width or height that is not a multiple of four is padded with its edge. */
+/* For the tests: the process taken to be short of addresses (1) or not (0) whatever the host says; -1, as the host says. */
+void mg_gltex_short_of_addresses(int forced);
 size_t mg_gltex_dxt5_size(u32 w, u32 h);
 void mg_gltex_dxt5(const u8 *rgba, u32 w, u32 h, size_t stride, u8 *out);
 /* An RGBA8 ETC2 EAC block (sixteen bytes) decoded into sixteen pixels, rows of four, top first; and `blocks` of them packed again as as many DXT5 blocks. */

@@ -731,6 +731,99 @@ static void test_etc(void)
     mg_gltex_reset();
 }
 
+/*
+ * Large plain textures packed while the process is short of addresses (mg_gltex.c), whatever was asked for before: one
+ * of glTexImage2D's, opaque, as BC1, its mipmaps made down to 1x1; one of glTexStorage2D's, with alpha, held back until its
+ * first level comes whole, then DXT5 with its mipmaps, and glGenerateMipmap left with nothing to do; one of 512 left plain;
+ * none packed while there are addresses enough.
+ */
+static int g_mipmaps_asked, g_plain_images;
+static void f_image_2d(u32 t, i32 level, i32 internal, i32 w, i32 h, i32 border, u32 format, u32 type, const void *px)
+{
+    (void)t; (void)border; (void)format; (void)type; (void)px;
+    g_plain_images++;
+    tex_got((u32)internal, level, w, h, 0, NULL);
+}
+static void f_sub_image_2d(u32 t, i32 level, i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, const void *px)
+{
+    (void)t; (void)x; (void)y; (void)type; (void)px;
+    g_plain_images++;
+    tex_got(format, level, w, h, 0, NULL);
+}
+static void f_generate_mipmap(u32 t) { (void)t; g_mipmaps_asked++; }
+
+static void test_textures_pressed(void)
+{
+    typedef void (*image_fn)(u32, i32, i32, i32, i32, i32, u32, u32, const void *);
+    typedef void (*sub_image_fn)(u32, i32, i32, i32, i32, i32, u32, u32, const void *);
+    typedef void (*storage_fn)(u32, i32, u32, i32, i32);
+    typedef void (*bind_fn)(u32, u32);
+    typedef void (*mipmap_fn)(u32);
+    u8 *px = (u8 *)malloc(1024 * 1024 * 4);
+    image_fn image;
+    sub_image_fn sub_image;
+    storage_fn storage;
+    bind_fn bind;
+    mipmap_fn mipmap;
+    char report[600];
+    int i;
+    say("textures: large ones packed while addresses are short");
+    if (!px) return;
+    for (i = 0; i < 1024 * 1024; i++) {
+        px[i * 4] = (u8)i;
+        px[i * 4 + 1] = (u8)(i >> 8);
+        px[i * 4 + 2] = (u8)(i >> 3);
+        px[i * 4 + 3] = 255;
+    }
+    mg_gltex_reset();
+    g_tex_ext = "GL_EXT_texture_compression_s3tc";
+    mg_gltex_set_host(f_tex_resolve);
+    (void)mg_gltex_wrap("glCompressedTexImage2D", (void *)f_compressed_2d);
+    image = (image_fn)mg_gltex_wrap("glTexImage2D", (void *)f_image_2d);
+    sub_image = (sub_image_fn)mg_gltex_wrap("glTexSubImage2D", (void *)f_sub_image_2d);
+    storage = (storage_fn)mg_gltex_wrap("glTexStorage2D", (void *)f_storage_2d);
+    bind = (bind_fn)mg_gltex_wrap("glBindTexture", (void *)f_bind_texture);
+    mipmap = (mipmap_fn)mg_gltex_wrap("glGenerateMipmap", (void *)f_generate_mipmap);
+    g_plain_images = g_mipmaps_asked = 0;
+
+    /* Addresses enough: as the app gave it. */
+    mg_gltex_short_of_addresses(0);
+    bind(0x0DE1, 30);
+    image(0x0DE1, 0, 0x1908, 1024, 1024, 0, 0x1908, 0x1401, px);
+    CHECK(g_plain_images == 1 && g_tex_got.internal == 0x1908);
+
+    mg_gltex_short_of_addresses(1);
+    /* glTexImage2D's, opaque: BC1, and its last mipmap 1x1 made here, the size of a block. */
+    bind(0x0DE1, 31);
+    image(0x0DE1, 0, 0x8058, 1024, 1024, 0, 0x1908, 0x1401, px);
+    CHECK(g_plain_images == 1 && g_tex_got.internal == 0x83F0 && g_tex_got.level == 10 && g_tex_got.w == 1 && g_tex_got.h == 1 && g_tex_got.size == 8);
+    mipmap(0x0DE1);
+    CHECK(g_mipmaps_asked == 0);
+    /* A level of its own given whole is packed in place of the one made here. */
+    image(0x0DE1, 1, 0x1908, 512, 512, 0, 0x1908, 0x1401, px);
+    CHECK(g_plain_images == 1 && g_tex_got.internal == 0x83F0 && g_tex_got.level == 1 && g_tex_got.w == 512 && g_tex_got.size == 512 * 512 / 2);
+
+    /* glTexStorage2D's, with alpha: held back, then DXT5 when its first level comes whole, its mipmaps made here. */
+    for (i = 0; i < 1024 * 1024; i++) px[i * 4 + 3] = (u8)(i * 7);
+    bind(0x0DE1, 32);
+    g_tex_got.internal = 0;
+    storage(0x0DE1, 11, 0x8058, 1024, 1024);
+    CHECK(g_tex_got.internal == 0);
+    sub_image(0x0DE1, 0, 0, 0, 1024, 1024, 0x1908, 0x1401, px);
+    CHECK(g_plain_images == 1 && g_tex_got.internal == 0x83F3 && g_tex_got.level == 10 && g_tex_got.w == 1 && g_tex_got.size == 16);
+    mipmap(0x0DE1);
+    CHECK(g_mipmaps_asked == 0);
+
+    /* 512 a side is not packed for the addresses alone. */
+    bind(0x0DE1, 33);
+    image(0x0DE1, 0, 0x1908, 512, 512, 0, 0x1908, 0x1401, px);
+    CHECK(g_plain_images == 2 && g_tex_got.internal == 0x1908);
+    mg_gltex_report(report, sizeof(report));
+    CHECK(strstr(report, "kept as DXT5 or BC1: 2, ") != NULL);
+    mg_gltex_reset();
+    free(px);
+}
+
 /* Textures packed on their way in (mg_gltex.c): what comes out of the DXT5 blocks is what went in, as near as the format allows. */
 static void test_textures(void)
 {
@@ -795,6 +888,7 @@ static void test_textures(void)
         free(edge);
     }
     test_etc();
+    test_textures_pressed();
 }
 
 /*

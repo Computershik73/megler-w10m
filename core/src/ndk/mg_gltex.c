@@ -27,6 +27,19 @@
  * Flags: "plain-textures" turns the packing off, "pack-textures" does it from
  * the first texture.
  *
+ * And whatever the app has asked for, while the process is short of addresses
+ * (less than 768 MB of them free), a texture of 1024x1024 pixels or more is
+ * packed so too, made with glTexStorage2D or glTexImage2D: as BC1, half a byte
+ * a pixel, when the first level the app gives is opaque throughout, else as
+ * DXT5; and its mipmaps are made here from that level, packed the same way, as
+ * Direct3D makes none for a compressed texture (glGenerateMipmap then has
+ * nothing left to do). Yandex Maps, with 444 MB of addresses free, ended in
+ * GL_OUT_OF_MEMORY as soon as a panorama of 2048x2048 textures was zoomed:
+ * graphics memory went from 214 MB to 292 in five seconds, and Direct3D
+ * found no 32 MB stretch of addresses for more (packages 540, 543). A
+ * texture made with glTexImage2D stays packed while the app gives it whole
+ * levels; a level of another size or format makes it as the app asked again.
+ *
  * And ETC. A game made for OpenGL ES 3 ships its textures as ETC2, which
  * Direct3D does not have: ANGLE decodes them to RGBA8, four bytes a pixel for
  * what was half a byte or one, and keeps them so. Asphalt 9 asked for 112 MB
@@ -91,6 +104,9 @@
 /* Packing starts when this much plain texture has been asked for, with textures at least this large. */
 #define PACK_AFTER_BYTES (160u << 20)
 #define PACK_MIN_PIXELS (256u * 256u)
+/* And while the process has less than this many MB of addresses free, for textures at least this large (4 MB as RGBA8). */
+#define SHORT_OF_ADDRESSES_MB 768u
+#define PRESSED_MIN_PIXELS (1024u * 1024u)
 
 typedef void (*fn_tex_storage_2d)(u32 target, i32 levels, u32 internal, i32 w, i32 h);
 typedef void (*fn_tex_storage_3d)(u32 target, i32 levels, u32 internal, i32 w, i32 h, i32 d);
@@ -507,9 +523,17 @@ enum { S_NONE, S_PENDING, S_PACKED };
 typedef struct tex_info {
     u8 state;
     u8 levels;
+    u8 flags;                          /* TF_*: how a packed one is kept */
+    u8 spare;
     u16 w, h;
     u32 internal;
 } tex_info;
+
+enum {
+    TF_BC1 = 1,                        /* packed as BC1, opaque, rather than DXT5 */
+    TF_MIPS = 2,                       /* its mipmaps made here from its first level */
+    TF_MUTABLE = 4                     /* made with glTexImage2D, not glTexStorage2D */
+};
 
 /* By the texture's name: ANGLE hands names out from 1 upwards. One past the table is simply never held back. */
 static tex_info g_info[16384];
@@ -979,6 +1003,118 @@ u64 mg_gltex_held_bytes(void)
 
 static tex_info *info_of(u32 name) { return name && name < MG_COUNT(g_info) ? &g_info[name] : NULL; }
 
+/*
+ * Whether the process is short of addresses now (less than SHORT_OF_ADDRESSES_MB free), asked of the host at most once a
+ * second: a walk through the whole address space. Said in the log the first time it is.
+ */
+static u64 g_short_at;                 /* when the host was last asked (addresses_short), and what it said */
+static bool g_short_was, g_short_said;
+static int g_short_forced = -1;        /* the tests' answer (mg_gltex_short_of_addresses); -1: the host's */
+
+void mg_gltex_short_of_addresses(int forced) { g_short_forced = forced; }
+
+static bool addresses_short(void)
+{
+    u64 now = mg_time_monotonic_ns();
+    u32 free_mb = 0, largest = 0, reserved = 0, committed = 0;
+    bool short_now, say = false;
+    if (g_short_forced >= 0) return g_short_forced != 0;
+    mg_lock_acquire(&g_lock);
+    if (g_short_at && now - g_short_at < 1000000000ull) {
+        short_now = g_short_was;
+        mg_lock_release(&g_lock);
+        return short_now;
+    }
+    g_short_at = now;
+    mg_lock_release(&g_lock);
+    short_now = mg_host_address_space(&free_mb, &largest, &reserved, &committed) && free_mb < SHORT_OF_ADDRESSES_MB;
+    mg_lock_acquire(&g_lock);
+    g_short_was = short_now;
+    if (short_now && !g_short_said) say = g_short_said = true;
+    mg_lock_release(&g_lock);
+    if (say)
+        mg_info("textures: the process has %u MB of addresses free (the largest stretch %u): textures of 1024x1024 and more are kept as BC1 or "
+                "DXT5 from now on, their mipmaps made here", (unsigned)free_mb, (unsigned)largest);
+    return short_now;
+}
+
+/* Whether every pixel of a level the app gives is opaque: it may be kept as BC1. */
+static bool all_opaque(const u8 *rgba, u32 w, u32 h, size_t stride)
+{
+    u32 x, y;
+    for (y = 0; y < h; y++) {
+        const u8 *row = rgba + (size_t)y * stride;
+        for (x = 0; x < w; x++)
+            if (row[x * 4 + 3] != 255) return false;
+    }
+    return true;
+}
+
+/* The format a packed texture is given to ANGLE in, and the size of a level of it. */
+static u32 packed_format(const tex_info *t)
+{
+    bool srgb = t->internal == GL_SRGB8_ALPHA8;
+    return t->flags & TF_BC1 ? (srgb ? GL_DXT1_SRGB : GL_DXT1) : (srgb ? GL_DXT5_SRGB : GL_DXT5);
+}
+
+static size_t packed_size(const tex_info *t, u32 w, u32 h) { return mg_gltex_dxt5_size(w, h) / (t->flags & TF_BC1 ? 2 : 1); }
+
+static void pack_level(const tex_info *t, const u8 *rgba, u32 w, u32 h, size_t stride, u8 *out)
+{
+    if (t->flags & TF_BC1) mg_gltex_bc1(rgba, w, h, stride, out);
+    else mg_gltex_dxt5(rgba, w, h, stride, out);
+}
+
+/* A level of a packed texture given to ANGLE: the whole of it, made (glTexImage2D's) or filled (glTexStorage2D's). */
+static void put_level(u32 target, const tex_info *t, i32 level, u32 w, u32 h, const u8 *packed, size_t size)
+{
+    if (t->flags & TF_MUTABLE) h_compressed_2d(target, level, packed_format(t), (i32)w, (i32)h, 0, (i32)size, packed);
+    else h_compressed_sub_2d(target, level, 0, 0, (i32)w, (i32)h, packed_format(t), (i32)size, packed);
+}
+
+/*
+ * The mipmaps of a packed texture, made from its first level (`rgba`, w x h) down to its last: each level's 2x2 pixels
+ * averaged into the next one's, and packed as the texture is. Direct3D makes none for a compressed texture.
+ */
+static void make_mips(u32 target, tex_info *t, const u8 *rgba, u32 w, u32 h, size_t stride)
+{
+    u8 *from = NULL, *to = NULL, *packed = NULL;
+    const u8 *src = rgba;
+    size_t src_stride = stride;
+    i32 level;
+    t->flags |= TF_MIPS;
+    for (level = 1; level < t->levels && (w > 1 || h > 1); level++) {
+        u32 nw = w > 1 ? w / 2 : 1, nh = h > 1 ? h / 2 : 1, x, y, c;
+        size_t size = packed_size(t, nw, nh);
+        to = (u8 *)malloc((size_t)nw * nh * 4);
+        packed = (u8 *)malloc(size);
+        if (!to || !packed) break;
+        for (y = 0; y < nh; y++) {
+            const u8 *r0 = src + (size_t)(y * 2 < h ? y * 2 : h - 1) * src_stride;
+            const u8 *r1 = src + (size_t)(y * 2 + 1 < h ? y * 2 + 1 : h - 1) * src_stride;
+            u8 *o = to + (size_t)y * nw * 4;
+            for (x = 0; x < nw; x++) {
+                u32 x0 = (x * 2 < w ? x * 2 : w - 1) * 4, x1 = (x * 2 + 1 < w ? x * 2 + 1 : w - 1) * 4;
+                for (c = 0; c < 4; c++) o[x * 4 + c] = (u8)((r0[x0 + c] + r0[x1 + c] + r1[x0 + c] + r1[x1 + c] + 2) >> 2);
+            }
+        }
+        pack_level(t, to, nw, nh, (size_t)nw * 4, packed);
+        put_level(target, t, level, nw, nh, packed, size);
+        free(packed);
+        packed = NULL;
+        free(from);
+        from = to;
+        to = NULL;
+        src = from;
+        src_stride = (size_t)nw * 4;
+        w = nw;
+        h = nh;
+    }
+    free(to);
+    free(packed);
+    free(from);
+}
+
 /* The storage a held-back texture was asked with, made now. `name` is bound for it and what was bound is put back. */
 static void make_plain(u32 name, tex_info *t)
 {
@@ -990,18 +1126,71 @@ static void make_plain(u32 name, tex_info *t)
     if (rebind) h_bind_texture(GL_TEXTURE_2D, bound_now());
 }
 
-static void make_packed(tex_info *t)
+static void make_packed(tex_info *t, bool bc1)
 {
     int kind;
-    u64 plain = storage_bytes(t->internal, 0, 0, t->w, t->h, 1, t->levels, &kind, NULL);
+    u64 plain = storage_bytes(t->internal, 0, 0, t->w, t->h, 1, t->levels, &kind, NULL), packed;
     t->state = S_PACKED;
-    held_set((u32)(t - g_info), plain / 4);
-    h_storage_2d(GL_TEXTURE_2D, t->levels, t->internal == GL_SRGB8_ALPHA8 ? GL_DXT5_SRGB : GL_DXT5, t->w, t->h);
+    t->flags = bc1 ? TF_BC1 : 0;
+    packed = plain / (bc1 ? 8 : 4);
+    held_set((u32)(t - g_info), packed);
+    h_storage_2d(GL_TEXTURE_2D, t->levels, packed_format(t), t->w, t->h);
     mg_lock_acquire(&g_lock);
     G.count[K_PACKED]++;
-    G.bytes[K_PACKED] += plain / 4;
+    G.bytes[K_PACKED] += packed;
     G.packed_from += plain;
     mg_lock_release(&g_lock);
+}
+
+/* A level 0 of glTexImage2D's that is large and plain RGBA8, while addresses are short: made packed, its mipmaps too. */
+static bool image_packed(u32 target, i32 level, i32 internal, i32 w, i32 h, i32 border, u32 format, u32 type, const void *pixels)
+{
+    u32 name = bound_now();
+    tex_info *t = target == GL_TEXTURE_2D ? info_of(name) : NULL;
+    size_t stride, size;
+    u8 *packed;
+    u64 plain, kept = 0;
+    u32 lw, lh;
+    i32 levels;
+    if (!t || level != 0 || border || (internal != GL_RGBA && internal != GL_RGBA8) || format != GL_RGBA || type != GL_UNSIGNED_BYTE || !pixels ||
+        T.unpack_buffer || T.skip_rows || T.skip_pixels || w <= 0 || h <= 0 || w > 16384 || h > 16384 || (w & 3) || (h & 3) ||
+        (u32)w * (u32)h < PRESSED_MIN_PIXELS || !policy() || !can_pack(GL_RGBA8) || !addresses_short())
+        return false;
+    for (levels = 1, lw = (u32)w, lh = (u32)h; lw > 1 || lh > 1; levels++) {
+        lw = lw > 1 ? lw / 2 : 1;
+        lh = lh > 1 ? lh / 2 : 1;
+    }
+    stride = (size_t)(T.row_length > 0 ? T.row_length : w) * 4;
+    t->state = S_PACKED;
+    t->flags = TF_MUTABLE | (all_opaque((const u8 *)pixels, (u32)w, (u32)h, stride) ? TF_BC1 : 0);
+    t->levels = (u8)levels;
+    t->w = (u16)w;
+    t->h = (u16)h;
+    t->internal = GL_RGBA8;
+    size = packed_size(t, (u32)w, (u32)h);
+    packed = (u8 *)malloc(size);
+    if (!packed) {
+        t->state = S_NONE;
+        t->flags = 0;
+        return false;
+    }
+    pack_level(t, (const u8 *)pixels, (u32)w, (u32)h, stride, packed);
+    put_level(target, t, 0, (u32)w, (u32)h, packed, size);
+    free(packed);
+    make_mips(target, t, (const u8 *)pixels, (u32)w, (u32)h, stride);
+    for (level = 0, lw = (u32)w, lh = (u32)h; level < levels; level++) {
+        kept += packed_size(t, lw, lh);
+        lw = lw > 1 ? lw / 2 : 1;
+        lh = lh > 1 ? lh / 2 : 1;
+    }
+    plain = kept * (t->flags & TF_BC1 ? 8 : 4);
+    held_set(name, kept);
+    mg_lock_acquire(&g_lock);
+    G.count[K_PACKED]++;
+    G.bytes[K_PACKED] += kept;
+    G.packed_from += plain;
+    mg_lock_release(&g_lock);
+    return true;
 }
 
 /* The app does something with a texture, by name, that only a plain one takes. */
@@ -1014,15 +1203,16 @@ static void needs_plain(u32 name, const char *what)
         make_plain(name, t);
         return;
     }
-    if (mg_atomic_add(&said, 1) <= 6) mg_warn("textures: %s on texture %u, which is kept as DXT5 and cannot take it", what, (unsigned)name);
+    if (mg_atomic_add(&said, 1) <= 6) mg_warn("textures: %s on texture %u, which is kept as %s and cannot take it", what, (unsigned)name, t->flags & TF_BC1 ? "BC1" : "DXT5");
 }
 
 static void w_storage_2d(u32 target, i32 levels, u32 internal, i32 w, i32 h)
 {
     u32 name = bound_now();
     tex_info *t = target == GL_TEXTURE_2D ? info_of(name) : NULL;
-    bool much, transcode;
+    bool much, pressed, transcode;
     if (t && t->state != S_NONE) t->state = S_NONE;            /* a name used again */
+    if (t) t->flags = 0;
     if (is_etc(internal)) {
         etc_way way = etc_plan(target, internal, 0, w, h, true);
         if (way.mode == ETC_HALF) {
@@ -1037,8 +1227,9 @@ static void w_storage_2d(u32 target, i32 levels, u32 internal, i32 w, i32 h)
     mg_lock_acquire(&g_lock);
     much = G.bytes[K_PLAIN] + G.packed_from >= PACK_AFTER_BYTES;
     mg_lock_release(&g_lock);
+    pressed = w > 0 && h > 0 && (u32)w * (u32)h >= PRESSED_MIN_PIXELS && (internal == GL_RGBA8 || internal == GL_SRGB8_ALPHA8) && addresses_short();
     if (t && (internal == GL_RGBA8 || internal == GL_SRGB8_ALPHA8) && levels >= 1 && levels < 32 && w > 0 && h > 0 && w <= 16384 && h <= 16384 &&
-        !(w & 3) && !(h & 3) && (u32)w * (u32)h >= PACK_MIN_PIXELS && policy() && (much || policy() == 2) && can_pack(internal)) {
+        !(w & 3) && !(h & 3) && (u32)w * (u32)h >= PACK_MIN_PIXELS && policy() && (much || pressed || policy() == 2) && can_pack(internal)) {
         t->state = S_PENDING;
         t->levels = (u8)levels;
         t->w = (u16)w;
@@ -1057,7 +1248,10 @@ static void w_sub_image_2d(u32 target, i32 level, i32 x, i32 y, i32 w, i32 h, u3
     bool ours = format == GL_RGBA && type == GL_UNSIGNED_BYTE && !T.unpack_buffer && pixels && !T.skip_rows && !T.skip_pixels && w > 0 && h > 0;
     if (t && t->state == S_PENDING) {
         i32 lw = t->w >> level ? t->w >> level : 1, lh = t->h >> level ? t->h >> level : 1;
-        if (ours && level >= 0 && level < t->levels && x == 0 && y == 0 && w == lw && h == lh) make_packed(t);
+        /* (BC1 for a large one whose first level is opaque throughout: what it is filled with later is taken to be so too.) */
+        if (ours && level >= 0 && level < t->levels && x == 0 && y == 0 && w == lw && h == lh)
+            make_packed(t, level == 0 && (u32)w * (u32)h >= PRESSED_MIN_PIXELS &&
+                               all_opaque((const u8 *)pixels, (u32)w, (u32)h, (size_t)(T.row_length > 0 ? T.row_length : w) * 4));
         else make_plain(bound_now(), t);
     }
     if (t && t->state == S_PACKED) {
@@ -1066,12 +1260,15 @@ static void w_sub_image_2d(u32 target, i32 level, i32 x, i32 y, i32 w, i32 h, u3
         bool fits = ours && level >= 0 && level < t->levels && !(x & 3) && !(y & 3) && x >= 0 && y >= 0 && x + w <= lw && y + h <= lh &&
                     (!(w & 3) || x + w == lw) && (!(h & 3) || y + h == lh);
         if (fits) {
-            size_t stride = (size_t)(T.row_length > 0 ? T.row_length : w) * 4, size = mg_gltex_dxt5_size((u32)w, (u32)h);
+            size_t stride = (size_t)(T.row_length > 0 ? T.row_length : w) * 4, size = packed_size(t, (u32)w, (u32)h);
             u8 *packed = (u8 *)malloc(size);
             if (packed) {
-                mg_gltex_dxt5((const u8 *)pixels, (u32)w, (u32)h, stride, packed);
-                h_compressed_sub_2d(target, level, x, y, w, h, t->internal == GL_SRGB8_ALPHA8 ? GL_DXT5_SRGB : GL_DXT5, (i32)size, packed);
+                pack_level(t, (const u8 *)pixels, (u32)w, (u32)h, stride, packed);
+                h_compressed_sub_2d(target, level, x, y, w, h, packed_format(t), (i32)size, packed);
                 free(packed);
+                /* The first level given whole, of one with more levels: its mipmaps, made here from it (again, when it is given again). */
+                if (level == 0 && x == 0 && y == 0 && w == lw && h == lh && t->levels > 1 && (u32)w * (u32)h >= PRESSED_MIN_PIXELS)
+                    make_mips(target, t, (const u8 *)pixels, (u32)w, (u32)h, stride);
                 return;
             }
         }
@@ -1098,6 +1295,26 @@ static void w_storage_3d(u32 target, i32 levels, u32 internal, i32 w, i32 h, i32
 
 static void w_image_2d(u32 target, i32 level, i32 internal, i32 w, i32 h, i32 border, u32 format, u32 type, const void *pixels)
 {
+    tex_info *t = target == GL_TEXTURE_2D ? info_of(bound_now()) : NULL;
+    if (t && t->state == S_PACKED && (t->flags & TF_MUTABLE)) {
+        i32 lw = t->w >> level ? t->w >> level : 1, lh = t->h >> level ? t->h >> level : 1;
+        if (level > 0 && level < t->levels && w == lw && h == lh && format == GL_RGBA && type == GL_UNSIGNED_BYTE && pixels && !border &&
+            (internal == GL_RGBA || internal == GL_RGBA8) && !T.unpack_buffer && !T.skip_rows && !T.skip_pixels) {
+            /* A level of its own the app gives, in place of the one made here: packed the same way. */
+            size_t stride = (size_t)(T.row_length > 0 ? T.row_length : w) * 4, size = packed_size(t, (u32)w, (u32)h);
+            u8 *packed = (u8 *)malloc(size);
+            if (packed) {
+                pack_level(t, (const u8 *)pixels, (u32)w, (u32)h, stride, packed);
+                put_level(target, t, level, (u32)w, (u32)h, packed, size);
+                free(packed);
+                return;
+            }
+        }
+        /* Made again from its first level, or a level of another kind: as the app asks from now on. */
+        t->state = S_NONE;
+        t->flags = 0;
+    }
+    if (image_packed(target, level, internal, w, h, border, format, type, pixels)) return;
     if (target == GL_TEXTURE_2D) needs_plain(bound_now(), "glTexImage2D");
     held_level(target, level, count(0, (u32)internal, format, type, w, h, 1, 1, 0, false));
     h_image_2d(target, level, internal, w, h, border, format, type, pixels);
@@ -1188,7 +1405,10 @@ static void w_delete_textures(i32 n, const u32 *names)
     u32 u;
     for (i = 0; names && i < n; i++) {
         tex_info *t = info_of(names[i]);
-        if (t) t->state = S_NONE;
+        if (t) {
+            t->state = S_NONE;
+            t->flags = 0;
+        }
         if (names[i] < MG_COUNT(g_etc)) {
             g_etc[names[i]] = 0;
             g_etc_levels[names[i]] = 0;
@@ -1209,8 +1429,9 @@ static void w_generate_mipmap(u32 target)
     static volatile i32 said;
     if (t && t->state == S_PENDING) make_plain(bound_now(), t);
     if (t && t->state == S_PACKED) {
-        /* Direct3D makes no mipmaps for a compressed texture. The levels the app did not upload stay as they are. */
-        if (mg_atomic_add(&said, 1) <= 3) mg_warn("textures: mipmaps asked for a texture kept as DXT5; not made");
+        /* Direct3D makes no mipmaps for a compressed texture: they were made here when its first level came (TF_MIPS), else
+           the levels the app did not upload stay as they are. */
+        if (!(t->flags & TF_MIPS) && mg_atomic_add(&said, 1) <= 3) mg_warn("textures: mipmaps asked for a texture kept as DXT5; not made");
         return;
     }
     h_generate_mipmap(target);
@@ -1336,6 +1557,9 @@ void mg_gltex_reset(void)
     memset(&T, 0, sizeof(T));
     g_can_pack = g_policy = g_etc_policy = -1;
     g_can_pack_srgb = g_has_dxt5 = g_etc_lossy = 0;
+    g_short_at = 0;
+    g_short_was = g_short_said = false;
+    g_short_forced = -1;
 }
 
 void mg_gltex_report(char *out, size_t size)
@@ -1344,7 +1568,7 @@ void mg_gltex_report(char *out, size_t size)
     snprintf(out, size,
              "textures asked for so far: %u MB plain in %u, %u MB ETC2/EAC in %u (%u MB of it in %u given to ANGLE as BC1 or DXT5, the same size; "
              "the rest %u MB as ANGLE decodes it), %u MB other compressed in %u; "
-             "the largest %ux%u of format 0x%x, %u MB; kept as DXT5: %u, %u MB for what would have been %u MB (%u uploads dropped); halved: %u, %u MB "
+             "the largest %ux%u of format 0x%x, %u MB; kept as DXT5 or BC1: %u, %u MB for what would have been %u MB (%u uploads dropped); halved: %u, %u MB "
              "for %u MB; held now %u MB",
              (unsigned)(G.bytes[K_PLAIN] >> 20), (unsigned)G.count[K_PLAIN], (unsigned)(G.bytes[K_ETC] >> 20), (unsigned)G.count[K_ETC],
              (unsigned)(G.etc_as_bc >> 20), (unsigned)G.etc_as_bc_count, (unsigned)(G.etc_expanded >> 20), (unsigned)(G.bytes[K_BLOCK] >> 20),
