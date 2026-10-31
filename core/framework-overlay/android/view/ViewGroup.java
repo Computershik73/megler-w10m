@@ -407,6 +407,18 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     public boolean onRequestSendAccessibilityEvent(View child, android.view.accessibility.AccessibilityEvent e) { return true; }
     public CharSequence getAccessibilityClassName() { return ViewGroup.class.getName(); }
     public void setClipChildren(boolean c) { mClipChildren = c; invalidate(); }
+    /*
+     * A descendant's drawing changed in what its list draws by reference: a RenderNode's properties -- an alpha, a
+     * translation, a scale -- which Compose's graphics layers change and then tell the view's parent so
+     * (RenderNodeLayer.triggerRepaint), invalidating nothing. On Android the frame is drawn again with the node as it is;
+     * here its place on the screen is drawn again, the lists as they are, the node's properties taken as they are then
+     * (RenderNode, overlaid). The original's ViewParent did nothing: what Compose faded in, moved or scrolled stayed on
+     * the screen as it had been, and Spotify's screens stayed empty or drawn in part (package 544).
+     */
+    @Override public void onDescendantInvalidated(View child, View target) {
+        View v = target != null ? target : child;
+        if (v != null) v.meglerDamage(0, 0, v.getWidth(), v.getHeight(), false);
+    }
     public boolean getClipChildren() { return mClipChildren; }
     public void setClipToPadding(boolean c) { mClipToPadding = c; invalidate(); }
     public boolean getClipToPadding() { return mClipToPadding; }
