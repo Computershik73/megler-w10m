@@ -284,6 +284,13 @@ static MG_NOINLINE void stack_back(mg_dvm_thread *t)
 }
 
 /* A frame for `m` with `words` registers on the thread's stack, made the method being run. NULL when the stack is full (thrown). */
+/*
+ * DVM_LOCALS_AS_THEY_ARE. A called method's registers that are not its parameters were set to zero at every call, where
+ * nothing reads them before it writes them (a DEX file whose code reads one first is refused by Android's verifier); the
+ * collector reads the frames' words as they are (scan_frames: conservatively, a margin above the top frame too), so one
+ * left from an earlier call keeps at most what it points at a while longer. Kotlin's code has methods of dozens of them,
+ * and their zeroing was a fifth of Yandex Maps' main thread (package 537: mg_dvm_jit_invoke's loops, and memset).
+ */
 static inline mg_dvm_frame *push_frame(mg_dvm_thread *t, mg_dvm_method *m, size_t words)
 {
     mg_dvm_frame *f;
@@ -1287,11 +1294,11 @@ int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
     }
     nf->entry = true;
     {
+        /* (The locals as the stack has them: DVM_LOCALS_AS_THEY_ARE.) */
         u32 base = (u32)target->regs - target->ins, n = count < target->ins ? count : target->ins, k;
-        mg_dvm_reg *to = nf->regs;
-        for (k = 0; k < base; k++) to[k] = 0;
-        for (k = 0; k < n; k++) to[base + k] = argv[k];
-        for (k = base + n; k < target->regs; k++) to[k] = 0;
+        mg_dvm_reg *to = nf->regs + base;
+        for (k = 0; k < n; k++) to[k] = argv[k];
+        for (k = n; k < target->ins; k++) to[k] = 0;
     }
     if (target->flags & DVM_ACC_SYNCHRONIZED) {
         nf->sync = (target->flags & DVM_ACC_STATIC) ? mg_dvm_mirror(target->cls) : self;
