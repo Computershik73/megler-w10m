@@ -5905,6 +5905,12 @@ bool startGpu() {
         return false;
     }
     s.gpuMaxSize = s.gpuResource->GetMaximumBitmapSize();
+    // Direct2D keeps the textures it drew layers, effects and bitmaps with, for use again, up to this much. On a phone the
+    // graphics processor's memory is the process's own 2 GB of addresses: Yandex Maps ended in GL_OUT_OF_MEMORY with 357 MB
+    // of it in use and no 16 MB stretch of addresses left (package 540). 48 MB is a screen of 1440x2560 three times over.
+    const UINT64 kept = s.d2dDevice->GetMaximumTextureMemory();
+    s.d2dDevice->SetMaximumTextureMemory(48ull << 20);
+    say("Direct2D keeps at most 48 MB of textures for use again (it would have kept %llu MB)", static_cast<unsigned long long>(kept >> 20));
     s.gpu = true;
     if (!drawsOnGpu()) {
         say("a canvas on %s does not draw or read back as it should: canvases are drawn in memory", described);
