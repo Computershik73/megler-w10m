@@ -446,6 +446,9 @@ static u32 g_root_class_parts, g_root_string_parts;
 static void class_roots(mg_dvm_class *c, void *user);
 static void string_root(mg_jobj *s, void *user);
 
+/* The round pushes the roots and follows nothing (class_roots_pushed): each thread's stack goes to the pool. */
+static bool g_roots_only;
+
 static void roots_round(void *arg, int worker)
 {
     marker *k = &g_markers[worker];
@@ -460,6 +463,18 @@ static void roots_round(void *arg, int worker)
         } else {
             break;
         }
+    }
+    if (g_roots_only) {
+        mg_lock_acquire(&g_mark_lock);
+        if (g_npool + k->n <= g_pool_cap) {
+            memcpy(g_pool + g_npool, k->stack, sizeof(void *) * k->n);
+            g_npool += k->n;
+        } else {
+            G.overflow = true;
+        }
+        k->n = 0;
+        mg_lock_release(&g_mark_lock);
+        return;
     }
     mark_shared(k);
 }
@@ -1092,11 +1107,30 @@ static bool alongside_on(void)
 }
 
 /* Every root, pushed (not followed): the classes and the interned strings, the other exact roots, the conservative scans. */
+/*
+ * The classes' statics and the interned strings pushed by the collecting thread and the helpers at once, nothing followed,
+ * into the collecting thread's stack. One thread pushing them took some 40 ms of each stop of Yandex Maps' (package 539).
+ */
+static void class_roots_pushed(void)
+{
+    if (!g_nhelpers) {
+        mg_dvm_each_linked_locked(class_roots, NULL);
+        mg_dvm_interned_each(string_root, NULL);
+        return;
+    }
+    g_root_next = 0;
+    g_root_class_parts = (mg_dvm_class_buckets() + ROOT_BUCKETS - 1) / ROOT_BUCKETS;
+    g_root_string_parts = (mg_dvm_interned_slots() + ROOT_SLOTS - 1) / ROOT_SLOTS;
+    g_roots_only = true;
+    shared(roots_round);
+    g_roots_only = false;
+    G.main.n = g_npool;
+}
+
 static void roots_pushed(void)
 {
     u32 i;
-    mg_dvm_each_linked_locked(class_roots, NULL);
-    mg_dvm_interned_each(string_root, NULL);
+    class_roots_pushed();
     mg_dvm_threads_each(exact_thread_roots, NULL);
     mg_dvm_proxy_roots(reach_ref, NULL);
     mg_dvm_object_roots(reach_ref, NULL);
