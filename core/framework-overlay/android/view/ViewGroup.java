@@ -408,16 +408,17 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     public CharSequence getAccessibilityClassName() { return ViewGroup.class.getName(); }
     public void setClipChildren(boolean c) { mClipChildren = c; invalidate(); }
     /*
-     * A descendant's drawing changed in what its list draws by reference: a RenderNode's properties -- an alpha, a
-     * translation, a scale -- which Compose's graphics layers change and then tell the view's parent so
-     * (RenderNodeLayer.triggerRepaint), invalidating nothing. On Android the frame is drawn again with the node as it is;
-     * here its place on the screen is drawn again, the lists as they are, the node's properties taken as they are then
-     * (RenderNode, overlaid). The original's ViewParent did nothing: what Compose faded in, moved or scrolled stayed on
-     * the screen as it had been, and Spotify's screens stayed empty or drawn in part (package 544).
+     * A descendant's drawing changed though it invalidated nothing: Compose's graphics layers change their properties -- an
+     * alpha, a translation, a scale -- and tell the view's parent so (RenderNodeLayer.triggerRepaint). Here a canvas says
+     * it is not hardware accelerated, as Android's software rendering does, and Compose then draws its layers into the
+     * view's own list with their properties as they are when it is recorded: so the view's list is recorded again, as
+     * Android's software rendering draws the view again. The original's ViewParent did nothing, and what Compose faded in,
+     * moved or scrolled stayed on the screen as it had been: Spotify's screens stayed empty or drawn in part (packages 544
+     * and 545, where only the place on the screen was drawn again, from the list as it was).
      */
     @Override public void onDescendantInvalidated(View child, View target) {
         View v = target != null ? target : child;
-        if (v != null) v.meglerDamage(0, 0, v.getWidth(), v.getHeight(), false);
+        if (v != null) v.invalidate();
     }
     public boolean getClipChildren() { return mClipChildren; }
     public void setClipToPadding(boolean c) { mClipToPadding = c; invalidate(); }
