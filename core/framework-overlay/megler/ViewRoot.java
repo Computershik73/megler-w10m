@@ -613,8 +613,18 @@ public final class ViewRoot implements ViewParent {
             else if (!r.mDirty.isEmpty()) { sScratch.set(r.mDirty); sScratch.offset(r.mX, r.mY); part.union(sScratch); }
         }
         for (ViewRoot r : roots) { r.mDirty.setEmpty(); r.mDirtyAll = false; }
-        // The views' display lists that went invalid under valid ones, recorded again before anything is drawn (View, overlaid)
-        for (ViewRoot r : roots) if (!r.mRemoved && !r.mOwnerStopped) r.mView.meglerUpdateLists();
+        // The views' display lists that went invalid under valid ones, recorded again before anything is drawn (View, overlaid).
+        // A view whose drawing throws is left as far as it got, as when the window is drawn (drawWindows): Telegram's chat
+        // list cell throws in its onDraw on every frame here, and the app ended on it once its lists were recorded before
+        // the frame (package 544), where it had gone on before.
+        for (ViewRoot r : roots) {
+            if (r.mRemoved || r.mOwnerStopped) continue;
+            try {
+                r.mView.meglerUpdateLists();
+            } catch (RuntimeException e) {
+                android.util.Log.e("ViewRoot", "recording the window's display lists threw", e);
+            }
+        }
         if (sFullRedraw) noteDirtier(sFullWhy != null ? sFullWhy : "windows added, removed, moved or resized", Float.MAX_VALUE);
         sFullWhy = null;
         sFullRedraw = false;
