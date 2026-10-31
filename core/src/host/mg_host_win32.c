@@ -260,6 +260,32 @@ bool mg_mem_page_state(const void *p, bool *committed, int *prot)
 void mg_mem_release(void *p, size_t size) { (void)size; VirtualFree(p, 0, MEM_RELEASE); }
 void mg_icache_flush(void *p, size_t size) { FlushInstructionCache(GetCurrentProcess(), p, size); }
 void *mg_mem_alloc(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); }
+void *mg_mem_alloc_watched(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT | MEM_WRITE_WATCH, PAGE_READWRITE); }
+
+int mg_mem_written_pages(void *p, size_t size, u32 *out, int max)
+{
+    enum { CHUNK = 256 };
+    PVOID pages[CHUNK];
+    int n = 0;
+    size_t at;
+    /* A chunk at a time: GetWriteWatch fills an array of addresses. */
+    for (at = 0; at < size; at += (size_t)CHUNK * MG_PAGE) {
+        size_t span = size - at < (size_t)CHUNK * MG_PAGE ? size - at : (size_t)CHUNK * MG_PAGE;
+        ULONG_PTR count = CHUNK;
+        ULONG granularity = 0;
+        ULONG_PTR i;
+        if (GetWriteWatch(WRITE_WATCH_FLAG_RESET, (u8 *)p + at, span, pages, &count, &granularity) != 0) return -1;
+        /* (Pages of the host's granularity, each that many of MG_PAGE.) */
+        for (i = 0; i < count; i++) {
+            u32 first = (u32)(((u8 *)pages[i] - (u8 *)p) / MG_PAGE), k, each = granularity > MG_PAGE ? granularity / MG_PAGE : 1;
+            for (k = 0; k < each; k++) {
+                if (n == max) return -1;
+                out[n++] = first + k;
+            }
+        }
+    }
+    return n;
+}
 
 static u64 (*g_limit)(void), (*g_usage)(void);
 void mg_mem_set_probe(u64 (*limit)(void), u64 (*usage)(void)) { g_limit = limit; g_usage = usage; }

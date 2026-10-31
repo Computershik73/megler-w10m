@@ -195,6 +195,22 @@ void *mg_mem_alloc(size_t size)
     return p == MAP_FAILED ? NULL : p;
 }
 
+/* (No write watch here: a caller takes every page for written.) */
+void *mg_mem_alloc_watched(size_t size)
+{
+    (void)size;
+    return NULL;
+}
+
+int mg_mem_written_pages(void *p, size_t size, u32 *out, int max)
+{
+    (void)p;
+    (void)size;
+    (void)out;
+    (void)max;
+    return -1;
+}
+
 static u64 (*g_limit)(void), (*g_usage)(void);
 void mg_mem_set_probe(u64 (*limit)(void), u64 (*usage)(void)) { g_limit = limit; g_usage = usage; }
 u64 mg_mem_limit(void) { return g_limit ? g_limit() : 0; }

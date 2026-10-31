@@ -66,6 +66,17 @@ void mg_mem_release(void *p, size_t size);
 void mg_icache_flush(void *p, size_t size);
 /* Reserve and commit read-write in one step (anonymous mmap). */
 void *mg_mem_alloc(size_t size);
+/*
+ * The same, with the host noting which of its pages are written (Windows' write watch, MEM_WRITE_WATCH): NULL where it
+ * cannot, and mg_mem_alloc's memory is had instead. Released with mg_mem_release.
+ */
+void *mg_mem_alloc_watched(size_t size);
+/*
+ * The pages of watched [p, p + size) written since the memory was made or this was last asked, as page numbers from `p`
+ * into `out` (at most `max`), the watch started again for them: how many; -1 where the host cannot say (and every page is
+ * to be taken for written). Pages of MG_PAGE bytes.
+ */
+int mg_mem_written_pages(void *p, size_t size, u32 *out, int max);
 
 /*
  * Memory that several mappings show at once: a section (a pagefile-backed file mapping on Windows, a memfd on Linux), the
