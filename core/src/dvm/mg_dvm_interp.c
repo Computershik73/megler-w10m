@@ -538,6 +538,14 @@ void mg_dvm_intrinsics_start(void)
     mark_intrinsic("java/lang/Object", "getClass", "()Ljava/lang/Class;", false, INTR_GETCLASS);
     mark_intrinsic("java/lang/Thread", "currentThread", "()Ljava/lang/Thread;", true, INTR_CURRENT_THREAD);
     /*
+     * Class.isInstance and isAssignableFrom: libcore's bytecode walks the class's superclasses and its table of interfaces
+     * (ifTable) a field at a time; Kotlin's coroutines ask through AtomicReferenceFieldUpdater's check at every update, and
+     * the two were 4 to 8% of Yandex Maps' main thread (package 535). The runtime's own test (mg_dvm_assignable), for a
+     * class that is not an array's; one that is goes to the bytecode.
+     */
+    mark_intrinsic("java/lang/Class", "isInstance", "(Ljava/lang/Object;)Z", false, INTR_CLASS_ISINSTANCE);
+    mark_intrinsic("java/lang/Class", "isAssignableFrom", "(Ljava/lang/Class;)Z", false, INTR_CLASS_ASSIGNABLE);
+    /*
      * Reference.getReferent, what WeakReference.get and SoftReference.get call: a native method that found the field by its
      * name at every call, 5% of Yandex Maps' main thread (package 530). Its slot read in place.
      */
@@ -644,6 +652,21 @@ static bool intrinsic(mg_dvm_thread *t, u8 id, const mg_dvm_reg *a, mg_jvalue *r
         if (g_dvm_referent_slot >= mg_dvm_class_of(s)->nslots) return false;
         r->l = mg_dvm_slots(s)[g_dvm_referent_slot].l;
         return true;
+    case INTR_CLASS_ISINSTANCE: {
+        mg_jobj *o = (mg_jobj *)a[1];
+        mg_dvm_class *c = s->kind == MG_J_CLASS ? mg_dvm_mirror_class(s) : NULL;
+        if (!c || c->name[0] == '[') return false;
+        r->i = o && mg_dvm_assignable(mg_dvm_class_of(o), c);
+        return true;
+    }
+    case INTR_CLASS_ASSIGNABLE: {
+        mg_jobj *o = (mg_jobj *)a[1];
+        mg_dvm_class *c = s->kind == MG_J_CLASS ? mg_dvm_mirror_class(s) : NULL, *from;
+        /* (null: the bytecode throws.) */
+        if (!c || c->name[0] == '[' || !o || o->kind != MG_J_CLASS || !(from = mg_dvm_mirror_class(o))) return false;
+        r->i = mg_dvm_assignable(from, c);
+        return true;
+    }
     default: return false;
     }
 }
