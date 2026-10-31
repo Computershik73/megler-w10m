@@ -163,7 +163,7 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
     size_t pooled = 0, at = 0;
     mg_dvm_dex *twin = NULL;
     /* The pool given whole (mg_dvm_add_dex_lazy): read in it, one name after another. */
-    bool copied = d->lazy && d->names != NULL;
+    bool copied = d->lazy && d->names != NULL, given = copied;
     if (d->scope == 0 && !d->app)
         for (i = 0; i < MG_COUNT(k_own); i++)
             if (strstr(d->name, k_own[i].file)) d->own = k_own[i].package;
@@ -244,7 +244,7 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
     d->cdef_end = g_ncdefs;
     mg_dvm_unlock();
     mg_info("dvm: %s: %u classes (%u new), %u methods, %u strings%s", d->name, (unsigned)d->ncls, (unsigned)added, (unsigned)d->nmeth, (unsigned)d->nstr,
-            copied ? "; the names another scope's copy of it has" : twin ? "; the names in another scope's view of it" : "");
+            given ? "" : copied ? "; the names another scope's copy of it has" : twin ? "; the names in another scope's view of it" : "");
 }
 
 /*
