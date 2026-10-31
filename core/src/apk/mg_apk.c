@@ -1129,6 +1129,24 @@ static void lib_report_one(const mg_zip_entry *e, void *user)
     mg_jraw(j, "}");
 }
 
+static void microg_seen(const mg_zip_entry *e, void *user)
+{
+    (void)e;
+    *(bool *)user = true;
+}
+
+/* Whether the APK is microG's Google Play services: it has files under org/microg/ (its address formats, among others). */
+bool mg_apk_is_microg(const char *path)
+{
+    mg_zip z;
+    char err[160];
+    bool seen = false;
+    if (!mg_zip_open(&z, path, err, sizeof(err))) return false;
+    mg_zip_each(&z, "org/microg/", microg_seen, &seen);
+    mg_zip_close(&z);
+    return seen;
+}
+
 /* The report of an app in one or more APKs (megler.h): the base, its splits, and the folder with a bundle's record, if any. */
 static char *report(const char *apk_path, char *const *splits, int nsplits, const char *record_dir)
 {
@@ -1184,6 +1202,11 @@ static char *report(const char *apk_path, char *const *splits, int nsplits, cons
     mg_jstr(&j, info->engine);
     mg_jkey(&j, "supported", false);
     mg_jraw(&j, info->supported ? "true" : "false");
+    /* Google Play services that are microG's: the shell keeps them apart from Google's own, each app taking the one it is set to. */
+    if (!strcmp(info->package, "com.google.android.gms") && mg_apk_is_microg(apk_path)) {
+        mg_jkey(&j, "microg", false);
+        mg_jraw(&j, "true");
+    }
     mg_jkey(&j, "activity", false);
     mg_jstr(&j, info->activity);
     mg_jkey(&j, "orientation", false);

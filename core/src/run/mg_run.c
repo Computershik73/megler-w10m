@@ -310,10 +310,19 @@ char *mg_run_own_storage(const char *data_dir, const char *package) { return mg_
 #define SERVICES_GUEST "/data/megler-services"
 static bool service_package(const char *package) { return !strcmp(package, "com.google.android.gms") || !strcmp(package, "com.google.android.gsf"); }
 
+/*
+ * microG's services keep theirs apart, <storage_dir>/services/data-microg: an app set to microG instead of Google's own
+ * (the shell's Google Services setting) runs microG, whose databases and preferences have the same names as Google's and
+ * other contents. Set by mg_run from the services' APK (or microG's own, run as an app).
+ */
+static bool g_services_microg;
+
+static const char *services_folder(void) { return g_services_microg ? "data-microg" : "data"; }
+
 /* The host folder of an app's private files (/data/data/<package>), malloc'd: its own, or the services' shared one's part. */
 static char *internal_dir(const char *data_dir, const char *storage_dir, const char *package)
 {
-    return service_package(package) ? mg_sprintf("%s/services/data/%s", storage_dir, package) : mg_sprintf("%s/apps/%s/data", data_dir, package);
+    return service_package(package) ? mg_sprintf("%s/services/%s/%s", storage_dir, services_folder(), package) : mg_sprintf("%s/apps/%s/data", data_dir, package);
 }
 
 /* A folder and everything in it. */
@@ -376,7 +385,7 @@ bool mg_run_clear_data_if_asked(const char *data_dir, const char *storage_dir, c
 
 void mg_run_files(const char *data_dir, const char *storage_dir, const char *package, const megler_storage_host *storage)
 {
-    char *services = mg_sprintf("%s/services/data", storage_dir);
+    char *services = mg_sprintf("%s/services/%s", storage_dir, services_folder());
     char *internal;
     char *own = mg_run_own_storage(storage_dir, package), *apps;
     left_behind left;
@@ -461,6 +470,9 @@ bool mg_run_start(const megler_run_config *config)
     g_apk_path = mg_strdup(config->apk_path);
     g_config.apk_path = g_apk_path;
     g_config.gms_apk_path = config->gms_apk_path ? mg_strdup(config->gms_apk_path) : NULL;
+    g_services_microg = (config->gms_apk_path && mg_apk_is_microg(config->gms_apk_path)) ||
+                        (!strcmp(info.package, "com.google.android.gms") && mg_apk_is_microg(config->apk_path));
+    if (g_services_microg) mg_info("run: Google Play services are microG's: their data is the shared folder's services/data-microg");
     g_config.gsf_apk_path = config->gsf_apk_path ? mg_strdup(config->gsf_apk_path) : NULL;
     /*
      * The drivers see the splits as one list, of those the reading took (a split of another app is no split of this one),

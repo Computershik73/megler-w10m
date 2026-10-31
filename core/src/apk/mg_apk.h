@@ -69,6 +69,8 @@ typedef struct mg_apk_info {
 
 /* False, with info->error set, only when the file is not a readable APK. */
 bool mg_apk_read_info(const char *apk_path, mg_apk_info *info);
+/* Whether the APK is microG's Google Play services (it has files under org/microg/), not Google's own. */
+bool mg_apk_is_microg(const char *path);
 /*
  * The same for an app in several APKs: the base at apk_path and its splits, read as one app, as Android has it once the
  * splits are installed -- the base's manifest, the native libraries of every APK, the icon wherever the densest picture
