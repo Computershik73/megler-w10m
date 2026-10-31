@@ -15,6 +15,10 @@
     /** The phone's check of its user (megler_biometric_host, core/src/drivers/mg_java.c), for megler.Biometrics: whether it
      *  can (0 ready, 1 not set up, 2 none); its dialog with the message, blocking until the user is done (0 verified,
      *  1 canceled, 2 locked out, 3 could not check); and that dialog closed from another thread. */
+    /** The memory the process may use (the shell's limit; 1 GB where it gives none) and what it uses now, in bytes, as
+     *  sysconf's _SC_PHYS_PAGES and /proc/meminfo have them: what ActivityManager.getMemoryInfo tells (core/src/drivers/mg_java.c). */
+    public static native long memoryLimit();
+    public static native long memoryInUse();
     public static native int biometricAvailable();
     public static native int biometricVerify(String message);
     public static native void biometricCancel();

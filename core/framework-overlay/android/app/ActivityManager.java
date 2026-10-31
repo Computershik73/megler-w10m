@@ -10,7 +10,7 @@
 //
 // And the memory it tells of is the process's (getMemoryInfo, getMemoryClass, getLargeMemoryClass): the original's said
 // 6 GB, 2 GB of them free, and a heap of 512 MB, and apps sized their caches for that, where the process has 2 GB of
-// addresses in all (the shell's limit, what sysconf's _SC_PHYS_PAGES says, core/src/bionic/mg_libc_misc.c), most of it
+// addresses in all (the shell's limit, megler.Native.memoryLimit, as sysconf's _SC_PHYS_PAGES has it), most of it
 // taken by the app's native code, its graphics and the runtime; Yandex Maps ended out of graphics memory with 171 MB of
 // addresses left (package 540). Now totalMem is that limit and availMem what of it is not in use, and the heap's class is
 // 256 MB, what Runtime.maxMemory says (core/src/dvm/mg_dvm_jvm.c). Everything else is the original's, unchanged.
@@ -200,12 +200,7 @@ public class ActivityManager {
         // ---- end of generated members (RunningServiceInfo)
     }
     public void getMemoryInfo(MemoryInfo m) {
-        long page = 4096, total = 2L << 30, free = 1L << 30;
-        try {
-            page = android.system.Os.sysconf(android.system.OsConstants._SC_PAGESIZE);
-            total = android.system.Os.sysconf(android.system.OsConstants._SC_PHYS_PAGES) * page;
-            free = android.system.Os.sysconf(android.system.OsConstants._SC_AVPHYS_PAGES) * page;
-        } catch (Throwable t) {}
+        long total = megler.Native.memoryLimit(), free = Math.max(0L, total - megler.Native.memoryInUse());
         m.totalMem = m.advertisedMem = total;
         m.availMem = free;
         m.threshold = Math.min(128L << 20, total / 8);

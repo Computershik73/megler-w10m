@@ -776,6 +776,14 @@ N(Native_micRead)
     c->ret.i = got;
 }
 
+/* memoryLimit(), memoryInUse(): the process's limit (1 GB where the shell gives none, as sysconf has it) and its use, in bytes. */
+N(Native_memoryLimit)
+{
+    u64 limit = mg_mem_limit();
+    c->ret.j = (i64)(limit ? limit : 1024ull * 1024 * 1024);
+}
+N(Native_memoryInUse) { c->ret.j = (i64)mg_mem_usage(); }
+
 /*
  * The phone's check of its user (megler_biometric_host), for megler.Biometrics: whether it can, and its dialog, which
  * blocks the thread megler.Biometrics asks on until the user is done; cancel closes it from another.
@@ -1142,6 +1150,8 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "micStart", NULL, Native_micStart },
     { "megler/Native", "micStop", NULL, Native_micStop },
     { "megler/Native", "micRead", NULL, Native_micRead },
+    { "megler/Native", "memoryLimit", NULL, Native_memoryLimit },
+    { "megler/Native", "memoryInUse", NULL, Native_memoryInUse },
     { "megler/Native", "biometricAvailable", NULL, Native_biometricAvailable },
     { "megler/Native", "biometricVerify", NULL, Native_biometricVerify },
     { "megler/Native", "biometricCancel", NULL, Native_biometricCancel },
