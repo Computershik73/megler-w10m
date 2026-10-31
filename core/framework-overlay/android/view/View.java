@@ -1240,13 +1240,24 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         // (Valid before it is recorded: an invalidation while it is, an animation's, makes it invalid again.)
         mMeglerListValid = true;
         Canvas rc = n.meglerBeginViewRecording(w, h);
+        int save = rc.save();
         try {
             rc.translate(-mScrollX, -mScrollY);
             draw(rc);
+        } catch (RuntimeException e) {
+            // A view whose drawing throws keeps in its list what it drew before, and the lists of the views around it go on
+            // with the views after it, as Android's would not (it ends the app). Out of this view, the exception cut every
+            // list above it short, and they stayed so: Telegram's chat list cell throws in its onDraw, and the chat went
+            // black where the lists after it should have drawn (package 545).
+            sMeglerThrew++;
+            if (sMeglerThrew <= 5 || sMeglerThrew % 100 == 0)
+                android.util.Log.e("MeglerViews", "drawing " + getClass().getName() + " into its display list threw (" + sMeglerThrew + " times)", e);
         } finally {
+            rc.restoreToCount(save);
             n.endRecording();
         }
     }
+    private static int sMeglerThrew;
 
     /** Megler: before a frame, every invalid list of this view's subtree under a valid one recorded again where it stands. */
     public void meglerUpdateLists() {
