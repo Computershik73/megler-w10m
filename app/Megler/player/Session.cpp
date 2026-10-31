@@ -21,6 +21,7 @@
 #include "shell/Checks.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
+#include "shell/Settings.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
@@ -203,7 +204,10 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     std::thread([window, audio, width, height, densityDpi] {
         megler_run_config config = {};
         config.apk_path = gApkPath.c_str();
-        const std::string servicePath = narrow(appPackage::serviceApk());
+        // Google's own Google Play services, or microG's where the app (or Megler) is set to it (ui/SettingsScreen.cpp).
+        const bool microg = settings::get(settings::googleServices, "") == "microg";
+        const std::string servicePath = narrow(appPackage::serviceApk(microg));
+        shellLog::write(std::string("session: Google Play services: ") + (servicePath.empty() ? "none registered" : microg && appPackage::hasMicroG() ? "microG's" : "Google's own"));
         config.gms_apk_path = servicePath.empty() ? nullptr : servicePath.c_str();
         const std::string gsfPath = narrow(appPackage::gsfApk());
         config.gsf_apk_path = gsfPath.empty() ? nullptr : gsfPath.c_str();

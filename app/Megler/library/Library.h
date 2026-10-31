@@ -68,6 +68,8 @@ struct ApkReport {
     bool runnable = false;
     std::string reason;
     std::string engine;
+    /// Google Play services that are microG's (com.google.android.gms with org/microg/ in it), not Google's own.
+    bool microg = false;
     /// How the app's first activity asks to be held: "landscape", "portrait" or "unspecified".
     std::string orientation;
     bool supported = false;

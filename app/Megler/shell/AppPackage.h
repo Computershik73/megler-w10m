@@ -46,7 +46,11 @@ void removeOldHandedApks();
 /// What the shared folder holds, said in the log once a run: each of its folders' size (an app's own storage the largest).
 /// The Device Portal cannot look there. Slow: off the UI thread.
 void logSharedSpace();
-std::wstring serviceApk();
+/// Google Play services' APK an app starts with: microG's when `microg` and it is registered, else Google's own, else
+/// microG's; nothing when neither is. Each kind is registered apart (registerServiceApk), the last installed of each.
+std::wstring serviceApk(bool microg = false);
+/// Whether a microG's Google Play services is registered.
+bool hasMicroG();
 std::wstring gsfApk();
 
 /// An app's own package, before its app starts: the app's private files that Megler handed over when it made the package

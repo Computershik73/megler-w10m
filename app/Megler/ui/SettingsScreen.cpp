@@ -12,6 +12,7 @@
 #include "player/PhoneState.h"
 #include "player/Session.h"
 #include "player/StorageHost.h"
+#include "shell/AppPackage.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
 #include "shell/ShellLog.h"
@@ -163,6 +164,25 @@ private:
         return listSection("Render Size", rows,
                            "The longer side of the picture an app draws, in pixels; the phone scales it to the screen. Smaller is faster." +
                                applies());
+    }
+
+    /// Which Google Play services an app starts with (Session.cpp): Google's own, or microG's, which takes far less memory.
+    UIElement servicesSection() {
+        const auto mine = own(settings::googleServices);
+        const std::string chosen = mine.value_or(meglerOr(settings::googleServices, ""));
+        const bool set = !forApp() || mine.has_value(), microg = appPackage::hasMicroG();
+        std::vector<UIElement> rows;
+        if (forApp()) {
+            rows.push_back(choice("As in Megler", meglerOr(settings::googleServices, "") == "microg" ? "microG" : "Google Play services, Google's own", !mine,
+                                  [this] { put(settings::googleServices, std::nullopt); }));
+        }
+        rows.push_back(choice("Google Play Services", "Google's own: every API of theirs, and hundreds of MB of memory in each app",
+                              set && chosen != "microg", [this] { put(settings::googleServices, std::string("google")); }));
+        rows.push_back(choice("microG", microg ? "microG's services: a fraction of the memory, fewer of Google's APIs (push, location, sign-in work)"
+                                               : "Not installed: add microG Services (com.google.android.gms by microG) to the library first",
+                              set && chosen == "microg", [this] { put(settings::googleServices, std::string("microg")); }));
+        return listSection("Google Services", rows,
+                           "The Google Play services a heavy app runs with. microG takes far less memory where an app needs little of Google's." + applies());
     }
 
     /// The language and region apps are told (player/PhoneState.h): the phone's, English (United States), or another tag.
@@ -505,6 +525,7 @@ private:
         }
 
         add(column, renderSection());
+        add(column, servicesSection());
         add(column, localeSection());
         add(column, locationSection());
         if (!forApp()) add(column, themeSection());

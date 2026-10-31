@@ -575,7 +575,8 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     if (!entry.report.ok || installedFullName.empty() || installedFullName.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos || !canRead(entry.path)) return false;
     const auto shared = sharedFolder();
     if (shared.empty()) return false;
-    const auto record = shared + L"\\services\\gms-package.txt";
+    // microG's and Google's own are each registered apart: an app takes the one it is set to (ui/SettingsScreen.cpp).
+    const auto record = shared + (entry.report.microg ? L"\\services\\microg-package.txt" : L"\\services\\gms-package.txt");
     std::string previous;
     if (!replace && files::read(record, previous) && iniValue(previous, "package") == installedFullName) {
         const auto token = iniValue(previous, "cache");
@@ -591,15 +592,17 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     if (!files::copy(entry.path, apk + L".part") || !files::move(apk + L".part", apk)) return false;
     if (!files::write(record + L".part", "package=" + installedFullName + "\ncache=" + token + "\n") ||
         !files::move(record + L".part", record)) return false;
-    shellLog::write("microG: registered separately installed " + installedFullName);
+    shellLog::write(std::string(entry.report.microg ? "microG: registered microG's " : "microG: registered Google's own ") + installedFullName);
     removeUnusedServiceCopies();
     return true;
 }
 
 void unregisterServiceApk(const std::string& installedFullName) {
-    const auto record = sharedFolder() + L"\\services\\gms-package.txt";
-    std::string registered;
-    if (files::read(record, registered) && iniValue(registered, "package") == installedFullName) files::remove(record);
+    for (const wchar_t* kind : {L"\\services\\gms-package.txt", L"\\services\\microg-package.txt"}) {
+        const auto record = sharedFolder() + kind;
+        std::string registered;
+        if (files::read(record, registered) && iniValue(registered, "package") == installedFullName) files::remove(record);
+    }
     // Existing clients can finish with their mapped version. The cache is not an installation.
 }
 
@@ -633,10 +636,13 @@ void verifyServiceApkLater(const std::string& name) {
 
 }  // namespace
 
-std::wstring serviceApk() {
+namespace {
+
+/// The registered APK of a record (gms-package.txt, microg-package.txt), or nothing.
+std::wstring registeredApk(const wchar_t* recordName) {
     const auto shared = sharedFolder();
     std::string record;
-    if (shared.empty() || !files::read(shared + L"\\services\\gms-package.txt", record)) return {};
+    if (shared.empty() || !files::read(shared + L"\\services\\" + recordName, record)) return {};
     const auto name = iniValue(record, "package"), token = iniValue(record, "cache");
     if (name.empty() || token.empty() || token.find_first_not_of("0123456789abcdef-") != std::string::npos) return {};
     if (name.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos) return {};
@@ -645,6 +651,26 @@ std::wstring serviceApk() {
     verifyServiceApkLater(name);
     return apk;
 }
+
+}  // namespace
+
+/// microG's: one installed as an app and registered, else the one Megler's package brings (library/Library.cpp publishes it).
+std::wstring microgApk() {
+    const auto registered = registeredApk(L"microg-package.txt");
+    if (!registered.empty()) return registered;
+    const auto shared = sharedFolder();
+    const auto bundled = shared.empty() ? std::wstring() : shared + L"\\services\\microg\\GmsCore.apk";
+    return !bundled.empty() && canRead(bundled) ? bundled : std::wstring();
+}
+
+std::wstring serviceApk(bool microg) {
+    const auto own = registeredApk(L"gms-package.txt");
+    const auto light = microgApk();
+    if (microg && !light.empty()) return light;
+    return !own.empty() ? own : light;
+}
+
+bool hasMicroG() { return !microgApk().empty(); }
 
 std::wstring gsfApk() {
     const auto shared = sharedFolder();
@@ -762,14 +788,15 @@ void removeUnusedServiceCopies() {
     if (isSingleApp()) return;
     const std::wstring shared = sharedFolder();
     if (shared.empty()) return;
-    std::string record;
+    std::string record, other;
     const std::string keep = files::read(shared + L"\\services\\gms-package.txt", record) ? iniValue(record, "cache") : std::string();
+    const std::string keepMicroG = files::read(shared + L"\\services\\microg-package.txt", other) ? iniValue(other, "cache") : std::string();
     uint64_t freed = 0;
     int removed = 0, left = 0;
     for (const auto& name : files::listFolders(shared + L"\\services", L"*")) {
         // Only the copies' folders, named by their tokens (hexadecimal and '-'): gsf and the registered copy stay.
         const std::string token = narrow(name);
-        if (token.empty() || token == keep || token.find_first_not_of("0123456789abcdef-") != std::string::npos) continue;
+        if (token.empty() || token == keep || token == keepMicroG || token.find_first_not_of("0123456789abcdef-") != std::string::npos) continue;
         const std::wstring folder = shared + L"\\services\\" + name;
         const uint64_t size = treeSize(folder);
         if (files::removeTree(folder)) {

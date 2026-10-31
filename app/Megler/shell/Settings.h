@@ -52,6 +52,10 @@ constexpr const char* localeTag = "megler.locale";
 /// empty: as Windows' theme is.
 constexpr const char* appTheme = "megler.appTheme";
 
+/// Which Google Play services an app starts with (shell/AppPackage.h, serviceApk): "google", Google's own, or "microg",
+/// microG's, which takes far less memory and has fewer of Google's APIs. Empty: Google's own.
+constexpr const char* googleServices = "megler.googleServices";
+
 /// A separate app (ui/SharedFolders.h): the names of Megler's folders the user said "Not Now" to, "a|b".
 constexpr const char* foldersNotNow = "megler.folders.notNow";
 

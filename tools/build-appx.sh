@@ -54,6 +54,9 @@
 #              services and Play Store take the place of the archive's (its
 #              GSF stays), as bitgapps/PrebuiltGmsCore.apk and Phonesky.apk,
 #              which the library offers. Not stored in the repository either.
+#   --microg APK  with --bitgapps: microG's Google Play services, as
+#              bitgapps/MicroGGmsCore.apk, which the library publishes for
+#              the apps set to microG (Settings, Google Services).
 #   --clean    recompile everything
 #   --no-pack  stop after staging (no makeappx, no signing)
 #
@@ -120,6 +123,7 @@ JAVA=0
 BITGAPPS=""
 GMS_APK=""
 PLAY_STORE_APK=""
+MICROG_APK=""
 while [ $# -gt 0 ]; do
   arg="$1"; shift
   case "$arg" in
@@ -150,6 +154,8 @@ while [ $# -gt 0 ]; do
     --bitgapps) [ $# -gt 0 ] || { echo "--bitgapps needs a ZIP path" >&2; exit 2; }; BITGAPPS="$1"; shift ;;
     --bitgapps=*) BITGAPPS="${arg#--bitgapps=}" ;;
     --gms) [ $# -gt 0 ] || { echo "--gms needs an APK path" >&2; exit 2; }; GMS_APK="$1"; shift ;;
+    --microg) [ $# -gt 0 ] || { echo "--microg needs an APK path" >&2; exit 2; }; MICROG_APK="$1"; shift ;;
+    --microg=*) MICROG_APK="${arg#--microg=}" ;;
     --gms=*) GMS_APK="${arg#--gms=}" ;;
     --play-store) [ $# -gt 0 ] || { echo "--play-store needs an APK path" >&2; exit 2; }; PLAY_STORE_APK="$1"; shift ;;
     --play-store=*) PLAY_STORE_APK="${arg#--play-store=}" ;;
@@ -541,6 +547,7 @@ fi
 if [ -n "$BITGAPPS" ]; then
   python "$(w "$ROOT/tools/bitgapps-extract.py")" "$(w "$BITGAPPS")" "$(w "$STAGE/bitgapps")"
   # The APKs given instead of the archive's, under the names the library offers them by.
+  [ -n "$MICROG_APK" ] && { cp "$MICROG_APK" "$STAGE/bitgapps/MicroGGmsCore.apk" && echo "    microG: $(basename "$MICROG_APK"), for apps set to it"; }
   [ -n "$GMS_APK" ] && cp "$GMS_APK" "$STAGE/bitgapps/PrebuiltGmsCore.apk" &&
     echo "    instead: PrebuiltGmsCore.apk is $(basename "$GMS_APK") ($(stat -c %s "$GMS_APK") bytes, sha256 $(sha256sum "$GMS_APK" | cut -d' ' -f1))"
   [ -n "$PLAY_STORE_APK" ] && cp "$PLAY_STORE_APK" "$STAGE/bitgapps/Phonesky.apk" &&
