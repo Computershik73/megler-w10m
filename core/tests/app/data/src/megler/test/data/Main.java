@@ -551,6 +551,58 @@ public class Main extends Activity {
             detail = "can=" + can + " first=" + (same ? "crypto" : got[0]) + " second=" + got[1];
             return can && answered && same && ("negative " + android.content.DialogInterface.BUTTON_NEGATIVE).equals(got[1]);
         });
+        // An ordered broadcast with a result receiver, as Play Store sends its own receivers one when it takes an install up:
+        // the receiver of the higher priority first, its result passed to the next, which goes asynchronous and adds to it
+        // from another thread, then the result receiver, on its handler's thread, with the result as it ended.
+        step("ordered-broadcast", () -> {
+            android.os.HandlerThread ht = new android.os.HandlerThread("ordered");
+            ht.start();
+            android.os.Handler h = new android.os.Handler(ht.getLooper());
+            final String action = "megler.test.data.ORDERED";
+            final StringBuilder order = new StringBuilder();
+            final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+            final Object[] got = new Object[4];
+            android.content.BroadcastReceiver low = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    order.append("low;");
+                    final PendingResult p = goAsync();
+                    final boolean ordered = isOrderedBroadcast();
+                    new Thread(() -> {
+                        p.setResultData(p.getResultData() + "b");
+                        p.getResultExtras(true).putBoolean("ordered", ordered);
+                        p.finish();
+                    }).start();
+                }
+            };
+            android.content.BroadcastReceiver high = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    order.append("high;");
+                    setResultCode(getResultCode() + 1);
+                    setResultData(getResultData() + "a");
+                }
+            };
+            android.content.IntentFilter fl = new android.content.IntentFilter(action), fh = new android.content.IntentFilter(action);
+            fh.setPriority(10);
+            registerReceiver(low, fl, null, h);
+            registerReceiver(high, fh, null, h);
+            sendOrderedBroadcast(new android.content.Intent(action), null, new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    got[0] = getResultCode();
+                    got[1] = getResultData();
+                    android.os.Bundle e = getResultExtras(false);
+                    got[2] = e != null && e.getBoolean("ordered");
+                    got[3] = android.os.Looper.myLooper() == ht.getLooper();
+                    done.countDown();
+                }
+            }, h, 41, "", null);
+            boolean answered = done.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            unregisterReceiver(low);
+            unregisterReceiver(high);
+            ht.quitSafely();
+            detail = "order=" + order + " code=" + got[0] + " data=" + got[1] + " ordered=" + got[2] + " onHandler=" + got[3];
+            return answered && "high;low;".equals(order.toString()) && Integer.valueOf(42).equals(got[0]) && "ab".equals(got[1])
+                && Boolean.TRUE.equals(got[2]) && Boolean.TRUE.equals(got[3]);
+        });
         // An image matrix set before the view is laid out, then the scale type made MATRIX, as Material's FloatingActionButton
         // does as it is made: once laid out, the view draws by that matrix.
         step("image-matrix-before-layout", () -> {

@@ -48,6 +48,7 @@ import android.content.*;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import java.util.ArrayList;
@@ -120,6 +121,61 @@ public final class Broadcasts {
         if (MicroG.send(from, i)) return;
         // And one of the implicit broadcasts Google's system configuration lets through (CHECKIN_COMPLETE) to its receivers too.
         MicroG.sendImplicit(from, i);
+        ArrayList<Object[]> targets = targets(from, i, permission, also, holdsAlso);
+        Handler main = new Handler(Looper.getMainLooper());
+        // (Each receiver has the intent as a Parcel between processes would make it for it: the objects of another class scope
+        // among its extras made again by its own classes, megler.Processes.forLoader.)
+        for (Object[] target : targets) (target[3] != null ? (Handler) target[3] : main).post(() -> {
+            BroadcastReceiver r = (BroadcastReceiver) target[0];
+            r.onReceive((Context) target[2], Processes.forLoader(i, r.getClass().getClassLoader()));
+        });
+    }
+
+    /**
+     * An ordered broadcast, as Context.sendOrderedBroadcast sends it: to the receivers one after another, the registered ones
+     * of the higher priority first, each on its thread and given the result the one before left (getResultCode,
+     * getResultData, getResultExtras), which it may change or end there (abortBroadcast); one that goes asynchronous
+     * (goAsync) holds the next back until its PendingResult's finish(). Then `resultReceiver`, if any, on the thread of
+     * `scheduler` (the main thread when it is null), with the result as it ended -- whatever the receivers did, as Android
+     * gives it. The original's did nothing with the result receiver, and Play Store, which sends its own receivers one as it
+     * takes an install up, never heard its answer (package 543).
+     */
+    public static void sendOrdered(Context from, Intent i, String permission, BroadcastReceiver resultReceiver, Handler scheduler, int code, String data, Bundle extras) {
+        final Context ctx = AppRunner.application() != null ? AppRunner.application() : from;
+        ArrayList<Object[]> targets;
+        if (MicroG.send(from, i)) targets = new ArrayList<>();
+        else {
+            MicroG.sendImplicit(from, i);
+            targets = targets(from, i, permission, null, false);
+        }
+        next(targets, 0, i, code, data, extras, resultReceiver, scheduler, ctx);
+    }
+
+    /** The ordered broadcast's receiver number `at` given the result, or, past the last (or ended), its result receiver. */
+    private static void next(final ArrayList<Object[]> targets, final int at, final Intent i, final int code, final String data, final Bundle extras,
+                             final BroadcastReceiver last, final Handler scheduler, final Context ctx) {
+        final Handler main = new Handler(Looper.getMainLooper());
+        if (at >= targets.size()) {
+            if (last != null) (scheduler != null ? scheduler : main).post(() -> {
+                BroadcastReceiver.PendingResult p = last.meglerBegin(false, code, data, extras, null);
+                try { last.onReceive(ctx, i); } finally { last.meglerEnd(p); }
+            });
+            return;
+        }
+        final Object[] target = targets.get(at);
+        (target[3] != null ? (Handler) target[3] : main).post(() -> {
+            final BroadcastReceiver r = (BroadcastReceiver) target[0];
+            final BroadcastReceiver.PendingResult[] mine = new BroadcastReceiver.PendingResult[1];
+            mine[0] = r.meglerBegin(true, code, data, extras, () -> {
+                BroadcastReceiver.PendingResult p = mine[0];
+                next(targets, p.getAbortBroadcast() ? targets.size() : at + 1, i, p.getResultCode(), p.getResultData(), p.getResultExtras(false), last, scheduler, ctx);
+            });
+            try { r.onReceive((Context) target[2], Processes.forLoader(i, r.getClass().getClassLoader())); } finally { r.meglerEnd(mine[0]); }
+        });
+    }
+
+    /** The receivers a broadcast reaches, each as {receiver, filter or null, context, handler or null}: registered ones first, by their priority. */
+    private static ArrayList<Object[]> targets(Context from, Intent i, String permission, String also, boolean holdsAlso) {
         final Context ctx = AppRunner.application() != null ? AppRunner.application() : from;
         ArrayList<Object[]> targets = new ArrayList<>();
         /* Receivers registered at run time hear implicit intents only: one that names a component is for that component. */
@@ -142,13 +198,10 @@ public final class Broadcasts {
             }
             try { targets.add(new Object[] { AppRunner.componentFactory().instantiateReceiver(AppRunner.classLoader(), c.name, i), null, ctx, null }); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
         }
-        Handler main = new Handler(Looper.getMainLooper());
-        // (Each receiver has the intent as a Parcel between processes would make it for it: the objects of another class scope
-        // among its extras made again by its own classes, megler.Processes.forLoader.)
-        for (Object[] target : targets) (target[3] != null ? (Handler) target[3] : main).post(() -> {
-            BroadcastReceiver r = (BroadcastReceiver) target[0];
-            r.onReceive((Context) target[2], Processes.forLoader(i, r.getClass().getClassLoader()));
-        });
+        // (A stable sort: the registered ones by their filters' priority, higher first, ahead of the manifest's.)
+        java.util.Collections.sort(targets, (a, b) -> Integer.compare(b[1] != null ? ((IntentFilter) b[1]).getPriority() : Integer.MIN_VALUE,
+                                                                      a[1] != null ? ((IntentFilter) a[1]).getPriority() : Integer.MIN_VALUE));
+        return targets;
     }
     private static boolean allowed(Context c, String permission, String also, boolean holdsAlso) {
         return (permission == null || Phone.holds(c, permission)) && (also == null || Phone.holds(c, also) == holdsAlso);

@@ -988,6 +988,20 @@ app's step "connectivity" reads the sticky intent and has a receiver called
 with it once, afterwards, on the main thread. A change of network is not
 broadcast: the framework says Wi-Fi throughout.
 
+**Ordered broadcasts.** `sendOrderedBroadcast` with a result receiver (each of
+its overloads, and `sendOrderedBroadcastAsUser`, from a context or a wrapper)
+goes to the receivers one after another, the registered ones of the higher
+priority first, each on its thread with the result the one before left
+(`getResultCode`, `getResultData`, `getResultExtras`), which it may change or
+end (`abortBroadcast`); one that goes asynchronous (`goAsync`) holds the next
+back until its `PendingResult.finish()`. Then the result receiver, on its
+handler's thread, gets the result as it ended (`megler.Broadcasts.sendOrdered`;
+the result itself is kept in the overlay's `BroadcastReceiver`). Before, the
+original's context did nothing with a result receiver and its receivers kept no
+result: Play Store sends its own receivers one when it takes an install up. The
+data app's step "ordered-broadcast" checks the order, the result passed on and
+added to from another thread, and the result receiver's thread.
+
 ### The time zone (the runtime on libcore and the app, under qemu-arm)
 
 The shell names the phone's time zone before it starts an app
