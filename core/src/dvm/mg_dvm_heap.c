@@ -46,8 +46,14 @@ typedef struct block {
     free_cell *free;                   /* cells given back, to hand out again */
     bool bare;                         /* a spare block whose memory past its first page went back to the host */
     struct block *next;                /* the next block of the same class that has room */
-    u32 inuse[BITMAP_WORDS], mark[BITMAP_WORDS];
+    u32 inuse[BITMAP_WORDS];
+    /*
+     * The marks, BITMAP_WORDS of them, in memory of the arena's own outside its pages (add_arena): the collector writes them
+     * while it marks alongside the app, and a page of the arena written then is one it looks at again (the write watch).
+     */
+    u32 *mark;
 } block;
+#define MARK_BYTES (BITMAP_WORDS * sizeof(u32))
 
 typedef struct large {
     u8 *start;
@@ -56,6 +62,15 @@ typedef struct large {
 } large;
 
 static mg_lock g_heap_lock = MG_LOCK_INIT;
+/*
+ * The list of large objects, for the collector's threads that mark while the app makes them (mg_dvm_heap_alloc_black):
+ * held over a lookup and its mark, and over an insertion, which moves the list's entries and may move the list.
+ */
+static mg_lock g_large_lock = MG_LOCK_INIT;
+/* New objects are made marked: the collector is marking alongside the app, and what is made meanwhile lives. */
+static volatile i32 g_black;
+/* Whether every arena's pages are watched for writes (mg_mem_alloc_watched), and whether that was tried. */
+static bool g_watch, g_watch_tried;
 static u8 **g_arenas;                  /* sorted by address */
 static u32 g_narenas, g_arenas_cap;
 static block *g_spare;                 /* blocks of arenas not yet given a class */
@@ -105,14 +120,33 @@ static void classes_init(void)
 /* A new arena: its blocks to the spare list, its address into the sorted list. False when the host had no memory. */
 static bool add_arena(void)
 {
-    u8 *a = (u8 *)mg_mem_alloc(ARENA_SIZE);
+    u8 *a = NULL;
+    u32 *marks;
     u32 i, at;
+    /* Watched for writes, where the host can, from the first arena on; one that cannot be leaves none taken for watched. */
+    if (!g_watch_tried || g_watch) a = (u8 *)mg_mem_alloc_watched(ARENA_SIZE);
+    if (!g_watch_tried) {
+        g_watch_tried = true;
+        g_watch = a != NULL;
+        mg_info("heap: %s", g_watch ? "the arenas' pages are watched for writes: the collector can mark alongside the app"
+                                    : "the host does not watch the arenas' pages for writes: every collection stops the app while it marks");
+    } else if (g_watch && !a) {
+        g_watch = false;
+        mg_warn("heap: an arena could not be watched for writes: collections stop the app while they mark from now on");
+    }
+    if (!a) a = (u8 *)mg_mem_alloc(ARENA_SIZE);
     if (!a) return false;
+    marks = (u32 *)calloc(ARENA_BLOCKS, MARK_BYTES);
+    if (!marks) {
+        mg_mem_release(a, ARENA_SIZE);
+        return false;
+    }
     if (g_narenas == g_arenas_cap) {
         u32 cap = g_arenas_cap ? g_arenas_cap * 2 : 64;
         u8 **grown = (u8 **)realloc(g_arenas, sizeof(*grown) * cap);
         if (!grown) {
             mg_mem_release(a, ARENA_SIZE);
+            free(marks);
             return false;
         }
         g_arenas = grown;
@@ -130,6 +164,7 @@ static bool add_arena(void)
         block *b = (block *)(void *)(a + (size_t)(i - 1) * BLOCK_SIZE);
         b->magic = BLOCK_MAGIC;
         b->cls = -1;
+        b->mark = marks + (size_t)(i - 1) * BITMAP_WORDS;
         b->next = g_spare;
         g_spare = b;
     }
@@ -165,7 +200,7 @@ static block *new_block(int c)
     b->first = (u8 *)b + header;
     b->free = NULL;
     memset(b->inuse, 0, sizeof(b->inuse));
-    memset(b->mark, 0, sizeof(b->mark));
+    memset(b->mark, 0, MARK_BYTES);
     b->next = g_room[c];
     g_room[c] = b;
     return b;
@@ -201,6 +236,13 @@ static void *small_alloc(size_t size)
     if (cell) {
         index = cell_index(b, (size_t)(cell - b->first));
         b->inuse[index >> 5] |= 1u << (index & 31);
+        if (g_black) {
+            /* (The collector's threads set marks of the same word meanwhile: an interlocked OR.) */
+            volatile i32 *word = (volatile i32 *)&b->mark[index >> 5];
+            u32 old;
+            do old = (u32)*word;
+            while ((u32)mg_atomic_cas(word, (i32)old, (i32)(old | (1u << (index & 31)))) != old);
+        }
         b->used++;
         g_objects++;
         g_small_bytes += b->cell;
@@ -216,10 +258,12 @@ static void *large_alloc(size_t size)
     u32 lo, hi;
     if (!p) return NULL;
     mg_lock_acquire(&g_heap_lock);
+    mg_lock_acquire(&g_large_lock);
     if (g_nlarge == g_large_cap) {
         u32 cap = g_large_cap ? g_large_cap * 2 : 256;
         large *grown = (large *)realloc(g_large, sizeof(*grown) * cap);
         if (!grown) {
+            mg_lock_release(&g_large_lock);
             mg_lock_release(&g_heap_lock);
             free(p);
             return NULL;
@@ -238,8 +282,9 @@ static void *large_alloc(size_t size)
     memmove(&g_large[lo + 1], &g_large[lo], sizeof(*g_large) * (g_nlarge - lo));
     g_large[lo].start = p;
     g_large[lo].size = size;
-    g_large[lo].mark = 0;
+    g_large[lo].mark = g_black ? 1 : 0;
     g_nlarge++;
+    mg_lock_release(&g_large_lock);
     g_objects++;
     g_large_bytes += size;
     widen((mg_addr)p, size);
@@ -362,8 +407,13 @@ bool mg_dvm_heap_set_mark_shared(void *o)
             if ((u32)mg_atomic_cas(word, (i32)old, (i32)(old | bit)) == old) return true;
         }
     } else {
-        large *l = large_at(o);
-        return l && !l->mark && mg_atomic_cas(&l->mark, 0, 1) == 0;
+        large *l;
+        bool set;
+        mg_lock_acquire(&g_large_lock);
+        l = large_at(o);
+        set = l && !l->mark && mg_atomic_cas(&l->mark, 0, 1) == 0;
+        mg_lock_release(&g_large_lock);
+        return set;
     }
 }
 
@@ -374,9 +424,66 @@ bool mg_dvm_heap_is_marked(const void *o)
         u32 index = cell_index(b, (size_t)((const u8 *)o - b->first));
         return (b->mark[index >> 5] & (1u << (index & 31))) != 0;
     } else {
-        large *l = large_at(o);
-        return l && l->mark;
+        large *l;
+        bool marked;
+        mg_lock_acquire(&g_large_lock);
+        l = large_at(o);
+        marked = l && l->mark;
+        mg_lock_release(&g_large_lock);
+        return marked;
     }
+}
+
+void mg_dvm_heap_alloc_black(bool on) { mg_atomic_xchg(&g_black, on ? 1 : 0); }
+bool mg_dvm_heap_watched(void) { return g_watch; }
+
+void mg_dvm_heap_watch_restart(void)
+{
+    u32 pages[ARENA_SIZE / MG_PAGE], i;
+    for (i = 0; i < g_narenas; i++) mg_mem_written_pages(g_arenas[i], ARENA_SIZE, pages, (int)MG_COUNT(pages));
+}
+
+/* The marked objects of block `b` any of whose bytes lie in [lo, hi). */
+static void marked_in(block *b, u8 *lo, u8 *hi, void (*fn)(void *o))
+{
+    u8 *end = b->first + (size_t)b->bump * b->cell;
+    u32 c, last;
+    if (lo < b->first) lo = b->first;
+    if (hi > end) hi = end;
+    if (lo >= hi) return;
+    c = cell_index(b, (size_t)(lo - b->first));
+    last = cell_index(b, (size_t)(hi - 1 - b->first));
+    for (; c <= last; c++)
+        if (b->mark[c >> 5] & b->inuse[c >> 5] & (1u << (c & 31))) fn(b->first + (size_t)c * b->cell);
+}
+
+u32 mg_dvm_heap_each_written(void (*fn)(void *o))
+{
+    u32 pages[ARENA_SIZE / MG_PAGE], i, written = 0;
+    int n, k;
+    for (i = 0; i < g_narenas; i++) {
+        u8 *a = g_arenas[i];
+        n = g_watch ? mg_mem_written_pages(a, ARENA_SIZE, pages, (int)MG_COUNT(pages)) : -1;
+        if (n < 0) {
+            /* Not watched (or the host would not say): every page of it. */
+            for (k = 0; k < (int)ARENA_BLOCKS; k++) {
+                block *b = (block *)(void *)(a + (size_t)k * BLOCK_SIZE);
+                if (b->cls >= 0) marked_in(b, (u8 *)b, (u8 *)b + BLOCK_SIZE, fn);
+            }
+            written += ARENA_SIZE / MG_PAGE;
+            continue;
+        }
+        for (k = 0; k < n; k++) {
+            u8 *page = a + (size_t)pages[k] * MG_PAGE;
+            block *b = (block *)(void *)(a + ((size_t)pages[k] * MG_PAGE / BLOCK_SIZE) * BLOCK_SIZE);
+            if (b->cls >= 0) marked_in(b, page, page + MG_PAGE, fn);
+        }
+        written += (u32)n;
+    }
+    /* The large objects are the C heap's memory, which nothing watches: every marked one. */
+    for (i = 0; i < g_nlarge; i++)
+        if (g_large[i].mark) fn(g_large[i].start);
+    return written;
 }
 
 void mg_dvm_heap_clear_marks(void)
@@ -385,7 +492,7 @@ void mg_dvm_heap_clear_marks(void)
     for (i = 0; i < g_narenas; i++)
         for (k = 0; k < ARENA_BLOCKS; k++) {
             block *b = (block *)(void *)(g_arenas[i] + (size_t)k * BLOCK_SIZE);
-            if (b->cls >= 0) memset(b->mark, 0, sizeof(b->mark));
+            if (b->cls >= 0) memset(b->mark, 0, MARK_BYTES);
         }
     for (i = 0; i < g_nlarge; i++) g_large[i].mark = 0;
 }
@@ -433,7 +540,7 @@ static void sweep_block(block *b, sweep_share *s)
             }
         }
     }
-    memset(b->mark, 0, sizeof(b->mark));
+    memset(b->mark, 0, MARK_BYTES);
 }
 
 static void sweep_some(void *arg, int worker)

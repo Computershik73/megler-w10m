@@ -802,6 +802,23 @@ bool mg_dvm_heap_set_mark_shared(void *o);
 bool mg_dvm_heap_is_marked(const void *o);
 void mg_dvm_heap_clear_marks(void);
 void mg_dvm_heap_each_marked(void (*fn)(void *o));
+/*
+ * Marking alongside the app (mg_dvm_gc.c): objects made while `on` are made marked; whether the arenas' pages are watched
+ * for writes; the watch started again (the world stopped); and, the world stopped, `fn` for every marked object on a page
+ * written since then -- every marked one where not watched -- and every marked large object: how many pages that was.
+ */
+void mg_dvm_heap_alloc_black(bool on);
+/* Whether this thread holds the runtime's lock (mg_dvm_lock). */
+bool mg_dvm_lock_mine(void);
+/*
+ * mg_dvm_gc.c: an object given fields by name (the JNI layer's, mg_jni.c), which the collector follows apart from its slots
+ * when it marks alongside the app; and one whose fields are freed.
+ */
+void mg_dvm_gc_has_fields(mg_jobj *o);
+void mg_dvm_gc_fields_gone(mg_jobj *o);
+bool mg_dvm_heap_watched(void);
+void mg_dvm_heap_watch_restart(void);
+u32 mg_dvm_heap_each_written(void (*fn)(void *o));
 /* ...and the sweep, shared among the collector's threads (mg_dvm_gc_share); how many there were. */
 u32 mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes);
 /*

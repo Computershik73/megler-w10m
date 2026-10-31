@@ -22,6 +22,8 @@ static mg_lock g_big = MG_LOCK_INIT;
 static volatile u32 g_big_owner;
 static int g_big_count;
 
+bool mg_dvm_lock_mine(void) { return g_big_owner == mg_thread_self_id(); }
+
 void mg_dvm_lock(void)
 {
     u32 me = mg_thread_self_id();
