@@ -1,9 +1,9 @@
 // Overlay of core/framework/src/android/graphics/RecordingCanvas.java (tools/build-framework.sh).
 // It differs in its constructor: a RenderNode's canvas is over the core's recording canvas (megler.Gfx.cvRecord), which writes
 // down what it is given, and not over a bitmap of the node's size (android/graphics/RenderNode.java says why). And it is
-// hardware accelerated, as Android's is, a view's list's too, but while a view that has no list of its own (a WebView, a
-// SurfaceView, a TextureView) draws into it (meglerSoftware): Chromium's WebView draws its page into a bitmap only where its
-// canvas is not (WebViewDelegate). Everything else is the original's.
+// hardware accelerated, as Android's is, a view's list's too, but while a view that has no list of its own (a SurfaceView, a
+// TextureView, a WebView whose page is drawn in software) draws into it (meglerSoftware): Chromium's WebView draws its page
+// into a bitmap only where its canvas is not (WebViewDelegate). Everything else is the original's.
 package android.graphics;
 
 public final class RecordingCanvas extends BaseRecordingCanvas {

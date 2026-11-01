@@ -518,7 +518,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
      * layers' properties with it. A view without a list (a WebView, a SurfaceView, a TextureView), and every view with the
      * flag no-view-lists, is not.
      */
-    public boolean isHardwareAccelerated() { return mRoot != null && meglerListable() && meglerListsOn(); }
+    public boolean isHardwareAccelerated() { return mRoot != null && (meglerListable() || meglerWebOnGpu()) && meglerListsOn(); }
     public boolean isInTouchMode() { return true; }
     public boolean isSaveEnabled() { return (mPrivateFlags & PFLAG_SAVE_DISABLED) == 0; }
     public void setSaveEnabled(boolean e) { if (e) mPrivateFlags &= ~PFLAG_SAVE_DISABLED; else mPrivateFlags |= PFLAG_SAVE_DISABLED; }
@@ -1182,8 +1182,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         c.translate(-mScrollX, -mScrollY);
         megler.ViewRoot.ScreenCanvas screen = c instanceof megler.ViewRoot.ScreenCanvas ? (megler.ViewRoot.ScreenCanvas) c : null;
         long was = screen != null ? screen.meglerViewSize(w, h) : 0;
-        // A view without a list of its own drawing into its parent's: that canvas is not hardware accelerated for it.
-        android.graphics.RecordingCanvas soft = !meglerListable() && c instanceof android.graphics.RecordingCanvas ? (android.graphics.RecordingCanvas) c : null;
+        // A view without a list of its own drawing into its parent's: that canvas is not hardware accelerated for it, but
+        // for a WebView whose page is drawn on the graphics processor (its draw functor: megler.WebFunctors).
+        android.graphics.RecordingCanvas soft = !meglerListable() && !meglerWebOnGpu() && c instanceof android.graphics.RecordingCanvas ? (android.graphics.RecordingCanvas) c : null;
         boolean wasSoft = soft != null && soft.meglerSoftware(true);
         try {
             draw(c);
@@ -1226,6 +1227,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     boolean meglerListable() {
         return !(this instanceof SurfaceView) && !(this instanceof TextureView) && !(this instanceof android.webkit.WebView);
     }
+
+    /** Whether this is a WebView whose page is drawn on the graphics processor, through its draw functor (megler.WebFunctors). */
+    final boolean meglerWebOnGpu() { return this instanceof android.webkit.WebView && megler.WebFunctors.on(); }
 
     /** The list of the nearest view at or above this one that keeps one made invalid, and the way down to it noted. */
     final void meglerListInvalid() {

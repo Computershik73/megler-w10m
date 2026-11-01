@@ -3609,19 +3609,55 @@ Cronet's `org.chromium.net`, a Chromium-based app's own, other versions of
 androidx -- would have its own taken by the WebView's code, and the WebView's
 by its own where the app's come first. No app tried has done that yet.
 
-**Drawing.** No canvas is hardware-accelerated here, so the WebView draws in
-software, as it does on Android into a `Bitmap`'s canvas:
-`AwContents.onDraw` with `isHardwareAccelerated()` false. The overlay's
-`WebView.onDraw` draws every frame through one bitmap of what the window shows
-of the view, as the functor draws on Android, and puts that bitmap in the
-canvas it was given: a WebView sized to its page is many screens tall (a
-check: a WebView 20000 rows tall is drawn through 744), and a view out of the
-window gets at most a screen's worth from its scroll position. The bitmap is
-kept from one frame to the next and cleared in its memory. A `RenderNode`'s
-canvas says it is hardware-accelerated (Compose draws an `AndroidView` into
-one), and Chromium would draw it through the platform's draw functor, which is
-not here: through the bitmap it is drawn like any other (Spotify's WebView
-ended the app making its functor).
+**Drawing on the graphics processor.** Where the shell keeps pictures on the
+graphics processor (`megler_gfx_host.texture_frame` and `draw_texture`, and
+EGL shares pbuffers' textures) and the flag `no-webview-gpu` is not set, a
+WebView's canvas in a view list says it is hardware-accelerated
+(`View.drawFromParent`, `megler.WebFunctors.on`), and Chromium draws its page
+as on Android: through the platform's draw functor, AwDrawFn
+(`android_webview/public/browser/draw_fn.h`, version 4), whose table
+`DrawFunctor.nativeGetFunctionTable` hands it (`mg_java_webview.c`). Chromium
+makes a functor for each WebView (`create_functor_v3`) and, in `onDraw`, asks
+the platform to draw it (`WebViewDelegate.drawWebViewFunctor`). The overlay's
+`WebView.meglerDrawFunctor` has it drawn at once on the WebView's render
+thread, the UI thread waiting as HWUI's does for a frame it cannot let go of:
+`on_sync`, then `draw_gl`, with an OpenGL ES 3 context current on a pbuffer of
+the part of the view the window shows (rounded up to 64 pixels, kept while the
+part changes a little), of the WebView's own display (the one Chromium's own
+`eglGetDisplay` is given: `ndk/mg_egl.c`, `webview_display`). The pbuffer is
+cleared and set up as HWUI leaves its surface for a functor: the framebuffer
+0, the viewport the surface, the scissor the part, no stencil test (with one
+Chromium draws into a texture of its own and that through the stencil). The
+parameters are HWUI's: the clip the part from the surface's top left, the
+transform a translation by the part's corner, sRGB. Chromium draws with
+whatever context is current (its `GLNonOwnedContext` never makes one current)
+into the framebuffer bound, the right way up for OpenGL; it restores none of
+the state it drew with. Its first draw sets up its GL first, which leaves a
+context of its own current: the frame is then drawn again in the render
+thread's. The pbuffer's texture is then the shell's picture of the functor
+(`mg_java_gl_share_frame`, its keyed mutex let go for the copy), which the
+view's list draws where the part is (`Canvas.meglerDrawTexture`, a
+`DL_TEXTURE`, turned as a TextureView's frame is), nothing read back. A
+released functor (`release_functor`) has `on_context_destroyed` (with the
+context current) and `on_destroyed` on the render thread; its pbuffer and
+picture go with it. The log says "webview: pages are drawn on the graphics
+processor" and "draw functor N drawn" with the time a draw takes. A draw that
+fails three times in a row, or one that takes more than four seconds, has the
+pages drawn in software from then on, as below. `mg_gl_tests.c`'s draw functor
+test checks the table, the threads, the order of the callbacks, the
+parameters, the picture handed over and the release with the tests' stand-in.
+
+**Drawing in software.** A canvas that is not hardware-accelerated -- a
+`Bitmap`'s, the window's with `no-view-lists`, or any canvas where the draw
+functor is not there -- has the WebView draw in software, as it does on Android
+into a `Bitmap`'s canvas: `AwContents.onDraw` with `isHardwareAccelerated()`
+false. The overlay's `WebView.onDraw` draws every frame through one bitmap of
+what the window shows of the view, as the functor draws on Android, and puts
+that bitmap in the canvas it was given: a WebView sized to its page is many
+screens tall (a check: a WebView 20000 rows tall is drawn through 744), and a
+view out of the window gets at most a screen's worth from its scroll position.
+The bitmap is kept from one frame to the next and cleared in its memory, and
+let go while the pages are drawn on the graphics processor.
 
 Chromium draws into that bitmap directly. The platform's
 `libwebviewchromium_plat_support.so` gives a WebView tables of functions;
@@ -3718,8 +3754,10 @@ Direct3D 11 says 1.5 and has no fence syncs; the ANGLE inside Chromium takes
 1.5 to mean them and called an `eglCreateSyncKHR` it had not loaded, so an
 app is told 1.4: `ndk/mg_egl.c`), hardware buffers (below),
 `CameraManager.getCameraIdList` (null; now an empty list) and AAudio (now
-`ndk/mg_aaudio.c`'s). Spotify's WebView, drawn on a `RenderNode`'s canvas,
-found the draw functor ("Drawing", above).
+`ndk/mg_aaudio.c`'s). Spotify's WebView, drawn on a `RenderNode`'s canvas
+before there was a draw functor here, ended the app making its functor with a
+null table: a canvas says it is hardware-accelerated to a WebView only where
+the table is given.
 
 **Direct system calls.** `libwebviewchromium.so` has five sites that make a
 system call past libc: at +0x33c2dd2 (`gettid`), +0x33c2f6a (`futex`),

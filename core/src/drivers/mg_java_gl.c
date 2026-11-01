@@ -668,6 +668,8 @@ static const megler_gfx_host *g_shell;
 
 void mg_java_gl_set_shell(const megler_gfx_host *gfx) { g_shell = gfx; }
 
+const megler_gfx_host *mg_java_gl_shell(void) { return g_shell; }
+
 static i32 max_i(i32 a, i32 b) { return a > b ? a : b; }
 static i32 min_i(i32 a, i32 b) { return a < b ? a : b; }
 
@@ -1542,31 +1544,48 @@ void *mg_java_gl_window_handle(void *surface, int *width, int *height)
     return n->s->handle;
 }
 
-/*
- * A frame of a pbuffer on no view handed to the shell as the picture of `id` (megler_gfx_host.texture_frame), on the thread
- * that drew it: finished (flushed, where a keyed mutex orders the two devices' work), the mutex let go of for the call and
- * taken back, as shell_frame hands a layer's. False: the shell does not keep pictures so, or refused.
- */
-static bool texture_frame(gl_surf *s, int id)
+bool mg_java_gl_share_frame(void *display, void *pbuffer, mg_java_gl_share *share, int id, int width, int height)
 {
     typedef void (*fn_finish)(void);
     fn_finish finish = FN(fn_finish, F_FINISH, "glFinish"), flush = FN(fn_finish, F_FLUSH, "glFlush");
     bool taken;
-    if (id <= 0 || !g_shell || !g_shell->texture_frame || !g_shell->draw_texture) return false;
-    if (!s->share_asked) {
+    if (id <= 0 || !mg_java_gl_shares_frames()) return false;
+    if (!share->asked) {
         void *handle = NULL;
-        s->share_asked = true;
-        if (E.query_pointer && E.query_pointer(E.display, s->handle, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE, &handle) && handle) s->share = handle;
+        share->asked = true;
+        if (E.query_pointer && E.query_pointer(display, pbuffer, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE, &handle) && handle) share->handle = handle;
         else mg_note_once("java: EGL gave no shared handle for a surface's texture (EGL error 0x%x)", (unsigned)E.get_error());
-        s->mutex = s->share ? mg_egl_surface_mutex(E.display, s->handle) : NULL;
+        share->mutex = share->handle ? mg_egl_surface_mutex(display, pbuffer) : NULL;
     }
-    if (!s->share || !finish) return false;
-    if (s->mutex && flush) flush();
+    if (!share->handle || !finish) return false;
+    if (share->mutex && flush) flush();
     else finish();
-    if (s->mutex) mg_egl_keyed_mutex(s->mutex, false);
-    taken = g_shell->texture_frame(g_shell->user, id, s->share, s->width, s->height);
-    if (s->mutex && !mg_egl_keyed_mutex(s->mutex, true))
+    if (share->mutex) mg_egl_keyed_mutex(share->mutex, false);
+    taken = g_shell->texture_frame(g_shell->user, id, share->handle, width, height);
+    if (share->mutex && !mg_egl_keyed_mutex(share->mutex, true))
         mg_note_once("java: a surface's keyed mutex could not be taken back from the shell: what the app draws in it now is dropped");
+    return taken;
+}
+
+bool mg_java_gl_shares_frames(void) { return g_shell && g_shell->texture_frame && g_shell->draw_texture && egl_ready() && E.share; }
+
+void mg_java_gl_share_gone(int id)
+{
+    if (id > 0 && g_shell && g_shell->texture_frame) g_shell->texture_frame(g_shell->user, id, NULL, 0, 0);
+}
+
+/* A frame of a pbuffer on no view handed to the shell as the picture of `id` (mg_java_gl_share_frame). */
+static bool texture_frame(gl_surf *s, int id)
+{
+    mg_java_gl_share share;
+    bool taken;
+    share.asked = s->share_asked;
+    share.handle = s->share;
+    share.mutex = s->mutex;
+    taken = mg_java_gl_share_frame(E.display, s->handle, &share, id, s->width, s->height);
+    s->share_asked = share.asked;
+    s->share = share.handle;
+    s->mutex = share.mutex;
     return taken;
 }
 

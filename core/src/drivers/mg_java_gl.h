@@ -36,6 +36,8 @@ bool mg_java_gl_views(const void *pixels, int width, int height, int stride, con
 bool mg_java_gl_composing(void);
 /* The shell's drawing, which composes the window itself where it can (megler_gfx_host.gl_frame); before the app runs. */
 void mg_java_gl_set_shell(const megler_gfx_host *gfx);
+/* The shell's drawing it was given; NULL before. */
+const megler_gfx_host *mg_java_gl_shell(void);
 /*
  * The views' picture is about to be shown by the shell from its own (megler_gfx_host.present; the app's main thread): where the
  * shell composes the window, the places the views said for their surfaces are told it first.
@@ -69,6 +71,22 @@ void mg_java_gl_window_swap(void *surface, int width, int height);
  * by mg_java_gl_window_swap (the shell does not keep pictures so, or refused this one).
  */
 bool mg_java_gl_window_swap_texture(void *surface, int width, int height, int texture_id);
+/*
+ * A pbuffer's frame handed to the shell as the picture of `id` (megler_gfx_host.texture_frame), on the thread that drew it, in
+ * whatever context: finished (flushed, where a keyed mutex orders the two devices' work), the texture's keyed mutex let go of
+ * for the call and taken back, as a layer's frame is handed over. `display` is the pbuffer's (the app's, or the WebView's:
+ * drivers/mg_java_webview.c); `share` what was asked of the pbuffer before, all zero for a new one, its texture's shared handle
+ * and keyed mutex asked for the first time. False: the shell does not keep pictures so, or refused this one.
+ */
+typedef struct mg_java_gl_share {
+    bool asked;
+    void *handle, *mutex;
+} mg_java_gl_share;
+bool mg_java_gl_share_frame(void *display, void *pbuffer, mg_java_gl_share *share, int id, int width, int height);
+/* Whether the shell keeps pictures so (megler_gfx_host.texture_frame and draw_texture) and EGL shares pbuffers' textures. */
+bool mg_java_gl_shares_frames(void);
+/* The shell's picture of `id` let go. */
+void mg_java_gl_share_gone(int id);
 /* On no view: the frame the last swap read back, R, G, B, A, rows bottom first, and its size; NULL before the first. */
 const void *mg_java_gl_window_pixels(void *surface, int *width, int *height);
 void mg_java_gl_window_destroy(void *surface);

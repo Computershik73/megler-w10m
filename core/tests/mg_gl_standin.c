@@ -884,6 +884,7 @@ static void g_Viewport(i32 x, i32 y, i32 w, i32 h)
     t_ctx->viewport[3] = h;
 }
 static void g_Scissor(i32 x, i32 y, i32 w, i32 h) { (void)x; (void)y; (void)w; (void)h; }
+static void g_ColorMask(u8 r, u8 g, u8 b, u8 a) { (void)r; (void)g; (void)b; (void)a; }
 static void g_ClearColor(float r, float g, float b, float a)
 {
     if (!t_ctx) return;
@@ -1284,7 +1285,7 @@ void *mg_gl_standin(const char *name)
         { "glFrontFace", (void *)g_OneEnum }, { "glDepthFunc", (void *)g_OneEnum }, { "glBlendFunc", (void *)g_TwoEnums }, { "glHint", (void *)g_TwoEnums },
         { "glFlush", (void *)g_Nothing }, { "glFinish", (void *)g_Nothing }, { "glReleaseShaderCompiler", (void *)g_Nothing },
         { "glLineWidth", (void *)g_LineWidth }, { "glDepthMask", (void *)g_DepthMask }, { "glViewport", (void *)g_Viewport },
-        { "glScissor", (void *)g_Scissor }, { "glClearColor", (void *)g_ClearColor }, { "glClear", (void *)g_Clear },
+        { "glScissor", (void *)g_Scissor }, { "glColorMask", (void *)g_ColorMask }, { "glClearColor", (void *)g_ClearColor }, { "glClear", (void *)g_Clear },
         { "glVertexAttribPointer", (void *)g_VertexAttribPointer }, { "glEnableVertexAttribArray", (void *)g_EnableVertexAttribArray },
         { "glDisableVertexAttribArray", (void *)g_DisableVertexAttribArray }, { "glDrawArrays", (void *)g_DrawArrays },
         { "glReadPixels", (void *)g_ReadPixels }, { "glGetError", (void *)g_GetError }, { "glGetString", (void *)g_GetString },

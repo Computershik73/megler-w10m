@@ -14,6 +14,7 @@
  */
 #include <stdio.h>
 
+#include "../src/drivers/mg_java.h"
 #include "../src/drivers/mg_java_gl.h"
 #include "../src/dvm/mg_dvm.h"
 #include "../src/dvm/mg_dvm_internal.h"
@@ -1176,6 +1177,175 @@ static void test_turns(void)
 #endif
 }
 
+/*
+ * The WebView's draw functor (drivers/mg_java_webview.c): the table Chromium is handed (version 4, OpenGL ES), a functor made
+ * with it, and drawn as megler.WebFunctors.draw asks -- on the render thread, not the asker's, on_sync before draw_gl; HWUI's
+ * parameters for the part of the view the window shows (the clip the part from the surface's top left, the surface its size
+ * rounded up to 64, the transform a translation by the part's corner, sRGB); on a pbuffer of the WebView's display, cleared
+ * before each draw; its picture handed to the shell as the functor's id above 0x40000000, the keyed mutex let go for the
+ * copy, the part where Chromium drew it. A smaller part keeps the pbuffer. Released: on_context_destroyed, then on_destroyed,
+ * on the render thread, and the shell's picture let go.
+ */
+typedef struct {
+    i32 version;
+    void *query_render_mode, *create_functor, *release_functor, *create_functor_v3, *report_rendering_threads;
+} t_fn_table;
+typedef struct {
+    void *on_sync, *on_context_destroyed, *on_destroyed, *draw_gl, *init_vk, *draw_vk, *post_draw_vk, *remove_overlays;
+} t_fn_callbacks;
+typedef struct {
+    i32 version, clip_left, clip_top, clip_right, clip_bottom, width, height;
+    bool deprecated_0;
+    float transform[16], transfer[7], to_xyz[9];
+    i32 overlays_mode;
+    void *get_surface_control, *merge_transaction;
+} t_fn_params;
+
+static struct {
+    volatile i32 syncs, draws, context_gone, gone, frames, let_go;
+    bool in_order, gone_in_order, keyed;
+    u32 sync_thread, draw_thread, gone_thread;
+    void *data;
+    t_fn_params p;
+    u32 before;                        /* the surface's top left pixel when draw_gl began */
+    int frame_id, fw, fh;
+    void *share;
+    u32 corner;                        /* the frame's top left pixel, as the shell copied it */
+} FT;
+
+static void fn_on_sync(i32 id, void *data, const i32 *params)
+{
+    (void)id;
+    FT.sync_thread = mg_thread_self_id();
+    FT.data = data;
+    if (params && params[0] == 4) FT.syncs++;
+}
+
+static void fn_draw_gl(i32 id, void *data, const t_fn_params *p)
+{
+    void (*clear_color)(float, float, float, float) = (void (*)(float, float, float, float))mg_egl_host("glClearColor");
+    void (*clear)(u32) = (void (*)(u32))mg_egl_host("glClear");
+    (void)id;
+    (void)data;
+    FT.in_order = FT.syncs == FT.draws + 1;
+    FT.draw_thread = mg_thread_self_id();
+    FT.p = *p;
+    FT.before = mg_gl_standin_pixel(0, p->height - 1);
+    /* "Chromium's" frame: red. */
+    if (clear_color && clear) {
+        clear_color(1, 0, 0, 1);
+        clear(0x4000);
+    }
+    FT.draws++;
+}
+
+static void fn_context_destroyed(i32 id, void *data)
+{
+    (void)id;
+    (void)data;
+    FT.context_gone++;
+}
+
+static void fn_destroyed(i32 id, void *data)
+{
+    (void)id;
+    (void)data;
+    FT.gone_in_order = FT.context_gone == 1;
+    FT.gone_thread = mg_thread_self_id();
+    FT.gone++;
+}
+
+static bool fn_texture_frame(void *user, int id, void *share, int width, int height)
+{
+    const u8 *rgba;
+    int w, h;
+    (void)user;
+    (void)width;
+    (void)height;
+    if (!share) {
+        FT.let_go = id;
+        return true;
+    }
+    FT.keyed = mg_gl_standin_keyed(share, true);
+    if (FT.keyed && mg_gl_standin_shared(share, &rgba, &w, &h) && w > 0 && h > 0) {
+        const u8 *px = rgba + (size_t)(h - 1) * (size_t)w * 4;
+        FT.fw = w;
+        FT.fh = h;
+        FT.corner = (u32)px[0] << 24 | (u32)px[1] << 16 | (u32)px[2] << 8 | px[3];
+    }
+    if (FT.keyed) mg_gl_standin_keyed(share, false);
+    FT.frame_id = id;
+    FT.share = share;
+    FT.frames++;
+    return true;
+}
+
+static void fn_draw_texture(void *user, void *canvas, int id, float l, float t, float r, float b, int alpha)
+{
+    (void)user, (void)canvas, (void)id, (void)l, (void)t, (void)r, (void)b, (void)alpha;
+}
+
+static void test_draw_functor(void)
+{
+    static t_fn_callbacks cb;
+    static megler_gfx_host host;
+    const t_fn_table *table = (const t_fn_table *)mg_java_webview_draw_fn_table();
+    const megler_gfx_host *was = mg_java_gl_shell();
+    static int data;
+    void *share;
+    i64 drawn;
+    i32 id;
+    int tries;
+    say("The WebView's draw functor: Chromium's page drawn on the render thread, its picture handed to the shell");
+    memset(&FT, 0, sizeof(FT));
+    memset(&host, 0, sizeof(host));
+    host.texture_frame = fn_texture_frame;
+    host.draw_texture = fn_draw_texture;
+    mg_java_gl_set_shell(&host);
+    CHECK(mg_java_gl_shares_frames());
+    CHECK(table && table->version == 4 && table->query_render_mode && table->create_functor_v3 && table->release_functor);
+    if (!table || !table->create_functor_v3 || !table->release_functor || !table->query_render_mode) goto end;
+    CHECK(((i32 (*)(void))table->query_render_mode)() == 0);
+    cb.on_sync = (void *)fn_on_sync;
+    cb.on_context_destroyed = (void *)fn_context_destroyed;
+    cb.on_destroyed = (void *)fn_destroyed;
+    cb.draw_gl = (void *)fn_draw_gl;
+    id = ((i32 (*)(void *, i32, const t_fn_callbacks *))table->create_functor_v3)(&data, 4, &cb);
+    CHECK(id > 0);
+    if (id <= 0) goto end;
+    /* The part of the view at (10, 20), 100 x 50: a surface of 128 x 64. */
+    drawn = mg_java_webview_draw_functor(id, 10, 20, 100, 50);
+    CHECK_HEX((u32)drawn, 0x40000000 + id);
+    CHECK((drawn >> 32 & 0xFFFF) == 128 && (drawn >> 48 & 0xFFFF) == 64);
+    CHECK(FT.syncs == 1 && FT.draws == 1 && FT.in_order && FT.data == &data);
+    CHECK(FT.draw_thread && FT.draw_thread == FT.sync_thread && FT.draw_thread != mg_thread_self_id());
+    CHECK(FT.p.version == 4 && FT.p.clip_left == 0 && FT.p.clip_top == 0 && FT.p.clip_right == 100 && FT.p.clip_bottom == 50);
+    CHECK(FT.p.width == 128 && FT.p.height == 64 && FT.p.overlays_mode == 0);
+    CHECK(FT.p.transform[0] == 1 && FT.p.transform[5] == 1 && FT.p.transform[10] == 1 && FT.p.transform[15] == 1);
+    CHECK(FT.p.transform[12] == -10 && FT.p.transform[13] == -20 && FT.p.transform[1] == 0 && FT.p.transform[4] == 0);
+    CHECK(FT.p.transfer[0] == 2.4f && FT.p.to_xyz[0] > 0.43f && FT.p.to_xyz[0] < 0.44f && FT.p.to_xyz[8] > 0.71f);
+    CHECK(FT.frames == 1 && FT.frame_id == 0x40000000 + id && FT.keyed && FT.fw == 128 && FT.fh == 64);
+    CHECK_HEX(FT.corner, 0xFF0000FF);
+    share = FT.share;
+    /* A smaller part: the same surface, cleared before Chromium draws again. */
+    drawn = mg_java_webview_draw_functor(id, 0, 0, 90, 40);
+    CHECK((u32)drawn == (u32)(0x40000000 + id) && (drawn >> 32 & 0xFFFF) == 128 && (drawn >> 48 & 0xFFFF) == 64);
+    CHECK(FT.syncs == 2 && FT.draws == 2 && FT.in_order && FT.frames == 2 && FT.share == share);
+    CHECK_HEX(FT.before, 0);
+    CHECK(FT.p.clip_right == 90 && FT.p.clip_bottom == 40 && FT.p.transform[12] == 0 && FT.p.transform[13] == 0);
+    /* Released: its last callbacks on the render thread, the context's first. */
+    ((void (*)(i32))table->release_functor)(id);
+    for (tries = 0; tries < 400 && !FT.gone; tries++) mg_sleep_ns(5000000ull);
+    CHECK(FT.gone == 1 && FT.context_gone == 1 && FT.gone_in_order && FT.gone_thread == FT.draw_thread);
+    for (tries = 0; tries < 100 && FT.let_go != 0x40000000 + id; tries++) mg_sleep_ns(5000000ull);
+    CHECK(FT.let_go == 0x40000000 + id);
+    /* Gone, it draws nothing. */
+    CHECK(mg_java_webview_draw_functor(id, 0, 0, 90, 40) == 0 && FT.draws == 2);
+end:
+    mg_java_webview_forget_egl();
+    mg_java_gl_set_shell(was);
+}
+
 int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
 {
     t_sink = sink;
@@ -1192,6 +1362,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_version();
     test_hardware_buffers();
     test_webview_display();
+    test_draw_functor();
     test_fence_syncs();
     test_doomed();
     test_turns();
