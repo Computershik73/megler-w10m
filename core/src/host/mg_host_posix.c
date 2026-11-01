@@ -46,6 +46,7 @@ static int prot_of(int prot)
     case MG_PROT_R: return PROT_READ;
     case MG_PROT_RW: return PROT_READ | PROT_WRITE;
     case MG_PROT_RX: return PROT_READ | PROT_EXEC;
+    case MG_PROT_RWX: return PROT_READ | PROT_WRITE | PROT_EXEC;
     default: return PROT_NONE;
     }
 }
@@ -139,6 +140,8 @@ bool mg_mem_commit(void *p, size_t size, int prot)
 {
     return mprotect(p, size, prot_of(prot)) == 0;
 }
+
+bool mg_mem_rwx(void) { return true; }
 
 bool mg_mem_protect(void *p, size_t size, int prot)
 {

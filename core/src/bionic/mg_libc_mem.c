@@ -192,9 +192,12 @@ static void g_delete_sized(void *p, size_t n) { (void)n; mg_g_free(p); }
  * Linux. Chromium moves everything between its browser and its renderer through such regions (Mojo's data pipes, which
  * carry a page's bytes), mapping one twice: with each mapping a copy of the region, the renderer read nothing of what the
  * network wrote, and every page the WebView loaded was empty. A region asked for as
- * writable and executable at once -- a JIT's code heap -- cannot exist on the
- * host, so it is writable until something executes in it and executable until
- * something writes to it: the fault handler flips the page (mg_mmap_fix_fault).
+ * writable and executable at once -- a JIT's code heap -- is so on the host where
+ * the phone allows it (mg_mem_rwx, the plain VirtualProtect; flag no-rwx: never),
+ * and V8's code, written while it runs, costs no fault. Where it does not, it is
+ * writable until something executes in it and executable until something writes
+ * to it: the fault handler flips the page (mg_mmap_fix_fault), a fault and a
+ * flip for every write after a run.
  * So are the pages of the app's own libraries it asks so of, to patch its code
  * (an inline hook: Instagram's libdistract rewrites a function of its
  * libc++_shared.so, and ended on the write while the page stayed executable).
@@ -460,6 +463,8 @@ static int host_prot(int prot)
 /* fd-backed mappings read the file through the io layer. */
 i32 mg_fd_pread(int fd, void *buf, u32 n, u64 offset);
 
+static bool rwx_on(void);
+
 static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, u64 offset)
 {
     size_t size = MG_ALIGN_UP(len, MG_PAGE), reserve = MG_ALIGN_UP(len, 65536);
@@ -607,10 +612,13 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
         }
     }
     if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {
+        bool rwx = rwx_on();
         mg_lock_acquire(&g_region_lock);
         r = region_of(p);
         if (r) r->wx = true;
+        rwx = rwx && r && !r->view;
         mg_lock_release(&g_region_lock);
+        if (rwx && mg_mem_protect(p, size, MG_PROT_RWX)) mg_icache_flush(p, size);
     } else if (host_prot(prot) != MG_PROT_RW && ((prot & 7) || !(flags & G_MAP_ANONYMOUS))) {
         mg_mem_protect(p, size, host_prot(prot));
         if (prot & G_PROT_EXEC) mg_icache_flush(p, size);
@@ -989,13 +997,17 @@ static int g_mprotect(void *addr, size_t len, int prot)
     }
     if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {
         region *r;
-        bool kept;
+        bool kept, rwx = rwx_on();
         mg_lock_acquire(&g_region_lock);
         r = region_of(p);
         if (r) r->wx = true;
         kept = r || wx_code_add(p, size);
+        /* (A library's pages, which an inline hook patches, are written and run by turns still: what the app writes into its
+           code is looked at as the page goes back to executable, for the traps it sets, wx_code_written.) */
+        rwx = rwx && r && !r->view;
         mg_lock_release(&g_region_lock);
         if (!kept) mg_note_once("mprotect: writable and executable at once, more library pages than are kept (%p); it stays as it is", addr);
+        else if (rwx && mg_mem_protect(p, size, MG_PROT_RWX)) mg_icache_flush(p, size);
         else mg_mem_protect(p, size, MG_PROT_RW);
         return 0;
     }
@@ -1085,10 +1097,25 @@ static bool now_accessible(const u8 *page, mg_addr address, bool write)
     return true;
 }
 
+/*
+ * Whether a region wanted writable and executable at once is made so on the host (mg_mem_rwx; the flag no-rwx: never).
+ * Found out by mmap and mprotect, which ask first; the fault handler only reads what they found (rwx_known): asking reads
+ * a flag file and, on Windows, runs a probe, neither of which a fault handler may do.
+ */
+static volatile i32 g_rwx = -1;
+
+static bool rwx_on(void)
+{
+    if (g_rwx < 0) g_rwx = mg_flag("no-rwx") ? 0 : mg_mem_rwx() ? 1 : 0;
+    return g_rwx > 0;
+}
+
+static bool rwx_known(void) { return g_rwx > 0; }
+
 static bool fix_fault(mg_addr address, bool write, bool exec)
 {
     region *r;
-    bool wx, back = false;
+    bool wx, rwx, back = false;
     u8 *page = (u8 *)MG_ALIGN_DOWN(address, (mg_addr)MG_PAGE);
     if (g_gone) {
         /* A page madvise gave back, touched: committed again, zero, with the others given back of its 64 KB. */
@@ -1142,11 +1169,19 @@ static bool fix_fault(mg_addr address, bool write, bool exec)
         }
     }
     if (!write && !exec) return false;
+    rwx = rwx_known();
     mg_lock_acquire(&g_region_lock);
     r = region_of((const void *)address);
     wx = r ? r->wx : wx_code_has(page);
+    rwx = rwx && r && !r->view;
     mg_lock_release(&g_region_lock);
     if (!wx) return false;
+    /* A page of a region that is writable and executable at once where the phone allows it, committed again (madvise) or
+       made otherwise since: so again, no flip from then on. */
+    if (rwx && mg_mem_protect(page, MG_PAGE, MG_PROT_RWX)) {
+        mg_icache_flush(page, MG_PAGE);
+        return true;
+    }
     if (exec) {
         if (!mg_mem_protect(page, MG_PAGE, MG_PROT_RX)) return false;
         mg_icache_flush(page, MG_PAGE);

@@ -25,12 +25,20 @@ extern "C" {
  *
  * Windows 10 Mobile lets a package with the codeGeneration capability turn
  * committed read-write pages into execute-read ones and back
- * (VirtualProtectFromApp). It never allows an executable commit or a page that
- * is writable and executable at once. So everything here is written with a
- * page writable and run with it executable: a library's text is copied in,
- * patched, and then flipped, once.
+ * (VirtualProtectFromApp). The FromApp functions never allow an executable
+ * commit or a page that is writable and executable at once. So everything here
+ * is written with a page writable and run with it executable: a library's text
+ * is copied in, patched, and then flipped, once. The plain VirtualProtect, in
+ * the phone's kernelbase like the others, does allow the latter where the
+ * phone does (mg_mem_rwx): MG_PROT_RWX.
  */
-enum { MG_PROT_NONE = 0, MG_PROT_R = 1, MG_PROT_RW = 3, MG_PROT_RX = 5 };
+enum { MG_PROT_NONE = 0, MG_PROT_R = 1, MG_PROT_RW = 3, MG_PROT_RX = 5, MG_PROT_RWX = 7 };
+
+/*
+ * Whether pages may be writable and executable at once (MG_PROT_RWX for mg_mem_protect): found out once, by making a page
+ * so, running code written to it, writing it again and running it again (Windows); always (POSIX).
+ */
+bool mg_mem_rwx(void);
 
 #define MG_PAGE 4096u
 

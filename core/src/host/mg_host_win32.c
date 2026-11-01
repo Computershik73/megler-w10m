@@ -49,8 +49,32 @@ static DWORD prot_of(int prot)
     case MG_PROT_R: return PAGE_READONLY;
     case MG_PROT_RW: return PAGE_READWRITE;
     case MG_PROT_RX: return PAGE_EXECUTE_READ;
+    case MG_PROT_RWX: return PAGE_EXECUTE_READWRITE;
     default: return PAGE_NOACCESS;
     }
+}
+
+/*
+ * The plain VirtualProtect, for pages writable and executable at once, which VirtualProtectFromApp refuses. It is in the
+ * phone's kernelbase, where VirtualProtectFromApp is; the SDK's headers leave it out of the app partition. Found by the
+ * address of VirtualProtectFromApp's module (venetium-w10m's finding, after Bashar Astifan's UWP2Win32: the kernel itself
+ * grants PAGE_EXECUTE_READWRITE on 15063 and 15254).
+ */
+typedef BOOL(WINAPI *fn_plain_protect)(LPVOID, SIZE_T, DWORD, PDWORD);
+static fn_plain_protect plain_protect(void)
+{
+    static fn_plain_protect fn;
+    static volatile LONG looked;
+    if (!InterlockedCompareExchange(&looked, 1, 0)) {
+#if MG_UWP
+        MEMORY_BASIC_INFORMATION info;
+        if (VirtualQuery((LPCVOID)(void *)&VirtualProtectFromApp, &info, sizeof(info)) == sizeof(info) && info.AllocationBase)
+            fn = (fn_plain_protect)(void *)GetProcAddress((HMODULE)info.AllocationBase, "VirtualProtect");
+#else
+        fn = VirtualProtect;
+#endif
+    }
+    return fn;
 }
 
 static void *valloc(void *p, size_t size, DWORD type, DWORD prot)
@@ -65,11 +89,103 @@ static void *valloc(void *p, size_t size, DWORD type, DWORD prot)
 static BOOL vprotect(void *p, size_t size, DWORD prot)
 {
     DWORD old = 0;
+    if (prot == PAGE_EXECUTE_READWRITE) {
+        fn_plain_protect fn = mg_mem_rwx() ? plain_protect() : NULL;
+        return fn ? fn(p, size, prot, &old) : FALSE;
+    }
 #if MG_UWP
     return VirtualProtectFromApp(p, size, prot, &old);
 #else
     return VirtualProtect(p, size, prot, &old);
 #endif
+}
+
+/*
+ * The probe of mg_mem_rwx: a page of `movs r0, #42; bx lr`, made writable and executable with the plain VirtualProtect, run;
+ * then written `movs r0, #7` while executable, and run again. A fault in the page while it runs (refused after all) returns
+ * to the caller with 0, through a handler of its own ahead of the host's.
+ */
+static volatile mg_addr g_probe_page;
+static volatile LONG g_probe_faulted;
+/* (Left out of the app partition by the SDK's headers, in the phone's kernelbase like any other: see below.) */
+WINBASEAPI PVOID WINAPI AddVectoredExceptionHandler(ULONG First, PVECTORED_EXCEPTION_HANDLER Handler);
+WINBASEAPI ULONG WINAPI RemoveVectoredExceptionHandler(PVOID Handle);
+
+static LONG CALLBACK probe_fault(EXCEPTION_POINTERS *info)
+{
+#if defined(_M_ARM)
+    CONTEXT *c = info->ContextRecord;
+    mg_addr page = g_probe_page;
+    if (!page || ((c->Pc & ~(DWORD)1) & ~(DWORD)(MG_PAGE - 1)) != page) return EXCEPTION_CONTINUE_SEARCH;
+    InterlockedExchange(&g_probe_faulted, 1);
+    c->R0 = 0;
+    c->Pc = c->Lr & ~(DWORD)1;
+    if (c->Lr & 1) c->Cpsr |= 0x20;
+    else c->Cpsr &= ~(DWORD)0x20;
+    c->Cpsr &= ~(DWORD)0x0600FC00;     /* no IT block */
+    return EXCEPTION_CONTINUE_EXECUTION;
+#else
+    (void)info;
+    return EXCEPTION_CONTINUE_SEARCH;
+#endif
+}
+
+static bool page_is_rwx(void *p)
+{
+    MEMORY_BASIC_INFORMATION info;
+    return VirtualQuery(p, &info, sizeof(info)) == sizeof(info) && (info.Protect & 0xFF) == PAGE_EXECUTE_READWRITE;
+}
+
+static int probe_rwx(void)
+{
+#if defined(_M_ARM)
+    fn_plain_protect fn = plain_protect();
+    volatile u16 *code;
+    void *page;
+    DWORD old = 0;
+    int first = 0, second = 0;
+    PVOID guard;
+    if (!fn) return 0;
+    page = valloc(NULL, MG_PAGE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (!page) return 0;
+    code = (volatile u16 *)page;
+    code[0] = 0x202a;                  /* movs r0, #42 */
+    code[1] = 0x4770;                  /* bx lr */
+    if (fn(page, MG_PAGE, PAGE_EXECUTE_READWRITE, &old) && page_is_rwx(page)) {
+        int (*run)(void) = (int (*)(void))((mg_addr)page | 1);
+        g_probe_faulted = 0;
+        g_probe_page = (mg_addr)page;
+        guard = AddVectoredExceptionHandler(1, probe_fault);
+        if (guard) {
+            FlushInstructionCache(GetCurrentProcess(), page, MG_PAGE);
+            first = run();
+            if (first == 42 && !g_probe_faulted && page_is_rwx(page)) {
+                code[0] = 0x2007;      /* movs r0, #7 */
+                FlushInstructionCache(GetCurrentProcess(), page, MG_PAGE);
+                second = run();
+            }
+            RemoveVectoredExceptionHandler(guard);
+        }
+        g_probe_page = 0;
+    }
+    VirtualFree(page, 0, MEM_RELEASE);
+    return first == 42 && second == 7 && !g_probe_faulted;
+#else
+    return plain_protect() != NULL;
+#endif
+}
+
+bool mg_mem_rwx(void)
+{
+    static volatile LONG known = -1;
+    LONG k = known;
+    if (k < 0) {
+        k = probe_rwx() ? 1 : 0;
+        InterlockedExchange(&known, k);
+        mg_info("host: pages %s be writable and executable at once%s", k ? "may" : "may not",
+                k ? " (the plain VirtualProtect): code written while it runs needs no flipping" : ": code is written and run by turns");
+    }
+    return k > 0;
 }
 
 void *mg_mem_reserve(size_t size)
@@ -252,6 +368,7 @@ bool mg_mem_page_state(const void *p, bool *committed, int *prot)
     case PAGE_READONLY: *prot = MG_PROT_R; break;
     case PAGE_READWRITE: *prot = MG_PROT_RW; break;
     case PAGE_EXECUTE_READ: *prot = MG_PROT_RX; break;
+    case PAGE_EXECUTE_READWRITE: *prot = MG_PROT_RWX; break;
     default: *prot = -1; break;
     }
     return true;
