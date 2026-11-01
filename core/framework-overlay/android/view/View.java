@@ -392,7 +392,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public android.os.IBinder getWindowToken() { return mRoot == null ? null : mRoot.token(); }
     public android.os.IBinder getApplicationWindowToken() { return getWindowToken(); }
     public Display getDisplay() { return mRoot == null ? null : ((WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay(); }
-    public WindowId getWindowId() { return null; }
+    /* Megler: the window's, while the view is attached to one (megler.ViewRoot.windowId); null otherwise, as on Android. */
+    public WindowId getWindowId() { return mRoot == null ? null : mRoot.windowId(); }
     public ViewTreeObserver getViewTreeObserver() {
         if (mRoot != null) return mRoot.observer();
         if (mFloatingObserver == null) mFloatingObserver = new ViewTreeObserver();

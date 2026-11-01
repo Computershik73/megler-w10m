@@ -295,6 +295,16 @@ public final class ViewRoot implements ViewParent {
     public ViewTreeObserver observer() { return mObserver; }
     public Handler handler() { return mainHandler(); }
     public android.os.IBinder token() { return mToken; }
+    /*
+     * The window's WindowId (View.getWindowId): one for the window, so that two views of it have equal ones, as Android's
+     * equal by the window's token. Null was what every view had, and Spotify's main layout, comparing its now-playing view's
+     * with its own (getWindowId().equals), ended the app at its start (package 551).
+     */
+    private android.view.WindowId mWindowId;
+    public android.view.WindowId windowId() {
+        if (mWindowId == null) mWindowId = new android.view.WindowId(mToken);
+        return mWindowId;
+    }
     public View focused() { return mFocused; }
     public void setFocused(View v) {
         View old = mFocused;
