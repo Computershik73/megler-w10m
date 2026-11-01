@@ -2424,6 +2424,9 @@ static int run_data(void)
            of writeToParcel, which no prefix of trace-calls names. */
         CHECK(find_line("calls: every call made inside a method of a class whose name starts with android/media/session/PlaybackState is said", 0) >= 0
               && find_line(": android/os/Parcel.writeLong(J)V", find_line("android/media/session/PlaybackState.writeToParcel(Landroid/os/Parcel;I)V", 0)) >= 0);
+        /* An int argument is said too: the state the step sets, STATE_PLAYING (3). */
+        CHECK(find_line("PlaybackState$Builder.setState(IJFJ)Landroid/media/session/PlaybackState$Builder; 3", 0) >= 0
+              || find_line("PlaybackState$Builder.setState(IJFJ)Landroid/media/session/PlaybackState$Builder; (compiled) 3", 0) >= 0);
     }
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);

@@ -78,7 +78,8 @@ static MG_NOINLINE mg_dvm_frame *stack_full(mg_dvm_thread *t, mg_dvm_method *m, 
  * of a method of a class whose name starts with one of the prefixes is said in the log, with its thread and depth, and so
  * is its return, with the value it returns, or the exception it ends with. What an app does between two things it logs,
  * when it logs nothing in between: VK mp3 mod's sign-in thread ended with no exception and nothing after it ran. A String
- * among the arguments of a call from the interpreter, or returned, is said too, its first 80 characters (call_trace_text):
+ * among the arguments of a call from the interpreter, or returned, is said too, its first 80 characters (call_trace_text), and
+ * so are its int and boolean arguments and a String[] it returns, the first four:
  * GmsCore's sign-in ended in "Unknown" for an error its server answered with, which it says nowhere. Classes are looked
  * at once each (mg_dvm_class.call_traced). At most 8000 lines a run.
  *
@@ -155,7 +156,8 @@ static void call_trace_text(mg_jobj *s, char *out, size_t size)
     out[k] = 0;
 }
 
-/* The String arguments of a call (argv: its registers, the object first for one not static), said after its name. */
+/* The String, int and boolean arguments of a call (argv: its registers, the object first for one not static), said after
+   its name: the uid a package is asked for, the flags of a query, as well as the names. */
 static void call_trace_strings(const mg_dvm_method *m, const mg_dvm_reg *argv, u32 argc, char *out, size_t size)
 {
     const char *p = m->sig + 1;
@@ -170,9 +172,30 @@ static void call_trace_strings(const mg_dvm_method *m, const mg_dvm_reg *argv, u
             out[k++] = ' ';
             call_trace_text((mg_jobj *)argv[r], out + k, size - k);
             k += strlen(out + k);
+        } else if (p - start == 1 && (*start == 'I' || *start == 'S' || *start == 'B')) {
+            k += (size_t)snprintf(out + k, size - k, " %d", (int)(i32)argv[r]);
+        } else if (p - start == 1 && *start == 'Z') {
+            k += (size_t)snprintf(out + k, size - k, " %s", argv[r] ? "true" : "false");
         }
         r += (*start == 'J' || *start == 'D') ? 2 : 1;
     }
+}
+
+/* A String[] a traced call returned, as said: its first four, in brackets (the packages of a uid). */
+static void call_trace_texts(mg_jobj *a, char *out, size_t size)
+{
+    i32 n = mg_dvm_array_length(a), i;
+    size_t k = 0;
+    out[k++] = '[';
+    for (i = 0; i < n && i < 4 && k + 100 < size; i++) {
+        if (i) { out[k++] = ','; out[k++] = ' '; }
+        if (a->u.oarr.v[i]) call_trace_text(a->u.oarr.v[i], out + k, size - k);
+        else mg_strlcpy(out + k, "null", size - k);
+        k += strlen(out + k);
+    }
+    if (i < n) k += (size_t)snprintf(out + k, size - k, ", ... %d in all", (int)n);
+    out[k++] = ']';
+    out[k] = 0;
 }
 
 /*
@@ -226,6 +249,12 @@ static void call_trace_return(mg_dvm_thread *t, mg_dvm_method *m, const mg_jvalu
             char text[100];
             call_trace_text(v->l, text, sizeof(text));
             mg_info("calls: thread %u depth %d: %s.%s returns %s", (unsigned)t->id, t->depth, m->cls->name, m->name, text);
+            break;
+        }
+        if (v->l && v->l->kind == MG_J_OBJ_ARRAY && !strcmp(r + 1, "[Ljava/lang/String;")) {
+            char texts[480];
+            call_trace_texts(v->l, texts, sizeof(texts));
+            mg_info("calls: thread %u depth %d: %s.%s returns %s", (unsigned)t->id, t->depth, m->cls->name, m->name, texts);
             break;
         }
         mg_info("calls: thread %u depth %d: %s.%s returns %s", (unsigned)t->id, t->depth, m->cls->name, m->name, v->l ? mg_dvm_class_of(v->l)->name : "null");
