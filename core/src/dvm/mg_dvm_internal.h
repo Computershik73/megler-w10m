@@ -329,7 +329,8 @@ struct mg_dvm_thread {
     mg_jobj *traced;                   /* the last exception the flag trace-exceptions said (find_handler) */
     u32 id;
     int depth;                         /* frames */
-    int call_within;                   /* the depth of the frame of a method under trace-calls-within-<prefix> that runs (mg_dvm_interp.c), 0 none */
+    int call_within[8];                /* the depths of the frames of methods under trace-calls-within-<prefix> that run, the nearest last (mg_dvm_interp.c) */
+    u32 ncall_within;
     int c_depth;                       /* calls from C into the interpreter, nested */
     mg_addr c_stack_low;               /* the host's stack must not be used below here; 0 when the host could not say */
     mg_addr c_stack_min;               /* the lowest the host's stack pointer has been (mg_dvm_invoke, invoke_native): its deepest use */

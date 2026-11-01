@@ -83,11 +83,13 @@ static MG_NOINLINE mg_dvm_frame *stack_full(mg_dvm_thread *t, mg_dvm_method *m, 
  * GmsCore's sign-in ended in "Unknown" for an error its server answered with, which it says nowhere. Classes are looked
  * at once each (mg_dvm_class.call_traced). At most 8000 lines a run.
  *
- * And trace-calls-within-<prefix>: every call made while a method of such a class runs, whatever the callee's class, and
- * its return -- what a method asks of the framework and is told, when tracing the framework's class would spend the 8000
- * lines long before: Google Play services' check of a consent screen's service refused Instagram a token for "a different
- * signature", and it was not known whose (package 564). The thread keeps the depth of that method's frame
- * (mg_dvm_thread.call_within) and forgets it once the stack is shallower, whether or not its end was seen.
+ * And trace-calls-within-<prefix>: every call made while a method of such a class runs, whatever the callee's class, up to
+ * three frames below the nearest such method, and its return -- what a method asks of the framework and is told, when
+ * tracing the framework's class would spend the 8000 lines long before: Google Play services' check of a consent screen's
+ * service refused Instagram a token for "a different signature", and it was not known whose (package 564). Deeper ones
+ * are not said: the checks' own logging and a walk of the phone's apps spent the lines before the check (package 565).
+ * The thread keeps the depths of those methods' frames (mg_dvm_thread.call_within) and forgets one once the stack is
+ * shallower, whether or not its end was seen.
  */
 static volatile bool g_call_trace;
 static char g_call_prefixes[8][160], g_within_prefixes[8][160];
@@ -133,12 +135,13 @@ static u8 call_flags(mg_dvm_class *c)
     return c->call_traced;
 }
 
-/* Whether a call (or its end) is said: of a traced class, or made inside a method under trace-calls-within- that runs. */
+/* Whether a call (or its end) is said: of a traced class, or made inside a method under trace-calls-within- that runs, at
+   most three frames below it. */
 static bool call_traced(mg_dvm_thread *t, mg_dvm_method *m)
 {
     bool inside;
-    if (t->call_within && t->depth < t->call_within) t->call_within = 0;   /* that method's frame went */
-    inside = t->call_within && t->depth > t->call_within;
+    while (t->ncall_within && t->depth < t->call_within[t->ncall_within - 1]) t->ncall_within--;   /* those frames went */
+    inside = t->ncall_within && t->depth > t->call_within[t->ncall_within - 1] && t->depth <= t->call_within[t->ncall_within - 1] + 3;
     return ((call_flags(m->cls) & 2) || inside) && mg_atomic_add(&g_call_lines, 1) <= 8000;
 }
 
@@ -227,13 +230,14 @@ static void call_trace_enter(mg_dvm_thread *t, mg_dvm_method *m, const char *how
         if (argv) call_trace_strings(m, argv, argc, strings, sizeof(strings));
         mg_info("calls: thread %u depth %d: %s.%s%s%s%s", (unsigned)t->id, t->depth, m->cls->name, m->name, m->sig, how, strings);
     }
-    if (within && !t->call_within) t->call_within = t->depth;
+    if (within && t->ncall_within < MG_COUNT(t->call_within) && (!t->ncall_within || t->call_within[t->ncall_within - 1] < t->depth))
+        t->call_within[t->ncall_within++] = t->depth;
 }
 
 /* A method under trace-calls-within- ended: the calls after it are not inside it. */
 static void call_trace_left(mg_dvm_thread *t, mg_dvm_method *m)
 {
-    if (t->call_within && t->depth == t->call_within && (call_flags(m->cls) & 4)) t->call_within = 0;
+    if (t->ncall_within && t->depth == t->call_within[t->ncall_within - 1] && (call_flags(m->cls) & 4)) t->ncall_within--;
 }
 
 static void call_trace_return(mg_dvm_thread *t, mg_dvm_method *m, const mg_jvalue *v)
