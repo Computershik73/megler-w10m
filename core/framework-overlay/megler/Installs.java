@@ -176,6 +176,13 @@ public final class Installs {
         for (File f : files) if (f.getName().equalsIgnoreCase("base.apk")) base = f;
         android.content.pm.PackageInfo apk = base != null ? ArchiveInfo.read(base.getPath()) : null;
         String pkg = s.packageName != null ? s.packageName : apk != null ? apk.packageName : null;
+        // A phone maker's list of apps to install at setup (Play Store's restore of "android.autoinstalls.config.google.nexus"):
+        // nothing an app on this phone needs, and the user is not asked about it; Play Store goes on without it.
+        if (pkg != null && pkg.startsWith("android.autoinstalls.config.")) {
+            android.util.Log.i("Megler", "install: session " + id + " for " + pkg + ", a phone maker's list of apps for setup, not installed");
+            finish(s, status, pkg, 3 /* STATUS_FAILURE_ABORTED */, "not for this phone");
+            return;
+        }
         long want = apk != null ? apk.versionCode & 0xffffffffL : -1;
         String name = (pkg != null ? pkg : "app") + (files.length > 1 ? ".apks" : ".apk");
         // what there is before Megler has it: the app at its version, if the phone has it, and what Megler last told of the name
