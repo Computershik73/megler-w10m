@@ -386,7 +386,7 @@ public class PackageInstaller {
         public boolean isMultiPackage() { return (meglerProps.get("MultiPackage") instanceof Boolean ? (Boolean) meglerProps.get("MultiPackage") : false); }
         public boolean isRequestUpdateOwnership() { return (meglerProps.get("RequestUpdateOwnership") instanceof Boolean ? (Boolean) meglerProps.get("RequestUpdateOwnership") : false); }
         public boolean isStaged() { return (meglerProps.get("Staged") instanceof Boolean ? (Boolean) meglerProps.get("Staged") : false); }
-        public java.io.InputStream openRead(java.lang.String p0) { return null; }
+        public java.io.InputStream openRead(java.lang.String p0) throws java.io.IOException { return megler.Installs.openRead(meglerId, p0); }
         public java.io.OutputStream openWrite(java.lang.String p0, long p1, long p2) throws java.io.IOException { return megler.Installs.openWrite(meglerId, p0); }
         public void removeChildSessionId(int p0) {}
         public void removeFile(int p0, java.lang.String p1) {}

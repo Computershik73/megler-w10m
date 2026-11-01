@@ -104,6 +104,13 @@ public final class Installs {
         final File dir;
         final String packageName;
         boolean committed;
+        /*
+         * The names the app wrote its files under (openWrite), and the file each is in the folder: getNames gives the names
+         * back as they were written, as Android's does. Play Store checks them against the artifacts it wrote
+         * ("config.armeabi_v7a"), and its every install ended "Session doesn't contain resources of required artifacts"
+         * (status 6573) while the folder's names, an .apk added, were given (package 554).
+         */
+        final java.util.LinkedHashMap<String, String> written = new java.util.LinkedHashMap<>();
         Session(int id, File dir, String packageName) { this.id = id; this.dir = dir; this.packageName = packageName; }
         public int id() { return id; }
         public String packageName() { return packageName; }
@@ -134,13 +141,28 @@ public final class Installs {
         String file = name.replace('/', '_').replace('\\', '_');
         String lower = file.toLowerCase(java.util.Locale.ROOT);
         if (!lower.endsWith(".apk") && !lower.endsWith(".dm")) file += ".apk";
+        synchronized (s.written) { s.written.put(name, file); }
         return new FileOutputStream(new File(s.dir, file));
     }
 
     public static String[] names(int id) {
         Session s = session(id);
-        String[] list = s == null ? null : s.dir.list();
+        if (s == null) return new String[0];
+        synchronized (s.written) {
+            if (!s.written.isEmpty()) return s.written.keySet().toArray(new String[0]);
+        }
+        String[] list = s.dir.list();
         return list != null ? list : new String[0];
+    }
+
+    /** A file the app wrote into the session, by the name it wrote it under (Session.openRead); null when there is none. */
+    public static java.io.InputStream openRead(int id, String name) throws java.io.IOException {
+        Session s = session(id);
+        if (s == null || name == null) return null;
+        String file;
+        synchronized (s.written) { file = s.written.get(name); }
+        File f = new File(s.dir, file != null ? file : name.replace('/', '_').replace('\\', '_'));
+        return f.isFile() ? new java.io.FileInputStream(f) : null;
     }
 
     /** The session's files to Megler: one APK, or the folder of one app's; then, once it has an outcome, that to `status`. */
