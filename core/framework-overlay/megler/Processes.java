@@ -54,7 +54,13 @@ public final class Processes {
      */
     private static volatile Scope[] sNamed = new Scope[0];
 
-    /** The name of the process whose scope class loader `l` is (or is under); null for the app's own process. */
+    /**
+     * The name of the process whose scope class loader `l` is (or is under); null for the app's own process. The framework
+     * asks it of the closest of the app's classes up the stack (VMStack.getClosestUserClassLoader): Play Store asks
+     * ActivityThread.currentProcessName through reflection, whose caller is the boot class path's Method.invoke, and its
+     * background process's Application was told the main process's name and built that process's graph of services
+     * ("Cannot cast sum to rqc", package 552).
+     */
     public static String nameOf(ClassLoader l) {
         Scope[] named = sNamed;
         if (l == null || named.length == 0) return null;

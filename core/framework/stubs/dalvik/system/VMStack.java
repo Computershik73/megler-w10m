@@ -5,4 +5,6 @@ public final class VMStack {
     private VMStack() {}
     /** The class loader of the class whose method called the method that calls this. */
     public static native ClassLoader getCallingClassLoader();
+    /** The first class loader up the stack that is not the boot class path's (the framework's, the reflection's). */
+    public static native ClassLoader getClosestUserClassLoader();
 }

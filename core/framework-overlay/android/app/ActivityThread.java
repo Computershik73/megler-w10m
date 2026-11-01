@@ -14,7 +14,7 @@ public final class ActivityThread {
     public static String currentOpPackageName() { return currentPackageName(); }
     /* As Application.getProcessName (overlaid): the process of the code that asks, a class scope's for code of one. */
     public static String currentProcessName() {
-        String scoped = megler.Processes.nameOf(dalvik.system.VMStack.getCallingClassLoader());
+        String scoped = megler.Processes.nameOf(dalvik.system.VMStack.getClosestUserClassLoader());
         return scoped != null ? scoped : currentPackageName();
     }
     public static boolean isSystem() { return false; }
