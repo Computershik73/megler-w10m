@@ -409,12 +409,12 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     public void setClipChildren(boolean c) { mClipChildren = c; invalidate(); }
     /*
      * A descendant's drawing changed though it invalidated nothing: Compose's graphics layers change their properties -- an
-     * alpha, a translation, a scale -- and tell the view's parent so (RenderNodeLayer.triggerRepaint). Here a canvas says
-     * it is not hardware accelerated, as Android's software rendering does, and Compose then draws its layers into the
-     * view's own list with their properties as they are when it is recorded: so the view's list is recorded again, as
-     * Android's software rendering draws the view again. The original's ViewParent did nothing, and what Compose faded in,
-     * moved or scrolled stayed on the screen as it had been: Spotify's screens stayed empty or drawn in part (packages 544
-     * and 545, where only the place on the screen was drawn again, from the list as it was).
+     * alpha, a translation, a scale -- and tell the view's parent so (RenderNodeLayer.triggerRepaint). A layer drawn as a
+     * RenderNode of its own (the view hardware accelerated) is drawn with its properties as they are; one Compose drew on a
+     * canvas that is not (a bitmap's, or with the flag no-view-lists) has them in the view's list. The view's list is
+     * recorded again either way: little for Compose, whose layers it draws by reference. The original's ViewParent did
+     * nothing, and what Compose faded in, moved or scrolled stayed on the screen as it had been: Spotify's screens stayed
+     * empty or drawn in part (packages 544 and 545, where only the place on the screen was drawn again).
      */
     @Override public void onDescendantInvalidated(View child, View target) {
         View v = target != null ? target : child;

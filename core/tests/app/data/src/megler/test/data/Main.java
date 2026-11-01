@@ -603,6 +603,41 @@ public class Main extends Activity {
             return answered && "high;low;".equals(order.toString()) && Integer.valueOf(42).equals(got[0]) && "ab".equals(got[1])
                 && Boolean.TRUE.equals(got[2]) && Boolean.TRUE.equals(got[3]);
         });
+        // Views attached to the window are hardware accelerated, as Android's are, and draw on a canvas that says so (their
+        // display list's), as Compose asks before it keeps its graphics layers as RenderNodes; a SurfaceView, which has no
+        // list of its own, draws on one that does not say so, as a WebView does; a view not attached, and a bitmap's canvas,
+        // are not.
+        step("hardware-accelerated", () -> {
+            final boolean[] seen = new boolean[3];
+            android.widget.FrameLayout group = new android.widget.FrameLayout(this);
+            android.view.View plain = new android.view.View(this) {
+                @Override protected void onDraw(android.graphics.Canvas c) { seen[0] = true; seen[1] = c.isHardwareAccelerated(); }
+            };
+            android.view.SurfaceView surface = new android.view.SurfaceView(this) {
+                @Override public void draw(android.graphics.Canvas c) { seen[2] = c.isHardwareAccelerated(); super.draw(c); }
+            };
+            boolean detached = plain.isHardwareAccelerated();
+            group.addView(plain, new android.widget.FrameLayout.LayoutParams(40, 40));
+            group.addView(surface, new android.widget.FrameLayout.LayoutParams(40, 40));
+            ((android.view.ViewGroup) text.getParent()).addView(group, new android.view.ViewGroup.LayoutParams(80, 80));
+            // (As on Android, a view is hardware accelerated once its window is attached: here the steps run before it is.)
+            boolean window = text.isAttachedToWindow();
+            boolean attached = plain.isHardwareAccelerated(), surfaceAttached = surface.isHardwareAccelerated();
+            group.measure(android.view.View.MeasureSpec.makeMeasureSpec(80, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(80, android.view.View.MeasureSpec.EXACTLY));
+            group.layout(0, 0, 80, 80);
+            seen[2] = true;
+            // (Drawn into a list as its parent's list would draw it: the SurfaceView draws into that list's canvas itself.)
+            android.graphics.RenderNode node = new android.graphics.RenderNode("hardware-accelerated");
+            node.setPosition(0, 0, 80, 80);
+            android.graphics.RecordingCanvas rc = node.beginRecording();
+            group.draw(rc);
+            node.endRecording();
+            android.graphics.Canvas bc = new android.graphics.Canvas(android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888));
+            ((android.view.ViewGroup) group.getParent()).removeView(group);
+            detail = "detached=" + detached + " attached=" + attached + " window=" + window + " drawn=" + seen[0] + " canvas=" + seen[1] + " surface=" + surfaceAttached + "/" + seen[2]
+                + " bitmap=" + bc.isHardwareAccelerated();
+            return !detached && attached == window && seen[0] && seen[1] && !surfaceAttached && !seen[2] && !bc.isHardwareAccelerated() && rc.isHardwareAccelerated();
+        });
         // An image matrix set before the view is laid out, then the scale type made MATRIX, as Material's FloatingActionButton
         // does as it is made: once laid out, the view draws by that matrix.
         step("image-matrix-before-layout", () -> {

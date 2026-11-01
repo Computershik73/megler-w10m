@@ -510,7 +510,15 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public boolean isDuplicateParentStateEnabled() { return (mPrivateFlags & PFLAG_DUPLICATE_PARENT_STATE) != 0; }
     public void setDuplicateParentStateEnabled(boolean e) { if (e) mPrivateFlags |= PFLAG_DUPLICATE_PARENT_STATE; else mPrivateFlags &= ~PFLAG_DUPLICATE_PARENT_STATE; }
     public boolean isInEditMode() { return false; }
-    public boolean isHardwareAccelerated() { return false; }
+    /*
+     * Hardware accelerated as Android's views are, attached to a window: each draws through a display list of its own, which
+     * the core plays on the graphics processor (the shell's Direct2D), with the properties of the RenderNodes in it as they
+     * are then. Compose then keeps each graphics layer as a RenderNode of its own, whose alpha, translation and scale change
+     * without its content being drawn again; it drew every layer's content into its view's list each time otherwise, its
+     * layers' properties with it. A view without a list (a WebView, a SurfaceView, a TextureView), and every view with the
+     * flag no-view-lists, is not.
+     */
+    public boolean isHardwareAccelerated() { return mRoot != null && meglerListable() && meglerListsOn(); }
     public boolean isInTouchMode() { return true; }
     public boolean isSaveEnabled() { return (mPrivateFlags & PFLAG_SAVE_DISABLED) == 0; }
     public void setSaveEnabled(boolean e) { if (e) mPrivateFlags &= ~PFLAG_SAVE_DISABLED; else mPrivateFlags |= PFLAG_SAVE_DISABLED; }
@@ -1174,10 +1182,14 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         c.translate(-mScrollX, -mScrollY);
         megler.ViewRoot.ScreenCanvas screen = c instanceof megler.ViewRoot.ScreenCanvas ? (megler.ViewRoot.ScreenCanvas) c : null;
         long was = screen != null ? screen.meglerViewSize(w, h) : 0;
+        // A view without a list of its own drawing into its parent's: that canvas is not hardware accelerated for it.
+        android.graphics.RecordingCanvas soft = !meglerListable() && c instanceof android.graphics.RecordingCanvas ? (android.graphics.RecordingCanvas) c : null;
+        boolean wasSoft = soft != null && soft.meglerSoftware(true);
         try {
             draw(c);
         } finally {
             if (screen != null) screen.meglerViewSizeBack(was);
+            if (soft != null) soft.meglerSoftware(wasSoft);
         }
         c.restoreToCount(save);
     }

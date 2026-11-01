@@ -1,16 +1,22 @@
 // Overlay of core/framework/src/android/graphics/RecordingCanvas.java (tools/build-framework.sh).
 // It differs in its constructor: a RenderNode's canvas is over the core's recording canvas (megler.Gfx.cvRecord), which writes
-// down what it is given, and not over a bitmap of the node's size (android/graphics/RenderNode.java says why). Everything
-// else is the original's.
+// down what it is given, and not over a bitmap of the node's size (android/graphics/RenderNode.java says why). And it is
+// hardware accelerated, as Android's is, a view's list's too, but while a view that has no list of its own (a WebView, a
+// SurfaceView, a TextureView) draws into it (meglerSoftware): Chromium's WebView draws its page into a bitmap only where its
+// canvas is not (WebViewDelegate). Everything else is the original's.
 package android.graphics;
 
 public final class RecordingCanvas extends BaseRecordingCanvas {
     public static final int MAX_BITMAP_SIZE = 100 * 1024 * 1024;
     public RenderNode mNode;
-    /* Megler: a view's own list (RenderNode.meglerBeginViewRecording), which says what the screen's canvas says it is. */
+    /* Megler: a view's own list (RenderNode.meglerBeginViewRecording). */
     boolean mMeglerView;
+    /* Megler: a view without a list of its own draws into this one now (View.drawFromParent): not hardware accelerated for it. */
+    private boolean mMeglerSoftware;
     RecordingCanvas(RenderNode node, long recording, int width, int height) { super(recording, width, height); mNode = node; }
-    @Override public boolean isHardwareAccelerated() { return !mMeglerView; }
+    @Override public boolean isHardwareAccelerated() { return !mMeglerSoftware; }
+    /** Megler: whether the canvas says it is not hardware accelerated from now on; what it said before. */
+    public boolean meglerSoftware(boolean on) { boolean was = mMeglerSoftware; mMeglerSoftware = on; return was; }
     public boolean isRecordingFor(Object o) { return o == mNode; }
     public void enableZ() {}
     public void disableZ() {}

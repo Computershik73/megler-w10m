@@ -23,8 +23,9 @@
 //    --webview-sandboxed-renderer switch and its library runs the renderer on threads of the app's process
 //    (AwMainDelegate's --single-process), as WebView did before Android 8. Its GPU work is in-process in any case.
 //  - drawWebViewFunctor and the GL functor calls refuse, as AOSP's do for a canvas that is not a RecordingCanvas: no canvas
-//    here is hardware-accelerated, and the WebView draws in software (AwContents.onDraw with isHardwareAccelerated false:
-//    the page into a bitmap that is drawn into the view's canvas).
+//    a WebView draws into here says it is hardware-accelerated (View.drawFromParent, RecordingCanvas.meglerSoftware), and
+//    the WebView draws in software (AwContents.onDraw with isHardwareAccelerated false: the page into a bitmap that is
+//    drawn into the view's canvas).
 //  - addWebViewAssetPath adds the WebView APK to the app's AssetManager as a shared library (AssetManager's overlay), where
 //    AOSP's goes through LoadedApk and ResourcesManager, which this framework does not have.
 //  - tracing is never on (no atrace here).

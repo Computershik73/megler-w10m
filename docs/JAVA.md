@@ -4909,6 +4909,21 @@ on a looper thread of its own and takes it back with `next()`.
   camera. The camera test app's frame logs the size its canvas says, which
   the test wants to be the frame's, and the test finds its bottom corners
   white.
+  And now each view does draw into a display list of its own (a RenderNode's,
+  which the core plays on the graphics processor), and is hardware
+  accelerated as Android's are: `View.isHardwareAccelerated()` is true for a
+  view attached to a window, and so is `isHardwareAccelerated()` of the canvas
+  its list is recorded on. Compose then keeps each graphics layer as a
+  RenderNode whose alpha, translation and scale change without its content
+  being drawn again; on a canvas that said it was not, it drew every layer's
+  content into its view's list, the layer's properties with it, and a fade or
+  a scroll that only changed those left Spotify's screens black. A view
+  without a list of its own (a WebView, a SurfaceView, a TextureView) draws
+  on a canvas that says it is not (`RecordingCanvas.meglerSoftware`):
+  Chromium's WebView draws its page into a bitmap only then. The flag
+  `no-view-lists` turns both off. The data app's step
+  "hardware-accelerated" checks the view, its list's canvas, a SurfaceView's
+  and a bitmap's.
 - `megler/KeyStoreProvider.java`, one method, and Megler's circumstance
   rather than a fault of the framework's own: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because
