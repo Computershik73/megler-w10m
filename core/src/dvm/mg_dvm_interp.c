@@ -887,7 +887,8 @@ static int null_register(const u16 *insns, u32 pc, const char **what)
     return -1;
 }
 
-static void null_origin(const mg_dvm_method *m, u32 pc, int reg, char *out, size_t n)
+/* Where the null came from, said in out; the slot of the arguments it came in (`this` 0 for a method that has one), or -1. */
+static int null_origin(const mg_dvm_method *m, u32 pc, int reg, char *out, size_t n)
 {
     const mg_dvm_dex *d = m->cls->dex;
     const char *cls = NULL, *name;
@@ -917,13 +918,13 @@ static void null_origin(const mg_dvm_method *m, u32 pc, int reg, char *out, size
         }
         if (last == ~0u) {
             if (want >= (int)m->regs - (int)m->ins) {
-                int k = want - ((int)m->regs - (int)m->ins) - ((m->flags & DVM_ACC_STATIC) ? 0 : 1);
+                int slot = want - ((int)m->regs - (int)m->ins), k = slot - ((m->flags & DVM_ACC_STATIC) ? 0 : 1);
                 if (k < 0) snprintf(out, n, "v%d, `this`", want);
                 else snprintf(out, n, "v%d, the method's parameter in register %d of its own", want, k);
-            } else {
-                snprintf(out, n, "v%d, not given a value before it in the method's order (a branch)", want);
+                return slot;
             }
-            return;
+            snprintf(out, n, "v%d, not given a value before it in the method's order (a branch)", want);
+            return -1;
         }
         {
             u16 w = m->insns[last];
@@ -939,27 +940,28 @@ static void null_origin(const mg_dvm_method *m, u32 pc, int reg, char *out, size
                     if ((iop >= 0x6e && iop <= 0x72) || (iop >= 0x74 && iop <= 0x78)) {
                         name = dex_name_of(d, d->meth_off, d->nmeth, m->insns[prev_of_last + 1], &cls);
                         snprintf(out, n, "v%d, the result of %s.%s at pc %u", reg, cls ? cls : "?", name ? name : "?", (unsigned)prev_of_last);
-                        return;
+                        return -1;
                     }
                 }
                 snprintf(out, n, "v%d, a result at pc %u", reg, (unsigned)last);
-                return;
+                return -1;
             case 0x54:
                 name = dex_name_of(d, d->field_off, d->nfield, m->insns[last + 1], &cls);
                 snprintf(out, n, "v%d, the field %s.%s at pc %u", reg, cls ? cls : "?", name ? name : "?", (unsigned)last);
-                return;
+                return -1;
             case 0x62:
                 name = dex_name_of(d, d->field_off, d->nfield, m->insns[last + 1], &cls);
                 snprintf(out, n, "v%d, the static field %s.%s at pc %u", reg, cls ? cls : "?", name ? name : "?", (unsigned)last);
-                return;
-            case 0x46: snprintf(out, n, "v%d, an array's element at pc %u", reg, (unsigned)last); return;
-            case 0x12: case 0x13: case 0x14: case 0x15: snprintf(out, n, "v%d, the constant null at pc %u", reg, (unsigned)last); return;
-            case 0x0d: snprintf(out, n, "v%d, a caught exception at pc %u", reg, (unsigned)last); return;
-            default: snprintf(out, n, "v%d, set at pc %u by %s", reg, (unsigned)last, mg_dvm_insn_name(w)); return;
+                return -1;
+            case 0x46: snprintf(out, n, "v%d, an array's element at pc %u", reg, (unsigned)last); return -1;
+            case 0x12: case 0x13: case 0x14: case 0x15: snprintf(out, n, "v%d, the constant null at pc %u", reg, (unsigned)last); return -1;
+            case 0x0d: snprintf(out, n, "v%d, a caught exception at pc %u", reg, (unsigned)last); return -1;
+            default: snprintf(out, n, "v%d, set at pc %u by %s", reg, (unsigned)last, mg_dvm_insn_name(w)); return -1;
             }
         }
     }
     snprintf(out, n, "v%d, through more moves than are followed", reg);
+    return -1;
 }
 
 static MG_THREAD_LOCAL mg_jobj *t_null_traced;
@@ -967,13 +969,14 @@ static MG_THREAD_LOCAL mg_jobj *t_null_traced;
 static struct { const mg_dvm_method *m; u32 pc; } g_null_sites[320];
 static volatile i32 g_null_nsites;
 
-static void trace_null(mg_dvm_method *m, u32 pc, mg_jobj *e)
+static void trace_null(mg_dvm_thread *t, mg_dvm_method *m, u32 pc, mg_jobj *e)
 {
     static int wanted = -1;
     static volatile i32 said;
     const char *what = NULL;
     char where[400];
-    int reg;
+    int reg, slot, depth;
+    mg_dvm_frame *f;
     if (wanted < 0) wanted = mg_flag("trace-nulls") ? 1 : 0;
     if (!wanted || e == t_null_traced) return;
     t_null_traced = e;
@@ -990,8 +993,32 @@ static void trace_null(mg_dvm_method *m, u32 pc, mg_jobj *e)
         g_null_sites[k].pc = pc;
         mg_atomic_xchg(&g_null_nsites, k + 1 > nsites ? k + 1 : nsites);
     }
-    null_origin(m, pc, reg, where, sizeof(where));
+    slot = null_origin(m, pc, reg, where, sizeof(where));
     mg_info("dvm: null in %s.%s line %d (pc %u): %s was null; it was %s", m->cls->name, m->name, mg_dvm_dex_line(m, pc), (unsigned)pc, what, where);
+    /*
+     * A null the method was given: where its caller had it, up to three callers. The caller's frame stands at the call
+     * (its pc), whose arguments are registers in order, `this` first.
+     */
+    for (f = t->top; f && !(f->m == m && f->pc == pc); f = f->prev) {}
+    for (depth = 0; f && slot >= 0 && depth < 3; depth++) {
+        mg_dvm_frame *c = f->prev;
+        const u16 *ci;
+        u8 op;
+        int creg = -1;
+        if (!c || !c->m || !c->m->insns || c->pc >= c->m->ninsns) break;
+        ci = c->m->insns;
+        op = (u8)(ci[c->pc] & 0xFF);
+        if (op >= 0x6e && op <= 0x72 && slot < (int)(ci[c->pc] >> 12) && slot < 5) {
+            u16 regs = ci[c->pc + 2];
+            creg = slot < 4 ? (regs >> (4 * slot)) & 0xF : (ci[c->pc] >> 8) & 0xF;
+        } else if (op >= 0x74 && op <= 0x78 && slot < (int)(ci[c->pc] >> 8)) {
+            creg = ci[c->pc + 2] + slot;
+        }
+        if (creg < 0) break;
+        slot = null_origin(c->m, c->pc, creg, where, sizeof(where));
+        mg_info("dvm:   given by %s.%s line %d (pc %u): %s", c->m->cls->name, c->m->name, mg_dvm_dex_line(c->m, c->pc), (unsigned)c->pc, where);
+        f = c;
+    }
 }
 
 /* The handler in method `m` for exception `e` thrown at `pc`, if it has one. */
@@ -1002,7 +1029,7 @@ static bool find_handler(mg_dvm_thread *t, mg_dvm_method *m, u32 pc, mg_jobj *e,
     u32 i;
     bool found = false;
     trace_exception(t, m, pc, e);
-    trace_null(m, pc, e);
+    trace_null(t, m, pc, e);
     /* Nothing catches the error a used-up step limit throws: code that catches everything and goes round again would never end. */
     if (!m->ntries || t->steps_left == ~(u64)0) return false;
     tries = (const u8 *)(m->insns + m->ninsns);
