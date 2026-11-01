@@ -288,7 +288,7 @@ N(SW_table)
  * The draw functor: AwDrawFn (Chromium's android_webview/public/browser/draw_fn.h, version 4), which Chromium draws a page
  * through on a canvas that is hardware-accelerated, as HWUI's WebViewFunctor has it drawn on Android. The table below is
  * Chromium's (DrawFunctor.nativeGetFunctionTable) where pictures can be kept on the graphics processor (the shell's
- * megler_gfx_host.texture_frame and draw_texture, EGL's shared pbuffer textures) and the flag webview-gpu is set;
+ * megler_gfx_host.texture_frame and draw_texture, EGL's shared pbuffer textures) and the flag no-webview-gpu is not set;
  * Chromium makes a functor of it for each WebView (create_functor_v3: its callbacks), and on a hardware-accelerated canvas
  * has the platform draw it (WebViewDelegate.drawWebViewFunctor). A WebView's canvas says it is hardware-accelerated where the
  * table was given (megler.WebFunctors.on; android/webkit/WebView.java): a view list's, the shell's on the graphics processor.
@@ -405,14 +405,10 @@ static bool wv_wanted(void)
 {
     static i32 wanted = -1;
     if (wanted < 0) {
-        /*
-         * Asked for by the flag webview-gpu, until it draws what it should: on the phone (package 555) Gosuslugi's sign-in
-         * page stayed black through it, and Spotify's WebView, whose own Direct3D device it makes, ran out of address space.
-         */
-        bool on = mg_flag("webview-gpu") && mg_java_gfx_textures() && mg_java_gl_shares_frames();
+        bool on = !mg_flag("no-webview-gpu") && mg_java_gfx_textures() && mg_java_gl_shares_frames();
         wanted = on ? 1 : 0;
-        mg_info("webview: %s", on ? "pages are drawn on the graphics processor, through the platform's draw functor (the flag webview-gpu)"
-                                  : "pages are drawn in software: no draw functor (without the flag webview-gpu, or no pictures kept on the graphics processor)");
+        mg_info("webview: %s", on ? "pages are drawn on the graphics processor, through the platform's draw functor"
+                                  : "pages are drawn in software: no draw functor (the flag no-webview-gpu, or no pictures kept on the graphics processor)");
     }
     return wanted > 0;
 }
