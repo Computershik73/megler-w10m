@@ -1306,7 +1306,7 @@ typedef struct dl_head {
 
 enum {
     DL_SAVE = 1, DL_SAVE_LAYER, DL_RESTORE, DL_MATRIX, DL_CLIP_RECT, DL_CLIP_PATH, DL_COLOR, DL_RECT, DL_RRECT, DL_OVAL, DL_PATH, DL_LINES,
-    DL_BITMAP, DL_BITMAP_M, DL_TEXT, DL_NODE, DL_LIST
+    DL_BITMAP, DL_BITMAP_M, DL_TEXT, DL_NODE, DL_LIST, DL_TEXTURE
 };
 
 /* A shader as a call drew with it: the shader, and the local matrix it had then. */
@@ -1350,6 +1350,12 @@ typedef struct dl_color {
     u32 color;
     i32 blend;
 } dl_color;
+
+typedef struct dl_texture {            /* DL_TEXTURE: a picture the shell keeps on the graphics processor (draw_texture) */
+    dl_head h;
+    i32 id, alpha;
+    float dst[4];
+} dl_texture;
 
 typedef struct dl_bitmap {             /* DL_BITMAP (src, dst), DL_BITMAP_M (m) */
     dl_head h;
@@ -2740,6 +2746,48 @@ N(G_cvDrawBitmapM)
     draw_bitmap_m(v, b, m, &p);
 }
 
+/*
+ * A picture the shell keeps on the graphics processor (megler_gfx_host.texture_frame: a TextureView's frames that an app made
+ * with OpenGL ES), drawn into a rectangle of the canvas: by the shell, nothing read back; recorded by its id, so that a list
+ * draws the picture the id has when it is drawn.
+ */
+static void draw_texture(gcanvas *v, int id, const float *dst, int alpha)
+{
+    if (!v || !v->host || id <= 0 || !G.draw_texture || !(dst[2] > dst[0]) || !(dst[3] > dst[1])) return;
+    if (!cv_draw(v, false)) return;
+    GFX(G.draw_texture(G.user, v->host, id, dst[0], dst[1], dst[2], dst[3], alpha < 0 ? 0 : alpha > 255 ? 255 : alpha));
+}
+
+/* (long cv, int id, float l, t, r, b, int alpha) */
+N(G_cvDrawTexture)
+{
+    gcanvas *v = cv_of(c->args[0].j);
+    float dst[4];
+    int i;
+    for (i = 0; i < 4; i++) {
+        dst[i] = c->args[2 + i].f;
+        if (!isfinite(dst[i])) return;
+    }
+    if (!v || c->args[1].i <= 0) return;
+    if (v->rec) {
+        dl_texture *o = (dl_texture *)dl_put(v->rec, DL_TEXTURE, sizeof(*o), 0);
+        o->id = c->args[1].i;
+        o->alpha = c->args[6].i;
+        memcpy(o->dst, dst, sizeof(dst));
+        return;
+    }
+    draw_texture(v, c->args[1].i, dst, c->args[6].i);
+}
+
+/* textureGone(int id): the shell's copy of that id's picture let go (its SurfaceTexture released). */
+N(G_textureGone)
+{
+    if (c->args[0].i > 0 && G.texture_frame) GFX(G.texture_frame(G.user, c->args[0].i, NULL, 0, 0));
+}
+
+/* Whether the shell keeps pictures on the graphics processor (texture_frame and draw_texture). */
+bool mg_java_gfx_textures(void) { return G.texture_frame != NULL && G.draw_texture != NULL; }
+
 /* -------------------------------------------------------------- Gfx: text */
 
 static gface *tf_of(i64 h)
@@ -2930,6 +2978,7 @@ static void list_play(gcanvas *v, gdlist *l, int depth)
         }
         case DL_NODE: node_play(v, ((const dl_node *)h)->node, depth + 1); break;
         case DL_LIST: list_play(v, ((const dl_list *)h)->list, depth + 1); break;
+        case DL_TEXTURE: draw_texture(v, ((const dl_texture *)h)->id, ((const dl_texture *)h)->dst, ((const dl_texture *)h)->alpha); break;
         default: break;
         }
     }
@@ -3677,6 +3726,8 @@ static const mg_jhle k_gfx[] = {
     { "megler/Gfx", "cvDrawLines", "(J[FII[IJZ)V", G_cvDrawLines },
     { "megler/Gfx", "cvDrawBitmap", "(JJFFFFFFFF[I)V", G_cvDrawBitmap },
     { "megler/Gfx", "cvDrawBitmapM", "(JJ[F[I)V", G_cvDrawBitmapM },
+    { "megler/Gfx", "cvDrawTexture", "(JIFFFFI)V", G_cvDrawTexture },
+    { "megler/Gfx", "textureGone", "(I)V", G_textureGone },
     { "megler/Gfx", "cvDrawText", "(JLjava/lang/String;IIFF[IJJ)V", G_cvDrawText },
     { "megler/Gfx", "txMeasure", "(Ljava/lang/String;II[IJ)F", G_txMeasure },
     { "megler/Gfx", "txMetrics", "([IJ[F)F", G_txMetrics },

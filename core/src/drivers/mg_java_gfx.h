@@ -33,6 +33,8 @@ void mg_java_gfx_set_present_canvas(bool (*fn)(void *user, void *canvas, int wid
 void mg_java_gfx_set_present_probe(bool (*due)(void), void (*probe)(const void *pixels, int width, int height, int stride));
 /* Bytes of bitmap memory now allocated and bitmaps alive, for the memory report. */
 void mg_java_gfx_stats(uint64_t *bitmap_bytes, uint32_t *bitmaps);
+/* Whether the shell keeps pictures on the graphics processor for views to draw (megler_gfx_host.texture_frame, draw_texture). */
+bool mg_java_gfx_textures(void);
 /* Bytes the display lists of RenderNodes and Pictures now take, how many lists there are, and how many nodes. */
 void mg_java_gfx_list_stats(uint64_t *bytes, uint32_t *lists, uint32_t *nodes);
 /* Nanoseconds the calling thread has spent in the shell's drawing (the megler_gfx_host's calls), summed: the frame meter's. */

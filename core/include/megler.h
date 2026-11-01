@@ -826,6 +826,23 @@ typedef struct megler_storage_host {
  *                 that swapped, gl_place on any thread, before the present
  *                 or the gl_frame it is for. All three NULL, or EGL without
  *                 share handles: the layer composes the window itself.
+ *   texture_frame optional, with draw_texture: pictures an app makes with
+ *   draw_texture  OpenGL ES for a view to draw among the others (a
+ *                 TextureView's frames), kept on the graphics processor and
+ *                 drawn there, nothing read back. texture_frame is a new
+ *                 picture of `id` (1 and up): `share_handle`, width and
+ *                 height as gl_frame's (ANGLE's texture, rows bottom first,
+ *                 finished, its keyed mutex let go of for the call); the
+ *                 shell keeps a copy of its own before it returns. A NULL
+ *                 handle: the id is done with, its copy let go. False: the
+ *                 shell cannot, and the layer reads that picture back as it
+ *                 would without this. draw_texture draws the id's last
+ *                 picture into the canvas, the whole of it into the
+ *                 rectangle (left, top, right, bottom) under the canvas's
+ *                 matrix and clip, the right way up, smoothly, at `alpha`
+ *                 (0..255); nothing where the id has none yet, or the canvas
+ *                 is drawn in memory. On the thread that drew the picture,
+ *                 and the canvas's, at any time.
  *
  *   save          remembers the clip. restore brings back the clip of the
  *                 matching save. They nest; the layer never calls restore
@@ -1284,6 +1301,8 @@ typedef struct megler_gfx_host {
     bool (*present)(void *user, void *canvas, int x, int y, int width, int height);
     bool (*gl_frame)(void *user, int layer, void *share_handle, int width, int height);
     void (*gl_place)(void *user, int layer, int x, int y, int width, int height);
+    bool (*texture_frame)(void *user, int id, void *share_handle, int width, int height);
+    void (*draw_texture)(void *user, void *canvas, int id, float left, float top, float right, float bottom, int alpha);
 } megler_gfx_host;
 
 /*

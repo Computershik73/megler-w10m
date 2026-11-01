@@ -258,13 +258,36 @@ static bool vw_egl_swap(void *p)
         return false;
     }
     mg_nwindow_buffer_size(&s->w->base, &width, &height);
-    mg_java_gl_window_swap(s->gl, width, height);
     if (s->w->texture) {
+        /*
+         * A texture a TextureView shows has an id the shell keeps its frames under on the graphics processor
+         * (SurfaceTexture.meglerGpuId; 0 for one an app samples with OpenGL itself): the frame goes there, nothing read back,
+         * and the texture is told (meglerGpuFrame). Else, or where the shell refuses, the frame is read back for it as before.
+         */
+        mg_jvalue ret;
+        int id = 0, fw, fh;
+        const void *rgba;
+        memset(&ret, 0, sizeof(ret));
+        if (mg_java_gfx_textures()) {
+            if (mg_dvm_call_virtual(s->w->texture, "meglerGpuId", "()I", NULL, &ret)) id = ret.i;
+            else mg_dvm_clear_pending();
+        }
+        if (mg_java_gl_window_swap_texture(s->gl, width, height, id)) {
+            mg_jvalue args[3];
+            int gw = 0, gh = 0;
+            mg_java_gl_window_handle(s->gl, &gw, &gh);
+            args[0].i = id;
+            args[1].i = gw;
+            args[2].i = gh;
+            if (!mg_dvm_call_virtual(s->w->texture, "meglerGpuFrame", "(III)V", args, NULL)) mg_dvm_clear_pending();
+            return true;
+        }
         /* (The frame read back is kept apart from the surface, which the swap may have replaced by one of a new size.) */
-        int fw, fh;
-        const void *rgba = mg_java_gl_window_pixels(s->gl, &fw, &fh);
+        rgba = mg_java_gl_window_pixels(s->gl, &fw, &fh);
         if (rgba) post_rgba(s->w->texture, rgba, fw, fh, true);
+        return true;
     }
+    mg_java_gl_window_swap(s->gl, width, height);
     return true;
 }
 

@@ -33,3 +33,10 @@
      * RenderEffect.createBlurEffect (android.view.View.drawFromParent).
      */
     public static native int cvSaveLayerBlur(long cv, float l, float t, float r, float b, int alpha, float radiusX, float radiusY, boolean clamp);
+    /**
+     * A picture the shell keeps on the graphics processor under `id` (megler_gfx_host.texture_frame: a TextureView's frames an
+     * app made with OpenGL ES) drawn into (l, t, r, b) of the canvas at `alpha`; recorded by its id where the canvas records. And
+     * that id done with: the shell's copy of its picture let go (core/src/drivers/mg_java_gfx.c).
+     */
+    public static native void cvDrawTexture(long cv, int id, float l, float t, float r, float b, int alpha);
+    public static native void textureGone(int id);

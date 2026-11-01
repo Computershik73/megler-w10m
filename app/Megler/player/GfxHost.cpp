@@ -3455,6 +3455,163 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
     return taken;
 }
 
+// MARK: Pictures kept on the graphics processor for views to draw (megler_gfx_host.texture_frame, draw_texture)
+
+/// A TextureView's frames that an app makes with OpenGL ES, kept here by the texture's id: the last one copied out of ANGLE's
+/// texture into one of the id's own, as gl_frame copies a layer's, which a canvas draws among the views (drawTexture), nothing
+/// read back. Under `mutex`, on the GL threads (textureFrame) and the canvases' (drawTexture).
+struct KeptTextures {
+    struct Texture {
+        void* handle = nullptr;      // the shared handle ANGLE's texture was opened by
+        Ref<ID3D11Texture2D> shared; // ANGLE's texture, opened on this device
+        Ref<IDXGIKeyedMutex> mutex;  // its keyed mutex, where ANGLE shares it with one
+        Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
+        Ref<ID2D1Bitmap1> frame;     // the copy as Direct2D draws it: rows bottom first
+        bool have = false;           // a frame has been copied
+    };
+    std::mutex mutex;
+    std::unordered_map<int, Texture> byId;
+    Ref<ID3D11Query> copied;         // signalled when a copy is done, for a texture without a keyed mutex
+};
+
+KeptTextures& keptTextures() {
+    // Never destroyed, as State is not.
+    static KeptTextures* const k = new KeptTextures();
+    return *k;
+}
+
+/// megler_gfx_host.texture_frame: the id's new frame, in ANGLE's texture, opened here by its shared handle and copied into the
+/// id's own (holding the keyed mutex the core let go of for the call, as gl_frame does; without one, the copy waited for);
+/// a NULL handle: the id let go. False: the frame is read back by the core instead.
+bool textureFrame(void*, int id, void* handle, int width, int height) {
+    State& s = G();
+    KeptTextures& k = keptTextures();
+    if (!handle) {
+        std::lock_guard<std::mutex> lock(k.mutex);
+        k.byId.erase(id);
+        return true;
+    }
+    if (id <= 0 || width <= 0 || height <= 0 || !started() || !s.gpu || gpuGone()) return false;
+    bool taken = false;
+    guarded("texture_frame", [&] {
+        std::lock_guard<std::mutex> lock(k.mutex);
+        KeptTextures::Texture& t = k.byId[id];
+        if (t.handle != handle || !t.shared || !t.frame) {
+            t = KeptTextures::Texture{};
+            HRESULT hr = s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(t.shared.put()));
+            if (FAILED(hr)) {
+                note("texture-shared", "a TextureView's OpenGL ES texture could not be opened by its shared handle (0x%08lX): its frames are read back",
+                     static_cast<unsigned long>(hr));
+                k.byId.erase(id);
+                return;
+            }
+            D3D11_TEXTURE2D_DESC desc = {};
+            t.shared->GetDesc(&desc);
+            if (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX)
+                t.shared->QueryInterface(__uuidof(IDXGIKeyedMutex), reinterpret_cast<void**>(t.mutex.put()));
+            if (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            if (desc.Format == DXGI_FORMAT_B8G8R8A8_TYPELESS) desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            desc.MipLevels = 1;
+            desc.ArraySize = 1;
+            desc.Usage = D3D11_USAGE_DEFAULT;
+            desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            desc.CPUAccessFlags = 0;
+            desc.MiscFlags = 0;
+            hr = s.d3d->CreateTexture2D(&desc, nullptr, t.copy.put());
+            Ref<IDXGISurface> surface;
+            if (SUCCEEDED(hr)) hr = t.copy->QueryInterface(__uuidof(IDXGISurface), reinterpret_cast<void**>(surface.put()));
+            if (SUCCEEDED(hr))
+                hr = s.gpuResource->CreateBitmapFromDxgiSurface(
+                    surface.get(), D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(desc.Format, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f),
+                    t.frame.put());
+            if (FAILED(hr)) {
+                note("texture-frame", "a TextureView's OpenGL ES frame of format %u cannot be drawn here (0x%08lX): its frames are read back",
+                     unsigned(desc.Format), static_cast<unsigned long>(hr));
+                k.byId.erase(id);
+                return;
+            }
+            t.handle = handle;
+        }
+        if (!t.mutex && !k.copied) {
+            D3D11_QUERY_DESC query = {D3D11_QUERY_EVENT, 0};
+            if (FAILED(s.d3d->CreateQuery(&query, k.copied.put()))) k.copied.reset();
+        }
+        Ref<ID3D11DeviceContext> context;
+        s.d3d->GetImmediateContext(context.put());
+        GfxHost& host = GfxHost::shared();
+        const uint64_t from = ticksNow();
+        host.lockDevice();
+        if (t.mutex) {
+            const HRESULT got = t.mutex->AcquireSync(0, 500);
+            if (got != S_OK) {
+                host.unlockDevice();
+                note("texture-mutex", "a TextureView's OpenGL ES texture's keyed mutex was not to be had (0x%08lX): its frame is not taken",
+                     static_cast<unsigned long>(got));
+                return;
+            }
+        }
+        context->CopyResource(t.copy.get(), t.shared.get());
+        if (!t.mutex && k.copied) context->End(k.copied.get());
+        if (t.mutex) t.mutex->ReleaseSync(0);
+        context->Flush();
+        host.unlockDevice();
+        // Without a mutex, the copy waited for, half a second at the most: ANGLE may draw into its texture as soon as this returns.
+        while (!t.mutex && k.copied) {
+            host.lockDevice();
+            const HRESULT hr = context->GetData(k.copied.get(), nullptr, 0, 0);
+            host.unlockDevice();
+            if (hr != S_FALSE || ticksToMs(ticksNow() - from) > 500.0) break;
+            SwitchToThread();
+        }
+        t.have = true;
+        taken = true;
+    });
+    return taken;
+}
+
+/// megler_gfx_host.draw_texture: the id's last frame drawn into the canvas, into (l, t, r, b) under its matrix and clip, the
+/// right way up (its rows are bottom first), smoothly, at `alpha`. On a canvas drawn in memory nothing is drawn (said once).
+void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b, int alpha) {
+    Canvas* cv = canvasOf(canvas);
+    if (!cv || id <= 0 || !sane(l, t, r, b) || !(r > l) || !(b > t)) return;
+    guarded("draw_texture", [&] {
+        Ref<ID2D1Bitmap1> frame;
+        {
+            KeptTextures& k = keptTextures();
+            std::lock_guard<std::mutex> lock(k.mutex);
+            const auto found = k.byId.find(id);
+            if (found != k.byId.end() && found->second.have) frame = found->second.frame;
+        }
+        if (!frame) return;
+        Surface* target = cv->target();
+        if (!target || cv->clip().box.empty()) return;
+        if (!target->gc) {
+            note("texture-memory", "a TextureView's frame on the graphics processor is not drawn on a canvas drawn in memory (said once)");
+            return;
+        }
+        if (!target->begin()) return;
+        target->useClip(cv->clip());
+        const Matrix3x2F turned = Matrix3x2F::Scale(1.0f, -1.0f, D2D1::Point2F(0.0f, (t + b) / 2.0f)) * cv->matrix;
+        target->setMatrix(turned);
+        target->rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        const D2D1_RECT_F onto = D2D1::RectF(l, t, r, b);
+        target->rt->DrawBitmap(frame.get(), &onto, float(std::max(0, std::min(255, alpha))) / 255.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, nullptr);
+        target->setMatrix(cv->matrix);
+        Ink ink;
+        ink.kind = Ink::rectangle;
+        ink.box = onto;
+        ink.l = l;
+        ink.t = t;
+        ink.r = r;
+        ink.b = b;
+        ink.smooth = true;
+        Box drawn = inkCover(ink, cv->matrix);
+        drawn.intersect(cv->clip().box);
+        target->drew(drawn);
+        ++G().direct;
+    });
+}
+
 /// megler_gfx_host.gl_place: where a layer's frames go; nowhere, and its frame
 /// dropped, for width 0. What it covered and covers now is composed again
 /// at the next showing.
@@ -6174,6 +6331,8 @@ megler_gfx_host GfxHost::callbacks() {
     host.present = &present;
     host.gl_frame = &glFrame;
     host.gl_place = &glPlace;
+    host.texture_frame = &textureFrame;
+    host.draw_texture = &drawTexture;
     return host;
 }
 

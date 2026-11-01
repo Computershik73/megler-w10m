@@ -63,6 +63,12 @@ void *mg_java_gl_window_handle(void *surface, int *width, int *height);
  * old one's place.
  */
 void mg_java_gl_window_swap(void *surface, int width, int height);
+/*
+ * The same, on no view, for a texture a TextureView shows under `texture_id` (1 and up; 0: none): the frame handed to the shell
+ * as that id's picture on the graphics processor (megler_gfx_host.texture_frame), nothing read back. False: it was read back as
+ * by mg_java_gl_window_swap (the shell does not keep pictures so, or refused this one).
+ */
+bool mg_java_gl_window_swap_texture(void *surface, int width, int height, int texture_id);
 /* On no view: the frame the last swap read back, R, G, B, A, rows bottom first, and its size; NULL before the first. */
 const void *mg_java_gl_window_pixels(void *surface, int *width, int *height);
 void mg_java_gl_window_destroy(void *surface);
