@@ -7,6 +7,9 @@
  * says where the host's block starts, and free() needs to know nothing else.
  */
 #include "mg_bionic.h"
+
+#include <stdio.h>
+
 #include "mg_fd.h"
 
 #include "../mg_core.h"
@@ -18,6 +21,11 @@ typedef struct ghdr {
 } ghdr;
 
 #define HDR(p) ((ghdr *)((u8 *)(p) - sizeof(ghdr)))
+
+/* What the guest has asked malloc for and not freed, in bytes, modulo 2^32 (mg_g_malloc_bytes): its blocks are the host's. */
+static volatile i32 g_malloced;
+
+u64 mg_g_malloc_bytes(void) { return (u32)mg_atomic_add(&g_malloced, 0); }
 
 void *mg_g_malloc(size_t n)
 {
@@ -33,6 +41,7 @@ void *mg_g_malloc(size_t n)
     }
     ((ghdr *)raw)->offset = sizeof(ghdr);
     ((ghdr *)raw)->size = (u32)n;
+    mg_atomic_add(&g_malloced, (i32)n);
     return raw + sizeof(ghdr);
 }
 
@@ -51,12 +60,15 @@ void *mg_g_calloc(size_t n, size_t m)
     }
     ((ghdr *)raw)->offset = sizeof(ghdr);
     ((ghdr *)raw)->size = (u32)total;
+    mg_atomic_add(&g_malloced, (i32)total);
     return raw + sizeof(ghdr);
 }
 
 void mg_g_free(void *p)
 {
-    if (p) free((u8 *)p - HDR(p)->offset);
+    if (!p) return;
+    mg_atomic_add(&g_malloced, -(i32)HDR(p)->size);
+    free((u8 *)p - HDR(p)->offset);
 }
 
 static void *g_memalign(size_t align, size_t n)
@@ -75,6 +87,7 @@ static void *g_memalign(size_t align, size_t n)
     p = (u8 *)MG_ALIGN_UP((mg_addr)raw + sizeof(ghdr), (mg_addr)align);
     HDR(p)->offset = (u32)(p - raw);
     HDR(p)->size = (u32)n;
+    mg_atomic_add(&g_malloced, (i32)n);
     return p;
 }
 
@@ -92,12 +105,14 @@ void *mg_g_realloc(void *p, size_t n)
         return NULL;
     }
     if (HDR(p)->offset == sizeof(ghdr)) {
+        u32 was = HDR(p)->size;
         u8 *raw = (u8 *)realloc((u8 *)p - sizeof(ghdr), n + sizeof(ghdr));
         if (!raw) {
             mg_set_errno(GE_NOMEM);
             return NULL;
         }
         ((ghdr *)raw)->size = (u32)n;
+        mg_atomic_add(&g_malloced, (i32)((u32)n - was));
         return raw + sizeof(ghdr);
     }
     /* An aligned block: the host cannot grow it in place and keep the alignment. */
@@ -177,9 +192,12 @@ static void g_delete_sized(void *p, size_t n) { (void)n; mg_g_free(p); }
  * Linux. Chromium moves everything between its browser and its renderer through such regions (Mojo's data pipes, which
  * carry a page's bytes), mapping one twice: with each mapping a copy of the region, the renderer read nothing of what the
  * network wrote, and every page the WebView loaded was empty. A region asked for as
- * writable and executable at once -- a JIT's code heap -- cannot exist on the
- * host, so it is writable until something executes in it and executable until
- * something writes to it: the fault handler flips the page (mg_mmap_fix_fault).
+ * writable and executable at once -- a JIT's code heap -- is so on the host where
+ * the phone allows it (mg_mem_rwx, the plain VirtualProtect; flag no-rwx: never),
+ * and V8's code, written while it runs, costs no fault. Where it does not, it is
+ * writable until something executes in it and executable until something writes
+ * to it: the fault handler flips the page (mg_mmap_fix_fault), a fault and a
+ * flip for every write after a run.
  * So are the pages of the app's own libraries it asks so of, to patch its code
  * (an inline hook: Instagram's libdistract rewrites a function of its
  * libc++_shared.so, and ended on the write while the page stayed executable).
@@ -195,6 +213,14 @@ static void g_delete_sized(void *p, size_t n) { (void)n; mg_g_free(p); }
  * A file mapped read-only and shared (MAP_SHARED, PROT_READ, the descriptor opened read-only) is a view of the file
  * itself (mg_fd_file_map), which costs the app no memory of its own: the WebView maps its ICU data and its .pak files so,
  * 55 MB of them, each read into memory of the app's before. Any other mapping of a file is a copy of what it holds.
+ *
+ * Anonymous memory an allocator is done with and gives back with madvise (MADV_DONTNEED, MADV_FREE) is the system's
+ * again: its readable and writable pages are decommitted, and stay the app's -- touched again, a page is committed again,
+ * zero, as Linux gives it (mg_mmap_fix_fault), and so is one the system itself is about to write into, which would refuse
+ * rather than fault (before_system_write). Chromium's PartitionAlloc gives its free pages back so, and V8 the pages of its
+ * heap; madvise did nothing before, and Play Store with Google's sign-in page had 1593 MB committed of its 2 GB when the
+ * WebView ended. PartitionAlloc also counts on a page given back being zero when it is used again, as a block that has
+ * to be zero is then not cleared.
  */
 #define G_PROT_READ 1
 #define G_PROT_WRITE 2
@@ -231,6 +257,13 @@ typedef struct region {
     /* A view of shared memory (mg_fd_shm_map): unmapped, not released, when its last page goes; its pages stay till then. */
     void *view;
     size_t view_size;
+    /* Anonymous memory, all of it (no file was mapped into it): what madvise may give back. */
+    bool anon;
+    /* Which pages madvise gave back and nothing has touched since, a bit each (gone_mark); NULL until the first. */
+    u8 *gone;
+    u32 gone_pages;
+    /* Which pages the app made no-access itself (mmap or mprotect with PROT_NONE), a bit each: a fault there is the app's. */
+    u8 *noaccess;
     struct region *next;
 } region;
 
@@ -250,6 +283,144 @@ static void region_mark(region *r, size_t offset, size_t size, bool on)
 
 static region *g_regions;
 static mg_lock g_region_lock = MG_LOCK_INIT;
+
+void mg_g_mapped_addresses(u64 *spanned, u64 *reserved)
+{
+    region *r;
+    *spanned = *reserved = 0;
+    mg_lock_acquire(&g_region_lock);
+    for (r = g_regions; r; r = r->next) {
+        *spanned += r->size;
+        *reserved += mg_host_reserved_in(r->base, r->size);
+    }
+    mg_lock_release(&g_region_lock);
+}
+
+/*
+ * Marks pages of [offset, offset + size) of a region as given back by madvise or not, as region_mark marks; only pages the
+ * app has are marked. g_gone counts them in every region, so that nothing is looked up while there are none. Under the lock.
+ */
+static volatile i32 g_gone;
+static void gone_mark(region *r, size_t offset, size_t size, bool on)
+{
+    size_t page = offset / MG_PAGE, end = (offset + size) / MG_PAGE;
+    if (!r->gone) {
+        if (!on) return;
+        r->gone = (u8 *)mg_alloc(r->size / MG_PAGE / 8 + 1);
+    }
+    for (; page < end; page++) {
+        u8 bit = (u8)(1u << (page & 7));
+        bool was = (r->gone[page >> 3] & bit) != 0;
+        if (was == on || (on && !(r->live[page >> 3] & bit))) continue;
+        r->gone[page >> 3] ^= bit;
+        if (on) r->gone_pages++;
+        else r->gone_pages--;
+        mg_atomic_add(&g_gone, on ? 1 : -1);
+    }
+}
+
+static bool gone_has(const region *r, size_t page) { return r->gone && (r->gone[page >> 3] & (1u << (page & 7))) != 0; }
+
+/* Marks pages of [offset, offset + size) of a region as no-access by the app's own choice or not. Under the lock. */
+static void noaccess_mark(region *r, size_t offset, size_t size, bool on)
+{
+    size_t page = offset / MG_PAGE, end = (offset + size) / MG_PAGE;
+    if (!r->noaccess) {
+        if (!on) return;
+        r->noaccess = (u8 *)mg_alloc(r->size / MG_PAGE / 8 + 1);
+    }
+    if (end > r->size / MG_PAGE) end = r->size / MG_PAGE;
+    for (; page < end; page++) {
+        u8 bit = (u8)(1u << (page & 7));
+        if (on) r->noaccess[page >> 3] |= bit;
+        else r->noaccess[page >> 3] &= (u8)~bit;
+    }
+}
+
+static bool noaccess_has(const region *r, size_t page) { return r->noaccess && (r->noaccess[page >> 3] & (1u << (page & 7))) != 0; }
+static bool live_has(const region *r, size_t page) { return (r->live[page >> 3] & (1u << (page & 7))) != 0; }
+
+/*
+ * What was last done to the access of the app's anonymous memory and to what of it is committed, for a fault that finds a
+ * page in a state it should not be in (mg_mmap_fix_fault says those of its page): D madvise gave it back, N mapped again
+ * with no access, U unmapped, P made no-access, A given access, F committed again when touched, S committed again for the
+ * system to write into.
+ */
+typedef struct mem_event {
+    u32 ms, thread;
+    mg_addr at;
+    u32 size;
+    char kind;
+} mem_event;
+#define MEM_EVENTS 4096
+static mem_event g_mem_events[MEM_EVENTS];
+static volatile i32 g_mem_event_next;
+
+static void mem_note(char kind, const void *at, size_t size)
+{
+    mem_event *e = &g_mem_events[(u32)(mg_atomic_add(&g_mem_event_next, 1) - 1) % MEM_EVENTS];
+    e->ms = (u32)(mg_time_monotonic_ns() / 1000000ull);
+    e->thread = mg_thread_self_id();
+    e->at = (mg_addr)at;
+    e->size = (u32)size;
+    e->kind = kind;
+}
+
+/* The events of the page at `page`, oldest first, into `out`. */
+static void mem_events_of(const u8 *page, char *out, size_t cap)
+{
+    u32 end = (u32)g_mem_event_next, count = end < MEM_EVENTS ? end : MEM_EVENTS, i;
+    size_t n = 0;
+    out[0] = 0;
+    for (i = end - count; i != end && n + 64 < cap; i++) {
+        const mem_event *e = &g_mem_events[i % MEM_EVENTS];
+        if ((mg_addr)page >= e->at && (mg_addr)page < e->at + e->size)
+            n += (size_t)snprintf(out + n, cap - n, " %c %08x+%u at %u ms by %u;", e->kind, (unsigned)e->at, (unsigned)e->size, (unsigned)e->ms,
+                                  (unsigned)e->thread);
+    }
+}
+
+/* The pages given back in [offset, offset + size) of a region, committed again (zero) and the app's as before. Under the lock. */
+static u64 g_taken_again, g_given_back;
+static bool gone_back(region *r, size_t offset, size_t size)
+{
+    size_t page = offset / MG_PAGE, end = (offset + size + MG_PAGE - 1) / MG_PAGE, first;
+    bool ok = true;
+    if (!r->gone_pages) return true;
+    if (end > r->size / MG_PAGE) end = r->size / MG_PAGE;
+    while (page < end) {
+        if (!gone_has(r, page)) {
+            page++;
+            continue;
+        }
+        for (first = page; page < end && gone_has(r, page); page++) {}
+        if (mg_mem_commit(r->base + first * MG_PAGE, (page - first) * MG_PAGE, MG_PROT_RW)) {
+            gone_mark(r, first * MG_PAGE, (page - first) * MG_PAGE, false);
+            g_taken_again += (u64)(page - first) * MG_PAGE;
+            mem_note('F', r->base + first * MG_PAGE, (page - first) * MG_PAGE);
+        } else {
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+/* Memory the system itself is about to write into (mg_mem_set_before_system_write): the pages of it given back, committed again. */
+static void before_system_write(void *p, size_t size)
+{
+    u8 *at = (u8 *)p, *end = at + size;
+    region *r;
+    if (!g_gone || !size) return;
+    mg_lock_acquire(&g_region_lock);
+    for (r = g_regions; r; r = r->next) {
+        u8 *lo, *hi;
+        if (!r->gone_pages || r->base >= end || r->base + r->size <= at) continue;
+        lo = at > r->base ? at : r->base;
+        hi = end < r->base + r->size ? end : r->base + r->size;
+        gone_back(r, (size_t)(lo - r->base), (size_t)(hi - lo));
+    }
+    mg_lock_release(&g_region_lock);
+}
 
 /* What the app wrote into [from, from + size) of a shared file mapping, back to the file: the pages it still has. Under the lock. */
 static void write_back(region *r, size_t from, size_t size)
@@ -291,6 +462,8 @@ static int host_prot(int prot)
 
 /* fd-backed mappings read the file through the io layer. */
 i32 mg_fd_pread(int fd, void *buf, u32 n, u64 offset);
+
+static bool rwx_on(void);
 
 static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, u64 offset)
 {
@@ -370,6 +543,10 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
             return G_MAP_FAILED;
         }
         region_mark(r, (size_t)((u8 *)addr - r->base), size, true);
+        gone_mark(r, (size_t)((u8 *)addr - r->base), size, false);
+        noaccess_mark(r, (size_t)((u8 *)addr - r->base), size, !(prot & 7));
+        if (!(flags & G_MAP_ANONYMOUS)) r->anon = false;
+        mem_note(!(prot & 7) ? 'N' : 'A', addr, size);
         view = r->view != NULL;
         mg_lock_release(&g_region_lock);
         p = (u8 *)addr;
@@ -402,8 +579,10 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
         r = (region *)mg_alloc(sizeof(*r));
         r->base = p;
         r->size = reserve;
+        r->anon = (flags & G_MAP_ANONYMOUS) != 0;
         r->live = (u8 *)mg_alloc(reserve / MG_PAGE / 8 + 1);
         region_mark(r, 0, size, true);
+        if (!(prot & 7)) noaccess_mark(r, 0, size, true);
         mg_lock_acquire(&g_region_lock);
         r->next = g_regions;
         g_regions = r;
@@ -433,10 +612,13 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
         }
     }
     if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {
+        bool rwx = rwx_on();
         mg_lock_acquire(&g_region_lock);
         r = region_of(p);
         if (r) r->wx = true;
+        rwx = rwx && r && !r->view;
         mg_lock_release(&g_region_lock);
+        if (rwx && mg_mem_protect(p, size, MG_PROT_RWX)) mg_icache_flush(p, size);
     } else if (host_prot(prot) != MG_PROT_RW && ((prot & 7) || !(flags & G_MAP_ANONYMOUS))) {
         mg_mem_protect(p, size, host_prot(prot));
         if (prot & G_PROT_EXEC) mg_icache_flush(p, size);
@@ -484,6 +666,7 @@ static int g_munmap(void *addr, size_t len)
         offset = (size_t)((u8 *)addr - r->base) & ~(size_t)(MG_PAGE - 1);
         if (size > r->size - offset) size = r->size - offset;
         write_back(r, offset, size);
+        gone_mark(r, offset, size, false);
         region_mark(r, offset, size, false);
         if (!r->live_pages) {
             /* The last of it: the reservation goes back. */
@@ -493,6 +676,8 @@ static int g_munmap(void *addr, size_t len)
             if (r->view) mg_section_unmap(r->view, r->view_size);
             else mg_mem_release(r->base, r->size);
             free(r->live);
+            free(r->gone);
+            free(r->noaccess);
             free(r);
             return 0;
         }
@@ -503,6 +688,7 @@ static int g_munmap(void *addr, size_t len)
          * the rest, and the addresses may be someone else's the moment after.)
          */
         if (!r->view) mg_mem_decommit(r->base + offset, size);
+        mem_note('U', r->base + offset, size);
         mg_lock_release(&g_region_lock);
         return 0;
     }
@@ -792,6 +978,13 @@ static int g_mprotect(void *addr, size_t len, int prot)
         mg_lock_acquire(&g_region_lock);
         r = region_of(p);
         view = r && r->view;
+        /* (Pages madvise gave back are the app's to say the access of again: committed below if given some, zero.) */
+        if (r) {
+            size_t off = (size_t)(p - r->base), n = size < r->size - off ? size : r->size - off;
+            if (r->gone_pages) gone_mark(r, off, n, false);
+            noaccess_mark(r, off, n, !(prot & 7));
+            mem_note((prot & 7) ? 'A' : 'P', p, n);
+        }
         mg_lock_release(&g_region_lock);
         if (r && !view && (prot & 7) && !mg_mem_commit(p, size, MG_PROT_RW)) {
             mg_set_errno(GE_NOMEM);
@@ -804,13 +997,17 @@ static int g_mprotect(void *addr, size_t len, int prot)
     }
     if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {
         region *r;
-        bool kept;
+        bool kept, rwx = rwx_on();
         mg_lock_acquire(&g_region_lock);
         r = region_of(p);
         if (r) r->wx = true;
         kept = r || wx_code_add(p, size);
+        /* (A library's pages, which an inline hook patches, are written and run by turns still: what the app writes into its
+           code is looked at as the page goes back to executable, for the traps it sets, wx_code_written.) */
+        rwx = rwx && r && !r->view;
         mg_lock_release(&g_region_lock);
         if (!kept) mg_note_once("mprotect: writable and executable at once, more library pages than are kept (%p); it stays as it is", addr);
+        else if (rwx && mg_mem_protect(p, size, MG_PROT_RWX)) mg_icache_flush(p, size);
         else mg_mem_protect(p, size, MG_PROT_RW);
         return 0;
     }
@@ -833,17 +1030,158 @@ static int g_mprotect(void *addr, size_t len, int prot)
 }
 
 /* A write-or-execute fault in a region, or a library's page, that wants both: give the page what this access needs. */
+/* A fault in a region of the app's that nothing here repaired: the page's state as this layer and the host see it, and its last changes. */
+static void say_unrepaired(mg_addr address, bool write, bool exec)
+{
+    static volatile i32 said;
+    u8 *page = (u8 *)MG_ALIGN_DOWN(address, (mg_addr)MG_PAGE);
+    char state[300], events[600], host[80];
+    bool committed = false;
+    int prot = -2;
+    region *r;
+    mg_lock_acquire(&g_region_lock);
+    r = region_of((const void *)address);
+    if (!r) {
+        mg_lock_release(&g_region_lock);
+        return;
+    }
+    if (mg_atomic_add(&said, 1) > 6) {
+        mg_lock_release(&g_region_lock);
+        return;
+    }
+    {
+        size_t index = (size_t)(page - r->base) / MG_PAGE;
+        snprintf(state, sizeof(state), "region %08x+%u (%s%s%s%s), the page %s, %s, %s", (unsigned)(mg_addr)r->base, (unsigned)r->size,
+                 r->anon ? "anonymous" : "not anonymous", r->view ? ", a view" : "", r->file ? ", a file's" : "", r->wx ? ", written and run" : "",
+                 live_has(r, index) ? "the app's" : "unmapped", noaccess_has(r, index) ? "made no-access by the app" : "not made no-access",
+                 gone_has(r, index) ? "given back" : "not given back");
+    }
+    mem_events_of(page, events, sizeof(events));
+    mg_lock_release(&g_region_lock);
+    if (mg_mem_page_state(page, &committed, &prot))
+        snprintf(host, sizeof(host), "%s, access %d", committed ? "committed" : "not committed", prot);
+    else
+        snprintf(host, sizeof(host), "nothing (it cannot say)");
+    mg_warn("mmap: a fault at %08x (%s) not repaired: %s; the host says %s; its last changes:%s", (unsigned)address,
+            write ? "written" : exec ? "run" : "read", state, host, events[0] ? events : " none kept");
+}
+
+static bool fix_fault(mg_addr address, bool write, bool exec);
+
 bool mg_mmap_fix_fault(mg_addr address, bool write, bool exec)
 {
+    if (fix_fault(address, write, exec)) return true;
+    say_unrepaired(address, write, exec);
+    return false;
+}
+
+/*
+ * The page already has the access the fault wanted: another thread repaired it meanwhile -- two threads touching the same
+ * pages given back at once, the second's fault handled after the first had committed them again (Play Store's WebView ended
+ * so, PartitionAlloc writing a slot span's free list on two threads) -- and the instruction is to run again. Three times
+ * running at the same address on a thread is no race: the fault is then the app's.
+ */
+static MG_THREAD_LOCAL mg_addr t_retried_at;
+static MG_THREAD_LOCAL int t_retries;
+static bool now_accessible(const u8 *page, mg_addr address, bool write)
+{
+    bool committed = false;
+    int prot = -2;
+    if (!mg_mem_page_state(page, &committed, &prot) || !committed) return false;
+    if (!(prot == MG_PROT_RW || (!write && (prot == MG_PROT_R || prot == MG_PROT_RX)))) return false;
+    if (t_retried_at == address && ++t_retries > 3) return false;
+    if (t_retried_at != address) {
+        t_retried_at = address;
+        t_retries = 1;
+    }
+    return true;
+}
+
+/*
+ * Whether a region wanted writable and executable at once is made so on the host (mg_mem_rwx; the flag no-rwx: never).
+ * Found out by mmap and mprotect, which ask first; the fault handler only reads what they found (rwx_known): asking reads
+ * a flag file and, on Windows, runs a probe, neither of which a fault handler may do.
+ */
+static volatile i32 g_rwx = -1;
+
+static bool rwx_on(void)
+{
+    if (g_rwx < 0) g_rwx = mg_flag("no-rwx") ? 0 : mg_mem_rwx() ? 1 : 0;
+    return g_rwx > 0;
+}
+
+static bool rwx_known(void) { return g_rwx > 0; }
+
+static bool fix_fault(mg_addr address, bool write, bool exec)
+{
     region *r;
-    bool wx;
+    bool wx, rwx, back = false;
     u8 *page = (u8 *)MG_ALIGN_DOWN(address, (mg_addr)MG_PAGE);
+    if (g_gone) {
+        /* A page madvise gave back, touched: committed again, zero, with the others given back of its 64 KB. */
+        mg_lock_acquire(&g_region_lock);
+        r = region_of((const void *)address);
+        if (r && gone_has(r, (size_t)(page - r->base) / MG_PAGE)) {
+            size_t block = (size_t)(page - r->base) & ~(size_t)0xFFFF;
+            back = gone_back(r, block, 0x10000 < r->size - block ? 0x10000 : r->size - block) && !gone_has(r, (size_t)(page - r->base) / MG_PAGE);
+        }
+        mg_lock_release(&g_region_lock);
+        if (back && !exec) return true;
+    }
+    if (!back && !exec && now_accessible(page, address, write)) {
+        static volatile i32 said;
+        if (mg_atomic_add(&said, 1) <= 4)
+            mg_info("mmap: a fault at %08x (%s) found its page there already, repaired by another thread: run again", (unsigned)address,
+                    write ? "written" : "read");
+        return true;
+    }
+    if (!back && !exec) {
+        /*
+         * A page of the app's anonymous memory that it has and did not make no-access, which the host has no longer committed
+         * and nothing marked as given back: one of this layer's decommits left it so. Committed again, zero, as a page
+         * given back is, and said (the first few times) with what was last done to it, so that the way it got there is found.
+         * (Not a page of a region written and run by turns, whose faults are flips: below.)
+         */
+        bool heal = false, committed = true, known = false;
+        int prot = 0;
+        char events[600];
+        mg_lock_acquire(&g_region_lock);
+        r = region_of((const void *)address);
+        if (r && r->anon && !r->view && !r->file && !r->wx) {
+            size_t index = (size_t)(page - r->base) / MG_PAGE;
+            known = mg_mem_page_state(page, &committed, &prot);
+            if (live_has(r, index) && !noaccess_has(r, index)) {
+                /* Not committed: committed again, zero. Committed with no access, which the app did not ask for: given it back. */
+                if (!known || !committed) heal = mg_mem_commit(page, MG_PAGE, MG_PROT_RW);
+                else if (prot == MG_PROT_NONE) heal = mg_mem_protect(page, MG_PAGE, MG_PROT_RW);
+                if (heal) mem_note('F', page, MG_PAGE);
+            }
+        }
+        if (heal) mem_events_of(page, events, sizeof(events));
+        mg_lock_release(&g_region_lock);
+        if (heal) {
+            static volatile i32 said;
+            if (mg_atomic_add(&said, 1) <= 8)
+                mg_warn("mmap: a page of the app's at %08x was %s and not marked given back (%s), %s; its last changes:%s", (unsigned)(mg_addr)page,
+                        known && committed ? "committed with no access" : "not committed", write ? "written" : "read",
+                        known && committed ? "given access again" : "committed again", events[0] ? events : " none kept");
+            return true;
+        }
+    }
     if (!write && !exec) return false;
+    rwx = rwx_known();
     mg_lock_acquire(&g_region_lock);
     r = region_of((const void *)address);
     wx = r ? r->wx : wx_code_has(page);
+    rwx = rwx && r && !r->view;
     mg_lock_release(&g_region_lock);
     if (!wx) return false;
+    /* A page of a region that is writable and executable at once where the phone allows it, committed again (madvise) or
+       made otherwise since: so again, no flip from then on. */
+    if (rwx && mg_mem_protect(page, MG_PAGE, MG_PROT_RWX)) {
+        mg_icache_flush(page, MG_PAGE);
+        return true;
+    }
     if (exec) {
         if (!mg_mem_protect(page, MG_PAGE, MG_PROT_RX)) return false;
         mg_icache_flush(page, MG_PAGE);
@@ -852,7 +1190,82 @@ bool mg_mmap_fix_fault(mg_addr address, bool write, bool exec)
     return mg_mem_protect(page, MG_PAGE, MG_PROT_RW);
 }
 
-static int g_madvise(void *addr, size_t len, int advice) { (void)addr; (void)len; (void)advice; return 0; }
+void mg_mmap_given_back(u64 *given, u64 *again)
+{
+    mg_lock_acquire(&g_region_lock);
+    if (given) *given = g_given_back;
+    if (again) *again = g_taken_again;
+    mg_lock_release(&g_region_lock);
+}
+
+void mg_mmap_usage(u64 *anon, u64 *files)
+{
+    region *r;
+    u64 a = 0, f = 0;
+    size_t page, pages;
+    mg_lock_acquire(&g_region_lock);
+    for (r = g_regions; r; r = r->next) {
+        u64 n = 0;
+        if (r->view) continue;
+        pages = r->size / MG_PAGE;
+        for (page = 0; page < pages; page++)
+            if (live_has(r, page) && !noaccess_has(r, page) && !gone_has(r, page)) n++;
+        if (r->anon) a += n * MG_PAGE;
+        else f += n * MG_PAGE;
+    }
+    mg_lock_release(&g_region_lock);
+    if (anon) *anon = a;
+    if (files) *files = f;
+}
+
+/* madvise: anonymous memory given back (see the top); any other advice is taken and nothing done. */
+#define G_MADV_DONTNEED 4
+#define G_MADV_FREE 8
+static void given_back(u8 *at, size_t n, void *user)
+{
+    region *r = (region *)user;
+    gone_mark(r, (size_t)(at - r->base), n, true);
+    mem_note('D', at, n);
+}
+static int g_madvise(void *addr, size_t len, int advice)
+{
+    u8 *p = (u8 *)addr, *end;
+    size_t given = 0;
+    u64 total = 0, again = 0;
+    bool say = false;
+    if ((mg_addr)p & (MG_PAGE - 1)) {
+        mg_set_errno(GE_INVAL);
+        return -1;
+    }
+    if ((advice != G_MADV_DONTNEED && advice != G_MADV_FREE) || !len) return 0;
+    end = p + MG_ALIGN_UP(len, MG_PAGE);
+    mg_lock_acquire(&g_region_lock);
+    while (p < end) {
+        region *r = region_of(p), *n;
+        u8 *stop = end;
+        if (!r) {
+            /* Not the app's mapping: on to the next region that is, if any is in the range. */
+            for (n = g_regions; n; n = n->next)
+                if (n->base > p && n->base < stop) stop = n->base;
+            p = stop;
+            continue;
+        }
+        if (r->base + r->size < stop) stop = r->base + r->size;
+        if (r->anon && !r->view && !r->file) given += mg_mem_discard(p, (size_t)(stop - p), given_back, r);
+        p = stop;
+    }
+    if (given) {
+        /* (Said at each 64 MB more given back: how much has been, and how much of it was touched again.) */
+        say = (g_given_back >> 26) != ((g_given_back + given) >> 26);
+        g_given_back += given;
+        total = g_given_back;
+        again = g_taken_again;
+    }
+    mg_lock_release(&g_region_lock);
+    if (given) mg_mem_set_before_system_write(before_system_write);
+    if (say) mg_info("mmap: %u MB given back to the system with madvise so far, %u MB of it touched again", (unsigned)(total >> 20), (unsigned)(again >> 20));
+    return 0;
+}
 static int g_mlock(const void *addr, size_t len) { (void)addr; (void)len; return 0; }
 /* msync: what was written into a shared file mapping goes to the file now. */
 static int g_msync(void *addr, size_t len, int flags)

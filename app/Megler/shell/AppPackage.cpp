@@ -84,10 +84,12 @@ void collect(const std::wstring& root, const std::wstring& rel, std::vector<std:
         }
         out.emplace_back(zip, dir + L"\\" + name);
     }
+    // (bitgapps, Google's APKs Megler offers in its library, some 100 MB: an app's own package has its app, and the services
+    // it hosts come from the shared folder's services\ -- each package of before carried them all the same.)
     for (const auto& name : files::listFolders(dir, L"*")) {
         if (rel.empty() && (sameName(name, L"android") || sameName(name, L"selftest") || sameName(name, L"demo") ||
                             sameName(name, L"codec") || sameName(name, L"app") || sameName(name, L"AppxMetadata") ||
-                            sameName(name, L"appx-template")))
+                            sameName(name, L"appx-template") || sameName(name, L"bitgapps")))
             continue;
         collect(root, rel.empty() ? name : rel + L"\\" + name, out, skipped);
     }
@@ -518,7 +520,14 @@ PortalResult installThroughPortal(const Made& made, const std::function<void(con
         Portal portal;
         progress("Asking the Device Portal…");
         if (std::string why = portal.open(); !why.empty()) return {false, why};
-        shellLog::write("app package: the Device Portal's cookies: " + (portal.cookies.empty() ? std::string("none") : narrow(portal.cookies)) +
+        // (The cookies' names alone: their values are the portal's session, which a log sent on is no place for.)
+        std::string names;
+        for (size_t at = 0; at < portal.cookies.size();) {
+            const size_t end = portal.cookies.find(L"; ", at), eq = portal.cookies.find(L'=', at);
+            names += (names.empty() ? "" : ", ") + narrow(portal.cookies.substr(at, (eq < end ? eq : end) - at));
+            at = end == std::wstring::npos ? portal.cookies.size() : end + 2;
+        }
+        shellLog::write("app package: the Device Portal's cookies: " + (names.empty() ? std::string("none") : names) +
                         (portal.token.empty() ? ", no CSRF token" : ", a CSRF token"));
 
         HttpMultipartFormDataContent form;
@@ -566,7 +575,8 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     if (!entry.report.ok || installedFullName.empty() || installedFullName.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos || !canRead(entry.path)) return false;
     const auto shared = sharedFolder();
     if (shared.empty()) return false;
-    const auto record = shared + L"\\services\\gms-package.txt";
+    // microG's and Google's own are each registered apart: an app takes the one it is set to (ui/SettingsScreen.cpp).
+    const auto record = shared + (entry.report.microg ? L"\\services\\microg-package.txt" : L"\\services\\gms-package.txt");
     std::string previous;
     if (!replace && files::read(record, previous) && iniValue(previous, "package") == installedFullName) {
         const auto token = iniValue(previous, "cache");
@@ -582,37 +592,85 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     if (!files::copy(entry.path, apk + L".part") || !files::move(apk + L".part", apk)) return false;
     if (!files::write(record + L".part", "package=" + installedFullName + "\ncache=" + token + "\n") ||
         !files::move(record + L".part", record)) return false;
-    shellLog::write("microG: registered separately installed " + installedFullName);
+    shellLog::write(std::string(entry.report.microg ? "microG: registered microG's " : "microG: registered Google's own ") + installedFullName);
+    removeUnusedServiceCopies();
     return true;
 }
 
 void unregisterServiceApk(const std::string& installedFullName) {
-    const auto record = sharedFolder() + L"\\services\\gms-package.txt";
-    std::string registered;
-    if (files::read(record, registered) && iniValue(registered, "package") == installedFullName) files::remove(record);
+    for (const wchar_t* kind : {L"\\services\\gms-package.txt", L"\\services\\microg-package.txt"}) {
+        const auto record = sharedFolder() + kind;
+        std::string registered;
+        if (files::read(record, registered) && iniValue(registered, "package") == installedFullName) files::remove(record);
+    }
     // Existing clients can finish with their mapped version. The cache is not an installation.
 }
 
-std::wstring serviceApk() {
+namespace {
+
+/// Whether the registered service package is still installed, asked of the Device Portal on a thread of its own, once a run.
+/// The portal's list of the phone's packages takes seconds to come, and every app's start waited for it: 9 to 10 s between
+/// "session: starting" and the app's own start, in each app's log (packages 484 to 491). An app does not need the answer
+/// to start. A service package uninstalled outside Megler (Megler's own uninstall unregisters it at once) is forgotten
+/// here, and the next start is without it.
+void verifyServiceApkLater(const std::string& name) {
+    static std::atomic<bool> asked{false};
+    if (asked.exchange(true)) return;
+    std::thread([name] {
+        try {
+            winrt::init_apartment(winrt::apartment_type::multi_threaded);
+        } catch (...) {
+        }
+        std::vector<InstalledApp> apps;
+        std::string error;
+        if (!installedApps(apps, error)) {
+            shellLog::write("microG: cannot verify service package installation: " + error);
+            return;
+        }
+        if (std::none_of(apps.begin(), apps.end(), [&](const InstalledApp& a) { return a.fullName == name; })) {
+            unregisterServiceApk(name);
+            shellLog::write("microG: " + name + " is no longer installed: apps start without it from the next start on");
+        }
+    }).detach();
+}
+
+}  // namespace
+
+namespace {
+
+/// The registered APK of a record (gms-package.txt, microg-package.txt), or nothing.
+std::wstring registeredApk(const wchar_t* recordName) {
     const auto shared = sharedFolder();
     std::string record;
-    if (shared.empty() || !files::read(shared + L"\\services\\gms-package.txt", record)) return {};
+    if (shared.empty() || !files::read(shared + L"\\services\\" + recordName, record)) return {};
     const auto name = iniValue(record, "package"), token = iniValue(record, "cache");
     if (name.empty() || token.empty() || token.find_first_not_of("0123456789abcdef-") != std::string::npos) return {};
     if (name.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos) return {};
-    std::vector<InstalledApp> apps;
-    std::string error;
-    if (!installedApps(apps, error)) {
-        shellLog::write("microG: cannot verify service package installation: " + error);
-        return {};
-    }
-    if (std::none_of(apps.begin(), apps.end(), [&](const InstalledApp& a) { return a.fullName == name; })) {
-        unregisterServiceApk(name);
-        return {};
-    }
     const auto apk = shared + L"\\services\\" + widen(token) + L"\\GmsCore.apk";
-    return canRead(apk) ? apk : std::wstring();
+    if (!canRead(apk)) return {};
+    verifyServiceApkLater(name);
+    return apk;
 }
+
+}  // namespace
+
+/// microG's: one installed as an app and registered, else the one Megler's package brings (library/Library.cpp publishes it).
+std::wstring microgApk() {
+    const auto registered = registeredApk(L"microg-package.txt");
+    if (!registered.empty()) return registered;
+    const auto shared = sharedFolder();
+    const auto bundled = shared.empty() ? std::wstring() : shared + L"\\services\\microg\\GmsCore.apk";
+    return !bundled.empty() && canRead(bundled) ? bundled : std::wstring();
+}
+
+std::wstring serviceApk(bool microg) {
+    const auto own = registeredApk(L"gms-package.txt");
+    const auto light = microgApk();
+    if (microg && !light.empty()) return light;
+    return !own.empty() ? own : light;
+}
+
+bool hasMicroG() { return !microgApk().empty(); }
 
 std::wstring gsfApk() {
     const auto shared = sharedFolder();
@@ -682,6 +740,133 @@ PortalResult uninstallThroughPortal(const InstalledApp& app) {
 
 std::string meglerVersion() { return versionString(); }
 
+namespace {
+
+/// "0.1.0.354" before "0.1.0.358".
+bool olderVersion(const std::string& a, const std::string& b) {
+    unsigned x[4] = {}, y[4] = {};
+    sscanf_s(a.c_str(), "%u.%u.%u.%u", &x[0], &x[1], &x[2], &x[3]);
+    sscanf_s(b.c_str(), "%u.%u.%u.%u", &y[0], &y[1], &y[2], &y[3]);
+    for (int i = 0; i < 4; i++)
+        if (x[i] != y[i]) return x[i] < y[i];
+    return false;
+}
+
+uint64_t treeSize(const std::wstring& dir) {
+    uint64_t total = 0;
+    for (const auto& name : files::list(dir, L"*")) total += files::size(dir + L"\\" + name);
+    for (const auto& name : files::listFolders(dir, L"*")) total += treeSize(dir + L"\\" + name);
+    return total;
+}
+
+} // namespace
+
+void removeUnusedAndroidRoots(const std::vector<InstalledApp>& installed) {
+    if (isSingleApp()) return;
+    const std::wstring shared = sharedFolder();
+    if (shared.empty()) return;
+    const std::string current = versionString();
+    for (const auto& name : files::listFolders(shared + L"\\android", L"*")) {
+        const std::string version = narrow(name);
+        // This build's, a newer one's (a Megler put back to an older build), and those packages are still of, stay.
+        if (!olderVersion(version, current) ||
+            std::any_of(installed.begin(), installed.end(), [&](const InstalledApp& a) { return a.version == version; }))
+            continue;
+        const std::wstring root = shared + L"\\android\\" + name;
+        const uint64_t size = treeSize(root);
+        // "complete" first: a root without it is never read, whatever of the rest stays.
+        files::remove(root + L"\\complete");
+        if (files::removeTree(root))
+            shellLog::write("app package: Android's files of " + version + " removed from the shared folder (" + formattedByteCount(size) +
+                            "): no app's package is of that build any more");
+        else
+            shellLog::write("app package: Android's files of " + version + " could not all be removed from the shared folder");
+    }
+}
+
+void removeUnusedServiceCopies() {
+    if (isSingleApp()) return;
+    const std::wstring shared = sharedFolder();
+    if (shared.empty()) return;
+    std::string record, other;
+    const std::string keep = files::read(shared + L"\\services\\gms-package.txt", record) ? iniValue(record, "cache") : std::string();
+    const std::string keepMicroG = files::read(shared + L"\\services\\microg-package.txt", other) ? iniValue(other, "cache") : std::string();
+    uint64_t freed = 0;
+    int removed = 0, left = 0;
+    for (const auto& name : files::listFolders(shared + L"\\services", L"*")) {
+        // Only the copies' folders, named by their tokens (hexadecimal and '-'): gsf and the registered copy stay.
+        const std::string token = narrow(name);
+        if (token.empty() || token == keep || token == keepMicroG || token.find_first_not_of("0123456789abcdef-") != std::string::npos) continue;
+        const std::wstring folder = shared + L"\\services\\" + name;
+        const uint64_t size = treeSize(folder);
+        if (files::removeTree(folder)) {
+            freed += size;
+            removed++;
+        } else {
+            left++;
+        }
+    }
+    if (removed || left)
+        shellLog::write(format("microG: %d older copies of Google Play services' APK removed from the shared folder (%s)", removed,
+                               formattedByteCount(freed).c_str()) +
+                        (left ? format("; %d still open in an app, left for the next time", left) : std::string()));
+}
+
+void removeOldHandedApks() {
+    if (isSingleApp()) return;
+    const std::wstring shared = sharedFolder();
+    if (shared.empty()) return;
+    const std::wstring incoming = shared + L"\\incoming";
+    FILETIME now;
+    GetSystemTimeAsFileTime(&now);
+    const uint64_t nowTicks = (uint64_t(now.dwHighDateTime) << 32) | now.dwLowDateTime, hour = 36000000000ull;
+    uint64_t freed = 0;
+    int removed = 0;
+    for (const auto& name : files::list(incoming, L"*")) {
+        const std::wstring path = incoming + L"\\" + name;
+        WIN32_FILE_ATTRIBUTE_DATA data = {};
+        if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) continue;
+        const uint64_t written = (uint64_t(data.ftLastWriteTime.dwHighDateTime) << 32) | data.ftLastWriteTime.dwLowDateTime;
+        // A fresh one may still wait for its request's answer.
+        if (written + hour > nowTicks) continue;
+        const uint64_t size = (uint64_t(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
+        if (files::remove(path)) {
+            freed += size;
+            removed++;
+        }
+    }
+    if (removed)
+        shellLog::write(format("import: %d APKs apps had handed over removed from the shared folder's incoming (%s)", removed,
+                               formattedByteCount(freed).c_str()));
+}
+
+void logSharedSpace() {
+    static std::atomic<bool> said{false};
+    if (isSingleApp() || said.exchange(true)) return;
+    const std::wstring shared = sharedFolder();
+    if (shared.empty()) return;
+    uint64_t total = files::folderSize(shared);
+    std::string parts;
+    for (const auto& name : files::listFolders(shared, L"*")) {
+        const uint64_t size = treeSize(shared + L"\\" + name);
+        total += size;
+        parts += format("%s%s %s", parts.empty() ? "" : ", ", narrow(name).c_str(), formattedByteCount(size).c_str());
+    }
+    shellLog::write("storage: the shared folder holds " + formattedByteCount(total) + ": " + parts);
+    // Its apps' own storage, the largest five.
+    std::vector<std::pair<uint64_t, std::string>> apps;
+    for (const auto& name : files::listFolders(shared + L"\\apps", L"*")) apps.push_back({treeSize(shared + L"\\apps\\" + name), narrow(name)});
+    std::sort(apps.begin(), apps.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    std::string largest;
+    for (size_t i = 0; i < apps.size() && i < 5; i++)
+        largest += format("%s%s %s", largest.empty() ? "" : ", ", apps[i].second.c_str(), formattedByteCount(apps[i].first).c_str());
+    if (!largest.empty()) shellLog::write("storage: the apps' storage there, the largest: " + largest);
+    int copies = 0;
+    for (const auto& name : files::listFolders(shared + L"\\services", L"*"))
+        if (narrow(name).find_first_not_of("0123456789abcdef-") == std::string::npos) copies++;
+    shellLog::write(format("storage: %d copies of Google Play services' APK in the shared folder's services", copies));
+}
+
 std::wstring installedApk(const std::string& fullName) {
     const std::wstring install = platform::installDirectory();
     const size_t slash = install.find_last_of(L'\\');
@@ -732,6 +917,72 @@ void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
         shellLog::write("app package: " + narrow(path) + (ok ? " handed to Windows" : " not taken by Windows"));
         if (done) done(ok);
     }(path, std::move(done));
+}
+
+void installCopiedUpdate() {
+    if (isSingleApp()) return;
+    std::thread([] {
+        try {
+            auto item = KnownFolders::PicturesLibrary().TryGetItemAsync(L"Megler").get();
+            auto folder = item ? item.try_as<StorageFolder>() : nullptr;
+            if (!folder) return;
+            // "Megler_0.1.0.476_ARM.appx": the newest there.
+            std::string best;
+            StorageFile bestFile{nullptr};
+            for (auto const& file : folder.GetFilesAsync().get()) {
+                const std::string name = narrow(file.Name());
+                const std::string head = "Megler_", tail = "_ARM.appx";
+                if (name.size() <= head.size() + tail.size() || name.compare(0, head.size(), head) || name.compare(name.size() - tail.size(), tail.size(), tail)) continue;
+                const std::string version = name.substr(head.size(), name.size() - head.size() - tail.size());
+                unsigned v[4];
+                if (sscanf_s(version.c_str(), "%u.%u.%u.%u", &v[0], &v[1], &v[2], &v[3]) != 4) continue;
+                if (best.empty() || olderVersion(best, version)) {
+                    best = version;
+                    bestFile = file;
+                }
+            }
+            if (best.empty() || !olderVersion(versionString(), best)) return;
+            /*
+             * A try is written down before it is made, and its result after: a package the installer refused is not tried again.
+             * A try that has no result -- this Megler was closed, or suspended while it sent the package, which the portal
+             * takes a minute for -- is made again at the next start, three times in all. 508's first try had no result, and
+             * every start after it said "tried once already" (the second, made by hand, ended when the owner went to another app).
+             */
+            const std::wstring tried = platform::localStateDirectory() + L"\\update-tried-" + widen(best);
+            std::string record;
+            if (files::read(tried, record)) {
+                int tries = 0;
+                for (size_t at = record.find(" installs "); at != std::string::npos; at = record.find(" installs ", at + 1)) tries++;
+                if (record.find("\nresult: ") != std::string::npos || tries >= 3) {
+                    shellLog::write(format("update: Megler %s in Pictures\\Megler was tried %d time%s already (%s)", best.c_str(), tries,
+                                           tries == 1 ? "" : "s", narrow(tried).c_str()));
+                    return;
+                }
+                shellLog::write(format("update: the try %d of Megler %s did not end (this Megler was closed or suspended while it sent it): tried again",
+                                       tries, best.c_str()));
+            }
+            auto certificate = folder.TryGetItemAsync(L"Megler.cer").get();
+            if (!certificate) {
+                shellLog::write("update: Megler " + best + " is in Pictures\\Megler without Megler.cer beside it: not installed");
+                return;
+            }
+            files::append(tried, "Megler " + versionString() + " installs " + best + "\r\n");
+            Made made;
+            made.appx = std::wstring(bestFile.Path());
+            made.certificate = std::wstring(certificate.Path());
+            made.identity = "Megler " + best;
+            shellLog::write("update: Megler " + best + " found in Pictures\\Megler (this is " + versionString() +
+                            "): installed through the Device Portal, which closes this Megler");
+            const PortalResult result = installThroughPortal(made, [](const std::string& step) { shellLog::write("update: " + step); });
+            shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
+            // A portal that could not be reached, or dropped the connection while the package went (0x80072eff, 512), said nothing
+            // of the package: that try is one without a result, made again.
+            const bool unreached = !result.ok && result.said.rfind("The Device Portal could not be reached", 0) == 0;
+            files::append(tried, std::string(unreached ? "no result: " : "result: ") + (result.ok ? "installed: " : "not installed: ") + result.said + "\r\n");
+        } catch (hresult_error const& e) {
+            shellLog::write(format("update: Pictures\\Megler could not be read: 0x%08x ", unsigned(e.code())) + narrow(e.message()));
+        }
+    }).detach();
 }
 
 }  // namespace megler::app::appPackage

@@ -305,6 +305,7 @@ public class Main extends Activity {
         helper.close();
         storage(run);
         battery();
+        phoneEvents();
         connectivity();
         dnsServers();
         systemLibs();
@@ -357,6 +358,35 @@ public class Main extends Activity {
                     data.recycle();
                     reply.recycle();
                     Log.i("DataTest", "process-scope " + said + " here=" + Main.class.getClassLoader().getClass().getSimpleName().equals("ServiceClassLoader"));
+                    // Then a broadcast from that process, its extra an object of that process's class: this process's receiver
+                    // has it as one of its own class (megler.Processes.forLoader).
+                    registerReceiver(new android.content.BroadcastReceiver() {
+                        @Override public void onReceive(android.content.Context c, android.content.Intent i) {
+                            String got;
+                            try { Note n = i.getParcelableExtra("note"); got = n != null ? n.text : "null"; } catch (ClassCastException e) { got = String.valueOf(e); }
+                            Log.i("DataTest", "process-intent note=" + got);
+                        }
+                    }, new android.content.IntentFilter("megler.test.FROM_ELSEWHERE"));
+                    android.os.Parcel d2 = android.os.Parcel.obtain();
+                    try { b.transact(2, d2, null, 0); } catch (android.os.RemoteException e) { Log.w("DataTest", "process-intent: " + e); }
+                    d2.recycle();
+                    // And a bundle in its reply with a Note of its process's class (as Google Play services' sign-in answers
+                    // with its TokenData): given this process's loader, the bundle has the Note as one of this process's class.
+                    android.os.Parcel d3 = android.os.Parcel.obtain(), r3 = android.os.Parcel.obtain();
+                    String inBundle;
+                    try {
+                        b.transact(3, d3, r3, 0);
+                        r3.setDataPosition(0);
+                        android.os.Bundle got = r3.readBundle();
+                        got.setClassLoader(Main.class.getClassLoader());
+                        android.os.Bundle inner = got.getBundle("details");
+                        inner.setClassLoader(Main.class.getClassLoader());
+                        Note kept = (Note) inner.getParcelable("note");
+                        inBundle = kept != null ? kept.text : "null";
+                    } catch (Exception e) { inBundle = String.valueOf(e); }
+                    d3.recycle();
+                    r3.recycle();
+                    Log.i("DataTest", "process-bundle note=" + inBundle);
                 }
                 @Override public void onServiceDisconnected(android.content.ComponentName n) {}
             }, BIND_AUTO_CREATE);
@@ -433,6 +463,709 @@ public class Main extends Activity {
             android.net.Uri row = getContentResolver().insert(all, v);
             detail = "row=" + row;
             return row != null && row.toString().startsWith("content://downloads/my_downloads/");
+        });
+        // Android 10's rollback service (a system API, so by reflection): there, with no rollbacks (Play Store ends without it).
+        step("rollback-service", () -> {
+            Object rollbacks = getSystemService("rollback");
+            if (rollbacks == null) { detail = "none"; return false; }
+            java.util.List<?> available = (java.util.List<?>) rollbacks.getClass().getMethod("getAvailableRollbacks").invoke(rollbacks);
+            java.util.List<?> committed = (java.util.List<?>) rollbacks.getClass().getMethod("getRecentlyCommittedRollbacks").invoke(rollbacks);
+            detail = rollbacks.getClass().getName() + " available=" + available + " committed=" + committed;
+            return available.isEmpty() && committed.isEmpty();
+        });
+        // The ART manager (PackageManager.getArtManager, a system API, so by reflection): there, with profiling off.
+        step("art-manager", () -> {
+            Object art = getPackageManager().getClass().getMethod("getArtManager").invoke(getPackageManager());
+            if (art == null) { detail = "none"; return false; }
+            Object on = art.getClass().getMethod("isRuntimeProfilingEnabled", int.class).invoke(art, 0);
+            detail = art.getClass().getName() + " profiling=" + on;
+            return Boolean.FALSE.equals(on);
+        });
+        // A ProgressBar that overrides getIndeterminateDrawable to cast it to a drawable of its own, as Material's progress
+        // indicators do, is made, and its indeterminate drawable is none until it sets one; a plain one has one to colour.
+        step("progress-subclass", () -> {
+            Indicator i = new Indicator(this);
+            android.graphics.drawable.Drawable plain = new android.widget.ProgressBar(this).getIndeterminateDrawable();
+            detail = "indicator=" + i.getIndeterminateDrawable() + " plain=" + plain;
+            return i.getIndeterminateDrawable() == null && plain != null;
+        });
+        // A phone with its SIM, as the shell said it (megler_set_cellular): GSM, ready, the operator, its country, LTE; and
+        // the telephony and microphone features. The harness gives a SIM of the run's region: 310260 in the US, 25001 in
+        // Russia.
+        step("telephony", () -> {
+            android.telephony.TelephonyManager tm = (android.telephony.TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            android.content.pm.PackageManager pm = getPackageManager();
+            boolean russia = "RU".equals(java.util.Locale.getDefault().getCountry());
+            String operator = russia ? "25001" : "310260", iso = russia ? "ru" : "us";
+            detail = "type=" + tm.getPhoneType() + " sim=" + tm.getSimState() + " op=" + tm.getSimOperator() + "/" + tm.getSimOperatorName()
+                    + " net=" + tm.getNetworkOperator() + " iso=" + tm.getSimCountryIso() + " nt=" + tm.getNetworkType();
+            return tm.getPhoneType() == android.telephony.TelephonyManager.PHONE_TYPE_GSM && tm.getSimState() == android.telephony.TelephonyManager.SIM_STATE_READY
+                && operator.equals(tm.getSimOperator()) && "Test Operator".equals(tm.getSimOperatorName()) && operator.equals(tm.getNetworkOperator())
+                && iso.equals(tm.getSimCountryIso()) && iso.equals(tm.getNetworkCountryIso()) && tm.getNetworkType() == 13 && !tm.isNetworkRoaming()
+                && pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY) && pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_MICROPHONE);
+        });
+        // What the microphone hears, through AudioRecord: the harness's ramp (mic_start), 16-bit and as floats.
+        step("microphone", () -> {
+            android.media.AudioRecord r = new android.media.AudioRecord(android.media.MediaRecorder.AudioSource.MIC, 16000,
+                    android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT, 6400);
+            r.startRecording();
+            short[] s = new short[800];
+            int got = r.read(s, 0, s.length);
+            boolean ramp = got == s.length;
+            for (int i = 1; i < got; i++) if ((short) (s[i] - s[i - 1]) != 1 && s[i] != 0) ramp = false;
+            r.stop();
+            r.release();
+            detail = "got=" + got + " first=" + (got > 0 ? s[0] : -1) + " last=" + (got > 0 ? s[got - 1] : -1);
+            return ramp && s[got - 1] != 0;
+        });
+        // The phone's check of its user (megler.Biometrics, the harness's bio_verify), as Play Store's fingerprint sign-in
+        // asks it: BiometricManager and FingerprintManager say the phone has it; a prompt with a CryptoObject succeeds and
+        // gives that object back; a prompt the user says no to calls its negative button's listener.
+        step("biometric", () -> {
+            android.hardware.biometrics.BiometricManager bm = getSystemService(android.hardware.biometrics.BiometricManager.class);
+            android.hardware.fingerprint.FingerprintManager fm = (android.hardware.fingerprint.FingerprintManager) getSystemService(FINGERPRINT_SERVICE);
+            boolean can = bm != null && bm.canAuthenticate() == android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS
+                && fm != null && fm.isHardwareDetected() && fm.hasEnrolledFingerprints()
+                && getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_FINGERPRINT);
+            java.security.Signature signature = java.security.Signature.getInstance("SHA256withRSA");
+            android.hardware.biometrics.BiometricPrompt.CryptoObject crypto = new android.hardware.biometrics.BiometricPrompt.CryptoObject(signature);
+            final java.util.concurrent.CountDownLatch first = new java.util.concurrent.CountDownLatch(1), second = new java.util.concurrent.CountDownLatch(1);
+            final Object[] got = new Object[2];
+            java.util.concurrent.Executor now = Runnable::run;
+            new android.hardware.biometrics.BiometricPrompt.Builder(this).setTitle("Sign in").setDescription("to the test")
+                .setNegativeButton("Cancel", now, (d, which) -> { got[0] = "negative"; first.countDown(); }).build()
+                .authenticate(crypto, new android.os.CancellationSignal(), now, new android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                    @Override public void onAuthenticationSucceeded(android.hardware.biometrics.BiometricPrompt.AuthenticationResult r) { got[0] = r.getCryptoObject(); first.countDown(); }
+                    @Override public void onAuthenticationError(int code, CharSequence why) { got[0] = "error " + code; first.countDown(); }
+                });
+            boolean answered = first.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            new android.hardware.biometrics.BiometricPrompt.Builder(this).setTitle("Say no")
+                .setNegativeButton("Cancel", now, (d, which) -> { got[1] = "negative " + which; second.countDown(); }).build()
+                .authenticate(new android.os.CancellationSignal(), now, new android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                    @Override public void onAuthenticationSucceeded(android.hardware.biometrics.BiometricPrompt.AuthenticationResult r) { got[1] = "succeeded"; second.countDown(); }
+                    @Override public void onAuthenticationError(int code, CharSequence why) { got[1] = "error " + code; second.countDown(); }
+                });
+            answered &= second.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            boolean same = got[0] instanceof android.hardware.biometrics.BiometricPrompt.CryptoObject
+                && ((android.hardware.biometrics.BiometricPrompt.CryptoObject) got[0]).getSignature() == signature;
+            detail = "can=" + can + " first=" + (same ? "crypto" : got[0]) + " second=" + got[1];
+            return can && answered && same && ("negative " + android.content.DialogInterface.BUTTON_NEGATIVE).equals(got[1]);
+        });
+        // An ordered broadcast with a result receiver, as Play Store sends its own receivers one when it takes an install up:
+        // the receiver of the higher priority first, its result passed to the next, which goes asynchronous and adds to it
+        // from another thread, then the result receiver, on its handler's thread, with the result as it ended.
+        step("ordered-broadcast", () -> {
+            android.os.HandlerThread ht = new android.os.HandlerThread("ordered");
+            ht.start();
+            android.os.Handler h = new android.os.Handler(ht.getLooper());
+            final String action = "megler.test.data.ORDERED";
+            final StringBuilder order = new StringBuilder();
+            final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+            final Object[] got = new Object[4];
+            android.content.BroadcastReceiver low = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    order.append("low;");
+                    final PendingResult p = goAsync();
+                    final boolean ordered = isOrderedBroadcast();
+                    new Thread(() -> {
+                        p.setResultData(p.getResultData() + "b");
+                        p.getResultExtras(true).putBoolean("ordered", ordered);
+                        p.finish();
+                    }).start();
+                }
+            };
+            android.content.BroadcastReceiver high = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    order.append("high;");
+                    setResultCode(getResultCode() + 1);
+                    setResultData(getResultData() + "a");
+                }
+            };
+            android.content.IntentFilter fl = new android.content.IntentFilter(action), fh = new android.content.IntentFilter(action);
+            fh.setPriority(10);
+            registerReceiver(low, fl, null, h);
+            registerReceiver(high, fh, null, h);
+            sendOrderedBroadcast(new android.content.Intent(action), null, new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent i) {
+                    got[0] = getResultCode();
+                    got[1] = getResultData();
+                    android.os.Bundle e = getResultExtras(false);
+                    got[2] = e != null && e.getBoolean("ordered");
+                    got[3] = android.os.Looper.myLooper() == ht.getLooper();
+                    done.countDown();
+                }
+            }, h, 41, "", null);
+            boolean answered = done.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            unregisterReceiver(low);
+            unregisterReceiver(high);
+            ht.quitSafely();
+            detail = "order=" + order + " code=" + got[0] + " data=" + got[1] + " ordered=" + got[2] + " onHandler=" + got[3];
+            return answered && "high;low;".equals(order.toString()) && Integer.valueOf(42).equals(got[0]) && "ab".equals(got[1])
+                && Boolean.TRUE.equals(got[2]) && Boolean.TRUE.equals(got[3]);
+        });
+        // Views attached to the window are hardware accelerated, as Android's are, and draw on a canvas that says so (their
+        // display list's), as Compose asks before it keeps its graphics layers as RenderNodes; a SurfaceView, which has no
+        // list of its own, draws on one that does not say so, as a WebView does; a view not attached, and a bitmap's canvas,
+        // are not.
+        step("hardware-accelerated", () -> {
+            final boolean[] seen = new boolean[3];
+            android.widget.FrameLayout group = new android.widget.FrameLayout(this);
+            android.view.View plain = new android.view.View(this) {
+                @Override protected void onDraw(android.graphics.Canvas c) { seen[0] = true; seen[1] = c.isHardwareAccelerated(); }
+            };
+            android.view.SurfaceView surface = new android.view.SurfaceView(this) {
+                @Override public void draw(android.graphics.Canvas c) { seen[2] = c.isHardwareAccelerated(); super.draw(c); }
+            };
+            boolean detached = plain.isHardwareAccelerated();
+            group.addView(plain, new android.widget.FrameLayout.LayoutParams(40, 40));
+            group.addView(surface, new android.widget.FrameLayout.LayoutParams(40, 40));
+            ((android.view.ViewGroup) text.getParent()).addView(group, new android.view.ViewGroup.LayoutParams(80, 80));
+            // (As on Android, a view is hardware accelerated once its window is attached: here the steps run before it is.)
+            boolean window = text.isAttachedToWindow();
+            boolean attached = plain.isHardwareAccelerated(), surfaceAttached = surface.isHardwareAccelerated();
+            group.measure(android.view.View.MeasureSpec.makeMeasureSpec(80, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(80, android.view.View.MeasureSpec.EXACTLY));
+            group.layout(0, 0, 80, 80);
+            seen[2] = true;
+            // (Drawn into a list as its parent's list would draw it: the SurfaceView draws into that list's canvas itself.)
+            android.graphics.RenderNode node = new android.graphics.RenderNode("hardware-accelerated");
+            node.setPosition(0, 0, 80, 80);
+            android.graphics.RecordingCanvas rc = node.beginRecording();
+            group.draw(rc);
+            node.endRecording();
+            android.graphics.Canvas bc = new android.graphics.Canvas(android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888));
+            ((android.view.ViewGroup) group.getParent()).removeView(group);
+            detail = "detached=" + detached + " attached=" + attached + " window=" + window + " drawn=" + seen[0] + " canvas=" + seen[1] + " surface=" + surfaceAttached + "/" + seen[2]
+                + " bitmap=" + bc.isHardwareAccelerated();
+            return !detached && attached == window && seen[0] && seen[1] && !surfaceAttached && !seen[2] && !bc.isHardwareAccelerated() && rc.isHardwareAccelerated();
+        });
+        // An image matrix set before the view is laid out, then the scale type made MATRIX, as Material's FloatingActionButton
+        // does as it is made: once laid out, the view draws by that matrix.
+        step("image-matrix-before-layout", () -> {
+            android.widget.ImageView iv = new android.widget.ImageView(this);
+            iv.setImageDrawable(new android.graphics.drawable.BitmapDrawable(getResources(), android.graphics.Bitmap.createBitmap(10, 10, android.graphics.Bitmap.Config.ARGB_8888)));
+            android.graphics.Matrix m = new android.graphics.Matrix();
+            m.setScale(2f, 2f);
+            iv.setImageMatrix(m);
+            iv.setScaleType(android.widget.ImageView.ScaleType.MATRIX);
+            iv.measure(android.view.View.MeasureSpec.makeMeasureSpec(100, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(100, android.view.View.MeasureSpec.EXACTLY));
+            iv.layout(0, 0, 100, 100);
+            float[] v = new float[9];
+            iv.getImageMatrix().getValues(v);
+            detail = java.util.Arrays.toString(v);
+            return v[0] == 2f && v[4] == 2f && v[2] == 0f && v[5] == 0f;
+        });
+        // A DelegateLastClassLoader over a DEX of a module's own (assets/module.dex) has its classes before its parent's: its
+        // Twin, of the same name as the app's, is its own, and so is the Twin its ModuleProbe calls, as a module's own
+        // classes of Google Play services are (dalvik.system's 4-argument constructor is Android 10's). A PathClassLoader
+        // over the same file, whose parent is the app's, still gives the app's.
+        step("delegate-last-scope", () -> {
+            java.io.File f = new java.io.File(getCacheDir(), "module.dex");
+            try (java.io.InputStream in = getAssets().open("module.dex"); java.io.OutputStream out = new java.io.FileOutputStream(f)) {
+                byte[] b = new byte[8192];
+                for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
+            }
+            ClassLoader app = getClassLoader();
+            dalvik.system.DelegateLastClassLoader last = new dalvik.system.DelegateLastClassLoader(f.getPath(), null, app, false);
+            Class<?> twin = last.loadClass("megler.test.data.Twin");
+            String own = (String) twin.getMethod("who").invoke(null);
+            String inner = (String) last.loadClass("megler.test.data.ModuleProbe").getMethod("twin").invoke(null);
+            String plain = (String) new dalvik.system.PathClassLoader(f.getPath(), app).loadClass("megler.test.data.Twin").getMethod("who").invoke(null);
+            detail = "own=" + own + " inner=" + inner + " app=" + Twin.who() + " plain=" + plain + " loader=" + (twin.getClassLoader() == last);
+            return "module".equals(own) && "module".equals(inner) && "app".equals(Twin.who()) && "app".equals(plain) && twin != Twin.class && twin.getClassLoader() == last;
+        });
+        // An APK's manifest read through an AssetManager of one's own, as Google Play services 26 reads each of its modules':
+        // the hidden constructor, addAssetPath, openXmlResourceParser on the cookie it gave.
+        step("asset-manager-manifest", () -> {
+            android.content.res.AssetManager am = android.content.res.AssetManager.class.getDeclaredConstructor().newInstance();
+            int cookie = (Integer) android.content.res.AssetManager.class.getMethod("addAssetPath", String.class).invoke(am, getApplicationInfo().sourceDir);
+            android.content.res.XmlResourceParser p = am.openXmlResourceParser(cookie, "AndroidManifest.xml");
+            String pkg = null;
+            for (int ev = p.getEventType(); ev != org.xmlpull.v1.XmlPullParser.END_DOCUMENT && pkg == null; ev = p.next())
+                if (ev == org.xmlpull.v1.XmlPullParser.START_TAG && "manifest".equals(p.getName())) pkg = p.getAttributeValue(null, "package");
+            p.close();
+            detail = "cookie=" + cookie + " package=" + pkg;
+            return cookie != 0 && getPackageName().equals(pkg);
+        });
+        // A large asset the APK deflates, read through AssetManager.open as it is inflated (not whole into an array first):
+        // every byte as made, available() what is left, and the bytes after a mark read again after reset().
+        step("big-asset", () -> {
+            int size = 3 << 20, bad = -1, at = 0;
+            byte[] buf = new byte[65536];
+            try (java.io.InputStream in = getAssets().open("big-deflated.bin")) {
+                boolean avail = in.available() == size;
+                for (int r; (r = in.read(buf)) > 0; at += r)
+                    for (int k = 0; k < r && bad < 0; k++)
+                        if (buf[k] != (byte) ((at + k) * 31 + ((at + k) >> 12))) bad = at + k;
+                detail = "class=" + in.getClass().getSimpleName() + " read=" + at + " bad=" + bad + " available=" + avail;
+                if (!avail || at != size || bad >= 0) return false;
+            }
+            try (java.io.InputStream in = getAssets().open("big-deflated.bin")) {
+                byte[] one = new byte[1000], two = new byte[1000];
+                in.skip(1000000);
+                in.mark(1 << 20);
+                int a = in.read(one), b;
+                in.reset();
+                b = in.read(two);
+                detail += " again=" + (a == 1000 && b == 1000 && java.util.Arrays.equals(one, two) && one[0] == (byte) (1000000 * 31 + (1000000 >> 12)));
+                return a == 1000 && b == 1000 && java.util.Arrays.equals(one, two) && one[0] == (byte) (1000000 * 31 + (1000000 >> 12))
+                        && in.getClass().getSimpleName().equals("InflatedAssetStream");
+            }
+        });
+        // A path's segments through Path.getPathIterator, as Compose walks them on Android 14 (the Play Store's app pages): a
+        // line, quad or cubic with its start point first, a rectangle in lines, a close without points, and then done. By
+        // reflection, since the app is built against Android 10's android.jar.
+        step("path-iterator", () -> {
+            android.graphics.Path p = new android.graphics.Path();
+            p.moveTo(10, 20);
+            p.lineTo(30, 20);
+            p.quadTo(40, 30, 30, 40);
+            p.cubicTo(20, 50, 10, 50, 10, 40);
+            p.close();
+            p.addRect(0, 0, 5, 5, android.graphics.Path.Direction.CW);
+            java.lang.reflect.Method iterator = android.graphics.Path.class.getMethod("getPathIterator");
+            Class<?> ic = Class.forName("android.graphics.PathIterator"), sc = Class.forName("android.graphics.PathIterator$Segment");
+            java.lang.reflect.Method hasNext = ic.getMethod("hasNext"), next = ic.getMethod("next", float[].class, int.class), peek = ic.getMethod("peek"),
+                    segment = ic.getMethod("next"), verbOf = sc.getMethod("getVerb"), pointsOf = sc.getMethod("getPoints");
+            Object it = iterator.invoke(p);
+            StringBuilder verbs = new StringBuilder();
+            float[] pts = new float[10];
+            boolean points = true;
+            while ((Boolean) hasNext.invoke(it)) {
+                verbs.append((int) (Integer) next.invoke(it, pts, 2));
+                if (verbs.length() == 2) points &= pts[2] == 10 && pts[3] == 20 && pts[4] == 30 && pts[5] == 20;
+                if (verbs.length() == 4) points &= pts[2] == 30 && pts[3] == 40 && pts[4] == 20 && pts[5] == 50 && pts[8] == 10 && pts[9] == 40;
+                if (verbs.length() == 8) points &= pts[2] == 5 && pts[3] == 0 && pts[4] == 5 && pts[5] == 5;
+            }
+            boolean done = (Integer) peek.invoke(it) == 6 && (Integer) next.invoke(it, pts, 0) == 6;
+            android.graphics.Path moved = new android.graphics.Path(p);
+            moved.offset(1, 1);
+            Object first = segment.invoke(iterator.invoke(moved));
+            float[] at = (float[]) pointsOf.invoke(first);
+            boolean offset = (Integer) verbOf.invoke(first) == 0 && at[0] == 11 && at[1] == 21;
+            boolean empty = !(Boolean) hasNext.invoke(iterator.invoke(new android.graphics.Path())), small = false;
+            try {
+                next.invoke(iterator.invoke(p), new float[9], 2);
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                small = e.getCause() instanceof ArrayIndexOutOfBoundsException;
+            }
+            detail = "verbs=" + verbs + " points=" + points + " done=" + done + " offset=" + offset + " empty=" + empty + " small=" + small;
+            return verbs.toString().equals("0124501115") && points && done && offset && empty && small;
+        });
+        // A MutableContextWrapper's new base, as WhatsApp's prewarmed chat views get the Conversation activity: the wrapper then
+        // answers as that context does, and unwrapping it leads to the activity.
+        step("mutable-context", () -> {
+            android.content.MutableContextWrapper w = new android.content.MutableContextWrapper(getApplicationContext());
+            android.view.View v = new android.view.View(w);
+            w.setBaseContext(this);
+            android.content.Context c = v.getContext();
+            while (c instanceof android.content.ContextWrapper && !(c instanceof android.app.Activity)) c = ((android.content.ContextWrapper) c).getBaseContext();
+            boolean based = w.getBaseContext() == this, found = c == this, theme = w.getTheme() == getTheme();
+            detail = "based=" + based + " found=" + found + " theme=" + theme;
+            return based && found && theme;
+        });
+        // Runtime.exec of a program the phone does not have: an IOException each time, as Android says it of a missing program,
+        // and never an Error from the process class's initialisation (Facebook ended so at its first exec).
+        step("exec", () -> {
+            int refused = 0;
+            String said = null;
+            for (int i = 0; i < 2; i++) {
+                try {
+                    Runtime.getRuntime().exec(new String[] { "getprop", "ro.build.version.sdk" });
+                } catch (java.io.IOException e) {
+                    refused++;
+                    said = e.getMessage();
+                }
+            }
+            detail = "refused=" + refused + " said=" + said;
+            return refused == 2 && said != null && said.contains("error=2");
+        });
+        // CRC-32C, which Android 14 has (java.util.zip.CRC32C; Yandex Maps checks its saved routes with it): the standard check
+        // value of "123456789", the same through Checksum.update(byte[]) and update(ByteBuffer), the interface's defaults, and
+        // after reset. By reflection: the app is built against Android 10's android.jar.
+        step("crc32c", () -> {
+            byte[] digits = "123456789".getBytes("US-ASCII");
+            Class<?> c = Class.forName("java.util.zip.CRC32C");
+            java.util.zip.Checksum one = (java.util.zip.Checksum) c.newInstance();
+            one.update(digits, 0, digits.length);
+            java.util.zip.Checksum two = (java.util.zip.Checksum) c.newInstance();
+            java.util.zip.Checksum.class.getMethod("update", byte[].class).invoke(two, (Object) digits);
+            java.util.zip.Checksum three = (java.util.zip.Checksum) c.newInstance();
+            java.nio.ByteBuffer direct = java.nio.ByteBuffer.allocateDirect(digits.length);
+            direct.put(digits).flip();
+            java.util.zip.Checksum.class.getMethod("update", java.nio.ByteBuffer.class).invoke(three, direct);
+            long v = one.getValue();
+            one.reset();
+            one.update('1');
+            java.util.zip.Adler32 adler = new java.util.zip.Adler32();
+            java.util.zip.Checksum.class.getMethod("update", byte[].class).invoke(adler, (Object) digits);
+            detail = "crc32c=" + Long.toHexString(v) + " interface=" + Long.toHexString(two.getValue()) + " buffer=" + Long.toHexString(three.getValue())
+                     + " one=" + Long.toHexString(one.getValue()) + " adler=" + Long.toHexString(adler.getValue()) + " consumed=" + !direct.hasRemaining();
+            return v == 0xE3069283L && two.getValue() == v && three.getValue() == v && one.getValue() == 0x90F599E3L
+                   && adler.getValue() == 0x091E01DEL && !direct.hasRemaining();
+        });
+        // The frame stacks of threads Java starts: two thousand calls deep on a thread of the default size, twenty thousand
+        // on one that asked for 16 MB, and a recursion without end the StackOverflowError it is on Android, caught there.
+        step("thread-stack", () -> {
+            final int[] got = { -1, -1 };
+            final boolean[] overflow = { false };
+            Thread small = new Thread(() -> { got[0] = depth(2000); try { depth(Integer.MAX_VALUE); } catch (StackOverflowError e) { overflow[0] = true; } });
+            Thread big = new Thread(null, () -> got[1] = depth(20000), "deep", 16 << 20);
+            small.start();
+            big.start();
+            small.join(60000);
+            big.join(60000);
+            detail = "small=" + got[0] + " big=" + got[1] + " overflow=" + overflow[0];
+            return got[0] == 2000 && got[1] == 20000 && overflow[0];
+        });
+        // android.icu.number as an app built for Android 13 calls it (compiled against the app's stubs/): the unit AndroidX's
+        // LocalePreferences asks for the weather (Yandex Maps, Google Play services), by the region and by the locale's "mu";
+        // the unit for a road's length; Facebook's compact counts; Play Store's fixed fraction digits; a currency, a unit by
+        // its full name, the sign always, the value as shown. And ICU 60's own DecimalFormat and CompactDecimalFormat, whose
+        // android.icu.number the runtime keeps to core-libart, still format; and ICU 60's Rounder is not the app's to see.
+        step("icu-number", () -> {
+            android.icu.number.UnlocalizedNumberFormatter weather = android.icu.number.NumberFormatter.with().usage("weather").unit(android.icu.util.MeasureUnit.CELSIUS);
+            String us = weather.locale(java.util.Locale.US).format(1).getOutputUnit().getIdentifier();
+            String ru = weather.locale(new java.util.Locale("ru", "RU")).format(1).getOutputUnit().getIdentifier();
+            String mu = weather.locale(java.util.Locale.forLanguageTag("en-US-u-mu-celsius")).format(1).getOutputUnit().getIdentifier();
+            String road = android.icu.number.NumberFormatter.with().usage("road").unit(android.icu.util.MeasureUnit.METER).locale(java.util.Locale.US)
+                .format(3218.688).getOutputUnit().getIdentifier();
+            String compact = android.icu.number.NumberFormatter.withLocale(java.util.Locale.US).notation(android.icu.number.Notation.compactShort())
+                .precision(android.icu.number.Precision.maxFraction(1)).roundingMode(java.math.RoundingMode.DOWN).format(1289000L).toString();
+            String compactLong = android.icu.number.NumberFormatter.withLocale(java.util.Locale.US).notation(android.icu.number.Notation.compactLong())
+                .format(1289000L).toString();
+            String fixed = android.icu.number.NumberFormatter.with().precision(android.icu.number.Precision.fixedFraction(2)).locale(java.util.Locale.US)
+                .format(12.3).toString();
+            String money = android.icu.number.NumberFormatter.with().unit(android.icu.util.Currency.getInstance("USD")).locale(java.util.Locale.US)
+                .format(1234.5).toString();
+            String km = android.icu.number.NumberFormatter.with().unit(android.icu.util.MeasureUnit.KILOMETER)
+                .unitWidth(android.icu.number.NumberFormatter.UnitWidth.FULL_NAME).locale(java.util.Locale.US).format(5).toString();
+            String sign = android.icu.number.NumberFormatter.with().sign(android.icu.number.NumberFormatter.SignDisplay.ALWAYS)
+                .grouping(android.icu.number.NumberFormatter.GroupingStrategy.OFF).locale(java.util.Locale.US).format(12345).toString();
+            String digits = android.icu.number.NumberFormatter.with().precision(android.icu.number.Precision.maxFraction(3).withMaxDigits(2))
+                .locale(java.util.Locale.US).format(123.456).toString();
+            java.math.BigDecimal even = android.icu.number.NumberFormatter.with().precision(android.icu.number.Precision.integer())
+                .locale(java.util.Locale.US).format(2.5).toBigDecimal();
+            String old = android.icu.text.NumberFormat.getInstance(android.icu.util.ULocale.US).format(1234.5);
+            String oldCompact = android.icu.text.CompactDecimalFormat.getInstance(android.icu.util.ULocale.US,
+                android.icu.text.CompactDecimalFormat.CompactStyle.SHORT).format(1289000L);
+            boolean rounder;
+            try {
+                Class.forName("android.icu.number.Rounder");
+                rounder = true;
+            } catch (ClassNotFoundException e) {
+                rounder = false;
+            }
+            detail = "us=" + us + " ru=" + ru + " mu=" + mu + " road=" + road + " compact=" + compact + " long=" + compactLong + " fixed=" + fixed
+                     + " money=" + money + " km=" + km + " sign=" + sign + " digits=" + digits + " even=" + even + " old=" + old + " old-compact=" + oldCompact
+                     + " rounder=" + rounder;
+            return "fahrenheit".equals(us) && "celsius".equals(ru) && "celsius".equals(mu) && "mile".equals(road) && "1.2M".equals(compact)
+                   && "1.3 million".equals(compactLong) && "12.30".equals(fixed) && "$1,234.50".equals(money) && "5 kilometers".equals(km)
+                   && "+12345".equals(sign) && "120".equals(digits) && even.intValue() == 2 && "1,234.5".equals(old) && "1.3M".equals(oldCompact) && !rounder;
+        });
+        // Where a call's sound goes, as the app's AudioManager has it (WhatsApp's calls): MODE_IN_COMMUNICATION is the
+        // earpiece, setSpeakerphoneOn(true) the loudspeaker, and setCommunicationDevice either of the two communication
+        // devices there are; MODE_NORMAL ends it. Android 12's methods by reflection: the app is built against Android 10.
+        step("audio-route", () -> {
+            android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+            java.lang.reflect.Method device = android.media.AudioManager.class.getMethod("getCommunicationDevice");
+            java.lang.reflect.Method available = android.media.AudioManager.class.getMethod("getAvailableCommunicationDevices");
+            java.lang.reflect.Method set = android.media.AudioManager.class.getMethod("setCommunicationDevice", android.media.AudioDeviceInfo.class);
+            java.lang.reflect.Method clear = android.media.AudioManager.class.getMethod("clearCommunicationDevice");
+            am.setMode(android.media.AudioManager.MODE_IN_COMMUNICATION);
+            boolean earpiece = !am.isSpeakerphoneOn()
+                               && ((android.media.AudioDeviceInfo) device.invoke(am)).getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+            am.setSpeakerphoneOn(true);
+            boolean speaker = am.isSpeakerphoneOn()
+                              && ((android.media.AudioDeviceInfo) device.invoke(am)).getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+            java.util.List<?> devices = (java.util.List<?>) available.invoke(am);
+            android.media.AudioDeviceInfo ear = null;
+            for (Object d : devices)
+                if (((android.media.AudioDeviceInfo) d).getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) ear = (android.media.AudioDeviceInfo) d;
+            boolean chosen = ear != null && (Boolean) set.invoke(am, ear) && !am.isSpeakerphoneOn();
+            clear.invoke(am);
+            am.setMode(android.media.AudioManager.MODE_NORMAL);
+            detail = "earpiece=" + earpiece + " speaker=" + speaker + " devices=" + devices.size() + " chosen=" + chosen + " mode=" + am.getMode();
+            return earpiece && speaker && devices.size() == 2 && chosen && am.getMode() == android.media.AudioManager.MODE_NORMAL;
+        });
+        // TextUtils.expandTemplate as Android has it: a SpannableStringBuilder (Gmail casts it to one), the template's spans
+        // kept, ^1 to ^9 replaced and ^^ made ^; a value it does not have asked for is an IllegalArgumentException.
+        step("expand-template", () -> {
+            android.text.SpannableString t = new android.text.SpannableString("^1 has ^2 ^^ points");
+            Object bold = new android.text.style.StyleSpan(android.graphics.Typeface.BOLD);
+            t.setSpan(bold, 3, 6, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            CharSequence out = android.text.TextUtils.expandTemplate(t, "Ann", "10");
+            boolean builder = out instanceof android.text.SpannableStringBuilder;
+            android.text.Spanned sp = (android.text.Spanned) out;
+            boolean kept = sp.getSpanStart(bold) == 4 && sp.getSpanEnd(bold) == 7;
+            boolean refused;
+            try {
+                android.text.TextUtils.expandTemplate("^3", "a");
+                refused = false;
+            } catch (IllegalArgumentException e) {
+                refused = true;
+            }
+            detail = "text=" + out + " builder=" + builder + " span=" + sp.getSpanStart(bold) + ".." + sp.getSpanEnd(bold) + " refused=" + refused;
+            return builder && "Ann has 10 ^ points".equals(out.toString()) && kept && refused;
+        });
+        // A ListFragment as Android's: a list of its own when it makes no view of its own (getListView, an adapter set on it, a
+        // row's click to onListItemClick), and the android.R.id.list of a view it makes itself (Gmail's folder list).
+        step("list-fragment", () -> {
+            final int[] clicked = { -1 };
+            final android.widget.BaseAdapter rows = new android.widget.BaseAdapter() {
+                @Override public int getCount() { return 2; }
+                @Override public Object getItem(int position) { return "row " + position; }
+                @Override public long getItemId(int position) { return position; }
+                @Override public android.view.View getView(int position, android.view.View convert, android.view.ViewGroup parent) {
+                    TextView t = new TextView(parent.getContext());
+                    t.setText("row " + position);
+                    return t;
+                }
+            };
+            android.app.ListFragment own = new android.app.ListFragment() {
+                @Override public void onListItemClick(android.widget.ListView l, android.view.View v, int position, long id) { clicked[0] = position; }
+            };
+            android.app.ListFragment made = new android.app.ListFragment() {
+                @Override public android.view.View onCreateView(android.view.LayoutInflater inflater, android.view.ViewGroup container, Bundle saved) {
+                    android.widget.LinearLayout layout = new android.widget.LinearLayout(inflater.getContext());
+                    android.widget.ListView list = new android.widget.ListView(inflater.getContext());
+                    list.setId(android.R.id.list);
+                    layout.addView(list);
+                    return layout;
+                }
+            };
+            android.app.FragmentManager fm = getFragmentManager();
+            fm.beginTransaction().add(own, "own-list").add(made, "made-list").commit();
+            fm.executePendingTransactions();
+            android.widget.ListView a = own.getListView(), b = made.getListView();
+            own.setListAdapter(rows);
+            boolean adapter = a != null && a.getAdapter() == rows && own.getListAdapter() == rows;
+            if (a != null) a.performItemClick(null, 1, 1);
+            boolean found = b != null && b.getId() == android.R.id.list && b.getParent() instanceof android.widget.LinearLayout;
+            fm.beginTransaction().remove(own).remove(made).commit();
+            fm.executePendingTransactions();
+            detail = "own=" + (a != null) + " adapter=" + adapter + " clicked=" + clicked[0] + " made=" + found;
+            return a != null && adapter && clicked[0] == 1 && found;
+        });
+        // A platform fragment's saved state as Android has it: none (null) for a new fragment, whatever its arguments, and what
+        // saveFragmentInstanceState kept of one, through a parcel, for another made with setInitialSavedState (onCreate and
+        // onCreateView; onActivityCreated comes after the activity's onCreate, where the steps run). Gmail's conversation view was
+        // given its arguments as its saved state and found no view state there.
+        step("fragment-saved-state", () -> {
+            final Bundle[] seen = new Bundle[3];
+            final boolean[] firstCreated = new boolean[1];
+            Bundle args = new Bundle();
+            args.putString("given", "an argument");
+            android.app.Fragment first = new android.app.Fragment() {
+                @Override public void onCreate(Bundle saved) { super.onCreate(saved); seen[0] = saved; firstCreated[0] = true; }
+                @Override public void onSaveInstanceState(Bundle out) { out.putString("kept", "by the first"); }
+            };
+            first.setArguments(args);
+            android.app.FragmentManager fm = getFragmentManager();
+            fm.beginTransaction().add(first, "saved-first").commit();
+            fm.executePendingTransactions();
+            android.app.Fragment.SavedState kept = fm.saveFragmentInstanceState(first);
+            fm.beginTransaction().remove(first).commit();
+            fm.executePendingTransactions();
+            android.app.Fragment.SavedState back = null;
+            if (kept != null) {
+                android.os.Parcel p = android.os.Parcel.obtain();
+                kept.writeToParcel(p, 0);
+                p.setDataPosition(0);
+                back = android.app.Fragment.SavedState.CREATOR.createFromParcel(p, getClassLoader());
+                p.recycle();
+            }
+            android.app.Fragment second = new android.app.Fragment() {
+                @Override public void onCreate(Bundle saved) { super.onCreate(saved); seen[1] = saved; }
+                @Override public android.view.View onCreateView(android.view.LayoutInflater i, android.view.ViewGroup c, Bundle saved) { seen[2] = saved; return null; }
+            };
+            second.setInitialSavedState(back);
+            fm.beginTransaction().add(second, "saved-second").commit();
+            fm.executePendingTransactions();
+            fm.beginTransaction().remove(second).commit();
+            fm.executePendingTransactions();
+            boolean fresh = firstCreated[0] && seen[0] == null && first.getArguments() == args;
+            boolean restored = back != null && seen[1] != null && "by the first".equals(seen[1].getString("kept")) && seen[2] == seen[1];
+            detail = "fresh=" + fresh + " first=" + seen[0] + " kept=" + (kept != null) + " parcelled=" + (back != null) + " second="
+                     + (seen[1] == null ? "null" : seen[1].getString("kept")) + " view=" + (seen[2] == seen[1]);
+            return fresh && restored;
+        });
+        // A framework method that is its signature alone, called on purpose: the runtime says its first call, with this caller
+        // (mg_dvm_stub_called; the test looks for the line). Fragment.getEnterTransition is one of the generated members.
+        step("stub-said", () -> {
+            android.app.Fragment f = new android.app.Fragment();
+            return f.getEnterTransition() == null;
+        });
+        // A HandlerThread's looper, as Android gives it: null at once for a thread not started and for one that ended (Facebook's
+        // stories loader asked one of those, and waited for good); the thread's own once it runs, with its id.
+        step("handler-thread", () -> {
+            android.os.HandlerThread never = new android.os.HandlerThread("never started");
+            boolean none = never.getLooper() == null && never.getState() == Thread.State.NEW;
+            android.os.HandlerThread t = new android.os.HandlerThread("looper");
+            t.start();
+            android.os.Looper l = t.getLooper();
+            boolean runs = l != null && l.getThread() == t && t.getThreadId() > 0;
+            t.quit();
+            t.join(5000);
+            boolean ended = !t.isAlive() && t.getLooper() == null && t.getState() == Thread.State.TERMINATED;
+            detail = "none=" + none + " runs=" + runs + " ended=" + ended;
+            return none && runs && ended;
+        });
+        // A dialog the activity makes and keeps itself (Activity.showDialog, as WhatsApp asks whether the phone number is right):
+        // made once by onCreateDialog, prepared and shown each time, dismissed, made again after removeDialog.
+        step("managed-dialog", () -> {
+            dialogsMade = dialogsPrepared = 0;
+            showDialog(21);
+            android.app.Dialog one = lastDialog;
+            boolean shown = one != null && one.isShowing();
+            showDialog(21);
+            boolean kept = dialogsMade == 1 && dialogsPrepared == 2 && lastDialog == one;
+            dismissDialog(21);
+            boolean dismissed = !one.isShowing();
+            removeDialog(21);
+            showDialog(21);
+            boolean again = dialogsMade == 2 && lastDialog != one && lastDialog.isShowing();
+            dismissDialog(21);
+            removeDialog(21);
+            boolean none = !showDialog(23, null), unknown = false;
+            try {
+                dismissDialog(22);
+            } catch (IllegalArgumentException e) {
+                unknown = true;
+            }
+            detail = "shown=" + shown + " kept=" + kept + " dismissed=" + dismissed + " again=" + again + " none=" + none + " unknown=" + unknown;
+            return shown && kept && dismissed && again && none && unknown;
+        });
+        // Digits typed into a field whose TextWatcher puts dashes in as one types (WhatsApp's phone number and code fields): each
+        // goes where the watcher left the cursor, after its dash, so the digits stay in the order typed; a Backspace at the end
+        // takes the last digit. The input connection put the cursor back before the dash, and the next digit went there.
+        step("input-format", () -> {
+            final android.widget.EditText field = new android.widget.EditText(this);
+            field.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
+            field.addTextChangedListener(new android.text.TextWatcher() {
+                private boolean self;
+                @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void afterTextChanged(android.text.Editable s) {
+                    if (self) return;
+                    StringBuilder digits = new StringBuilder(), shown = new StringBuilder();
+                    for (int i = 0; i < s.length(); i++) if (Character.isDigit(s.charAt(i))) digits.append(s.charAt(i));
+                    for (int i = 0; i < digits.length(); i++) {
+                        if (i == 3 || i == 5) shown.append('-');
+                        shown.append(digits.charAt(i));
+                    }
+                    self = true;
+                    s.replace(0, s.length(), shown);
+                    android.text.Selection.setSelection(s, s.length());
+                    self = false;
+                }
+            });
+            android.view.inputmethod.InputConnection ic = field.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            for (char c : "1234567".toCharArray()) ic.commitText(String.valueOf(c), 1);
+            String typed = field.getText().toString();
+            int cursor = field.getSelectionStart();
+            ic.deleteSurroundingText(1, 0);
+            String back = field.getText().toString();
+            detail = "typed=" + typed + " cursor=" + cursor + " after a Backspace=" + back;
+            return typed.equals("123-45-67") && cursor == typed.length() && back.equals("123-45-6");
+        });
+        // The windows an activity opened besides its own, as Android's window manager treats a token's (megler.ViewRoot, asked by
+        // reflection): a dialog hidden while its activity is stopped -- told GONE, without the window focus, still attached -- shown
+        // again after, and removed once the activity is destroyed. A dialog stayed on the screen over the activities after its own.
+        step("dialog-of-stopped", () -> {
+            Class<?> roots = Class.forName("megler.ViewRoot");
+            java.lang.reflect.Method stopped = roots.getMethod("ownerStopped", Activity.class, boolean.class), close = roots.getMethod("closeAll", Activity.class);
+            final int[] seen = { -1 };
+            android.view.View probe = new android.view.View(this) {
+                @Override protected void onWindowVisibilityChanged(int v) { super.onWindowVisibilityChanged(v); seen[0] = v; }
+            };
+            android.app.Dialog dialog = new android.app.Dialog(this);
+            dialog.setContentView(probe);
+            dialog.show();
+            android.view.View decor = dialog.getWindow().getDecorView();
+            boolean focused = decor.hasWindowFocus();
+            stopped.invoke(null, this, true);
+            boolean hidden = seen[0] == android.view.View.GONE && !decor.hasWindowFocus() && decor.isAttachedToWindow();
+            stopped.invoke(null, this, false);
+            boolean shown = seen[0] == android.view.View.VISIBLE && decor.hasWindowFocus();
+            int closed = (Integer) close.invoke(null, this);
+            boolean gone = closed == 1 && !decor.isAttachedToWindow();
+            detail = "focused=" + focused + " hidden=" + hidden + " shown=" + shown + " closed=" + closed + " gone=" + gone;
+            return focused && hidden && shown && gone;
+        });
+        // Android 14's ZipPathValidator, which OsmAnd clears as it starts: there, and a ZIP entry named with ".." still reads.
+        step("zip-path-validator", () -> {
+            Class<?> v = Class.forName("dalvik.system.ZipPathValidator");
+            v.getMethod("clearCallback").invoke(null);
+            java.io.File zip = new java.io.File(getCacheDir(), "dots.zip");
+            try (java.util.zip.ZipOutputStream o = new java.util.zip.ZipOutputStream(new java.io.FileOutputStream(zip))) {
+                o.putNextEntry(new java.util.zip.ZipEntry("a/../b.txt"));
+                o.write('x');
+                o.closeEntry();
+            }
+            try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(zip)) {
+                detail = "entry=" + z.getEntry("a/../b.txt");
+                return z.getEntry("a/../b.txt") != null;
+            }
+        });
+        // A list whose row is clickable itself (its own OnClickListener, as Play Store's drawer's rows are): a tap on the row
+        // clicks it. The list's interception of the pointer going up unpressed the row first, and the row never clicked.
+        step("list-row-click", () -> {
+            final boolean[] clicked = { false };
+            android.widget.ListView list = new android.widget.ListView(this);
+            list.setAdapter(new android.widget.BaseAdapter() {
+                @Override public int getCount() { return 3; }
+                @Override public Object getItem(int p) { return p; }
+                @Override public long getItemId(int p) { return p; }
+                @Override public android.view.View getView(int p, android.view.View convert, android.view.ViewGroup parent) {
+                    android.widget.TextView t = new android.widget.TextView(Main.this);
+                    t.setText("row " + p);
+                    t.setMinHeight(60);
+                    if (p == 0) t.setOnClickListener(v -> clicked[0] = true);
+                    return t;
+                }
+            });
+            list.measure(android.view.View.MeasureSpec.makeMeasureSpec(300, android.view.View.MeasureSpec.EXACTLY),
+                         android.view.View.MeasureSpec.makeMeasureSpec(300, android.view.View.MeasureSpec.EXACTLY));
+            list.layout(0, 0, 300, 300);
+            long now = android.os.SystemClock.uptimeMillis();
+            android.view.MotionEvent down = android.view.MotionEvent.obtain(now, now, android.view.MotionEvent.ACTION_DOWN, 20, 20, 0);
+            android.view.MotionEvent up = android.view.MotionEvent.obtain(now, now + 50, android.view.MotionEvent.ACTION_UP, 20, 20, 0);
+            boolean took = list.dispatchTouchEvent(down);
+            list.dispatchTouchEvent(up);
+            down.recycle();
+            up.recycle();
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() ->
+                Log.i("DataTest", "list-row-click rows=" + list.getChildCount() + " clicked=" + clicked[0]), 200);
+            detail = "rows=" + list.getChildCount() + " took=" + took;
+            return took && list.getChildCount() > 0;
+        });
+        // A typeface built from a font file open on a descriptor (Typeface.Builder(FileDescriptor), as Google Play services
+        // loads its downloaded fonts): made, and the descriptor still open after.
+        step("typeface-descriptor", () -> {
+            java.io.File font = new java.io.File("/system/fonts/ComingSoon.ttf");
+            try (android.os.ParcelFileDescriptor pfd = android.os.ParcelFileDescriptor.open(font, android.os.ParcelFileDescriptor.MODE_READ_ONLY)) {
+                android.graphics.Typeface t = new android.graphics.Typeface.Builder(pfd.getFileDescriptor()).build();
+                boolean open = pfd.getFileDescriptor().valid();
+                detail = "typeface=" + t + " open=" + open;
+                return t != null && open;
+            }
+        });
+        // The phone is set up (device_provisioned, user_setup_complete), as it is once its first-use setup is done: Play Store
+        // runs no install until it is.
+        step("device-provisioned", () -> {
+            int global = android.provider.Settings.Global.getInt(getContentResolver(), "device_provisioned", 0);
+            int secure = android.provider.Settings.Secure.getInt(getContentResolver(), "user_setup_complete", 0);
+            detail = "device_provisioned=" + global + " user_setup_complete=" + secure;
+            return global == 1 && secure == 1;
+        });
+        // The phone's users: one, 0, with serial number 0, its handle found by that number (Play Store counts them before it
+        // installs, and ended on the null array it was given; getSerialNumbersOfUsers is a system API, so by reflection).
+        step("users", () -> {
+            android.os.UserManager um = (android.os.UserManager) getSystemService(USER_SERVICE);
+            long[] serials = (long[]) um.getClass().getMethod("getSerialNumbersOfUsers", boolean.class).invoke(um, true);
+            android.os.UserHandle first = serials != null && serials.length > 0 ? um.getUserForSerialNumber(serials[0]) : null;
+            detail = "serials=" + java.util.Arrays.toString(serials) + " first=" + first;
+            return serials != null && serials.length == 1 && first != null && um.getSerialNumberForUser(first) == serials[0];
         });
         step("start-asked", () -> {
             startService(new android.content.Intent(this, Again.class));
@@ -614,7 +1347,8 @@ public class Main extends Activity {
             return before && p.edit().putInt(key, 7).putString("with space", "x y").commit();
         });
         // An account removed is told as Android 8 and later tell it: ACCOUNT_REMOVED with its name and type, and
-        // LOGIN_ACCOUNTS_CHANGED (Play Store learns so, through Google Play services, that its account is gone).
+        // LOGIN_ACCOUNTS_CHANGED (Play Store learns so, through Google Play services, that its account is gone). Its user data and
+        // an auth token set in between are told to no one: LOGIN_ACCOUNTS_CHANGED twice, for the account added and removed.
         step("account-removed", () -> {
             final android.accounts.AccountManager am = android.accounts.AccountManager.get(this);
             final android.accounts.Account a = new android.accounts.Account("removed by run " + run, "megler.test.account");
@@ -626,12 +1360,43 @@ public class Main extends Activity {
                 @Override public void onReceive(Context c, android.content.Intent i) {
                     if (android.accounts.AccountManager.LOGIN_ACCOUNTS_CHANGED_ACTION.equals(i.getAction())) { changes[0]++; return; }
                     removed[0] = i.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME) + "/" + i.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_TYPE);
-                    boolean held = (a.name + "/" + a.type).equals(removed[0]) && changes[0] >= 1;
+                    boolean held = (a.name + "/" + a.type).equals(removed[0]) && changes[0] == 2;
                     Log.i("DataTest", "account-removed-broadcast " + (held ? "ok" : "FAILED") + " removed=" + removed[0] + " changes=" + changes[0]);
                     c.unregisterReceiver(this);
                 }
             }, f);
-            return am.addAccountExplicitly(a, null, null) && am.removeAccountExplicitly(a) && am.getAccountsByType(a.type).length == 0;
+            if (!am.addAccountExplicitly(a, null, null)) return false;
+            am.setUserData(a, "kept", "for a while");
+            am.setAuthToken(a, "megler.test.token", "token of run " + run);
+            return am.removeAccountExplicitly(a) && am.getAccountsByType(a.type).length == 0;
+        });
+        // The app's sync adapter, run as Android runs it (Gmail's folders stayed empty, its sync off and not to be turned on): the
+        // adapter's type read from its XML, the switches on and kept, and a sync asked for that reaches onPerformSync on a thread
+        // of its own with the provider's client, after the account was made syncable by the adapter's autoInitialize (run 1).
+        step("sync", () -> {
+            final android.accounts.AccountManager am = android.accounts.AccountManager.get(this);
+            // (An account type of its own: the account stays for the second run, and "account-removed" counts those of its type.)
+            final android.accounts.Account a = new android.accounts.Account("synced", "megler.test.synced");
+            if (am.getAccountsByType(a.type).length == 0) am.addAccountExplicitly(a, null, null);
+            android.content.SyncAdapterType type = null;
+            android.content.SyncAdapterType[] types = android.content.ContentResolver.getSyncAdapterTypes();
+            for (android.content.SyncAdapterType t : types != null ? types : new android.content.SyncAdapterType[0])
+                if ("megler.test.sync".equals(t.authority)) type = t;
+            boolean typed = type != null && a.type.equals(type.accountType) && type.isUserVisible() && !type.supportsUploading() && !type.isAlwaysSyncable();
+            int syncable = android.content.ContentResolver.getIsSyncable(a, "megler.test.sync");
+            boolean master = android.content.ContentResolver.getMasterSyncAutomatically();
+            android.content.ContentResolver.setSyncAutomatically(a, "megler.test.sync", false);
+            boolean off = !android.content.ContentResolver.getSyncAutomatically(a, "megler.test.sync");
+            android.content.ContentResolver.setSyncAutomatically(a, "megler.test.sync", true);
+            boolean on = android.content.ContentResolver.getSyncAutomatically(a, "megler.test.sync");
+            final Object listening = android.content.ContentResolver.addStatusChangeListener(android.content.ContentResolver.SYNC_OBSERVER_TYPE_ACTIVE, which -> syncSeen++);
+            Bundle extras = new Bundle();
+            extras.putBoolean(android.content.ContentResolver.SYNC_EXTRAS_MANUAL, true);
+            extras.putBoolean(android.content.ContentResolver.SYNC_EXTRAS_EXPEDITED, true);
+            android.content.ContentResolver.requestSync(a, "megler.test.sync", extras);
+            detail = "types=" + (types == null ? "null" : types.length) + " typed=" + typed + " syncable=" + syncable + " master=" + master + " off=" + off + " on=" + on
+                     + " listening=" + (listening != null);
+            return typed && syncable == (run == 1 ? -1 : 1) && master && off && on && listening != null;
         });
         step("package-installer", () -> {
             android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
@@ -718,6 +1483,27 @@ public class Main extends Activity {
                     && android.net.wifi.WifiManager.calculateSignalLevel(-50, 5) == 4 && android.net.wifi.WifiManager.calculateSignalLevel(-100, 5) == 0
                     && android.net.wifi.WifiManager.calculateSignalLevel(-80, 5) == 1;
         });
+    }
+
+    private int dialogsMade, dialogsPrepared;
+    private android.app.Dialog lastDialog;
+
+    /** Calls `n` deep ("thread-stack"). */
+    static int depth(int n) { return n <= 0 ? 0 : 1 + depth(n - 1); }
+
+    /** The managed dialog of "managed-dialog": made for 21, none for any other number. */
+    @Override
+    protected android.app.Dialog onCreateDialog(int id) {
+        if (id != 21) return null;
+        dialogsMade++;
+        return new android.app.AlertDialog.Builder(this).setMessage("Is this number right?").setPositiveButton("OK", null).create();
+    }
+
+    @Override
+    protected void onPrepareDialog(int id, android.app.Dialog dialog) {
+        super.onPrepareDialog(id, dialog);
+        dialogsPrepared++;
+        lastDialog = dialog;
     }
 
     /** A platform DialogFragment as VK mp3 mod's code check is one: an AlertDialog with a field, made by onCreateDialog. */
@@ -1044,6 +1830,59 @@ public class Main extends Activity {
                 else Log.i("DataTest", "power-heard" + where + " " + intent.getAction());
             }
         }, news);
+    }
+
+    /**
+     * The phone's text messages and calls, which the test's C side gives the app as the shell would (megler_sms_received,
+     * megler_call_logged) once this says it is ready: SMS_RECEIVED read with getMessagesFromIntent (sender, time, the text of
+     * all its parts) and the message in content://sms/inbox; the PendingIntent of an app-specific SMS token, sent by the
+     * message that holds the token; PHONE_STATE RINGING with the caller's number and then IDLE, TelephonyManager's listener the
+     * same, and the call in content://call_log/calls. Each is a line; the C side checks them.
+     */
+    private void phoneEvents() {
+        registerReceiver(new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, android.content.Intent intent) {
+                android.telephony.SmsMessage[] parts = android.provider.Telephony.Sms.Intents.getMessagesFromIntent(intent);
+                StringBuilder body = new StringBuilder();
+                for (android.telephony.SmsMessage m : parts) body.append(m.getMessageBody());
+                String from = parts[0].getOriginatingAddress();
+                Log.i("DataTest", "sms-heard parts=" + parts.length + " from=" + from + " time=" + parts[0].getTimestampMillis() + " body=" + body);
+                try (Cursor c = getContentResolver().query(android.provider.Telephony.Sms.Inbox.CONTENT_URI, new String[] { "address", "body", "type" },
+                                                           "address=?", new String[] { from }, null)) {
+                    String got = c != null && c.moveToFirst() ? c.getString(1) + " type=" + c.getInt(2) : "none";
+                    Log.i("DataTest", "sms-inbox rows=" + (c == null ? -1 : c.getCount()) + " body=" + got);
+                }
+            }
+        }, new android.content.IntentFilter("android.provider.Telephony.SMS_RECEIVED"));
+        registerReceiver(new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, android.content.Intent intent) {
+                android.telephony.SmsMessage[] parts = android.provider.Telephony.Sms.Intents.getMessagesFromIntent(intent);
+                Log.i("DataTest", "sms-token-heard parts=" + (parts == null ? 0 : parts.length) + " from=" + (parts == null ? "" : parts[0].getOriginatingAddress()));
+            }
+        }, new android.content.IntentFilter("megler.test.SMS_TOKEN"));
+        android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(this, 7, new android.content.Intent("megler.test.SMS_TOKEN").setPackage(getPackageName()), 0);
+        String token = android.telephony.SmsManager.getDefault().createAppSpecificSmsToken(pi);
+        registerReceiver(new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, android.content.Intent intent) {
+                String state = intent.getStringExtra(android.telephony.TelephonyManager.EXTRA_STATE);
+                Log.i("DataTest", "call-state " + state + " number=" + intent.getStringExtra(android.telephony.TelephonyManager.EXTRA_INCOMING_NUMBER));
+                if (!android.telephony.TelephonyManager.EXTRA_STATE_IDLE.equals(state)) return;
+                try (Cursor c = getContentResolver().query(android.provider.CallLog.Calls.CONTENT_URI, new String[] { "number", "type", "duration" },
+                                                           "type=?", new String[] { "3" }, "date DESC")) {
+                    String got = c != null && c.moveToFirst() ? c.getString(0) + " type=" + c.getInt(1) : "none";
+                    Log.i("DataTest", "call-log rows=" + (c == null ? -1 : c.getCount()) + " number=" + got);
+                }
+            }
+        }, new android.content.IntentFilter(android.telephony.TelephonyManager.ACTION_PHONE_STATE_CHANGED));
+        android.telephony.TelephonyManager tm = (android.telephony.TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+        tm.listen(new android.telephony.PhoneStateListener() {
+            @Override
+            public void onCallStateChanged(int state, String number) { Log.i("DataTest", "call-listener " + state + " " + number); }
+        }, android.telephony.PhoneStateListener.LISTEN_CALL_STATE);
+        Log.i("DataTest", "phone-ready token=" + token);
     }
 
     /**
@@ -1573,14 +2412,16 @@ public class Main extends Activity {
     /**
      * Android's key store as Amazon's sign-in library (in MX Player) uses it: an RSA pair made under an alias by
      * KeyPairGenerator.getInstance("RSA", "AndroidKeyStore"), a key of sixteen bytes wrapped with its public key and unwrapped with
-     * its private one, both found again through KeyStore.getInstance("AndroidKeyStore"); an EC pair the same way, which signs; and
-     * the RSA pair is there for the next run, which finds it before it makes it again.
+     * its private one, both found again through KeyStore.getInstance("AndroidKeyStore"); an EC pair the same way, which signs; an
+     * AES key, as Tink's master key for EncryptedSharedPreferences, which encrypts; and all three are there for the next run, which
+     * finds them before it makes them again (an EC pair once made the whole file unreadable at the next start, package 560).
      */
     private void keystore(final long run) {
         step("keystore", () -> {
             java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
             store.load(null);
-            boolean before = store.containsAlias("megler-test-rsa");
+            boolean before = store.containsAlias("megler-test-rsa"), beforeEc = store.containsAlias("megler-test-ec"),
+                    beforeAes = store.containsAlias("megler-test-aes");
             java.security.KeyPairGenerator rsa = java.security.KeyPairGenerator.getInstance("RSA", "AndroidKeyStore");
             rsa.initialize(new android.security.keystore.KeyGenParameterSpec.Builder("megler-test-rsa", android.security.keystore.KeyProperties.PURPOSE_ENCRYPT
                     | android.security.keystore.KeyProperties.PURPOSE_DECRYPT).setKeySize(2048)
@@ -1608,9 +2449,26 @@ public class Main extends Activity {
             verify.update(secret);
             int ecBits = ((java.security.interfaces.ECPublicKey) ecPair.getPublic()).getParams().getCurve().getField().getFieldSize();
             boolean ecHeld = verify.verify(signature) && ecBits == 256;
-            detail = "rsa=" + rsaHeld + " (" + bits + " bits, " + wrapped.length + " bytes wrapped) ec=" + ecHeld + " (" + ecBits + " bits) there-before=" + before + " run=" + run;
+
+            if (!beforeAes) {
+                javax.crypto.KeyGenerator aes = javax.crypto.KeyGenerator.getInstance("AES", "AndroidKeyStore");
+                aes.init(new android.security.keystore.KeyGenParameterSpec.Builder("megler-test-aes", android.security.keystore.KeyProperties.PURPOSE_ENCRYPT
+                        | android.security.keystore.KeyProperties.PURPOSE_DECRYPT).setKeySize(256)
+                        .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE).build());
+                aes.generateKey();
+            }
+            javax.crypto.SecretKey aesKey = (javax.crypto.SecretKey) store.getKey("megler-test-aes", null);
+            javax.crypto.Cipher gcm = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+            gcm.init(javax.crypto.Cipher.ENCRYPT_MODE, aesKey);
+            byte[] sealed = gcm.doFinal(secret);
+            javax.crypto.Cipher open = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+            open.init(javax.crypto.Cipher.DECRYPT_MODE, aesKey, gcm.getParameters());
+            boolean aesHeld = aesKey != null && aesKey.getEncoded().length == 32 && Arrays.equals(secret, open.doFinal(sealed));
+            detail = "rsa=" + rsaHeld + " (" + bits + " bits, " + wrapped.length + " bytes wrapped) ec=" + ecHeld + " (" + ecBits + " bits) aes=" + aesHeld
+                    + " there-before=" + before + "," + beforeEc + "," + beforeAes + " run=" + run;
             Log.i("DataTest", "keystore " + detail);
-            return rsaHeld && ecHeld && before == (run > 1);
+            return rsaHeld && ecHeld && aesHeld && before == (run > 1) && beforeEc == (run > 1) && beforeAes == (run > 1);
         });
     }
 
@@ -1912,6 +2770,18 @@ public class Main extends Activity {
     /* A static of this app's, which its process of another name (Elsewhere's) has a copy of its own of. */
     static int sMarker;
 
+    /** A Parcelable of this app's own, which Elsewhere's process has a class of its own of. */
+    public static final class Note implements android.os.Parcelable {
+        final String text;
+        Note(String text) { this.text = text; }
+        @Override public int describeContents() { return 0; }
+        @Override public void writeToParcel(android.os.Parcel p, int flags) { p.writeString(text); }
+        public static final Creator<Note> CREATOR = new Creator<Note>() {
+            @Override public Note createFromParcel(android.os.Parcel p) { return new Note(p.readString()); }
+            @Override public Note[] newArray(int n) { return new Note[n]; }
+        };
+    }
+
     /**
      * A service in another process (android:process=":elsewhere"), as Play Store's download service is: asked through its
      * binder, it says the name of the process it runs in (its ActivityManager's, for this pid), the app's static sMarker as
@@ -1921,6 +2791,20 @@ public class Main extends Activity {
         @Override public android.os.IBinder onBind(android.content.Intent intent) {
             return new android.os.Binder() {
                 @Override protected boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags) {
+                    if (code == 3) {
+                        // a bundle holding a bundle with a Note of this process's class, in the reply
+                        android.os.Bundle details = new android.os.Bundle();
+                        details.putParcelable("note", new Note("in a bundle"));
+                        android.os.Bundle answer = new android.os.Bundle();
+                        answer.putBundle("details", details);
+                        reply.writeBundle(answer);
+                        return true;
+                    }
+                    if (code == 2) {
+                        // a broadcast with a Note of this process's class, to the app's receiver in its own process
+                        sendBroadcast(new android.content.Intent("megler.test.FROM_ELSEWHERE").setPackage(getPackageName()).putExtra("note", new Note("from elsewhere")));
+                        return true;
+                    }
                     String process = "?";
                     for (android.app.ActivityManager.RunningAppProcessInfo p : ((android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE)).getRunningAppProcesses())
                         if (p.pid == android.os.Process.myPid()) process = p.processName;
@@ -1977,6 +2861,44 @@ public class Main extends Activity {
         Forward(android.os.IBinder inner) { this.inner = inner; attachInterface(null, "android.os.IMessenger"); }
         @Override protected boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags) throws android.os.RemoteException {
             return inner.transact(code, data, reply, flags);
+        }
+    }
+
+    static volatile int syncSeen;
+    static volatile boolean syncSaid;
+
+    /** The provider Main's sync adapter syncs: it holds nothing. */
+    public static final class Synced extends android.content.ContentProvider {
+        @Override public boolean onCreate() { return true; }
+        @Override public android.database.Cursor query(android.net.Uri u, String[] p, String s, String[] a, String o) { return null; }
+        @Override public String getType(android.net.Uri u) { return null; }
+        @Override public android.net.Uri insert(android.net.Uri u, android.content.ContentValues v) { return null; }
+        @Override public int delete(android.net.Uri u, String s, String[] a) { return 0; }
+        @Override public int update(android.net.Uri u, android.content.ContentValues v, String s, String[] a) { return 0; }
+    }
+
+    /** The service of Main's sync adapter, which hands out the adapter's binder as Android's sync adapters do. */
+    public static final class SyncService extends android.app.Service {
+        private static SyncAdapter sAdapter;
+        @Override public void onCreate() { synchronized (SyncService.class) { if (sAdapter == null) sAdapter = new SyncAdapter(getApplicationContext()); } }
+        @Override public android.os.IBinder onBind(android.content.Intent i) { return sAdapter.getSyncAdapterBinder(); }
+    }
+
+    /** Says how the sync it was given went: once, the first that is not an initialization. */
+    static final class SyncAdapter extends android.content.AbstractThreadedSyncAdapter {
+        SyncAdapter(Context c) { super(c, true); }
+        @Override public void onPerformSync(android.accounts.Account account, Bundle extras, String authority, android.content.ContentProviderClient provider,
+                                            android.content.SyncResult result) {
+            result.stats.numInserts++;
+            if (syncSaid) return;
+            syncSaid = true;
+            boolean elsewhere = android.os.Looper.myLooper() != android.os.Looper.getMainLooper();
+            int syncable = android.content.ContentResolver.getIsSyncable(account, authority);
+            boolean active = android.content.ContentResolver.isSyncActive(account, authority);
+            boolean held = elsewhere && provider != null && "megler.test.sync".equals(authority) && "synced".equals(account.name) && syncable == 1 && active
+                           && !extras.getBoolean(android.content.ContentResolver.SYNC_EXTRAS_INITIALIZE, false);
+            Log.i("DataTest", "sync-performed " + (held ? "ok" : "FAILED") + " thread=" + Thread.currentThread().getName() + " provider=" + (provider != null)
+                  + " syncable=" + syncable + " active=" + active + " seen=" + syncSeen + " extras=" + extras.keySet());
         }
     }
 
@@ -2724,6 +3646,24 @@ public class Main extends Activity {
             return "Main+,Settings+,Hidden-,Second+,".equals(names.toString()) && entries == 2 && shortcuts && !link && "Other Settings".equals(label)
                 && icon != null && icon.getIntrinsicWidth() == 3;
         });
+        // Its signatures are its APK's certificates as the shell described them (the fixture's: 30 03 02 01 07), given when asked
+        // for and not otherwise; and it has a uid of its own, which names it.
+        step("phone-apps-signatures", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.pm.PackageInfo plain, sigs, signing;
+            try {
+                plain = pm.getPackageInfo("com.example.other", 0);
+                sigs = pm.getPackageInfo("com.example.other", android.content.pm.PackageManager.GET_SIGNATURES);
+                signing = pm.getPackageInfo("com.example.other", android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES);
+            } catch (android.content.pm.PackageManager.NameNotFoundException e) { detail = String.valueOf(e); return false; }
+            byte[] want = { 0x30, 0x03, 0x02, 0x01, 0x07 };
+            boolean got = sigs.signatures != null && sigs.signatures.length == 1 && java.util.Arrays.equals(sigs.signatures[0].toByteArray(), want);
+            boolean signed = signing.signingInfo != null && signing.signingInfo.getApkContentsSigners().length == 1
+                    && java.util.Arrays.equals(signing.signingInfo.getApkContentsSigners()[0].toByteArray(), want);
+            int uid = plain.applicationInfo.uid;
+            detail = "plain=" + java.util.Arrays.toString(plain.signatures) + " sigs=" + got + " signing=" + signed + " uid=" + uid + " named=" + pm.getNameForUid(uid);
+            return plain.signatures == null && got && signed && uid != android.os.Process.myUid() && "com.example.other".equals(pm.getNameForUid(uid));
+        });
     }
 
     /**
@@ -2850,20 +3790,43 @@ public class Main extends Activity {
                     new android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
             params.setAppPackageName("com.example.store");
             int id = pi.createSession(params);
+            // told of as Android tells of it, at once (Play Store asks before it writes)
+            android.content.pm.PackageInstaller.SessionInfo info = pi.getSessionInfo(id);
+            boolean mine = false;
+            for (android.content.pm.PackageInstaller.SessionInfo i : pi.getMySessions()) if (i.getSessionId() == id) mine = true;
+            if (info == null || info.getSessionId() != id || !"com.example.store".equals(info.getAppPackageName()) || !getPackageName().equals(info.getInstallerPackageName()) || !mine) {
+                detail = "info=" + info + " mine=" + mine;
+                return false;
+            }
             android.content.pm.PackageInstaller.Session s = pi.openSession(id);
             try (java.io.OutputStream o = s.openWrite("base", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
+            // The names as written, as Android gives them (Play Store checks them against its artifacts), and the file read back by it.
             String[] names = s.getNames();
+            byte[] back = new byte[4];
+            int read = -1;
+            try (java.io.InputStream in = s.openRead("base")) { if (in != null) read = in.read(back); }
             registerReceiver(new android.content.BroadcastReceiver() {
                 @Override public void onReceive(android.content.Context c, android.content.Intent i) {
                     Log.i("DataTest", "install-status " + i.getIntExtra("android.content.pm.extra.STATUS", -99) + " session=" + (i.getIntExtra("android.content.pm.extra.SESSION_ID", -1) == id)
                             + " package=" + i.getStringExtra("android.content.pm.extra.PACKAGE_NAME"));
+                    // The app installed, uninstalled as an app store uninstalls one; and the other app, which the user keeps.
+                    if (i.getIntExtra("android.content.pm.extra.STATUS", -99) == 0 && "com.example.split".equals(i.getStringExtra("android.content.pm.extra.PACKAGE_NAME"))) {
+                        android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
+                        installer.uninstall("com.example.split", android.app.PendingIntent.getBroadcast(c, 2, new android.content.Intent("megler.test.UNINSTALL_STATUS"), 0).getIntentSender());
+                        installer.uninstall("com.example.other", android.app.PendingIntent.getBroadcast(c, 3, new android.content.Intent("megler.test.UNINSTALL_STATUS"), 0).getIntentSender());
+                    }
                 }
             }, new android.content.IntentFilter("megler.test.INSTALL_STATUS"));
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context c, android.content.Intent i) {
+                    Log.i("DataTest", "uninstall-status " + i.getIntExtra("android.content.pm.extra.STATUS", -99) + " package=" + i.getStringExtra("android.content.pm.extra.PACKAGE_NAME"));
+                }
+            }, new android.content.IntentFilter("megler.test.UNINSTALL_STATUS"));
             android.app.PendingIntent status = android.app.PendingIntent.getBroadcast(this, 0, new android.content.Intent("megler.test.INSTALL_STATUS"),
                     0);
             s.commit(status.getIntentSender());
-            detail = "id=" + id + " names=" + java.util.Arrays.toString(names);
-            return id > 0 && names.length == 1 && "base.apk".equals(names[0]);
+            detail = "id=" + id + " names=" + java.util.Arrays.toString(names) + " read=" + read;
+            return id > 0 && names.length == 1 && "base".equals(names[0]) && read == 4 && back[0] == 'P' && back[3] == 4;
         });
         // A session of an app's base and a split, as Google Play installs an app built as a bundle: handed over as one .apks
         // file of both (the test opens it and counts them).
@@ -2876,11 +3839,32 @@ public class Main extends Activity {
             android.content.pm.PackageInstaller.Session s = pi.openSession(id);
             try (java.io.OutputStream o = s.openWrite("base.apk", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
             try (java.io.OutputStream o = s.openWrite("split_config.xxhdpi.apk", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
+            // and ART's profile, as Google Play writes beside the APKs: kept, not handed over
+            try (java.io.OutputStream o = s.openWrite("base.dm", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
             String[] names = s.getNames();
+            // As Android tells of packages that come and go: the test adds this one to the phone's apps, then takes it out.
+            android.content.IntentFilter packages = new android.content.IntentFilter();
+            for (String a : new String[] { android.content.Intent.ACTION_PACKAGE_ADDED, android.content.Intent.ACTION_PACKAGE_REMOVED,
+                                           android.content.Intent.ACTION_PACKAGE_FULLY_REMOVED, android.content.Intent.ACTION_PACKAGE_REPLACED })
+                packages.addAction(a);
+            packages.addDataScheme("package");
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context c, android.content.Intent i) {
+                    Log.i("DataTest", "package-broadcast " + i.getAction() + " " + i.getData().getSchemeSpecificPart()
+                            + " replacing=" + i.getBooleanExtra(android.content.Intent.EXTRA_REPLACING, false) + " uid=" + (i.getIntExtra(android.content.Intent.EXTRA_UID, -1) > 0));
+                }
+            }, packages);
             s.commit(android.app.PendingIntent.getBroadcast(this, 1, new android.content.Intent("megler.test.INSTALL_STATUS"), 0).getIntentSender());
             detail = "id=" + id + " names=" + java.util.Arrays.toString(names);
-            return id > 0 && names.length == 2;
+            return id > 0 && names.length == 3;
         });
+    }
+
+    /** As Material's BaseProgressIndicator: its indeterminate drawable is its own kind, cast from the ProgressBar's. */
+    static final class Indicator extends android.widget.ProgressBar {
+        static final class Own extends android.graphics.drawable.ColorDrawable {}
+        Indicator(android.content.Context c) { super(c); }
+        @Override public Own getIndeterminateDrawable() { return (Own) super.getIndeterminateDrawable(); }
     }
 
     /**

@@ -71,6 +71,17 @@ void mg_battery_read(mg_battery *out);
 void mg_battery_set(const mg_battery *now);
 u32 mg_battery_changes(void);
 
+/* The phone's cellular side, as megler_set_cellular says it (megler.h). Until it is said: no SIM. */
+typedef struct mg_cellular {
+    bool sim_ready;
+    char operator_name[64];
+    char mcc_mnc[8];
+    int network_type;
+    bool roaming;
+} mg_cellular;
+void mg_cellular_read(mg_cellular *out);
+void mg_cellular_set(const mg_cellular *now);
+
 /* The running app's configuration and window host, for the layers below (EGL presents through the host). */
 const megler_run_config *mg_run_config(void);
 void mg_run_count_frame(void);

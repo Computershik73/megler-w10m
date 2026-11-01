@@ -371,5 +371,13 @@ public class Main extends Activity {
             detail = "string=" + s;
             return "hash\u00e9|abc".equals(s) && s.length() == 9 && s.hashCode() == "hash\u00e9|abc".hashCode();
         });
+        step("many-args", () -> {
+            /* Java called back from native code with 78 arguments (mg_jni.c's JARGS), through "..." and through jvalues. */
+            Object[] names = new Object[33];
+            for (int k = 0; k < names.length; k++) names[k] = "o" + k;
+            int r = Lib.manyArgs(names);
+            detail = "" + r;
+            return r == 3139533;
+        });
     }
 }

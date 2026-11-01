@@ -268,6 +268,12 @@ static int link_mode(int argc, char **argv)
     for (k = 0; k < nfiles; k++) {
         mg_dvm_dex *d = files[k];
         char name[512];
+        bool ready;
+        /* (A file is viewed once a class of it is needed: here, all of it, now.) */
+        mg_dvm_lock();
+        ready = mg_dvm_dex_ready(d);
+        mg_dvm_unlock();
+        if (!ready || !d->b) continue;
         for (i = 0; i < d->ntype; i++) {
             const char *cls = class_of_descriptor(mg_dvm_dex_type(d, i), name, sizeof(name));
             if (!cls) continue;
@@ -442,7 +448,7 @@ static int natives_mode(char **argv)
                     ref_add(&nobody, name);
                     /* Each by its name, but for conscrypt's 280, which are one fact: its library is not there, or did not load. */
                     if (strcmp(name, "com/android/org/conscrypt/NativeCrypto")) printf("  nobody answers %s.%s%s\n", name, m->name, m->sig);
-                } else if (m->native) {
+                } else if (m->nat && m->nat->native) {
                     in_c++;
                 } else {
                     in_library++;

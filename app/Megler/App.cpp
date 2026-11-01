@@ -13,6 +13,7 @@
 
 #include "auto/AutoRun.h"
 #include "library/Library.h"
+#include "player/PhoneEvents.h"
 #include "player/PhoneState.h"
 #include "player/Session.h"
 #include "shell/AppPackage.h"
@@ -66,14 +67,20 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
             shellLog::write("app: suspending");
             session::setSuspended(true);
             if (shell_) shell_->suspending();
+            shellLog::flush();
         });
         Resuming([this](auto&&, auto&&) {
             shellLog::write("app: resuming");
             if (shell_) shell_->resuming();
             session::setSuspended(false);
+            // A call takes the screen, and may have come and gone while Megler was suspended under it.
+            phoneEvents::check();
         });
         try {
-            CoreApplication::Exiting([](auto&&, auto&&) { shellLog::write("app: exiting"); });
+            CoreApplication::Exiting([](auto&&, auto&&) {
+                shellLog::write("app: exiting");
+                shellLog::flush();
+            });
         } catch (const hresult_error&) {
         }
     }
@@ -83,6 +90,8 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
         copySystemDlls();
         ensureContent();
         Window::Current().Activate();
+        // A newer Megler copied to the phone's Pictures\Megler: installed through the phone's own Device Portal.
+        appPackage::installCopiedUpdate();
     }
 
     /// A megler: link (Package.appxmanifest, the protocol), by which a package of Megler's asks another: an APK an app's own

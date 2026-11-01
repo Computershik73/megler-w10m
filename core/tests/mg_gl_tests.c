@@ -14,6 +14,7 @@
  */
 #include <stdio.h>
 
+#include "../src/drivers/mg_java.h"
 #include "../src/drivers/mg_java_gl.h"
 #include "../src/dvm/mg_dvm.h"
 #include "../src/dvm/mg_dvm_internal.h"
@@ -22,6 +23,8 @@
 #include "../src/ndk/mg_egl.h"
 #include "mg_gfx_tests.h"
 #include "mg_gl_standin.h"
+
+const char *megler_data_dir(void);
 
 static int t_checks, t_failed;
 static mg_test_sink t_sink;
@@ -453,6 +456,10 @@ static void test_webview_display(void)
     CHECK(allocate && release && get_display && initialize && query && client_of && create_image && destroy_image);
     if (!allocate || !release || !get_display || !initialize || !query || !client_of || !create_image || !destroy_image) return;
     app = get_display(NULL);
+    /* By default Chromium's code shares the app's display; with webview-own-display it has one of its own. */
+    mg_egl_webview_own_display(false);
+    CHECK(mg_egl_display_for_library("libwebviewchromium.so") == app);
+    mg_egl_webview_own_display(true);
     web = mg_egl_webview_display();
     CHECK(app && web && web != app);
     CHECK(mg_egl_webview_display() == web);
@@ -856,6 +863,15 @@ static void test_window(void)
         CHECK_HEX(window_pixel(45, 12), 0xFF0000);
         CHECK_HEX(window_pixel(30, 12), 0x00FF00);
     }
+    /*
+     * ANGLE's programs kept on disk (mg_egl.c, EGL_ANDROID_blob_cache, which the stand-in lists): given their functions when
+     * the app has a data folder, they keep a program and find it again.
+     */
+    {
+        const char *data = megler_data_dir();
+        if (data && *data) CHECK(mg_gl_standin_blob_given());
+        CHECK(mg_gl_standin_blob_check() == 0);
+    }
     /* The app's own framebuffer and (OpenGL ES 3) pack buffer bound at the swap: the frame is still the surface's, and both are bound after. */
     mg_gl_standin_reset(false, false);
     mg_java_gl_reset();
@@ -1023,6 +1039,317 @@ static void test_cost(void)
     thrown();
 }
 
+/*
+ * Turns (mg_egl.c): two threads, each with a context of the app's display current, clear at once, one through what guests
+ * are given (mg_egl_resolve) and one through what the layer's Java natives are (mg_egl_host). The stand-in counts a clear
+ * that came while another was still in it, and one of a context other than the one made current last (what ANGLE's
+ * renderer draws wrong with, or through a null pointer): none of either, and the threads' contexts made current again in
+ * between. The thunks are ARM's; elsewhere nothing is checked.
+ */
+typedef struct turn_side {
+    void *d, *ctx;
+    bool host;
+    int clears;
+    volatile i32 ready;                /* 1: its context current; -1: it could not be */
+    volatile i32 done;
+} turn_side;
+static volatile i32 g_turn_go;
+
+static void turn_clearing(void *p)
+{
+    typedef unsigned (*make_fn)(void *, void *, void *, void *);
+    typedef void (*clear_fn)(u32);
+    turn_side *s = (turn_side *)p;
+    make_fn make = (make_fn)(s->host ? mg_egl_host("eglMakeCurrent") : mg_egl_resolve("eglMakeCurrent"));
+    clear_fn clear = (clear_fn)(s->host ? mg_egl_host("glClear") : mg_egl_resolve("glClear"));
+    int i;
+    if (!make || !clear || !make(s->d, NULL, NULL, s->ctx)) {
+        mg_atomic_xchg(&s->ready, -1);
+        mg_atomic_xchg(&s->done, 1);
+        return;
+    }
+    mg_atomic_xchg(&s->ready, 1);
+    while (!g_turn_go) mg_sleep_ns(100000ull);
+    for (i = 0; i < 200; i++) {
+        clear(0x4000);
+        s->clears++;
+    }
+    make(s->d, NULL, NULL, NULL);
+    mg_atomic_xchg(&s->done, 1);
+}
+
+/*
+ * A pbuffer and a context destroyed while current (mg_egl.c, doom): EGL ends them once no thread has them current, and so
+ * does the layer -- a thread's turn makes nothing current for a moment, which ANGLE took for letting them go (Yandex Maps'
+ * end in ANGLE, package 528). The stand-in ends at once what it is asked to: the pbuffer is still there after its destroy;
+ * the context destroyed by the thread that has it current is let go of there and ended, and the pbuffer with it.
+ */
+static void test_doomed(void)
+{
+    typedef void *(*display_fn)(void *);
+    typedef unsigned (*init_fn)(void *, int *, int *);
+    typedef void *(*create_fn)(void *, void *, void *, const int *);
+    typedef void *(*pbuffer_fn)(void *, void *, const int *);
+    typedef unsigned (*destroy_fn)(void *, void *);
+    typedef unsigned (*make_fn)(void *, void *, void *, void *);
+    static const int es2[] = { 0x3098, 2, 0x3038 }, size[] = { 0x3057, 4, 0x3056, 4, 0x3038 };
+    display_fn get_display = (display_fn)mg_egl_resolve("eglGetDisplay");
+    init_fn initialize = (init_fn)mg_egl_resolve("eglInitialize");
+    create_fn create = (create_fn)mg_egl_resolve("eglCreateContext");
+    pbuffer_fn pbuffer = (pbuffer_fn)mg_egl_resolve("eglCreatePbufferSurface");
+    destroy_fn destroy = (destroy_fn)mg_egl_resolve("eglDestroyContext"), destroy_surface = (destroy_fn)mg_egl_resolve("eglDestroySurface");
+    make_fn make = (make_fn)mg_egl_resolve("eglMakeCurrent");
+    mg_gl_standin_stats a, b, c;
+    int major = 0, minor = 0;
+    void *d, *ctx, *pb;
+    say("A pbuffer and a context destroyed while current: ended once let go");
+    CHECK(get_display && initialize && create && pbuffer && destroy && destroy_surface && make);
+    if (!get_display || !initialize || !create || !pbuffer || !destroy || !destroy_surface || !make) return;
+    d = get_display(NULL);
+    CHECK(d && initialize(d, &major, &minor));
+    ctx = create(d, NULL, NULL, es2);
+    pb = pbuffer(d, NULL, size);
+    CHECK(ctx && pb);
+    if (!ctx || !pb) return;
+    CHECK(make(d, pb, pb, ctx));
+    mg_gl_standin_stats_get(&a);
+    CHECK(destroy_surface(d, pb));
+    mg_gl_standin_stats_get(&b);
+    CHECK(b.surfaces_alive == a.surfaces_alive && b.contexts_alive == a.contexts_alive);
+    CHECK(destroy(d, ctx));
+    CHECK(make(d, NULL, NULL, NULL));
+    mg_gl_standin_stats_get(&c);
+    CHECK(c.surfaces_alive == a.surfaces_alive - 1 && c.contexts_alive == a.contexts_alive - 1);
+    say("  alive: %d surfaces and %d contexts before, %d and %d after the destroys, %d and %d once let go", (int)a.surfaces_alive, (int)a.contexts_alive,
+        (int)b.surfaces_alive, (int)b.contexts_alive, (int)c.surfaces_alive, (int)c.contexts_alive);
+}
+
+static void test_turns(void)
+{
+#if MG_HOST_ARM32
+    typedef void *(*display_fn)(void *);
+    typedef unsigned (*init_fn)(void *, int *, int *);
+    typedef void *(*create_fn)(void *, void *, void *, const int *);
+    typedef unsigned (*destroy_fn)(void *, void *);
+    static const int es2[] = { 0x3098, 2, 0x3038 };
+    display_fn get_display = (display_fn)mg_egl_resolve("eglGetDisplay");
+    init_fn initialize = (init_fn)mg_egl_resolve("eglInitialize");
+    create_fn create = (create_fn)mg_egl_resolve("eglCreateContext");
+    destroy_fn destroy = (destroy_fn)mg_egl_resolve("eglDestroyContext");
+    turn_side a, b;
+    mg_thread *ta, *tb;
+    mg_gl_standin_stats before, after;
+    int major = 0, minor = 0, tries;
+    void *d;
+    say("Turns: two threads with contexts of the app's display current clear at once");
+    CHECK(get_display && initialize && create && destroy);
+    if (!get_display || !initialize || !create || !destroy) return;
+    d = get_display(NULL);
+    CHECK(d && initialize(d, &major, &minor));
+    memset(&a, 0, sizeof(a));
+    memset(&b, 0, sizeof(b));
+    a.d = b.d = d;
+    a.ctx = create(d, NULL, NULL, es2);
+    b.ctx = create(d, NULL, NULL, es2);
+    b.host = true;
+    CHECK(a.ctx && b.ctx);
+    if (!a.ctx || !b.ctx) return;
+    g_turn_go = 0;
+    mg_gl_standin_set_dwell(50000ull);
+    ta = mg_thread_start(turn_clearing, &a, 1u << 20, "turn-a");
+    tb = mg_thread_start(turn_clearing, &b, 1u << 20, "turn-b");
+    CHECK(ta && tb);
+    for (tries = 0; tries < 500 && (!a.ready || !b.ready); tries++) mg_sleep_ns(2000000ull);
+    CHECK(a.ready == 1 && b.ready == 1);
+    mg_gl_standin_stats_get(&before);
+    mg_atomic_xchg(&g_turn_go, 1);
+    if (ta) mg_thread_join(ta);
+    if (tb) mg_thread_join(tb);
+    mg_gl_standin_set_dwell(0);
+    mg_gl_standin_stats_get(&after);
+    CHECK(a.done && b.done && a.clears == 200 && b.clears == 200);
+    CHECK(after.overlaps == before.overlaps);
+    CHECK(after.stale == before.stale);
+    /* Each thread's first clear after the other's made its context current again: none, then its own. */
+    CHECK(after.makes - before.makes >= 4);
+    say("  400 clears: %d overlapping, %d of a context not made current last; %d make-currents for the turns",
+        (int)(after.overlaps - before.overlaps), (int)(after.stale - before.stale), (int)(after.makes - before.makes) - 2);
+    destroy(d, a.ctx);
+    destroy(d, b.ctx);
+#else
+    say("(Turns: the thunks are ARM's, nothing is checked here)");
+#endif
+}
+
+/*
+ * The WebView's draw functor (drivers/mg_java_webview.c): the table Chromium is handed (version 4, OpenGL ES), a functor made
+ * with it, and drawn as megler.WebFunctors.draw asks -- on the render thread, not the asker's, on_sync before draw_gl; HWUI's
+ * parameters for the part of the view the window shows (the clip the part from the surface's top left, the surface its size
+ * rounded up to 64, the transform a translation by the part's corner, sRGB); on a pbuffer of the WebView's display, cleared
+ * before each draw; its picture handed to the shell as the functor's id above 0x40000000, the keyed mutex let go for the
+ * copy, the part where Chromium drew it. A smaller part keeps the pbuffer. Released: on_context_destroyed, then on_destroyed,
+ * on the render thread, and the shell's picture let go.
+ */
+typedef struct {
+    i32 version;
+    void *query_render_mode, *create_functor, *release_functor, *create_functor_v3, *report_rendering_threads;
+} t_fn_table;
+typedef struct {
+    void *on_sync, *on_context_destroyed, *on_destroyed, *draw_gl, *init_vk, *draw_vk, *post_draw_vk, *remove_overlays;
+} t_fn_callbacks;
+typedef struct {
+    i32 version, clip_left, clip_top, clip_right, clip_bottom, width, height;
+    bool deprecated_0;
+    float transform[16], transfer[7], to_xyz[9];
+    i32 overlays_mode;
+    void *get_surface_control, *merge_transaction;
+} t_fn_params;
+
+static struct {
+    volatile i32 syncs, draws, context_gone, gone, frames, let_go;
+    bool in_order, gone_in_order, keyed;
+    u32 sync_thread, draw_thread, gone_thread;
+    void *data;
+    t_fn_params p;
+    u32 before;                        /* the surface's top left pixel when draw_gl began */
+    int frame_id, fw, fh;
+    void *share;
+    u32 corner;                        /* the frame's top left pixel, as the shell copied it */
+} FT;
+
+static void fn_on_sync(i32 id, void *data, const i32 *params)
+{
+    (void)id;
+    FT.sync_thread = mg_thread_self_id();
+    FT.data = data;
+    if (params && params[0] == 4) FT.syncs++;
+}
+
+static void fn_draw_gl(i32 id, void *data, const t_fn_params *p)
+{
+    void (*clear_color)(float, float, float, float) = (void (*)(float, float, float, float))mg_egl_host("glClearColor");
+    void (*clear)(u32) = (void (*)(u32))mg_egl_host("glClear");
+    (void)id;
+    (void)data;
+    FT.in_order = FT.syncs == FT.draws + 1;
+    FT.draw_thread = mg_thread_self_id();
+    FT.p = *p;
+    FT.before = mg_gl_standin_pixel(0, p->height - 1);
+    /* "Chromium's" frame: red. */
+    if (clear_color && clear) {
+        clear_color(1, 0, 0, 1);
+        clear(0x4000);
+    }
+    FT.draws++;
+}
+
+static void fn_context_destroyed(i32 id, void *data)
+{
+    (void)id;
+    (void)data;
+    FT.context_gone++;
+}
+
+static void fn_destroyed(i32 id, void *data)
+{
+    (void)id;
+    (void)data;
+    FT.gone_in_order = FT.context_gone == 1;
+    FT.gone_thread = mg_thread_self_id();
+    FT.gone++;
+}
+
+static bool fn_texture_frame(void *user, int id, void *share, int width, int height)
+{
+    const u8 *rgba;
+    int w, h;
+    (void)user;
+    (void)width;
+    (void)height;
+    if (!share) {
+        FT.let_go = id;
+        return true;
+    }
+    FT.keyed = mg_gl_standin_keyed(share, true);
+    if (FT.keyed && mg_gl_standin_shared(share, &rgba, &w, &h) && w > 0 && h > 0) {
+        const u8 *px = rgba + (size_t)(h - 1) * (size_t)w * 4;
+        FT.fw = w;
+        FT.fh = h;
+        FT.corner = (u32)px[0] << 24 | (u32)px[1] << 16 | (u32)px[2] << 8 | px[3];
+    }
+    if (FT.keyed) mg_gl_standin_keyed(share, false);
+    FT.frame_id = id;
+    FT.share = share;
+    FT.frames++;
+    return true;
+}
+
+static void fn_draw_texture(void *user, void *canvas, int id, float l, float t, float r, float b, int alpha)
+{
+    (void)user, (void)canvas, (void)id, (void)l, (void)t, (void)r, (void)b, (void)alpha;
+}
+
+static void test_draw_functor(void)
+{
+    static t_fn_callbacks cb;
+    static megler_gfx_host host;
+    const t_fn_table *table = (const t_fn_table *)mg_java_webview_draw_fn_table();
+    const megler_gfx_host *was = mg_java_gl_shell();
+    static int data;
+    void *share;
+    i64 drawn;
+    i32 id;
+    int tries;
+    say("The WebView's draw functor: Chromium's page drawn on the render thread, its picture handed to the shell");
+    memset(&FT, 0, sizeof(FT));
+    memset(&host, 0, sizeof(host));
+    host.texture_frame = fn_texture_frame;
+    host.draw_texture = fn_draw_texture;
+    mg_java_gl_set_shell(&host);
+    CHECK(mg_java_gl_shares_frames());
+    CHECK(table && table->version == 4 && table->query_render_mode && table->create_functor_v3 && table->release_functor);
+    if (!table || !table->create_functor_v3 || !table->release_functor || !table->query_render_mode) goto end;
+    CHECK(((i32 (*)(void))table->query_render_mode)() == 0);
+    cb.on_sync = (void *)fn_on_sync;
+    cb.on_context_destroyed = (void *)fn_context_destroyed;
+    cb.on_destroyed = (void *)fn_destroyed;
+    cb.draw_gl = (void *)fn_draw_gl;
+    id = ((i32 (*)(void *, i32, const t_fn_callbacks *))table->create_functor_v3)(&data, 4, &cb);
+    CHECK(id > 0);
+    if (id <= 0) goto end;
+    /* The part of the view at (10, 20), 100 x 50: a surface of 128 x 64. */
+    drawn = mg_java_webview_draw_functor(id, 10, 20, 100, 50);
+    CHECK_HEX((u32)drawn, 0x40000000 + id);
+    CHECK((drawn >> 32 & 0xFFFF) == 128 && (drawn >> 48 & 0xFFFF) == 64);
+    CHECK(FT.syncs == 1 && FT.draws == 1 && FT.in_order && FT.data == &data);
+    CHECK(FT.draw_thread && FT.draw_thread == FT.sync_thread && FT.draw_thread != mg_thread_self_id());
+    CHECK(FT.p.version == 4 && FT.p.clip_left == 0 && FT.p.clip_top == 0 && FT.p.clip_right == 100 && FT.p.clip_bottom == 50);
+    CHECK(FT.p.width == 128 && FT.p.height == 64 && FT.p.overlays_mode == 0);
+    CHECK(FT.p.transform[0] == 1 && FT.p.transform[5] == 1 && FT.p.transform[10] == 1 && FT.p.transform[15] == 1);
+    CHECK(FT.p.transform[12] == -10 && FT.p.transform[13] == -20 && FT.p.transform[1] == 0 && FT.p.transform[4] == 0);
+    CHECK(FT.p.transfer[0] == 2.4f && FT.p.to_xyz[0] > 0.43f && FT.p.to_xyz[0] < 0.44f && FT.p.to_xyz[8] > 0.71f);
+    CHECK(FT.frames == 1 && FT.frame_id == 0x40000000 + id && FT.keyed && FT.fw == 128 && FT.fh == 64);
+    CHECK_HEX(FT.corner, 0xFF0000FF);
+    share = FT.share;
+    /* A smaller part: the same surface, cleared before Chromium draws again. */
+    drawn = mg_java_webview_draw_functor(id, 0, 0, 90, 40);
+    CHECK((u32)drawn == (u32)(0x40000000 + id) && (drawn >> 32 & 0xFFFF) == 128 && (drawn >> 48 & 0xFFFF) == 64);
+    CHECK(FT.syncs == 2 && FT.draws == 2 && FT.in_order && FT.frames == 2 && FT.share == share);
+    CHECK_HEX(FT.before, 0);
+    CHECK(FT.p.clip_right == 90 && FT.p.clip_bottom == 40 && FT.p.transform[12] == 0 && FT.p.transform[13] == 0);
+    /* Released: its last callbacks on the render thread, the context's first. */
+    ((void (*)(i32))table->release_functor)(id);
+    for (tries = 0; tries < 400 && !FT.gone; tries++) mg_sleep_ns(5000000ull);
+    CHECK(FT.gone == 1 && FT.context_gone == 1 && FT.gone_in_order && FT.gone_thread == FT.draw_thread);
+    for (tries = 0; tries < 100 && FT.let_go != 0x40000000 + id; tries++) mg_sleep_ns(5000000ull);
+    CHECK(FT.let_go == 0x40000000 + id);
+    /* Gone, it draws nothing. */
+    CHECK(mg_java_webview_draw_functor(id, 0, 0, 90, 40) == 0 && FT.draws == 2);
+end:
+    mg_java_webview_forget_egl();
+    mg_java_gl_set_shell(was);
+}
+
 int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
 {
     t_sink = sink;
@@ -1039,7 +1366,11 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_version();
     test_hardware_buffers();
     test_webview_display();
+    mg_egl_webview_own_display(false);
+    test_draw_functor();
     test_fence_syncs();
+    test_doomed();
+    test_turns();
     test_calls();
     test_buffers();
     mg_gl_standin_reset(true, false);

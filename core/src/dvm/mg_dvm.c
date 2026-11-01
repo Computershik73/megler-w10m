@@ -1,7 +1,9 @@
 /* The runtime's interface to the rest of the core: starting it, adding DEX files, calling into it from C. See mg_dvm.h. */
 #include "mg_dvm_internal.h"
+#include "../mg_core.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 bool mg_dvm_running(void) { return g_dvm.running; }
 
@@ -10,16 +12,26 @@ static void set_slow(void) { g_dvm.slow = (g_dvm.trace >= 3 || g_dvm.step_limit 
 
 /* ------------------------------------------------------------- the profile */
 
+mg_dvm_method_prof *mg_dvm_prof_make(mg_dvm_method *m)
+{
+    mg_dvm_method_prof *p = (mg_dvm_method_prof *)mg_alloc(sizeof(*p)), *was;
+    memset(p, 0, sizeof(*p));
+    was = (mg_dvm_method_prof *)mg_atomic_cas_ptr((void *volatile *)&m->prof, NULL, p);
+    if (was) {
+        free(p);                       /* another thread made them first */
+        return was;
+    }
+    return p;
+}
+
 static void profile_clear(mg_dvm_class *c, void *user)
 {
     int pass, i;
     (void)user;
     for (pass = 0; pass < 2; pass++) {
         mg_dvm_method *list = pass ? c->virt : c->direct;
-        for (i = 0; i < (pass ? c->nvirt : c->ndirect); i++) {
-            list[i].prof_self = list[i].prof_incl = list[i].prof_ns = list[i].prof_bytes = 0;
-            list[i].prof_calls = list[i].prof_objects = 0;
-        }
+        for (i = 0; i < (pass ? c->nvirt : c->ndirect); i++)
+            if (list[i].prof) memset(list[i].prof, 0, sizeof(*list[i].prof));
     }
 }
 
@@ -44,17 +56,18 @@ static void profile_collect(mg_dvm_class *c, void *user)
         mg_dvm_method *list = pass ? c->virt : c->direct;
         for (i = 0; i < (pass ? c->nvirt : c->ndirect); i++) {
             mg_dvm_method *m = &list[i];
-            if (!m->prof_calls && !m->prof_self && !m->prof_objects) continue;
+            const mg_dvm_method_prof *p = m->prof;
+            if (!p || (!p->calls && !p->self && !p->objects)) continue;
             if (r->n == r->cap) {
                 r->cap = r->cap ? r->cap * 2 : 1024;
                 r->v = (mg_dvm_method **)mg_realloc(r->v, sizeof(*r->v) * r->cap);
             }
             r->v[r->n++] = m;
-            r->instructions += m->prof_self;
-            r->objects += m->prof_objects;
-            r->bytes += m->prof_bytes;
+            r->instructions += p->self;
+            r->objects += p->objects;
+            r->bytes += p->bytes;
             /* Native time is counted once where natives do not nest; where one calls back into bytecode that calls another, twice. */
-            r->native_ns += m->prof_ns;
+            r->native_ns += p->ns;
         }
     }
 }
@@ -62,9 +75,9 @@ static void profile_collect(mg_dvm_class *c, void *user)
 static int g_profile_key;
 static int profile_order(const void *a, const void *b)
 {
-    const mg_dvm_method *x = *(mg_dvm_method *const *)a, *y = *(mg_dvm_method *const *)b;
-    u64 p = g_profile_key == 0 ? x->prof_self : g_profile_key == 1 ? x->prof_incl : g_profile_key == 2 ? x->prof_ns : x->prof_bytes;
-    u64 q = g_profile_key == 0 ? y->prof_self : g_profile_key == 1 ? y->prof_incl : g_profile_key == 2 ? y->prof_ns : y->prof_bytes;
+    const mg_dvm_method_prof *x = (*(mg_dvm_method *const *)a)->prof, *y = (*(mg_dvm_method *const *)b)->prof;
+    u64 p = g_profile_key == 0 ? x->self : g_profile_key == 1 ? x->incl : g_profile_key == 2 ? x->ns : x->bytes;
+    u64 q = g_profile_key == 0 ? y->self : g_profile_key == 1 ? y->incl : g_profile_key == 2 ? y->ns : y->bytes;
     return p < q ? 1 : p > q ? -1 : 0;
 }
 
@@ -88,14 +101,15 @@ void mg_dvm_profile_report(int top, void (*line)(const char *text, void *user), 
         line(text, user);
         for (i = 0; i < r.n && (int)i < top; i++) {
             const mg_dvm_method *m = r.v[i];
-            u64 value = key == 0 ? m->prof_self : key == 1 ? m->prof_incl : key == 2 ? m->prof_ns : m->prof_bytes;
+            const mg_dvm_method_prof *p = m->prof;
+            u64 value = key == 0 ? p->self : key == 1 ? p->incl : key == 2 ? p->ns : p->bytes;
             if (!value) break;
-            if (key == 2) snprintf(text, sizeof(text), "    %8llu ms  %7u calls  %s.%s", (unsigned long long)(value / 1000000ull), (unsigned)m->prof_calls, m->cls->name, m->name);
+            if (key == 2) snprintf(text, sizeof(text), "    %8llu ms  %7u calls  %s.%s", (unsigned long long)(value / 1000000ull), (unsigned)p->calls, m->cls->name, m->name);
             else if (key == 3)
-                snprintf(text, sizeof(text), "    %8llu KB  %7u objects  %s.%s", (unsigned long long)(value >> 10), (unsigned)m->prof_objects, m->cls->name, m->name);
+                snprintf(text, sizeof(text), "    %8llu KB  %7u objects  %s.%s", (unsigned long long)(value >> 10), (unsigned)p->objects, m->cls->name, m->name);
             else
                 snprintf(text, sizeof(text), "    %9llu k  %5.1f%%  %7u calls  %s.%s%s", (unsigned long long)(value / 1000), r.instructions ? 100.0 * (double)value / (double)r.instructions : 0.0,
-                         (unsigned)m->prof_calls, m->cls->name, m->name, m->sig);
+                         (unsigned)p->calls, m->cls->name, m->name, m->sig);
             line(text, user);
         }
     }
@@ -141,6 +155,25 @@ bool mg_dvm_add_dex_scope(const void *data, size_t size, const char *label, int 
 }
 
 bool mg_dvm_add_dex(const void *data, size_t size, const char *label) { return add_dex(data, size, label, !g_dvm.running); }
+
+bool mg_dvm_add_dex_lazy(const void *data, size_t size, const char *label, int scope, const char *map_path, u64 map_at, char *names, size_t names_size)
+{
+    mg_dvm_dex *d = mg_dvm_dex_open_lazy((const u8 *)data, size, label, map_path, map_at);
+    if (!d) return false;
+    d->names = names;
+    d->names_size = names ? names_size : 0;
+    if (scope) {
+        d->scope = scope;
+        d->app = true;
+    } else {
+        d->boot = !g_dvm.running;
+        d->app = g_dvm.app_follows;
+    }
+    mg_dvm_classes_add_dex(d);
+    /* (The caller unmaps the view the names were read from; the file is viewed again when it is needed.) */
+    d->b = NULL;
+    return true;
+}
 
 static bool add_dex_file(const char *path, bool boot)
 {
@@ -228,6 +261,7 @@ bool mg_dvm_start_android(const char *root)
 
 bool mg_dvm_start(const char *const *boot, int nboot)
 {
+    mg_core_set_fault_detail(mg_dvm_fault_frames);
     static const char *const first[] = { "java/lang/Object", "java/lang/Class", "java/lang/String", "java/lang/Throwable" };
     const u16 one = 1;
     char why[300];
@@ -265,6 +299,16 @@ bool mg_dvm_start(const char *const *boot, int nboot)
     }
     mg_dvm_objects_start();
     if (g_dvm.libcore) mg_dvm_intrinsics_start();
+    /*
+     * The JIT (mg_dvm_jit.c): on unless the flag no-jit says otherwise; trace-jit says each method compiled. The tests set
+     * MEGLER_JIT_THRESHOLD (1: every loop compiled at its first jump back) to run their code compiled, and MEGLER_JIT_TRACE=1.
+     */
+    {
+        const char *t = getenv("MEGLER_JIT_THRESHOLD");
+        u32 threshold = t && *t ? (u32)strtoul(t, NULL, 10) : 1000;
+        const char *trace = getenv("MEGLER_JIT_TRACE");
+        mg_dvm_jit_start(!mg_flag("no-jit") && threshold > 0, threshold, mg_flag("trace-jit") || (trace && *trace == '1'));
+    }
     /* From here on allocation collects when enough has been made (mg_dvm_gc.c). */
     mg_dvm_gc_enable(true);
     return true;

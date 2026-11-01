@@ -72,6 +72,8 @@ const char *text_of(mg_jobj *s);
 void test_language(void);
 /* mg_dvm_tests_runtime.c: natives, monitors and threads, limits, what is refused. */
 void test_runtime(const char *fixtures);
+/* mg_dvm_tests_runtime.c: an APK's DEX files viewed only once a class of them is linked (a scratch folder for the APKs). */
+void test_lazy_dex(const char *fixtures, const char *scratch);
 /* mg_dvm_tests_gc.c: the collector, from the heap up. */
 void test_gc(void);
 /* mg_dvm_tests_jni.c: the runtime and the JNI layer as one Java world; with a guest library where guest code can run. */

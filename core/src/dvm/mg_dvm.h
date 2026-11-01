@@ -58,6 +58,13 @@ bool mg_dvm_start(const char *const *boot, int nboot);
  */
 bool mg_dvm_start_android(const char *root);
 /*
+ * The framework's methods that are signatures alone (tools/list-stubs.py: "<class> <name> <descriptor>" a line, sorted),
+ * read from `path` before the framework's classes are linked: each is marked as it is linked, and its first call is said
+ * in the log ("api: ... is a stub here"), so that what an app needs of Android 14 that Megler does not do shows. False
+ * when the file is not there (nothing is marked).
+ */
+bool mg_dvm_stubs_load(const char *path);
+/*
  * Class loaders. There is one class path and no loading through a loader:
  * every class is found by name wherever it was added. But an app's classes
  * must say they come from the app's loader (Class.getClassLoader: resources
@@ -180,7 +187,13 @@ typedef struct mg_dvm_gc_result {
     u64 freed_objects, freed_bytes;
     u32 cleared, enqueued, to_finalize;      /* references cleared, of them enqueued; objects found to finalize */
     u32 threads_stopped;
+    u32 markers, sweepers;                   /* threads that marked at once, at the most; that swept */
     u64 stop_ns, mark_ns, sweep_ns;
+    u64 roots_ns, stacks_ns;                 /* of the mark: the exact roots, and the conservative scan of the stacks */
+    u64 classes_ns, strings_ns, jni_ns;      /* of the exact roots: the classes', the interned strings', the JNI layer's */
+    u32 classes, strings, jni_roots;         /* how many of each were read */
+    bool roots_shared;                       /* the classes and strings read by all the marking threads: classes_ns their time with what they hold */
+    char makers[200];                        /* the threads that made the most since the last collection, and what: "\"GLThread 1\" 30.1 MB, ..." */
 } mg_dvm_gc_result;
 /* A collection that marks only: what is reachable, counted, nothing freed. False when not every thread could be stopped. */
 bool mg_dvm_gc_census(mg_dvm_gc_result *out);
@@ -197,6 +210,17 @@ void mg_dvm_gc_set_min_budget(u64 bytes);
 void mg_dvm_gc_native(i64 bytes);
 /* Collections made so far and the time they took, for the frame meter. */
 void mg_dvm_gc_totals(u64 *collections, u64 *pause_ns);
+/* Whether a collection is under way now (the world stopped, or the heap being swept): for the main thread's sampler. */
+bool mg_dvm_gc_busy(void);
+/*
+ * Collections due to allocation marked alongside the app (mg_dvm_gc.c, "marking alongside the app"): on by itself where the
+ * heap's pages are watched for writes; this turns it on or off (the tests, on a host that does not watch, where every
+ * marked object is looked at again). And a wait for the one under way, if any, to end.
+ */
+void mg_dvm_gc_set_alongside(bool on);
+void mg_dvm_gc_alongside_wait(void);
+/* Where objects were made since the last call, sampled every 256 KB each thread makes: a line in the log, and the samples forgotten. */
+void mg_dvm_made_say(void);
 /* Bytes of the objects in the heap now (live since the last collection, and what was made after it). */
 u64 mg_dvm_live_bytes(void);
 /* Returns once the objects found to finalize so far have been finalized (Runtime.runFinalization), or after ten seconds. */
@@ -216,6 +240,14 @@ void mg_dvm_gc_run_finalization(void);
  * behind.
  */
 u64 mg_dvm_executed_all(void);
+/*
+ * The runtime's threads: how many, how many native code attached, the bytes their frame stacks reserve, the bytes their
+ * host (C) stacks reserve -- committed whole for Android code (mg_thread_whole_stack), so this is memory, not only
+ * address -- and the most any one thread's host stack has been seen to use.
+ */
+void mg_dvm_thread_census(u32 *threads, u32 *attached, u64 *frame_bytes, u64 *c_reserved, u64 *c_peak);
+/* The runtime's frame stacks: the bytes their segments reserve, the bytes of it committed, and the most any thread's frames take now. */
+void mg_dvm_frame_census(u64 *reserved, u64 *committed, u64 *deepest);
 typedef struct mg_dvm_costs {
     u64 executed, waited_ns, native_ns, natives, alloc_ns, allocs, blocked_ns;
 } mg_dvm_costs;
@@ -252,6 +284,10 @@ typedef struct mg_dvm_stats {
     u64 objects, object_bytes;         /* allocated; nothing is freed yet */
     u64 instructions;                  /* executed, counted only while a step limit or tracing is on */
     u64 meta_bytes;                    /* what the runtime keeps of DEX files and linked classes (not the files themselves) */
+    /* Of it: the classes themselves (and their interfaces' lists), their methods, their fields (and static values), their
+       vtables, the DEX files' own tables (each index's cache), and names (interned, and the lazily viewed files' pools). */
+    u64 meta_classes, meta_methods, meta_fields, meta_vtables, meta_dex, meta_names;
+    u64 meta_pools;                    /* the class names of DEX files registered and not viewed yet, copied */
     u32 strings_interned;
 } mg_dvm_stats;
 void mg_dvm_get_stats(mg_dvm_stats *out);

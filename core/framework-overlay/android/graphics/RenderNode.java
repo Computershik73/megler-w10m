@@ -74,6 +74,15 @@ public final class RenderNode {
         return mCanvas;
     }
     public RecordingCanvas beginRecording() { return beginRecording(getWidth(), getHeight()); }
+    /**
+     * Megler: a view's display list being recorded (android.view.View, overlaid): a canvas that says it is not hardware
+     * accelerated, as the screen's canvas the views drew on says, so that a view draws as it drew there.
+     */
+    public RecordingCanvas meglerBeginViewRecording(int width, int height) {
+        RecordingCanvas c = beginRecording(width, height);
+        c.mMeglerView = true;
+        return c;
+    }
     public RecordingCanvas start(int width, int height) { return beginRecording(width, height); }
     public void endRecording() {
         if (mCanvas == null) throw new IllegalStateException("No recording in progress, forgot to call #beginRecording()?");
@@ -118,6 +127,13 @@ public final class RenderNode {
             if (sMeglerDirty.size() >= 4096) meglerSyncLocked();
         }
     }
+
+    /**
+     * Megler: the same, for megler.ViewRoot, which records the window's frames (a recording canvas does not sync) and hands
+     * them to the render thread: called once the render thread has shown the frame before, so that it draws each frame with
+     * the properties of that frame.
+     */
+    public static void meglerSyncAll() { meglerSync(); }
 
     /** Megler: every node whose properties changed hands them to the core. Before anything is drawn that may draw a node. */
     static void meglerSync() {

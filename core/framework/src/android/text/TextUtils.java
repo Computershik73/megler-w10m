@@ -62,7 +62,40 @@ public class TextUtils {
         for (int i = 0; i < s.length(); i++) { char c = s.charAt(i); switch (c) { case '<': b.append("&lt;"); break; case '>': b.append("&gt;"); break; case '&': b.append("&amp;"); break; case '\'': b.append("&#39;"); break; case '"': b.append("&quot;"); break; default: b.append(c); } }
         return b.toString();
     }
-    public static CharSequence expandTemplate(CharSequence template, CharSequence... values) { String t = template.toString(); for (int i = 0; i < values.length; i++) t = t.replace("^" + (i + 1), values[i]); return t; }
+    /*
+     * As Android's: a SpannableStringBuilder of the template, its spans and the values' kept, each ^1 to ^9 replaced by its value
+     * and ^^ by ^. It was a String: Gmail casts what it gets to SpannableStringBuilder, and its setup screen ended with a
+     * ClassCastException (package 510).
+     */
+    public static CharSequence expandTemplate(CharSequence template, CharSequence... values) {
+        if (values.length > 9) throw new IllegalArgumentException("max of 9 values are supported");
+        SpannableStringBuilder ssb = new SpannableStringBuilder(template);
+        try {
+            int i = 0;
+            while (i < ssb.length()) {
+                if (ssb.charAt(i) == '^') {
+                    char next = ssb.charAt(i + 1);
+                    if (next == '^') {
+                        ssb.delete(i + 1, i + 2);
+                        ++i;
+                        continue;
+                    } else if (Character.isDigit(next)) {
+                        int which = Character.getNumericValue(next) - 1;
+                        if (which < 0) throw new IllegalArgumentException("template requests value ^" + (which + 1));
+                        if (which >= values.length)
+                            throw new IllegalArgumentException("template requests value ^" + (which + 1) + "; only " + values.length + " provided");
+                        ssb.replace(i, i + 2, values[which]);
+                        i += values[which].length();
+                        continue;
+                    }
+                }
+                ++i;
+            }
+        } catch (IndexOutOfBoundsException ignore) {
+            // a ^ as the template's last character
+        }
+        return ssb;
+    }
     public static void copySpansFrom(Spanned src, int start, int end, Class kind, Spannable dest, int off) {
         if (kind == null) kind = Object.class;
         Object[] spans = src.getSpans(start, end, kind);

@@ -39,3 +39,24 @@
     const/4 v0, 0x1
     return v0
 .end method
+
+# n calls, each holding an array of its own across the calls inside it; how many still hold their own number on the way back.
+.method public static kept(I)I
+    .registers 5
+    if-nez p0, :more
+    const/4 v0, 0x0
+    return v0
+    :more
+    const/16 v1, 0x400
+    new-array v1, v1, [I
+    const/4 v2, 0x0
+    aput p0, v1, v2
+    add-int/lit8 v0, p0, -0x1
+    invoke-static {v0}, Lt/Deep;->kept(I)I
+    move-result v0
+    aget v3, v1, v2
+    if-ne v3, p0, :lost
+    add-int/lit8 v0, v0, 0x1
+    :lost
+    return v0
+.end method

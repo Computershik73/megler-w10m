@@ -49,8 +49,32 @@ static DWORD prot_of(int prot)
     case MG_PROT_R: return PAGE_READONLY;
     case MG_PROT_RW: return PAGE_READWRITE;
     case MG_PROT_RX: return PAGE_EXECUTE_READ;
+    case MG_PROT_RWX: return PAGE_EXECUTE_READWRITE;
     default: return PAGE_NOACCESS;
     }
+}
+
+/*
+ * The plain VirtualProtect, for pages writable and executable at once, which VirtualProtectFromApp refuses. It is in the
+ * phone's kernelbase, where VirtualProtectFromApp is; the SDK's headers leave it out of the app partition. Found by the
+ * address of VirtualProtectFromApp's module (venetium-w10m's finding, after Bashar Astifan's UWP2Win32: the kernel itself
+ * grants PAGE_EXECUTE_READWRITE on 15063 and 15254).
+ */
+typedef BOOL(WINAPI *fn_plain_protect)(LPVOID, SIZE_T, DWORD, PDWORD);
+static fn_plain_protect plain_protect(void)
+{
+    static fn_plain_protect fn;
+    static volatile LONG looked;
+    if (!InterlockedCompareExchange(&looked, 1, 0)) {
+#if MG_UWP
+        MEMORY_BASIC_INFORMATION info;
+        if (VirtualQuery((LPCVOID)(void *)&VirtualProtectFromApp, &info, sizeof(info)) == sizeof(info) && info.AllocationBase)
+            fn = (fn_plain_protect)(void *)GetProcAddress((HMODULE)info.AllocationBase, "VirtualProtect");
+#else
+        fn = VirtualProtect;
+#endif
+    }
+    return fn;
 }
 
 static void *valloc(void *p, size_t size, DWORD type, DWORD prot)
@@ -65,11 +89,103 @@ static void *valloc(void *p, size_t size, DWORD type, DWORD prot)
 static BOOL vprotect(void *p, size_t size, DWORD prot)
 {
     DWORD old = 0;
+    if (prot == PAGE_EXECUTE_READWRITE) {
+        fn_plain_protect fn = mg_mem_rwx() ? plain_protect() : NULL;
+        return fn ? fn(p, size, prot, &old) : FALSE;
+    }
 #if MG_UWP
     return VirtualProtectFromApp(p, size, prot, &old);
 #else
     return VirtualProtect(p, size, prot, &old);
 #endif
+}
+
+/*
+ * The probe of mg_mem_rwx: a page of `movs r0, #42; bx lr`, made writable and executable with the plain VirtualProtect, run;
+ * then written `movs r0, #7` while executable, and run again. A fault in the page while it runs (refused after all) returns
+ * to the caller with 0, through a handler of its own ahead of the host's.
+ */
+static volatile mg_addr g_probe_page;
+static volatile LONG g_probe_faulted;
+/* (Left out of the app partition by the SDK's headers, in the phone's kernelbase like any other: see below.) */
+WINBASEAPI PVOID WINAPI AddVectoredExceptionHandler(ULONG First, PVECTORED_EXCEPTION_HANDLER Handler);
+WINBASEAPI ULONG WINAPI RemoveVectoredExceptionHandler(PVOID Handle);
+
+static LONG CALLBACK probe_fault(EXCEPTION_POINTERS *info)
+{
+#if defined(_M_ARM)
+    CONTEXT *c = info->ContextRecord;
+    mg_addr page = g_probe_page;
+    if (!page || ((c->Pc & ~(DWORD)1) & ~(DWORD)(MG_PAGE - 1)) != page) return EXCEPTION_CONTINUE_SEARCH;
+    InterlockedExchange(&g_probe_faulted, 1);
+    c->R0 = 0;
+    c->Pc = c->Lr & ~(DWORD)1;
+    if (c->Lr & 1) c->Cpsr |= 0x20;
+    else c->Cpsr &= ~(DWORD)0x20;
+    c->Cpsr &= ~(DWORD)0x0600FC00;     /* no IT block */
+    return EXCEPTION_CONTINUE_EXECUTION;
+#else
+    (void)info;
+    return EXCEPTION_CONTINUE_SEARCH;
+#endif
+}
+
+static bool page_is_rwx(void *p)
+{
+    MEMORY_BASIC_INFORMATION info;
+    return VirtualQuery(p, &info, sizeof(info)) == sizeof(info) && (info.Protect & 0xFF) == PAGE_EXECUTE_READWRITE;
+}
+
+static int probe_rwx(void)
+{
+#if defined(_M_ARM)
+    fn_plain_protect fn = plain_protect();
+    volatile u16 *code;
+    void *page;
+    DWORD old = 0;
+    int first = 0, second = 0;
+    PVOID guard;
+    if (!fn) return 0;
+    page = valloc(NULL, MG_PAGE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (!page) return 0;
+    code = (volatile u16 *)page;
+    code[0] = 0x202a;                  /* movs r0, #42 */
+    code[1] = 0x4770;                  /* bx lr */
+    if (fn(page, MG_PAGE, PAGE_EXECUTE_READWRITE, &old) && page_is_rwx(page)) {
+        int (*run)(void) = (int (*)(void))((mg_addr)page | 1);
+        g_probe_faulted = 0;
+        g_probe_page = (mg_addr)page;
+        guard = AddVectoredExceptionHandler(1, probe_fault);
+        if (guard) {
+            FlushInstructionCache(GetCurrentProcess(), page, MG_PAGE);
+            first = run();
+            if (first == 42 && !g_probe_faulted && page_is_rwx(page)) {
+                code[0] = 0x2007;      /* movs r0, #7 */
+                FlushInstructionCache(GetCurrentProcess(), page, MG_PAGE);
+                second = run();
+            }
+            RemoveVectoredExceptionHandler(guard);
+        }
+        g_probe_page = 0;
+    }
+    VirtualFree(page, 0, MEM_RELEASE);
+    return first == 42 && second == 7 && !g_probe_faulted;
+#else
+    return plain_protect() != NULL;
+#endif
+}
+
+bool mg_mem_rwx(void)
+{
+    static volatile LONG known = -1;
+    LONG k = known;
+    if (k < 0) {
+        k = probe_rwx() ? 1 : 0;
+        InterlockedExchange(&known, k);
+        mg_info("host: pages %s be writable and executable at once%s", k ? "may" : "may not",
+                k ? " (the plain VirtualProtect): code written while it runs needs no flipping" : ": code is written and run by turns");
+    }
+    return k > 0;
 }
 
 void *mg_mem_reserve(size_t size)
@@ -219,9 +335,74 @@ i64 mg_mem_committed(const void *p, size_t size)
     i64 n = 0;
     return mem_runs(p, size, count_run, &n) ? n : -1;
 }
+size_t mg_mem_discard(void *p, size_t size, void (*fn)(u8 *at, size_t n, void *user), void *user)
+{
+    u8 *at = (u8 *)p, *end = at + size;
+    size_t given = 0;
+    while (at < end) {
+        MEMORY_BASIC_INFORMATION info;
+        u8 *next;
+        size_t n;
+        if (VirtualQuery((LPCVOID)at, &info, sizeof(info)) != sizeof(info) || !info.RegionSize) break;
+        next = (u8 *)info.BaseAddress + info.RegionSize;
+        n = (size_t)((next < end ? next : end) - at);
+        if (info.State == MEM_COMMIT && info.Type == MEM_PRIVATE && info.Protect == PAGE_READWRITE) {
+            if (fn) fn(at, n, user);
+            if (VirtualFree(at, n, MEM_DECOMMIT)) given += n;
+        }
+        at += n;
+    }
+    return given;
+}
+
+static void (*g_before_system_write)(void *p, size_t size);
+void mg_mem_set_before_system_write(void (*fn)(void *p, size_t size)) { g_before_system_write = fn; }
+
+bool mg_mem_page_state(const void *p, bool *committed, int *prot)
+{
+    MEMORY_BASIC_INFORMATION info;
+    if (VirtualQuery(p, &info, sizeof(info)) != sizeof(info)) return false;
+    *committed = info.State == MEM_COMMIT;
+    switch (info.Protect & 0xFF) {
+    case PAGE_NOACCESS: *prot = MG_PROT_NONE; break;
+    case PAGE_READONLY: *prot = MG_PROT_R; break;
+    case PAGE_READWRITE: *prot = MG_PROT_RW; break;
+    case PAGE_EXECUTE_READ: *prot = MG_PROT_RX; break;
+    case PAGE_EXECUTE_READWRITE: *prot = MG_PROT_RWX; break;
+    default: *prot = -1; break;
+    }
+    return true;
+}
+#define BEFORE_SYSTEM_WRITE(p, n) do { if (g_before_system_write && (n)) g_before_system_write((p), (n)); } while (0)
 void mg_mem_release(void *p, size_t size) { (void)size; VirtualFree(p, 0, MEM_RELEASE); }
 void mg_icache_flush(void *p, size_t size) { FlushInstructionCache(GetCurrentProcess(), p, size); }
 void *mg_mem_alloc(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); }
+void *mg_mem_alloc_watched(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT | MEM_WRITE_WATCH, PAGE_READWRITE); }
+
+int mg_mem_written_pages(void *p, size_t size, u32 *out, int max)
+{
+    enum { CHUNK = 256 };
+    PVOID pages[CHUNK];
+    int n = 0;
+    size_t at;
+    /* A chunk at a time: GetWriteWatch fills an array of addresses. */
+    for (at = 0; at < size; at += (size_t)CHUNK * MG_PAGE) {
+        size_t span = size - at < (size_t)CHUNK * MG_PAGE ? size - at : (size_t)CHUNK * MG_PAGE;
+        ULONG_PTR count = CHUNK;
+        ULONG granularity = 0;
+        ULONG_PTR i;
+        if (GetWriteWatch(WRITE_WATCH_FLAG_RESET, (u8 *)p + at, span, pages, &count, &granularity) != 0) return -1;
+        /* (Pages of the host's granularity, each that many of MG_PAGE.) */
+        for (i = 0; i < count; i++) {
+            u32 first = (u32)(((u8 *)pages[i] - (u8 *)p) / MG_PAGE), k, each = granularity > MG_PAGE ? granularity / MG_PAGE : 1;
+            for (k = 0; k < each; k++) {
+                if (n == max) return -1;
+                out[n++] = first + k;
+            }
+        }
+    }
+    return n;
+}
 
 static u64 (*g_limit)(void), (*g_usage)(void);
 void mg_mem_set_probe(u64 (*limit)(void), u64 (*usage)(void)) { g_limit = limit; g_usage = usage; }
@@ -283,15 +464,20 @@ static void close_own_handle(mg_thread *t)
 static void (*volatile g_end_hook)(void);
 void mg_thread_set_end_hook(void (*fn)(void)) { g_end_hook = fn; }
 
+static volatile LONG g_live_threads;
+u32 mg_thread_live_count(void) { return (u32)g_live_threads; }
+
 static DWORD WINAPI thread_main(LPVOID p)
 {
     mg_thread *t = (mg_thread *)p;
+    InterlockedIncrement(&g_live_threads);
     t->id = GetCurrentThreadId();
     t->self = own_handle();
     t_current = t;
     t->fn(t->arg);
     if (g_end_hook) g_end_hook();
     close_own_handle(t);
+    InterlockedDecrement(&g_live_threads);
     return 0;
 }
 
@@ -1462,6 +1648,7 @@ void mg_file_close(mg_file *f)
 i64 mg_file_read(mg_file *f, void *buf, size_t n, int *err)
 {
     DWORD got = 0;
+    BEFORE_SYSTEM_WRITE(buf, n);
     if (!ReadFile(f->h, buf, (DWORD)n, &got, NULL)) {
         if (GetLastError() == ERROR_HANDLE_EOF || GetLastError() == ERROR_BROKEN_PIPE) return 0;
         SET_ERR();
@@ -1489,16 +1676,31 @@ static bool tell(mg_file *f, LARGE_INTEGER *pos)
     return SetFilePointerEx(f->h, zero, pos, FILE_CURRENT) != 0;
 }
 
+/*
+ * pread and pwrite: the offset goes with the call (OVERLAPPED, on a handle that is not overlapped), so that the read or
+ * the write is at it whatever another thread does with the same file meanwhile, as Linux's are. Seeking there first and
+ * back after, two threads' reads took each other's offsets: Chromium reads and writes one file from several threads so,
+ * and SQLite. The position is put back after, as pread leaves it (Windows moves it past what was read).
+ */
+static OVERLAPPED at_offset(u64 offset)
+{
+    OVERLAPPED ov;
+    memset(&ov, 0, sizeof(ov));
+    ov.Offset = (DWORD)offset;
+    ov.OffsetHigh = (DWORD)(offset >> 32);
+    return ov;
+}
+
 i64 mg_file_pread(mg_file *f, void *buf, size_t n, u64 offset, int *err)
 {
-    LARGE_INTEGER saved, at;
+    LARGE_INTEGER saved;
+    OVERLAPPED ov = at_offset(offset);
     DWORD got = 0;
     BOOL ok;
     DWORD e;
     if (!tell(f, &saved)) { SET_ERR(); return -1; }
-    at.QuadPart = (LONGLONG)offset;
-    if (!SetFilePointerEx(f->h, at, NULL, FILE_BEGIN)) { SET_ERR(); return -1; }
-    ok = ReadFile(f->h, buf, (DWORD)n, &got, NULL);
+    BEFORE_SYSTEM_WRITE(buf, n);
+    ok = ReadFile(f->h, buf, (DWORD)n, &got, &ov);
     e = GetLastError();
     SetFilePointerEx(f->h, saved, NULL, FILE_BEGIN);
     if (!ok) {
@@ -1511,14 +1713,13 @@ i64 mg_file_pread(mg_file *f, void *buf, size_t n, u64 offset, int *err)
 
 i64 mg_file_pwrite(mg_file *f, const void *buf, size_t n, u64 offset, int *err)
 {
-    LARGE_INTEGER saved, at;
+    LARGE_INTEGER saved;
+    OVERLAPPED ov = at_offset(offset);
     DWORD put = 0;
     BOOL ok;
     DWORD e;
     if (!tell(f, &saved)) { SET_ERR(); return -1; }
-    at.QuadPart = (LONGLONG)offset;
-    if (!SetFilePointerEx(f->h, at, NULL, FILE_BEGIN)) { SET_ERR(); return -1; }
-    ok = WriteFile(f->h, buf, (DWORD)n, &put, NULL);
+    ok = WriteFile(f->h, buf, (DWORD)n, &put, &ov);
     e = GetLastError();
     SetFilePointerEx(f->h, saved, NULL, FILE_BEGIN);
     if (!ok) {
@@ -1716,22 +1917,78 @@ static BOOL replace_in_use(const wchar_t *a, const wchar_t *b)
     return ok;
 }
 
+/*
+ * POSIX's rename through the handle of the file moved (Windows 10's FileRenameInfoEx with FILE_RENAME_FLAG_POSIX_SEMANTICS):
+ * it replaces a file others have open, as Linux's does. The structure is FILE_RENAME_INFO with its Flags, written out here
+ * for SDKs before Windows 10's.
+ */
+typedef struct mg_rename_info {
+    DWORD flags;
+    HANDLE root;
+    DWORD length;
+    WCHAR name[1];
+} mg_rename_info;
+
+static BOOL posix_rename(const wchar_t *a, const wchar_t *b)
+{
+    enum { RENAME_INFO_EX = 22, REPLACE_IF_EXISTS = 1, POSIX_SEMANTICS = 2, IGNORE_READONLY = 0x40 };
+    CREATEFILE2_EXTENDED_PARAMETERS params;
+    size_t n = wcslen(b);
+    mg_rename_info *info;
+    HANDLE h;
+    BOOL ok;
+    DWORD why;
+    memset(&params, 0, sizeof(params));
+    params.dwSize = sizeof(params);
+    params.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
+    h = CreateFile2(a, DELETE | SYNCHRONIZE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, &params);
+    if (h == INVALID_HANDLE_VALUE) return FALSE;
+    info = (mg_rename_info *)mg_alloc(sizeof(*info) + sizeof(WCHAR) * n);
+    memset(info, 0, sizeof(*info));
+    info->flags = REPLACE_IF_EXISTS | POSIX_SEMANTICS | IGNORE_READONLY;
+    info->length = (DWORD)(sizeof(WCHAR) * n);
+    memcpy(info->name, b, sizeof(WCHAR) * (n + 1));
+    ok = SetFileInformationByHandle(h, (FILE_INFO_BY_HANDLE_CLASS)RENAME_INFO_EX, info, (DWORD)(sizeof(*info) + sizeof(WCHAR) * n));
+    why = GetLastError();
+    free(info);
+    CloseHandle(h);
+    SetLastError(why);
+    return ok;
+}
+
 bool mg_path_rename(const char *from, const char *to, int *err)
 {
+    static volatile LONG said;
     wchar_t *a, *b;
     BOOL ok;
+    DWORD e = 0;
+    int tries;
     if (mg_path_is_foreign(from) || mg_path_is_foreign(to)) return mg_foreign_rename(from, to, err);
     a = wide_path(from);
     b = wide_path(to);
-    ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
-    if (!ok) {
-        DWORD e = GetLastError();
-        if (e == ERROR_ACCESS_DENIED || e == ERROR_SHARING_VIOLATION || e == ERROR_USER_MAPPED_FILE) {
-            ok = replace_in_use(a, b);
-            if (!ok) SetLastError(e);
-        }
+    /*
+     * A file another opened without sharing deletion (a scanner, a moment's reader) is in the way only for a moment: tried
+     * again five times, 20 ms apart. Gosuslugi's DataStore ended the app when its rename of a new settings file over the old
+     * one failed, after the PIN was set (package 558); what Windows said is in the log now when one does.
+     */
+    for (tries = 0; tries < 6; tries++) {
+        if (tries) Sleep(20);
+        ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
+        if (ok) break;
+        e = GetLastError();
+        if (e != ERROR_ACCESS_DENIED && e != ERROR_SHARING_VIOLATION && e != ERROR_USER_MAPPED_FILE && e != ERROR_LOCK_VIOLATION) break;
+        ok = posix_rename(a, b);
+        if (ok) break;
+        ok = replace_in_use(a, b);
+        if (ok) break;
     }
-    if (!ok) SET_ERR();
+    if (!ok) {
+        SetLastError(e);
+        if ((e == ERROR_ACCESS_DENIED || e == ERROR_SHARING_VIOLATION || e == ERROR_USER_MAPPED_FILE || e == ERROR_LOCK_VIOLATION) &&
+            InterlockedIncrement(&said) <= 30)
+            mg_warn("io: %s could not be renamed to %s (Windows error %lu, after %d tries)", from, to, (unsigned long)e, tries);
+        SET_ERR();
+    }
     free(a);
     free(b);
     return ok != 0;
@@ -2448,6 +2705,17 @@ bool mg_sock_connect(mg_sock *k, const mg_sockaddr *a, int *err)
         p.MaxSynRetransmissions = TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS;
         WSAIoctl(k->s, SIO_TCP_INITIAL_RTO, &p, sizeof(p), NULL, 0, &got, NULL, NULL);
     }
+    if (k->type == MG_SOCK_DGRAM) {
+        /*
+         * A datagram socket with a peer of its own hears of that peer's refusal (an ICMP port or host unreachable), as
+         * Linux's does: its next receive or send fails, with ECONNREFUSED (mg_net.c). Without a peer it hears nothing of it,
+         * as on Linux (mg_sock_open turns that off). A QUIC client connects its socket and, told so, goes over to TCP at
+         * once; not told, it waited out its handshake's time (Facebook's start, behind a network that refuses UDP).
+         */
+        BOOL tell = a->family != 0;
+        DWORD got = 0;
+        WSAIoctl(k->s, SIO_UDP_CONNRESET, &tell, sizeof(tell), NULL, 0, &got, NULL, NULL);
+    }
     InterlockedExchange(&k->connect_error, 0);
     InterlockedExchange(&k->connecting, 1);
     if (connect(k->s, (const struct sockaddr *)&ss, len) == 0) {
@@ -2501,6 +2769,7 @@ i32 mg_sock_recv(mg_sock *k, void *buf, u32 n, int flags, mg_sockaddr *from, int
     if (said) *said = 0;
     if (k->ping) return ping_recv(k, buf, n, flags, from, said, err);
     memset(&ss, 0, sizeof(ss));
+    BEFORE_SYSTEM_WRITE(buf, n);
     r = recvfrom(k->s, (char *)buf, n > 0x7FFFFFFFu ? 0x7FFFFFFF : (int)n, native_flags(flags), from ? (struct sockaddr *)&ss : NULL, from ? &len : NULL);
     if (r == SOCKET_ERROR) {
         int e = WSAGetLastError();
@@ -2840,7 +3109,7 @@ int mg_net_name_of(const mg_sockaddr *a, char *name, size_t size)
     return MG_EAI_OK;
 }
 
-int mg_net_interfaces(mg_netif *out, int max)
+static int interfaces_now(mg_netif *out, int max)
 {
     ULONG size = 16 * 1024, r = ERROR_BUFFER_OVERFLOW;
     IP_ADAPTER_ADDRESSES *list = NULL, *ad;
@@ -2891,6 +3160,35 @@ int mg_net_interfaces(mg_netif *out, int max)
         }
     }
     free(list);
+    return n;
+}
+
+/*
+ * The interfaces as they were at most a second ago. GetAdaptersAddresses asks the DHCP client service for each adapter, a
+ * call to another process each time: a thread of Yandex Maps' that listed them over and over (getifaddrs, if_nametoindex)
+ * took 0.3 to 0.6 of a core in dhcpcsvc.dll and IPHLPAPI.DLL (package 534). An interface that comes or goes is seen a
+ * second later at most, as Android's apps see one through its network callbacks a moment after it changed.
+ */
+#define IFS_KEPT 64
+static SRWLOCK g_ifs_lock = SRWLOCK_INIT;
+static mg_netif g_ifs[IFS_KEPT];
+static int g_nifs = -1;
+static ULONGLONG g_ifs_at;
+
+int mg_net_interfaces(mg_netif *out, int max)
+{
+    ULONGLONG now = GetTickCount64();
+    int n;
+    AcquireSRWLockExclusive(&g_ifs_lock);
+    if (g_nifs < 0 || now - g_ifs_at >= 1000) {
+        g_nifs = interfaces_now(g_ifs, IFS_KEPT);
+        g_ifs_at = now;
+    }
+    n = g_nifs;
+    if (n > 0 && max > 0) memcpy(out, g_ifs, sizeof(mg_netif) * (size_t)(n < max ? (n < IFS_KEPT ? n : IFS_KEPT) : (max < IFS_KEPT ? max : IFS_KEPT)));
+    ReleaseSRWLockExclusive(&g_ifs_lock);
+    /* (More than are kept, for a caller that has room for more: listed for it.) A failure is asked about again the next time. */
+    if (n > IFS_KEPT && max > IFS_KEPT) n = interfaces_now(out, max);
     return n;
 }
 
@@ -3029,6 +3327,78 @@ bool mg_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb,
     *reserved_mb = (u32)(reserved >> 20);
     *committed_mb = (u32)(committed >> 20);
     return true;
+}
+
+bool mg_host_address_census(mg_host_address_kinds *k)
+{
+    MEMORY_BASIC_INFORMATION info;
+    SYSTEM_INFO si;
+    u64 images = 0, views = 0, priv = 0, priv_reserved = 0, current = 0;
+    void *base = NULL;
+    /* The private allocations by size (64 KB steps), and how many of each. */
+    struct { u32 kb, count; } seen[96];
+    int nseen = 0, i, j;
+    mg_addr at, end;
+    memset(k, 0, sizeof(*k));
+    GetNativeSystemInfo(&si);
+    at = (mg_addr)si.lpMinimumApplicationAddress;
+    end = (mg_addr)si.lpMaximumApplicationAddress;
+    for (;;) {
+        bool more = at < end && VirtualQuery((LPCVOID)at, &info, sizeof(info)) == sizeof(info) && info.RegionSize;
+        /* An allocation of private memory ends where the next region is not of it. */
+        if (base && (!more || info.Type != MEM_PRIVATE || info.State == MEM_FREE || info.AllocationBase != base)) {
+            u32 kb = (u32)(((current + 0xFFFF) & ~(u64)0xFFFF) >> 10);
+            for (i = 0; i < nseen && seen[i].kb != kb; i++) {}
+            if (i < nseen) seen[i].count++;
+            else if (nseen < (int)MG_COUNT(seen)) seen[nseen].kb = kb, seen[nseen++].count = 1;
+            base = NULL;
+            current = 0;
+        }
+        if (!more) break;
+        if (info.State == MEM_COMMIT) {
+            if (info.Type == MEM_IMAGE) images += info.RegionSize;
+            else if (info.Type == MEM_MAPPED) views += info.RegionSize;
+            else priv += info.RegionSize;
+        } else if (info.State == MEM_RESERVE && info.Type == MEM_PRIVATE) {
+            priv_reserved += info.RegionSize;
+        }
+        if (info.State != MEM_FREE && info.Type == MEM_PRIVATE) {
+            base = info.AllocationBase;
+            current += info.RegionSize;
+        }
+        at = (mg_addr)info.BaseAddress + info.RegionSize;
+    }
+    k->images_mb = (u32)(images >> 20);
+    k->views_mb = (u32)(views >> 20);
+    k->private_mb = (u32)(priv >> 20);
+    k->private_reserved_mb = (u32)(priv_reserved >> 20);
+    /* The four sizes that hold the most. */
+    for (j = 0; j < 4 && nseen; j++) {
+        int best = -1;
+        for (i = 0; i < nseen; i++)
+            if (seen[i].count && (best < 0 || (u64)seen[i].kb * seen[i].count > (u64)seen[best].kb * seen[best].count)) best = i;
+        if (best < 0) break;
+        k->sizes[j].kb = seen[best].kb;
+        k->sizes[j].count = seen[best].count;
+        seen[best].count = 0;
+        k->nsizes = j + 1;
+    }
+    return true;
+}
+
+u64 mg_host_reserved_in(const void *base, size_t size)
+{
+    MEMORY_BASIC_INFORMATION info;
+    mg_addr at = (mg_addr)base, end = (mg_addr)base + size;
+    u64 n = 0;
+    while (at < end && VirtualQuery((LPCVOID)at, &info, sizeof(info)) == sizeof(info) && info.RegionSize) {
+        mg_addr lo = (mg_addr)info.BaseAddress, hi = lo + (mg_addr)info.RegionSize;
+        if (lo < at) lo = at;
+        if (hi > end) hi = end;
+        if (info.State == MEM_RESERVE && hi > lo) n += hi - lo;
+        at = (mg_addr)info.BaseAddress + (mg_addr)info.RegionSize;
+    }
+    return n;
 }
 
 bool mg_host_free_stretches(u32 *mb, int n)

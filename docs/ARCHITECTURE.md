@@ -193,6 +193,45 @@ exception path with this wrapper still needs a phone run.
 The diagnostic flag `trap-svc` instead writes an unregistered `udf #165` and
 leaves the fault fatal, named by library and offset in the crash report.
 
+### The kernel's user helpers
+
+Linux maps a page of code at `0xffff0000` into every ARM process, which old
+code calls for what ARMv5 had no instructions for: `__kuser_cmpxchg64`
+(`0xffff0f60`), `__kuser_memory_barrier` (`0xffff0fa0`), `__kuser_cmpxchg`
+(`0xffff0fc0`), `__kuser_get_tls` (`0xffff0fe0`), and the helpers' version
+word at `0xffff0ffc`. Windows has its kernel there, so a call faults on
+executing the helper's address; the fault handler does the helper
+(`arm/mg_kuser.c`: the swap with an interlocked operation, r0 0 and C set when
+it swapped; the thread pointer; a full barrier) and resumes at the caller's
+`lr`. A read of the version faults on reading it: the load is decoded (Thumb's
+16-bit `ldr` with an immediate or a register, `ldr.w` with 12 bits, `ldr` with
+8 bits and writeback, ARM's `ldr`), given 5, and the thread goes on past it.
+Each call is a fault, so code that calls them in a tight loop is slow, not
+wrong. The Weather Channel's `libsqliteJni.so` called the barrier and ended
+the app (package 501). `mg_tests`' "the kernel's user helpers" checks each
+helper and each form of load.
+
+### A fault in another process's code
+
+A fault the layer cannot repair ends the app: the thread is parked, the crash
+report goes to the log, and the shell shows it. On Android, though, much of
+what runs in an app's process here runs in processes of its own there: Google
+Play services' code (its sign-in, its DroidGuard VM in `:unstable`), whose
+crash ends that process alone, and the app it served is told. So a native
+method of such code is called under a guard (`mg_jni_call_native_guarded`):
+the runtime saves the thread's registers with the stubs' `setjmp`, and a fault
+beyond repair in guest code under it (not in the layer's own modules, which may
+hold their locks) sends the thread back there with the stubs' `longjmp`. The
+call then ends with a `RuntimeException` that says so, and the app runs on. The
+report is in the log all the same, with `fault: contained` after it.
+
+Such code is that of a service's class scope, a dex whose loader's parents
+include a service's loader (DroidGuard's VM, a `DexClassLoader` of Google Play
+services'), or the platform's own on a thread a service's code started. What a
+native library leaves behind when it is cut short stays: its own locks and its
+globals. A thread a native library started itself has no guard, and a fault on
+it still ends the app.
+
 ### Everything else that differs
 
 Some apps overwrite libc entry points to install inline hooks. On ARM, `abort`,
@@ -221,9 +260,9 @@ This passes under qemu; the Instagram run on Windows still needs verification.
 | paths | `/data/data/<pkg>`, `/sdcard`, `/proc/cpuinfo` | a mount table onto folders under `LocalState` (see "Files and the shared storage"); the `/proc` and `/sys` files code reads are made up |
 | signals | delivered asynchronously | between the app's own threads they are: a thread in the middle of Android code is stopped, sent to the handler and put back (`SuspendThread`, `SetThreadContext`, the vectored handler); one that waits or sleeps in this layer is woken for it. Nothing comes from outside the process |
 | a thread's stack | all there from the start; code moves `sp` by any amount and writes | Windows hands a stack out a page at a time, through a guard page that code built for Windows touches in order. Android code does not, and a write beyond the guard page ends the process with no handler run. So the whole stack is committed, down to a guard page of its own, the first time a thread is given a guest thread pointer (`mg_thread_whole_stack`) |
-| `mmap`/`munmap` | any range of pages, unmapped in any pieces; an address asked for without `MAP_FIXED` is a hint, followed when that range is free | a reservation of the host's, which gives addresses back only whole: a region remembers which of its pages the app still has, decommits what is unmapped, and is released with its last page. A hint is followed where the host can reserve the range (on its 64 KB granularity): Chromium's PartitionAlloc picks the addresses of its 2 MB super pages itself, and gave up (an out-of-memory crash) when every answer was the same place Anonymous memory mapped with no access (`PROT_NONE`) is reserved and not committed until `mprotect` gives part of it access, and mapped again over itself with no access (`MAP_FIXED`) it is decommitted, zero when it comes back, as Linux has it: Windows charges committed memory against the app whether it is touched or not, and allocators such as PartitionAlloc reserve that way. A file mapped read-only and shared, from a descriptor opened read-only, is a view of the file itself (no memory of the app's); any other mapping of a file is a copy |
+| `mmap`/`munmap` | any range of pages, unmapped in any pieces; an address asked for without `MAP_FIXED` is a hint, followed when that range is free | a reservation of the host's, which gives addresses back only whole: a region remembers which of its pages the app still has, decommits what is unmapped, and is released with its last page. A hint is followed where the host can reserve the range (on its 64 KB granularity): Chromium's PartitionAlloc picks the addresses of its 2 MB super pages itself, and gave up (an out-of-memory crash) when every answer was the same place Anonymous memory mapped with no access (`PROT_NONE`) is reserved and not committed until `mprotect` gives part of it access, and mapped again over itself with no access (`MAP_FIXED`) it is decommitted, zero when it comes back, as Linux has it: Windows charges committed memory against the app whether it is touched or not, and allocators such as PartitionAlloc reserve that way. A file mapped read-only and shared, from a descriptor opened read-only, is a view of the file itself (no memory of the app's); any other mapping of a file is a copy. Anonymous memory given back with `madvise` (`MADV_DONTNEED`, `MADV_FREE`) is decommitted and stays the app's: a page touched again is committed again, zero, by the fault handler, and one the system is about to write into (a read into it) before the call; PartitionAlloc and V8 give their free pages back so, and PartitionAlloc counts on them being zero |
 | shared memory (ashmem, `memfd_create`, `ASharedMemory`) | every `MAP_SHARED` mapping of a region is the same memory | a section of the host's (`mg_section`: a pagefile-backed file mapping on Windows, `MapViewOfFileFromApp`; a memfd on Linux), of which each mapping is a view at an address of its own; the descriptor holds no view of its own, its read and write mapping what they copy for the copy (a view of its own took a region's size in address space once more while the descriptor was open: Spotify's WebView ended out of memory on an image of 126 MB). Chromium maps a region twice, once where it writes and once where it reads (Mojo's data pipes, which carry everything between its browser and its renderer); with each mapping a copy of the region, as mappings of a file still are, every page the WebView loaded arrived empty |
-| address space | about 4 GB for a 32-bit process on a 64-bit kernel | 2 GB. An APK is read, never mapped; large textures an app uploads as plain RGBA8 are kept as DXT5 once it has asked for a great deal, and ETC textures, which ANGLE would keep as RGBA8, go to it as BC1 or DXT5, their own size (`mg_gltex.c`) |
+| address space | about 4 GB for a 32-bit process on a 64-bit kernel | 2 GB. An APK is read, never mapped; large textures an app uploads as plain RGBA8 are kept as DXT5 once it has asked for a great deal (and, while the process is short of addresses, those of 1024x1024 and more as BC1 or DXT5 at once), and ETC textures, which ANGLE would keep as RGBA8, go to it as BC1 or DXT5, their own size (`mg_gltex.c`) |
 
 ## Loading a library
 

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The sync adapter of Main's SyncService (Main's step "sync"): its account type named by a string resource, as Gmail's are. -->
+<sync-adapter xmlns:android="http://schemas.android.com/apk/res/android"
+    android:contentAuthority="megler.test.sync"
+    android:accountType="@string/sync_account_type"
+    android:userVisible="true"
+    android:supportsUploading="false"
+    android:allowParallelSyncs="false"
+    android:isAlwaysSyncable="false" />

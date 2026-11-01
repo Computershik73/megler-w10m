@@ -91,6 +91,8 @@ static struct {
 
 static MG_THREAD_LOCAL sb_context *t_ctx;
 static MG_THREAD_LOCAL sb_surface *t_surf;
+static sb_context *volatile g_renderer;   /* the context made current last, on any thread */
+static u64 g_dwell_ns;
 static bool g_complete;
 static bool complete_integer(u32 name, i32 *v);
 
@@ -137,7 +139,7 @@ static const char *e_QueryString(void *d, int name)
 {
     (void)d;
     return name == 0x3055 ? "EGL_KHR_no_config_context EGL_KHR_surfaceless_context EGL_KHR_create_context EGL_ANGLE_query_surface_pointer "
-                            "EGL_ANGLE_surface_d3d_texture_2d_share_handle EGL_KHR_image_base EGL_KHR_gl_texture_2D_image"
+                            "EGL_ANGLE_surface_d3d_texture_2d_share_handle EGL_KHR_image_base EGL_KHR_gl_texture_2D_image EGL_ANDROID_blob_cache"
            : name == 0x3053 ? "Megler (stand-in)"
                             : "1.5 (stand-in)";
 }
@@ -268,6 +270,10 @@ static unsigned e_MakeCurrent(void *d, void *draw, void *read, void *ctx)
     (void)d; (void)read;
     t_ctx = (sb_context *)ctx;
     t_surf = ctx ? (sb_surface *)draw : NULL;
+    if (ctx) g_renderer = (sb_context *)ctx;
+    mg_lock_acquire(&g_lock);
+    S.stats.makes++;
+    mg_lock_release(&g_lock);
     /* A context made current the first time gets the surface's size as its viewport, as OpenGL has it. */
     if (t_ctx && t_surf && !t_ctx->viewport[2]) {
         t_ctx->viewport[2] = t_surf->w;
@@ -285,6 +291,42 @@ static unsigned e_SwapBuffers(void *d, void *s)
     return 1;
 }
 static unsigned e_SwapInterval(void *d, int interval) { (void)d; (void)interval; return 1; }
+/* EGL_ANDROID_blob_cache: the functions the layer gives (mg_egl.c, ANGLE's programs kept on disk), kept for mg_gl_standin_blob_check. */
+typedef void (*standin_set_blob)(const void *key, intptr_t key_size, const void *value, intptr_t value_size);
+typedef intptr_t (*standin_get_blob)(const void *key, intptr_t key_size, void *value, intptr_t value_size);
+static standin_set_blob g_blob_set;
+static standin_get_blob g_blob_get;
+static void e_SetBlobCacheFuncs(void *d, standin_set_blob set, standin_get_blob get)
+{
+    (void)d;
+    g_blob_set = set;
+    g_blob_get = get;
+}
+
+bool mg_gl_standin_blob_given(void) { return g_blob_set && g_blob_get; }
+
+int mg_gl_standin_blob_check(void)
+{
+    static const char key[] = "program: attribute vec4 aPosition; uniform vec4 uColor;", other[] = "another program";
+    char value[300], back[300];
+    intptr_t size;
+    int i;
+    if (!g_blob_set || !g_blob_get) return 0;
+    for (i = 0; i < (int)sizeof(value); i++) value[i] = (char)(i * 7 + 3);
+    g_blob_set(key, sizeof(key), value, sizeof(value));
+    /* Asked with no room, the size; with room, the value; another key, nothing; a key of another size, nothing. */
+    if (g_blob_get(key, sizeof(key), NULL, 0) != (intptr_t)sizeof(value)) return 2;
+    memset(back, 0, sizeof(back));
+    size = g_blob_get(key, sizeof(key), back, sizeof(back));
+    if (size != (intptr_t)sizeof(value) || memcmp(back, value, sizeof(value))) return 3;
+    if (g_blob_get(other, sizeof(other), back, sizeof(back)) != 0) return 4;
+    if (g_blob_get(key, sizeof(key) - 1, back, sizeof(back)) != 0) return 5;
+    /* Kept again, the new value is the one found. */
+    value[0] = 'X';
+    g_blob_set(key, sizeof(key), value, 10);
+    if (g_blob_get(key, sizeof(key), back, sizeof(back)) != 10 || back[0] != 'X') return 6;
+    return 0;
+}
 static unsigned e_QuerySurface(void *d, void *surface, int attrib, int *value)
 {
     sb_surface *s = (sb_surface *)surface;
@@ -842,6 +884,7 @@ static void g_Viewport(i32 x, i32 y, i32 w, i32 h)
     t_ctx->viewport[3] = h;
 }
 static void g_Scissor(i32 x, i32 y, i32 w, i32 h) { (void)x; (void)y; (void)w; (void)h; }
+static void g_ColorMask(u8 r, u8 g, u8 b, u8 a) { (void)r; (void)g; (void)b; (void)a; }
 static void g_ClearColor(float r, float g, float b, float a)
 {
     if (!t_ctx) return;
@@ -853,9 +896,19 @@ static void g_ClearColor(float r, float g, float b, float a)
 static u8 byte_of(float v) { return (u8)(v <= 0 ? 0 : v >= 1 ? 255 : (int)(v * 255.0f + 0.5f)); }
 static void g_Clear(u32 mask)
 {
+    static volatile i32 inside;
     size_t i, n;
     u8 c[4];
     sb_store *s = t_ctx ? fb_store(t_ctx->fb) : NULL;
+    bool overlapped = mg_atomic_add(&inside, 1) > 1, stale = t_ctx && t_ctx != g_renderer;
+    if (g_dwell_ns) mg_sleep_ns(g_dwell_ns);
+    mg_atomic_add(&inside, -1);
+    if (overlapped || stale) {
+        mg_lock_acquire(&g_lock);
+        S.stats.overlaps += overlapped;
+        S.stats.stale += stale;
+        mg_lock_release(&g_lock);
+    }
     if (!t_ctx || (!t_surf && !s) || !(mask & GL_COLOR_BUFFER_BIT)) return;
     for (i = 0; i < 4; i++) c[i] = byte_of(t_ctx->clear[i]);
     if (s) {
@@ -1045,7 +1098,15 @@ static u32 g_GetError(void)
     return e;
 }
 
-static const char *extensions(void) { return S.bgra ? "GL_EXT_read_format_bgra GL_OES_rgb8_rgba8 GL_OES_depth24" : "GL_OES_rgb8_rgba8 GL_OES_depth24"; }
+/*
+ * GL_OES_EGL_image as ANGLE names it (glEGLImageTargetTexture2DOES, above): with it and EGL's images and fence syncs the
+ * WebView's Chromium takes its GPU to share textures across threads, and draws a page straight into a canvas's pixels
+ * through the platform's software table (drivers/mg_java_webview.c), as on the phone.
+ */
+static const char *extensions(void)
+{
+    return S.bgra ? "GL_EXT_read_format_bgra GL_OES_rgb8_rgba8 GL_OES_depth24 GL_OES_EGL_image" : "GL_OES_rgb8_rgba8 GL_OES_depth24 GL_OES_EGL_image";
+}
 
 static const u8 *g_GetString(u32 name)
 {
@@ -1198,7 +1259,8 @@ void *mg_gl_standin(const char *name)
         { "eglChooseConfig", (void *)e_ChooseConfig }, { "eglGetConfigAttrib", (void *)e_GetConfigAttrib }, { "eglCreateContext", (void *)e_CreateContext },
         { "eglDestroyContext", (void *)e_DestroyContext }, { "eglCreatePbufferSurface", (void *)e_CreatePbuffer },
         { "eglDestroySurface", (void *)e_DestroySurface }, { "eglMakeCurrent", (void *)e_MakeCurrent }, { "eglGetCurrentContext", (void *)e_GetCurrentContext },
-        { "eglSwapBuffers", (void *)e_SwapBuffers }, { "eglSwapInterval", (void *)e_SwapInterval }, { "eglQuerySurface", (void *)e_QuerySurface },
+        { "eglSwapBuffers", (void *)e_SwapBuffers }, { "eglSwapInterval", (void *)e_SwapInterval },
+        { "eglSetBlobCacheFuncsANDROID", (void *)e_SetBlobCacheFuncs }, { "eglQuerySurface", (void *)e_QuerySurface },
         { "eglQuerySurfacePointerANGLE", (void *)e_QuerySurfacePointer }, { "meglerKeyedMutexANGLE", (void *)e_KeyedMutex },
         { "eglBindAPI", (void *)e_BindAPI }, { "eglReleaseThread", (void *)e_True }, { "eglWaitClient", (void *)e_True },
         { "eglGetConfigs", (void *)e_GetConfigs }, { "eglGetCurrentSurface", (void *)e_GetCurrentSurface },
@@ -1223,7 +1285,7 @@ void *mg_gl_standin(const char *name)
         { "glFrontFace", (void *)g_OneEnum }, { "glDepthFunc", (void *)g_OneEnum }, { "glBlendFunc", (void *)g_TwoEnums }, { "glHint", (void *)g_TwoEnums },
         { "glFlush", (void *)g_Nothing }, { "glFinish", (void *)g_Nothing }, { "glReleaseShaderCompiler", (void *)g_Nothing },
         { "glLineWidth", (void *)g_LineWidth }, { "glDepthMask", (void *)g_DepthMask }, { "glViewport", (void *)g_Viewport },
-        { "glScissor", (void *)g_Scissor }, { "glClearColor", (void *)g_ClearColor }, { "glClear", (void *)g_Clear },
+        { "glScissor", (void *)g_Scissor }, { "glColorMask", (void *)g_ColorMask }, { "glClearColor", (void *)g_ClearColor }, { "glClear", (void *)g_Clear },
         { "glVertexAttribPointer", (void *)g_VertexAttribPointer }, { "glEnableVertexAttribArray", (void *)g_EnableVertexAttribArray },
         { "glDisableVertexAttribArray", (void *)g_DisableVertexAttribArray }, { "glDrawArrays", (void *)g_DrawArrays },
         { "glReadPixels", (void *)g_ReadPixels }, { "glGetError", (void *)g_GetError }, { "glGetString", (void *)g_GetString },
@@ -1245,6 +1307,8 @@ void mg_gl_standin_stats_get(mg_gl_standin_stats *out)
     *out = S.stats;
     mg_lock_release(&g_lock);
 }
+
+void mg_gl_standin_set_dwell(u64 ns) { g_dwell_ns = ns; }
 
 void mg_gl_standin_reset(bool bgra, bool es1)
 {

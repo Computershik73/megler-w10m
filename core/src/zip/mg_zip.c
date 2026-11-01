@@ -194,6 +194,8 @@ static bool entry_data(const mg_zip *z, const mg_zip_entry *e, u64 *start)
     return in_file(z, *start, e->csize);
 }
 
+bool mg_zip_data_at(const mg_zip *z, const mg_zip_entry *e, u64 *offset) { return entry_data(z, e, offset); }
+
 bool mg_zip_stored_at(const mg_zip *z, const mg_zip_entry *e, u64 *offset)
 {
     if (e->method != 0 || e->csize != e->usize) return false;

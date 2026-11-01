@@ -129,6 +129,9 @@ typedef struct mg_gthread {
     volatile i32 *volatile sig_wait_addr;  /* the word the thread is waiting on, while it is */
     mg_cond *volatile sig_wait_cond;   /* or the condition */
     mg_thread *volatile sig_thread;    /* the thread itself, to interrupt it in the middle of guest code */
+    /* While a guarded call of guest code runs on the thread (mg_jni_call_native_guarded): the stub setjmp's buffer it goes
+       back to when that code faults beyond repair (mg_core.c), instead of the app ending. */
+    u32 *volatile fault_guard;
     struct mg_gthread *next;
 } mg_gthread;
 
@@ -182,6 +185,10 @@ void mg_signals_thread_gone(mg_gthread *t);
 
 /* The allocator the guest's malloc family is; anything a shim returns for the guest to free comes from it. */
 void *mg_g_malloc(size_t n);
+/* What the guest has asked malloc, calloc, realloc and memalign for and not freed, in bytes. */
+u64 mg_g_malloc_bytes(void);
+/* The addresses the app's mappings (mmap) span, and the bytes of them reserved and not committed. */
+void mg_g_mapped_addresses(u64 *spanned, u64 *reserved);
 void *mg_g_calloc(size_t n, size_t m);
 void *mg_g_realloc(void *p, size_t n);
 void mg_g_free(void *p);
@@ -227,6 +234,11 @@ const char *mg_fs_package(void);
 
 /* Writes what an app wrote into shared file mappings back to their files (mg_libc_mem.c); at the app's end. */
 void mg_mem_write_back(void);
+/* What madvise has given back to the host so far, and how much of it was touched (committed) again since. */
+void mg_mmap_given_back(u64 *given, u64 *again);
+/* What the app's mappings hold now, as far as they are its own (mapped, not made no-access, not given back): anonymous
+   memory, and the copies of files mapped privately. Views of shared memory are not in it. */
+void mg_mmap_usage(u64 *anon, u64 *files);
 
 /* Android system properties, for __system_property_get. */
 const char *mg_sysprop(const char *name);

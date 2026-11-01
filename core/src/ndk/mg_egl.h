@@ -55,19 +55,23 @@ void *mg_egl_surface_mutex(void *display, void *surface);
 bool mg_egl_keyed_mutex(void *mutex, bool acquire);
 
 /*
- * The display eglGetDisplay gives code in the library of that name: a display of its own for the WebView's Chromium
- * (libwebviewchromium.so), whose GPU thread draws while the app's threads do, and ANGLE's Direct3D 11 renderer does not
- * take two contexts of one display drawing at once; the app's for any other (NULL included). And the WebView's display
- * itself, made on first use; NULL when ANGLE cannot make one apart from the app's.
+ * The display eglGetDisplay gives code in the library of that name: the app's, the WebView's Chromium (libwebviewchromium.so)
+ * included -- its threads' and the app's contexts take turns -- but with the flag webview-own-display (or
+ * mg_egl_webview_own_display(true), for a test), when Chromium's gets a display of its own, with a Direct3D device of its
+ * own. And that display itself, made on first use; NULL when ANGLE cannot make one apart from the app's.
  */
 void *mg_egl_display_for_library(const char *name);
 void *mg_egl_webview_display(void);
+void mg_egl_webview_own_display(bool on);
 
 /* What ANGLE gives on this device -- display, Direct3D feature level, GL version and limits -- a line at a time. */
 /* Why ANGLE's Direct3D device is gone (an HRESULT), or 0 while it is there or there is none. */
 u32 mg_egl_device_removed(void);
 /* The graphics memory ANGLE's device (the app's display) has used, and its budget, in MB; false while there is no device. */
 bool mg_egl_gpu_memory(u32 *used_mb, u32 *budget_mb);
+/* What the app's OpenGL objects take, as ANGLE estimates it (EGL_ANGLE_memory_usage_report): its buffers, textures and
+   renderbuffers, of every share group of the app's contexts, in MB; false where ANGLE cannot say or there is no context. */
+bool mg_egl_objects_memory(u32 *mb);
 void mg_egl_probe(void (*line)(const char *fmt, ...));
 
 /*
@@ -99,6 +103,8 @@ u64 mg_gltex_held_bytes(void);
 /* Where mg_gltex.c finds the OpenGL functions it calls for itself (ANGLE's own, by name). */
 void mg_gltex_set_host(void *(*resolve)(const char *name));
 /* RGBA8 pixels (rows `stride` bytes apart) to DXT5 blocks; a width or height that is not a multiple of four is padded with its edge. */
+/* For the tests: the process taken to be short of addresses (1) or not (0) whatever the host says; -1, as the host says. */
+void mg_gltex_short_of_addresses(int forced);
 size_t mg_gltex_dxt5_size(u32 w, u32 h);
 void mg_gltex_dxt5(const u8 *rgba, u32 w, u32 h, size_t stride, u8 *out);
 /* An RGBA8 ETC2 EAC block (sixteen bytes) decoded into sixteen pixels, rows of four, top first; and `blocks` of them packed again as as many DXT5 blocks. */

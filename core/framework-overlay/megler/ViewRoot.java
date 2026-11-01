@@ -82,11 +82,19 @@ public final class ViewRoot implements ViewParent {
     private int mAdjust = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
     private boolean mDumpTimer;
     private boolean mLayoutRequested = true, mFirst = true, mRemoved, mHasFocus = true, mInLayout, mInsetsDirty = true;
+    /* A window of an activity's other than its own (a dialog, a popup) while that activity is stopped: hidden, as Android's
+       window manager hides the windows of a token that is not visible (ownerStopped). */
+    private boolean mOwnerStopped;
     /** What of this window is to be drawn again, in its own coordinates; or all of it. */
     private final Rect mDirty = new Rect();
     private boolean mDirtyAll = true;
     /** The whole screen is to be drawn at the next frame: a window came, went, moved or changed its size. */
     private static boolean sFullRedraw = true, sDrawingPart;
+    /* Why the next frame draws the whole screen (fullRedraw): what the log's MeglerViews line names. */
+    private static String sFullWhy;
+    private static void fullRedraw(String why) { sFullRedraw = true; if (sFullWhy == null) sFullWhy = why; }
+    private static int sMovesSaid;
+    private String windowName() { return mView.getClass().getName() + (mLp.type >= 1000 ? " (window type " + mLp.type + ")" : ""); }
     private static final Rect sPart = new Rect(), sScratch = new Rect();
     private View mFocused;
     private final ViewTreeObserver mObserver = new ViewTreeObserver();
@@ -113,10 +121,13 @@ public final class ViewRoot implements ViewParent {
         android.app.Activity owner = lp != null && lp.type == WindowManager.LayoutParams.TYPE_BASE_APPLICATION ? activityOf(v.getContext()) : null;
         if (owner != null) for (int i = 0; i < sRoots.size(); i++) if (activityOf(sRoots.get(i).mView.getContext()) == owner) { at = i; break; }
         boolean under = at < sRoots.size();
+        // A dialog of an activity that is stopped comes up hidden, and shows when the activity is on the screen again.
+        android.app.Activity of = r.ofToken() ? activityOf(v.getContext()) : null;
+        if (of != null && of.meglerWindowsHidden()) { r.mOwnerStopped = true; r.mHasFocus = false; }
         sRoots.add(at, r);
-        if (under) for (int i = at + 1; i < sRoots.size(); i++) if (sRoots.get(i).focusable()) { r.mHasFocus = false; break; }
+        if (under) for (int i = at + 1; i < sRoots.size(); i++) if (sRoots.get(i).focusable() && !sRoots.get(i).mOwnerStopped) { r.mHasFocus = false; break; }
         if (v.getLayoutParams() == null) v.setLayoutParams(r.mLp);
-        sFullRedraw = true;
+        fullRedraw("a window added: " + r.windowName());
         r.attach();
         if (r.mHasFocus) for (ViewRoot o : sRoots) if (o != r && o.mHasFocus && r.focusable()) { o.mHasFocus = false; o.mView.dispatchWindowFocusChanged(false); o.mObserver.meglerWindowFocus(false); }
         scheduleFrame();
@@ -179,7 +190,7 @@ public final class ViewRoot implements ViewParent {
         if (pan != mPan) {
             mPan = pan;
             mY = mLaidY - mPan;
-            sFullRedraw = true;
+            fullRedraw("a window panned for the keyboard: " + windowName());
         }
     }
     private void attach() {
@@ -191,7 +202,7 @@ public final class ViewRoot implements ViewParent {
     public void remove() {
         if (mRemoved) return;
         mRemoved = true;
-        sFullRedraw = true;
+        fullRedraw("a window removed: " + windowName());
         boolean hadFocus = mHasFocus;
         sRoots.remove(this);
         if (sTouchTarget == this) sTouchTarget = null;
@@ -200,12 +211,83 @@ public final class ViewRoot implements ViewParent {
         if (hadFocus) {
             for (int i = sRoots.size() - 1; i >= 0; i--) {
                 ViewRoot o = sRoots.get(i);
-                if (o.focusable()) { if (!o.mHasFocus) { o.mHasFocus = true; o.mView.dispatchWindowFocusChanged(true); o.mObserver.meglerWindowFocus(true); } break; }
+                if (o.focusable() && !o.mOwnerStopped) { if (!o.mHasFocus) { o.mHasFocus = true; o.mView.dispatchWindowFocusChanged(true); o.mObserver.meglerWindowFocus(true); } break; }
             }
         }
         scheduleFrame();
     }
-    public void setLayoutParams(WindowManager.LayoutParams lp) { mLp.copyFrom(lp); mView.setLayoutParams(mLp); mLayoutRequested = true; sFullRedraw = true; scheduleFrame(); }
+    /*
+     * WindowManager.updateViewLayout. The whole screen is drawn again only for what changes how the window looks apart from
+     * where it is and its size, which the next layout compares (performLayout): Yandex Maps updated a window's parameters in
+     * nearly every frame, each a whole screen drawn again (package 530).
+     */
+    public void setLayoutParams(WindowManager.LayoutParams lp) {
+        boolean looks = lp.type != mLp.type || lp.flags != mLp.flags || lp.format != mLp.format || lp.alpha != mLp.alpha || lp.dimAmount != mLp.dimAmount;
+        mLp.copyFrom(lp);
+        mView.setLayoutParams(mLp);
+        mLayoutRequested = true;
+        if (looks) fullRedraw("a window's parameters changed: " + windowName());
+        scheduleFrame();
+    }
+
+    /*
+     * The windows an activity opened besides its own -- its dialogs and popups -- hidden while it is stopped and shown again
+     * when it is on the screen (Activity.meglerStop, makeVisible), as Android hides a token's windows: they are not drawn and
+     * take no touches, keys or focus, and stay attached. They were drawn all the while: WhatsApp's progress dialog of its
+     * phone number screen showed through the screens after it.
+     */
+    public static void ownerStopped(android.app.Activity a, boolean stopped) {
+        boolean any = false;
+        for (ViewRoot r : sRoots) {
+            if (r.mRemoved || r.mOwnerStopped == stopped || !r.ofToken() || activityOf(r.mView.getContext()) != a) continue;
+            r.mOwnerStopped = stopped;
+            r.mView.dispatchWindowVisibilityChanged(stopped ? View.GONE : View.VISIBLE);
+            any = true;
+        }
+        if (!any) return;
+        if (sTouchTarget != null && sTouchTarget.mOwnerStopped) sTouchTarget = null;
+        refocus();
+        fullRedraw("an activity's windows hidden or shown again");
+        scheduleFrame();
+    }
+
+    /*
+     * The windows an activity that has been destroyed still had besides its own, removed, as Android's
+     * WindowManagerGlobal.closeAll removes them ("has leaked window"); how many. A dialog an activity left showing as it
+     * finished stayed in the list of windows, drawn with whatever came after it: WhatsApp's progress dialog of its phone
+     * number screen.
+     */
+    public static int closeAll(android.app.Activity a) {
+        int n = 0;
+        for (ViewRoot r : new ArrayList<>(sRoots)) {
+            if (r.mRemoved || !r.ofToken() || activityOf(r.mView.getContext()) != a) continue;
+            android.util.Log.w("Megler", "the activity " + a.getClass().getName() + " ended with a window of its still there (Android: it has leaked window "
+                               + r.mView.getClass().getName() + "): removed");
+            r.remove();
+            n++;
+        }
+        return n;
+    }
+
+    /* One of an activity's windows besides its own: a dialog (an application window) or a panel or popup (a sub-window), which
+       go with the activity's token on Android -- not a system window such as a toast, which outlives the activity. */
+    private boolean ofToken() { return mLp.type > WindowManager.LayoutParams.TYPE_BASE_APPLICATION && mLp.type < WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW; }
+
+    /* The window focus where Android's window manager puts it: the top window that can take it and is not hidden. */
+    private static void refocus() {
+        ViewRoot top = null;
+        for (int i = sRoots.size() - 1; i >= 0 && top == null; i--) {
+            ViewRoot r = sRoots.get(i);
+            if (!r.mRemoved && !r.mOwnerStopped && r.focusable()) top = r;
+        }
+        for (ViewRoot r : sRoots) {
+            boolean want = r == top;
+            if (r.mHasFocus == want) continue;
+            r.mHasFocus = want;
+            r.mView.dispatchWindowFocusChanged(want);
+            r.mObserver.meglerWindowFocus(want);
+        }
+    }
     public WindowManager.LayoutParams layoutParams() { return mLp; }
     private boolean focusable() { return (mLp.flags & WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) == 0; }
 
@@ -213,6 +295,16 @@ public final class ViewRoot implements ViewParent {
     public ViewTreeObserver observer() { return mObserver; }
     public Handler handler() { return mainHandler(); }
     public android.os.IBinder token() { return mToken; }
+    /*
+     * The window's WindowId (View.getWindowId): one for the window, so that two views of it have equal ones, as Android's
+     * equal by the window's token. Null was what every view had, and Spotify's main layout, comparing its now-playing view's
+     * with its own (getWindowId().equals), ended the app at its start (package 551).
+     */
+    private android.view.WindowId mWindowId;
+    public android.view.WindowId windowId() {
+        if (mWindowId == null) mWindowId = new android.view.WindowId(mToken);
+        return mWindowId;
+    }
     public View focused() { return mFocused; }
     public void setFocused(View v) {
         View old = mFocused;
@@ -228,17 +320,60 @@ public final class ViewRoot implements ViewParent {
     public KeyEvent.DispatcherState keyDispatcherState() { return mKeyState; }
     public void keepScreenOn(boolean on) {}
     /** All of the window is to be drawn again. */
-    public void invalidate() { mDirtyAll = true; scheduleFrame(); }
+    public void invalidate() { mDirtyAll = true; noteDirtier("the window", Float.MAX_VALUE); scheduleFrame(); }
+    /** The whole window, for a view of it (one with an animation running: View.meglerDirty). */
+    public void invalidate(View cause) { mDirtyAll = true; noteDirtier(cause.getClass().getName(), Float.MAX_VALUE); scheduleFrame(); }
     public void invalidateFromAnyThread() { if (Looper.myLooper() == Looper.getMainLooper()) invalidate(); else mainHandler().post(this::invalidate); }
     /** A rectangle of the window, in its own coordinates (View.meglerDirty), is to be drawn again; nothing when none of it is in the window. */
-    public void meglerDirty(RectF box) {
+    public void meglerDirty(RectF box, View cause) {
         if (!mDirtyAll) {
             int l = Math.max(0, (int) Math.floor(box.left)), t = Math.max(0, (int) Math.floor(box.top));
             int r = Math.min(mW, (int) Math.ceil(box.right)), b = Math.min(mH, (int) Math.ceil(box.bottom));
             if (l >= r || t >= b) return;
             mDirty.union(l, t, r, b);
+            noteDirtier(cause, (float) (r - l) * (b - t));
         }
         scheduleFrame();
+    }
+    /*
+     * Which views have most of the screen drawn again: in each frame that draws half the screen or more, the view (by its
+     * class) that asked for the largest rectangle, counted, and the three counted most said every ten seconds
+     * (I/MeglerViews). Yandex Maps redrew the whole screen in every frame, and nothing said for which view.
+     */
+    private static String sDirtier;
+    private static View sDirtierView;
+    private static float sDirtierArea;
+    private static final java.util.HashMap<String, int[]> sDirtiers = new java.util.HashMap<>();
+    private static long sDirtiersSaid;
+    private static void noteDirtier(View cause, float area) {
+        if (cause != null && area > sDirtierArea) { sDirtierView = cause; sDirtier = null; sDirtierArea = area; }
+    }
+    private static void noteDirtier(String cause, float area) {
+        if (area > sDirtierArea) { sDirtier = cause; sDirtierView = null; sDirtierArea = area; }
+    }
+    private static void countDirtier(int redrawn, int screen) {
+        String who = sDirtierView != null ? sDirtierView.getClass().getName() : sDirtier;
+        sDirtier = null;
+        sDirtierView = null;
+        sDirtierArea = 0;
+        if (who != null && redrawn * 2L >= screen) {
+            int[] n = sDirtiers.get(who);
+            if (n == null) sDirtiers.put(who, n = new int[1]);
+            n[0]++;
+        }
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - sDirtiersSaid < 10000 || sDirtiers.isEmpty()) return;
+        sDirtiersSaid = now;
+        StringBuilder b = new StringBuilder("frames that drew half the screen or more, in 10 s, by the view that asked for the most:");
+        for (int k = 0; k < 3 && !sDirtiers.isEmpty(); k++) {
+            String best = null;
+            int most = 0;
+            for (java.util.Map.Entry<String, int[]> e : sDirtiers.entrySet()) if (e.getValue()[0] > most) { most = e.getValue()[0]; best = e.getKey(); }
+            b.append(k == 0 ? " " : ", ").append(best).append(' ').append(most);
+            sDirtiers.remove(best);
+        }
+        sDirtiers.clear();
+        android.util.Log.i("MeglerViews", b.toString());
     }
     /** Whether the frame being drawn draws only part of the screen (View.drawFromParent then skips what lies outside it). */
     public static boolean meglerDrawingPart() { return sDrawingPart; }
@@ -358,6 +493,20 @@ public final class ViewRoot implements ViewParent {
             b.append(" color=").append(Integer.toHexString(tp.getColor())).append(tp.getShader() != null ? " shader=" + tp.getShader().getClass().getSimpleName() : "")
              .append(tp.getXfermode() != null ? " xfer" : "").append(tp.getColorFilter() != null ? " cf" : "").append(tp.getMaskFilter() != null ? " mask" : "");
         }
+        if (v instanceof android.widget.ImageView) {
+            // its picture: the drawable, where it is drawn, how, and in what colour (Organic Maps' map buttons drew none)
+            android.widget.ImageView iv = (android.widget.ImageView) v;
+            android.graphics.drawable.Drawable d = iv.getDrawable();
+            if (d == null) b.append(" img=none");
+            else {
+                b.append(" img=").append(d.getClass().getSimpleName()).append(' ').append(d.getIntrinsicWidth()).append('x').append(d.getIntrinsicHeight())
+                 .append(" bounds=").append(d.getBounds().toShortString()).append(" scale=").append(iv.getScaleType()).append(" a=").append(d.getAlpha());
+                if (!iv.getImageMatrix().isIdentity()) b.append(" m=").append(iv.getImageMatrix().toShortString());
+                if (iv.getImageTintList() != null) b.append(" itint=").append(Integer.toHexString(iv.getImageTintList().getDefaultColor()));
+                if (d.getColorFilter() != null) b.append(" cf=").append(d.getColorFilter().getClass().getSimpleName());
+                if (d instanceof android.graphics.drawable.VectorDrawable) b.append(" [").append(((android.graphics.drawable.VectorDrawable) d).meglerDescribe()).append(']');
+            }
+        }
         android.graphics.drawable.Drawable bg = v.getBackground();
         if (bg instanceof android.graphics.drawable.InsetDrawable && ((android.graphics.drawable.InsetDrawable) bg).getDrawable() != null) {
             b.append(" bg=Inset(");
@@ -373,8 +522,13 @@ public final class ViewRoot implements ViewParent {
         android.view.ViewGroup.LayoutParams lp = v.getLayoutParams();
         if (lp != null) {
             b.append(" lp=").append(lp.getClass().getSimpleName()).append('(').append(lp.width).append(',').append(lp.height).append(')');
-            for (String f : new String[] { "topToTop", "topToBottom", "bottomToBottom", "leftToLeft", "startToStart", "endToEnd", "rightToRight", "horizontalBias", "dimensionRatio" }) {
-                try { java.lang.reflect.Field fl = lp.getClass().getField(f); Object o = fl.get(lp); if (o != null && !"-1".equals(String.valueOf(o)) && !"0.5".equals(String.valueOf(o))) b.append(' ').append(f).append('=').append(o); } catch (Exception e) {}
+            // a ConstraintLayout's constraints: the fields the class has, looked up once each (a getField that misses
+            // throws, and with trace-exceptions on that filled its budget of lines with nothing)
+            for (java.lang.reflect.Field fl : lp.getClass().getFields()) {
+                String f = fl.getName();
+                if (!"topToTop".equals(f) && !"topToBottom".equals(f) && !"bottomToBottom".equals(f) && !"leftToLeft".equals(f) && !"startToStart".equals(f)
+                    && !"endToEnd".equals(f) && !"rightToRight".equals(f) && !"horizontalBias".equals(f) && !"dimensionRatio".equals(f)) continue;
+                try { Object o = fl.get(lp); if (o != null && !"-1".equals(String.valueOf(o)) && !"0.5".equals(String.valueOf(o))) b.append(' ').append(f).append('=').append(o); } catch (Exception e) {}
             }
         }
         android.util.Log.d("ViewDump", b.toString());
@@ -422,7 +576,12 @@ public final class ViewRoot implements ViewParent {
                     area.set(sInsets[0], sInsets[1], sw - sInsets[2], sh - Math.max(sInsets[3], ime));
                 Gravity.apply(g, w, h, area, mLp.x, mLp.y, out);
             }
-            if (out.left != mX || out.top != mLaidY || w != mW || h != mH) sFullRedraw = true;
+            if (out.left != mX || out.top != mLaidY || w != mW || h != mH) {
+                fullRedraw("a window moved or resized: " + windowName());
+                if (sMovesSaid++ < 10)
+                    android.util.Log.i("MeglerViews", "a window moved or resized: " + windowName() + " " + mW + "x" + mH + " at " + mX + "," + mLaidY + " to " + w
+                                       + "x" + h + " at " + out.left + "," + out.top);
+            }
             mX = out.left; mLaidY = out.top; mY = mLaidY - mPan; mW = w; mH = h;
             mView.layout(0, 0, w, h);
         } finally { mInLayout = false; }
@@ -450,44 +609,78 @@ public final class ViewRoot implements ViewParent {
         int sw = screenW(), sh = screenH();
         boolean whole = sFullRedraw;
         if (sScreen == null || sScreen.getWidth() != sw || sScreen.getHeight() != sh) {
+            // (Not while the render thread draws the frame before onto the old one.)
+            Gfx.frameWait();
             if (sCanvas != null) sCanvas.meglerRelease();
             sScreen = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
-            sCanvas = new ScreenCanvas(sScreen);
+            sCanvas = new Canvas(sScreen);
             whole = true;
         }
+        if (sFrame == null) sFrame = new ScreenCanvas();
         // What the windows asked for, on the screen
         Rect part = sPart;
         part.setEmpty();
         for (ViewRoot r : roots) {
-            if (r.mRemoved) continue;
+            if (r.mRemoved || r.mOwnerStopped) continue;
             if (r.mDirtyAll) whole = true;
             else if (!r.mDirty.isEmpty()) { sScratch.set(r.mDirty); sScratch.offset(r.mX, r.mY); part.union(sScratch); }
         }
         for (ViewRoot r : roots) { r.mDirty.setEmpty(); r.mDirtyAll = false; }
+        // The views' display lists that went invalid under valid ones, recorded again before anything is drawn (View, overlaid).
+        // A view whose drawing throws is left as far as it got, as when the window is drawn (drawWindows): Telegram's chat
+        // list cell throws in its onDraw on every frame here, and the app ended on it once its lists were recorded before
+        // the frame (package 544), where it had gone on before.
+        for (ViewRoot r : roots) {
+            if (r.mRemoved || r.mOwnerStopped) continue;
+            try {
+                r.mView.meglerUpdateLists();
+            } catch (RuntimeException e) {
+                android.util.Log.e("ViewRoot", "recording the window's display lists threw", e);
+            }
+        }
+        if (sFullRedraw) noteDirtier(sFullWhy != null ? sFullWhy : "windows added, removed, moved or resized", Float.MAX_VALUE);
+        sFullWhy = null;
         sFullRedraw = false;
+        countDirtier(whole ? sw * sh : (part.isEmpty() ? 0 : Math.min(part.width(), sw) * Math.min(part.height(), sh)), sw * sh);
+        // The frame is recorded (sFrame), and the render thread draws it onto the screen and shows it (Gfx.frame) while this
+        // thread goes on: the views' lists are drawn there by reference, as Android's RenderThread draws them.
         if (!whole) {
             sRedrawn = 0;
             if (!sPresentedAny || !part.intersect(0, 0, sw, sh)) return;      /* nothing visible changed: the screen is as it was */
-            int save = sCanvas.save();
-            sCanvas.clipRect(part);
-            sCanvas.drawColor(0, PorterDuff.Mode.CLEAR);
+            sFrame.meglerFrame(sw, sh);
+            int save = sFrame.save();
+            sFrame.clipRect(part);
+            sFrame.drawColor(0, PorterDuff.Mode.CLEAR);
             sDrawingPart = true;
-            try { drawWindows(sCanvas, roots, sw, sh); } finally { sDrawingPart = false; sCanvas.restoreToCount(save); }
+            try { drawWindows(sFrame, roots, sw, sh); } finally { sDrawingPart = false; sFrame.restoreToCount(save); }
             sRedrawn = part.width() * part.height();
             if (sCheck == 0) sCheck = Native.checkPartial() ? 1 : -1;
-            if (sCheck > 0) checkPart(roots, sw, sh, part);
-            Native.presentRect(part.left, part.top, part.right, part.bottom);
-            Gfx.present(sScreen.meglerNative());
+            handOver();
+            Gfx.frame(sCanvas.meglerNative(), sScreen.meglerNative(), sFrame.meglerNative(), part.left, part.top, part.right, part.bottom);
+            if (sCheck > 0) { Gfx.frameWait(); checkPart(roots, sw, sh, part); }
             return;
         }
-        sScreen.eraseColor(0);
-        int gen = sScreen.getGenerationId();
-        boolean drew = drawWindows(sCanvas, roots, sw, sh);
-        // a window drawn counts even when its drawing left the generation alone (the screen must lose a closed dialog)
-        boolean any = drew || sScreen.getGenerationId() != gen;
+        sFrame.meglerFrame(sw, sh);
+        sFrame.drawColor(0, PorterDuff.Mode.CLEAR);
+        // a window drawn counts even when it drew nothing (the screen must lose a closed dialog)
+        boolean any = drawWindows(sFrame, roots, sw, sh);
         sRedrawn = any ? sw * sh : 0;
-        if (any || sPresentedAny) Gfx.present(any ? sScreen.meglerNative() : 0);
+        // With no window drawn the screen is cleared all the same (drawn, not shown): a frame drawn in part later keeps the rest.
+        handOver();
+        Gfx.frame(sCanvas.meglerNative(), sScreen.meglerNative(), sFrame.meglerNative(), 0, 0, any ? 0 : -1, 0);
+        if (!any && sPresentedAny) Gfx.present(0);
         sPresentedAny = any;
+    }
+    /* The canvas each frame is recorded on, for the render thread. */
+    private static ScreenCanvas sFrame;
+    /*
+     * Before a frame is handed over: the frame before shown, then the nodes' properties that changed handed to the core, which
+     * drawing on the screen did before (RenderNode.meglerSync) and recording does not, so that the render thread draws each
+     * frame with its own.
+     */
+    private static void handOver() {
+        Gfx.frameWait();
+        android.graphics.RenderNode.meglerSyncAll();
     }
     /** For the tests (Native.checkPartial): 1 a frame drawn in part is checked against the same frame drawn whole, -1 not, 0 not asked yet. */
     private static int sCheck;
@@ -527,12 +720,21 @@ public final class ViewRoot implements ViewParent {
      * reads canvas.getWidth() means the view's width. Anything else of the canvas is the screen's, as before.
      */
     public static final class ScreenCanvas extends Canvas {
-        private int mViewW = -1, mViewH = -1;
+        private int mViewW = -1, mViewH = -1, mScreenW = -1, mScreenH = -1;
 
         ScreenCanvas(Bitmap b) { super(b); }
+        /* One that records the window's frames (drawAll), of the screen's size. */
+        ScreenCanvas() { super(); }
 
-        @Override public int getWidth() { return mViewW >= 0 ? mViewW : super.getWidth(); }
-        @Override public int getHeight() { return mViewH >= 0 ? mViewH : super.getHeight(); }
+        /** A frame of the screen's size recorded from now on (megler.Gfx.frame hands it over). */
+        void meglerFrame(int w, int h) {
+            meglerRecordFrame(w, h);
+            mScreenW = w;
+            mScreenH = h;
+        }
+
+        @Override public int getWidth() { return mViewW >= 0 ? mViewW : mScreenW >= 0 ? mScreenW : super.getWidth(); }
+        @Override public int getHeight() { return mViewH >= 0 ? mViewH : mScreenH >= 0 ? mScreenH : super.getHeight(); }
 
         /** The size said from now on; what was said before, for meglerViewSizeBack. */
         public long meglerViewSize(int w, int h) {
@@ -553,7 +755,7 @@ public final class ViewRoot implements ViewParent {
         Paint dim = null;
         boolean drew = false;
         for (ViewRoot r : roots) {
-            if (r.mRemoved || r.mView.getVisibility() != View.VISIBLE) continue;
+            if (r.mRemoved || r.mOwnerStopped || r.mView.getVisibility() != View.VISIBLE) continue;
             if ((r.mLp.flags & WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0 && r.mLp.dimAmount > 0) {
                 if (dim == null) dim = new Paint();
                 dim.setColor(Color.argb(Math.round(Math.min(1, r.mLp.dimAmount) * 0.6f * 255), 0, 0, 0));
@@ -587,7 +789,7 @@ public final class ViewRoot implements ViewParent {
             float x = e.getRawX(), y = e.getRawY();
             for (int i = sRoots.size() - 1; i >= 0; i--) {
                 ViewRoot r = sRoots.get(i);
-                if (r.mView.getVisibility() != View.VISIBLE || (r.mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0) continue;
+                if (r.mOwnerStopped || r.mView.getVisibility() != View.VISIBLE || (r.mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0) continue;
                 boolean inside = x >= r.mX && y >= r.mY && x < r.mX + r.mW && y < r.mY + r.mH;
                 boolean modal = (r.mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL) == 0;
                 if (inside || modal) {
@@ -618,7 +820,7 @@ public final class ViewRoot implements ViewParent {
     public static boolean dispatchKey(KeyEvent e) {
         for (int i = sRoots.size() - 1; i >= 0; i--) {
             ViewRoot r = sRoots.get(i);
-            if (!r.focusable() || r.mView.getVisibility() != View.VISIBLE) continue;
+            if (!r.focusable() || r.mOwnerStopped || r.mView.getVisibility() != View.VISIBLE) continue;
             if (r.mView.dispatchKeyEventPreIme(e)) return true;
             return r.mView.dispatchKeyEvent(e);
         }
@@ -627,7 +829,7 @@ public final class ViewRoot implements ViewParent {
     public static boolean dispatchGeneric(MotionEvent e) {
         for (int i = sRoots.size() - 1; i >= 0; i--) {
             ViewRoot r = sRoots.get(i);
-            if (r.mView.getVisibility() != View.VISIBLE) continue;
+            if (r.mOwnerStopped || r.mView.getVisibility() != View.VISIBLE) continue;
             MotionEvent l = MotionEvent.obtain(e);
             l.offsetLocation(-r.mX, -r.mY);
             return r.mView.dispatchGenericMotionEvent(l);
@@ -662,7 +864,7 @@ public final class ViewRoot implements ViewParent {
 
     /** The window touches go to: the top one that takes them (a toast does not). */
     public static ViewRoot topTouchable() {
-        for (int i = sRoots.size() - 1; i >= 0; i--) if ((sRoots.get(i).mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) == 0) return sRoots.get(i);
+        for (int i = sRoots.size() - 1; i >= 0; i--) if ((sRoots.get(i).mLp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) == 0 && !sRoots.get(i).mOwnerStopped) return sRoots.get(i);
         return null;
     }
     public static ViewRoot top() { return sRoots.isEmpty() ? null : sRoots.get(sRoots.size() - 1); }
@@ -670,7 +872,7 @@ public final class ViewRoot implements ViewParent {
     public static View keyFocus() {
         for (int i = sRoots.size() - 1; i >= 0; i--) {
             ViewRoot r = sRoots.get(i);
-            if (r.focusable() && r.mView.getVisibility() == View.VISIBLE) return r.mFocused;
+            if (r.focusable() && !r.mOwnerStopped && r.mView.getVisibility() == View.VISIBLE) return r.mFocused;
         }
         return null;
     }

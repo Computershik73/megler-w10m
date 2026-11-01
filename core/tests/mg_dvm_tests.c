@@ -152,6 +152,412 @@ static void test_arith(void)
     CHECK_STR(thrown(), "java.lang.NoClassDefFoundError: t/Nowhere");
 }
 
+/* ---------------------------------------------------------------- t.Jit */
+
+/* What t.Jit.mix computes, in C with Java's wrapping arithmetic: the answer its compiled code must give. */
+static i32 jit_mix(i32 n, i32 k)
+{
+    u32 v0 = (u32)k, v2, v3, v4, v5, v6;
+    i32 v1;
+    for (v1 = 0; v1 < n; v1++) {
+        u32 s = (u32)v1 & 31;
+        v2 = v0 + (u32)v1;
+        v3 = v2 - (u32)k;
+        v2 = v3 * v2;
+        v2 ^= v0;
+        v3 = (u32)v1 | 1;
+        v4 = (u32)((i32)v2 / (i32)v3);
+        v5 = (u32)((i32)v2 % (i32)v3);
+        v4 += v5;
+        v5 = v4 << s;
+        v3 = (u32)((i32)v2 >> s);
+        v6 = v2 >> s;
+        v5 ^= v3;
+        v5 += v6;
+        v3 = v5 & 0x7f;
+        v6 = ~v5;
+        v6 = 0u - v6;
+        v6 -= v3;
+        v3 = 0x1234u - v6;
+        v3 = 0x11u - v3;
+        v3 = v3 * (u32)-3;
+        v4 = (u32)((i32)v3 / 7);
+        v5 = (u32)((i32)v3 % 0x65);
+        v4 += v5;
+        v5 = v4 << 1;
+        v6 = (u32)((i32)v4 >> 3);
+        v3 = v4 >> 31;
+        v5 += v6;
+        v5 += v3;
+        v0 = v5 & v2;
+        v0 |= v5;
+    }
+    return (i32)v0;
+}
+
+static mg_jobj *jit_array(const char *cls, i32 len) { return mg_dvm_new_array(cls, len); }
+
+/* What t.Jit's call, long and switch loops return, computed here with Java's arithmetic. */
+static i32 jit_call_kinds(i32 n)
+{
+    u32 v2 = 0;
+    i32 i;
+    for (i = 0; i < n; i++) {
+        v2 += 3;                       /* area() */
+        v2 += 3;                       /* hashCode() */
+        v2 += (u32)i + v2;             /* sum(i, v2) */
+        v2 ^= (u32)i + v2;             /* sum/range */
+        v2 += 4;                       /* "abcd".length() */
+        v2 += (u32)i;                  /* (int) wide(i) */
+    }
+    return (i32)v2;
+}
+
+static i32 jit_catch_in_loop(i32 n)
+{
+    i32 s = 0, i;
+    for (i = 0; i < n; i++) s += i == 2 ? 1000 : 100 / (i - 2);
+    return s;
+}
+
+static i32 jit_inlined(i32 n)
+{
+    i32 s = 0, i;
+    for (i = 0; i < n; i++) s += i == 50 ? 1000 : i + ((i & 3) == 3 ? 100 : 0) + 7 + 5 + i + 0x1234;
+    return s;
+}
+
+/* Java's conversions of floating point to int: toward zero, saturated, NaN 0. */
+static i32 java_d2i(double v) { return v != v ? 0 : v >= 2147483647.0 ? 2147483647 : v <= -2147483648.0 ? (i32)0x80000000u : (i32)v; }
+
+static i32 jit_intrinsics(const char *s)
+{
+    i32 n = (i32)strlen(s), i;
+    u32 sum = 0;
+    for (i = 0; i <= n; i++) {
+        if (i == n) {
+            sum += 1000;
+            continue;
+        }
+        sum += (u8)s[i];
+        sum += (u32)n;
+        sum += n == 0;
+        sum += (u32)(i - 5 < 0 ? 5 - i : i - 5);
+        sum += (u32)(i - 5);
+        sum ^= (u32)i;
+        sum += (u32)java_d2i(sqrt((double)i) * 10.0);
+    }
+    return (i32)sum;
+}
+
+static i64 java_d2l(double v) { return v != v ? 0 : v >= 9223372036854775808.0 ? INT64_MAX : v <= -9223372036854775808.0 ? INT64_MIN : (i64)v; }
+static i64 java_ldiv(i64 a, i64 b) { return a == INT64_MIN && b == -1 ? a : a / b; }
+static i64 java_lrem(i64 a, i64 b) { return a == INT64_MIN && b == -1 ? 0 : a % b; }
+
+static i64 jit_by_calls(i32 n, i64 seed)
+{
+    u64 a = (u64)seed, s = 0;
+    i32 i;
+    for (i = 0; i < n; i++) {
+        i64 dv = (i64)(i - 7);
+        if (!dv) {
+            s += 1000;
+            continue;
+        }
+        s += (u64)java_ldiv((i64)a, dv);
+        s ^= (u64)java_lrem((i64)a, dv);
+        s -= (u64)java_ldiv((i64)a, dv);
+        s += (u64)java_lrem((i64)a, dv);
+        s += (u64)java_d2l((double)(float)(i64)a);
+        s ^= (u64)java_d2l((double)(i64)a);
+        s += (u64)java_d2l((double)fmodf((float)i, 3.0f));
+        s ^= (u64)java_d2l((double)fmodf((float)i, 7.0f));
+        s += (u64)java_d2l(fmod((double)i, 8.0));
+        s -= (u64)java_d2l(fmod((double)i, 5.0));
+        a = a * 0x5851f42d4c957f2dull + 0x14057b7ef767814full;
+    }
+    return (i64)s;
+}
+
+static double jit_floats(i32 n)
+{
+    float f = 0.5f, x, g, h;
+    double d = 0.25, y, e, arr[4] = { 0, 0, 0, 0 };
+    u32 k = 0;
+    i32 i;
+    for (i = 0; i < n; i++) {
+        x = (float)i;
+        f = f * 0.75f;
+        f = f + x / 3.0f;
+        f = f - 0.25f;
+        y = (double)i;
+        d = d * 0.5;
+        d = d + y / 7.0;
+        d = d - (double)f;
+        k += (u32)java_d2i(f);
+        k += (u32)java_d2i(d * 3.0);
+        k += (u32)(f < x ? -1 : f > x ? 1 : f == x ? 0 : -1);
+        k += (u32)(d < y ? -1 : d > y ? 1 : d == y ? 0 : 1);
+        g = (float)d;
+        k += (u32)-1;                  /* cmpl-float g, NaN */
+        k += 1;                        /* cmpg-float NaN, g */
+        h = g * g;
+        h = h - g;
+        k += (u32)java_d2i(h);
+        arr[i & 3] = d;
+        e = arr[(i + 1) & 3] * 0.25;
+        d = d + e;
+        e = d - e;
+        d = d + e;
+        d = d * 0.25;
+        d = d / 4.0;
+    }
+    return d + (double)f + (double)(i32)k;
+}
+
+static i64 jit_longs(i32 n, i64 seed)
+{
+    u64 v0 = (u64)seed, v2 = 0, v6, v8;
+    i32 i, c;
+    for (i = 0; i < n; i++) {
+        u32 s = (u32)i & 63;
+        v0 = v0 * 0x5851f42d4c957f2dull + 0x14057b7ef767814full;
+        v2 ^= v0 >> s;
+        v2 += v0 << s;
+        v2 -= (u64)((i64)v0 >> s);
+        v8 = v0 | v2;
+        v6 = v8 & v0;
+        v2 ^= v6;
+        v6 = (u64)0 - v2;
+        v8 = ~v6;
+        v2 += v8;
+        v2 += (u64)(i64)i;
+        v2 ^= (u64)(i64)(i32)(u32)v2;
+        c = (i64)v0 < (i64)v2 ? -1 : (i64)v0 > (i64)v2 ? 1 : 0;
+        v2 += (u64)(i64)c;
+        c = (i64)v2 < (i64)0x4000000000000000ll ? -1 : (i64)v2 > (i64)0x4000000000000000ll ? 1 : 0;
+        v2 += (u64)(i64)c;
+    }
+    return (i64)(v0 + v2);
+}
+
+static i32 jit_switches(i32 n)
+{
+    i32 s = 0, i;
+    for (i = 0; i < n; i++) {
+        i32 k;
+        switch (i % 6 - 1) {
+        case -1: s += 10; break;
+        case 0: s += 20 + 30; break;
+        case 1: s += 30; break;
+        case 2: s += 40; break;
+        default: s += 1; break;
+        }
+        k = i * 7 % 50;
+        s += k == 0 ? 100 : k == 7 ? 200 : k == 49 ? 300 : 2;
+    }
+    return s;
+}
+
+/*
+ * The JIT (mg_dvm_jit.c, docs/JIT.md) with its threshold at 1: each of t.Jit's loops compiled at its first jump back,
+ * and what they return as Java says. Exits too: a divisor of zero, an index out of bounds and a null array inside a
+ * compiled loop throw as interpreted; calls made from compiled code, their exceptions and deep recursion through them; long
+ * arithmetic and switches. Where the host runs no Thumb-2
+ * (x64) nothing is compiled and the same answers are the interpreter's.
+ */
+static void test_jit(void)
+{
+    u32 was = g_dvm_jit_threshold;
+    mg_jobj *ints, *bytes, *chars, *shorts, *flags;
+    mg_dvm_class *c;
+    i32 i, want;
+    say("the JIT: loops compiled at their first jump back");
+    mg_dvm_jit_start(true, 1, false);
+    ints = jit_array("[I", 40);
+    bytes = jit_array("[B", 40);
+    chars = jit_array("[C", 40);
+    shorts = jit_array("[S", 40);
+    flags = jit_array("[Z", 7);
+    CHECK(ints && bytes && chars && shorts && flags);
+    if (!ints || !bytes || !chars || !shorts || !flags) return;
+    /* Filled by the compiled loop at k = 1000: ints i*1000, bytes, chars and shorts their truncations. */
+    A[0].l = ints;
+    A[1].l = bytes;
+    A[2].l = chars;
+    A[3].l = shorts;
+    A[4].i = 1000;
+    want = 0;
+    for (i = 0; i < 40; i++) want += i * 1000 + (i8)(i * 1000) + (u16)(i * 1000) + (i16)(i * 1000);
+    CHECK_INT(call("t/Jit", "fill", "([I[B[C[SI)I").i, want);
+    CHECK_INT(((i32 *)ints->u.arr.data)[39], 39000);
+    CHECK_INT(((i8 *)bytes->u.arr.data)[39], (i8)39000);
+    CHECK_INT(((u16 *)chars->u.arr.data)[39], (u16)39000);
+    CHECK_INT(((i16 *)shorts->u.arr.data)[39], (i16)39000);
+    for (i = 0; i < 7; i++) ((u8 *)flags->u.arr.data)[i] = (u8)(i % 3 == 0);
+    A[0].l = flags;
+    CHECK_INT(call("t/Jit", "countTrue", "([Z)I").i, 3);
+    A[0].i = 300;
+    A[1].i = 12345;
+    CHECK_INT(call("t/Jit", "mix", "(II)I").i, jit_mix(300, 12345));
+    A[0].i = 77;
+    A[1].i = -9;
+    CHECK_INT(call("t/Jit", "mix", "(II)I").i, jit_mix(77, -9));
+    A[0].i = 3;
+    CHECK_INT(call("t/Jit", "minOverMinusOne", "(I)I").i, (i32)(3u * 0x80000000u));
+    for (want = 0, i = -5; i <= 5; i++)
+        want += (i < 0 ? 1 : 0) + (i > 0 ? 2 : 0) + (i == 0 ? 4 : 0) + (i >= 0 ? 8 : 0) + (i <= 0 ? 0x10 : 0) + (i != 0 ? 0x20 : 0) +
+                (i >= 0 ? 0x40 : 0) + (i > 0 ? 0x80 : 0) + (i != 0 ? 0x100 : 0) + (i == 0 ? 0x200 : 0) + (i < 0 ? 0x400 : 0);
+    A[0].i = 5;
+    CHECK_INT(call("t/Jit", "conditions", "(I)I").i, want);
+    /* A divisor of zero among them, the index past the end, a null array: thrown from inside the compiled loops. */
+    for (i = 0; i < 40; i++) ((i32 *)ints->u.arr.data)[i] = i < 30 ? i + 1 : 0;
+    A[0].i = 100000;
+    A[1].l = ints;
+    CHECK_INT(call("t/Jit", "divideAll", "(I[I)I").i, 0);
+    CHECK_STR(thrown(), "java.lang.ArithmeticException: divide by zero");
+    A[0].l = ints;
+    A[1].i = 41;
+    CHECK_INT(call("t/Jit", "readTo", "([II)I").i, 0);
+    CHECK_STR(thrown(), "java.lang.ArrayIndexOutOfBoundsException: length=40; index=40");
+    A[0].l = NULL;
+    A[1].i = 3;
+    call("t/Jit", "readTo", "([II)I");
+    CHECK_STR(thrown(), "java.lang.NullPointerException: Attempt to read from a null array");
+    A[0].l = ints;
+    A[1].i = 30;
+    CHECK_INT(call("t/Jit", "readTo", "([II)I").i, 465);
+    /* A return from inside a compiled loop: the code ends the call itself. */
+    A[0].l = ints;
+    A[1].i = 20;
+    CHECK_INT(call("t/Jit", "firstAbove", "([II)I").i, 20);
+    A[0].l = ints;
+    A[1].i = 100;
+    CHECK_INT(call("t/Jit", "firstAbove", "([II)I").i, -1);
+    A[0].i = 50;
+    CHECK_INT(call("t/Jit", "callsInLoop", "(I)I").i, 1225);
+    /* Fields of every width, an object one and static ones, read and written by a compiled loop. */
+    {
+        i32 n = 300, k, ii = 0, total = 0;
+        i8 b = 0;
+        u16 ch = 0;
+        i16 sh = 0;
+        u8 z = 0;
+        for (k = 0; k < n; k++) {
+            ii += k;
+            b = (i8)(b + 7);
+            ch = (u16)(ch + 1000);
+            sh = (i16)(sh + 1000);
+            z ^= 1;
+            total += k;
+        }
+        A[0].i = n;
+        CHECK_INT(call("t/Jit", "fields", "(I)I").i, ii + b + ch + sh + z + total);
+    }
+    /* Calls of each kind from a compiled loop, a callee's exception caught by the loop's own handler, recursion through
+       compiled calls deeper than the host's stack takes loops for, long arithmetic, and both switches. */
+    A[0].i = 200;
+    CHECK_INT(call("t/Jit", "callKinds", "(I)I").i, jit_call_kinds(200));
+    A[0].i = 9;
+    CHECK_INT(call("t/Jit", "catchInLoop", "(I)I").i, jit_catch_in_loop(9));
+    CHECK_STR(thrown(), "");
+    A[0].i = 3000;
+    CHECK_INT(call("t/Jit", "deepCalls", "(I)I").i, 3000);
+    CHECK_STR(thrown(), "");
+    A[0].i = 500;
+    A[1].j = (i64)0x0123456789abcdefll;
+    CHECK(call("t/Jit", "longs", "(IJ)J").j == jit_longs(500, (i64)0x0123456789abcdefll));
+    A[0].i = 777;
+    CHECK_INT(call("t/Jit", "switches", "(I)I").i, jit_switches(777));
+    /* Objects made, cast, locked and stored from a compiled loop; a store and a cast that fail thrown from it. */
+    for (want = 0, i = 0; i < 100; i++) want += 3 + i + (i & 7);
+    A[0].i = 100;
+    CHECK_INT(call("t/Jit", "objects", "(I)I").i, want);
+    A[0].i = 10;
+    CHECK_INT(call("t/Jit", "storeFails", "(I)I").i, 1003);
+    A[0].i = 10;
+    CHECK_INT(call("t/Jit", "castFails", "(I)I").i, 2005);
+    CHECK_STR(thrown(), "");
+    A[0].i = 10;
+    A[1].j = (i64)0x123456789abcdef0ll;
+    CHECK(call("t/Jit", "wideMoves", "(IJ)J").j == (i64)0x123456789abcdef0ll);
+    CHECK_STR(thrown(), "");
+    /* Floating point in a compiled loop, against C; what it does by calls, a divisor of zero among them. */
+    A[0].i = 300;
+    CHECK(call("t/Jit", "floats", "(I)D").d == jit_floats(300));
+    A[0].i = 40;
+    A[1].j = (i64)0x0123456789abcdefll;
+    CHECK(call("t/Jit", "byCalls", "(IJ)J").j == jit_by_calls(40, (i64)0x0123456789abcdefll));
+    CHECK_STR(thrown(), "");
+    /* Intrinsics in the code; charAt past the end goes by the call, which throws. */
+    A[0].l = mg_dvm_new_string("compiled code reads this string");
+    CHECK_INT(call("t/Jit", "intrinsics", "(Ljava/lang/String;)I").i, jit_intrinsics("compiled code reads this string"));
+    CHECK_STR(thrown(), "");
+    /* Trivial methods called from a compiled loop, done in the code: an override and a null object go by the call instead. */
+    {
+        u32 in_place = g_dvm_jit_in_place;
+        A[0].i = 120;
+        CHECK_INT(call("t/Jit", "inlined", "(I)I").i, jit_inlined(120));
+        CHECK_STR(thrown(), "");
+#if defined(__arm__) || defined(_M_ARM)
+        /* setI, getI, seven, total, setC, getC, touch, getJ, getO */
+        CHECK_INT((i32)(g_dvm_jit_in_place - in_place), 9);
+#else
+        (void)in_place;
+#endif
+    }
+    /* Compiled, where the host runs Thumb-2. */
+    c = mg_dvm_find_class("t/Jit");
+#if defined(__arm__) || defined(_M_ARM)
+    {
+        static const struct { const char *name, *sig; } compiled[] = {
+            { "sum", "([I)I" }, { "fill", "([I[B[C[SI)I" }, { "mix", "(II)I" }, { "conditions", "(I)I" }, { "divideAll", "(I[I)I" },
+            { "readTo", "([II)I" }, { "wideMoves", "(IJ)J" }, { "fields", "(I)I" }, { "callsInLoop", "(I)I" },
+            { "callKinds", "(I)I" }, { "catchInLoop", "(I)I" }, { "deepCalls", "(I)I" }, { "longs", "(IJ)J" }, { "switches", "(I)I" },
+            { "objects", "(I)I" }, { "storeFails", "(I)I" }, { "castFails", "(I)I" }, { "inlined", "(I)I" }, { "firstAbove", "([II)I" },
+            { "floats", "(I)D" }, { "byCalls", "(IJ)J" }, { "intrinsics", "(Ljava/lang/String;)I" },
+        };
+        size_t k;
+        for (k = 0; k < MG_COUNT(compiled); k++) {
+            mg_dvm_method *m = c ? mg_dvm_find_method(c, compiled[k].name, compiled[k].sig, true) : NULL;
+            CHECK(m && m->jit_state == 1 && m->jit);
+            if (!m || !m->jit) say("  t.Jit.%s%s was not compiled", compiled[k].name, compiled[k].sig);
+        }
+    }
+    /* A method without loops that compiled loops call, compiled for its calls: entered at its start, its return compiled. */
+    {
+        mg_dvm_class *ac = mg_dvm_find_class("t/Arith");
+        mg_dvm_method *sum = ac ? mg_dvm_find_method(ac, "sum", "(II)I", true) : NULL;
+        CHECK(sum && sum->jit && mg_dvm_jit_entry(sum->jit, 0));
+    }
+    /*
+     * With the threshold above 1, a small method's code waits on the page being filled, interpreted meanwhile, until the
+     * page is made executable: here once 200 ms have passed, at its next threshold's worth of calls. Where pages may be
+     * writable and executable at once (mg_mem_rwx: here, and on phones that allow it), the page is so from its start and
+     * the method has its code at once.
+     */
+    {
+        mg_dvm_method *w = c ? mg_dvm_find_method(c, "waits", "(I)I", true) : NULL;
+        mg_dvm_jit_start(true, 2, false);
+        for (i = 0; i < 2; i++) {
+            A[0].i = i;
+            CHECK_INT(call("t/Jit", "callWaits", "(I)I").i, ((i + 1) * 3) ^ 5);
+        }
+        if (mg_mem_rwx()) CHECK(w && w->jit_state == 1 && w->jit);
+        else CHECK(w && w->jit_state == 3 && !w->jit);
+        mg_sleep_ns(250000000ull);
+        for (i = 0; i < 2; i++) {
+            A[0].i = i + 10;
+            CHECK_INT(call("t/Jit", "callWaits", "(I)I").i, ((i + 11) * 3) ^ 5);
+        }
+        CHECK(w && w->jit_state == 1 && w->jit && mg_dvm_jit_entry(w->jit, 0));
+    }
+#else
+    (void)c;
+#endif
+    g_dvm_jit_threshold = was;
+}
+
 /* ------------------------------------------------------------- two files */
 
 static void test_two_files(void)
@@ -265,9 +671,11 @@ int mg_dvm_tests_run(const mg_dvm_test_config *config, mg_test_sink sink, void *
         mg_dvm_set_trace(config->trace);
         test_ops();
         test_arith();
+        test_jit();
         test_two_files();
         test_language();
         test_runtime(config->fixtures);
+        if (config->scratch) test_lazy_dex(config->fixtures, config->scratch);
         test_gc();
         test_jni(config->guest_dir, config->fixtures);
         if (!g_libcore) test_d8(config->fixtures);            /* on libcore that program has been run already, with the other */

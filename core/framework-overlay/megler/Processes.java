@@ -13,6 +13,12 @@
 // The scope's Application is made, attached and created once, on the main thread, the first time a component of that process
 // is; its context is the app's, but for its class loader, its Application and its ActivityManager. The process's providers,
 // receivers and activities still run in the app's own scope.
+//
+// An intent that goes from one scope to another -- a broadcast, a service's start or binding -- has the objects among its
+// extras made again by the receiving scope's classes (forLoader), as Android's parcelling of it between processes makes
+// them: Play Store's download service broadcasts its progress with a parcelled proto of its own scope's class, and the main
+// process's receiver ended casting it to its own ("ProtoParsers$InternalDontUse cannot be cast to
+// ProtoParsers$InternalDontUse").
 package megler;
 
 import android.app.ActivityManager;
@@ -41,6 +47,37 @@ public final class Processes {
 
     /* Each process's scope once made; null for one that could not be. */
     private static final HashMap<String, Scope> sScopes = new HashMap<>();
+    /*
+     * The scopes whose loaders nameOf knows, read without a lock: a scope is in it from before its Application is made, since
+     * that Application asks its process's name in its onCreate (Play Store's chooses its graph of services by it, and built its
+     * main process's in its background process while the scope was put in sScopes only after onCreate had returned).
+     */
+    private static volatile Scope[] sNamed = new Scope[0];
+
+    /**
+     * The name of the process whose scope class loader `l` is (or is under); null for the app's own process. The framework
+     * asks it of the closest of the app's classes up the stack (VMStack.getClosestUserClassLoader): Play Store asks
+     * ActivityThread.currentProcessName through reflection, whose caller is the boot class path's Method.invoke, and its
+     * background process's Application was told the main process's name and built that process's graph of services
+     * ("Cannot cast sum to rqc", package 552).
+     */
+    public static String nameOf(ClassLoader l) {
+        Scope[] named = sNamed;
+        if (l == null || named.length == 0) return null;
+        for (ClassLoader at = l; at != null; at = at.getParent())
+            for (Scope s : named)
+                if (s.loader == at) return s.name;
+        return null;
+    }
+
+    private static void named(Scope s, boolean in) {
+        synchronized (sScopes) {
+            java.util.ArrayList<Scope> l = new java.util.ArrayList<>(java.util.Arrays.asList(sNamed));
+            l.remove(s);
+            if (in) l.add(s);
+            sNamed = l.toArray(new Scope[0]);
+        }
+    }
 
     /** The scope of the process a component runs in, made the first time (on the main thread); null for the app's own process,
      *  and for one whose scope could not be made (the component then runs in the app's, as before). */
@@ -66,6 +103,7 @@ public final class Processes {
             return null;
         }
         String cls = Manifest.applicationClass != null ? Manifest.applicationClass : Application.class.getName();
+        named(s, true);
         try {
             Application a = Application.class.getName().equals(cls) ? new Application()
                 : (Application) s.loader.loadClass(cls).getDeclaredConstructor().newInstance();
@@ -75,9 +113,101 @@ public final class Processes {
             a.onCreate();
         } catch (Throwable t) {
             android.util.Log.e("Megler", "process " + process + ": its Application failed", t);
-            if (s.app == null) return null;
+            if (s.app == null) { named(s, false); return null; }
         }
         return s;
+    }
+
+    /**
+     * The intent for code of class loader `l`: itself when its extras hold nothing of another class scope's, else a copy whose
+     * extras' objects of other scopes -- Parcelables, in arrays, lists and bundles too -- are made again by `l`'s classes of
+     * their names, through a Parcel (android.os.Parcel.readParcelable adapts an object to a loader), as a Parcel between two
+     * processes makes them. An object `l` has no class of is left as it is.
+     */
+    public static android.content.Intent forLoader(android.content.Intent i, ClassLoader l) {
+        if (i == null || l == null) return i;
+        android.os.Bundle extras = i.getExtras();
+        if (extras == null) return i;
+        android.os.Bundle adapted = adapt(extras, l);
+        if (adapted == extras) return i;
+        android.content.Intent copy = new android.content.Intent(i);
+        copy.replaceExtras(adapted);
+        return copy;
+    }
+
+    /**
+     * Bundle.setClassLoader: the bundle's own values of another class scope -- Parcelables, in arrays, lists and bundles too --
+     * made again by `l`'s classes of their names, in place, as Android unparcels a bundle with the loader it is given.
+     */
+    public static void adaptBundle(android.os.Bundle b, ClassLoader l) {
+        if (b == null || l == null) return;
+        for (String key : new java.util.ArrayList<>(b.keySet())) {
+            Object v = b.get(key), a = adaptValue(v, l);
+            if (a != v) putValue(b, key, a);
+        }
+    }
+
+    /* The bundle with its foreign objects made again, or itself when it has none. */
+    private static android.os.Bundle adapt(android.os.Bundle b, ClassLoader l) {
+        android.os.Bundle out = null;
+        for (String key : b.keySet()) {
+            Object v = b.get(key), a = adaptValue(v, l);
+            if (a == v) continue;
+            if (out == null) out = new android.os.Bundle(b);
+            putValue(out, key, a);
+        }
+        return out != null ? out : b;
+    }
+
+    private static Object adaptValue(Object v, ClassLoader l) {
+        if (v instanceof android.os.Bundle) return adapt((android.os.Bundle) v, l);
+        if (v instanceof android.os.Parcelable) return foreign(v, l) ? adaptParcelable((android.os.Parcelable) v, l) : v;
+        if (v instanceof android.os.Parcelable[]) {
+            android.os.Parcelable[] a = (android.os.Parcelable[]) v, c = null;
+            for (int k = 0; k < a.length; k++) {
+                Object n = adaptValue(a[k], l);
+                if (n != a[k]) { if (c == null) c = a.clone(); c[k] = (android.os.Parcelable) n; }
+            }
+            return c != null ? c : v;
+        }
+        if (v instanceof java.util.ArrayList) {
+            java.util.ArrayList<?> a = (java.util.ArrayList<?>) v;
+            java.util.ArrayList<Object> c = null;
+            for (int k = 0; k < a.size(); k++) {
+                Object n = adaptValue(a.get(k), l);
+                if (n != a.get(k)) { if (c == null) c = new java.util.ArrayList<>(a); c.set(k, n); }
+            }
+            return c != null ? c : v;
+        }
+        return v;
+    }
+
+    /* Whether an object's class is of another app scope than `l`'s (the platform's classes are every scope's). */
+    private static boolean foreign(Object v, ClassLoader l) {
+        ClassLoader own = v.getClass().getClassLoader();
+        return own != null && own != l && own != Object.class.getClassLoader() && own != android.app.Activity.class.getClassLoader();
+    }
+
+    private static Object adaptParcelable(android.os.Parcelable v, ClassLoader l) {
+        android.os.Parcel p = android.os.Parcel.obtain();
+        try {
+            p.writeParcelable(v, 0);
+            p.setDataPosition(0);
+            Object o = p.readParcelable(l);
+            return o != null ? o : v;
+        } catch (Throwable t) {
+            return v;
+        } finally {
+            p.recycle();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void putValue(android.os.Bundle b, String key, Object v) {
+        if (v instanceof android.os.Bundle) b.putBundle(key, (android.os.Bundle) v);
+        else if (v instanceof android.os.Parcelable) b.putParcelable(key, (android.os.Parcelable) v);
+        else if (v instanceof android.os.Parcelable[]) b.putParcelableArray(key, (android.os.Parcelable[]) v);
+        else if (v instanceof java.util.ArrayList) b.putParcelableArrayList(key, (java.util.ArrayList<android.os.Parcelable>) v);
     }
 
     /** The context of a process's scope: the app's, but for the class loader, the Application and the ActivityManager. */

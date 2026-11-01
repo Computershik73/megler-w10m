@@ -138,6 +138,9 @@ void mg_jni_native_counts(i32 *registered, i32 *unknown, i32 *by_name);
  * for the signature's return type.
  */
 mg_jvalue mg_jni_call_native(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args);
+/* The same under a guard: a fault in the native code beyond the layer's repair ends the call (*faulted true, the value 0)
+   instead of the app (mg_jni.c). */
+mg_jvalue mg_jni_call_native_guarded(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args, bool *faulted);
 
 #ifdef __cplusplus
 }

@@ -668,6 +668,8 @@ static const megler_gfx_host *g_shell;
 
 void mg_java_gl_set_shell(const megler_gfx_host *gfx) { g_shell = gfx; }
 
+const megler_gfx_host *mg_java_gl_shell(void) { return g_shell; }
+
 static i32 max_i(i32 a, i32 b) { return a > b ? a : b; }
 static i32 min_i(i32 a, i32 b) { return a < b ? a : b; }
 
@@ -1542,9 +1544,57 @@ void *mg_java_gl_window_handle(void *surface, int *width, int *height)
     return n->s->handle;
 }
 
-void mg_java_gl_window_swap(void *surface, int width, int height)
+bool mg_java_gl_share_frame(void *display, void *pbuffer, mg_java_gl_share *share, int id, int width, int height)
+{
+    typedef void (*fn_finish)(void);
+    fn_finish finish = FN(fn_finish, F_FINISH, "glFinish"), flush = FN(fn_finish, F_FLUSH, "glFlush");
+    bool taken;
+    if (id <= 0 || !mg_java_gl_shares_frames()) return false;
+    if (!share->asked) {
+        void *handle = NULL;
+        share->asked = true;
+        if (E.query_pointer && E.query_pointer(display, pbuffer, EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE, &handle) && handle) share->handle = handle;
+        else mg_note_once("java: EGL gave no shared handle for a surface's texture (EGL error 0x%x)", (unsigned)E.get_error());
+        share->mutex = share->handle ? mg_egl_surface_mutex(display, pbuffer) : NULL;
+    }
+    if (!share->handle || !finish) return false;
+    if (share->mutex && flush) flush();
+    else finish();
+    if (share->mutex) mg_egl_keyed_mutex(share->mutex, false);
+    taken = g_shell->texture_frame(g_shell->user, id, share->handle, width, height);
+    if (share->mutex && !mg_egl_keyed_mutex(share->mutex, true))
+        mg_note_once("java: a surface's keyed mutex could not be taken back from the shell: what the app draws in it now is dropped");
+    return taken;
+}
+
+bool mg_java_gl_shares_frames(void) { return g_shell && g_shell->texture_frame && g_shell->draw_texture && egl_ready() && E.share; }
+
+void mg_java_gl_share_gone(int id)
+{
+    if (id > 0 && g_shell && g_shell->texture_frame) g_shell->texture_frame(g_shell->user, id, NULL, 0, 0);
+}
+
+/* A frame of a pbuffer on no view handed to the shell as the picture of `id` (mg_java_gl_share_frame). */
+static bool texture_frame(gl_surf *s, int id)
+{
+    mg_java_gl_share share;
+    bool taken;
+    share.asked = s->share_asked;
+    share.handle = s->share;
+    share.mutex = s->mutex;
+    taken = mg_java_gl_share_frame(E.display, s->handle, &share, id, s->width, s->height);
+    s->share_asked = share.asked;
+    s->share = share.handle;
+    s->mutex = share.mutex;
+    return taken;
+}
+
+void mg_java_gl_window_swap(void *surface, int width, int height) { (void)mg_java_gl_window_swap_texture(surface, width, height, 0); }
+
+bool mg_java_gl_window_swap_texture(void *surface, int width, int height, int texture_id)
 {
     native_surf *n = (native_surf *)surface;
+    bool on_gpu = false;
     EGLContext current = E.current_context ? E.current_context() : NULL;
     if (current != n->ctx_of) {
         EGLint version = 2;
@@ -1556,6 +1606,12 @@ void mg_java_gl_window_swap(void *surface, int width, int height)
     }
     if (n->s->layer) {
         swap(n->s, &n->ctx);
+    } else if (texture_id > 0 && texture_frame(n->s, texture_id)) {
+        /* On no view, for a TextureView: the frame the shell's picture of the texture's id, on the graphics processor. */
+        static volatile i32 said;
+        if (!mg_atomic_xchg(&said, 1)) mg_info("java: a TextureView's OpenGL ES frames stay on the graphics processor (the shell keeps them, nothing read back)");
+        on_gpu = true;
+        pace(n->s);
     } else {
         /* On no view: the frame read back for the texture, R, G, B, A as SurfaceTexture.meglerPostRgba takes it, and the swap paced. */
         n->ctx.bgra = 0;
@@ -1580,6 +1636,7 @@ void mg_java_gl_window_swap(void *surface, int width, int height)
             n->s = fresh;
         }
     }
+    return on_gpu;
 }
 
 const void *mg_java_gl_window_pixels(void *surface, int *width, int *height)

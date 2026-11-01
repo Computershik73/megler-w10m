@@ -274,6 +274,86 @@ JNIEXPORT jstring JNICALL Java_megler_test_natives_Windows_textureLock(JNIEnv *e
 }
 
 /*
+ * The same TextureView's surface destroyed by the calling thread while a thread of the library's has it current -- HERE
+ * WeGo's way: its UI thread makes its map's surface anew while its render thread is still drawing a frame in the old one. The
+ * destroy is taken, and the surface stays the thread's to query, draw on and swap until it lets it go; only then does it end,
+ * as EGL has it.
+ */
+typedef struct elsewhere {
+    EGLDisplay d;
+    EGLSurface surf;
+    EGLContext ctx;
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+    int step;                          /* 1 current on the thread, 2 destroyed by the caller, 3 the thread done */
+    int made, queried, swapped, released;
+    EGLint width, error;
+} elsewhere;
+
+static void *elsewhere_main(void *p)
+{
+    elsewhere *e = (elsewhere *)p;
+    e->made = eglMakeCurrent(e->d, e->surf, e->surf, e->ctx);
+    pthread_mutex_lock(&e->lock);
+    e->step = 1;
+    pthread_cond_broadcast(&e->cond);
+    while (e->step < 2) pthread_cond_wait(&e->cond, &e->lock);
+    pthread_mutex_unlock(&e->lock);
+    if (e->made) {
+        e->queried = eglQuerySurface(e->d, e->surf, EGL_WIDTH, &e->width);
+        glClearColor(0, 1, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+        e->swapped = eglSwapBuffers(e->d, e->surf);
+        e->error = eglGetError();
+        e->released = eglMakeCurrent(e->d, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    }
+    pthread_mutex_lock(&e->lock);
+    e->step = 3;
+    pthread_cond_broadcast(&e->cond);
+    pthread_mutex_unlock(&e->lock);
+    return NULL;
+}
+
+JNIEXPORT jstring JNICALL Java_megler_test_natives_Windows_textureEglElsewhere(JNIEnv *env, jclass cls, jobject surface)
+{
+    static const EGLint es2[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
+    ANativeWindow *win = ANativeWindow_fromSurface(env, surface);
+    EGLint configs = 0;
+    EGLConfig config;
+    EGLBoolean destroyed = EGL_FALSE;
+    elsewhere e;
+    pthread_t t;
+    char text[160];
+    (void)cls;
+    if (!win) return (*env)->NewStringUTF(env, "no window");
+    memset(&e, 0, sizeof(e));
+    pthread_mutex_init(&e.lock, NULL);
+    pthread_cond_init(&e.cond, NULL);
+    e.d = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    eglInitialize(e.d, NULL, NULL);
+    config = choose(e.d, &configs);
+    e.ctx = eglCreateContext(e.d, config, EGL_NO_CONTEXT, es2);
+    e.surf = eglCreateWindowSurface(e.d, config, win, NULL);
+    if (e.surf != EGL_NO_SURFACE && e.ctx != EGL_NO_CONTEXT && pthread_create(&t, NULL, elsewhere_main, &e) == 0) {
+        pthread_mutex_lock(&e.lock);
+        while (e.step < 1) pthread_cond_wait(&e.cond, &e.lock);
+        pthread_mutex_unlock(&e.lock);
+        destroyed = eglDestroySurface(e.d, e.surf);
+        pthread_mutex_lock(&e.lock);
+        e.step = 2;
+        pthread_cond_broadcast(&e.cond);
+        while (e.step < 3) pthread_cond_wait(&e.cond, &e.lock);
+        pthread_mutex_unlock(&e.lock);
+        pthread_join(t, NULL);
+    }
+    if (e.ctx != EGL_NO_CONTEXT) eglDestroyContext(e.d, e.ctx);
+    ANativeWindow_release(win);
+    snprintf(text, sizeof(text), "made=%d destroyed=%d queried=%d width=%d swapped=%d error=0x%x released=%d", e.made, destroyed, e.queried,
+             e.width, e.swapped, e.error, e.released);
+    return (*env)->NewStringUTF(env, text);
+}
+
+/*
  * The same TextureView's surface drawn once with EGL, on the calling thread (the main one): an OpenGL ES 2 context, a window
  * surface at the texture's size, the frame cleared to green with its top left quarter red, one swap, all of it ended.
  */

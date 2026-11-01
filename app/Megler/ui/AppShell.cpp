@@ -111,6 +111,9 @@ UIElement AppShell::root() {
         hooks.install = [weak](const std::wstring& path, const std::string& name, const std::string& from) {
             if (auto self = weak.lock()) self->installApkPath(path, name, from);
         };
+        hooks.uninstall = [weak](const std::string& package, const std::string& from) {
+            if (auto self = weak.lock()) self->uninstallApp(package, from);
+        };
         hooks.cannotLaunch = [weak](const std::string& why) {
             if (auto self = weak.lock()) self->alert("Couldn't Start the App", why);
         };
@@ -400,6 +403,7 @@ void AppShell::poll() {
         autorun::tick(*this);
         uiShots::poll(*this);
         phoneAppsList::publish();
+        tellAskedInstalls();
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can
         // run here, else its page, which says why not. Before the player, Megler's folders the app has not got are offered
         // (ui/SharedFolders.h), once the phone's folders are known.
@@ -447,7 +451,10 @@ void AppShell::updateDisplayRequest() {
     // dims and locks after its timeout otherwise, and a locked phone
     // suspends us.
     const session::State state = session::snapshot().state;
-    const bool wanted = state == session::State::starting || state == session::State::running || checks::running();
+    // And always, while Megler is in front, under the flag keep-screen-on (LocalState\flags): a phone left waiting for the
+    // next package, which is copied to it and installed from it, or for a test, is not to lock meanwhile.
+    const bool wanted = state == session::State::starting || state == session::State::running || checks::running() ||
+                        files::exists(platform::localStateDirectory() + L"\\flags\\keep-screen-on");
     if (wanted == displayRequestActive_) return;
     try {
         if (!displayRequest_) displayRequest_ = winrt::Windows::System::Display::DisplayRequest();
@@ -591,14 +598,18 @@ void AppShell::alert(std::string title, std::string message) {
 }
 
 void AppShell::confirm(std::string title, std::string message, std::string confirmTitle, bool destructive,
-                       std::function<void()> onConfirm) {
+                       std::function<void()> onConfirm, std::function<void()> onCancel) {
     DialogSpec spec;
     spec.title = std::move(title);
     spec.message = std::move(message);
     spec.buttons = {"Cancel", std::move(confirmTitle)};
     spec.destructive = destructive;
-    dialog(std::move(spec), [onConfirm](int button, std::string) {
-        if (button == 1 && onConfirm) onConfirm();
+    dialog(std::move(spec), [onConfirm, onCancel](int button, std::string) {
+        if (button == 1) {
+            if (onConfirm) onConfirm();
+        } else if (onCancel) {
+            onCancel();
+        }
     });
 }
 
@@ -841,24 +852,91 @@ void AppShell::installApkFile(winrt::Windows::Storage::StorageFile const& file) 
 
 void AppShell::installApkPath(const std::wstring& path, const std::string& name, const std::string& from) {
     shellLog::write("import: " + from + " asks to install " + name + " (" + narrow(path) + ")");
+    /*
+     * An APK an app's own package handed over (the shared folder's incoming\, player/SystemHost.cpp) goes once its request is
+     * answered, whatever the answer: the library has a copy of its own (or its base and splits) by then, and an app that
+     * asks again hands it over again. None ever went, and they added up (499 MB on 2026-10-30).
+     */
+    const std::wstring shared = appPackage::sharedFolder(), incoming = shared + L"\\incoming\\";
+    const bool handed = !shared.empty() && path.size() > incoming.size() && _wcsnicmp(path.c_str(), incoming.c_str(), incoming.size()) == 0;
+    const auto drop = [path, handed] {
+        if (handed) files::remove(path);
+    };
+    // What becomes of it is told to the app that asked (library/PhoneAppsList.h): its installer session waits for it.
     if (import_->active) {
+        phoneAppsList::installOutcome(name, "busy", "Megler is installing another APK. Ask again when it is done.");
         alert("Another APK Is on Its Way", "Megler is installing an APK already. Ask " + from + " again when it is done.");
+        drop();
         return;
     }
     std::weak_ptr<AppShell> weak = weak_from_this();
     confirm("Install " + name + "?", from + " wants to install this app. Megler reads it, tells you whether it can run here, and installs it "
                                             "as an app of the phone's own.",
-            "Install", false, [this, weak, path, name] {
-                if (!weak.lock() || import_->active) return;
+            "Install", false,
+            [this, weak, path, name, drop] {
+                if (!weak.lock()) return;
+                if (import_->active) {
+                    phoneAppsList::installOutcome(name, "busy", "Megler is installing another APK. Ask again when it is done.");
+                    drop();
+                    return;
+                }
                 *import_ = ImportProgress();
                 import_->active = true;
                 ApkSource source;
                 source.path = path;
                 source.name = name;
-                installFrom(weak, import_, std::move(source), [weak](std::string, std::string error) {
-                    if (auto self = weak.lock(); self && !error.empty()) self->alert("Couldn't Install This APK", error);
+                installFrom(weak, import_, std::move(source), [weak, name, drop](std::string id, std::string error) {
+                    drop();
+                    auto self = weak.lock();
+                    if (!error.empty()) {
+                        phoneAppsList::installOutcome(name, "failed", error);
+                        if (self) self->alert("Couldn't Install This APK", error);
+                    } else if (self && !id.empty()) {
+                        self->askedInstalls_.push_back({id, name});
+                    }
                 });
+            },
+            [name, drop] {
+                drop();
+                phoneAppsList::installOutcome(name, "declined", "Not installed: Megler was told no.");
             });
+}
+
+void AppShell::uninstallApp(const std::string& package, const std::string& from) {
+    shellLog::write("import: " + from + " asks to uninstall " + package);
+    const std::string outcome = package + ".uninstall";
+    std::optional<ApkEntry> found;
+    for (const ApkEntry& e : Library::instance().entries())
+        if (e.report.package == package) found = e;
+    if (!found) {
+        phoneAppsList::installOutcome(outcome, "failed", package + " is not in Megler's library.");
+        return;
+    }
+    const std::string id = found->id, title = found->title();
+    // What Android's uninstall does: the app goes, its own package and Megler's copy of it, so that the phone's apps no
+    // longer have it (library/PhoneAppsList.h), which the app that asked waits for.
+    confirm("Uninstall " + title + "?",
+            from + " wants to uninstall this app. It goes from the phone and from Megler's library, with its private files; what it has "
+                   "in Android's storage stays in the shared folder.",
+            "Uninstall", true,
+            [this, package, id] {
+                if (separateApps::status(package).installed == separateApps::Installed::yes) separateApps::uninstall(*this, package);
+                Library::instance().remove(id);
+            },
+            [outcome] { phoneAppsList::installOutcome(outcome, "declined", "Not uninstalled: Megler was told no."); });
+}
+
+void AppShell::tellAskedInstalls() {
+    // An app that cannot run here is in the library but not in the phone's apps: the app that asked is told why.
+    for (auto it = askedInstalls_.begin(); it != askedInstalls_.end();) {
+        const auto entry = Library::instance().find(it->first);
+        if (entry && entry->analysed) {
+            if (!entry->report.ready()) phoneAppsList::installOutcome(it->second, "incompatible", entry->report.status());
+            it = askedInstalls_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 void AppShell::openLink(winrt::Windows::Foundation::Uri const& uri) {
@@ -876,8 +954,14 @@ void AppShell::openLink(winrt::Windows::Foundation::Uri const& uri) {
     shellLog::write("app: the link " + narrow(std::wstring(uri.RawUri())));
     if (what == L"install") {
         const std::string name = value(L"name");
-        if (name.empty() || name.find_first_of("\\/:") != std::string::npos || name.find("..") != std::string::npos) return;
+        if (name.empty() || name.find_first_of("\\/:") != std::string::npos || name.find("..") != std::string::npos) {
+            shellLog::write("app: the link's name is not a file's of the shared folder's incoming: nothing installed");
+            return;
+        }
         installApkPath(appPackage::sharedFolder() + L"\\incoming\\" + widen(name), name, "An app of the phone's own");
+    } else if (what == L"uninstall") {
+        const std::string package = value(L"package");
+        if (!package.empty()) uninstallApp(package, "An app of the phone's own");
     } else if (what == L"run") {
         const std::string package = value(L"package");
         // An app's own package is in front now, which is all a launcher wants of it. Another app may want one of its

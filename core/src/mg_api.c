@@ -129,6 +129,8 @@ void megler_set_paused(bool paused) { mg_run_set_paused(paused); }
 void megler_set_focused(bool focused) { mg_run_set_focused(focused); }
 void megler_stop(void) { mg_run_stop(); }
 void megler_start_activity(const char *activity_class) { mg_java_start_activity(activity_class); }
+void megler_sms_received(const char *from, const char *body, int64_t time_ms) { mg_java_phone_sms(from, body, time_ms); }
+void megler_call_logged(const char *number, int64_t time_ms, int type, int duration_s) { mg_java_phone_call(number, time_ms, type, duration_s); }
 
 bool megler_ask_clear_data(const char *package)
 {
@@ -173,6 +175,25 @@ void megler_set_theme(uint32_t accent_argb, bool night)
  * phone with Windows can say, and the rest is made up here, plausibly: a lithium cell's voltage runs from about 3.4 V
  * empty to 4.2 V full, and an app that shows it wants a number in that range more than it wants the truth of the curve.
  */
+void megler_set_cellular(const megler_cellular *now)
+{
+    mg_cellular c;
+    memset(&c, 0, sizeof(c));
+    if (now) {
+        c.sim_ready = now->sim_ready;
+        if (now->operator_name) mg_strlcpy(c.operator_name, now->operator_name, sizeof(c.operator_name));
+        if (now->mcc_mnc) mg_strlcpy(c.mcc_mnc, now->mcc_mnc, sizeof(c.mcc_mnc));
+        c.network_type = now->network_type;
+        c.roaming = now->roaming;
+    }
+    mg_cellular_set(&c);
+    if (c.sim_ready)
+        mg_info("phone: a SIM, %s (%s), network type %d%s", c.operator_name[0] ? c.operator_name : "operator not said",
+                c.mcc_mnc[0] ? c.mcc_mnc : "no MCC/MNC", c.network_type, c.roaming ? ", roaming" : "");
+    else
+        mg_info("phone: no SIM");
+}
+
 void megler_set_battery(const megler_battery *now)
 {
     mg_battery b;

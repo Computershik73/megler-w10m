@@ -124,16 +124,25 @@ void list() {
     std::vector<appPackage::InstalledApp> apps;
     std::string error;
     const bool ok = appPackage::installedApps(apps, error);
-    std::lock_guard<std::mutex> lock(gMutex);
-    if (ok) {
-        gInstalled = std::move(apps);
-        gListed = true;
-        gProblem.clear();
-    } else {
-        gProblem = error;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        if (ok) {
+            gInstalled = apps;
+            gListed = true;
+            gProblem.clear();
+        } else {
+            gProblem = error;
+        }
+        gListing = false;
+        gGeneration++;
     }
-    gListing = false;
-    gGeneration++;
+    // What the packages no longer need: the Android files of builds none of them is of (after Update All, the older ones'),
+    // the copies of Google Play services' APK but the one registered, and the APKs apps handed over that were left. Then what
+    // the shared folder holds, once a run.
+    if (ok) appPackage::removeUnusedAndroidRoots(apps);
+    appPackage::removeUnusedServiceCopies();
+    appPackage::removeOldHandedApks();
+    appPackage::logSharedSpace();
 }
 
 /// One job. Off the UI thread.

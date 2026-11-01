@@ -25,6 +25,13 @@ extern "C" {
 
 /* For mg_egl_set_provider. */
 void *mg_gl_standin(const char *name);
+/*
+ * EGL_ANDROID_blob_cache, which the stand-in lists: whether the layer gave it its functions, and those functions tried --
+ * a value kept and found again, its size alone when asked with no room, nothing for another key, a value kept again
+ * replacing it. 0 when they did all that (or none was given); otherwise which of them failed.
+ */
+bool mg_gl_standin_blob_given(void);
+int mg_gl_standin_blob_check(void);
 
 typedef struct mg_gl_standin_stats {
     i32 contexts, contexts_alive, surfaces, surfaces_alive;
@@ -33,8 +40,17 @@ typedef struct mg_gl_standin_stats {
     float clear[4];                    /* the last clear colour */
     i32 largest_es;                    /* the newest version a context was made for */
     i32 dropped;                       /* clears, draws and reads of a surface whose keyed mutex was not held: dropped */
+    i32 makes;                         /* eglMakeCurrent calls */
+    i32 overlaps;                      /* glClear calls that came while another thread's was still in the stand-in */
+    i32 stale;                         /* glClear calls of a context other than the one any thread made current last */
 } mg_gl_standin_stats;
 void mg_gl_standin_stats_get(mg_gl_standin_stats *out);
+/*
+ * How long each glClear stays in the stand-in (0: no time): two threads that clear at once then overlap, unless their calls
+ * take turns. Like ANGLE's renderer, the stand-in has one notion of the context whose state is set, the one made current
+ * last on any thread, and a clear of another context's counts as stale.
+ */
+void mg_gl_standin_set_dwell(u64 ns);
 /* Back to nothing made and nothing counted; whether GL_EXT_read_format_bgra is listed, and whether version 1 is made. */
 void mg_gl_standin_reset(bool bgra, bool es1);
 /*

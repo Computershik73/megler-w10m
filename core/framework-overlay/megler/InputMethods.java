@@ -9,6 +9,9 @@
 //   never written.
 // After that a line is written only when something changes: when text arrives while no view has the focus, or while the
 // focused view has no input connection, and when text reaches a field again.
+// And, for a password field the keyboard typed into, whether the field holds what the keyboard typed, when the field is
+// left or its Enter pressed: the lengths and yes or no, never the characters. Facebook said a password was wrong that the
+// user had typed right; with the dots in its field nobody could see what it held.
 package megler;
 
 import android.view.KeyEvent;
@@ -28,6 +31,9 @@ public final class InputMethods {
     private static boolean sShown;
     /* What the log last said of where the keyboard's text goes: 0 nothing yet, 1 into a view's input connection, 2 nowhere for want of a focused view, 3 nowhere for want of an input connection. */
     private static int sSaid;
+    /* For a password field: what the keyboard's text and Backspaces make of the text the field had (typed at its end), and whether it was typed into. */
+    private static StringBuilder sTyped;
+    private static boolean sTypedInto;
     private InputMethods() {}
     public static View focused() { return sFocused; }
     public static boolean shown() { return sShown; }
@@ -38,11 +44,14 @@ public final class InputMethods {
     private static void start(View v) {
         if (sFocused == v && sConn != null) return;
         if (sConn != null) sConn.finishComposingText();
+        checkTyped();
         sFocused = v;
         sInfo = new EditorInfo();
         sConn = v.onCreateInputConnection(sInfo);
+        sTyped = sConn != null && isPassword(sInfo.inputType) && v instanceof android.widget.TextView ? new StringBuilder(((android.widget.TextView) v).getText()) : null;
+        sTypedInto = false;
     }
-    private static void finish() { if (sConn != null) sConn.finishComposingText(); sConn = null; sFocused = null; }
+    private static void finish() { if (sConn != null) sConn.finishComposingText(); checkTyped(); sConn = null; sFocused = null; }
     public static void restart(View v) { if (v == sFocused) { sConn = null; start(v); if (sShown) Native.showKeyboard(true, sInfo.inputType, sInfo.imeOptions); } }
     public static boolean show(View v) {
         if (v == null) return false;
@@ -65,6 +74,7 @@ public final class InputMethods {
             View target = sFocused;
             int before = state == 1 && state != sSaid ? length(target) : -1;
             boolean took = apply(k, it);
+            if (state == 1) typed(k, it);
             if (state != sSaid) tell(state, k, it, target, before, took);
         }
     }
@@ -118,6 +128,31 @@ public final class InputMethods {
         }
         sSaid = state;
         android.util.Log.i("Megler", "keyboard: " + line);
+    }
+    private static boolean isPassword(int type) {
+        int cls = type & android.text.InputType.TYPE_MASK_CLASS, variation = type & android.text.InputType.TYPE_MASK_VARIATION;
+        return cls == android.text.InputType.TYPE_CLASS_TEXT ? variation == 0x80 || variation == 0x90 || variation == 0xE0
+               : cls == android.text.InputType.TYPE_CLASS_NUMBER && variation == 0x10;
+    }
+    /** What one thing the keyboard sent makes of a password field's text, as typed at its end; its Enter checks it. */
+    private static void typed(char k, String it) {
+        if (sTyped == null) return;
+        if (k == 't') { sTyped.append(it, 1, it.length()); sTypedInto = true; }
+        else if (k == 'd') { if (sTyped.length() > 0) sTyped.setLength(sTyped.length() - (sTyped.length() > 1 && Character.isSurrogatePair(sTyped.charAt(sTyped.length() - 2), sTyped.charAt(sTyped.length() - 1)) ? 2 : 1)); sTypedInto = true; }
+        else if (k == 'e') checkTyped();
+    }
+    /** For the password field being left (or whose Enter was pressed): whether it holds what the keyboard typed, in the log. */
+    private static void checkTyped() {
+        if (sTyped == null || !sTypedInto || !(sFocused instanceof android.widget.TextView)) return;
+        sTypedInto = false;
+        CharSequence held = ((android.widget.TextView) sFocused).getText();
+        String field = sFocused.getClass().getName();
+        if (held != null && held.toString().contentEquals(sTyped))
+            android.util.Log.i("Megler", "keyboard: the password field " + field + " holds what the keyboard typed (" + count(sTyped.length(), "character") + ")");
+        else
+            android.util.Log.w("Megler", "keyboard: the password field " + field + " holds " + count(held == null ? 0 : held.length(), "character")
+                               + ", not the " + sTyped.length() + " the keyboard typed at its end: the field changed them, or its cursor was moved");
+        sTyped = held == null ? new StringBuilder() : new StringBuilder(held);
     }
     private static int length(View v) { return v instanceof android.widget.TextView ? ((android.widget.TextView) v).length() : -1; }
     private static String count(int n, String what) { return n + " " + what + (n == 1 ? "" : "s"); }

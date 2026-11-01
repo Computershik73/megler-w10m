@@ -6,6 +6,8 @@ public final class Gfx {
     public static native long bmNew(int w, int h);
     public static native void bmFree(long bm);
     public static native void bmErase(long bm, int argb);
+    /** The memory itself, never through a canvas of it (the WebView's bitmap, which Chromium draws into directly). */
+    public static native void bmEraseMemory(long bm, int argb);
     public static native int bmGetPixel(long bm, int x, int y);
     public static native void bmSetPixel(long bm, int x, int y, int argb);
     public static native void bmPixels(long bm, int[] px, int offset, int stride, int x, int y, int w, int h, boolean set);
@@ -59,6 +61,8 @@ public final class Gfx {
     public static native void shFree(long sh);
 
     public static native void pathBounds(float[] path, int n, float[] out);
+    /** The path as it is drawn: verbs 0 move, 1 line, 2 quad, 3 cubic, 4 close, each with its coordinates after it. */
+    public static native float[] pathSegments(float[] path, int n);
     public static native boolean pathContains(float[] path, int n, int fill, float x, float y);
     public static native float pathLength(float[] path, int n, float[] out);
 

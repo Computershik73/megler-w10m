@@ -89,6 +89,26 @@ struct mg_dvm_dex {
     char name[96];
     bool boot;                         /* part of the boot class path */
     bool app;                          /* added after mg_dvm_app_follows: the app's own, whose classes say they come from its class loader */
+    bool process_scope_known;          /* mg_dvm_dex_process_scope has its answer in process_scope */
+    u8 process_scope;
+    /*
+     * A DEX file registered by its classes' names alone (mg_dvm_add_dex_lazy): `b` and the caches are NULL until the first
+     * of its classes is linked (mg_dvm_dex_ready), when the file is viewed from `map_path` at `map_at` and its checksum
+     * checked. `names` holds its classes' descriptors, which the table of definitions points at.
+     */
+    bool lazy, lazy_failed;
+    char *map_path;
+    u64 map_at;
+    size_t map_size;
+    u32 checksum;
+    char *names;
+    size_t names_size;
+    u32 cdef_first, cdef_end;          /* the entries of the table of definitions it added, [first, end) */
+    /*
+     * A package the file keeps to itself ("android/icu/number/", core-libart's), or NULL: its classes in it are registered
+     * under megler/libart/ names, and what the file names in that package resolves to them (mg_dvm_own_desc).
+     */
+    const char *own;
 };
 
 /*
@@ -117,6 +137,19 @@ struct mg_dvm_field {
     u32 idx;                           /* field_idx in its dex */
 };
 
+/*
+ * A method's counts for the profile (mg_dvm_profile): counted only while it is on, and not exactly when two threads run the
+ * same method. Apart from the method, made the first time the profile counts it: they were 40 bytes of each of the 128 a
+ * method took, for every method of every class linked (Yandex Maps and Google Play services link some 400,000).
+ */
+typedef struct mg_dvm_method_prof {
+    u64 self;                          /* instructions executed in the method itself */
+    u64 incl;                          /* and in everything called from it, summed over its calls (a method that calls itself counts twice) */
+    u64 ns;                            /* a native method: the time spent in it, what it called back included */
+    u64 bytes;                         /* bytes of objects made while it was the innermost method */
+    u32 calls, objects;
+} mg_dvm_method_prof;
+
 struct mg_dvm_method {
     mg_dvm_class *cls;
     const char *name;                  /* interned */
@@ -130,23 +163,21 @@ struct mg_dvm_method {
     const u8 *code;                    /* the code item */
     i32 vidx;                          /* vtable slot, or -1 */
     u16 nparams;
-    mg_jhle_fn native;                 /* a native method's implementation in C, once bound */
-    void *jni;                         /* or its function in a library of the app's: registered by it, or found by its JNI name */
-    bool bound;                        /* which of the two it is to be has been settled */
-    i8 critical;                       /* a library's function that takes its arguments alone (@CriticalNative): 1 yes, -1 no, 0 not looked at */
-    /* The profile (mg_dvm_profile): counted only while it is on, and not exactly when two threads run the same method. */
-    u64 prof_self;                     /* instructions executed in the method itself */
-    u64 prof_incl;                     /* and in everything called from it, summed over its calls (a method that calls itself counts twice) */
-    u64 prof_ns;                       /* a native method: the time spent in it, what it called back included */
-    u64 prof_bytes;                    /* bytes of objects made while it was the innermost method */
-    u32 prof_calls, prof_objects;
-    /*
-     * The meter's time of a native method (mg_dvm_thread_costs): its calls from bytecode, and what one of them takes on
-     * average, in the host's ticks. A method whose calls are short is not timed every time (see invoke_native).
-     */
-    u32 meter_calls, meter_avg;
     /* One of the library's methods the interpreter does itself when it can (mg_dvm_interp.c, "intrinsics"): its number, or 0. */
     u8 intrinsic;
+    /* 1: a framework method that is its signature alone (megler-stubs.txt, mg_dvm_stubs_load) whose first call is still to be said. */
+    volatile u8 stub;
+    /* A native method's binding and the meter of its calls (mg_dvm_native_of); NULL for one never bound, and for bytecode. */
+    struct mg_dvm_native_info *volatile nat;
+    mg_dvm_method_prof *volatile prof; /* the profile's counts of it, NULL until it counts it (mg_dvm_prof) */
+    /*
+     * The JIT (mg_dvm_jit.c, docs/JIT.md): jumps back taken and calls of it made in the interpreter, until it is compiled;
+     * whether it was tried (1 compiled, 2 not to be, 3 compiled and its page not executable yet); and its code, NULL until
+     * it can run.
+     */
+    u16 jit_backs;
+    volatile u8 jit_state;
+    struct mg_dvm_jit_code *volatile jit;
     /*
      * What the whole body is when it is one of the trivial shapes a call does in place (mg_dvm_interp.c, "trivial
      * methods"): 0 not looked at yet. One word, written once with all of it -- the shape, the instruction that does the
@@ -155,6 +186,46 @@ struct mg_dvm_method {
     volatile u32 shape;
     mg_dvm_field *volatile shape_field;
 };
+
+/*
+ * What only a native method needs, apart from the rest of its method so that every other method (most of them, some 450,000
+ * in Yandex Maps' process, at 96 bytes each before) is 20 bytes smaller: made when it is first bound or registered.
+ */
+typedef struct mg_dvm_native_info {
+    mg_jhle_fn native;                 /* its implementation in C, once bound */
+    void *jni;                         /* or its function in a library of the app's: registered by it, or found by its JNI name */
+    bool bound;                        /* which of the two it is to be has been settled */
+    i8 critical;                       /* a library's function that takes its arguments alone (@CriticalNative): 1 yes, -1 no, 0 not looked at */
+    /*
+     * The meter's time of it (mg_dvm_thread_costs): its calls from bytecode, and what one of them takes on average, in the
+     * host's ticks. A method whose calls are short is not timed every time (see invoke_native).
+     */
+    u32 meter_calls, meter_avg;
+} mg_dvm_native_info;
+/* mg_dvm_class.c: the method's native part, made the first time it is wanted (published with an interlocked exchange). */
+mg_dvm_native_info *mg_dvm_native_of(mg_dvm_method *m);
+
+/*
+ * The shapes of a whole body that a call does in place (mg_dvm_interp.c, "trivial methods"; mg_dvm_jit.c, inline_call), and
+ * the parts of a method's shape word: the shape, the instruction that does the work, a constant.
+ */
+enum { SHAPE_UNKNOWN, SHAPE_REGULAR, SHAPE_EMPTY, SHAPE_CONST, SHAPE_GETTER, SHAPE_SETTER, SHAPE_STATIC_GETTER };
+#define SHAPE_OF(w) ((w) & 0xFFu)
+#define SHAPE_OP(w) (((w) >> 8) & 0xFFu)
+#define SHAPE_VALUE(w) ((i32)(i16)((w) >> 16))
+
+/* The library's methods the interpreter does itself (mg_dvm_interp.c, "intrinsics"), as m->intrinsic numbers them. */
+enum {
+    INTR_NONE, INTR_STRING_CHARAT, INTR_STRING_LENGTH, INTR_STRING_ISEMPTY, INTR_STRING_EQUALS, INTR_STRING_HASHCODE, INTR_ARRAYCOPY,
+    INTR_MIN_I, INTR_MAX_I, INTR_ABS_I, INTR_MIN_J, INTR_MAX_J, INTR_ABS_J, INTR_SQRT, INTR_GETCLASS, INTR_CURRENT_THREAD,
+    INTR_REFERENT, INTR_CLASS_ISINSTANCE, INTR_CLASS_ASSIGNABLE,
+};
+/* java.lang.ref.Reference's referent field's slot, for INTR_REFERENT (Reference.getReferent); ~0 when it has none. */
+extern u32 g_dvm_referent_slot;
+
+/* mg_dvm.c: a method's profile counts, made the first time they are wanted. */
+mg_dvm_method_prof *mg_dvm_prof_make(mg_dvm_method *m);
+static inline mg_dvm_method_prof *mg_dvm_prof(mg_dvm_method *m) { mg_dvm_method_prof *p = m->prof; return p ? p : mg_dvm_prof_make(m); }
 
 enum { DVM_CS_FAILED = -1, DVM_CS_LINKED = 0, DVM_CS_INITIALIZING = 1, DVM_CS_INITIALIZED = 2 };
 
@@ -172,7 +243,9 @@ struct mg_dvm_class {
     int nifaces;
     mg_dvm_field *sfields, *ifields;
     int nsfields, nifields;
+    /* Its static fields' values by slot: those of reference type first, nsrefs of them (what the collector reads). */
     mg_jvalue *statics;
+    int nsrefs;
     u32 nslots;                        /* instance slots, the superclasses' included */
     mg_dvm_method *direct, *virt;      /* direct: static, private, constructors */
     int ndirect, nvirt;
@@ -218,8 +291,38 @@ struct mg_dvm_frame {
     mg_jobj *sync;                     /* the monitor a synchronized method holds */
 };
 
+/*
+ * A frame stack is in segments, each reserved when the frames first need it: a thread's first is DVM_STACK_FIRST_WORDS,
+ * each next one twice the one before, until together they hold the thread's whole (stack_max). A frame that does not fit in
+ * the rest of a segment goes at the start of the next (stack_next); when the first frame of a segment returns, the thread is
+ * back in the one below (stack_back), and the one it left is kept for the next time the frames come that deep. Each was
+ * reserved whole: Yandex Maps' 202 threads held 76 MB of addresses in frame stacks of 384 KB, where most never used 64 KB,
+ * with 15 MB of its 2 GB left in one piece (package 506).
+ */
+#define DVM_STACK_SEGS 12
+typedef struct mg_dvm_stack_seg {
+    mg_dvm_reg *base;
+    size_t words, committed;
+    mg_dvm_reg *sp;                    /* a segment below the current one: where its frames end */
+} mg_dvm_stack_seg;
+
 struct mg_dvm_thread {
-    mg_dvm_reg *stack, *stack_end;     /* frames and registers; grows up */
+    /*
+     * The method the thread runs now, as it writes it itself at each call, return and native call: always a method, or
+     * NULL outside Java. What the profile of the main thread samples (mg_java.c, "hot").
+     */
+    mg_dvm_method *volatile running;
+    /* The method that made the thread's latest native call, written before `running` is: whose wait a wait is (the same). */
+    mg_dvm_method *volatile running_from;
+    mg_dvm_reg *stack, *stack_end;     /* the current segment of frames and registers; grows up */
+    size_t stack_committed;            /* words of it backed by memory: reserved whole, committed as it grows (stack_grow) */
+    size_t stack_words;                /* words of the current segment reserved */
+    size_t stack_max;                  /* words the segments hold together at most: DVM_STACK_WORDS, DVM_STACK_ATTACHED_WORDS... */
+    size_t stack_below;                /* words of the segments below the current one */
+    size_t stack_peak;                 /* the most words its segments have held together */
+    int nsegs;                         /* segments below the current one, in segs */
+    mg_dvm_stack_seg segs[DVM_STACK_SEGS];
+    mg_dvm_stack_seg spare;            /* the segment above the current one, kept when its frames returned; base NULL for none */
     mg_dvm_reg *sp;
     mg_dvm_frame *top;
     mg_jobj *pending;                  /* the exception being thrown */
@@ -228,6 +331,7 @@ struct mg_dvm_thread {
     int depth;                         /* frames */
     int c_depth;                       /* calls from C into the interpreter, nested */
     mg_addr c_stack_low;               /* the host's stack must not be used below here; 0 when the host could not say */
+    mg_addr c_stack_min;               /* the lowest the host's stack pointer has been (mg_dvm_invoke, invoke_native): its deepest use */
     bool overflowing;                  /* StackOverflowError is being made: its own calls may use the reserve */
     u64 steps_left;                    /* under a step limit: instructions this call from C may still execute; all ones once it is used up */
     mg_jvalue scratch;                 /* where a field with no slot of its own is read from and written to */
@@ -270,14 +374,37 @@ struct mg_dvm_thread {
      */
     u32 made_objects, gc_unsaid;
     u64 made_bytes;
+    u64 made_at_gc;                    /* made_bytes at the last collection: what the thread made since, for its line */
+    u32 made_sample;                   /* bytes made since its last sample of where objects are made (mg_dvm_made_say) */
     /* For the collector: the thread as the host knows it, to stop it; its C stack's limits, [stack_lo, stack_hi). */
     mg_thread *host;
     mg_addr stack_lo, stack_hi;
 };
 
-/* How much of a thread's stack only the making of a StackOverflowError may use, in registers. */
+/*
+ * How much of a thread's stack only the making of a StackOverflowError may use, in registers; and, while the stack is not
+ * committed whole, how far below its committed end frames stop, so that nothing ever reaches past what is committed.
+ */
 #define DVM_STACK_RESERVE 2048
 #define DVM_STACK_WORDS (192u * 1024u)
+/*
+ * A thread's first segment of it (64 KB), reserved and committed when the thread starts; a segment commits more as frames
+ * need it, doubling. The stack was committed whole (768 KB) for every thread: Facebook's 170 threads held 130 MB of it,
+ * nearly all never touched, and Windows counts it all against the app's limit.
+ */
+#define DVM_STACK_FIRST_WORDS (16u * 1024u)
+/*
+ * What is reserved for a thread the app's native code made and attached (AttachCurrentThread): 128 KB. Such a thread calls
+ * into Java to be told something, or to tell, and comes back; the threads Java starts get the whole. Yandex Maps had 199
+ * threads when its 2 GB of addresses ran out, 150 MB of them frame stacks reserved whole (package 489).
+ */
+#define DVM_STACK_ATTACHED_WORDS (32u * 1024u)
+/*
+ * And for a thread Java starts (Thread.start), unless it asked for a stack larger than 1 MB: 384 KB, some four thousand
+ * frames, as many as ART's interpreter fits in an Android thread's 1 MB. The main thread keeps the whole. Yandex Maps had
+ * 229 such threads, with Google Play services' in the same process, when its addresses ran out (package 493).
+ */
+#define DVM_STACK_JAVA_WORDS (96u * 1024u)
 /* Calls from C into the interpreter that may be nested (a native method calling back, a static initialiser): each is real C recursion. */
 #define DVM_MAX_C_DEPTH 200
 
@@ -295,6 +422,8 @@ typedef struct mg_dvm_jni {
     /* The names a library could have exported the method under, as ART lists them when none did: "Java_a_B_c and Java_a_B_c__I". */
     void (*tried)(const char *cls, const char *name, const char *sig, char *out, size_t n);
     mg_jvalue (*call)(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args);
+    /* The same under a guard: *faulted when the native code faulted beyond repair, and the call was ended instead of the app. */
+    mg_jvalue (*call_guarded)(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args, bool *faulted);
     /* The same for a method that is given its arguments alone, no JNIEnv and no class (@CriticalNative). */
     mg_jvalue (*call_bare)(void *fn, const char *sig, const mg_jvalue *args);
     mg_jclass *(*class_for)(const char *name, const char *super, mg_dvm_class *c);
@@ -331,6 +460,7 @@ typedef struct mg_dvm_globals {
     u64 steps;
     volatile i32 n_linked, n_initialised, n_interned;
     volatile i32 meta_units;           /* what the tables and classes take, in units of 16 bytes */
+    volatile i32 meta_kind_units[8];   /* the same by kind (DVM_META_*) */
     u64 objects, object_bytes;
 } mg_dvm_globals;
 extern mg_dvm_globals g_dvm;
@@ -379,6 +509,13 @@ bool mg_dvm_class_exists_scope(const char *name, int scope);
 bool mg_dvm_add_dex_scope(const void *data, size_t size, const char *label, int scope);
 int mg_dvm_add_apk_scope(const char *path, int scope);
 int mg_dvm_loader_scope(mg_jobj *loader);
+/* The service scope a dex's classes are of (mg_dvm_art.c): its own, else that of the first loader in its loader's parents that
+   is a service's; 0 for the app's and the platform's. */
+int mg_dvm_dex_process_scope(mg_dvm_dex *d);
+/* A child scope's parent scope (0 the app's, -1 the boot path's alone) and whether its own files come first (mg_dvm_art.c). */
+bool mg_dvm_scope_child(int scope, int *parent, bool *own_first);
+/* The service scope a scope is under: itself for a service's, a child's parent's root, 0 for the app's. */
+int mg_dvm_scope_root(int scope);
 mg_jobj *mg_dvm_scope_loader(int scope);
 void mg_dvm_loader_roots(void (*fn)(mg_jobj *, void *), void *user);
 mg_dvm_class *mg_dvm_find_class_desc(const char *descriptor);
@@ -389,6 +526,8 @@ bool mg_dvm_ensure_init(mg_dvm_class *c);
 
 /* What an index in a DEX file names, as the instruction using it needs. NULL with an exception pending. */
 mg_dvm_class *mg_dvm_resolve_type(mg_dvm_dex *d, u32 idx);
+/* A descriptor as the file `d` means it: one in the package it keeps to itself, as that class is registered (in `buf`). */
+const char *mg_dvm_own_desc(const mg_dvm_dex *d, const char *desc, char *buf, size_t size);
 enum { DVM_INVOKE_VIRTUAL, DVM_INVOKE_SUPER, DVM_INVOKE_DIRECT, DVM_INVOKE_STATIC, DVM_INVOKE_INTERFACE };
 mg_dvm_method *mg_dvm_resolve_method(mg_dvm_dex *d, u32 idx, int kind);
 mg_dvm_field *mg_dvm_resolve_field(mg_dvm_dex *d, u32 idx, bool is_static);
@@ -433,18 +572,159 @@ u32 mg_dvm_dex_count(void);
 void mg_dvm_each_linked(void (*fn)(mg_dvm_class *c, void *user), void *user);
 /* The same for the collector: with the runtime's lock held and the other threads stopped, so nothing is allocated. */
 void mg_dvm_each_linked_locked(void (*fn)(mg_dvm_class *c, void *user), void *user);
+/* The same for the buckets [from, to) of the class table, of mg_dvm_class_buckets (the collector's threads share them so). */
+void mg_dvm_each_linked_part(u32 from, u32 to, void (*fn)(mg_dvm_class *c, void *user), void *user);
+u32 mg_dvm_class_buckets(void);
 mg_dvm_dex *mg_dvm_dex_at(u32 i);
 const char *mg_dvm_defined_name(u32 i, mg_dvm_dex **dex);
 
 /* -------------------------------------------------------- mg_dvm_object.c */
 
+/*
+ * mg_dvm_dex.c: a DEX file whose bytes are at `b` for now (a view the caller unmaps once its classes are registered), opened
+ * for its tables and classes' names alone: no checksum, no caches. mg_dvm_dex_ready views it again from `map_path` at
+ * `map_at` when the first of its classes is linked, checks it, and makes its caches. With the runtime's lock held.
+ */
+mg_dvm_dex *mg_dvm_dex_open_lazy(const u8 *b, size_t size, const char *label, const char *map_path, u64 map_at);
+/*
+ * The descriptors of a DEX file's classes in the order of its definitions, end to end, each ended by a zero: the pool a file
+ * registered by its classes' names keeps (`names`), made in one pass over its tables; DVM_META_POOL memory of `*pool_size`
+ * bytes. NULL when the bytes are not a DEX file.
+ */
+char *mg_dvm_dex_names(const u8 *b, size_t size, size_t *pool_size);
+bool mg_dvm_dex_ready(mg_dvm_dex *d);
+/* Whether a DEX file of these bytes of that file is the runtime's already (registered, viewed or not). */
+bool mg_dvm_dex_known(const char *map_path, u64 map_at, size_t size);
+/*
+ * Another registered DEX file of the same bytes of the same file as lazy `d`, whose classes' names are at hand: in its pool
+ * (`names`) or in its view, which stays. NULL when there is none. With the runtime's lock held.
+ */
+mg_dvm_dex *mg_dvm_dex_twin(const mg_dvm_dex *d);
+/*
+ * mg_dvm.c: such a file added to the class path, of the app or of a scope (`scope` > 0). `names`, when not NULL, is its pool
+ * (mg_dvm_dex_names), which the file takes when it is added; else the names are read from the file.
+ */
+bool mg_dvm_add_dex_lazy(const void *data, size_t size, const char *label, int scope, const char *map_path, u64 map_at, char *names, size_t names_size);
+/* mg_dvm_apk.c: bytes of DEX files viewed now, for the memory line. */
+void mg_dvm_dex_viewed(u64 bytes);
+
 mg_dvm_thread *mg_dvm_self(void);
+/* The same for a thread of the app's own that attaches: made, if it is not yet, with the smaller frame stack. */
+mg_dvm_thread *mg_dvm_self_attached(void);
+/* The same for a thread Java starts, with a frame stack of `words` (DVM_STACK_JAVA_WORDS, or more for a stack asked for). */
+mg_dvm_thread *mg_dvm_self_sized(size_t words);
+/* The runtime's threads now: how many, how many of them attached by native code, and the frame stacks' reserved bytes. */
+/* The thread's Java frames for a fault's report (mg_core.c's fault detail): made nothing, locked nothing. */
+void mg_dvm_fault_frames(char *out, size_t cap);
+/* Whether [p, p + size) is within the committed part of one of the thread's segments of frames (mg_dvm_stack_seg). */
+bool mg_dvm_in_frames(const mg_dvm_thread *t, const void *p, size_t size);
 void mg_dvm_monitor_trace_start(void);
 void mg_dvm_stacks_trace_start(void);
 void mg_dvm_call_trace_add(const char *prefix);
+/* mg_dvm_class.c: whether a framework method is one of the signatures alone of megler-stubs.txt (mg_dvm_stubs_load). */
+bool mg_dvm_stub_listed(const char *cls, const char *name, const char *sig);
+/* mg_dvm_interp.c: the first call of a method marked a stub, said in the log with its caller (NULL: called from C). */
+void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m);
+
+/*
+ * mg_dvm_jit.c (docs/JIT.md): the method compiled to Thumb-2 once its jumps back pass the threshold, and run from `pc`, a
+ * branch target, on the frame's registers until it hands the frame back: true with *next the pc the interpreter goes on
+ * at; false when there is no code to run there (nothing done). Where there is no JIT (x64), always false.
+ */
+typedef struct mg_dvm_jit_code mg_dvm_jit_code;
+/*
+ * What compiled code is run with (r5 holds it): the frame's registers, the flag that says instructions are watched, the pc
+ * it hands the frame back at, the thread and the frame for the calls it makes (mg_dvm_jit_invoke), and the result of the
+ * last call, which move-result reads. Its layout is the code's (mg_dvm_jit.c, JIT_CTX_*).
+ */
+typedef struct mg_dvm_jit_ctx {
+    mg_dvm_reg *regs;
+    const volatile i32 *slow;
+    u32 pc;
+    mg_dvm_thread *t;
+    mg_dvm_frame *f;
+    u32 unused;
+    mg_jvalue result;
+} mg_dvm_jit_ctx;
+struct mg_dvm_jit_code {
+    u8 *pages;                         /* the code, read and run: on pages of its own, or among other methods' */
+    size_t size;
+    /* 0: handed back at ctx->pc; 1: an exception is pending, thrown at ctx->pc; 2: returned, its value in ctx->result */
+    int (*run)(mg_dvm_jit_ctx *ctx, const void *entry);
+    /*
+     * Where the code is entered, in the order of their pcs: the heads of the loops compiled whole and the method's start,
+     * each with its halfword in the code +1. (A table by pc took four bytes for every instruction of the method, for the
+     * one to three entries most have.)
+     */
+    u32 nentries;
+    struct mg_dvm_jit_entry {
+        u32 pc, at;
+    } entries[];
+};
+/* The code's entry at `pc`, as its halfword +1; 0 for none. */
+static inline u32 mg_dvm_jit_entry(const mg_dvm_jit_code *c, u32 pc)
+{
+    u32 lo = 0, hi = c->nentries;
+    while (lo < hi) {
+        u32 mid = (lo + hi) / 2;
+        if (c->entries[mid].pc < pc) lo = mid + 1;
+        else if (c->entries[mid].pc > pc) hi = mid;
+        else return c->entries[mid].at;
+    }
+    return 0;
+}
+extern u32 g_dvm_jit_threshold;      /* jumps back before a method is compiled; 0 off (the flag no-jit, or no JIT on this host) */
+extern u32 g_dvm_jit_in_place;       /* calls of trivial methods compiled to be done in the code (inline_call), for the tests */
+void mg_dvm_jit_start(bool on, u32 threshold, bool trace);
+/* What the JIT has made so far, for the log: methods compiled (and of them waiting for their page), refused, its code and the pages it is on. */
+typedef struct mg_dvm_jit_stats {
+    u32 methods, waiting, refused;
+    u64 code_bytes, page_bytes;
+} mg_dvm_jit_stats;
+void mg_dvm_jit_census(mg_dvm_jit_stats *out);
+/* mg_dvm_interp.c: an invoke done for compiled code; 0 done, 1 thrown, 2 the interpreter's to do (nothing done). */
+int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res);
+/* mg_dvm_interp.c: const-class, the monitors, check-cast, instance-of, new-instance, new-array, aput-object for compiled code; the same answers. */
+int mg_dvm_jit_op(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc);
+int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next, mg_jvalue *res);
+/*
+ * At a jump back, or at a method's start: 0 nothing run; 1 run, the interpreter goes on at *next; 2 run, and an exception
+ * is pending, thrown at *next; 3 run to a return, the method's value in *res.
+ */
+static inline int mg_dvm_jit_run(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_jit_code *c, mg_dvm_reg *regs, u32 at, u32 *next, mg_jvalue *res)
+{
+    mg_dvm_jit_ctx ctx;
+    int r;
+    ctx.regs = regs;
+    ctx.slow = &g_dvm.slow;
+    ctx.pc = 0;
+    ctx.t = t;
+    ctx.f = f;
+    r = c->run(&ctx, c->pages + (size_t)(at - 1) * 2 + 1);
+    *next = ctx.pc;
+    if (r == 2) {
+        *res = ctx.result;
+        return 3;
+    }
+    return r ? 2 : 1;
+}
+static inline int mg_dvm_jit_back(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next, mg_jvalue *res)
+{
+    mg_dvm_jit_code *c = m->jit;
+    if (c) {
+        u32 at = mg_dvm_jit_entry(c, pc);
+        return at ? mg_dvm_jit_run(t, f, c, regs, at, next, res) : 0;
+    }
+    if (!g_dvm_jit_threshold || (m->jit_state && m->jit_state != 3)) return 0;
+    if (++m->jit_backs < g_dvm_jit_threshold) return 0;
+    return mg_dvm_jit_enter(t, f, m, regs, pc, next, res);
+}
 /* For the collector, with the runtime's lock held: every thread there is, and every interned string. */
 void mg_dvm_threads_each(void (*fn)(mg_dvm_thread *t, void *user), void *user);
 void mg_dvm_interned_each(void (*fn)(mg_jobj *s, void *user), void *user);
+/* The same for the slots [from, to) of the interned strings' table, of mg_dvm_interned_slots. */
+void mg_dvm_interned_part(u32 from, u32 to, void (*fn)(mg_jobj *s, void *user), void *user);
+u32 mg_dvm_interned_slots(void);
 /* The objects the C side of the runtime keeps: the preallocated OutOfMemoryError, the app's class loader. */
 void mg_dvm_object_roots(void (*fn)(mg_jobj *o, void *user), void *user);
 /* mg_dvm_art_reflect.c: the Method[] kept beside each proxy class. */
@@ -506,17 +786,47 @@ void *mg_dvm_heap_find(mg_addr p);
 void mg_dvm_heap_lock(void);
 void mg_dvm_heap_unlock(void);
 typedef struct mg_dvm_heap_info {
-    u64 small_bytes, large_bytes, reserved;   /* in cells in use; in large objects; the host's memory the blocks take */
+    u64 small_bytes, large_bytes, reserved;   /* in cells in use; in large objects; the host's memory the blocks take (committed) */
     u32 large_objects, objects;
 } mg_dvm_heap_info;
 void mg_dvm_heap_stats(mg_dvm_heap_info *out);
+/* The large objects' bytes by class, the most first, when they take more than 32 MB (mg_dvm_heap.c); with the heap's lock held. */
+bool mg_dvm_heap_large_report(char *out, size_t cap, int top);
+/* The bytes of the apps' DEX files (mg_dvm_apk.c): read into the process's memory, and views of the APKs that store them. */
+void mg_dvm_dex_memory(u64 *read, u64 *viewed);
 /* The collector's, with the heap's lock held: objects in it; an object's mark set (true when it was not set before), read, all cleared. */
 u32 mg_dvm_heap_objects(void);
 bool mg_dvm_heap_set_mark(void *o);
+/* The same with an interlocked compare-and-swap, for threads that mark at once (mg_dvm_gc.c): one of them sets it. */
+bool mg_dvm_heap_set_mark_shared(void *o);
 bool mg_dvm_heap_is_marked(const void *o);
 void mg_dvm_heap_clear_marks(void);
 void mg_dvm_heap_each_marked(void (*fn)(void *o));
-void mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes);
+/*
+ * Marking alongside the app (mg_dvm_gc.c): objects made while `on` are made marked; whether the arenas' pages are watched
+ * for writes; the watch started again (the world stopped); and, the world stopped, `fn` for every marked object on a page
+ * written since then -- every marked one where not watched -- and every marked large object: how many pages that was.
+ */
+void mg_dvm_heap_alloc_black(bool on);
+/* Whether this thread holds the runtime's lock (mg_dvm_lock). */
+bool mg_dvm_lock_mine(void);
+/*
+ * mg_dvm_gc.c: an object given fields by name (the JNI layer's, mg_jni.c), which the collector follows apart from its slots
+ * when it marks alongside the app; and one whose fields are freed.
+ */
+void mg_dvm_gc_has_fields(mg_jobj *o);
+void mg_dvm_gc_fields_gone(mg_jobj *o);
+bool mg_dvm_heap_watched(void);
+void mg_dvm_heap_watch_restart(void);
+u32 mg_dvm_heap_each_written(void (*fn)(void *o));
+/* ...and the sweep, shared among the collector's threads (mg_dvm_gc_share); how many there were. */
+u32 mg_dvm_heap_sweep(void (*dying)(void *o), bool poison, u64 *freed_objects, u64 *freed_bytes);
+/*
+ * mg_dvm_gc.c: `fn` run at once by the collecting thread (worker 0) and each of the collector's helper threads (1 on),
+ * until every one has returned; with its lock held, while the helpers have nothing else to do. How many ran it.
+ */
+#define MG_DVM_GC_WORKERS 4
+int mg_dvm_gc_share(void (*fn)(void *arg, int worker), void *arg);
 /* mg_dvm_object.c: what an object the collector frees owns besides itself (its monitor, a string's UTF-8, JNI fields), freed. */
 void mg_dvm_object_dying(void *o);
 /* An allocation of `bytes` is counted toward the next collection: true when one is due now (the caller then runs mg_dvm_gc). */
@@ -561,6 +871,14 @@ void mg_dvm_art_annot_start(void);
 /* mg_dvm_jvm.c: libjavacore.so and libopenjdk.so from <root>/lib, where guest code can run; and libopenjdkjvm.so's functions for them. */
 bool mg_dvm_load_libcore_natives(const char *root);
 
+/* What a piece of the runtime's own memory is for, in mg_dvm_stats. */
+enum { DVM_META_OTHER, DVM_META_CLASS, DVM_META_METHOD, DVM_META_FIELD, DVM_META_VTABLE, DVM_META_DEX, DVM_META_NAME, DVM_META_POOL };
+/* mg_dvm_dex.c: memory kept for good, of a kind (DVM_META_*), counted (mg_dvm_stats.meta_bytes). What is freed again is not this. */
+void *mg_dvm_meta_alloc_kind(size_t size, int kind);
+/* The same given back (a DEX file's pool of class names once the file is viewed): not for the small names, which are kept. */
+void mg_dvm_meta_free_kind(void *p, size_t size, int kind);
+/* mg_dvm_class.c: a lazily registered DEX file viewed now: its classes' entries point at the file's own names again, and its pool goes. */
+void mg_dvm_classes_viewed(mg_dvm_dex *d);
 /* mg_dvm_dex.c: memory for what is kept of DEX files and classes, counted (mg_dvm_stats.meta_bytes). */
 void *mg_dvm_meta_alloc(size_t size);
 

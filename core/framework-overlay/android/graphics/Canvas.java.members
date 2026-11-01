@@ -17,3 +17,17 @@
     public int meglerSaveLayerBlur(float l, float t, float r, float b, int alpha, float radiusX, float radiusY, boolean clamp) {
         return mNative == 0 ? 1 : megler.Gfx.cvSaveLayerBlur(mNative, l, t, r, b, Math.max(0, Math.min(255, alpha)), radiusX, radiusY, clamp);
     }
+    // And a picture the shell keeps on the graphics processor (megler.Gfx.cvDrawTexture): a TextureView's frames that an app made
+    // with OpenGL ES, drawn by the shell, nothing read back.
+    public void meglerDrawTexture(int id, float l, float t, float r, float b, int alpha) { megler.Gfx.cvDrawTexture(mNative, id, l, t, r, b, alpha); }
+    /**
+     * Megler: this canvas records from now on, into a recording of w x h of the core's (megler.Gfx.cvRecord), what it had
+     * before let go: megler.ViewRoot's frame of the window, which the render thread draws onto the screen (megler.Gfx.frame,
+     * which ends the recording).
+     */
+    public final void meglerRecordFrame(int w, int h) {
+        if (mNative != 0) megler.Gfx.cvFree(mNative);
+        mBitmap = null;
+        mNative = megler.Gfx.cvRecord(w, h);
+        mMeglerRecording = true;
+    }

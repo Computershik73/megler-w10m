@@ -8,6 +8,8 @@
 //   ui-tab-<name>-<n>       the tab n (0 Library, 1 Device, 2 Log, 3 Settings)
 //   ui-open-<name>-<n>      the library's app number n (from 0), its page
 //   ui-back-<name>          Back, as the phone's button
+//   ui-update-all           Update All (ui/SeparateApps.h): each app package made by another Megler made and installed again
+//   ui-update-<package>     the same for the one app of that Android package (ui-update-com.here.app.maps), outdated or not
 #pragma once
 
 namespace megler::app::ui {

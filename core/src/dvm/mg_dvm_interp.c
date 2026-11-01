@@ -28,7 +28,7 @@
 /* The stack has no room for a frame of `words` registers: the error, or nothing when even the reserve is used up. */
 static MG_NOINLINE mg_dvm_frame *stack_full(mg_dvm_thread *t, mg_dvm_method *m, size_t words)
 {
-    mg_dvm_reg *limit = t->stack + DVM_STACK_WORDS;
+    mg_dvm_reg *limit = t->stack + t->stack_committed; /* the whole stack, unless more of it could not be committed */
     mg_dvm_frame *f;
     if (t->overflowing && words + FRAME_WORDS <= (size_t)(limit - t->sp)) {
         /* The making of the error itself, in the reserve. */
@@ -146,6 +146,25 @@ static void call_trace_strings(const mg_dvm_method *m, const mg_dvm_reg *argv, u
     }
 }
 
+/*
+ * The first call of a framework method that is its signature alone (mg_dvm_stubs_load), said with who called it: what an
+ * app needs of Android 14 that Megler does not do. Gmail's sync and its conversation view stayed empty or loading, with
+ * nothing in the log, on calls of such methods (ContentResolver's sync, FragmentManager's saved state). Once a method a
+ * run (two threads at once may both say it), at most 800 lines a run.
+ */
+static volatile i32 g_stub_lines;
+
+void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m)
+{
+    if (!m->stub) return;
+    m->stub = 0;
+    if (mg_atomic_add(&g_stub_lines, 1) > 800) return;
+    if (caller)
+        mg_info("api: %s.%s%s is a stub here (its signature alone), first called from %s.%s", m->cls->name, m->name, m->sig, caller->cls->name, caller->name);
+    else
+        mg_info("api: %s.%s%s is a stub here (its signature alone), first called from native code or the runtime", m->cls->name, m->name, m->sig);
+}
+
 static void call_trace_enter(mg_dvm_thread *t, mg_dvm_method *m, const char *how, const mg_dvm_reg *argv, u32 argc)
 {
     char strings[400];
@@ -185,11 +204,97 @@ static void call_trace_unwind(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *e)
         mg_info("calls: thread %u depth %d: %s.%s ends with %s", (unsigned)t->id, t->depth, m->cls->name, m->name, e ? mg_dvm_class_of(e)->name : "?");
 }
 
+/*
+ * More of the thread's stack committed, enough for a frame of `words` registers above sp and the reserve: doubled until it
+ * is, up to the whole stack. False when it is all committed already (the stack is full) or the memory is not there.
+ */
+static MG_NOINLINE bool stack_grow(mg_dvm_thread *t, size_t words)
+{
+    size_t need = (size_t)(t->sp - t->stack) + words + FRAME_WORDS + DVM_STACK_RESERVE, more = t->stack_committed;
+    if (t->stack_committed >= t->stack_words) return false;
+    while (more < need && more < t->stack_words) more *= 2;
+    if (more > t->stack_words) more = t->stack_words;
+    if (!mg_mem_commit(t->stack + t->stack_committed, sizeof(mg_dvm_reg) * (more - t->stack_committed), MG_PROT_RW)) return false;
+    t->stack_committed = more;
+    t->stack_end = t->stack + more - DVM_STACK_RESERVE;
+    return words + FRAME_WORDS <= (size_t)(t->stack_end - t->sp);
+}
+
+/*
+ * The frames go on in the next segment (mg_dvm_stack_seg), the kept one if a frame of `words` fits in it, else a new one twice
+ * the size of this, or as large as the frame needs: false when the segments would hold more than the thread's whole stack
+ * between them (and each its reserve, which only the last one's frames reach), or there is no memory.
+ */
+static MG_NOINLINE bool stack_next(mg_dvm_thread *t, size_t words)
+{
+    size_t need = words + FRAME_WORDS + DVM_STACK_RESERVE, used = t->stack_below + t->stack_words;
+    size_t cap = t->stack_max + (size_t)(t->nsegs + 1) * DVM_STACK_RESERVE, size;
+    mg_dvm_stack_seg next;
+    if (t->nsegs == DVM_STACK_SEGS || used >= cap) return false;
+    if (t->spare.base && t->spare.words >= need) {
+        next = t->spare;
+    } else {
+        size = t->nsegs == DVM_STACK_SEGS - 1 ? cap - used : t->stack_words * 2;
+        if (size < need) size = (need + DVM_STACK_FIRST_WORDS - 1) & ~(size_t)(DVM_STACK_FIRST_WORDS - 1);
+        if (size > cap - used) size = cap - used;
+        if (size < need) return false;
+        next.base = (mg_dvm_reg *)mg_mem_reserve(sizeof(mg_dvm_reg) * size);
+        if (!next.base) return false;
+        next.words = size;
+        next.committed = size < DVM_STACK_FIRST_WORDS ? size : DVM_STACK_FIRST_WORDS;
+        if (next.committed < need) next.committed = need;
+        if (!mg_mem_commit(next.base, sizeof(mg_dvm_reg) * next.committed, MG_PROT_RW)) {
+            mg_mem_release(next.base, sizeof(mg_dvm_reg) * size);
+            return false;
+        }
+        if (t->spare.base) mg_mem_release(t->spare.base, sizeof(mg_dvm_reg) * t->spare.words);
+    }
+    t->spare.base = NULL;
+    /* This one below, written whole before it is counted: the collector may stop the thread anywhere, and scans both. */
+    t->segs[t->nsegs].base = t->stack;
+    t->segs[t->nsegs].words = t->stack_words;
+    t->segs[t->nsegs].committed = t->stack_committed;
+    t->segs[t->nsegs].sp = t->sp;
+    t->stack_below += t->stack_words;
+    t->nsegs++;
+    t->stack = next.base;
+    t->stack_words = next.words;
+    t->stack_committed = next.committed;
+    t->stack_end = t->stack + t->stack_committed - DVM_STACK_RESERVE;
+    t->sp = t->stack;
+    if (t->stack_below + t->stack_words > t->stack_peak) t->stack_peak = t->stack_below + t->stack_words;
+    return words + FRAME_WORDS <= (size_t)(t->stack_end - t->sp);
+}
+
+/* The first frame of a segment has returned: back to the segment below, where the frames now end; the one left is kept. */
+static MG_NOINLINE void stack_back(mg_dvm_thread *t)
+{
+    mg_dvm_stack_seg *below = &t->segs[t->nsegs - 1];
+    if (t->spare.base) mg_mem_release(t->spare.base, sizeof(mg_dvm_reg) * t->spare.words);
+    t->spare.base = t->stack;
+    t->spare.words = t->stack_words;
+    t->spare.committed = t->stack_committed;
+    t->stack = below->base;
+    t->stack_words = below->words;
+    t->stack_committed = below->committed;
+    t->stack_end = t->stack + t->stack_committed - DVM_STACK_RESERVE;
+    t->sp = below->sp;
+    t->stack_below -= below->words;
+    t->nsegs--;
+}
+
 /* A frame for `m` with `words` registers on the thread's stack, made the method being run. NULL when the stack is full (thrown). */
+/*
+ * DVM_LOCALS_AS_THEY_ARE. A called method's registers that are not its parameters were set to zero at every call, where
+ * nothing reads them before it writes them (a DEX file whose code reads one first is refused by Android's verifier); the
+ * collector reads the frames' words as they are (scan_frames: conservatively, a margin above the top frame too), so one
+ * left from an earlier call keeps at most what it points at a while longer. Kotlin's code has methods of dozens of them,
+ * and their zeroing was a fifth of Yandex Maps' main thread (package 537: mg_dvm_jit_invoke's loops, and memset).
+ */
 static inline mg_dvm_frame *push_frame(mg_dvm_thread *t, mg_dvm_method *m, size_t words)
 {
     mg_dvm_frame *f;
-    if (words + FRAME_WORDS > (size_t)(t->stack_end - t->sp)) return stack_full(t, m, words);
+    if (words + FRAME_WORDS > (size_t)(t->stack_end - t->sp) && !stack_grow(t, words) && !stack_next(t, words)) return stack_full(t, m, words);
     f = (mg_dvm_frame *)(void *)t->sp;
     f->prev = t->top;
     f->m = m;
@@ -208,12 +313,14 @@ static inline void pop_frame(mg_dvm_thread *t)
 {
     mg_dvm_frame *f = t->top;
     if (g_dvm.profiling) {
-        f->m->prof_incl += t->prof_total - f->prof_start;
-        f->m->prof_calls++;
+        mg_dvm_method_prof *p = mg_dvm_prof(f->m);
+        p->incl += t->prof_total - f->prof_start;
+        p->calls++;
     }
     t->sp = (mg_dvm_reg *)(void *)f;
     t->top = f->prev;
     t->depth--;
+    if (t->sp == t->stack && t->nsegs) stack_back(t);
 }
 
 /* ----------------------------------------------------------- values in and out */
@@ -274,7 +381,7 @@ static void normalise(char kind, mg_jvalue *v)
 #define SHORT_NATIVE_NS 4000
 static u64 g_short_native_ticks;
 
-static inline bool native_timed(mg_dvm_method *m)
+static inline bool native_timed(mg_dvm_native_info *m)
 {
     u32 n = m->meter_calls++;
     if (!g_short_native_ticks) {
@@ -284,7 +391,7 @@ static inline bool native_timed(mg_dvm_method *m)
     return n < 64 || (n & 63) == 0 || m->meter_avg >= g_short_native_ticks;
 }
 
-static inline void native_time(mg_dvm_thread *t, mg_dvm_method *m, u64 started)
+static inline void native_time(mg_dvm_thread *t, mg_dvm_native_info *m, u64 started)
 {
     u64 d = mg_time_ticks() - started;
     t->native_ticks += d;
@@ -296,16 +403,23 @@ static inline void native_time(mg_dvm_thread *t, mg_dvm_method *m, u64 started)
 static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, const mg_dvm_reg *argv, const mg_jvalue *cparams, mg_jvalue *result)
 {
     mg_dvm_frame *f;
+    mg_dvm_native_info *nat = m->nat;
     mg_jobj *sync = NULL, *target;
     const mg_jvalue *params = cparams;
     u64 native_started = 0, call_started = 0;
     bool is_static = (m->flags & DVM_ACC_STATIC) != 0, outermost, timed = false;
     int library_scope = mg_ld_set_scope(m->cls->scope);
+    if ((mg_addr)&f < t->c_stack_min) t->c_stack_min = (mg_addr)&f;
     result->j = 0;
-    if (!m->bound && !mg_dvm_bind_native(m)) { mg_ld_set_scope(library_scope); return false; }
+    if (!(nat && nat->bound)) {
+        if (!mg_dvm_bind_native(m)) { mg_ld_set_scope(library_scope); return false; }
+        nat = m->nat;
+    }
     /* The frame is what a stack trace shows of a native method; the parameters are laid out above it. */
+    t->running_from = t->top ? t->top->m : NULL;
     f = push_frame(t, m, argv ? ((size_t)m->nparams * sizeof(mg_jvalue) + 8) / sizeof(mg_dvm_reg) + 1 : 0);
     if (!f) { mg_ld_set_scope(library_scope); return false; }
+    t->running = m;
     if (argv) {
         mg_jvalue *made = (mg_jvalue *)(void *)MG_ALIGN_UP((mg_addr)f->regs, (mg_addr)8);
         marshal(m, argv, made);
@@ -323,11 +437,11 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     /* The always-on count (mg_dvm_thread_costs): the outermost native method's time; one called back from it is in it. */
     outermost = t->native_depth++ == 0;
     if (outermost) {
-        timed = native_timed(m);
+        timed = native_timed(nat);
         if (timed) call_started = mg_time_ticks();
     }
     t->natives++;
-    if (m->native) {
+    if (nat->native) {
         mg_jcall c;
         memset(&c, 0, sizeof(c));
         c.self = is_static ? NULL : self;
@@ -335,13 +449,34 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
         c.name = m->name;
         c.sig = m->sig;
         c.args = params;
-        m->native(&c);
+        nat->native(&c);
         *result = c.ret;
     } else if (g_dvm.jni.call) {
         /* A library's function. One marked @CriticalNative is called with its arguments alone, as Android calls it. */
-        if (!m->critical) m->critical = is_static && mg_dvm_method_annotated(m, "Ldalvik/annotation/optimization/CriticalNative;") ? 1 : -1;
-        if (m->critical > 0 && g_dvm.jni.call_bare) *result = g_dvm.jni.call_bare(m->jni, m->sig, params);
-        else *result = g_dvm.jni.call(m->jni, target, m->sig, params);
+        if (!nat->critical) nat->critical = is_static && mg_dvm_method_annotated(m, "Ldalvik/annotation/optimization/CriticalNative;") ? 1 : -1;
+        if (nat->critical > 0 && g_dvm.jni.call_bare) {
+            *result = g_dvm.jni.call_bare(nat->jni, m->sig, params);
+        } else {
+            /*
+             * Code Android runs in a process of its own, not the app's: a service's (its class, or the loader its dex came
+             * from: Google Play services' DroidGuard), or the platform's on a thread a service's code started. A fault in
+             * its native code beyond repair ends that process on Android, and the app is told; here it ends this call with
+             * an exception, and the app runs on (mg_jni_call_native_guarded).
+             */
+            int scope = m->cls->scope > 0 ? mg_dvm_scope_root(m->cls->scope) : mg_dvm_dex_process_scope(m->cls->dex);
+            if (!scope && !mg_dvm_class_is_app(m->cls)) scope = t->owner_scope;
+            if (scope > 0 && g_dvm.jni.call_guarded) {
+                bool faulted = false;
+                *result = g_dvm.jni.call_guarded(nat->jni, target, m->sig, params, &faulted);
+                if (faulted) {
+                    mg_warn("dvm: %s.%s%s faulted in its native code; the call ends with an exception, as the process of the code would end on Android", m->cls->name, m->name, m->sig);
+                    mg_dvm_throw("java/lang/RuntimeException", "%s.%s%s faulted in its native code: the process it runs in on Android would have ended",
+                                 m->cls->name, m->name, m->sig);
+                }
+            } else {
+                *result = g_dvm.jni.call(nat->jni, target, m->sig, params);
+            }
+        }
         /* What a library hands back as an object must be one of the runtime's; the JNI layer has others, from before it started. */
         if (m->shorty[0] == 'L' && result->l && !result->l->dvm) {
             mg_note_once("dvm: %s.%s returned an object that is not the runtime's; null is taken instead", m->cls->name, m->name);
@@ -351,11 +486,12 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
         mg_dvm_throw("java/lang/UnsatisfiedLinkError", "%s.%s%s is in a library, and the way to it is gone", m->cls->name, m->name, m->sig);
     }
     --t->native_depth;
-    if (timed) native_time(t, m, call_started);
-    else if (outermost) t->native_ticks += m->meter_avg;
+    if (timed) native_time(t, nat, call_started);
+    else if (outermost) t->native_ticks += nat->meter_avg;
     if (sync) mg_dvm_monitor_exit(sync);
-    if (native_started) m->prof_ns += mg_time_monotonic_ns() - native_started;
+    if (native_started) mg_dvm_prof(m)->ns += mg_time_monotonic_ns() - native_started;
     pop_frame(t);
+    t->running = t->top ? t->top->m : NULL;
     normalise(m->shorty[0], result);
     mg_ld_set_scope(library_scope);
     return t->pending == NULL;
@@ -375,13 +511,9 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
  * charAt calls), hashCode (the same, once); System.arraycopy; Math.min, max and abs of int and long, and sqrt;
  * Object.getClass; Thread.currentThread.
  */
-enum {
-    INTR_NONE, INTR_STRING_CHARAT, INTR_STRING_LENGTH, INTR_STRING_ISEMPTY, INTR_STRING_EQUALS, INTR_STRING_HASHCODE, INTR_ARRAYCOPY,
-    INTR_MIN_I, INTR_MAX_I, INTR_ABS_I, INTR_MIN_J, INTR_MAX_J, INTR_ABS_J, INTR_SQRT, INTR_GETCLASS, INTR_CURRENT_THREAD,
-};
-
 /* String's hash field, the slot String.hashCode keeps its result in. */
 static u32 g_string_hash_slot = ~0u;
+u32 g_dvm_referent_slot = ~0u;
 
 static void mark_intrinsic(const char *cls, const char *name, const char *sig, bool is_static, u8 id)
 {
@@ -412,6 +544,27 @@ void mg_dvm_intrinsics_start(void)
     mark_intrinsic("java/lang/Math", "sqrt", "(D)D", true, INTR_SQRT);
     mark_intrinsic("java/lang/Object", "getClass", "()Ljava/lang/Class;", false, INTR_GETCLASS);
     mark_intrinsic("java/lang/Thread", "currentThread", "()Ljava/lang/Thread;", true, INTR_CURRENT_THREAD);
+    /*
+     * Class.isInstance and isAssignableFrom: libcore's bytecode walks the class's superclasses and its table of interfaces
+     * (ifTable) a field at a time; Kotlin's coroutines ask through AtomicReferenceFieldUpdater's check at every update, and
+     * the two were 4 to 8% of Yandex Maps' main thread (package 535). The runtime's own test (mg_dvm_assignable), for a
+     * class that is not an array's; one that is goes to the bytecode.
+     */
+    mark_intrinsic("java/lang/Class", "isInstance", "(Ljava/lang/Object;)Z", false, INTR_CLASS_ISINSTANCE);
+    mark_intrinsic("java/lang/Class", "isAssignableFrom", "(Ljava/lang/Class;)Z", false, INTR_CLASS_ASSIGNABLE);
+    /*
+     * Reference.getReferent, what WeakReference.get and SoftReference.get call: a native method that found the field by its
+     * name at every call, 5% of Yandex Maps' main thread (package 530). Its slot read in place.
+     */
+    {
+        mg_dvm_class *ref = mg_dvm_class_exists("java/lang/ref/Reference") ? mg_dvm_find_class("java/lang/ref/Reference") : NULL;
+        mg_dvm_field *referent = ref ? mg_dvm_find_field_typed(ref, "referent", "Ljava/lang/Object;", false) : NULL;
+        if (!ref) mg_dvm_clear_pending();
+        if (referent && referent->slot < ref->nslots) {
+            g_dvm_referent_slot = referent->slot;
+            mark_intrinsic("java/lang/ref/Reference", "getReferent", "()Ljava/lang/Object;", false, INTR_REFERENT);
+        }
+    }
 }
 
 /* System.arraycopy's work when nothing about it can throw: false to have the method called instead. */
@@ -502,6 +655,25 @@ static bool intrinsic(mg_dvm_thread *t, u8 id, const mg_dvm_reg *a, mg_jvalue *r
         if (!t->peer) return false;
         r->l = t->peer;
         return true;
+    case INTR_REFERENT:
+        if (g_dvm_referent_slot >= mg_dvm_class_of(s)->nslots) return false;
+        r->l = mg_dvm_slots(s)[g_dvm_referent_slot].l;
+        return true;
+    case INTR_CLASS_ISINSTANCE: {
+        mg_jobj *o = (mg_jobj *)a[1];
+        mg_dvm_class *c = s->kind == MG_J_CLASS ? mg_dvm_mirror_class(s) : NULL;
+        if (!c || c->name[0] == '[') return false;
+        r->i = o && mg_dvm_assignable(mg_dvm_class_of(o), c);
+        return true;
+    }
+    case INTR_CLASS_ASSIGNABLE: {
+        mg_jobj *o = (mg_jobj *)a[1];
+        mg_dvm_class *c = s->kind == MG_J_CLASS ? mg_dvm_mirror_class(s) : NULL, *from;
+        /* (null: the bytecode throws.) */
+        if (!c || c->name[0] == '[' || !o || o->kind != MG_J_CLASS || !(from = mg_dvm_mirror_class(o))) return false;
+        r->i = mg_dvm_assignable(from, c);
+        return true;
+    }
     default: return false;
     }
 }
@@ -517,18 +689,12 @@ static bool intrinsic(mg_dvm_thread *t, u8 id, const mg_dvm_reg *a, mg_jvalue *r
  * as before, so anything that throws throws from the method's own frame. Not while every instruction is watched (the
  * trace, the step limit, the profile): those see each method's own instructions.
  */
-enum { SHAPE_UNKNOWN, SHAPE_REGULAR, SHAPE_EMPTY, SHAPE_CONST, SHAPE_GETTER, SHAPE_SETTER, SHAPE_STATIC_GETTER };
-
 /* The return instruction that goes with each iget and sget kind: return, return-wide, return-object. */
 static u16 return_for(u32 op)
 {
     u32 k = op >= 0x60 ? op - 0x60 : op - 0x52;
     return k == 1 ? 0x10 : k == 2 ? 0x11 : 0x0f;
 }
-
-#define SHAPE_OF(w) ((w) & 0xFFu)
-#define SHAPE_OP(w) (((w) >> 8) & 0xFFu)
-#define SHAPE_VALUE(w) ((i32)(i16)((w) >> 16))
 
 static MG_NOINLINE void classify(mg_dvm_method *m)
 {
@@ -626,25 +792,233 @@ static bool trivial(const mg_dvm_method *m, u32 w, const mg_dvm_reg *a, mg_jvalu
 /* ---------------------------------------------------------------- exceptions */
 
 /*
+ * Each place an exception of a class is thrown at is said three times, then counted: the exceptions an app throws and catches
+ * every time from one place used up the 2000 lines in Yandex Maps' first half minute, before what was being looked for
+ * (package 507). 0 when the table has no room left near the place: said as before.
+ */
+typedef struct thrown_site {
+    const mg_dvm_method *m;
+    const mg_dvm_class *c;
+    u32 pc, n;
+} thrown_site;
+static thrown_site g_thrown_sites[2048];
+static mg_lock g_thrown_sites_lock = MG_LOCK_INIT;
+
+static u32 thrown_here(const mg_dvm_method *m, u32 pc, const mg_dvm_class *c)
+{
+    const u32 mask = (u32)MG_COUNT(g_thrown_sites) - 1;
+    u32 h = ((u32)((mg_addr)m >> 3) * 2654435761u ^ pc * 40503u ^ (u32)((mg_addr)c >> 4)) & mask, i, n = 0;
+    mg_lock_acquire(&g_thrown_sites_lock);
+    for (i = 0; i < 16; i++) {
+        thrown_site *s = &g_thrown_sites[(h + i) & mask];
+        if (!s->m) {
+            s->m = m;
+            s->c = c;
+            s->pc = pc;
+            n = s->n = 1;
+            break;
+        }
+        if (s->m == m && s->pc == pc && s->c == c) {
+            n = ++s->n;
+            break;
+        }
+    }
+    mg_lock_release(&g_thrown_sites_lock);
+    return n;
+}
+
+/*
  * The flag trace-exceptions (a file of that name in LocalState\flags, read once): every exception thrown is said in the log
  * once, with its message and the method it was thrown in, caught or not -- what an app catches and says nothing about is
- * otherwise not seen at all (VK mp3 mod's sign-in stood still with nothing in the log). At most 2000 lines a run.
+ * otherwise not seen at all (VK mp3 mod's sign-in stood still with nothing in the log). At most 2000 lines a run, and three
+ * of each place (thrown_here).
  */
 static void trace_exception(mg_dvm_thread *t, mg_dvm_method *m, u32 pc, mg_jobj *e)
 {
     static int wanted = -1;
     static volatile i32 said;
     const char *text = NULL;
+    u32 here;
     if (wanted < 0) wanted = mg_flag("trace-exceptions") ? 1 : 0;
     if (!wanted || e == t->traced) return;
     t->traced = e;
+    here = thrown_here(m, pc, mg_dvm_class_of(e));
+    if (here > 3) return;
     if (mg_atomic_add(&said, 1) > 2000) return;
     if (g_dvm.f_message && mg_dvm_is_instance(e, g_dvm.c_throwable)) {
         mg_jobj *msg = mg_dvm_slots(e)[g_dvm.f_message->slot].l;
         if (msg) text = mg_dvm_string_utf8(msg);
     }
-    mg_info("dvm: thrown on thread %u: %s%s%s, in %s.%s at %u", (unsigned)t->id, mg_dvm_class_name(e), text ? ": " : "", text ? text : "", m->cls->name,
-            m->name, (unsigned)pc);
+    mg_info("dvm: thrown on thread %u: %s%s%s, in %s.%s at %u%s", (unsigned)t->id, mg_dvm_class_name(e), text ? ": " : "", text ? text : "", m->cls->name,
+            m->name, (unsigned)pc, here == 3 ? " (the third time there: the next are not said)" : "");
+}
+
+/*
+ * The flag trace-nulls (a file of that name in LocalState\flags, read once): at every NullPointerException thrown by an
+ * instruction of the app's bytecode -- a call, a field, an array, a monitor of a null reference -- the log says, once for each
+ * place, which register was null and where in the method it was last given its value: the result of which call, which
+ * field or static field, an array's element, the constant null, the method's parameter. The method's instructions are read
+ * in their order up to the one that threw (a branch can make that another than the one that ran, which is rare in code
+ * that compilers made). An app's own NullPointerException, from a framework method that gave it null where Android gives
+ * something, says then which method that was. At most 320 lines a run.
+ */
+static const char *dex_name_of(const mg_dvm_dex *d, u32 off, u32 count, u32 idx, const char **cls)
+{
+    const u8 *p;
+    if (!d || idx >= count) return "?";
+    p = d->b + off + 8 * (size_t)idx;
+    if ((size_t)(p + 8 - d->b) > d->size) return "?";
+    if (cls) *cls = mg_dvm_dex_type(d, mg_dvm_rd16(p));
+    return mg_dvm_dex_string(d, mg_dvm_rd32(p + 4), NULL);
+}
+
+/* What the instruction at `pc` uses as its object, the register that was null there; -1 when it is no such instruction. */
+static int null_register(const u16 *insns, u32 pc, const char **what)
+{
+    u16 w = insns[pc];
+    u8 op = (u8)(w & 0xFF);
+    if (op == 0x6e || op == 0x6f || op == 0x70 || op == 0x72) { *what = "the object of a call"; return insns[pc + 2] & 0xF; }
+    if (op == 0x74 || op == 0x75 || op == 0x76 || op == 0x78) { *what = "the object of a call"; return insns[pc + 2]; }
+    if (op >= 0x52 && op <= 0x5f) { *what = "the object of a field"; return w >> 12; }
+    if (op >= 0x44 && op <= 0x51) { *what = "an array"; return insns[pc + 1] & 0xFF; }
+    if (op == 0x21) { *what = "an array's length"; return w >> 12; }
+    if (op == 0x1d || op == 0x1e) { *what = "a monitor"; return w >> 8; }
+    if (op == 0x27) { *what = "the exception thrown"; return w >> 8; }
+    return -1;
+}
+
+/* Where the null came from, said in out; the slot of the arguments it came in (`this` 0 for a method that has one), or -1. */
+static int null_origin(const mg_dvm_method *m, u32 pc, int reg, char *out, size_t n)
+{
+    const mg_dvm_dex *d = m->cls->dex;
+    const char *cls = NULL, *name;
+    u32 at, last = ~0u, prev = ~0u, prev_of_last = ~0u, steps, limit = pc;
+    int want = reg;
+    for (steps = 0; steps < 4; steps++) {
+        last = prev_of_last = ~0u;
+        prev = ~0u;
+        for (at = 0; at < limit && at < m->ninsns;) {
+            u32 units = mg_dvm_insn_units(m->insns, m->ninsns, at);
+            u16 w = m->insns[at];
+            u8 op = (u8)(w & 0xFF);
+            int dst = -1;
+            if (!units) break;
+            if (op == 0x07 || op == 0x12) dst = (w >> 8) & 0xF;
+            else if (op == 0x08 || op == 0x0c || op == 0x0d || op == 0x13 || op == 0x14 || op == 0x15 || op == 0x1a || op == 0x1b || op == 0x1c ||
+                     op == 0x22 || op == 0x46 || op == 0x62)
+                dst = w >> 8;
+            else if (op == 0x09) dst = m->insns[at + 1];
+            else if (op == 0x54 || op == 0x23) dst = (w >> 8) & 0xF;
+            if (dst == want) {
+                last = at;
+                prev_of_last = prev;
+            }
+            prev = at;
+            at += units;
+        }
+        if (last == ~0u) {
+            if (want >= (int)m->regs - (int)m->ins) {
+                int slot = want - ((int)m->regs - (int)m->ins), k = slot - ((m->flags & DVM_ACC_STATIC) ? 0 : 1);
+                if (k < 0) snprintf(out, n, "v%d, `this`", want);
+                else snprintf(out, n, "v%d, the method's parameter in register %d of its own", want, k);
+                return slot;
+            }
+            snprintf(out, n, "v%d, not given a value before it in the method's order (a branch)", want);
+            return -1;
+        }
+        {
+            u16 w = m->insns[last];
+            u8 op = (u8)(w & 0xFF);
+            switch (op) {
+            case 0x07: want = (w >> 12) & 0xF; limit = last; continue;  /* move-object: where its source came from */
+            case 0x08: want = m->insns[last + 1]; limit = last; continue;
+            case 0x09: want = m->insns[last + 2]; limit = last; continue;
+            case 0x0c:
+                if (prev_of_last != ~0u) {
+                    u16 iw = m->insns[prev_of_last];
+                    u8 iop = (u8)(iw & 0xFF);
+                    if ((iop >= 0x6e && iop <= 0x72) || (iop >= 0x74 && iop <= 0x78)) {
+                        name = dex_name_of(d, d->meth_off, d->nmeth, m->insns[prev_of_last + 1], &cls);
+                        snprintf(out, n, "v%d, the result of %s.%s at pc %u", reg, cls ? cls : "?", name ? name : "?", (unsigned)prev_of_last);
+                        return -1;
+                    }
+                }
+                snprintf(out, n, "v%d, a result at pc %u", reg, (unsigned)last);
+                return -1;
+            case 0x54:
+                name = dex_name_of(d, d->field_off, d->nfield, m->insns[last + 1], &cls);
+                snprintf(out, n, "v%d, the field %s.%s at pc %u", reg, cls ? cls : "?", name ? name : "?", (unsigned)last);
+                return -1;
+            case 0x62:
+                name = dex_name_of(d, d->field_off, d->nfield, m->insns[last + 1], &cls);
+                snprintf(out, n, "v%d, the static field %s.%s at pc %u", reg, cls ? cls : "?", name ? name : "?", (unsigned)last);
+                return -1;
+            case 0x46: snprintf(out, n, "v%d, an array's element at pc %u", reg, (unsigned)last); return -1;
+            case 0x12: case 0x13: case 0x14: case 0x15: snprintf(out, n, "v%d, the constant null at pc %u", reg, (unsigned)last); return -1;
+            case 0x0d: snprintf(out, n, "v%d, a caught exception at pc %u", reg, (unsigned)last); return -1;
+            default: snprintf(out, n, "v%d, set at pc %u by %s", reg, (unsigned)last, mg_dvm_insn_name(w)); return -1;
+            }
+        }
+    }
+    snprintf(out, n, "v%d, through more moves than are followed", reg);
+    return -1;
+}
+
+static MG_THREAD_LOCAL mg_jobj *t_null_traced;
+/* The places said already (a few hundred at most): each once. */
+static struct { const mg_dvm_method *m; u32 pc; } g_null_sites[320];
+static volatile i32 g_null_nsites;
+
+static void trace_null(mg_dvm_thread *t, mg_dvm_method *m, u32 pc, mg_jobj *e)
+{
+    static int wanted = -1;
+    static volatile i32 said;
+    const char *what = NULL;
+    char where[400];
+    int reg, slot, depth;
+    mg_dvm_frame *f;
+    if (wanted < 0) wanted = mg_flag("trace-nulls") ? 1 : 0;
+    if (!wanted || e == t_null_traced) return;
+    t_null_traced = e;
+    if (!m->insns || pc >= m->ninsns || strcmp(mg_dvm_class_of(e)->name, "java/lang/NullPointerException")) return;
+    reg = null_register(m->insns, pc, &what);
+    if (reg < 0) return;
+    {
+        i32 k, nsites = g_null_nsites;
+        for (k = 0; k < nsites && k < (i32)MG_COUNT(g_null_sites); k++)
+            if (g_null_sites[k].m == m && g_null_sites[k].pc == pc) return;
+        k = mg_atomic_add(&said, 1) - 1;
+        if (k >= (i32)MG_COUNT(g_null_sites)) return;
+        g_null_sites[k].m = m;
+        g_null_sites[k].pc = pc;
+        mg_atomic_xchg(&g_null_nsites, k + 1 > nsites ? k + 1 : nsites);
+    }
+    slot = null_origin(m, pc, reg, where, sizeof(where));
+    mg_info("dvm: null in %s.%s line %d (pc %u): %s was null; it was %s", m->cls->name, m->name, mg_dvm_dex_line(m, pc), (unsigned)pc, what, where);
+    /*
+     * A null the method was given: where its caller had it, up to three callers. The caller's frame stands at the call
+     * (its pc), whose arguments are registers in order, `this` first.
+     */
+    for (f = t->top; f && !(f->m == m && f->pc == pc); f = f->prev) {}
+    for (depth = 0; f && slot >= 0 && depth < 3; depth++) {
+        mg_dvm_frame *c = f->prev;
+        const u16 *ci;
+        u8 op;
+        int creg = -1;
+        if (!c || !c->m || !c->m->insns || c->pc >= c->m->ninsns) break;
+        ci = c->m->insns;
+        op = (u8)(ci[c->pc] & 0xFF);
+        if (op >= 0x6e && op <= 0x72 && slot < (int)(ci[c->pc] >> 12) && slot < 5) {
+            u16 regs = ci[c->pc + 2];
+            creg = slot < 4 ? (regs >> (4 * slot)) & 0xF : (ci[c->pc] >> 8) & 0xF;
+        } else if (op >= 0x74 && op <= 0x78 && slot < (int)(ci[c->pc] >> 8)) {
+            creg = ci[c->pc + 2] + slot;
+        }
+        if (creg < 0) break;
+        slot = null_origin(c->m, c->pc, creg, where, sizeof(where));
+        mg_info("dvm:   given by %s.%s line %d (pc %u): %s", c->m->cls->name, c->m->name, mg_dvm_dex_line(c->m, c->pc), (unsigned)c->pc, where);
+        f = c;
+    }
 }
 
 /* The handler in method `m` for exception `e` thrown at `pc`, if it has one. */
@@ -655,6 +1029,7 @@ static bool find_handler(mg_dvm_thread *t, mg_dvm_method *m, u32 pc, mg_jobj *e,
     u32 i;
     bool found = false;
     trace_exception(t, m, pc, e);
+    trace_null(t, m, pc, e);
     /* Nothing catches the error a used-up step limit throws: code that catches everything and goes round again would never end. */
     if (!m->ntries || t->steps_left == ~(u64)0) return false;
     tries = (const u8 *)(m->insns + m->ninsns);
@@ -703,7 +1078,7 @@ static MG_NOINLINE bool slow_step(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc)
 {
     g_dvm.steps++;
     if (g_dvm.profiling) {
-        f->m->prof_self++;
+        mg_dvm_prof(f->m)->self++;
         t->prof_total++;
     }
     if (g_dvm.trace >= 3) mg_info("dvm: %*s%s.%s %u: %s", t->depth, "", f->m->cls->name, f->m->name, (unsigned)pc, mg_dvm_insn_name(f->m->insns[pc]));
@@ -797,13 +1172,16 @@ static const u16 *payload_at(const mg_dvm_method *m, u32 pc, i32 off, u16 ident)
 #define JUMP(off)                                                                    \
     {                                                                                \
         u32 to_ = (u32)((i32)pc + (i32)(off));                                       \
-        if ((i32)(off) <= 0) SAFEPOINT(to_);                                         \
+        if ((i32)(off) <= 0) {                                                       \
+            SAFEPOINT(to_);                                                          \
+            JIT_BACK(to_);                                                           \
+        }                                                                            \
         pc = to_;                                                                    \
         continue;                                                                    \
     }
 /* Whatever may throw or call out records where it is first: a stack trace reads it, and so does the search for a handler. */
 #define THROW(...) { f->pc = pc; mg_dvm_throw(__VA_ARGS__); goto exception; }
-#define LOAD_FRAME() (m = f->m, insns = m->insns, regs = f->regs, dex = m->cls->dex)
+#define LOAD_FRAME() (m = f->m, insns = m->insns, regs = f->regs, dex = m->cls->dex, t->running = m)
 #define RESOLVE_TYPE(var, idx)                                    \
     {                                                             \
         u32 i_ = (idx);                                           \
@@ -915,10 +1293,31 @@ enum { DVM_THREW, DVM_RETURNED, DVM_SWITCH };
         f->pc = (at);                                                                \
         goto switch_loop;                                                            \
     }
+/*
+ * A jump back, or a call's start: the method's compiled code run from there when it has some there (mg_dvm_jit.c), until
+ * it hands the frame back at the pc the loop goes on at, or returns. (Only in the plain loop: nothing compiled runs while
+ * instructions are watched.)
+ */
+#define JIT_BACK(at)                                                                 \
+    {                                                                                \
+        u32 next_;                                                                   \
+        int ran_ = mg_dvm_jit_back(t, f, m, regs, (at), &next_, &result);            \
+        if (ran_) {                                                                  \
+            if (ran_ == 3) goto do_return;                                           \
+            pc = next_;                                                              \
+            if (ran_ == 2) {                                                         \
+                f->pc = pc;                                                          \
+                goto exception;                                                      \
+            }                                                                        \
+            continue;                                                                \
+        }                                                                            \
+    }
 #include "mg_dvm_interp_loop.h"
 #undef DVM_LOOP
 #undef DVM_WATCHED
 #undef SAFEPOINT
+#undef JIT_BACK
+#define JIT_BACK(at)
 #define DVM_LOOP mg_dvm_interpret_watched
 #define DVM_WATCHED 1
 #define SAFEPOINT(at)                                                                \
@@ -936,8 +1335,276 @@ static bool interpret(mg_dvm_thread *t, mg_dvm_frame *f, mg_jvalue *ret)
 {
     for (;;) {
         int r = g_dvm.slow ? mg_dvm_interpret_watched(t, f, ret) : mg_dvm_interpret(t, f, ret);
-        if (r != DVM_SWITCH) return r == DVM_RETURNED;
+        if (r != DVM_SWITCH) {
+            t->running = t->top ? t->top->m : NULL;
+            return r == DVM_RETURNED;
+        }
         f = t->top;
+    }
+}
+
+/*
+ * The invoke at `pc` of frame f, done for compiled code (mg_dvm_jit.c, docs/JIT.md "calls"): the method found as do_invoke
+ * finds it, then done as do_invoke does it -- an intrinsic or a trivial body in place, a native method called, bytecode run
+ * to its return in a loop of its own on the host's stack (where do_invoke would have gone on in the same loop) -- with the
+ * result in *res, for the move-result after it. 0 done; 1 thrown (pending, f->pc the invoke's); 2 the interpreter's to do,
+ * nothing having happened yet: instructions watched, the host's stack too low for another loop (deep recursion through
+ * compiled code goes on interpreted, without one), new String, a kind compiled code does not ask for.
+ */
+int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
+{
+    mg_dvm_method *m = f->m, *ref, *target;
+    mg_dvm_dex *dex = m->cls->dex;
+    const u16 *insns = m->insns;
+    mg_dvm_reg *regs = f->regs, five[5];
+    const mg_dvm_reg *argv;
+    u16 w = insns[pc];
+    u32 op = w & 0xFF, idx = insns[pc + 1], count;
+    int kind;
+    mg_jobj *self = NULL;
+    mg_dvm_frame *nf;
+    bool ok;
+    res->j = 0;
+    if (g_dvm.slow || t->c_depth >= DVM_MAX_C_DEPTH - 8 || (t->c_stack_low && (mg_addr)&five < t->c_stack_low + 32u * 1024u)) return 2;
+    if (op >= 0x6e && op <= 0x72) {
+        u16 list = insns[pc + 2];
+        u32 b = (u32)w >> 12;
+        kind = (int)(op - 0x6e);
+        count = b > 5 ? 5 : b;
+        switch (count) {
+        case 5: five[4] = regs[((u32)w >> 8) & 0xF]; /* fall through */
+        case 4: five[3] = regs[list >> 12]; /* fall through */
+        case 3: five[2] = regs[(list >> 8) & 0xF]; /* fall through */
+        case 2: five[1] = regs[(list >> 4) & 0xF]; /* fall through */
+        case 1: five[0] = regs[list & 0xF]; /* fall through */
+        default: break;
+        }
+        argv = five;
+    } else if (op >= 0x74 && op <= 0x78) {
+        kind = (int)(op - 0x74);
+        count = (u32)w >> 8;
+        argv = regs + insns[pc + 2];
+    } else {
+        return 2;
+    }
+    f->pc = pc;
+    ref = idx < dex->nmeth ? dex->mcache[idx] : NULL;
+    if (!ref || ((ref->flags & DVM_ACC_STATIC) != 0) != (kind == DVM_INVOKE_STATIC)) {
+        ref = mg_dvm_resolve_method(dex, idx, kind);
+        if (!ref) return 1;
+    }
+    target = ref;
+    if (kind != DVM_INVOKE_STATIC) {
+        self = count ? (mg_jobj *)argv[0] : NULL;
+        if (!self) {
+            mg_dvm_throw("java/lang/NullPointerException", "Attempt to invoke %s method '%s.%s%s' on a null object reference",
+                         kind == DVM_INVOKE_INTERFACE ? "interface" : kind == DVM_INVOKE_DIRECT ? "direct" : "virtual", ref->cls->name, ref->name, ref->sig);
+            return 1;
+        }
+    }
+    switch (kind) {
+    case DVM_INVOKE_VIRTUAL: case DVM_INVOKE_INTERFACE: {
+        mg_dvm_class *rc = mg_dvm_class_of(self);
+        if (!(ref->cls->flags & DVM_ACC_INTERFACE) && ref->vidx < 0) break;
+        if (!(ref->cls->flags & DVM_ACC_INTERFACE) && ref->vidx < rc->nvtab) {
+            target = rc->vtab[ref->vidx];
+        } else {
+            u32 slot = (u32)(((mg_addr)ref->name >> 3) ^ ((mg_addr)ref->sig >> 5)) % DVM_ICACHE;
+            target = rc->icache[slot];
+            if (!target || target->name != ref->name || target->sig != ref->sig) {
+                target = mg_dvm_find_virtual(rc, ref->name, ref->sig);
+                if (!target) {
+                    mg_dvm_throw("java/lang/IncompatibleClassChangeError", "%s does not implement %s.%s%s", rc->name, ref->cls->name, ref->name, ref->sig);
+                    return 1;
+                }
+                rc->icache[slot] = target;
+            }
+        }
+        break;
+    }
+    case DVM_INVOKE_SUPER: {
+        mg_dvm_class *sc = m->cls->super;
+        if (ref->cls->flags & DVM_ACC_INTERFACE) break;
+        if (sc && ref->vidx >= 0 && ref->vidx < sc->nvtab) target = sc->vtab[ref->vidx];
+        else target = sc ? mg_dvm_find_virtual(sc, ref->name, ref->sig) : NULL;
+        if (!target) {
+            mg_dvm_throw("java/lang/NoSuchMethodError", "%s.%s%s above %s", ref->cls->name, ref->name, ref->sig, m->cls->name);
+            return 1;
+        }
+        break;
+    }
+    case DVM_INVOKE_STATIC:
+        if (target->cls->state != DVM_CS_INITIALIZED && !mg_dvm_ensure_init(target->cls)) return 1;
+        break;
+    default:                                                     /* direct */
+        if (self->kind == MG_J_STRING && ref->cls == g_dvm.c_string && ref->name[0] == '<') return 2;
+        break;
+    }
+    if (target->stub) mg_dvm_stub_called(m, target);
+    if (target->intrinsic && intrinsic(t, target->intrinsic, argv, res)) return 0;
+    if (target->shape != SHAPE_REGULAR && target->insns) {
+        u32 shape;
+        if (target->shape == SHAPE_UNKNOWN) classify(target);
+        shape = target->shape;
+        if (SHAPE_OF(shape) != SHAPE_REGULAR && trivial(target, shape, argv, res)) return 0;
+    }
+    if (!target->insns) {
+        if (!(target->flags & DVM_ACC_NATIVE)) {
+            mg_dvm_throw("java/lang/AbstractMethodError", "%s.%s%s", target->cls->name, target->name, target->sig);
+            return 1;
+        }
+        return invoke_native(t, target, self, argv, NULL, res) ? 0 : 1;
+    }
+    t->c_depth++;
+    nf = push_frame(t, target, target->regs);
+    if (!nf) {
+        t->c_depth--;
+        return 1;
+    }
+    nf->entry = true;
+    {
+        /* (The locals as the stack has them: DVM_LOCALS_AS_THEY_ARE.) */
+        u32 base = (u32)target->regs - target->ins, n = count < target->ins ? count : target->ins, k;
+        mg_dvm_reg *to = nf->regs + base;
+        for (k = 0; k < n; k++) to[k] = argv[k];
+        for (k = n; k < target->ins; k++) to[k] = 0;
+    }
+    if (target->flags & DVM_ACC_SYNCHRONIZED) {
+        nf->sync = (target->flags & DVM_ACC_STATIC) ? mg_dvm_mirror(target->cls) : self;
+        if (nf->sync) mg_dvm_monitor_enter(nf->sync);
+    }
+    if (g_call_trace) call_trace_enter(t, target, " (compiled)", argv, count);
+    /*
+     * Its own compiled code from its start, when it has some there (its calls counted toward compiling it): a return there
+     * is the call's end, with no loop of the interpreter's. Not for a method with handlers, whose exceptions the
+     * interpreter's loop decides about; one without simply passes them to its caller, as the loop would.
+     */
+    if (!target->ntries) {
+        u32 next;
+        int ran;
+        t->running = target;
+        ran = mg_dvm_jit_back(t, nf, target, nf->regs, 0, &next, res);
+        if (ran == 2 || ran == 3) {
+            if (g_call_trace) {
+                if (ran == 3) call_trace_return(t, target, res);
+                else call_trace_unwind(t, target, t->pending);
+            }
+            if (nf->sync) mg_dvm_monitor_exit(nf->sync);
+            pop_frame(t);
+            t->running = m;
+            t->c_depth--;
+            return ran == 3 ? 0 : 1;
+        }
+        if (ran == 1) nf->pc = next;
+    }
+    ok = interpret(t, nf, res);
+    t->c_depth--;
+    return ok ? 0 : 1;
+}
+
+/* A type an instruction names, resolved as RESOLVE_TYPE does; NULL with an exception pending. */
+static mg_dvm_class *jit_type(mg_dvm_dex *dex, u32 idx)
+{
+    mg_dvm_class *c = idx < dex->ntype ? dex->tcache[idx] : NULL;
+    return c ? c : mg_dvm_resolve_type(dex, idx);
+}
+
+/*
+ * For compiled code (mg_dvm_jit.c): one of the instructions that make objects, look at their classes or lock them --
+ * const-class, monitor-enter and -exit, check-cast, instance-of, new-instance, new-array, aput-object -- done at `pc` of
+ * frame f as the interpreter's loop does it, on the frame's registers. 0 done; 1 thrown (pending, f->pc this one's); 2
+ * another instruction, the interpreter's.
+ */
+int mg_dvm_jit_op(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc)
+{
+    mg_dvm_method *m = f->m;
+    mg_dvm_dex *dex = m->cls->dex;
+    const u16 *insns = m->insns;
+    mg_dvm_reg *regs = f->regs;
+    u16 w = insns[pc];
+    u32 a4 = ((u32)w >> 8) & 0xF, b4 = (u32)w >> 12, aa = (u32)w >> 8;
+    mg_dvm_class *c;
+    mg_jobj *o;
+    (void)t;
+    f->pc = pc;
+    switch (w & 0xFF) {
+    case 0x1c:                                                   /* const-class */
+        if (!(c = jit_type(dex, insns[pc + 1])) || !(o = mg_dvm_mirror(c))) return 1;
+        regs[aa] = (mg_dvm_reg)o;
+        return 0;
+    case 0x1d:                                                   /* monitor-enter */
+        if (!(o = (mg_jobj *)regs[aa])) {
+            mg_dvm_throw("java/lang/NullPointerException", "monitor-enter on null");
+            return 1;
+        }
+        mg_dvm_monitor_enter(o);
+        return 0;
+    case 0x1e:                                                   /* monitor-exit */
+        if (!(o = (mg_jobj *)regs[aa])) {
+            mg_dvm_throw("java/lang/NullPointerException", "monitor-exit on null");
+            return 1;
+        }
+        if (!mg_dvm_monitor_exit(o)) {
+            mg_dvm_throw("java/lang/IllegalMonitorStateException", "monitor-exit on an object this thread has not locked");
+            return 1;
+        }
+        return 0;
+    case 0x1f:                                                   /* check-cast */
+        if (!(o = (mg_jobj *)regs[aa])) return 0;
+        if (!(c = jit_type(dex, insns[pc + 1]))) return 1;
+        if (mg_dvm_class_of(o) != c && !mg_dvm_assignable(mg_dvm_class_of(o), c)) {
+            mg_dvm_throw("java/lang/ClassCastException", "%s cannot be cast to %s", mg_dvm_class_of(o)->name, c->name);
+            return 1;
+        }
+        return 0;
+    case 0x20:                                                   /* instance-of */
+        if (!(o = (mg_jobj *)regs[b4])) {
+            regs[a4] = 0;
+            return 0;
+        }
+        if (!(c = jit_type(dex, insns[pc + 1]))) return 1;
+        regs[a4] = (mg_dvm_reg)(u32)(mg_dvm_class_of(o) == c || mg_dvm_assignable(mg_dvm_class_of(o), c));
+        return 0;
+    case 0x22:                                                   /* new-instance */
+        if (!(c = jit_type(dex, insns[pc + 1]))) return 1;
+        if (c->state != DVM_CS_INITIALIZED && !mg_dvm_ensure_init(c)) return 1;
+        if (!(o = mg_dvm_alloc_object(c))) return 1;
+        regs[aa] = (mg_dvm_reg)o;
+        return 0;
+    case 0x23:                                                   /* new-array */
+        if (!(c = jit_type(dex, insns[pc + 1]))) return 1;
+        if (c->name[0] != '[') {
+            mg_dvm_throw("java/lang/VerifyError", "new-array of %s", c->name);
+            return 1;
+        }
+        if (!(o = mg_dvm_alloc_array(c, (i32)(u32)regs[b4]))) return 1;
+        regs[a4] = (mg_dvm_reg)o;
+        return 0;
+    case 0x4d: {                                                 /* aput-object */
+        u16 bc = insns[pc + 1];
+        mg_jobj *a = (mg_jobj *)regs[bc & 0xFF], *v = (mg_jobj *)regs[aa];
+        i32 i = (i32)(u32)regs[bc >> 8];
+        if (!a) {
+            mg_dvm_throw("java/lang/NullPointerException", "Attempt to write to a null array");
+            return 1;
+        }
+        if (a->kind != MG_J_OBJ_ARRAY) {
+            mg_dvm_throw("java/lang/InternalError", "%s on a %s", mg_dvm_insn_name(w), mg_dvm_class_of(a)->name);
+            return 1;
+        }
+        if ((u32)i >= (u32)mg_dvm_array_length(a)) {
+            mg_dvm_throw("java/lang/ArrayIndexOutOfBoundsException", "length=%d; index=%d", (int)mg_dvm_array_length(a), (int)i);
+            return 1;
+        }
+        if (v && !mg_dvm_is_instance(v, mg_dvm_class_of(a)->component)) {
+            mg_dvm_throw("java/lang/ArrayStoreException", "%s cannot be stored in an array of type %s", mg_dvm_class_of(v)->name, mg_dvm_class_of(a)->name);
+            return 1;
+        }
+        a->u.oarr.v[i] = v;
+        return 0;
+    }
+    default:
+        return 2;
     }
 }
 
@@ -947,6 +1614,7 @@ bool mg_dvm_invoke(mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_
     mg_dvm_frame *f;
     mg_jvalue local;
     bool ok = false;
+    if ((mg_addr)&local < t->c_stack_min) t->c_stack_min = (mg_addr)&local;
     if (!ret) ret = &local;
     ret->j = 0;
     /*
@@ -992,6 +1660,7 @@ bool mg_dvm_invoke(mg_dvm_method *m, mg_jobj *self, const mg_jvalue *params, mg_
         }
         if (g_dvm.trace >= 2) mg_info("dvm: %*s-> %s.%s%s (from C)", t->depth, "", m->cls->name, m->name, m->sig);
         if (g_call_trace) call_trace_enter(t, m, " (from C)", NULL, 0);
+        if (m->stub) mg_dvm_stub_called(NULL, m);
         ok = interpret(t, f, ret);
     }
     t->c_depth--;

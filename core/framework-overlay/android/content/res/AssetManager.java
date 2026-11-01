@@ -1,7 +1,8 @@
 // Overlay of core/framework/src/android/content/res/AssetManager.java (tools/build-framework.sh).
 // It differs in shared libraries: addAssetPathAsSharedLibrary, addAssetPath, getAssignedPackageIdentifiers, getApkPaths
 // and findCookieForPath answer, where the original's were signatures answering 0 or null; and open, openFd, openNonAsset,
-// openNonAssetFd and list look in such a library's APK too, after the app's own.
+// openNonAssetFd and list look in such a library's APK too, after the app's own. openXmlResourceParser reads a compiled
+// XML file of the cookie's APK, where the original's answered null.
 //
 // Why. Android's WebView is an APK of its own whose code runs in the app (android.webkit.WebViewFactory loads it), and its
 // resources and assets are added to the app's AssetManager as a shared library: WebViewFactory and
@@ -51,6 +52,12 @@ public final class AssetManager implements AutoCloseable {
         if (len > (8 << 20)) {
             long fdoff = megler.Native.assetFd(n);
             if (fdoff != -1) return new StoredAssetStream((int) (fdoff >>> 40), fdoff & 0xFFFFFFFFFFL, len);
+        }
+        // a large asset the APK deflates is inflated as it is consumed, not into one byte[] whole: WhatsApp opened five of
+        // 20 MB as it started, and the arrays stayed, held through stale words of stacks
+        if (len > (2 << 20)) {
+            long[] d = megler.Native.assetDeflated(n);
+            if (d != null) return new InflatedAssetStream((int) d[0], d[1], d[2], len);
         }
         byte[] b = megler.Native.readAsset(n);
         if (b == null) b = libraryFile("assets/" + n);
@@ -130,6 +137,31 @@ public final class AssetManager implements AutoCloseable {
         return fd;
     }
     public String[] getLocales() { return new String[] { "en-US" }; }
+
+    /**
+     * A compiled XML file of an APK, the cookie's: 1 the app's, 2 on a library's, any this package's own; with cookie 0 the
+     * first APK that has it. Google Play services 26 adds each of its modules' APKs to an AssetManager of its own and reads
+     * the module's AndroidManifest.xml so (whether the module's native libraries are to be extracted); this answered null,
+     * and its Application ended with a NullPointerException as it was made.
+     */
+    public XmlResourceParser openXmlResourceParser(int cookie, String fileName) throws IOException {
+        String n = norm(fileName);
+        byte[] b;
+        Library lib = mPackage != null ? mPackage : library(cookie);
+        if (lib != null) b = megler.Native.readApkFile(lib.apk, n);
+        else if (cookie == 0 || cookie == 1) {
+            b = megler.Native.readAsset("/" + n);
+            if (b == null && cookie == 0) b = libraryFile(n);
+        } else b = null;
+        if (b == null) throw new FileNotFoundException("Asset XML file " + fileName + " does not exist");
+        try {
+            return new XmlBlock(b, fileName).newParser();
+        } catch (org.xmlpull.v1.XmlPullParserException e) {
+            throw new IOException("Asset XML file " + fileName + " is not compiled XML: " + e.getMessage());
+        }
+    }
+    public XmlResourceParser openXmlResourceParser(int cookie, String fileName, boolean ignored) throws IOException { return openXmlResourceParser(cookie, fileName); }
+    public XmlResourceParser openXmlResourceParser(String fileName) throws IOException { return openXmlResourceParser(0, fileName); }
 
     // ---- Megler: shared libraries (see the top of the file)
 
@@ -247,6 +279,50 @@ public final class AssetManager implements AutoCloseable {
         @Override public void mark(int limit) { mark = pos; }
         @Override public void reset() { pos = mark; }
         @Override public void close() throws IOException { file.close(); }
+        void rewind() { pos = 0; mark = 0; }
+    }
+    /** An asset the APK deflates, inflated from the APK as it is read (the deflated bytes a StoredAssetStream of them). */
+    private static final class InflatedAssetStream extends AssetInputStream {
+        private final StoredAssetStream raw;
+        private final long size;
+        private Inflating in;
+        private long pos, mark;
+        InflatedAssetStream(int fdNum, long start, long deflated, long size) {
+            raw = new StoredAssetStream(fdNum, start, deflated);
+            this.size = size;
+            restart();
+        }
+        private void restart() {
+            if (in != null) in.end();
+            raw.rewind();
+            in = new Inflating(raw);
+            pos = 0;
+        }
+        @Override public int read() throws IOException { int b = in.read(); if (b >= 0) pos++; return b; }
+        @Override public int read(byte[] b, int off, int n) throws IOException { int r = in.read(b, off, n); if (r > 0) pos += r; return r; }
+        @Override public long skip(long n) throws IOException { long s = in.skip(n); if (s > 0) pos += s; return s; }
+        @Override public int available() { long a = size - pos; return a <= 0 ? 0 : a > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) a; }
+        @Override public boolean markSupported() { return true; }
+        @Override public void mark(int limit) { mark = pos; }
+        /* Back to the mark: inflated again from the start, as a deflated stream can only be read forwards. */
+        @Override public void reset() throws IOException {
+            long to = mark;
+            restart();
+            while (pos < to) { long s = skip(to - pos); if (s <= 0) break; }
+        }
+        @Override public void close() throws IOException { in.end(); raw.close(); }
+        /* Raw deflate (no zlib header), with the one byte past the end that java.util.zip.Inflater wants then, as ZipFile gives it. */
+        private static final class Inflating extends java.util.zip.InflaterInputStream {
+            private boolean eof;
+            Inflating(java.io.InputStream src) { super(src, new java.util.zip.Inflater(true), 65536); }
+            @Override protected void fill() throws IOException {
+                if (eof) throw new java.io.EOFException("an asset's deflated bytes ended early");
+                len = in.read(buf, 0, buf.length);
+                if (len == -1) { buf[0] = 0; len = 1; eof = true; }
+                inf.setInput(buf, 0, len);
+            }
+            void end() { inf.end(); }
+        }
     }
     public void close() {}
     // ---- generated by tools/compat/genstubs.py: signatures only
@@ -258,7 +334,7 @@ public final class AssetManager implements AutoCloseable {
         // ---- end of generated members (AssetInputStream)
     }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+    private java.util.HashMap<String, Object> meglerFill; /* made at the first set (megler.Fill) */
     public static final int COOKIE_UNKNOWN = -1;
     public static java.lang.String FRAMEWORK_APK_PATH;
     public static void createSystemAssetsInZygoteLocked(boolean p0, java.lang.String p1) {}
@@ -268,16 +344,13 @@ public final class AssetManager implements AutoCloseable {
     public static android.content.res.AssetManager getSystem() { return null; }
     public void addApkKeys(java.util.List p0, boolean p1) {}
     public boolean containsAllocatedTable() { return false; }
-    public android.content.res.ApkAssets[] getApkAssets() { return (android.content.res.ApkAssets[]) meglerFill.get("ApkAssets"); }
+    public android.content.res.ApkAssets[] getApkAssets() { return (android.content.res.ApkAssets[]) megler.Fill.get(meglerFill, "ApkAssets"); }
     public java.lang.String getLastResourceResolution() { return null; }
     public java.util.List getLoaders() { return new java.util.ArrayList(); }
     public java.lang.String[] getNonSystemLocales() { return null; }
     public java.util.Map getOverlayableMap(java.lang.String p0) { return new java.util.HashMap(); }
     public java.lang.String getOverlayablesToString(java.lang.String p0) { return null; }
     public boolean isUpToDate() { return false; }
-    public android.content.res.XmlResourceParser openXmlResourceParser(int p0, java.lang.String p1) { return null; }
-    public android.content.res.XmlResourceParser openXmlResourceParser(int p0, java.lang.String p1, boolean p2) { return null; }
-    public android.content.res.XmlResourceParser openXmlResourceParser(java.lang.String p0) { return null; }
     public void setApkAssets(android.content.res.ApkAssets[] p0, boolean p1) {}
     public void setConfiguration(int p0, int p1, java.lang.String p2, java.lang.String[] p3, int p4, int p5, int p6, int p7, int p8, int p9, int p10, int p11, int p12, int p13, int p14, int p15, int p16, int p17, int p18, int p19) {}
     public void setOverlayConstraints(int p0, int p1) {}

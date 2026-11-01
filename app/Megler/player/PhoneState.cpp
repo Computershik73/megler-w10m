@@ -9,6 +9,7 @@
 #include "megler.h"
 
 #include <winrt/Windows.Globalization.h>
+#include <winrt/Windows.Networking.Connectivity.h>
 #include <winrt/Windows.System.Power.h>
 #include <winrt/Windows.System.UserProfile.h>
 
@@ -28,6 +29,47 @@ constexpr int pluggedNone = 0, pluggedMains = 1, pluggedUsb = 2;
 std::mutex gMutex;
 bool gTold = false;
 std::string gLast; // the battery as the core was last told, in the log's words
+std::string gLastCellular; // and the SIM
+
+// The SIM, from the cellular connection profile Windows keeps for it (Windows.Networking.Connectivity): the home
+// operator's MCC and MNC (HomeProviderId), the profile's name for the operator's, the data class for the network's
+// type, the registration for roaming. No cellular profile with a home operator: no SIM (or none Windows lets an app see).
+void tellCellular() {
+    using namespace winrt::Windows::Networking::Connectivity;
+    megler_cellular now = {};
+    std::string name, id;
+    try {
+        for (const auto& profile : NetworkInformation::GetConnectionProfiles()) {
+            if (!profile.IsWwanConnectionProfile()) continue;
+            const WwanConnectionProfileDetails details = profile.WwanConnectionProfileDetails();
+            if (!details) continue;
+            const std::string home = narrow(std::wstring(details.HomeProviderId()));
+            if (home.empty()) continue;
+            id = home;
+            name = narrow(std::wstring(profile.ProfileName()));
+            now.sim_ready = true;
+            const uint32_t data = static_cast<uint32_t>(details.GetCurrentDataClass());
+            // TelephonyManager's NETWORK_TYPE_*: LTE 13, HSPA 10, UMTS 3, EDGE 2, GPRS 1 (WwanDataClass's bits, the best one)
+            now.network_type = (data & 0x20) ? 13 : (data & 0x18) ? 10 : (data & 0x4) ? 3 : (data & 0x2) ? 2 : (data & 0x1) ? 1 : 0;
+            const WwanNetworkRegistrationState state = details.GetNetworkRegistrationState();
+            now.roaming = state == WwanNetworkRegistrationState::Roaming || state == WwanNetworkRegistrationState::Partner;
+            break;
+        }
+    } catch (const winrt::hresult_error& e) {
+        shellLog::write(format("phone: Windows does not say the SIM (0x%08X): an app is told there is none", unsigned(e.code())));
+    }
+    now.operator_name = name.empty() ? nullptr : name.c_str();
+    now.mcc_mnc = id.empty() ? nullptr : id.c_str();
+    const std::string line = now.sim_ready ? format("a SIM, %s (%s), network type %d%s", name.c_str(), id.c_str(), now.network_type, now.roaming ? ", roaming" : "")
+                                           : std::string("no SIM");
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        if (line == gLastCellular) return;
+        gLastCellular = line;
+    }
+    megler_set_cellular(&now);
+    shellLog::write("phone: " + line);
+}
 
 void tellBattery() {
     try {
@@ -185,6 +227,12 @@ void tell() {
         shellLog::write(format("phone: Windows does not say the time zone (0x%08X): an app's clock is UTC", unsigned(e.code())));
     }
     tellBattery();
+    tellCellular();
+    try {
+        winrt::Windows::Networking::Connectivity::NetworkInformation::NetworkStatusChanged([](auto&&) { tellCellular(); });
+    } catch (const winrt::hresult_error& e) {
+        shellLog::write(format("phone: no word of the network's changes (0x%08X): an app is told the SIM as it was at its start", unsigned(e.code())));
+    }
     // The handlers are never taken off: they are wanted until the process ends. They come on threads of Windows' own.
     try {
         PowerManager::RemainingChargePercentChanged([](auto&&, auto&&) { tellBattery(); });

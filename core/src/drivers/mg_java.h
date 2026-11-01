@@ -35,6 +35,9 @@ bool mg_java_ended(int *status, const char **reason);
  * the surface it covers. From any thread; queued for the app's main thread. Nothing happens when no Java app runs.
  */
 void mg_java_text(const char *utf8);
+/* megler_sms_received, megler_call_logged: queued for the app's main thread (megler.Phone, Native.pollPhone). */
+void mg_java_phone_sms(const char *from, const char *body, i64 time_ms);
+void mg_java_phone_call(const char *number, i64 time_ms, int type, int duration_s);
 void mg_java_text_key(int key);
 void mg_java_keyboard_closed(void);
 /* An activity of the app another app asks for (megler_start_activity): started from the main loop. */
@@ -129,6 +132,15 @@ void mg_jcamera_close(mg_jcamera *c);
 
 /* mg_java_webview.c: what Android's platform gives the WebView besides Java (its library loader, its platform support). */
 const mg_jhle *mg_java_webview_natives(void);
+/*
+ * For the tests: the draw functor's table (AwDrawFnFunctionTable), whether or not Chromium would be given it; a functor drawn
+ * as megler.WebFunctors.draw has it drawn, on the render thread (the shell's id of its picture | the pbuffer's width << 32 |
+ * its height << 48, or 0); and the render thread's EGL forgotten, for a test that gives the core another OpenGL ES, while
+ * no functor is drawn.
+ */
+const void *mg_java_webview_draw_fn_table(void);
+i64 mg_java_webview_draw_functor(i32 functor, int left, int top, int width, int height);
+void mg_java_webview_forget_egl(void);
 
 #ifdef __cplusplus
 }

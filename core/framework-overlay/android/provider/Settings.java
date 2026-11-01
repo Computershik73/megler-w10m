@@ -1,7 +1,9 @@
 // Overlay of core/framework/src/android/provider/Settings.java (tools/build-framework.sh).
 // It differs in meglerGet: a setting not in the table asked for is looked for where Android keeps it now -- one of System's
 // in Secure and then Global, one of Secure's in Global -- as Android's System.getString does for MOVED_TO_SECURE and
-// MOVED_TO_GLOBAL, and Secure's for its MOVED_TO_GLOBAL (with a line in the log there; the value all the same). The
+// MOVED_TO_GLOBAL, and Secure's for its MOVED_TO_GLOBAL (with a line in the log there; the value all the same). And in
+// its defaults, which have the phone set up (device_provisioned, in Global and Secure), as a phone is once its first-use
+// setup is done: Play Store ran no install without it (its DeviceProvisionedConstraint: "Waiting for download"). The
 // rest is the original's, unchanged.
 //
 // Why. ANDROID_ID has been Secure's since Android 1.5, and System.ANDROID_ID is kept, deprecated, as the same name; an
@@ -2159,6 +2161,8 @@ public final class Settings {
             { "global", "always_finish_activities", "0" }, { "global", "stay_on_while_plugged_in", "0" }, { "global", "wifi_on", "1" },
             { "global", "bluetooth_on", "0" }, { "global", "data_roaming", "0" }, { "global", "install_non_market_apps", "1" },
             { "global", "mobile_data", "1" }, { "global", "boot_count", "1" }, { "global", "zen_mode", "0" },
+            /* set up, as a phone is once its first-use setup is done: Play Store runs no install until it is (DeviceProvisionedConstraint) */
+            { "global", "device_provisioned", "1" }, { "secure", "device_provisioned", "1" },
             { "secure", "accessibility_enabled", "0" }, { "secure", "enabled_accessibility_services", "" }, { "secure", "touch_exploration_enabled", "0" },
             { "secure", "location_mode", "3" }, { "secure", "default_input_method", "com.android.inputmethod.latin/.LatinIME" },
             { "secure", "enabled_input_methods", "com.android.inputmethod.latin/.LatinIME" }, { "secure", "install_non_market_apps", "1" },

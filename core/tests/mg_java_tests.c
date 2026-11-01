@@ -59,6 +59,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "../include/megler.h"
 #include "../src/apk/mg_apk.h"
@@ -137,6 +138,7 @@ static int find_line(const char *text, int from)
 }
 
 static const char *line_at(int i) { return i >= 0 && i < g_nlines ? g_lines[i] : ""; }
+const char *megler_data_dir(void);
 
 /* Waits for a line of the log, up to `seconds`, while the app runs; its number, or -1. */
 static int wait_line(const char *text, int from, int seconds)
@@ -605,6 +607,8 @@ static void system_heard(const char *what)
     mg_lock_release(&g_system_lock);
 }
 
+static const char *phone_apps_fixture(void);
+
 static bool system_install(void *user, const char *host_path, const char *name)
 {
     char t[160], inside[32] = "";
@@ -624,7 +628,122 @@ static bool system_install(void *user, const char *host_path, const char *name)
     }
     snprintf(t, sizeof(t), "install=%s%s%s;", name, inside, mg_path_stat(host_path, &st, NULL) ? "" : "(no file)");
     system_heard(t);
+    /* What Megler does with them, as the session learns it: the user says no to the one APK of com.example.store; the
+       bundle of com.example.split is installed, the app in the phone's apps. */
+    if (!strcmp(name, "com.example.store.apk")) {
+        char *dir = mg_sprintf("%s/installs", phone_apps_fixture()), *path = mg_sprintf("%s/%s.txt", dir, name);
+        static unsigned times;
+        char told[96];
+        int n = snprintf(told, sizeof(told), "%u%u\tdeclined\tNot installed: Megler was told no.\n", (unsigned)time(NULL), ++times);
+        mg_path_mkdirs(dir);
+        mg_file_write_all(path, told, (size_t)n);
+        free(path);
+        free(dir);
+    } else if (!strcmp(name, "com.example.split.apks")) {
+        char *path = mg_sprintf("%s/apps.txt", phone_apps_fixture());
+        FILE *f = fopen(path, "ab");
+        if (f) {
+            fputs("com.example.split\tcom.example.split.Main\tSplit\t1.0\t1\n", f);
+            fclose(f);
+        }
+        free(path);
+    }
     return true;
+}
+
+/* What Megler does with the apps the app asks to uninstall, as the app learns it: com.example.split goes from the phone's
+   apps (the list as the fixture made it); the user keeps com.example.other. */
+static bool system_uninstall(void *user, const char *package)
+{
+    (void)user;
+    if (!strcmp(package, "com.example.split")) {
+        char *path = mg_sprintf("%s/apps.txt", phone_apps_fixture());
+        static const char list[] = "com.example.other\tcom.example.other.Main\tOther\t1.0\t3\n";
+        mg_file_write_all(path, list, sizeof(list) - 1);
+        free(path);
+    } else if (!strcmp(package, "com.example.other")) {
+        char *dir = mg_sprintf("%s/installs", phone_apps_fixture()), *path = mg_sprintf("%s/%s.uninstall.txt", dir, package);
+        static unsigned times;
+        char told[96];
+        int n = snprintf(told, sizeof(told), "%u%u\tdeclined\tNot uninstalled: Megler was told no.\n", (unsigned)time(NULL), ++times);
+        mg_path_mkdirs(dir);
+        mg_file_write_all(path, told, (size_t)n);
+        free(path);
+        free(dir);
+    }
+    return true;
+}
+
+/*
+ * A microphone that hears a steady ramp, 0, 1, 2 ... in each channel, for as long as it is started: what the data app's
+ * step microphone reads back through AudioRecord. It says what it was asked for (g_mic_heard).
+ */
+/* What the command line says after the screen's size: for `app` the steps of its script, for `data` the run it is to be. */
+static int g_script_count;
+static char **g_script;
+
+static char g_mic_heard[128];
+static volatile i32 g_mic_on;
+static mg_thread *g_mic_thread;
+static int g_mic_rate, g_mic_channels;
+
+static void mic_feed(void *arg)
+{
+    int16_t s[320];
+    int16_t next = 0;
+    int i, frames = 160;
+    (void)arg;
+    while (g_mic_on) {
+        for (i = 0; i < frames * g_mic_channels; i++) s[i] = (int16_t)(next + i / g_mic_channels);
+        next = (int16_t)(next + frames);
+        megler_microphone_push(s, frames);
+        mg_sleep_ns(10000000ull);
+    }
+}
+
+static bool mic_start(void *user, int rate, int channels)
+{
+    size_t n = strlen(g_mic_heard);
+    (void)user;
+    snprintf(g_mic_heard + n, sizeof(g_mic_heard) - n, "start %d %d;", rate, channels);
+    g_mic_rate = rate;
+    g_mic_channels = channels;
+    g_mic_on = 1;
+    g_mic_thread = mg_thread_start(mic_feed, NULL, 0, "test microphone");
+    return true;
+}
+
+static void mic_stop(void *user)
+{
+    size_t n = strlen(g_mic_heard);
+    (void)user;
+    g_mic_on = 0;
+    if (g_mic_thread) mg_thread_join(g_mic_thread);
+    g_mic_thread = NULL;
+    snprintf(g_mic_heard + n, sizeof(g_mic_heard) - n, "stop;");
+}
+
+/*
+ * The phone's check of its user (megler_biometric_host), for the data app's step biometric: ready; it verifies the user
+ * when its message has "Sign in" in it, else the user says no. What it was asked is said in g_bio_heard, the message's
+ * lines joined by '|'.
+ */
+static char g_bio_heard[256];
+
+static int bio_available(void *user)
+{
+    (void)user;
+    return MEGLER_BIOMETRIC_READY;
+}
+
+static int bio_verify(void *user, const char *message)
+{
+    size_t n = strlen(g_bio_heard), i;
+    (void)user;
+    snprintf(g_bio_heard + n, sizeof(g_bio_heard) - n, "verify %s;", message);
+    for (i = n; g_bio_heard[i]; i++)
+        if (g_bio_heard[i] == '\n') g_bio_heard[i] = '|';
+    return strstr(message, "Sign in") ? MEGLER_BIOMETRIC_VERIFIED : MEGLER_BIOMETRIC_CANCELED;
 }
 
 static bool system_launch(void *user, const char *package, const char *activity)
@@ -662,6 +781,13 @@ static const char *phone_apps_fixture(void)
         fclose(f);
     }
     free(path);
+    /* (What Megler told of an APK on an earlier run is old news.) */
+    path = mg_sprintf("%s/installs/com.example.store.apk.txt", dir);
+    remove(path);
+    free(path);
+    path = mg_sprintf("%s/installs/com.example.other.uninstall.txt", dir);
+    remove(path);
+    free(path);
     path = mg_sprintf("%s/com.example.other.png", dir);
     f = fopen(path, "wb");
     if (f) {
@@ -685,7 +811,7 @@ static const char *phone_apps_fixture(void)
             "{\"name\":\"com.example.other.Hidden\",\"exported\":false,\"filters\":[]},"
             "{\"name\":\"com.example.other.Second\",\"enabled\":true,\"target\":\"com.example.other.Main\",\"label\":\"Other Second\",\"exported\":true,"
             "\"filters\":[{\"id\":1,\"actions\":[\"android.intent.action.MAIN\"],\"categories\":[\"android.intent.category.LAUNCHER\"],\"schemes\":[],"
-            "\"hosts\":[],\"types\":[]}]}]}";
+            "\"hosts\":[],\"types\":[]}]}],\"certificates\":[\"3003020107\"]}";
         char *own = mg_sprintf("%s/com.example.other", dir);
         mg_path_mkdirs(own);
         path = mg_sprintf("%s/activities.json", own);
@@ -729,6 +855,7 @@ static bool start(const char *apk, const char *android_root)
     g_media_heard[0] = 0;
     cfg.system.install_apk = system_install;
     cfg.system.launch_app = system_launch;
+    cfg.system.uninstall_app = system_uninstall;
     g_system_heard[0] = 0;
     cfg.apps_dir = phone_apps_fixture();
     /* Decoders for MediaCodec that decode nothing but take samples only as a real one must have them (mg_codec_standin.c). */
@@ -736,10 +863,28 @@ static bool start(const char *apk, const char *android_root)
     if (g_camera_app) cfg.camera = *mg_camera_standin();
     /* The phone in Moscow, the location on (mg_location_standin.c). */
     cfg.location = *mg_location_standin();
+    /*
+     * A microphone that hears a ramp (mic_start), and a SIM of the country the run's language and region are in, as a
+     * phone's is -- the US in the first run (en-US), Russia in the second (ru-RU): the data app's steps microphone,
+     * telephony and locale, which takes the SIM's country for the region's.
+     */
+    cfg.microphone.start = mic_start;
+    cfg.microphone.stop = mic_stop;
+    g_mic_heard[0] = 0;
+    /* And a phone that checks its user (bio_verify): the data app's step biometric. */
+    cfg.biometric.available = bio_available;
+    cfg.biometric.verify = bio_verify;
+    g_bio_heard[0] = 0;
+    {
+        static const megler_cellular us = { true, "Test Operator", "310260", 13, false }, ru = { true, "Test Operator", "25001", 13, false };
+        megler_set_cellular(g_script_count && !strcmp(g_script[0], "run:2") ? &ru : &us);
+    }
     /* The framework says which window each touch went to when it finds this in the environment: asked for with verbose 2. */
     if (g_verbose >= 2 && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_TOUCH_LOG", "1", 1);
     /* And every window's views with their frames, every three seconds while it lays out: verbose 3. */
     if (g_verbose >= 3 && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_VIEW_DUMP", "1", 1);
+    /* MG_JAVA_VD_TRACE=1: every vector drawable an app draws is said in its log, with its tint and filter (android.graphics.drawable.VectorDrawable's TL_VD_TRACE). */
+    if (getenv("MG_JAVA_VD_TRACE") && mg_bionic_find("setenv")) ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("TL_VD_TRACE", "1", 1);
     if (getenv("MG_MICROG_DROIDGUARD_TEST") && mg_bionic_find("setenv"))
         ((int (*)(const char *, const char *, int))mg_bionic_find("setenv"))("MG_MICROG_DROIDGUARD_TEST", "1", 1);
     if (getenv("MG_MICROG_DROIDGUARD_HANDLE_TEST") && mg_bionic_find("setenv"))
@@ -769,6 +914,8 @@ static bool start(const char *apk, const char *android_root)
         if (bytes && (json = (char *)realloc(bytes, size + 1)) != NULL) json[size] = 0;
         else free(bytes);
         CHECK(json && strstr(json, "\"activities\":[{\"name\":"));
+        /* (The test apps are not signed: their certificates are none. A real app's are its own.) */
+        if (!g_any_app) CHECK(json && strstr(json, "],\"certificates\":[]}"));
         if (g_crash_app) {
             CHECK(json && strstr(json, "{\"name\":\"megler.test.crash.First\",\"label\":\"Megler Crash\",\"exported\":false,\"filters\":[]}"));
             CHECK(json && strstr(json, "{\"name\":\"megler.test.crash.IconDark\",\"enabled\":false,\"target\":\"megler.test.crash.Second\",\"exported\":true,"));
@@ -1133,10 +1280,15 @@ static void type_into_fields(const int row[4], int *at)
     CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_PASSWORD);
     megler_text_commit("pw");
     expect_line("I/DemoTest: typing: secret=\"pw\"", at, 30);
+    megler_text_key(MEGLER_TEXT_BACKSPACE);
+    megler_text_commit("w");
+    expect_line("I/DemoTest: typing: secret=\"pw\"", at, 30);
     /* A note of several lines: Enter is a new line there, and the keyboard is told so. */
     shown = K.shown;
     tap(note[0] + 60, note[1] + 30);
     CHECK(shown_times(shown + 1) && K.kind == MEGLER_KEYBOARD_TEXT && K.flags == (MEGLER_KEYBOARD_F_MULTILINE | MEGLER_KEYBOARD_F_CAP_SENTENCES) && K.enter == MEGLER_ENTER_NEWLINE);
+    /* The password field left says (in numbers only) that it holds what the keyboard typed. */
+    expect_line("keyboard: the password field android.widget.EditText holds what the keyboard typed (2 characters)", at, 30);
     megler_text_commit("one");
     megler_text_key(MEGLER_TEXT_ENTER);
     megler_text_commit("two");
@@ -1649,6 +1801,14 @@ static void natives_windows(const int tap_at[2])
     snprintf(trace, sizeof(trace), "; at %d,%d %dx%d, said ", full[0], full[1], full[2], full[3]);
     CHECK(line >= 0 && strstr(line_at(line), trace) && strstr(line_at(line), GL.refuse ? " s ago, composed here; " : " s ago, composed by the shell; ")
           && strstr(line_at(line), "; the views' alpha over it ") && strstr(line_at(line), " s ago: 00 00 00 00 / 00 00 00 00 / 00 00 00 00 / 00 00 00 00"));
+    /*
+     * Its EGL surface destroyed by the main thread while a thread of the library's had it current (HERE WeGo's map): the destroy
+     * taken, the surface still that thread's to query, draw on and swap, and ended only when it let it go.
+     */
+    snprintf(text, sizeof(text), "I/NativesWindow: texture-egl-elsewhere made=1 destroyed=1 queried=1 width=%d swapped=1 error=0x3000 released=1", texture[2]);
+    CHECK(find_line(text, 0) >= 0);
+    CHECK(find_line("egl: a window surface destroyed while it is current on a thread: ended once no thread has it current", 0) >= 0);
+    CHECK(find_line("egl: a window surface destroyed while it was current is ended now that no thread has it current", 0) >= 0);
     /* The texture drawn once with EGL from the main thread: read back, turned the right way up, given to the texture. */
     snprintf(text, sizeof(text), "I/NativesWindow: texture-egl surface %dx%d made=1 swapped=1 error=0x3000", texture[2], texture[3]);
     CHECK(find_line(text, 0) >= 0);
@@ -1683,7 +1843,7 @@ static int run_natives(void)
     static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
                                          "throw-java", "find-class", "references", "reflection", "monitor", "thread", "thread-daemon", "needed-library", "asset",
                                          "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "missing-library",
-                                         "missing-method", "looper-watched", "gc-held", "system-icu", "abi", "device", "string-alloc" };
+                                         "missing-method", "looper-watched", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args" };
     int at = -1, layout, pic[4], i;
     char want[120];
     memset(pic, 0, sizeof(pic));
@@ -1791,10 +1951,7 @@ static int run_splits(void)
     return g_failed;
 }
 
-/* What the command line says after the screen's size: for `app` the steps of its script, for `data` the run it is to be. */
-static int g_script_count;
-static char **g_script;
-
+/* The script (g_script, above), as main gives it. */
 void mg_tests_java_set_script(int count, char **steps)
 {
     g_script_count = count;
@@ -1854,6 +2011,40 @@ static void battery_changes(bool on_battery)
 }
 
 /*
+ * The phone's text messages and calls, given as the shell gives them (megler_sms_received, megler_call_logged; megler.Phone):
+ * a message from a number is SMS_RECEIVED, its sender, time and text read back from its PDU, and in content://sms/inbox; a
+ * longer one from a sender with a name, in Russian and holding the app-specific SMS token, comes in two parts and sends the
+ * token's PendingIntent; a missed call rings with its number, to the receiver and to TelephonyManager's listener, is idle
+ * again and is in content://call_log/calls. The numbers are made up.
+ */
+static void phone_events(void)
+{
+    const char *ready;
+    char token[16] = "", *text;
+    int line = wait_line("I/DataTest: phone-ready token=", 0, 30);
+    CHECK(line >= 0);
+    if (line < 0) return;
+    ready = strstr(line_at(line), "token=");
+    if (ready) mg_strlcpy(token, ready + 6, sizeof(token));
+    CHECK(strlen(token) == 11);
+    megler_sms_received("+15555550123", "Megler test code 123456", 1767225600000ll);
+    CHECK(wait_line("I/DataTest: sms-heard parts=1 from=+15555550123 time=1767225600000 body=Megler test code 123456", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: sms-inbox rows=1 body=Megler test code 123456 type=1", 0, 30) >= 0);
+    text = mg_sprintf("\xd0\x9a\xd0\xbe\xd0\xb4 \xd0\xb4\xd0\xbb\xd1\x8f \xd0\xb2\xd1\x85\xd0\xbe\xd0\xb4\xd0\xb0: 654321. "
+                      "A message longer than one part of seventy characters, as the code comes. %s", token);
+    megler_sms_received("Megler", text, 1767225660000ll);
+    CHECK(wait_line("I/DataTest: sms-heard parts=2 from=Megler time=1767225660000 body=", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: sms-token-heard parts=2 from=Megler", 0, 30) >= 0);
+    free(text);
+    megler_call_logged("+15555550199", 1767225720000ll, 3, 0);
+    CHECK(wait_line("I/DataTest: call-state RINGING number=+15555550199", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: call-listener 1 +15555550199", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: call-state IDLE number=+15555550199", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: call-log rows=1 number=+15555550199 type=3", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: call-listener 0 +15555550199", 0, 30) >= 0);
+}
+
+/*
  * The phone's bars, as the shell has them. Said to cover 60 pixels at the top and 90 at the bottom (megler_set_insets), they
  * keep the app's content off them: its decor moves it down by 60 and shortens it by 150. Then the app hides and shows them
  * -- the status bar by its window's WindowInsetsController, both by its decor's system UI flags -- and the shell is asked
@@ -1910,14 +2101,15 @@ static void media_session_keys(void)
 
 /*
  * What the data app asked of the phone (megler_system_host), in order: to start the other app the apps folder has, by its
- * launch intent; to install the APK it opened with ACTION_VIEW; to install its PackageInstaller session's one file, whose
- * status, STATUS_SUCCESS (0), then comes back to the app.
+ * launch intent; to install the APK it opened with ACTION_VIEW; to install its PackageInstaller sessions' files, by their
+ * apps' names. Their status comes back to the app once Megler has told it: STATUS_FAILURE_ABORTED (3) for the one the user
+ * said no to, STATUS_SUCCESS (0) for the one the phone's apps then have.
  */
 static void system_requests(void)
 {
     /* (Then, of its activities, Settings by its class, and Second, an alias, as what it stands for.) */
     static const char want[] = "launch=com.example.other/com.example.other.Main;launch=com.example.other/com.example.other.Settings;"
-                               "launch=com.example.other/com.example.other.Main;install=Viewed.apk;install=base.apk;install=com.example.split.apks(2);";
+                               "launch=com.example.other/com.example.other.Main;install=Viewed.apk;install=com.example.store.apk;install=com.example.split.apks(2);";
     char heard[sizeof(g_system_heard)];
     int tries;
     for (tries = 0; tries < 150; tries++) {
@@ -1929,7 +2121,22 @@ static void system_requests(void)
     }
     say("  the app asked of the phone: %s", heard);
     CHECK(!strcmp(heard, want));
-    CHECK(wait_line("I/DataTest: install-status 0 session=true package=com.example.store", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: install-status 3 session=true package=com.example.store", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: install-status 0 session=false package=com.example.split", 0, 30) >= 0);
+    /* As on Android, the app installed is told of before its session's status. Then the app uninstalls it through the
+       package installer (system_uninstall takes it out of the phone's apps): it hears of its going, then STATUS_SUCCESS; and
+       STATUS_FAILURE_ABORTED for the other app, which the user keeps. */
+    CHECK(wait_line("I/DataTest: package-broadcast android.intent.action.PACKAGE_ADDED com.example.split replacing=false uid=true", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: package-broadcast android.intent.action.PACKAGE_REMOVED com.example.split replacing=false uid=true", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: package-broadcast android.intent.action.PACKAGE_FULLY_REMOVED com.example.split replacing=false uid=true", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: uninstall-status 0 package=com.example.split", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: uninstall-status 3 package=com.example.other", 0, 30) >= 0);
+    /* The microphone was asked for at the rate and channels the app's AudioRecord has, and let go when it stopped. */
+    say("  the microphone was asked: %s", g_mic_heard);
+    CHECK(strstr(g_mic_heard, "start 16000 1;stop;") != NULL);
+    /* The phone was asked to check the user twice, with each prompt's title and description, in the prompts' order. */
+    say("  the phone's check was asked: %s", g_bio_heard);
+    CHECK(strstr(g_bio_heard, "verify Sign in|to the test;verify Say no;") != NULL);
 }
 
 /*
@@ -2012,7 +2219,7 @@ static int run_data(void)
                                             custom action, as PlaybackStateCompat makes it. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "phone-apps-activities", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path", "apk-optimization",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -2081,12 +2288,49 @@ static int run_data(void)
     /* The service of the step "process-scope", in a process of another name: its own class scope, with that name and statics
        of its own. */
     CHECK(wait_line("I/DataTest: process-scope process=megler.test.data:elsewhere marker=0 loader=ServiceClassLoader application=true here=false", 0, 30) >= 0);
+    /* Its scope has the APK's DEX files read for the app's own, not a copy (dvm/mg_dvm_apk.c). */
+    CHECK(find_line("of its DEX files are the ones read before, shared", 0) >= 0);
+    /*
+     * Its DEX file, which the APK deflates, inflated into the data folder on the first run and viewed from there, not read into
+     * memory; the second run finds it there and makes none (dvm/mg_dvm_apk.c).
+     */
+    CHECK(find_line(g_script_count && !strcmp(g_script[0], "run:2") ? "1 inflated into the data folder's dex (0 of them now)"
+                                                                     : "1 inflated into the data folder's dex (1 of them now)", 0) >= 0);
+    /*
+     * And a copy of it named the old way, with a hash of the APK's path, which the version in that path made anew at every
+     * update of Megler: put there in the first run, removed when the second reads its DEX files.
+     */
+    {
+        int at = find_line(" of its DEX files are views of files", 0);
+        const char *line = at >= 0 ? line_at(at) : NULL, *dvm = line ? strstr(line, "dvm: ") : NULL, *colon = dvm ? strchr(dvm + 5, ':') : NULL;
+        char base[64] = "", *stale;
+        mg_stat st;
+        int err = 0;
+        if (dvm && colon && (size_t)(colon - dvm - 5) < sizeof(base)) memcpy(base, dvm + 5, (size_t)(colon - dvm - 5));
+        CHECK(base[0] != 0);
+        stale = mg_sprintf("%s/dex/%s-0badf00d-classes.dex-00000000-1", megler_data_dir(), base);
+        if (g_script_count && !strcmp(g_script[0], "run:2")) {
+            CHECK(!mg_path_stat(stale, &st, &err));
+        } else {
+            mg_file *f = mg_file_open(stale, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &err);
+            CHECK(f != NULL);
+            if (f) mg_file_close(f);
+        }
+        free(stale);
+    }
+    /* And its broadcast, an object of its process's class in it: this process's receiver has it as one of its own class. */
+    CHECK(wait_line("I/DataTest: process-intent note=from elsewhere", 0, 30) >= 0);
+    /* And a bundle in a reply of its binder, holding an object of its process's class: given this process's loader, the
+       object is of this process's class (Bundle.setClassLoader, as WhatsApp reads Google Play services' TokenData). */
+    CHECK(wait_line("I/DataTest: process-bundle note=in a bundle", 0, 30) >= 0);
     /* The jobs of the step "job-scheduler", run: the one scheduled with its extra, the one given work with both pieces, in order. */
     CHECK(wait_line("I/DataTest: job 41 said=hello", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: job 42 work=one,two,", 0, 30) >= 0);
     /* The download of the step "downloads": done, its row and file with the server's five bytes, the cookie sent, its cursor's
        observer told. */
     CHECK(wait_line("I/DataTest: downloads ok status=200 bytes=5 body=hello cookie=true observed=true file=5", 0, 30) >= 0);
+    /* The list of the step "list-row-click": its row, clickable itself, clicked by a tap. */
+    CHECK(wait_line("I/DataTest: list-row-click rows=3 clicked=true", 0, 30) >= 0);
     /* The PendingIntent the step "pending-intent-flags" sent: the one it asked for first, with the extras FLAG_UPDATE_CURRENT gave. */
     CHECK(wait_line("I/DataTest: pending-intent-sent ok v=3", 0, 30) >= 0);
     /* The alarms of the step "alarm-replace-cancel": the one set twice went off once, the cancelled one never, the repeating one
@@ -2098,6 +2342,10 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: broadcast-on-handler ok thread=broadcast-handler", 0, 30) >= 0);
     /* The account the step "account-removed" added and removed: told as removed, with its name and type. */
     CHECK(wait_line("I/DataTest: account-removed-broadcast ok removed=removed by run ", 0, 30) >= 0);
+    /* The stub the step "stub-said" called: its first call said, with the app's method that called it (megler-stubs.txt). */
+    CHECK(find_line("api: android/app/Fragment.getEnterTransition()Landroid/transition/Transition; is a stub here (its signature alone), first called from megler/test/data/Main", 0) >= 0);
+    /* The sync the step "sync" asked for: on the adapter's own thread, with the provider's client, the account syncable. */
+    CHECK(wait_line("I/DataTest: sync-performed ok thread=SyncAdapterThread-", 0, 30) >= 0);
     /* The sound the step "audio-track" and those after it started: each MediaPlayer played to its end, the SoundPool's sound played once loaded. */
     CHECK(wait_line("I/DataTest: media-player-done ok", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: media-player-ogg-done ok", 0, 30) >= 0);
@@ -2122,6 +2370,10 @@ static int run_data(void)
     if (run == 2 && want == 2) CHECK(find_line("java: the phone's time zone is given as \"Nowhere/At_All\", which the Android root's tzdata does not have", 0) >= 0);
     /* And the language and region are the ones named before the start (megler_set_locale, below): English (United States) in the first run, Russian (Russia) in the second. */
     CHECK(find_line(run == 2 && want == 2 ? "I/DataTest: locale is ru-RU network=ru sim=ru config=ru-RU" : "I/DataTest: locale is en-US network=us sim=us config=en-US", 0) >= 0);
+    /* The step audio-route told the shell each change of where a call's sound goes: the earpiece, the loudspeaker, and back. */
+    CHECK(find_line("java: the app's sound goes to the earpiece, for a call", 0) >= 0);
+    CHECK(find_line("java: the app's sound goes to the loudspeaker, for a call on speaker", 0) >= 0);
+    CHECK(find_line("java: the app's sound goes where it always does", 0) >= 0);
     /* A popup list that wraps its content has room for all its rows, inside what the list and the popup's background keep clear. */
     expect_line("I/DataTest: popup ok rows=3", &at, 30);
     /* A platform DialogFragment's dialog, made by its onCreateDialog, shows over the activity and goes with dismiss(). */
@@ -2135,6 +2387,7 @@ static int run_data(void)
                                            : "I/DataTest: battery is level=100/100 status=5 plugged=1 health=2 voltage=4200 temperature=250 present=true technology=Li-ion capacity=100 charging=true",
                     0) >= 0);
     battery_changes(run == 2 && want == 2);
+    phone_events();
     bars_and_insets();
     media_session_keys();
     system_requests();
@@ -2239,6 +2492,10 @@ static int run_crash(void)
      * focus before it (the original showed it at once, and it lost a focus it was never given when Gate covered it).
      */
     expect_line("I/CrashTest: gate onCreate", &at, 60);
+    /* Gate recreates itself once (Activity.recreate, AppRunner.recreate): stopped as one being made again, then the same
+       component again with the state it saved, which still gives First its result. */
+    expect_line("I/CrashTest: gate stop changing=true", &at, 60);
+    expect_line("I/CrashTest: gate recreated state=7 component=megler.test.crash.Gate", &at, 60);
     expect_line("I/CrashTest: first order resume,result:7:-1,resume,focus:true,", &at, 60);
     /*
      * FLAG_ACTIVITY_CLEAR_TOP as Android has it, First found by its class though started through an alias: with the flag
@@ -2295,11 +2552,11 @@ static int run_gl(void)
     CHECK(!strcmp(mg_gl_standin_app_features_off(), "allowTranslateUniformBlockToStructuredBuffer"));
     CHECK(find_line("egl: asking ANGLE for a display as Direct3D 11, without its allowTranslateUniformBlockToStructuredBuffer", 0) >= 0);
     /* (The app logs the strings just after that line, on the same thread: waited for too, not looked for at once.) */
-    CHECK(wait_line("I/GlTest: egl14 strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=3", 0, 30) >= 0);
+    CHECK(wait_line("I/GlTest: egl14 strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=4", 0, 30) >= 0);
     /* The renderer, on the GL thread with its context current: created, changed, drawn, in that order. */
     expect_line("I/GlTest: created 1 thread=GLThread ", &at, 120);
     CHECK(strstr(line_at(at), "current=true version=2 config=8/16") != NULL);
-    expect_line("I/GlTest: strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=3 gl10=Megler", &at, 30);
+    expect_line("I/GlTest: strings vendor=Megler renderer=stand-in for OpenGL ES version=OpenGL ES 2.0 (stand-in) extensions=4 gl10=Megler", &at, 30);
     expect_line("I/GlTest: program linked=1 position=0 color=0 log=stand-in: program", &at, 30);
     expect_line("I/GlTest: changed ", &at, 30);
     expect_line("I/GlTest: first frame on GLThread", &at, 30);
@@ -2621,6 +2878,10 @@ static int run_webview(void)
     int at = -1, i, line, x = -1, y = -1, bar[4], body[4];
     i32 shown;
     expect_line("I/WebViewTest: onCreate", &at, 120);
+    /* The default User-Agent before any WebView: given before Chromium was loaded, and the WebView's own once it is. */
+    line = wait_line("I/WebViewTest: default user-agent ", 0, 120);
+    CHECK(line >= 0 && wait_line("I/WebViewFactory: Loading ", 0, 600) > line);
+    CHECK(wait_line("I/WebViewTest: user-agent-default ok", 0, 600) >= 0);
     /* Each in its turn; the bridge's call comes from the page's script while it loads, so is looked for from the start. */
     for (i = 0; i < (int)MG_COUNT(steps); i++) {
         snprintf(text, sizeof(text), "I/WebViewTest: %s ok", steps[i]);
@@ -2630,6 +2891,10 @@ static int run_webview(void)
     }
     line = find_line("I/WebViewTest: provider ok", 0);
     if (line >= 0) say("  %s", strstr(line_at(line), "provider ok"));
+    /* androidx.webkit's way to the WebView's support-library glue: found, and its features asked. */
+    line = find_line("I/WebViewTest: glue ", 0);
+    if (line >= 0) say("  %s", strstr(line_at(line), "glue "));
+    CHECK(find_line("I/WebViewTest: glue ok", 0) >= 0);
     /* The WebView's own word on how it runs: in this process, its renderer not in one of its own. */
     CHECK(find_line("multiprocess=false", 0) >= 0);
     {
@@ -2652,6 +2917,15 @@ static int run_webview(void)
         count_colour(body, 0x1E78C8), body[2] * body[3]);
     CHECK(count_colour(bar, 0xFFD200) == bar[2] * bar[3]);
     CHECK(count_colour(body, 0x1E78C8) == body[2] * body[3]);
+    /*
+     * The platform's software table handed over (drivers/mg_java_webview.c) and read by Chromium as it reads it -- straight
+     * into the WebView bitmap's pixels, where its GPU can share textures across threads (EGLImage and fence syncs: gpu_info's
+     * can_support_threaded_texture_mailbox), as ANGLE's on the phone and the stand-in's can -- and no bitmap of Chromium's own
+     * that could not be made or let go.
+     */
+    CHECK(find_line("webview: the platform's software table is handed over", 0) >= 0);
+    CHECK(find_line("webview: Chromium draws straight into a canvas's pixels", 0) >= 0);
+    CHECK(find_line("Error allocating bitmap", 0) < 0 && find_line("Error unlocking java bitmap pixels", 0) < 0);
     /* A tap on the field gives it the focus and asks for the keyboard. */
     shown = K.shown;
     tap(x, y);
@@ -2683,6 +2957,8 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     if (picture_dir) mg_path_mkdirs(picture_dir);
     g_portrait = !strcmp(which, "demos");
     g_any_app = !strcmp(which, "app");
+    /* MG_JAVA_SPLITS: for an app that is not a test's, the folder of its splits (as the library keeps an app's beside its base). */
+    if (g_any_app && getenv("MG_JAVA_SPLITS")) g_splits_dir = mg_strdup(getenv("MG_JAVA_SPLITS"));
     g_crash_app = !strcmp(which, "crash");
     g_camera_app = !strcmp(which, "camera");
     /* The data app runs with the phone's look told (megler_set_theme): a cobalt accent and a light theme; its step theme-accent checks what an app sees of it. */
@@ -2783,6 +3059,21 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     /* An app that shows pictures and composes no OpenGL frames has them shown from its canvas (megler_gfx_host.present). */
     if (W.pictures > 0 && count_lines("java: the app draws with EGL on a view") == 0) CHECK(W.from_canvas > 0);
     if (!g_any_app) CHECK(count_lines("a frame drawn in part missed") == 0);
+    {
+        /* The host (C) stacks the runtime's threads reserve, and the deepest any was seen to use: where the census would. */
+        u32 threads = 0, attached = 0;
+        u64 frames = 0, c_reserved = 0, c_peak = 0;
+        mg_dvm_stats st;
+        mg_dvm_thread_census(&threads, &attached, &frames, &c_reserved, &c_peak);
+        mg_dvm_get_stats(&st);
+        say("  threads %u (%u attached), frame stacks %u MB, host stacks %u MB (the deepest used %u KB)",
+            (unsigned)threads, (unsigned)attached, (unsigned)(frames >> 20), (unsigned)(c_reserved >> 20), (unsigned)(c_peak >> 10));
+        say("  the runtime's tables and classes %u KB: classes %u, methods %u, fields %u, vtables %u, the DEX files' tables %u, names %u, "
+            "those of files not viewed yet %u (%u classes linked)",
+            (unsigned)(st.meta_bytes >> 10), (unsigned)(st.meta_classes >> 10), (unsigned)(st.meta_methods >> 10), (unsigned)(st.meta_fields >> 10),
+            (unsigned)(st.meta_vtables >> 10), (unsigned)(st.meta_dex >> 10), (unsigned)(st.meta_names >> 10), (unsigned)(st.meta_pools >> 10),
+            (unsigned)st.classes_linked);
+    }
     say("%d checks, %d failed", g_checks, g_failed);
     return g_failed;
 }

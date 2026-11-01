@@ -25,12 +25,20 @@ extern "C" {
  *
  * Windows 10 Mobile lets a package with the codeGeneration capability turn
  * committed read-write pages into execute-read ones and back
- * (VirtualProtectFromApp). It never allows an executable commit or a page that
- * is writable and executable at once. So everything here is written with a
- * page writable and run with it executable: a library's text is copied in,
- * patched, and then flipped, once.
+ * (VirtualProtectFromApp). The FromApp functions never allow an executable
+ * commit or a page that is writable and executable at once. So everything here
+ * is written with a page writable and run with it executable: a library's text
+ * is copied in, patched, and then flipped, once. The plain VirtualProtect, in
+ * the phone's kernelbase like the others, does allow the latter where the
+ * phone does (mg_mem_rwx): MG_PROT_RWX.
  */
-enum { MG_PROT_NONE = 0, MG_PROT_R = 1, MG_PROT_RW = 3, MG_PROT_RX = 5 };
+enum { MG_PROT_NONE = 0, MG_PROT_R = 1, MG_PROT_RW = 3, MG_PROT_RX = 5, MG_PROT_RWX = 7 };
+
+/*
+ * Whether pages may be writable and executable at once (MG_PROT_RWX for mg_mem_protect): found out once, by making a page
+ * so, running code written to it, writing it again and running it again (Windows); always (POSIX).
+ */
+bool mg_mem_rwx(void);
 
 #define MG_PAGE 4096u
 
@@ -46,11 +54,37 @@ bool mg_mem_decommit(void *p, size_t size);
 bool mg_mem_protect_committed(void *p, size_t size, int prot);
 /* How many bytes of [p, p + size) are the process's own memory committed (not views of files or sections): Windows says; -1 where the host does not (POSIX, which commits as pages are touched). */
 i64 mg_mem_committed(const void *p, size_t size);
+/*
+ * What an allocator done with memory gives back (madvise's MADV_DONTNEED): the committed pages of [p, p + size) that are
+ * readable and writable are decommitted, each run told to `fn` first; pages of any other access are left. The bytes given
+ * back. Windows says each page's access; POSIX does not, and takes all of it for readable and writable, as an allocator's
+ * memory is when it gives it back.
+ */
+size_t mg_mem_discard(void *p, size_t size, void (*fn)(u8 *at, size_t n, void *user), void *user);
+/*
+ * Called with memory the system itself is about to write into (a file's or a socket's bytes read into a buffer the app
+ * gave): the layer above commits pages of it that it gave back (bionic/mg_libc_mem.c, madvise), which the system would
+ * refuse to write into -- the call failing -- where the app's own code faults and has them committed again.
+ */
+void mg_mem_set_before_system_write(void (*fn)(void *p, size_t size));
+/* Whether the page at `p` is committed, and its access (MG_PROT_*, -1 for any other): false where the host cannot say (POSIX). */
+bool mg_mem_page_state(const void *p, bool *committed, int *prot);
 void mg_mem_release(void *p, size_t size);
 /* After writing code and before running it. */
 void mg_icache_flush(void *p, size_t size);
 /* Reserve and commit read-write in one step (anonymous mmap). */
 void *mg_mem_alloc(size_t size);
+/*
+ * The same, with the host noting which of its pages are written (Windows' write watch, MEM_WRITE_WATCH): NULL where it
+ * cannot, and mg_mem_alloc's memory is had instead. Released with mg_mem_release.
+ */
+void *mg_mem_alloc_watched(size_t size);
+/*
+ * The pages of watched [p, p + size) written since the memory was made or this was last asked, as page numbers from `p`
+ * into `out` (at most `max`), the watch started again for them: how many; -1 where the host cannot say (and every page is
+ * to be taken for written). Pages of MG_PAGE bytes.
+ */
+int mg_mem_written_pages(void *p, size_t size, u32 *out, int max);
 
 /*
  * Memory that several mappings show at once: a section (a pagefile-backed file mapping on Windows, a memfd on Linux), the
@@ -608,6 +642,24 @@ bool mg_host_keyed_mutex(void *mutex, bool acquire, u32 ms);
  * system's included -- can be made. False where it cannot be walked.
  */
 bool mg_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb, u32 *committed_mb);
+/*
+ * What holds the process's addresses, in megabytes: the images (the program and its DLLs), the views of files and shared
+ * memory, and the private memory, committed and reserved; and the sizes of private allocation that hold the most of it,
+ * with how many of each. Yandex Maps ran out of addresses with 210 MB of the last 340 MB in nothing the core could name
+ * (package 490). False where it cannot be walked. (The heaps are not asked: HeapSummary walks a heap, and of the process's
+ * several some are not serialized -- walked while their owner used them, one was broken and the app ended, package 493 --
+ * and it held the process heap's lock for most of a second.)
+ */
+typedef struct mg_host_address_kinds {
+    u32 images_mb, views_mb, private_mb, private_reserved_mb;
+    int nsizes;
+    struct { u32 kb, count; } sizes[4];
+} mg_host_address_kinds;
+/* The threads mg_thread_start started that run now: each has the stack it was given, 1 MB of addresses or more. */
+u32 mg_thread_live_count(void);
+bool mg_host_address_census(mg_host_address_kinds *k);
+/* The bytes of [base, base + size) reserved and not committed; 0 where the host cannot say. */
+u64 mg_host_reserved_in(const void *base, size_t size);
 /*
  * The `n` largest free stretches of the address space, in megabytes, largest first, 0 past the last. Two allocations of
  * one size need two stretches of it: Chromium in a single process maps each image it decodes twice. False where the

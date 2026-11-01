@@ -199,9 +199,15 @@ the private files alone: its part of the storage is the app's already.
 `shell/AppPackage.cpp` makes an app's package, on a worker thread:
 
   1. Android's libcore and framework (the package's `android` folder, some
-     150 MB) are copied once for each build of Megler to
+     170 MB) are copied once for each build of Megler to
      `<shared>\android\<Megler's version>`, a file `complete` written last; every
      app package of that build reads them there, so a package carries none.
+     Whenever Megler has the Device Portal's list of the packages (after its
+     jobs, Update All's too, and when the list is asked for again), it removes
+     the folders of older builds that no installed package is of
+     (`removeUnusedAndroidRoots`), `complete` first: after Update All, all of
+     them. Until 0.1.0.459 none was removed, and each build that made a
+     package left its 170 MB there.
   2. The signing key and certificate are made on the first use, in
      `LocalState\signing` (`key.bin`, `MeglerApps.cer`), the certificate's
      subject Megler's own Publisher.
@@ -218,8 +224,11 @@ the private files alone: its part of the storage is the app's already.
   4. `resources.pri`, below.
   5. The package, `LocalState\packages\<identity name>.appx`, holds Megler's
      installed files but `android`, `selftest`, `demo`, `codec`,
-     `appx-template`, its `resources.pri` and what the packaging makes
-     itself; that manifest and `resources.pri`; `MeglerApp.ini`; and
+     `appx-template`, `bitgapps` (Google's APKs, some 100 MB, which only
+     Megler's library offers; the services an app hosts come from
+     `<shared>\services`; the packages up to 0.1.0.458 carried them, some
+     110 MB of Megler's in each instead of some 12 MB), its `resources.pri`
+     and what the packaging makes itself; that manifest and `resources.pri`; `MeglerApp.ini`; and
      `app\app.apk` with the library's report and icon of it (`app.apk.json`,
      `app.apk.icon`, `reports.version`), so that the app is not read again.
      An app of split APKs (an `.apks` or `.xapk` unpacked) has its splits in
@@ -335,8 +344,10 @@ Flags (`LocalState\flags`) are each package's own: `tools/phone-flags.py --app
 
 ## What follows (not done yet)
 
-- Old builds' Android files in `<shared>\android`: each build of Megler that
-  makes a package copies its own, and none is removed yet.
+- What is left of Megler in each package, some 12 MB (`Megler.exe`, ANGLE, the
+  C++ runtime's DLLs, the shell's fonts), is each package's own: a process
+  loads code from its own package alone, another package's install folder
+  cannot be read, and a framework package of one's own is not to be had.
 - How apps reach one another (Android's intents to another app, "share", "open
   with", content providers): within one process that is calls inside Megler;
   between packages it needs a way of its own (protocol activation, app services).

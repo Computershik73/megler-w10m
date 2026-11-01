@@ -392,7 +392,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public android.os.IBinder getWindowToken() { return mRoot == null ? null : mRoot.token(); }
     public android.os.IBinder getApplicationWindowToken() { return getWindowToken(); }
     public Display getDisplay() { return mRoot == null ? null : ((WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay(); }
-    public WindowId getWindowId() { return null; }
+    /* Megler: the window's, while the view is attached to one (megler.ViewRoot.windowId); null otherwise, as on Android. */
+    public WindowId getWindowId() { return mRoot == null ? null : mRoot.windowId(); }
     public ViewTreeObserver getViewTreeObserver() {
         if (mRoot != null) return mRoot.observer();
         if (mFloatingObserver == null) mFloatingObserver = new ViewTreeObserver();
@@ -427,6 +428,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     }
     void dispatchDetachedFromWindow() {
         if (mRoot == null) return;                  /* never attached (or already detached): listeners must not hear a second detach */
+        // Megler: its display list let go; recorded again if it is drawn again
+        if (mMeglerNode != null) mMeglerNode.discardDisplayList();
+        mMeglerListValid = false;
         if (mOverlay != null) mOverlay.meglerDetached();
         if (mAnimator != null) mAnimator.cancel();
         onWindowVisibilityChanged(GONE);
@@ -507,7 +511,15 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public boolean isDuplicateParentStateEnabled() { return (mPrivateFlags & PFLAG_DUPLICATE_PARENT_STATE) != 0; }
     public void setDuplicateParentStateEnabled(boolean e) { if (e) mPrivateFlags |= PFLAG_DUPLICATE_PARENT_STATE; else mPrivateFlags &= ~PFLAG_DUPLICATE_PARENT_STATE; }
     public boolean isInEditMode() { return false; }
-    public boolean isHardwareAccelerated() { return false; }
+    /*
+     * Hardware accelerated as Android's views are, attached to a window: each draws through a display list of its own, which
+     * the core plays on the graphics processor (the shell's Direct2D), with the properties of the RenderNodes in it as they
+     * are then. Compose then keeps each graphics layer as a RenderNode of its own, whose alpha, translation and scale change
+     * without its content being drawn again; it drew every layer's content into its view's list each time otherwise, its
+     * layers' properties with it. A view without a list (a WebView, a SurfaceView, a TextureView), and every view with the
+     * flag no-view-lists, is not.
+     */
+    public boolean isHardwareAccelerated() { return mRoot != null && (meglerListable() || meglerWebOnGpu()) && meglerListsOn(); }
     public boolean isInTouchMode() { return true; }
     public boolean isSaveEnabled() { return (mPrivateFlags & PFLAG_SAVE_DISABLED) == 0; }
     public void setSaveEnabled(boolean e) { if (e) mPrivateFlags &= ~PFLAG_SAVE_DISABLED; else mPrivateFlags |= PFLAG_SAVE_DISABLED; }
@@ -539,6 +551,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public boolean isVerticalFadingEdgeEnabled() { return false; }
     public boolean isHorizontalFadingEdgeEnabled() { return false; }
     public int getVerticalFadingEdgeLength() { return 0; }
+    /** The colour a view says it is drawn solid in, for its fading edges: none (0), as Android's View answers unless overridden. */
+    public int getSolidColor() { return 0; }
     public int getHorizontalFadingEdgeLength() { return 0; }
     protected float getTopFadingEdgeStrength() { return 0; }
     protected float getBottomFadingEdgeStrength() { return 0; }
@@ -554,8 +568,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public boolean dispatchNestedFling(float vx, float vy, boolean consumed) { return false; }
     public boolean dispatchNestedPreFling(float vx, float vy) { return false; }
     public int getLayerType() { return mLayerType; }
-    public void setLayerType(int t, Paint p) { mLayerType = t; mLayerPaint = p; invalidate(); }
-    public void setLayerPaint(Paint p) { mLayerPaint = p; invalidate(); }
+    // (The layer, its paint, the clip bounds and the outline's clip are put on by drawFromParent: in the parent's list.)
+    public void setLayerType(int t, Paint p) { mLayerType = t; mLayerPaint = p; invalidate(); invalidateParent(); }
+    public void setLayerPaint(Paint p) { mLayerPaint = p; invalidate(); invalidateParent(); }
     public void buildLayer() {}
     public void setDrawingCacheEnabled(boolean e) {}
     public boolean isDrawingCacheEnabled() { return false; }
@@ -822,14 +837,14 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void getLocationInSurface(int[] out) { getLocationInWindow(out); }
     public void getWindowVisibleDisplayFrame(Rect r) { if (mRoot != null) mRoot.visibleDisplayFrame(r); else r.set(0, 0, megler.Native.screenWidth(), megler.Native.screenHeight()); }
     public void getWindowDisplayFrame(Rect r) { getWindowVisibleDisplayFrame(r); }
-    public void setClipBounds(Rect r) { mClipBounds = r == null ? null : new Rect(r); invalidate(); }
+    public void setClipBounds(Rect r) { mClipBounds = r == null ? null : new Rect(r); invalidate(); invalidateParent(); }
     public Rect getClipBounds() { return mClipBounds == null ? null : new Rect(mClipBounds); }
     public boolean getClipBounds(Rect out) { if (mClipBounds == null) return false; out.set(mClipBounds); return true; }
-    public void setClipToOutline(boolean c) { if (c) mPrivateFlags |= PFLAG_CLIP_TO_OUTLINE; else mPrivateFlags &= ~PFLAG_CLIP_TO_OUTLINE; invalidate(); }
+    public void setClipToOutline(boolean c) { if (c) mPrivateFlags |= PFLAG_CLIP_TO_OUTLINE; else mPrivateFlags &= ~PFLAG_CLIP_TO_OUTLINE; invalidate(); invalidateParent(); }
     public final boolean getClipToOutline() { return (mPrivateFlags & PFLAG_CLIP_TO_OUTLINE) != 0; }
     public void setOutlineProvider(ViewOutlineProvider p) { mOutlineProvider = p; invalidateOutline(); }
     public ViewOutlineProvider getOutlineProvider() { return mOutlineProvider; }
-    public void invalidateOutline() { invalidate(); }
+    public void invalidateOutline() { invalidate(); invalidateParent(); }
     public void setOutlineAmbientShadowColor(int c) {}
     public void setOutlineSpotShadowColor(int c) {}
     public float getElevation() { return mElevation; }
@@ -889,7 +904,15 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         }
         return mMatrix;
     }
-    final Matrix inverseMatrix() { getMatrix(); return mInverse; }
+    /* The inverse of the view's matrix, from getMatrix() as the view gives it: a view that gives its own (Telegram's) left
+       the one kept here unmade, and a touch on a transformed child ended the app in a NullPointerException (package 545). */
+    final Matrix inverseMatrix() {
+        Matrix m = getMatrix();
+        if (m == mMatrix && mInverse != null) return mInverse;
+        Matrix inverse = new Matrix();
+        m.invert(inverse);
+        return inverse;
+    }
     public ViewPropertyAnimator animate() { if (mAnimator == null) mAnimator = new ViewPropertyAnimator(this); return mAnimator; }
     public void startAnimation(Animation a) { a.setStartTime(Animation.START_ON_FIRST_FRAME); setAnimation(a); invalidateParent(); }
     public void setAnimation(Animation a) { mAnimation = a; if (a != null) { a.reset(); } }
@@ -1035,13 +1058,20 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
      * its children. `self`: as this view's own invalidation, which a view that is not visible does not make.
      */
     final void meglerDirty(float l, float t, float r, float b, boolean self) {
+        // Megler: the list that draws what changed is to be recorded again -- this view's own, or its parent's for its place
+        if (self) meglerListInvalid();
+        else if (mParent != null) mParent.meglerListInvalid();
+        meglerDamage(l, t, r, b, self);
+    }
+    /** Megler: that rectangle of the view's box drawn again on the screen, every list as it is (meglerDirty without the lists). */
+    final void meglerDamage(float l, float t, float r, float b, boolean self) {
         megler.ViewRoot root = mRoot;
         if (root == null) return;
         if (self && mVisibility != VISIBLE && mAnimation == null) return;
         RectF box = new RectF(l, t, r, b);
         View v = this;
         for (;;) {
-            if (v.mAnimation != null) { root.invalidate(); return; }
+            if (v.mAnimation != null) { root.invalidate(this); return; }
             ViewGroup p = v.mParent;
             if (p != null && p.getClipChildren() && !box.intersect(0, 0, v.getWidth(), v.getHeight())) return;
             if (!v.hasIdentityMatrix()) v.getMatrix().mapRect(box);
@@ -1051,13 +1081,27 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
             if (v.mVisibility != VISIBLE && v.mAnimation == null) return;
             box.offset(-v.mScrollX, -v.mScrollY);
         }
-        if (v.mRoot == root) root.meglerDirty(box);
+        if (v.mRoot == root) root.meglerDirty(box, this);
     }
-    public void postInvalidate() { if (mRoot != null) mRoot.invalidateFromAnyThread(); }
-    public void postInvalidate(int l, int t, int r, int b) { postInvalidate(); }
+    /*
+     * Megler: the view's own invalidation, or a rectangle's of it, from any thread: done on the main thread, as Android's
+     * posts it there. It was the whole window's (ViewRoot.invalidateFromAnyThread), so a view that animated itself with
+     * postInvalidateOnAnimation -- a progress indicator, a counter, a custom view's animator -- had the whole screen drawn
+     * again in every frame: Yandex Maps redrew 100% of the screen ten times a second (package 527).
+     */
+    public void postInvalidate() {
+        if (mRoot == null) return;
+        if (Looper.myLooper() == Looper.getMainLooper()) invalidate();
+        else megler.ViewRoot.mainHandler().post(this::invalidate);
+    }
+    public void postInvalidate(int l, int t, int r, int b) {
+        if (mRoot == null) return;
+        if (Looper.myLooper() == Looper.getMainLooper()) invalidate(l, t, r, b);
+        else megler.ViewRoot.mainHandler().post(() -> invalidate(l, t, r, b));
+    }
     public void postInvalidateDelayed(long ms) { postDelayed(this::invalidate, ms); }
     public void postInvalidateOnAnimation() { postInvalidate(); }
-    public void postInvalidateOnAnimation(int l, int t, int r, int b) { postInvalidate(); }
+    public void postInvalidateOnAnimation(int l, int t, int r, int b) { postInvalidate(l, t, r, b); }
     public void invalidateDrawableMegler() { invalidate(); }
     protected void onDraw(Canvas c) {}
     protected void dispatchDraw(Canvas c) {}
@@ -1131,15 +1175,124 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
             if (mLayerPaint != null) a = a * mLayerPaint.getAlpha() / 255;
             c.saveLayerAlpha(0, 0, w, h, a);
         }
+        if (w > 0 && h > 0 && meglerListable() && meglerListsOn()) {
+            meglerDrawList(c, w, h);
+            c.restoreToCount(save);
+            return;
+        }
         c.translate(-mScrollX, -mScrollY);
         megler.ViewRoot.ScreenCanvas screen = c instanceof megler.ViewRoot.ScreenCanvas ? (megler.ViewRoot.ScreenCanvas) c : null;
         long was = screen != null ? screen.meglerViewSize(w, h) : 0;
+        // A view without a list of its own drawing into its parent's: that canvas is not hardware accelerated for it, but
+        // for a WebView whose page is drawn on the graphics processor (its draw functor: megler.WebFunctors).
+        android.graphics.RecordingCanvas soft = !meglerListable() && !meglerWebOnGpu() && c instanceof android.graphics.RecordingCanvas ? (android.graphics.RecordingCanvas) c : null;
+        boolean wasSoft = soft != null && soft.meglerSoftware(true);
         try {
             draw(c);
         } finally {
             if (screen != null) screen.meglerViewSizeBack(was);
+            if (soft != null) soft.meglerSoftware(wasSoft);
         }
         c.restoreToCount(save);
+    }
+
+    /*
+     * Megler: display lists, as Android's views have (each its RenderNode, hardware acceleration being on for every app
+     * written for Android 4 or later). A view's draw() -- its background, onDraw, its children, its foreground -- is recorded
+     * into a list of its own, of its own size, and the list is drawn where the view is drawn (drawFromParent) until something
+     * makes it invalid; a parent's list draws each child's list by reference, so a child drawn again leaves its parent's list
+     * as it is. Before a frame is drawn every invalid list under a valid one is recorded again where it stands
+     * (meglerUpdateLists, as Android's updateDisplayListIfDirty). The original drew every view again whenever any part of
+     * the screen over it was drawn: Yandex Maps' sheet of cards and its controls had their Java drawing run again in nearly
+     * every frame as the map under them moved (package 537). Where the list goes invalid:
+     *  - the view's own invalidation (invalidate, invalidateDrawable, a scroll): its list;
+     *  - a change of where its parent draws it -- moved, transformed, shown or hidden, made translucent (invalidateParent),
+     *    a child added or removed (ViewGroup, overlaid): the parent's list;
+     *  - a view without a list of its own (a SurfaceView, a TextureView, a WebView, whose pictures come from elsewhere) makes
+     *    the list it was recorded into invalid instead;
+     *  - a new size: recorded again at it. Detached from the window: the list let go.
+     * The flag no-view-lists draws every view again as before.
+     */
+    private android.graphics.RenderNode mMeglerNode;
+    private boolean mMeglerListValid;
+    /** A list below this view is invalid: the way down to it, for meglerUpdateLists. */
+    boolean mMeglerSubtreeInvalid;
+    private static int sMeglerLists = -1;
+
+    static boolean meglerListsOn() {
+        if (sMeglerLists < 0) sMeglerLists = megler.Native.flag("no-view-lists") ? 0 : 1;
+        return sMeglerLists > 0;
+    }
+
+    /** Whether this view draws through a list of its own: not a surface's, a texture's or a WebView's. */
+    boolean meglerListable() {
+        return !(this instanceof SurfaceView) && !(this instanceof TextureView) && !(this instanceof android.webkit.WebView);
+    }
+
+    /** Whether this is a WebView whose page is drawn on the graphics processor, through its draw functor (megler.WebFunctors). */
+    final boolean meglerWebOnGpu() { return this instanceof android.webkit.WebView && megler.WebFunctors.on(); }
+
+    /** The list of the nearest view at or above this one that keeps one made invalid, and the way down to it noted. */
+    final void meglerListInvalid() {
+        View v = this;
+        while (v != null && !v.meglerListable()) v = v.mParent;
+        if (v == null) return;
+        v.mMeglerListValid = false;
+        for (View p = v.mParent; p != null && !p.mMeglerSubtreeInvalid; p = p.mParent) p.mMeglerSubtreeInvalid = true;
+    }
+
+    private void meglerDrawList(Canvas c, int w, int h) {
+        android.graphics.RenderNode n = mMeglerNode;
+        if (n == null) {
+            n = new android.graphics.RenderNode(getClass().getName());
+            n.setClipToBounds(false);
+            mMeglerNode = n;
+        }
+        if (!mMeglerListValid || !n.hasDisplayList() || n.getWidth() != w || n.getHeight() != h) meglerRecord(n, w, h);
+        c.drawRenderNode(n);
+    }
+
+    private void meglerRecord(android.graphics.RenderNode n, int w, int h) {
+        n.setPosition(0, 0, w, h);
+        // (Valid before it is recorded: an invalidation while it is, an animation's, makes it invalid again.)
+        mMeglerListValid = true;
+        Canvas rc = n.meglerBeginViewRecording(w, h);
+        int save = rc.save();
+        try {
+            rc.translate(-mScrollX, -mScrollY);
+            draw(rc);
+        } catch (RuntimeException e) {
+            // A view whose drawing throws keeps in its list what it drew before, and the lists of the views around it go on
+            // with the views after it, as Android's would not (it ends the app). Out of this view, the exception cut every
+            // list above it short, and they stayed so: Telegram's chat list cell throws in its onDraw, and the chat went
+            // black where the lists after it should have drawn (package 545).
+            sMeglerThrew++;
+            if (sMeglerThrew <= 5 || sMeglerThrew % 100 == 0)
+                android.util.Log.e("MeglerViews", "drawing " + getClass().getName() + " into its display list threw (" + sMeglerThrew + " times)", e);
+        } finally {
+            rc.restoreToCount(save);
+            n.endRecording();
+        }
+    }
+    private static int sMeglerThrew;
+
+    /** Megler: before a frame, every invalid list of this view's subtree under a valid one recorded again where it stands. */
+    public void meglerUpdateLists() {
+        android.graphics.RenderNode n = mMeglerNode;
+        if (n != null && !mMeglerListValid && n.hasDisplayList() && mVisibility == VISIBLE) {
+            int w = getWidth(), h = getHeight();
+            if (w > 0 && h > 0) meglerRecord(n, w, h);
+        }
+        if (mMeglerSubtreeInvalid) {
+            mMeglerSubtreeInvalid = false;
+            if (this instanceof ViewGroup) {
+                ViewGroup g = (ViewGroup) this;
+                for (int i = 0; i < g.getChildCount(); i++) {
+                    View ch = g.getChildAt(i);
+                    if (ch != null) ch.meglerUpdateLists();
+                }
+            }
+        }
     }
 
     // ---- scrolling
@@ -1490,7 +1643,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         return mOverlay;
     }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+    private java.util.HashMap<String, Object> meglerFill; /* made at the first set (megler.Fill) */
     public static final int ACCESSIBILITY_CURSOR_POSITION_UNDEFINED = -1;
     public static final int ACCESSIBILITY_DATA_SENSITIVE_AUTO = 0;
     public static final int ACCESSIBILITY_DATA_SENSITIVE_NO = 2;
@@ -1700,8 +1853,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void getBoundsOnScreen(android.graphics.Rect p0) {}
     public void getBoundsOnScreen(android.graphics.Rect p0, boolean p1) {}
     public void getBoundsOnScreen(android.graphics.RectF p0, boolean p1) {}
-    public android.view.contentcapture.ContentCaptureSession getContentCaptureSession() { return (android.view.contentcapture.ContentCaptureSession) meglerFill.get("ContentCaptureSession"); }
-    public int getContentSensitivity() { return (meglerFill.get("ContentSensitivity") instanceof Integer ? (Integer) meglerFill.get("ContentSensitivity") : 0); }
+    public android.view.contentcapture.ContentCaptureSession getContentCaptureSession() { return (android.view.contentcapture.ContentCaptureSession) megler.Fill.get(meglerFill, "ContentCaptureSession"); }
+    public int getContentSensitivity() { return (megler.Fill.get(meglerFill, "ContentSensitivity") instanceof Integer ? (Integer) megler.Fill.get(meglerFill, "ContentSensitivity") : 0); }
     public boolean getDefaultFocusHighlightEnabled() { return false; }
     public int getDrawingCacheBackgroundColor() { return 0; }
     public int getDrawingCacheQuality() { return 0; }
@@ -1709,24 +1862,24 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     protected int getFadeTop(boolean p0) { return 0; }
     public int getFadingEdge() { return 0; }
     public int getFadingEdgeLength() { return 0; }
-    public boolean getFilterTouchesWhenObscured() { return (meglerFill.get("FilterTouchesWhenObscured") instanceof Boolean ? (Boolean) meglerFill.get("FilterTouchesWhenObscured") : false); }
+    public boolean getFilterTouchesWhenObscured() { return (megler.Fill.get(meglerFill, "FilterTouchesWhenObscured") instanceof Boolean ? (Boolean) megler.Fill.get(meglerFill, "FilterTouchesWhenObscured") : false); }
     public void getFocusedRect(android.graphics.Rect p0) {}
-    public android.graphics.BlendMode getForegroundTintBlendMode() { return (android.graphics.BlendMode) meglerFill.get("ForegroundTintBlendMode"); }
+    public android.graphics.BlendMode getForegroundTintBlendMode() { return (android.graphics.BlendMode) megler.Fill.get(meglerFill, "ForegroundTintBlendMode"); }
     public android.content.res.ColorStateList getForegroundTintList() { return null; }
-    public android.graphics.PorterDuff.Mode getForegroundTintMode() { return (android.graphics.PorterDuff.Mode) meglerFill.get("ForegroundTintMode"); }
-    public float getFrameContentVelocity() { return (meglerFill.get("FrameContentVelocity") instanceof Float ? (Float) meglerFill.get("FrameContentVelocity") : 0f); }
-    public android.graphics.Rect getHandwritingArea() { return (android.graphics.Rect) meglerFill.get("HandwritingArea"); }
+    public android.graphics.PorterDuff.Mode getForegroundTintMode() { return (android.graphics.PorterDuff.Mode) megler.Fill.get(meglerFill, "ForegroundTintMode"); }
+    public float getFrameContentVelocity() { return (megler.Fill.get(meglerFill, "FrameContentVelocity") instanceof Float ? (Float) megler.Fill.get(meglerFill, "FrameContentVelocity") : 0f); }
+    public android.graphics.Rect getHandwritingArea() { return (android.graphics.Rect) megler.Fill.get(meglerFill, "HandwritingArea"); }
     public float getHandwritingBoundsOffsetBottom() { return 0f; }
     public float getHandwritingBoundsOffsetLeft() { return 0f; }
     public float getHandwritingBoundsOffsetRight() { return 0f; }
     public float getHandwritingBoundsOffsetTop() { return 0f; }
-    public int getHandwritingDelegateFlags() { return (meglerFill.get("HandwritingDelegateFlags") instanceof Integer ? (Integer) meglerFill.get("HandwritingDelegateFlags") : 0); }
+    public int getHandwritingDelegateFlags() { return (megler.Fill.get(meglerFill, "HandwritingDelegateFlags") instanceof Integer ? (Integer) megler.Fill.get(meglerFill, "HandwritingDelegateFlags") : 0); }
     public java.lang.Runnable getHandwritingDelegatorCallback() { return null; }
     public boolean getHasOverlappingRendering() { return false; }
     protected float getHorizontalScrollFactor() { return 0f; }
     protected int getHorizontalScrollbarHeight() { return 0; }
     public android.graphics.drawable.Drawable getHorizontalScrollbarThumbDrawable() { return null; }
-    public android.graphics.drawable.Drawable getHorizontalScrollbarTrackDrawable() { return (android.graphics.drawable.Drawable) meglerFill.get("HorizontalScrollbarTrackDrawable"); }
+    public android.graphics.drawable.Drawable getHorizontalScrollbarTrackDrawable() { return (android.graphics.drawable.Drawable) megler.Fill.get(meglerFill, "HorizontalScrollbarTrackDrawable"); }
     public void getHotspotBounds(android.graphics.Rect p0) {}
     public int getImportantForContentCapture() { return 0; }
     public android.graphics.Matrix getInverseMatrix() { return null; }
@@ -1738,37 +1891,37 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public int getNextClusterForwardId() { return 0; }
     protected boolean getNotifiedContentCaptureAppeared() { return false; }
     public android.view.View.OnLongClickListener getOnLongClickListener() { return null; }
-    public android.graphics.Insets getOpticalInsets() { return (android.graphics.Insets) meglerFill.get("OpticalInsets"); }
+    public android.graphics.Insets getOpticalInsets() { return (android.graphics.Insets) megler.Fill.get(meglerFill, "OpticalInsets"); }
     public int getOutlineAmbientShadowColor() { return 0; }
     public int getOutlineSpotShadowColor() { return 0; }
     public android.os.OutcomeReceiver getPendingCredentialCallback() { return null; }
-    public android.credentials.GetCredentialRequest getPendingCredentialRequest() { return (android.credentials.GetCredentialRequest) meglerFill.get("PendingCredentialRequest"); }
-    public java.util.List getPreferKeepClearRects() { return (meglerFill.get("PreferKeepClearRects") != null ? (java.util.List) meglerFill.get("PreferKeepClearRects") : new java.util.ArrayList()); }
+    public android.credentials.GetCredentialRequest getPendingCredentialRequest() { return (android.credentials.GetCredentialRequest) megler.Fill.get(meglerFill, "PendingCredentialRequest"); }
+    public java.util.List getPreferKeepClearRects() { return (megler.Fill.get(meglerFill, "PreferKeepClearRects") != null ? (java.util.List) megler.Fill.get(meglerFill, "PreferKeepClearRects") : new java.util.ArrayList()); }
     public int getRawTextAlignment() { return 0; }
     public int getRawTextDirection() { return 0; }
     public java.lang.String[] getReceiveContentMimeTypes() { return null; }
-    public float getRequestedFrameRate() { return (meglerFill.get("RequestedFrameRate") instanceof Float ? (Float) meglerFill.get("RequestedFrameRate") : 0f); }
+    public float getRequestedFrameRate() { return (megler.Fill.get(meglerFill, "RequestedFrameRate") instanceof Float ? (Float) megler.Fill.get(meglerFill, "RequestedFrameRate") : 0f); }
     protected float getRightFadingEdgeStrength() { return 0f; }
     protected int getRightPaddingOffset() { return 0; }
     public android.view.AttachedSurfaceControl getRootSurfaceControl() { return null; }
-    public int getScrollBarDefaultDelayBeforeFade() { return (meglerFill.get("ScrollBarDefaultDelayBeforeFade") instanceof Integer ? (Integer) meglerFill.get("ScrollBarDefaultDelayBeforeFade") : 0); }
-    public int getScrollBarFadeDuration() { return (meglerFill.get("ScrollBarFadeDuration") instanceof Integer ? (Integer) meglerFill.get("ScrollBarFadeDuration") : 0); }
+    public int getScrollBarDefaultDelayBeforeFade() { return (megler.Fill.get(meglerFill, "ScrollBarDefaultDelayBeforeFade") instanceof Integer ? (Integer) megler.Fill.get(meglerFill, "ScrollBarDefaultDelayBeforeFade") : 0); }
+    public int getScrollBarFadeDuration() { return (megler.Fill.get(meglerFill, "ScrollBarFadeDuration") instanceof Integer ? (Integer) megler.Fill.get(meglerFill, "ScrollBarFadeDuration") : 0); }
     public int getScrollBarSize() { return 0; }
     public int getScrollCaptureHint() { return 0; }
     public int getSourceLayoutResId() { return 0; }
     public java.lang.CharSequence getStateDescription() { return null; }
-    public java.lang.CharSequence getSupplementalDescription() { return (java.lang.CharSequence) meglerFill.get("SupplementalDescription"); }
+    public java.lang.CharSequence getSupplementalDescription() { return (java.lang.CharSequence) megler.Fill.get(meglerFill, "SupplementalDescription"); }
     public java.util.List getSystemGestureExclusionRects() { return new java.util.ArrayList(); }
     public java.lang.CharSequence getTooltip() { return null; }
     public android.view.View getTooltipView() { return this; }
     protected int getTopPaddingOffset() { return 0; }
     public long getUniqueDrawingId() { return 0L; }
-    public java.util.List getUnrestrictedPreferKeepClearRects() { return (meglerFill.get("UnrestrictedPreferKeepClearRects") != null ? (java.util.List) meglerFill.get("UnrestrictedPreferKeepClearRects") : new java.util.ArrayList()); }
+    public java.util.List getUnrestrictedPreferKeepClearRects() { return (megler.Fill.get(meglerFill, "UnrestrictedPreferKeepClearRects") != null ? (java.util.List) megler.Fill.get(meglerFill, "UnrestrictedPreferKeepClearRects") : new java.util.ArrayList()); }
     protected float getVerticalScrollFactor() { return 0f; }
     public int getVerticalScrollbarPosition() { return 0; }
     public android.graphics.drawable.Drawable getVerticalScrollbarThumbDrawable() { return null; }
-    public android.graphics.drawable.Drawable getVerticalScrollbarTrackDrawable() { return (android.graphics.drawable.Drawable) meglerFill.get("VerticalScrollbarTrackDrawable"); }
-    public android.view.translation.ViewTranslationCallback getViewTranslationCallback() { return (android.view.translation.ViewTranslationCallback) meglerFill.get("ViewTranslationCallback"); }
+    public android.graphics.drawable.Drawable getVerticalScrollbarTrackDrawable() { return (android.graphics.drawable.Drawable) megler.Fill.get(meglerFill, "VerticalScrollbarTrackDrawable"); }
+    public android.view.translation.ViewTranslationCallback getViewTranslationCallback() { return (android.view.translation.ViewTranslationCallback) megler.Fill.get(meglerFill, "ViewTranslationCallback"); }
     public android.view.translation.ViewTranslationResponse getViewTranslationResponse() { return null; }
     protected android.view.IWindow getWindow() { return null; }
     protected boolean handleScrollBarDragging(android.view.MotionEvent p0) { return false; }
@@ -1791,13 +1944,13 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     protected void invalidateParentCaches() {}
     protected void invalidateParentIfNeeded() {}
     protected void invalidateParentIfNeededAndWasQuickRejected() {}
-    public boolean isAccessibilityDataSensitive() { return (meglerFill.get("AccessibilityDataSensitive") instanceof Boolean ? (Boolean) meglerFill.get("AccessibilityDataSensitive") : false); }
+    public boolean isAccessibilityDataSensitive() { return (megler.Fill.get(meglerFill, "AccessibilityDataSensitive") instanceof Boolean ? (Boolean) megler.Fill.get(meglerFill, "AccessibilityDataSensitive") : false); }
     public boolean isAccessibilityHeading() { return false; }
     public boolean isAccessibilitySelectionExtendable() { return false; }
     public boolean isActionableForAccessibility() { return false; }
-    public boolean isAssistBlocked() { return (meglerFill.get("AssistBlocked") instanceof Boolean ? (Boolean) meglerFill.get("AssistBlocked") : false); }
+    public boolean isAssistBlocked() { return (megler.Fill.get(meglerFill, "AssistBlocked") instanceof Boolean ? (Boolean) megler.Fill.get(meglerFill, "AssistBlocked") : false); }
     public boolean isAutoHandwritingEnabled() { return false; }
-    public boolean isAutofilled() { return (meglerFill.get("Autofilled") instanceof Boolean ? (Boolean) meglerFill.get("Autofilled") : false); }
+    public boolean isAutofilled() { return (megler.Fill.get(meglerFill, "Autofilled") instanceof Boolean ? (Boolean) megler.Fill.get(meglerFill, "Autofilled") : false); }
     public boolean isContentSensitive() { return false; }
     public boolean isCredential() { return false; }
     public boolean isDefaultFocusHighlightNeeded(android.graphics.drawable.Drawable p0, android.graphics.drawable.Drawable p1) { return false; }
@@ -1904,33 +2057,33 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public boolean restoreFocusInCluster(int p0) { return false; }
     public boolean restoreFocusNotInCluster() { return false; }
     public void sendAccessibilityEventUncheckedInternal(android.view.accessibility.AccessibilityEvent p0) {}
-    public void setAccessibilityDataSensitive(int p0) { meglerFill.put("AccessibilityDataSensitive", Integer.valueOf(p0)); }
+    public void setAccessibilityDataSensitive(int p0) { meglerFill = megler.Fill.put(meglerFill, "AccessibilityDataSensitive", Integer.valueOf(p0)); }
     public void setAccessibilitySelection(int p0, int p1) {}
     public void setAllowedHandwritingDelegatePackage(java.lang.String p0) {}
     public void setAllowedHandwritingDelegatorPackage(java.lang.String p0) {}
-    public void setAssistBlocked(boolean p0) { meglerFill.put("AssistBlocked", Boolean.valueOf(p0)); }
+    public void setAssistBlocked(boolean p0) { meglerFill = megler.Fill.put(meglerFill, "AssistBlocked", Boolean.valueOf(p0)); }
     public void setAutofilled(boolean p0, boolean p1) {}
     public void setBackdropRenderEffect(android.graphics.RenderEffect p0) {}
-    public void setContentCaptureSession(android.view.contentcapture.ContentCaptureSession p0) { meglerFill.put("ContentCaptureSession", p0); }
-    public void setContentSensitivity(int p0) { meglerFill.put("ContentSensitivity", Integer.valueOf(p0)); }
+    public void setContentCaptureSession(android.view.contentcapture.ContentCaptureSession p0) { meglerFill = megler.Fill.put(meglerFill, "ContentCaptureSession", p0); }
+    public void setContentSensitivity(int p0) { meglerFill = megler.Fill.put(meglerFill, "ContentSensitivity", Integer.valueOf(p0)); }
     protected void setDetached(boolean p0) {}
     public void setDisabledSystemUiVisibility(int p0) {}
-    public void setFilterTouchesWhenObscured(boolean p0) { meglerFill.put("FilterTouchesWhenObscured", Boolean.valueOf(p0)); }
-    public void setForegroundTintBlendMode(android.graphics.BlendMode p0) { meglerFill.put("ForegroundTintBlendMode", p0); }
-    public void setForegroundTintMode(android.graphics.PorterDuff.Mode p0) { meglerFill.put("ForegroundTintMode", p0); }
-    public void setFrameContentVelocity(float p0) { meglerFill.put("FrameContentVelocity", Float.valueOf(p0)); }
-    public void setHandwritingArea(android.graphics.Rect p0) { meglerFill.put("HandwritingArea", p0); }
+    public void setFilterTouchesWhenObscured(boolean p0) { meglerFill = megler.Fill.put(meglerFill, "FilterTouchesWhenObscured", Boolean.valueOf(p0)); }
+    public void setForegroundTintBlendMode(android.graphics.BlendMode p0) { meglerFill = megler.Fill.put(meglerFill, "ForegroundTintBlendMode", p0); }
+    public void setForegroundTintMode(android.graphics.PorterDuff.Mode p0) { meglerFill = megler.Fill.put(meglerFill, "ForegroundTintMode", p0); }
+    public void setFrameContentVelocity(float p0) { meglerFill = megler.Fill.put(meglerFill, "FrameContentVelocity", Float.valueOf(p0)); }
+    public void setHandwritingArea(android.graphics.Rect p0) { meglerFill = megler.Fill.put(meglerFill, "HandwritingArea", p0); }
     public void setHandwritingBoundsOffsets(float p0, float p1, float p2, float p3) {}
-    public void setHandwritingDelegateFlags(int p0) { meglerFill.put("HandwritingDelegateFlags", Integer.valueOf(p0)); }
+    public void setHandwritingDelegateFlags(int p0) { meglerFill = megler.Fill.put(meglerFill, "HandwritingDelegateFlags", Integer.valueOf(p0)); }
     public void setHasTranslationTransientState(boolean p0) {}
-    public void setHorizontalScrollbarTrackDrawable(android.graphics.drawable.Drawable p0) { meglerFill.put("HorizontalScrollbarTrackDrawable", p0); }
+    public void setHorizontalScrollbarTrackDrawable(android.graphics.drawable.Drawable p0) { meglerFill = megler.Fill.put(meglerFill, "HorizontalScrollbarTrackDrawable", p0); }
     public void setIsCredential(boolean p0) {}
     public void setIsHandwritingDelegate(boolean p0) {}
     public void setIsRootNamespace(boolean p0) {}
     public void setNotifyAutofillManagerOnClick(boolean p0) {}
-    public void setOpticalInsets(android.graphics.Insets p0) { meglerFill.put("OpticalInsets", p0); }
+    public void setOpticalInsets(android.graphics.Insets p0) { meglerFill = megler.Fill.put(meglerFill, "OpticalInsets", p0); }
     public void setPendingCredentialRequest(android.credentials.GetCredentialRequest p0, android.os.OutcomeReceiver p1) {}
-    public void setPreferKeepClearRects(java.util.List p0) { meglerFill.put("PreferKeepClearRects", p0); }
+    public void setPreferKeepClearRects(java.util.List p0) { meglerFill = megler.Fill.put(meglerFill, "PreferKeepClearRects", p0); }
     /** The view drawn through its effect: a blur is drawn (drawFromParent), its other kinds are not (android.graphics.RenderEffect, overlaid). */
     public void setRenderEffect(android.graphics.RenderEffect effect) {
         if (effect == mRenderEffect) return;
@@ -1938,19 +2091,19 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         invalidateParent();
         invalidate();
     }
-    public void setRequestedFrameRate(float p0) { meglerFill.put("RequestedFrameRate", Float.valueOf(p0)); }
+    public void setRequestedFrameRate(float p0) { meglerFill = megler.Fill.put(meglerFill, "RequestedFrameRate", Float.valueOf(p0)); }
     public void setRevealClip(boolean p0, float p1, float p2, float p3) {}
-    public void setScrollBarDefaultDelayBeforeFade(int p0) { meglerFill.put("ScrollBarDefaultDelayBeforeFade", Integer.valueOf(p0)); }
-    public void setScrollBarFadeDuration(int p0) { meglerFill.put("ScrollBarFadeDuration", Integer.valueOf(p0)); }
+    public void setScrollBarDefaultDelayBeforeFade(int p0) { meglerFill = megler.Fill.put(meglerFill, "ScrollBarDefaultDelayBeforeFade", Integer.valueOf(p0)); }
+    public void setScrollBarFadeDuration(int p0) { meglerFill = megler.Fill.put(meglerFill, "ScrollBarFadeDuration", Integer.valueOf(p0)); }
     public void setScrollCaptureCallback(android.view.ScrollCaptureCallback p0) {}
     public void setShowingLayoutBounds(boolean p0) {}
-    public void setSupplementalDescription(java.lang.CharSequence p0) { meglerFill.put("SupplementalDescription", p0); }
+    public void setSupplementalDescription(java.lang.CharSequence p0) { meglerFill = megler.Fill.put(meglerFill, "SupplementalDescription", p0); }
     public void setTagInternal(int p0, java.lang.Object p1) {}
     public void setTransitionVisibility(int p0) {}
-    public void setUnrestrictedPreferKeepClearRects(java.util.List p0) { meglerFill.put("UnrestrictedPreferKeepClearRects", p0); }
+    public void setUnrestrictedPreferKeepClearRects(java.util.List p0) { meglerFill = megler.Fill.put(meglerFill, "UnrestrictedPreferKeepClearRects", p0); }
     public void setUsageHint(int p0) {}
-    public void setVerticalScrollbarTrackDrawable(android.graphics.drawable.Drawable p0) { meglerFill.put("VerticalScrollbarTrackDrawable", p0); }
-    public void setViewTranslationCallback(android.view.translation.ViewTranslationCallback p0) { meglerFill.put("ViewTranslationCallback", p0); }
+    public void setVerticalScrollbarTrackDrawable(android.graphics.drawable.Drawable p0) { meglerFill = megler.Fill.put(meglerFill, "VerticalScrollbarTrackDrawable", p0); }
+    public void setViewTranslationCallback(android.view.translation.ViewTranslationCallback p0) { meglerFill = megler.Fill.put(meglerFill, "ViewTranslationCallback", p0); }
     public boolean shouldTrackHandwritingArea() { return false; }
     public android.view.ActionMode startActionMode(android.view.ActionMode.Callback p0) { return null; }
     public android.view.ActionMode startActionMode(android.view.ActionMode.Callback p0, int p1) { return null; }

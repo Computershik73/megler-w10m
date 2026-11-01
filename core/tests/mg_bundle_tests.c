@@ -376,6 +376,76 @@ static void test_app_bundle(const char *java_dir, const char *scratch, const cha
 }
 
 /* The base alone, which says it needs its splits; a damaged bundle; one with no base; one whose native code is for arm64 alone. */
+/* The names of an archive's entries, for copying it whole. */
+typedef struct entry_names {
+    char names[32][96];
+    int n;
+} entry_names;
+
+static void name_seen(const mg_zip_entry *e, void *user)
+{
+    entry_names *w = (entry_names *)user;
+    if (w->n < 32) mg_strlcpy(w->names[w->n++], e->name, sizeof(w->names[0]));
+}
+
+/*
+ * A Flutter app: the natives test app with Flutter's engine and an app's Dart code beside its libraries (libflutter.so,
+ * libapp.so; their bytes do not matter to the report). It is a Java app that the Java driver runs, and the report says it
+ * is built with Flutter. It was taken for an engine of its own, with no driver: "there is no driver for that engine yet".
+ */
+/*
+ * A Java app (the natives test app) with libraries of an engine's added, each a few bytes of an ELF header: its report
+ * says "java", runnable, and carries the engine's note, and `note2` too when it is not NULL.
+ */
+static void test_engine_app(const char *java_dir, const char *scratch, const char *what, const char *const *libs, int nlibs, const char *note,
+                            const char *note2)
+{
+    char *from = mg_sprintf("%s/natives.apk", java_dir), *dir = mg_sprintf("%s/%s", scratch, what), *apk = mg_sprintf("%s/%s.apk", dir, what), *report;
+    static entry_names names;
+    static const u8 elf[] = { 0x7F, 'E', 'L', 'F', 1, 1, 1, 0 };
+    mg_zip src;
+    zip_out z;
+    char err[160];
+    int i, ferr = 0;
+    say("a %s app", what);
+    if (!exists(from) || !mg_zip_open(&src, from, err, sizeof(err))) {
+        say("  (no %s: tools/build-test-app.sh makes it; these checks are left out)", from);
+        goto done;
+    }
+    mg_path_mkdirs(dir);
+    memset(&names, 0, sizeof(names));
+    mg_zip_each(&src, "", name_seen, &names);
+    memset(&z, 0, sizeof(z));
+    z.f = mg_file_open(apk, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &ferr);
+    if (!z.f) {
+        mg_zip_close(&src);
+        CHECK(false);
+        goto done;
+    }
+    for (i = 0; i < names.n; i++) {
+        const mg_zip_entry *e = mg_zip_find(&src, names.names[i]);
+        size_t size = 0;
+        u8 *data = e ? mg_zip_read(&src, e, 64u << 20, &size) : NULL;
+        if (data) zip_add(&z, names.names[i], data, (u32)size);
+        free(data);
+    }
+    for (i = 0; i < nlibs; i++) {
+        char *entry = mg_sprintf("lib/armeabi-v7a/%s", libs[i]);
+        zip_add(&z, entry, elf, sizeof(elf));
+        free(entry);
+    }
+    zip_end(&z);
+    mg_zip_close(&src);
+    report = megler_apk_report(apk);
+    say("  %s", report ? report : "(no report)");
+    CHECK(report && strstr(report, "\"engine\":\"java\"") && strstr(report, "\"runnable\":true") && strstr(report, note) && (!note2 || strstr(report, note2)));
+    megler_free(report);
+done:
+    free(apk);
+    free(dir);
+    free(from);
+}
+
 static void test_odd_bundles(const char *java_dir, const char *scratch)
 {
     char *base = mg_sprintf("%s/splits-base.apk", java_dir), *xapk = mg_sprintf("%s/splits.xapk", java_dir), *dir = mg_sprintf("%s/odd", scratch);
@@ -528,6 +598,11 @@ int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *r
     test_app_bundle(java_dir, scratch, megler_data_dir(), false);
     test_app_bundle(java_dir, scratch, megler_data_dir(), true);
     test_odd_bundles(java_dir, scratch);
+    {
+        static const char *const flutter[] = { "libflutter.so", "libapp.so" }, *const gdx[] = { "libgdx.so", "libgdx-freetype.so", "libdexprotector.so" };
+        test_engine_app(java_dir, scratch, "Flutter", flutter, (int)MG_COUNT(flutter), "Built with Flutter", NULL);
+        test_engine_app(java_dir, scratch, "libGDX", gdx, (int)MG_COUNT(gdx), "Built with libGDX", "Protected by DexProtector");
+    }
     if (real_dir)
         for (i = 0; i < (int)MG_COUNT(real); i++) test_real(real_dir, scratch, &real[i]);
     else

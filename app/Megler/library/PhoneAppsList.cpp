@@ -29,12 +29,13 @@ struct Item {
 };
 
 /// The app's activities in <dir>\<package> (megler_apk_describe_activities), written again only when the APK is another one:
-/// its path, size and version are in source.txt there. False when they could not be read.
+/// its path, size and version are in source.txt there, after the description's form (2: with the APK's certificates; the
+/// descriptions of before have none). False when they could not be read.
 bool describe(const std::wstring& dir, const Item& item) {
     if (item.apk.empty()) return false;
     const std::wstring out = dir + L"\\" + widen(item.package);
-    const std::string source = narrow(item.apk) + "\n" + std::to_string((unsigned long long)files::size(item.apk)) + "\n" +
-                               std::to_string((long long)item.versionCode) + "\n";
+    const std::string source = "description 2\n" + narrow(item.apk) + "\n" + std::to_string((unsigned long long)files::size(item.apk)) +
+                               "\n" + std::to_string((long long)item.versionCode) + "\n";
     std::string had;
     if (files::read(out + L"\\source.txt", had) && had == source && files::exists(out + L"\\activities.json")) return true;
     files::removeTree(out);
@@ -52,6 +53,18 @@ bool describe(const std::wstring& dir, const Item& item) {
 std::wstring folder() {
     const std::wstring shared = appPackage::sharedFolder();
     return shared.empty() ? std::wstring() : shared + L"\\phone-apps";
+}
+
+void installOutcome(const std::string& name, const std::string& what, const std::string& why) {
+    const std::wstring dir = folder();
+    if (dir.empty() || name.empty() || name.find_first_of("\\/:") != std::string::npos) return;
+    files::makeDirectories(dir + L"\\installs");
+    // when it was told, first: the same outcome told again is still news to the session that waits for it
+    const std::string line = std::to_string((unsigned long long)GetTickCount64()) + "\t" + what + "\t" + field(why) + "\n";
+    if (files::write(dir + L"\\installs\\" + widen(name) + L".txt", line))
+        shellLog::write("phone apps: " + name + " " + what + " told to the app that asked for it");
+    else
+        shellLog::write("phone apps: " + name + " " + what + " could not be told to the app that asked for it");
 }
 
 void publish() {

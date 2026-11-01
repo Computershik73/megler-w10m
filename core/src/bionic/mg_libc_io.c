@@ -17,6 +17,7 @@
 #include <stdio.h>
 
 #include "../elf/mg_elf.h"
+#include "../mg_core.h"
 #include "mg_fd.h"
 
 /* --------------------------------------------------------------- the paths
@@ -338,6 +339,18 @@ static bool in_read_only(const char *g)
 char *mg_fs_host_path(const char *guest_path)
 {
     char *g = normalize(guest_path), *h = host_of_normal(g);
+    free(g);
+    return h;
+}
+
+char *mg_fs_app_path_host(const char *path)
+{
+    char *g, *h = NULL;
+    const mount *m;
+    if (!path || path[0] != '/') return NULL;
+    g = normalize(path);
+    m = g ? mount_of(g) : NULL;
+    if (m && m->glen > 1) h = host_of_normal(g);
     free(g);
     return h;
 }
@@ -749,6 +762,35 @@ int mg_fd_open_host(const char *host_path, int host_flags)
     return fd;
 }
 
+/*
+ * A file opened over and over: the first 200 opens of one path within 10 s are said once, with the Java frames of the
+ * thread that opened it last (mg_core_thread_detail), as an app's loop shows itself (Google Play services read its module
+ * configuration and rewrote ChimeraConfigService.xml a hundred times a second, on several threads, in every app). A few
+ * paths at most are said; the table is by a hash of the path, and a collision only starts a count again.
+ */
+static void open_counted(const char *path)
+{
+    enum { SLOTS = 64, TIMES = 200, WINDOW_MS = 10000, SAID_MAX = 6 };
+    static struct { volatile u32 hash, count, from, said; } slots[SLOTS];
+    static volatile i32 said_total;
+    u32 h = 2166136261u, now = (u32)(mg_time_monotonic_ns() / 1000000ull), i;
+    const char *c;
+    char frames[1500];
+    for (c = path; *c; c++) h = (h ^ (u8)*c) * 16777619u;
+    i = h % SLOTS;
+    if (slots[i].hash != h || now - slots[i].from > WINDOW_MS) {
+        slots[i].hash = h;
+        slots[i].from = now;
+        slots[i].count = 1;
+        return;
+    }
+    if (++slots[i].count != TIMES || slots[i].said || mg_atomic_add(&said_total, 1) > SAID_MAX) return;
+    slots[i].said = 1;
+    mg_core_thread_detail(frames, sizeof(frames));
+    mg_warn("open: %s opened %u times in %u ms%s", path, (unsigned)TIMES, (unsigned)(now - slots[i].from),
+            frames[0] ? frames : " (not from Java)");
+}
+
 static int g_open(const char *path, int flags, int mode)
 {
     char *g, *h;
@@ -757,6 +799,7 @@ static int g_open(const char *path, int flags, int mode)
     int fd, err = 0, hf = 0, acc = flags & G_O_ACCMODE;
     (void)mode;
     mg_trace("open(%s, 0x%x)", path ? path : "(null)", (unsigned)flags);
+    if (path && *path) open_counted(path);
     if (!path || !*path) {
         mg_set_errno(GE_NOENT);
         return -1;
@@ -1867,6 +1910,16 @@ static int g_fail_link(const char *a, const char *b)
     mg_set_errno(GE_PERM);
     return -1;
 }
+/*
+ * And their *at forms, which Flutter's engine (dart:io) imports: as this file's other *at calls, the path as it is, its
+ * directory descriptor not looked at. Each was missing, and its first call would have ended in the unresolved stub.
+ */
+static i32 g_readlinkat(int dirfd, const char *path, char *buf, size_t n) { (void)dirfd; return g_readlink(path, buf, n); }
+static int g_symlinkat(const char *target, int dirfd, const char *path) { (void)dirfd; return g_fail_link(target, path); }
+static int g_utimensat(int dirfd, const char *path, const void *times, int flags) { (void)dirfd; (void)flags; return g_utime(path, times); }
+static int g_futimens(int fd, const void *times) { return g_futimes(fd, times); }
+/* (And futimesat, which libcore's natives look up by name: Yandex Maps' log said it was not there.) */
+static int g_futimesat(int dirfd, const char *path, const void *times) { (void)dirfd; return g_utime(path, times); }
 static int g_umask(int mask) { (void)mask; return 022; }
 /* The checked forms a library built with _FORTIFY_SOURCE calls: the same, the buffer's size being the caller's business. */
 static int g_umask_chk(int mask) { return g_umask(mask); }
@@ -2972,7 +3025,9 @@ const mg_sym mg_tab_io[] = {
     IO("sendfile", g_sendfile), IO("sendfile64", g_sendfile64), IO("posix_fallocate64", g_posix_fallocate64), IO("splice", g_io_nosys),
     IO("mkfifo", g_io_perm), IO("mknod", g_io_perm), IO("pathconf", g_pathconf), IO("fpathconf", g_fpathconf),
     IO("getxattr", g_io_notsup), IO("setxattr", g_io_notsup), IO("listxattr", g_io_notsup), IO("removexattr", g_io_notsup),
-    IO("inotify_init", g_io_nosys), IO("inotify_add_watch", g_io_nosys), IO("inotify_rm_watch", g_io_nosys),
+    IO("inotify_init", g_io_nosys), IO("inotify_init1", g_io_nosys), IO("inotify_add_watch", g_io_nosys), IO("inotify_rm_watch", g_io_nosys),
+    /* (close_range is for a child about to exec, and no child is started here.) */
+    IO("close_range", g_io_nosys),
     IO("tcgetattr", g_io_notty), IO("tcsetattr", g_io_notty), IO("tcdrain", g_io_notty), IO("tcsendbreak", g_io_notty),
     IO("readv", g_readv), IO("writev", g_writev), IO("lseek", g_lseek), IO("lseek64", g_lseek64),
     IO("ftruncate", g_ftruncate), IO("ftruncate64", g_ftruncate64), IO("truncate", g_truncate),
@@ -2990,6 +3045,7 @@ const mg_sym mg_tab_io[] = {
     IO("chdir", g_chdir), IO("getcwd", g_getcwd), IO("realpath", g_realpath), IO("readlink", g_readlink),
     IO("chmod", g_ok_path), IO("fchmod", g_fchmod), IO("chown", g_chown), IO("lchown", g_chown), IO("utime", g_utime),
     IO("utimes", g_utime), IO("lutimes", g_utime), IO("futimes", g_futimes), IO("link", g_fail_link), IO("symlink", g_fail_link),
+    IO("readlinkat", g_readlinkat), IO("symlinkat", g_symlinkat), IO("utimensat", g_utimensat), IO("futimens", g_futimens), IO("futimesat", g_futimesat),
     IO("umask", g_umask), IO("flock", g_flock),
     IO("fchown", g_ok_fd),
     IO("opendir", g_opendir), IO("fdopendir", g_fdopendir), IO("readdir", g_readdir), IO("readdir64", g_readdir),

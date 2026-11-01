@@ -25,6 +25,9 @@ void initialize(const std::wstring& localStateDirectory);
 
 /// A line of the shell's own.
 void write(const std::string& line);
+/// The lines not in the file yet written out now (they go every 200 ms, and at
+/// once for a fault's report): before suspending and exiting.
+void flush();
 /// megler_config.log's sink: a line of the core's, from any thread.
 void core(int level, const char* line, void* user);
 

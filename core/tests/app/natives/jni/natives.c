@@ -764,3 +764,24 @@ JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_icuVersion(JNIEnv *env, jcla
     if (!u_strlen || !icu_function(i18n, "ucsdet_open", &w)) return -2;
     return u_strlen(text) == 6 && v == w ? v : -3;
 }
+
+/*
+ * Java called back with 78 arguments, 45 ints and 33 objects, as WhatsApp's native code calls JniBridge.jnidispatch: through
+ * the "..." call and through the jvalue one. Both answers the same, or -1.
+ */
+JNIEXPORT jint JNICALL Java_megler_test_natives_Lib_manyArgs(JNIEnv *env, jclass cls, jobjectArray names)
+{
+    jmethodID m = (*env)->GetStaticMethodID(env, cls, "manyBack", "(IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIILjava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)I");
+    jobject o[33];
+    jvalue v[78];
+    jint a, b;
+    int k;
+    if (!m) return -2;
+    for (k = 0; k < 33; k++) o[k] = (*env)->GetObjectArrayElement(env, names, k);
+    a = (*env)->CallStaticIntMethod(env, cls, m, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+                                    o[0], o[1], o[2], o[3], o[4], o[5], o[6], o[7], o[8], o[9], o[10], o[11], o[12], o[13], o[14], o[15], o[16], o[17], o[18], o[19], o[20], o[21], o[22], o[23], o[24], o[25], o[26], o[27], o[28], o[29], o[30], o[31], o[32]);
+    for (k = 0; k < 45; k++) v[k].i = k + 1;
+    for (k = 0; k < 33; k++) v[45 + k].l = o[k];
+    b = (*env)->CallStaticIntMethodA(env, cls, m, v);
+    return a == b ? a : -1;
+}

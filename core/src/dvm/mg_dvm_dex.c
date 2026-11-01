@@ -69,7 +69,8 @@ static bool table_fits(size_t size, u32 off, u32 count, u32 each)
     return count == 0 || (off >= 0x70 && (u64)off + (u64)count * each <= (u64)size);
 }
 
-mg_dvm_dex *mg_dvm_dex_open(const u8 *b, size_t size, const char *label)
+/* The header and the tables' bounds; the checksum when `check` says so. NULL, with the reason in the log, when wrong. */
+static mg_dvm_dex *dex_header(const u8 *b, size_t size, const char *label, bool check)
 {
     mg_dvm_dex *d;
     u32 file_size;
@@ -90,11 +91,11 @@ mg_dvm_dex *mg_dvm_dex_open(const u8 *b, size_t size, const char *label)
         mg_warn("dvm: %s: the header does not fit the file (%u bytes given, %u in the header)", label, (unsigned)size, (unsigned)file_size);
         return NULL;
     }
-    if (adler32(b + 12, file_size - 12) != mg_dvm_rd32(b + 8)) {
+    if (check && adler32(b + 12, file_size - 12) != mg_dvm_rd32(b + 8)) {
         mg_warn("dvm: %s: the checksum is wrong, the file is damaged", label);
         return NULL;
     }
-    d = (mg_dvm_dex *)mg_dvm_meta_alloc(sizeof(*d));
+    d = (mg_dvm_dex *)mg_dvm_meta_alloc_kind(sizeof(*d), DVM_META_DEX);
     d->b = b;
     d->size = file_size;
     d->nstr = mg_dvm_rd32(b + 0x38);
@@ -116,13 +117,148 @@ mg_dvm_dex *mg_dvm_dex_open(const u8 *b, size_t size, const char *label)
         free(d);
         return NULL;
     }
-    d->tcache = (mg_dvm_class *volatile *)mg_dvm_meta_alloc(sizeof(void *) * (d->ntype + 1));
-    d->mcache = (mg_dvm_method *volatile *)mg_dvm_meta_alloc(sizeof(void *) * (d->nmeth + 1));
-    d->fcache = (mg_dvm_field *volatile *)mg_dvm_meta_alloc(sizeof(void *) * (d->nfield + 1));
-    d->scache = (mg_jobj *volatile *)mg_dvm_meta_alloc(sizeof(void *) * (d->nstr + 1));
-    d->pcache = (const char *volatile *)mg_dvm_meta_alloc(sizeof(void *) * (d->nproto + 1));
+    d->checksum = mg_dvm_rd32(b + 8);
     mg_strlcpy(d->name, label, sizeof(d->name));
     return d;
+}
+
+/* What each index resolved to, filled as code first uses it. */
+static void dex_caches(mg_dvm_dex *d)
+{
+    d->tcache = (mg_dvm_class *volatile *)mg_dvm_meta_alloc_kind(sizeof(void *) * (d->ntype + 1), DVM_META_DEX);
+    d->mcache = (mg_dvm_method *volatile *)mg_dvm_meta_alloc_kind(sizeof(void *) * (d->nmeth + 1), DVM_META_DEX);
+    d->fcache = (mg_dvm_field *volatile *)mg_dvm_meta_alloc_kind(sizeof(void *) * (d->nfield + 1), DVM_META_DEX);
+    d->scache = (mg_jobj *volatile *)mg_dvm_meta_alloc_kind(sizeof(void *) * (d->nstr + 1), DVM_META_DEX);
+    d->pcache = (const char *volatile *)mg_dvm_meta_alloc_kind(sizeof(void *) * (d->nproto + 1), DVM_META_DEX);
+}
+
+mg_dvm_dex *mg_dvm_dex_open(const u8 *b, size_t size, const char *label)
+{
+    mg_dvm_dex *d = dex_header(b, size, label, true);
+    if (d) dex_caches(d);
+    return d;
+}
+
+/*
+ * Every DEX file of an app was viewed whole from the start, its checksum read over all of it, and its caches made: Yandex
+ * Maps' sixteen and Google Play services' fifteen in it were 245 MB of a 32-bit process's 2 GB of addresses, read from the
+ * flash at every start, whether a class of them was used or not (package 494). A file is now registered by its classes'
+ * names (mg_dvm_classes_add_dex copies them), and viewed when the first of its classes is linked.
+ */
+mg_dvm_dex *mg_dvm_dex_open_lazy(const u8 *b, size_t size, const char *label, const char *map_path, u64 map_at)
+{
+    mg_dvm_dex *d;
+    if (!map_path) return NULL;
+    d = dex_header(b, size, label, false);
+    if (!d) return NULL;
+    d->b = b;
+    d->lazy = true;
+    d->map_path = mg_strdup(map_path);
+    d->map_at = map_at;
+    d->map_size = size;
+    return d;
+}
+
+char *mg_dvm_dex_names(const u8 *b, size_t size, size_t *pool_size)
+{
+    mg_dvm_dex *d = dex_header(b, size, "a DEX file", false);
+    char *buf, *pool = NULL;
+    size_t cap, at = 0;
+    u32 i;
+    *pool_size = 0;
+    if (!d) return NULL;
+    cap = (size_t)d->ncls * 48 + 16;
+    buf = (char *)malloc(cap);
+    for (i = 0; buf && i < d->ncls; i++) {
+        const char *desc = mg_dvm_dex_type(d, mg_dvm_rd32(b + d->cls_off + 32 * i));
+        size_t n = strlen(desc) + 1;
+        if (at + n > cap) {
+            char *grown = (char *)realloc(buf, (at + n) * 2);
+            if (!grown) {
+                free(buf);
+                buf = NULL;
+                break;
+            }
+            buf = grown;
+            cap = (at + n) * 2;
+        }
+        memcpy(buf + at, desc, n);
+        at += n;
+    }
+    if (buf) {
+        *pool_size = at ? at : 1;
+        pool = (char *)mg_dvm_meta_alloc_kind(*pool_size, DVM_META_POOL);
+        if (at) memcpy(pool, buf, at);
+        else pool[0] = 0;
+    }
+    free(buf);
+    mg_dvm_meta_free_kind(d, sizeof(*d), DVM_META_DEX);
+    return pool;
+}
+
+/* Another of the runtime's DEX files that is the same bytes of the same file: viewed already, when `viewed` says so. */
+static mg_dvm_dex *same_file(const char *map_path, u64 map_at, size_t size, const mg_dvm_dex *not_this, bool viewed)
+{
+    mg_dvm_dex *o;
+    u32 i;
+    for (i = 0; (o = mg_dvm_dex_at(i)) != NULL; i++)
+        if (o != not_this && o->map_path && o->map_at == map_at && o->map_size == size && !strcmp(o->map_path, map_path) && (!viewed || (!o->lazy && o->b)))
+            return o;
+    return NULL;
+}
+
+bool mg_dvm_dex_known(const char *map_path, u64 map_at, size_t size) { return map_path && same_file(map_path, map_at, size, NULL, false) != NULL; }
+
+mg_dvm_dex *mg_dvm_dex_twin(const mg_dvm_dex *d)
+{
+    mg_dvm_dex *o;
+    if (!d->lazy || !d->map_path) return NULL;
+    o = same_file(d->map_path, d->map_at, d->map_size, d, false);
+    if (!o || o->checksum != d->checksum || o->size != d->size || o->ncls != d->ncls || o->cls_off != d->cls_off || o->own) return NULL;
+    return o->names || (!o->lazy && o->b) ? o : NULL;
+}
+
+bool mg_dvm_dex_ready(mg_dvm_dex *d)
+{
+    mg_file *f;
+    void *base = NULL;
+    size_t mapped = 0;
+    const u8 *b = NULL;
+    mg_dvm_dex *other;
+    int err = 0;
+    if (!d->lazy) return true;
+    if (d->lazy_failed) return false;
+    /*
+     * The same file viewed for another scope (a service's or a process's over the app's own APK): its view serves, as the
+     * bytes read for the app's own served such a scope before the files were viewed when needed.
+     */
+    other = same_file(d->map_path, d->map_at, d->map_size, d, true);
+    if (other && other->checksum == d->checksum && other->size == d->size) {
+        dex_caches(d);
+        d->b = other->b;
+        d->lazy = false;
+        mg_dvm_classes_viewed(d);
+        return true;
+    }
+    f = mg_file_open(d->map_path, MG_O_READ, &err);
+    if (f) {
+        b = (const u8 *)mg_file_map(f, d->map_at, d->map_size, &base, &mapped);
+        mg_file_close(f);
+    }
+    /* The same file as when its classes were registered, and whole. */
+    if (!b || ((mg_addr)b & 3) || mg_dvm_rd32(b + 32) != d->size || mg_dvm_rd32(b + 8) != d->checksum || adler32(b + 12, d->size - 12) != d->checksum) {
+        mg_warn("dvm: %s: %s, and none of its classes can be had", d->name, b ? "it is not the file its classes were found in, or it is damaged" : "it cannot be viewed again");
+        if (base) mg_section_unmap(base, mapped);
+        d->lazy_failed = true;
+        return false;
+    }
+    dex_caches(d);
+    d->b = b;
+    d->lazy = false;
+    mg_dvm_classes_viewed(d);
+    mg_dvm_dex_viewed(mapped);
+    mg_dbg("dvm: %s is viewed now, for the first of its classes", d->name);
+    return true;
 }
 
 const char *mg_dvm_dex_string(const mg_dvm_dex *d, u32 idx, u32 *len16)
@@ -169,7 +305,7 @@ const char *mg_dvm_dex_proto_sig(mg_dvm_dex *d, u32 proto)
     /* A Kotlin constructor's signature runs to thousands of characters: measure, then build. */
     len = 2 + strlen(ret);
     for (i = 0; i < count; i++) len += strlen(mg_dvm_dex_type(d, mg_dvm_rd16(d->b + params + 4 + 2 * i)));
-    text = (char *)mg_dvm_meta_alloc(len + 1);
+    text = (char *)mg_alloc(len + 1);
     text[k++] = '(';
     for (i = 0; i < count; i++) {
         const char *t = mg_dvm_dex_type(d, mg_dvm_rd16(d->b + params + 4 + 2 * i));
@@ -239,11 +375,50 @@ int mg_dvm_dex_line(const mg_dvm_method *m, u32 pc)
     return best;
 }
 
-void *mg_dvm_meta_alloc(size_t size)
+/*
+ * Names -- of classes, methods, fields, signatures, each interned once (mg_dvm_intern) -- are many and small and kept for good:
+ * laid end to end in blocks of 256 KB, without the heap's header and rounding of each, and counted by the block. Over an app
+ * like avito they were some 35 MB, a million of them.
+ */
+#define NAME_BLOCK ((size_t)256 << 10)
+static mg_lock g_name_lock = MG_LOCK_INIT;
+static u8 *g_name_at, *g_name_end;
+
+static void *name_alloc(size_t size)
 {
-    mg_atomic_add(&g_dvm.meta_units, (i32)((size + 15) >> 4));
+    u8 *p;
+    size = (size + sizeof(void *) - 1) & ~(sizeof(void *) - 1);
+    mg_lock_acquire(&g_name_lock);
+    if (!g_name_at || (size_t)(g_name_end - g_name_at) < size) {
+        g_name_at = (u8 *)mg_alloc(NAME_BLOCK);
+        g_name_end = g_name_at + NAME_BLOCK;
+        mg_atomic_add(&g_dvm.meta_units, (i32)(NAME_BLOCK >> 4));
+        mg_atomic_add(&g_dvm.meta_kind_units[DVM_META_NAME], (i32)(NAME_BLOCK >> 4));
+    }
+    p = g_name_at;
+    g_name_at += size;
+    mg_lock_release(&g_name_lock);
+    return p;
+}
+
+void mg_dvm_meta_free_kind(void *p, size_t size, int kind)
+{
+    i32 units = (i32)((size + 15) >> 4);
+    mg_atomic_add(&g_dvm.meta_units, -units);
+    mg_atomic_add(&g_dvm.meta_kind_units[kind & 7], -units);
+    free(p);
+}
+
+void *mg_dvm_meta_alloc_kind(size_t size, int kind)
+{
+    i32 units = (i32)((size + 15) >> 4);
+    if (kind == DVM_META_NAME && size <= 1024) return name_alloc(size);
+    mg_atomic_add(&g_dvm.meta_units, units);
+    mg_atomic_add(&g_dvm.meta_kind_units[kind & 7], units);
     return mg_alloc(size);
 }
+
+void *mg_dvm_meta_alloc(size_t size) { return mg_dvm_meta_alloc_kind(size, DVM_META_OTHER); }
 
 bool mg_dvm_method_annotated(const mg_dvm_method *m, const char *descriptor)
 {

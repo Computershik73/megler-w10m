@@ -13,7 +13,10 @@
  */
 #include <stdio.h>
 
+#include "../src/arm/mg_stubs.h"
+#include "../src/bionic/mg_bionic.h"
 #include "../src/dvm/mg_dvm_internal.h"
+#include "../src/jni/mg_jni.h"
 #include "../src/ld/mg_ld.h"
 #include "mg_dvm_tests.h"
 
@@ -222,9 +225,11 @@ static void test_env(void)
         if (sizeof(mg_addr) == 4) {
             /* The table is the guest's, of 32-bit words: it can only be made here where a pointer is one. */
             CHECK_INT(J(215, i32 (*)(ENV, mg_jobj *, const void *, i32))(E, find("t/Natives"), table, 2), 0);
-            CHECK(bound && bound->jni == (void *)(mg_addr)0x1234);
-            bound->jni = NULL;
-            bound->bound = false;
+            CHECK(bound && bound->nat && bound->nat->jni == (void *)(mg_addr)0x1234);
+            if (bound && bound->nat) {
+                bound->nat->jni = NULL;
+                bound->nat->bound = false;
+            }
         }
         CHECK(bound != NULL && !check());
     }
@@ -260,6 +265,33 @@ static void test_env(void)
 }
 
 #if MG_HOST_ARM32
+/*
+ * A native call under a guard (mg_jni_call_native_guarded, as the runtime calls the native methods of code Android runs in a
+ * process of its own): guest code that faults beyond repair -- the stubs' udf, an undefined instruction -- ends the call,
+ * which says it faulted, and the thread goes on: its guard is cleared, and the calls after it, guarded or not, are made.
+ */
+static void test_guarded_call(void)
+{
+    void *udf = mg_stub(MG_STUB_UDF), *read_tp = mg_stub(MG_STUB_READ_TPIDRURW);
+    bool faulted = true;
+    mg_jvalue v;
+    int i;
+    say("a guarded native call: a fault in it ends the call, not the process");
+    CHECK(udf != NULL && read_tp != NULL);
+    if (!udf || !read_tp) return;
+    v = mg_jni_call_native_guarded(read_tp, NULL, "()I", NULL, &faulted);
+    CHECK(!faulted);
+    for (i = 0; i < 3; i++) {
+        faulted = false;
+        v = mg_jni_call_native_guarded(udf, NULL, "()I", NULL, &faulted);
+        CHECK(faulted && v.j == 0);
+        CHECK(mg_gthread_self()->fault_guard == NULL);
+    }
+    v = mg_jni_call_native_guarded(read_tp, NULL, "()I", NULL, &faulted);
+    CHECK(!faulted);
+    (void)mg_jni_call_native(read_tp, NULL, "()I", NULL);
+}
+
 static void test_guest_natives(const char *guest_dir)
 {
     mg_lib *lib;
@@ -374,6 +406,7 @@ void test_jni(const char *guest_dir, const char *fixtures)
     test_env();
     if (fixtures) test_scoped_throw(fixtures);
 #if MG_HOST_ARM32
+    test_guarded_call();
     if (guest_dir) test_guest_natives(guest_dir);
     else say("(no guest libraries were named: native methods in a guest library are not tested)");
 #else

@@ -22,9 +22,11 @@
 //    process of its own; Windows 10 Mobile lets an app start no process. With false the WebView adds no
 //    --webview-sandboxed-renderer switch and its library runs the renderer on threads of the app's process
 //    (AwMainDelegate's --single-process), as WebView did before Android 8. Its GPU work is in-process in any case.
-//  - drawWebViewFunctor and the GL functor calls refuse, as AOSP's do for a canvas that is not a RecordingCanvas: no canvas
-//    here is hardware-accelerated, and the WebView draws in software (AwContents.onDraw with isHardwareAccelerated false:
-//    the page into a bitmap that is drawn into the view's canvas).
+//  - drawWebViewFunctor draws the functor at once, on the WebView's render thread, and records the shell's picture of it
+//    (WebView.meglerDrawFunctor, drivers/mg_java_webview.c): a WebView's canvas says it is hardware-accelerated only where
+//    the platform's draw functor is there (megler.WebFunctors.on). On any other canvas it refuses, as AOSP's does for one
+//    that is not a RecordingCanvas. The GL functor calls (Android 9's and before) refuse: Chromium makes no GL functor
+//    where it has the draw functor's table.
 //  - addWebViewAssetPath adds the WebView APK to the app's AssetManager as a shared library (AssetManager's overlay), where
 //    AOSP's goes through LoadedApk and ResourcesManager, which this framework does not have.
 //  - tracing is never on (no atrace here).
@@ -114,7 +116,8 @@ public final class WebViewDelegate {
      * @param functor created by AwDrawFn_CreateFunctor in draw_fn.h.
      */
     public void drawWebViewFunctor(Canvas canvas, int functor) {
-        // Megler: as AOSP's for a canvas that is not a RecordingCanvas, which no canvas is here (see the top).
+        // Megler: drawn at once, the shell's picture of it recorded (see the top).
+        if (WebView.meglerDrawFunctor(canvas, functor)) return;
         throw new IllegalArgumentException(canvas.getClass().getName()
                 + " is not a RecordingCanvas canvas");
     }

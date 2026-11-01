@@ -12,6 +12,14 @@
 // filters; every launcher entry of an app, an alias's too; and those an intent names their package for, or asks for with
 // ACTION_CREATE_SHORTCUT. An intent with no package that any app could take (a link) is not given them: it goes where it
 // went before, to Windows. An app the shell has not described has its launcher activity alone, as before.
+//
+// Their signatures are the certificates of their APKs, from the same description (getPackageInfo with GET_SIGNATURES or
+// GET_SIGNING_CERTIFICATES); a PackageInfo's are otherwise the running app's own, and Google Play, which compares an app's
+// with its record, took every app it had installed for one "installed but certificate mismatch": not installed from it.
+// Each has a uid of its own, from its package name (the first one listed had the running app's, 10100). And the app is
+// told as Android tells it when the list changes (an app installed, updated or removed in Megler): ACTION_PACKAGE_ADDED,
+// ACTION_PACKAGE_REPLACED, ACTION_PACKAGE_REMOVED and ACTION_PACKAGE_FULLY_REMOVED, the list being read again every three
+// seconds once the app has asked for it; Google Play went on showing a removed app as installed.
 package megler;
 
 import android.content.ComponentName;
@@ -93,23 +101,85 @@ public final class PhoneApps {
     public static synchronized java.util.List<App> all() {
         long now = android.os.SystemClock.uptimeMillis();
         if (sReadAt >= 0 && now - sReadAt < 2000) return sApps;
+        boolean first = sReadAt < 0;
         sReadAt = now;
         String text = Native.appsList();
         java.util.ArrayList<App> apps = new java.util.ArrayList<>();
         if (text != null) {
             String own = Native.packageName();
-            int uid = 10100;
             for (String line : text.split("\n")) {
                 String[] f = line.replace("\r", "").split("\t", -1);
                 if (f.length < 5 || f[0].isEmpty() || f[0].equals(own)) continue;
                 long code = 0;
                 try { code = Long.parseLong(f[4]); } catch (NumberFormatException e) {}
-                apps.add(new App(f[0], f[1].isEmpty() ? null : f[1], f[2].isEmpty() ? f[0] : f[2], f[3], code, uid++));
+                apps.add(new App(f[0], f[1].isEmpty() ? null : f[1], f[2].isEmpty() ? f[0] : f[2], f[3], code, uidOf(f[0])));
             }
         }
         if (apps.size() != sApps.size()) android.util.Log.i("Megler", "phone apps: " + apps.size() + " besides this one");
+        if (first) watch();
+        else tellChanges(sApps, apps);
         sApps = apps;
         return apps;
+    }
+
+    /* A uid of the app's own, the same at each start: 10200 and up (the running app's is 10100). */
+    private static int uidOf(String packageName) {
+        return 10200 + (packageName.hashCode() & 0x7fffffff) % 9000;
+    }
+
+    /* The list read again every three seconds from now, so that what changes in it is told (all, tellChanges). */
+    private static void watch() {
+        Thread t = new Thread(() -> {
+            for (;;) {
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e) {
+                    return;
+                }
+                all();
+            }
+        }, "Megler phone apps");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /* The broadcasts Android sends when packages come, go and are updated, for what is between `before` and `now`. */
+    private static void tellChanges(java.util.List<App> before, java.util.List<App> now) {
+        java.util.HashMap<String, App> had = new java.util.HashMap<>();
+        for (App a : before) had.put(a.packageName, a);
+        java.util.ArrayList<Intent> told = new java.util.ArrayList<>();
+        for (App a : now) {
+            App b = had.remove(a.packageName);
+            if (b == null) {
+                told.add(packageIntent(Intent.ACTION_PACKAGE_ADDED, a, false));
+            } else if (b.versionCode != a.versionCode) {
+                told.add(packageIntent(Intent.ACTION_PACKAGE_REMOVED, b, true));
+                told.add(packageIntent(Intent.ACTION_PACKAGE_ADDED, a, true));
+                told.add(packageIntent(Intent.ACTION_PACKAGE_REPLACED, a, true));
+            }
+        }
+        for (App b : had.values()) {
+            Intent i = packageIntent(Intent.ACTION_PACKAGE_REMOVED, b, false);
+            i.putExtra(Intent.EXTRA_DATA_REMOVED, true);
+            told.add(i);
+            told.add(packageIntent(Intent.ACTION_PACKAGE_FULLY_REMOVED, b, false));
+        }
+        if (told.isEmpty()) return;
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            android.content.Context app = AppRunner.application();
+            if (app == null) return;
+            for (Intent i : told) {
+                android.util.Log.i("Megler", "phone apps: " + i.getAction() + " " + i.getData().getSchemeSpecificPart());
+                app.sendBroadcast(i);
+            }
+        });
+    }
+
+    private static Intent packageIntent(String action, App a, boolean replacing) {
+        Intent i = new Intent(action, android.net.Uri.fromParts("package", a.packageName, null));
+        i.putExtra(Intent.EXTRA_UID, a.uid);
+        i.putExtra(Intent.EXTRA_REPLACING, replacing);
+        return i;
     }
 
     public static App find(String packageName) {
@@ -121,14 +191,32 @@ public final class PhoneApps {
     /** The app's activities as the shell described them, or null when it has not. */
     @SuppressWarnings("unchecked")
     public static java.util.List<Activity> activities(App a) {
+        return (java.util.List<Activity>) described(a)[1];
+    }
+
+    /** The app's signatures, its APK's certificates as the shell described them; null when it has not. */
+    public static android.content.pm.Signature[] signatures(App a) {
+        android.content.pm.Signature[] s = (android.content.pm.Signature[]) described(a)[2];
+        return s != null ? s.clone() : null;
+    }
+
+    /* What the shell described of the app, read again for another version: { version, activities, signatures }. */
+    private static Object[] described(App a) {
         synchronized (sActivities) {
             Object[] had = sActivities.get(a.packageName);
-            if (had != null && (Long) had[0] == a.versionCode) return (java.util.List<Activity>) had[1];
+            if (had != null && (Long) had[0] == a.versionCode) return had;
             java.util.List<Activity> list = null;
+            android.content.pm.Signature[] sigs = null;
             byte[] json = Native.appActivities(a.packageName);
             if (json != null) {
                 try {
-                    org.json.JSONArray acts = new org.json.JSONObject(new String(json, java.nio.charset.StandardCharsets.UTF_8)).getJSONArray("activities");
+                    org.json.JSONObject d = new org.json.JSONObject(new String(json, java.nio.charset.StandardCharsets.UTF_8));
+                    org.json.JSONArray certs = d.optJSONArray("certificates");
+                    if (certs != null && certs.length() > 0) {
+                        sigs = new android.content.pm.Signature[certs.length()];
+                        for (int k = 0; k < certs.length(); k++) sigs[k] = new android.content.pm.Signature(certs.getString(k));
+                    }
+                    org.json.JSONArray acts = d.getJSONArray("activities");
                     list = new java.util.ArrayList<>();
                     for (int k = 0; k < acts.length(); k++) {
                         org.json.JSONObject o = acts.getJSONObject(k);
@@ -141,13 +229,14 @@ public final class PhoneApps {
                         list.add(new Activity(o.getString("name"), o.has("target") ? o.getString("target") : null, o.has("label") ? o.getString("label") : null,
                                               (int) o.optLong("icon", 0), o.optBoolean("enabled", true), o.optBoolean("exported", false), filters));
                     }
-                } catch (org.json.JSONException e) {
+                } catch (RuntimeException | org.json.JSONException e) {
                     android.util.Log.w("Megler", "phone apps: the activities of " + a.packageName + " cannot be read: " + e);
                     list = null;
                 }
             }
-            sActivities.put(a.packageName, new Object[] { a.versionCode, list });
-            return list;
+            Object[] d = new Object[] { a.versionCode, list, sigs };
+            sActivities.put(a.packageName, d);
+            return d;
         }
     }
 
@@ -286,6 +375,16 @@ public final class PhoneApps {
         p.versionName = a.versionName;
         p.versionCode = (int) a.versionCode;
         p.applicationInfo = applicationInfo(a);
+        // Its own signatures, not the running app's (a PackageInfo's), and those only when asked for, as on Android; an app
+        // the shell has not described has an empty one.
+        p.signatures = null;
+        p.signingInfo = null;
+        if ((flags & (android.content.pm.PackageManager.GET_SIGNATURES | android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)) != 0) {
+            android.content.pm.Signature[] s = signatures(a);
+            if (s == null) s = new android.content.pm.Signature[] { new android.content.pm.Signature("") };
+            if ((flags & android.content.pm.PackageManager.GET_SIGNATURES) != 0) p.signatures = s;
+            if ((flags & android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES) != 0) p.signingInfo = new android.content.pm.SigningInfo(s);
+        }
         if ((flags & android.content.pm.PackageManager.GET_ACTIVITIES) != 0) {
             java.util.List<Activity> acts = activities(a);
             if (acts != null) {

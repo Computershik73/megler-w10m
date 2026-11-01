@@ -36,6 +36,9 @@
 #   framework/megler-framework.dex
 #                           the Java framework an app with an Activity runs
 #                           on, where tools/build-framework.sh has built it
+#   framework/megler-stubs.txt
+#                           its methods that are signatures alone, whose
+#                           first calls the runtime says (tools/list-stubs.py)
 #   framework/framework-res.apk
 #                           the platform's own resources, Android 9's: the
 #                           themes, layouts and pictures an app names as
@@ -200,6 +203,8 @@ done
 FW="no Java framework"
 if [ -f "$ROOT/build/framework/megler-framework.dex" ]; then
   cp -u "$ROOT/build/framework/megler-framework.dex" "$OUT/framework/"
+  # And the list of its methods that are signatures alone (tools/list-stubs.py), whose first calls the runtime says.
+  [ ! -f "$ROOT/build/framework/megler-stubs.txt" ] || cp -u "$ROOT/build/framework/megler-stubs.txt" "$OUT/framework/"
   FW="the Java framework"
 fi
 echo "${OUT#$ROOT/}: $(size "$OUT") KB in all: framework $(size "$OUT/framework") KB ($FW, $RES_SAID), lib $(size "$OUT/lib") KB ($LIBS libraries and $SYSLIBS of the system's named), $CERTS certificates, $FONTS fonts, usr $(size "$OUT/usr") KB, $WEBVIEW"

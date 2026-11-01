@@ -7,9 +7,14 @@ public final class Native {
     public static native byte[] readAsset(String path);
     public static native String[] listAssets(String dir);
     public static native long assetFd(String path);          // fd << 40 | offset; -1 when compressed or missing
+    public static native long[] assetDeflated(String path);  // { fd, offset, deflated size } of an asset the APK deflates; null otherwise
+    /** The oldest of the phone's text messages and calls the app has not taken, as a String[1] (megler.Phone reads it), or null. */
+    public static native String[] pollPhone();
     public static native long assetLength(String path);
     /** A file in one of the APKs: 0 the app's, 1 the platform's resources (framework-res), 2.. the app's split APKs. */
     public static native byte[] readApkFile(int apk, String path);
+    /** The APK's resources.arsc cut down to the resources of no language and of these languages; whole if it cannot be. */
+    public static native byte[] readApkResourceTable(int apk, String[] languages);
     public static native long apkFileFd(int apk, String path);
     public static native long apkFileLength(int apk, String path);
     public static native String apkPath();

@@ -17,6 +17,10 @@
 // Consumed insets end the dispatch now (WindowInsets, overlaid), and a child that consumed them no longer kept them from the
 // children after it.
 //
+// And, with the flag trace-touch (a file of that name in the data folder's flags), a pointer going down says in the log, for
+// each group it reaches, the point in the group, each child it is under and whether that child took it, or that none did:
+// where a tap that does nothing stops.
+//
 // Everything else is the original's, unchanged.
 package android.view;
 
@@ -171,6 +175,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         mChildren[index] = child;
         mChildrenCount++;
         child.mParent = this;
+        meglerListInvalid();
         if (child.hasFocus()) requestChildFocus(child, child.findFocus());
         if (mRoot != null) {
             child.dispatchAttachedToWindow(mRoot, getVisibility());
@@ -189,6 +194,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         System.arraycopy(mChildren, index, mChildren, index + 1, mChildrenCount - index);
         mChildren[index] = child; mChildrenCount++;
         child.mParent = this;
+        meglerListInvalid();
         /* a child detached from its parent stays attached to the window; one that never was joins it now, so the tree stays consistent */
         if (mRoot != null && !child.isAttachedToWindow()) child.dispatchAttachedToWindow(mRoot, getVisibility());
     }
@@ -199,6 +205,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     private void removeFromArray(int index) {
         System.arraycopy(mChildren, index + 1, mChildren, index, mChildrenCount - index - 1);
         mChildren[--mChildrenCount] = null;
+        meglerListInvalid();
     }
     public void removeView(View v) { int i = indexOfChild(v); if (i >= 0) { removeViewInternal(i); requestLayout(); invalidate(); } }
     public void removeViewInLayout(View v) { int i = indexOfChild(v); if (i >= 0) removeViewInternal(i); }
@@ -246,7 +253,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     protected LayoutParams generateLayoutParams(LayoutParams p) { return p; }
     protected LayoutParams generateDefaultLayoutParams() { return new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT); }
     public void bringChildToFront(View child) { int i = indexOfChild(child); if (i >= 0) { removeFromArray(i); addInArray(child, mChildrenCount); requestLayout(); invalidate(); } }
-    private void addInArray(View child, int index) { if (mChildrenCount == mChildren.length) mChildren = java.util.Arrays.copyOf(mChildren, mChildrenCount * 2 + 4); System.arraycopy(mChildren, index, mChildren, index + 1, mChildrenCount - index); mChildren[index] = child; mChildrenCount++; }
+    private void addInArray(View child, int index) { if (mChildrenCount == mChildren.length) mChildren = java.util.Arrays.copyOf(mChildren, mChildrenCount * 2 + 4); System.arraycopy(mChildren, index, mChildren, index + 1, mChildrenCount - index); mChildren[index] = child; mChildrenCount++; meglerListInvalid(); }
     public void setLayoutTransition(android.animation.LayoutTransition t) { mTransition = t; }
     public android.animation.LayoutTransition getLayoutTransition() { return mTransition; }
     public void setLayoutAnimation(LayoutAnimationController c) { mLayoutAnimation = c; }
@@ -400,6 +407,19 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     public boolean onRequestSendAccessibilityEvent(View child, android.view.accessibility.AccessibilityEvent e) { return true; }
     public CharSequence getAccessibilityClassName() { return ViewGroup.class.getName(); }
     public void setClipChildren(boolean c) { mClipChildren = c; invalidate(); }
+    /*
+     * A descendant's drawing changed though it invalidated nothing: Compose's graphics layers change their properties -- an
+     * alpha, a translation, a scale -- and tell the view's parent so (RenderNodeLayer.triggerRepaint). A layer drawn as a
+     * RenderNode of its own (the view hardware accelerated) is drawn with its properties as they are; one Compose drew on a
+     * canvas that is not (a bitmap's, or with the flag no-view-lists) has them in the view's list. The view's list is
+     * recorded again either way: little for Compose, whose layers it draws by reference. The original's ViewParent did
+     * nothing, and what Compose faded in, moved or scrolled stayed on the screen as it had been: Spotify's screens stayed
+     * empty or drawn in part (packages 544 and 545, where only the place on the screen was drawn again).
+     */
+    @Override public void onDescendantInvalidated(View child, View target) {
+        View v = target != null ? target : child;
+        if (v != null) v.invalidate();
+    }
     public boolean getClipChildren() { return mClipChildren; }
     public void setClipToPadding(boolean c) { mClipToPadding = c; invalidate(); }
     public boolean getClipToPadding() { return mClipToPadding; }
@@ -495,6 +515,18 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         if (!child.hasIdentityMatrix()) c.transform(child.inverseMatrix());
         return c;
     }
+    /* The flag trace-touch, read once. */
+    private static Boolean sTraceTouch;
+    private static boolean traceTouch() {
+        if (sTraceTouch == null) sTraceTouch = megler.Native.flag("trace-touch");
+        return sTraceTouch;
+    }
+    private static String touchName(View v) {
+        String n = v.getClass().getName();
+        int id = v.getId();
+        return n.substring(n.lastIndexOf('.') + 1) + (id != NO_ID ? "#" + Integer.toHexString(id) : "") + (v.isClickable() ? " clickable" : "")
+            + (v.isEnabled() ? "" : " disabled");
+    }
     private boolean dispatchToChild(MotionEvent e, View child, boolean cancel, int idBits) {
         MotionEvent t = idBits != -1 && mMotionSplit ? e.split(idBits) : MotionEvent.obtain(e);
         if (cancel) t.setAction(MotionEvent.ACTION_CANCEL);
@@ -534,7 +566,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                 if (!isTransformedTouchPointInView(x, y, c, null)) continue;
                 int bits = bitsOf(c) | (1 << id);
                 if (dispatchToChild(e, c, false, mMotionSplit ? bits : -1)) { target = c; }
+                if (traceTouch()) android.util.Log.d("Touch", touchName(this) + " at " + (int) x + "," + (int) y + ": " + touchName(c) + " "
+                    + c.getLeft() + "," + c.getTop() + " " + c.getWidth() + "x" + c.getHeight() + (target == c ? " took it" : " did not"));
             }
+            if (target == null && traceTouch()) android.util.Log.d("Touch", touchName(this) + " at " + (int) x + "," + (int) y + ": no child took it");
             if (target != null) {
                 if (id < 16) mTouchTarget[id] = target;
                 mTouchTargetBits |= 1 << id;
@@ -622,7 +657,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         return (ViewGroupOverlay) mOverlay;
     }
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+    private java.util.HashMap<String, Object> meglerFill; /* made at the first set (megler.Fill) */
     protected static final int FLAG_DISALLOW_INTERCEPT = 524288;
     public static int LAYOUT_MODE_DEFAULT;
     protected java.util.ArrayList mDisappearingChildren;
@@ -676,7 +711,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     protected void internalSetPadding(int p0, int p1, int p2, int p3) {}
     public boolean isAlwaysDrawnWithCacheEnabled() { return false; }
     public boolean isAnimationCacheEnabled() { return false; }
-    protected boolean isChildrenDrawnWithCacheEnabled() { return (meglerFill.get("ChildrenDrawnWithCacheEnabled") instanceof Boolean ? (Boolean) meglerFill.get("ChildrenDrawnWithCacheEnabled") : false); }
+    protected boolean isChildrenDrawnWithCacheEnabled() { return (megler.Fill.get(meglerFill, "ChildrenDrawnWithCacheEnabled") instanceof Boolean ? (Boolean) megler.Fill.get(meglerFill, "ChildrenDrawnWithCacheEnabled") : false); }
     public boolean isShowingContextMenuWithCoords() { return false; }
     public void makeFrameworkOptionalFitsSystemWindows() {}
     @Override public void makeOptionalFitsSystemWindows() { super.makeOptionalFitsSystemWindows(); for (int i = 0; i < mChildrenCount; i++) mChildren[i].makeOptionalFitsSystemWindows(); }
@@ -704,7 +739,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     public boolean resolveTextDirection() { return false; }
     public boolean restoreFocusInCluster(int p0) { return false; }
     public boolean restoreFocusNotInCluster() { return false; }
-    protected void setChildrenDrawnWithCacheEnabled(boolean p0) { meglerFill.put("ChildrenDrawnWithCacheEnabled", Boolean.valueOf(p0)); }
+    protected void setChildrenDrawnWithCacheEnabled(boolean p0) { meglerFill = megler.Fill.put(meglerFill, "ChildrenDrawnWithCacheEnabled", Boolean.valueOf(p0)); }
     public void setRequestedFrameRate(float p0) {}
     public void subtractObscuredTouchableRegion(android.graphics.Region p0, android.view.View p1) {}
     public void transformPointToViewLocal(float[] p0, android.view.View p1) {}

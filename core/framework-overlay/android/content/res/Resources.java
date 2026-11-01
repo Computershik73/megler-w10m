@@ -104,10 +104,37 @@ public class Resources {
         if (c != null) mConfig.updateFrom(c);
         updateCfg();
         loadTables();
-        if (a.meglerPackageApk() != 0) {
-            byte[] data = megler.Native.readApkFile(a.meglerPackageApk(), "resources.arsc");
-            mPackageTable = new ResTable(data == null ? emptyTable() : data);
+        if (a.meglerPackageApk() != 0) mPackageTable = packageTable(a.meglerPackageApk());
+    }
+    /*
+     * Another package's table (Google Play services', its framework's: megler.MicroG, megler.Gsf), read once for each of
+     * the APKs, and only with the resources of no language, English and the phone's languages. It was read whole for every
+     * Resources made of it, and Google Play services 26's is 84 MB, 58 MB of it the strings of 75 languages: in the Java
+     * heap of every app it runs in, and of its 2 GB of addresses, which Yandex Maps ran out of (package 489).
+     */
+    private static final java.util.HashMap<Integer, ResTable> sPackageTables = new java.util.HashMap<>();
+    private static ResTable packageTable(int apk) {
+        synchronized (sLock) {
+            ResTable t = sPackageTables.get(apk);
+            if (t == null) {
+                byte[] data = megler.Native.readApkResourceTable(apk, tableLanguages());
+                t = new ResTable(data == null ? emptyTable() : data);
+                sPackageTables.put(apk, t);
+            }
+            return t;
         }
+    }
+    /** English and the phone's languages, by the codes resource tables use. */
+    private static String[] tableLanguages() {
+        java.util.LinkedHashSet<String> l = new java.util.LinkedHashSet<>();
+        try {
+            android.os.LocaleList list = android.os.LocaleList.getDefault();
+            for (int i = 0; i < list.size(); i++) l.add(list.get(i).getLanguage());
+        } catch (Throwable t) {}
+        l.add(java.util.Locale.getDefault().getLanguage());
+        l.add("en");
+        l.remove("");
+        return l.toArray(new String[0]);
     }
     private void updateCfg() {
         String lang = mConfig.locale != null ? mConfig.locale.getLanguage() : "en", country = mConfig.locale != null ? mConfig.locale.getCountry() : "US";

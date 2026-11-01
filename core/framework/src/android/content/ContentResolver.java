@@ -30,6 +30,9 @@ public class ContentResolver {
         if (p != null) return p;
         if ("settings".equals(a)) return megler.SettingsProvider.INSTANCE;
         if ("downloads".equals(a)) return megler.Downloads.INSTANCE;
+        /* the phone's text messages and calls that came while the app ran (megler.Phone) */
+        if ("sms".equals(a)) return megler.Phone.SMS;
+        if ("call_log".equals(a)) return megler.Phone.CALL_LOG;
         return megler.GmsProviders.forAuthority(a);
     }
     public final ContentProviderClient acquireContentProviderClient(Uri u) { ContentProvider p = provider(u); return p == null ? null : new ContentProviderClient(p); }
@@ -129,9 +132,34 @@ public class ContentResolver {
     public void releasePersistableUriPermission(Uri u, int flags) {}
     public java.util.List<UriPermission> getPersistedUriPermissions() { return new ArrayList<>(); }
     public static final class UriPermission {}
-    public static void requestSync(android.accounts.Account a, String authority, Bundle extras) {}
-    public static void setSyncAutomatically(android.accounts.Account a, String authority, boolean sync) {}
-    public static boolean getMasterSyncAutomatically() { return false; }
+    // Syncs: the app's own sync adapters, run by megler.Syncs (the stubs said sync was off and could not be turned on: Gmail).
+    public static void requestSync(android.accounts.Account a, String authority, Bundle extras) { megler.Syncs.request(a, authority, extras); }
+    public static void requestSyncAsUser(android.accounts.Account a, String authority, int user, Bundle extras) { megler.Syncs.request(a, authority, extras); }
+    public static void requestSync(android.content.SyncRequest r) {}
+    public static void setSyncAutomatically(android.accounts.Account a, String authority, boolean sync) { megler.Syncs.setAutomatic(a, authority, sync); }
+    public static void setSyncAutomaticallyAsUser(android.accounts.Account a, String authority, boolean sync, int user) { megler.Syncs.setAutomatic(a, authority, sync); }
+    public static boolean getSyncAutomatically(android.accounts.Account a, String authority) { return megler.Syncs.automatic(a, authority); }
+    public static boolean getSyncAutomaticallyAsUser(android.accounts.Account a, String authority, int user) { return megler.Syncs.automatic(a, authority); }
+    public static boolean getMasterSyncAutomatically() { return megler.Syncs.master(); }
+    public static boolean getMasterSyncAutomaticallyAsUser(int user) { return megler.Syncs.master(); }
+    public static void setMasterSyncAutomatically(boolean sync) { megler.Syncs.setMaster(sync); }
+    public static void setMasterSyncAutomaticallyAsUser(boolean sync, int user) { megler.Syncs.setMaster(sync); }
+    public static int getIsSyncable(android.accounts.Account a, String authority) { return megler.Syncs.syncable(a, authority); }
+    public static int getIsSyncableAsUser(android.accounts.Account a, String authority, int user) { return megler.Syncs.syncable(a, authority); }
+    public static void setIsSyncable(android.accounts.Account a, String authority, int syncable) { megler.Syncs.setSyncable(a, authority, syncable); }
+    public static void setIsSyncableAsUser(android.accounts.Account a, String authority, int syncable, int user) { megler.Syncs.setSyncable(a, authority, syncable); }
+    public static boolean isSyncActive(android.accounts.Account a, String authority) { return megler.Syncs.active(a, authority); }
+    public static boolean isSyncPending(android.accounts.Account a, String authority) { return megler.Syncs.pending(a, authority); }
+    public static boolean isSyncPendingAsUser(android.accounts.Account a, String authority, int user) { return megler.Syncs.pending(a, authority); }
+    public static void cancelSync(android.accounts.Account a, String authority) { megler.Syncs.cancel(a, authority); }
+    public static void cancelSyncAsUser(android.accounts.Account a, String authority, int user) { megler.Syncs.cancel(a, authority); }
+    public static void addPeriodicSync(android.accounts.Account a, String authority, Bundle extras, long seconds) { megler.Syncs.addPeriodic(a, authority, extras, seconds); }
+    public static void removePeriodicSync(android.accounts.Account a, String authority, Bundle extras) { megler.Syncs.removePeriodic(a, authority); }
+    public static Object addStatusChangeListener(int mask, android.content.SyncStatusObserver callback) { return megler.Syncs.addListener(mask, callback); }
+    public static void removeStatusChangeListener(Object handle) { megler.Syncs.removeListener(handle); }
+    public static android.content.SyncAdapterType[] getSyncAdapterTypes() { return megler.Syncs.types(); }
+    public static android.content.SyncAdapterType[] getSyncAdapterTypesAsUser(int user) { return megler.Syncs.types(); }
+    public void startSync(Uri u, Bundle extras) { requestSync(null, u != null ? u.getAuthority() : null, extras); }
     public final Uri canonicalize(Uri u) { return u; }
     public final Uri uncanonicalize(Uri u) { return u; }
     public final android.graphics.Bitmap loadThumbnail(Uri u, android.util.Size s, android.os.CancellationSignal c) throws java.io.IOException {
@@ -199,11 +227,7 @@ public class ContentResolver {
     public static final int SYNC_OBSERVER_TYPE_PENDING = 2;
     public static final int SYNC_OBSERVER_TYPE_STATUS = 8;
     public static final java.lang.String SYNC_VIRTUAL_EXTRAS_EXEMPTION_FLAG = "v_exemption";
-    public static void addPeriodicSync(android.accounts.Account p0, java.lang.String p1, android.os.Bundle p2, long p3) {}
-    public static java.lang.Object addStatusChangeListener(int p0, android.content.SyncStatusObserver p1) { return null; }
-    public static void cancelSync(android.accounts.Account p0, java.lang.String p1) {}
     public static void cancelSync(android.content.SyncRequest p0) {}
-    public static void cancelSyncAsUser(android.accounts.Account p0, java.lang.String p1, int p2) {}
     public static android.os.Bundle createSqlQueryBundle(java.lang.String p0, java.lang.String[] p1) { return null; }
     public static android.os.Bundle createSqlQueryBundle(java.lang.String p0, java.lang.String[] p1, java.lang.String p2) { return null; }
     public static java.lang.String createSqlSortClause(android.os.Bundle p0) { return null; }
@@ -212,32 +236,13 @@ public class ContentResolver {
     public static android.content.SyncInfo getCurrentSync() { return null; }
     public static java.util.List getCurrentSyncs() { return new java.util.ArrayList(); }
     public static java.util.List getCurrentSyncsAsUser(int p0) { return new java.util.ArrayList(); }
-    public static int getIsSyncable(android.accounts.Account p0, java.lang.String p1) { return 0; }
-    public static int getIsSyncableAsUser(android.accounts.Account p0, java.lang.String p1, int p2) { return 0; }
-    public static boolean getMasterSyncAutomaticallyAsUser(int p0) { return false; }
     public static java.util.List getPeriodicSyncs(android.accounts.Account p0, java.lang.String p1) { return new java.util.ArrayList(); }
     public static java.lang.String getSyncAdapterPackageAsUser(java.lang.String p0, java.lang.String p1, int p2) { return null; }
     public static java.lang.String[] getSyncAdapterPackagesForAuthorityAsUser(java.lang.String p0, int p1) { return null; }
-    public static android.content.SyncAdapterType[] getSyncAdapterTypes() { return null; }
-    public static android.content.SyncAdapterType[] getSyncAdapterTypesAsUser(int p0) { return null; }
-    public static boolean getSyncAutomatically(android.accounts.Account p0, java.lang.String p1) { return false; }
-    public static boolean getSyncAutomaticallyAsUser(android.accounts.Account p0, java.lang.String p1, int p2) { return false; }
     public static boolean hasInvalidScheduleAsEjExtras(android.os.Bundle p0) { return false; }
     public static android.os.Bundle includeSqlSelectionArgs(android.os.Bundle p0, java.lang.String p1, java.lang.String[] p2) { return null; }
     public static boolean invalidPeriodicExtras(android.os.Bundle p0) { return false; }
-    public static boolean isSyncActive(android.accounts.Account p0, java.lang.String p1) { return false; }
-    public static boolean isSyncPending(android.accounts.Account p0, java.lang.String p1) { return false; }
-    public static boolean isSyncPendingAsUser(android.accounts.Account p0, java.lang.String p1, int p2) { return false; }
     public static void onDbCorruption(java.lang.String p0, java.lang.String p1, java.lang.Throwable p2) {}
-    public static void removePeriodicSync(android.accounts.Account p0, java.lang.String p1, android.os.Bundle p2) {}
-    public static void removeStatusChangeListener(java.lang.Object p0) {}
-    public static void requestSync(android.content.SyncRequest p0) {}
-    public static void requestSyncAsUser(android.accounts.Account p0, java.lang.String p1, int p2, android.os.Bundle p3) {}
-    public static void setIsSyncable(android.accounts.Account p0, java.lang.String p1, int p2) {}
-    public static void setIsSyncableAsUser(android.accounts.Account p0, java.lang.String p1, int p2, int p3) {}
-    public static void setMasterSyncAutomatically(boolean p0) {}
-    public static void setMasterSyncAutomaticallyAsUser(boolean p0, int p1) {}
-    public static void setSyncAutomaticallyAsUser(android.accounts.Account p0, java.lang.String p1, boolean p2, int p3) {}
     public static int syncErrorStringToInt(java.lang.String p0) { return 0; }
     public static java.lang.String syncErrorToString(int p0) { return null; }
     public static android.net.Uri translateDeprecatedDataPath(java.lang.String p0) { return null; }
@@ -276,7 +281,6 @@ public class ContentResolver {
     public void registerContentObserver(android.net.Uri p0, boolean p1, android.database.ContentObserver p2, int p3) {}
     public void registerContentObserverAsUser(android.net.Uri p0, boolean p1, android.database.ContentObserver p2, android.os.UserHandle p3) {}
     public int resolveUserId(android.net.Uri p0) { return 0; }
-    public void startSync(android.net.Uri p0, android.os.Bundle p1) {}
     public void takePersistableUriPermission(java.lang.String p0, android.net.Uri p1, int p2) {}
     public int update(android.net.Uri p0, android.content.ContentValues p1, android.os.Bundle p2) { return 0; }
     // ---- end of generated members

@@ -11,6 +11,7 @@
 
 #include "sqlite3.h"
 
+#include "../bionic/mg_fd.h"
 #include "../host/mg_host.h"
 
 /* The layer's own folder for what it writes (mg_api.c). */
@@ -336,13 +337,22 @@ static int vfs_access(sqlite3_vfs *vfs, const char *name, int flags, int *out)
     return SQLITE_OK;
 }
 
-/* Names come here as the host's own full paths (the Java side has turned the app's path into one), and are left as they are. */
+/*
+ * Names come here as the host's own full paths (the Java side has turned the app's path into one), and are left as they are;
+ * but a name in the app's SQL is the app's path, which is turned into the host's here: Gmail's EmailProvider attaches
+ * "/data/data/com.google.android.gm/databases/EmailProviderBody.db", which could not be opened (SQLITE_CANTOPEN), and Gmail
+ * ended at its start (package 509).
+ */
 static int vfs_full_path(sqlite3_vfs *vfs, const char *name, int n, char *out)
 {
+    char *host = mg_fs_app_path_host(name);
+    const char *use = host ? host : name;
+    int rc = SQLITE_OK;
     (void)vfs;
-    if ((int)strlen(name) >= n) return SQLITE_CANTOPEN;
-    memcpy(out, name, strlen(name) + 1);
-    return SQLITE_OK;
+    if ((int)strlen(use) >= n) rc = SQLITE_CANTOPEN;
+    else memcpy(out, use, strlen(use) + 1);
+    free(host);
+    return rc;
 }
 
 static int vfs_randomness(sqlite3_vfs *vfs, int n, char *out) { (void)vfs; mg_random(out, (size_t)n); return n; }

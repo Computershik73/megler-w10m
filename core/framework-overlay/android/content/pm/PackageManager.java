@@ -5,7 +5,8 @@
 // original said no camera at all, and a scanner that asks before it opens one
 // (VK mp3 mod's QR sign-in among them) would not offer to scan. Likewise the
 // location (android.hardware.location, .gps, .network), wherever the shell can
-// find the phone (megler.LocationNative). And getSystemAvailableFeatures lists those same
+// find the phone (megler.LocationNative). And a fingerprint sensor (android.hardware.fingerprint)
+// where Windows Hello can check the user (megler.Biometrics). And getSystemAvailableFeatures lists those same
 // features and the OpenGL ES version, and getSystemSharedLibraryNames the legacy
 // Apache HTTP client, where both said nothing.
 // And getPackageInfo names the app's split APKs (splitNames, splitRevisionCodes),
@@ -171,6 +172,8 @@ public class PackageManager {
         if (name.startsWith("android.hardware.touchscreen") || name.equals(FEATURE_FAKETOUCH) || name.equals(FEATURE_SCREEN_PORTRAIT) || name.equals(FEATURE_SCREEN_LANDSCAPE)) return true;
         if (name.equals(FEATURE_WIFI) || name.equals(FEATURE_AUDIO_OUTPUT) || name.equals(FEATURE_OPENGLES_EXTENSION_PACK) || name.equals(FEATURE_SENSOR_ACCELEROMETER)) return true;
         if (name.equals(FEATURE_INPUT_METHODS) || name.equals(FEATURE_GAMEPAD)) return true;
+        // A phone, with or without its SIM (TelephonyManager says which); and its microphone (AudioRecord, the shell's).
+        if (name.equals(FEATURE_TELEPHONY) || name.equals("android.hardware.telephony.gsm") || name.equals(FEATURE_MICROPHONE)) return true;
         // The phone's cameras, as the shell finds them (megler.CameraNative, core/src/drivers/mg_java_camera.c).
         if (name.startsWith("android.hardware.camera")) {
             int f = megler.CameraNative.features();
@@ -185,6 +188,9 @@ public class PackageManager {
         // the network's alike, as LocationManager offers both.
         if (name.equals(FEATURE_LOCATION) || name.equals(FEATURE_LOCATION_GPS) || name.equals(FEATURE_LOCATION_NETWORK))
             return megler.LocationNative.access(false) != megler.LocationNative.NONE;
+        // The phone's check of its user (megler.Biometrics, Windows Hello: the iris, a fingerprint, the PIN) stands for a
+        // fingerprint sensor, as FingerprintManager and BiometricPrompt use it.
+        if (name.equals(FEATURE_FINGERPRINT)) return megler.Biometrics.available() != megler.Biometrics.NONE;
         return false;
     }
     /*
@@ -319,8 +325,31 @@ public class PackageManager {
         for (megler.PhoneApps.App a : megler.PhoneApps.all()) l.add(megler.PhoneApps.applicationInfo(a));
         return l;
     }
-    public String[] getPackagesForUid(int uid) { return new String[] { megler.Native.packageName() }; }
-    public String getNameForUid(int uid) { return megler.Native.packageName(); }
+    /*
+     * The app's uid is the Google packages' it hosts as well (their ApplicationInfo has it: GmsCore and Google Services
+     * Framework run in its process), so they are the uid's packages too, as Android gives every package of a shared user
+     * id. Google Play services checks that a package a caller names is one of the calling uid's: its sign-in refused its own
+     * backup module a token ("GLSActivity: Package not matching uid 10100 com.google.android.gms"), and WhatsApp's search
+     * for its Google Drive backup failed until it said it took too long; Play Store said the same of it.
+     */
+    public String[] getPackagesForUid(int uid) {
+        String other = otherOfUid(uid);
+        if (other != null) return new String[] { other };
+        java.util.ArrayList<String> out = new java.util.ArrayList<>();
+        out.add(megler.Native.packageName());
+        if (uid == android.os.Process.myUid()) {
+            if (megler.MicroG.packageInfo(megler.GooglePackages.GMS) != null && !out.contains(megler.GooglePackages.GMS)) out.add(megler.GooglePackages.GMS);
+            if (megler.Gsf.packageInfo(megler.GooglePackages.GSF) != null && !out.contains(megler.GooglePackages.GSF)) out.add(megler.GooglePackages.GSF);
+        }
+        return out.toArray(new String[0]);
+    }
+    public String getNameForUid(int uid) { String other = otherOfUid(uid); return other != null ? other : megler.Native.packageName(); }
+    /* Another app the phone has by its uid (megler.PhoneApps gives each one of its own), else null: the running app's. */
+    private static String otherOfUid(int uid) {
+        if (uid == android.os.Process.myUid()) return null;
+        for (megler.PhoneApps.App a : megler.PhoneApps.all()) if (a.uid == uid) return a.packageName;
+        return null;
+    }
     public int getPackageUid(String pkg, int flags) throws NameNotFoundException { if (!mine(pkg) && megler.GooglePackages.is(pkg)) return megler.GooglePackages.applicationInfo(pkg).uid; if (!mine(pkg)) { megler.PhoneApps.App a = megler.PhoneApps.find(pkg); if (a != null) return a.uid; throw new NameNotFoundException(pkg); } return android.os.Process.myUid(); }
     /* components the app enabled or disabled (Instagram turns its own on in stages and checks each took), kept across launches */
     private static java.util.Properties sStates;
@@ -367,6 +396,8 @@ public class PackageManager {
     public boolean canRequestPackageInstalls() { return true; }
     private final PackageInstaller meglerInstaller = new PackageInstaller();
     public PackageInstaller getPackageInstaller() { return meglerInstaller; }
+    /** The ART manager (a system API): no runtime profiles here (android.content.pm.dex.ArtManager); Play Store's profile job asks. */
+    public android.content.pm.dex.ArtManager getArtManager() { return new android.content.pm.dex.ArtManager(); }
     public android.content.pm.ModuleInfo getModuleInfo(String pkg, int flags) throws NameNotFoundException { throw new NameNotFoundException(pkg); }
     public List<SharedLibraryInfo> getSharedLibraries(int flags) { return new ArrayList<>(); }
     public boolean isPackageSuspended() { return false; }
@@ -378,7 +409,7 @@ public class PackageManager {
     public Bundle_ getSuspendedPackageAppExtrasMegler() { return null; }
     interface Bundle_ {}
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+    private java.util.HashMap<String, Object> meglerFill; /* made at the first set (megler.Fill) */
     public static final java.lang.String ACTION_REQUEST_PERMISSIONS = "android.content.pm.action.REQUEST_PERMISSIONS";
     public static final java.lang.String ACTION_REQUEST_PERMISSIONS_FOR_OTHER = "android.content.pm.action.REQUEST_PERMISSIONS_FOR_OTHER";
     public static final java.lang.String ACTION_VERIFY_DEVELOPER = "android.content.pm.action.VERIFY_DEVELOPER";
@@ -828,8 +859,17 @@ public class PackageManager {
     public void clearInstantAppCookie() {}
     public void clearPackagePreferredActivities(java.lang.String p0) {}
     public java.lang.String[] currentToCanonicalPackageNames(java.lang.String[] p0) { return null; }
-    public void deletePackage(java.lang.String p0, android.content.pm.IPackageDeleteObserver p1, int p2) {}
-    public void deletePackageAsUser(java.lang.String p0, android.content.pm.IPackageDeleteObserver p1, int p2, int p3) {}
+    public void deletePackage(java.lang.String p0, android.content.pm.IPackageDeleteObserver p1, int p2) { megler.Installs.deleteObserved(p0, p1); }
+    public void deletePackageAsUser(java.lang.String p0, android.content.pm.IPackageDeleteObserver p1, int p2, int p3) { megler.Installs.deleteObserved(p0, p1); }
+    /* Space freed for a download (Google Play asks before each): there is no cache of others' to clear here; the observer
+       (the app's own IPackageDataObserver Stub) is told it went well, on the main thread, as Android tells it. */
+    public void freeStorageAndNotify(long size, android.content.pm.IPackageDataObserver observer) { freeStorageAndNotify(null, size, observer); }
+    public void freeStorageAndNotify(java.lang.String volumeUuid, long size, android.content.pm.IPackageDataObserver observer) {
+        if (observer == null) return;
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            try { observer.onRemoveCompleted(null, true); } catch (android.os.RemoteException e) {}
+        });
+    }
     public void extendVerificationTimeout(int p0, int p1, long p2) {}
     public android.content.res.TypedArray extractPackageItemInfoAttributes(android.content.pm.PackageItemInfo p0, java.lang.String p1, java.lang.String p2, int[] p3) { return null; }
     public void flushPackageRestrictionsAsUser(int p0) {}
@@ -875,7 +915,7 @@ public class PackageManager {
     public java.util.List getInstalledPackagesAsUser(int p0, int p1) { return new java.util.ArrayList(); }
     public java.util.List getInstalledPackagesAsUser(android.content.pm.PackageManager.PackageInfoFlags p0, int p1) { return new java.util.ArrayList(); }
     public java.lang.String getInstantAppAndroidId(java.lang.String p0, android.os.UserHandle p1) { return null; }
-    public byte[] getInstantAppCookie() { return (byte[]) meglerFill.get("InstantAppCookie"); }
+    public byte[] getInstantAppCookie() { return (byte[]) megler.Fill.get(meglerFill, "InstantAppCookie"); }
     public int getInstantAppCookieMaxBytes() { return 0; }
     public int getInstantAppCookieMaxSize() { return 0; }
     public android.graphics.drawable.Drawable getInstantAppIcon(java.lang.String p0) { return null; }
@@ -949,7 +989,7 @@ public class PackageManager {
     public int installExistingPackage(java.lang.String p0, int p1) { return 0; }
     public int installExistingPackageAsUser(java.lang.String p0, int p1) { return 0; }
     public boolean isAppArchivable(java.lang.String p0) { return false; }
-    public boolean isAutoRevokeWhitelisted() { return (meglerFill.get("AutoRevokeWhitelisted") instanceof Boolean ? (Boolean) meglerFill.get("AutoRevokeWhitelisted") : false); }
+    public boolean isAutoRevokeWhitelisted() { return (megler.Fill.get(meglerFill, "AutoRevokeWhitelisted") instanceof Boolean ? (Boolean) megler.Fill.get(meglerFill, "AutoRevokeWhitelisted") : false); }
     public boolean isAutoRevokeWhitelisted(java.lang.String p0) { return false; }
     public boolean isDefaultApplicationIcon(android.graphics.drawable.Drawable p0) { return false; }
     public boolean isDeviceUpgrading() { return false; }

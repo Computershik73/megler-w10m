@@ -7,7 +7,9 @@
 
 #include <appmodel.h>
 
+#include <chrono>
 #include <deque>
+#include <thread>
 
 namespace megler::app::shellLog {
 namespace {
@@ -20,6 +22,26 @@ std::wstring gPathW;
 std::deque<std::string> gRing;
 uint64_t gFirst = 0;               // the number of the ring's first line
 std::vector<std::string> gPending; // before initialize
+// The lines not in the file yet: written out every 200 ms by a thread of the
+// log's own (writer), at once for a fault's report and when 64 KB wait, and on
+// suspending and exiting (flush). Each line was its own open, append and close
+// of the file, under gMutex: Native.log was 6% of Yandex Maps' main thread,
+// which logs hundreds of lines a second, and every other thread that logged
+// waited meanwhile (package 531). The file still is never kept open: the
+// Device Portal refuses to copy one a process holds open (Files.h).
+std::string gBuffer;
+
+// With gMutex held.
+void writeOut() {
+    if (gBuffer.empty() || gPathW.empty()) return;
+    files::append(gPathW, gBuffer);
+    gBuffer.clear();
+}
+
+bool urgent(const std::string& message) {
+    return message.compare(0, 6, "fault:") == 0 || message.find("FATAL") != std::string::npos ||
+           message.compare(0, 6, "trace:") == 0;
+}
 
 char levelLetter(int level) {
     switch (level) {
@@ -56,9 +78,21 @@ void emit(int level, const std::string& message) {
         if (gPending.size() < 500) gPending.push_back(line);
         return;
     }
-    // Each line opens, appends and closes (files::append), under the lock so
-    // the file keeps the order the ring has.
-    files::append(gPathW, line + "\r\n");
+    gBuffer += line;
+    gBuffer += "\r\n";
+    if (gBuffer.size() >= 64 * 1024 || urgent(message)) writeOut();
+}
+
+void writer() {
+    for (;;) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::lock_guard<std::mutex> lock(gMutex);
+        struct Owner {
+            Owner() { gOwner.store(GetCurrentThreadId()); }
+            ~Owner() { gOwner.store(0); }
+        } owner;
+        writeOut();
+    }
 }
 
 } // namespace
@@ -80,6 +114,12 @@ void initialize(const std::wstring& localStateDirectory) {
     gPending.clear();
     files::write(file, early);
     gPathW = file;
+    std::thread(writer).detach();
+}
+
+void flush() {
+    std::lock_guard<std::mutex> lock(gMutex);
+    writeOut();
 }
 
 void write(const std::string& line) {

@@ -12,6 +12,7 @@
 #include "mg_dvm_internal.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 mg_dvm_globals g_dvm;
 
@@ -20,6 +21,8 @@ mg_dvm_globals g_dvm;
 static mg_lock g_big = MG_LOCK_INIT;
 static volatile u32 g_big_owner;
 static int g_big_count;
+
+bool mg_dvm_lock_mine(void) { return g_big_owner == mg_thread_self_id(); }
 
 void mg_dvm_lock(void)
 {
@@ -56,7 +59,7 @@ typedef struct name_entry {
     char text[1];                      /* the string follows: allocated to its length */
 } name_entry;
 
-#define NAME_BUCKETS 8192
+#define NAME_BUCKETS 65536
 static name_entry *g_names[NAME_BUCKETS];
 
 const char *mg_dvm_intern(const char *s)
@@ -68,7 +71,7 @@ const char *mg_dvm_intern(const char *s)
     for (e = g_names[h]; e; e = e->next)
         if (!strcmp(e->text, s)) break;
     if (!e) {
-        e = (name_entry *)mg_dvm_meta_alloc(sizeof(*e) + n);
+        e = (name_entry *)mg_dvm_meta_alloc_kind(sizeof(*e) + n, DVM_META_NAME);
         memcpy(e->text, s, n + 1);
         e->next = g_names[h];
         g_names[h] = e;
@@ -92,17 +95,24 @@ typedef struct cdef {
     u32 next;                          /* index + 1 of the next entry in the bucket */
 } cdef;
 
-#define CDEF_BUCKETS 16384
+/*
+ * The buckets are a power of two, at least half as many as the definitions (cdef_grow). They were 16384 for every app, and
+ * Yandex Maps defines 210000 classes and Google Play services, in it, 60000 more: a lookup went through fifteen of them
+ * with strncmp, for every class looked for, as each of its DEX files was read and as each class was loaded.
+ */
 static cdef *g_cdefs;
 static u32 g_ncdefs, g_cdefs_cap;
-static u32 g_cdef_buckets[CDEF_BUCKETS];
+static u32 *g_cdef_buckets;
+static u32 g_cdef_nbuckets;
 static mg_dvm_dex *g_dexes[256];
 static int g_ndexes;
 
-static const cdef *cdef_find_scope(const char *name, int scope)
+/* A name of `n` bytes ("foo/Bar", not necessarily ended there) in a scope. */
+static const cdef *cdef_find_n(const char *name, size_t n, int scope)
 {
-    size_t n = strlen(name);
-    u32 i = g_cdef_buckets[hash_bytes(name, n) % CDEF_BUCKETS];
+    u32 i;
+    if (!g_cdef_nbuckets) return NULL;
+    i = g_cdef_buckets[hash_bytes(name, n) & (g_cdef_nbuckets - 1)];
     while (i) {
         const cdef *c = &g_cdefs[i - 1];
         if (c->dex->scope == scope && !strncmp(c->desc + 1, name, n) && c->desc[n + 1] == ';' && c->desc[n + 2] == 0) return c;
@@ -111,37 +121,120 @@ static const cdef *cdef_find_scope(const char *name, int scope)
     return NULL;
 }
 
+static const cdef *cdef_find_scope(const char *name, int scope) { return cdef_find_n(name, strlen(name), scope); }
+
+/* Twice the buckets, each definition put into its new one (with the runtime's lock held, as every lookup is). */
+static void cdef_grow(void)
+{
+    u32 n = g_cdef_nbuckets ? g_cdef_nbuckets * 2 : 16384, i;
+    u32 *b = (u32 *)mg_alloc(sizeof(u32) * n);
+    for (i = 0; i < g_ncdefs; i++) {
+        cdef *c = &g_cdefs[i];
+        u32 h = hash_bytes(c->desc + 1, strlen(c->desc) - 2) & (n - 1);
+        c->next = b[h];
+        b[h] = i + 1;
+    }
+    free(g_cdef_buckets);
+    g_cdef_buckets = b;
+    g_cdef_nbuckets = n;
+}
+
+/*
+ * Packages a boot file keeps to itself. Android 9's core-libart has ICU 60's android.icu.number, which Android did not
+ * publish then and which its android.icu.text.DecimalFormat is made of; Android 11 published a later one, with other
+ * classes and more methods, which apps of now call, and the framework has that one (core/framework-overlay/android/icu/
+ * number). A class cannot be both. Core-libart's are registered under megler/libart/ names (megler/libart/android/icu/
+ * number/Rounder), and what core-libart names in the package resolves to them: everyone else's android.icu.number is the
+ * framework's, and DecimalFormat keeps the classes it was built with.
+ */
+static const struct { const char *file, *package; } k_own[] = { { "core-libart.dex", "android/icu/number/" } };
+#define OWN_PREFIX "megler/libart/"
+
+const char *mg_dvm_own_desc(const mg_dvm_dex *d, const char *desc, char *buf, size_t size)
+{
+    size_t dims = 0, n = d->own ? strlen(d->own) : 0;
+    while (desc[dims] == '[') dims++;
+    if (!n || desc[dims] != 'L' || strncmp(desc + dims + 1, d->own, n) != 0) return desc;
+    if ((size_t)snprintf(buf, size, "%.*sL" OWN_PREFIX "%s", (int)dims, desc, desc + dims + 1) >= size) return desc;
+    return buf;
+}
+
 void mg_dvm_classes_add_dex(mg_dvm_dex *d)
 {
     u32 i, added = 0;
+    size_t pooled = 0, at = 0;
+    mg_dvm_dex *twin = NULL;
+    /* The pool given whole (mg_dvm_add_dex_lazy): read in it, one name after another. */
+    bool copied = d->lazy && d->names != NULL, given = copied;
+    if (d->scope == 0 && !d->app)
+        for (i = 0; i < MG_COUNT(k_own); i++)
+            if (strstr(d->name, k_own[i].file)) d->own = k_own[i].package;
+    /*
+     * The same file registered already, for another scope (a process's of the app's own APK, Yandex Maps' :AppMetrica): its
+     * names serve, in one block copied from its pool, or read in its view, which stays and needs no copy. Each name was read
+     * from the file again, a page of its table here and one of its strings there: Yandex Maps' sixteen files took 0.3 s of the
+     * main thread and 8 MB more of names (package 531).
+     */
+    if (d->lazy && !d->own && !copied) {
+        mg_dvm_lock();
+        twin = mg_dvm_dex_twin(d);
+        if (twin && twin->names) {
+            d->names_size = twin->names_size;
+            d->names = (char *)memcpy(mg_dvm_meta_alloc_kind(d->names_size, DVM_META_POOL), twin->names, d->names_size);
+            copied = true;
+        } else if (twin) {
+            d->b = twin->b;
+        }
+        mg_dvm_unlock();
+    }
+    /* A file viewed only for now (mg_dvm_dex_open_lazy): its classes' descriptors are copied, one block for all of them. */
+    if (d->lazy && !twin && !copied) {
+        for (i = 0; i < d->ncls; i++) pooled += strlen(mg_dvm_dex_type(d, mg_dvm_rd32(d->b + d->cls_off + 32 * i))) + 1;
+        d->names_size = pooled ? pooled : 1;
+        d->names = (char *)mg_dvm_meta_alloc_kind(d->names_size, DVM_META_POOL);
+    }
     mg_dvm_lock();
     if (g_ndexes < (int)MG_COUNT(g_dexes)) g_dexes[g_ndexes++] = d;
+    d->cdef_first = g_ncdefs;
     for (i = 0; i < d->ncls; i++) {
-        const char *desc = mg_dvm_dex_type(d, mg_dvm_rd32(d->b + d->cls_off + 32 * i));
-        size_t n = strlen(desc);
-        char *name;
-        u32 h;
-        if (n < 3 || desc[0] != 'L' || desc[n - 1] != ';') continue;
-        name = (char *)mg_dvm_meta_alloc(n);
-        memcpy(name, desc + 1, n - 2);
-        const cdef *existing = cdef_find_scope(name, d->scope);
-        /* Android 9's core-libart has an older ICU number API. The framework overlay supplies
-         * the Android 30 methods used by newer apps; choose those definitions when it arrives. */
-        if (existing && d->scope == 0 && strstr(d->name, "megler-framework.dex") &&
-            !strncmp(name, "android/icu/number/", sizeof("android/icu/number/") - 1)) {
-            cdef *replace = (cdef *)existing;
-            replace->desc = desc;
-            replace->dex = d;
-            replace->def = i;
-            free(name);
-            continue;
+        const char *desc;
+        size_t n;
+        if (copied) {
+            /* (The pool has every class's descriptor, in the order of the definitions.) */
+            if (at >= d->names_size) break;
+            desc = d->names + at;
+            n = strlen(desc);
+            at += n + 1;
+        } else {
+            desc = mg_dvm_dex_type(d, mg_dvm_rd32(d->b + d->cls_off + 32 * i));
+            n = strlen(desc);
+            if (d->names && at + n + 1 <= pooled) {
+                memcpy(d->names + at, desc, n + 1);
+                desc = d->names + at;
+                at += n + 1;
+            }
         }
+        const char *name;
+        const cdef *existing;
+        u32 h;
+        if (d->own) {
+            char own[512];
+            const char *mine = mg_dvm_own_desc(d, desc, own, sizeof(own));
+            if (mine != desc) {
+                n = strlen(mine);
+                desc = (const char *)memcpy(mg_dvm_meta_alloc_kind(n + 1, DVM_META_NAME), mine, n + 1);
+            }
+        }
+        name = desc + 1;               /* the name is the descriptor's, between its L and its ; */
+        if (n < 3 || desc[0] != 'L' || desc[n - 1] != ';') continue;
+        existing = cdef_find_n(name, n - 2, d->scope);
         if (!existing) {
             if (g_ncdefs == g_cdefs_cap) {
                 g_cdefs_cap = g_cdefs_cap ? g_cdefs_cap * 2 : 1024;
                 g_cdefs = (cdef *)mg_realloc(g_cdefs, sizeof(cdef) * g_cdefs_cap);
             }
-            h = hash_bytes(name, n - 2) % CDEF_BUCKETS;
+            if (g_ncdefs >= g_cdef_nbuckets * 2) cdef_grow();
+            h = hash_bytes(name, n - 2) & (g_cdef_nbuckets - 1);
             g_cdefs[g_ncdefs].desc = desc;
             g_cdefs[g_ncdefs].dex = d;
             g_cdefs[g_ncdefs].def = i;
@@ -149,10 +242,39 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
             g_cdef_buckets[h] = ++g_ncdefs;
             added++;
         }
-        free(name);
+    }
+    d->cdef_end = g_ncdefs;
+    mg_dvm_unlock();
+    mg_info("dvm: %s: %u classes (%u new), %u methods, %u strings%s", d->name, (unsigned)d->ncls, (unsigned)added, (unsigned)d->nmeth, (unsigned)d->nstr,
+            given ? "" : copied ? "; the names another scope's copy of it has" : twin ? "; the names in another scope's view of it" : "");
+}
+
+/*
+ * A DEX file registered by its classes' names alone, viewed now (mg_dvm_dex_ready): the entries it added point at its own
+ * descriptors again, and the copies made while it was not viewed are let go. Every file of Yandex Maps' and Google Play
+ * services' is viewed within seconds of the start, and the copies stayed, some 17 MB of the two. Not the names the
+ * runtime gave a package a file keeps to itself (mg_dvm_own_desc): those are not in the pool.
+ */
+void mg_dvm_classes_viewed(mg_dvm_dex *d)
+{
+    char *pool;
+    size_t size;
+    u32 i;
+    mg_dvm_lock();
+    pool = d->names;
+    size = d->names_size;
+    if (pool && d->b) {
+        for (i = d->cdef_first; i < d->cdef_end && i < g_ncdefs; i++) {
+            cdef *c = &g_cdefs[i];
+            if (c->dex == d && c->desc >= pool && c->desc < pool + size) c->desc = mg_dvm_dex_type(d, mg_dvm_rd32(d->b + d->cls_off + 32 * c->def));
+        }
+        d->names = NULL;
+        d->names_size = 0;
+    } else {
+        pool = NULL;
     }
     mg_dvm_unlock();
-    mg_info("dvm: %s: %u classes (%u new), %u methods, %u strings", d->name, (unsigned)d->ncls, (unsigned)added, (unsigned)d->nmeth, (unsigned)d->nstr);
+    if (pool) mg_dvm_meta_free_kind(pool, size, DVM_META_POOL);
 }
 
 u32 mg_dvm_defined_count(void) { return g_ncdefs; }
@@ -166,7 +288,7 @@ const char *mg_dvm_defined_name(u32 i, mg_dvm_dex **dex)
     if (i >= g_ncdefs) return NULL;
     if (dex) *dex = g_cdefs[i].dex;
     n = strlen(g_cdefs[i].desc);
-    name = (char *)mg_dvm_meta_alloc(n);
+    name = (char *)mg_alloc(n);
     memcpy(name, g_cdefs[i].desc + 1, n - 2);
     interned = mg_dvm_intern(name);
     free(name);
@@ -249,17 +371,29 @@ static void pretty_method(const mg_dvm_method *m, char *out, size_t n)
     snprintf(out + k, k < n ? n - k : 0, ")");
 }
 
+mg_dvm_native_info *mg_dvm_native_of(mg_dvm_method *m)
+{
+    mg_dvm_native_info *n = m->nat, *made, *was;
+    if (n) return n;
+    made = (mg_dvm_native_info *)mg_dvm_meta_alloc_kind(sizeof(*made), DVM_META_METHOD);
+    memset(made, 0, sizeof(*made));
+    was = (mg_dvm_native_info *)mg_atomic_cas_ptr((void *volatile *)&m->nat, NULL, made);
+    /* (Two threads at once: the other's is the method's, and this one is left, a few bytes.) */
+    return was ? was : made;
+}
+
 bool mg_dvm_bind_native(mg_dvm_method *m)
 {
+    mg_dvm_native_info *n = mg_dvm_native_of(m);
     mg_jhle_fn fn;
-    void *jni = m->jni;
-    if (m->native) return true;
+    void *jni = n->jni;
+    if (n->native) return true;
     /* What was registered here in C comes before a library's function, whichever was there first. */
     mg_dvm_lock();
     fn = registered(m->cls->name, m->name, m->sig);
     mg_dvm_unlock();
     if (!fn && jni) {
-        m->bound = true;
+        n->bound = true;
         return true;
     }
     if (!fn && g_dvm.jni.find) jni = g_dvm.jni.find(m->cls->name, m->name, m->sig, mg_dvm_class_is_app(m->cls));
@@ -280,15 +414,15 @@ bool mg_dvm_bind_native(mg_dvm_method *m)
         return mg_dvm_throw("java/lang/UnsatisfiedLinkError", "No implementation found for %s%s%s%s", pretty, tried[0] ? " (tried " : "", tried, tried[0] ? ")" : "");
     }
     if (g_dvm.trace >= 1) mg_info("dvm: native %s.%s%s bound to %s", m->cls->name, m->name, m->sig, fn ? "a C implementation" : "the app's library");
-    if (fn) m->native = fn;
-    else m->jni = jni;
-    m->bound = true;
+    if (fn) n->native = fn;
+    else n->jni = jni;
+    n->bound = true;
     return true;
 }
 
 /* ------------------------------------------------------------- linked classes */
 
-#define CLASS_BUCKETS 4096
+#define CLASS_BUCKETS 65536
 static mg_dvm_class *g_classes[CLASS_BUCKETS];
 
 /* What stopped a class from being linked: the exception to throw once the lock is released. */
@@ -320,8 +454,16 @@ static mg_dvm_class *loaded(const char *name) { return loaded_scope(name, 0); }
 static const cdef *cdef_find(const char *name) { return cdef_find_scope(name, 0); }
 static const cdef *definition(const char *name, int scope)
 {
-    const cdef *boot = cdef_find_scope(name, 0);
+    const cdef *boot = cdef_find_scope(name, 0), *found;
+    int parent;
+    bool own_first;
     if (!scope || (boot && !boot->dex->app)) return boot;
+    /* A child scope's (mg_dvm_art.c): its own files and its parent's scope, in its loader's order; -1, the boot path alone. */
+    if (mg_dvm_scope_child(scope, &parent, &own_first)) {
+        if (own_first && (found = cdef_find_scope(name, scope))) return found;
+        if (parent >= 0 && (found = definition(name, parent))) return found;
+        return own_first ? NULL : cdef_find_scope(name, scope);
+    }
     return cdef_find_scope(name, scope);
 }
 
@@ -364,7 +506,7 @@ static mg_dvm_class *load_desc_scope(const char *desc, int scope, link_error *er
         link_fail(err, "java/lang/NoClassDefFoundError", "%s", desc);
         return NULL;
     }
-    name = (char *)mg_dvm_meta_alloc(n);
+    name = (char *)mg_alloc(n);
     memcpy(name, desc + 1, n - 2);
     c = load_class_scope(name, scope, err);
     free(name);
@@ -383,7 +525,7 @@ static bool same_package(const char *a, const char *b)
 
 static mg_dvm_class *link_primitive(const char *name, char letter)
 {
-    mg_dvm_class *c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
+    mg_dvm_class *c = (mg_dvm_class *)mg_dvm_meta_alloc_kind(sizeof(*c), DVM_META_CLASS);
     c->name = mg_dvm_intern(name);
     c->prim = letter;
     c->flags = DVM_ACC_PUBLIC | DVM_ACC_FINAL | DVM_ACC_ABSTRACT;
@@ -406,7 +548,7 @@ static mg_dvm_class *link_array(const char *name, int scope, link_error *err)
         link_fail(err, "java/lang/NoClassDefFoundError", "%s", name);
         return NULL;
     }
-    c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
+    c = (mg_dvm_class *)mg_dvm_meta_alloc_kind(sizeof(*c), DVM_META_CLASS);
     c->name = mg_dvm_intern(name);
     c->scope = component->scope;
     c->component = component;
@@ -419,7 +561,7 @@ static mg_dvm_class *link_array(const char *name, int scope, link_error *err)
     /* Every array is Cloneable and Serializable, where the boot class path has them. */
     cloneable = cdef_find("java/lang/Cloneable") ? load_class("java/lang/Cloneable", err) : NULL;
     serializable = cdef_find("java/io/Serializable") ? load_class("java/io/Serializable", err) : NULL;
-    c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc(sizeof(*c->ifaces) * 2);
+    c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc_kind(sizeof(*c->ifaces) * 2, DVM_META_CLASS);
     if (cloneable) c->ifaces[c->nifaces++] = cloneable;
     if (serializable) c->ifaces[c->nifaces++] = serializable;
     c->state = DVM_CS_INITIALIZED;
@@ -439,6 +581,66 @@ static void free_unlinked(mg_dvm_class *c)
     free(c);
 }
 
+/*
+ * The framework's methods that are signatures alone (mg_dvm_stubs_load), as the 64-bit hashes (FNV-1a) of the file's lines,
+ * "<class> <name> <descriptor>", sorted: 160 KB where the lines themselves were 1.9 MB in every app's process. Read once,
+ * before any of the framework's classes is linked; looked up as a method of an android/ or javax/ class is read. (Two
+ * lines with one hash would mark a method more: nothing worse than one line too many in the log.)
+ */
+static u64 *g_stubs;
+static size_t g_nstubs;
+
+static u64 stub_hash(const char *s, size_t n)
+{
+    u64 h = 1469598103934665603ull;
+    size_t i;
+    for (i = 0; i < n; i++) h = (h ^ (u8)s[i]) * 1099511628211ull;
+    return h;
+}
+
+static int stub_cmp(const void *a, const void *b)
+{
+    u64 x = *(const u64 *)a, y = *(const u64 *)b;
+    return x < y ? -1 : x > y;
+}
+
+bool mg_dvm_stubs_load(const char *path)
+{
+    size_t size = 0, n = 0, cap = 0;
+    const char *line, *end, *stop;
+    u8 *text = mg_file_read_all(path, &size);
+    if (!text) return false;
+    stop = (const char *)text + size;
+    for (line = (const char *)text; line < stop; line++) cap += *line == '\n';
+    g_stubs = (u64 *)mg_alloc(sizeof(*g_stubs) * (cap + 1));
+    for (line = (const char *)text; line < stop && n <= cap; line = end + 1) {
+        size_t len;
+        end = (const char *)memchr(line, '\n', (size_t)(stop - line));
+        if (!end) end = stop;
+        len = (size_t)(end - line);
+        if (len && line[len - 1] == '\r') len--;
+        if (len) g_stubs[n++] = stub_hash(line, len);
+    }
+    free(text);
+    qsort(g_stubs, n, sizeof(*g_stubs), stub_cmp);
+    g_nstubs = n;
+    mg_info("api: %u of the framework's methods are their signatures alone here; the first call of each is said (\"api: ... is a stub here\")",
+            (unsigned)n);
+    return true;
+}
+
+bool mg_dvm_stub_listed(const char *cls, const char *name, const char *sig)
+{
+    char key[512];
+    int n;
+    u64 h;
+    if (!g_nstubs || (strncmp(cls, "android/", 8) && strncmp(cls, "javax/", 6))) return false;
+    n = snprintf(key, sizeof(key), "%s %s %s", cls, name, sig);
+    if (n <= 0 || n >= (int)sizeof(key)) return false;
+    h = stub_hash(key, (size_t)n);
+    return bsearch(&h, g_stubs, g_nstubs, sizeof(*g_stubs), stub_cmp) != NULL;
+}
+
 static bool read_method(mg_dvm_class *c, mg_dvm_method *m, u32 idx, u32 flags, u32 code_off, link_error *err)
 {
     mg_dvm_dex *d = c->dex;
@@ -456,6 +658,7 @@ static bool read_method(mg_dvm_class *c, mg_dvm_method *m, u32 idx, u32 flags, u
     m->sig = mg_dvm_dex_proto_sig(d, mg_dvm_rd16(mi + 2));
     m->shorty = mg_dvm_dex_proto_shorty(d, mg_dvm_rd16(mi + 2));
     m->nparams = (u16)(strlen(m->shorty) ? strlen(m->shorty) - 1 : 0);
+    if (code_off && mg_dvm_stub_listed(c->name, m->name, m->sig)) m->stub = 1;
     if (code_off) {
         const u8 *ci = d->b + code_off;
         u32 words = 0;
@@ -486,10 +689,21 @@ static bool read_method(mg_dvm_class *c, mg_dvm_method *m, u32 idx, u32 flags, u
 static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error *err)
 {
     mg_dvm_dex *d = cd->dex;
-    const u8 *def = d->b + d->cls_off + 32 * cd->def, *end = d->b + d->size;
-    mg_dvm_class *c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
-    u32 super_idx = mg_dvm_rd32(def + 8), ifaces_off = mg_dvm_rd32(def + 12), data_off = mg_dvm_rd32(def + 24);
+    const u8 *def, *end;
+    mg_dvm_class *c;
+    u32 super_idx, ifaces_off, data_off;
     int inherited, i, k;
+    /* The file's bytes, viewed now if they are not yet (a file registered by its classes' names alone). */
+    if (!mg_dvm_dex_ready(d)) {
+        link_fail(err, "java/lang/NoClassDefFoundError", "%s: its DEX file %s cannot be read", name, d->name);
+        return NULL;
+    }
+    def = d->b + d->cls_off + 32 * cd->def;
+    end = d->b + d->size;
+    c = (mg_dvm_class *)mg_dvm_meta_alloc_kind(sizeof(*c), DVM_META_CLASS);
+    super_idx = mg_dvm_rd32(def + 8);
+    ifaces_off = mg_dvm_rd32(def + 12);
+    data_off = mg_dvm_rd32(def + 24);
     c->name = mg_dvm_intern(name);
     c->dex = d;
     c->scope = d->scope;
@@ -497,7 +711,8 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
     c->flags = mg_dvm_rd32(def + 4);
 
     if (super_idx != 0xFFFFFFFFu) {
-        c->super = load_desc_scope(mg_dvm_dex_type(d, super_idx), d->scope, err);
+        char own[512];
+        c->super = load_desc_scope(mg_dvm_own_desc(d, mg_dvm_dex_type(d, super_idx), own, sizeof(own)), d->scope, err);
         if (!c->super) goto fail;
         if (c->super->flags & DVM_ACC_INTERFACE) {
             link_fail(err, "java/lang/IncompatibleClassChangeError", "%s has the interface %s for its superclass", name, c->super->name);
@@ -514,9 +729,11 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
             goto fail;
         }
         n = mg_dvm_rd32(d->b + ifaces_off);
-        c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc(sizeof(*c->ifaces) * (n + 1));
+        c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc_kind(sizeof(*c->ifaces) * (n + 1), DVM_META_CLASS);
         for (j = 0; j < n; j++) {
-            mg_dvm_class *ic = load_desc_scope(mg_dvm_dex_type(d, mg_dvm_rd16(d->b + ifaces_off + 4 + 2 * j)), d->scope, err);
+            char own[512];
+            mg_dvm_class *ic = load_desc_scope(mg_dvm_own_desc(d, mg_dvm_dex_type(d, mg_dvm_rd16(d->b + ifaces_off + 4 + 2 * j)), own, sizeof(own)),
+                                               d->scope, err);
             if (!ic) goto fail;
             c->ifaces[c->nifaces++] = ic;
         }
@@ -539,10 +756,10 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
             link_fail(err, "java/lang/ClassFormatError", "%s: more members than the file has", name);
             goto fail;
         }
-        c->sfields = (mg_dvm_field *)mg_dvm_meta_alloc(sizeof(mg_dvm_field) * (nsf + 1));
-        c->ifields = (mg_dvm_field *)mg_dvm_meta_alloc(sizeof(mg_dvm_field) * (nif + 1));
-        c->direct = (mg_dvm_method *)mg_dvm_meta_alloc(sizeof(mg_dvm_method) * (ndm + 1));
-        c->virt = (mg_dvm_method *)mg_dvm_meta_alloc(sizeof(mg_dvm_method) * (nvm + 1));
+        c->sfields = (mg_dvm_field *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_field) * (nsf + 1), DVM_META_FIELD);
+        c->ifields = (mg_dvm_field *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_field) * (nif + 1), DVM_META_FIELD);
+        c->direct = (mg_dvm_method *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_method) * (ndm + 1), DVM_META_METHOD);
+        c->virt = (mg_dvm_method *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_method) * (nvm + 1), DVM_META_METHOD);
         for (group = 0; group < 2; group++) {
             u32 n = group ? nif : nsf;
             idx = 0;
@@ -586,7 +803,20 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
             }
         }
     }
-    if (c->nsfields) c->statics = (mg_jvalue *)mg_dvm_meta_alloc(sizeof(mg_jvalue) * (size_t)c->nsfields);
+    if (c->nsfields) {
+        /*
+         * The static slots again, those of references first: the collector reads statics[0 .. nsrefs) of every linked
+         * class and nothing else, where it read every static field's type (some 40,000 classes in Yandex Maps, a cache
+         * miss a field, with the world stopped). init_statics fills them by field.
+         */
+        u32 next = 0;
+        for (i = 0; i < c->nsfields; i++)
+            if (c->sfields[i].type[0] == 'L' || c->sfields[i].type[0] == '[') c->sfields[i].slot = next++;
+        c->nsrefs = (int)next;
+        for (i = 0; i < c->nsfields; i++)
+            if (c->sfields[i].type[0] != 'L' && c->sfields[i].type[0] != '[') c->sfields[i].slot = next++;
+        c->statics = (mg_jvalue *)mg_dvm_meta_alloc_kind(sizeof(mg_jvalue) * (size_t)c->nsfields, DVM_META_FIELD);
+    }
 
     /*
      * The vtable: the superclass's, a method of the same name and signature
@@ -594,7 +824,7 @@ static mg_dvm_class *link_dex_class(const cdef *cd, const char *name, link_error
      * methods appended.
      */
     inherited = c->super ? c->super->nvtab : 0;
-    c->vtab = (mg_dvm_method **)mg_dvm_meta_alloc(sizeof(*c->vtab) * (size_t)(inherited + c->nvirt + 1));
+    c->vtab = (mg_dvm_method **)mg_dvm_meta_alloc_kind(sizeof(*c->vtab) * (size_t)(inherited + c->nvirt + 1), DVM_META_VTABLE);
     if (inherited) memcpy(c->vtab, c->super->vtab, sizeof(*c->vtab) * (size_t)inherited);
     c->nvtab = inherited;
     for (i = 0; i < c->nvirt; i++) {
@@ -852,7 +1082,7 @@ mg_dvm_class *mg_dvm_foreign_class(const char *name, mg_jclass *jc)
     c = loaded(name);
     object = c ? NULL : load_class("java/lang/Object", &err);
     if (!c && object) {
-        c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
+        c = (mg_dvm_class *)mg_dvm_meta_alloc_kind(sizeof(*c), DVM_META_CLASS);
         c->name = mg_dvm_intern(name);
         c->flags = DVM_ACC_PUBLIC;
         c->super = object;
@@ -876,7 +1106,7 @@ bool mg_dvm_native_registered(mg_dvm_class *c, const char *name, const char *sig
         int n = group ? c->nvirt : c->ndirect;
         for (i = 0; i < n; i++) {
             if (list[i].name != iname || list[i].sig != isig || !(list[i].flags & DVM_ACC_NATIVE)) continue;
-            list[i].jni = fn;
+            mg_dvm_native_of(&list[i])->jni = fn;
             return true;
         }
     }
@@ -922,13 +1152,14 @@ bool mg_dvm_assignable(mg_dvm_class *sub, mg_dvm_class *sup)
 mg_dvm_class *mg_dvm_resolve_type(mg_dvm_dex *d, u32 idx)
 {
     mg_dvm_class *c;
+    char own[512];
     if (idx >= d->ntype) {
         mg_dvm_throw("java/lang/VerifyError", "type index %u of %u in %s", (unsigned)idx, (unsigned)d->ntype, d->name);
         return NULL;
     }
     c = d->tcache[idx];
     if (c) return c;
-    c = mg_dvm_find_desc_scope(mg_dvm_dex_type(d, idx), d->scope);
+    c = mg_dvm_find_desc_scope(mg_dvm_own_desc(d, mg_dvm_dex_type(d, idx), own, sizeof(own)), d->scope);
     if (c) d->tcache[idx] = c;
     return c;
 }
@@ -958,6 +1189,63 @@ static mg_dvm_method *nio_covariant(mg_dvm_class *c, const char *name, const cha
     return find_method_interned(c, name, mg_dvm_intern(want), false);
 }
 
+/*
+ * Methods a boot class lacks, from the framework. Core-libart is a file of DEX code, and the libcore overlay
+ * (tools/build-libcore-overlay.sh), which adds methods to classes, is compiled from sources; a method Android added to one
+ * of core-libart's classes later (ICU's MeasureUnit.getIdentifier(), Android 12's) is a static method of
+ * megler.members.<the class's name> in the framework (core/framework-overlay/megler/members) instead: of the same name and
+ * signature for a static method, and taking the object first for one called on an object. The class and then its
+ * superclasses are asked, as for a method they inherit. A static method is that method itself; one called on an object is
+ * a copy of it that is not static and not virtual: the registers of a call are the same (the object, then the
+ * arguments), and a method that is not virtual is called as it is (do_invoke). NULL when there is none.
+ */
+static mg_dvm_method *boot_member(mg_dvm_class *c, const char *name, const char *sig, bool want_static)
+{
+    static struct { const mg_dvm_method *of; mg_dvm_method *copy; } made[64];
+    static int nmade;
+    mg_dvm_class *k;
+    for (k = c; k; k = k->super) {
+        char members[300], want[600];
+        mg_dvm_class *e;
+        mg_dvm_method *m, *g;
+        int i;
+        if (!k->dex || !k->dex->boot || k->dex->app || k->dex->scope != 0) continue;
+        if ((size_t)snprintf(members, sizeof(members), "megler/members/%s", k->name) >= sizeof(members) || !mg_dvm_class_exists(members)) continue;
+        e = mg_dvm_find_class(members);
+        if (!e) return NULL;
+        if (want_static) m = find_method_interned(e, name, sig, true);
+        else if ((size_t)snprintf(want, sizeof(want), "(L%s;%s", k->name, sig + 1) >= sizeof(want)) continue;
+        else m = find_method_interned(e, name, mg_dvm_intern(want), true);
+        if (!m) continue;
+        if (e->state != DVM_CS_INITIALIZED && !mg_dvm_ensure_init(e)) return NULL;
+        if (want_static) return m;
+        mg_dvm_lock();
+        for (i = 0; i < nmade && made[i].of != m; i++) {}
+        g = i < nmade ? made[i].copy : NULL;
+        if (!g) {
+            size_t n = strlen(m->shorty);
+            char *shorty = (char *)mg_dvm_meta_alloc_kind(n, DVM_META_METHOD);
+            g = (mg_dvm_method *)mg_dvm_meta_alloc_kind(sizeof(*g), DVM_META_METHOD);
+            *g = *m;
+            /* As the object's method is described: its signature, and its parameters but the object. */
+            shorty[0] = m->shorty[0];
+            memcpy(shorty + 1, m->shorty + 2, n - 1);
+            g->sig = sig;
+            g->shorty = shorty;
+            g->nparams = (u16)(m->nparams - 1);
+            g->flags &= ~(u32)DVM_ACC_STATIC;
+            g->vidx = -1;
+            if (nmade < (int)MG_COUNT(made)) {
+                made[nmade].of = m;
+                made[nmade++].copy = g;
+            }
+        }
+        mg_dvm_unlock();
+        return g;
+    }
+    return NULL;
+}
+
 mg_dvm_method *mg_dvm_resolve_method(mg_dvm_dex *d, u32 idx, int kind)
 {
     bool want_static = kind == DVM_INVOKE_STATIC;
@@ -978,6 +1266,10 @@ mg_dvm_method *mg_dvm_resolve_method(mg_dvm_dex *d, u32 idx, int kind)
         sig = mg_dvm_dex_proto_sig(d, mg_dvm_rd16(mi + 2));
         m = find_method_interned(c, name, sig, want_static);
         if (!m && !want_static) m = nio_covariant(c, name, sig);
+        if (!m && !find_method_interned(c, name, sig, !want_static)) {
+            m = boot_member(c, name, sig, want_static);
+            if (!m && mg_dvm_pending()) return NULL;
+        }
         if (!m) {
             if (find_method_interned(c, name, sig, !want_static)) {
                 mg_dvm_throw("java/lang/IncompatibleClassChangeError", "%s.%s%s is %s", c->name, name, sig, want_static ? "not static" : "static");
@@ -1126,7 +1418,7 @@ static bool init_statics(mg_dvm_class *c)
     end = d->b + d->size;
     n = mg_dvm_uleb(&p);
     for (i = 0; i < n && (int)i < c->nsfields; i++)
-        if (!read_static_value(d, &p, end, &c->statics[i])) return false;
+        if (!read_static_value(d, &p, end, &c->statics[c->sfields[i].slot])) return false;
     return true;
 }
 
@@ -1274,6 +1566,17 @@ void mg_dvm_each_linked_locked(void (*fn)(mg_dvm_class *c, void *user), void *us
         for (c = g_classes[i]; c; c = c->next) fn(c, user);
 }
 
+void mg_dvm_each_linked_part(u32 from, u32 to, void (*fn)(mg_dvm_class *c, void *user), void *user)
+{
+    mg_dvm_class *c;
+    u32 i;
+    if (to > CLASS_BUCKETS) to = CLASS_BUCKETS;
+    for (i = from; i < to; i++)
+        for (c = g_classes[i]; c; c = c->next) fn(c, user);
+}
+
+u32 mg_dvm_class_buckets(void) { return CLASS_BUCKETS; }
+
 mg_dvm_dex *mg_dvm_dex_at(u32 i) { return i < (u32)g_ndexes ? g_dexes[i] : NULL; }
 
 mg_dvm_class *mg_dvm_make_proxy_class(const char *name, mg_dvm_class *super, mg_dvm_class **ifaces, int nifaces, mg_dvm_method *const *like, int nmethods,
@@ -1287,17 +1590,17 @@ mg_dvm_class *mg_dvm_make_proxy_class(const char *name, mg_dvm_class *super, mg_
         mg_dvm_unlock();
         return c;
     }
-    c = (mg_dvm_class *)mg_dvm_meta_alloc(sizeof(*c));
+    c = (mg_dvm_class *)mg_dvm_meta_alloc_kind(sizeof(*c), DVM_META_CLASS);
     c->name = mg_dvm_intern(name);
     /* 0x40000 is how libcore's Class.isProxy knows one (Android's kAccClassIsProxy). */
     c->flags = DVM_ACC_PUBLIC | DVM_ACC_FINAL | 0x40000;
     c->super = super;
     c->nslots = super->nslots;
     c->nifaces = nifaces;
-    c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc(sizeof(*c->ifaces) * (size_t)(nifaces + 1));
+    c->ifaces = (mg_dvm_class **)mg_dvm_meta_alloc_kind(sizeof(*c->ifaces) * (size_t)(nifaces + 1), DVM_META_CLASS);
     for (i = 0; i < nifaces; i++) c->ifaces[i] = ifaces[i];
     c->ndirect = 1;
-    c->direct = (mg_dvm_method *)mg_dvm_meta_alloc(sizeof(mg_dvm_method) * 2);
+    c->direct = (mg_dvm_method *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_method) * 2, DVM_META_METHOD);
     c->direct[0].cls = c;
     c->direct[0].name = mg_dvm_intern("<init>");
     c->direct[0].sig = mg_dvm_intern(construct_sig);
@@ -1305,12 +1608,12 @@ mg_dvm_class *mg_dvm_make_proxy_class(const char *name, mg_dvm_class *super, mg_
     c->direct[0].flags = DVM_ACC_PUBLIC | DVM_ACC_CONSTRUCTOR | DVM_ACC_NATIVE;
     c->direct[0].nparams = 1;
     c->direct[0].vidx = -1;
-    c->direct[0].native = construct;
-    c->direct[0].bound = true;
+    mg_dvm_native_of(&c->direct[0])->native = construct;
+    c->direct[0].nat->bound = true;
     c->nvirt = nmethods;
-    c->virt = (mg_dvm_method *)mg_dvm_meta_alloc(sizeof(mg_dvm_method) * (size_t)(nmethods + 1));
+    c->virt = (mg_dvm_method *)mg_dvm_meta_alloc_kind(sizeof(mg_dvm_method) * (size_t)(nmethods + 1), DVM_META_METHOD);
     inherited = super->nvtab;
-    c->vtab = (mg_dvm_method **)mg_dvm_meta_alloc(sizeof(*c->vtab) * (size_t)(inherited + nmethods + 1));
+    c->vtab = (mg_dvm_method **)mg_dvm_meta_alloc_kind(sizeof(*c->vtab) * (size_t)(inherited + nmethods + 1), DVM_META_VTABLE);
     memcpy(c->vtab, super->vtab, sizeof(*c->vtab) * (size_t)inherited);
     c->nvtab = inherited;
     for (i = 0; i < nmethods; i++) {
@@ -1323,8 +1626,8 @@ mg_dvm_class *mg_dvm_make_proxy_class(const char *name, mg_dvm_class *super, mg_
         m->nparams = like[i]->nparams;
         m->flags = DVM_ACC_PUBLIC | DVM_ACC_FINAL | DVM_ACC_NATIVE;
         m->idx = (u32)i;                                             /* which of the methods it stands for */
-        m->native = invoke;
-        m->bound = true;
+        mg_dvm_native_of(m)->native = invoke;
+        m->nat->bound = true;
         /* The three of Object that a handler answers (equals, hashCode, toString) take their places in the vtable; the rest are new. */
         for (k = 0; k < inherited && slot < 0; k++)
             if (c->vtab[k]->name == m->name && c->vtab[k]->sig == m->sig) slot = k;

@@ -21,6 +21,7 @@
 #include "player/KeyboardHost.h"
 #include "player/MediaControls.h"
 #include "player/Session.h"
+#include "player/StorageHost.h"
 #include "player/WindowHost.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
@@ -31,6 +32,7 @@
 #include "ui/AppShell.h"
 #include "ui/Components.h"
 
+#include <winrt/Windows.Storage.AccessCache.h>
 #include <winrt/Windows.UI.Text.Core.h>
 
 #include <map>
@@ -53,6 +55,76 @@ namespace {
 /// opened the menu over the app's own dialog.
 constexpr double menuCorner = 56;
 constexpr auto menuTapWindow = std::chrono::milliseconds(700);
+
+// MARK: Saving the log
+//
+// The end panel's Save the Log: the shell's log of this run and of the two before (LocalState\megler.log,
+// megler.prev.log, megler.prev2.log) copied into "Megler logs" in the phone's Documents, each named after the app and
+// the time, so that it can be sent on from the phone. An app container has no way into Documents but the folder picker
+// (player/StorageHost.h): the folder Android's storage has as Documents is used when there is one; else the picker opens
+// in Documents, and the phone's Documents folder chosen there is kept as that link (StorageHost::add), so that it is asked
+// for once.
+
+/// `s` with what a file's name cannot have made '_'.
+std::string fileNamePart(std::string s) {
+    for (char& c : s)
+        if (std::strchr("\\/:*?\"<>|", c) || (unsigned char)c < 32) c = '_';
+    return s;
+}
+
+winrt::fire_and_forget saveTheLog(std::weak_ptr<AppShell> weakShell, std::string label) {
+    using namespace winrt::Windows::Storage;
+    using namespace winrt::Windows::Storage::Pickers;
+    namespace access = winrt::Windows::Storage::AccessCache;
+    std::string error, where;
+    unsigned saved = 0;
+    try {
+        StorageFolder documents{nullptr};
+        for (const auto& link : StorageHost::shared().links()) {
+            if (_stricmp(link.name.c_str(), "Documents") != 0 || link.token.empty()) continue;
+            try {
+                documents = co_await access::StorageApplicationPermissions::FutureAccessList().GetFolderAsync(hs(link.token));
+            } catch (const hresult_error& e) {
+                shellLog::write(format("player: the folder linked as Documents is not handed back (0x%08X): the picker asks", unsigned(e.code())));
+            }
+            break;
+        }
+        if (!documents) {
+            FolderPicker picker;
+            picker.ViewMode(PickerViewMode::List);
+            picker.SuggestedStartLocation(PickerLocationId::DocumentsLibrary);
+            // (A folder picker with no file type named throws; any type will do.)
+            picker.FileTypeFilter().Append(L"*");
+            documents = co_await picker.PickSingleFolderAsync();
+            if (!documents) co_return;
+            if (_stricmp(narrow(std::wstring(documents.Name())).c_str(), "Documents") == 0 && StorageHost::shared().nameFree("Documents")) {
+                const std::string why = StorageHost::shared().add(documents, "Documents");
+                shellLog::write(why.empty() ? "player: the phone's Documents linked as /sdcard/Documents" : "player: Documents not linked: " + why);
+            }
+        }
+        StorageFolder logs = co_await documents.CreateFolderAsync(L"Megler logs", CreationCollisionOption::OpenIfExists);
+        where = narrow(std::wstring(logs.Path()));
+        SYSTEMTIME t;
+        GetLocalTime(&t);
+        const std::string stamp = format("%04u-%02u-%02u %02u-%02u-%02u", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+        for (const wchar_t* name : {L"megler.log", L"megler.prev.log", L"megler.prev2.log"}) {
+            const std::wstring path = platform::localStateDirectory() + L"\\" + name;
+            if (!files::exists(path)) continue;
+            StorageFile file = co_await StorageFile::GetFileFromPathAsync(hstring(path));
+            co_await file.CopyAsync(logs, hs(fileNamePart(label) + " " + stamp + " " + narrow(name)), NameCollisionOption::GenerateUniqueName);
+            saved++;
+        }
+    } catch (const hresult_error& e) {
+        error = format("0x%08X %s", unsigned(e.code()), narrow(std::wstring(e.message())).c_str());
+    }
+    shellLog::write(error.empty() ? format("player: %u log files saved to %s", saved, where.c_str()) : "player: the log could not be saved: " + error);
+    auto shell = weakShell.lock();
+    if (!shell) co_return;
+    if (!error.empty())
+        shell->alert("Couldn't Save the Log", error);
+    else
+        shell->alert("Log Saved", format("%u files in %s.", saved, where.c_str()));
+}
 
 class PlayerScreen final : public Page {
 public:
@@ -491,6 +563,12 @@ private:
         log.Margin(ThicknessHelper::FromLengths(0, 10, 0, 0));
         endSecondary_ = log;
         add(column, log);
+        // The log to the phone's Documents, to be sent on from there (saveTheLog).
+        auto save = primaryButton("Save the Log to Documents", glyphs::download, [this] {
+            saveTheLog(shell_.weak_from_this(), title_);
+        }, p.fill);
+        save.Margin(ThicknessHelper::FromLengths(0, 10, 0, 0));
+        add(column, save);
         auto box = card(column, 18, 20);
         box.HorizontalAlignment(HorizontalAlignment::Center);
         box.VerticalAlignment(VerticalAlignment::Center);
@@ -750,6 +828,8 @@ private:
         }
         if (!keyboardWanted_)
             shellLog::write(format("player: the app asks for the keyboard (kind %d, flags 0x%X, Enter %d)", kind, unsigned(flags), enter));
+        typingTold();
+        typing_.kind = kind;
         keyboardWanted_ = true;
         try {
             // A new scope is the text service's to read at the next focus: so the focus is left and taken again.
@@ -771,6 +851,7 @@ private:
     /// The app no longer wants it, or (`byUser`) Back was pressed while it was up.
     void putKeyboardAway(bool byUser) {
         if (!keyboardWanted_ && !keyboardUp_) return;
+        typingTold();
         keyboardWanted_ = false;
         if (byUser) session::keyboardClosed();
         try {
@@ -842,6 +923,9 @@ private:
     /// the fixed beginning; with only that left the app is told all the same.
     void keyboardBackspace() {
         session::textKey(MEGLER_TEXT_BACKSPACE);
+        typing_.byKey++;
+        typing_.lastByKey = std::chrono::steady_clock::now();
+        if (typing_.lastByKey - typing_.lastByText < std::chrono::milliseconds(200)) typing_.close++;
         if (!typingSaid_) {
             typingSaid_ = true;
             shellLog::write("player: typing (a Backspace) reaches the app");
@@ -863,6 +947,20 @@ private:
         }
     }
 
+    /// What the keyboard did in the field it leaves, counted, in the log; then the counts start afresh. Only numbers: a
+    /// password's characters are never written. Facebook said a password was wrong that the user had typed right, and
+    /// nothing in the log could say whether the field got what the keyboard typed. A Backspace that comes both as a key
+    /// and as a change to the text (close) would take back two characters for one.
+    void typingTold() {
+        const Typing t = typing_;
+        typing_ = Typing{};
+        if (!t.typed && !t.byText && !t.byKey) return;
+        shellLog::write(format("player: in that field (kind %d) the keyboard typed %d characters and took back %d by Backspace keys and %d "
+                               "by changes to its text%s",
+                               t.kind, t.typed, t.byKey, t.byText,
+                               t.close ? format(", %d times a key and a change within 0.2 s of each other", t.close).c_str() : ""));
+    }
+
     /// The text as the keyboard has made it: the difference told to the app.
     /// True when the text should be started afresh.
     bool keyboardTyped(const std::wstring& now) {
@@ -882,6 +980,12 @@ private:
         for (int i = 0; i < gone; ++i) session::textKey(MEGLER_TEXT_BACKSPACE);
         const std::wstring added = now.substr(common);
         if (!added.empty()) session::textCommit(narrow(added));
+        typing_.typed += int(added.size());
+        if (gone > 0) {
+            typing_.byText += gone;
+            typing_.lastByText = std::chrono::steady_clock::now();
+            if (typing_.lastByText - typing_.lastByKey < std::chrono::milliseconds(200)) typing_.close++;
+        }
         if (!typingSaid_ && (gone > 0 || !added.empty())) {
             typingSaid_ = true;
             shellLog::write("player: typing reaches the text service's field and goes to the app");
@@ -1036,6 +1140,15 @@ private:
     bool keyboardWanted_ = false; // the app asked for the keyboard and has not been told it is gone
     bool keyboardUp_ = false;     // Windows says it is on the screen
     bool typingSaid_ = false;     // the log has said that typing reaches the app
+    // What the keyboard did in the field being edited, counted (never what it typed): see typingTold.
+    struct Typing {
+        int kind = 0;             // MEGLER_KEYBOARD_*
+        int typed = 0;            // characters added
+        int byText = 0;           // characters taken back by a change to the text
+        int byKey = 0;            // Backspace keys
+        int close = 0;            // a Backspace key and a change that took a character back, within 0.2 s of each other
+        std::chrono::steady_clock::time_point lastByText{}, lastByKey{};
+    } typing_;
     bool navigationBarShown_ = false; // out of full-screen mode while the keyboard is up
     int bars_ = 0;                    // the phone's bars the app wants hidden: MEGLER_BAR_*
     double cover_[4] = {};            // what the bars cover of the window, in view pixels (barsCover)

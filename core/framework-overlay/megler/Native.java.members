@@ -4,6 +4,27 @@
     // android.os.BatteryManager, both overlaid here to ask this instead).
     /** level, scale, status, plugged, health, millivolts, tenths of a degree Celsius, present (1 or 0): the numbers of Android's ACTION_BATTERY_CHANGED. */
     public static native int[] battery();
+    /** The SIM as the shell said it (megler_set_cellular): ready (1/0), operator name, MCC+MNC, network type, roaming (1/0),
+     *  separated by tabs (core/src/drivers/mg_java.c). */
+    public static native String cellular();
+    /** The microphone (megler_microphone_host): asked for at `rate` Hz in 1 or 2 channels, true when it hears; stopped;
+     *  and what it heard, 16-bit samples, into `b` (blocking: until `n` are there) -- how many (core/src/drivers/mg_java.c). */
+    public static native boolean micStart(int rate, int channels);
+    public static native void micStop();
+    public static native int micRead(short[] b, int off, int n, boolean blocking);
+    /** The phone's check of its user (megler_biometric_host, core/src/drivers/mg_java.c), for megler.Biometrics: whether it
+     *  can (0 ready, 1 not set up, 2 none); its dialog with the message, blocking until the user is done (0 verified,
+     *  1 canceled, 2 locked out, 3 could not check); and that dialog closed from another thread. */
+    /** The memory the process may use (the shell's limit; 1 GB where it gives none) and what it uses now, in bytes, as
+     *  sysconf's _SC_PHYS_PAGES and /proc/meminfo have them: what ActivityManager.getMemoryInfo tells (core/src/drivers/mg_java.c). */
+    public static native long memoryLimit();
+    public static native long memoryInUse();
+    public static native int biometricAvailable();
+    public static native int biometricVerify(String message);
+    public static native void biometricCancel();
+    /** Where the app's sound is to go, as its AudioManager has it: 0 as ever, 1 the earpiece, 2 the loudspeaker, for a
+     *  call (megler_audio_host.route, core/src/drivers/mg_java.c). */
+    public static native void audioRoute(int route);
     /** The battery's kind as Android names it, "Li-ion". */
     public static native String batteryTechnology();
     /**
@@ -61,6 +82,11 @@
     public static native byte[] appActivities(String packageName);
     /** The picture of that app's icon resource `id` (one its activities name), a PNG; null when there is none. */
     public static native byte[] appResIcon(String packageName, int id);
+    /** What Megler last wrote of the APK it was handed under `name` (installApk): installs/<name>.txt of the same folder,
+     *  "<when>\t<what>\t<why>", UTF-8 -- declined, incompatible, failed or busy; null when it has written nothing. */
+    public static native byte[] appInstall(String name);
+    /** Another app the phone has, to uninstall (megler_system_host.uninstall_app): true when the shell asks the user. */
+    public static native boolean uninstallApp(String packageName);
     /** A colour of Material You's palettes made from a seed (megler_palette_tone): palette 0 neutral 1 ... 5 error, tone 0 to 100. */
     public static native int paletteTone(int seed, int palette, int tone);
     /** What that session plays: title, artist, album (or null), and a picture of at most 256x256 as ARGB pixels, or null. */

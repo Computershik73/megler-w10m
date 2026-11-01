@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 
+#include "../arm/mg_stubs.h"
 #include "../bionic/mg_bionic.h"
 #include "../dvm/mg_dvm_internal.h"
 #include "../ld/mg_ld.h"
@@ -19,8 +20,12 @@
  * can hold. An mg_jclass says which it is in `dvm` and `foreign`.
  */
 
-/* How many parameters a method called through this layer may have. */
-#define JARGS 64
+/*
+ * How many parameters a method called through this layer may have: as many as Java allows (255 words of them). It was 64:
+ * WhatsApp's native code calls back JniBridge.jnidispatch with 78 (45 ints and 33 objects), and the last 14 were whatever
+ * the stack held -- the interpreter took the int 0x23 for an object and the app ended.
+ */
+#define JARGS 256
 
 /* ---------------------------------------------------------------- classes */
 
@@ -29,7 +34,7 @@ typedef struct jmeth {
     char *name, *sig;
     bool is_static;
     mg_jhle_fn fn;
-    char argk[JARGS];                  /* one kind letter per argument: Z B C S I J F D L */
+    char *argk;                        /* one kind letter per argument: Z B C S I J F D L */
     int nargs;
     char retk;
     bool warned;
@@ -470,7 +475,12 @@ static jmeth *get_method(mg_jclass *cls, const char *name, const char *sig, bool
         m->name = mg_strdup(name);
         m->sig = mg_strdup(sig);
         m->is_static = is_static;
-        parse_sig(sig, m->argk, (int)sizeof(m->argk), &m->nargs, &m->retk);
+        {
+            char kinds[JARGS];
+            parse_sig(sig, kinds, JARGS, &m->nargs, &m->retk);
+            m->argk = (char *)mg_alloc((size_t)m->nargs + 1);
+            memcpy(m->argk, kinds, (size_t)m->nargs);
+        }
         m->next = cls->meths;
         cls->meths = m;
     }
@@ -667,6 +677,8 @@ static mg_jvalue *instance_slot(mg_jobj *o, const jfield *f)
     }
     for (i = 0; i < o->nfields; i++)
         if (!strcmp(o->fields[i].name, f->name)) return &o->fields[i].v;
+    /* (The collector follows the fields of the runtime's objects that have them apart: mg_dvm_gc.c.) */
+    if (o->dvm && !o->nfields) mg_dvm_gc_has_fields(o);
     o->fields = (mg_jfield_value *)mg_realloc(o->fields, sizeof(mg_jfield_value) * (size_t)(o->nfields + 1));
     memset(&o->fields[o->nfields], 0, sizeof(mg_jfield_value));
     o->fields[o->nfields].name = mg_strdup(f->name);
@@ -921,6 +933,47 @@ mg_jvalue mg_jni_call_native(void *fn, mg_jobj *self_or_class, const char *sig, 
     return call_native(fn, self_or_class, sig, args, false);
 }
 
+/*
+ * The same under a guard: when the native code faults and the fault is not the layer's to repair, the thread comes back
+ * here (mg_core.c: the stub longjmp to this setjmp) and *faulted says so; the call's value is then 0. The guard of a call
+ * further out is kept and put back, so that a native method called back from a guarded one has its own. Where there is
+ * no stub setjmp (a host that is not ARM32), a plain call.
+ */
+#if defined(__GNUC__) || defined(__clang__)
+typedef int (*setjmp_stub_fn)(u32 *jb) __attribute__((returns_twice));
+#else
+typedef int (*setjmp_stub_fn)(u32 *jb);
+#endif
+
+static MG_NOINLINE int guarded(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args, mg_jvalue *out)
+{
+    mg_gthread *t = mg_gthread_self();
+    u32 jb[32];
+    u32 *volatile outer = t->fault_guard;
+    void *setjmp_stub = mg_stub(MG_STUB_SETJMP);
+    if (!setjmp_stub) {
+        *out = call_native(fn, self_or_class, sig, args, false);
+        return 0;
+    }
+    if (MG_GFN(setjmp_stub_fn, setjmp_stub)(jb) != 0) {
+        t->fault_guard = outer;
+        return 1;
+    }
+    t->fault_guard = jb;
+    *out = call_native(fn, self_or_class, sig, args, false);
+    t->fault_guard = outer;
+    return 0;
+}
+
+mg_jvalue mg_jni_call_native_guarded(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args, bool *faulted)
+{
+    mg_jvalue ret;
+    ret.j = 0;
+    *faulted = guarded(fn, self_or_class, sig, args, &ret) != 0;
+    if (*faulted) ret.j = 0;
+    return ret;
+}
+
 static mg_jvalue call_native_bare(void *fn, const char *sig, const mg_jvalue *args) { return call_native(fn, NULL, sig, args, true); }
 
 /* A native method of one of the runtime's classes: asked once for each, when it is first called. */
@@ -941,6 +994,7 @@ void mg_jni_dvm_join(mg_dvm_jni *out)
     out->find = native_for_dvm;
     out->tried = native_tried;
     out->call = mg_jni_call_native;
+    out->call_guarded = mg_jni_call_native_guarded;
     out->call_bare = call_native_bare;
     out->class_for = jni_class_for;
 }

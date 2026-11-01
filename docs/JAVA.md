@@ -898,6 +898,25 @@ they were. The core's host test makes a folder, a file of more than 300
 characters, reads it through a path with `.` and `..` in it, lists, renames
 and removes them.
 
+### The SIM
+
+An app is told it runs on a phone: `TelephonyManager.getPhoneType()` is GSM,
+it is voice and SMS capable with one modem, and `hasSystemFeature` has
+`android.hardware.telephony` (and `.gsm`). Apps that saw no phone type and no
+SIM took the phone for a tablet. The SIM is the shell's to say
+(`megler_set_cellular`, megler.h; `player/PhoneState.cpp`), from the cellular
+connection profile Windows keeps for it: the home operator's MCC and MNC
+(`HomeProviderId`), the profile's name for the operator's, the data class for
+the network's type (LTE, HSPA, UMTS, EDGE, GPRS), the registration for
+roaming. It is said before each app and whenever the network changes. With a
+SIM, `getSimState` is ready, `getSimOperator` and `getNetworkOperator` the MCC
+and MNC, the operator names the profile's, the countries the MCC's (for the
+countries the phone is likely in, else the phone's region), `getNetworkType`
+the data class's. With none, the SIM is absent and the countries are the
+region's, as before. `megler.Native.cellular` hands it to Java as one line.
+The data app's step `telephony` reads it back from the harness's SIM, one of
+the US in the first run and of Russia in the second.
+
 ### The battery (both hosts; the app under qemu-arm)
 
 The core answers for the battery in one place, `mg_battery_read`
@@ -969,6 +988,20 @@ app's step "connectivity" reads the sticky intent and has a receiver called
 with it once, afterwards, on the main thread. A change of network is not
 broadcast: the framework says Wi-Fi throughout.
 
+**Ordered broadcasts.** `sendOrderedBroadcast` with a result receiver (each of
+its overloads, and `sendOrderedBroadcastAsUser`, from a context or a wrapper)
+goes to the receivers one after another, the registered ones of the higher
+priority first, each on its thread with the result the one before left
+(`getResultCode`, `getResultData`, `getResultExtras`), which it may change or
+end (`abortBroadcast`); one that goes asynchronous (`goAsync`) holds the next
+back until its `PendingResult.finish()`. Then the result receiver, on its
+handler's thread, gets the result as it ended (`megler.Broadcasts.sendOrdered`;
+the result itself is kept in the overlay's `BroadcastReceiver`). Before, the
+original's context did nothing with a result receiver and its receivers kept no
+result: Play Store sends its own receivers one when it takes an install up. The
+data app's step "ordered-broadcast" checks the order, the result passed on and
+added to from another thread, and the result receiver's thread.
+
 ### The time zone (the runtime on libcore and the app, under qemu-arm)
 
 The shell names the phone's time zone before it starts an app
@@ -1030,10 +1063,11 @@ Android that property comes from the runtime's command line; here
 properties. (Not `System.specialProperties`: where libopenjdk.so runs, that
 native is the library's and the runtime's fallback is never called -- the
 first attempt put it there, and the apps still had en-US.) The framework's
-`LocaleList`, the resources' configuration and `TelephonyManager`'s network
-and SIM country follow from the default locale: an app that takes the SIM's
-country as the default for a phone number gets the phone's region (urent
-does, and had "us"). The properties `persist.sys.locale` and `ro.product.locale`
+`LocaleList` and the resources' configuration follow from the default
+locale, and so do `TelephonyManager`'s network and SIM country when there is
+no SIM: an app that takes the SIM's country as the default for a phone number
+gets the phone's region (urent does, and had "us"). With a SIM they are its
+country, from its MCC (below, "The SIM"). The properties `persist.sys.locale` and `ro.product.locale`
 say the tag, a native app's `AConfiguration` has its language and region,
 and the JNI world's `Locale` and Unity's tag are the same.
 
@@ -1211,7 +1245,7 @@ the framework should not let it think (not looked into).
 | `PackageManager` knowing more than the app itself (installed APKs in the library) | QuickShortcutMaker's whole purpose | small in Java, a decision for the shell |
 | EGL and OpenGL ES from Java (`megler.EGLNative`, `GLES20` over ANGLE) | Device Info's GPU page; any `GLSurfaceView` | done (2026-10-14): "OpenGL ES from Java" above; on a phone not yet tried |
 | `megler.Web` (a `WebView`) | ads, licence and help pages in all three | done (2026-10-16): Android's System WebView, Chromium 128, in the app's process ("The WebView") |
-| Processes (`Runtime.exec`) | root checkers and file managers probing `su`, `getprop`, `sh` | answered: "no such program" (`error=2`), for every program, `sh` included. An app that wants `getprop`'s output gets the exception, not an empty answer |
+| Processes (`Runtime.exec`) | root checkers and file managers probing `su`, `getprop`, `sh` | answered: "no such program" (`error=2`), for every program, `sh` included. An app that wants `getprop`'s output gets the exception, not an empty answer. `UNIXProcess.initIDs` is the runtime's too and does nothing: libcore's set SIGCHLD with `sigaction`, which through Facebook's sigmux hook failed, and the `InternalError` it threw ended Facebook at its first exec (package 487; the data app's "exec" step) |
 | TLS (conscrypt's `libjavacrypto.so`) | anything that talks HTTPS | done (2026-10-14): the library is built like the other seven, over Android 9's own `libssl.so` ("The security providers"); TLS 1.2 on loopback and https through Android's HTTP client under qemu; on a phone not yet tried |
 | `invoke-custom`, method handles | not met in these three (d8 desugared them) | large |
 
@@ -1317,6 +1351,31 @@ in four to seven minutes of scrolling**, which is the number that makes the
 collector urgent.
 
 ### What a run costs
+
+**How long a start takes, on the phone** (Yandex Maps, package 490): the shell
+1.4 s to "session: starting", then nothing in the log for 9.8 s, then 0.4 s for
+libcore, 2 s for the app's sixteen DEX files, and from the app's `Application`
+on its own code. The same 9 to 10 s were in every app's log (Facebook,
+WhatsApp, Play Store, packages 484 to 491). They were the shell asking the
+Device Portal, over the loopback, for the phone's whole list of packages, to see
+whether Google Play services' own package was still installed
+(`appPackage::serviceApk`), before any app could start. That is asked on a
+thread of its own now, once a run, and a package found gone is forgotten for the
+next start (Megler's own uninstall forgets it at once). And:
+- The table of which DEX file defines each class had 16384 buckets; Yandex
+  Maps defines 210000 classes and Google Play services 60000 more, so every
+  lookup (each class of each DEX file as it was read, each class loaded) went
+  through fifteen entries with `strncmp`. It grows now, two entries a bucket at
+  most (`cdef_grow`), and a class's name is no longer copied to be looked up.
+  The tables of loaded classes and of interned names have 65536 buckets (they
+  had 4096 and 8192).
+- Google Play services' resource table cut down (see Memory) is kept beside its
+  APK in the services' shared folder, named for the table's CRC-32 and the
+  languages, and read from there by every app after the first: its 84 MB were
+  read and cut at each start, 0.7 s.
+
+What is left is the interpreter running the app's own start, and Google Play
+services starting in the same process beside it.
 
 Measured by the runtime's own counts, in the 32-bit build under qemu
 (`mg_mem_usage` gives nothing in a test program, so what the *process* takes was
@@ -1937,8 +1996,11 @@ Once it is started (`mg_jni.c` asks `g_dvm.running`):
   way, looking classes up before their natives are registered). Asking for a
   method or field id initialises.
 - `Call...Method` on a method of a DEX class runs the bytecode, virtually or
-  exactly as asked; fields are slots. A native method takes up to 64 parameters
-  and 120 argument words (it was 32 and 22).
+  exactly as asked; fields are slots. A method called through JNI takes as many
+  parameters as Java allows (`JARGS`, 256; it was 64, and WhatsApp's native
+  code calls `JniBridge.jnidispatch` back with 78: the last 14 were whatever
+  the stack held, and the interpreter ended on an int taken for an object). A
+  native method takes 120 argument words (it was 22).
 - `MonitorEnter`/`MonitorExit` are the runtime's monitors;
   `NewDirectByteBuffer`, `GetDirectBufferAddress` and `-Capacity` work on
   libcore's own `java.nio.DirectByteBuffer` when it is there.
@@ -2119,6 +2181,63 @@ makes it again. The keys are ordinary ones in the app's data
 libcore too; it is kept because libcore is 40 MB that the ordinary package does
 not carry, and because the PC's tests must run where `build/android9` has not
 been unpacked.
+
+**Newer libcore classes** are in `megler-libcore.dex`, which is on the boot
+path before `core-oj.dex` (`tools/build-libcore-overlay.sh` builds it from
+`core/libcore-overlay`): a class there is added, or replaces Android 9's of the
+same name, and a `.java.members` file adds members to Android 9's source.
+Besides `DelegateLastClassLoader` and TLS's newer methods there is
+`java.util.zip.CRC32C` (Android 14's; Yandex Maps ended with
+`NoClassDefFoundError` when it saved a route, package 489), and `Checksum`'s
+two default methods of Java 9 (`update(byte[])`, `update(ByteBuffer)`). The
+data app's "crc32c" step checks the standard check value, the defaults, a
+direct buffer and `Adler32` through the interface.
+
+**Methods core-libart's classes lack** cannot be added that way: core-libart
+(ICU4J among it) is a file of DEX code here, without its sources. A reference
+to such a method that a class does not have is looked for in the framework's
+`megler.members.<the class's name>` (`core/framework-overlay/megler/members`;
+`boot_member` in `mg_dvm_class.c`): a static method of the same name and
+signature is the class's static method, and a static method that takes the
+object first is the object's method -- a copy of it, not static and not
+virtual, which the interpreter calls as it is, the registers of the call being
+the same. The class's superclasses are asked in turn. There is
+`MeasureUnit.getIdentifier()` and `MeasureUnit.forIdentifier(String)`
+(Android 12's), ICU 60's names spelled as ICU 68 spells them
+(`inch-ofhg`, `liter-per-100-kilometer`).
+
+**`android.icu.number`** is two packages. Android 9's core-libart has ICU 60's,
+which Android had not published, whose classes are other (`Rounder`, not
+`Precision`) and fewer, and which its `android.icu.text.DecimalFormat` is made
+of; apps of now call the one Android 11 published, with what Android 12 and 13
+added (`usage()`, `FormattedNumber.getOutputUnit()`). The framework's is that
+one (`core/framework-overlay/android/icu/number`), and the runtime keeps
+core-libart's to core-libart: its classes in the package are registered under
+`megler/libart/` names, and what core-libart names in it resolves to them
+(`mg_dvm_own_desc`), so that `DecimalFormat` keeps the classes it was built
+with and an app sees the framework's alone. (Until package 496 the framework's
+few classes took the place of core-libart's of the same names: Yandex Maps
+ended with `NoSuchMethodError: UnlocalizedNumberFormatter.usage`, Facebook's
+compact counts had no `notation()`, and `android.icu.text.DecimalFormat` had
+lost the classes it uses.) The framework's formats with ICU 60's
+`android.icu.text` -- `DecimalFormat`, `CompactDecimalFormat`, `MeasureFormat`
+given that `DecimalFormat` -- and has the settings: notation (simple,
+scientific, engineering, compact), unit and per-unit, every precision
+(fraction, significant, both with either priority, increment, currency), the
+rounding mode, grouping, integer width, symbols and numbering systems, unit
+width, every sign display, the decimal separator, scale, usage, and trailing
+zeros. A usage's unit comes from CLDR's preferences of a few kinds of quantity
+(`Units.java`: temperature, length, mass, speed, volume, area, fuel,
+pressure), with the locale's `mu`, `ms` and `rg`; CLDR's mixed units are the
+larger unit alone. Not there: skeletons and number ranges. The data app's step
+"icu-number", compiled against the newer classes as an app is
+(`core/tests/app/data/stubs`, which `tools/build-test-app.sh` compiles
+against and leaves out of the DEX file), asks for AndroidX's unit of the
+weather in the US, in Russia and with `-u-mu-celsius`, a road's unit,
+Facebook's compact counts, Play Store's fixed digits, a currency, a unit's full
+name, the sign, fraction rounding that keeps two significant digits, the value
+as shown; and formats with ICU 60's `DecimalFormat` and `CompactDecimalFormat`,
+and finds no `Rounder`.
 
 ### Starting on Android's libcore
 
@@ -2463,6 +2582,34 @@ counts it now reads (`ref_counted` in `mg_jni.c`); the table forgets an
 object once nothing references it globally, so it grows with what is
 referenced, not with what ever was.
 
+### A Flutter app
+
+A Flutter app is a Java app: its activity (`FlutterActivity`, or the app's
+own on top of it) loads Flutter's engine, `libflutter.so`, and the engine
+runs the app's Dart code, compiled ahead of time into `libapp.so`, and draws
+into the activity's `SurfaceView`. The APK's report took the engine's
+library for an engine of its own with no driver ("there is no driver for that
+engine yet"), so no Flutter app could be started. It is a Java app now, with
+a note that it is built with Flutter (`classify` in `mg_apk.c`; the bundle
+tests make one of the natives test app with the two libraries beside its own).
+
+What the engine asks of the system was checked against what is here, on its
+dynamic imports (a release engine of May 2026, Dart 3.12, 481 of them): an ARM library that
+imports the same names, loaded with `mg_tests --load` under qemu, left eight
+unresolved besides OpenGL ES and EGL (which are ANGLE's on the phone, and all
+there): `readlinkat`, `symlinkat`, `utimensat`, `inotify_init1` and
+`close_range` of dart:io, now there as the other `*at` calls are (the
+directory descriptor not looked at), and BoringSSL's three weak
+`OPENSSL_memory_*` hooks, which are meant to be absent. What it looks up at
+run time: `libvulkan.so` is not there, and the engine draws with Impeller's
+OpenGL ES backend instead; `AChoreographer_*` (API 29) are not, and it waits
+for the display's frames through Java's `Choreographer`; `ASurfaceControl_*`
+answer none. Each lookup in the system's libraries that finds nothing now
+says so in the log, once (`dl: dlsym(NAME) found nothing`). The Dart VM
+reads `/proc/cpuinfo` for ARMv7 and its features (vfp, neon, idiva), which
+says so, as `getauxval(AT_HWCAP)` does. No Flutter app has been run here yet:
+the next step is a phone's log of one.
+
 ### A SurfaceView drawn by native code
 
 A game whose activity is Java and whose engine is native hands the engine the
@@ -2535,8 +2682,17 @@ and destroys the old. `eglMakeCurrent`, `eglQuerySurface`,
 `eglSurfaceAttrib`, `eglSwapBuffers` and `eglDestroySurface` are given the
 pbuffer for the app's surface, and `eglGetCurrentSurface` gives the app's
 back. A swap of a surface that is not current on the calling thread is
-`EGL_BAD_SURFACE`, as EGL has it. A window with an EGL surface on it cannot be
-locked, and a locked one gets no EGL surface, as on Android.
+`EGL_BAD_SURFACE`, as EGL has it. A surface destroyed while it is current on
+some thread ends only when the last thread that has it current lets it go, as
+EGL defers it: the layer counts the threads each surface is current on. HERE
+WeGo's UI thread destroys its map's surface and makes a new one while its
+render thread is still drawing a frame in the old; ended at once, the
+pbuffer and the shell's texture went from under that frame and ANGLE faulted
+(`Framebuffer11::markAttachmentsDirty`, packages 498 and 499). The natives
+app's `texture-egl-elsewhere` destroys a surface another thread has current,
+which then queries, draws on and swaps it before it lets it go. A window with
+an EGL surface on it cannot be locked, and a locked one gets no EGL surface,
+as on Android.
 
 **In software.** `ANativeWindow_lock` gives a buffer of the window's own
 memory, `RGBA_8888`, `RGBX_8888` or `RGB_565` as the window's format says, the
@@ -2856,6 +3012,16 @@ focused view's `InputConnection`).
   Enter is for the field and does not ask the framework twice. That fault is
   the framework's own (`core/framework`); the iOS shell it was written for
   sends line ends as text too.
+- **Typed text goes where the field's own code leaves the cursor.** The
+  framework's `BaseInputConnection` puts the cursor at the end of what is
+  replaced before the text goes in, as Android's `replaceText` does, so that
+  it moves with the edit and a `TextWatcher` that rewrites the text and puts
+  the cursor itself has the last word. It used to put the cursor after the
+  edit, at the replaced range's start plus the text's length: WhatsApp's phone
+  number and code fields, which put dashes in as one types, had the cursor
+  put back before the dash just added, and the next digit went in there, the
+  digits out of order (package 481). The data app's "input-format" step types
+  seven digits into a field that puts in two dashes, and a Backspace.
 
 Tested in the demos app (`Typing`: four fields; 28 checks): a touch of a field
 asks for the keyboard with the right kind, flags and Enter for each of the
@@ -2900,6 +3066,21 @@ log says the text went to `android.widget.EditText` (0 characters, then 3).
 No reason was found in the core or the framework why the phone would lose
 typed text that this path delivers under qemu. The next phone log will show
 at which of the three steps it goes missing.
+
+**What a password field got, in numbers.** Facebook said a password was
+wrong that the user had typed right (package 484), and its field shows dots.
+Two lines say, without a character of it, whether the field got what was
+typed. The shell, when a field is left or the keyboard put away, counts what
+the keyboard did there: `player: in that field (kind 5) the keyboard typed N
+characters and took back K by Backspace keys and T by changes to its text`,
+and how often a key and a change came within 0.2 s of each other (one
+Backspace told twice would take back two characters). And
+`InputMethods` keeps, for a password field, what the keyboard's text and
+Backspaces make of the field's text, typed at its end, and when the field is
+left or its Enter pressed says whether the field holds that: `keyboard: the
+password field ... holds what the keyboard typed (N characters)`, or holds a
+different number and not what was typed. The demos test types "pw", a
+Backspace and "w" into its password field and checks the first.
 
 **What the keyboard does to a window is Android's.** The window's
 `softInputMode` decides (`adjustMode` in the overlay's `megler/ViewRoot.java`):
@@ -2950,6 +3131,57 @@ Once the keyboard is put away, each dialog is back where it was.
 **Not there:** composing text (a keyboard that composes sends each piece when
 it is final), the selection handles and the copy and paste bar (the
 framework's), and telling the shell where the cursor is on the screen.
+
+### The phone's text messages and calls
+
+What comes to the phone while an app runs is the app's as Android gives it,
+nothing older (`megler_sms_received`, `megler_call_logged` in `megler.h`; the
+framework's `megler.Phone`; the shell's `player/PhoneEvents.cpp`). WhatsApp
+confirms a number by a message, which Google Play services' SMS Retriever
+reads through `SMS_RECEIVED`, or by a flash call, a missed call whose number
+is the code, which its `FlashCallReceiver` hears as `PHONE_STATE` RINGING with
+the caller's number. Under Megler neither came (package 482).
+
+- **The shell** watches Windows' chat message store (the `chat` capability):
+  a message the store says was made, incoming and after the app's start, is
+  told with its sender, text and time. Windows says when a call's state changes
+  but not who calls, so when one is over the call history is read
+  (`phoneCallHistoryPublic`), a moment later and once more, and the calls that
+  began since the app started are told, oldest first. Both are read again when
+  Megler resumes, since a call takes the screen and Megler may be suspended
+  under it.
+- **The core** queues them for the main thread (`EV_PHONE`, `Native.pollPhone`)
+  and writes in the log only that there was one, never a number or a text.
+- **A message** becomes SMS-DELIVER PDUs (3GPP TS 23.040: the sender as a
+  number or GSM 7-bit letters, the time, the text in UCS-2, in parts of 67
+  characters with a concatenation header past 70) in `SMS_RECEIVED` with
+  "format" 3gpp, to the receivers that hold `RECEIVE_SMS`; an app-specific SMS
+  token of `SmsManager` (`createAppSpecificSmsToken`) in its text sends that
+  token's PendingIntent, once; and it is in `content://sms/inbox` for an app
+  that holds `READ_SMS`. `SmsMessage.createFromPdu` reads such a PDU (the
+  overlay's: the stub's was empty), and `Telephony.Sms.Intents.
+  getMessagesFromIntent` the intent's.
+- **A call** is in `content://call_log/calls` for an app that holds
+  `READ_CALL_LOG`; one that came in rings: `PHONE_STATE` RINGING, OFFHOOK when
+  it was answered, then IDLE, with the number to the receivers that hold
+  `READ_CALL_LOG` and without it to the others that hold `READ_PHONE_STATE`, as
+  Android 9 sends it, and `TelephonyManager`'s listeners (`listen`,
+  `registerTelephonyCallback` with a `CallStateListener`) hear the same.
+  `TelephonyManager.EXTRA_STATE_*` were null in the framework and are Android's
+  strings now.
+- Permissions are the app's manifest's (Megler grants what it asks, by
+  `uses-permission` and by `uses-permission-sdk-23`, which Android 6 and later
+  grant: WhatsApp asks for `READ_CALL_LOG` so, and was given `PHONE_STATE`
+  without the number until `megler.Manifest` read that tag too, package 483);
+  Google Play services, which the app hosts, holds them as on a phone. The store is
+  an SQLite database in memory with Android's columns, so an app's projection,
+  selection and order work as they would.
+
+The data app's `phoneEvents` registers for all of it and the test's C side
+gives it a message from a number, a longer one from a sender with a name in
+Russian that holds the token, and a missed call: the sender, time and text read
+back from the PDUs, the inbox row, the token's PendingIntent, RINGING with the
+number to the receiver and the listener, IDLE, and the call log's row.
 
 ### The phone's accent and theme
 
@@ -3017,8 +3249,33 @@ What a Java app asks of the phone beyond its window goes to the shell through
     androidx `FileProvider`'s, is first copied into the app's cache.
   - A `PackageInstaller` session is real as far as the app sees it. The files
     written into it are kept in a folder of the app's cache. Committed, it
-    hands over its one APK, then sends `STATUS_SUCCESS` to the `IntentSender`
-    it was given (a `PendingIntent`'s sends through it).
+    hands over its one APK under the app's package name (`<package>.apk`; the
+    names Google Play writes, `stream..<package>`, are refused by Megler's
+    link for their `..`). Then it waits for the outcome and sends it to the
+    `IntentSender` it was given (a `PendingIntent`'s sends through it), as
+    Android does once the install is over:
+    - `STATUS_SUCCESS` once the phone's apps (`phone-apps\apps.txt`) have the
+      app at the APK's version, then `ACTION_PACKAGE_ADDED` (and
+      `ACTION_PACKAGE_REPLACED` for an update). Google Play checks that version
+      as soon as it hears of success; told at once, while Megler still asked
+      the user, it reported a failed install.
+    - What Megler wrote of the name in `phone-apps\installs\<name>.txt`
+      (`Native.appInstall`): the user's no (`STATUS_FAILURE_ABORTED`), an app
+      that cannot run here (`STATUS_FAILURE_INCOMPATIBLE`, with Megler's
+      reason), or a failed install (`STATUS_FAILURE`).
+    - `STATUS_FAILURE` after 30 minutes with neither.
+
+    The session is then gone, with its files.
+  - Uninstalling is handled the same way: `PackageInstaller.uninstall` (Google
+    Play's Uninstall), or `ACTION_DELETE` / `ACTION_UNINSTALL_PACKAGE` of
+    `package:<name>`, asks Megler (`megler_system_host.uninstall_app`). An
+    app's own package opens Megler with `megler:uninstall?package=`. Megler
+    asks the user. On a yes, the app's own package is uninstalled and
+    Megler's copy of it leaves the library, so the phone's apps no longer
+    have it. The app hears `ACTION_PACKAGE_REMOVED`, then `STATUS_SUCCESS`.
+    On a no, `installs\<package>.uninstall.txt` says so, and the app hears
+    `STATUS_FAILURE_ABORTED`. Before 0.1.0.463 the call did nothing, and
+    Google Play showed "Uninstalling..." for ever.
   - Megler asks the user, then installs the APK as one picked in the Library.
     In an app's own package, the APK is copied into the shared folder's
     `incoming\`, and Megler is opened with `megler:install?name=` (its package
@@ -3060,6 +3317,36 @@ What a Java app asks of the phone beyond its window goes to the shell through
   install folders cannot be read by an app container on Windows 10 Mobile
   (Megler's own check fails after each install), which is why Megler, which
   has the APKs, writes this for them.
+- **Other apps: their signatures, uids, comings and goings.**
+  - `activities.json` also has the certificates the APK is signed with
+    (`"certificates"`, each DER in hex): the APK Signing Block's v3 signer's,
+    else its v2 one's, else those of the v1 PKCS#7 file under `META-INF`.
+    `getPackageInfo` gives them as the app's `signatures` with
+    `GET_SIGNATURES` and as its `signingInfo` with `GET_SIGNING_CERTIFICATES`,
+    and neither otherwise, as on Android. Before 0.1.0.460 another app's
+    `PackageInfo` carried the running app's own signatures. Google Play
+    compares an app's with its record, so every app it had installed was
+    "installed but certificate mismatch" to it: not from Google Play.
+  - Each app has a uid of its own, made from its package name (10200 and up),
+    and `getNameForUid` and `getPackagesForUid` name it. Before, the first app
+    listed had the running app's uid, 10100.
+  - The running app's uid, 10100, is the uid of the Google packages it hosts as
+    well (GmsCore and Google Services Framework run in its process, and their
+    `ApplicationInfo` says so), and `getPackagesForUid` names them with the app,
+    as Android names the packages of a shared user id. Google Play services
+    checks that a package a caller names is one of the calling uid's: its sign-in
+    refused its own backup module a token ("Package not matching uid 10100
+    com.google.android.gms"), and WhatsApp's search for its Google Drive backup
+    failed until it said it took too long (package 485); Play Store warned of
+    the same.
+  - Once the app has asked for the list, it is read again every three seconds.
+    What changes is told as Android tells it: `ACTION_PACKAGE_ADDED`; for a new
+    version `ACTION_PACKAGE_REMOVED` and `ACTION_PACKAGE_ADDED` (both
+    replacing) and `ACTION_PACKAGE_REPLACED`; for an app gone
+    `ACTION_PACKAGE_REMOVED` with `EXTRA_DATA_REMOVED` and
+    `ACTION_PACKAGE_FULLY_REMOVED`. Each has the package as its data and its
+    `EXTRA_UID`. Before, Google Play went on showing an app removed in Megler
+    as installed.
 
 APKs, .apks and .xapk files also open in Megler from the phone's file
 manager (a file type association of Megler's package, taken out of an app's
@@ -3070,8 +3357,17 @@ The test app `data` checks the core's side. Its apps folder has one other app
 (`phone-apps`): the launcher's intent lists it with its label and icon,
 `LauncherApps` has it, and starting its launch intent reaches `launch_app`.
 It opens an APK by `ACTION_VIEW` (`install-intent`) and commits a session of
-one file (`install-session`). The harness hears both on `install_apk`, and the
-app hears `STATUS_SUCCESS`.
+one file (`install-session`) and one of a base and a split (`install-splits`).
+The harness hears them on `install_apk`, by their apps' names. It says no to
+the first in `installs\`, and the app hears `STATUS_FAILURE_ABORTED`. It adds
+the second to `apps.txt`; the app hears `ACTION_PACKAGE_ADDED`, then
+`STATUS_SUCCESS`. Then the app uninstalls it through `PackageInstaller.uninstall`; the
+harness takes it out of `apps.txt`, and the app hears
+`ACTION_PACKAGE_REMOVED`, `ACTION_PACKAGE_FULLY_REMOVED` and
+`STATUS_SUCCESS`. The other app's uninstall the harness says no to, and the
+app hears `STATUS_FAILURE_ABORTED`. The other app's
+signatures are the fixture's certificate, given only when asked for, and its
+uid names it (`phone-apps-signatures`).
 
 ### Jobs, and an app's other processes
 
@@ -3091,8 +3387,9 @@ other than the time, content triggers.
 
 `megler.Processes`: a component the manifest puts in another process
 (`android:process`) runs in a class scope of the app's own APK
-(`megler.ServiceClassLoader`), with an Application of its own made from the
-manifest's class, whose context is the app's but for its class loader, its
+(`megler.ServiceClassLoader`; its DEX files are the bytes already read for
+the app's own scope, shared, not read again: `dvm/mg_dvm_apk.c`), with an
+Application of its own made from the manifest's class, whose context is the app's but for its class loader, its
 Application and its `ActivityManager`, which names that process for this pid.
 The code there has statics of its own. Play Store's Application builds an
 object graph for each of its processes by the name of the process it runs
@@ -3235,6 +3532,19 @@ Chromium, loaded from the Android root into the app as a phone loads it. The
 framework's own WebView, written for iOS, sat over a WKWebView (`megler.Web`),
 whose natives answer nothing on Windows: a WebView was a blank rectangle.
 
+**The default User-Agent without Chromium.** `WebSettings.getDefaultUserAgent`
+asked the WebView's provider, which is all of Chromium loaded: its library and
+heaps, some 200 MB of a 32-bit process's 2 GB of addresses. Apps and their SDKs
+ask for the string at their start, for an ad's or a statistics' request, and
+Yandex Maps ran out of addresses as the WebView was loading (package 490).
+Until the WebView is loaded the string is made as Chromium makes a WebView's,
+of the same `Build` fields and the WebView package's version
+(`WebViewFactory.meglerDefaultUserAgent`); once it is loaded it is asked. The
+WebView test app asks for it before it makes a WebView, and the test checks that
+it came before Chromium was loaded and that the WebView's own string is the
+same. And the log's "Loading com.android.webview ..." says, after "for", which
+of the app's methods wanted the WebView.
+
 **Which WebView.** Two could be had from Google's own servers:
 
 - The Android 9 image's own, `/system/app/webview/webview.apk`: Chromium
@@ -3299,26 +3609,89 @@ Cronet's `org.chromium.net`, a Chromium-based app's own, other versions of
 androidx -- would have its own taken by the WebView's code, and the WebView's
 by its own where the app's come first. No app tried has done that yet.
 
-**Drawing.** No canvas is hardware-accelerated here, so the WebView draws in
-software, as it does on Android into a `Bitmap`'s canvas:
-`AwContents.onDraw` with `isHardwareAccelerated()` false. A `RenderNode`'s
-canvas says it is (Compose draws an `AndroidView` into one), and Chromium
-draws such a canvas through the platform's draw functor, whose function table
-is null here: the overlay's `WebView.onDraw` gives it the WebView's software
-drawing through a bitmap instead (Spotify's WebView ended the app making its
-functor). The bitmap is what the window shows of the view, as the functor
-draws on Android: a WebView sized to its page is many screens tall, and a
-bitmap of all of it was as big (a check: a WebView 20000 rows tall is drawn
-through 744); a view out of the window gets at most a screen's worth from its
-scroll position. The tables of
-functions the platform's `libwebviewchromium_plat_support.so` gives a WebView
-(`GraphicsUtils.nativeGetDrawSWFunctionTable`, the GL functor's) are null
-(`mg_java_webview.c`; the library is a system library's name to the linker,
-`bionic/mg_bionic.c`, and a file that says so in the root's `lib`), so
-Chromium renders the page into a `Bitmap` of its own and draws that into the
-view's canvas (its `JavaBrowserViewRendererHelper`): the page reaches the
-window through the views like any other view's pixels, and through
-`View.draw` into an app's own bitmap.
+**Drawing on the graphics processor.** Where the shell keeps pictures on the
+graphics processor (`megler_gfx_host.texture_frame` and `draw_texture`, and
+EGL shares pbuffers' textures) and the flag `no-webview-gpu` is not set (the
+flag `trace-webview` says what each of a functor's first draws left in its
+pbuffer and whether Chromium had a frame), a
+WebView's canvas in a view list says it is hardware-accelerated
+(`View.drawFromParent`, `megler.WebFunctors.on`), and Chromium draws its page
+as on Android: through the platform's draw functor, AwDrawFn
+(`android_webview/public/browser/draw_fn.h`, version 4), whose table
+`DrawFunctor.nativeGetFunctionTable` hands it (`mg_java_webview.c`). Chromium
+makes a functor for each WebView (`create_functor_v3`) and, in `onDraw`, asks
+the platform to draw it (`WebViewDelegate.drawWebViewFunctor`). The overlay's
+`WebView.meglerDrawFunctor` has it drawn at once on the WebView's render
+thread, the UI thread waiting as HWUI's does for a frame it cannot let go of:
+`on_sync`, then `draw_gl`, with an OpenGL ES 3 context current on a pbuffer of
+the part of the view the window shows (rounded up to 64 pixels, kept while the
+part changes a little), of the WebView's own display (the one Chromium's own
+`eglGetDisplay` is given: `ndk/mg_egl.c`, `webview_display`). The pbuffer is
+cleared and set up as HWUI leaves its surface for a functor: the framebuffer
+0, the viewport the surface, the scissor the part, no stencil test (with one
+Chromium draws into a texture of its own and that through the stencil). The
+parameters are HWUI's: the clip the part from the surface's top left, the
+transform a translation by the part's corner, sRGB. Chromium draws with
+whatever context is current (its `GLNonOwnedContext` never makes one current)
+into the framebuffer bound, the right way up for OpenGL; it restores none of
+the state it drew with. Its first draw sets up its GL first, which leaves a
+context of its own current: the frame is then drawn again in the render
+thread's. The pbuffer's texture is then the shell's picture of the functor
+(`mg_java_gl_share_frame`, its keyed mutex let go for the copy), which the
+view's list draws where the part is (`Canvas.meglerDrawTexture`, a
+`DL_TEXTURE`, turned as a TextureView's frame is), nothing read back. A
+released functor (`release_functor`) has `on_context_destroyed` (with the
+context current) and `on_destroyed` on the render thread; its pbuffer and
+picture go with it. The log says "webview: pages are drawn on the graphics
+processor" and "draw functor N drawn" with the time a draw takes. A draw that
+fails three times in a row, or one that takes more than four seconds, has the
+pages drawn in software from then on, as below. `mg_gl_tests.c`'s draw functor
+test checks the table, the threads, the order of the callbacks, the
+parameters, the picture handed over and the release with the tests' stand-in.
+
+**Drawing in software.** A canvas that is not hardware-accelerated -- a
+`Bitmap`'s, the window's with `no-view-lists`, or any canvas where the draw
+functor is not there -- has the WebView draw in software, as it does on Android
+into a `Bitmap`'s canvas: `AwContents.onDraw` with `isHardwareAccelerated()`
+false. The overlay's `WebView.onDraw` draws every frame through one bitmap of
+what the window shows of the view, as the functor draws on Android, and puts
+that bitmap in the canvas it was given: a WebView sized to its page is many
+screens tall (a check: a WebView 20000 rows tall is drawn through 744), and a
+view out of the window gets at most a screen's worth from its scroll position.
+The bitmap is kept from one frame to the next and cleared in its memory, and
+let go while the pages are drawn on the graphics processor.
+
+Chromium draws into that bitmap directly. The platform's
+`libwebviewchromium_plat_support.so` gives a WebView tables of functions;
+here the software one (`GraphicsUtils.nativeGetDrawSWFunctionTable`,
+`mg_java_webview.c`) is there and the GL functor's are null (the library is a
+system library's name to the linker, `bionic/mg_bionic.c`, and a file that
+says so in the root's `lib`). The table is Chromium's
+`AwDrawSWFunctionTable` (`android_webview/public/browser/draw_sw.h`): its
+version (1) first, then `access_pixels` and `release_pixels`. Without the
+version Chromium called `release_pixels` for `access_pixels` and had it free
+the `JNIEnv`, which corrupted the heap of Play Store's process at the first
+frame of Google's sign-in page (0xc0000374, no report of the core's: Windows
+ended the process). Its `access_pixels` hands Chromium the pixels
+under a canvas of a core `Bitmap` as Skia's `SkCanvasState` (version 1, a
+stable ABI of Skia's), in an `AwPixelInfo` of version 3: one raster layer,
+the bitmap locked in Android's order (R, G, B, A), the canvas's matrix and its
+clip's box (`mg_java_gfx_canvas_raster`); `release_pixels` unlocks it. The log
+says "webview: Chromium draws straight into a canvas's pixels" the first
+time. Chromium asks for a canvas's pixels only where its GPU can share
+textures across threads (`can_support_threaded_texture_mailbox`: EGL's
+`EGL_KHR_fence_sync`, which the layer gives, `EGL_KHR_image_base`,
+`EGL_KHR_gl_texture_2D_image` and `GL_OES_EGL_image`, which ANGLE over
+Direct3D 11 has, and the tests' stand-in names too); where they are missing
+`AwContents` forces its own bitmap, as below. The data's side of it is checked
+in `mg_gfx_natives_tests.c` (a canvas's pixels lent out), Chromium's in
+`mg_java_tests.c`'s `webview`. Before, with no table, Chromium drew each frame into a new `Bitmap` of
+the WebView's whole size of its own (its `JavaBrowserViewRendererHelper`'s
+"auxiliary bitmap", 12 to 15 MB at 1440 pixels wide, ten a second), which only
+the collector took back: Google's sign-in page in Play Store filled the
+process's two gigabytes with them, Bitmaps could no longer be made ("Error
+allocating bitmap"), frames went undrawn and the app ended. A canvas whose
+pixels are not the core's (a recording one) still gets that, as before.
 
 All the same, Chromium makes its GPU service at the first WebView and ends the
 process if it cannot (`GpuServiceWebView`, "gpu::InitializeGLThreadSafe()
@@ -3342,6 +3715,18 @@ package 0 in that table are given 0x02 as they are read (`ResTable`).
 class to it (its log: `packageId=2`). Its assets are found through the app's
 `AssetManager` too: Chromium maps `icudtl.dat`, its `.pak` files and V8's
 snapshot out of the APK with `openNonAssetFd`.
+
+**An APK's compiled XML.** `AssetManager.openXmlResourceParser(cookie, name)`
+reads a compiled XML file of the cookie's APK (1 the app's, 2 on a library's,
+0 the first that has it) into an `XmlBlock` parser; it answered null.
+Google Play services 26 makes an `AssetManager` of its own for each of its
+modules' APKs, adds the APK (`addAssetPath`, which here adds it as a library)
+and reads the module's `AndroidManifest.xml` so; its Application ended in a
+NullPointerException before anything ran. The data app's step
+`asset-manager-manifest` does the same with its own APK. (The core reads an
+APK's `resources.arsc` for its label and icon up to 256 MB, `ARSC_MAX` in
+`apk/mg_apk.c`: Google Play services 26's is 88 MB, and at 64 MB it had its
+package's name and no icon.)
 
 **Input.** A touch reaches the page through `View.onTouchEvent` like any
 view's. A tap on a field of the page focuses it, and Chromium's `ImeAdapter`
@@ -3371,8 +3756,10 @@ Direct3D 11 says 1.5 and has no fence syncs; the ANGLE inside Chromium takes
 1.5 to mean them and called an `eglCreateSyncKHR` it had not loaded, so an
 app is told 1.4: `ndk/mg_egl.c`), hardware buffers (below),
 `CameraManager.getCameraIdList` (null; now an empty list) and AAudio (now
-`ndk/mg_aaudio.c`'s). Spotify's WebView, drawn on a `RenderNode`'s canvas,
-found the draw functor ("Drawing", above).
+`ndk/mg_aaudio.c`'s). Spotify's WebView, drawn on a `RenderNode`'s canvas
+before there was a draw functor here, ended the app making its functor with a
+null table: a canvas says it is hardware-accelerated to a WebView only where
+the table is given.
 
 **Direct system calls.** `libwebviewchromium.so` has five sites that make a
 system call past libc: at +0x33c2dd2 (`gettid`), +0x33c2f6a (`futex`),
@@ -3495,7 +3882,108 @@ The runtime's own tables -- classes, interned names and strings, registered
 natives -- are under one lock. Each thread has its own frames and pending
 exception.
 
+A `Thread` is alive from `start()` until its `run()` returns, and
+`getState()` is `NEW`, then `RUNNABLE`, then `TERMINATED` once it has ended
+(it stayed `RUNNABLE`). The framework's `HandlerThread` is Android's: its
+`getLooper()` is null at once for a thread not started or one that ended,
+and waits only while the thread is alive and has no looper yet. It waited
+for good: Facebook's stories loader stood in it for the whole run, the app
+showing its loading circles (package 479). The data app's
+"handler-thread" step asks one not started, one running, and one that quit.
+
 ### Memory
+
+**A 32-bit process has 2 GB of addresses, and an app can run out of them
+before its memory.** Yandex Maps did, half a minute after it started, each
+time (package 489): 1.2 GB of its 2 GB of memory used, 69 MB of addresses
+free and no stretch of them a megabyte long; the shell's own drawing failed
+first (`CoreUIComponents.dll` writing through a NULL), then the map's OpenGL
+(`GL_OUT_OF_MEMORY`) or its `malloc` (`std::bad_alloc`). What took them, and
+what was done:
+- **Google Play services' resource table** (84 MB, in every app it runs in:
+  `megler.MicroG`) was read whole into the Java heap, and again for every
+  `Resources` made of it. 58 MB of it is the strings of 75 languages. Another
+  package's table is now read once for each APK, cut down to the resources of
+  no language, of English and of the phone's languages (`apk/mg_arsc.c`, which
+  also renumbers the strings the kept resources use; `readApkResourceTable`):
+  about a tenth of it. The log says each one cut ("GmsCore.apk's resource
+  table: ... KB, ... KB with the languages the app has"). The app's own table
+  stays whole, since an app may switch its language itself. The core's tests
+  cut microG's GmsCore's table to two languages and compare the strings the
+  kept resources have with the whole table's.
+- **Frame stacks**: the 199 threads each had 768 KB of addresses for one, 150
+  MB. A thread the app's native code made and attached
+  (`AttachCurrentThread`) calls into Java to be told something and comes back,
+  and gets 128 KB (`DVM_STACK_ATTACHED_WORDS`). A thread Java starts gets 384
+  KB (`DVM_STACK_JAVA_WORDS`, some four thousand frames, as many as ART's
+  interpreter fits in an Android thread's 1 MB), or as much as it asked for when
+  it asked for more than 1 MB; the main thread keeps the whole 768 KB. Yandex
+  Maps had 229 threads Java started, Google Play services' among them, when its
+  addresses ran out (package 493). The runtime's tests run a thousand calls deep
+  and a recursion without end on an attached thread; the data app's
+  "thread-stack" step two thousand on a thread of the default size, twenty
+  thousand on one that asked for 16 MB, and one without end.
+- **The memory line now says the addresses** too: how many megabytes are free,
+  the largest free stretch, what is reserved and what committed. And a line
+  after it ("java: addresses by kind") says what holds them: the program and
+  its DLLs, views of files and shared memory, private memory and the sizes of
+  allocation most of it is in, the threads (the core's, the runtime's and how
+  many native code attached, their frame stacks), the runtime's tables and
+  classes, and the graphics processor's memory. It asked the heaps too
+  (`HeapSummary`, every heap of the process) in package 493, and was taken out
+  of that: some of a process's heaps are not serialized, one was walked while
+  its owner used it and the app ended, and the walk held the process heap's lock
+  for most of a second.
+
+**An app's DEX files are views of files where they can be**
+(`mg_dvm_apk.c`), not memory of the process's, which Windows counts against
+the app's limit:
+- One the APK stores as it is, on a 4-byte boundary as zipalign puts it, is a
+  read-only view of those bytes of the APK. Google Play services 26 stores its
+  fifteen (109 MB) so.
+- One the APK deflates is inflated once into `<data_dir>/dex/`, named for the
+  APK, the entry and the entry's CRC-32 and size, and viewed from there, as
+  ART keeps an app's DEX files outside its APK too. It is made under another
+  name and renamed when whole; the other files of the same APK and entry (an
+  older version's) are removed. Play Store 53 deflates its eight (58 MB). The
+  name had a hash of the APK's path in it, and the path of an APK Megler brings
+  has Megler's version in it: every update of Megler made another copy (four
+  of Facebook's, package 482).
+- Where neither can be made, the file is read into memory, as before.
+- **A view is made only when it is needed.** Every file was viewed whole from
+  the start, its checksum read over all of it and its caches of what each
+  index resolved to made: Yandex Maps' sixteen and Google Play services'
+  fifteen in it were 245 MB of a 32-bit process's 2 GB of addresses, read from
+  the flash at every start, whether a class of them was used or not (package
+  494). Now the file is viewed for a moment, its header and tables checked and
+  its classes' names copied into one block of its own (the table of
+  definitions points at them, `mg_dvm_classes_add_dex`), and let go
+  (`mg_dvm_add_dex_lazy`). The first of its classes to be linked views it
+  again (`mg_dvm_dex_ready`, in `link_dex_class`): the same file, its checksum
+  right, and its caches made then. A file changed on the disk meanwhile, or
+  that cannot be viewed again, is said in the log, and its classes are
+  `NoClassDefFoundError`s. Every lookup that reaches a file's bytes starts from
+  a class linked from it, so that is the one place. The runtime's tests store
+  a DEX file in an APK of their own: added, it is not viewed, nor when its class
+  is only asked about; linked, it is; and one changed after it was added, in a
+  scope of its own, gives the error. The same bytes of the same file registered
+  for two scopes (a service's or a process's over the app's own APK) share one
+  view, as the bytes read for the app's own served such a scope before ("N of
+  its DEX files are the ones read before, shared").
+The log says it per APK ("N of its DEX files are views of files, each viewed
+once a class of it is needed: ... of the APK, ... inflated into the data
+folder's dex (... of them now)"), and after
+each of the frame meter's lines a line "java: memory:" says the process's
+parts the core can name: the heap's blocks and large objects, the DEX files
+in memory and viewed, the native libraries' segments (`mg_ld_image_bytes`,
+read into committed memory), what the app's native code has from `malloc`
+and not freed (`mg_g_malloc_bytes`; the blocks are the host's), the app's
+own mappings, anonymous and private copies of files, as far as they are
+mapped, not made no-access and not given back (`mg_mmap_usage`), and what
+madvise has given back. What is left of the process's figure is the
+runtime's own `malloc`, the shell, Direct2D and ANGLE. Play Store 53 with Google Play services
+26 was 1100 MB in package 479, the heap's blocks and large objects 300 MB of
+it.
 
 **Objects are collected** (`mg_dvm_gc.c`, the next section). Every object is
 a zeroed allocation from the runtime's own heap (`mg_dvm_heap.c`). Allocation
@@ -3547,9 +4035,19 @@ keeps a local reference in a local, which is what local references are for.
   from it.
 - *Mark*: the world stopped, from the roots below, with an explicit mark stack.
   The mark stack is allocated before the stop, sized by the count of live
-  objects.
+  objects. Once it holds enough (2048 objects), the mark is shared with helper
+  threads of the collector's own, one fewer than the processors and three at
+  the most: the stack becomes a pool they take chunks of into stacks of their
+  own, a mark bit is set with an interlocked compare-and-swap so that each
+  object is pushed once, and a thread with more than it needs gives half back
+  when another has nothing. The helpers are made with their stacks before the
+  first collection, so nothing is allocated while the world is stopped. Yandex
+  Maps' mark took 325 ms for 770,000 objects on one thread. The flag
+  `no-parallel-gc` keeps it on one.
 - *Sweep*: after the world goes on, under the heap's lock. Objects allocated
-  while it runs are born marked.
+  while it runs are born marked. The same helpers share it, a block at a
+  time; and the threads are stopped and resumed by all of them at once, each
+  taking the next thread of a list made first.
 - No generations and no compaction. Fragmentation is limited by size classes.
 
 **The heap.** It is no longer the C heap.
@@ -3589,8 +4087,9 @@ keeps a local reference in a local, which is what local references are for.
     `is_object` flags.
   - Every linked class: its statics (typed by their fields), its `Class`
     object, its `init_error`. Classes are never unloaded.
-  - The runtime's tables: interned strings, each DEX file's resolved string
-    constants (`scache`), reflection's `Method`/`Field` objects (kept for good,
+  - The runtime's tables: interned strings (each DEX file's resolved string
+    constants, `scache`, are interned ones, and not walked apart),
+    reflection's `Method`/`Field` objects (kept for good,
     one per member), proxy classes' method arrays, the preallocated
     `OutOfMemoryError`.
   - Each thread's pending exception, `peer` (its `java.lang.Thread`) and
@@ -3675,8 +4174,10 @@ keeps a local reference in a local, which is what local references are for.
 
 **When it runs.**
 - When an allocation finds that more than the budget has been allocated since
-  the last collection. The budget is the larger of 8 MB and three quarters of
-  what survived the last one. The bytes of bitmaps made since then count too
+  the last collection. The budget is the larger of 8 MB and half of what
+  survived the last one (three quarters before: Play Store with Google Play
+  services had 350 MB of heap at each collection for 200 MB that lived). The
+  bytes of bitmaps made since then count too
   (`mg_java_gfx_stats`), since that memory is freed only through the objects.
 - `System.gc()` and `Runtime.gc()` (today they do nothing).
 - Before an `OutOfMemoryError`. If an allocation would pass the heap's limit,
@@ -3769,10 +4270,14 @@ cached UTF-8, the `fields` array of a stand-in object.
 3. The audit of C roots, the sweep, the trigger and `System.gc()`. (Done.
    The sweep frees the cells and large objects nothing reached, and what
    they own besides themselves: the monitor, a string's UTF-8, the JNI
-   fields. An empty block becomes a spare for any class.
+   fields. An empty block becomes a spare for any class. Past the first 128
+   spare blocks (8 MB), a spare block's memory after its first page, which
+   holds its header, goes back to the host, and is committed again, zero,
+   when the block gets a class: the heap's arenas no longer stay committed at
+   the most the heap ever had.
    - `alloc_raw` collects when the bytes made since the last collection pass
-     the budget: the larger of 8 MB and three quarters of what lived after
-     the last one. Native memory registered since counts too
+     the budget: the larger of 8 MB and half of what lived after the last
+     one. Native memory registered since counts too
      (`VMRuntime.registerNativeAllocation`, and every bitmap's pixels from
      `mg_java_gfx.c`). It collects once more before an allocation fails.
    - `Runtime.gc()` collects.
@@ -4334,6 +4839,27 @@ on a looper thread of its own and takes it back with `next()`.
   when the activity started for a result is floating (a dialog's theme),
   Android shows the one under it too; here its window waits as well, since
   a window added later would lie above the dialog.
+  And the managed dialogs: `showDialog` makes a dialog once by
+  `onCreateDialog(id, args)`, keeps it by its id, and prepares
+  (`onPrepareDialog`) and shows it at each call; `dismissDialog` dismisses it
+  (and throws for an id never shown, as Android does) and `removeDialog`
+  forgets it. They did nothing: WhatsApp asks whether the phone number is
+  right with `showDialog(21)` when one taps Next, and nothing came of it
+  (package 479). The data app's "managed-dialog" step makes, shows again,
+  dismisses, removes and makes again. `onDestroy` dismisses them, as
+  Android's does.
+  And the activity's other windows, its dialogs and popups (application
+  windows and sub-windows; not system windows such as a toast, which outlive
+  it): hidden while it is stopped and shown again when its own window is
+  (`megler.ViewRoot.ownerStopped`, from `meglerStop` and `makeVisible`) --
+  not drawn, no touches, keys or focus, still attached, told
+  `onWindowVisibilityChanged` -- and removed once it is destroyed, with a
+  line in the log (`ViewRoot.closeAll`, as `WindowManagerGlobal.closeAll`
+  removes a destroyed activity's "leaked" windows). They were drawn all the
+  while: WhatsApp's progress dialog of its phone number screen stayed in the
+  list of windows after that screen had gone, and showed through the screens
+  after it (package 481). The data app's "dialog-of-stopped" step hides a dialog,
+  shows it again and removes it.
 - `megler/AppRunner.java`, `startActivity` with `FLAG_ACTIVITY_CLEAR_TOP` for
   an activity already in the stack, as Android does it. The activities above
   it go. Then, when its launch mode is standard and the intent has no
@@ -4423,6 +4949,42 @@ on a looper thread of its own and takes it back with `next()`.
   camera. The camera test app's frame logs the size its canvas says, which
   the test wants to be the frame's, and the test finds its bottom corners
   white.
+  And now each view does draw into a display list of its own (a RenderNode's,
+  which the core plays on the graphics processor), and is hardware
+  accelerated as Android's are: `View.isHardwareAccelerated()` is true for a
+  view attached to a window, and so is `isHardwareAccelerated()` of the canvas
+  its list is recorded on. Compose then keeps each graphics layer as a
+  RenderNode whose alpha, translation and scale change without its content
+  being drawn again; on a canvas that said it was not, it drew every layer's
+  content into its view's list, the layer's properties with it, and a fade or
+  a scroll that only changed those left Spotify's screens black. A view
+  without a list of its own (a WebView, a SurfaceView, a TextureView) draws
+  on a canvas that says it is not (`RecordingCanvas.meglerSoftware`):
+  Chromium's WebView draws its page into a bitmap only then. The flag
+  `no-view-lists` turns both off. The data app's step
+  "hardware-accelerated" checks the view, its list's canvas, a SurfaceView's
+  and a bitmap's. (A WebView whose page is drawn through the draw functor
+  says it is: "The WebView".)
+  And the window's frames are drawn and shown by a render thread, as
+  Android's RenderThread draws what the UI thread recorded:
+  `megler.ViewRoot.drawAll` records a frame -- every window, the part of the
+  screen it changes cleared -- on a recording canvas
+  (`Canvas.meglerRecordFrame`), the views' lists by reference, and hands it
+  over (`Gfx.frame`, `mg_java_gfx.c`); the render thread plays it onto the
+  screen's canvas, which only it draws on, and has the shell show the screen,
+  while the main thread goes on with its next frame. One frame is in flight:
+  before the next is handed over, the main thread waits for it to be shown and
+  then gives the core the nodes' properties that changed
+  (`RenderNode.meglerSyncAll`; drawing on the screen did that before, and a
+  recording does not). What a frame draws is kept by its list (nodes, lists,
+  bitmaps, shaders are counted references), and a node's properties are read
+  under the lock their setter takes. Before, the main thread drew every list
+  onto the screen and waited for the shell's present itself: Spotify's spent
+  26% of its time drawing lists and 62% presenting, 27 ms a frame, of which
+  its own Java was 10. The log says "gfx: the render thread" every five
+  seconds: frames, the time drawing the lists and showing each, and how long
+  the main thread waited for it. The flag `no-render-thread` draws and shows
+  each frame on the main thread.
 - `megler/KeyStoreProvider.java`, one method, and Megler's circumstance
   rather than a fault of the framework's own: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because
@@ -4798,6 +5360,28 @@ on a looper thread of its own and takes it back with `next()`.
   a rectangle clipped to and clipped out by `INVERSE_WINDING`. The camera
   test app frames its `TextureView` as VK does, and the test finds the
   camera's picture in it and the white corner.
+  And `getPathIterator`, which gave null, with `PathIterator.java` in
+  place of the generated stub: the segments are the path as the core draws
+  it (`Gfx.pathSegments`, the same `path_build`), arcs, ovals and round
+  rectangles in cubics and the transforms gone into the points, given as
+  Android 14 gives Skia's (`SkPath::RawIter`): a line, quad or cubic with its
+  start point first, a close with none, then `VERB_DONE`. There are no
+  conics, since `conicTo` is a quad here. Compose walks paths with it on
+  Android 14 and later (androidx.graphics.path), and the Play Store's app
+  pages ended on a `NullPointerException` at `PathIterator.hasNext()`
+  (package 479). The data app's "path-iterator" step walks a path of each
+  verb and a rectangle, one moved by `offset`, an empty one, and a points
+  array too short.
+  And `MutableContextWrapper.setBaseContext`, whose generated stub kept the
+  context as a property and left the wrapper on its old base. WhatsApp
+  inflates a chat's views ahead of time in a `PrewarmContextWrapper` over
+  the application and sets the Conversation activity as its base when the
+  chat opens; the list of messages unwraps its context to that activity to
+  measure the unread divider, found none ("The Context is not an
+  Activity"), and the app ended as a chat with an unread message opened
+  (package 487). The overlay sets the base. The data app's
+  "mutable-context" step changes a view's wrapper to the activity and
+  unwraps it.
 
 The framework's own files in `core/framework` still have all forty-six faults;
 the overlay is where they are fixed.
@@ -4822,6 +5406,66 @@ test apps are that file's layouts, styles and nine-patches.
 | `megler.Web` | `WebView` | (done) not the shell's: Android's System WebView, Chromium, whose library runs as the app's code and draws in software ("The WebView") |
 | `megler.Sensors` | sensors | `Windows.Devices.Sensors` |
 | the keyboard, clipboard, sharing, URLs, orientation, insets | `megler.Native`'s calls to the host | calls of the shell's that `megler.h` does not have yet |
+
+### The microphone
+
+`AudioRecord` hears the phone's microphone (`megler_microphone_host`,
+megler.h; `player/MicrophoneHost.cpp`). `startRecording` asks the shell for
+it at the record's rate and channels (`megler.Native.micStart`). Windows asks
+the user the first time: MediaCapture, for audio alone, on the UI thread; the
+package declares the microphone capability. Then an AudioGraph runs at that
+rate and those channels, which the graph resamples the microphone to. Each of
+its quanta, 32-bit float, is made 16-bit and pushed to the core
+(`megler_microphone_push`) into a ring of two seconds, which `read` takes from
+(`micRead`): 16-bit as it is, 8-bit or float made from it, into arrays or a
+`ByteBuffer`. A blocking read waits for what it asked for; after a second of
+nothing it is given silence, so that the app does not hang. `stop` and
+`release` let the microphone go (`micStop`). With no microphone, or after the
+user's no, a record is silence at the microphone's pace, as before.
+`hasSystemFeature` has `android.hardware.microphone`. `MediaRecorder`, which
+encodes as it records (AAC, AMR), is not done yet. The data app's step
+`microphone` records from the harness's microphone, which hears a ramp, and
+reads it back; the harness checks it was asked for at 16000 Hz, mono, and let
+go.
+
+### Biometrics: Windows Hello
+
+`BiometricPrompt`, `BiometricManager` and `FingerprintManager` check the
+user with Windows Hello (`megler_biometric_host`, megler.h;
+`player/BiometricHost.cpp`; `megler.Biometrics` in the framework overlay):
+the iris, a fingerprint or the PIN, however the user set it up.
+`canAuthenticate` is `BIOMETRIC_SUCCESS` where `UserConsentVerifier` says
+Windows Hello is available, `BIOMETRIC_ERROR_NONE_ENROLLED` where it is not
+set up, `BIOMETRIC_ERROR_NO_HARDWARE` where the phone has none (asked again
+after five seconds at the most); `FingerprintManager.isHardwareDetected` and
+`hasEnrolledFingerprints`, and `hasSystemFeature("android.hardware.fingerprint")`,
+say the same. `authenticate` shows Windows' own dialog with the prompt's title
+and text, on the UI thread, while a thread of the framework's waits, and tells
+the app's callback on its executor (`FingerprintManager`'s on its handler):
+succeeded, with the `CryptoObject` it was given (concrete now: the stubs'
+was abstract, and Play Store ended in an `InstantiationError` making one);
+the negative button's listener, or `BIOMETRIC_ERROR_USER_CANCELED`, when the
+user cancels; `BIOMETRIC_ERROR_CANCELED` when the app cancels (its
+`CancellationSignal` closes the dialog); `BIOMETRIC_ERROR_LOCKOUT` after too
+many tries; `BIOMETRIC_ERROR_HW_UNAVAILABLE` otherwise. One check at a time.
+Keys that need the user's check (`setUserAuthenticationRequired`) are not
+bound to it: Megler's keystore uses them whenever the app does.
+
+**A call's sound** goes where the app's `AudioManager` says, as on a phone:
+in `MODE_IN_COMMUNICATION` or `MODE_IN_CALL`, or with a communication device
+set, to the earpiece, or to the loudspeaker after `setSpeakerphoneOn(true)` or
+`setCommunicationDevice` of the speaker; `MODE_NORMAL` ends it. The two are
+the communication devices there are (`getAvailableCommunicationDevices`,
+`getCommunicationDevice`), and `getDevices` lists both. Each change is told to
+the shell (`megler.Native.audioRoute`, `megler_audio_host.route`), which makes
+its XAudio2 output again in the Communications category for a call and sets
+the phone's endpoint, the earpiece or the speakerphone
+(`Windows.Phone.Media.Devices.AudioRoutingManager`, declared in
+`player/AudioHost.cpp` from the phone contract's metadata), and the default
+once the call has ended; the microphone then hears as a call does
+(Communications, the echo taken out). The data app's step `audio-route` goes
+to the earpiece, the loudspeaker and back; the harness checks the shell was
+told each.
 
 ### Sound from Java
 
@@ -5294,12 +5938,40 @@ the app's native heap, the libraries, and Java. Hollow Knight alone left 690 MB
 of them free. Three things follow.
 
 **Threads are cheap here and must stay so.** A Java thread costs a host stack
-and a frame stack. The host stack can be small, since Java frames are not on it
-(1 MB, or what the native code it calls needs: `mg_thread_whole_stack` commits
-it whole). The frame stack is 768 KB today, allocated at once; it should be
-reserved and committed as it grows. Thirty threads are then some tens of MB,
-where 32 MB a thread, as an interpreter that recurses in C needs, would be a gigabyte. A thread's state is not
+and a frame stack. The host stack can be small, since Java frames are not on it:
+256 KB (or what a thread asks for above that, for native code that wants a deep
+stack). `mg_thread_whole_stack` commits it whole for Android code, so it is
+memory, not only addresses, which Windows counts against the app's limit. It
+once gave 1 MB; the interpreter recurses in C only where C stands between two
+pieces of bytecode (`mg_dvm_invoke`), and the guard there (`c_stack_low`, 48 KB
+above the bottom) turns running out into a catchable `StackOverflowError`. The
+deepest any thread's host stack was seen to use, measured over a heavy app of
+213 threads (`java: addresses by kind` reports it, and the data app's run says
+it): 23 KB; the data app itself 7 KB. So 256 KB is a tenfold margin and 768 KB
+a thread less than the 1 MB before it -- Yandex Maps' 253 threads held 253 MB
+of host stacks, now some 65 (package 498 → 499). The frame stack is 384 KB of
+addresses for an ordinary thread, reserved at once and committed as it grows:
+64 KB first, doubled as frames need it (`stack_grow`). A thread's state is not
 freed when the thread ends yet; the host layer has no hook for that.
+
+**The runtime's own tables are kept small.** What it keeps of DEX files and
+linked classes is counted by kind (`mg_dvm_meta_alloc_kind`;
+`java: addresses by kind` and the Java tests' runs say it): classes, methods,
+fields, vtables, the DEX files' tables (each index's cache), names, and the
+class names of files registered and not viewed yet. A buffer that is freed
+once used (a name looked up by its descriptor, a prototype's signature before
+it is interned) is not counted; it was, and the count grew with every lookup.
+Measured on avito under qemu (213 threads, 50,000 classes linked), 126 MB at
+first: a method was 128 bytes, 40 of them the profile's counts, which are now
+apart (`mg_dvm_prof`, made the first time the profile counts the method): 88
+bytes, and the methods 42 MB to 29. A lazily registered DEX file's class names
+are copied while the file is not viewed (the table of definitions points at
+them); once it is viewed its entries point at the file's own again and the
+copies go (`mg_dvm_classes_viewed`), and every file of a big app is viewed
+within seconds. And names, a million of them, small and kept for good, are
+laid end to end in blocks of 256 KB, without the heap's header and rounding
+of each: names 35 MB to 9, the tables 126 MB to 87. What is left is the
+methods, the DEX files' tables (28 MB) and the classes (11 MB).
 
 **Objects have to be freed.** A process that never collects is a
 demonstration. Measured on `hello` under qemu, with the runtime's own counts

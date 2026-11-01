@@ -22,6 +22,11 @@
     // overrides those. microG's ForegroundServiceContext overrides startService to call startForegroundService, which came
     // back to its startService: on without end, until the stack was full (its exposure notifications' trigger, on the boot
     // megler.MicroG gives it). On Android the wrapper passes each on to its base, as now here.
+    // And an attribution context and a split's: Context's defaults answer this, which for a wrapper is the wrapper. Google Play services 26's GmsApplication.getSystemService("wifi") asks its createAttributionContext("app_network")
+    // for the service, which was the application again, whose getSystemService asked it again: on without end, until the
+    // stack was full. Android's wrapper asks its base, whose answer is another context.
+    @Override public Context createAttributionContext(String tag) { return b().createAttributionContext(tag); }
+    @Override public Context createContextForSplit(String split) { return b().createContextForSplit(split); }
     @Override public ComponentName startForegroundService(Intent service) { return b().startForegroundService(service); }
     @Override public void sendBroadcast(Intent intent, String receiverPermission) { b().sendBroadcast(intent, receiverPermission); }
     @Override public void sendOrderedBroadcast(Intent intent, String receiverPermission) { b().sendOrderedBroadcast(intent, receiverPermission); }

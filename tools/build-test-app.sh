@@ -19,6 +19,17 @@
 # them (so that it needs them: DT_NEEDED). Where there is no NDK such an app is
 # not built, which is said, and its APK is not there for the tests to run.
 #
+# An app with a module-src/ folder carries a second DEX file, made of those
+# sources alone, as assets/module.dex: a module of its own, for a class loader
+# the app makes (the data app's step delegate-last-scope).
+#
+# An app with a stubs/ folder is compiled against those classes before
+# android.jar's, and they are not in its DEX file: the platform's classes as a
+# later Android has them, for code that calls what android.jar has not (the data
+# app's step icu-number calls Android 13's android.icu.number), as an app built
+# against that Android's SDK does. A class there takes the place of android.jar's
+# whole for the compiler: it declares what the app calls of it.
+#
 # The one picture among the resources (res/drawable/mark.png of `hello`) is
 # written by this script the first time, so that the tests know every pixel of
 # it: 16 x 16, 8-bit RGBA, the left half opaque orange (255, 128, 0), the
@@ -130,17 +141,42 @@ for app in "$APPS"/*/; do
     --min-sdk-version 21 --target-sdk-version 28 "${ASSETS[@]}" "$(m "$W/res.zip")" 2>&1 | { grep -v "is compressed" || true; }
   # (android.jar has no java.lang.invoke.LambdaMetafactory, which javac wants to see before it will compile a lambda; the build tools carry it apart.)
   find "$app/src" "$W/gen" -name '*.java' | sed -E 's|^/([a-zA-Z])/|\1:/|; s|.*|"&"|' > "$W/sources.arg"
-  "$JDK/bin/javac" -nowarn -source 8 -target 8 -encoding UTF-8 -bootclasspath "$(m "$JAR");$(m "$BT/core-lambda-stubs.jar")" -d "$(m "$W/classes")" "@$(m "$W/sources.arg")" 2> "$W/javac.log" \
+  BOOT="$(m "$JAR");$(m "$BT/core-lambda-stubs.jar")"
+  if [ -d "$app/stubs" ]; then
+    mkdir -p "$W/stubs"
+    find "$app/stubs" -name '*.java' | sed -E 's|^/([a-zA-Z])/|\1:/|; s|.*|"&"|' > "$W/stubs.arg"
+    "$JDK/bin/javac" -nowarn -source 8 -target 8 -encoding UTF-8 -bootclasspath "$(m "$JAR")" -d "$(m "$W/stubs")" "@$(m "$W/stubs.arg")" 2> "$W/javac.log" \
+      || { grep -v '^Note:\|^warning:' "$W/javac.log" | head -40 >&2; echo "javac failed for $name's stubs" >&2; exit 1; }
+    BOOT="$(m "$W/stubs");$BOOT"
+  fi
+  "$JDK/bin/javac" -nowarn -source 8 -target 8 -encoding UTF-8 -bootclasspath "$BOOT" -d "$(m "$W/classes")" "@$(m "$W/sources.arg")" 2> "$W/javac.log" \
     || { grep -v '^Note:\|^warning:' "$W/javac.log" | head -40 >&2; echo "javac failed for $name" >&2; exit 1; }
   (cd "$W/classes" && "$JDK/bin/jar" cf ../classes.jar .)
   "$JDK/bin/java" -cp "$(m "$BT/lib/d8.jar")" com.android.tools.r8.D8 --release --min-api 26 --lib "$(m "$JAR")" --output "$(m "$W/dex")" "$(m "$W/classes.jar")" 2> "$W/d8.log" \
     || { head -40 "$W/d8.log" >&2; echo "d8 failed for $name" >&2; exit 1; }
-  python - "$(m "$W/base.apk")" "$(m "$W/dex/classes.dex")" "$(m "$apk")" "$(m "$W/lib")" <<'EOF'
+  MODULE=-
+  if [ -d "$app/module-src" ]; then
+    mkdir -p "$W/module-classes" "$W/module-dex"
+    find "$app/module-src" -name '*.java' | sed -E 's|^/([a-zA-Z])/|\1:/|; s|.*|"&"|' > "$W/module-sources.arg"
+    "$JDK/bin/javac" -nowarn -source 8 -target 8 -encoding UTF-8 -bootclasspath "$(m "$JAR")" -d "$(m "$W/module-classes")" "@$(m "$W/module-sources.arg")" 2> "$W/javac.log" \
+      || { grep -v '^Note:\|^warning:' "$W/javac.log" | head -40 >&2; echo "javac failed for $name's module" >&2; exit 1; }
+    (cd "$W/module-classes" && "$JDK/bin/jar" cf ../module.jar .)
+    "$JDK/bin/java" -cp "$(m "$BT/lib/d8.jar")" com.android.tools.r8.D8 --release --min-api 26 --lib "$(m "$JAR")" --output "$(m "$W/module-dex")" "$(m "$W/module.jar")" 2> "$W/d8.log" \
+      || { head -40 "$W/d8.log" >&2; echo "d8 failed for $name's module" >&2; exit 1; }
+    MODULE="$(m "$W/module-dex/classes.dex")"
+  fi
+  python - "$(m "$W/base.apk")" "$(m "$W/dex/classes.dex")" "$(m "$apk")" "$(m "$W/lib")" "$MODULE" <<'EOF'
 import os, shutil, sys, zipfile
-base, dex, out, libs = sys.argv[1:5]
+base, dex, out, libs, module = sys.argv[1:6]
 shutil.copyfile(base, out)
 with zipfile.ZipFile(out, 'a', zipfile.ZIP_DEFLATED) as z:
     z.write(dex, 'classes.dex')
+    if module != '-':
+        z.write(module, 'assets/module.dex')
+        # 3 MB of a pattern that deflates well, byte i being (i * 31 + (i >> 12)) & 255: AssetManager.open inflates an
+        # asset this large as it is read (core/framework-overlay/android/content/res/AssetManager.java), checked by the
+        # data app's step big-asset.
+        z.writestr('assets/big-deflated.bin', bytes(((i * 31 + (i >> 12)) & 255) for i in range(3 << 20)), zipfile.ZIP_DEFLATED)
     for name in sorted(os.listdir(libs)):
         z.write(os.path.join(libs, name), 'lib/armeabi-v7a/' + name)
 EOF

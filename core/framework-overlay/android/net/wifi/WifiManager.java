@@ -409,8 +409,26 @@ public class WifiManager {
         d.leaseDuration = 3600;
         return d;
     }
-    /* The phone's IPv4 address and its netmask, as Android puts them in an int (the first byte lowest); zeros when it has none. */
+    /*
+     * The phone's IPv4 address and its netmask, as Android puts them in an int (the first byte lowest); zeros when it has none.
+     * As it was at most a second ago: each answer listed every interface and its addresses (NetworkInterface), and Yandex
+     * Maps asked for its connection's over and over (package 537). Callers only read the array.
+     */
+    private static int[] sAddress;
+    private static long sAddressAt;
     private static int[] meglerAddress() {
+        long now = android.os.SystemClock.uptimeMillis();
+        synchronized (WifiManager.class) {
+            if (sAddress != null && now - sAddressAt < 1000) return sAddress;
+        }
+        int[] a = meglerAddressNow();
+        synchronized (WifiManager.class) {
+            sAddress = a;
+            sAddressAt = now;
+        }
+        return a;
+    }
+    private static int[] meglerAddressNow() {
         try {
             for (java.util.Enumeration<java.net.NetworkInterface> e = java.net.NetworkInterface.getNetworkInterfaces(); e != null && e.hasMoreElements();) {
                 java.net.NetworkInterface n = e.nextElement();

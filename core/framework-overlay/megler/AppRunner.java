@@ -104,9 +104,14 @@ public final class AppRunner {
         KeyStoreProvider.install();
         Looper.prepareMainLooper();
         sHandler = new Handler(Looper.getMainLooper());
-        /* as RuntimeInit: there is always a default handler (apps wrap it and call through). Android's kills the app; this one
-           reports the exception and lets the thread end, as Megler did before. */
-        if (Thread.getDefaultUncaughtExceptionHandler() == null) Thread.setDefaultUncaughtExceptionHandler(new UncaughtLogger());
+        /* as RuntimeInit: every exception nothing caught is logged before any handler has it (its LoggingHandler, the pre-handler
+           Thread.dispatchUncaughtException calls first), as the handler an app sets may end the process without a word -- Weather
+           Channel's (Taboola's, under Chromium's) calls System.exit(0); and there is always a default handler (apps wrap it and
+           call through). Android's kills the app; this one lets the thread end, as Megler did before. */
+        UncaughtLogger uncaught = new UncaughtLogger();
+        try { Thread.class.getMethod("setUncaughtExceptionPreHandler", Thread.UncaughtExceptionHandler.class).invoke(null, uncaught.logging); }
+        catch (ReflectiveOperationException e) { android.util.Log.w("Megler", "no pre-handler for uncaught exceptions: " + e); }
+        if (Thread.getDefaultUncaughtExceptionHandler() == null) Thread.setDefaultUncaughtExceptionHandler(uncaught);
         Manifest.read();
         installClassLoader();
         installComponentFactory();
@@ -123,6 +128,7 @@ public final class AppRunner {
         Looper.setInputSink(AppRunner::deliver);
         applyInsets();
         app.onCreate();
+        Syncs.started();
         Manifest.Component launcher = Manifest.activity(activityClass);
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         // started through the launcher's alias, the activity's component is the alias (Android compares that, not the class, when
@@ -135,9 +141,27 @@ public final class AppRunner {
         Looper.loop();
     }
     public static Application application() { return sApp; }
-    static final class UncaughtLogger implements Thread.UncaughtExceptionHandler {
+    /* Android's LoggingHandler: FATAL EXCEPTION, the thread, the process and the stack. A thread of Google Play services' ends
+       alone, as GmsCore's own process would on Android: as the pre-handler runs before any other, it gives the thread a handler
+       of its own that says so and goes no further. MicroG's default one (ServiceCrashes) did that, but an app's handler made
+       default later sits over it: Weather Channel's Taboola handler called System.exit(0) when a thread of GmsCore's crashed. */
+    static final class UncaughtLogging implements Thread.UncaughtExceptionHandler {
+        volatile Throwable logged;
         public void uncaughtException(Thread t, Throwable e) {
-            android.util.Log.e("AndroidRuntime", "FATAL EXCEPTION: " + t.getName(), e);
+            if (t != Looper.getMainLooper().getThread() && Native.thrownInService(e) != 0) {
+                t.setUncaughtExceptionHandler(SERVICE_THREAD_ENDS);
+                return;
+            }
+            logged = e;
+            android.util.Log.e("AndroidRuntime", "FATAL EXCEPTION: " + t.getName() + "\nProcess: " + Native.packageName() + ", PID: " + android.os.Process.myPid(), e);
+        }
+    }
+    static final Thread.UncaughtExceptionHandler SERVICE_THREAD_ENDS = (t, e) ->
+        android.util.Log.e("Megler", "Google Play services' thread " + t.getName() + " ended with an uncaught exception; on Android its process would, and the app goes on", e);
+    static final class UncaughtLogger implements Thread.UncaughtExceptionHandler {
+        final UncaughtLogging logging = new UncaughtLogging();
+        public void uncaughtException(Thread t, Throwable e) {
+            if (logging.logged != e) logging.uncaughtException(t, e);   // as KillApplicationHandler's ensureLogging
             if (t == Looper.getMainLooper().getThread()) { if (e instanceof RuntimeException) throw (RuntimeException) e; if (e instanceof Error) throw (Error) e; throw new RuntimeException(e); }
         }
     }
@@ -174,6 +198,10 @@ public final class AppRunner {
         return Native.packageName();
     }
     static Activity launch(String cls, Intent intent, Activity caller, int request, Manifest.Component info) throws Exception {
+        return launch(cls, intent, caller, request, info, null);
+    }
+    /** An activity made and started; `state` the one a recreated activity saved, given to onCreate and to onRestoreInstanceState. */
+    static Activity launch(String cls, Intent intent, Activity caller, int request, Manifest.Component info, Bundle state) throws Exception {
         android.util.Log.d("Megler", "launch " + cls);
         Activity prev = top();
         // Megler's screens of Android's Settings are the system's, not the app's: its factory does not make them. Google Play
@@ -185,8 +213,8 @@ public final class AppRunner {
         a.meglerAttach(base, gms ? MicroG.activityApplication() : sApp, intent, info, caller, request);
         if (prev != null && prev.isResumedMegler()) prev.meglerPause();
         sStack.add(a);
-        a.meglerCreate(null);
-        if (!a.isFinishing()) { a.meglerStart(); a.meglerResume(); }
+        a.meglerCreate(state);
+        if (!a.isFinishing()) { a.meglerStart(); if (state != null) a.meglerRestoreState(state); a.meglerResume(); }
         if (prev != null && !a.isFinishing()) {
             final Activity p = prev;
             // the one below stops once the new one covers it (a translucent or floating window leaves it visible)
@@ -231,6 +259,14 @@ public final class AppRunner {
         }
         // An APK to install (a file manager's, a browser's download, an app store's): Megler's installer has it, as Android's
         // package installer would (megler.Installs). Asked for a result, the caller hears RESULT_OK: the APK went.
+        // An app to uninstall (ACTION_DELETE of package:<name>), likewise: Megler asks the user.
+        if (megler.Installs.isUninstall(i)) {
+            android.util.Log.d("Megler", "startActivity " + i + " -> Megler's uninstaller");
+            megler.Installs.uninstall(i.getData().getSchemeSpecificPart(), (android.content.IntentSender) null);
+            final Activity caller = from instanceof Activity ? (Activity) from : top();
+            if (request >= 0 && caller != null) sHandler.post(() -> caller.meglerActivityResult(request, Activity.RESULT_OK, null));
+            return;
+        }
         if (megler.Installs.isInstall(i)) {
             android.util.Log.d("Megler", "startActivity " + i + " -> Megler's installer");
             megler.Installs.install(from, i);
@@ -375,16 +411,25 @@ public final class AppRunner {
             for (int k = i; k >= 0; k--) if (k < sStack.size()) finishNow(sStack.get(k), sStack.size() - 1 == k);
         });
     }
+    /*
+     * Activity.recreate, as Android does it: the same component made again (its manifest's, not the class the app's component
+     * factory made of it) with the same intent, given the state the old one saved after it stopped. It made the old one's
+     * class again with no state: Facebook's factory makes its splash screen's class for its main activity until the app is
+     * ready and then recreates that activity to have the real one made -- and got its splash screen again, for good.
+     */
     public static void recreate(Activity a) {
         sHandler.post(() -> {
             int idx = sStack.indexOf(a);
             if (idx < 0) return;
-            Bundle state = new Bundle();
+            String component = a.getComponentName().getClassName();
+            android.util.Log.d("Megler", "recreate " + a.getClass().getName() + " as " + component);
+            a.meglerChanging(true);
             if (a.isResumedMegler()) a.meglerPause();
             a.meglerStop();
+            Bundle state = a.meglerSaveState();
             a.meglerDestroy();
             sStack.remove(idx);
-            try { launch(a.getClass().getName(), a.getIntent(), a.meglerCaller(), a.meglerRequestCode(), Manifest.activity(a.getClass().getName())); }
+            try { launch(component, a.getIntent(), a.meglerCaller(), a.meglerRequestCode(), Manifest.activity(component), state); }
             catch (Exception e) { throw new RuntimeException(e); }
         });
     }
@@ -402,6 +447,7 @@ public final class AppRunner {
                 if (phase == 7) { InputMethods.deliverPending(); continue; }
                 if (phase == 8) { applyInsets(); continue; }
                 if (phase == 9) { Web.deliver(); continue; }
+                if (phase == 10) { Phone.deliver(); continue; }
                 if (phase == 4) {
                     long t = SystemClock.uptimeMillis();
                     KeyEvent ke = new KeyEvent(t, t, ev[3 + 4 * k] != 0 ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP, id, 0);

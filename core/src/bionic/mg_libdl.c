@@ -179,7 +179,15 @@ static void *g_dlsym(void *handle, const char *name)
         p = mg_ld_sym_deep((mg_lib *)handle, name, NULL);
         if (!p) p = mg_bionic_find(name);
     }
-    if (!p) set_error("undefined symbol: %s", name);
+    if (!p) {
+        set_error("undefined symbol: %s", name);
+        /*
+         * What an app looks up in the system's libraries and is not there, once each: an engine that probes for a newer
+         * platform's functions (Flutter's for AChoreographer, ASurfaceControl, AHardwareBuffer) takes another way then, and
+         * the log says which.
+         */
+        if (handle == SYSTEM_HANDLE || !handle || handle == G_RTLD_DEFAULT) mg_note_once("dl: dlsym(%s) found nothing, in the system's libraries or the app's", name);
+    }
     return p;
 }
 

@@ -66,8 +66,24 @@ static void thread_ends(void)
     mg_dvm_unlock();
     t_self = NULL;
     /* Its frame stack goes; the small rest stays, for whoever still holds its address (a Thread whose nativePeer was read a moment ago). */
-    free(t->stack);
+    mg_mem_release(t->stack, sizeof(mg_dvm_reg) * t->stack_words);
+    while (t->nsegs > 0) {
+        t->nsegs--;
+        mg_mem_release(t->segs[t->nsegs].base, sizeof(mg_dvm_reg) * t->segs[t->nsegs].words);
+    }
+    if (t->spare.base) mg_mem_release(t->spare.base, sizeof(mg_dvm_reg) * t->spare.words);
+    t->spare.base = NULL;
     t->stack = t->sp = t->stack_end = NULL;
+    t->stack_committed = 0;
+}
+
+bool mg_dvm_in_frames(const mg_dvm_thread *t, const void *p, size_t size)
+{
+    int i;
+    if (t->stack && (mg_addr)p >= (mg_addr)t->stack && (mg_addr)p + size <= (mg_addr)(t->stack + t->stack_committed)) return true;
+    for (i = 0; i < t->nsegs; i++)
+        if ((mg_addr)p >= (mg_addr)t->segs[i].base && (mg_addr)p + size <= (mg_addr)(t->segs[i].base + t->segs[i].committed)) return true;
+    return false;
 }
 
 void mg_dvm_threads_each(void (*fn)(mg_dvm_thread *t, void *user), void *user)
@@ -76,11 +92,37 @@ void mg_dvm_threads_each(void (*fn)(mg_dvm_thread *t, void *user), void *user)
     for (t = g_threads; t; t = t->next) fn(t, user);
 }
 
-mg_dvm_thread *mg_dvm_self(void)
+/*
+ * For a fault's report (mg_core.c, mg_core_set_fault_detail): the Java frames of the thread that faulted, innermost first,
+ * each method and the place it last called out from -- what the native code that faulted was called by, or what the
+ * runtime was running. Read as they lie, with nothing made and nothing locked: the thread may have stopped anywhere in the
+ * runtime. A frame outside the thread's own stack of frames ends the list. Nothing for a thread that never ran Java.
+ * WhatsApp's end in the interpreter (an access at address 0x23, called from its native library) said only "Megler.exe".
+ */
+void mg_dvm_fault_frames(char *out, size_t cap)
 {
     mg_dvm_thread *t = t_self;
+    mg_dvm_frame *f;
+    size_t n = 0;
+    int depth = 0;
+    if (!cap) return;
+    out[0] = 0;
+    if (!t || !t->stack) return;
+    for (f = t->top; f && depth < 16 && n + 200 < cap; f = f->prev, depth++) {
+        const mg_dvm_method *m;
+        if (!mg_dvm_in_frames(t, f, sizeof(*f))) break;
+        m = f->m;
+        if (!m || !m->cls || !m->cls->name || !m->name) break;
+        n += (size_t)snprintf(out + n, cap - n, "%s%s.%s%s at %u", depth ? ", " : "\n  its Java frames: ", m->cls->name, m->name,
+                              (m->flags & DVM_ACC_NATIVE) ? " (native)" : "", (unsigned)f->pc);
+        if (n >= cap) { out[cap - 1] = 0; return; }
+    }
+}
+
+static mg_dvm_thread *make_self(size_t words)
+{
+    mg_dvm_thread *t;
     void *lo = NULL, *hi = NULL;
-    if (t) return t;
     t = (mg_dvm_thread *)mg_alloc(sizeof(*t));
     /* Where the host's stack ends, if the host knows and what it says holds for where this function stands now. */
     mg_thread_stack_bounds(&lo, &hi);
@@ -91,9 +133,17 @@ mg_dvm_thread *mg_dvm_self(void)
         t->stack_lo = (mg_addr)lo;
         t->stack_hi = (mg_addr)hi;
     }
+    t->c_stack_min = hi ? (mg_addr)hi : 0;
     mg_thread_set_end_hook(thread_ends);
-    t->stack = (mg_dvm_reg *)mg_alloc(sizeof(mg_dvm_reg) * DVM_STACK_WORDS);
-    t->stack_end = t->stack + DVM_STACK_WORDS - DVM_STACK_RESERVE;
+    /* The first segment of its frame stack (the rest when the frames need it: mg_dvm_stack_seg). */
+    t->stack_max = words;
+    t->stack_words = words < DVM_STACK_FIRST_WORDS ? words : DVM_STACK_FIRST_WORDS;
+    t->stack_peak = t->stack_words;
+    t->stack = (mg_dvm_reg *)mg_mem_reserve(sizeof(mg_dvm_reg) * t->stack_words);
+    if (!t->stack || !mg_mem_commit(t->stack, sizeof(mg_dvm_reg) * t->stack_words, MG_PROT_RW))
+        mg_fatal("dvm: no memory for a thread's frame stack");
+    t->stack_committed = t->stack_words;
+    t->stack_end = t->stack + t->stack_committed - DVM_STACK_RESERVE;
     t->sp = t->stack;
     t->id = mg_thread_self_id();
     mg_dvm_lock();
@@ -103,6 +153,45 @@ mg_dvm_thread *mg_dvm_self(void)
     t_self = t;
     return t;
 }
+
+mg_dvm_thread *mg_dvm_self(void) { return t_self ? t_self : make_self(DVM_STACK_WORDS); }
+mg_dvm_thread *mg_dvm_self_sized(size_t words) { return t_self ? t_self : make_self(words); }
+
+void mg_dvm_thread_census(u32 *threads, u32 *attached, u64 *frame_bytes, u64 *c_reserved, u64 *c_peak)
+{
+    mg_dvm_thread *t;
+    *threads = *attached = 0;
+    *frame_bytes = *c_reserved = *c_peak = 0;
+    mg_dvm_lock();
+    for (t = g_threads; t; t = t->next) {
+        (*threads)++;
+        if (t->stack_max == DVM_STACK_ATTACHED_WORDS) (*attached)++;
+        *frame_bytes += sizeof(mg_dvm_reg) * (u64)(t->stack_below + t->stack_words + (t->spare.base ? t->spare.words : 0));
+        /* A thread native code attached brought its own host stack; the ones the runtime made are the ones we sized. */
+        if (t->stack_max != DVM_STACK_ATTACHED_WORDS && t->stack_hi > t->stack_lo) *c_reserved += (u64)(t->stack_hi - t->stack_lo);
+        if (t->c_stack_min && t->stack_hi > t->c_stack_min && (u64)(t->stack_hi - t->c_stack_min) > *c_peak) *c_peak = (u64)(t->stack_hi - t->c_stack_min);
+    }
+    mg_dvm_unlock();
+}
+void mg_dvm_frame_census(u64 *reserved, u64 *committed, u64 *deepest)
+{
+    mg_dvm_thread *t;
+    int i;
+    *reserved = *committed = *deepest = 0;
+    mg_dvm_lock();
+    for (t = g_threads; t; t = t->next) {
+        u64 used = sizeof(mg_dvm_reg) * (u64)(t->stack_below + (size_t)(t->sp - t->stack));
+        *reserved += sizeof(mg_dvm_reg) * (u64)(t->stack_words + (t->spare.base ? t->spare.words : 0));
+        *committed += sizeof(mg_dvm_reg) * (u64)(t->stack_committed + (t->spare.base ? t->spare.committed : 0));
+        for (i = 0; i < t->nsegs; i++) {
+            *reserved += sizeof(mg_dvm_reg) * (u64)t->segs[i].words;
+            *committed += sizeof(mg_dvm_reg) * (u64)t->segs[i].committed;
+        }
+        if (t->stack && used > *deepest) *deepest = used;
+    }
+    mg_dvm_unlock();
+}
+mg_dvm_thread *mg_dvm_self_attached(void) { return t_self ? t_self : make_self(DVM_STACK_ATTACHED_WORDS); }
 
 /* --------------------------------------------------------------- allocation */
 
@@ -116,6 +205,88 @@ void mg_dvm_object_roots(void (*fn)(mg_jobj *o, void *user), void *user)
     if (g_out_of_memory) fn(g_out_of_memory, user);
     if (g_dvm.app_loader) fn(g_dvm.app_loader, user);
     mg_dvm_loader_roots(fn, user);
+}
+
+/*
+ * Where objects are made: every 256 KB a thread makes, the method it runs then (mg_dvm_thread.running: the native one for
+ * what a native method makes through JNI) and the class of the object, counted; said every ten seconds (mg_java.c's
+ * sampler). Yandex Maps made some 50 MB every 3 s, a collection of 160-250 ms each time, the main thread a half of it, and
+ * the collector's line could say only whose (package 534).
+ */
+#define MADE_SAMPLE (256u << 10)
+#define MADE_SLOTS 1024
+static struct {
+    const mg_dvm_method *m, *by;
+    const mg_dvm_class *c;
+    u32 n;
+} g_made[MADE_SLOTS];
+static mg_lock g_made_lock = MG_LOCK_INIT;
+static u32 g_made_samples;
+
+/* A method of the platform's own library, which makes objects for whoever calls it: StringBuilder's char[], HashMap's nodes. */
+static bool made_for_others(const mg_dvm_method *m)
+{
+    const char *n = m->cls->name;
+    return !strncmp(n, "java/", 5) || !strncmp(n, "libcore/", 8) || !strncmp(n, "sun/", 4) || !strncmp(n, "dalvik/", 7);
+}
+
+/*
+ * `m` made an object of `c`; `t`'s frames say the first method above it that is not the platform's library's (`by`): who
+ * the StringBuilder's growing arrays (Arrays.copyOf [C, 16% of what Yandex Maps made) were for. Read by the thread itself.
+ */
+static void made_note(const mg_dvm_thread *t, const mg_dvm_method *m, const mg_dvm_class *c, u32 samples)
+{
+    const mg_dvm_method *by = NULL;
+    const mg_dvm_frame *f;
+    u32 i, tries, depth = 0;
+    if (m && made_for_others(m))
+        for (f = t->top; f && depth < 32; f = f->prev, depth++)
+            if (f->m && !made_for_others(f->m)) {
+                by = f->m;
+                break;
+            }
+    i = (u32)((((mg_addr)m >> 4) ^ ((mg_addr)c >> 3) ^ ((mg_addr)by >> 5)) * 2654435761u) & (MADE_SLOTS - 1);
+    mg_lock_acquire(&g_made_lock);
+    g_made_samples += samples;
+    for (tries = 0; tries < 64 && g_made[i].c && (g_made[i].m != m || g_made[i].c != c || g_made[i].by != by); tries++) i = (i + 1) & (MADE_SLOTS - 1);
+    if (!g_made[i].c) {
+        g_made[i].m = m;
+        g_made[i].c = c;
+        g_made[i].by = by;
+    }
+    if (g_made[i].m == m && g_made[i].c == c && g_made[i].by == by) g_made[i].n += samples;
+    mg_lock_release(&g_made_lock);
+}
+
+void mg_dvm_made_say(void)
+{
+    char line[2400];
+    size_t at;
+    u32 all;
+    int k;
+    mg_lock_acquire(&g_made_lock);
+    all = g_made_samples;
+    at = (size_t)snprintf(line, sizeof(line), "made: %u MB in all, sampled every 256 KB, by the method that made it and the class (and for whom, when it is the platform's)",
+                          (unsigned)(all / 4));
+    for (k = 0; k < 14 && all && at + 240 < sizeof(line); k++) {
+        u32 best = 0, i, at_best = 0;
+        for (i = 0; i < MADE_SLOTS; i++)
+            if (g_made[i].c && g_made[i].n > best) {
+                best = g_made[i].n;
+                at_best = i;
+            }
+        if (!best || best * 100 < all) break;
+        at += (size_t)snprintf(line + at, sizeof(line) - at, ", %u%% %s%s%s%s %s", (unsigned)(best * 100 / all), g_made[at_best].m ? g_made[at_best].m->cls->name : "(no method)",
+                               g_made[at_best].m ? "." : "", g_made[at_best].m ? g_made[at_best].m->name : "",
+                               g_made[at_best].m && (g_made[at_best].m->flags & DVM_ACC_NATIVE) ? " (native)" : "", g_made[at_best].c->name);
+        if (g_made[at_best].by)
+            at += (size_t)snprintf(line + at, sizeof(line) - at, " for %s.%s", g_made[at_best].by->cls->name, g_made[at_best].by->name);
+        g_made[at_best].n = 0;
+    }
+    memset(g_made, 0, sizeof(g_made));
+    g_made_samples = 0;
+    mg_lock_release(&g_made_lock);
+    if (all) mg_info("%s", line);
 }
 
 static mg_jobj *alloc_raw(mg_dvm_class *c, int kind, u64 body)
@@ -167,8 +338,9 @@ static mg_jobj *alloc_raw(mg_dvm_class *c, int kind, u64 body)
         /* Who makes the objects: the innermost method of the thread, a native one included. */
         mg_dvm_thread *t = mg_dvm_self();
         if (t->top) {
-            t->top->m->prof_objects++;
-            t->top->m->prof_bytes += size;
+            mg_dvm_method_prof *p = mg_dvm_prof(t->top->m);
+            p->objects++;
+            p->bytes += size;
         }
     }
     o->j.refs = 1;
@@ -180,6 +352,11 @@ static mg_jobj *alloc_raw(mg_dvm_class *c, int kind, u64 body)
     o->size = (u32)size;
     self->made_objects++;
     self->made_bytes += size;
+    self->made_sample += (u32)size;
+    if (self->made_sample >= MADE_SAMPLE) {
+        made_note(self, self->running, c, self->made_sample / MADE_SAMPLE);
+        self->made_sample %= MADE_SAMPLE;
+    }
     if (c->finalizable || c->gc_ref) mg_dvm_gc_born(&o->j);
     return &o->j;
 }
@@ -207,6 +384,13 @@ void mg_dvm_get_stats(mg_dvm_stats *out)
     }
     out->instructions = g_dvm.steps;
     out->meta_bytes = (u64)(u32)g_dvm.meta_units * 16;
+    out->meta_classes = (u64)(u32)g_dvm.meta_kind_units[DVM_META_CLASS] * 16;
+    out->meta_methods = (u64)(u32)g_dvm.meta_kind_units[DVM_META_METHOD] * 16;
+    out->meta_fields = (u64)(u32)g_dvm.meta_kind_units[DVM_META_FIELD] * 16;
+    out->meta_vtables = (u64)(u32)g_dvm.meta_kind_units[DVM_META_VTABLE] * 16;
+    out->meta_dex = (u64)(u32)g_dvm.meta_kind_units[DVM_META_DEX] * 16;
+    out->meta_names = (u64)(u32)g_dvm.meta_kind_units[DVM_META_NAME] * 16;
+    out->meta_pools = (u64)(u32)g_dvm.meta_kind_units[DVM_META_POOL] * 16;
 }
 
 mg_jobj *mg_dvm_alloc_object(mg_dvm_class *c)
@@ -376,14 +560,19 @@ const char *mg_dvm_string_utf8(mg_jobj *s)
     return s->u.str.utf8;
 }
 
+/*
+ * The interned strings: a table of their hashes and the strings, open-addressed and grown to stay at most half full, under
+ * the runtime's lock. It was 4096 lists of nodes each allocated on its own: an app's tens of thousands of strings made each
+ * lookup (a string constant's first use, String.intern) walk a list a dozen long, and each collection walk every node, a
+ * cache miss each, with the world stopped.
+ */
 typedef struct interned {
-    mg_jobj *s;
     u32 hash;
-    struct interned *next;
+    mg_jobj *s;                        /* NULL: an empty slot */
 } interned;
 
-#define INTERN_BUCKETS 4096
-static interned *g_interned[INTERN_BUCKETS];
+static interned *g_interned;
+static u32 g_intern_cap, g_intern_n;   /* slots, a power of two; strings in them */
 
 static u32 hash_utf16(const u16 *s, i32 n)
 {
@@ -393,34 +582,70 @@ static u32 hash_utf16(const u16 *s, i32 n)
     return h;
 }
 
+/* The table twice as large, every string in it again. False when there is no memory for it. */
+static bool intern_grow(void)
+{
+    u32 cap = g_intern_cap ? g_intern_cap * 2 : 4096, i, k;
+    interned *t = (interned *)calloc(cap, sizeof(*t));
+    if (!t) return false;
+    for (i = 0; i < g_intern_cap; i++) {
+        if (!g_interned[i].s) continue;
+        for (k = g_interned[i].hash & (cap - 1); t[k].s; k = (k + 1) & (cap - 1)) {}
+        t[k] = g_interned[i];
+    }
+    free(g_interned);
+    g_interned = t;
+    g_intern_cap = cap;
+    return true;
+}
+
 mg_jobj *mg_dvm_intern_string(mg_jobj *s)
 {
-    interned *e;
-    u32 h;
+    mg_jobj *kept = s;
+    bool found = false;
+    u32 h, k;
     if (!s || s->kind != MG_J_STRING) return s;
     h = hash_utf16(s->u.str.u16, s->u.str.len16);
     mg_dvm_lock();
-    for (e = g_interned[h % INTERN_BUCKETS]; e; e = e->next)
-        if (e->hash == h && e->s->u.str.len16 == s->u.str.len16 && !memcmp(e->s->u.str.u16, s->u.str.u16, (size_t)s->u.str.len16 * 2)) break;
-    if (!e) {
-        e = (interned *)mg_alloc(sizeof(*e));
-        e->s = s;
-        e->hash = h;
-        e->next = g_interned[h % INTERN_BUCKETS];
-        g_interned[h % INTERN_BUCKETS] = e;
+    /* (No memory to grow it, and no room left: the string as it is, not interned.) */
+    if ((g_intern_n + 1) * 2 > g_intern_cap && !intern_grow() && g_intern_n + 1 >= g_intern_cap) {
+        mg_dvm_unlock();
+        return s;
+    }
+    for (k = h & (g_intern_cap - 1); g_interned[k].s; k = (k + 1) & (g_intern_cap - 1)) {
+        mg_jobj *e = g_interned[k].s;
+        if (g_interned[k].hash == h && e->u.str.len16 == s->u.str.len16 && !memcmp(e->u.str.u16, s->u.str.u16, (size_t)s->u.str.len16 * 2)) {
+            kept = e;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        g_interned[k].hash = h;
+        g_interned[k].s = s;
+        g_intern_n++;
         mg_atomic_add(&g_dvm.n_interned, 1);
     }
     mg_dvm_unlock();
-    return e->s;
+    return kept;
 }
 
 void mg_dvm_interned_each(void (*fn)(mg_jobj *s, void *user), void *user)
 {
-    interned *e;
-    size_t i;
-    for (i = 0; i < INTERN_BUCKETS; i++)
-        for (e = g_interned[i]; e; e = e->next) fn(e->s, user);
+    u32 i;
+    for (i = 0; i < g_intern_cap; i++)
+        if (g_interned[i].s) fn(g_interned[i].s, user);
 }
+
+void mg_dvm_interned_part(u32 from, u32 to, void (*fn)(mg_jobj *s, void *user), void *user)
+{
+    u32 i;
+    if (to > g_intern_cap) to = g_intern_cap;
+    for (i = from; i < to; i++)
+        if (g_interned[i].s) fn(g_interned[i].s, user);
+}
+
+u32 mg_dvm_interned_slots(void) { return g_intern_cap; }
 
 mg_jobj *mg_dvm_const_string(mg_dvm_dex *d, u32 idx)
 {
@@ -610,7 +835,7 @@ static void monitor_sample_copy(mg_dvm_thread *t, monitor_sample *s)
         }
     }
     for (f = t->top; f && s->frames < 32; f = f->prev) {
-        if ((mg_addr)f < (mg_addr)t->stack || (mg_addr)f + sizeof(*f) > (mg_addr)(t->stack + DVM_STACK_WORDS) || !f->m) break;
+        if (!mg_dvm_in_frames(t, f, sizeof(*f)) || !f->m) break;
         s->methods[s->frames] = f->m;
         s->pcs[s->frames++] = f->pc;
     }
@@ -841,6 +1066,7 @@ void mg_dvm_object_dying(void *p)
     /* A string AllocObject made and a JNI call of a String constructor filled keeps its text in a buffer of its own (mg_jni.c). */
     if (o->j.kind == MG_J_STRING && o->j.native) free(o->j.native);
     if (o->j.fields) {
+        mg_dvm_gc_fields_gone(&o->j);
         for (i = 0; i < o->j.nfields; i++) free(o->j.fields[i].name);
         free(o->j.fields);
     }

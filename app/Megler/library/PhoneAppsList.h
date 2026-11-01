@@ -8,6 +8,9 @@
 //   <shared>\phone-apps\<package>\  its activities (megler_apk_describe_activities: activities.json and the pictures of their
 //                                    icons), for a launcher or a shortcut maker that lists them; source.txt says which APK they
 //                                    are of, so that they are written again only for another
+//   <shared>\phone-apps\installs\<name>.txt  what Megler's installer last told of the APK an app handed it under that
+//                                    name (installOutcome): "<when>\t<what>\t<why>"; the app's installer session waits
+//                                    for it, or for the app in apps.txt at the APK's version (megler.Installs)
 #pragma once
 
 #include <string>
@@ -18,5 +21,8 @@ namespace megler::app::phoneAppsList {
 std::wstring folder();
 /// Megler, UI thread, at every poll: writes the list and the icons again when the library has changed (on a worker).
 void publish();
+/// What became of the APK an app handed Megler under `name`, for the app's installer session to tell it: `what` is
+/// "declined", "incompatible", "failed" or "busy", `why` a line for the user. (Its success is the app in the list.)
+void installOutcome(const std::string& name, const std::string& what, const std::string& why);
 
 } // namespace megler::app::phoneAppsList

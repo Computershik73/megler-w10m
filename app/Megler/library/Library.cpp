@@ -73,6 +73,7 @@ ApkReport ApkReport::parse(const std::string& json) {
         r.runnable = boolOf(o, L"runnable");
         r.reason = stringOf(o, L"reason");
         r.engine = stringOf(o, L"engine");
+        r.microg = boolOf(o, L"microg");
         r.orientation = stringOf(o, L"orientation");
         r.supported = boolOf(o, L"supported");
         r.activity = stringOf(o, L"activity");
@@ -200,6 +201,18 @@ void Library::load() {
                     if (files::copy(gsfSource, gsfTarget + L".part") && files::move(gsfTarget + L".part", gsfTarget))
                         shellLog::write("library: published Google Services Framework in the shared service cache");
                     else shellLog::write("library: could not publish Google Services Framework");
+                }
+            }
+            // microG's Google Play services, when the package brings them: published for apps set to them (shell/Settings.h,
+            // googleServices) beside Google's own; again when this build's differs in size from the one published.
+            const std::wstring microgSource = bitgapps + L"\\MicroGGmsCore.apk";
+            if (!shared.empty() && files::exists(microgSource)) {
+                const std::wstring microgFolder = shared + L"\\services\\microg";
+                const std::wstring microgTarget = microgFolder + L"\\GmsCore.apk";
+                if ((!files::exists(microgTarget) || files::size(microgTarget) != files::size(microgSource)) && files::makeDirectories(microgFolder)) {
+                    if (files::copy(microgSource, microgTarget + L".part") && files::move(microgTarget + L".part", microgTarget))
+                        shellLog::write("library: published microG's Google Play services in the shared service cache");
+                    else shellLog::write("library: could not publish microG's Google Play services");
                 }
             }
             if (files::exists(bitgapps + L"\\PrebuiltGmsCore.apk") && !files::exists(bitgappsStamp)) {

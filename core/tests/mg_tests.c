@@ -21,6 +21,7 @@
 #include <math.h>
 #include <stdio.h>
 
+#include "../src/arm/mg_kuser.h"
 #include "../src/arm/mg_stubs.h"
 #include "../src/bionic/mg_bionic.h"
 #include "../src/bionic/mg_fd.h"
@@ -40,6 +41,7 @@
 #include "../src/ndk/mg_ndk.h"
 #include "../src/run/mg_run.h"
 #include "../src/appx/mg_appx.h"
+#include "../src/apk/mg_arsc.h"
 #include "zlib.h"
 #include "../src/zip/mg_zip.h"
 
@@ -105,6 +107,63 @@ static void list_one(const char *name, bool is_dir, void *user)
     s->count++;
     if (!is_dir) s->files++;
     mg_strlcpy(s->last, name, sizeof(s->last));
+}
+
+/*
+ * Positioned reads of one file from two threads at once, each at offsets of its own: every word of the file is its own
+ * offset, and each read has to see its own (mg_file_pread's offset goes with the call; seeking first, the two took each
+ * other's offsets).
+ */
+typedef struct pread_race {
+    mg_file *f;
+    u32 seed, bad, done;
+} pread_race;
+
+static void pread_racer(void *arg)
+{
+    pread_race *r = (pread_race *)arg;
+    u32 i, x = r->seed, word = 0;
+    int err = 0;
+    for (i = 0; i < 3000; i++) {
+        u32 at;
+        x = x * 1103515245u + 12345u;
+        at = ((x >> 8) % (256u * 1024u)) * 4u;
+        if (mg_file_pread(r->f, &word, 4, at, &err) != 4 || word != at) r->bad++;
+        r->done++;
+    }
+}
+
+static void test_pread_threads(const char *scratch)
+{
+    char *path = mg_sprintf("%s/pread-race.bin", scratch);
+    u32 *words = (u32 *)mg_alloc(1024u * 1024u), i;
+    pread_race a, b;
+    mg_thread *ta, *tb;
+    mg_file *f;
+    int err = 0;
+    say("files: positioned reads from two threads at once, each at its own offsets");
+    for (i = 0; i < 256u * 1024u; i++) words[i] = i * 4u;
+    f = mg_file_open(path, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &err);
+    CHECK(f && mg_file_write(f, words, 1024u * 1024u, &err) == 1024 * 1024);
+    if (f) mg_file_close(f);
+    f = mg_file_open(path, MG_O_READ, &err);
+    CHECK(f != NULL);
+    if (f) {
+        memset(&a, 0, sizeof(a));
+        memset(&b, 0, sizeof(b));
+        a.f = b.f = f;
+        a.seed = 1;
+        b.seed = 77;
+        ta = mg_thread_start(pread_racer, &a, 256u * 1024u, "pread-a");
+        tb = mg_thread_start(pread_racer, &b, 256u * 1024u, "pread-b");
+        if (ta) mg_thread_join(ta);
+        if (tb) mg_thread_join(tb);
+        say("  %u and %u reads, %u and %u of them not at their offset", a.done, b.done, a.bad, b.bad);
+        CHECK(ta && tb && a.done == 3000 && b.done == 3000 && a.bad == 0 && b.bad == 0);
+        mg_file_close(f);
+    }
+    free(words);
+    free(path);
 }
 
 static void test_host(const char *scratch)
@@ -672,6 +731,99 @@ static void test_etc(void)
     mg_gltex_reset();
 }
 
+/*
+ * Large plain textures packed while the process is short of addresses (mg_gltex.c), whatever was asked for before: one
+ * of glTexImage2D's, opaque, as BC1, its mipmaps made down to 1x1; one of glTexStorage2D's, with alpha, held back until its
+ * first level comes whole, then DXT5 with its mipmaps, and glGenerateMipmap left with nothing to do; one of 512 left plain;
+ * none packed while there are addresses enough.
+ */
+static int g_mipmaps_asked, g_plain_images;
+static void f_image_2d(u32 t, i32 level, i32 internal, i32 w, i32 h, i32 border, u32 format, u32 type, const void *px)
+{
+    (void)t; (void)border; (void)format; (void)type; (void)px;
+    g_plain_images++;
+    tex_got((u32)internal, level, w, h, 0, NULL);
+}
+static void f_sub_image_2d(u32 t, i32 level, i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, const void *px)
+{
+    (void)t; (void)x; (void)y; (void)type; (void)px;
+    g_plain_images++;
+    tex_got(format, level, w, h, 0, NULL);
+}
+static void f_generate_mipmap(u32 t) { (void)t; g_mipmaps_asked++; }
+
+static void test_textures_pressed(void)
+{
+    typedef void (*image_fn)(u32, i32, i32, i32, i32, i32, u32, u32, const void *);
+    typedef void (*sub_image_fn)(u32, i32, i32, i32, i32, i32, u32, u32, const void *);
+    typedef void (*storage_fn)(u32, i32, u32, i32, i32);
+    typedef void (*bind_fn)(u32, u32);
+    typedef void (*mipmap_fn)(u32);
+    u8 *px = (u8 *)malloc(1024 * 1024 * 4);
+    image_fn image;
+    sub_image_fn sub_image;
+    storage_fn storage;
+    bind_fn bind;
+    mipmap_fn mipmap;
+    char report[600];
+    int i;
+    say("textures: large ones packed while addresses are short");
+    if (!px) return;
+    for (i = 0; i < 1024 * 1024; i++) {
+        px[i * 4] = (u8)i;
+        px[i * 4 + 1] = (u8)(i >> 8);
+        px[i * 4 + 2] = (u8)(i >> 3);
+        px[i * 4 + 3] = 255;
+    }
+    mg_gltex_reset();
+    g_tex_ext = "GL_EXT_texture_compression_s3tc";
+    mg_gltex_set_host(f_tex_resolve);
+    (void)mg_gltex_wrap("glCompressedTexImage2D", (void *)f_compressed_2d);
+    image = (image_fn)mg_gltex_wrap("glTexImage2D", (void *)f_image_2d);
+    sub_image = (sub_image_fn)mg_gltex_wrap("glTexSubImage2D", (void *)f_sub_image_2d);
+    storage = (storage_fn)mg_gltex_wrap("glTexStorage2D", (void *)f_storage_2d);
+    bind = (bind_fn)mg_gltex_wrap("glBindTexture", (void *)f_bind_texture);
+    mipmap = (mipmap_fn)mg_gltex_wrap("glGenerateMipmap", (void *)f_generate_mipmap);
+    g_plain_images = g_mipmaps_asked = 0;
+
+    /* Addresses enough: as the app gave it. */
+    mg_gltex_short_of_addresses(0);
+    bind(0x0DE1, 30);
+    image(0x0DE1, 0, 0x1908, 1024, 1024, 0, 0x1908, 0x1401, px);
+    CHECK(g_plain_images == 1 && g_tex_got.internal == 0x1908);
+
+    mg_gltex_short_of_addresses(1);
+    /* glTexImage2D's, opaque: BC1, and its last mipmap 1x1 made here, the size of a block. */
+    bind(0x0DE1, 31);
+    image(0x0DE1, 0, 0x8058, 1024, 1024, 0, 0x1908, 0x1401, px);
+    CHECK(g_plain_images == 1 && g_tex_got.internal == 0x83F0 && g_tex_got.level == 10 && g_tex_got.w == 1 && g_tex_got.h == 1 && g_tex_got.size == 8);
+    mipmap(0x0DE1);
+    CHECK(g_mipmaps_asked == 0);
+    /* A level of its own given whole is packed in place of the one made here. */
+    image(0x0DE1, 1, 0x1908, 512, 512, 0, 0x1908, 0x1401, px);
+    CHECK(g_plain_images == 1 && g_tex_got.internal == 0x83F0 && g_tex_got.level == 1 && g_tex_got.w == 512 && g_tex_got.size == 512 * 512 / 2);
+
+    /* glTexStorage2D's, with alpha: held back, then DXT5 when its first level comes whole, its mipmaps made here. */
+    for (i = 0; i < 1024 * 1024; i++) px[i * 4 + 3] = (u8)(i * 7);
+    bind(0x0DE1, 32);
+    g_tex_got.internal = 0;
+    storage(0x0DE1, 11, 0x8058, 1024, 1024);
+    CHECK(g_tex_got.internal == 0);
+    sub_image(0x0DE1, 0, 0, 0, 1024, 1024, 0x1908, 0x1401, px);
+    CHECK(g_plain_images == 1 && g_tex_got.internal == 0x83F3 && g_tex_got.level == 10 && g_tex_got.w == 1 && g_tex_got.size == 16);
+    mipmap(0x0DE1);
+    CHECK(g_mipmaps_asked == 0);
+
+    /* 512 a side is not packed for the addresses alone. */
+    bind(0x0DE1, 33);
+    image(0x0DE1, 0, 0x1908, 512, 512, 0, 0x1908, 0x1401, px);
+    CHECK(g_plain_images == 2 && g_tex_got.internal == 0x1908);
+    mg_gltex_report(report, sizeof(report));
+    CHECK(strstr(report, "kept as DXT5 or BC1: 2, ") != NULL);
+    mg_gltex_reset();
+    free(px);
+}
+
 /* Textures packed on their way in (mg_gltex.c): what comes out of the DXT5 blocks is what went in, as near as the format allows. */
 static void test_textures(void)
 {
@@ -736,6 +888,7 @@ static void test_textures(void)
         free(edge);
     }
     test_etc();
+    test_textures_pressed();
 }
 
 /*
@@ -1032,6 +1185,97 @@ static void test_mmap_file(const char *scratch)
     free(path);
 }
 
+/*
+ * Anonymous memory given back with madvise (MADV_DONTNEED, bionic/mg_libc_mem.c) is the system's again -- decommitted, where
+ * the host says what is -- and still the app's: a page of it touched is zero, read or written; one the system itself writes
+ * into (a file read into it) is read into; made no-access and given access again it is zero; what was not given back keeps
+ * what it had; an address off a page is refused, as Linux refuses it.
+ */
+static void test_mmap_madvise(const char *scratch)
+{
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef int (*munmap_fn)(void *, size_t);
+    typedef int (*mprotect_fn)(void *, size_t, int);
+    typedef int (*madvise_fn)(void *, size_t, int);
+    typedef i32 (*read_fn)(int, void *, u32);
+    typedef int (*close_fn)(int);
+    enum { NONE = 0, RW = 3, PRIVATE = 0x02, ANONYMOUS = 0x20, DONTNEED = 4, MB = 1 << 20, FILE_BYTES = 8000 };
+    mmap_fn mmap_ = (mmap_fn)mg_bionic_find("mmap");
+    munmap_fn munmap_ = (munmap_fn)mg_bionic_find("munmap");
+    mprotect_fn mprotect_ = (mprotect_fn)mg_bionic_find("mprotect");
+    madvise_fn madvise_ = (madvise_fn)mg_bionic_find("madvise");
+    read_fn read_ = (read_fn)mg_bionic_find("read");
+    close_fn close_ = (close_fn)mg_bionic_find("close");
+    char *path = mg_sprintf("%s/madvised.bin", scratch);
+    u8 *data = (u8 *)mg_alloc(FILE_BYTES), *p;
+    mg_file *f;
+    int err = 0, fd, i;
+    bool same = true;
+    i64 before, after;
+    u64 anon0 = 0, anon1 = 0, anon2 = 0, anon3 = 0;
+    say("mmap: anonymous memory given back with madvise is the system's again, and zero when touched");
+    CHECK(mmap_ && munmap_ && mprotect_ && madvise_ && read_ && close_);
+    if (!mmap_ || !munmap_ || !mprotect_ || !madvise_ || !read_ || !close_) goto done;
+    mg_mmap_usage(&anon0, NULL);
+    p = (u8 *)mmap_(NULL, 4 * MB, RW, PRIVATE | ANONYMOUS, -1, 0);
+    CHECK(p && p != (u8 *)(mg_addr)-1);
+    if (!p || p == (u8 *)(mg_addr)-1) goto done;
+    memset(p, 0x5A, 4 * MB);
+    mg_mmap_usage(&anon1, NULL);
+    before = mg_mem_committed(p, 4 * MB);
+    CHECK(madvise_(p + MB, 2 * MB, DONTNEED) == 0);
+    after = mg_mem_committed(p, 4 * MB);
+    CHECK(before == -1 || (before == 4 * MB && after == 2 * MB));
+    /* What the frames line says of the app's mappings (mg_mmap_usage): the 4 MB mapped, less the 2 MB given back. */
+    mg_mmap_usage(&anon2, NULL);
+    CHECK(anon1 - anon0 == 4 * MB && anon1 - anon2 == 2 * MB);
+    say("  4 MB written, 2 MB of it given back: %lld bytes committed before, %lld after (-1: the host does not say)", (long long)before,
+        (long long)after);
+    CHECK(p[0] == 0x5A && p[MB - 1] == 0x5A && p[3 * MB] == 0x5A && p[4 * MB - 1] == 0x5A);
+    /* Read, then written: the page and those given back of its 64 KB are committed again, zero. */
+    CHECK(p[MB] == 0 && p[MB + 4095] == 0);
+    p[MB + 20 * 4096 + 7] = 1;
+    CHECK(p[MB + 20 * 4096 + 7] == 1 && p[MB + 20 * 4096 + 8] == 0);
+    after = mg_mem_committed(p, 4 * MB);
+    CHECK(after == -1 || (after > 2 * MB && after < 3 * MB));
+    /* The system writes into a page given back: a file read into it, past a page's start. */
+    for (i = 0; i < FILE_BYTES; i++) data[i] = (u8)(i * 13 + 1);
+    f = mg_file_open(path, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &err);
+    CHECK(f && mg_file_write(f, data, FILE_BYTES, &err) == FILE_BYTES);
+    if (f) mg_file_close(f);
+    fd = mg_fd_open_host(path, MG_O_READ);
+    CHECK(fd >= 0);
+    if (fd >= 0) {
+        CHECK(read_(fd, p + 2 * MB + 100, FILE_BYTES) == FILE_BYTES);
+        for (i = 0; i < FILE_BYTES; i++)
+            if (p[2 * MB + 100 + i] != data[i]) same = false;
+        CHECK(same && p[2 * MB + 99] == 0 && p[2 * MB + 100 + FILE_BYTES] == 0);
+        close_(fd);
+    }
+    say("  a file read by the system into a page given back: %s", same ? "its bytes" : "NOT its bytes");
+    /* Given back, made no-access, given access again: zero, committed by mprotect. */
+    memset(p, 0x6B, MB);
+    CHECK(madvise_(p, MB, DONTNEED) == 0 && mprotect_(p, MB, NONE) == 0 && mprotect_(p, MB, RW) == 0);
+    CHECK(p[0] == 0 && p[MB - 1] == 0);
+    CHECK(madvise_(p + 100, 4096, DONTNEED) == -1);
+    /*
+     * A page the app has and did not make no-access, decommitted with nothing marking it given back (the way one of the
+     * layer's decommits once left a page of PartitionAlloc's on the phone): touched, it is committed again, zero, and the
+     * log says so -- not a fault that ends the app.
+     */
+    p[3 * MB + 8192] = 0x77;
+    CHECK(mg_mem_decommit(p + 3 * MB + 8192, MG_PAGE));
+    CHECK(p[3 * MB + 8192] == 0);
+    p[3 * MB + 8192] = 0x78;
+    CHECK(p[3 * MB + 8192] == 0x78 && p[3 * MB] == 0x5A);
+    CHECK(munmap_(p, 4 * MB) == 0);
+    mg_mmap_usage(&anon3, NULL);
+    CHECK(anon3 == anon0);
+done:
+    free(data);
+    free(path);
+}
+
 static void count_entry(const char *name, bool is_dir, void *user)
 {
     (void)is_dir;
@@ -1172,6 +1416,26 @@ static void test_free_stretches(void)
     say("address space: the largest free stretches %u, %u, %u and %u MB, of %u MB free", (unsigned)s[0], (unsigned)s[1], (unsigned)s[2],
         (unsigned)s[3], (unsigned)free_mb);
     CHECK(s[0] == largest && s[0] >= s[1] && s[1] >= s[2] && s[2] >= s[3] && s[0] + s[1] + s[2] + s[3] <= free_mb);
+    {
+        /* What holds the addresses, by kind: the program's image, and private memory, a 3 MB allocation made here among it. */
+        mg_host_address_kinds k, after;
+        void *big = mg_mem_reserve(3u << 20);
+        u8 *small = (u8 *)malloc(8u << 20);
+        int i;
+        bool seen = false;
+        CHECK(big && mg_mem_commit(big, 3u << 20, MG_PROT_RW) && small);
+        if (small) memset(small, 1, 8u << 20);
+        CHECK(mg_host_address_census(&k));
+        for (i = 0; i < k.nsizes; i++) seen = seen || (k.sizes[i].kb == 3072 && k.sizes[i].count >= 1);
+        say("addresses by kind: images %u MB, views %u MB, private %u MB committed and %u reserved; threads the core started %u",
+            (unsigned)k.images_mb, (unsigned)k.views_mb, (unsigned)k.private_mb, (unsigned)k.private_reserved_mb, (unsigned)mg_thread_live_count());
+        CHECK(k.images_mb > 0 && k.private_mb >= 3 && k.nsizes > 0);
+        /* (A 3 MB allocation is among the four sizes holding the most only where little else is; it is said, not checked.) */
+        if (!seen) say("  (the 3 MB allocation is not among the four sizes that hold the most here)");
+        free(small);
+        if (big) mg_mem_release(big, 3u << 20);
+        CHECK(mg_host_address_census(&after) && after.private_mb + 3 <= k.private_mb + 1);
+    }
 }
 
 /*
@@ -2374,12 +2638,15 @@ static void test_guest(const char *libdir, const char *scratch)
 {
     mg_lib *basic, *dep;
     mg_ld_stats st;
+    u64 images = mg_ld_image_bytes();
     mg_ld_add_search_dir(libdir);
     mg_fs_mount("/scratch", scratch);
 
     basic = mg_ld_load("libt_basic.so");
     CHECK(basic != NULL);
     if (!basic) return;
+    /* Its segments, committed, in what the frames line says of the native libraries: at least a page, at most its extent. */
+    CHECK(mg_ld_image_bytes() - images >= MG_PAGE && mg_ld_image_bytes() - images <= mg_ld_lib_extent(basic));
     CHECK(mg_ld_init(basic));
     mg_ld_get_stats(basic, &st);
     CHECK(st.tp_reads >= 4);                        /* the initial-exec TLS accesses */
@@ -2904,6 +3171,23 @@ static void test_sqlite(const char *scratch)
     CHECK(sq_int(a, "SELECT count(*) FROM t") == 5 && sq_int(a, "SELECT v FROM t WHERE id = 1") == 0);
     CHECK_INT(sqlite3_exec(a, "DELETE FROM t", NULL, NULL, NULL), SQLITE_READONLY);
     sqlite3_close(a);
+    {
+        /* A file named in the app's SQL by the app's path (Gmail's EmailProvider attaches its bodies' database so): the
+           host's file under that path is the one opened and made. */
+        char *attached = mg_sprintf("%s/sqlite-attached.db", scratch);
+        mg_path_remove(attached, NULL);
+        mg_fs_mount("/data/data/megler.sqlite.test", scratch);
+        a = NULL;
+        /* (An attached file is opened as the database it is attached to was: one that may be made, as Android opens its.) */
+        CHECK_INT(sqlite3_open_v2(path, &a, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL), SQLITE_OK);
+        CHECK_INT(sqlite3_exec(a, "ATTACH '/data/data/megler.sqlite.test/sqlite-attached.db' AS att; CREATE TABLE att.u(x); INSERT INTO att.u VALUES(7);",
+                               NULL, NULL, NULL), SQLITE_OK);
+        CHECK_INT(sq_int(a, "SELECT x FROM att.u"), 7);
+        sqlite3_close(a);
+        CHECK(mg_path_stat(attached, &fs, NULL) && fs.size >= 1024);
+        mg_path_remove(attached, NULL);
+        free(attached);
+    }
     /* A database in memory, with a full-text table, as Android's build has them; and the clock. */
     CHECK_INT(sqlite3_open_v2(":memory:", &m, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL), SQLITE_OK);
     CHECK_INT(sqlite3_exec(m, "CREATE VIRTUAL TABLE f USING fts4(body); INSERT INTO f VALUES('a quick brown fox'), ('a lazy dog'), ('quick, quick');", NULL, NULL, NULL), SQLITE_OK);
@@ -2922,6 +3206,130 @@ static void test_sqlite(const char *scratch)
     CHECK(!mg_sqlite_available() && !mg_sqlite_start());
 }
 #endif
+
+/* The strings of a table's resources, as a count and a hash of them in their order. */
+typedef struct arsc_strings {
+    u32 n;
+    u32 hash;
+} arsc_strings;
+
+static void arsc_string_seen(const u8 *s, size_t len, void *user)
+{
+    arsc_strings *a = (arsc_strings *)user;
+    size_t i;
+    a->n++;
+    for (i = 0; i < len; i++) a->hash = (a->hash ^ s[i]) * 16777619u;
+    a->hash = (a->hash ^ 0xFF) * 16777619u;
+}
+
+/*
+ * The kernel's user helpers done in their place (arm/mg_kuser.h): __kuser_get_tls gives the thread pointer, the barrier
+ * returns, each to the caller's lr; __kuser_cmpxchg and __kuser_cmpxchg64 swap when the value is the old one (r0 0, C set)
+ * and leave it otherwise (r0 not 0, C clear) -- on a host whose addresses fit in a register; and a load of the version at
+ * 0xffff0ffc, in each form old code reads it, gives 5 and goes on past the load, its base written back where it says so.
+ * An address that is no helper, and a load of another address, are not taken.
+ */
+static void test_kuser(void)
+{
+    u32 r[16], cpsr = 0;
+    mg_addr resume = 0, next = 0;
+    u32 aligned;                       /* the instruction's bytes on a word, as code is */
+    u8 *code = (u8 *)&aligned;
+    say("the kernel's user helpers");
+    memset(r, 0, sizeof(r));
+    r[14] = 0x12345679u;
+    CHECK(mg_kuser_call(0xffff0fe0u, r, &cpsr, 0xabcd0000u, &resume) && r[0] == 0xabcd0000u && resume == 0x12345679u);
+    CHECK(mg_kuser_call(0xffff0fa0u, r, &cpsr, 0, &resume) && resume == 0x12345679u);
+    CHECK(!mg_kuser_call(0xffff0f00u, r, &cpsr, 0, &resume));
+    if (sizeof(void *) == 4) {
+        static volatile i32 word = 7;
+        static volatile i64 wide = 70;
+        static i64 old64, new64;
+        r[0] = 7; r[1] = 9; r[2] = (u32)(mg_addr)&word;
+        CHECK(mg_kuser_call(0xffff0fc0u, r, &cpsr, 0, &resume) && r[0] == 0 && word == 9 && (cpsr & 0x20000000u));
+        r[0] = 7; r[1] = 11; r[2] = (u32)(mg_addr)&word;
+        CHECK(mg_kuser_call(0xffff0fc0u, r, &cpsr, 0, &resume) && r[0] != 0 && word == 9 && !(cpsr & 0x20000000u));
+        old64 = 70; new64 = 90;
+        r[0] = (u32)(mg_addr)&old64; r[1] = (u32)(mg_addr)&new64; r[2] = (u32)(mg_addr)&wide;
+        CHECK(mg_kuser_call(0xffff0f60u, r, &cpsr, 0, &resume) && r[0] == 0 && wide == 90 && (cpsr & 0x20000000u));
+    }
+    /* ldr r0, [r1, #28] (Thumb, 16 bits), r1 = 0xffff0fe0 */
+    memset(r, 0, sizeof(r));
+    r[1] = 0xffff0fe0u;
+    code[0] = 0xc8; code[1] = 0x69;
+    CHECK(mg_kuser_read(0xffff0ffcu, code, true, r, &next) && r[0] == MG_KUSER_VERSION && next == ((mg_addr)code + 2) + 1);
+    /* ldr.w r2, [r3, #0xffc] (Thumb, 32 bits), r3 = 0xffff0000 */
+    memset(r, 0, sizeof(r));
+    r[3] = 0xffff0000u;
+    code[0] = 0xd3; code[1] = 0xf8; code[2] = 0xfc; code[3] = 0x2f;
+    CHECK(mg_kuser_read(0xffff0ffcu, code, true, r, &next) && r[2] == MG_KUSER_VERSION && next == ((mg_addr)code + 4) + 1);
+    /* ldr r4, [r5, #-4]! (Thumb, 32 bits, written back), r5 = 0xffff1000 */
+    memset(r, 0, sizeof(r));
+    r[5] = 0xffff1000u;
+    code[0] = 0x55; code[1] = 0xf8; code[2] = 0x04; code[3] = 0x4d;
+    CHECK(mg_kuser_read(0xffff0ffcu, code, true, r, &next) && r[4] == MG_KUSER_VERSION && r[5] == 0xffff0ffcu);
+    /* ldr r0, [r0, #-3] where r0 = 0xffff0fff: ARM, LDR (immediate), offset, not written back */
+    memset(r, 0, sizeof(r));
+    r[0] = 0xffff0fffu;
+    code[0] = 0x03; code[1] = 0x00; code[2] = 0x10; code[3] = 0xe5;
+    CHECK(mg_kuser_read(0xffff0ffcu, code, false, r, &next) && r[0] == MG_KUSER_VERSION && next == (mg_addr)code + 4);
+    /* the same load of another address is not taken */
+    memset(r, 0, sizeof(r));
+    r[1] = 0xffff0f00u;
+    code[0] = 0xc8; code[1] = 0x69;
+    CHECK(!mg_kuser_read(0xffff0ffcu, code, true, r, &next));
+}
+
+/*
+ * A resource table cut down to the phone's language and English (mg_arsc_keep_languages), on microG's GmsCore's (80
+ * languages): much smaller; the resources it keeps have the same strings in the same order as in the whole table; nothing
+ * more goes the second time; a table that is not one is left alone.
+ */
+static void test_arsc(const char *libdir)
+{
+    static const char *const langs[] = { "ru", "en" };
+    /* Beside the guest libraries' folder (build/guest/...), from the repository's folder, or where the ARM run's files are. */
+    char *places[3], *apk = NULL, err[160];
+    int k;
+    mg_zip z;
+    const mg_zip_entry *e;
+    u8 *table = NULL, *cut = NULL, *again;
+    size_t size = 0, cut_size = 0, again_size = 0;
+    arsc_strings whole = { 0, 2166136261u }, kept = { 0, 2166136261u }, all_left = { 0, 2166136261u };
+    say("a resource table cut down to two languages");
+    places[0] = libdir ? mg_sprintf("%s/../../microg/GmsCore.apk", libdir) : mg_sprintf("build/microg/GmsCore.apk");
+    places[1] = mg_sprintf("build/microg/GmsCore.apk");
+    places[2] = mg_sprintf("GmsCore.apk");
+    for (k = 0; k < 3; k++) {
+        if (!apk && mg_zip_open(&z, places[k], err, sizeof(err))) apk = places[k];
+        else free(places[k]);
+    }
+    if (!apk) {
+        say("  (no build/microg/GmsCore.apk: tools/microg-fetch.sh gets it; these checks are left out)");
+        return;
+    }
+    e = mg_zip_find(&z, "resources.arsc");
+    table = e ? mg_zip_read(&z, e, 64u << 20, &size) : NULL;
+    mg_zip_close(&z);
+    CHECK(table != NULL);
+    if (table) cut = mg_arsc_keep_languages(table, size, langs, 2, &cut_size);
+    CHECK(cut && cut_size < size / 2);
+    if (cut) {
+        say("  %u KB, %u KB with ru and en", (unsigned)(size >> 10), (unsigned)(cut_size >> 10));
+        CHECK(mg_arsc_each_string(table, size, langs, 2, arsc_string_seen, &whole));
+        CHECK(mg_arsc_each_string(cut, cut_size, langs, 2, arsc_string_seen, &kept));
+        CHECK(mg_arsc_each_string(cut, cut_size, NULL, -1, arsc_string_seen, &all_left));
+        CHECK(whole.n > 100 && kept.n == whole.n && kept.hash == whole.hash && all_left.n == whole.n && all_left.hash == whole.hash);
+        again = mg_arsc_keep_languages(cut, cut_size, langs, 2, &again_size);
+        CHECK(again == NULL);
+        free(again);
+        /* Cut short, it is not a table, and is left alone. */
+        CHECK(mg_arsc_keep_languages(table, size / 3, langs, 2, &again_size) == NULL);
+    }
+    free(cut);
+    free(table);
+    free(apk);
+}
 
 int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, void *user)
 {
@@ -2944,9 +3352,13 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_libc_odds();
     test_appx_manifest();
     test_appx_pri();
+    test_arsc(libdir);
+    test_kuser();
     test_palette();
     test_mmap_commit();
     test_mmap_file(scratch);
+    test_mmap_madvise(scratch);
+    test_pread_threads(scratch);
     test_rename_in_use(scratch);
     test_chromium_oom_report();
     test_shm_views();

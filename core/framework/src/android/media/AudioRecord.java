@@ -1,6 +1,10 @@
 package android.media;
 
-/** Recording: no microphone is connected through Megler, so a record produces silence at the pace a microphone would. */
+/**
+ * Recording, from the phone's microphone as the shell hears it (megler_microphone_host: megler.Native.micStart, micRead,
+ * micStop), as 16-bit samples made 8-bit or float where the app asked for those. Where there is no microphone, or the user
+ * said no, a record is silence at the pace a microphone would give it, as it always was.
+ */
 public class AudioRecord implements AudioRouting {
     public static final int STATE_UNINITIALIZED = 0, STATE_INITIALIZED = 1, RECORDSTATE_STOPPED = 1, RECORDSTATE_RECORDING = 3;
     public static final int SUCCESS = 0, ERROR = -1, ERROR_BAD_VALUE = -2, ERROR_INVALID_OPERATION = -3, ERROR_DEAD_OBJECT = -6, READ_BLOCKING = 0, READ_NON_BLOCKING = 1;
@@ -8,6 +12,7 @@ public class AudioRecord implements AudioRouting {
     private final int mRate, mChannels, mEncoding, mMask, mFrames, mSource;
     private int mState = STATE_INITIALIZED, mRecording = RECORDSTATE_STOPPED;
     private long mStart;
+    private boolean mLive;   /* the microphone hears for this record */
     public AudioRecord(int source, int sampleRate, int channelConfig, int audioFormat, int bufferSizeInBytes) {
         mRate = sampleRate > 0 ? sampleRate : 44100; mChannels = channelConfig == AudioFormat.CHANNEL_IN_STEREO ? 2 : 1;
         mEncoding = audioFormat == AudioFormat.ENCODING_DEFAULT ? AudioFormat.ENCODING_PCM_16BIT : audioFormat;
@@ -52,17 +57,51 @@ public class AudioRecord implements AudioRouting {
     public int getRecordingState() { return mRecording; }
     public int getAudioSessionId() { return 0; }
     public int getAudioSource() { return mSource; }
-    public void startRecording() { mRecording = RECORDSTATE_RECORDING; mStart = System.nanoTime(); }
-    public void stop() { mRecording = RECORDSTATE_STOPPED; }
+    public void startRecording() {
+        if (mRecording == RECORDSTATE_RECORDING) return;
+        mRecording = RECORDSTATE_RECORDING; mStart = System.nanoTime();
+        try { mLive = megler.Native.micStart(mRate, mChannels); } catch (Throwable t) { mLive = false; }
+    }
+    public void stop() {
+        if (mLive) { mLive = false; try { megler.Native.micStop(); } catch (Throwable t) {} }
+        mRecording = RECORDSTATE_STOPPED;
+    }
     public void release() { stop(); mState = STATE_UNINITIALIZED; }
     private void pace(int frames) { try { Thread.sleep(Math.max(1, frames * 1000L / mRate)); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } }
     public int read(byte[] b, int off, int n) { return read(b, off, n, READ_BLOCKING); }
-    public int read(byte[] b, int off, int n, int mode) { if (mRecording != RECORDSTATE_RECORDING) return ERROR_INVALID_OPERATION; java.util.Arrays.fill(b, off, off + n, (byte) 0); if (mode == READ_BLOCKING) pace(n / 2 / mChannels); return n; }
+    public int read(byte[] b, int off, int n, int mode) {
+        if (mRecording != RECORDSTATE_RECORDING) return ERROR_INVALID_OPERATION;
+        if (!mLive) { java.util.Arrays.fill(b, off, off + n, (byte) 0); if (mode == READ_BLOCKING) pace(n / 2 / mChannels); return n; }
+        if (mEncoding == AudioFormat.ENCODING_PCM_8BIT) {
+            short[] s = new short[n]; int got = megler.Native.micRead(s, 0, n, mode == READ_BLOCKING);
+            for (int i = 0; i < got; i++) b[off + i] = (byte) ((s[i] >> 8) + 128);
+            return got;
+        }
+        short[] s = new short[n / 2]; int got = megler.Native.micRead(s, 0, n / 2, mode == READ_BLOCKING);
+        for (int i = 0; i < got; i++) { b[off + 2 * i] = (byte) s[i]; b[off + 2 * i + 1] = (byte) (s[i] >> 8); }
+        return got * 2;
+    }
     public int read(short[] b, int off, int n) { return read(b, off, n, READ_BLOCKING); }
-    public int read(short[] b, int off, int n, int mode) { if (mRecording != RECORDSTATE_RECORDING) return ERROR_INVALID_OPERATION; java.util.Arrays.fill(b, off, off + n, (short) 0); if (mode == READ_BLOCKING) pace(n / mChannels); return n; }
-    public int read(float[] b, int off, int n, int mode) { if (mRecording != RECORDSTATE_RECORDING) return ERROR_INVALID_OPERATION; java.util.Arrays.fill(b, off, off + n, 0f); if (mode == READ_BLOCKING) pace(n / mChannels); return n; }
+    public int read(short[] b, int off, int n, int mode) {
+        if (mRecording != RECORDSTATE_RECORDING) return ERROR_INVALID_OPERATION;
+        if (!mLive) { java.util.Arrays.fill(b, off, off + n, (short) 0); if (mode == READ_BLOCKING) pace(n / mChannels); return n; }
+        return megler.Native.micRead(b, off, n, mode == READ_BLOCKING);
+    }
+    public int read(float[] b, int off, int n, int mode) {
+        if (mRecording != RECORDSTATE_RECORDING) return ERROR_INVALID_OPERATION;
+        if (!mLive) { java.util.Arrays.fill(b, off, off + n, 0f); if (mode == READ_BLOCKING) pace(n / mChannels); return n; }
+        short[] s = new short[n]; int got = megler.Native.micRead(s, 0, n, mode == READ_BLOCKING);
+        for (int i = 0; i < got; i++) b[off + i] = s[i] / 32768f;
+        return got;
+    }
     public int read(java.nio.ByteBuffer b, int n) { return read(b, n, READ_BLOCKING); }
-    public int read(java.nio.ByteBuffer b, int n, int mode) { if (mRecording != RECORDSTATE_RECORDING) return ERROR_INVALID_OPERATION; for (int i = 0; i < n; i++) b.put(b.position() + i, (byte) 0); if (mode == READ_BLOCKING) pace(n / 2 / mChannels); return n; }
+    public int read(java.nio.ByteBuffer b, int n, int mode) {
+        if (mRecording != RECORDSTATE_RECORDING) return ERROR_INVALID_OPERATION;
+        if (!mLive) { for (int i = 0; i < n; i++) b.put(b.position() + i, (byte) 0); if (mode == READ_BLOCKING) pace(n / 2 / mChannels); return n; }
+        byte[] tmp = new byte[n]; int got = read(tmp, 0, n, mode);
+        for (int i = 0; i < got; i++) b.put(b.position() + i, tmp[i]);
+        return got;
+    }
     public void setRecordPositionUpdateListener(OnRecordPositionUpdateListener l) {}
     public void setRecordPositionUpdateListener(OnRecordPositionUpdateListener l, android.os.Handler h) {}
     public int setNotificationMarkerPosition(int m) { return SUCCESS; }
@@ -73,12 +112,12 @@ public class AudioRecord implements AudioRouting {
     public void addOnRoutingChangedListener(AudioRouting.OnRoutingChangedListener l, android.os.Handler h) {}
     public void removeOnRoutingChangedListener(AudioRouting.OnRoutingChangedListener l) {}
     // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-    private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+    private java.util.HashMap<String, Object> meglerFill; /* made at the first set (megler.Fill) */
     public static final java.lang.String SUBMIX_FIXED_VOLUME = "fixedVolume";
     public static long getMaxSharedAudioHistoryMillis() { return 0L; }
     public java.util.List getActiveMicrophones() { return new java.util.ArrayList(); }
     public android.media.AudioRecordingConfiguration getActiveRecordingConfiguration() { return null; }
-    public android.media.metrics.LogSessionId getLogSessionId() { Object v = meglerFill.get("LogSessionId"); return v != null ? (android.media.metrics.LogSessionId) v : android.media.metrics.LogSessionId.LOG_SESSION_ID_NONE; }
+    public android.media.metrics.LogSessionId getLogSessionId() { Object v = megler.Fill.get(meglerFill, "LogSessionId"); return v != null ? (android.media.metrics.LogSessionId) v : android.media.metrics.LogSessionId.LOG_SESSION_ID_NONE; }
     public android.os.PersistableBundle getMetrics() { return null; }
     public int getNotificationMarkerPosition() { return 0; }
     public int getPortId() { return 0; }
@@ -89,7 +128,7 @@ public class AudioRecord implements AudioRouting {
     public boolean isPrivacySensitive() { return false; }
     public void native_release() {}
     public void registerAudioRecordingCallback(java.util.concurrent.Executor p0, android.media.AudioManager.AudioRecordingCallback p1) {}
-    public void setLogSessionId(android.media.metrics.LogSessionId p0) { meglerFill.put("LogSessionId", p0); }
+    public void setLogSessionId(android.media.metrics.LogSessionId p0) { meglerFill = megler.Fill.put(meglerFill, "LogSessionId", p0); }
     public boolean setPreferredMicrophoneDirection(int p0) { return false; }
     public boolean setPreferredMicrophoneFieldDimension(float p0) { return false; }
     public android.media.MediaSyncEvent shareAudioHistory(java.lang.String p0, long p1) { return null; }

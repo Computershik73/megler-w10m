@@ -22,7 +22,19 @@
 // gives it: Asphalt 9's MainActivity starts its data installer from onResume, creates its native game only in
 // onActivityResult, and its onWindowFocusChanged calls into that game, which was not there yet (a read at 0x34, package
 // 262). meglerVisible, which AppRunner asks whether an activity below must be started again, says whether the activity was
-// started and not stopped, so that such an activity is not started twice. Everything else is the original's, unchanged.
+// started and not stopped, so that such an activity is not started twice.
+//
+// And the managed dialogs, showDialog, dismissDialog and removeDialog, which did nothing: WhatsApp asks whether the phone
+// number is right through showDialog(21), and nothing came of tapping Next. onDestroy dismisses them, as Android's does.
+//
+// And the activity's other windows, its dialogs and popups: hidden while it is stopped and shown again when it is on the
+// screen (meglerStop, makeVisible; megler.ViewRoot.ownerStopped), and removed once it is destroyed (ViewRoot.closeAll), as
+// Android's window manager does with a token's windows. A dialog stayed in the list of windows after its activity had
+// gone: WhatsApp's progress dialog of its phone number screen showed through the code screen.
+//
+// And getComponentName: the component the activity was started as (the manifest's), not its class, which an app's component
+// factory chooses; AppRunner.recreate makes that component again, with the state the activity saved, as Android does.
+// Everything else is the original's, unchanged.
 package android.app;
 
 import android.content.*;
@@ -81,7 +93,9 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         mInfo = info;
         mCaller = caller;
         mRequestCode = requestCode;
-        mComponent = new ComponentName(getPackageName(), getClass().getName());
+        /* the component it was started as, as Android's ActivityRecord has it: the manifest's activity, which an app's
+           component factory may have made of another class (Facebook's makes its splash screen's class for its main activity) */
+        mComponent = new ComponentName(getPackageName(), info != null && info.name != null ? info.name : getClass().getName());
         int theme = info != null && info.theme != 0 ? info.theme : megler.ContextImpl.defaultTheme();
         setTheme(theme);
         if ("com.google.android.gms".equals(megler.Native.packageName())) {
@@ -157,6 +171,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             each(c -> c.onActivityPostStopped(this));
         }
         if (mWindow != null && mWindow.peekDecorView() != null) { megler.ViewRoot r = megler.ViewRoot.of(mWindow.peekDecorView()); if (r != null) r.remove(); }
+        /* its dialogs and popups hidden with it, as Android hides the windows of a token not visible (makeVisible shows them) */
+        if (!mWindowsHidden) { mWindowsHidden = true; megler.ViewRoot.ownerStopped(this, true); }
     }
     public final void meglerDestroy() {
         each(c -> c.onActivityPreDestroyed(this));
@@ -165,7 +181,12 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         if (mLoaders != null) mLoaders.doDestroy();
         each(c -> c.onActivityPostDestroyed(this));
         if (mWindow != null) mWindow.meglerDestroy();
+        /* the windows it left open go with it, as ActivityThread.handleDestroyActivity has WindowManagerGlobal.closeAll remove them */
+        megler.ViewRoot.closeAll(this);
     }
+    /* Whether its windows other than its own are hidden: it was stopped and is not on the screen again (ViewRoot.ownerStopped). */
+    private boolean mWindowsHidden;
+    public final boolean meglerWindowsHidden() { return mWindowsHidden; }
     public final void meglerBack() { onBackPressedMegler(); }
     /* Whether it was started and not stopped since (AppRunner starts the activity below again when not); its window may be waiting (mStartedActivity). */
     public final boolean meglerVisible() { return mStarted || windowShown(); }
@@ -181,6 +202,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         View decor = getWindow().getDecorView();
         if (megler.ViewRoot.of(decor) == null) getWindowManager().addView(decor, getWindow().getAttributes());
         decor.setVisibility(View.VISIBLE);
+        if (mWindowsHidden) { mWindowsHidden = false; megler.ViewRoot.ownerStopped(this, false); }
     }
     private void onBackPressedMegler() {
         if (getWindow().meglerDispatchBack()) return;
@@ -202,7 +224,15 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     protected void onPostResume() { if (mActionBar != null) mActionBar.setShowHideAnimationEnabled(true); }
     protected void onPause() { mCalled = true; for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivityPaused(this); }
     protected void onStop() { mCalled = true; for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivityStopped(this); }
-    protected void onDestroy() { mCalled = true; for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivityDestroyed(this); }
+    protected void onDestroy() {
+        mCalled = true;
+        /* the managed dialogs dismissed, as Android's onDestroy dismisses them */
+        if (mManagedDialogs != null) {
+            for (int i = 0; i < mManagedDialogs.size(); i++) { Dialog d = mManagedDialogs.valueAt(i); if (d.isShowing()) d.dismiss(); }
+            mManagedDialogs = null;
+        }
+        for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivityDestroyed(this);
+    }
     protected void onSaveInstanceState(Bundle out) { for (Application.ActivityLifecycleCallbacks c : callbacks()) c.onActivitySaveInstanceState(this, out); }
     public void onSaveInstanceState(Bundle out, android.os.PersistableBundle p) { onSaveInstanceState(out); }
     protected void onRestoreInstanceState(Bundle state) {}
@@ -257,6 +287,11 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public boolean isLaunchedFromBubble() { return false; }
     public boolean isActivityTransitionRunning() { return false; }
     public void recreate() { megler.AppRunner.recreate(this); }
+    /* For AppRunner.recreate: the state the activity saves, as Android saves it before it is destroyed to be made again; that
+       state given back after onStart; and that it is being made again (isChangingConfigurations). */
+    public final Bundle meglerSaveState() { Bundle b = new Bundle(); onSaveInstanceState(b); return b; }
+    public final void meglerRestoreState(Bundle b) { if (b != null) onRestoreInstanceState(b); }
+    public final void meglerChanging(boolean changing) { mChangingConfigurations = changing; }
 
     // ---- the window
     public Window getWindow() {
@@ -421,11 +456,41 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void onAttachFragment(Fragment f) {}
     private LoaderManagerImpl mLoaders;
     public LoaderManager getLoaderManager() { if (mLoaders == null) mLoaders = new LoaderManagerImpl(mStarted); return mLoaders; }
-    public void showDialog(int id) {}
-    public final boolean showDialog(int id, Bundle args) { return false; }
-    public void dismissDialog(int id) {}
-    public void removeDialog(int id) {}
+    /*
+     * The activity's managed dialogs (showDialog, dismissDialog, removeDialog), as Android keeps them: made once by
+     * onCreateDialog(id, args), kept by id, prepared (onPrepareDialog) and shown at each showDialog. They did nothing here:
+     * WhatsApp asks "is this the right number?" through showDialog(21) when one taps Next on its phone number, and nothing
+     * came up, so the registration went no further.
+     */
+    private android.util.SparseArray<Dialog> mManagedDialogs;
+    public final void showDialog(int id) { showDialog(id, null); }
+    public final boolean showDialog(int id, Bundle args) {
+        if (mManagedDialogs == null) mManagedDialogs = new android.util.SparseArray<>();
+        Dialog d = mManagedDialogs.get(id);
+        if (d == null) {
+            d = onCreateDialog(id, args);
+            if (d == null) return false;
+            mManagedDialogs.put(id, d);
+        }
+        onPrepareDialog(id, d, args);
+        d.show();
+        return true;
+    }
+    public void dismissDialog(int id) {
+        Dialog d = mManagedDialogs == null ? null : mManagedDialogs.get(id);
+        if (d == null) throw new IllegalArgumentException("no dialog with id " + id + " was ever shown via Activity#showDialog");
+        d.dismiss();
+    }
+    public void removeDialog(int id) {
+        Dialog d = mManagedDialogs == null ? null : mManagedDialogs.get(id);
+        if (d == null) return;
+        d.dismiss();
+        mManagedDialogs.remove(id);
+    }
     protected Dialog onCreateDialog(int id) { return null; }
+    protected Dialog onCreateDialog(int id, Bundle args) { return onCreateDialog(id); }
+    protected void onPrepareDialog(int id, Dialog dialog) { dialog.setOwnerActivity(this); }
+    protected void onPrepareDialog(int id, Dialog dialog, Bundle args) { onPrepareDialog(id, dialog); }
     public boolean releaseInstance() { return false; }
     public void setLocusContext(android.content.LocusId id, Bundle b) {}
     public boolean showAssist(Bundle args) { return false; }
@@ -527,7 +592,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         void onScreenCaptured();
     }
             // ---- generated by tools/compat/fillmembers.py: the platform's members this class does not write (signatures only)
-            private final java.util.HashMap<String, Object> meglerFill = new java.util.HashMap<>();
+            private java.util.HashMap<String, Object> meglerFill; /* made at the first set (megler.Fill) */
             public static final int DONT_FINISH_TASK_WITH_ACTIVITY = 0;
             public static final java.lang.String DUMP_ARG_AUTOFILL = "--autofill";
             public static final java.lang.String DUMP_ARG_CONTENT_CAPTURE = "--contentcapture";
@@ -558,27 +623,26 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public int getChangingConfigurations() { return 0; }
             public android.view.contentcapture.ContentCaptureManager.ContentCaptureClient getContentCaptureClient() { return null; }
             public android.transition.Scene getContentScene() { return null; }
-            public android.transition.TransitionManager getContentTransitionManager() { return (android.transition.TransitionManager) meglerFill.get("ContentTransitionManager"); }
+            public android.transition.TransitionManager getContentTransitionManager() { return (android.transition.TransitionManager) megler.Fill.get(meglerFill, "ContentTransitionManager"); }
             public android.app.ComponentCaller getCurrentCaller() { return null; }
             public android.app.ComponentCaller getInitialCaller() { return null; }
             public int getLaunchedFromUid() { return 0; }
             public int getMaxNumPictureInPictureActions() { return 0; }
-            public android.media.session.MediaController getMediaController() { return (android.media.session.MediaController) meglerFill.get("MediaController"); }
+            public android.media.session.MediaController getMediaController() { return (android.media.session.MediaController) megler.Fill.get(meglerFill, "MediaController"); }
             public int getNextAutofillId() { return 0; }
             public android.net.Uri getReferrer() { return null; }
             public android.view.SearchEvent getSearchEvent() { return null; }
             public android.os.IBinder getShareableActivityToken() { return null; }
             public android.app.VoiceInteractor getVoiceInteractor() { return null; }
             public boolean isBackgroundVisibleBehind() { return false; }
-            public boolean isHandoffEnabled() { return (meglerFill.get("HandoffEnabled") instanceof Boolean ? (Boolean) meglerFill.get("HandoffEnabled") : false); }
+            public boolean isHandoffEnabled() { return (megler.Fill.get(meglerFill, "HandoffEnabled") instanceof Boolean ? (Boolean) megler.Fill.get(meglerFill, "HandoffEnabled") : false); }
             public boolean isHandoffFullTaskRecreationAllowed() { return false; }
-            public boolean isOverlayWithDecorCaptionEnabled() { return (meglerFill.get("OverlayWithDecorCaptionEnabled") instanceof Boolean ? (Boolean) meglerFill.get("OverlayWithDecorCaptionEnabled") : false); }
+            public boolean isOverlayWithDecorCaptionEnabled() { return (megler.Fill.get(meglerFill, "OverlayWithDecorCaptionEnabled") instanceof Boolean ? (Boolean) megler.Fill.get(meglerFill, "OverlayWithDecorCaptionEnabled") : false); }
             public boolean isVisibleForAutofill() { return false; }
             public android.database.Cursor managedQuery(android.net.Uri p0, java.lang.String[] p1, java.lang.String p2, java.lang.String p3) { return null; }
             public android.database.Cursor managedQuery(android.net.Uri p0, java.lang.String[] p1, java.lang.String p2, java.lang.String[] p3, java.lang.String p4) { return null; }
             public void onActivityResult(int p0, int p1, android.content.Intent p2, android.app.ComponentCaller p3) {}
             public void onBackgroundVisibleBehindChanged(boolean p0) {}
-            protected android.app.Dialog onCreateDialog(int p0, android.os.Bundle p1) { return null; }
             public void onCreateNavigateUpTaskStack(android.app.TaskStackBuilder p0) {}
             public boolean onCreateThumbnail(android.graphics.Bitmap p0, android.graphics.Canvas p1) { return false; }
             public void onLocalVoiceInteractionStopped() {}
@@ -590,8 +654,6 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public boolean onPictureInPictureRequested() { return false; }
             public void onPictureInPictureUiStateChanged(android.app.PictureInPictureUiState p0) {}
             public void onPostCreate(android.os.Bundle p0, android.os.PersistableBundle p1) {}
-            protected void onPrepareDialog(int p0, android.app.Dialog p1) {}
-            protected void onPrepareDialog(int p0, android.app.Dialog p1, android.os.Bundle p2) {}
             public void onPrepareNavigateUpTaskStack(android.app.TaskStackBuilder p0) {}
             public void onProvideAssistContent(android.app.assist.AssistContent p0) {}
             public android.net.Uri onProvideReferrer() { return null; }
@@ -607,15 +669,15 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public boolean requestVisibleBehind(boolean p0) { return false; }
             public void setActivityRecordInputSinkEnabled(boolean p0) {}
             public void setAllowCrossUidActivitySwitchFromBelow(boolean p0) {}
-            public void setContentTransitionManager(android.transition.TransitionManager p0) { meglerFill.put("ContentTransitionManager", p0); }
+            public void setContentTransitionManager(android.transition.TransitionManager p0) { meglerFill = megler.Fill.put(meglerFill, "ContentTransitionManager", p0); }
             public void setFeatureDrawableAlpha(int p0, int p1) {}
             public void setFeatureDrawableUri(int p0, android.net.Uri p1) {}
             public void setFinishOnTouchOutside(boolean p0) {}
             public void setForceSendResultForMediaProjection() {}
             public void setHandoffEnabled(boolean p0, boolean p1) {}
             public void setIntent(android.content.Intent p0, android.app.ComponentCaller p1) {}
-            public void setMediaController(android.media.session.MediaController p0) { meglerFill.put("MediaController", p0); }
-            public void setOverlayWithDecorCaptionEnabled(boolean p0) { meglerFill.put("OverlayWithDecorCaptionEnabled", Boolean.valueOf(p0)); }
+            public void setMediaController(android.media.session.MediaController p0) { meglerFill = megler.Fill.put(meglerFill, "MediaController", p0); }
+            public void setOverlayWithDecorCaptionEnabled(boolean p0) { meglerFill = megler.Fill.put(meglerFill, "OverlayWithDecorCaptionEnabled", Boolean.valueOf(p0)); }
             public void setPersistent(boolean p0) {}
             public void setSecondaryProgress(int p0) {}
             public void setShouldDockBigOverlays(boolean p0) {}

@@ -10,8 +10,11 @@
 #include "player/CodecHost.h"
 #include "player/GfxHost.h"
 #include "player/KeyboardHost.h"
+#include "player/BiometricHost.h"
 #include "player/LocationHost.h"
+#include "player/MicrophoneHost.h"
 #include "player/MediaHost.h"
+#include "player/PhoneEvents.h"
 #include "player/PhoneState.h"
 #include "player/StorageHost.h"
 
@@ -19,6 +22,7 @@
 #include "shell/Checks.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
+#include "shell/Settings.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
@@ -201,7 +205,10 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     std::thread([window, audio, width, height, densityDpi] {
         megler_run_config config = {};
         config.apk_path = gApkPath.c_str();
-        const std::string servicePath = narrow(appPackage::serviceApk());
+        // Google's own Google Play services, or microG's where the app (or Megler) is set to it (ui/SettingsScreen.cpp).
+        const bool microg = settings::get(settings::googleServices, "") == "microg";
+        const std::string servicePath = narrow(appPackage::serviceApk(microg));
+        shellLog::write(std::string("session: Google Play services: ") + (servicePath.empty() ? "none registered" : microg && appPackage::hasMicroG() ? "microG's" : "Google's own"));
         config.gms_apk_path = servicePath.empty() ? nullptr : servicePath.c_str();
         const std::string gsfPath = narrow(appPackage::gsfApk());
         config.gsf_apk_path = gsfPath.empty() ? nullptr : gsfPath.c_str();
@@ -225,6 +232,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         // A Java app's LocationManager: the phone's location through Windows.Devices.Geolocation, or the place set in Settings
         // (player/LocationHost.h).
         config.location = LocationHost::shared().callbacks();
+        config.microphone = MicrophoneHost::shared().callbacks();
+        // A Java app's BiometricPrompt and FingerprintManager: Windows Hello (player/BiometricHost.h).
+        config.biometric = biometricHost::callbacks();
         // For an app that is Java: its drawing, and where Android's libcore and the framework are -- NULL is the folder
         // `android` of the installed package, which is where tools/build-appx.sh --libcore (or --java) puts them. An app
         // with a native engine uses neither.
@@ -263,6 +273,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
             gSnapshot.state = State::running;
             shellLog::write("session: running");
         }
+        // The phone's text messages and calls from now on, for the app (megler_sms_received, megler_call_logged).
+        phoneEvents::start();
         // Should the phone have been locked, or the app left, meanwhile.
         tell();
     }).detach();

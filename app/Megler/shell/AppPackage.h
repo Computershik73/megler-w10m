@@ -36,7 +36,21 @@ std::wstring sharedFolder();
 /// Remember an installed microG APK for clients of the same publisher; no service APK is bundled into each client.
 bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullName, bool replace = false);
 void unregisterServiceApk(const std::string& installedFullName);
-std::wstring serviceApk();
+/// The copies of Google Play services' APK in <shared>\services that are not the registered one, removed: one was made for
+/// each install of its package (every Update All), some 266 MB each, and none ever went. A copy a running app still has
+/// open, which Windows does not let go, stays until the next time. Slow: off the UI thread.
+void removeUnusedServiceCopies();
+/// The APKs apps' own packages handed over for Megler to install (<shared>\incoming) that are over an hour old: what was
+/// left there before Megler removed each once its request was answered (ui/AppShell.cpp). Slow: off the UI thread.
+void removeOldHandedApks();
+/// What the shared folder holds, said in the log once a run: each of its folders' size (an app's own storage the largest).
+/// The Device Portal cannot look there. Slow: off the UI thread.
+void logSharedSpace();
+/// Google Play services' APK an app starts with: microG's when `microg` and it is registered, else Google's own, else
+/// microG's; nothing when neither is. Each kind is registered apart (registerServiceApk), the last installed of each.
+std::wstring serviceApk(bool microg = false);
+/// Whether a microG's Google Play services is registered.
+bool hasMicroG();
 std::wstring gsfApk();
 
 /// An app's own package, before its app starts: the app's private files that Megler handed over when it made the package
@@ -81,6 +95,16 @@ PortalResult uninstallThroughPortal(const InstalledApp& app);
 
 /// This Megler's version, "0.1.0.358": the version of every package it makes.
 std::string meglerVersion();
+
+/// Megler's own update, copied to the phone over USB (MTP) into Pictures\Megler: the newest Megler_<version>_ARM.appx there,
+/// when it is newer than this Megler, installed with the Megler.cer beside it through the phone's own Device Portal, which
+/// closes this Megler to replace it. Tried once for each version (LocalState\update-tried-<version>). Megler's own package
+/// only, not an app's. Off the UI thread: started on a thread of its own.
+void installCopiedUpdate();
+/// Megler: the Android files of older builds in the shared folder (<shared>\android\<version>, some 170 MB each) that no
+/// package in `installed` (the Device Portal's whole list) is of any more -- after Update All, every older build's. Slow:
+/// off the UI thread.
+void removeUnusedAndroidRoots(const std::vector<InstalledApp>& installed);
 
 /// An installed app's own package's APK, app\app.apk in its install folder, beside Megler's (the folder of the packages
 /// installed on the phone's storage), and whether Megler can read it there. When it can, Megler keeps no copy of the APK: an

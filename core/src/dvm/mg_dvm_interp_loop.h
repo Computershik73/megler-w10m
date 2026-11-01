@@ -28,6 +28,7 @@ int DVM_LOOP(mg_dvm_thread *t, mg_dvm_frame *f, mg_jvalue *ret)
     /* Instructions executed, given to the thread at each native call and at the way out (mg_dvm_thread_costs). */
     u32 executed = 0;
     result.j = 0;
+    t->running = m;
 
     for (;;) {
         w = insns[pc];
@@ -539,6 +540,8 @@ int DVM_LOOP(mg_dvm_thread *t, mg_dvm_frame *f, mg_jvalue *ret)
             }
             break;
         }
+        /* A framework method that is its signature alone: its first call said (before a trivial body is done in place). */
+        if (target->stub) mg_dvm_stub_called(m, target);
         /* One the interpreter does itself, when its arguments allow (not while every instruction is watched: the trace, the profile). */
         if (target->intrinsic && !g_dvm.slow && intrinsic(t, target->intrinsic, inv_argv, &result)) NEXT(3);
         /* A method whose body is trivial, done in place; counted as the instructions it would have executed. */
@@ -566,17 +569,16 @@ int DVM_LOOP(mg_dvm_thread *t, mg_dvm_frame *f, mg_jvalue *ret)
         if (!nf) goto exception;
         if (g_call_trace) call_trace_enter(t, target, "", inv_argv, inv_count);
         /*
-         * The arguments are the callee's last registers, in the order and the widths the caller's hold them; the others
-         * start at zero. (Loops, not memset and memcpy: a call has a few registers, and the C library's calls cost more.)
+         * The arguments are the callee's last registers, in the order and the widths the caller's hold them. The others are
+         * left as the stack has them (DVM_LOCALS_AS_THEY_ARE).
          */
         base = (u32)target->regs - target->ins;
         n = inv_count < target->ins ? inv_count : target->ins;
         {
-            mg_dvm_reg *to = nf->regs;
+            mg_dvm_reg *to = nf->regs + base;
             u32 k;
-            for (k = 0; k < base; k++) to[k] = 0;
-            for (k = 0; k < n; k++) to[base + k] = inv_argv[k];
-            for (k = base + n; k < target->regs; k++) to[k] = 0;
+            for (k = 0; k < n; k++) to[k] = inv_argv[k];
+            for (k = n; k < target->ins; k++) to[k] = 0;
         }
         if (target->flags & DVM_ACC_SYNCHRONIZED) {
             nf->sync = (target->flags & DVM_ACC_STATIC) ? mg_dvm_mirror(target->cls) : self;
@@ -585,6 +587,8 @@ int DVM_LOOP(mg_dvm_thread *t, mg_dvm_frame *f, mg_jvalue *ret)
         f = nf;
         LOAD_FRAME();
         pc = 0;
+        /* Its compiled code, when its start is an entry: run until it returns or hands the frame back. */
+        JIT_BACK(0)
         continue;
     }
 

@@ -31,8 +31,17 @@ void mg_java_gfx_set_present_canvas(bool (*fn)(void *user, void *canvas, int wid
  * diagnosis of what the window shows: mg_java_gl.c's trace-surfaces). Not under the bitmaps' lock.
  */
 void mg_java_gfx_set_present_probe(bool (*due)(void), void (*probe)(const void *pixels, int width, int height, int stride));
+/*
+ * How the part of the screen a frame changes (left, top, right, bottom; right 0: all of it) is said to the present above, on
+ * the thread that is about to present it: the render thread's frames (Gfx.frame) say it so.
+ */
+void mg_java_gfx_set_present_part(void (*fn)(const i32 part[4]));
+/* Until the frame last handed to the render thread has been shown (Gfx.frameWait): before the app's end. */
+void mg_java_gfx_frames_wait(void);
 /* Bytes of bitmap memory now allocated and bitmaps alive, for the memory report. */
 void mg_java_gfx_stats(uint64_t *bitmap_bytes, uint32_t *bitmaps);
+/* Whether the shell keeps pictures on the graphics processor for views to draw (megler_gfx_host.texture_frame, draw_texture). */
+bool mg_java_gfx_textures(void);
 /* Bytes the display lists of RenderNodes and Pictures now take, how many lists there are, and how many nodes. */
 void mg_java_gfx_list_stats(uint64_t *bytes, uint32_t *lists, uint32_t *nodes);
 /* Nanoseconds the calling thread has spent in the shell's drawing (the megler_gfx_host's calls), summed: the frame meter's. */
@@ -63,6 +72,23 @@ bool mg_java_gfx_bitmap_info(i64 bm, mg_java_gfx_bitmap *out);
 void mg_java_gfx_bitmap_changed(i64 bm);
 bool mg_java_gfx_lock_rgba(i64 bm, mg_java_gfx_bitmap *out);
 void mg_java_gfx_unlock_rgba(i64 bm);
+
+/*
+ * A canvas's pixels, to be drawn into directly (the WebView's software draw: drivers/mg_java_webview.c): the canvas's bitmap
+ * locked in Android's order as mg_java_gfx_lock_rgba locks it, and what the canvas has in effect -- its matrix, as Skia's nine
+ * numbers, and its clip's box in the bitmap's pixels. False for a canvas with no bitmap of its own here (a recording
+ * canvas's, one whose bitmap is gone). Every true is ended with mg_java_gfx_canvas_raster_end, which takes the pixels as
+ * changed.
+ */
+typedef struct mg_java_gfx_raster {
+    void *pixels;
+    i32 width, height, stride;
+    float matrix[9];
+    i32 clip[4];                       /* left, top, right, bottom */
+    bool empty;                        /* the clip is empty: nothing is to be drawn */
+} mg_java_gfx_raster;
+bool mg_java_gfx_canvas_raster(i64 canvas, mg_java_gfx_raster *out);
+void mg_java_gfx_canvas_raster_end(i64 canvas);
 
 #ifdef __cplusplus
 }

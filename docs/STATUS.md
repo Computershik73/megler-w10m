@@ -38,7 +38,7 @@ Back. No real app has been tried.
 | Sound out of the phone (XAudio2) | **heard on the phone** with build 0.1.0.21, the Probe's tone and the demo's; XAudio2 played every frame it was given. With 0.1.0.19 nothing was heard and the log could not say why: the engine was built on the app's own thread then, and nothing was counted |
 | A Java app's sound with Megler minimised, and the phone's media controls (lock screen, volume flyout) for its media session (docs/JAVA.md, "Sound in the background") | **passes under qemu** as far as the core (the data app's media session: its state and metadata told, the media keys to its callback). **Not yet heard on the phone** in the background |
 | Android's accent colours from the phone's accent, and its light or dark theme; Material You's system colours in HCT (docs/JAVA.md, "The phone's accent and theme") | **passes under qemu** (the data app: DeviceDefault's `colorAccent` and `system_accent1_600` from a cobalt accent) and **on PC** (the palettes against Material 3's baseline colours). **Not seen on a phone** in an app |
-| APKs, .apks and .xapk opened in Megler from the phone's file manager; an Android app's install intent or `PackageInstaller` session handed to Megler's installer (docs/JAVA.md, "Installing, and the phone's other apps") | **passes under qemu** (the data app: an APK by `ACTION_VIEW`, a session of one file and its `STATUS_SUCCESS`, a session of a base and a split handed over as one `.apks` of both); the shell's side is built. **Not tried on a phone** |
+| APKs, .apks and .xapk opened in Megler from the phone's file manager; an Android app's install intent or `PackageInstaller` session handed to Megler's installer (docs/JAVA.md, "Installing, and the phone's other apps") | **passes under qemu** (the data app: an APK by `ACTION_VIEW`; a session of one file, handed over by its package's name, which the user says no to, and its `STATUS_FAILURE_ABORTED`; a session of a base and a split handed over as one `.apks` of both, and its `STATUS_SUCCESS` once the phone's apps have it); the shell's side is built. On the phone (0.1.0.457) Google Play's download reached Megler, but under a name Megler's link refused, and Google Play, told of success at once, reported a failed install; both are fixed since, **not yet tried again** |
 | Jobs (`JobScheduler`): run once their minimum latency has passed, by their service's `onStartJob`, ended by `jobFinished` or the end of their work, again after a backoff or an interval (docs/JAVA.md, "Jobs") | **passes under qemu** (the data app: a job with extras and a latency, and one given work twice, which it takes in order). **Not yet seen on a phone** |
 | An app's other processes (`android:process`: Play Store's `:download_service`) as class scopes of the app's own APK, each with its Application and its process's name (docs/JAVA.md, "Jobs") | **passes under qemu** (the data app: a service in `:elsewhere` with statics of its own and that name, reached through `transact`). **Not yet seen on a phone** |
 | Launchers: the apps of Megler's library listed to a Java app (`PackageManager`, `LauncherApps`, icons) and started by it, through their own packages or Megler; every activity of theirs, with its label, icon and filters (`megler_apk_describe_activities`), for a shortcut maker | **passes under qemu** (the data app: one other app listed with its label and icon, and started by its launch intent; Nova Launcher 8.9.4 starts to its welcome screen at the phone's size). **On the phone** Nova ended at its start with package 373 (docs/JAVA.md, "Real apps"); fixed under qemu, not yet tried there again |
@@ -170,6 +170,11 @@ under "Films" below). What it took, beyond what qemu had shown:
     filled and sampled as DXT5, compressing the pixels as they are uploaded: 661 MB
     became 165. It costs some of the picture and nothing has judged how much.
     Flags `plain-textures` and `pack-textures` turn it off and on from the start.
+    And while the process has less than 768 MB of addresses free, a texture of
+    1024x1024 or more is packed whatever was asked for before, glTexImage2D's too:
+    BC1 when its first level is opaque, else DXT5, its mipmaps made here (Yandex
+    Maps' panorama of 2048x2048 textures ended in GL_OUT_OF_MEMORY, packages
+    540 and 543).
   - (Asphalt 9, package 278.) A game made for OpenGL ES 3 ships ETC2, which
     Direct3D does not have: ANGLE decodes it to RGBA8 and keeps it so, 112 MB
     of ETC2 came to 507 MB, and the addresses ran out in the first race (231 MB
@@ -270,7 +275,8 @@ stack scan, thread and memory lines, the flags (`mg_flag`: a file's presence in
 `LocalState\flags`, put there through the Device Portal: `no-interrupt`,
 `no-render`, `late-render`, `no-egl`, `no-panel`, `early-present`, `no-present`,
 `normal-priority`, `trace-gl`), `trace-gl` (every GL call through a generated
-thunk), the unattended `play` mode, and `tools/phone-etw.py`. And for what an app
+thunk), `no-gl-turns` (the thunks that have two threads' calls of one ANGLE
+display take turns left out; `ndk/mg_egl.c`, "turns"), the unattended `play` mode, and `tools/phone-etw.py`. And for what an app
 does that it says nothing of: `trace-net` (every TCP connection the app makes,
 where to, how it ended and how long it took, and every name it looks up with its
 addresses; `bionic/mg_net.c`, `mg_netdb.c`) and `trace-exceptions` (every Java
@@ -280,6 +286,9 @@ or not; `dvm/mg_dvm_interp.c`), at most 1000 and 2000 lines a run; and
 then every two seconds those whose stack changed, the others counted; threads as
 they end, and any that could not be stopped; each thread stopped only while its
 frames are copied; at most 6000 lines; `dvm/mg_dvm_object.c`); and
+`trace-nulls` (at a NullPointerException an instruction of the app's bytecode throws, once a place, which register
+was null and where the method last gave it its value: which call's result, which field, the constant null, a
+parameter; at most 320 lines; `dvm/mg_dvm_interp.c`); and
 `trace-calls-<prefix>`, the prefix a class name with dots (every call of a method
 of a class whose name starts with it, with its thread and depth, and its return
 with the value or the exception it ends with; up to eight such flags; at most 8000

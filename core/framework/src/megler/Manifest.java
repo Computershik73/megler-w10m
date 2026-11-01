@@ -64,7 +64,8 @@ public final class Manifest {
                     minSdk = p.getAttributeIntValue(NS, "minSdkVersion", 21);
                     targetSdk = p.getAttributeIntValue(NS, "targetSdkVersion", minSdk);
                     break;
-                case "uses-permission": permissions.add(p.getAttributeValue(NS, "name")); break;
+                /* (uses-permission-sdk-23 asks only on Android 6 and later, which this is: WhatsApp asks for READ_CALL_LOG so) */
+                case "uses-permission": case "uses-permission-sdk-23": case "uses-permission-sdk-m": permissions.add(p.getAttributeValue(NS, "name")); break;
                 case "uses-library": libraries.add(p.getAttributeValue(NS, "name")); break;
                 case "application":
                     inApp = true;

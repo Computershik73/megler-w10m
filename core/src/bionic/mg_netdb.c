@@ -7,7 +7,11 @@
  *
  * Names are the host's resolver's to look up (GetAddrInfoW on Windows). What
  * needs no network is answered here: numbers, and "localhost", which Android
- * has in /system/etc/hosts as 127.0.0.1 (and ip6-localhost as ::1). The
+ * has in /system/etc/hosts as 127.0.0.1 (and ip6-localhost as ::1). A name the
+ * resolver does not know is EAI_NODATA, as bionic's getaddrinfo has it for
+ * every name its DNS answered without addresses, NXDOMAIN too ("No address
+ * associated with hostname", what an app shows for a host it cannot reach);
+ * EAI_NONAME is a number that is not one, or a name with AI_NUMERICHOST. The
  * results are bionic's structures: struct addrinfo has ai_canonname before
  * ai_addr there, the BSD order, which glibc's has the other way round.
  *
@@ -843,7 +847,7 @@ static int eai_of(int host_eai)
 {
     switch (host_eai) {
     case MG_EAI_OK: return 0;
-    case MG_EAI_NONAME: return G_EAI_NONAME;
+    case MG_EAI_NONAME: return G_EAI_NODATA;
     case MG_EAI_AGAIN: return G_EAI_AGAIN;
     case MG_EAI_NODATA: return G_EAI_NODATA;
     case MG_EAI_FAMILY: return G_EAI_FAMILY;
@@ -895,9 +899,17 @@ static int addresses_of(const char *node, int family, bool numeric_only, bool ad
     } else if ((n = known_name(node, family, known)) != 0) {
         if (n < 0) return G_EAI_NODATA;
     } else {
-        int hf = family == G_AF_INET ? MG_AF_INET : family == G_AF_INET6 ? MG_AF_INET6 : 0;
+        int hf = family == G_AF_INET ? MG_AF_INET : family == G_AF_INET6 ? MG_AF_INET6 : 0, host_e;
         mg_sockaddr *found = NULL;
-        e = eai_of(mg_net_resolve(node, hf, (want_canon ? MG_RESOLVE_CANONICAL : 0) | (addrconfig ? MG_RESOLVE_ADDRCONFIG : 0), &found, &n, canon));
+        u64 began = mg_time_monotonic_ns();
+        host_e = mg_net_resolve(node, hf, (want_canon ? MG_RESOLVE_CANONICAL : 0) | (addrconfig ? MG_RESOLVE_ADDRCONFIG : 0), &found, &n, canon);
+        e = eai_of(host_e);
+        /* What the host's resolver was asked and how soon it answered: a name found at one time and not at another (on a
+           phone with a VPN, Facebook's) is told apart by these. */
+        mg_net_trace("the resolver on %s (%s%s): %s%s after %u ms", node, hf == MG_AF_INET ? "IPv4" : hf == MG_AF_INET6 ? "IPv6" : "any family",
+                     addrconfig ? ", AI_ADDRCONFIG" : "", host_e == MG_EAI_OK ? "found" : host_e == MG_EAI_NONAME ? "no such name" : host_e == MG_EAI_NODATA ? "no addresses" : "failed",
+                     host_e == MG_EAI_OK || host_e == MG_EAI_NONAME || host_e == MG_EAI_NODATA ? "" : " (an error of its own)",
+                     (unsigned)((mg_time_monotonic_ns() - began) / 1000000u));
         said_first_name(node, e, n);
         if (e) return e;
         *out = found;

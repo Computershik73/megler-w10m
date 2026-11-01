@@ -121,6 +121,226 @@ static void test_gc_collect(void)
     CHECK(!strcmp(mg_dvm_string_utf8(kept), "kept on the stack"));
 }
 
+/*
+ * The mark shared among threads (mg_dvm_gc.c, "marking in parallel"): a graph of some 160,000 objects -- 400 arrays of 300
+ * arrays of ints, and a chain 20,000 long of two-element arrays, each with an int[] of its place -- held by one root, made
+ * among garbage, and collected three times. Every int still reads as it was written (the tests' poison would show an object
+ * freed too early), and the chain is whole.
+ */
+static mg_jobj *g_graph;
+
+static u32 graph_damage(void)
+{
+    u32 bad = 0, i, k, n;
+    mg_jobj *node;
+    for (i = 0; i < 400; i++) {
+        mg_jobj *row = g_graph->u.oarr.v[i];
+        for (k = 0; k < 300; k++) {
+            const i32 *v = (const i32 *)row->u.oarr.v[k]->u.arr.data;
+            bad += v[0] != (i32)i || v[1] != (i32)k || v[2] != (i32)(i * k);
+        }
+    }
+    for (node = g_graph->u.oarr.v[400], n = 0; node && n <= 20000; node = node->u.oarr.v[0], n++)
+        bad += ((const i32 *)node->u.oarr.v[1]->u.arr.data)[0] != (i32)n;
+    return bad + (n != 20000);
+}
+
+static void test_gc_parallel(void)
+{
+    mg_dvm_gc_result r;
+    mg_jobj *volatile chain = NULL;
+    u32 i, k, round;
+    say("the collector: the mark shared among threads, over a graph of 160,000 objects");
+    g_graph = mg_dvm_new_array("[Ljava/lang/Object;", 401);
+    mg_dvm_add_root(&g_graph);
+    for (i = 0; i < 400; i++) {
+        mg_jobj *row = mg_dvm_new_array("[Ljava/lang/Object;", 300);
+        g_graph->u.oarr.v[i] = row;
+        for (k = 0; k < 300; k++) {
+            mg_jobj *v = mg_dvm_new_array("[I", 3);
+            ((i32 *)v->u.arr.data)[0] = (i32)i;
+            ((i32 *)v->u.arr.data)[1] = (i32)k;
+            ((i32 *)v->u.arr.data)[2] = (i32)(i * k);
+            row->u.oarr.v[k] = v;
+            if (!(k & 7)) mg_dvm_new_array("[B", 24);           /* garbage among them */
+        }
+    }
+    for (i = 20000; i-- > 0;) {
+        mg_jobj *node = mg_dvm_new_array("[Ljava/lang/Object;", 2), *place;
+        node->u.oarr.v[0] = chain;
+        chain = node;
+        place = mg_dvm_new_array("[I", 1);
+        ((i32 *)place->u.arr.data)[0] = (i32)i;
+        node->u.oarr.v[1] = place;
+    }
+    g_graph->u.oarr.v[400] = chain;
+    chain = NULL;
+    for (round = 0; round < 3; round++) {
+        CHECK(mg_dvm_gc("the parallel test", &r));
+        CHECK_INT((i32)graph_damage(), 0);
+    }
+    say("  marked by %u threads: %u live objects in %.1f ms (the exact roots %.1f, the stacks %.1f); swept by %u in %.1f ms", (unsigned)r.markers,
+        (unsigned)r.live_objects, (double)r.mark_ns / 1e6, (double)r.roots_ns / 1e6, (double)r.stacks_ns / 1e6, (unsigned)r.sweepers,
+        (double)r.sweep_ns / 1e6);
+    CHECK(r.live_objects >= 160000);
+    g_graph = NULL;
+}
+
+/*
+ * Marking alongside the app (mg_dvm_gc.c): collections asked for by allocation while three threads move arrays about a
+ * graph that one root holds -- swapping two of its rows' elements, putting a new array where one was -- and make garbage.
+ * Every array still held reads as it was written at the end (the tests' poison would show one freed while held). No page is
+ * watched here, and the second stop looks at every marked object again: what this checks is that nothing a thread moved
+ * while the collector marked is lost, and that the collections did run alongside, not that the host's watch sees writes.
+ */
+#define ALONG_ROWS 64
+#define ALONG_COLS 64
+static mg_jobj *g_along;
+static volatile i32 g_along_stop, g_along_done;
+
+static mg_jobj *along_new(u32 tag)
+{
+    mg_jobj *v = mg_dvm_new_array("[I", 4);
+    i32 *d = (i32 *)v->u.arr.data;
+    d[0] = (i32)tag;
+    d[1] = (i32)~tag;
+    d[2] = (i32)(tag * 7u);
+    d[3] = 0x5A5A5A5A;
+    return v;
+}
+
+static u32 along_damage(void)
+{
+    u32 bad = 0, i, k;
+    for (i = 0; i < ALONG_ROWS; i++) {
+        mg_jobj *row = g_along->u.oarr.v[i];
+        for (k = 0; k < ALONG_COLS; k++) {
+            mg_jobj *v = row->u.oarr.v[k];
+            const i32 *d;
+            if (!v || v->kind != MG_J_PRIM_ARRAY || v->u.arr.len != 4) {
+                bad++;
+                continue;
+            }
+            d = (const i32 *)v->u.arr.data;
+            bad += d[1] != (i32)~(u32)d[0] || d[2] != (i32)((u32)d[0] * 7u) || d[3] != 0x5A5A5A5A;
+        }
+    }
+    return bad;
+}
+
+static void along_main(void *p)
+{
+    u32 seed = (u32)(mg_addr)p * 2654435761u + 1u, n = 0;
+    mg_dvm_self();
+    while (!g_along_stop) {
+        u32 ra, ca, rb, cb;
+        mg_jobj *rowa, *rowb, *va, *vb;
+        seed = seed * 1103515245u + 12345u;
+        ra = (seed >> 4) % ALONG_ROWS;
+        ca = (seed >> 12) % ALONG_COLS;
+        seed = seed * 1103515245u + 12345u;
+        rb = (seed >> 4) % ALONG_ROWS;
+        cb = (seed >> 12) % ALONG_COLS;
+        rowa = g_along->u.oarr.v[ra];
+        rowb = g_along->u.oarr.v[rb];
+        /* Read from one, the other let go of, then written into the first: an array held a moment by this thread alone. */
+        va = rowa->u.oarr.v[ca];
+        rowa->u.oarr.v[ca] = NULL;
+        vb = rowb->u.oarr.v[cb];
+        rowb->u.oarr.v[cb] = NULL;
+        mg_dvm_new_array("[B", 200);                      /* garbage, and a collection asked for now and then */
+        rowb->u.oarr.v[cb] = va ? va : along_new(n);
+        rowa->u.oarr.v[ca] = vb ? vb : along_new(n);
+        if (!(++n & 7)) rowa->u.oarr.v[ca] = along_new(n);
+    }
+    mg_atomic_add(&g_along_done, 1);
+}
+
+static void test_gc_alongside(void)
+{
+    u64 before = 0, after = 0, pause = 0;
+    u32 i, k;
+    int t;
+    say("the collector: marking alongside threads that move objects about");
+    g_along = mg_dvm_new_array("[Ljava/lang/Object;", ALONG_ROWS);
+    mg_dvm_add_root(&g_along);
+    for (i = 0; i < ALONG_ROWS; i++) {
+        mg_jobj *row = mg_dvm_new_array("[Ljava/lang/Object;", ALONG_COLS);
+        g_along->u.oarr.v[i] = row;
+        for (k = 0; k < ALONG_COLS; k++) row->u.oarr.v[k] = along_new(i * ALONG_COLS + k);
+    }
+    mg_dvm_gc_totals(&before, &pause);
+    mg_dvm_gc_set_alongside(true);
+    g_along_stop = g_along_done = 0;
+    for (t = 0; t < 3; t++) {
+        mg_thread *th = mg_thread_start(along_main, (void *)(mg_addr)(t + 1), (size_t)256 << 10, "along");
+        CHECK(th != NULL);
+        if (th) mg_thread_detach(th);
+        else mg_atomic_add(&g_along_done, 1);
+    }
+    for (i = 0; i < 3000; i++) mg_dvm_new_array("[B", 2000);
+    mg_sleep_ns(300000000ull);
+    g_along_stop = 1;
+    while (g_along_done < 3) mg_thread_yield();
+    mg_dvm_gc_alongside_wait();
+    mg_dvm_gc_totals(&after, &pause);
+    say("  %u collections alongside while the threads moved arrays", (unsigned)(after - before));
+    CHECK(after >= before + 3);
+    CHECK_INT((i32)along_damage(), 0);
+    mg_dvm_gc_set_alongside(false);
+    g_along = NULL;
+}
+
+/*
+ * Blocks a collection leaves empty go back to the host past the first 8 MB of them (mg_dvm_heap.c): 40 MB of small arrays
+ * made and let go, then collected without the tests' poison (which keeps every freed cell from use), leave the heap's
+ * memory at most 20 MB above where it was; and what is made after is made in blocks committed again, as zero memory.
+ */
+static void test_gc_gives_back(void)
+{
+    mg_dvm_gc_result r;
+    mg_dvm_heap_info before, made, after;
+    mg_jobj *volatile late;
+    int i;
+    say("the collector: empty blocks past a few go back to the host");
+    mg_dvm_gc_set_poison(false);
+    mg_dvm_gc_set_min_budget(64u << 20);
+    CHECK(mg_dvm_gc("test before", &r));
+    mg_dvm_heap_stats(&before);
+    for (i = 0; i < 40 * 1024; i++) mg_dvm_new_array("[B", 1000);
+    mg_dvm_heap_stats(&made);
+    CHECK(mg_dvm_gc("test after", &r));
+    mg_dvm_heap_stats(&after);
+    say("  the blocks' memory: %u MB before, %u MB with 40 MB made, %u MB once collected", (unsigned)(before.reserved >> 20), (unsigned)(made.reserved >> 20),
+        (unsigned)(after.reserved >> 20));
+    CHECK(made.reserved >= before.reserved + (36u << 20));
+    CHECK(after.reserved <= before.reserved + (20u << 20));
+    for (i = 0; i < 20 * 1024; i++) mg_dvm_new_array("[B", 1000);
+    late = mg_dvm_new_array("[B", 1000);
+    CHECK(late && mg_dvm_array_length(late) == 1000);
+    /* And what the large objects are, by class, once they take more than 32 MB: 36 arrays of 1 MB held come first. */
+    {
+        static mg_jobj *held[36];
+        static bool rooted;
+        char report[600];
+        bool said;
+        for (i = 0; i < (int)MG_COUNT(held); i++) {
+            held[i] = mg_dvm_new_array("[B", 1 << 20);
+            if (!rooted) mg_dvm_add_root(&held[i]);
+        }
+        rooted = true;
+        mg_dvm_heap_lock();
+        said = mg_dvm_heap_large_report(report, sizeof(report), 6);
+        mg_dvm_heap_unlock();
+        say("  the large objects by class: %s", said ? report : "(not said)");
+        CHECK(said && !strncmp(report, "[B ", 3) && atof(report + 3) >= 36.0);
+        /* (The roots stay, holding nothing.) */
+        for (i = 0; i < (int)MG_COUNT(held); i++) held[i] = NULL;
+    }
+    mg_dvm_gc_set_min_budget(1u << 20);
+    mg_dvm_gc_set_poison(true);
+}
+
 void test_gc(void)
 {
     mg_jobj *small = mg_dvm_new_array("[B", 10), *mid = mg_dvm_new_array("[I", 300), *big = mg_dvm_new_array("[J", 2000);
@@ -142,4 +362,10 @@ void test_gc(void)
     mg_dvm_heap_unlock();
     test_gc_census();
     test_gc_collect();
+    test_gc_parallel();
+    test_gc_alongside();
+    /* Where the objects so far were made (the samples of every 256 KB a thread makes), said and forgotten: and so said again with nothing new. */
+    mg_dvm_made_say();
+    mg_dvm_made_say();
+    test_gc_gives_back();
 }

@@ -64,6 +64,9 @@ void *mg_stub(int which)
     case MG_STUB_ARM_UDF: return THUMB(MG_STUB_ARM_UDF_OFFSET);
     case MG_STUB_ARM_UDF_AT: return g_code + MG_STUB_ARM_UDF_AT_OFFSET;
     case MG_STUB_ARM_COUNT: return THUMB(MG_STUB_ARM_COUNT_OFFSET);
+    /* (The guest's setjmp and longjmp, for the core's own guarded calls: mg_jni.c, mg_core.c.) */
+    case MG_STUB_SETJMP: return THUMB(MG_STUB_SETJMP_OFFSET);
+    case MG_STUB_LONGJMP: return THUMB(MG_STUB_LONGJMP_OFFSET);
     default: return NULL;
     }
 }

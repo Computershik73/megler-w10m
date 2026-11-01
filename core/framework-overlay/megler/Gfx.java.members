@@ -33,3 +33,18 @@
      * RenderEffect.createBlurEffect (android.view.View.drawFromParent).
      */
     public static native int cvSaveLayerBlur(long cv, float l, float t, float r, float b, int alpha, float radiusX, float radiusY, boolean clamp);
+    /**
+     * A picture the shell keeps on the graphics processor under `id` (megler_gfx_host.texture_frame: a TextureView's frames an
+     * app made with OpenGL ES) drawn into (l, t, r, b) of the canvas at `alpha`; recorded by its id where the canvas records. And
+     * that id done with: the shell's copy of its picture let go (core/src/drivers/mg_java_gfx.c).
+     */
+    public static native void cvDrawTexture(long cv, int id, float l, float t, float r, float b, int alpha);
+    public static native void textureGone(int id);
+    /**
+     * A frame of the window to the render thread (core/src/drivers/mg_java_gfx.c): what the recording canvas `rec` recorded
+     * (its recording ends here) drawn onto the screen's canvas `cv` over its bitmap `bm`, and the screen shown, (l, t, r, b)
+     * the part of it the frame changes (r 0: all of it; -1: drawn, not shown); the call returns once the frame before has been shown. And until
+     * the last frame handed over has been shown, before the screen's bitmap is let go of or read.
+     */
+    public static native void frame(long cv, long bm, long rec, int l, int t, int r, int b);
+    public static native void frameWait();

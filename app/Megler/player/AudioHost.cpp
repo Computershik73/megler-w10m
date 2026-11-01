@@ -6,6 +6,8 @@
 #include "shell/Strings.h"
 
 #include <xaudio2.h>
+#include <eventtoken.h>
+#include <roapi.h>
 
 #include <algorithm>
 #include <cmath>
@@ -52,7 +54,42 @@ HRESULT createXAudio2(IXAudio2** out) {
     }
 }
 
+/*
+ * Windows.Phone.Media.Devices.AudioRoutingManager, the phone's own: whether a call's sound is in the earpiece or the
+ * loudspeaker. Declared here from the phone contract's metadata (winmdidl's IDL of Windows.Phone.PhoneContract.winmd): the
+ * SDK's C++/WinRT headers have no projection of the contract. It routes sound of the Communications category.
+ */
+struct __declspec(uuid("79340D20-71CC-4526-9F29-FC8D2486418B")) __declspec(novtable) IAudioRoutingManager : ::IInspectable {
+    virtual HRESULT __stdcall GetAudioEndpoint(int* endpoint) = 0;
+    virtual HRESULT __stdcall SetAudioEndpoint(int endpoint) = 0;
+    virtual HRESULT __stdcall add_AudioEndpointChanged(void* handler, EventRegistrationToken* token) = 0;
+    virtual HRESULT __stdcall remove_AudioEndpointChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT __stdcall get_AvailableAudioEndpoints(unsigned* value) = 0;
+};
+struct __declspec(uuid("977FB2A4-5590-4A6F-ADDE-6A3D0AD58250")) __declspec(novtable) IAudioRoutingManagerStatics : ::IInspectable {
+    virtual HRESULT __stdcall GetDefault(IAudioRoutingManager** manager) = 0;
+};
+enum { endpointDefault = 0, endpointEarpiece = 1, endpointSpeakerphone = 2 };
+
+/// The phone's endpoint for a call's sound; what went wrong, or empty. Not on a PC, which has no such class.
+std::string setPhoneEndpoint(int endpoint) {
+    const winrt::hstring name = L"Windows.Phone.Media.Devices.AudioRoutingManager";
+    winrt::com_ptr<IAudioRoutingManagerStatics> statics;
+    winrt::com_ptr<IAudioRoutingManager> manager;
+    HRESULT hr = RoGetActivationFactory(static_cast<HSTRING>(winrt::get_abi(name)), __uuidof(IAudioRoutingManagerStatics), statics.put_void());
+    if (FAILED(hr)) return format("there is no AudioRoutingManager (0x%08X)", unsigned(hr));
+    hr = statics->GetDefault(manager.put());
+    if (FAILED(hr) || !manager) return format("AudioRoutingManager.GetDefault failed (0x%08X)", unsigned(hr));
+    hr = manager->SetAudioEndpoint(endpoint);
+    if (FAILED(hr)) return format("SetAudioEndpoint(%d) failed (0x%08X)", endpoint, unsigned(hr));
+    return std::string();
+}
+
+std::atomic<int> gCallRoute{0};
+
 } // namespace
+
+int AudioHost::callRoute() { return gCallRoute.load(); }
 
 /// XAudio2's side: the engine, a source voice of the mixer's format, and the
 /// ring of blocks it plays. Built and destroyed on a thread that is in COM's
@@ -65,6 +102,7 @@ struct AudioHost::Engine final : public IXAudio2VoiceCallback, public IXAudio2En
     IXAudio2SourceVoice* source = nullptr;
     bool registered = false;
     int rate = 0;
+    int route = 0;               // MEGLER_AUDIO_ROUTE_*: a call's (Communications) when not the default
     std::string device;          // what the mastering voice plays into, for the log
     HANDLE blockEnded = nullptr; // set whenever a block has played
     std::vector<int16_t> ring[ringSize];
@@ -74,7 +112,7 @@ struct AudioHost::Engine final : public IXAudio2VoiceCallback, public IXAudio2En
     /// Null, and why, when XAudio2 would not start. The calling thread is in
     /// the multithreaded apartment (without it CreateMasteringVoice is
     /// CO_E_NOTINITIALIZED).
-    static std::unique_ptr<Engine> make(AudioHost* owner, int rate, std::string& why, bool media = false) {
+    static std::unique_ptr<Engine> make(AudioHost* owner, int rate, std::string& why, bool media = false, int route = 0) {
         auto fail = [&why](const char* what, HRESULT hr) {
             why = format("%s (0x%08X)", what, unsigned(hr));
             return std::unique_ptr<Engine>();
@@ -82,14 +120,16 @@ struct AudioHost::Engine final : public IXAudio2VoiceCallback, public IXAudio2En
         auto engine = std::make_unique<Engine>();
         engine->owner = owner;
         engine->rate = rate;
+        engine->route = route;
         engine->blockEnded = CreateEventExW(nullptr, nullptr, 0, EVENT_MODIFY_STATE | SYNCHRONIZE);
         HRESULT hr = createXAudio2(&engine->xaudio);
         if (FAILED(hr)) return fail("XAudio2Create failed", hr);
         engine->registered = SUCCEEDED(engine->xaudio->RegisterForCallbacks(engine.get()));
         // A media app's sound is of the Media category: with the backgroundMediaPlayback capability and the system media
-        // controls (player/MediaControls.cpp) it goes on while the app is in the background. A game's stays a game's.
+        // controls (player/MediaControls.cpp) it goes on while the app is in the background. A game's stays a game's. A
+        // call's is of Communications, which the phone routes to the earpiece or the loudspeaker (AudioRoutingManager).
         hr = engine->xaudio->CreateMasteringVoice(&engine->master, XAUDIO2_DEFAULT_CHANNELS, XAUDIO2_DEFAULT_SAMPLERATE, 0, nullptr,
-                                                  nullptr, media ? AudioCategory_Media : AudioCategory_GameEffects);
+                                                  nullptr, route ? AudioCategory_Communications : media ? AudioCategory_Media : AudioCategory_GameEffects);
         if (FAILED(hr)) return fail("there is no output device", hr);
         WAVEFORMATEX wave = {};
         wave.wFormatTag = WAVE_FORMAT_PCM;
@@ -175,7 +215,20 @@ megler_audio_host AudioHost::callbacks() {
     host.user = this;
     host.open = &AudioHost::openThunk;
     host.write = &AudioHost::writeThunk;
+    host.route = &AudioHost::routeThunk;
     return host;
+}
+
+void AudioHost::routeThunk(void* user, int route) {
+    AudioHost* self = static_cast<AudioHost*>(user);
+    if (route < MEGLER_AUDIO_ROUTE_DEFAULT || route > MEGLER_AUDIO_ROUTE_SPEAKER) route = MEGLER_AUDIO_ROUTE_DEFAULT;
+    gCallRoute.store(route);
+    if (self->route_.exchange(route) == route) return;
+    shellLog::write(format("audio: the app's sound is to go %s", route == MEGLER_AUDIO_ROUTE_EARPIECE  ? "to the earpiece, for a call"
+                                                                 : route == MEGLER_AUDIO_ROUTE_SPEAKER ? "to the loudspeaker, for a call"
+                                                                                                       : "where it always does"));
+    std::lock_guard<std::mutex> lock(self->mutex_);
+    self->wake_.notify_all();
 }
 
 bool AudioHost::openThunk(void* user, int rate) { return static_cast<AudioHost*>(user)->open(rate); }
@@ -227,30 +280,44 @@ void AudioHost::ownerLoop() {
     for (;;) {
         std::shared_ptr<Engine> old;
         bool have = false, wasLost = false;
-        int rate = 0;
+        int rate = 0, route = 0;
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            const bool settled = engine_ ? engine_->rate == rate_.load() : GetTickCount64() < retryAt;
+            const bool settled = engine_ ? engine_->rate == rate_.load() && engine_->route == route_.load() : GetTickCount64() < retryAt;
             if (!quit_ && !lost_.load() && settled) wake_.wait_for(lock, std::chrono::milliseconds(500));
             if (quit_) break;
             rate = rate_.load();
+            route = route_.load();
             wasLost = lost_.exchange(false);
-            if (engine_ && (wasLost || engine_->rate != rate)) old = std::move(engine_);
+            if (engine_ && (wasLost || engine_->rate != rate || engine_->route != route)) old = std::move(engine_);
             have = engine_ != nullptr;
         }
         if (old) {
             shellLog::write(wasLost ? format("audio: XAudio2 critical error 0x%08X (the output changed?); building a new engine",
                                              unsigned(lostCode_.load()))
-                                    : std::string("audio: another rate is wanted; building a new engine"));
+                            : old->rate != rate ? std::string("audio: another rate is wanted; building a new engine")
+                                                : std::string("audio: the sound goes elsewhere (a call began or ended); building a new engine"));
             retire(old);
         }
         if (!have && GetTickCount64() >= retryAt) {
             std::string why;
             const unsigned long long began = GetTickCount64();
-            std::shared_ptr<Engine> made = Engine::make(this, rate, why, media_.load());
+            std::shared_ptr<Engine> made = Engine::make(this, rate, why, media_.load(), route);
             if (made) {
-                shellLog::write(format("audio: XAudio2 playing 16-bit stereo at %d Hz into %s; built in %llu ms", rate,
-                                       made->device.c_str(), GetTickCount64() - began));
+                shellLog::write(format("audio: XAudio2 playing 16-bit stereo at %d Hz into %s%s; built in %llu ms", rate,
+                                       made->device.c_str(), route ? ", a call's (Communications)" : "", GetTickCount64() - began));
+                // The phone's endpoint for it: the earpiece or the loudspeaker for a call, the default once one has ended. An app
+                // that never makes a call never asks the phone.
+                if (route || routedOnce_) {
+                    const std::string failed = setPhoneEndpoint(route == MEGLER_AUDIO_ROUTE_EARPIECE  ? endpointEarpiece
+                                                                : route == MEGLER_AUDIO_ROUTE_SPEAKER ? endpointSpeakerphone
+                                                                                                      : endpointDefault);
+                    if (!failed.empty()) shellLog::write("audio: the call's sound could not be routed: " + failed);
+                    else shellLog::write(route == MEGLER_AUDIO_ROUTE_EARPIECE  ? "audio: routed to the earpiece"
+                                         : route == MEGLER_AUDIO_ROUTE_SPEAKER ? "audio: routed to the loudspeaker"
+                                                                               : "audio: routed as before the call");
+                    routedOnce_ = route != MEGLER_AUDIO_ROUTE_DEFAULT;
+                }
                 setStatus(format("%d Hz", rate));
                 failures = 0;
                 std::lock_guard<std::mutex> lock(mutex_);

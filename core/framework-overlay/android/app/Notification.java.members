@@ -1,0 +1,7 @@
+    // Megler: members added to the original's android.app.Notification (tools/build-framework.sh, "X.java.members").
+    // The Parcelable's creator, as Android's Notification has it: Play Store's workers read it in a class's initializer, and
+    // each of them ended "NoSuchFieldError: android/app/Notification.CREATOR" (package 554).
+    public static final android.os.Parcelable.Creator<Notification> CREATOR = new android.os.Parcelable.Creator<Notification>() {
+        public Notification createFromParcel(android.os.Parcel p) { return new Notification(p); }
+        public Notification[] newArray(int n) { return new Notification[n]; }
+    };

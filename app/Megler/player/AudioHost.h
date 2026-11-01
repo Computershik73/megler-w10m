@@ -65,6 +65,10 @@ public:
     /// Before prepare: the output is a media app's (AudioCategory_Media, heard in the background) rather than a game's.
     void setMedia(bool media) { media_.store(media); }
 
+    /// Where a call's sound goes (megler_audio_host.route, MEGLER_AUDIO_ROUTE_*), the last any app asked: the microphone
+    /// hears for a call (Communications, with the echo taken out) while it is not the default.
+    static int callRoute();
+
     /// Whether a block with sound in it came from the app in the last `ms` milliseconds.
     bool audibleWithin(unsigned ms) const {
         const unsigned long long at = lastAudible_.load();
@@ -85,6 +89,7 @@ public:
 private:
     static bool openThunk(void* user, int rate);
     static void writeThunk(void* user, const int16_t* samples, int frames);
+    static void routeThunk(void* user, int route);
 
     // The core's side: open on the thread that first played a sound, write
     // on the mixer's.
@@ -106,6 +111,9 @@ private:
     std::thread owner_;
     bool quit_ = false;
     std::atomic<int> rate_{44100};
+    /// The route asked (MEGLER_AUDIO_ROUTE_*): the engine is made again when it is not the one it was made for.
+    std::atomic<int> route_{0};
+    bool routedOnce_ = false; // the owner thread's: a call's route has been asked of the phone
     /// Where the mixer's clock stands while its blocks are dropped (QPC
     /// ticks; 0: they are being played). write()'s alone.
     long long paceDeadline_ = 0;

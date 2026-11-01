@@ -76,7 +76,11 @@ static u32 JVM_IsNaN(u64 bits)
 }
 static void JVM_Exit(i32 status)
 {
-    mg_warn("java: Runtime.exit(%d)", (int)status);
+    /* Who ended the app: an app that closes by itself looks like a crash to whoever used it (The Weather Channel, package 502). */
+    char frames[1200];
+    frames[0] = 0;
+    mg_dvm_fault_frames(frames, sizeof(frames));
+    mg_warn("java: Runtime.exit(%d)%s", (int)status, frames[0] ? frames : ", from no Java frame");
     ((void (*)(i32))libc("exit"))(status);
 }
 static void *JVM_FindLibraryEntry(void *handle, const char *name) { return ((void *(*)(void *, const char *))libc("dlsym"))(handle, name); }

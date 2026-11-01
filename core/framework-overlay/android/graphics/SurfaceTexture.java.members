@@ -20,3 +20,34 @@
         if (l != null && h != null) h.post(() -> l.onFrameAvailable(this));
         return true;
     }
+    // And frames on the graphics processor (core/src/drivers/mg_java_ndk.c): a texture a TextureView shows has an id under which
+    // the shell keeps the frames an app makes in it with OpenGL ES (megler_gfx_host.texture_frame), which the view draws from
+    // there (Canvas.meglerDrawTexture), nothing read back; a texture an app samples with OpenGL itself (made with a texture's
+    // name) has none, and its frames are read back for it as before.
+    private static final java.util.concurrent.atomic.AtomicInteger sMeglerGpuIds = new java.util.concurrent.atomic.AtomicInteger();
+    private int mMeglerGpuId;
+    private volatile long mMeglerGpuAt;
+    private volatile int mMeglerGpuWidth, mMeglerGpuHeight;
+    /** The id the shell keeps this texture's frames under, while a TextureView shows it; 0: its frames are read back. */
+    public int meglerGpuId() {
+        if (meglerView == null || mTex != 0 || mReleased) return 0;
+        synchronized (this) {
+            if (mMeglerGpuId == 0) mMeglerGpuId = sMeglerGpuIds.incrementAndGet();
+            return mMeglerGpuId;
+        }
+    }
+    /** The id, whether or not it has been given out; 0 for none. */
+    public int meglerGpuIdGiven() { return mMeglerGpuId; }
+    /** A frame of `id`, w x h, is the shell's now (core/src/drivers/mg_java_ndk.c, on the thread that swapped): shown, and told. */
+    public void meglerGpuFrame(int id, int w, int h) {
+        mMeglerGpuWidth = w;
+        mMeglerGpuHeight = h;
+        mMeglerGpuAt = System.nanoTime();
+        android.view.View v = meglerView;
+        if (v != null) v.postInvalidate();
+        OnFrameAvailableListener l = mListener;
+        android.os.Handler hd = mHandler;
+        if (l != null && hd != null) hd.post(() -> l.onFrameAvailable(this));
+    }
+    /** Whether the newest frame is the shell's, on the graphics processor, rather than a bitmap of this texture's (meglerFront). */
+    public boolean meglerGpuNewest() { return mMeglerGpuId != 0 && mMeglerGpuAt != 0 && mMeglerGpuAt >= getTimestamp(); }

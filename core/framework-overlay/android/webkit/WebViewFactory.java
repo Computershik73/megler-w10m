@@ -34,6 +34,8 @@
 // those names: microG (Cronet) as an app had 193 of the WebView's 3478 classes shadowed, and its sign-in screen ended in
 // NoSuchMethodError: org/chromium/base/task/PostTask.a(I) when it made its WebView. Its native library is loaded for that
 // loader too (core/src/drivers/mg_java_webview.c), where Chromium's own System.loadLibrary("webviewchromium") finds it.
+//
+// And disableWebView is said in the log and left undone: here one process is an app's processes and its services' too.
 package android.webkit;
 
 import android.app.AppGlobals;
@@ -203,6 +205,10 @@ public final class WebViewFactory {
 
     /**
      * @hide
+     * Megler: said and left undone. On Android a process that is never to show a web page disables the WebView for itself
+     * alone; here an app's processes and the services it uses (Google Play services') are one process. Google Play
+     * services 26 disables it in one of its own, and with that Play Store's sign-in, whose page (MinuteMaid) is a WebView in
+     * Google Play services' sign-in process, could not start: Play Store went back to its first screen.
      */
     static void disableWebView() {
         synchronized (sProviderLock) {
@@ -210,8 +216,8 @@ public final class WebViewFactory {
                 throw new IllegalStateException(
                         "Can't disable WebView: WebView already initialized");
             }
-            sWebViewDisabled = true;
         }
+        android.util.Log.w(LOGTAG, "WebView.disableWebView(): left enabled, as the process that asks is this one, which others share here", new Throwable());
     }
 
     /**
@@ -270,6 +276,42 @@ public final class WebViewFactory {
                 return null;
             }
         }
+    }
+
+    /**
+     * Megler: WebSettings.getDefaultUserAgent, without loading the WebView when it is not loaded yet. Apps and their SDKs
+     * ask for the string at their start (an ad's or a statistics' request carries it), and the WebView's provider is all of
+     * Chromium: its library and its heaps, 200 MB of a 32-bit process's 2 GB of addresses, which Yandex Maps ran out of as
+     * the WebView was loading (package 490). The string is Chromium's own for a WebView, made of the same Build fields and
+     * the WebView package's version; once the WebView is loaded it is asked, as on Android.
+     */
+    static String meglerDefaultUserAgent(android.content.Context context) {
+        WebViewFactoryProvider loaded;
+        synchronized (sProviderLock) {
+            loaded = sProviderInstance;
+        }
+        if (loaded != null) return loaded.getStatics().getDefaultUserAgent(context);
+        PackageInfo pi = getCurrentWebViewPackage();
+        if (pi == null || pi.versionName == null || pi.versionName.isEmpty()) return getProvider().getStatics().getDefaultUserAgent(context);
+        return "Mozilla/5.0 (Linux; Android " + android.os.Build.VERSION.RELEASE + "; " + android.os.Build.MODEL + " Build/" + android.os.Build.ID
+               + "; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/" + pi.versionName + " Mobile Safari/537.36";
+    }
+
+    /**
+     * Megler: the first frames of the stack that are the app's, for the log: who wanted the WebView, innermost first (an
+     * obfuscated lambda's invoke alone says little; Yandex Maps' was "vs30.invoke").
+     */
+    private static String meglerAsker() {
+        StringBuilder b = new StringBuilder();
+        int n = 0;
+        for (StackTraceElement e : new Throwable().getStackTrace()) {
+            String c = e.getClassName();
+            if (c.startsWith("android.") || c.startsWith("java.") || c.startsWith("megler.") || c.startsWith("dalvik.") || c.startsWith("com.android.")) continue;
+            if (n++ > 0) b.append(" < ");
+            b.append(c).append('.').append(e.getMethodName());
+            if (n == 4) break;
+        }
+        return n > 0 ? b.toString() : "the framework";
     }
 
     /**
@@ -439,7 +481,7 @@ public final class WebViewFactory {
             }
             sTimestamps.mCreateContextEnd = sTimestamps.mAddAssetsEnd = SystemClock.uptimeMillis();
             Log.i(LOGTAG, "Loading " + sPackageInfo.packageName + " version " +
-                    sPackageInfo.versionName + " (code " + sPackageInfo.getLongVersionCode() + ")");
+                    sPackageInfo.versionName + " (code " + sPackageInfo.getLongVersionCode() + "), for " + meglerAsker());
             if (!WebViewFactoryProvider.isCompatibleImplementationPackage(sPackageInfo)) {
                 throw new MissingWebViewPackageException("the WebView package is too old for this framework: "
                         + WebViewFactoryProvider.describeCompatibleImplementationPackage());

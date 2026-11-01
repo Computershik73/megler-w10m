@@ -144,13 +144,16 @@ bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_
  *     "activities": [ { "name": "org.example.Main", "label": "Example", "icon": 2131558401, "enabled": false,
  *                       "exported": true, "filters": [ { "id": 1, "actions": ["android.intent.action.MAIN"],
  *                       "categories": ["android.intent.category.LAUNCHER"], "schemes": [], "hosts": [], "types": [] } ] },
- *                     { "name": "org.example.Light", "target": "org.example.Main", ... } ] }
+ *                     { "name": "org.example.Light", "target": "org.example.Main", ... } ],
+ *     "certificates": [ "3082..." ] }
  *
  * -- an activity-alias with the activity it stands for ("target"), a label in the phone's language (a resource's, through
  * the splits' tables too), "enabled" only when the manifest says, "exported" as the manifest says or else whether it has an
  * intent filter -- and a picture of each icon the app and its activities name, <id as 8 hex digits>.png: a PNG, a WebP made
- * one, an XML one (adaptive, vector) drawn. `splits_dir` as megler_apk_report_splits has it. False when the APK's manifest
- * cannot be read or the description cannot be written.
+ * one, an XML one (adaptive, vector) drawn. "certificates" are those the APK is signed with, each its DER in hex digits: the
+ * APK Signing Block's v3 signer's, else its v2 one's, else the v1 PKCS#7 file's under META-INF (megler.PhoneApps gives them
+ * as the app's signatures; Google Play compares them with its own record). `splits_dir` as megler_apk_report_splits has it.
+ * False when the APK's manifest cannot be read or the description cannot be written.
  */
 bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir, const char *out_dir);
 
@@ -291,10 +294,18 @@ typedef struct megler_window_host {
  *
  * All of it may be left NULL.
  */
+/*
+ *   route   where the sound is to go, as a Java app's AudioManager has it: MEGLER_AUDIO_ROUTE_DEFAULT where it always goes;
+ *           for a call (MODE_IN_COMMUNICATION, MODE_IN_CALL, a communication device), MEGLER_AUDIO_ROUTE_EARPIECE, or
+ *           MEGLER_AUDIO_ROUTE_SPEAKER on speaker (setSpeakerphoneOn, setCommunicationDevice). Called on the app's threads
+ *           when it changes. May be left NULL.
+ */
+enum { MEGLER_AUDIO_ROUTE_DEFAULT = 0, MEGLER_AUDIO_ROUTE_EARPIECE = 1, MEGLER_AUDIO_ROUTE_SPEAKER = 2 };
 typedef struct megler_audio_host {
     void *user;
     bool (*open)(void *user, int rate);
     void (*write)(void *user, const int16_t *samples, int frames);
+    void (*route)(void *user, int route);
 } megler_audio_host;
 
 /*
@@ -815,6 +826,23 @@ typedef struct megler_storage_host {
  *                 that swapped, gl_place on any thread, before the present
  *                 or the gl_frame it is for. All three NULL, or EGL without
  *                 share handles: the layer composes the window itself.
+ *   texture_frame optional, with draw_texture: pictures an app makes with
+ *   draw_texture  OpenGL ES for a view to draw among the others (a
+ *                 TextureView's frames), kept on the graphics processor and
+ *                 drawn there, nothing read back. texture_frame is a new
+ *                 picture of `id` (1 and up): `share_handle`, width and
+ *                 height as gl_frame's (ANGLE's texture, rows bottom first,
+ *                 finished, its keyed mutex let go of for the call); the
+ *                 shell keeps a copy of its own before it returns. A NULL
+ *                 handle: the id is done with, its copy let go. False: the
+ *                 shell cannot, and the layer reads that picture back as it
+ *                 would without this. draw_texture draws the id's last
+ *                 picture into the canvas, the whole of it into the
+ *                 rectangle (left, top, right, bottom) under the canvas's
+ *                 matrix and clip, the right way up, smoothly, at `alpha`
+ *                 (0..255); nothing where the id has none yet, or the canvas
+ *                 is drawn in memory. On the thread that drew the picture,
+ *                 and the canvas's, at any time.
  *
  *   save          remembers the clip. restore brings back the clip of the
  *                 matching save. They nest; the layer never calls restore
@@ -1273,6 +1301,8 @@ typedef struct megler_gfx_host {
     bool (*present)(void *user, void *canvas, int x, int y, int width, int height);
     bool (*gl_frame)(void *user, int layer, void *share_handle, int width, int height);
     void (*gl_place)(void *user, int layer, int x, int y, int width, int height);
+    bool (*texture_frame)(void *user, int id, void *share_handle, int width, int height);
+    void (*draw_texture)(void *user, void *canvas, int id, float left, float top, float right, float bottom, int alpha);
 } megler_gfx_host;
 
 /*
@@ -1372,6 +1402,9 @@ typedef struct megler_system_bars_host {
  *                the app is told its install goes on; false: the app is told it cannot be installed.
  *   launch_app   Another app the phone has, to start: an Android package and the activity's class name, or NULL for its
  *                launcher activity (a launcher's tap, an app opening another). True: the shell starts it.
+ *   uninstall_app  Another app the phone has, to uninstall: an Android package (an app store's Uninstall,
+ *                PackageInstaller.uninstall; ACTION_DELETE of package:<name>). True: the shell asks the user. It is gone
+ *                when apps_dir's apps.txt no longer has it; installs/<package>.uninstall.txt says when the user said no.
  */
 typedef struct megler_system_host {
     void *user;
@@ -1379,6 +1412,7 @@ typedef struct megler_system_host {
     void (*share_text)(void *user, const char *text, const char *subject);
     bool (*install_apk)(void *user, const char *host_path, const char *name);
     bool (*launch_app)(void *user, const char *package, const char *activity);
+    bool (*uninstall_app)(void *user, const char *package);
 } megler_system_host;
 
 /*
@@ -1439,6 +1473,43 @@ typedef struct megler_location_host {
     bool (*last)(void *user, megler_location *fix);
 } megler_location_host;
 
+/*
+ * The phone's microphone, for a Java app's AudioRecord. While an app records:
+ *   start  to hear the microphone as 16-bit PCM at `rate` Hz in `channels` (1 or 2) -- Windows asks the user the first time.
+ *          True when it does; false (no microphone, or the user said no): the app reads silence, at the microphone's pace.
+ *   stop   to stop.
+ * While it runs, the shell hands what it hears to megler_microphone_push, from any thread. Called on the app's threads.
+ * May be left zero: no microphone.
+ */
+typedef struct megler_microphone_host {
+    void *user;
+    bool (*start)(void *user, int rate, int channels);
+    void (*stop)(void *user);
+} megler_microphone_host;
+/* What the microphone heard: `frames` frames of the channels start was asked for, interleaved. */
+void megler_microphone_push(const int16_t *samples, int frames);
+
+/*
+ * The phone's check of its user, for a Java app's BiometricPrompt, BiometricManager and FingerprintManager (Windows Hello:
+ * a fingerprint, the iris, a face or the PIN). Called on the app's threads, never its main thread; each may block:
+ *   available  whether the phone can check its user: MEGLER_BIOMETRIC_READY, NOT_SET_UP (it could, but the user has set
+ *              nothing up) or NONE (nothing on the phone checks).
+ *   verify     the phone's own dialog, with the message (UTF-8: what the app's prompt says), until the user is done:
+ *              MEGLER_BIOMETRIC_VERIFIED, CANCELED (the user said no), LOCKED (too many tries) or UNAVAILABLE (not set up,
+ *              busy, refused by policy).
+ *   cancel     the dialog of a verify that runs, closed: the app no longer wants it (its CancellationSignal); that verify
+ *              returns CANCELED.
+ * May be left zero: the app is told the phone has nothing that checks its user.
+ */
+enum { MEGLER_BIOMETRIC_READY = 0, MEGLER_BIOMETRIC_NOT_SET_UP = 1, MEGLER_BIOMETRIC_NONE = 2 };
+enum { MEGLER_BIOMETRIC_VERIFIED = 0, MEGLER_BIOMETRIC_CANCELED = 1, MEGLER_BIOMETRIC_LOCKED = 2, MEGLER_BIOMETRIC_UNAVAILABLE = 3 };
+typedef struct megler_biometric_host {
+    void *user;
+    int (*available)(void *user);
+    int (*verify)(void *user, const char *message);
+    void (*cancel)(void *user);
+} megler_biometric_host;
+
 typedef struct megler_run_config {
     const char *apk_path;
     /* Optional installed microG APK. Opened as the service package; no copy in each client. */
@@ -1468,6 +1539,10 @@ typedef struct megler_run_config {
     megler_storage_host storage;
     /* The phone's location for a Java app's LocationManager (see megler_location_host). May be left zero: no location. */
     megler_location_host location;
+    /* The phone's microphone for a Java app's AudioRecord (see megler_microphone_host). May be left zero: silence. */
+    megler_microphone_host microphone;
+    /* The phone's check of its user for a Java app's BiometricPrompt (see megler_biometric_host). May be left zero: none. */
+    megler_biometric_host biometric;
     /*
      * Drawing for an app whose user interface is Java (see megler_gfx_host). All of it may be left NULL: such an app still starts,
      * lays its views out and takes input, but nothing is drawn (its bitmaps hold only what the layer does itself: erasing, single
@@ -1494,7 +1569,10 @@ typedef struct megler_run_config {
      * The apps the phone has, for a Java app that lists or starts them (a launcher; PackageManager.queryIntentActivities
      * of the launcher's intent, LauncherApps): a host folder with apps.txt -- a line for each app, its fields separated by
      * tabs: Android package, launcher activity's class, label, version name, version code -- and each app's icon as
-     * <package>.png. NULL: the app knows of none but itself.
+     * <package>.png. And installs/<name>.txt: what the shell's installer last told of an APK the app handed it under that
+     * name (install_apk), "<when>\t<what>\t<why>" -- declined, incompatible, failed or busy -- for the app's installer
+     * session (megler.Installs), which is installed when apps.txt has the app at the APK's version. NULL: the app knows of
+     * none but itself.
      */
     const char *apps_dir;
     /* The app has ended: by its own exit (status), by a crash (reason names it), or by megler_stop. Called once, from any thread. */
@@ -1633,6 +1711,42 @@ typedef struct megler_battery {
     bool present;
 } megler_battery;
 void megler_set_battery(const megler_battery *now);
+
+/*
+ * The phone's cellular side, for a Java app's TelephonyManager: whether a SIM is in it and ready, its operator's name and
+ * MCC and MNC ("25001"), the network's type as TelephonyManager numbers it (13 LTE, 10 HSPA, 3 UMTS, 2 EDGE, 1 GPRS, 0 not
+ * known) and whether the phone is roaming. Said before an app starts and whenever it changes; until it is said, no SIM. An
+ * app is told it runs on a phone all the same (PHONE_TYPE_GSM, the telephony feature): apps that see neither take a
+ * phone with no SIM for a tablet. NULL: no SIM.
+ */
+typedef struct megler_cellular {
+    bool sim_ready;
+    const char *operator_name; /* UTF-8; NULL: not known */
+    const char *mcc_mnc;       /* NULL: not known */
+    int network_type;
+    bool roaming;
+} megler_cellular;
+void megler_set_cellular(const megler_cellular *now);
+
+/*
+ * The phone's text messages and calls, for a Java app as Android has them (the framework's megler.Phone). Any thread.
+ *
+ * megler_sms_received: a text message that came to the phone -- who it is from as the phone has it (a number, or a name
+ * the sender gave), its text (UTF-8), when it came (milliseconds since 1970, UTC). The app is sent Android's SMS_RECEIVED
+ * with it (receivers that hold RECEIVE_SMS: Google Play services' SMS Retriever, the app's own), an app-specific SMS token
+ * in its text sends that token's PendingIntent, and it is in content://sms/inbox for an app that holds READ_SMS.
+ *
+ * megler_call_logged: a call the phone's history has -- the other side's number, when it began (ms since 1970, UTC), its
+ * type as Android's call log numbers it (1 incoming, 2 outgoing, 3 missed, 5 rejected) and how long it went on (seconds).
+ * An incoming, missed or rejected one is told as Android tells a call that rings: PHONE_STATE RINGING with its number (to
+ * receivers that hold READ_PHONE_STATE, the number to those that hold READ_CALL_LOG as well) and then IDLE, and
+ * TelephonyManager's listeners hear the same; and it is in content://call_log/calls for an app that holds READ_CALL_LOG.
+ *
+ * Only what comes while an app runs is the app's: the phone's earlier messages and calls are not given to it. Nothing of
+ * either is written in the log but that there was one. Before an app runs, and with no Java app, they are dropped.
+ */
+void megler_sms_received(const char *from, const char *body, int64_t time_ms);
+void megler_call_logged(const char *number, int64_t time_ms, int type, int duration_s);
 
 /* ------------------------------------------------------------ diagnostics */
 

@@ -32,10 +32,12 @@
 #include "../host/mg_host.h"
 #include "../mg_core.h"
 #include "../ld/mg_ld.h"
+#include "../ndk/mg_egl.h"
 #include "../ndk/mg_ndk.h"
 #include "../run/mg_run.h"
 #include "../zip/mg_zip.h"
 #include "mg_driver.h"
+#include "../apk/mg_arsc.h"
 #include "mg_java.h"
 #include "mg_java_gfx.h"
 #include "mg_java_gl.h"
@@ -52,9 +54,10 @@
 #define MAX_SPLITS 10
 
 /* The phases of an event as megler.AppRunner.deliver reads them. */
-enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8 };
+enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8, EV_PHONE = 10 };
 
 #define MAX_TEXT 512
+#define MAX_PHONE 64
 
 static struct {
     const megler_run_config *config;
@@ -95,6 +98,12 @@ static struct {
      */
     char *text[MAX_TEXT];
     int ntext;
+    /*
+     * The phone's text messages and calls the app has not taken yet, oldest first (megler_sms_received, megler_call_logged):
+     * "s<ms>\n<from>\n<text>" and "c<ms>\n<type>\n<seconds>\n<number>", as megler.Phone reads them. One EV_PHONE event each.
+     */
+    char *phone[MAX_PHONE];
+    int nphone;
     volatile i32 keyboard_height;      /* pixels of the surface's bottom the keyboard covers */
     volatile i32 enter_newline;        /* the field the keyboard was last shown for takes Enter as a new line */
     /* The battery as the app was last told of it by a broadcast (at the start: as it was then), and the core's count of its changes at that time. */
@@ -122,14 +131,31 @@ static const char *text_of(mg_jobj *s)
 /* The phone's look (megler_set_theme): its accent colour, 0 for none, and whether it is dark. */
 static volatile i32 g_theme_accent, g_theme_night;
 
-/* log(int priority, String tag, String msg): Android's priorities, 2 verbose to 7 assert, as logcat letters them. */
+/*
+ * log(int priority, String tag, String msg): Android's priorities, 2 verbose to 7 assert, as logcat letters them. A line of
+ * the layer's log holds 1 KB, and a message with a stack trace is longer: it goes in pieces, each cut at the end of one of its
+ * lines, the first with the tag; at most 64. Cut at 1 KB, Yandex Maps' crash said its cause's class and half its message and
+ * not one of its frames (package 507).
+ */
 N(Native_log)
 {
     static const char letters[] = "??VDIWEF";
-    int priority = c->args[0].i;
+    int priority = c->args[0].i, level = priority >= 6 ? MG_LOG_ERROR : priority == 5 ? MG_LOG_WARN : MG_LOG_INFO, piece = 0;
     const char *tag = text_of(c->args[1].l), *msg = text_of(c->args[2].l);
     char letter = priority >= 2 && priority <= 7 ? letters[priority] : 'I';
-    mg_log(priority >= 6 ? MG_LOG_ERROR : priority == 5 ? MG_LOG_WARN : MG_LOG_INFO, "%c/%s: %s", letter, tag, msg);
+    size_t len = strlen(msg), at = 0;
+    do {
+        size_t n = len - at;
+        if (n > 900) {
+            size_t cut = 900;
+            while (cut > 0 && msg[at + cut] != '\n') cut--;
+            n = cut ? cut : 900;
+        }
+        if (!piece) mg_log(level, "%c/%s: %.*s", letter, tag, (int)n, msg + at);
+        else mg_log(level, "%.*s", (int)n, msg + at);
+        at += n;
+        if (at < len && msg[at] == '\n') at++;
+    } while (at < len && ++piece < 64);
 }
 
 static mg_jobj *bytes_of(const u8 *data, size_t size)
@@ -225,6 +251,34 @@ N(Native_assetFd)
     free(name);
 }
 
+/*
+ * (String name) -> long[] { descriptor of the APK, where the entry's deflated bytes begin, how many }: an asset the APK
+ * deflates, which AssetManager.open inflates as it is read (InflatedAssetStream) rather than whole into a byte[] -- WhatsApp
+ * opened five of 20 MB as it started, and the arrays stayed, held through stale words of stacks. null for any other.
+ */
+N(Native_assetDeflated)
+{
+    char *name = asset_name(c->args[0].l);
+    int apk = app_apk_with(name);
+    const mg_zip_entry *e = apk >= 0 && apk < MAX_APKS && J.apk_open[apk] ? mg_zip_find(&J.apk[apk], name) : NULL;
+    u64 at = 0;
+    c->ret.l = NULL;
+    if (e && e->method == 8 && mg_zip_data_at(&J.apk[apk], e, &at)) {
+        int fd = mg_fd_open_host(J.apk_path[apk], MG_O_READ);
+        mg_jobj *a = fd >= 0 ? mg_dvm_new_array("[J", 3) : NULL;
+        if (a) {
+            i64 *v = (i64 *)a->u.arr.data;
+            v[0] = fd;
+            v[1] = (i64)at;
+            v[2] = (i64)e->csize;
+            c->ret.l = a;
+        } else if (fd >= 0) {
+            mg_fd_close(fd);
+        }
+    }
+    free(name);
+}
+
 N(Native_assetLength)
 {
     char *name = asset_name(c->args[0].l);
@@ -296,6 +350,83 @@ N(Native_listAssets)
 }
 
 N(Native_readApkFile) { c->ret.l = apk_file(c->args[0].i, text_of(c->args[1].l)); }
+
+/*
+ * readApkResourceTable(apk, languages): the APK's resources.arsc, cut down to the resources of no language and of
+ * `languages` (mg_arsc_keep_languages), or whole where nothing goes or it cannot be cut; null when there is none. For
+ * another package's resources in the app (Google Play services' 84 MB table, of which the phone's language and English
+ * are a tenth: apk/mg_arsc.h says why).
+ */
+N(Native_readApkResourceTable)
+{
+    int apk = c->args[0].i, n = 0, i;
+    mg_jobj *list = c->args[1].l;
+    char names[8][8], joined[80];
+    const char *langs[8], *file;
+    const mg_zip_entry *e;
+    size_t size = 0, cut_size = 0;
+    u8 *data, *cut;
+    char *kept = NULL;
+    c->ret.l = NULL;
+    if (apk < 0 || apk >= MAX_APKS || !J.apk_open[apk]) return;
+    e = mg_zip_find(&J.apk[apk], "resources.arsc");
+    if (!e) return;
+    joined[0] = 0;
+    for (i = 0; list && i < (int)list->u.oarr.len && n < 8; i++)
+        if (list->u.oarr.v[i]) {
+            const char *l = text_of(list->u.oarr.v[i]);
+            size_t at = strlen(joined);
+            if (!*l || strspn(l, "abcdefghijklmnopqrstuvwxyz") != strlen(l)) continue;
+            mg_strlcpy(names[n], l, sizeof(names[n]));
+            langs[n] = names[n];
+            snprintf(joined + at, sizeof(joined) - at, "-%s", names[n]);
+            n++;
+        }
+    file = strrchr(J.apk_path[apk], '/');
+    if (!file) file = strrchr(J.apk_path[apk], '\\');
+    file = file ? file + 1 : J.apk_path[apk];
+    /*
+     * The table cut down is kept beside the APK, named for the table's CRC-32 and the languages, and read from there the next
+     * time, by every app: Google Play services' 84 MB were read and cut at every app's start (0.7 s on the phone), for the
+     * same 9 MB each time. The APK is in the services' shared folder, which all of Megler's packages can write to.
+     */
+    if (e->usize >= (1u << 20) && n) {
+        size_t have = 0;
+        u8 *bytes;
+        kept = mg_sprintf("%s.%08x%s.arsc", J.apk_path[apk], (unsigned)e->crc, joined);
+        bytes = mg_file_read_all(kept, &have);
+        if (bytes && have >= 12 && bytes[0] == 2 && bytes[1] == 0) {
+            c->ret.l = bytes_of(bytes, have);
+            mg_info("java: %s's resource table: %u KB with the languages the app has (%s), as cut before", file, (unsigned)(have >> 10), joined + 1);
+            free(bytes);
+            free(kept);
+            return;
+        }
+        free(bytes);
+    }
+    if (!(data = mg_zip_read(&J.apk[apk], e, 256u << 20, &size))) {
+        free(kept);
+        return;
+    }
+    cut = size >= (1u << 20) && n ? mg_arsc_keep_languages(data, size, langs, n, &cut_size) : NULL;
+    if (cut) {
+        mg_info("java: %s's resource table: %u KB, %u KB with the languages the app has (%s)", file, (unsigned)(size >> 10), (unsigned)(cut_size >> 10),
+                joined + 1);
+        c->ret.l = bytes_of(cut, cut_size);
+        if (kept) {
+            /* Written aside and renamed: another app may read it meanwhile, or write it too. */
+            char *part = mg_sprintf("%s.%u.part", kept, (unsigned)mg_thread_self_id());
+            int err = 0;
+            if (!mg_file_write_all(part, cut, cut_size) || !mg_path_rename(part, kept, &err)) mg_path_remove(part, &err);
+            free(part);
+        }
+        free(cut);
+    } else {
+        c->ret.l = bytes_of(data, size);
+    }
+    free(data);
+    free(kept);
+}
 
 #define FIRST_LIBRARY_APK 12
 
@@ -520,6 +651,179 @@ N(Native_battery)
     c->ret.l = a;
 }
 
+/*
+ * The microphone (megler_microphone_host): what an AudioRecord reads. The shell pushes what it hears into a ring of two
+ * seconds (megler_microphone_push); micRead takes it out, waiting for it when asked to block. When nothing comes for a
+ * second (the microphone gone), a blocking read is given silence, so that the app does not hang. One recording at a time,
+ * as on Android: a second start takes the microphone over.
+ */
+static struct {
+    mg_lock lock;
+    mg_cond more;
+    bool inited, on;
+    i16 *ring;
+    u32 cap, head, count;   /* samples */
+    int channels;
+} MIC = { MG_LOCK_INIT };
+
+static void mic_init(void)
+{
+    static mg_lock once = MG_LOCK_INIT;
+    mg_lock_acquire(&once);
+    if (!MIC.inited) {
+        mg_cond_init(&MIC.more);
+        MIC.inited = true;
+    }
+    mg_lock_release(&once);
+}
+
+void megler_microphone_push(const int16_t *samples, int frames)
+{
+    u32 n, i;
+    if (!MIC.inited || frames <= 0 || !samples) return;
+    mg_lock_acquire(&MIC.lock);
+    if (MIC.on && MIC.ring) {
+        n = (u32)frames * (u32)MIC.channels;
+        for (i = 0; i < n; i++) {
+            MIC.ring[(MIC.head + MIC.count) % MIC.cap] = samples[i];
+            if (MIC.count < MIC.cap) MIC.count++;
+            else MIC.head = (MIC.head + 1) % MIC.cap;   /* full: the oldest goes */
+        }
+        mg_cond_broadcast(&MIC.more);
+    }
+    mg_lock_release(&MIC.lock);
+}
+
+/* micStart(rate, channels): the microphone asked of the shell; true when it hears. */
+N(Native_micStart)
+{
+    const megler_microphone_host *h = &J.config->microphone;
+    int rate = c->args[0].i, channels = c->args[1].i == 2 ? 2 : 1;
+    bool ok;
+    mic_init();
+    if (rate < 4000 || rate > 192000) rate = 44100;
+    mg_lock_acquire(&MIC.lock);
+    free(MIC.ring);
+    MIC.cap = (u32)rate * (u32)channels * 2u;
+    MIC.ring = (i16 *)mg_alloc(sizeof(i16) * MIC.cap);
+    MIC.channels = channels;
+    MIC.head = MIC.count = 0;
+    MIC.on = true;
+    mg_lock_release(&MIC.lock);
+    ok = h->start ? h->start(h->user, rate, channels) : false;
+    mg_info("java: the app records at %d Hz in %d channel%s: %s", rate, channels, channels == 2 ? "s" : "",
+            ok ? "the microphone hears" : h->start ? "the microphone was refused; the app reads silence" : "no microphone here; the app reads silence");
+    if (!ok) {
+        mg_lock_acquire(&MIC.lock);
+        MIC.on = false;
+        mg_lock_release(&MIC.lock);
+    }
+    c->ret.z = ok;
+}
+
+/* micStop(): the microphone no longer wanted. */
+N(Native_micStop)
+{
+    const megler_microphone_host *h = &J.config->microphone;
+    bool was;
+    (void)c;
+    mic_init();
+    mg_lock_acquire(&MIC.lock);
+    was = MIC.on;
+    MIC.on = false;
+    mg_cond_broadcast(&MIC.more);
+    mg_lock_release(&MIC.lock);
+    if (was && h->stop) h->stop(h->user);
+}
+
+/* audioRoute(route): where the app's sound is to go, as its AudioManager has it (megler_audio_host.route). */
+N(Native_audioRoute)
+{
+    const megler_audio_host *h = &J.config->audio;
+    int route = c->args[0].i;
+    if (route < MEGLER_AUDIO_ROUTE_DEFAULT || route > MEGLER_AUDIO_ROUTE_SPEAKER) route = MEGLER_AUDIO_ROUTE_DEFAULT;
+    mg_info("java: the app's sound %s", route == MEGLER_AUDIO_ROUTE_EARPIECE ? "goes to the earpiece, for a call"
+                                        : route == MEGLER_AUDIO_ROUTE_SPEAKER ? "goes to the loudspeaker, for a call on speaker"
+                                                                              : "goes where it always does");
+    if (h->route) h->route(h->user, route);
+}
+
+/* micRead(short[] buffer, offset, count, blocking): samples heard, into the buffer; how many. */
+N(Native_micRead)
+{
+    mg_jobj *a = c->args[0].l;
+    i32 off = c->args[1].i, want = c->args[2].i, got = 0;
+    bool blocking = c->args[3].z != 0;
+    i16 *out;
+    c->ret.i = 0;
+    if (!a || off < 0 || want <= 0 || (u32)off + (u32)want > a->u.arr.len) return;
+    out = (i16 *)a->u.arr.data + off;
+    mic_init();
+    mg_lock_acquire(&MIC.lock);
+    while (got < want) {
+        while (MIC.count > 0 && got < want) {
+            out[got++] = MIC.ring[MIC.head];
+            MIC.head = (MIC.head + 1) % MIC.cap;
+            MIC.count--;
+        }
+        if (got >= want || !blocking || !MIC.on) break;
+        if (!mg_cond_wait_ns(&MIC.more, &MIC.lock, 1000000000ull) && MIC.count == 0) {
+            /* Nothing for a second: silence for the rest, as a microphone that hears nothing gives. */
+            while (got < want) out[got++] = 0;
+        }
+    }
+    mg_lock_release(&MIC.lock);
+    c->ret.i = got;
+}
+
+/* memoryLimit(), memoryInUse(): the process's limit (1 GB where the shell gives none, as sysconf has it) and its use, in bytes. */
+N(Native_memoryLimit)
+{
+    u64 limit = mg_mem_limit();
+    c->ret.j = (i64)(limit ? limit : 1024ull * 1024 * 1024);
+}
+N(Native_memoryInUse) { c->ret.j = (i64)mg_mem_usage(); }
+
+/*
+ * The phone's check of its user (megler_biometric_host), for megler.Biometrics: whether it can, and its dialog, which
+ * blocks the thread megler.Biometrics asks on until the user is done; cancel closes it from another.
+ */
+N(Native_biometricAvailable)
+{
+    const megler_biometric_host *h = &J.config->biometric;
+    c->ret.i = h->available ? h->available(h->user) : MEGLER_BIOMETRIC_NONE;
+    mg_info("java: the phone's check of its user: %s", c->ret.i == MEGLER_BIOMETRIC_READY ? "ready" :
+            c->ret.i == MEGLER_BIOMETRIC_NOT_SET_UP ? "not set up" : h->available ? "nothing on the phone checks" : "none here");
+}
+N(Native_biometricVerify)
+{
+    const megler_biometric_host *h = &J.config->biometric;
+    const char *message = c->args[0].l ? text_of(c->args[0].l) : "";
+    static const char *const said[] = { "verified the user", "was canceled", "is locked: too many tries", "could not check" };
+    mg_info("java: the app asks the phone to check its user (\"%s\")%s", message, h->verify ? "" : ": nothing here checks");
+    c->ret.i = h->verify ? h->verify(h->user, message) : MEGLER_BIOMETRIC_UNAVAILABLE;
+    if (c->ret.i < 0 || c->ret.i > MEGLER_BIOMETRIC_UNAVAILABLE) c->ret.i = MEGLER_BIOMETRIC_UNAVAILABLE;
+    mg_info("java: the phone's check %s", said[c->ret.i]);
+}
+N(Native_biometricCancel)
+{
+    const megler_biometric_host *h = &J.config->biometric;
+    (void)c;
+    if (h->cancel) h->cancel(h->user);
+}
+
+/* cellular(): the SIM as the core has it (mg_cellular_read): "1" or "0" for a SIM ready, the operator's name, MCC and MNC,
+   the network's type and "1" or "0" for roaming, separated by tabs. */
+N(Native_cellular)
+{
+    mg_cellular s;
+    char *line;
+    mg_cellular_read(&s);
+    line = mg_sprintf("%d\t%s\t%s\t%d\t%d", s.sim_ready ? 1 : 0, s.operator_name, s.mcc_mnc, s.network_type, s.roaming ? 1 : 0);
+    c->ret.l = mg_dvm_new_string(line);
+    free(line);
+}
+
 N(Native_batteryTechnology)
 {
     mg_battery b;
@@ -617,6 +921,25 @@ N(Native_pollText)
     c->ret.l = a;
 }
 
+/* pollPhone(): the oldest of the phone's messages and calls the app has not taken (J.phone), as a String[1], or null. */
+N(Native_pollPhone)
+{
+    char *item = NULL;
+    mg_jobj *a;
+    mg_lock_acquire(&J.lock);
+    if (J.nphone) {
+        item = J.phone[0];
+        memmove(&J.phone[0], &J.phone[1], sizeof(char *) * (size_t)--J.nphone);
+    }
+    mg_lock_release(&J.lock);
+    c->ret.l = NULL;
+    if (!item) return;
+    a = mg_dvm_new_array("[Ljava/lang/String;", 1);
+    if (a) a->u.oarr.v[0] = mg_dvm_new_string(item);
+    free(item);
+    c->ret.l = a;
+}
+
 /* mediaSessionState(state, actions): the app's active media session's PlaybackState (megler.h, megler_media_session_host). */
 N(Native_mediaSessionState)
 {
@@ -680,6 +1003,15 @@ N(Native_launchApp)
     c->ret.z = s->launch_app ? s->launch_app(s->user, package, activity && activity[0] ? activity : NULL) : false;
 }
 
+/* uninstallApp(package): another app the phone has, to uninstall; true when the shell asks the user (megler_system_host). */
+N(Native_uninstallApp)
+{
+    const megler_system_host *s = &J.config->system;
+    const char *package = text_of(c->args[0].l);
+    mg_info("java: the app asks to uninstall %s%s", package, s->uninstall_app ? "" : " (nothing here to uninstall it with)");
+    c->ret.z = s->uninstall_app ? s->uninstall_app(s->user, package) : false;
+}
+
 /* appsList(): apps.txt of the apps the phone has (megler_run_config.apps_dir), or null when there is none. */
 N(Native_appsList)
 {
@@ -741,6 +1073,14 @@ N(Native_appResIcon)
     const char *package = text_of(c->args[0].l);
     c->ret.l = apps_package_ok(package) ? apps_file(mg_sprintf("%s/%s/%08x.png", J.config->apps_dir, package, (unsigned)c->args[1].i)) : NULL;
 }
+
+/* appInstall(name): what Megler last wrote of the APK the app handed it under `name` (megler.Installs: <package>.apk or
+   <package>.apks), the bytes of installs/<name>.txt in the same folder; null when it has written nothing. */
+N(Native_appInstall)
+{
+    const char *name = text_of(c->args[0].l);
+    c->ret.l = apps_package_ok(name) ? apps_file(mg_sprintf("%s/installs/%s.txt", J.config->apps_dir, name)) : NULL;
+}
 N(Native_setOrientation) { mg_note_once("java: the app asked for orientation %d; the surface stays as the shell made it", (int)c->args[0].i); }
 
 /*
@@ -769,7 +1109,7 @@ N(Native_thrownInService)
     for (i = n - 1; i >= 0; i--) {
         const mg_dvm_method *m = (const mg_dvm_method *)(mg_addr)v[2 * i];
         if (!m || !m->cls) continue;
-        if (m->cls->scope > 0) { c->ret.i = m->cls->scope; return; }
+        if (m->cls->scope > 0) { c->ret.i = mg_dvm_scope_root(m->cls->scope); return; }
         if (mg_dvm_class_is_app(m->cls)) { c->ret.i = 0; return; }
     }
 }
@@ -789,8 +1129,10 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "readAsset", NULL, Native_readAsset },
     { "megler/Native", "listAssets", NULL, Native_listAssets },
     { "megler/Native", "assetFd", NULL, Native_assetFd },
+    { "megler/Native", "assetDeflated", NULL, Native_assetDeflated },
     { "megler/Native", "assetLength", NULL, Native_assetLength },
     { "megler/Native", "readApkFile", NULL, Native_readApkFile },
+    { "megler/Native", "readApkResourceTable", NULL, Native_readApkResourceTable },
     { "megler/Native", "addApk", NULL, Native_addApk },
     { "megler/Native", "listApkFiles", NULL, Native_listApkFiles },
     { "megler/Native", "apkFileFd", NULL, Native_apkFileFd },
@@ -804,6 +1146,16 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "externalDir", NULL, Native_externalDir },
     { "megler/Native", "battery", NULL, Native_battery },
     { "megler/Native", "batteryTechnology", NULL, Native_batteryTechnology },
+    { "megler/Native", "cellular", NULL, Native_cellular },
+    { "megler/Native", "micStart", NULL, Native_micStart },
+    { "megler/Native", "micStop", NULL, Native_micStop },
+    { "megler/Native", "micRead", NULL, Native_micRead },
+    { "megler/Native", "memoryLimit", NULL, Native_memoryLimit },
+    { "megler/Native", "memoryInUse", NULL, Native_memoryInUse },
+    { "megler/Native", "biometricAvailable", NULL, Native_biometricAvailable },
+    { "megler/Native", "biometricVerify", NULL, Native_biometricVerify },
+    { "megler/Native", "biometricCancel", NULL, Native_biometricCancel },
+    { "megler/Native", "audioRoute", NULL, Native_audioRoute },
     { "megler/Native", "packageName", NULL, Native_packageName },
     { "megler/Native", "screenWidth", NULL, Native_screenWidth },
     { "megler/Native", "screenHeight", NULL, Native_screenHeight },
@@ -811,15 +1163,18 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "setContentView", NULL, Native_nothing },
     { "megler/Native", "pollInput", NULL, Native_pollInput },
     { "megler/Native", "pollText", NULL, Native_pollText },
+    { "megler/Native", "pollPhone", NULL, Native_pollPhone },
     { "megler/Native", "showKeyboard", NULL, Native_showKeyboard },
     { "megler/Native", "systemBars", NULL, Native_systemBars },
     { "megler/Native", "mediaSessionState", NULL, Native_mediaSessionState },
     { "megler/Native", "installApk", NULL, Native_installApk },
     { "megler/Native", "launchApp", NULL, Native_launchApp },
+    { "megler/Native", "uninstallApp", NULL, Native_uninstallApp },
     { "megler/Native", "appsList", NULL, Native_appsList },
     { "megler/Native", "appIcon", NULL, Native_appIcon },
     { "megler/Native", "appActivities", NULL, Native_appActivities },
     { "megler/Native", "appResIcon", NULL, Native_appResIcon },
+    { "megler/Native", "appInstall", NULL, Native_appInstall },
     { "megler/Native", "mediaSessionMetadata", NULL, Native_mediaSessionMetadata },
     { "megler/Native", "setClipboard", NULL, Native_setClipboard },
     { "megler/Native", "getClipboard", NULL, Native_getClipboard },
@@ -910,6 +1265,13 @@ N(Native_presentRect)
 {
     int i;
     for (i = 0; i < 4; i++) t_part[i] = c->args[i].i;
+}
+
+/* The same, said by the render thread for a frame it is about to show (mg_java_gfx.c, Gfx.frame). */
+static void present_part(const i32 part[4])
+{
+    int i;
+    for (i = 0; i < 4; i++) t_part[i] = part[i];
 }
 
 /*
@@ -1059,14 +1421,114 @@ static void meter_advance(const meter_sum *now)
 
 static double per_frame_ms(u64 ns, u32 frames) { return frames ? (double)ns / 1e6 / frames : 0; }
 
+/*
+ * The memory's lines: what the process holds and what holds its addresses, and the JIT's work. They walk the whole address
+ * space (VirtualQuery) and every thread: some 300 ms of the main thread every five seconds when the frames line said them,
+ * the frame meter (Native.frameMark) 6% of Yandex Maps' main thread (package 530). Said every ten seconds by the sampler's
+ * thread (hot_main), and once at the run's end.
+ */
+static void meter_census(void)
+{
+    u64 process = mg_mem_usage();
+    mg_dvm_stats s;
+    char mem[480];
+    mg_dvm_get_stats(&s);
+    mem[0] = 0;
+    if (process) {
+        /* And the parts of it the core can name: the Java heap's memory, the DEX files, what madvise has given back. */
+        mg_dvm_heap_info hi;
+        u64 dex_read = 0, dex_viewed = 0, given = 0, again = 0, anon = 0, files = 0;
+        mg_dvm_heap_stats(&hi);
+        mg_dvm_dex_memory(&dex_read, &dex_viewed);
+        mg_mmap_given_back(&given, &again);
+        mg_mmap_usage(&anon, &files);
+        snprintf(mem, sizeof(mem), "the process %u MB (the heap's blocks %u MB and large objects %u MB; DEX files %u MB in memory, %u MB viewed "
+                 "in their APKs; native libraries %u MB; the app's malloc %u MB; the app's mappings %u MB anonymous and %u MB of files; %u MB "
+                 "given back with madvise, %u MB of it touched again)", (unsigned)(process >> 20), (unsigned)(hi.reserved >> 20),
+                 (unsigned)(hi.large_bytes >> 20), (unsigned)(dex_read >> 20), (unsigned)(dex_viewed >> 20), (unsigned)(mg_ld_image_bytes() >> 20),
+                 (unsigned)(mg_g_malloc_bytes() >> 20), (unsigned)(anon >> 20), (unsigned)(files >> 20), (unsigned)(given >> 20),
+                 (unsigned)(again >> 20));
+        /*
+         * And the addresses: a 32-bit process has 2 GB of them, and what the next allocation needs is a stretch of them free,
+         * whoever makes it. Yandex Maps ran out of them with 1.2 GB of its 2 GB of memory used, and the shell's own drawing
+         * failed first (package 489); its memory line had not said so.
+         */
+        {
+            u32 free_mb = 0, largest = 0, reserved = 0, committed = 0;
+            size_t used = strlen(mem);
+            if (mg_host_address_space(&free_mb, &largest, &reserved, &committed))
+                snprintf(mem + used, sizeof(mem) - used, "; addresses %u MB free (the largest stretch %u), %u reserved, %u committed", (unsigned)free_mb,
+                         (unsigned)largest, (unsigned)reserved, (unsigned)committed);
+        }
+    }
+    /* Its own line, which the frames line had no room left for. */
+    if (mem[0]) mg_info("java: memory: %s", mem);
+    /*
+     * And what holds the addresses, by kind (mg_host_address_census): of the private memory, in allocations of which sizes
+     * most of it is; the threads (each with its stack, 1 MB of addresses, and the runtime's with a frame stack besides); what
+     * the runtime's tables and classes take of the heap; and the graphics processor's own memory as DXGI says it. A host
+     * stack is committed whole for Android code (mg_thread_whole_stack), so it is memory, not only addresses. Where the
+     * memory line's parts do not add up, this says where the rest is.
+     */
+    if (process) {
+        mg_host_address_kinds k;
+        u32 gpu_used = 0, gpu_budget = 0, threads = 0, attached = 0;
+        u64 frames = 0, c_reserved = 0, c_peak = 0;
+        char sizes[160];
+        int i;
+        if (mg_host_address_census(&k)) {
+            sizes[0] = 0;
+            for (i = 0; i < k.nsizes; i++) {
+                size_t used = strlen(sizes);
+                snprintf(sizes + used, sizeof(sizes) - used, "%s%u of %u KB", i ? ", " : "", (unsigned)k.sizes[i].count, (unsigned)k.sizes[i].kb);
+            }
+            mg_egl_gpu_memory(&gpu_used, &gpu_budget);
+            mg_dvm_thread_census(&threads, &attached, &frames, &c_reserved, &c_peak);
+            mg_info("java: addresses by kind: the program and its DLLs %u MB, views of files and shared memory %u MB, private memory %u MB "
+                    "committed and %u reserved, the most of it in allocations of %s; threads the core started %u, the runtime's %u (%u of "
+                    "them attached by native code), their frame stacks %u MB and their host stacks %u MB (the deepest used %u KB); the "
+                    "runtime's tables and classes %u MB (classes %u, methods %u, fields %u, vtables %u, the DEX files' tables %u, names %u, those of "
+                    "files not viewed yet %u); "
+                    "the graphics processor's memory %u MB of %u",
+                    (unsigned)k.images_mb, (unsigned)k.views_mb, (unsigned)k.private_mb, (unsigned)k.private_reserved_mb, sizes[0] ? sizes : "none",
+                    (unsigned)mg_thread_live_count(), (unsigned)threads, (unsigned)attached, (unsigned)(frames >> 20), (unsigned)(c_reserved >> 20),
+                    (unsigned)(c_peak >> 10), (unsigned)(s.meta_bytes >> 20), (unsigned)(s.meta_classes >> 20), (unsigned)(s.meta_methods >> 20),
+                    (unsigned)(s.meta_fields >> 20), (unsigned)(s.meta_vtables >> 20), (unsigned)(s.meta_dex >> 20), (unsigned)(s.meta_names >> 20),
+                    (unsigned)(s.meta_pools >> 20), (unsigned)gpu_used, (unsigned)gpu_budget);
+            {
+                /* And the reserved, by whose it is, where the core can tell: what is left is the stacks and the DLLs' own. */
+                u64 frames_reserved = 0, frames_committed = 0, deepest = 0, spanned = 0, mapped_reserved = 0, libs_reserved = mg_ld_reserved_bytes(), known;
+                mg_dvm_frame_census(&frames_reserved, &frames_committed, &deepest);
+                mg_g_mapped_addresses(&spanned, &mapped_reserved);
+                known = (frames_reserved - frames_committed) + mapped_reserved + libs_reserved;
+                mg_info("java: of the private memory reserved and not committed: the frame stacks' %u MB (of the %u MB their segments reserve; "
+                        "the deepest thread's frames %u KB now), the app's mappings' %u MB (of the %u MB they span), its libraries' %u MB, "
+                        "the rest %u MB (thread stacks, the shell's and the system's DLLs')",
+                        (unsigned)((frames_reserved - frames_committed) >> 20), (unsigned)(frames_reserved >> 20), (unsigned)(deepest >> 10),
+                        (unsigned)(mapped_reserved >> 20), (unsigned)(spanned >> 20), (unsigned)(libs_reserved >> 20),
+                        (unsigned)(((u64)k.private_reserved_mb << 20) > known ? (((u64)k.private_reserved_mb << 20) - known) >> 20 : 0));
+            }
+        }
+    }
+    {
+        /* The JIT's work (mg_dvm_jit.c): how much of the app runs compiled, and what its code takes. */
+        mg_dvm_jit_stats j;
+        mg_dvm_jit_census(&j);
+        if (j.methods || j.refused)
+            mg_info("java: the JIT: %u methods compiled (%u of them waiting for their page to be made executable), %u not worth it; "
+                    "%u KB of code on %u KB of pages",
+                    (unsigned)j.methods, (unsigned)j.waiting, (unsigned)j.refused, (unsigned)(j.code_bytes >> 10), (unsigned)(j.page_bytes >> 10));
+    }
+}
+
 static void meter_line(const char *what, const meter_window *w, u64 now)
 {
     mg_dvm_stats s;
     u64 busy[PARTS], java = 0, host = 0, present = 0, waited = 0, executed = 0, elapsed = now - w->started, screen;
     u64 native = 0, natives = 0, alloc = 0, allocs = 0, blocked = 0, wall = 0, other, interpreted, live_bytes;
-    u64 bitmap_bytes = 0, list_bytes = 0, process = mg_mem_usage(), collections = 0, collecting_ns = 0;
+    u64 bitmap_bytes = 0, list_bytes = 0, collections = 0, collecting_ns = 0;
     u32 bitmaps = 0, nodes = 0, n = w->frames;
-    char of[40], redrawn[60], rates[300], mem[40], gc[120];
+    char of[40], redrawn[60], rates[300], gc[120];
     int i;
     for (i = 0; i < PARTS; i++) {
         const meter_sum *p = &w->part[i];
@@ -1098,31 +1560,121 @@ static void meter_line(const char *what, const meter_window *w, u64 now)
         mg_strlcpy(redrawn, "nothing drawn", sizeof(redrawn));
     /*
      * Where Java's time went besides the shell's drawing. The shell's drawing, present and the waits all happen inside native
-     * methods, so the other natives are what is left of the natives' time without them. Interpreting is the rest: the time
-     * outside native methods, allocation and waits for monitors -- bytecode, calls and returns, resolution, the
-     * interpreter's own work. The pace is the instructions over that time. And what every thread executed.
+     * methods, so the other natives are what is left of the natives' time without them. Bytecode is the rest: the time
+     * outside native methods, allocation and waits for monitors -- interpreted and compiled (mg_dvm_jit.c), calls and returns,
+     * resolution, the interpreter's own work. The instructions counted are the interpreter's alone (compiled code counts
+     * none), so their pace over that time says how much of it was interpreted. And what every thread's interpreter executed.
      */
     other = native > host + present + waited ? native - host - present - waited : 0;
     interpreted = wall > native + alloc + blocked ? wall - native - alloc - blocked : 0;
     snprintf(rates, sizeof(rates), "in other native methods %.1f (%.0f calls), allocating %.1f (%.0f objects), waiting for monitors %.1f, "
-             "interpreting %.1f at %.1f M instructions/s; %.1f M instructions on all threads",
+             "bytecode %.1f, interpreted and compiled (%.1f M instructions a second interpreted); %.1f M instructions interpreted on all threads",
              per_frame_ms(other, n), n ? (double)natives / n : 0.0, per_frame_ms(alloc, n), n ? (double)allocs / n : 0.0, per_frame_ms(blocked, n),
              per_frame_ms(interpreted, n), interpreted ? (double)executed * 1e3 / (double)interpreted : 0.0,
              (double)(mg_dvm_executed_all() - w->all_executed) / 1e6);
-    mem[0] = 0;
-    if (process) snprintf(mem, sizeof(mem), "; the process %u MB", (unsigned)(process >> 20));
     /* The collector, as its own part: what it took in the time the line covers, every thread of the runtime's stopped for most of it. */
     mg_dvm_gc_totals(&collections, &collecting_ns);
     snprintf(gc, sizeof(gc), "collecting %.1f ms in %u collections", (double)(collecting_ns - w->collecting_ns) / 1e6, (unsigned)(collections - w->collections));
     mg_info("java: frames %s%.1f s: %u drawn%s, %.1f ms of work each on average (the longest frame %.1f without input and messages): Java %.1f "
             "(input and messages %.1f, measure and layout %.1f, "
             "draw traversal %.1f), of it in the shell's drawing %.1f, %s; present %.1f; idle %u%%; %s; heap %u MB (objects %u live, %u "
-            "made in these %.1f s; bitmaps %u; display lists %u KB, %u nodes)%s; %s",
+            "made in these %.1f s; bitmaps %u; display lists %u KB, %u nodes); %s",
             what, (double)elapsed / 1e9, (unsigned)w->drawn, of, per_frame_ms(java + present, n), per_frame_ms(w->longest, 1), per_frame_ms(java, n),
             per_frame_ms(busy[PART_BETWEEN], n), per_frame_ms(busy[PART_LAYOUT], n), per_frame_ms(busy[PART_DRAW], n), per_frame_ms(host, n), rates,
             per_frame_ms(present, n), (unsigned)(elapsed ? waited * 100 / elapsed : 0), gc,
             (unsigned)((live_bytes + bitmap_bytes) >> 20), (unsigned)(live_bytes >> 20), (unsigned)((s.object_bytes - w->object_bytes) >> 20),
-            (double)elapsed / 1e9, (unsigned)(bitmap_bytes >> 20), (unsigned)(list_bytes >> 10), (unsigned)nodes, mem, redrawn);
+            (double)elapsed / 1e9, (unsigned)(bitmap_bytes >> 20), (unsigned)(list_bytes >> 10), (unsigned)nodes, redrawn);
+    /* The memory's lines, at the end of the run here; meanwhile the sampler's thread says them (hot_main), off the main thread. */
+    if (what[0]) meter_census();
+}
+
+/*
+ * Where the main thread's time goes: every 5 ms the method it runs (mg_dvm_thread.running, which it writes itself: always
+ * a method or nothing), counted, and every 10 s the ones counted most said, with their share of the samples -- a native
+ * one marked, the looper's wait among them. Yandex Maps' main thread took 15 s after its first picture to draw much else,
+ * its time bytecode and 100,000 native calls, and nothing said whose.
+ */
+#define HOT_SLOTS 4096
+static struct {
+    const mg_dvm_method *m;
+    const mg_dvm_method *from; /* a native method's caller (mg_dvm_thread.running_from): Object.wait's 10% was nobody's */
+    u32 n;
+} g_hot[HOT_SLOTS];
+
+/*
+ * `collecting`: the samples taken while a collection was under way, whatever the main thread's method; the thread is stopped
+ * then, or waits for the heap to make an object. Each was the method that made an object when the heap was due, 9% of Yandex
+ * Maps' main thread "in" String.toCharArray (package 531).
+ */
+static void hot_say(u32 samples, u32 outside, u32 collecting)
+{
+    char line[2400];
+    size_t at;
+    int k;
+    at = (size_t)snprintf(line, sizeof(line), "hot: the main thread, %u samples in 10 s: outside Java %u%%, the collector %u%%", (unsigned)samples,
+                          (unsigned)(samples ? outside * 100 / samples : 0), (unsigned)(samples ? collecting * 100 / samples : 0));
+    for (k = 0; k < 14 && at + 240 < sizeof(line); k++) {
+        u32 best = 0, i, at_best = 0;
+        for (i = 0; i < HOT_SLOTS; i++)
+            if (g_hot[i].m && g_hot[i].n > best) {
+                best = g_hot[i].n;
+                at_best = i;
+            }
+        if (!best || best * 100 < samples) break;
+        if (g_hot[at_best].from)
+            at += (size_t)snprintf(line + at, sizeof(line) - at, ", %u%% %s.%s (native, from %s.%s)", (unsigned)(best * 100 / samples),
+                                   g_hot[at_best].m->cls->name, g_hot[at_best].m->name, g_hot[at_best].from->cls->name, g_hot[at_best].from->name);
+        else
+            at += (size_t)snprintf(line + at, sizeof(line) - at, ", %u%% %s.%s%s", (unsigned)(best * 100 / samples), g_hot[at_best].m->cls->name,
+                                   g_hot[at_best].m->name, (g_hot[at_best].m->flags & DVM_ACC_NATIVE) ? " (native)" : "");
+        g_hot[at_best].n = 0;
+    }
+    mg_info("%s", line);
+}
+
+static void hot_main(void *arg)
+{
+    u32 samples = 0, outside = 0, collecting = 0;
+    u64 since = mg_time_monotonic_ns();
+    (void)arg;
+    for (;;) {
+        const mg_dvm_thread *t;
+        const mg_dvm_method *m, *from = NULL;
+        u64 now;
+        mg_sleep_ns(5000000ull);
+        t = M.thread;
+        m = t ? t->running : NULL;
+        if (m && (m->flags & DVM_ACC_NATIVE)) from = t->running_from;
+        samples++;
+        if (mg_dvm_gc_busy()) {
+            collecting++;
+        } else if (!m) {
+            outside++;
+        } else {
+            u32 i = (u32)((((mg_addr)m >> 4) ^ ((mg_addr)from >> 2)) * 2654435761u) & (HOT_SLOTS - 1), tries;
+            for (tries = 0; tries < 64 && g_hot[i].m && (g_hot[i].m != m || g_hot[i].from != from); tries++) i = (i + 1) & (HOT_SLOTS - 1);
+            if (!g_hot[i].m) {
+                g_hot[i].m = m;
+                g_hot[i].from = from;
+            }
+            if (g_hot[i].m == m && g_hot[i].from == from) g_hot[i].n++;
+        }
+        now = mg_time_monotonic_ns();
+        if (now - since >= 10000000000ull) {
+            hot_say(samples, outside, collecting);
+            mg_dvm_made_say();
+            meter_census();
+            memset(g_hot, 0, sizeof(g_hot));
+            samples = outside = collecting = 0;
+            since = now;
+        }
+    }
+}
+
+static void hot_start(void)
+{
+    mg_thread *t = mg_thread_start(hot_main, NULL, (size_t)64 << 10, "hot");
+    if (t) mg_thread_detach(t);
 }
 
 /* megler.Native.frameMark(phase, redrawn), from megler.ViewRoot.doFrame on the main thread. */
@@ -1135,6 +1687,7 @@ N(Native_frameMark)
     meter_read(&now);
     if (!M.thread) {
         M.thread = self;
+        hot_start();
         M.last = now;
         M.part = PART_BETWEEN;
         meter_start(&M.window, now.wall);
@@ -1388,6 +1941,14 @@ static void add_platform_framework(void)
     else mg_warn("java: an app of the platform's own, and Android 9's framework is not in the Android root (framework/platform-framework.dex)");
 }
 
+/* The framework's methods that are signatures alone, beside it in the Android root: each one's first call is said (mg_dvm_stubs_load). */
+static void stubs_load(void)
+{
+    char *path = mg_sprintf("%s/framework/megler-stubs.txt", J.root);
+    if (!mg_dvm_stubs_load(path)) mg_info("api: no list of the framework's methods that are signatures alone (%s): their calls are not said", path);
+    free(path);
+}
+
 static void main_thread(void *arg)
 {
     char *framework = mg_sprintf("%s/framework/megler-framework.dex", J.root), *res = mg_sprintf("%s/framework/framework-res.apk", J.root);
@@ -1399,7 +1960,7 @@ static void main_thread(void *arg)
     mg_gthread_self();
     why[0] = 0;
     if (!mg_dvm_start_android(J.root)) snprintf(why, sizeof(why), "the Java runtime did not start on the Android root %s", J.root);
-    else if (!mg_dvm_add_dex_file(framework)) snprintf(why, sizeof(why), "the Java framework is not in the Android root (%s)", framework);
+    else if (stubs_load(), !mg_dvm_add_dex_file(framework)) snprintf(why, sizeof(why), "the Java framework is not in the Android root (%s)", framework);
     else if (add_platform_framework(), mg_dvm_app_follows(), add_shared_libraries(), mg_dvm_add_apk(J.config->apk_path) < 1) snprintf(why, sizeof(why), "the APK has no classes.dex that can be read");
     if (!why[0]) {
         mg_jvalue sdk;
@@ -1469,6 +2030,7 @@ static void main_thread(void *arg)
         mg_java_gfx_set_present(present, NULL);
         mg_java_gfx_set_present_canvas(present_canvas, NULL);
         mg_java_gfx_set_present_probe(mg_java_gl_views_probe_due, mg_java_gl_views_probe);
+        mg_java_gfx_set_present_part(present_part);
         /* What C keeps of the app's objects across calls: the collector keeps it too. */
         mg_dvm_add_root(&J.clipboard);
         mg_dvm_register(mg_java_gfx_natives());
@@ -1500,6 +2062,8 @@ static void main_thread(void *arg)
             shorten(what);
             snprintf(why, sizeof(why), "the app stopped because nothing caught %s%s%s%s, which ends an app on Android too", what, where[0] ? " (in " : "", where, where[0] ? ")" : "");
         }
+        /* The last frame handed to the render thread shown before the app is said to have ended. */
+        mg_java_gfx_frames_wait();
         meter_end();
     }
     free(framework);
@@ -1653,6 +2217,52 @@ static void push_text(const char *kind, const char *utf8)
 void mg_java_text(const char *utf8)
 {
     if (utf8 && utf8[0]) push_text("t", utf8);
+}
+
+/* A message or a call for megler.Phone: queued with its event, or dropped (no Java app, or it takes none). What it says never goes in the log. */
+static void push_phone(char *item, const char *what)
+{
+    bool queued = false;
+    if (!java_runs()) {
+        mg_info("java: %s, while no Java app runs: not given to an app", what);
+        free(item);
+        return;
+    }
+    mg_lock_acquire(&J.lock);
+    if (J.nphone < MAX_PHONE) {
+        J.phone[J.nphone++] = item;
+        queued = true;
+    }
+    mg_lock_release(&J.lock);
+    mg_info("java: %s%s", what, queued ? ", for the app" : ", and the app has not taken the ones before: dropped");
+    if (queued) push_event(EV_PHONE, 0, 0, 0);
+    else free(item);
+}
+
+/* A line of an item may not hold the line end that ends it. */
+static char *one_line(const char *s)
+{
+    char *d = mg_strdup(s ? s : ""), *p;
+    for (p = d; *p; p++)
+        if (*p == '\n' || *p == '\r') *p = ' ';
+    return d;
+}
+
+void mg_java_phone_sms(const char *from, const char *body, i64 time_ms)
+{
+    char *who = one_line(from);
+    push_phone(mg_sprintf("s%lld\n%s\n%s", (long long)time_ms, who, body ? body : ""), "the phone has a text message");
+    free(who);
+}
+
+void mg_java_phone_call(const char *number, i64 time_ms, int type, int duration_s)
+{
+    static const char *const kinds[] = { "a call", "an incoming call", "an outgoing call", "a missed call", "a call", "a rejected call" };
+    char *who = one_line(number), *what;
+    what = mg_sprintf("the phone's history has %s", kinds[type >= 0 && type <= 5 ? type : 0]);
+    push_phone(mg_sprintf("c%lld\n%d\n%d\n%s", (long long)time_ms, type, duration_s < 0 ? 0 : duration_s, who), what);
+    free(what);
+    free(who);
 }
 
 void mg_java_text_key(int key)

@@ -41,7 +41,11 @@ struct mg_zip;
 /* Where libraries come from: the APKs' lib/armeabi-v7a/ (or lib/armeabi/) directories, in the order added. */
 #define MG_LD_MAX_APKS 16
 bool mg_ld_add_apk(const char *path);
-/* Service APK libraries and their dependencies are isolated from the client's. */
+/*
+ * Service APK libraries and their dependencies are isolated from the client's; so are a module's, whose class loader has a
+ * scope of its own (dvm/mg_dvm_art.c, child scopes: 16 on), from its APK.
+ */
+#define MG_LD_MAX_SCOPES 64
 bool mg_ld_add_service_apk(const char *path, int scope);
 int mg_ld_set_scope(int scope);
 int mg_ld_scope(void);
@@ -161,6 +165,10 @@ typedef struct mg_ld_stats {
     u32 svc_sites;         /* direct system calls intercepted */
 } mg_ld_stats;
 void mg_ld_get_stats(const mg_lib *lib, mg_ld_stats *out);
+/* The committed memory of the libraries the loader mapped: their segments, as read from their files. */
+u64 mg_ld_image_bytes(void);
+/* The bytes of the libraries' reservations reserved and not committed (the gaps between and after their segments). */
+u64 mg_ld_reserved_bytes(void);
 
 /*
  * The address to call for a guest function pointer. Thumb code is called as it
