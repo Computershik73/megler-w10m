@@ -3781,7 +3781,11 @@ public class Main extends Activity {
             }
             android.content.pm.PackageInstaller.Session s = pi.openSession(id);
             try (java.io.OutputStream o = s.openWrite("base", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
+            // The names as written, as Android gives them (Play Store checks them against its artifacts), and the file read back by it.
             String[] names = s.getNames();
+            byte[] back = new byte[4];
+            int read = -1;
+            try (java.io.InputStream in = s.openRead("base")) { if (in != null) read = in.read(back); }
             registerReceiver(new android.content.BroadcastReceiver() {
                 @Override public void onReceive(android.content.Context c, android.content.Intent i) {
                     Log.i("DataTest", "install-status " + i.getIntExtra("android.content.pm.extra.STATUS", -99) + " session=" + (i.getIntExtra("android.content.pm.extra.SESSION_ID", -1) == id)
@@ -3802,8 +3806,8 @@ public class Main extends Activity {
             android.app.PendingIntent status = android.app.PendingIntent.getBroadcast(this, 0, new android.content.Intent("megler.test.INSTALL_STATUS"),
                     0);
             s.commit(status.getIntentSender());
-            detail = "id=" + id + " names=" + java.util.Arrays.toString(names);
-            return id > 0 && names.length == 1 && "base.apk".equals(names[0]);
+            detail = "id=" + id + " names=" + java.util.Arrays.toString(names) + " read=" + read;
+            return id > 0 && names.length == 1 && "base".equals(names[0]) && read == 4 && back[0] == 'P' && back[3] == 4;
         });
         // A session of an app's base and a split, as Google Play installs an app built as a bundle: handed over as one .apks
         // file of both (the test opens it and counts them).
