@@ -286,6 +286,9 @@ or not; `dvm/mg_dvm_interp.c`), at most 1000 and 2000 lines a run; and
 then every two seconds those whose stack changed, the others counted; threads as
 they end, and any that could not be stopped; each thread stopped only while its
 frames are copied; at most 6000 lines; `dvm/mg_dvm_object.c`); and
+`trace-nulls` (at a NullPointerException an instruction of the app's bytecode throws, once a place, which register
+was null and where the method last gave it its value: which call's result, which field, the constant null, a
+parameter; at most 320 lines; `dvm/mg_dvm_interp.c`); and
 `trace-calls-<prefix>`, the prefix a class name with dots (every call of a method
 of a class whose name starts with it, with its thread and depth, and its return
 with the value or the exception it ends with; up to eight such flags; at most 8000

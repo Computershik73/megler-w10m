@@ -853,6 +853,147 @@ static void trace_exception(mg_dvm_thread *t, mg_dvm_method *m, u32 pc, mg_jobj 
             m->name, (unsigned)pc, here == 3 ? " (the third time there: the next are not said)" : "");
 }
 
+/*
+ * The flag trace-nulls (a file of that name in LocalState\flags, read once): at every NullPointerException thrown by an
+ * instruction of the app's bytecode -- a call, a field, an array, a monitor of a null reference -- the log says, once for each
+ * place, which register was null and where in the method it was last given its value: the result of which call, which
+ * field or static field, an array's element, the constant null, the method's parameter. The method's instructions are read
+ * in their order up to the one that threw (a branch can make that another than the one that ran, which is rare in code
+ * that compilers made). An app's own NullPointerException, from a framework method that gave it null where Android gives
+ * something, says then which method that was. At most 320 lines a run.
+ */
+static const char *dex_name_of(const mg_dvm_dex *d, u32 off, u32 count, u32 idx, const char **cls)
+{
+    const u8 *p;
+    if (!d || idx >= count) return "?";
+    p = d->b + off + 8 * (size_t)idx;
+    if ((size_t)(p + 8 - d->b) > d->size) return "?";
+    if (cls) *cls = mg_dvm_dex_type(d, mg_dvm_rd16(p));
+    return mg_dvm_dex_string(d, mg_dvm_rd32(p + 4), NULL);
+}
+
+/* What the instruction at `pc` uses as its object, the register that was null there; -1 when it is no such instruction. */
+static int null_register(const u16 *insns, u32 pc, const char **what)
+{
+    u16 w = insns[pc];
+    u8 op = (u8)(w & 0xFF);
+    if (op == 0x6e || op == 0x6f || op == 0x70 || op == 0x72) { *what = "the object of a call"; return insns[pc + 2] & 0xF; }
+    if (op == 0x74 || op == 0x75 || op == 0x76 || op == 0x78) { *what = "the object of a call"; return insns[pc + 2]; }
+    if (op >= 0x52 && op <= 0x5f) { *what = "the object of a field"; return w >> 12; }
+    if (op >= 0x44 && op <= 0x51) { *what = "an array"; return insns[pc + 1] & 0xFF; }
+    if (op == 0x21) { *what = "an array's length"; return w >> 12; }
+    if (op == 0x1d || op == 0x1e) { *what = "a monitor"; return w >> 8; }
+    if (op == 0x27) { *what = "the exception thrown"; return w >> 8; }
+    return -1;
+}
+
+static void null_origin(const mg_dvm_method *m, u32 pc, int reg, char *out, size_t n)
+{
+    const mg_dvm_dex *d = m->cls->dex;
+    const char *cls = NULL, *name;
+    u32 at, last = ~0u, prev = ~0u, prev_of_last = ~0u, steps, limit = pc;
+    int want = reg;
+    for (steps = 0; steps < 4; steps++) {
+        last = prev_of_last = ~0u;
+        prev = ~0u;
+        for (at = 0; at < limit && at < m->ninsns;) {
+            u32 units = mg_dvm_insn_units(m->insns, m->ninsns, at);
+            u16 w = m->insns[at];
+            u8 op = (u8)(w & 0xFF);
+            int dst = -1;
+            if (!units) break;
+            if (op == 0x07 || op == 0x12) dst = (w >> 8) & 0xF;
+            else if (op == 0x08 || op == 0x0c || op == 0x0d || op == 0x13 || op == 0x14 || op == 0x15 || op == 0x1a || op == 0x1b || op == 0x1c ||
+                     op == 0x22 || op == 0x46 || op == 0x62)
+                dst = w >> 8;
+            else if (op == 0x09) dst = m->insns[at + 1];
+            else if (op == 0x54 || op == 0x23) dst = (w >> 8) & 0xF;
+            if (dst == want) {
+                last = at;
+                prev_of_last = prev;
+            }
+            prev = at;
+            at += units;
+        }
+        if (last == ~0u) {
+            if (want >= (int)m->regs - (int)m->ins) {
+                int k = want - ((int)m->regs - (int)m->ins) - ((m->flags & DVM_ACC_STATIC) ? 0 : 1);
+                if (k < 0) snprintf(out, n, "v%d, `this`", want);
+                else snprintf(out, n, "v%d, the method's parameter in register %d of its own", want, k);
+            } else {
+                snprintf(out, n, "v%d, not given a value before it in the method's order (a branch)", want);
+            }
+            return;
+        }
+        {
+            u16 w = m->insns[last];
+            u8 op = (u8)(w & 0xFF);
+            switch (op) {
+            case 0x07: want = (w >> 12) & 0xF; limit = last; continue;  /* move-object: where its source came from */
+            case 0x08: want = m->insns[last + 1]; limit = last; continue;
+            case 0x09: want = m->insns[last + 2]; limit = last; continue;
+            case 0x0c:
+                if (prev_of_last != ~0u) {
+                    u16 iw = m->insns[prev_of_last];
+                    u8 iop = (u8)(iw & 0xFF);
+                    if ((iop >= 0x6e && iop <= 0x72) || (iop >= 0x74 && iop <= 0x78)) {
+                        name = dex_name_of(d, d->meth_off, d->nmeth, m->insns[prev_of_last + 1], &cls);
+                        snprintf(out, n, "v%d, the result of %s.%s at pc %u", reg, cls ? cls : "?", name ? name : "?", (unsigned)prev_of_last);
+                        return;
+                    }
+                }
+                snprintf(out, n, "v%d, a result at pc %u", reg, (unsigned)last);
+                return;
+            case 0x54:
+                name = dex_name_of(d, d->field_off, d->nfield, m->insns[last + 1], &cls);
+                snprintf(out, n, "v%d, the field %s.%s at pc %u", reg, cls ? cls : "?", name ? name : "?", (unsigned)last);
+                return;
+            case 0x62:
+                name = dex_name_of(d, d->field_off, d->nfield, m->insns[last + 1], &cls);
+                snprintf(out, n, "v%d, the static field %s.%s at pc %u", reg, cls ? cls : "?", name ? name : "?", (unsigned)last);
+                return;
+            case 0x46: snprintf(out, n, "v%d, an array's element at pc %u", reg, (unsigned)last); return;
+            case 0x12: case 0x13: case 0x14: case 0x15: snprintf(out, n, "v%d, the constant null at pc %u", reg, (unsigned)last); return;
+            case 0x0d: snprintf(out, n, "v%d, a caught exception at pc %u", reg, (unsigned)last); return;
+            default: snprintf(out, n, "v%d, set at pc %u by %s", reg, (unsigned)last, mg_dvm_insn_name(w)); return;
+            }
+        }
+    }
+    snprintf(out, n, "v%d, through more moves than are followed", reg);
+}
+
+static MG_THREAD_LOCAL mg_jobj *t_null_traced;
+/* The places said already (a few hundred at most): each once. */
+static struct { const mg_dvm_method *m; u32 pc; } g_null_sites[320];
+static volatile i32 g_null_nsites;
+
+static void trace_null(mg_dvm_method *m, u32 pc, mg_jobj *e)
+{
+    static int wanted = -1;
+    static volatile i32 said;
+    const char *what = NULL;
+    char where[400];
+    int reg;
+    if (wanted < 0) wanted = mg_flag("trace-nulls") ? 1 : 0;
+    if (!wanted || e == t_null_traced) return;
+    t_null_traced = e;
+    if (!m->insns || pc >= m->ninsns || strcmp(mg_dvm_class_of(e)->name, "java/lang/NullPointerException")) return;
+    reg = null_register(m->insns, pc, &what);
+    if (reg < 0) return;
+    {
+        i32 k, nsites = g_null_nsites;
+        for (k = 0; k < nsites && k < (i32)MG_COUNT(g_null_sites); k++)
+            if (g_null_sites[k].m == m && g_null_sites[k].pc == pc) return;
+        k = mg_atomic_add(&said, 1) - 1;
+        if (k >= (i32)MG_COUNT(g_null_sites)) return;
+        g_null_sites[k].m = m;
+        g_null_sites[k].pc = pc;
+        mg_atomic_xchg(&g_null_nsites, k + 1 > nsites ? k + 1 : nsites);
+    }
+    null_origin(m, pc, reg, where, sizeof(where));
+    mg_info("dvm: null in %s.%s line %d (pc %u): %s was null; it was %s", m->cls->name, m->name, mg_dvm_dex_line(m, pc), (unsigned)pc, what, where);
+}
+
 /* The handler in method `m` for exception `e` thrown at `pc`, if it has one. */
 static bool find_handler(mg_dvm_thread *t, mg_dvm_method *m, u32 pc, mg_jobj *e, u32 *target)
 {
@@ -861,6 +1002,7 @@ static bool find_handler(mg_dvm_thread *t, mg_dvm_method *m, u32 pc, mg_jobj *e,
     u32 i;
     bool found = false;
     trace_exception(t, m, pc, e);
+    trace_null(m, pc, e);
     /* Nothing catches the error a used-up step limit throws: code that catches everything and goes round again would never end. */
     if (!m->ntries || t->steps_left == ~(u64)0) return false;
     tries = (const u8 *)(m->insns + m->ninsns);
