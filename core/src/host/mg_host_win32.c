@@ -1917,22 +1917,78 @@ static BOOL replace_in_use(const wchar_t *a, const wchar_t *b)
     return ok;
 }
 
+/*
+ * POSIX's rename through the handle of the file moved (Windows 10's FileRenameInfoEx with FILE_RENAME_FLAG_POSIX_SEMANTICS):
+ * it replaces a file others have open, as Linux's does. The structure is FILE_RENAME_INFO with its Flags, written out here
+ * for SDKs before Windows 10's.
+ */
+typedef struct mg_rename_info {
+    DWORD flags;
+    HANDLE root;
+    DWORD length;
+    WCHAR name[1];
+} mg_rename_info;
+
+static BOOL posix_rename(const wchar_t *a, const wchar_t *b)
+{
+    enum { RENAME_INFO_EX = 22, REPLACE_IF_EXISTS = 1, POSIX_SEMANTICS = 2, IGNORE_READONLY = 0x40 };
+    CREATEFILE2_EXTENDED_PARAMETERS params;
+    size_t n = wcslen(b);
+    mg_rename_info *info;
+    HANDLE h;
+    BOOL ok;
+    DWORD why;
+    memset(&params, 0, sizeof(params));
+    params.dwSize = sizeof(params);
+    params.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
+    h = CreateFile2(a, DELETE | SYNCHRONIZE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, &params);
+    if (h == INVALID_HANDLE_VALUE) return FALSE;
+    info = (mg_rename_info *)mg_alloc(sizeof(*info) + sizeof(WCHAR) * n);
+    memset(info, 0, sizeof(*info));
+    info->flags = REPLACE_IF_EXISTS | POSIX_SEMANTICS | IGNORE_READONLY;
+    info->length = (DWORD)(sizeof(WCHAR) * n);
+    memcpy(info->name, b, sizeof(WCHAR) * (n + 1));
+    ok = SetFileInformationByHandle(h, (FILE_INFO_BY_HANDLE_CLASS)RENAME_INFO_EX, info, (DWORD)(sizeof(*info) + sizeof(WCHAR) * n));
+    why = GetLastError();
+    free(info);
+    CloseHandle(h);
+    SetLastError(why);
+    return ok;
+}
+
 bool mg_path_rename(const char *from, const char *to, int *err)
 {
+    static volatile LONG said;
     wchar_t *a, *b;
     BOOL ok;
+    DWORD e = 0;
+    int tries;
     if (mg_path_is_foreign(from) || mg_path_is_foreign(to)) return mg_foreign_rename(from, to, err);
     a = wide_path(from);
     b = wide_path(to);
-    ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
-    if (!ok) {
-        DWORD e = GetLastError();
-        if (e == ERROR_ACCESS_DENIED || e == ERROR_SHARING_VIOLATION || e == ERROR_USER_MAPPED_FILE) {
-            ok = replace_in_use(a, b);
-            if (!ok) SetLastError(e);
-        }
+    /*
+     * A file another opened without sharing deletion (a scanner, a moment's reader) is in the way only for a moment: tried
+     * again five times, 20 ms apart. Gosuslugi's DataStore ended the app when its rename of a new settings file over the old
+     * one failed, after the PIN was set (package 558); what Windows said is in the log now when one does.
+     */
+    for (tries = 0; tries < 6; tries++) {
+        if (tries) Sleep(20);
+        ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
+        if (ok) break;
+        e = GetLastError();
+        if (e != ERROR_ACCESS_DENIED && e != ERROR_SHARING_VIOLATION && e != ERROR_USER_MAPPED_FILE && e != ERROR_LOCK_VIOLATION) break;
+        ok = posix_rename(a, b);
+        if (ok) break;
+        ok = replace_in_use(a, b);
+        if (ok) break;
     }
-    if (!ok) SET_ERR();
+    if (!ok) {
+        SetLastError(e);
+        if ((e == ERROR_ACCESS_DENIED || e == ERROR_SHARING_VIOLATION || e == ERROR_USER_MAPPED_FILE || e == ERROR_LOCK_VIOLATION) &&
+            InterlockedIncrement(&said) <= 30)
+            mg_warn("io: %s could not be renamed to %s (Windows error %lu, after %d tries)", from, to, (unsigned long)e, tries);
+        SET_ERR();
+    }
     free(a);
     free(b);
     return ok != 0;
