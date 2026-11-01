@@ -2420,6 +2420,10 @@ static int run_data(void)
               && find_line("android/media/session/PlaybackState$CustomAction$Builder.<init>(Ljava/lang/String;Ljava/lang/CharSequence;I)V", 0) >= 0
               && find_line("android/media/session/PlaybackState$Builder.build returns android/media/session/PlaybackState", 0) >= 0
               && find_line("android/media/session/PlaybackState.writeToParcel returns", 0) >= 0);
+        /* And with trace-calls-within-android.media.session.PlaybackState, the calls its methods make of other classes: the Parcel's writes
+           of writeToParcel, which no prefix of trace-calls names. */
+        CHECK(find_line("calls: every call made inside a method of a class whose name starts with android/media/session/PlaybackState is said", 0) >= 0
+              && find_line(": android/os/Parcel.writeLong(J)V", find_line("android/media/session/PlaybackState.writeToParcel(Landroid/os/Parcel;I)V", 0)) >= 0);
     }
     /* The core's own word that it is its SQLite, on its files. */
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);

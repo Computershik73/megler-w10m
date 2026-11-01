@@ -234,7 +234,7 @@ enum { DVM_CS_FAILED = -1, DVM_CS_LINKED = 0, DVM_CS_INITIALIZING = 1, DVM_CS_IN
 struct mg_dvm_class {
     int scope; /* Defining loader namespace; arrays inherit their component namespace. */
     const char *name;                  /* "java/lang/String", "[I", "int"; interned */
-    u8 call_traced;                    /* under a flag trace-calls-<prefix> (mg_dvm_interp.c): 0 not yet looked at, 1 traced, 2 not */
+    u8 call_traced;                    /* the flags trace-calls-<prefix> and trace-calls-within-<prefix> (mg_dvm_interp.c): 0 not yet looked at; else 1, | 2 its calls said, | 4 those inside them */
     mg_dvm_dex *dex;                   /* NULL for array and primitive classes */
     u32 def;                           /* class_def index */
     u32 flags;
@@ -329,6 +329,7 @@ struct mg_dvm_thread {
     mg_jobj *traced;                   /* the last exception the flag trace-exceptions said (find_handler) */
     u32 id;
     int depth;                         /* frames */
+    int call_within;                   /* the depth of the frame of a method under trace-calls-within-<prefix> that runs (mg_dvm_interp.c), 0 none */
     int c_depth;                       /* calls from C into the interpreter, nested */
     mg_addr c_stack_low;               /* the host's stack must not be used below here; 0 when the host could not say */
     mg_addr c_stack_min;               /* the lowest the host's stack pointer has been (mg_dvm_invoke, invoke_native): its deepest use */
@@ -621,6 +622,7 @@ bool mg_dvm_in_frames(const mg_dvm_thread *t, const void *p, size_t size);
 void mg_dvm_monitor_trace_start(void);
 void mg_dvm_stacks_trace_start(void);
 void mg_dvm_call_trace_add(const char *prefix);
+void mg_dvm_call_trace_within_add(const char *prefix);
 /* mg_dvm_class.c: whether a framework method is one of the signatures alone of megler-stubs.txt (mg_dvm_stubs_load). */
 bool mg_dvm_stub_listed(const char *cls, const char *name, const char *sig);
 /* mg_dvm_interp.c: the first call of a method marked a stub, said in the log with its caller (NULL: called from C). */

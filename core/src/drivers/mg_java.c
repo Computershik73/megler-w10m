@@ -1895,11 +1895,13 @@ static void shorten(char *what)
     snprintf(what, 340, "%s, caused by %s", first, last);
 }
 
-/* A flag trace-calls-<prefix>: the calls of the classes under that prefix are said (mg_dvm_call_trace_add). */
+/* A flag trace-calls-<prefix>: the calls of the classes under that prefix are said (mg_dvm_call_trace_add); trace-calls-within-<prefix>:
+   the calls made inside theirs (mg_dvm_call_trace_within_add). */
 static void call_trace_flag(const char *rest, void *user)
 {
     (void)user;
-    mg_dvm_call_trace_add(rest);
+    if (!strncmp(rest, "within-", 7)) mg_dvm_call_trace_within_add(rest + 7);
+    else mg_dvm_call_trace_add(rest);
 }
 
 /*
