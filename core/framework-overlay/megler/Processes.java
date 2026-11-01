@@ -48,6 +48,18 @@ public final class Processes {
     /* Each process's scope once made; null for one that could not be. */
     private static final HashMap<String, Scope> sScopes = new HashMap<>();
 
+    /** The name of the process whose scope class loader `l` is (or is under); null for the app's own process. */
+    public static String nameOf(ClassLoader l) {
+        if (l == null) return null;
+        synchronized (sScopes) {
+            if (sScopes.isEmpty()) return null;
+            for (ClassLoader at = l; at != null; at = at.getParent())
+                for (Scope s : sScopes.values())
+                    if (s != null && s.loader == at) return s.name;
+        }
+        return null;
+    }
+
     /** The scope of the process a component runs in, made the first time (on the main thread); null for the app's own process,
      *  and for one whose scope could not be made (the component then runs in the app's, as before). */
     public static Scope of(Manifest.Component c) {
