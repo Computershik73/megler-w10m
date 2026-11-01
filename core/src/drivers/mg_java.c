@@ -1267,6 +1267,13 @@ N(Native_presentRect)
     for (i = 0; i < 4; i++) t_part[i] = c->args[i].i;
 }
 
+/* The same, said by the render thread for a frame it is about to show (mg_java_gfx.c, Gfx.frame). */
+static void present_part(const i32 part[4])
+{
+    int i;
+    for (i = 0; i < 4; i++) t_part[i] = part[i];
+}
+
 /*
  * A picture of the whole window to the shell, of which `part` (left, top, right, bottom) changed; part[2] 0: all of it.
  * The views' (present, below) and, once the app draws with EGL on a view, the window composed of the views and the GL
@@ -2023,6 +2030,7 @@ static void main_thread(void *arg)
         mg_java_gfx_set_present(present, NULL);
         mg_java_gfx_set_present_canvas(present_canvas, NULL);
         mg_java_gfx_set_present_probe(mg_java_gl_views_probe_due, mg_java_gl_views_probe);
+        mg_java_gfx_set_present_part(present_part);
         /* What C keeps of the app's objects across calls: the collector keeps it too. */
         mg_dvm_add_root(&J.clipboard);
         mg_dvm_register(mg_java_gfx_natives());
@@ -2054,6 +2062,8 @@ static void main_thread(void *arg)
             shorten(what);
             snprintf(why, sizeof(why), "the app stopped because nothing caught %s%s%s%s, which ends an app on Android too", what, where[0] ? " (in " : "", where, where[0] ? ")" : "");
         }
+        /* The last frame handed to the render thread shown before the app is said to have ended. */
+        mg_java_gfx_frames_wait();
         meter_end();
     }
     free(framework);

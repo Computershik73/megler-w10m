@@ -112,6 +112,7 @@
 
 #include "../dvm/mg_dvm.h"
 #include "../host/mg_host.h"
+#include "../mg_core.h"
 #include "../webp/mg_webp.h"
 #include "mg_java_gfx.h"
 
@@ -3042,15 +3043,28 @@ static MG_NOINLINE void node_through_bitmap(gcanvas *v, const gnode *n, gdlist *
  * rectangle; then to its outline; then its list. Nothing is drawn of a node
  * with no list, no alpha, or an outline to clip to that is empty.
  */
-static void node_play(gcanvas *v, gnode *n, int depth)
+static void node_play(gcanvas *v, gnode *live, int depth)
 {
     float w, h, through[6], at[6] = { 1, 0, 0, 0, 1, 0 }, bounds[4];
     i32 d0, flags, blend = MEGLER_GFX_BLEND_SRC_OVER, filter = -1;
     gdlist *l;
-    if (!v || !n) return;
+    gnode copy, *n = &copy;
+    float outline_path[128], *outline_made = NULL;
+    if (!v || !live) return;
+    /*
+     * The node as it is now, read under the lock its setter writes it under (rnSet): the render thread draws a frame while
+     * the main thread may set the properties for the next. Its outline's path is copied too, as the setter frees the one
+     * it replaces.
+     */
     mg_lock_acquire(&g_lock);
-    l = n->list;
+    l = live->list;
     if (l) l->refs++;
+    copy = *live;
+    if (copy.outline_path && copy.outline_n > 0) {
+        float *to = copy.outline_n <= (i32)MG_COUNT(outline_path) ? outline_path : (outline_made = (float *)mg_alloc(sizeof(float) * (size_t)copy.outline_n));
+        memcpy(to, copy.outline_path, sizeof(float) * (size_t)copy.outline_n);
+        copy.outline_path = to;
+    }
     mg_lock_release(&g_lock);
     flags = n->flags;
     if (flags & RN_LAYER_PAINT) {
@@ -3059,6 +3073,7 @@ static void node_play(gcanvas *v, gnode *n, int depth)
     }
     if (!l || !(n->alpha > 0) || ((flags & RN_CLIP_OUTLINE) && !n->outline_kind) || ((flags & RN_LAYER) && blend == MEGLER_GFX_BLEND_DST)) {
         dl_unref(l);
+        free(outline_made);
         return;
     }
     /*
@@ -3067,6 +3082,7 @@ static void node_play(gcanvas *v, gnode *n, int depth)
      */
     if (cv_state(v)->empty) {
         dl_unref(l);
+        free(outline_made);
         return;
     }
     w = n->right - n->left;
@@ -3094,6 +3110,7 @@ static void node_play(gcanvas *v, gnode *n, int depth)
             node_through_bitmap(v, n, l, w, h, depth);
             while (v->depth > d0) cv_restore(v);
             dl_unref(l);
+            free(outline_made);
             return;
         }
         /* A layer with no area is no layer to cv_save: the node then draws nothing. */
@@ -3107,6 +3124,7 @@ static void node_play(gcanvas *v, gnode *n, int depth)
     list_play(v, l, depth);
     while (v->depth > d0) cv_restore(v);
     dl_unref(l);
+    free(outline_made);
 }
 
 /* ---------------------------------------------- Gfx: display lists natives */
@@ -3214,8 +3232,24 @@ N(G_rnSet)
     const float *f = (const float *)elements(c->args[1].l, 'F', 20);
     const i32 *k = (const i32 *)elements(c->args[2].l, 'I', 5), *paint = (const i32 *)elements(c->args[4].l, 'I', P_COUNT);
     gpath p;
+    float *path = NULL, *old_path;
+    i32 path_n = 0, path_fill = 0, kind;
     int i;
     if (!n || !f || !k) return;
+    /* The outline's path built first; then everything set at once, under the lock node_play reads it under. */
+    kind = k[1] == 1 || k[1] == 2 ? k[1] : 0;
+    if (kind == 2) {
+        if (!path_of(c->args[3].l, k[4], &p)) {
+            kind = 0;
+        } else {
+            path_fill = k[3] & (MEGLER_GFX_EVEN_ODD | FILL_INVERSE);
+            path_n = p.n;
+            path = (float *)mg_alloc(sizeof(float) * (size_t)(p.n > 0 ? p.n : 1));
+            if (p.n) memcpy(path, p.v, sizeof(float) * (size_t)p.n);
+            path_free(&p);
+        }
+    }
+    mg_lock_acquire(&g_lock);
     n->left = f[0];
     n->top = f[1];
     n->right = f[2];
@@ -3228,24 +3262,16 @@ N(G_rnSet)
     }
     n->radius = number(f[19], 0);
     n->flags = k[0];
-    n->outline_kind = k[1] == 1 || k[1] == 2 ? k[1] : 0;
+    n->outline_kind = kind;
     n->layer_alpha = k[2] < 0 ? 0 : k[2] > 255 ? 255 : k[2];
-    free(n->outline_path);
-    n->outline_path = NULL;
-    n->outline_n = 0;
-    if (n->outline_kind == 2) {
-        if (!path_of(c->args[3].l, k[4], &p)) {
-            n->outline_kind = 0;
-        } else {
-            n->outline_fill = k[3] & (MEGLER_GFX_EVEN_ODD | FILL_INVERSE);
-            n->outline_n = p.n;
-            n->outline_path = (float *)mg_alloc(sizeof(float) * (size_t)(p.n > 0 ? p.n : 1));
-            if (p.n) memcpy(n->outline_path, p.v, sizeof(float) * (size_t)p.n);
-            path_free(&p);
-        }
-    }
+    old_path = n->outline_path;
+    n->outline_path = path;
+    n->outline_n = path_n;
+    if (kind == 2) n->outline_fill = path_fill;
     if (paint) memcpy(n->layer_paint, paint, sizeof(n->layer_paint));
     else n->flags &= ~RN_LAYER_PAINT;
+    mg_lock_release(&g_lock);
+    free(old_path);
 }
 
 /* (long node) -> long: the bytes its list takes (computeApproximateMemoryUsage). */
@@ -3656,14 +3682,39 @@ N(G_bmDiffer)
     c->ret.i = n;
 }
 
-N(G_present)
+/* ------------------------------------------------------ Gfx: the render thread */
+
+/*
+ * The window's frames drawn onto the screen and shown off the main thread, as Android's RenderThread draws what the UI thread
+ * recorded. megler.ViewRoot records a frame -- every window, the part of the screen it changes cleared -- into a list
+ * (a recording canvas: views draw their own lists by reference, Canvas.meglerRecordFrame) and hands it over (Gfx.frame); the
+ * render thread plays that list onto the screen's canvas, which only it draws on, and shows the screen (present_bitmap, the
+ * shell's present), while the main thread goes on to its next frame. One frame is handed over at a time: the main thread
+ * waits for the one before to be shown, which paces it to the screen as its own present did. What the list draws is kept
+ * by it (nodes, lists, bitmaps and shaders are counted references), and a node's properties are read under the lock its
+ * setter takes (node_play, rnSet). Before, the main thread drew every view's list onto the screen and waited for the shell's
+ * present itself: Spotify's spent 26% of its time drawing the lists and 62% presenting, 27 ms a frame, of which its own
+ * Java was 10. The flag no-render-thread draws and shows each frame on the main thread, as before.
+ */
+static mg_lock g_rt_lock = MG_LOCK_INIT;
+static mg_cond g_rt_wake = MG_COND_INIT, g_rt_idle = MG_COND_INIT;
+static struct {
+    i32 started;                       /* 0 not yet, 1 it runs, 2 none: frames are drawn and shown on the main thread */
+    bool busy;                         /* a frame has been handed over and is not shown yet */
+    gcanvas *cv;                       /* the frame handed over: the screen's canvas and bitmap, the list, the part it changes */
+    gbitmap *bm;
+    gdlist *list;
+    i32 part[4];
+    u32 frames;                        /* for the log, since `since` */
+    u64 play_ns, show_ns, wait_ns, since;
+} R;
+static void (*g_present_part)(const i32 part[4]);
+
+void mg_java_gfx_set_present_part(void (*fn)(const i32 part[4])) { g_present_part = fn; }
+
+/* The bitmap shown: from the shell's own picture of it where it can, else its memory brought up to date (Gfx.present). */
+static void present_bitmap(gbitmap *b)
 {
-    gbitmap *b = bm_of(c->args[0].j);
-    if (!g_present.fn) return;
-    if (!b) {
-        g_present.fn(g_present.user, NULL, 0, 0, 0);
-        return;
-    }
     /*
      * Shown from the shell's own picture of the bitmap where it can (megler_gfx_host.present): when one canvas draws the bitmap
      * and nothing was written into the memory behind it. The canvas is then not flushed, and stays dirty: whatever reads
@@ -3687,6 +3738,149 @@ N(G_present)
     }
     bm_settle(b);
     g_present.fn(g_present.user, b->px, b->w, b->h, b->stride);
+}
+
+/* A frame drawn onto the screen's canvas and shown (not when part[2] is -1), on the calling thread; the list is let go. */
+static void frame_show(gcanvas *v, gbitmap *b, gdlist *l, const i32 part[4])
+{
+    u64 t0 = mg_time_monotonic_ns(), t1;
+    i32 d0 = v->depth;
+    cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER, NULL);
+    list_play(v, l, 0);
+    while (v->depth > d0) cv_restore(v);
+    dl_unref(l);
+    t1 = mg_time_monotonic_ns();
+    if (part[2] != -1) {
+        if (g_present_part) g_present_part(part);
+        if (g_present.fn) present_bitmap(b);
+    }
+    mg_lock_acquire(&g_rt_lock);
+    R.frames++;
+    R.play_ns += t1 - t0;
+    R.show_ns += mg_time_monotonic_ns() - t1;
+    mg_lock_release(&g_rt_lock);
+}
+
+static void rt_main(void *arg)
+{
+    (void)arg;
+    mg_lock_acquire(&g_rt_lock);
+    for (;;) {
+        gcanvas *v;
+        gbitmap *b;
+        gdlist *l;
+        i32 part[4];
+        u64 now;
+        while (!R.busy || !R.list) mg_cond_wait(&g_rt_wake, &g_rt_lock);
+        v = R.cv;
+        b = R.bm;
+        l = R.list;
+        memcpy(part, R.part, sizeof(part));
+        R.list = NULL;
+        mg_lock_release(&g_rt_lock);
+        frame_show(v, b, l, part);
+        mg_lock_acquire(&g_rt_lock);
+        R.busy = false;
+        R.cv = NULL;
+        R.bm = NULL;
+        mg_cond_broadcast(&g_rt_idle);
+        now = mg_time_monotonic_ns();
+        if (!R.since) R.since = now;
+        if (now - R.since >= 5000000000ull && R.frames) {
+            mg_info("gfx: the render thread, %.1f s: %u frames drawn and shown off the main thread, %.1f ms drawing the lists and %.1f ms showing each; "
+                    "the main thread waited %.1f ms in all for the frame before to be shown",
+                    (double)(now - R.since) / 1e9, (unsigned)R.frames, (double)R.play_ns / 1e6 / R.frames, (double)R.show_ns / 1e6 / R.frames,
+                    (double)R.wait_ns / 1e6);
+            R.frames = 0;
+            R.play_ns = R.show_ns = R.wait_ns = 0;
+            R.since = now;
+        }
+    }
+}
+
+/* Whether frames go to the render thread, which is started the first time. */
+static bool rt_on(void)
+{
+    if (R.started) return R.started == 1;
+    mg_lock_acquire(&g_rt_lock);
+    if (!R.started) {
+        mg_thread *t = mg_flag("no-render-thread") ? NULL : mg_thread_start(rt_main, NULL, 1u << 20, "RenderThread");
+        if (t) mg_thread_detach(t);
+        R.started = t ? 1 : 2;
+        mg_info("gfx: %s", t ? "the window's frames are drawn and shown by a render thread of their own, off the main thread"
+                             : "the window's frames are drawn and shown on the main thread (the flag no-render-thread, or no thread)");
+    }
+    mg_lock_release(&g_rt_lock);
+    return R.started == 1;
+}
+
+/* Until the frame handed over last has been shown. */
+static void rt_wait(void)
+{
+    u64 t0;
+    if (R.started != 1) return;
+    t0 = mg_time_monotonic_ns();
+    mg_lock_acquire(&g_rt_lock);
+    while (R.busy) mg_cond_wait(&g_rt_idle, &g_rt_lock);
+    R.wait_ns += mg_time_monotonic_ns() - t0;
+    mg_lock_release(&g_rt_lock);
+}
+
+void mg_java_gfx_frames_wait(void) { rt_wait(); }
+
+/*
+ * (long screen canvas, long screen bitmap, long recording canvas, int left, int top, int right, int bottom): Gfx.frame. What the
+ * recording canvas recorded (its recording ended here) drawn onto the screen's canvas and the screen shown, `part` the part of
+ * it the frame changes (right 0: all of it; -1: drawn and not shown); by the render thread, once the frame before has been shown.
+ */
+N(G_frame)
+{
+    gcanvas *v = cv_of(c->args[0].j), *rec = cv_of(c->args[2].j);
+    gbitmap *b = bm_of(c->args[1].j);
+    gdlist *l = cv_end_record(rec);
+    i32 part[4];
+    u64 t0;
+    int i;
+    for (i = 0; i < 4; i++) part[i] = c->args[3 + i].i;
+    if (!v || !b || !l) {
+        dl_unref(l);
+        return;
+    }
+    if (!rt_on()) {
+        frame_show(v, b, l, part);
+        return;
+    }
+    t0 = mg_time_monotonic_ns();
+    mg_lock_acquire(&g_rt_lock);
+    while (R.busy) mg_cond_wait(&g_rt_idle, &g_rt_lock);
+    R.wait_ns += mg_time_monotonic_ns() - t0;
+    R.cv = v;
+    R.bm = b;
+    R.list = l;
+    memcpy(R.part, part, sizeof(part));
+    R.busy = true;
+    mg_cond_signal(&g_rt_wake);
+    mg_lock_release(&g_rt_lock);
+}
+
+/* Gfx.frameWait(): until the frame handed over last has been shown (before the screen's bitmap is let go of, or read). */
+N(G_frameWait)
+{
+    (void)c;
+    rt_wait();
+}
+
+/* (long bm): the bitmap shown as it is, on the calling thread, after any frame handed to the render thread; 0: nothing to show. */
+N(G_present)
+{
+    gbitmap *b = bm_of(c->args[0].j);
+    if (!g_present.fn) return;
+    rt_wait();
+    if (!b) {
+        g_present.fn(g_present.user, NULL, 0, 0, 0);
+        return;
+    }
+    present_bitmap(b);
 }
 
 static const mg_jhle k_gfx[] = {
@@ -3750,6 +3944,8 @@ static const mg_jhle k_gfx[] = {
     { "megler/Gfx", "pathContains", "([FIIFF)Z", G_pathContains },
     { "megler/Gfx", "pathLength", "([FI[F)F", G_pathLength },
     { "megler/Gfx", "present", "(J)V", G_present },
+    { "megler/Gfx", "frame", "(JJJIIII)V", G_frame },
+    { "megler/Gfx", "frameWait", "()V", G_frameWait },
     { "megler/Gfx", "cvRecord", "(II)J", G_cvRecord },
     { "megler/Gfx", "cvEndRecord", "(J)J", G_cvEndRecord },
     { "megler/Gfx", "cvDrawNode", "(JJ)V", G_cvDrawNode },

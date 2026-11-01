@@ -128,6 +128,13 @@ public final class RenderNode {
         }
     }
 
+    /**
+     * Megler: the same, for megler.ViewRoot, which records the window's frames (a recording canvas does not sync) and hands
+     * them to the render thread: called once the render thread has shown the frame before, so that it draws each frame with
+     * the properties of that frame.
+     */
+    public static void meglerSyncAll() { meglerSync(); }
+
     /** Megler: every node whose properties changed hands them to the core. Before anything is drawn that may draw a node. */
     static void meglerSync() {
         synchronized (sMeglerDirty) {

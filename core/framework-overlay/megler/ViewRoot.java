@@ -599,11 +599,14 @@ public final class ViewRoot implements ViewParent {
         int sw = screenW(), sh = screenH();
         boolean whole = sFullRedraw;
         if (sScreen == null || sScreen.getWidth() != sw || sScreen.getHeight() != sh) {
+            // (Not while the render thread draws the frame before onto the old one.)
+            Gfx.frameWait();
             if (sCanvas != null) sCanvas.meglerRelease();
             sScreen = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
-            sCanvas = new ScreenCanvas(sScreen);
+            sCanvas = new Canvas(sScreen);
             whole = true;
         }
+        if (sFrame == null) sFrame = new ScreenCanvas();
         // What the windows asked for, on the screen
         Rect part = sPart;
         part.setEmpty();
@@ -629,29 +632,45 @@ public final class ViewRoot implements ViewParent {
         sFullWhy = null;
         sFullRedraw = false;
         countDirtier(whole ? sw * sh : (part.isEmpty() ? 0 : Math.min(part.width(), sw) * Math.min(part.height(), sh)), sw * sh);
+        // The frame is recorded (sFrame), and the render thread draws it onto the screen and shows it (Gfx.frame) while this
+        // thread goes on: the views' lists are drawn there by reference, as Android's RenderThread draws them.
         if (!whole) {
             sRedrawn = 0;
             if (!sPresentedAny || !part.intersect(0, 0, sw, sh)) return;      /* nothing visible changed: the screen is as it was */
-            int save = sCanvas.save();
-            sCanvas.clipRect(part);
-            sCanvas.drawColor(0, PorterDuff.Mode.CLEAR);
+            sFrame.meglerFrame(sw, sh);
+            int save = sFrame.save();
+            sFrame.clipRect(part);
+            sFrame.drawColor(0, PorterDuff.Mode.CLEAR);
             sDrawingPart = true;
-            try { drawWindows(sCanvas, roots, sw, sh); } finally { sDrawingPart = false; sCanvas.restoreToCount(save); }
+            try { drawWindows(sFrame, roots, sw, sh); } finally { sDrawingPart = false; sFrame.restoreToCount(save); }
             sRedrawn = part.width() * part.height();
             if (sCheck == 0) sCheck = Native.checkPartial() ? 1 : -1;
-            if (sCheck > 0) checkPart(roots, sw, sh, part);
-            Native.presentRect(part.left, part.top, part.right, part.bottom);
-            Gfx.present(sScreen.meglerNative());
+            handOver();
+            Gfx.frame(sCanvas.meglerNative(), sScreen.meglerNative(), sFrame.meglerNative(), part.left, part.top, part.right, part.bottom);
+            if (sCheck > 0) { Gfx.frameWait(); checkPart(roots, sw, sh, part); }
             return;
         }
-        sScreen.eraseColor(0);
-        int gen = sScreen.getGenerationId();
-        boolean drew = drawWindows(sCanvas, roots, sw, sh);
-        // a window drawn counts even when its drawing left the generation alone (the screen must lose a closed dialog)
-        boolean any = drew || sScreen.getGenerationId() != gen;
+        sFrame.meglerFrame(sw, sh);
+        sFrame.drawColor(0, PorterDuff.Mode.CLEAR);
+        // a window drawn counts even when it drew nothing (the screen must lose a closed dialog)
+        boolean any = drawWindows(sFrame, roots, sw, sh);
         sRedrawn = any ? sw * sh : 0;
-        if (any || sPresentedAny) Gfx.present(any ? sScreen.meglerNative() : 0);
+        // With no window drawn the screen is cleared all the same (drawn, not shown): a frame drawn in part later keeps the rest.
+        handOver();
+        Gfx.frame(sCanvas.meglerNative(), sScreen.meglerNative(), sFrame.meglerNative(), 0, 0, any ? 0 : -1, 0);
+        if (!any && sPresentedAny) Gfx.present(0);
         sPresentedAny = any;
+    }
+    /* The canvas each frame is recorded on, for the render thread. */
+    private static ScreenCanvas sFrame;
+    /*
+     * Before a frame is handed over: the frame before shown, then the nodes' properties that changed handed to the core, which
+     * drawing on the screen did before (RenderNode.meglerSync) and recording does not, so that the render thread draws each
+     * frame with its own.
+     */
+    private static void handOver() {
+        Gfx.frameWait();
+        android.graphics.RenderNode.meglerSyncAll();
     }
     /** For the tests (Native.checkPartial): 1 a frame drawn in part is checked against the same frame drawn whole, -1 not, 0 not asked yet. */
     private static int sCheck;
@@ -691,12 +710,21 @@ public final class ViewRoot implements ViewParent {
      * reads canvas.getWidth() means the view's width. Anything else of the canvas is the screen's, as before.
      */
     public static final class ScreenCanvas extends Canvas {
-        private int mViewW = -1, mViewH = -1;
+        private int mViewW = -1, mViewH = -1, mScreenW = -1, mScreenH = -1;
 
         ScreenCanvas(Bitmap b) { super(b); }
+        /* One that records the window's frames (drawAll), of the screen's size. */
+        ScreenCanvas() { super(); }
 
-        @Override public int getWidth() { return mViewW >= 0 ? mViewW : super.getWidth(); }
-        @Override public int getHeight() { return mViewH >= 0 ? mViewH : super.getHeight(); }
+        /** A frame of the screen's size recorded from now on (megler.Gfx.frame hands it over). */
+        void meglerFrame(int w, int h) {
+            meglerRecordFrame(w, h);
+            mScreenW = w;
+            mScreenH = h;
+        }
+
+        @Override public int getWidth() { return mViewW >= 0 ? mViewW : mScreenW >= 0 ? mScreenW : super.getWidth(); }
+        @Override public int getHeight() { return mViewH >= 0 ? mViewH : mScreenH >= 0 ? mScreenH : super.getHeight(); }
 
         /** The size said from now on; what was said before, for meglerViewSizeBack. */
         public long meglerViewSize(int w, int h) {

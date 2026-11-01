@@ -4961,7 +4961,28 @@ on a looper thread of its own and takes it back with `next()`.
   Chromium's WebView draws its page into a bitmap only then. The flag
   `no-view-lists` turns both off. The data app's step
   "hardware-accelerated" checks the view, its list's canvas, a SurfaceView's
-  and a bitmap's.
+  and a bitmap's. (A WebView whose page is drawn through the draw functor
+  says it is: "The WebView".)
+  And the window's frames are drawn and shown by a render thread, as
+  Android's RenderThread draws what the UI thread recorded:
+  `megler.ViewRoot.drawAll` records a frame -- every window, the part of the
+  screen it changes cleared -- on a recording canvas
+  (`Canvas.meglerRecordFrame`), the views' lists by reference, and hands it
+  over (`Gfx.frame`, `mg_java_gfx.c`); the render thread plays it onto the
+  screen's canvas, which only it draws on, and has the shell show the screen,
+  while the main thread goes on with its next frame. One frame is in flight:
+  before the next is handed over, the main thread waits for it to be shown and
+  then gives the core the nodes' properties that changed
+  (`RenderNode.meglerSyncAll`; drawing on the screen did that before, and a
+  recording does not). What a frame draws is kept by its list (nodes, lists,
+  bitmaps, shaders are counted references), and a node's properties are read
+  under the lock their setter takes. Before, the main thread drew every list
+  onto the screen and waited for the shell's present itself: Spotify's spent
+  26% of its time drawing lists and 62% presenting, 27 ms a frame, of which
+  its own Java was 10. The log says "gfx: the render thread" every five
+  seconds: frames, the time drawing the lists and showing each, and how long
+  the main thread waited for it. The flag `no-render-thread` draws and shows
+  each frame on the main thread.
 - `megler/KeyStoreProvider.java`, one method, and Megler's circumstance
   rather than a fault of the framework's own: `PairGen.generateKeyPair` takes another
   provider's key pair generator from its service, because
