@@ -47,17 +47,30 @@ public final class Processes {
 
     /* Each process's scope once made; null for one that could not be. */
     private static final HashMap<String, Scope> sScopes = new HashMap<>();
+    /*
+     * The scopes whose loaders nameOf knows, read without a lock: a scope is in it from before its Application is made, since
+     * that Application asks its process's name in its onCreate (Play Store's chooses its graph of services by it, and built its
+     * main process's in its background process while the scope was put in sScopes only after onCreate had returned).
+     */
+    private static volatile Scope[] sNamed = new Scope[0];
 
     /** The name of the process whose scope class loader `l` is (or is under); null for the app's own process. */
     public static String nameOf(ClassLoader l) {
-        if (l == null) return null;
-        synchronized (sScopes) {
-            if (sScopes.isEmpty()) return null;
-            for (ClassLoader at = l; at != null; at = at.getParent())
-                for (Scope s : sScopes.values())
-                    if (s != null && s.loader == at) return s.name;
-        }
+        Scope[] named = sNamed;
+        if (l == null || named.length == 0) return null;
+        for (ClassLoader at = l; at != null; at = at.getParent())
+            for (Scope s : named)
+                if (s.loader == at) return s.name;
         return null;
+    }
+
+    private static void named(Scope s, boolean in) {
+        synchronized (sScopes) {
+            java.util.ArrayList<Scope> l = new java.util.ArrayList<>(java.util.Arrays.asList(sNamed));
+            l.remove(s);
+            if (in) l.add(s);
+            sNamed = l.toArray(new Scope[0]);
+        }
     }
 
     /** The scope of the process a component runs in, made the first time (on the main thread); null for the app's own process,
@@ -84,6 +97,7 @@ public final class Processes {
             return null;
         }
         String cls = Manifest.applicationClass != null ? Manifest.applicationClass : Application.class.getName();
+        named(s, true);
         try {
             Application a = Application.class.getName().equals(cls) ? new Application()
                 : (Application) s.loader.loadClass(cls).getDeclaredConstructor().newInstance();
@@ -93,7 +107,7 @@ public final class Processes {
             a.onCreate();
         } catch (Throwable t) {
             android.util.Log.e("Megler", "process " + process + ": its Application failed", t);
-            if (s.app == null) return null;
+            if (s.app == null) { named(s, false); return null; }
         }
         return s;
     }
