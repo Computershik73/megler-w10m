@@ -1,67 +1,148 @@
 # Megler
 
-Megler runs Android apps -- games, and apps written in Java -- on
-**Windows 10 Mobile** (ARM32, 1703 and later). It is a translation layer, not an
-emulator.
+**Android apps on Windows 10 Mobile.** Megler runs an Android app's own code directly on
+the phone's ARM processor, inside an ordinary Windows app. Nothing is emulated and no
+Android system boots: Megler stands in for Android around the app -- its linker and C
+library, its Java runtime and framework, its graphics, its sound, its Google services --
+and answers each call with Windows' own.
 
-An app's own Android code runs directly on the phone's processor. Megler stands in for
-Android around it: the dynamic linker, the C library, the NDK, the Java calls the app
-makes, and OpenGL ES (through ANGLE, on Direct3D 11). No Android system boots and
-nothing is emulated.
+It runs on the Windows 10 Mobile builds phones have today (1703, 10.0.15063, and later;
+developed on an HP Elite x3, 10.0.15254). [docs/STATUS.md](docs/STATUS.md) says exactly
+what has been seen working and where; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
+[docs/JAVA.md](docs/JAVA.md) say how it works.
 
-**This is a first stage.** The core runs real Android libraries and a complete
-NativeActivity app under qemu-arm on a PC and on a phone (a Snapdragon 820 one, where
-its own tests pass and its demo draws, sounds and follows fingers), and one real
-game, a Unity one, is played there, with its sound and its opening films.
-[docs/STATUS.md](docs/STATUS.md) says exactly what has been seen working and where,
-and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) how it works and what a phone still
-has to answer.
+## What it does today
 
-## What can run
+- **Google Play.** The official Google Play Store and Google Play services run in Megler.
+  You sign in with a Google account, find an app, and Play downloads and installs it. The
+  Gosuslugi app, installed this way, signs in and keeps its sign-in across starts.
+- **Apps written in Java and Kotlin, and native games.** Spotify, Telegram, Yandex Maps,
+  Gosuslugi and others start and are used on the phone; games built on NativeActivity or
+  Unity (IL2CPP) run with their sound and films. Each app has its own state of
+  compatibility (STATUS.md), and some still end with errors that are being fixed.
+- **A modern WebView.** Android's System WebView, Chromium 128, runs inside the app, and
+  draws its pages on the graphics processor.
+- **The phone's own hardware and services.** Windows Hello answers Android's
+  `BiometricPrompt`; text messages reach apps that wait for a code; cameras, media
+  controls on the lock screen, H.264/H.265/AAC/MP3 decoding by Media Foundation, the
+  phone's folders as `/sdcard`.
+- **Apps installed one by one.** An APK, `.apks` or `.xapk` opened on the phone, or an
+  app from Google Play, can become a Windows app of its own (`MeglerApp.<package>`): its
+  own tile, its own process and memory, its own entry in the task switcher.
 
-- APKs with **32-bit ARM** native code (`armeabi-v7a`, or `armeabi`). Windows 10
-  Mobile is a 32-bit system on every phone, so `arm64-v8a` code cannot run, and an
-  APK that has only that cannot run here. Older versions of most games still carry
-  32-bit libraries.
-- Apps built on **NativeActivity** (`android_native_app_glue`), and games made with
-  **Unity** (IL2CPP): the second driver is new, and one game has run with it on a
-  phone (see the status). SDL, cocos2d-x, Unreal and Godot each need a driver of
-  their own; apps written only in Java or Kotlin need a Java runtime.
-  One is under way ([docs/JAVA.md](docs/JAVA.md)): a Dalvik interpreter joined to
-  the JNI layer, Android 9's own class library under it (libcore, with its
-  native libraries built here for ARMv7), the Java framework in `core/framework`
-  on top, and drawing by the shell with Direct2D. Small test apps written in
-  Java run on a phone with it -- views, lists, dialogs, a second Activity,
-  preferences, background tasks, databases, a native library of their own --
-  and the first real apps start there (docs/STATUS.md says how far each
-  gets), their text in Android's own fonts. HTTPS through Android's HTTP
-  client and Conscrypt has also been checked on the HP Elite x3.
-- OpenGL ES 2.0 on any phone; 3.0 where the GPU's driver gives Direct3D feature
-  level 10 or more. No Vulkan.
-- Sound through OpenSL ES buffer queues (what FMOD, OpenAL Soft and SDL sit on)
-  and AAudio output streams (what apps that decode their own sound use, Spotify among them).
-  Films an engine plays through `libmediandk.so`, when they are something Windows
-  decodes (MP4 with H.264 and AAC).
-- The network over the phone's own Winsock: TCP and UDP, servers included, names,
-  the interfaces, from native code and from Java (`HttpURLConnection` over
-  http, `java.net`, NIO). Tested on a PC, under qemu and on the HP Elite x3.
-  TLS uses Android 9's Conscrypt and BoringSSL: the phone passes the loopback
-  TLS tests and reads external HTTPS responses with normal certificate and
-  hostname verification. Individual apps can still require unsupported APIs.
+## How it works
 
-The app's library page tells, for each APK, what it is and why it can or cannot run.
+An APK holds two kinds of code: Java bytecode (`classes.dex`) and native ARM libraries
+(`lib/armeabi-v7a/*.so`). Megler runs both on the phone's processor and puts a piece of
+its own wherever Android would have put a piece of the system:
 
-## How Android code runs under UWP
+```mermaid
+flowchart TB
+    subgraph APK["The Android app (unchanged APK)"]
+        DEX["Java / Kotlin bytecode<br/>classes.dex"]
+        SO["Native ARM code<br/>lib/armeabi-v7a/*.so"]
+    end
 
-| Need | Solution |
+    subgraph MEG["Megler, inside one Windows app (UWP)"]
+        DVM["Java runtime<br/>interpreter, JIT to Thumb-2,<br/>concurrent garbage collector, JNI"]
+        FW["Android framework<br/>Android 9 libcore + framework (API 34)"]
+        LD["Linker and bionic<br/>libc, libm, pthreads, files, sockets"]
+        GFX["Graphics<br/>views → display lists → RenderThread<br/>OpenGL ES → ANGLE<br/>WebView → Chromium 128"]
+        GMS["Google Play services and Play Store<br/>each in a class scope of its own"]
+        NDK["NDK libraries<br/>libandroid, EGL, OpenSL ES, AAudio, mediandk"]
+    end
+
+    subgraph WIN["Windows 10 Mobile"]
+        D3D["Direct3D 11 / Direct2D / DirectWrite"]
+        AUD["XAudio2, Media Foundation"]
+        SYS["Win32: memory, threads, files, Winsock"]
+        DEV["Windows Hello, SMS, cameras, media controls"]
+    end
+
+    DEX --> DVM --> FW
+    SO --> LD
+    SO --> NDK
+    FW --> GFX
+    FW --> GMS
+    FW --> DEV
+    NDK --> GFX
+    NDK --> AUD
+    GFX --> D3D
+    LD --> SYS
+    FW --> AUD
+```
+
+What stands where Android would stand:
+
+| Android has | Megler has |
 |---|---|
-| Executable memory | `rescap:codeGeneration`; a library's pages are committed read-write, filled, relocated and patched, then turned execute-read with `VirtualProtectFromApp`, once (an executable commit and a writable-executable page are both refused). The tricks are [gecko-w10m](../gecko-w10m)'s and [podium-w10m](../podium-w10m)'s. |
-| Android's float ABI | Android passes floats in integer registers, Windows in VFP registers. Every function that crosses takes and returns the bits as integers, which is exactly how the Android side passes them; no assembly. |
-| The thread pointer | Android code reads `TPIDRURO` inline. Each such instruction is redirected to three that load the guest's thread pointer from a `TlsAlloc` slot in the TEB. |
-| ARM-mode PLT entries | Windows on ARM keeps a thread in Thumb state only. Each PLT entry becomes one ARM instruction that is an undefined instruction when read as Thumb, so it works in either state: taken normally, or rescued by the fault handler. |
-| ARM-mode functions | Run as they are. Whether a phone keeps them running is what the app's **Device checks** measures. |
-| OpenGL ES | ANGLE's `libEGL.dll`/`libGLESv2.dll` as gecko-w10m builds them. The app's window surface is a texture on ANGLE's Direct3D device; the shell copies each frame to its `SwapChainPanel`'s swap chain. |
-| bionic's 4-byte mutexes | Implemented in the word itself, waiting on its address (`WaitOnAddress`). |
+| The Linux kernel and bionic, Android's C library | bionic written over Win32 inside the app: files, threads and futexes (`WaitOnAddress`), memory (`VirtualAlloc`), sockets (Winsock), signals |
+| The dynamic linker | its own linker: loads `armeabi-v7a` libraries straight out of the APK, relocates them, and rewrites the few instructions Windows does not allow an app (reading the thread pointer, ARM-mode PLT entries) |
+| ART, Android's Java runtime | its own Dalvik runtime: an interpreter, a method JIT to Thumb-2 on code pages that are writable and executable at once where the phone allows it, a concurrent garbage collector, JNI |
+| libcore and the framework | Android 9's libcore with its native libraries built for ARMv7, and an Android framework that answers as API 34 (Android 14) |
+| HWUI and SurfaceFlinger | views record display lists; a RenderThread plays them through Direct2D on the graphics processor; OpenGL ES runs on ANGLE over Direct3D 11; frames of a `TextureView`, a `SurfaceView` and the WebView stay on the graphics processor as shared Direct3D textures |
+| Separate processes and Binder | an app's other processes (`android:process`) as class scopes of its own APK, with their own statics and Application; Google Play services as a scope of its own |
+| The package manager and installer | Megler's library: APK, `.apks`, `.xapk`, and Google Play's `PackageInstaller` sessions; an app can be its own Windows package |
+| The keystore, biometrics, telephony, media | an `AndroidKeyStore` provider kept in the app's data; Windows Hello; the phone's message store; XAudio2, Media Foundation, `Windows.Media.Capture`, the system media controls |
+
+A frame of a Java app is made the way Android makes it, on two threads:
+
+```mermaid
+sequenceDiagram
+    participant M as Main thread (Java)
+    participant R as RenderThread
+    participant W as WebView render thread
+    participant G as GPU (Direct3D 11)
+    M->>M: input, animations, measure and layout
+    M->>M: record the changed views' display lists
+    M->>R: hand the frame over (Gfx.frame)
+    Note over M: goes on with the next frame
+    R->>G: play the display lists through Direct2D
+    W->>G: Chromium draws the page (draw functor, OpenGL ES on ANGLE)
+    R->>G: draw the WebView's picture in its place
+    R->>G: present the window
+```
+
+Why it is fast:
+
+- **No emulation.** Native libraries and the JIT's code run on the phone's own
+  processor, at its full speed.
+- **Everything is drawn on the graphics processor.** Views, text, bitmaps, OpenGL ES, video
+  and the WebView all go through Direct3D; nothing is read back to the processor to be
+  shown.
+- **The main thread does what Android's does.** Drawing and presenting happen on a
+  RenderThread, as on Android, so input and layout are not held up by the screen.
+- **Hot Java code is compiled.** Methods are compiled to Thumb-2 as they get hot, small
+  ones inlined, and the garbage collector marks and sweeps alongside the app.
+
+## Megler and Project Astoria
+
+Project Astoria ("Windows Bridge for Android") was Microsoft's own way of running Android
+apps on Windows 10 Mobile. It was announced at Build 2015, appeared in Windows 10 Mobile
+Insider builds of 2015, was taken out of them, and was cancelled in February 2016. It
+put a Linux-compatible subsystem into Windows itself (the work later became the Windows
+Subsystem for Linux) and ran an Android 4.4 system on it.
+
+| | Project Astoria (2015) | Megler |
+|---|---|---|
+| Today | cancelled; only in old Insider builds | developed; runs on the builds phones have now (1703 and later) |
+| What it is | a subsystem built into Windows | an ordinary Windows app (developer mode and an interop unlock for code generation) |
+| Android | 4.4 KitKat (API 19) | Android 9's libcore, a framework that answers as API 34 |
+| Google Play services and Play Store | none: apps were to be changed to use Microsoft's services | the official ones; apps are installed from Google Play |
+| WebView | KitKat's | Chromium 128, drawn on the graphics processor |
+| Getting an app | sideloaded from a PC with adb | an APK, `.apks` or `.xapk` opened on the phone, or Google Play |
+| An app on the phone | inside the Android system | a Windows app of its own if you want: its tile, its process, its task-switcher entry |
+| Phones | a few Lumia models | any Windows 10 Mobile ARM phone |
+| The phone's features | -- | Windows Hello, text messages, cameras, lock-screen media controls, hardware video decoding |
+| Source | closed | open (GPL-3.0) |
+
+In short: Astoria needed Microsoft's operating system to carry Android and was never
+finished. Megler asks the system for no more than developer mode and an interop unlock,
+runs today's apps with Google's own services, and keeps improving.
+
+What Megler cannot do (yet): run APKs that have only 64-bit (`arm64-v8a`) code -- Windows
+10 Mobile is 32-bit on every phone; use Vulkan; give an app more than the 2 GB of
+addresses a 32-bit process has. Each app's own state is in [docs/STATUS.md](docs/STATUS.md).
 
 ## Layout
 
@@ -70,76 +151,52 @@ core/             the layer, portable C11
   include/megler.h  what the shell sees
   src/host/       the OS (Win32 app container; POSIX for the tests)
   src/ld/ arm/    the dynamic linker; what is rewritten in guest code
-  src/bionic/     libc, libm, libdl, liblog, pthreads, files
-  src/ndk/ jni/   libandroid, EGL/GLES over ANGLE; JNI over a Java world in C
-  src/drivers/    the Java side of each kind of app
-  src/dvm/        a Dalvik interpreter for an app's own bytecode (docs/JAVA.md)
+  src/bionic/     libc, libm, libdl, liblog, pthreads, files, the network
+  src/ndk/ jni/   libandroid, EGL/GLES over ANGLE, AAudio, OpenSL ES, mediandk; JNI
+  src/dvm/        the Java runtime: interpreter, JIT, garbage collector (docs/JAVA.md, docs/JIT.md)
+  src/drivers/    the Java side of each kind of app: graphics, GL, WebView, media, camera
   src/apk/ zip/   APKs, manifests, resources
-  tests/          the tests, and guest/: Android libraries and an app for them
-app/Megler/     the C++/WinRT shell
-tools/            build-appx.sh, build-tests.sh, build-guest.sh, phone.py;
-                  android9-*.sh and vdex-dex.py: Android 9's class library, from
-                  Google's image and AOSP's source, into build/android9
-docs/             ARCHITECTURE.md, STATUS.md, JAVA.md
+  framework/      the Java framework; framework-overlay/ what Megler changes in it
+  tests/          the tests, and guest/ and app/: Android libraries and apps for them
+app/Megler/       the C++/WinRT shell: library, player, Direct2D drawing, sound, codecs
+tools/            build-appx.sh, build-tests.sh, build-framework.sh, phone.py
+docs/             ARCHITECTURE.md, STATUS.md, JAVA.md, JIT.md, MICROG.md, PER-APP-PACKAGES.md
 ```
 
 ## Build
 
 Requirements: Visual Studio 2022 17.14 (MSVC 14.44 with the ARM build tools),
 Windows SDK 10.0.22621 (headers, tools) and 10.0.15063 (ARM libraries), LLVM (clang
-and ld.lld, for the guest test libraries), Git Bash, Python 3. For the tests that
-execute Android code: WSL Ubuntu with `gcc-arm-linux-gnueabihf` and `qemu-user`.
-ANGLE comes from a gecko-w10m build (`C:\rw-obj\dist\bin`, or `MEGLER_ANGLE`).
+and ld.lld, for the guest test libraries), Git Bash, Python 3, a JDK and the Android
+SDK's d8 (for the framework). For the tests that execute Android code: WSL Ubuntu with
+`gcc-arm-linux-gnueabihf` and `qemu-user`. ANGLE comes from a
+[gecko-w10m](https://github.com/Computershik73/gecko-w10m) build (`C:\rw-obj\dist\bin`,
+or `MEGLER_ANGLE`).
 
 ```bash
-bash tools/build-guest.sh          # the Android test libraries and native-test.apk (clang, no NDK)
+bash tools/build-guest.sh          # the Android test libraries and apps (clang, no NDK)
 bash tools/build-tests.sh arm      # the core's tests under qemu-arm: guest code really runs
-bash tools/build-tests.sh win      # the Win32 host layer and the APK reader, on this PC
-bash tools/build-appx.sh arm       # → app/Megler/AppPackages/Megler_<ver>_ARM.appx
+bash tools/build-framework.sh      # the Java framework
+bash tools/dvm-android-root.sh     # the Android root: libcore, the framework, fonts, the WebView
+bash tools/build-appx.sh arm --java # → app/Megler/AppPackages/Megler_<ver>_ARM.appx
 ```
-
-`build/tests-win/mg_tests.exe --apk some.apk` prints what the layer makes of an APK;
-`mg_tests --load <dir> <lib>...` (the ARM build, under qemu) loads real Android
-libraries from a folder and says what each needed; `mg_tests --run <apk> <data dir>`
-starts an APK there with a stand-in for OpenGL ES, touches it and presses Back.
 
 ## On the phone
 
 The phone must be interop-unlocked (for `codeGeneration`), in Developer mode, and
-trust the package's certificate (`AppPackages/Megler.cer`; the package is signed with
-podium-w10m's certificate unless `MEGLER_PFX` names another).
+trust the package's certificate (`AppPackages/Megler.cer`).
 
-Install with the Device Portal, or `python tools/phone.py install` (it pins the
-target phone by name; `python tools/phone.py logs` pulls `megler.log` and the check
-logs from LocalState). Then, in the app:
+Install the package with the Device Portal (`python tools/phone.py install`), or copy it
+with its `Megler.cer` into the phone's `Pictures\Megler` folder: Megler installs the newest
+package it finds there when it starts. Then, in Megler:
 
-1. **Device › Probe** first. Its lines are the answers Megler is waiting
-   for (ARCHITECTURE.md lists them); `LocalState/megler-probe.log` keeps them. It
-   ends with a second of a 440 Hz tone, played straight through XAudio2: if that is
-   not heard, look at the phone's Media + Apps volume before anything else.
-2. **Device › Self-test**: the core's tests on the phone itself. It runs a small app
-   of its own, which uses up the one app a start of Megler can run: close and reopen
-   Megler before playing.
-3. **Add the Demo** (offered while the library is empty), then **Play**: the
-   package's own small app, whose picture says what is right. An F in the top left
-   corner (the picture is the right way up), red, green and blue squares left to
-   right at the bottom (the colours are), a triangle turning clockwise once in four
-   seconds, a bar along the top that is full width at 60 frames a second, a square
-   and a cross under each finger, and a tone for the first second and then while a finger is down. Back ends it.
-4. **Add APK**, then **Play**.
+1. **Add APK** (or open an APK, `.apks` or `.xapk` from the phone's file manager), or open
+   Google Play from the library and install from there.
+2. **Play**, or make the app a Windows app of its own and start it from its tile.
+3. **Update All** after Megler itself is updated: each app's own package is rebuilt.
 
-Android's shared storage (`/sdcard`) is one folder for all apps, and the phone's
-music, pictures and videos are in it as `Music`, `Pictures` and `Movies` (the
-camera's as `DCIM`). **Settings › Android Storage** lists them and adds any
-other folder under a name of your choosing -- the phone's Documents or
-Downloads, a folder of a memory card -- and **Check the Folders** there tries
-in each what an app will do to files, in a folder of its own that it removes
-again; every step is in the Log. The four folders and the check have run on a
-phone (102 steps, all passed); the Settings section and adding a folder have
-not ([docs/STATUS.md](docs/STATUS.md)).
-
-One app runs per start of Megler: Android libraries cannot be unloaded, so the app has
-to be closed and opened again to play another.
+**Device › Probe** and **Device › Self-test** check what this phone allows and run the
+core's tests on it; the **Log** says what each app does.
 
 ## Author
 
@@ -155,4 +212,4 @@ another project (GPL-2.0-or-later) and is licensed here under the GPL-3.0, as
 ## License
 
 Megler is licensed under the GNU General Public License version 3 (LICENSE). The vendored zlib is under the zlib license; ANGLE is
-BSD.
+BSD; Android's libcore and framework are under the Apache License 2.0.
