@@ -2884,11 +2884,17 @@ public class WebView extends AbsoluteLayout
             if (!meglerArea()) return;
             sMeglerDrawing = this;
             mMeglerFunctorFailed = false;
+            mMeglerFunctorAsked = false;
             try {
                 mProvider.getViewDelegate().onDraw(canvas);
             } finally {
                 sMeglerDrawing = null;
             }
+            // (The flag trace-webview: whether Chromium had a frame to draw, for the first frames.)
+            if (sMeglerTrace < 0) sMeglerTrace = megler.Native.flag("trace-webview") ? 1 : 0;
+            if (sMeglerTrace > 0 && mMeglerTraced++ < 40)
+                android.util.Log.i("WebView", "onDraw on the graphics processor, part " + mMeglerVisible.toShortString() + ": "
+                        + (!mMeglerFunctorAsked ? "no functor asked for (Chromium had no frame)" : mMeglerFunctorFailed ? "the functor was not drawn" : "the functor drawn"));
             if (!mMeglerFunctorFailed) {
                 // The bitmap of software frames is not needed while the pages are drawn so.
                 if (mMeglerBitmap != null) { mMeglerBitmap.recycle(); mMeglerBitmap = null; mMeglerCanvas = null; }
@@ -2905,7 +2911,9 @@ public class WebView extends AbsoluteLayout
     // Megler: the WebView whose onDraw Chromium is in, on the UI thread (WebViewDelegate.drawWebViewFunctor), and whether its
     // functor failed to be drawn.
     private static WebView sMeglerDrawing;
-    private boolean mMeglerFunctorFailed;
+    private boolean mMeglerFunctorFailed, mMeglerFunctorAsked;
+    private static int sMeglerTrace = -1;
+    private int mMeglerTraced;
 
     // Megler: only the part of the view that can be seen in the window, as a draw functor draws it on Android. A
     // RenderNode is the size of its view, and a WebView sized to its page is many screens tall: a bitmap of all of it
@@ -2932,6 +2940,7 @@ public class WebView extends AbsoluteLayout
     static boolean meglerDrawFunctor(Canvas canvas, int functor) {
         WebView v = sMeglerDrawing;
         if (v == null || !canvas.isHardwareAccelerated()) return false;
+        v.mMeglerFunctorAsked = true;
         Rect a = v.mMeglerVisible;
         long drawn = megler.WebFunctors.draw(functor, a.left, a.top, a.width(), a.height());
         int id = (int) drawn;

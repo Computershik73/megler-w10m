@@ -3,7 +3,7 @@ package megler;
 /**
  * Chromium's WebView drawn on the graphics processor: the platform's draw functor (AwDrawFn), whose table, render thread and
  * pictures are core/src/drivers/mg_java_webview.c's. A WebView's canvas in a view list says it is hardware-accelerated while
- * {@link #on} (android.view.View.drawFromParent); Chromium then has the platform draw its functor
+ * {@link #on} -- with the flag webview-gpu, while it is tried -- (android.view.View.drawFromParent); Chromium then has the platform draw its functor
  * (android.webkit.WebViewDelegate.drawWebViewFunctor), which android.webkit.WebView does with {@link #draw} and records as a
  * picture the shell keeps (Canvas.meglerDrawTexture). Where drawing fails again and again, {@link #off} has pages drawn in
  * software from then on, as they were before.

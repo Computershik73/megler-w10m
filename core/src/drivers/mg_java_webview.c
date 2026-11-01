@@ -288,7 +288,7 @@ N(SW_table)
  * The draw functor: AwDrawFn (Chromium's android_webview/public/browser/draw_fn.h, version 4), which Chromium draws a page
  * through on a canvas that is hardware-accelerated, as HWUI's WebViewFunctor has it drawn on Android. The table below is
  * Chromium's (DrawFunctor.nativeGetFunctionTable) where pictures can be kept on the graphics processor (the shell's
- * megler_gfx_host.texture_frame and draw_texture, EGL's shared pbuffer textures) and the flag no-webview-gpu is not set;
+ * megler_gfx_host.texture_frame and draw_texture, EGL's shared pbuffer textures) and the flag webview-gpu is set;
  * Chromium makes a functor of it for each WebView (create_functor_v3: its callbacks), and on a hardware-accelerated canvas
  * has the platform draw it (WebViewDelegate.drawWebViewFunctor). A WebView's canvas says it is hardware-accelerated where the
  * table was given (megler.WebFunctors.on; android/webkit/WebView.java): a view list's, the shell's on the graphics processor.
@@ -405,10 +405,14 @@ static bool wv_wanted(void)
 {
     static i32 wanted = -1;
     if (wanted < 0) {
-        bool on = !mg_flag("no-webview-gpu") && mg_java_gfx_textures() && mg_java_gl_shares_frames();
+        /*
+         * Asked for by the flag webview-gpu, until it draws what it should: on the phone (package 555) Gosuslugi's sign-in
+         * page stayed black through it, and Spotify's WebView, whose own Direct3D device it makes, ran out of address space.
+         */
+        bool on = mg_flag("webview-gpu") && mg_java_gfx_textures() && mg_java_gl_shares_frames();
         wanted = on ? 1 : 0;
-        mg_info("webview: %s", on ? "pages are drawn on the graphics processor, through the platform's draw functor"
-                                  : "pages are drawn in software: no draw functor (the flag no-webview-gpu, or no pictures kept on the graphics processor)");
+        mg_info("webview: %s", on ? "pages are drawn on the graphics processor, through the platform's draw functor (the flag webview-gpu)"
+                                  : "pages are drawn in software: no draw functor (without the flag webview-gpu, or no pictures kept on the graphics processor)");
     }
     return wanted > 0;
 }
@@ -577,6 +581,40 @@ static void wv_prepare(wv_functor *f, int w, int h)
 }
 
 /*
+ * The flag trace-webview: what a functor's draw left in its pbuffer, said for its first 30 draws and every 100th after -- the
+ * OpenGL error, and the colour (R, G, B, A) at the middle of the part and of its four quarters, read back -- to tell a page
+ * Chromium drew from one it did not.
+ */
+static void wv_trace(wv_functor *f, int l, int t, int w, int h)
+{
+    static int wanted = -1;
+    typedef void (*fn_read)(i32, i32, i32, i32, u32, u32, void *);
+    typedef u32 (*fn_error)(void);
+    static fn_read read_pixels;
+    static fn_error gl_error;
+    static const int at[5][2] = { { 1, 1 }, { 1, 3 }, { 3, 1 }, { 3, 3 }, { 2, 2 } };
+    char line[300];
+    size_t used;
+    u32 err;
+    int i, k = (int)f->draws + 1;
+    if (wanted < 0) wanted = mg_flag("trace-webview") ? 1 : 0;
+    if (!wanted || (k > 30 && k % 100)) return;
+    if (!read_pixels) read_pixels = (fn_read)mg_egl_host("glReadPixels");
+    if (!gl_error) gl_error = (fn_error)mg_egl_host("glGetError");
+    if (!read_pixels || !gl_error) return;
+    err = gl_error();
+    used = (size_t)snprintf(line, sizeof(line), "webview: functor %d draw %d, part %d,%d %dx%d of %dx%d: GL error 0x%x; colours", (int)f->id, k, l, t, w, h, f->pw, f->ph,
+                            (unsigned)err);
+    for (i = 0; i < 5 && used + 16 < sizeof(line); i++) {
+        u8 px[4] = { 0, 0, 0, 0 };
+        int x = w * at[i][0] / 4, y = f->ph - h * at[i][1] / 4;   /* from the part's top left, in OpenGL's rows */
+        read_pixels(x, y, 1, 1, 0x1908 /* GL_RGBA */, 0x1401 /* GL_UNSIGNED_BYTE */, px);
+        used += (size_t)snprintf(line + used, sizeof(line) - used, " %02x%02x%02x%02x", px[0], px[1], px[2], px[3]);
+    }
+    mg_info("%s", line);
+}
+
+/*
  * The functor drawn, the part of its view at (l, t), w x h in the view's coordinates (with its scroll): on the render thread.
  * The shell's id of its picture and the pbuffer's size (id | width << 32 | height << 48); 0 when it was not drawn.
  */
@@ -650,6 +688,7 @@ static i64 wv_draw(wv_functor *f, int l, int t, int w, int h)
         MG_GFN(void (*)(i32, void *, aw_draw_gl_params *), f->cb.draw_gl)(f->id, f->data, &p);
         if (W.current_context() != W.context && !W.make_current(W.display, f->surface, f->surface, W.context)) return 0;
     }
+    wv_trace(f, l, t, w, h);
     if (!mg_java_gl_share_frame(W.display, f->surface, &f->share, WV_PICTURES + f->id, f->pw, f->ph)) {
         mg_note_once("webview: the shell did not take a functor's picture: pages are drawn in software");
         return 0;

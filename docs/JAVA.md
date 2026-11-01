@@ -3611,7 +3611,11 @@ by its own where the app's come first. No app tried has done that yet.
 
 **Drawing on the graphics processor.** Where the shell keeps pictures on the
 graphics processor (`megler_gfx_host.texture_frame` and `draw_texture`, and
-EGL shares pbuffers' textures) and the flag `no-webview-gpu` is not set, a
+EGL shares pbuffers' textures) and the flag `webview-gpu` is set (while it is
+tried: on the phone, package 555, Gosuslugi's sign-in page stayed black through
+it, and Spotify's WebView, whose own Direct3D device it makes, ran out of
+address space; the flag `trace-webview` says what each of a functor's first
+draws left in its pbuffer and whether Chromium had a frame), a
 WebView's canvas in a view list says it is hardware-accelerated
 (`View.drawFromParent`, `megler.WebFunctors.on`), and Chromium draws its page
 as on Android: through the platform's draw functor, AwDrawFn
