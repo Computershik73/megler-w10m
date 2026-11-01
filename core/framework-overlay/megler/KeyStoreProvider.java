@@ -1,5 +1,6 @@
 // Overlay of core/framework/src/megler/KeyStoreProvider.java (tools/build-framework.sh).
-// It differs in PairGen.generateKeyPair, which takes the generator of another provider from that provider's service
+// It differs in how the keys are kept (each by its algorithm and encoding, not serialized objects: see "the keys" below), and
+// in PairGen.generateKeyPair, which takes the generator of another provider from that provider's service
 // instead of KeyPairGenerator.getInstance(algorithm, provider), and initialises it with a SecureRandom of its own.
 //
 // Why. KeyPairGenerator.getInstance(algorithm, provider) refuses the system's BouncyCastle for RSA and EC
@@ -49,6 +50,16 @@ public final class KeyStoreProvider extends Provider {
     }
 
     // ---- the keys: alias -> key (and for a pair, its public key), kept in a file of the app's
+    /*
+     * The file holds each key by its algorithm and its standard encoding -- a secret key's bytes, a private key's PKCS#8, a
+     * public key's X.509 -- each entry read on its own, made again by the providers there are at the time. It held the key
+     * objects themselves, Java-serialized, which names the class of the provider that made each: a key Google Play services'
+     * conscrypt had made (com.google.android.gms.org.conscrypt.OpenSSLECPublicKey) could not be read back at the next start,
+     * before that provider's classes were there, and its ClassNotFoundException dropped every key of the app's. Gosuslugi's
+     * data, encrypted with a key kept here, could then never be read again, and its sign-in was lost at each start
+     * (package 560: "could not read the keys", then BAD_DECRYPT). The old file is still read, once, its classes looked for in
+     * GmsCore's class loader too, and written again the new way.
+     */
     static final class Entry implements Serializable {
         private static final long serialVersionUID = 1;
         Key secretOrPrivate;
@@ -56,21 +67,123 @@ public final class KeyStoreProvider extends Provider {
         long created = System.currentTimeMillis();
     }
     private static LinkedHashMap<String, Entry> sKeys;
-    private static File file() { return new File(Native.dataDir(), ".megler_keystore"); }
-    @SuppressWarnings("unchecked")
+    private static final int FORMAT = 2;
+    private static final int KIND_NONE = 0, KIND_SECRET = 1, KIND_PRIVATE = 2;
+    private static File oldFile() { return new File(Native.dataDir(), ".megler_keystore"); }
+    private static File file() { return new File(Native.dataDir(), ".megler_keystore2"); }
     static synchronized LinkedHashMap<String, Entry> meglerKeys() {
         if (sKeys != null) return sKeys;
         sKeys = new LinkedHashMap<>();
-        File f = file();
+        File f = file(), old = oldFile();
         if (f.isFile()) {
-            try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(f))) { sKeys = (LinkedHashMap<String, Entry>) in.readObject(); }
-            catch (Exception e) { android.util.Log.w("Megler", "AndroidKeyStore: could not read the keys: " + e); }
+            read(f);
+        } else if (old.isFile()) {
+            readOld(old);
+            if (!sKeys.isEmpty()) {
+                android.util.Log.i("Megler", "AndroidKeyStore: " + sKeys.size() + " keys of the old file kept the new way");
+                save();
+            }
         }
         return sKeys;
     }
+
+    private static void read(File f) {
+        try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(f)))) {
+            int format = in.readInt(), n = in.readInt();
+            if (format != FORMAT) throw new IOException("format " + format);
+            for (int i = 0; i < n; i++) {
+                String alias = in.readUTF();
+                Entry e = new Entry();
+                e.created = in.readLong();
+                int kind = in.readByte();
+                String algorithm = kind != KIND_NONE ? in.readUTF() : null;
+                byte[] key = kind != KIND_NONE ? bytes(in) : null;
+                boolean hasPublic = in.readBoolean();
+                String publicAlgorithm = hasPublic ? in.readUTF() : null;
+                byte[] pub = hasPublic ? bytes(in) : null;
+                try {
+                    if (kind == KIND_SECRET) e.secretOrPrivate = new SecretKeySpec(key, algorithm);
+                    else if (kind == KIND_PRIVATE) e.secretOrPrivate = KeyFactory.getInstance(algorithm).generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(key));
+                    if (hasPublic) e.publicKey = KeyFactory.getInstance(publicAlgorithm).generatePublic(new java.security.spec.X509EncodedKeySpec(pub));
+                    sKeys.put(alias, e);
+                } catch (GeneralSecurityException x) {
+                    android.util.Log.w("Megler", "AndroidKeyStore: the key " + alias + " (" + algorithm + ") could not be made again: " + x);
+                }
+            }
+        } catch (IOException x) {
+            android.util.Log.w("Megler", "AndroidKeyStore: could not read the keys: " + x);
+        }
+    }
+
+    private static byte[] bytes(DataInputStream in) throws IOException {
+        int n = in.readInt();
+        if (n < 0 || n > (1 << 20)) throw new IOException("a key of " + n + " bytes");
+        byte[] b = new byte[n];
+        in.readFully(b);
+        return b;
+    }
+
+    /* The old file: the key objects, serialized; a class the framework has not, looked for in GmsCore's loader too. */
+    @SuppressWarnings("unchecked")
+    private static void readOld(File f) {
+        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(f)) {
+            @Override protected Class<?> resolveClass(ObjectStreamClass d) throws IOException, ClassNotFoundException {
+                try {
+                    return super.resolveClass(d);
+                } catch (ClassNotFoundException e) {
+                    ClassLoader gms = MicroG.gmsLoader();
+                    if (gms == null) throw e;
+                    return Class.forName(d.getName(), false, gms);
+                }
+            }
+        }) {
+            LinkedHashMap<String, Entry> keys = (LinkedHashMap<String, Entry>) in.readObject();
+            if (keys != null) sKeys.putAll(keys);
+        } catch (Exception e) {
+            android.util.Log.w("Megler", "AndroidKeyStore: could not read the keys of the old file: " + e);
+        }
+    }
+
     static synchronized void save() {
-        try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(file()))) { out.writeObject(sKeys); }
-        catch (Exception e) { android.util.Log.w("Megler", "AndroidKeyStore: could not save the keys: " + e); }
+        File f = file(), part = new File(f.getPath() + ".part");
+        try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(part)))) {
+            ArrayList<Map.Entry<String, Entry>> kept = new ArrayList<>();
+            for (Map.Entry<String, Entry> m : sKeys.entrySet()) if (encodable(m.getValue())) kept.add(m);
+            out.writeInt(FORMAT);
+            out.writeInt(kept.size());
+            for (Map.Entry<String, Entry> m : kept) {
+                Entry e = m.getValue();
+                out.writeUTF(m.getKey());
+                out.writeLong(e.created);
+                Key k = e.secretOrPrivate;
+                int kind = k == null ? KIND_NONE : k instanceof PrivateKey ? KIND_PRIVATE : KIND_SECRET;
+                out.writeByte(kind);
+                if (kind != KIND_NONE) {
+                    out.writeUTF(k.getAlgorithm());
+                    byte[] b = k.getEncoded();
+                    out.writeInt(b.length);
+                    out.write(b);
+                }
+                out.writeBoolean(e.publicKey != null);
+                if (e.publicKey != null) {
+                    out.writeUTF(e.publicKey.getAlgorithm());
+                    byte[] b = e.publicKey.getEncoded();
+                    out.writeInt(b.length);
+                    out.write(b);
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.w("Megler", "AndroidKeyStore: could not save the keys: " + e);
+            part.delete();
+            return;
+        }
+        if (!part.renameTo(f)) android.util.Log.w("Megler", "AndroidKeyStore: could not save the keys: " + part + " could not take the place of " + f);
+    }
+
+    /* Whether an entry can be written down: its keys give their encodings. */
+    private static boolean encodable(Entry e) {
+        if (e.secretOrPrivate != null && e.secretOrPrivate.getEncoded() == null) return false;
+        return e.publicKey == null || e.publicKey.getEncoded() != null;
     }
     static synchronized void put(String alias, Entry e) { meglerKeys().put(alias, e); save(); }
 

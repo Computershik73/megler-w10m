@@ -354,6 +354,11 @@ public final class MicroG {
     /* One loader, one class scope of GmsCore's, whichever thread asks first: Play Store asked for GmsCore's flags provider on
        a thread of its own while its main thread started GmsCore, each made a loader, and GmsCore's classes were there twice,
        their statics apart -- the flags provider's PhenotypeFlag was never set up (Must call PhenotypeFlag.init() first). */
+    /** GmsCore's class loader, made if it was not yet; null where there is no GmsCore (for KeyStoreProvider's old file). */
+    static ClassLoader gmsLoader() {
+        MicroG g = get();
+        try { return g != null ? g.loader() : null; } catch (RuntimeException e) { return null; }
+    }
     private synchronized ClassLoader loader() {
         if (loader == null) try {
             loader = new ServiceClassLoader(APK);
