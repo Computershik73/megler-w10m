@@ -611,9 +611,22 @@ static bool ours(EGLDisplay d) { return d && (d == display() || (g_webview_initi
 /* Which of the layer's displays a display is: 1 the WebView's, 0 the app's (or one that is neither). */
 static int which_display(EGLDisplay d) { return d && g_webview_initialized && d == g_webview_display ? 1 : 0; }
 
+/*
+ * Whether the WebView's Chromium is given that display of its own: only with the flag webview-own-display (or a test's
+ * mg_egl_webview_own_display). Since the turns below, two threads' contexts of one display drawing at once are made to take
+ * turns, which is what the WebView's own display was for; and a display of its own is a Direct3D device of its own, with
+ * its own heaps of graphics memory in the process's 2 GB: Spotify's WebView, drawn on the graphics processor through the
+ * draw functor (drivers/mg_java_webview.c), took 225 MB of addresses within seconds of making it, its largest free stretch
+ * went from 279 MB to 62, and Chromium ended asking for 120 MB in one piece (package 555). So it shares the app's.
+ */
+static i32 g_webview_own = -1;
+
+void mg_egl_webview_own_display(bool on) { g_webview_own = on ? 1 : 0; }
+
 void *mg_egl_display_for_library(const char *name)
 {
-    if (name && strstr(name, "libwebviewchromium")) {
+    if (g_webview_own < 0) g_webview_own = mg_flag("webview-own-display") ? 1 : 0;
+    if (name && g_webview_own > 0 && strstr(name, "libwebviewchromium")) {
         EGLDisplay w = webview_display();
         if (w) return w;
     }

@@ -55,13 +55,14 @@ void *mg_egl_surface_mutex(void *display, void *surface);
 bool mg_egl_keyed_mutex(void *mutex, bool acquire);
 
 /*
- * The display eglGetDisplay gives code in the library of that name: a display of its own for the WebView's Chromium
- * (libwebviewchromium.so), whose GPU thread draws while the app's threads do, and ANGLE's Direct3D 11 renderer does not
- * take two contexts of one display drawing at once; the app's for any other (NULL included). And the WebView's display
- * itself, made on first use; NULL when ANGLE cannot make one apart from the app's.
+ * The display eglGetDisplay gives code in the library of that name: the app's, the WebView's Chromium (libwebviewchromium.so)
+ * included -- its threads' and the app's contexts take turns -- but with the flag webview-own-display (or
+ * mg_egl_webview_own_display(true), for a test), when Chromium's gets a display of its own, with a Direct3D device of its
+ * own. And that display itself, made on first use; NULL when ANGLE cannot make one apart from the app's.
  */
 void *mg_egl_display_for_library(const char *name);
 void *mg_egl_webview_display(void);
+void mg_egl_webview_own_display(bool on);
 
 /* What ANGLE gives on this device -- display, Direct3D feature level, GL version and limits -- a line at a time. */
 /* Why ANGLE's Direct3D device is gone (an HRESULT), or 0 while it is there or there is none. */

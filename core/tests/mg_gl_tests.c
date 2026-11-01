@@ -456,6 +456,10 @@ static void test_webview_display(void)
     CHECK(allocate && release && get_display && initialize && query && client_of && create_image && destroy_image);
     if (!allocate || !release || !get_display || !initialize || !query || !client_of || !create_image || !destroy_image) return;
     app = get_display(NULL);
+    /* By default Chromium's code shares the app's display; with webview-own-display it has one of its own. */
+    mg_egl_webview_own_display(false);
+    CHECK(mg_egl_display_for_library("libwebviewchromium.so") == app);
+    mg_egl_webview_own_display(true);
     web = mg_egl_webview_display();
     CHECK(app && web && web != app);
     CHECK(mg_egl_webview_display() == web);
@@ -1362,6 +1366,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_version();
     test_hardware_buffers();
     test_webview_display();
+    mg_egl_webview_own_display(false);
     test_draw_functor();
     test_fence_syncs();
     test_doomed();
