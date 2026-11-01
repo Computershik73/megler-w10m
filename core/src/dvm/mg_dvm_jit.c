@@ -24,6 +24,7 @@
  * Only where the host runs Thumb-2: the phone, and the ARM tests under qemu-arm. Elsewhere nothing is compiled.
  */
 #include "mg_dvm_internal.h"
+#include "../mg_core.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -1223,7 +1224,8 @@ static void whole_loops(const mg_dvm_method *m, const u8 *handback, u8 *target)
 
 /*
  * Memory for code: pages of an arena of the process's, reserved a megabyte at a time and committed as code comes (written,
- * then made executable once: the phone never has a page both). A method on an allocation of its own took 64 KB of
+ * then made executable once; or, small methods' shared pages, writable and executable at once where the phone allows it:
+ * jit_rwx below). A method on an allocation of its own took 64 KB of
  * addresses (Windows' granularity) for a few hundred bytes of code, and Yandex Maps has addresses to spare for nothing.
  * Under g_jit_lock.
  */
@@ -1286,12 +1288,32 @@ static void refuse(mg_dvm_method *m)
     mg_atomic_add(&g_jit_refused, 1);
 }
 
+/*
+ * Where pages may be writable and executable at once (mg_mem_rwx; the flag no-rwx: not), the page being filled is so from
+ * its start, and each method on it is given its code as soon as it is written there: none waits interpreted for the page
+ * to be made executable.
+ */
+static int g_jit_rwx = -1;
+static bool g_fill_rwx;
+
+static bool jit_rwx(void)
+{
+    if (g_jit_rwx < 0) g_jit_rwx = !mg_flag("no-rwx") && mg_mem_rwx() ? 1 : 0;
+    return g_jit_rwx > 0;
+}
+
 /* The page being filled made executable, and the methods on it given their code. */
 static void fill_done(void)
 {
     u32 i;
     bool ok;
     if (!g_fill) return;
+    if (g_fill_rwx) {
+        /* (Its methods have their code already.) */
+        g_fill = NULL;
+        g_fill_used = 0;
+        return;
+    }
     ok = mg_mem_protect(g_fill, MG_PAGE, MG_PROT_RX);
     if (ok) mg_icache_flush(g_fill, g_fill_used);
     for (i = 0; i < g_nwaiting; i++) {
@@ -1331,12 +1353,18 @@ static bool place(mg_dvm_method *m, mg_dvm_jit_code *c, const u16 *code, size_t 
         if (!g_fill) return false;
         g_fill_used = 0;
         g_fill_since = mg_time_monotonic_ns();
+        g_fill_rwx = jit_rwx() && mg_mem_protect(g_fill, MG_PAGE, MG_PROT_RWX);
     }
     p = g_fill + g_fill_used;
     memcpy(p, code, bytes);
     g_fill_used = (g_fill_used + bytes + 3) & ~(size_t)3;
     c->pages = p;
     c->run = (int (*)(mg_dvm_jit_ctx *, const void *))(void *)((mg_addr)p | 1);
+    if (g_fill_rwx) {
+        mg_icache_flush(p, bytes);
+        publish(m, c);
+        return true;
+    }
     g_waiting[g_nwaiting].m = m;
     g_waiting[g_nwaiting].c = c;
     g_nwaiting++;

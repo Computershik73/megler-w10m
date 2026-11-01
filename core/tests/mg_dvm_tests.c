@@ -532,7 +532,9 @@ static void test_jit(void)
     }
     /*
      * With the threshold above 1, a small method's code waits on the page being filled, interpreted meanwhile, until the
-     * page is made executable: here once 200 ms have passed, at its next threshold's worth of calls.
+     * page is made executable: here once 200 ms have passed, at its next threshold's worth of calls. Where pages may be
+     * writable and executable at once (mg_mem_rwx: here, and on phones that allow it), the page is so from its start and
+     * the method has its code at once.
      */
     {
         mg_dvm_method *w = c ? mg_dvm_find_method(c, "waits", "(I)I", true) : NULL;
@@ -541,7 +543,8 @@ static void test_jit(void)
             A[0].i = i;
             CHECK_INT(call("t/Jit", "callWaits", "(I)I").i, ((i + 1) * 3) ^ 5);
         }
-        CHECK(w && w->jit_state == 3 && !w->jit);
+        if (mg_mem_rwx()) CHECK(w && w->jit_state == 1 && w->jit);
+        else CHECK(w && w->jit_state == 3 && !w->jit);
         mg_sleep_ns(250000000ull);
         for (i = 0; i < 2; i++) {
             A[0].i = i + 10;
