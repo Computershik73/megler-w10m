@@ -2412,14 +2412,16 @@ public class Main extends Activity {
     /**
      * Android's key store as Amazon's sign-in library (in MX Player) uses it: an RSA pair made under an alias by
      * KeyPairGenerator.getInstance("RSA", "AndroidKeyStore"), a key of sixteen bytes wrapped with its public key and unwrapped with
-     * its private one, both found again through KeyStore.getInstance("AndroidKeyStore"); an EC pair the same way, which signs; and
-     * the RSA pair is there for the next run, which finds it before it makes it again.
+     * its private one, both found again through KeyStore.getInstance("AndroidKeyStore"); an EC pair the same way, which signs; an
+     * AES key, as Tink's master key for EncryptedSharedPreferences, which encrypts; and all three are there for the next run, which
+     * finds them before it makes them again (an EC pair once made the whole file unreadable at the next start, package 560).
      */
     private void keystore(final long run) {
         step("keystore", () -> {
             java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
             store.load(null);
-            boolean before = store.containsAlias("megler-test-rsa");
+            boolean before = store.containsAlias("megler-test-rsa"), beforeEc = store.containsAlias("megler-test-ec"),
+                    beforeAes = store.containsAlias("megler-test-aes");
             java.security.KeyPairGenerator rsa = java.security.KeyPairGenerator.getInstance("RSA", "AndroidKeyStore");
             rsa.initialize(new android.security.keystore.KeyGenParameterSpec.Builder("megler-test-rsa", android.security.keystore.KeyProperties.PURPOSE_ENCRYPT
                     | android.security.keystore.KeyProperties.PURPOSE_DECRYPT).setKeySize(2048)
@@ -2447,9 +2449,26 @@ public class Main extends Activity {
             verify.update(secret);
             int ecBits = ((java.security.interfaces.ECPublicKey) ecPair.getPublic()).getParams().getCurve().getField().getFieldSize();
             boolean ecHeld = verify.verify(signature) && ecBits == 256;
-            detail = "rsa=" + rsaHeld + " (" + bits + " bits, " + wrapped.length + " bytes wrapped) ec=" + ecHeld + " (" + ecBits + " bits) there-before=" + before + " run=" + run;
+
+            if (!beforeAes) {
+                javax.crypto.KeyGenerator aes = javax.crypto.KeyGenerator.getInstance("AES", "AndroidKeyStore");
+                aes.init(new android.security.keystore.KeyGenParameterSpec.Builder("megler-test-aes", android.security.keystore.KeyProperties.PURPOSE_ENCRYPT
+                        | android.security.keystore.KeyProperties.PURPOSE_DECRYPT).setKeySize(256)
+                        .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE).build());
+                aes.generateKey();
+            }
+            javax.crypto.SecretKey aesKey = (javax.crypto.SecretKey) store.getKey("megler-test-aes", null);
+            javax.crypto.Cipher gcm = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+            gcm.init(javax.crypto.Cipher.ENCRYPT_MODE, aesKey);
+            byte[] sealed = gcm.doFinal(secret);
+            javax.crypto.Cipher open = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+            open.init(javax.crypto.Cipher.DECRYPT_MODE, aesKey, gcm.getParameters());
+            boolean aesHeld = aesKey != null && aesKey.getEncoded().length == 32 && Arrays.equals(secret, open.doFinal(sealed));
+            detail = "rsa=" + rsaHeld + " (" + bits + " bits, " + wrapped.length + " bytes wrapped) ec=" + ecHeld + " (" + ecBits + " bits) aes=" + aesHeld
+                    + " there-before=" + before + "," + beforeEc + "," + beforeAes + " run=" + run;
             Log.i("DataTest", "keystore " + detail);
-            return rsaHeld && ecHeld && before == (run > 1);
+            return rsaHeld && ecHeld && aesHeld && before == (run > 1) && beforeEc == (run > 1) && beforeAes == (run > 1);
         });
     }
 
