@@ -2506,9 +2506,21 @@ static int run_crash(void)
     expect_line("I/CrashTest: first onCreate again creations=2", &at, 60);
     expect_line("I/CrashTest: top onCreate single", &at, 60);
     expect_line("I/CrashTest: first onNewIntent third creations=2", &at, 60);
+    const int new_intent = at;
+    /*
+     * Instagram's way in. First starts Trampoline and finishes: Trampoline is the task's root, the lowest activity not
+     * finishing (the layer said the root was one started by none). It starts Main twice with CLEAR_TOP and SINGLE_TOP; Main,
+     * not the root, finishes in onCreate, and is never started: not after its onCreate, and not by the second start, which
+     * passes over a finishing one (the layer brought it back, onRestart and onStart, and Instagram failed for the state its
+     * onCreate never made).
+     */
+    expect_line("I/CrashTest: trampoline onCreate root=true", &at, 60);
+    expect_line("I/CrashTest: main onCreate root=false", &at, 60);
     expect_line("I/CrashTest: second onCreate, about to throw", &at, 60);
+    CHECK(find_line("I/CrashTest: main onStart", 0) < 0 && find_line("I/CrashTest: main onRestart", 0) < 0);
+    /* (The second First stayed through SINGLE_TOP, and goes only when it finishes itself for Trampoline.) */
     CHECK(find_line("I/CrashTest: first onDestroy null", 0) >= 0 && find_line("I/CrashTest: top onDestroy standard", 0) >= 0 &&
-          find_line("I/CrashTest: top onDestroy single", 0) >= 0 && find_line("I/CrashTest: first onDestroy again", 0) < 0);
+          find_line("I/CrashTest: top onDestroy single", 0) >= 0 && find_line("I/CrashTest: first onDestroy again", 0) > new_intent);
     CHECK(find_line("I/CrashTest: first unexpected result", 0) < 0);
     for (tries = 0; tries < 3000 && running(); tries++) mg_sleep_ns(10000000ull);
     CHECK(g_exited && g_status == -1);

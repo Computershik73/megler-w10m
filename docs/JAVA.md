@@ -4876,7 +4876,17 @@ on a looper thread of its own and takes it back with `next()`.
   started through an alias, goes through both cases with `Top` before it
   starts the activity that throws: a new first activity for the flag alone,
   `onNewIntent` with `FLAG_ACTIVITY_SINGLE_TOP`, and no result it did not ask
-  for.
+  for. An activity that is finishing is passed over, as Android passes over
+  finishing records, and one finishing below a finished top one is not brought
+  back. And `Activity.isTaskRoot` is Android's: the lowest activity of the
+  stack that is not finishing (it was "started by none"). Instagram's launcher
+  activity starts its main activity and finishes; the main activity, not the
+  root by the old rule, finished in its `onCreate` ("is not the root"), and the
+  launcher's second start with `FLAG_ACTIVITY_CLEAR_TOP` brought that finishing
+  one back (`onRestart`, `onStart`), which failed for the state its `onCreate`
+  never made ("Required value was null", package 561). The crash app's
+  `Trampoline`, started as First finishes, is the root, and its `Main`, started
+  twice so, finishes in `onCreate` and is never started.
 
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.

@@ -26,5 +26,8 @@
         <!-- Starts First again with FLAG_ACTIVITY_CLEAR_TOP, and with FLAG_ACTIVITY_SINGLE_TOP as well (First's comment). -->
         <activity android:name=".Top" />
         <activity android:name=".Gate" />
+        <!-- Instagram's way in: the root once First finishes; starts Main, which finishes in onCreate unless it is the root (Trampoline's comment). -->
+        <activity android:name=".Trampoline" />
+        <activity android:name=".Main" android:launchMode="singleTop" />
     </application>
 </manifest>
