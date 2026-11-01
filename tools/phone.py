@@ -1,4 +1,4 @@
-r"""Talk to the phone's Windows Device Portal (USB: http://127.0.0.1:10080).
+r"""Talk to the phone's Windows Device Portal (USB: http://127.0.0.1:10080, or another port of the IP-over-USB service).
 
 podium-w10m's and gecko-w10m's tools/phone.py, for Megler. The phone must be in
 Developer mode with the Device Portal on, connected over USB or reachable over
@@ -8,7 +8,9 @@ for rescap:codeGeneration).
 
 Usage:
     python tools/phone.py version                # the installed Megler package
-    python tools/phone.py install [APPX]         # install or update (newest ARM appx by default; app data kept)
+    python tools/phone.py install [APPX] [--portal]
+                                                 # install or update (newest ARM appx by default; app data kept;
+                                                 # --portal: through the Device Portal even when on USB)
     python tools/phone.py launch                 # start Megler
     python tools/phone.py stop                   # stop Megler
     python tools/phone.py ls PATH                # list e.g. "\LocalState\apks"
@@ -31,6 +33,7 @@ last lines, and anything the core logged as a warning or an error.
 """
 import argparse
 import base64
+import concurrent.futures
 import glob
 import http.cookiejar
 import json
@@ -74,24 +77,48 @@ def _portal_name(url):
         return None
 
 
+def _usb_ports():
+    """The ports the IP-over-USB service listens on. It forwards a phone's
+    portal to 10080/10443 or, as for a Lumia 650 in 2026-11, to ports of its
+    own choosing (59366 for HTTP, 59365 for HTTPS)."""
+    try:
+        tasks = subprocess.run(["tasklist", "/FO", "CSV", "/NH", "/FI", "IMAGENAME eq IpOverUsbSvc.exe"],
+                               capture_output=True, text=True, timeout=30).stdout
+        pids = {line.split('","')[1] for line in tasks.splitlines() if line.startswith('"IpOverUsbSvc')}
+        lines = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError, IndexError):
+        return []
+    ports = set()
+    for line in lines.splitlines():
+        f = line.split()
+        if len(f) == 5 and f[3] == "LISTENING" and f[4] in pids:
+            ports.add(int(f[1].rsplit(":", 1)[1]))
+    return sorted(ports - {10080, 10443})
+
+
 def _find_portal(patience=None):
-    """The target phone's Device Portal: USB (HTTP 10080 or HTTPS 10443) if it
-    is the one forwarded there, else its Wi-Fi address. Only a portal whose
-    ComputerName is TARGET_NAME is ever used. A phone's Wi-Fi portal comes and
-    goes as the screen sleeps, so keep asking for up to `patience` seconds
-    (MEGLER_PHONE_PATIENCE, default 300)."""
+    """The target phone's Device Portal: USB (HTTP 10080 or HTTPS 10443, or
+    another port of the IP-over-USB service) if it is the one forwarded there,
+    else its Wi-Fi address. Only a portal whose ComputerName is TARGET_NAME is
+    ever used. A phone's Wi-Fi portal comes and goes as the screen sleeps, so
+    keep asking for up to `patience` seconds (MEGLER_PHONE_PATIENCE, default
+    300)."""
     if patience is None:
         patience = float(os.environ.get("MEGLER_PHONE_PATIENCE", "300"))
     candidates = []
     if os.environ.get("MEGLER_PORTAL"):
         candidates.append(os.environ["MEGLER_PORTAL"])
-    candidates += ["http://127.0.0.1:10080", "https://127.0.0.1:10443",
-                   f"https://{TARGET_IP}", f"http://{TARGET_IP}"]
+    candidates += ["http://127.0.0.1:10080", "https://127.0.0.1:10443"]
+    for port in _usb_ports():
+        candidates += [f"http://127.0.0.1:{port}", f"https://127.0.0.1:{port}"]
+    candidates += [f"https://{TARGET_IP}", f"http://{TARGET_IP}"]
     deadline = time.time() + patience
     while True:
         seen = []
-        for url in candidates:
-            name = _portal_name(url)
+        # All at once: some of the service's ports take a connection and never answer.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
+            names = list(pool.map(_portal_name, candidates))
+        for url, name in zip(candidates, names):
             if name == TARGET_NAME:
                 return url
             if name:
@@ -236,7 +263,9 @@ def cmd_install(a):
     # along: the shell's C runtime is linked in and ANGLE's is inside it.
     verb = "update" if installed else "install"
     print(f"{verb}: {os.path.basename(appx)}")
-    guid = target_guid()
+    # WinAppDeployCmd answers E_ACCESSDENIED for a phone it was not paired
+    # with (a Lumia 650 in 2026-11) while its portal on USB installs fine.
+    guid = None if a.portal else target_guid()
     if guid is None:
         return install_through_portal(appx)
     r = subprocess.run([winappdeploycmd(), verb, "-file", appx, "-g", guid],
@@ -253,14 +282,19 @@ def cmd_install(a):
 def install_through_portal(appx):
     """Installs (or updates, keeping the app's data) through the target
     phone's Device Portal -- for when it is reachable over Wi-Fi but not on
-    USB. The portal answers the state query 204 while it is still installing."""
-    print(f"{TARGET_MODEL} isn't on USB; installing through its Device Portal at {portal()}")
+    USB, or on USB with install --portal. The certificate beside the appx
+    goes along, so a phone that has never had Megler comes to trust it. The
+    portal answers the state query 204 while it is still installing."""
+    print(f"installing through the Device Portal of {TARGET_MODEL} at {portal()}")
     token = csrf_token()
     cookie = "; ".join(f"{c.name}={c.value}" for c in _cookies)
     name = os.path.basename(appx)
+    parts = ["-F", f'{name}=@"{appx}"']
+    cer = os.path.join(os.path.dirname(os.path.abspath(appx)), "Megler.cer")
+    if os.path.exists(cer):
+        parts += ["-F", f'Megler.cer=@"{cer}"']
     r = subprocess.run(["curl", "--noproxy", "*", "-k", "-sS", "-o", "-", "-w", "\nHTTP %{http_code}", "-X", "POST",
-                        "-H", f"X-CSRF-Token: {token}", "-H", f"Cookie: {cookie}",
-                        "-F", f'{name}=@"{appx}"',
+                        "-H", f"X-CSRF-Token: {token}", "-H", f"Cookie: {cookie}", *parts,
                         f"{portal()}/api/app/packagemanager/package?{urllib.parse.urlencode({'package': name})}"],
                        capture_output=True, text=True, timeout=1800)
     status = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""
@@ -658,6 +692,7 @@ def main():
     sub.add_parser("version")
     ip = sub.add_parser("install")
     ip.add_argument("appx", nargs="?")
+    ip.add_argument("--portal", action="store_true", help="install through the Device Portal even when on USB")
     sub.add_parser("launch")
     lp = sub.add_parser("logs")
     lp.add_argument("--dir")
