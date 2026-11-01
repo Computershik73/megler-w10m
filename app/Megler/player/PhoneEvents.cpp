@@ -58,6 +58,16 @@ void tellMessage(chat::ChatMessage const& m, std::wstring const& id) {
 }
 
 winrt::fire_and_forget messageMade(chat::ChatMessageStore store, winrt::hstring id) {
+    // The event's sender can be null (Windows 10 Mobile's ChatApis): the store watched is asked then. Asked of the null
+    // sender, Megler ended with an access violation as a code came in for Gosuslugi's sign-up (package 558).
+    if (!store) {
+        std::lock_guard<std::mutex> lock(gMutex);
+        store = gChat;
+    }
+    if (!store) {
+        shellLog::write("phone: a text message came in, with no store to read it from: nothing told");
+        co_return;
+    }
     try {
         chat::ChatMessage m = co_await store.GetMessageAsync(id);
         tellMessage(m, std::wstring(id));
