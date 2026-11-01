@@ -11,6 +11,11 @@ developed on an HP Elite x3, 10.0.15254). [docs/STATUS.md](docs/STATUS.md) says 
 what has been seen working and where; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/JAVA.md](docs/JAVA.md) say how it works.
 
+**Download: [the latest release](https://github.com/Computershik73/megler-w10m/releases/latest).**
+Its `Megler_<version>_ARM.appx` has everything a phone needs, Google Play Store, Google
+Play services and microG included; install `Megler.cer` from the same page first. The
+release notes say how to install it.
+
 ## What it does today
 
 - **Google Play.** The official Google Play Store and Google Play services run in Megler.
@@ -184,7 +189,9 @@ bash tools/build-appx.sh arm --java # → app/Megler/AppPackages/Megler_<ver>_AR
 ## On the phone
 
 The phone must be interop-unlocked (for `codeGeneration`), in Developer mode, and
-trust the package's certificate (`AppPackages/Megler.cer`).
+trust the package's certificate (`AppPackages/Megler.cer`). A package you do not build
+yourself is on [the latest release](https://github.com/Computershik73/megler-w10m/releases/latest),
+with its `Megler.cer`.
 
 Install the package with the Device Portal (`python tools/phone.py install`), or copy it
 with its `Megler.cer` into the phone's `Pictures\Megler` folder: Megler installs the newest
