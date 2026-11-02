@@ -51,6 +51,8 @@ void logSharedSpace();
 std::wstring serviceApk(bool microg = false);
 /// Whether a microG's Google Play services is registered.
 bool hasMicroG();
+/// microG's GmsCore.apk: the one registered by microG's own package, else the one published in the shared folder; empty when none.
+std::wstring microgApk();
 std::wstring gsfApk();
 
 /// An app's own package, before its app starts: the app's private files that Megler handed over when it made the package

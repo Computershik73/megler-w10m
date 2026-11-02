@@ -208,7 +208,14 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         // Google's own Google Play services, or microG's where the app (or Megler) is set to it (ui/SettingsScreen.cpp).
         const bool microg = settings::get(settings::googleServices, "") == "microg";
         const std::string servicePath = narrow(appPackage::serviceApk(microg));
-        shellLog::write(std::string("session: Google Play services: ") + (servicePath.empty() ? "none registered" : microg && appPackage::hasMicroG() ? "microG's" : "Google's own"));
+        // Said as what was chosen: Google's own when its package is installed, else microG's even where the setting is Google's
+        // own (the log said "Google's own" for microG then, and a user's Play Store failed with microG's settings).
+        const bool usesMicroG = !servicePath.empty() && servicePath == narrow(appPackage::microgApk());
+        shellLog::write(std::string("session: Google Play services: ") +
+                        (servicePath.empty() ? "none registered"
+                         : !usesMicroG     ? "Google's own"
+                         : microg          ? "microG's"
+                                           : "microG's (Google's own is not installed as an app of its own: the library installs it)"));
         config.gms_apk_path = servicePath.empty() ? nullptr : servicePath.c_str();
         const std::string gsfPath = narrow(appPackage::gsfApk());
         config.gsf_apk_path = gsfPath.empty() ? nullptr : gsfPath.c_str();
