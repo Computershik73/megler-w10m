@@ -96,6 +96,35 @@ bool copy(const std::wstring& from, const std::wstring& to) {
     return SUCCEEDED(CopyFile2(from.c_str(), to.c_str(), nullptr));
 }
 
+namespace {
+
+bool readEnd(const std::wstring& path, uint32_t bytes, uint64_t& size, std::string& out) {
+    HANDLE h = open(path, GENERIC_READ, OPEN_EXISTING);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    LARGE_INTEGER whole = {};
+    bool ok = GetFileSizeEx(h, &whole) != 0;
+    if (ok) {
+        size = uint64_t(whole.QuadPart);
+        const uint64_t n = std::min<uint64_t>(bytes, size);
+        LARGE_INTEGER at = {};
+        at.QuadPart = LONGLONG(size - n);
+        out.assign(size_t(n), '\0');
+        DWORD got = 0;
+        ok = SetFilePointerEx(h, at, nullptr, FILE_BEGIN) != 0 &&
+             (n == 0 || (ReadFile(h, out.data(), DWORD(n), &got, nullptr) && got == DWORD(n)));
+    }
+    CloseHandle(h);
+    return ok;
+}
+
+} // namespace
+
+bool sameEnd(const std::wstring& a, const std::wstring& b, uint32_t bytes) {
+    uint64_t sizeA = 0, sizeB = 0;
+    std::string endA, endB;
+    return readEnd(a, bytes, sizeA, endA) && readEnd(b, bytes, sizeB, endB) && sizeA == sizeB && endA == endB;
+}
+
 std::vector<std::wstring> list(const std::wstring& directory, const std::wstring& pattern) {
     std::vector<std::wstring> names;
     WIN32_FIND_DATAW found = {};
