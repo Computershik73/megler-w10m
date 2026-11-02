@@ -811,6 +811,26 @@ public class Main extends Activity {
         // SubscriptionManager's lists of active subscription ids, never null as on Android (Android 11's methods: by reflection)
         // -- Google Play services' check-in took their length and ended on a NullPointerException, and Play Store had no
         // Android ID.
+        // NinePatchDrawable's constructors without Resources, and with Resources and a NinePatch, which Android has: Telegram
+        // builds its message bubbles with the first (in a try that keeps quiet), and drew no bubble and no text without it.
+        step("nine-patch-constructors", () -> {
+            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(9, 9, android.graphics.Bitmap.Config.ARGB_8888);
+            b.eraseColor(0xff00ff00);
+            java.nio.ByteBuffer c = java.nio.ByteBuffer.allocate(32 + 4 * 4 + 9 * 4).order(java.nio.ByteOrder.nativeOrder());
+            c.put((byte) 1).put((byte) 2).put((byte) 2).put((byte) 9).putInt(0).putInt(0);
+            c.putInt(1).putInt(2).putInt(3).putInt(4).putInt(0);
+            c.putInt(3).putInt(6).putInt(3).putInt(6);
+            for (int i = 0; i < 9; i++) c.putInt(1);
+            byte[] chunk = c.array();
+            android.graphics.drawable.NinePatchDrawable bubble = new android.graphics.drawable.NinePatchDrawable(b, chunk, new android.graphics.Rect(), null);
+            android.graphics.drawable.NinePatchDrawable other = new android.graphics.drawable.NinePatchDrawable(getResources(), new android.graphics.NinePatch(b, chunk, null));
+            android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(30, 20, android.graphics.Bitmap.Config.ARGB_8888);
+            bubble.setBounds(0, 0, 30, 20);
+            bubble.setAlpha(200);
+            bubble.draw(new android.graphics.Canvas(out));
+            detail = "width=" + bubble.getIntrinsicWidth() + " alpha=" + bubble.getAlpha() + " other=" + other.getIntrinsicHeight();
+            return bubble.getIntrinsicWidth() == 9 && bubble.getAlpha() == 200 && other.getIntrinsicHeight() == 9;
+        });
         step("subscription-ids", () -> {
             android.telephony.SubscriptionManager sm = (android.telephony.SubscriptionManager) getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE);
             Object active = android.telephony.SubscriptionManager.class.getMethod("getActiveSubscriptionIdList").invoke(sm);
@@ -1184,6 +1204,11 @@ public class Main extends Activity {
                 Log.i("DataTest", "list-row-click rows=" + list.getChildCount() + " clicked=" + clicked[0]), 200);
             detail = "rows=" + list.getChildCount() + " took=" + took;
             return took && list.getChildCount() > 0;
+        });
+                }
+            });
+            child.startAnimation(fade);
+            return true;
         });
         // A typeface built from a font file open on a descriptor (Typeface.Builder(FileDescriptor), as Google Play services
         // loads its downloaded fonts): made, and the descriptor still open after.
