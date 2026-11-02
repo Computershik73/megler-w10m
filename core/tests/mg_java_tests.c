@@ -1848,6 +1848,9 @@ static int run_natives(void)
     char want[120];
     memset(pic, 0, sizeof(pic));
     expect_line("I/NativesTest: onCreate", &at, 120);
+    /* Its activity names its library with android.app.lib_name, as Qt's does, and the library has no NativeActivity entry:
+       the Java driver runs it, not the NativeActivity one. */
+    CHECK(find_line("run: megler.test.natives (", 0) >= 0 && find_line(") with the java driver", 0) >= 0);
     /* The library's own line (__android_log_print), from its JNI_OnLoad: run when the class that loads it is first used. */
     expect_line("I/NativesLib: JNI_OnLoad call 1", &at, 60);
     for (i = 0; i < (int)MG_COUNT(steps); i++) {
@@ -2194,7 +2197,7 @@ static int run_data(void)
                                             stand-in that fails politely), Android's key store's key pairs and their X.509 certificates (and
                                             an attestation challenge refused), and the list of decoders: the stand-in's
                                             H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. */
-                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "preloaded-drawables", "location", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https", "keystore", "keystore-certificates", "codecs",
+                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https", "keystore", "keystore-certificates", "base64-streams", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
@@ -2515,6 +2518,14 @@ static int run_crash(void)
        alias's name and the app ended, package 570.) */
     expect_line("I/CrashTest: gate recreated state=7 component=megler.test.crash.GateAlias", &at, 60);
     expect_line("I/CrashTest: first order resume,result:7:-1,resume,focus:true,", &at, 60);
+    /* Gate, finished, is stopped and destroyed only once First is back and drawn and the main thread is idle, as on Android:
+       work its onPause posted as it finished ran before, and found it not destroyed (Pyaterochka's sign-in saved its result
+       so, and lost it when the layer destroyed the activity in the same message). */
+    {
+        int work = find_line("I/CrashTest: gate work after finish destroyed=false", 0), after = work;
+        CHECK(work >= 0);
+        if (work >= 0) expect_line("I/CrashTest: gate onDestroy finishing", &after, 30);
+    }
     /*
      * FLAG_ACTIVITY_CLEAR_TOP as Android has it, First found by its class though started through an alias: with the flag
      * alone, Top goes and so does First, and a new First is made; with FLAG_ACTIVITY_SINGLE_TOP as well, Top goes and the

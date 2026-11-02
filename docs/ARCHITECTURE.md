@@ -861,10 +861,27 @@ of ASCII letters, as Android's storage does not tell `Music` from `music`.
 `statfs` and `statvfs` answer for every path with the real size and free room
 of the volume the data folder is on, in 4 KB blocks.
 
+A rename is Linux's where Windows' would refuse it (`mg_host_win32.c`). Over a
+file that is open or mapped, the file in the way is put aside and removed
+when its last handle goes, and whoever had it keeps it (Google Play
+services writes its Chimera config so). A folder with a file in it open or
+mapped, which Windows will not rename whatever the opens shared, is moved
+an entry at a time into a folder of the new name, a folder in it whole or
+so in its turn, and the old one removed; whatever fails is put back. Play
+services stages each module so, its APK open in the folder it renames, and
+no module was staged before (576). A folder replaces an empty one, as
+POSIX's rename does, and not one with something in it (`ENOTEMPTY`). The
+core tests `test_rename_in_use` and `test_rename_dir_in_use` run on both
+builds; on the PC's, these are Windows' own refusals.
+
 The `/proc` and `/sys` files code reads to learn about the device are made up
 (`synthetic` in `bionic/mg_libc_io.c`):
 - `/proc/cpuinfo`, `/proc/meminfo`, `/proc/stat` and `/proc/version`;
-- `/proc/self/cmdline` and `/proc/self/status`;
+- `/proc/self/cmdline` and `/proc/self/status`, whose memory lines are the
+  kernel's: the size and resident size what Windows counts the process as
+  using, `VmHWM` and `VmPeak` the most it has been seen to use there (Google
+  Play services' memory metric reads `VmHWM`, and logged "failed to find:
+  VmHWM" without it);
 - `/proc/self/maps`, with a region for each loaded library's segment;
 - `/proc/self/smaps`, the same regions, each followed by Linux's fields with
   `KernelPageSize: 4 kB`. Instagram reads the page size there at its start;
@@ -872,7 +889,8 @@ The `/proc` and `/sys` files code reads to learn about the device are made up
   are not known here and are 0;
 - the CPU folders of `/sys/devices/system/cpu`.
 
-The guest test `t_smaps` reads the page size as Instagram does.
+The guest test `t_smaps` reads the page size as Instagram does, and
+`t_proc_status` the memory lines of `/proc/self/status`.
 
 **Links.** The user's music, pictures and videos are not the app's to open: on
 the phone tried, `CreateFile2` and `FindFirstFileExW` are refused there (error
@@ -1084,7 +1102,14 @@ package name, the data directories, the display, `Build`.
 
 A **driver** (`drivers/`) plays the part of one kind of app's Java shell. There is
 one so far: `NativeActivity`, which is what Android itself provides for apps with no
-Java (`android:hasCode="false"`, or `android.app.lib_name` in the manifest). It
+Java (`android:hasCode="false"`, or `android.app.lib_name` in the manifest). An
+activity of the app's own that names its library with `android.app.lib_name` is
+taken for NativeActivity's subclass only when the library exports its entry
+(`ANativeActivity_onCreate`, or `android.app.func_name`), looked for in the
+dynamic symbols of its first 32 MB (`native_entry`, `apk/mg_apk.c`): Qt's
+QtActivity names its library so and starts it through JNI itself, and 2GIS
+(`libv4android.so`, 277 MB) ended in "has no ANativeActivity_onCreate" until it
+was taken for the Java app it is (package 576). It
 loads the library, calls `ANativeActivity_onCreate`, and makes the activity's
 callbacks in the framework's order on a thread that stands for Android's main
 thread. Apps built on `android_native_app_glue` run on top of that.

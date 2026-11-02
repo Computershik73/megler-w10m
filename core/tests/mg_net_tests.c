@@ -616,6 +616,26 @@ static void test_udp(void)
     N.close(a);
     N.close(b);
     /*
+     * Datagram sockets that all ask for SO_REUSEADDR share a port, as mDNS receivers share 5353 (Google Play services' Cast
+     * discovery beside the system's own); one that does not ask finds it taken (EADDRINUSE).
+     */
+    {
+        u8 sa_r[16], sa_s[16];
+        int r1 = N.socket(AF_INET_, SOCK_DGRAM_, 0), r2 = N.socket(AF_INET_, SOCK_DGRAM_, 0), r3 = N.socket(AF_INET_, SOCK_DGRAM_, 0), one = 1;
+        CHECK(r1 >= 0 && r2 >= 0 && r3 >= 0);
+        CHECK(N.setsockopt(r1, SOL_SOCKET_, SO_REUSEADDR_, &one, 4) == 0 && N.setsockopt(r2, SOL_SOCKET_, SO_REUSEADDR_, &one, 4) == 0);
+        CHECK(N.bind(r1, sa_r, sa4(sa_r, k_lo4, 0)) == 0);
+        len = sizeof(sa_r);
+        CHECK(N.getsockname(r1, sa_r, &len) == 0 && port_of(sa_r) > 0);
+        CHECK(N.bind(r2, sa_r, 16) == 0);
+        len = sizeof(sa_s);
+        CHECK(N.getsockname(r2, sa_s, &len) == 0 && port_of(sa_s) == port_of(sa_r));
+        CHECK(N.bind(r3, sa_r, 16) == -1 && err() == GE_ADDRINUSE);
+        N.close(r1);
+        N.close(r2);
+        N.close(r3);
+    }
+    /*
      * A socket with a peer of its own whose port nobody listens on hears of the refusal: its next receive fails with
      * ECONNREFUSED, as Linux's does -- a QUIC client then goes over to TCP at once instead of waiting out its handshake.
      */

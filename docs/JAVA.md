@@ -2193,6 +2193,18 @@ generate key attestation"), as it does on such a device. The data app's
 `keystore-certificates` step checks both kinds of certificate, a chain set
 with a key, the refusal, and, on the second run, the first run's certificate.
 
+`android.util.Base64OutputStream` and `Base64InputStream` encode and decode
+as they go, with `Base64`'s flags as `Base64.encode` and `decode` take them
+(`MeglerBase64Coder`, in the overlay): lines of 76 and a line end, the last
+too, unless `NO_WRAP`; `CRLF`, `NO_PADDING`, `URL_SAFE`, and `NO_CLOSE` for
+the stream underneath. Both were the framework's stubs, which wrote and read
+nothing: Sberbank compressed a request's body through a
+`DeflaterOutputStream` over one, and the body went out empty (576). The data
+app's `base64-streams` step checks the output stream against
+`Base64.encode`, written a piece and a byte at a time, with the default flags
+and with `URL_SAFE | NO_WRAP | NO_PADDING`, and a `DeflaterOutputStream` over
+one read back through an `InflaterInputStream` over the other.
+
 **The built-in `java.lang` stays** as the first way to start
 (`mg_dvm_start(NULL, 0)`). It could be dropped now that every fixture passes on
 libcore too; it is kept because libcore is 40 MB that the ordinary package does
@@ -2334,6 +2346,14 @@ no native code or has it for 32-bit ARM.
   and without it the app ended with "Failed to call JNI_OnLoad from 'liger'".
   The data app asks for it too, and its step "apache-http-legacy" makes and
   reads a `BasicHeader` through it and finds the classes are its own loader's.
+  Its client, `AndroidHttpClient.newInstance`, registers https with the
+  platform's `SSLCertificateSocketFactory.getHttpSocketFactory`, which the SDK
+  dropped at 23 and the platform kept for it: Megler's framework had it not,
+  and Google's GSF, which makes its `GoogleHttpClient` so, could not start
+  its `SubscribedFeedsProvider` (Gmail asks it at every start: a
+  `NoSuchMethodError`, 576). The step "apache-http-client" makes the client
+  as GSF does, with the app's context, and finds https on 443 through
+  Apache's `SSLSocketFactory`.
 - **Input is asked for, not delivered.** The framework's main loop calls
   `Native.pollInput` between messages, every 8 ms at most. `megler_touch`,
   `megler_key` and `megler_set_paused` only queue (256 events; a move may be
@@ -4915,6 +4935,18 @@ on a looper thread of its own and takes it back with `next()`.
   never made ("Required value was null", package 561). The crash app's
   `Trampoline`, started as First finishes, is the root, and its `Main`, started
   twice so, finishes in `onCreate` and is never started.
+  An activity that finishes and gives its place back to the one below is
+  hidden at once (its windows not drawn and given no input,
+  `ViewRoot.finishedHidden`), and stopped and destroyed only after the next
+  frame, when the main thread is idle, ten seconds at most, as Android stops
+  a finishing activity once the next one is visible and its thread reports
+  idle. It was destroyed in the message that brought the one below back, and
+  what it had begun as it finished was cut off: Pyaterochka's sign-in saves
+  the address it was sent back to through DataStore from a coroutine of its
+  `lifecycleScope` and finishes, and the edit, which DataStore runs on the
+  main thread a message later, never ran ("No responseUri present", 576).
+  The crash app's `Gate` posts work from its `onPause` as it finishes, which
+  finds it not destroyed.
 
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.

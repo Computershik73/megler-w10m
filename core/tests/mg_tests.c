@@ -1084,7 +1084,7 @@ static void test_media(const char *scratch)
  * not supported", and 357, 356, 351): each gives a descriptor that works -- a byte through the pipe, the eventfd's count,
  * the pipe's read end ready in the epoll set.
  */
-static void test_syscall_fds(void)
+static void test_syscall_fds(const char *scratch)
 {
     typedef long (*syscall_fn)(long, long, long, long, long, long, long);
     typedef int (*close_fn)(int);
@@ -1096,6 +1096,12 @@ static void test_syscall_fds(void)
     u8 b = 0;
     u64 count = 0, one = 1;
     u64 event[2] = { 1 /* EPOLLIN */, 7 }, got[2] = { 0, 0 };   /* ARM's epoll_event: events, then data at 8 */
+    /* syscall()'s arguments are longs, addresses among them, as on the guest's ARM: a long holds an address only where
+       both are 32 bits (Windows' x64 build has longs of 32 bits and addresses of 64). */
+    if (sizeof(long) < sizeof(void *)) {
+        say("syscall() by number: left out, a long does not hold an address on this build");
+        return;
+    }
     say("syscall() by number: pipe2, eventfd2, eventfd, epoll_create1, epoll_ctl, epoll_wait");
     CHECK(sys && close_ && write_ && read_);
     if (!sys || !close_ || !write_ || !read_) return;
@@ -1117,6 +1123,29 @@ static void test_syscall_fds(void)
     if (ep >= 0) close_(ep);
     close_(fds[0]);
     close_(fds[1]);
+
+    /* Files by number, as TikTok Lite's loader writes its libraries out (syscall(__NR_open)): open, write, close, open
+       again, lseek, read, fstat64 (st_size at 48 in ARM's struct stat64), syncfs (and EBADF for a descriptor not open, as
+       Google Maps asks), close, unlink; and sched_getaffinity, whose raw call says the mask's size. */
+    {
+        const char *file = "/syscall-files/written.bin";
+        char back[4] = { 0 };
+        u8 st[104], mask[16];
+        int fd;
+        mg_fs_mount("/syscall-files", scratch);
+        say("syscall() by number: open, write, read, lseek, fstat64, syncfs, close, unlink, sched_getaffinity");
+        fd = (int)sys(5, (long)(mg_addr)file, 01 | 0100 | 01000, 0600, 0, 0, 0);   /* O_WRONLY | O_CREAT | O_TRUNC */
+        CHECK(fd >= 0 && sys(4, fd, (long)(mg_addr)"megler", 6, 0, 0, 0) == 6 && sys(6, fd, 0, 0, 0, 0, 0) == 0);
+        fd = (int)sys(5, (long)(mg_addr)file, 0, 0, 0, 0, 0);
+        CHECK(fd >= 0 && sys(19, fd, 2, 0, 0, 0, 0) == 2 && sys(3, fd, (long)(mg_addr)back, 4, 0, 0, 0) == 4 && !memcmp(back, "gler", 4));
+        memset(st, 0, sizeof(st));
+        CHECK(fd >= 0 && sys(197, fd, (long)(mg_addr)st, 0, 0, 0, 0) == 0 && mg_rd32(st + 48) == 6);
+        CHECK(fd >= 0 && sys(373, fd, 0, 0, 0, 0, 0) == 0 && sys(373, 999, 0, 0, 0, 0, 0) == -1);
+        CHECK(fd >= 0 && sys(6, fd, 0, 0, 0, 0, 0) == 0 && sys(10, (long)(mg_addr)file, 0, 0, 0, 0, 0) == 0);
+        CHECK(sys(5, (long)(mg_addr)file, 0, 0, 0, 0, 0) == -1);
+        memset(mask, 0, sizeof(mask));
+        CHECK(sys(242, 0, sizeof(mask), (long)(mg_addr)mask, 0, 0, 0) == 4 && mask[0] != 0 && sys(241, 0, sizeof(mask), (long)(mg_addr)mask, 0, 0, 0) == 0);
+    }
 }
 
 static void test_mmap_commit(void)
@@ -1387,6 +1416,66 @@ static void test_rename_in_use(const char *scratch)
     free(pending);
     free(live);
     free(dir);
+}
+
+/*
+ * A folder renamed with a file in it open and mapped, as Google Play services stages a module: the module's APK is written
+ * into a folder of its own, opened (the app's AssetManager keeps it), and the folder renamed to the module's name; the same
+ * again when a folder is put aside to be removed. Windows refuses to rename a folder with an open file in it, whatever the
+ * open shared; the host moves it an entry at a time then (mg_host_win32.c, move_dir_in_use). The file is found under the new
+ * name, the open one still reads, a folder inside goes along, and the old name is free to be made again.
+ */
+static void test_rename_dir_in_use(const char *scratch)
+{
+    char *top = mg_sprintf("%s/app_chimera", scratch), *stage = mg_sprintf("%s/s", top), *apk = mg_sprintf("%s/AdsDynamite.apk", stage);
+    char *inner = mg_sprintf("%s/oat", stage), *odex = mg_sprintf("%s/oat/arm.odex", stage);
+    char *final_dir = mg_sprintf("%s/9", top), *final_apk = mg_sprintf("%s/9/AdsDynamite.apk", top), *final_odex = mg_sprintf("%s/9/oat/arm.odex", top);
+    char *condemned = mg_sprintf("%s/c-9-1793639062482", top), *condemned_apk = mg_sprintf("%s/c-9-1793639062482/AdsDynamite.apk", top);
+    mg_file *open_apk, *open_odex;
+    void *base = NULL;
+    size_t mapped = 0;
+    const u8 *view;
+    mg_stat st;
+    int err = 0;
+    say("rename: a folder with a file in it open and mapped, and a folder in it with another open");
+    mg_path_mkdirs(inner);
+    write_whole(apk, "module apk");
+    write_whole(odex, "odex");
+    open_apk = mg_file_open(apk, MG_O_READ, &err);
+    view = open_apk ? (const u8 *)mg_file_map(open_apk, 0, 10, &base, &mapped) : NULL;
+    open_odex = mg_file_open(odex, MG_O_READ, &err);
+    CHECK(open_apk && view && open_odex);
+    CHECK(mg_path_rename(stage, final_dir, &err));
+    CHECK(mg_path_stat(final_apk, &st, &err) && st.size == 10 && mg_path_stat(final_odex, &st, &err) && st.size == 4);
+    CHECK(!mg_path_stat(stage, &st, &err) && err == MG_E_NOENT);
+    CHECK(reads_as(open_apk, "module apk") && view && !memcmp(view, "module apk", 10) && reads_as(open_odex, "odex"));
+    CHECK(mg_path_mkdir(stage, &err) && mg_path_rmdir(stage, &err));
+    /* Put aside to be removed, still open; and over a folder that is there and empty, as POSIX's rename replaces one. */
+    CHECK(mg_path_rename(final_dir, condemned, &err) && mg_path_stat(condemned_apk, &st, &err) && st.size == 10);
+    CHECK(mg_path_mkdir(final_dir, &err) && mg_path_rename(condemned, final_dir, &err) && mg_path_stat(final_apk, &st, &err));
+    /* Not over a folder with something in it. */
+    CHECK(mg_path_mkdirs(condemned) && mg_path_mkdir(condemned_apk, &err));
+    CHECK(!mg_path_rename(final_dir, condemned, &err) && mg_path_stat(final_apk, &st, &err) && mg_path_stat(final_odex, &st, &err));
+    CHECK(mg_path_rmdir(condemned_apk, &err) && mg_path_rmdir(condemned, &err));
+    if (view) mg_section_unmap(base, mapped);
+    if (open_apk) mg_file_close(open_apk);
+    if (open_odex) mg_file_close(open_odex);
+    CHECK(mg_path_remove(final_odex, &err) && mg_path_remove(final_apk, &err));
+    {
+        char *final_inner = mg_sprintf("%s/9/oat", top);
+        CHECK(mg_path_rmdir(final_inner, &err) && mg_path_rmdir(final_dir, &err) && mg_path_rmdir(top, &err));
+        free(final_inner);
+    }
+    free(condemned_apk);
+    free(condemned);
+    free(final_odex);
+    free(final_apk);
+    free(final_dir);
+    free(odex);
+    free(inner);
+    free(apk);
+    free(stage);
+    free(top);
 }
 
 /*
@@ -2578,6 +2667,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(const char *), "t_files")(buf), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_proc")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_boot_id")(), 1);
+    CHECK_INT(FN(lib, int (*)(void), "t_proc_status")(), 1);
     CHECK_INT(FN(lib, int (*)(void), "t_smaps")(), 4);
     CHECK_INT(FN(lib, int (*)(void), "t_props")(), 28);
     CHECK_INT(FN(lib, int (*)(void), "t_dl")(), 4);
@@ -3404,12 +3494,13 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_arsc(libdir);
     test_kuser();
     test_palette();
-    test_syscall_fds();
+    test_syscall_fds(scratch);
     test_mmap_commit();
     test_mmap_file(scratch);
     test_mmap_madvise(scratch);
     test_pread_threads(scratch);
     test_rename_in_use(scratch);
+    test_rename_dir_in_use(scratch);
     test_chromium_oom_report();
     test_shm_views();
     test_free_stretches();

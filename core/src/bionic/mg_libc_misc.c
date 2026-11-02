@@ -415,6 +415,27 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef int (*epoll_ctl_fn)(int, int, int, void *);
     typedef int (*epoll_wait_fn)(int, void *, int, int);
     typedef int (*eventfd_fn)(unsigned, int);
+    typedef long (*io_fn)(int, void *, size_t);
+    typedef int (*open_fn)(const char *, int, unsigned);
+    typedef int (*openat_fn)(int, const char *, int, unsigned);
+    typedef int (*fd_fn)(int);
+    typedef int (*fd2_fn)(int, int);
+    typedef int (*path_fn)(const char *);
+    typedef int (*path_int_fn)(const char *, int);
+    typedef int (*path2_fn)(const char *, const char *);
+    typedef int (*path_buf_fn)(const char *, void *);
+    typedef int (*fd_buf_fn)(int, void *);
+    typedef int (*at_fn)(int, const char *, int);
+    typedef int (*at_buf_fn)(int, const char *, void *, int);
+    typedef int (*at_int_fn)(int, const char *, int, int);
+    typedef int (*renameat_fn)(int, const char *, int, const char *);
+    typedef long (*readlink_fn)(const char *, char *, size_t);
+    typedef long (*lseek_fn)(int, long, int);
+    typedef i64 (*lseek64_fn)(int, i64, int);
+    typedef int (*fcntl_fn)(int, int, long);
+    typedef int (*ioctl_fn)(int, unsigned, void *);
+    typedef int (*dup3_fn)(int, int, int);
+    typedef int (*affinity_fn)(int, size_t, void *);
     switch (nr) {
     case 67:                                                                                                  /* sigaction */
         if (fault_signal_refused(a, b)) return -1;
@@ -448,6 +469,52 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 252: return ((epoll_wait_fn)mg_bionic_find("epoll_wait"))((int)a, (void *)(mg_addr)b, (int)c, (int)d);       /* epoll_wait */
     case 351: return ((eventfd_fn)mg_bionic_find("eventfd"))((unsigned)a, 0);                                         /* eventfd */
     case 356: return ((eventfd_fn)mg_bionic_find("eventfd"))((unsigned)a, (int)b);                                    /* eventfd2 */
+    /* Files by number, as the libc's own: TikTok Lite keeps its native libraries compressed in its APK, and its loader
+       (libzoin) writes each out with syscall(__NR_open). That said "syscall(5) is not supported" and ENOSYS ("open
+       decompress path failed ... 38 Function not implemented"), and the app ended at start without its libraries
+       (KevaInitTask, package 576). */
+    case 3: return ((io_fn)mg_bionic_find("read"))((int)a, (void *)(mg_addr)b, (size_t)c);                           /* read */
+    case 4: return ((io_fn)mg_bionic_find("write"))((int)a, (void *)(mg_addr)b, (size_t)c);                          /* write */
+    case 5: return ((open_fn)mg_bionic_find("open"))((const char *)(mg_addr)a, (int)b, (unsigned)c);                 /* open */
+    case 6: return ((fd_fn)mg_bionic_find("close"))((int)a);                                                         /* close */
+    case 10: return ((path_fn)mg_bionic_find("unlink"))((const char *)(mg_addr)a);                                   /* unlink */
+    case 19: return ((lseek_fn)mg_bionic_find("lseek"))((int)a, b, (int)c);                                          /* lseek */
+    case 33: return ((path_int_fn)mg_bionic_find("access"))((const char *)(mg_addr)a, (int)b);                       /* access */
+    case 38: return ((path2_fn)mg_bionic_find("rename"))((const char *)(mg_addr)a, (const char *)(mg_addr)b);        /* rename */
+    case 39: return ((path_int_fn)mg_bionic_find("mkdir"))((const char *)(mg_addr)a, (int)b);                        /* mkdir */
+    case 40: return ((path_fn)mg_bionic_find("rmdir"))((const char *)(mg_addr)a);                                    /* rmdir */
+    case 41: return ((fd_fn)mg_bionic_find("dup"))((int)a);                                                          /* dup */
+    case 54: return ((ioctl_fn)mg_bionic_find("ioctl"))((int)a, (unsigned)b, (void *)(mg_addr)c);                    /* ioctl */
+    case 63: return ((fd2_fn)mg_bionic_find("dup2"))((int)a, (int)b);                                                /* dup2 */
+    case 85: return ((readlink_fn)mg_bionic_find("readlink"))((const char *)(mg_addr)a, (char *)(mg_addr)b, (size_t)c);  /* readlink */
+    case 118: return ((fd_fn)mg_bionic_find("fsync"))((int)a);                                                       /* fsync */
+    case 140: {                                                                                     /* _llseek: high, low, result, whence */
+        i64 at = ((lseek64_fn)mg_bionic_find("lseek64"))((int)a, (i64)(((u64)(u32)b << 32) | (u32)c), (int)e);
+        if (at < 0) return -1;
+        memcpy((void *)(mg_addr)d, &at, 8);
+        return 0;
+    }
+    case 195: return ((path_buf_fn)mg_bionic_find("stat64"))((const char *)(mg_addr)a, (void *)(mg_addr)b);         /* stat64 */
+    case 196: return ((path_buf_fn)mg_bionic_find("lstat64"))((const char *)(mg_addr)a, (void *)(mg_addr)b);        /* lstat64 */
+    case 197: return ((fd_buf_fn)mg_bionic_find("fstat64"))((int)a, (void *)(mg_addr)b);                             /* fstat64 */
+    case 221: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, (int)b, c);                                         /* fcntl64 */
+    case 322: return ((openat_fn)mg_bionic_find("openat"))((int)a, (const char *)(mg_addr)b, (int)c, (unsigned)d);   /* openat */
+    case 323: return ((at_fn)mg_bionic_find("mkdirat"))((int)a, (const char *)(mg_addr)b, (int)c);                   /* mkdirat */
+    case 327: return ((at_buf_fn)mg_bionic_find("fstatat64"))((int)a, (const char *)(mg_addr)b, (void *)(mg_addr)c, (int)d);  /* fstatat64 */
+    case 328: return ((at_fn)mg_bionic_find("unlinkat"))((int)a, (const char *)(mg_addr)b, (int)c);                  /* unlinkat */
+    case 329: return ((renameat_fn)mg_bionic_find("renameat"))((int)a, (const char *)(mg_addr)b, (int)c, (const char *)(mg_addr)d);  /* renameat */
+    case 334: return ((at_int_fn)mg_bionic_find("faccessat"))((int)a, (const char *)(mg_addr)b, (int)c, (int)d);     /* faccessat */
+    case 358: return ((dup3_fn)mg_bionic_find("dup3"))((int)a, (int)b, (int)c);                                      /* dup3 */
+    /* syncfs: the file system a descriptor is on is synced as sync() syncs it, which is nothing more than Windows does
+       with what was written (it outlives the app); a descriptor not open is EBADF. Google Maps asks at start, and it
+       said "syscall(373) is not supported" (package 576). */
+    case 373: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, 1 /* F_GETFD */, 0) < 0 ? -1 : 0;                  /* syncfs */
+    /* The processors a thread may run on: any, as the libc's sched_*affinity say (Sonolus's Unity asked by number). The
+       raw call returns the size of the mask it wrote, the libc's 0. */
+    case 241: return ((affinity_fn)mg_bionic_find("sched_setaffinity"))((int)a, (size_t)b, (void *)(mg_addr)c);      /* sched_setaffinity */
+    case 242:                                                                                                         /* sched_getaffinity */
+        if (((affinity_fn)mg_bionic_find("sched_getaffinity"))((int)a, (size_t)b, (void *)(mg_addr)c) != 0) return -1;
+        return (long)(b < 4 ? b : 4);
     default:
         mg_note_once("syscall(%ld) is not supported", nr);
         mg_set_errno(GE_NOSYS);

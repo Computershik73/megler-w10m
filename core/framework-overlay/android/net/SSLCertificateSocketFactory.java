@@ -36,6 +36,13 @@ public class SSLCertificateSocketFactory extends SSLSocketFactory {
     public static SSLSocketFactory getInsecure(int timeout, SSLSessionCache cache) {
         return new SSLCertificateSocketFactory(timeout, cache, false);
     }
+    /** Android's for the Apache HTTP client (removed from the SDK at 23, kept in the platform for it): this factory as
+     * Apache's. AndroidHttpClient.newInstance registers https with it; Google's GSF makes its client so, and each of its
+     * providers that does (SubscribedFeedsProvider, which Gmail asks) failed to start in a NoSuchMethodError (576). */
+    @Deprecated
+    public static org.apache.http.conn.ssl.SSLSocketFactory getHttpSocketFactory(int timeout, SSLSessionCache cache) {
+        return new org.apache.http.conn.ssl.SSLSocketFactory(new SSLCertificateSocketFactory(timeout, cache, true));
+    }
     private synchronized SSLSocketFactory delegate() {
         if (delegate == null) {
             try {

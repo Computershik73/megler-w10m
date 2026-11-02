@@ -476,6 +476,37 @@ int t_boot_id(void)
     return uuid_shaped(a) && uuid_shaped(u1) && uuid_shaped(u2) && same && differ;
 }
 
+/* A line of /proc/self/status that starts with `key`, as the kernel writes it ("VmHWM:\t    1234 kB"): its number of
+   kB, or -1. */
+static long status_kb(const char *key)
+{
+    char line[256];
+    void *f = fopen("/proc/self/status", "r");
+    long kb = -1;
+    if (!f) return -1;
+    while (kb < 0 && fgets(line, sizeof(line), f)) {
+        int i = 0;
+        long n = 0;
+        while (key[i] && line[i] == key[i]) i++;
+        if (key[i] || line[i] != ':') continue;
+        i++;
+        while (line[i] == ' ' || line[i] == '\t') i++;
+        if (line[i] < '0' || line[i] > '9') continue;
+        while (line[i] >= '0' && line[i] <= '9') n = n * 10 + (line[i++] - '0');
+        if (line[i] == ' ' && line[i + 1] == 'k' && line[i + 2] == 'B') kb = n;
+    }
+    fclose(f);
+    return kb;
+}
+
+/* /proc/self/status's memory lines, as Google Play services' memory metric reads them: VmHWM, VmRSS, VmPeak, VmSize
+   and VmSwap there, the high-water mark not below the resident size, the peak not below the size. 1 when so. */
+int t_proc_status(void)
+{
+    long hwm = status_kb("VmHWM"), rss = status_kb("VmRSS"), peak = status_kb("VmPeak"), size = status_kb("VmSize");
+    return hwm >= 0 && rss >= 0 && hwm >= rss && peak >= size && size >= 0 && status_kb("VmSwap") == 0;
+}
+
 /* /proc/self/smaps, as Instagram reads it for the page size: the first "KernelPageSize:" line's number of kB (4), or -1. */
 int t_smaps(void)
 {

@@ -210,6 +210,14 @@ Two things are asked for before anything else (the owner's wish, 2026-11-02):
   portal on the phone itself and sends no user name and password, and a portal
   that asks for them answers 401, which Megler says as "The Device Portal asks
   for a user name and password: turn its Authentication off ...".
+  An app's request waits for the portal's answer first when Megler has not
+  had one (`separateApps::askPortal`): Megler started or woken by the request
+  itself has not asked the portal yet, and Play Store's installer session
+  waits for the outcome meanwhile. Woken by Play Store's request for WhatsApp,
+  after Play Store's request to uninstall the one installed before had
+  started it, Megler said at once that the portal "has not answered yet",
+  and Play Store showed the install as failed (576). The app that asked is
+  told the portal is off only when it does not answer then.
 - **Google's own Google Play services before Google Play Store.** Play Store
   starts, in its own package or when an app asks for it, only once Google's own
   Google Play services, which Megler has built in, is installed as an app of its

@@ -37,6 +37,7 @@ std::map<std::string, Status> gStatus; // the actions' part (queued, step, made)
 std::deque<Job> gJobs;
 bool gWorking = false;
 std::string gWorkingLine;
+std::vector<std::function<void()>> gPortalWaiters; // what waits for the portal's answer (askPortal)
 int gDone = 0, gTotal = 0;           // of the jobs since the worker started
 
 std::string identityOf(const std::string& package) {
@@ -280,6 +281,16 @@ void run(Job& job, int number, int total) {
     }
 }
 
+/// A listing of the portal's ended: what waited for its answer goes on. UI thread.
+void portalAnswered() {
+    std::vector<std::function<void()>> waiters;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        waiters.swap(gPortalWaiters);
+    }
+    for (auto& then : waiters) then();
+}
+
 /// The worker: the jobs one after another, then the portal's list again. UI thread.
 void startWorker(AppShell& shell) {
     {
@@ -322,6 +333,7 @@ void startWorker(AppShell& shell) {
                 gWorkingLine.clear();
                 gGeneration++;
             }
+            portalAnswered();
             // Asked for while the last was going on.
             startWorker(*shellPointer);
         });
@@ -352,7 +364,16 @@ void refresh(AppShell& shell) {
         if (gListing || gWorking) return;
         gListing = true;
     }
-    shell.runInBackground([] { list(); });
+    shell.runInBackground([] { list(); }, [] { portalAnswered(); });
+}
+
+void askPortal(AppShell& shell, std::function<void()> then) {
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        gPortalWaiters.push_back(std::move(then));
+    }
+    // (A listing or the worker under way runs them as it ends.)
+    refresh(shell);
 }
 
 unsigned generation() {
