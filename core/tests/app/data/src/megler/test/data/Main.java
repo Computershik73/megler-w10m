@@ -806,6 +806,16 @@ public class Main extends Activity {
         // OpenJDK 11's comparisons of arrays and of their ranges, which Android 13 has (java.util.Arrays.equals(byte[], int, int,
         // byte[], int, int) and the rest, the libcore overlay's): Aliucord Manager's patching of Discord's APK called that one
         // and ended on a NoSuchMethodError. By reflection: the app is built against Android 10's android.jar.
+        // IntentFilter.matchCategories as Android has it: null when every category of the intent's is the filter's, else the first
+        // that is not (it said null for anything; megler.MicroG matches Google Play services' services with it).
+        step("filter-categories", () -> {
+            android.content.IntentFilter f = new android.content.IntentFilter("megler.test.ACTION");
+            f.addCategory(android.content.Intent.CATEGORY_DEFAULT);
+            java.util.Set<String> both = new java.util.LinkedHashSet<>(java.util.Arrays.asList(android.content.Intent.CATEGORY_DEFAULT, "megler.test.OTHER"));
+            String none = f.matchCategories(null), own = f.matchCategories(java.util.Collections.singleton(android.content.Intent.CATEGORY_DEFAULT)), missing = f.matchCategories(both);
+            detail = "none=" + none + " own=" + own + " missing=" + missing;
+            return none == null && own == null && "megler.test.OTHER".equals(missing);
+        });
         step("arrays-ranges", () -> {
             Class<?> a = java.util.Arrays.class;
             byte[] one = { 1, 2, 3, 4, 5 }, two = { 9, 2, 3, 4, 8 };
