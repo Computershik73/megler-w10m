@@ -40,7 +40,7 @@ public final class Gsf {
         File shared = new File(MicroG.SHARED);
         a.dataDir = new File(shared.isDirectory() ? shared : new File(Native.dataDir(), "megler-services"), GooglePackages.GSF).getPath();
         a.flags = ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_INSTALLED | ApplicationInfo.FLAG_HAS_CODE;
-        a.uid = android.os.Process.myUid();
+        a.uid = GooglePackages.sharedUid();
         a.enabled = true;
         info.signatures = new Signature[] {GooglePackages.signature()};
         info.signingInfo = new SigningInfo(info.signatures);

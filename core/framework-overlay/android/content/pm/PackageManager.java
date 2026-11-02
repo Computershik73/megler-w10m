@@ -326,13 +326,21 @@ public class PackageManager {
         return l;
     }
     /*
-     * The app's uid is the Google packages' it hosts as well (their ApplicationInfo has it: GmsCore and Google Services
-     * Framework run in its process), so they are the uid's packages too, as Android gives every package of a shared user
-     * id. Google Play services checks that a package a caller names is one of the calling uid's: its sign-in refused its own
+     * The app's uid is the one the Google packages it hosts call from as well (GmsCore and Google Services Framework run in
+     * its process, and Binder.getCallingUid is the app's), so they are the uid's packages too, as Android gives every
+     * package of a shared user id; their own ApplicationInfo has a uid of theirs (megler.GooglePackages.sharedUid), whose
+     * packages are theirs alone. Google Play services checks that a package a caller names is one of the calling uid's: its sign-in refused its own
      * backup module a token ("GLSActivity: Package not matching uid 10100 com.google.android.gms"), and WhatsApp's search
      * for its Google Drive backup failed until it said it took too long; Play Store said the same of it.
      */
     public String[] getPackagesForUid(int uid) {
+        // Google Play services' and Google Services Framework's own uid (megler.GooglePackages.sharedUid): theirs alone.
+        if (uid == megler.GooglePackages.SHARED_UID && uid != android.os.Process.myUid()) {
+            java.util.ArrayList<String> google = new java.util.ArrayList<>();
+            if (megler.MicroG.packageInfo(megler.GooglePackages.GMS) != null) google.add(megler.GooglePackages.GMS);
+            if (megler.Gsf.packageInfo(megler.GooglePackages.GSF) != null) google.add(megler.GooglePackages.GSF);
+            return google.isEmpty() ? null : google.toArray(new String[0]);
+        }
         String other = otherOfUid(uid);
         if (other != null) return new String[] { other };
         java.util.ArrayList<String> out = new java.util.ArrayList<>();
@@ -343,7 +351,10 @@ public class PackageManager {
         }
         return out.toArray(new String[0]);
     }
-    public String getNameForUid(int uid) { String other = otherOfUid(uid); return other != null ? other : megler.Native.packageName(); }
+    public String getNameForUid(int uid) {
+        if (uid == megler.GooglePackages.SHARED_UID && uid != android.os.Process.myUid()) return "com.google.uid.shared:" + uid;   /* a shared uid's name, as Android's */
+        String other = otherOfUid(uid); return other != null ? other : megler.Native.packageName();
+    }
     /* Another app the phone has by its uid (megler.PhoneApps gives each one of its own), else null: the running app's. */
     private static String otherOfUid(int uid) {
         if (uid == android.os.Process.myUid()) return null;
