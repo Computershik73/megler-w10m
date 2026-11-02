@@ -1091,6 +1091,19 @@ typedef struct host_store {
     void *align;
 } host_store;
 
+/*
+ * res_search: a DNS query's raw answer, which the host's resolver here does not give (it answers by name: getaddrinfo).
+ * -1 and NO_RECOVERY, and the caller goes another way. Go's net package links it, for its cgo resolver's LookupTXT and
+ * the like: WhatsApp's libgojni.so imports it, and an import not provided is a stub that ends the app when called.
+ */
+static int g_res_search(const char *name, int cls, int type, u8 *answer, int anslen)
+{
+    (void)name; (void)cls; (void)type; (void)answer; (void)anslen;
+    mg_note_once("res_search: raw DNS queries are not answered here; the caller is told NO_RECOVERY");
+    t_h_errno = G_NO_RECOVERY;
+    return -1;
+}
+
 static int h_errno_of(int eai) { return eai == G_EAI_AGAIN ? G_TRY_AGAIN : eai == G_EAI_NODATA ? G_NO_DATA : eai == G_EAI_FAIL ? G_NO_RECOVERY : G_HOST_NOT_FOUND; }
 
 /* Fills a hostent into `buf` (its own pointers into the same buffer): false when it does not fit. */
@@ -1285,7 +1298,7 @@ static const u8 g_in6addr_loopback[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
 const mg_sym mg_tab_netdb[] = {
     MG_DATA("in6addr_any", g_in6addr_any), MG_DATA("in6addr_loopback", g_in6addr_loopback),
-    MG_WRAP("getaddrinfo", g_getaddrinfo), MG_WRAP("android_getaddrinfofornet", g_android_getaddrinfofornet), MG_WRAP("freeaddrinfo", g_freeaddrinfo),
+    MG_WRAP("res_search", g_res_search), MG_WRAP("getaddrinfo", g_getaddrinfo), MG_WRAP("android_getaddrinfofornet", g_android_getaddrinfofornet), MG_WRAP("freeaddrinfo", g_freeaddrinfo),
     MG_WRAP("gai_strerror", g_gai_strerror), MG_WRAP("getnameinfo", g_getnameinfo),
     MG_WRAP("gethostbyname", g_gethostbyname), MG_WRAP("gethostbyname2", g_gethostbyname2), MG_WRAP("gethostbyname_r", g_gethostbyname_r),
     MG_WRAP("gethostbyname2_r", g_gethostbyname2_r), MG_WRAP("android_gethostbynamefornet", g_android_gethostbynamefornet),

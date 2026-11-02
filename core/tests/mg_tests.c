@@ -1771,9 +1771,15 @@ static void test_appx_pri(void)
 static void test_libc_odds(void)
 {
     const u32 *size = (const u32 *)mg_bionic_find("__page_size"), *shift = (const u32 *)mg_bionic_find("__page_shift");
-    say("libc's page size as data, setpgrp, ptrace");
+    say("libc's page size as data, setpgrp, ptrace, the ids' setters and res_search");
     CHECK(size && *size == 4096 && shift && *shift == 12);
     CHECK(mg_bionic_find("setpgrp") != NULL && mg_bionic_find("ptrace") != NULL);
+    /* What Go's syscall and net packages link (WhatsApp's libgojni.so): there, and a DNS query by res_search refused. */
+    CHECK(mg_bionic_find("setresuid") && mg_bionic_find("setresgid") && mg_bionic_find("setgroups") && mg_bionic_find("res_search"));
+    if (mg_bionic_find("res_search")) {
+        u8 answer[64];
+        CHECK(MG_GFN(int (*)(const char *, int, int, u8 *, int), (mg_addr)mg_bionic_find("res_search"))("example.com", 1, 16, answer, 64) == -1);
+    }
 }
 
 /* ------------------------------------------------------------------ the decoders behind a Java app's MediaCodec */

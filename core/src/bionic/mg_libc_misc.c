@@ -1530,7 +1530,7 @@ const mg_sym mg_tab_misc[] = {
     M("__cxa_bad_cast", g_cxa_bad_cast), M("__cxa_guard_acquire", g_cxa_guard_acquire), M("__cxa_guard_release", g_cxa_guard_release),
     M("__cxa_guard_abort", g_cxa_guard_abort),
     M("getpid", g_getpid), M("getppid", g_getppid), M("getuid", g_getuid), M("geteuid", g_getuid), M("getgid", g_getuid),
-    M("getegid", g_getuid), M("setuid", g_zero), M("setgid", g_zero), M("getpgrp", g_getpid), M("setsid", g_getpid),
+    M("getegid", g_getuid), M("setuid", g_zero), M("setgid", g_zero), M("setresuid", g_zero), M("setresgid", g_zero), M("setgroups", g_zero), M("getpgrp", g_getpid), M("setsid", g_getpid),
     M("fork", g_fail_nosys), M("vfork", g_fail_nosys), M("execv", g_fail_nosys), M("execve", g_fail_nosys), M("execvp", g_fail_nosys),
     M("execl", g_fail_nosys), M("execlp", g_fail_nosys), M("wait", g_fail_nosys), M("waitpid", g_fail_nosys), M("system", g_system),
     M("getenv", g_getenv), M("setenv", g_setenv), M("unsetenv", g_unsetenv), M("putenv", g_putenv), M("clearenv", g_clearenv),
