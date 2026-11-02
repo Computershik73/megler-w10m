@@ -2803,8 +2803,10 @@ static int run_microg(void)
     CHECK(find_line("Feature[megler_inline,9]", 0) >= 0 && find_line("Feature[megler_probe,7]", 0) >= 0);
     CHECK(find_line("E/MicroGTest: FAILED", 0) < 0);
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
-    /* microG heard the boot (megler.MicroG.boot): its check-in trigger looked at its setting, which is off until the user turns it on. */
-    CHECK(find_line("GmsCheckinTrigger: Ignoring Intent { act=android.intent.action.BOOT_COMPLETED", 0) >= 0);
+    /* microG heard the boot (megler.MicroG.boot), with its device registration turned on, as Megler turns it on unless microG's
+       settings turned it off (Play Store has no Android ID without it), and its check-in trigger started the registration. */
+    CHECK(find_line("I/MicroG: device registration turned on (checkin_enable_service)", 0) >= 0);
+    CHECK(find_line("GmsCheckinSvc: Started Google device registration", 0) >= 0);
     say_app_lines("/MicroGTest: ");
     return g_failed;
 }

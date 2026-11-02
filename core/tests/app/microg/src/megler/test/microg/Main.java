@@ -52,8 +52,10 @@ public class Main extends Activity {
             if (System.getenv("MG_JAVA_GSF_APK") != null) {
                 PackageInfo gsfInfo = getPackageManager().getPackageInfo("com.google.android.gsf", PackageManager.GET_PROVIDERS);
                 check(gsfInfo.providers != null && gsfInfo.providers.length > 0, "shared GSF APK metadata");
+                // GServices is microG's own here, as on a phone with microG: the Android ID of its check-in is in it, which
+                // Play Store reads (GSF's, mounted beside it for Google's own Play services, never had one).
                 ProviderInfo gservices = getPackageManager().resolveContentProvider("com.google.android.gsf.gservices", 0);
-                check(gservices != null && "com.google.android.gsf".equals(gservices.packageName), "GSF GServices provider resolves");
+                check(gservices != null && GMS.equals(gservices.packageName) && gservices.name.startsWith("org.microg."), "microG's GServices provider resolves");
                 Context gsf = createPackageContext("com.google.android.gsf", CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY);
                 check("com.google.android.gsf".equals(gsf.getPackageName()) && gsf.getClassLoader() != getClassLoader(),
                         "GSF has its own service class loader");
@@ -61,7 +63,7 @@ public class Main extends Activity {
                         "GSF application context has user services");
                 android.database.Cursor gservicesValues = getContentResolver().query(android.net.Uri.parse("content://com.google.android.gsf.gservices"),
                         null, null, new String[] {"android_id"}, null);
-                check(gservicesValues != null, "GSF provider answers a query");
+                check(gservicesValues != null, "microG's GServices provider answers a query");
                 gservicesValues.close();
             }
             Context gms = createPackageContext(GMS, CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY);
@@ -237,6 +239,17 @@ public class Main extends Activity {
                 null, null, null);
             check(checkin != null, "microG check-in provider answers");
             checkin.close();
+            // microG's device registration is on unless its settings turned it off (MicroG.registrationOn): Play Store has no
+            // Android ID without a check-in.
+            java.io.File microgPrefs = new java.io.File("/data/megler-services/" + GMS + "/shared_prefs/" + GMS + "_preferences.xml");
+            String saved = "";
+            try (java.io.FileInputStream in = new java.io.FileInputStream(microgPrefs)) {
+                byte[] all = new byte[(int) microgPrefs.length()];
+                int n = 0;
+                while (n < all.length) { int r = in.read(all, n, all.length - n); if (r < 0) break; n += r; }
+                saved = new String(all, 0, n, "UTF-8");
+            } catch (java.io.IOException e) { saved = e.toString(); }
+            check(saved.contains("checkin_enable_service") && saved.contains("true"), "microG's device registration is on: " + saved.replace((char) 10, ' '));
             android.net.Uri global = android.provider.Settings.Global.CONTENT_URI;
             android.content.ContentValues setting = new android.content.ContentValues();
             setting.put("name", "megler_checkin_probe");

@@ -9,6 +9,13 @@ import android.os.Bundle;
 public final class GmsProviders {
     private GmsProviders() {}
     public static ContentProvider forAuthority(String a) {
+        // With microG, its own providers first: its GServices (com.google.android.gsf.gservices) holds the Android ID of its
+        // check-in, which Play Store reads there. Google Services Framework's, mounted beside it for Google's own Play services,
+        // never had one, and Play Store said "Unexpected android-id = 0" and "Server error" (package 570).
+        if (MicroG.isMicroG()) {
+            ContentProvider own = MicroG.provider(a);
+            if (own != null) return own;
+        }
         ContentProvider gsf = Gsf.provider(a);
         if (gsf != null) return gsf;
         ContentProvider microg = MicroG.provider(a);
