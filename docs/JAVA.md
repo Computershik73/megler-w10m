@@ -3417,6 +3417,17 @@ through `transact`, as AIDL's `asInterface` takes another scope's object for
 a remote one. The process's receivers, providers and activities still run in
 the app's own scope.
 
+The scope is over the app's base APK, and its native libraries are the app's
+library folder's (`ApplicationInfo.nativeLibraryDir`, where the Java driver
+puts the libraries of every APK of the app): `ServiceClassLoader.findLibrary`
+names the file there when there is one, else the base's own
+(`<apk>!/lib/armeabi-v7a/...`). Play Store from a bundle has its libraries in
+its split for 32-bit ARM, which the scope is not over: its background process,
+which installs apps, could not load `libmappedcountercacheversionjni.so`, and
+every install from Play Store ended in "Can't install the app" (its error 1000,
+package 574). The test app `splits` has a service in a process of its own
+(`.Other`, `:other`) that loads the library of its split and calls it.
+
 ### Downloads
 
 `megler.Downloads` is the system's download provider

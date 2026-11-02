@@ -164,6 +164,8 @@ public class Main extends Activity {
             return "the expansion file of megler.test.splits\n".equals(read(new FileInputStream(f)));
         });
         Log.i(T, "done ok=" + ok + " failed=" + failed);
+        // The library again, from the app's other process (Other).
+        startService(new android.content.Intent(this, Other.class));
 
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
