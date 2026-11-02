@@ -193,6 +193,15 @@ public final class AppRunner {
     // ---- activities
     public static int stackSize() { return sStack.size(); }
     public static Activity top() { return sStack.isEmpty() ? null : sStack.get(sStack.size() - 1); }
+    /**
+     * Activity.isTaskRoot, as Android answers it: the lowest activity of the task that is not finishing (the lowest of all
+     * when every one is). Not "started by none": Instagram's launcher activity starts its main activity and finishes, and
+     * the main activity, root then, finishes itself in onCreate unless it is ("is not the root").
+     */
+    public static boolean isRoot(Activity a) {
+        for (Activity b : sStack) if (!b.isFinishing()) return b == a;
+        return !sStack.isEmpty() && sStack.get(0) == a;
+    }
     public static CharSequence appLabel(Context c) {
         try { if (Manifest.appLabel != 0) return c.getResources().getText(Manifest.appLabel); } catch (Exception e) {}
         return Native.packageName();
@@ -309,7 +318,9 @@ public final class AppRunner {
                     if ((intent.getFlags() & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0) {
                         // the activity itself, as Android compares realActivity: one started through an <activity-alias> is its target's
                         String real = "activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name;
-                        for (int k = sStack.size() - 1; k >= 0; k--) if (sStack.get(k).getClass().getName().equals(real)) {
+                        // not one that is finishing, as Android passes over those: Instagram's main activity, finished in
+                        // its onCreate, was started again (onRestart, onStart) and failed for the state it never made
+                        for (int k = sStack.size() - 1; k >= 0; k--) if (!sStack.get(k).isFinishing() && sStack.get(k).getClass().getName().equals(real)) {
                             Activity existing = sStack.get(k);
                             while (top() != existing) finishNow(top(), false);
                             if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || c.launchMode != 0) {
@@ -389,7 +400,8 @@ public final class AppRunner {
         sStack.remove(idx);
         AppResults.finished(a);
         Activity below = top();
-        if (wasTop && below != null && resumeBelow) {
+        // (one below that is finishing too stays down: it goes when its own finish comes)
+        if (wasTop && below != null && resumeBelow && !below.isFinishing()) {
             Activity caller = a.meglerCaller();
             if (caller != null && a.meglerRequestCode() >= 0 && caller == below) below.meglerActivityResult(a.meglerRequestCode(), a.meglerResultCode(), a.meglerResultData());
             if (!below.isResumedMegler()) {

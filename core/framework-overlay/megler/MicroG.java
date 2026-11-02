@@ -157,7 +157,7 @@ public final class MicroG {
         a.credentialProtectedDataDir = a.dataDir;
         a.deviceProtectedDataDir = new File(a.dataDir, "device_protected").getPath();
         a.nativeLibraryDir = APK + "!/lib/armeabi-v7a";
-        a.enabled = true; a.uid = android.os.Process.myUid();
+        a.enabled = true; a.uid = GooglePackages.sharedUid();
         a.flags = ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_INSTALLED | ApplicationInfo.FLAG_HAS_CODE;
         a.metaData = new Bundle(); info.applicationInfo = a;
         XmlBlock.Parser p = new XmlBlock(manifest, APK).newParser();

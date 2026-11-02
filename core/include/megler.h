@@ -1596,6 +1596,13 @@ bool megler_run(const megler_run_config *config);
  */
 bool megler_running(void);
 const char *megler_last_error(void);
+/*
+ * Where another thread of the process stands, in one line: its pc and lr, and the ways back into a module or into Android
+ * code its stack holds, as a fault's report says them (not an unwinding: there are no tables for most of it). The thread
+ * is stopped while its registers and its stack's top are copied. For the shell's watch of its UI thread: what holds it
+ * when it does not answer. False when it could not be stopped (it ended, it is the caller, or the host cannot).
+ */
+bool megler_thread_where(unsigned thread_id, char *out, size_t size);
 
 /* Touch, in surface pixels with y down (after undoing the flip). phase: 0 down, 1 move, 2 up, 3 cancel. */
 void megler_touch(int phase, int pointer_id, float x, float y);

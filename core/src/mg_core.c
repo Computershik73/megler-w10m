@@ -291,6 +291,71 @@ static bool on_fault(mg_fault *f)
     return false;
 }
 
+/* An address as the reports say it: <library>+0x.. of Android code, <module>+0x.. of the host's, else the address. */
+static void where_name(mg_addr a, char *out, size_t size)
+{
+    const char *lib = NULL;
+    const void *sym = NULL, *lib_base = NULL;
+    char module[96];
+    mg_addr base = 0;
+    a &= ~(mg_addr)1;
+    if (mg_ld_is_guest_code(a)) mg_ld_symbol_at((const void *)a, &lib, &sym, &lib_base);
+    if (lib && lib_base)
+        snprintf(out, size, "%s+0x%x", lib, (unsigned)(a - (mg_addr)lib_base));
+    else if (mg_host_module_at(a, module, sizeof(module), &base) && a != base)
+        snprintf(out, size, "%s+0x%x", module, (unsigned)(a - base));
+    else
+        snprintf(out, size, "%08x", (unsigned)a);
+}
+
+bool megler_thread_where(unsigned thread_id, char *out, size_t size)
+{
+    enum { WORDS = 16384 };                       /* 64 KB of its stack from sp up, as a fault's report looks */
+    static u32 words[WORDS];
+    static mg_lock lock = MG_LOCK_INIT;
+    mg_thread_regs regs;
+    char name[128];
+    size_t n;
+    int got, i, found = 0;
+    mg_addr last = 0;
+    if (!out || !size) return false;
+    out[0] = 0;
+    mg_lock_acquire(&lock);
+    got = mg_thread_snapshot_id(thread_id, &regs, words, WORDS);
+    if (got < 0) {
+        mg_lock_release(&lock);
+        return false;
+    }
+    where_name(regs.pc, name, sizeof(name));
+    snprintf(out, size, "pc %s", name);
+#if MG_HOST_ARM32
+    where_name(regs.r[13], name, sizeof(name));
+    n = strlen(out);
+    snprintf(out + n, size - n, ", lr %s", name);
+#endif
+    for (i = 0; i < got && found < 40; i++) {
+        mg_addr word = words[i] & ~(mg_addr)1, base = 0;
+        char module[96];
+        const char *lib = NULL;
+        const void *sym = NULL, *lib_base = NULL;
+        if (word < 0x10000 || word == last) continue;
+        if (mg_ld_is_guest_code(word)) {
+            mg_ld_symbol_at((const void *)word, &lib, &sym, &lib_base);
+            if (!lib || !lib_base) continue;
+        } else if (!mg_host_module_at(word, module, sizeof(module), &base) || word == base) {
+            continue;
+        }
+        where_name(word, name, sizeof(name));
+        n = strlen(out);
+        if (n + strlen(name) + 20 >= size) break;
+        snprintf(out + n, size - n, "%s%s", found ? ", " : "; on the stack: ", name);
+        last = word;
+        found++;
+    }
+    mg_lock_release(&lock);
+    return true;
+}
+
 bool mg_core_init(void)
 {
     if (g_inited) return g_can_run;

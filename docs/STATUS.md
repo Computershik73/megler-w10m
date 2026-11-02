@@ -230,7 +230,12 @@ engine:
   unexpected order of events (hidden while still active) in what was left of the
   process. A fault on a thread that has never run Android code, in a system DLL,
   with nothing of this layer on its stack, should be read as "something else
-  already ended this process".
+  already ended this process". One such something else is the phone's own
+  hang report, for a UI thread that does not answer: no dump, and the window
+  taken away (Instagram signing in with Google, package 567). The shell watches
+  its UI thread (`ui/AppShell.cpp`, `megler_thread_where`): one that has not
+  answered a ping in two, five and ten seconds is said in the log with where it
+  stands, and how late it answered when it does.
 - **What found it** was the phone's own event tracing, relayed by the Device
   Portal: `tools/phone-etw.py` records any ETW provider registered on the phone
   while Megler runs. `Microsoft-WindowsPhone-CoreUIComponents` and
@@ -293,6 +298,11 @@ parameter; at most 320 lines; `dvm/mg_dvm_interp.c`); and
 of a class whose name starts with it, with its thread and depth, and its return
 with the value or the exception it ends with; up to eight such flags; at most 8000
 lines; `dvm/mg_dvm_interp.c`, the flags read by `mg_flags_each`); and
+`trace-calls-within-<prefix>` (every call made while a method of such a class
+runs, whatever the callee's class, up to three frames below the nearest such
+method, and its return: what the method asks of the framework and is told,
+without tracing the framework's classes for the whole run; the same lines and
+the same 8000); and
 `trace-cpu` (every five seconds, the processor the app had in the phone's cores,
 and its eight busiest threads that ran guest code, by id and name, each as a
 share of one core: whether a slow app is held by one thread; at most 2000 lines;

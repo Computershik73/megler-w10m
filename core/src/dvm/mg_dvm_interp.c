@@ -78,38 +78,71 @@ static MG_NOINLINE mg_dvm_frame *stack_full(mg_dvm_thread *t, mg_dvm_method *m, 
  * of a method of a class whose name starts with one of the prefixes is said in the log, with its thread and depth, and so
  * is its return, with the value it returns, or the exception it ends with. What an app does between two things it logs,
  * when it logs nothing in between: VK mp3 mod's sign-in thread ended with no exception and nothing after it ran. A String
- * among the arguments of a call from the interpreter, or returned, is said too, its first 80 characters (call_trace_text):
+ * among the arguments of a call from the interpreter, or returned, is said too, its first 80 characters (call_trace_text), and
+ * so are its int and boolean arguments and a String[] it returns, the first four:
  * GmsCore's sign-in ended in "Unknown" for an error its server answered with, which it says nowhere. Classes are looked
  * at once each (mg_dvm_class.call_traced). At most 8000 lines a run.
+ *
+ * And trace-calls-within-<prefix>: every call made while a method of such a class runs, whatever the callee's class, up to
+ * three frames below the nearest such method, and its return -- what a method asks of the framework and is told, when
+ * tracing the framework's class would spend the 8000 lines long before: Google Play services' check of a consent screen's
+ * service refused Instagram a token for "a different signature", and it was not known whose (package 564). Deeper ones
+ * are not said: the checks' own logging and a walk of the phone's apps spent the lines before the check (package 565).
+ * The thread keeps the depths of those methods' frames (mg_dvm_thread.call_within) and forgets one once the stack is
+ * shallower, whether or not its end was seen.
  */
 static volatile bool g_call_trace;
-static char g_call_prefixes[8][160];
-static int g_ncall_prefixes;
+static char g_call_prefixes[8][160], g_within_prefixes[8][160];
+static int g_ncall_prefixes, g_nwithin_prefixes;
 static volatile i32 g_call_lines;
 
-void mg_dvm_call_trace_add(const char *prefix)
+static void call_prefix_add(char (*prefixes)[160], int *n, const char *prefix)
 {
     char *p;
-    if (g_ncall_prefixes == (int)MG_COUNT(g_call_prefixes) || !*prefix) return;
-    mg_strlcpy(g_call_prefixes[g_ncall_prefixes], prefix, sizeof(g_call_prefixes[0]));
-    for (p = g_call_prefixes[g_ncall_prefixes]; *p; p++)
+    mg_strlcpy(prefixes[*n], prefix, sizeof(prefixes[0]));
+    for (p = prefixes[*n]; *p; p++)
         if (*p == '.') *p = '/';
-    mg_info("calls: every call of a method of a class whose name starts with %s is said", g_call_prefixes[g_ncall_prefixes]);
-    g_ncall_prefixes++;
+    (*n)++;
     g_call_trace = true;
 }
 
-static bool call_traced(mg_dvm_method *m)
+void mg_dvm_call_trace_add(const char *prefix)
 {
-    mg_dvm_class *c = m->cls;
+    if (g_ncall_prefixes == (int)MG_COUNT(g_call_prefixes) || !*prefix) return;
+    call_prefix_add(g_call_prefixes, &g_ncall_prefixes, prefix);
+    mg_info("calls: every call of a method of a class whose name starts with %s is said", g_call_prefixes[g_ncall_prefixes - 1]);
+}
+
+void mg_dvm_call_trace_within_add(const char *prefix)
+{
+    if (g_nwithin_prefixes == (int)MG_COUNT(g_within_prefixes) || !*prefix) return;
+    call_prefix_add(g_within_prefixes, &g_nwithin_prefixes, prefix);
+    mg_info("calls: every call made inside a method of a class whose name starts with %s is said", g_within_prefixes[g_nwithin_prefixes - 1]);
+}
+
+/* The class's flags, looked at once (mg_dvm_class.call_traced): 2 its calls are said, 4 the calls made inside them. */
+static u8 call_flags(mg_dvm_class *c)
+{
     if (!c->call_traced) {
         int i;
-        u8 v = 2;
+        u8 v = 1;
         for (i = 0; i < g_ncall_prefixes; i++)
-            if (!strncmp(c->name, g_call_prefixes[i], strlen(g_call_prefixes[i]))) v = 1;
+            if (!strncmp(c->name, g_call_prefixes[i], strlen(g_call_prefixes[i]))) v |= 2;
+        for (i = 0; i < g_nwithin_prefixes; i++)
+            if (!strncmp(c->name, g_within_prefixes[i], strlen(g_within_prefixes[i]))) v |= 4;
         c->call_traced = v;
     }
-    return c->call_traced == 1 && mg_atomic_add(&g_call_lines, 1) <= 8000;
+    return c->call_traced;
+}
+
+/* Whether a call (or its end) is said: of a traced class, or made inside a method under trace-calls-within- that runs, at
+   most three frames below it. */
+static bool call_traced(mg_dvm_thread *t, mg_dvm_method *m)
+{
+    bool inside;
+    while (t->ncall_within && t->depth < t->call_within[t->ncall_within - 1]) t->ncall_within--;   /* those frames went */
+    inside = t->ncall_within && t->depth > t->call_within[t->ncall_within - 1] && t->depth <= t->call_within[t->ncall_within - 1] + 3;
+    return ((call_flags(m->cls) & 2) || inside) && mg_atomic_add(&g_call_lines, 1) <= 8000;
 }
 
 /* A String of a traced call, as said: in quotes, its first 80 characters, those not printable ASCII as '?'. */
@@ -126,7 +159,8 @@ static void call_trace_text(mg_jobj *s, char *out, size_t size)
     out[k] = 0;
 }
 
-/* The String arguments of a call (argv: its registers, the object first for one not static), said after its name. */
+/* The String, int and boolean arguments of a call (argv: its registers, the object first for one not static), said after
+   its name: the uid a package is asked for, the flags of a query, as well as the names. */
 static void call_trace_strings(const mg_dvm_method *m, const mg_dvm_reg *argv, u32 argc, char *out, size_t size)
 {
     const char *p = m->sig + 1;
@@ -141,9 +175,30 @@ static void call_trace_strings(const mg_dvm_method *m, const mg_dvm_reg *argv, u
             out[k++] = ' ';
             call_trace_text((mg_jobj *)argv[r], out + k, size - k);
             k += strlen(out + k);
+        } else if (p - start == 1 && (*start == 'I' || *start == 'S' || *start == 'B')) {
+            k += (size_t)snprintf(out + k, size - k, " %d", (int)(i32)argv[r]);
+        } else if (p - start == 1 && *start == 'Z') {
+            k += (size_t)snprintf(out + k, size - k, " %s", argv[r] ? "true" : "false");
         }
         r += (*start == 'J' || *start == 'D') ? 2 : 1;
     }
+}
+
+/* A String[] a traced call returned, as said: its first four, in brackets (the packages of a uid). */
+static void call_trace_texts(mg_jobj *a, char *out, size_t size)
+{
+    i32 n = mg_dvm_array_length(a), i;
+    size_t k = 0;
+    out[k++] = '[';
+    for (i = 0; i < n && i < 4 && k + 100 < size; i++) {
+        if (i) { out[k++] = ','; out[k++] = ' '; }
+        if (a->u.oarr.v[i]) call_trace_text(a->u.oarr.v[i], out + k, size - k);
+        else mg_strlcpy(out + k, "null", size - k);
+        k += strlen(out + k);
+    }
+    if (i < n) k += (size_t)snprintf(out + k, size - k, ", ... %d in all", (int)n);
+    out[k++] = ']';
+    out[k] = 0;
 }
 
 /*
@@ -168,16 +223,27 @@ void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m)
 static void call_trace_enter(mg_dvm_thread *t, mg_dvm_method *m, const char *how, const mg_dvm_reg *argv, u32 argc)
 {
     char strings[400];
-    if (!call_traced(m)) return;
-    strings[0] = 0;
-    if (argv) call_trace_strings(m, argv, argc, strings, sizeof(strings));
-    mg_info("calls: thread %u depth %d: %s.%s%s%s%s", (unsigned)t->id, t->depth, m->cls->name, m->name, m->sig, how, strings);
+    /* (A native method has no frame of its own to keep the depth of: the calls inside one are not said.) */
+    bool within = (call_flags(m->cls) & 4) && strcmp(how, " (native)");
+    if (call_traced(t, m)) {
+        strings[0] = 0;
+        if (argv) call_trace_strings(m, argv, argc, strings, sizeof(strings));
+        mg_info("calls: thread %u depth %d: %s.%s%s%s%s", (unsigned)t->id, t->depth, m->cls->name, m->name, m->sig, how, strings);
+    }
+    if (within && t->ncall_within < MG_COUNT(t->call_within) && (!t->ncall_within || t->call_within[t->ncall_within - 1] < t->depth))
+        t->call_within[t->ncall_within++] = t->depth;
+}
+
+/* A method under trace-calls-within- ended: the calls after it are not inside it. */
+static void call_trace_left(mg_dvm_thread *t, mg_dvm_method *m)
+{
+    if (t->ncall_within && t->depth == t->call_within[t->ncall_within - 1] && (call_flags(m->cls) & 4)) t->ncall_within--;
 }
 
 static void call_trace_return(mg_dvm_thread *t, mg_dvm_method *m, const mg_jvalue *v)
 {
     const char *r;
-    if (!call_traced(m)) return;
+    if (!call_traced(t, m)) { call_trace_left(t, m); return; }
     r = strchr(m->sig, ')');
     switch (r ? r[1] : 'V') {
     case 'V': mg_info("calls: thread %u depth %d: %s.%s returns", (unsigned)t->id, t->depth, m->cls->name, m->name); break;
@@ -189,6 +255,12 @@ static void call_trace_return(mg_dvm_thread *t, mg_dvm_method *m, const mg_jvalu
             mg_info("calls: thread %u depth %d: %s.%s returns %s", (unsigned)t->id, t->depth, m->cls->name, m->name, text);
             break;
         }
+        if (v->l && v->l->kind == MG_J_OBJ_ARRAY && !strcmp(r + 1, "[Ljava/lang/String;")) {
+            char texts[480];
+            call_trace_texts(v->l, texts, sizeof(texts));
+            mg_info("calls: thread %u depth %d: %s.%s returns %s", (unsigned)t->id, t->depth, m->cls->name, m->name, texts);
+            break;
+        }
         mg_info("calls: thread %u depth %d: %s.%s returns %s", (unsigned)t->id, t->depth, m->cls->name, m->name, v->l ? mg_dvm_class_of(v->l)->name : "null");
         break;
     case 'J': mg_info("calls: thread %u depth %d: %s.%s returns %lld", (unsigned)t->id, t->depth, m->cls->name, m->name, (long long)v->j); break;
@@ -196,12 +268,14 @@ static void call_trace_return(mg_dvm_thread *t, mg_dvm_method *m, const mg_jvalu
     case 'D': mg_info("calls: thread %u depth %d: %s.%s returns %g", (unsigned)t->id, t->depth, m->cls->name, m->name, v->d); break;
     default: mg_info("calls: thread %u depth %d: %s.%s returns %d", (unsigned)t->id, t->depth, m->cls->name, m->name, (int)v->i); break;
     }
+    call_trace_left(t, m);
 }
 
 static void call_trace_unwind(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *e)
 {
-    if (call_traced(m))
+    if (call_traced(t, m))
         mg_info("calls: thread %u depth %d: %s.%s ends with %s", (unsigned)t->id, t->depth, m->cls->name, m->name, e ? mg_dvm_class_of(e)->name : "?");
+    call_trace_left(t, m);
 }
 
 /*

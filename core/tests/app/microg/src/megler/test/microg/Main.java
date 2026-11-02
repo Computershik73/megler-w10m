@@ -416,6 +416,14 @@ public class Main extends Activity {
                 // the app's uid has the GmsCore it hosts among its packages, as a shared user id has (GmsCore checks it of callers)
                 java.util.List<String> sharing = java.util.Arrays.asList(getPackageManager().getPackagesForUid(android.os.Process.myUid()));
                 check(sharing.contains(getPackageName()) && sharing.contains("com.google.android.gms"), "the app's uid's packages: " + sharing);
+                // and GmsCore's own uid is not the app's, as on Android: a service of its own it resolves is of that uid, whose
+                // packages are Google's alone, GmsCore first (it asks whether Google signed the first: Instagram's Google sign-in)
+                android.content.pm.ResolveInfo authenticator = getPackageManager().resolveService(
+                        new Intent("android.accounts.AccountAuthenticator").setPackage("com.google.android.gms"), 0);
+                String[] google = getPackageManager().getPackagesForUid(gmsInfo.uid);
+                check(gmsInfo.uid != android.os.Process.myUid() && authenticator != null && authenticator.serviceInfo.applicationInfo.uid == gmsInfo.uid
+                      && google != null && "com.google.android.gms".equals(google[0]) && !java.util.Arrays.asList(google).contains(getPackageName()),
+                      "GmsCore's uid " + gmsInfo.uid + ": " + java.util.Arrays.toString(google));
                 unbindService(this);
                 done = true;
                 Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources, dynamite modules, accounts, GCM's messenger and receiver context");

@@ -274,7 +274,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public boolean isFinishing() { return mFinished; }
     public boolean isDestroyed() { return mDestroyed; }
     public boolean isChangingConfigurations() { return mChangingConfigurations; }
-    public boolean isTaskRoot() { return mCaller == null; }
+    public boolean isTaskRoot() { return megler.AppRunner.isRoot(this); }
     public boolean isChild() { return mParent != null; }
     public final Activity getParent() { return mParent; }
     public boolean isInMultiWindowMode() { return false; }

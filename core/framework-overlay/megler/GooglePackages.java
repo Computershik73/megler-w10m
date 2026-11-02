@@ -46,6 +46,16 @@ public final class GooglePackages {
         return p != null && pkg.equals(p.packageName) ? p : null;
     }
     public static android.content.pm.Signature signature() { return new android.content.pm.Signature(CERT); }
+    /*
+     * The uid Google Play services and Google Services Framework share, as on Android (com.google.uid.shared): not the app's.
+     * Google Play services finds the service a consent screen goes through (DefaultAuthDelegateService), takes the first
+     * package of that service's uid and asks whether Google signed it; with the app's uid that package was the app, and it
+     * refused Instagram its Google sign-in ("Cannot delegate to Service with different signature", package 566). The app's
+     * uid still has their packages too (PackageManager.getPackagesForUid), for the calls Google Play services makes of
+     * itself here, which come from the app's uid. In Google Play services' own package it is the app's uid.
+     */
+    public static final int SHARED_UID = 10014;
+    public static int sharedUid() { return GMS.equals(Native.packageName()) ? android.os.Process.myUid() : SHARED_UID; }
     public static int versionCode(String pkg) { return VENDING.equals(pkg) ? 84651730 : WEBVIEW.equals(pkg) ? 733920700 : 270000000; }
     public static String versionName(String pkg) { return VENDING.equals(pkg) ? "46.5.17-31 [0] [PR] 750000000" : WEBVIEW.equals(pkg) ? "140.0.7339.207" : "27.00.00 (190400-750000000)"; }
     public static android.content.pm.ApplicationInfo applicationInfo(String pkg) {
@@ -58,7 +68,7 @@ public final class GooglePackages {
         android.content.pm.ApplicationInfo a = new android.content.pm.ApplicationInfo();
         a.packageName = a.processName = pkg; a.enabled = true;
         a.flags = android.content.pm.ApplicationInfo.FLAG_SYSTEM | android.content.pm.ApplicationInfo.FLAG_INSTALLED | android.content.pm.ApplicationInfo.FLAG_HAS_CODE;
-        a.targetSdkVersion = 35; a.minSdkVersion = 23; a.uid = GMS.equals(pkg) ? 10100 : 10101;
+        a.targetSdkVersion = 35; a.minSdkVersion = 23; a.uid = GMS.equals(pkg) || GSF.equals(pkg) ? sharedUid() : 10101;
         a.sourceDir = a.publicSourceDir = "/product/priv-app/" + pkg + "/" + pkg + ".apk";
         a.dataDir = "/data/user/0/" + pkg;
         return a;

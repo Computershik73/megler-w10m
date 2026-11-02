@@ -72,7 +72,9 @@ public class First extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         Log.i("CrashTest", "first onNewIntent " + intent.getStringExtra("step") + " creations=" + creations);
-        startActivity(new Intent(this, Second.class));
+        // the way into Instagram: the activity it starts is the task's root once this one finishes (Trampoline)
+        startActivity(new Intent(this, Trampoline.class));
+        finish();
     }
 
     @Override

@@ -40,6 +40,51 @@ struct AppShell::Stack {
 
 AppShell::AppShell() : import_(std::make_shared<ImportProgress>()) {}
 
+/*
+ * The UI thread's watch: every half second a ping through its dispatcher, at high priority; one it has not answered in two
+ * seconds is said with where the thread stands (megler_thread_where), again at five and at ten seconds, and when it answers,
+ * how late. The phone ends an app whose UI thread does not answer, as a hang, with an error report and no dump: Instagram,
+ * signing in with Google (package 567), went so with nothing in the log, and only the shell's taking the window away
+ * after it (a fault in CoreUIComponents.dll) was seen. A watch that was not run itself for two seconds (Megler suspended)
+ * starts its ping again rather than count that time.
+ */
+static void watchUiThread(winrt::Windows::UI::Core::CoreDispatcher dispatcher) {
+    const DWORD ui = GetCurrentThreadId();
+    std::thread([dispatcher, ui] {
+        auto answered = std::make_shared<std::atomic<uint64_t>>(0);
+        uint64_t sent = 0;
+        ULONGLONG sentAt = 0, last = GetTickCount64();
+        int said = 0;
+        for (;;) {
+            Sleep(500);
+            const ULONGLONG now = GetTickCount64();
+            const bool frozen = now - last > 2000;
+            last = now;
+            if (answered->load() >= sent || frozen) {
+                if (said && !frozen) shellLog::write(format("ui: the UI thread answered again, %llu ms after it was asked", now - sentAt));
+                said = 0;
+                sentAt = now;
+                const uint64_t n = ++sent;
+                try {
+                    dispatcher.RunAsync(CoreDispatcherPriority::High, [answered, n] { *answered = n; });
+                } catch (...) {
+                    return;  // the window is gone
+                }
+                continue;
+            }
+            const ULONGLONG late = now - sentAt;
+            const int step = late >= 10000 ? 3 : late >= 5000 ? 2 : late >= 2000 ? 1 : 0;
+            if (step > said) {
+                said = step;
+                char where[3000];
+                if (!megler_thread_where(ui, where, sizeof(where))) strcpy_s(where, "it could not be stopped to look");
+                shellLog::write(format("ui: the UI thread has not answered for %llu ms: %s", late, where));
+                shellLog::flush();
+            }
+        }
+    }).detach();
+}
+
 AppShell::~AppShell() {
     if (timer_) timer_.Stop();
 }
@@ -49,6 +94,11 @@ AppShell::Stack& AppShell::currentStack() { return *stacks_[size_t(selectedTab_)
 UIElement AppShell::root() {
     const auto& p = palette();
     dispatcher_ = Window::Current().Dispatcher();
+    static bool watched = false;
+    if (!watched) {
+        watched = true;
+        watchUiThread(dispatcher_);
+    }
     root_ = Grid();
     root_.RequestedTheme(p.dark ? ElementTheme::Dark : ElementTheme::Light);
     root_.Background(brush(p.surface));
@@ -451,9 +501,13 @@ void AppShell::updateDisplayRequest() {
     // dims and locks after its timeout otherwise, and a locked phone
     // suspends us.
     const session::State state = session::snapshot().state;
+    // And while packages are installed: an app's own package made and installed (or updated, or uninstalled) through the
+    // portal, each of Update All's, and Megler's own update from Pictures\Megler. A phone that locks meanwhile suspends
+    // Megler, and the portal's upload ends with no result (the owner asked for it, 2026-11-02).
+    const bool installing = !separateApps::working().empty() || appPackage::selfUpdating();
     // And always, while Megler is in front, under the flag keep-screen-on (LocalState\flags): a phone left waiting for the
     // next package, which is copied to it and installed from it, or for a test, is not to lock meanwhile.
-    const bool wanted = state == session::State::starting || state == session::State::running || checks::running() ||
+    const bool wanted = state == session::State::starting || state == session::State::running || checks::running() || installing ||
                         files::exists(platform::localStateDirectory() + L"\\flags\\keep-screen-on");
     if (wanted == displayRequestActive_) return;
     try {
@@ -462,7 +516,8 @@ void AppShell::updateDisplayRequest() {
             displayRequest_.RequestActive();
         else
             displayRequest_.RequestRelease();
-        shellLog::write(wanted ? "display: keeping the screen on" : "display: screen timeout allowed again");
+        shellLog::write(wanted ? (installing ? "display: keeping the screen on while packages are installed" : "display: keeping the screen on")
+                               : "display: screen timeout allowed again");
     } catch (const hresult_error& e) {
         shellLog::write("display: DisplayRequest failed: " + narrow(e.message()));
     }

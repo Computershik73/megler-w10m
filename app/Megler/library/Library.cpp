@@ -215,9 +215,20 @@ void Library::load() {
                     else shellLog::write("library: could not publish microG's Google Play services");
                 }
             }
+            // GSF is no app to start or to install as one: Google Play services and the Play Store use it from the shared
+            // folder (above), so the library does not list it, nor keep the copy an older Megler offered there.
+            {
+                const std::wstring gsfCopy = directory_ + L"\\bitgapps-GoogleServicesFramework.apk";
+                if (files::exists(gsfCopy)) {
+                    files::remove(gsfCopy);
+                    files::remove(gsfCopy + L".json");
+                    files::remove(gsfCopy + L".icon");
+                    shellLog::write("library: Google Services Framework is used from the shared service cache, not listed");
+                }
+            }
             if (files::exists(bitgapps + L"\\PrebuiltGmsCore.apk") && !files::exists(bitgappsStamp)) {
                 bool copied = true;
-                for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"GoogleServicesFramework.apk", L"Phonesky.apk"}) {
+                for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"Phonesky.apk"}) {
                     const std::wstring destination = directory_ + L"\\bitgapps-" + name;
                     if (!files::exists(destination) && !files::copy(bitgapps + L"\\" + name, destination)) {
                         copied = false;
