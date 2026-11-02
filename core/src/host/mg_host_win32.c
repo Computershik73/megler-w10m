@@ -1956,6 +1956,124 @@ static BOOL posix_rename(const wchar_t *a, const wchar_t *b)
     return ok;
 }
 
+/*
+ * Linux renames a folder whatever is open in it; Windows refuses one with a file in it open or mapped, whatever the opens
+ * shared (error 5). Google Play services stages each module so: its APK written into a folder of its own and opened there
+ * (the app's AssetManager keeps it), then the folder renamed to the module's name, or put aside to be removed; each such
+ * rename was refused, and no module was staged, so an app's ads, measurement and Cast framework went without theirs
+ * (package 576). An open file can be moved, as every open here shares deletion: the folder is moved an entry at a time, a
+ * folder of the new name made, each entry moved into it (a folder in it whole, or so in its turn), and the old folder
+ * removed. Whatever fails, what was moved is put back.
+ */
+static wchar_t *path_join(const wchar_t *dir, const wchar_t *name)
+{
+    size_t a = wcslen(dir), b = wcslen(name);
+    wchar_t *w = (wchar_t *)mg_alloc(sizeof(wchar_t) * (a + b + 2));
+    memcpy(w, dir, sizeof(wchar_t) * a);
+    w[a] = L'\\';
+    memcpy(w + a + 1, name, sizeof(wchar_t) * (b + 1));
+    return w;
+}
+
+static BOOL move_entries(const wchar_t *a, const wchar_t *b, int depth);
+
+/* One entry moved where nothing is; a folder an entry at a time when it cannot be moved whole. */
+static BOOL move_entry(const wchar_t *from, const wchar_t *to, int depth)
+{
+    DWORD why, attributes;
+    if (MoveFileExW(from, to, 0)) return TRUE;
+    why = GetLastError();
+    attributes = GetFileAttributesW(from);
+    if (why == ERROR_ACCESS_DENIED && attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) &&
+        !(attributes & FILE_ATTRIBUTE_REPARSE_POINT) && move_entries(from, to, depth + 1))
+        return TRUE;
+    SetLastError(why);
+    return FALSE;
+}
+
+/* The folder `a`'s entries moved into `b`, made for them, and `a` removed; or, whatever fails, all as it was. */
+static BOOL move_entries(const wchar_t *a, const wchar_t *b, int depth)
+{
+    WIN32_FIND_DATAW found;
+    wchar_t *pattern, **names = NULL;
+    int count = 0, cap = 0, moved = 0, i;
+    HANDLE h;
+    BOOL ok = TRUE;
+    DWORD why = 0;
+    if (depth > 32) {
+        SetLastError(ERROR_ACCESS_DENIED);
+        return FALSE;
+    }
+    pattern = path_join(a, L"*");
+    h = FindFirstFileExW(pattern, FindExInfoBasic, &found, FindExSearchNameMatch, NULL, 0);
+    free(pattern);
+    if (h == INVALID_HANDLE_VALUE) return FALSE;
+    do {
+        if (!wcscmp(found.cFileName, L".") || !wcscmp(found.cFileName, L"..")) continue;
+        if (count == cap) {
+            cap = cap ? cap * 2 : 16;
+            names = (wchar_t **)mg_realloc(names, sizeof(*names) * (size_t)cap);
+        }
+        names[count] = (wchar_t *)mg_alloc(sizeof(wchar_t) * (wcslen(found.cFileName) + 1));
+        memcpy(names[count++], found.cFileName, sizeof(wchar_t) * (wcslen(found.cFileName) + 1));
+    } while (FindNextFileW(h, &found));
+    FindClose(h);
+    if (!CreateDirectoryW(b, NULL)) {
+        ok = FALSE;
+        why = GetLastError();
+    } else {
+        for (; moved < count; moved++) {
+            wchar_t *from = path_join(a, names[moved]), *to = path_join(b, names[moved]);
+            ok = move_entry(from, to, depth);
+            if (!ok) why = GetLastError();
+            free(from);
+            free(to);
+            if (!ok) break;
+        }
+        if (ok && !RemoveDirectoryW(a)) {
+            ok = FALSE;
+            why = GetLastError();
+        }
+        if (!ok) {
+            for (i = moved - 1; i >= 0; i--) {
+                wchar_t *from = path_join(b, names[i]), *to = path_join(a, names[i]);
+                move_entry(from, to, depth);
+                free(from);
+                free(to);
+            }
+            RemoveDirectoryW(b);
+        }
+    }
+    for (i = 0; i < count; i++) free(names[i]);
+    free(names);
+    if (!ok) SetLastError(why);
+    return ok;
+}
+
+/*
+ * The folder `a` renamed to `b` an entry at a time (above). A folder in the way is replaced when it is empty, as POSIX's
+ * rename replaces one (ENOTEMPTY when it is not; ENOTDIR for a file there). FALSE, with error 5, for what is not a folder.
+ */
+static BOOL move_dir_in_use(const wchar_t *a, const wchar_t *b)
+{
+    DWORD from = GetFileAttributesW(a), in_way = GetFileAttributesW(b), why;
+    if (from == INVALID_FILE_ATTRIBUTES || !(from & FILE_ATTRIBUTE_DIRECTORY) || (from & FILE_ATTRIBUTE_REPARSE_POINT)) {
+        SetLastError(ERROR_ACCESS_DENIED);
+        return FALSE;
+    }
+    if (in_way == INVALID_FILE_ATTRIBUTES) return move_entries(a, b, 0);
+    if (!(in_way & FILE_ATTRIBUTE_DIRECTORY)) {
+        SetLastError(ERROR_DIRECTORY);
+        return FALSE;
+    }
+    if (!RemoveDirectoryW(b)) return FALSE;
+    if (MoveFileExW(a, b, 0) || move_entries(a, b, 0)) return TRUE;
+    why = GetLastError();
+    CreateDirectoryW(b, NULL);
+    SetLastError(why);
+    return FALSE;
+}
+
 bool mg_path_rename(const char *from, const char *to, int *err)
 {
     static volatile LONG said;
@@ -1976,11 +2094,25 @@ bool mg_path_rename(const char *from, const char *to, int *err)
         ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
         if (ok) break;
         e = GetLastError();
-        if (e != ERROR_ACCESS_DENIED && e != ERROR_SHARING_VIOLATION && e != ERROR_USER_MAPPED_FILE && e != ERROR_LOCK_VIOLATION) break;
+        if (e != ERROR_ACCESS_DENIED && e != ERROR_SHARING_VIOLATION && e != ERROR_USER_MAPPED_FILE && e != ERROR_LOCK_VIOLATION) {
+            /* (A folder over an empty one, which POSIX's rename replaces, where Windows says one is there.) */
+            if (e == ERROR_ALREADY_EXISTS || e == ERROR_FILE_EXISTS) {
+                ok = move_dir_in_use(a, b);
+                if (!ok && GetLastError() != ERROR_ACCESS_DENIED) e = GetLastError();
+            }
+            break;
+        }
         ok = posix_rename(a, b);
         if (ok) break;
         ok = replace_in_use(a, b);
         if (ok) break;
+        ok = move_dir_in_use(a, b);
+        if (ok) break;
+        /* (A folder in the way with something in it, or a file where a folder is moved, stays so: said at once.) */
+        if (GetLastError() == ERROR_DIR_NOT_EMPTY || GetLastError() == ERROR_DIRECTORY) {
+            e = GetLastError();
+            break;
+        }
     }
     if (!ok) {
         SetLastError(e);

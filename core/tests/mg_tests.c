@@ -1419,6 +1419,66 @@ static void test_rename_in_use(const char *scratch)
 }
 
 /*
+ * A folder renamed with a file in it open and mapped, as Google Play services stages a module: the module's APK is written
+ * into a folder of its own, opened (the app's AssetManager keeps it), and the folder renamed to the module's name; the same
+ * again when a folder is put aside to be removed. Windows refuses to rename a folder with an open file in it, whatever the
+ * open shared; the host moves it an entry at a time then (mg_host_win32.c, move_dir_in_use). The file is found under the new
+ * name, the open one still reads, a folder inside goes along, and the old name is free to be made again.
+ */
+static void test_rename_dir_in_use(const char *scratch)
+{
+    char *top = mg_sprintf("%s/app_chimera", scratch), *stage = mg_sprintf("%s/s", top), *apk = mg_sprintf("%s/AdsDynamite.apk", stage);
+    char *inner = mg_sprintf("%s/oat", stage), *odex = mg_sprintf("%s/oat/arm.odex", stage);
+    char *final_dir = mg_sprintf("%s/9", top), *final_apk = mg_sprintf("%s/9/AdsDynamite.apk", top), *final_odex = mg_sprintf("%s/9/oat/arm.odex", top);
+    char *condemned = mg_sprintf("%s/c-9-1793639062482", top), *condemned_apk = mg_sprintf("%s/c-9-1793639062482/AdsDynamite.apk", top);
+    mg_file *open_apk, *open_odex;
+    void *base = NULL;
+    size_t mapped = 0;
+    const u8 *view;
+    mg_stat st;
+    int err = 0;
+    say("rename: a folder with a file in it open and mapped, and a folder in it with another open");
+    mg_path_mkdirs(inner);
+    write_whole(apk, "module apk");
+    write_whole(odex, "odex");
+    open_apk = mg_file_open(apk, MG_O_READ, &err);
+    view = open_apk ? (const u8 *)mg_file_map(open_apk, 0, 10, &base, &mapped) : NULL;
+    open_odex = mg_file_open(odex, MG_O_READ, &err);
+    CHECK(open_apk && view && open_odex);
+    CHECK(mg_path_rename(stage, final_dir, &err));
+    CHECK(mg_path_stat(final_apk, &st, &err) && st.size == 10 && mg_path_stat(final_odex, &st, &err) && st.size == 4);
+    CHECK(!mg_path_stat(stage, &st, &err) && err == MG_E_NOENT);
+    CHECK(reads_as(open_apk, "module apk") && view && !memcmp(view, "module apk", 10) && reads_as(open_odex, "odex"));
+    CHECK(mg_path_mkdir(stage, &err) && mg_path_rmdir(stage, &err));
+    /* Put aside to be removed, still open; and over a folder that is there and empty, as POSIX's rename replaces one. */
+    CHECK(mg_path_rename(final_dir, condemned, &err) && mg_path_stat(condemned_apk, &st, &err) && st.size == 10);
+    CHECK(mg_path_mkdir(final_dir, &err) && mg_path_rename(condemned, final_dir, &err) && mg_path_stat(final_apk, &st, &err));
+    /* Not over a folder with something in it. */
+    CHECK(mg_path_mkdirs(condemned) && mg_path_mkdir(condemned_apk, &err));
+    CHECK(!mg_path_rename(final_dir, condemned, &err) && mg_path_stat(final_apk, &st, &err) && mg_path_stat(final_odex, &st, &err));
+    CHECK(mg_path_rmdir(condemned_apk, &err) && mg_path_rmdir(condemned, &err));
+    if (view) mg_section_unmap(base, mapped);
+    if (open_apk) mg_file_close(open_apk);
+    if (open_odex) mg_file_close(open_odex);
+    CHECK(mg_path_remove(final_odex, &err) && mg_path_remove(final_apk, &err));
+    {
+        char *final_inner = mg_sprintf("%s/9/oat", top);
+        CHECK(mg_path_rmdir(final_inner, &err) && mg_path_rmdir(final_dir, &err) && mg_path_rmdir(top, &err));
+        free(final_inner);
+    }
+    free(condemned_apk);
+    free(condemned);
+    free(final_odex);
+    free(final_apk);
+    free(final_dir);
+    free(odex);
+    free(inner);
+    free(apk);
+    free(stage);
+    free(top);
+}
+
+/*
  * Shared memory holds no address space of its own (bionic/mg_libc_io.c): a region made, written and read through its
  * descriptor, and grown past its section, has no view until the app maps it; mapped, it is one view of its size; unmapped,
  * none again. The views are counted by the host (mg_views_kb).
@@ -3440,6 +3500,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_mmap_madvise(scratch);
     test_pread_threads(scratch);
     test_rename_in_use(scratch);
+    test_rename_dir_in_use(scratch);
     test_chromium_oom_report();
     test_shm_views();
     test_free_stretches();

@@ -861,6 +861,19 @@ of ASCII letters, as Android's storage does not tell `Music` from `music`.
 `statfs` and `statvfs` answer for every path with the real size and free room
 of the volume the data folder is on, in 4 KB blocks.
 
+A rename is Linux's where Windows' would refuse it (`mg_host_win32.c`). Over a
+file that is open or mapped, the file in the way is put aside and removed
+when its last handle goes, and whoever had it keeps it (Google Play
+services writes its Chimera config so). A folder with a file in it open or
+mapped, which Windows will not rename whatever the opens shared, is moved
+an entry at a time into a folder of the new name, a folder in it whole or
+so in its turn, and the old one removed; whatever fails is put back. Play
+services stages each module so, its APK open in the folder it renames, and
+no module was staged before (576). A folder replaces an empty one, as
+POSIX's rename does, and not one with something in it (`ENOTEMPTY`). The
+core tests `test_rename_in_use` and `test_rename_dir_in_use` run on both
+builds; on the PC's, these are Windows' own refusals.
+
 The `/proc` and `/sys` files code reads to learn about the device are made up
 (`synthetic` in `bionic/mg_libc_io.c`):
 - `/proc/cpuinfo`, `/proc/meminfo`, `/proc/stat` and `/proc/version`;
