@@ -2502,7 +2502,10 @@ static int run_crash(void)
     /* Gate recreates itself once (Activity.recreate, AppRunner.recreate): stopped as one being made again, then the same
        component again with the state it saved, which still gives First its result. */
     expect_line("I/CrashTest: gate stop changing=true", &at, 60);
-    expect_line("I/CrashTest: gate recreated state=7 component=megler.test.crash.Gate", &at, 60);
+    /* (Gate is started through an alias, GateAlias: recreated, the alias's target is made again, and the alias stays its
+       component, as on Android -- Play Store's main activity, started through its launcher's alias, was looked for by the
+       alias's name and the app ended, package 570.) */
+    expect_line("I/CrashTest: gate recreated state=7 component=megler.test.crash.GateAlias", &at, 60);
     expect_line("I/CrashTest: first order resume,result:7:-1,resume,focus:true,", &at, 60);
     /*
      * FLAG_ACTIVITY_CLEAR_TOP as Android has it, First found by its class though started through an alias: with the flag
