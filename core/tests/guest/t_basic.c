@@ -252,6 +252,76 @@ int t_threads(int threads, int n)
     return g_shared;
 }
 
+/*
+ * TLS_SLOT_APP, slot 2 of the thread pointer's block: the app's own from Android 10 on. Go's runtime keeps its g there,
+ * through `mrc p15, 0, rX, c13, c0, 3` as below, when the device says API 29 or later (WhatsApp's libgojni.so). Empty on
+ * a thread that has not set it, this one and a new one alike, kept as set, and left alone by what sets errno. 0 when so;
+ * otherwise which step found it otherwise.
+ */
+static void **tp_get(void)
+{
+    void **tp;
+    __asm__ volatile("mrc p15, 0, %0, c13, c0, 3" : "=r"(tp));
+    return tp;
+}
+
+static int app_slot_steps(int base)
+{
+    void **tp = tp_get();
+    if (tp[2] != 0) return base + 1;
+    tp[2] = (void *)(long)(0x51525354 + base);
+    if (close(-1) != -1 || *__errno() != 9 /* EBADF */) {
+        tp[2] = 0;
+        return base + 2;
+    }
+    if (tp[2] != (void *)(long)(0x51525354 + base)) return base + 3;
+    tp[2] = 0;
+    return 0;
+}
+
+static void *app_slot_thread(void *arg) { return (void *)(long)app_slot_steps((int)(long)arg); }
+
+int t_tls_app_slot(void)
+{
+    pthread_t t;
+    void *ret = (void *)-1L;
+    int r = app_slot_steps(10);
+    if (r) return r;
+    if (pthread_create(&t, 0, app_slot_thread, (void *)20L) != 0) return 30;
+    pthread_join(t, &ret);
+    return (int)(long)ret;
+}
+
+/*
+ * What a library's init functions are given, looked at as Go's runtime looks at it when it is loaded as a library:
+ * argv, envp right after argv's NULL, and past envp's NULL the auxiliary vector, with the page size and the address of
+ * 16 random bytes in it.
+ */
+static int g_init_argc = -1, g_init_env_after_argv, g_init_pagesz, g_init_random;
+
+__attribute__((constructor)) static void auxv_probe(int argc, char **argv, char **envp)
+{
+    const unsigned *auxv;
+    int n = argc + 1, i;
+    g_init_argc = argc;
+    g_init_env_after_argv = envp == argv + argc + 1;
+    if (!g_init_env_after_argv) return;
+    while (argv[n] && n < 16) n++;
+    n++;
+    auxv = (const unsigned *)&argv[n];
+    for (i = 0; auxv[i] && i < 64; i += 2) {
+        if (auxv[i] == 6) g_init_pagesz = (int)auxv[i + 1];
+        if (auxv[i] == 25 && auxv[i + 1]) {
+            const unsigned char *r = (const unsigned char *)(size_t)auxv[i + 1];
+            int k, any = 0;
+            for (k = 0; k < 16; k++) any |= r[k];
+            g_init_random = 1 + (any != 0);
+        }
+    }
+}
+
+int t_init_auxv(void) { return g_init_argc == 1 && g_init_env_after_argv && g_init_pagesz == 4096 && g_init_random == 2; }
+
 int t_tls_get(void) { return tls_counter; }
 void t_tls_set(int v) { tls_counter = v; }
 int *t_tls_addr(void) { return &tls_counter; }
@@ -1038,6 +1108,14 @@ int t_ffcalls(const char *dir)
     syscall(67, 10, &act, 0);
     act.handler = ff_handler;
     if (syscall(67, 11, &act, 0) != -1 || syscall(67, 11, 0, &old) != 0) return -2;     /* SIGSEGV: refused, asking allowed */
+    {
+        /* rt_sigaction takes one, as Go's runtime installs its SIGBUS handler (and ends when it is refused). */
+        unsigned rta[5] = { (unsigned)(size_t)ff_handler, 0, 0, 0, 0 };
+        memset(rt, 0, sizeof(rt));
+        if (syscall(174, 7, rta, 0, 8) != 0 || syscall(174, 7, 0, rt, 8) != 0 || rt[0] != (unsigned)(size_t)ff_handler) return -2;
+        rta[0] = 0;
+        syscall(174, 7, rta, 0, 8);
+    }
     openlog("t_basic", 0, 0);
     syslog(4, "syslog at %s, %d: %m", "warning", 7);
     closelog();
@@ -1486,4 +1564,38 @@ long long t_wait_herd(int idle, int rounds)
     close(g_pong[0]);
     close(g_pong[1]);
     return (long long)(z.tv_sec - a.tv_sec) * 1000000 + (z.tv_nsec - a.tv_nsec) / 1000;
+}
+
+/*
+ * What Go's runtime calls by number, past libc: nanosleep, rt_sigprocmask (a 64-bit set; another size refused), madvise
+ * and mincore on a page of its own, epoll_pwait, fcntl, and fallocate with its offset and length in register pairs (a
+ * mode other than 0 refused). 0, or the step that failed.
+ */
+int t_go_calls(const char *dir)
+{
+    struct { long sec, nsec; } nap = { 0, 2000000 };
+    unsigned set[2] = { 1u << 9, 0 }, old[2] = { 0, 0 }, st[32];
+    unsigned char vec[1];
+    char path[256];
+    void *page;
+    int ep, fd;
+    if (syscall(162, &nap, 0) != 0) return 1;
+    if (syscall(175, 0 /* SIG_BLOCK */, set, 0, 8) != 0 || syscall(175, 0, 0, old, 8) != 0 || !(old[0] & (1u << 9))) return 2;
+    if (syscall(175, 1 /* SIG_UNBLOCK */, set, 0, 8) != 0 || syscall(175, 0, 0, old, 4) != -1 || *__errno() != 22) return 3;
+    page = mmap(0, 4096, 3, 0x22, -1, 0);
+    if (page == (void *)-1) return 4;
+    ((char *)page)[0] = 1;
+    if (syscall(220, page, 4096, 4 /* MADV_DONTNEED */) != 0 || syscall(219, page, 4096, vec) != 0) return 5;
+    munmap(page, 4096);
+    ep = epoll_create1(0);
+    if (ep < 0 || syscall(346, ep, st, 4, 0, 0, 8) != 0 || syscall(55, ep, 1 /* F_GETFD */, 0) < 0) return 6;
+    close(ep);
+    snprintf(path, sizeof(path), "%s/fallocated.bin", dir);
+    fd = open(path, 0102, 0600);                       /* O_RDWR | O_CREAT */
+    if (fd < 0) return 7;
+    if (syscall(352, fd, 0, 0, 0, 8192, 0) != 0 || fstat(fd, st) != 0 || st[12] != 8192) return 8;
+    if (syscall(352, fd, 1 /* FALLOC_FL_KEEP_SIZE */, 0, 0, 4096, 0) != -1 || *__errno() != 95) return 9;
+    close(fd);
+    unlink(path);
+    return 0;
 }

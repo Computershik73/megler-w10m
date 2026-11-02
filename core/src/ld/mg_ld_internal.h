@@ -87,6 +87,7 @@ mg_addr mg_patch_unresolved_stub(mg_lib *lib, const char *name);
 
 /* bionic/: a system symbol by name, and whether a soname is the system's. */
 void *mg_bionic_find(const char *name);
+char **mg_bionic_initial_argv(void);   /* bionic/mg_libc_misc.c: argv, envp and the auxiliary vector, as init functions get them */
 bool mg_bionic_is_system_lib(const char *soname);
 
 /* Guest thread-local storage (ld/mg_tls.c). */

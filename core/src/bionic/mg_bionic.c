@@ -1142,9 +1142,13 @@ mg_gthread *mg_gthread_self(void)
     t->tid = mg_gthread_take_tid(t);
     mg_thread_stack_bounds(&t->stack_lo, &t->stack_hi);
     t->sig_thread = mg_thread_current();
-    /* bionic's slots: 1 is the thread, 2 its errno. */
+    /*
+     * bionic's slots: 1 is the thread. 2 is TLS_SLOT_APP, the app's own from Android 10 on, and nothing on a thread that
+     * has not set it: it was this thread's errno, as Android 9 had it there, and Go's runtime, told the device is API 29
+     * or later, keeps its g in it -- a thread calling into Go found a g that was no g. errno is the thread's own (gerrno,
+     * through __errno), not read through the slot by anything here.
+     */
     tp[1] = t;
-    tp[2] = &t->gerrno;
     return t;
 }
 

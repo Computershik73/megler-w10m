@@ -323,6 +323,37 @@ static int g_property_set(const char *name, const char *value)
 
 static u8 g_at_random[16];
 
+/*
+ * What a library's init functions are given (ld/mg_ld.c, mg_ld_init), as bionic's linker gives them what the kernel put
+ * on the process's first stack: argv, its NULL, the environment (none) and its NULL, then the auxiliary vector, pairs of
+ * tag and value up to AT_NULL -- getauxval's own. Go's runtime, loaded as a library, finds the vector so, right after
+ * envp's NULL, for the page size and the random bytes it starts from; there was what came after a separate array.
+ */
+static unsigned long g_getauxval(unsigned long type);
+char **mg_bionic_initial_argv(void)
+{
+    static mg_addr block[32];
+    static const unsigned long tags[] = { 6 /* AT_PAGESZ */, 15 /* AT_PLATFORM */, 16 /* AT_HWCAP */, 26 /* AT_HWCAP2 */,
+                                          25 /* AT_RANDOM */, 17 /* AT_CLKTCK */, 23 /* AT_SECURE */, 11, 12, 13, 14 /* uids, gids */ };
+    static int made;
+    if (!made) {
+        int n = 0;
+        size_t i;
+        block[n++] = (mg_addr)"app_process";
+        block[n++] = 0;                                  /* argv's end */
+        block[n++] = 0;                                  /* envp, empty */
+        for (i = 0; i < MG_COUNT(tags); i++) {
+            unsigned long v = tags[i] == 17 ? 100 : tags[i] >= 11 && tags[i] <= 14 ? 10100 : g_getauxval(tags[i]);
+            block[n++] = (mg_addr)tags[i];
+            block[n++] = (mg_addr)v;
+        }
+        block[n++] = 0;                                  /* AT_NULL */
+        block[n] = 0;
+        made = 1;
+    }
+    return (char **)block;
+}
+
 static unsigned long g_getauxval(unsigned long type)
 {
     switch (type) {
@@ -382,11 +413,13 @@ static long rt_sigaction(int sig, const u32 *act, u32 *old, size_t mask_size)
 }
 
 /*
- * A handler for a fault's signal asked for by system call, past libc's sigaction: refused. A fault in guest code is this
- * layer's to repair or report, never delivered to the guest (see "signals" below), and the code that goes past libc
- * checks that it is: Gecko's mozglue installs its SIGSEGV handler with syscall(__NR_sigaction) and then writes to a page
- * of its own with no access, to see its handler called. Refused, it goes on without the handler, as it does where a
- * kernel will not have it. libc's sigaction keeps taking such handlers, as it always has.
+ * A handler for a fault's signal asked for by the old sigaction's number (67), past libc's sigaction: refused. A fault in
+ * guest code is this layer's to repair or report, never delivered to the guest (see "signals" below), and the code that
+ * goes past libc so checks that it is: Gecko's mozglue installs its SIGSEGV handler with syscall(__NR_sigaction) and then
+ * writes to a page of its own with no access, to see its handler called. Refused, it goes on without the handler, as it
+ * does where a kernel will not have it. rt_sigaction's number (174) takes such a handler, as libc's sigaction does, and
+ * calls it never: Go's runtime installs its handlers so, past libc, and ends when one is refused ("sigaction failed":
+ * WhatsApp's libgojni.so as it loaded, package 578).
  */
 static bool fault_signal_refused(long sig, long act)
 {
@@ -414,6 +447,13 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef int (*epoll_create1_fn)(int);
     typedef int (*epoll_ctl_fn)(int, int, int, void *);
     typedef int (*epoll_wait_fn)(int, void *, int, int);
+    typedef int (*nanosleep_fn)(const void *, void *);
+    typedef int (*sigprocmask_fn)(int, const u32 *, u32 *);
+    typedef int (*madvise_fn)(void *, size_t, int);
+    typedef int (*mincore_fn)(void *, size_t, void *);
+    typedef int (*epoll_pwait_fn)(int, void *, int, int, const void *);
+    typedef void (*exit_fn)(int);
+    typedef int (*fallocate_fn)(int, i64, i64);
     typedef int (*eventfd_fn)(unsigned, int);
     typedef long (*io_fn)(int, void *, size_t);
     typedef int (*open_fn)(const char *, int, unsigned);
@@ -440,9 +480,7 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 67:                                                                                                  /* sigaction */
         if (fault_signal_refused(a, b)) return -1;
         return ((sigaction_fn)mg_bionic_find("sigaction"))((int)a, (const void *)(mg_addr)b, (void *)(mg_addr)c);
-    case 174:                                                                                                 /* rt_sigaction */
-        if (fault_signal_refused(a, b)) return -1;
-        return rt_sigaction((int)a, (const u32 *)(mg_addr)b, (u32 *)(mg_addr)c, (size_t)d);
+    case 174: return rt_sigaction((int)a, (const u32 *)(mg_addr)b, (u32 *)(mg_addr)c, (size_t)d);           /* rt_sigaction */
     case 186: return ((sigaltstack_fn)mg_bionic_find("sigaltstack"))((const void *)(mg_addr)a, (void *)(mg_addr)b);  /* sigaltstack */
     case 385: return ((memfd_fn)mg_bionic_find("memfd_create"))((const char *)(mg_addr)a, (unsigned)b);           /* memfd_create */
     case 20: return g_getpid();                                            /* getpid */
@@ -509,6 +547,46 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
        with what was written (it outlives the app); a descriptor not open is EBADF. Google Maps asks at start, and it
        said "syscall(373) is not supported" (package 576). */
     case 373: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, 1 /* F_GETFD */, 0) < 0 ? -1 : 0;                  /* syncfs */
+    /*
+     * What Go's runtime calls by number, having no libc calls of its own on Linux: its sleeps (sysmon's, between its looks,
+     * which without one spun), its threads' signal masks (the kernel's 64-bit sets, bionic's 32), memory given back, the
+     * network poller's wait (without which it ends: "netpoll failed"), a descriptor's flags, the process's end; and
+     * fallocate, its offset and length in register pairs (WhatsApp asked).
+     */
+    case 162: return ((nanosleep_fn)mg_bionic_find("nanosleep"))((const void *)(mg_addr)a, (void *)(mg_addr)b);      /* nanosleep */
+    case 175: {                                                                                       /* rt_sigprocmask */
+        u32 set = 0, old = 0;
+        int r;
+        if (d != 8) {
+            mg_set_errno(GE_INVAL);
+            return -1;
+        }
+        if (b) set = ((const u32 *)(mg_addr)b)[0];
+        r = ((sigprocmask_fn)mg_bionic_find("sigprocmask"))((int)a, b ? &set : NULL, c ? &old : NULL);
+        if (r == 0 && c) {
+            ((u32 *)(mg_addr)c)[0] = old;
+            ((u32 *)(mg_addr)c)[1] = 0;
+        }
+        return r;
+    }
+    case 220: return ((madvise_fn)mg_bionic_find("madvise"))((void *)(mg_addr)a, (size_t)b, (int)c);                 /* madvise */
+    case 219: return ((mincore_fn)mg_bionic_find("mincore"))((void *)(mg_addr)a, (size_t)b, (void *)(mg_addr)c);     /* mincore */
+    case 346: return ((epoll_pwait_fn)mg_bionic_find("epoll_pwait"))((int)a, (void *)(mg_addr)b, (int)c, (int)d, (const void *)(mg_addr)e);  /* epoll_pwait */
+    case 55: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, (int)b, c);                                           /* fcntl */
+    case 248: ((exit_fn)mg_bionic_find("_exit"))((int)a); return 0;                                                    /* exit_group */
+    case 352: {                                                                                     /* fallocate */
+        int r;
+        if (b != 0) {
+            mg_set_errno(95);                     /* EOPNOTSUPP: only the plain kind, which posix_fallocate is */
+            return -1;
+        }
+        r = ((fallocate_fn)mg_bionic_find("posix_fallocate64"))((int)a, (i64)(((u64)(u32)d << 32) | (u32)c), (i64)(((u64)(u32)f << 32) | (u32)e));
+        if (r) {
+            mg_set_errno(r);
+            return -1;
+        }
+        return 0;
+    }
     /* The processors a thread may run on: any, as the libc's sched_*affinity say (Sonolus's Unity asked by number). The
        raw call returns the size of the mask it wrote, the libc's 0. */
     case 241: return ((affinity_fn)mg_bionic_find("sched_setaffinity"))((int)a, (size_t)b, (void *)(mg_addr)c);      /* sched_setaffinity */
@@ -1452,7 +1530,7 @@ const mg_sym mg_tab_misc[] = {
     M("__cxa_bad_cast", g_cxa_bad_cast), M("__cxa_guard_acquire", g_cxa_guard_acquire), M("__cxa_guard_release", g_cxa_guard_release),
     M("__cxa_guard_abort", g_cxa_guard_abort),
     M("getpid", g_getpid), M("getppid", g_getppid), M("getuid", g_getuid), M("geteuid", g_getuid), M("getgid", g_getuid),
-    M("getegid", g_getuid), M("setuid", g_zero), M("setgid", g_zero), M("getpgrp", g_getpid), M("setsid", g_getpid),
+    M("getegid", g_getuid), M("setuid", g_zero), M("setgid", g_zero), M("setresuid", g_zero), M("setresgid", g_zero), M("setgroups", g_zero), M("getpgrp", g_getpid), M("setsid", g_getpid),
     M("fork", g_fail_nosys), M("vfork", g_fail_nosys), M("execv", g_fail_nosys), M("execve", g_fail_nosys), M("execvp", g_fail_nosys),
     M("execl", g_fail_nosys), M("execlp", g_fail_nosys), M("wait", g_fail_nosys), M("waitpid", g_fail_nosys), M("system", g_system),
     M("getenv", g_getenv), M("setenv", g_setenv), M("unsetenv", g_unsetenv), M("putenv", g_putenv), M("clearenv", g_clearenv),

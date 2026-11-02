@@ -1223,8 +1223,8 @@ mg_lib *mg_ld_load_file(const char *host_path)
 
 bool mg_ld_init(mg_lib *lib)
 {
-    static char *argv[] = { (char *)"app_process", NULL };
-    static char *envp[] = { NULL };
+    /* (argv, envp and the auxiliary vector in one block, as the kernel puts them: Go's runtime looks past envp for it.) */
+    char **argv = mg_bionic_initial_argv(), **envp = argv + 2;
     u32 i;
     int k;
     if (!lib || lib->inited || lib->initing) return true;

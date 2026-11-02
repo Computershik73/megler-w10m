@@ -319,6 +319,7 @@ public class Main extends Activity {
         keystore(run);
         keystoreCertificates(run);
         base64Streams();
+        pipedStreams();
         codecs();
         userHandle();
         cleartext();
@@ -2658,6 +2659,43 @@ public class Main extends Activity {
      * 76 and a line end) and URL_SAFE | NO_WRAP | NO_PADDING; and compressed and encoded, read back the other way (both were
      * stubs that wrote and read nothing, package 576).
      */
+    /**
+     * java.io's PipedInputStream and PipedOutputStream between two threads, as Play Store hands a download from the network
+     * to its file: 4 MB written in pieces of 8 KB through a pipe of 64 KB and read on another thread, with no flush. Its
+     * waits are Object.wait(1000) woken by notifyAll: a wake that did not come at once would hold each pipeful up to a
+     * second. The time is said, and must be short.
+     */
+    private void pipedStreams() {
+        step("piped-streams", () -> {
+            final java.io.PipedInputStream in = new java.io.PipedInputStream(65536);
+            final java.io.PipedOutputStream out = new java.io.PipedOutputStream(in);
+            final byte[] piece = new byte[8192];
+            final int pieces = 512;
+            for (int i = 0; i < piece.length; i++) piece[i] = (byte) i;
+            final Throwable[] failed = new Throwable[1];
+            Thread writer = new Thread(() -> {
+                try {
+                    for (int i = 0; i < pieces; i++) out.write(piece);
+                    out.close();
+                } catch (Throwable t) {
+                    failed[0] = t;
+                }
+            }, "pipe-writer");
+            long start = System.nanoTime();
+            writer.start();
+            byte[] buf = new byte[16384];
+            long total = 0, sum = 0;
+            for (int n; (n = in.read(buf)) > 0;) {
+                total += n;
+                sum += buf[n - 1];
+            }
+            writer.join();
+            long ms = (System.nanoTime() - start) / 1000000L;
+            detail = total + " bytes in " + ms + " ms" + (failed[0] != null ? ", the writer: " + failed[0] : "");
+            return failed[0] == null && total == (long) pieces * piece.length && ms < 20000;
+        });
+    }
+
     private void base64Streams() {
         step("base64-streams", () -> {
             byte[] data = new byte[1000];

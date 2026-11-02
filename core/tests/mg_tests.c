@@ -1771,9 +1771,15 @@ static void test_appx_pri(void)
 static void test_libc_odds(void)
 {
     const u32 *size = (const u32 *)mg_bionic_find("__page_size"), *shift = (const u32 *)mg_bionic_find("__page_shift");
-    say("libc's page size as data, setpgrp, ptrace");
+    say("libc's page size as data, setpgrp, ptrace, the ids' setters and res_search");
     CHECK(size && *size == 4096 && shift && *shift == 12);
     CHECK(mg_bionic_find("setpgrp") != NULL && mg_bionic_find("ptrace") != NULL);
+    /* What Go's syscall and net packages link (WhatsApp's libgojni.so): there, and a DNS query by res_search refused. */
+    CHECK(mg_bionic_find("setresuid") && mg_bionic_find("setresgid") && mg_bionic_find("setgroups") && mg_bionic_find("res_search"));
+    if (mg_bionic_find("res_search")) {
+        u8 answer[64];
+        CHECK(MG_GFN(int (*)(const char *, int, int, u8 *, int), (mg_addr)mg_bionic_find("res_search"))("example.com", 1, 16, answer, 64) == -1);
+    }
 }
 
 /* ------------------------------------------------------------------ the decoders behind a Java app's MediaCodec */
@@ -2643,6 +2649,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK(*FN(lib, int *(*)(void), "t_tls_addr")() == 555);
     FN(lib, void (*)(int), "t_tls_set")(100);
     CHECK_INT(FN(lib, int (*)(int, int), "t_threads")(8, 2000), 16000);
+    CHECK_INT(FN(lib, int (*)(void), "t_tls_app_slot")(), 0);
     /* A wait is woken by what it waits on: a byte passed back and forth over two pipes, with 32 other threads waiting
        in epoll_wait each on an eventfd of its own (an app's Loopers), and with none. */
     {
@@ -2689,6 +2696,9 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_aaudio")(), 2);
     CHECK_INT(FN(lib, int (*)(void), "t_cpuclock")(), 6);
     CHECK_INT(FN(lib, int (*)(const char *), "t_ffcalls")(buf), 7);
+    /* Go's runtime, as a library: its init function finds the auxiliary vector past envp, and its calls by number go. */
+    CHECK_INT(FN(lib, int (*)(void), "t_init_auxv")(), 1);
+    CHECK_INT(FN(lib, int (*)(const char *), "t_go_calls")(buf), 0);
     CHECK_INT(FN(lib, int (*)(void), "t_ifunc")(), 205);
     CHECK_INT(FN(lib, int (*)(void), "t_chrome_cmdline")(), 3);
     CHECK_INT(FN(lib, int (*)(const char *), "t_flock")(buf), 3);
