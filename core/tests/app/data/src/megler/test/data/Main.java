@@ -317,6 +317,7 @@ public class Main extends Activity {
         phoneNumber();
         tls();
         keystore(run);
+        keystoreCertificates(run);
         codecs();
         userHandle();
         cleartext();
@@ -2567,6 +2568,70 @@ public class Main extends Activity {
                     + " there-before=" + before + "," + beforeEc + "," + beforeAes + " run=" + run;
             Log.i("DataTest", "keystore " + detail);
             return rsaHeld && ecHeld && aesHeld && before == (run > 1) && beforeEc == (run > 1) && beforeAes == (run > 1);
+        });
+    }
+
+    /**
+     * The certificates of Android's key store's key pairs, as Google Play services' device registration and many apps read them: an
+     * X509Certificate (which they cast to), self-signed with the pair's key, with the spec's subject, serial number and dates (one
+     * after 2049, a GeneralizedTime) or Android's own (CN=fake, 1, 1970 to 2048), kept for the next run as it was made; a key set with
+     * a chain keeps that chain; and a pair asked for with an attestation challenge is refused with a ProviderException and not kept,
+     * as by a device whose key store cannot attest (Google Play services goes on without it; given a certificate that was not
+     * X.509, its check-in ended in a ClassCastException, package 573).
+     */
+    private void keystoreCertificates(final long run) {
+        step("keystore-certificates", () -> {
+            java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
+            store.load(null);
+            // The pair the last run made, read before this run makes it again.
+            java.security.cert.Certificate kept = store.getCertificate("megler-test-cert-ec");
+            String keptSubject = kept instanceof java.security.cert.X509Certificate
+                    ? ((java.security.cert.X509Certificate) kept).getSubjectX500Principal().getName() : String.valueOf(kept);
+            java.security.KeyPairGenerator ec = java.security.KeyPairGenerator.getInstance("EC", "AndroidKeyStore");
+            ec.initialize(new android.security.keystore.KeyGenParameterSpec.Builder("megler-test-cert-ec", android.security.keystore.KeyProperties.PURPOSE_SIGN)
+                    .setDigests(android.security.keystore.KeyProperties.DIGEST_SHA256)
+                    .setCertificateSubject(new javax.security.auth.x500.X500Principal("CN=Megler test, O=Megler"))
+                    .setCertificateSerialNumber(java.math.BigInteger.valueOf(7)).setCertificateNotBefore(new java.util.Date(1700000000000L))
+                    .setCertificateNotAfter(new java.util.Date(4102444800000L)).build());
+            java.security.KeyPair pair = ec.generateKeyPair();
+            java.security.cert.X509Certificate cert = (java.security.cert.X509Certificate) store.getCertificate("megler-test-cert-ec");
+            cert.verify(pair.getPublic());
+            java.security.cert.Certificate[] chain = store.getCertificateChain("megler-test-cert-ec");
+            boolean ecCert = "CN=Megler test,O=Megler".equals(cert.getSubjectX500Principal().getName())
+                    && cert.getIssuerX500Principal().equals(cert.getSubjectX500Principal()) && cert.getSerialNumber().intValue() == 7
+                    && cert.getNotBefore().getTime() == 1700000000000L && cert.getNotAfter().getTime() == 4102444800000L
+                    && Arrays.equals(cert.getPublicKey().getEncoded(), pair.getPublic().getEncoded()) && "SHA256withECDSA".equalsIgnoreCase(cert.getSigAlgName())
+                    && chain.length == 1 && Arrays.equals(chain[0].getEncoded(), cert.getEncoded());
+
+            java.security.KeyPairGenerator rsa = java.security.KeyPairGenerator.getInstance("RSA", "AndroidKeyStore");
+            rsa.initialize(new android.security.keystore.KeyGenParameterSpec.Builder("megler-test-cert-rsa", android.security.keystore.KeyProperties.PURPOSE_ENCRYPT
+                    | android.security.keystore.KeyProperties.PURPOSE_DECRYPT).setKeySize(2048).build());
+            java.security.KeyPair rsaPair = rsa.generateKeyPair();
+            java.security.cert.X509Certificate rsaCert = (java.security.cert.X509Certificate) store.getCertificate("megler-test-cert-rsa");
+            rsaCert.verify(rsaPair.getPublic());
+            boolean rsaDefaults = "CN=fake".equals(rsaCert.getSubjectX500Principal().getName()) && rsaCert.getSerialNumber().intValue() == 1
+                    && rsaCert.getNotBefore().getTime() == 0L && rsaCert.getNotAfter().getTime() == 2461449600000L
+                    && "SHA256withRSA".equalsIgnoreCase(rsaCert.getSigAlgName());
+
+            store.setKeyEntry("megler-test-cert-set", rsaPair.getPrivate(), null, new java.security.cert.Certificate[] { rsaCert });
+            boolean set = Arrays.equals(store.getCertificate("megler-test-cert-set").getEncoded(), rsaCert.getEncoded())
+                    && store.getEntry("megler-test-cert-set", null) instanceof java.security.KeyStore.PrivateKeyEntry;
+            store.deleteEntry("megler-test-cert-set");
+
+            String attested;
+            try {
+                java.security.KeyPairGenerator attest = java.security.KeyPairGenerator.getInstance("EC", "AndroidKeyStore");
+                attest.initialize(new android.security.keystore.KeyGenParameterSpec.Builder("megler-test-attested", android.security.keystore.KeyProperties.PURPOSE_SIGN)
+                        .setDigests(android.security.keystore.KeyProperties.DIGEST_SHA256).setAttestationChallenge(new byte[] { 1, 2, 3 }).build());
+                attest.generateKeyPair();
+                attested = "made";
+            } catch (java.security.ProviderException e) {
+                attested = "ProviderException";
+            }
+            boolean refused = "ProviderException".equals(attested) && !store.containsAlias("megler-test-attested");
+            detail = "ec=" + ecCert + " rsa-defaults=" + rsaDefaults + " set=" + set + " attested=" + attested + " kept=" + keptSubject + " run=" + run;
+            Log.i("DataTest", "keystore-certificates " + detail);
+            return ecCert && rsaDefaults && set && refused && (run > 1 ? "CN=Megler test,O=Megler".equals(keptSubject) : kept == null);
         });
     }
 

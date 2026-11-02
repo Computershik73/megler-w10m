@@ -9,13 +9,16 @@
 // native library is not in the Android root. So every AndroidKeyStore key pair ended in "no RSA key pair generator":
 // MX Player's Amazon sign-in storage (com.amazon.identity.auth.device, LocalDataStorageV2RSAKeyPairManager) three times a
 // start. The check is for apps that ask for BouncyCastle by name; here it is the platform's own key store using it, as
-// Android's AndroidKeyStore uses its keymaster. Everything else is the original's, unchanged.
+// Android's AndroidKeyStore uses its keymaster. And in the certificates of its key pairs (X.509, self-signed, as Android's:
+// see selfSigned) and in a pair asked for with an attestation challenge (refused: see PairGen.generateKeyPair). Everything else is
+// the original's, unchanged.
 package megler;
 
 import java.io.*;
 import java.math.BigInteger;
 import java.security.*;
 import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
 import java.security.spec.AlgorithmParameterSpec;
 import java.security.spec.ECGenParameterSpec;
 import java.security.spec.RSAKeyGenParameterSpec;
@@ -65,6 +68,9 @@ public final class KeyStoreProvider extends Provider {
         Key secretOrPrivate;
         PublicKey publicKey;
         long created = System.currentTimeMillis();
+        /** A key pair's certificates, leaf first, each as its encoding (kept in a file of their own: see chainFile). */
+        byte[][] chain;
+        transient Certificate[] certificates;
     }
     private static LinkedHashMap<String, Entry> sKeys;
     private static final int FORMAT = 2;
@@ -77,6 +83,7 @@ public final class KeyStoreProvider extends Provider {
         File f = file(), old = oldFile();
         if (f.isFile()) {
             read(f);
+            readChains();
         } else if (old.isFile()) {
             readOld(old);
             if (!sKeys.isEmpty()) {
@@ -144,11 +151,39 @@ public final class KeyStoreProvider extends Provider {
         }
     }
 
+    /*
+     * The certificates of the key pairs, in a file of their own beside the keys' (whose format 2 stays as it was, so a Megler of
+     * before them still reads its keys): the format, then for each alias that has them, the alias, their number and each one's
+     * encoding.
+     */
+    private static final int CHAIN_FORMAT = 1;
+    private static File chainFile() { return new File(Native.dataDir(), ".megler_keystore2.certs"); }
+
+    private static void readChains() {
+        File f = chainFile();
+        if (!f.isFile()) return;
+        try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(f)))) {
+            int format = in.readInt(), n = in.readInt();
+            if (format != CHAIN_FORMAT) throw new IOException("format " + format);
+            for (int i = 0; i < n; i++) {
+                String alias = in.readUTF();
+                int count = in.readInt();
+                if (count < 1 || count > 16) throw new IOException("a chain of " + count + " certificates");
+                byte[][] chain = new byte[count][];
+                for (int j = 0; j < count; j++) chain[j] = bytes(in);
+                Entry e = sKeys.get(alias);
+                if (e != null) e.chain = chain;
+            }
+        } catch (IOException x) {
+            android.util.Log.w("Megler", "AndroidKeyStore: could not read the keys' certificates: " + x);
+        }
+    }
+
     static synchronized void save() {
         File f = file(), part = new File(f.getPath() + ".part");
+        ArrayList<Map.Entry<String, Entry>> kept = new ArrayList<>();
+        for (Map.Entry<String, Entry> m : sKeys.entrySet()) if (encodable(m.getValue())) kept.add(m);
         try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(part)))) {
-            ArrayList<Map.Entry<String, Entry>> kept = new ArrayList<>();
-            for (Map.Entry<String, Entry> m : sKeys.entrySet()) if (encodable(m.getValue())) kept.add(m);
             out.writeInt(FORMAT);
             out.writeInt(kept.size());
             for (Map.Entry<String, Entry> m : kept) {
@@ -177,7 +212,30 @@ public final class KeyStoreProvider extends Provider {
             part.delete();
             return;
         }
-        if (!part.renameTo(f)) android.util.Log.w("Megler", "AndroidKeyStore: could not save the keys: " + part + " could not take the place of " + f);
+        if (!part.renameTo(f)) {
+            android.util.Log.w("Megler", "AndroidKeyStore: could not save the keys: " + part + " could not take the place of " + f);
+            return;
+        }
+        File c = chainFile(), chainPart = new File(c.getPath() + ".part");
+        try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(chainPart)))) {
+            ArrayList<Map.Entry<String, Entry>> chained = new ArrayList<>();
+            for (Map.Entry<String, Entry> m : kept) if (m.getValue().chain != null) chained.add(m);
+            out.writeInt(CHAIN_FORMAT);
+            out.writeInt(chained.size());
+            for (Map.Entry<String, Entry> m : chained) {
+                out.writeUTF(m.getKey());
+                out.writeInt(m.getValue().chain.length);
+                for (byte[] b : m.getValue().chain) {
+                    out.writeInt(b.length);
+                    out.write(b);
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.w("Megler", "AndroidKeyStore: could not save the keys' certificates: " + e);
+            chainPart.delete();
+            return;
+        }
+        if (!chainPart.renameTo(c)) android.util.Log.w("Megler", "AndroidKeyStore: could not save the keys' certificates: " + chainPart + " could not take the place of " + c);
     }
 
     /* Whether an entry can be written down: its keys give their encodings. */
@@ -187,7 +245,102 @@ public final class KeyStoreProvider extends Provider {
     }
     static synchronized void put(String alias, Entry e) { meglerKeys().put(alias, e); save(); }
 
-    /** A certificate that carries only its public key (Android's are self-signed X.509; what apps read is the key). */
+    /**
+     * An entry's certificates: the X.509 ones it was made or given with; for a key pair made before they were kept, a self-signed one
+     * made now as Android makes it, kept from then on. Null for a secret key or no entry.
+     */
+    static synchronized Certificate[] certificates(String alias) {
+        Entry e = meglerKeys().get(alias);
+        if (e == null || e.publicKey == null) return null;
+        if (e.certificates != null) return e.certificates;
+        if (e.chain == null && e.secretOrPrivate instanceof PrivateKey) {
+            try {
+                e.chain = new byte[][] { selfSigned(e.publicKey, (PrivateKey) e.secretOrPrivate, null) };
+                save();
+            } catch (GeneralSecurityException | RuntimeException x) {
+                android.util.Log.w("Megler", "AndroidKeyStore: no certificate for " + alias + ": " + x);
+            }
+        }
+        if (e.chain != null) {
+            try {
+                CertificateFactory factory = CertificateFactory.getInstance("X.509");
+                Certificate[] c = new Certificate[e.chain.length];
+                for (int i = 0; i < c.length; i++) c[i] = factory.generateCertificate(new ByteArrayInputStream(e.chain[i]));
+                return e.certificates = c;
+            } catch (GeneralSecurityException | RuntimeException x) {
+                android.util.Log.w("Megler", "AndroidKeyStore: the certificate of " + alias + " could not be read: " + x);
+            }
+        }
+        return e.certificates = new Certificate[] { new KeyCertificate(e.publicKey) };
+    }
+
+    /** The encodings of a chain to keep, or null when one of them has none (a KeyCertificate's is its key's). */
+    private static byte[][] encodings(Certificate[] chain) {
+        if (chain == null || chain.length == 0) return null;
+        byte[][] b = new byte[chain.length][];
+        try {
+            for (int i = 0; i < chain.length; i++) {
+                if (chain[i] instanceof KeyCertificate) return null;
+                b[i] = chain[i].getEncoded();
+            }
+        } catch (java.security.cert.CertificateEncodingException e) {
+            return null;
+        }
+        return b;
+    }
+
+    /**
+     * A self-signed X.509 certificate of a key pair, as Android's key store makes one for a pair it generates without attestation:
+     * the spec's subject, serial number and dates, else Android's own (CN=fake, 1, from 1970 to 2048), signed with the pair's key.
+     * Apps and Google Play services cast what getCertificate gives to X509Certificate and send its encoding.
+     */
+    static byte[] selfSigned(PublicKey pub, PrivateKey key, android.security.keystore.KeyGenParameterSpec spec) throws GeneralSecurityException {
+        boolean ec = "EC".equals(key.getAlgorithm());
+        if (!ec && !"RSA".equals(key.getAlgorithm())) throw new NoSuchAlgorithmException("no certificate for a " + key.getAlgorithm() + " key");
+        javax.security.auth.x500.X500Principal subject = spec != null && spec.getCertificateSubject() != null ? spec.getCertificateSubject()
+                : new javax.security.auth.x500.X500Principal("CN=fake");
+        BigInteger serial = spec != null && spec.getCertificateSerialNumber() != null ? spec.getCertificateSerialNumber() : BigInteger.ONE;
+        Date notBefore = spec != null && spec.getCertificateNotBefore() != null ? spec.getCertificateNotBefore() : new Date(0L);
+        Date notAfter = spec != null && spec.getCertificateNotAfter() != null ? spec.getCertificateNotAfter() : new Date(2461449600000L);
+        // ecdsa-with-SHA256 (1.2.840.10045.4.3.2), without parameters; sha256WithRSAEncryption (1.2.840.113549.1.1.11), with NULL.
+        byte[] algorithm = ec ? der(0x30, new byte[] { 6, 8, 0x2a, (byte) 0x86, 0x48, (byte) 0xce, 0x3d, 4, 3, 2 })
+                : der(0x30, new byte[] { 6, 9, 0x2a, (byte) 0x86, 0x48, (byte) 0x86, (byte) 0xf7, 0x0d, 1, 1, 0x0b, 5, 0 });
+        byte[] name = subject.getEncoded();
+        byte[] tbs = der(0x30, der(0xa0, der(2, new byte[] { 2 })), der(2, serial.toByteArray()), algorithm, name,
+                der(0x30, time(notBefore), time(notAfter)), name, pub.getEncoded());
+        Signature s = Signature.getInstance(ec ? "SHA256withECDSA" : "SHA256withRSA");
+        s.initSign(key);
+        s.update(tbs);
+        byte[] signature = s.sign(), bits = new byte[signature.length + 1];  // a BIT STRING: no bits unused, then the signature
+        System.arraycopy(signature, 0, bits, 1, signature.length);
+        return der(0x30, tbs, algorithm, der(3, bits));
+    }
+
+    /** DER: the tag, the length, the contents. */
+    private static byte[] der(int tag, byte[]... contents) {
+        int n = 0;
+        for (byte[] c : contents) n += c.length;
+        ByteArrayOutputStream out = new ByteArrayOutputStream(n + 5);
+        out.write(tag);
+        if (n < 0x80) out.write(n);
+        else if (n < 0x100) { out.write(0x81); out.write(n); }
+        else if (n < 0x10000) { out.write(0x82); out.write(n >> 8); out.write(n); }
+        else { out.write(0x83); out.write(n >> 16); out.write(n >> 8); out.write(n); }
+        for (byte[] c : contents) out.write(c, 0, c.length);
+        return out.toByteArray();
+    }
+
+    /** A certificate's time: UTCTime from 1950 to 2049, GeneralizedTime otherwise (RFC 5280, 4.1.2.5). */
+    private static byte[] time(Date d) {
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyyMMddHHmmss'Z'", Locale.US);
+        f.setTimeZone(TimeZone.getTimeZone("UTC"));
+        String s = f.format(d);
+        int year = Integer.parseInt(s.substring(0, 4));
+        boolean utc = year >= 1950 && year < 2050;
+        return der(utc ? 0x17 : 0x18, (utc ? s.substring(2) : s).getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+    }
+
+    /** A certificate that carries only its public key: what an entry gives when no X.509 one could be made or read. */
     static final class KeyCertificate extends Certificate {
         private final PublicKey mKey;
         KeyCertificate(PublicKey k) { super("X.509"); mKey = k; }
@@ -200,19 +353,23 @@ public final class KeyStoreProvider extends Provider {
 
     public static final class Store extends KeyStoreSpi {
         @Override public Key engineGetKey(String alias, char[] password) { Entry e = meglerKeys().get(alias); return e == null ? null : e.secretOrPrivate; }
-        @Override public Certificate[] engineGetCertificateChain(String alias) { Certificate c = engineGetCertificate(alias); return c == null ? null : new Certificate[] { c }; }
-        @Override public Certificate engineGetCertificate(String alias) { Entry e = meglerKeys().get(alias); return e == null || e.publicKey == null ? null : new KeyCertificate(e.publicKey); }
+        @Override public Certificate[] engineGetCertificateChain(String alias) { Certificate[] c = certificates(alias); return c == null ? null : c.clone(); }
+        @Override public Certificate engineGetCertificate(String alias) { Certificate[] c = certificates(alias); return c == null ? null : c[0]; }
         @Override public Date engineGetCreationDate(String alias) { Entry e = meglerKeys().get(alias); return e == null ? null : new Date(e.created); }
         @Override public void engineSetKeyEntry(String alias, Key key, char[] password, Certificate[] chain) {
             Entry e = new Entry();
             e.secretOrPrivate = key;
-            if (chain != null && chain.length > 0) e.publicKey = chain[0].getPublicKey();
+            if (chain != null && chain.length > 0) {
+                e.publicKey = chain[0].getPublicKey();
+                e.chain = encodings(chain);
+            }
             put(alias, e);
         }
         @Override public void engineSetKeyEntry(String alias, byte[] key, Certificate[] chain) throws KeyStoreException { throw new KeyStoreException("not supported"); }
         @Override public void engineSetCertificateEntry(String alias, Certificate cert) {
             Entry e = new Entry();
             e.publicKey = cert.getPublicKey();
+            e.chain = encodings(new Certificate[] { cert });
             put(alias, e);
         }
         @Override public void engineDeleteEntry(String alias) { synchronized (KeyStoreProvider.class) { meglerKeys().remove(alias); save(); } }
@@ -269,15 +426,29 @@ public final class KeyStoreProvider extends Provider {
     public static class PairGen extends KeyPairGeneratorSpi {
         private final String mAlgorithm;
         private String mAlias; private AlgorithmParameterSpec mSpec; private int mSize;
+        private android.security.keystore.KeyGenParameterSpec mKeySpec;
         PairGen(String algorithm) { mAlgorithm = algorithm; mSize = "EC".equals(algorithm) ? 256 : 2048; }
         @Override public void initialize(int keysize, SecureRandom random) { mSize = keysize; }
         @Override public void initialize(AlgorithmParameterSpec params, SecureRandom random) throws InvalidAlgorithmParameterException {
             mAlias = aliasOf(params);
             if (mAlias == null) throw new InvalidAlgorithmParameterException("expected a KeyGenParameterSpec");
             mSize = sizeOf(params, mSize);
-            mSpec = params instanceof android.security.keystore.KeyGenParameterSpec ? ((android.security.keystore.KeyGenParameterSpec) params).getAlgorithmParameterSpec() : null;
+            mKeySpec = params instanceof android.security.keystore.KeyGenParameterSpec ? (android.security.keystore.KeyGenParameterSpec) params : null;
+            mSpec = mKeySpec != null ? mKeySpec.getAlgorithmParameterSpec() : null;
         }
         @Override public KeyPair generateKeyPair() {
+            if (mKeySpec != null && mKeySpec.getAttestationChallenge() != null) {
+                // Android's key store attests a pair made with a challenge: its keymaster signs the pair's certificate, in a chain up to
+                // Google's root. There is no keymaster here, so the answer is a device's whose keymaster cannot attest
+                // (AndroidKeyStoreKeyPairGeneratorSpi): ProviderException, and nothing under the alias. Google Play services' device
+                // registration (check-in) asks for one and goes on without it ("Failed to generate key attestation"); given a pair
+                // whose certificate was not an X509Certificate it ended in a ClassCastException, every time, and Play Store never got
+                // an Android ID ("Server error", package 573).
+                synchronized (KeyStoreProvider.class) {
+                    if (meglerKeys().remove(mAlias) != null) save();
+                }
+                throw new ProviderException("Failed to generate attestation certificate chain");
+            }
             try {
                 // The generator of the first other provider that has one, from its service: getInstance(algorithm, provider) would
                 // refuse BouncyCastle's (the header says why).
@@ -294,7 +465,17 @@ public final class KeyStoreProvider extends Provider {
                 else if ("EC".equals(mAlgorithm)) g.initialize(new ECGenParameterSpec(mSize == 384 ? "secp384r1" : mSize == 521 ? "secp521r1" : "secp256r1"), random);
                 else g.initialize(new RSAKeyGenParameterSpec(mSize, RSAKeyGenParameterSpec.F4), random);
                 KeyPair kp = g.generateKeyPair();
-                if (mAlias != null) { Entry e = new Entry(); e.secretOrPrivate = kp.getPrivate(); e.publicKey = kp.getPublic(); put(mAlias, e); }
+                if (mAlias != null) {
+                    Entry e = new Entry();
+                    e.secretOrPrivate = kp.getPrivate();
+                    e.publicKey = kp.getPublic();
+                    try {
+                        e.chain = new byte[][] { selfSigned(kp.getPublic(), kp.getPrivate(), mKeySpec) };
+                    } catch (GeneralSecurityException | RuntimeException x) {
+                        android.util.Log.w("Megler", "AndroidKeyStore: no certificate for " + mAlias + ": " + x);
+                    }
+                    put(mAlias, e);
+                }
                 return kp;
             } catch (GeneralSecurityException e) {
                 throw new ProviderException(e);
