@@ -1,0 +1,7 @@
+    // Megler: Android's other two constructors, which apps still call. Telegram builds its message bubbles with the one
+    // without Resources, in a try that keeps quiet: with it missing it had no bubble, and every message cell drew neither
+    // bubble nor text, only the dates and the avatars (package 570).
+    @Deprecated
+    public NinePatchDrawable(Bitmap bitmap, byte[] chunk, Rect padding, String srcName) { this(null, bitmap, chunk, padding, srcName); }
+
+    public NinePatchDrawable(Resources res, NinePatch patch) { this(patch); }

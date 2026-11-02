@@ -52,8 +52,10 @@ public class Main extends Activity {
             if (System.getenv("MG_JAVA_GSF_APK") != null) {
                 PackageInfo gsfInfo = getPackageManager().getPackageInfo("com.google.android.gsf", PackageManager.GET_PROVIDERS);
                 check(gsfInfo.providers != null && gsfInfo.providers.length > 0, "shared GSF APK metadata");
+                // GServices is microG's own here, as on a phone with microG: the Android ID of its check-in is in it, which
+                // Play Store reads (GSF's, mounted beside it for Google's own Play services, never had one).
                 ProviderInfo gservices = getPackageManager().resolveContentProvider("com.google.android.gsf.gservices", 0);
-                check(gservices != null && "com.google.android.gsf".equals(gservices.packageName), "GSF GServices provider resolves");
+                check(gservices != null && GMS.equals(gservices.packageName) && gservices.name.startsWith("org.microg."), "microG's GServices provider resolves");
                 Context gsf = createPackageContext("com.google.android.gsf", CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY);
                 check("com.google.android.gsf".equals(gsf.getPackageName()) && gsf.getClassLoader() != getClassLoader(),
                         "GSF has its own service class loader");
@@ -61,7 +63,7 @@ public class Main extends Activity {
                         "GSF application context has user services");
                 android.database.Cursor gservicesValues = getContentResolver().query(android.net.Uri.parse("content://com.google.android.gsf.gservices"),
                         null, null, new String[] {"android_id"}, null);
-                check(gservicesValues != null, "GSF provider answers a query");
+                check(gservicesValues != null, "microG's GServices provider answers a query");
                 gservicesValues.close();
             }
             Context gms = createPackageContext(GMS, CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY);
@@ -424,6 +426,13 @@ public class Main extends Activity {
                 check(gmsInfo.uid != android.os.Process.myUid() && authenticator != null && authenticator.serviceInfo.applicationInfo.uid == gmsInfo.uid
                       && google != null && "com.google.android.gms".equals(google[0]) && !java.util.Arrays.asList(google).contains(getPackageName()),
                       "GmsCore's uid " + gmsInfo.uid + ": " + java.util.Arrays.toString(google));
+                // microG's device registration is on unless its settings turned it off (MicroG.registrationOn, at microG's boot,
+                // which its first service made here has had): Play Store has no Android ID without a check-in.
+                // (Read as microG reads it: its default preferences, through its package's context -- they are in the services' shared
+                // folder, or in the app's own data where there is none.)
+                android.content.SharedPreferences microgPrefs = createPackageContext(GMS, CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY)
+                        .getSharedPreferences(GMS + "_preferences", MODE_PRIVATE);
+                check(microgPrefs.getBoolean("checkin_enable_service", false), "microG's device registration is on: " + microgPrefs.getAll());
                 unbindService(this);
                 done = true;
                 Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources, dynamite modules, accounts, GCM's messenger and receiver context");

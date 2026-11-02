@@ -158,6 +158,7 @@ private:
     std::vector<std::pair<std::string, std::string>> askedInstalls_;
     /// At every poll: tells an app that asked of an APK the library has read that cannot run here (library/PhoneAppsList.h).
     void tellAskedInstalls();
+    bool playStoreCanStart(const std::string& package);
 
     winrt::Windows::UI::Xaml::Controls::Grid root_{nullptr};
     winrt::Windows::UI::Xaml::Controls::Grid navigationBar_{nullptr};

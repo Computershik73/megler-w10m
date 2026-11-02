@@ -155,11 +155,15 @@ public class PackageManager {
     public ServiceInfo getServiceInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getServiceInfo(c, 0); }
     public ProviderInfo getProviderInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component p : megler.Manifest.providers) if (p.name.equals(c.getClassName())) return provider(p); throw new NameNotFoundException(c.toString()); }
     public ProviderInfo resolveContentProvider(String authority, int flags) {
+        // (microG's own first when it is the Google Play services here, as megler.GmsProviders answers: its GServices.)
+        android.content.pm.PackageInfo gms = megler.MicroG.packageInfo(megler.GooglePackages.GMS);
+        boolean microg = megler.MicroG.isMicroG();
+        if (microg && gms != null && gms.providers != null) for (ProviderInfo p : gms.providers)
+            if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
         android.content.pm.PackageInfo gsf = megler.Gsf.packageInfo(megler.GooglePackages.GSF);
         if (gsf != null && gsf.providers != null) for (ProviderInfo p : gsf.providers)
             if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
-        android.content.pm.PackageInfo gms = megler.MicroG.packageInfo(megler.GooglePackages.GMS);
-        if (gms != null && gms.providers != null) for (ProviderInfo p : gms.providers)
+        if (!microg && gms != null && gms.providers != null) for (ProviderInfo p : gms.providers)
             if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
         for (megler.Manifest.Component p : megler.Manifest.providers)
             if (p.authorities != null && java.util.Arrays.asList(p.authorities.split(";")).contains(authority)) return provider(p);

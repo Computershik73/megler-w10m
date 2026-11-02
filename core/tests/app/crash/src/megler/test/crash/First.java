@@ -57,7 +57,8 @@ public class First extends Activity {
         order.append("resume,");
         if (!gated) {
             gated = true;
-            startActivityForResult(new Intent(this, Gate.class), 7);
+            // through an alias of Gate's, which Gate recreates itself under (Play Store's main activity was started through its launcher's)
+            startActivityForResult(new Intent().setClassName(getPackageName(), "megler.test.crash.GateAlias"), 7);
         }
     }
 

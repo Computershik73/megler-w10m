@@ -40,11 +40,18 @@ microG's package or one of its receivers to them (`megler.Broadcasts.send`).
 When microG's code first runs in an app (its Application is created), its
 receivers that list `BOOT_COMPLETED` hear it once in that process, as after
 Android's boot. microG's check-in trigger then checks in when device
-registration is on and the last check-in is older than twelve hours; it is off
-until the user turns it on in microG's settings, as on Android. Under qemu, with
-registration turned on, Play Store's process checked in ("Checked in as ..."),
+registration is on and the last check-in is older than twelve hours. microG
+keeps registration off until it is turned on in its settings; Megler turns it
+on (`checkin_enable_service`, `MicroG.registrationOn`) unless the user has set
+it there, since Play Store has no Android ID without a check-in and its front
+page refused every request ("Server error", package 570). Under qemu, with
+registration on, Play Store's process checked in ("Checked in as ..."),
 microG stored the Android ID and filled its GServices database, and Play Store
-read the Android ID from GServices on its next start.
+read the Android ID from GServices on its next start. GServices
+(`com.google.android.gsf.gservices`) is microG's own provider when microG is the
+Google Play services (`megler.GmsProviders`, `PackageManager.resolveContentProvider`):
+Google Services Framework, mounted beside it for Google's own Play services,
+answered it before, and its database never had microG's Android ID.
 
 ## Accounts
 

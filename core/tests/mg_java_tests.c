@@ -2219,7 +2219,7 @@ static int run_data(void)
                                             custom action, as PlaybackStateCompat makes it. And sound from Java: an
                                             AudioTrack written to, a MediaPlayer of a WAV and of an Ogg Vorbis asset, a SoundPool. */
                                          "xml", "asset-fd", "tasks", "wrapper-receiver", "viewgroup-flag", "text-drawables", "pfd-dup", "pfd-parcel",
-                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path", "apk-optimization",
+                                         "theme-selfref", "queue-next", "storage-stats", "broadcast-explicit", "service-stop-thread", "start-ids", "process-scope", "job-scheduler", "downloads", "rollback-service", "art-manager", "progress-subclass", "telephony", "microphone", "biometric", "ordered-broadcast", "hardware-accelerated", "image-matrix-before-layout", "delegate-last-scope", "asset-manager-manifest", "big-asset", "path-iterator", "mutable-context", "exec", "crc32c", "nine-patch-constructors", "subscription-ids", "filter-categories", "arrays-ranges", "thread-stack", "icu-number", "audio-route", "expand-template", "list-fragment", "fragment-saved-state", "stub-said", "handler-thread", "managed-dialog", "input-format", "dialog-of-stopped", "zip-path-validator", "list-row-click", "animation-listener", "typeface-descriptor", "device-provisioned", "users", "start-asked", "pending-intent-creator", "pending-intent-flags", "alarm-replace-cancel", "messenger-forwarded", "insets-builder", "insets-consumed", "insets-siblings", "broadcast-handler", "prefs-spaced-key", "account-removed", "sync", "package-installer", "wifi", "media-metadata", "playback-state", "theme-accent", "phone-apps", "phone-apps-activities", "phone-apps-signatures", "install-intent", "install-session", "install-splits", "bitmap-bytes", "adaptive-icon", "idle-handler", "uri-builder", "many-interfaces", "apk-path", "apk-optimization",
                                          "audio-track", "media-player", "media-player-ogg", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
@@ -2331,6 +2331,9 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: downloads ok status=200 bytes=5 body=hello cookie=true observed=true file=5", 0, 30) >= 0);
     /* The list of the step "list-row-click": its row, clickable itself, clicked by a tap. */
     CHECK(wait_line("I/DataTest: list-row-click rows=3 clicked=true", 0, 30) >= 0);
+    /* The view animation of the step "animation-listener": its listener told through the view's handler, after the frames that
+       started and ended it, not inside its parent's dispatchDraw (Animation.fireStart; Telegram's settings ended the app). */
+    CHECK(wait_line("I/DataTest: animation-listener heard=start end", 0, 30) >= 0);
     /* The PendingIntent the step "pending-intent-flags" sent: the one it asked for first, with the extras FLAG_UPDATE_CURRENT gave. */
     CHECK(wait_line("I/DataTest: pending-intent-sent ok v=3", 0, 30) >= 0);
     /* The alarms of the step "alarm-replace-cancel": the one set twice went off once, the cancelled one never, the repeating one
@@ -2502,7 +2505,10 @@ static int run_crash(void)
     /* Gate recreates itself once (Activity.recreate, AppRunner.recreate): stopped as one being made again, then the same
        component again with the state it saved, which still gives First its result. */
     expect_line("I/CrashTest: gate stop changing=true", &at, 60);
-    expect_line("I/CrashTest: gate recreated state=7 component=megler.test.crash.Gate", &at, 60);
+    /* (Gate is started through an alias, GateAlias: recreated, the alias's target is made again, and the alias stays its
+       component, as on Android -- Play Store's main activity, started through its launcher's alias, was looked for by the
+       alias's name and the app ended, package 570.) */
+    expect_line("I/CrashTest: gate recreated state=7 component=megler.test.crash.GateAlias", &at, 60);
     expect_line("I/CrashTest: first order resume,result:7:-1,resume,focus:true,", &at, 60);
     /*
      * FLAG_ACTIVITY_CLEAR_TOP as Android has it, First found by its class though started through an alias: with the flag
@@ -2800,8 +2806,10 @@ static int run_microg(void)
     CHECK(find_line("Feature[megler_inline,9]", 0) >= 0 && find_line("Feature[megler_probe,7]", 0) >= 0);
     CHECK(find_line("E/MicroGTest: FAILED", 0) < 0);
     CHECK(find_line("FATAL EXCEPTION", 0) < 0);
-    /* microG heard the boot (megler.MicroG.boot): its check-in trigger looked at its setting, which is off until the user turns it on. */
-    CHECK(find_line("GmsCheckinTrigger: Ignoring Intent { act=android.intent.action.BOOT_COMPLETED", 0) >= 0);
+    /* microG heard the boot (megler.MicroG.boot), with its device registration turned on, as Megler turns it on unless microG's
+       settings turned it off (Play Store has no Android ID without it), and its check-in trigger started the registration. */
+    CHECK(find_line("I/MicroG: device registration turned on (checkin_enable_service)", 0) >= 0);
+    CHECK(find_line("GmsCheckinSvc: Started Google device registration", 0) >= 0);
     say_app_lines("/MicroGTest: ");
     return g_failed;
 }

@@ -370,7 +370,33 @@ Status status(const std::string& androidPackage) {
     return statusLocked(androidPackage);
 }
 
+Portal portal() {
+    std::lock_guard<std::mutex> lock(gMutex);
+    if (!gProblem.empty()) return Portal::off;
+    return gListed ? Portal::on : Portal::unknown;
+}
+
+bool requirePortal(AppShell& shell) {
+    const Portal state = portal();
+    if (state == Portal::on) return true;
+    refresh(shell);  // asked again, for the next try
+    if (state == Portal::unknown) {
+        shell.alert("Asking the Device Portal", "Megler installs apps through the phone's Device Portal and is asking it whether it is on. "
+                                                "Try again in a moment.");
+        return false;
+    }
+    const std::string why = portalProblem();
+    shellLog::write("separate apps: nothing installed while the Device Portal is off: " + why);
+    shell.confirm("Turn On the Device Portal",
+                  "Megler installs apps through the phone's Device Portal, which did not answer (" + why +
+                      "). Turn it on in Settings › Update & security › For developers: Developer mode, then Device Portal. Then try again.",
+                  "Open Settings", false,
+                  [] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(L"ms-settings:developers")); });
+    return false;
+}
+
 void install(AppShell& shell, const std::string& apkId, bool whenRead) {
+    if (!requirePortal(shell)) return;
     const auto entry = Library::instance().find(apkId);
     if (!entry || (!whenRead && entry->report.package.empty())) return;
     shellLog::write("separate apps: install " + apkId);
@@ -383,6 +409,7 @@ void install(AppShell& shell, const std::string& apkId, bool whenRead) {
 }
 
 void installPicked(AppShell& shell, std::shared_ptr<PickedFile> picked, const std::string& apkId) {
+    if (!requirePortal(shell)) return;
     shellLog::write("separate apps: install " + picked->name() + " where it is, as " + apkId);
     Job job;
     job.id = apkId;
@@ -416,6 +443,7 @@ std::vector<std::string> outdatedIds() {
 }
 
 void updateAll(AppShell& shell) {
+    if (!requirePortal(shell)) return;
     const auto ids = outdatedIds();
     shellLog::write(format("separate apps: update all, %u", unsigned(ids.size())));
     for (const auto& id : ids) install(shell, id);

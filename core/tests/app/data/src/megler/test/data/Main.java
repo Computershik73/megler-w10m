@@ -803,6 +803,72 @@ public class Main extends Activity {
             return v == 0xE3069283L && two.getValue() == v && three.getValue() == v && one.getValue() == 0x90F599E3L
                    && adler.getValue() == 0x091E01DEL && !direct.hasRemaining();
         });
+        // OpenJDK 11's comparisons of arrays and of their ranges, which Android 13 has (java.util.Arrays.equals(byte[], int, int,
+        // byte[], int, int) and the rest, the libcore overlay's): Aliucord Manager's patching of Discord's APK called that one
+        // and ended on a NoSuchMethodError. By reflection: the app is built against Android 10's android.jar.
+        // IntentFilter.matchCategories as Android has it: null when every category of the intent's is the filter's, else the first
+        // that is not (it said null for anything; megler.MicroG matches Google Play services' services with it).
+        // SubscriptionManager's lists of active subscription ids, never null as on Android (Android 11's methods: by reflection)
+        // -- Google Play services' check-in took their length and ended on a NullPointerException, and Play Store had no
+        // Android ID.
+        // NinePatchDrawable's constructors without Resources, and with Resources and a NinePatch, which Android has: Telegram
+        // builds its message bubbles with the first (in a try that keeps quiet), and drew no bubble and no text without it.
+        step("nine-patch-constructors", () -> {
+            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(9, 9, android.graphics.Bitmap.Config.ARGB_8888);
+            b.eraseColor(0xff00ff00);
+            java.nio.ByteBuffer c = java.nio.ByteBuffer.allocate(32 + 4 * 4 + 9 * 4).order(java.nio.ByteOrder.nativeOrder());
+            c.put((byte) 1).put((byte) 2).put((byte) 2).put((byte) 9).putInt(0).putInt(0);
+            c.putInt(1).putInt(2).putInt(3).putInt(4).putInt(0);
+            c.putInt(3).putInt(6).putInt(3).putInt(6);
+            for (int i = 0; i < 9; i++) c.putInt(1);
+            byte[] chunk = c.array();
+            android.graphics.drawable.NinePatchDrawable bubble = new android.graphics.drawable.NinePatchDrawable(b, chunk, new android.graphics.Rect(), null);
+            android.graphics.drawable.NinePatchDrawable other = new android.graphics.drawable.NinePatchDrawable(getResources(), new android.graphics.NinePatch(b, chunk, null));
+            android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(30, 20, android.graphics.Bitmap.Config.ARGB_8888);
+            bubble.setBounds(0, 0, 30, 20);
+            bubble.setAlpha(200);
+            bubble.draw(new android.graphics.Canvas(out));
+            detail = "width=" + bubble.getIntrinsicWidth() + " alpha=" + bubble.getAlpha() + " other=" + other.getIntrinsicHeight();
+            return bubble.getIntrinsicWidth() == 9 && bubble.getAlpha() == 200 && other.getIntrinsicHeight() == 9;
+        });
+        step("subscription-ids", () -> {
+            android.telephony.SubscriptionManager sm = (android.telephony.SubscriptionManager) getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE);
+            Object active = android.telephony.SubscriptionManager.class.getMethod("getActiveSubscriptionIdList").invoke(sm);
+            Object complete = android.telephony.SubscriptionManager.class.getMethod("getCompleteActiveSubscriptionIdList").invoke(sm);
+            detail = "active=" + (active == null ? "null" : ((int[]) active).length) + " complete=" + (complete == null ? "null" : ((int[]) complete).length)
+                    + " infos=" + sm.getActiveSubscriptionInfoCount();
+            return active instanceof int[] && complete instanceof int[] && ((int[]) active).length == sm.getActiveSubscriptionInfoCount();
+        });
+        step("filter-categories", () -> {
+            android.content.IntentFilter f = new android.content.IntentFilter("megler.test.ACTION");
+            f.addCategory(android.content.Intent.CATEGORY_DEFAULT);
+            java.util.Set<String> both = new java.util.LinkedHashSet<>(java.util.Arrays.asList(android.content.Intent.CATEGORY_DEFAULT, "megler.test.OTHER"));
+            String none = f.matchCategories(null), own = f.matchCategories(java.util.Collections.singleton(android.content.Intent.CATEGORY_DEFAULT)), missing = f.matchCategories(both);
+            detail = "none=" + none + " own=" + own + " missing=" + missing;
+            return none == null && own == null && "megler.test.OTHER".equals(missing);
+        });
+        step("arrays-ranges", () -> {
+            Class<?> a = java.util.Arrays.class;
+            byte[] one = { 1, 2, 3, 4, 5 }, two = { 9, 2, 3, 4, 8 };
+            java.lang.reflect.Method equals = a.getMethod("equals", byte[].class, int.class, int.class, byte[].class, int.class, int.class);
+            boolean inner = (Boolean) equals.invoke(null, one, 1, 4, two, 1, 4), whole = (Boolean) equals.invoke(null, one, 0, 5, two, 0, 5);
+            int mismatch = (Integer) a.getMethod("mismatch", byte[].class, byte[].class).invoke(null, one, two);
+            int shorter = (Integer) a.getMethod("mismatch", byte[].class, byte[].class).invoke(null, new byte[] { 1, 2 }, new byte[] { 1, 2, 3 });
+            int ints = (Integer) a.getMethod("compare", int[].class, int[].class).invoke(null, new int[] { 1, 2 }, new int[] { 1, 3 });
+            int unsigned = (Integer) a.getMethod("compareUnsigned", byte[].class, byte[].class).invoke(null, new byte[] { (byte) 0xff }, new byte[] { 1 });
+            int strings = (Integer) a.getMethod("compare", Comparable[].class, Comparable[].class).invoke(null, new String[] { "a", "b" }, new String[] { "a", "c" });
+            boolean nan = (Boolean) a.getMethod("equals", float[].class, int.class, int.class, float[].class, int.class, int.class)
+                    .invoke(null, new float[] { Float.NaN }, 0, 1, new float[] { Float.NaN }, 0, 1);
+            String refused = "none";
+            try {
+                equals.invoke(null, one, 3, 2, two, 0, 0);
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                refused = e.getCause().getClass().getSimpleName();
+            }
+            detail = "inner=" + inner + " whole=" + whole + " mismatch=" + mismatch + " shorter=" + shorter + " ints=" + ints + " unsigned=" + unsigned
+                    + " strings=" + strings + " nan=" + nan + " refused=" + refused;
+            return inner && !whole && mismatch == 0 && shorter == 2 && ints < 0 && unsigned > 0 && strings < 0 && nan && "IllegalArgumentException".equals(refused);
+        });
         // The frame stacks of threads Java starts: two thousand calls deep on a thread of the default size, twenty thousand
         // on one that asked for 16 MB, and a recursion without end the StackOverflowError it is on Android, caught there.
         step("thread-stack", () -> {
@@ -1138,6 +1204,38 @@ public class Main extends Activity {
                 Log.i("DataTest", "list-row-click rows=" + list.getChildCount() + " clicked=" + clicked[0]), 200);
             detail = "rows=" + list.getChildCount() + " took=" + took;
             return took && list.getChildCount() > 0;
+        });
+        // A view animation's listener told as Android tells it once the view is in a window: through the view's handler, after
+        // the frame that started or ended the animation -- not inside its parent's drawing (Telegram changes its settings list
+        // from such a listener, which done inside a RecyclerView's layout ends the app). Said when the animation has ended.
+        step("animation-listener", () -> {
+            final boolean[] inDraw = new boolean[1];
+            final StringBuilder heard = new StringBuilder();
+            final android.widget.FrameLayout parent = new android.widget.FrameLayout(this) {
+                @Override protected void dispatchDraw(android.graphics.Canvas c) {
+                    inDraw[0] = true;
+                    try { super.dispatchDraw(c); } finally { inDraw[0] = false; }
+                }
+            };
+            android.view.View child = new android.view.View(this);
+            child.setBackgroundColor(0xff336699);
+            parent.addView(child, new android.widget.FrameLayout.LayoutParams(20, 20));
+            ((android.view.ViewGroup) text.getParent()).addView(parent, new android.view.ViewGroup.LayoutParams(40, 40));
+            android.view.animation.AlphaAnimation fade = new android.view.animation.AlphaAnimation(1f, 0.5f);
+            fade.setDuration(50);
+            fade.setAnimationListener(new android.view.animation.Animation.AnimationListener() {
+                @Override public void onAnimationStart(android.view.animation.Animation a) { heard.append(inDraw[0] ? "start-in-draw " : "start "); }
+                @Override public void onAnimationRepeat(android.view.animation.Animation a) {}
+                @Override public void onAnimationEnd(android.view.animation.Animation a) {
+                    heard.append(inDraw[0] ? "end-in-draw" : "end");
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                        Log.i("DataTest", "animation-listener heard=" + heard);
+                        ((android.view.ViewGroup) parent.getParent()).removeView(parent);
+                    });
+                }
+            });
+            child.startAnimation(fade);
+            return true;
         });
         // A typeface built from a font file open on a descriptor (Typeface.Builder(FileDescriptor), as Google Play services
         // loads its downloaded fonts): made, and the descriptor still open after.

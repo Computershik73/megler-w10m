@@ -199,8 +199,11 @@ public class SubscriptionManager {
     public android.telephony.SubscriptionManager createForAllUserProfiles() { return this; }
     public android.os.ParcelUuid createSubscriptionGroup(java.util.List p0) { return null; }
     public java.util.List getAccessibleSubscriptionInfoList() { return (meglerProps.get("AccessibleSubscriptionInfoList") != null ? (java.util.List) meglerProps.get("AccessibleSubscriptionInfoList") : new java.util.ArrayList()); }
-    public int[] getActiveSubscriptionIdList() { return (int[]) meglerProps.get("ActiveSubscriptionIdList"); }
-    public int[] getActiveSubscriptionIdList(boolean p0) { return null; }
+    // Megler: never null, as Android has it -- no subscription is active here (getActiveSubscriptionInfoList is empty too).
+    // Google Play services' check-in took its length and ended on a NullPointerException every time, and with no
+    // check-in Play Store had no Android ID: "Server error" on its front page (package 570).
+    public int[] getActiveSubscriptionIdList() { return meglerProps.get("ActiveSubscriptionIdList") instanceof int[] ? (int[]) meglerProps.get("ActiveSubscriptionIdList") : new int[0]; }
+    public int[] getActiveSubscriptionIdList(boolean p0) { return getActiveSubscriptionIdList(); }
     public android.telephony.SubscriptionInfo getActiveSubscriptionInfo(int p0) { return null; }
     public int getActiveSubscriptionInfoCount() { return (meglerProps.get("ActiveSubscriptionInfoCount") instanceof Integer ? (Integer) meglerProps.get("ActiveSubscriptionInfoCount") : 0); }
     public int getActiveSubscriptionInfoCountMax() { return (meglerProps.get("ActiveSubscriptionInfoCountMax") instanceof Integer ? (Integer) meglerProps.get("ActiveSubscriptionInfoCountMax") : 0); }
@@ -211,7 +214,10 @@ public class SubscriptionManager {
     public byte[] getAllSimSpecificSettingsForBackup() { return (byte[]) meglerProps.get("AllSimSpecificSettingsForBackup"); }
     public java.util.List getAllSubscriptionInfoList() { return (meglerProps.get("AllSubscriptionInfoList") != null ? (java.util.List) meglerProps.get("AllSubscriptionInfoList") : new java.util.ArrayList()); }
     public java.util.List getAvailableSubscriptionInfoList() { return (meglerProps.get("AvailableSubscriptionInfoList") != null ? (java.util.List) meglerProps.get("AvailableSubscriptionInfoList") : new java.util.ArrayList()); }
-    public int[] getCompleteActiveSubscriptionIdList() { return (int[]) meglerProps.get("CompleteActiveSubscriptionIdList"); }
+    // Megler: never null, as Android has it -- no subscription is active here (getActiveSubscriptionInfoList is empty too).
+    // Google Play services' check-in took its length and ended on a NullPointerException every time, and with no
+    // check-in Play Store had no Android ID: "Server error" on its front page (package 570).
+    public int[] getCompleteActiveSubscriptionIdList() { return meglerProps.get("CompleteActiveSubscriptionIdList") instanceof int[] ? (int[]) meglerProps.get("CompleteActiveSubscriptionIdList") : new int[0]; }
     public java.util.List getCompleteActiveSubscriptionInfoList() { return (meglerProps.get("CompleteActiveSubscriptionInfoList") != null ? (java.util.List) meglerProps.get("CompleteActiveSubscriptionInfoList") : new java.util.ArrayList()); }
     public android.telephony.SubscriptionInfo getDefaultDataSubscriptionInfo() { return (android.telephony.SubscriptionInfo) meglerProps.get("DefaultDataSubscriptionInfo"); }
     public android.telephony.SubscriptionInfo getDefaultVoiceSubscriptionInfo() { return (android.telephony.SubscriptionInfo) meglerProps.get("DefaultVoiceSubscriptionInfo"); }

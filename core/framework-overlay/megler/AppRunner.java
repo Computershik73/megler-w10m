@@ -434,6 +434,11 @@ public final class AppRunner {
             int idx = sStack.indexOf(a);
             if (idx < 0) return;
             String component = a.getComponentName().getClassName();
+            // One started through an <activity-alias> is its target made again, the intent keeping the alias, as on Android: Play
+            // Store's main activity, recreated for new server flags, was looked for as the class com.android.vending.AssetBrowserActivity,
+            // its launcher's alias, and the app ended on a ClassNotFoundException (package 570).
+            Manifest.Component c = Manifest.activity(component);
+            String cls = c != null && "activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : component;
             android.util.Log.d("Megler", "recreate " + a.getClass().getName() + " as " + component);
             a.meglerChanging(true);
             if (a.isResumedMegler()) a.meglerPause();
@@ -441,7 +446,7 @@ public final class AppRunner {
             Bundle state = a.meglerSaveState();
             a.meglerDestroy();
             sStack.remove(idx);
-            try { launch(component, a.getIntent(), a.meglerCaller(), a.meglerRequestCode(), Manifest.activity(component), state); }
+            try { launch(cls, a.getIntent(), a.meglerCaller(), a.meglerRequestCode(), c, state); }
             catch (Exception e) { throw new RuntimeException(e); }
         });
     }

@@ -463,7 +463,7 @@ void AppShell::poll() {
                 singleAppOpened_ = true;
                 shellLog::write("app package: opening " + entry->report.package);
                 const std::string id = entry->id;
-                if (entry->report.ready()) {
+                if (entry->report.ready() && playStoreCanStart(entry->report.package)) {
                     // The app's private files Megler handed over when it made this package, taken first (shell/AppPackage.h).
                     std::weak_ptr<AppShell> weak = weak_from_this();
                     runInBackground([] { appPackage::takeHandover(); },
@@ -873,6 +873,8 @@ winrt::fire_and_forget pickAndInstall(std::weak_ptr<AppShell> weakShell, std::sh
 void AppShell::importApk(std::function<void(std::string, std::string)> done) {
     // Taken before the picker opens: a second picker while one is up throws.
     if (import_->active) return;
+    // (Nothing is installed while the Device Portal is off: it says how to turn it on.)
+    if (!separateApps::requirePortal(*this)) return;
     *import_ = ImportProgress();
     import_->active = true;
     std::weak_ptr<AppShell> weak = weak_from_this();
@@ -884,6 +886,7 @@ void AppShell::importApk(std::function<void(std::string, std::string)> done) {
 void AppShell::installApkFile(winrt::Windows::Storage::StorageFile const& file) {
     const std::string name = narrow(file.Name());
     shellLog::write("import: " + name + " opened in Megler");
+    if (!separateApps::requirePortal(*this)) return;
     if (import_->active) {
         alert("Another APK Is on Its Way", "Megler is installing an APK already. Open " + name + " again when it is done.");
         return;
@@ -917,6 +920,14 @@ void AppShell::installApkPath(const std::wstring& path, const std::string& name,
     const auto drop = [path, handed] {
         if (handed) files::remove(path);
     };
+    // Nothing is installed while the Device Portal is off: the app that asked is told so, and the shell says how to turn it on.
+    if (separateApps::portal() != separateApps::Portal::on) {
+        const std::string why = separateApps::portal() == separateApps::Portal::off ? separateApps::portalProblem() : "it has not answered yet";
+        phoneAppsList::installOutcome(name, "failed", "Not installed: Megler installs through the phone's Device Portal, which is off (" + why + ").");
+        separateApps::requirePortal(*this);
+        drop();
+        return;
+    }
     // What becomes of it is told to the app that asked (library/PhoneAppsList.h): its installer session waits for it.
     if (import_->active) {
         phoneAppsList::installOutcome(name, "busy", "Megler is installing another APK. Ask again when it is done.");
@@ -955,6 +966,38 @@ void AppShell::installApkPath(const std::wstring& path, const std::string& name,
                 drop();
                 phoneAppsList::installOutcome(name, "declined", "Not installed: Megler was told no.");
             });
+}
+
+/*
+ * Google Play Store starts only once Google's own Google Play services, which Megler has built in, is installed as an app of
+ * its own (the owner's wish, 2026-11-02): users' Play Store, started with microG's or with none, had no Android ID and said
+ * "Server error". False, with what to do said, when it is not.
+ */
+bool AppShell::playStoreCanStart(const std::string& package) {
+    if (package != "com.android.vending" || appPackage::hasGoogleServices()) return true;
+    shellLog::write("app package: Google Play Store not started: Google's own Google Play services is not installed as an app of its own");
+    if (appPackage::isSingleApp()) {
+        confirm("Install Google Play Services First",
+                "Google Play Store runs with Google Play services, which Megler has built in. Open Megler, install Google Play services "
+                "from its Library, then start Google Play Store again.",
+                "Open Megler", false,
+                [] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(L"megler:library")); });
+        return false;
+    }
+    std::string gms;
+    for (const ApkEntry& e : Library::instance().entries())
+        if (e.report.package == "com.google.android.gms") gms = e.id;
+    std::weak_ptr<AppShell> weak = weak_from_this();
+    confirm("Install Google Play Services First",
+            "Google Play Store runs with Google Play services, which Megler has built in: install them from the Library first, then "
+            "start Google Play Store.",
+            gms.empty() ? "OK" : "Show Google Play Services", false, [weak, gms] {
+                if (auto self = weak.lock(); self && !gms.empty()) {
+                    if (self->selectedTab_ != 0) self->selectTab(0);
+                    self->push(makeAppDetailScreen(*self, gms));
+                }
+            });
+    return false;
 }
 
 void AppShell::uninstallApp(const std::string& package, const std::string& from) {
@@ -1038,8 +1081,12 @@ void AppShell::openLink(winrt::Windows::Foundation::Uri const& uri) {
                                                                    "own: its page in the Library, Install.");
             return;
         }
+        if (!playStoreCanStart(found->report.package)) return;
         if (selectedTab_ != 0) selectTab(0);
         push(makePlayerScreen(*this, found->id));
+    } else if (what == L"library") {
+        // (Google Play Store's own package sends the owner here to install Google Play services: the Library in front.)
+        if (selectedTab_ != 0) selectTab(0);
     }
 }
 

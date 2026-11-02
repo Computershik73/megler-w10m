@@ -132,7 +132,15 @@ public class IntentFilter implements android.os.Parcelable {
     public boolean isVisibleToInstantApp() { return false; }
     public int match(java.lang.String p0, java.lang.String p1, java.lang.String p2, android.net.Uri p3, java.util.Set p4, java.lang.String p5, boolean p6, java.util.Collection p7) { return 0; }
     public int match(java.lang.String p0, java.lang.String p1, java.lang.String p2, android.net.Uri p3, java.util.Set p4, java.lang.String p5, boolean p6, java.util.Collection p7, android.os.Bundle p8) { return 0; }
-    public java.lang.String matchCategories(java.util.Set p0) { return null; }
+    // Megler: written as Android has it (it was a signature alone, which said every category matched): null when every
+    // category of the intent's is the filter's, else the first one that is not. megler.MicroG asks it of Google Play
+    // services' filters, whose categorised ones name the categories their callers give (DEFAULT, for the backup accounts'
+    // and the reset protection's services).
+    public java.lang.String matchCategories(java.util.Set<java.lang.String> categories) {
+        if (categories == null) return null;
+        for (java.lang.String c : categories) if (!mCategories.contains(c)) return c;
+        return null;
+    }
     public int matchData(java.lang.String p0, java.lang.String p1, android.net.Uri p2) { return 0; }
     public int matchDataAuthority(android.net.Uri p0) { return 0; }
     public int matchDataAuthority(android.net.Uri p0, boolean p1) { return 0; }

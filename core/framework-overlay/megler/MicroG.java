@@ -109,6 +109,16 @@ public final class MicroG {
     public static Application activityApplication() throws Exception { MicroG g = get(); return g == null ? null : g.application(); }
     public static PackageInfo packageInfo(String pkg) { MicroG g = get(); return g != null && GooglePackages.GMS.equals(pkg) ? g.info : null; }
     public static Context context(String pkg) { MicroG g = get(); return g != null && GooglePackages.GMS.equals(pkg) ? g.context : null; }
+    /** Whether the Google Play services hosted here are microG's (its classes are org.microg's), not Google's own. */
+    public static boolean isMicroG() {
+        MicroG g = get();
+        return g != null && g.microg();
+    }
+    private boolean microg() {
+        for (Receiver r : receivers) if (r.info.name.startsWith("org.microg.")) return true;
+        for (ProviderInfo p : providers) if (p.name != null && p.name.startsWith("org.microg.")) return true;
+        return false;
+    }
     public static ContentProvider provider(String authority) {
         MicroG g = get();
         if (g == null || authority == null) return null;
@@ -516,6 +526,20 @@ public final class MicroG {
             });
         }
     }
+    /*
+     * microG's device registration (its check-in) on, unless the user has set it in microG's settings: Play Store has no
+     * Android ID without a check-in, and every request of its front page was refused ("Server error", package 570); microG keeps
+     * it off until it is turned on, which no one who starts Play Store through Megler would know to do. Set before the boot's
+     * BOOT_COMPLETED, which the check-in trigger reads it for, in the preferences microG reads (its default ones, in the
+     * services' shared folder: every app's microG sees it). Google's own Play services registers the device itself.
+     */
+    private void registrationOn() {
+        if (!microg()) return;
+        SharedPreferences p = context.getSharedPreferences(GooglePackages.GMS + "_preferences", 0);
+        if (p.contains("checkin_enable_service")) return;
+        p.edit().putBoolean("checkin_enable_service", true).commit();
+        android.util.Log.i("MicroG", "device registration turned on (checkin_enable_service), as Play Store needs it; microG's settings turn it off");
+    }
     /**
      * Android's boot as microG would have heard it: BOOT_COMPLETED to its receivers that list it, once in each process that
      * hosts it, when microG's code first runs there (its Application is made: an app that only asks whether microG is there
@@ -524,6 +548,7 @@ public final class MicroG {
      * are off, as they are until the user turns them on.
      */
     private void boot() {
+        registrationOn();
         for (Receiver r : receivers) {
             if (!r.info.enabled) continue;
             for (IntentFilter f : r.filters) if (f.hasAction(Intent.ACTION_BOOT_COMPLETED)) {
