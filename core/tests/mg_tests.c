@@ -1084,7 +1084,7 @@ static void test_media(const char *scratch)
  * not supported", and 357, 356, 351): each gives a descriptor that works -- a byte through the pipe, the eventfd's count,
  * the pipe's read end ready in the epoll set.
  */
-static void test_syscall_fds(void)
+static void test_syscall_fds(const char *scratch)
 {
     typedef long (*syscall_fn)(long, long, long, long, long, long, long);
     typedef int (*close_fn)(int);
@@ -1117,6 +1117,28 @@ static void test_syscall_fds(void)
     if (ep >= 0) close_(ep);
     close_(fds[0]);
     close_(fds[1]);
+
+    /* Files by number, as TikTok Lite's loader writes its libraries out (syscall(__NR_open)): open, write, close, open
+       again, lseek, read, fstat64 (st_size at 48 in ARM's struct stat64), close, unlink; and sched_getaffinity, whose raw
+       call says the mask's size. */
+    {
+        const char *file = "/syscall-files/written.bin";
+        char back[4] = { 0 };
+        u8 st[104], mask[16];
+        int fd;
+        mg_fs_mount("/syscall-files", scratch);
+        say("syscall() by number: open, write, read, lseek, fstat64, close, unlink, sched_getaffinity");
+        fd = (int)sys(5, (long)(mg_addr)file, 01 | 0100 | 01000, 0600, 0, 0, 0);   /* O_WRONLY | O_CREAT | O_TRUNC */
+        CHECK(fd >= 0 && sys(4, fd, (long)(mg_addr)"megler", 6, 0, 0, 0) == 6 && sys(6, fd, 0, 0, 0, 0, 0) == 0);
+        fd = (int)sys(5, (long)(mg_addr)file, 0, 0, 0, 0, 0);
+        CHECK(fd >= 0 && sys(19, fd, 2, 0, 0, 0, 0) == 2 && sys(3, fd, (long)(mg_addr)back, 4, 0, 0, 0) == 4 && !memcmp(back, "gler", 4));
+        memset(st, 0, sizeof(st));
+        CHECK(fd >= 0 && sys(197, fd, (long)(mg_addr)st, 0, 0, 0, 0) == 0 && mg_rd32(st + 48) == 6);
+        CHECK(fd >= 0 && sys(6, fd, 0, 0, 0, 0, 0) == 0 && sys(10, (long)(mg_addr)file, 0, 0, 0, 0, 0) == 0);
+        CHECK(sys(5, (long)(mg_addr)file, 0, 0, 0, 0, 0) == -1);
+        memset(mask, 0, sizeof(mask));
+        CHECK(sys(242, 0, sizeof(mask), (long)(mg_addr)mask, 0, 0, 0) == 4 && mask[0] != 0 && sys(241, 0, sizeof(mask), (long)(mg_addr)mask, 0, 0, 0) == 0);
+    }
 }
 
 static void test_mmap_commit(void)
@@ -3404,7 +3426,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_arsc(libdir);
     test_kuser();
     test_palette();
-    test_syscall_fds();
+    test_syscall_fds(scratch);
     test_mmap_commit();
     test_mmap_file(scratch);
     test_mmap_madvise(scratch);
