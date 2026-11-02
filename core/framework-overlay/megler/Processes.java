@@ -97,7 +97,8 @@ public final class Processes {
         String apk = ContextImpl.app().getPackageCodePath();
         Scope s;
         try {
-            s = new Scope(process, new ServiceClassLoader(apk));
+            // Its native libraries are the app's, those of the splits too (ServiceClassLoader's second argument).
+            s = new Scope(process, new ServiceClassLoader(apk, ContextImpl.app().getApplicationInfo().nativeLibraryDir));
         } catch (Throwable t) {
             android.util.Log.w("Megler", "process " + process + ": no class scope of its own (" + t + "); its components run in the app's");
             return null;

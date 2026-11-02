@@ -1938,6 +1938,10 @@ static int run_splits(void)
     CHECK(find_line("java: the app's 1 native library (armeabi-v7a) is in /data/data/megler.test.splits/lib", 0) >= 0);
     CHECK(find_line("I/SplitsLib: answer from the split's library", 0) >= 0);
     CHECK(find_line("/data/app/megler.test.splits-1/split_config.armeabi_v7a.apk", 0) >= 0);
+    /* And in the app's other process, whose class loader is of a scope of its own over the base: the library is the split's
+       there too, as Play Store's background process loads its own to install an app (package 574: "dlopen failed: library
+       ".../base.apk!/lib/armeabi-v7a/libmappedcountercacheversionjni.so" not found", and every install ended in error 1000). */
+    CHECK(wait_line("I/SplitsTest: other-process answer=4242 loader=megler.ServiceClassLoader", 0, 60) >= 0);
     /* The picture only the density split has, drawn in the window: magenta all over its middle. */
     layout = wait_line("I/SplitsTest: layout picture=", 0, 30);
     CHECK(layout >= 0 && rect_in(line_at(layout), "picture", pic));
