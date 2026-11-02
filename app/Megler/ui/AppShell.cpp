@@ -40,6 +40,51 @@ struct AppShell::Stack {
 
 AppShell::AppShell() : import_(std::make_shared<ImportProgress>()) {}
 
+/*
+ * The UI thread's watch: every half second a ping through its dispatcher, at high priority; one it has not answered in two
+ * seconds is said with where the thread stands (megler_thread_where), again at five and at ten seconds, and when it answers,
+ * how late. The phone ends an app whose UI thread does not answer, as a hang, with an error report and no dump: Instagram,
+ * signing in with Google (package 567), went so with nothing in the log, and only the shell's taking the window away
+ * after it (a fault in CoreUIComponents.dll) was seen. A watch that was not run itself for two seconds (Megler suspended)
+ * starts its ping again rather than count that time.
+ */
+static void watchUiThread(winrt::Windows::UI::Core::CoreDispatcher dispatcher) {
+    const DWORD ui = GetCurrentThreadId();
+    std::thread([dispatcher, ui] {
+        auto answered = std::make_shared<std::atomic<uint64_t>>(0);
+        uint64_t sent = 0;
+        ULONGLONG sentAt = 0, last = GetTickCount64();
+        int said = 0;
+        for (;;) {
+            Sleep(500);
+            const ULONGLONG now = GetTickCount64();
+            const bool frozen = now - last > 2000;
+            last = now;
+            if (answered->load() >= sent || frozen) {
+                if (said && !frozen) shellLog::write(format("ui: the UI thread answered again, %llu ms after it was asked", now - sentAt));
+                said = 0;
+                sentAt = now;
+                const uint64_t n = ++sent;
+                try {
+                    dispatcher.RunAsync(CoreDispatcherPriority::High, [answered, n] { *answered = n; });
+                } catch (...) {
+                    return;  // the window is gone
+                }
+                continue;
+            }
+            const ULONGLONG late = now - sentAt;
+            const int step = late >= 10000 ? 3 : late >= 5000 ? 2 : late >= 2000 ? 1 : 0;
+            if (step > said) {
+                said = step;
+                char where[3000];
+                if (!megler_thread_where(ui, where, sizeof(where))) strcpy_s(where, "it could not be stopped to look");
+                shellLog::write(format("ui: the UI thread has not answered for %llu ms: %s", late, where));
+                shellLog::flush();
+            }
+        }
+    }).detach();
+}
+
 AppShell::~AppShell() {
     if (timer_) timer_.Stop();
 }
@@ -49,6 +94,11 @@ AppShell::Stack& AppShell::currentStack() { return *stacks_[size_t(selectedTab_)
 UIElement AppShell::root() {
     const auto& p = palette();
     dispatcher_ = Window::Current().Dispatcher();
+    static bool watched = false;
+    if (!watched) {
+        watched = true;
+        watchUiThread(dispatcher_);
+    }
     root_ = Grid();
     root_.RequestedTheme(p.dark ? ElementTheme::Dark : ElementTheme::Light);
     root_.Background(brush(p.surface));

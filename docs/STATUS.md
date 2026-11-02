@@ -230,7 +230,12 @@ engine:
   unexpected order of events (hidden while still active) in what was left of the
   process. A fault on a thread that has never run Android code, in a system DLL,
   with nothing of this layer on its stack, should be read as "something else
-  already ended this process".
+  already ended this process". One such something else is the phone's own
+  hang report, for a UI thread that does not answer: no dump, and the window
+  taken away (Instagram signing in with Google, package 567). The shell watches
+  its UI thread (`ui/AppShell.cpp`, `megler_thread_where`): one that has not
+  answered a ping in two, five and ten seconds is said in the log with where it
+  stands, and how late it answered when it does.
 - **What found it** was the phone's own event tracing, relayed by the Device
   Portal: `tools/phone-etw.py` records any ETW provider registered on the phone
   while Megler runs. `Microsoft-WindowsPhone-CoreUIComponents` and
