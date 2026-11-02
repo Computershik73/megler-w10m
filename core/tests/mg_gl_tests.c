@@ -1124,6 +1124,95 @@ static void test_doomed(void)
         (int)b.surfaces_alive, (int)b.contexts_alive, (int)c.surfaces_alive, (int)c.contexts_alive);
 }
 
+/*
+ * A thread with no context current that makes and ends contexts of the display while another draws, as Google Play
+ * services' probe of OpenGL ES did in Play Store's sign-in: ANGLE makes a context current to end it, and then not the other
+ * thread's again, so the other's next call has its own made current again (mg_egl.c, turn_forget) -- the WebView's
+ * glDrawArrays read ANGLE's state manager through a null pointer (package 569). The stand-in's destroy does what ANGLE's
+ * does; none of the drawing thread's clears is of a context ANGLE did not have current.
+ */
+static void turn_probing(void *p)
+{
+    typedef void *(*create_fn)(void *, void *, void *, const int *);
+    typedef unsigned (*destroy_fn)(void *, void *);
+    typedef unsigned (*make_fn)(void *, void *, void *, void *);
+    static const int es2[] = { 0x3098, 2, 0x3038 };
+    turn_side *s = (turn_side *)p;
+    create_fn create = (create_fn)mg_egl_resolve("eglCreateContext");
+    destroy_fn destroy = (destroy_fn)mg_egl_resolve("eglDestroyContext");
+    make_fn make = (make_fn)mg_egl_resolve("eglMakeCurrent");
+    int i;
+    /* Its own context current once, while the other's is: the display's calls take turns from then on. */
+    if (!create || !destroy || !make || !make(s->d, NULL, NULL, s->ctx)) {
+        mg_atomic_xchg(&s->ready, -1);
+        mg_atomic_xchg(&s->done, 1);
+        return;
+    }
+    make(s->d, NULL, NULL, NULL);
+    mg_atomic_xchg(&s->ready, 1);
+    while (!g_turn_go) mg_sleep_ns(100000ull);
+    for (i = 0; i < 40; i++) {
+        void *c = create(s->d, NULL, NULL, es2);
+        if (c) destroy(s->d, c);
+        s->clears++;
+        mg_sleep_ns(300000ull);
+    }
+    mg_atomic_xchg(&s->done, 1);
+}
+
+static void test_turns_destroy(void)
+{
+#if MG_HOST_ARM32
+    typedef void *(*display_fn)(void *);
+    typedef unsigned (*init_fn)(void *, int *, int *);
+    typedef void *(*create_fn)(void *, void *, void *, const int *);
+    typedef unsigned (*destroy_fn)(void *, void *);
+    static const int es2[] = { 0x3098, 2, 0x3038 };
+    display_fn get_display = (display_fn)mg_egl_resolve("eglGetDisplay");
+    init_fn initialize = (init_fn)mg_egl_resolve("eglInitialize");
+    create_fn create = (create_fn)mg_egl_resolve("eglCreateContext");
+    destroy_fn destroy = (destroy_fn)mg_egl_resolve("eglDestroyContext");
+    turn_side a, b;
+    mg_thread *ta, *tb;
+    mg_gl_standin_stats before, after;
+    int major = 0, minor = 0, tries;
+    void *d;
+    say("Turns: a thread ends contexts of the display while another draws");
+    CHECK(get_display && initialize && create && destroy);
+    if (!get_display || !initialize || !create || !destroy) return;
+    d = get_display(NULL);
+    CHECK(d && initialize(d, &major, &minor));
+    memset(&a, 0, sizeof(a));
+    memset(&b, 0, sizeof(b));
+    a.d = b.d = d;
+    a.ctx = create(d, NULL, NULL, es2);
+    b.ctx = create(d, NULL, NULL, es2);
+    CHECK(a.ctx && b.ctx);
+    if (!a.ctx || !b.ctx) return;
+    g_turn_go = 0;
+    mg_gl_standin_set_dwell(50000ull);
+    ta = mg_thread_start(turn_clearing, &a, 1u << 20, "turn-draw");
+    for (tries = 0; tries < 500 && !a.ready; tries++) mg_sleep_ns(2000000ull);
+    tb = mg_thread_start(turn_probing, &b, 1u << 20, "turn-probe");
+    CHECK(ta && tb);
+    for (tries = 0; tries < 500 && (!a.ready || !b.ready); tries++) mg_sleep_ns(2000000ull);
+    CHECK(a.ready == 1 && b.ready == 1);
+    mg_gl_standin_stats_get(&before);
+    mg_atomic_xchg(&g_turn_go, 1);
+    if (ta) mg_thread_join(ta);
+    if (tb) mg_thread_join(tb);
+    mg_gl_standin_set_dwell(0);
+    mg_gl_standin_stats_get(&after);
+    CHECK(a.done && b.done && a.clears == 200 && b.clears == 40);
+    CHECK(after.stale == before.stale);
+    say("  200 clears while 40 contexts were made and ended: %d of a context ANGLE did not have current", (int)(after.stale - before.stale));
+    destroy(d, a.ctx);
+    destroy(d, b.ctx);
+#else
+    say("(Turns: the thunks are ARM's, nothing is checked here)");
+#endif
+}
+
 static void test_turns(void)
 {
 #if MG_HOST_ARM32
@@ -1371,6 +1460,7 @@ int mg_gl_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_fence_syncs();
     test_doomed();
     test_turns();
+    test_turns_destroy();
     test_calls();
     test_buffers();
     mg_gl_standin_reset(true, false);

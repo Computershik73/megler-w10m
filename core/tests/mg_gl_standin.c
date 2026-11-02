@@ -232,6 +232,9 @@ static unsigned e_DestroyContext(void *d, void *ctx)
     S.stats.contexts_alive--;
     mg_lock_release(&g_lock);
     if (t_ctx == ctx) t_ctx = NULL;
+    /* As ANGLE's Display::destroyContext: the context made current to let go of its objects, then the calling thread's own
+       again -- none, for a thread with none: the renderer last had no other thread's context. */
+    g_renderer = t_ctx;
     free(ctx);
     return 1;
 }

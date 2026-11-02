@@ -1292,6 +1292,7 @@ static EGLBoolean g_eglDestroySurface(EGLDisplay d, EGLSurface handle)
 
 static EGLBoolean g_eglMakeCurrent(EGLDisplay d, EGLSurface draw, EGLSurface read, EGLContext ctx);
 static EGLContext turn_own_ctx(void);
+static void turn_forget(EGLDisplay d);
 
 /*
  * A context destroyed: put off while another thread has it current (doom). The calling thread's own current one is let
@@ -1311,7 +1312,9 @@ static EGLBoolean g_eglDestroyContext(EGLDisplay d, EGLContext ctx)
     }
     live_remove(ctx);
     if (doom(d, ctx, true)) return 1;
-    return real ? real(d, ctx) : 0;
+    if (!real || !real(d, ctx)) return 0;
+    turn_forget(d);
+    return 1;
 }
 
 /* After a thread's make-current: what was put off and no thread has current any more, ended now (in the thread's turn). */
@@ -1338,7 +1341,7 @@ static void doomed_sweep(void)
         if (!found) return;
         if (context) {
             fn_destroy_context real = A(fn_destroy_context, "eglDestroyContext");
-            if (real) real(d, (EGLContext)h);
+            if (real && real(d, (EGLContext)h)) turn_forget(d);
         } else {
             surface_end_now(d, (EGLSurface)h);
         }
@@ -1651,6 +1654,15 @@ static void turn_bound(EGLDisplay d, EGLSurface draw, EGLSurface read, EGLContex
     binding_set(draw, read, ctx);
     doomed_sweep();
 }
+
+/*
+ * A context ANGLE has ended: to let go of its objects ANGLE made it current, and then the calling thread's own again -- for a
+ * thread with none, no context at all -- so the display's last is no thread's now, and the next call of whichever thread has
+ * a context makes its own current again. Google Play services' probe of OpenGL ES made and ended a context every few
+ * milliseconds on a thread of its own while the WebView drew Play Store's sign-in, and the WebView's next glDrawArrays read
+ * ANGLE's state manager through a null pointer (StateManager11::updateState, package 569; mg_gl_tests.c, test_turns_destroy).
+ */
+static void turn_forget(EGLDisplay d) { turn_of(d)->last = NULL; }
 
 /* After a lent job: ANGLE last had the job's context current, and this thread goes on in its turn with its own. */
 static void turn_back(void)
