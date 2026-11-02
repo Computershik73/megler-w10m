@@ -8,6 +8,7 @@
 #include "host/mg_host.h"
 #include "drivers/mg_java.h"
 #include "run/mg_run.h"
+#include "sqlite/mg_sqlite.h"
 #include "webp/mg_webp.h"
 
 static megler_log_fn g_log;
@@ -126,6 +127,16 @@ void megler_keyboard_closed(void) { mg_java_keyboard_closed(); }
 void megler_keyboard_height(int pixels) { mg_java_keyboard_height(pixels); }
 void megler_set_insets(int left, int top, int right, int bottom) { mg_java_set_insets(left, top, right, bottom); }
 void megler_set_paused(bool paused) { mg_run_set_paused(paused); }
+
+bool megler_settle_databases(int ms)
+{
+    u64 until = mg_time_monotonic_ns() + (u64)(ms > 0 ? ms : 0) * 1000000u;
+    while (mg_sqlite_locks_held() > 0) {
+        if (mg_time_monotonic_ns() >= until) return false;
+        mg_sleep_ns(5000000ull);
+    }
+    return true;
+}
 void megler_set_focused(bool focused) { mg_run_set_focused(focused); }
 void megler_stop(void) { mg_run_stop(); }
 void megler_start_activity(const char *activity_class) { mg_java_start_activity(activity_class); }

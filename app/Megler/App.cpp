@@ -11,6 +11,8 @@
 // window losing or gaining activation is its input focus.
 #include "pch.h"
 
+#include "megler.h"
+
 #include "auto/AutoRun.h"
 #include "library/Library.h"
 #include "player/PhoneEvents.h"
@@ -67,6 +69,9 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
             shellLog::write("app: suspending");
             session::setSuspended(true);
             if (shell_) shell_->suspending();
+            // Windows freezes the app as it is: a database lock it held would keep the other apps' Play services waiting
+            // until it came back. A second at most for its transactions to end.
+            if (!megler_settle_databases(1000)) shellLog::write("app: suspended with a database still locked");
             shellLog::flush();
         });
         Resuming([this](auto&&, auto&&) {

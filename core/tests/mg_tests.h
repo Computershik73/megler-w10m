@@ -16,6 +16,13 @@ typedef void (*mg_test_sink)(const char *line, void *user);
 int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, void *user);
 
 /*
+ * The other process of the SQLite tests (mg_tests --sqlite-hold, started by the tests on Windows): the database `db`
+ * opened, a write begun in it and held, with its journal, the file `flag` made, and the write rolled back once `flag` is
+ * gone (a minute at most). 0 when all of it went as it should.
+ */
+int mg_tests_sqlite_hold(const char *db, const char *flag);
+
+/*
  * The Dalvik runtime's part of the tests (mg_dvm_tests.c), which mg_tests_run
  * runs with the rest. `fixtures` is the folder of its DEX files: `dvm` beside
  * the guest test libraries, unless mg_tests_set_dvm names another (the PC's

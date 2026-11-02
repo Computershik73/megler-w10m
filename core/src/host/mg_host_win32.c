@@ -1754,6 +1754,47 @@ bool mg_file_truncate(mg_file *f, u64 size, int *err)
 
 bool mg_file_sync(mg_file *f) { return FlushFileBuffers(f->h) != 0; }
 
+/*
+ * Windows' byte-range locks are the handle's and bind every other handle, of any process: what SQLite's own Windows layer
+ * locks a database with. They are mandatory -- a range locked by another cannot be read or written through this one --
+ * which is why SQLite's lie at 1 GB, past any page it reads or writes.
+ */
+bool mg_file_lock(mg_file *f, u64 offset, u64 length, bool exclusive, int *err)
+{
+    OVERLAPPED at;
+    DWORD why;
+    memset(&at, 0, sizeof(at));
+    at.Offset = (DWORD)offset;
+    at.OffsetHigh = (DWORD)(offset >> 32);
+    if (LockFileEx(f->h, LOCKFILE_FAIL_IMMEDIATELY | (exclusive ? LOCKFILE_EXCLUSIVE_LOCK : 0), 0, (DWORD)length, (DWORD)(length >> 32), &at)) return true;
+    why = GetLastError();
+    if (why == ERROR_LOCK_VIOLATION || why == ERROR_IO_PENDING) {
+        if (err) *err = MG_E_BUSY;
+        return false;
+    }
+    /* (A file system without locks: as if granted.) */
+    if (why == ERROR_INVALID_FUNCTION || why == ERROR_NOT_SUPPORTED) return true;
+    if (err) *err = err_of(why);
+    return false;
+}
+
+void mg_file_unlock(mg_file *f, u64 offset, u64 length)
+{
+    OVERLAPPED at;
+    memset(&at, 0, sizeof(at));
+    at.Offset = (DWORD)offset;
+    at.OffsetHigh = (DWORD)(offset >> 32);
+    UnlockFileEx(f->h, 0, (DWORD)length, (DWORD)(length >> 32), &at);
+}
+
+bool mg_file_locked_elsewhere(mg_file *f, u64 offset, u64 length)
+{
+    int err = 0;
+    if (!mg_file_lock(f, offset, length, true, &err)) return err == MG_E_BUSY;
+    mg_file_unlock(f, offset, length);
+    return false;
+}
+
 static bool stat_handle(HANDLE h, mg_stat *st)
 {
     FILE_BASIC_INFO bi;

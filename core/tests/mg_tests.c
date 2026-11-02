@@ -20,6 +20,9 @@
 
 #include <math.h>
 #include <stdio.h>
+#ifdef _WIN32
+#include <process.h>
+#endif
 
 #include "../src/arm/mg_kuser.h"
 #include "../src/arm/mg_stubs.h"
@@ -3231,7 +3234,8 @@ static void test_dvm(const char *libdir, const char *scratch, bool guest_code)
 
 /*
  * SQLite as the core has it (sqlite/mg_sqlite.c): its files through the host
- * layer, its locks kept in the process, its mutexes the host's. On every host,
+ * layer, its locks kept in the process and on the file for other processes,
+ * its mutexes the host's. On every host,
  * since the file layer under it is each host's own. Where the core was built
  * without SQLite this says so and checks only that it knows.
  */
@@ -3243,6 +3247,21 @@ static int sq_int(sqlite3 *db, const char *sql)
     if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) == SQLITE_OK && sqlite3_step(st) == SQLITE_ROW) v = sqlite3_column_int(st, 0);
     sqlite3_finalize(st);
     return v;
+}
+
+int mg_tests_sqlite_hold(const char *db, const char *flag)
+{
+    sqlite3 *h = NULL;
+    mg_stat st;
+    int tries, rc;
+    if (!mg_sqlite_start() || sqlite3_open_v2(db, &h, SQLITE_OPEN_READWRITE, NULL) != SQLITE_OK) return 1;
+    rc = sqlite3_exec(h, "BEGIN IMMEDIATE; INSERT INTO t(name) VALUES('held');", NULL, NULL, NULL);
+    if (rc == SQLITE_OK && !mg_file_write_all(flag, "held", 4)) rc = SQLITE_IOERR;
+    for (tries = 0; rc == SQLITE_OK && tries < 6000 && mg_path_stat(flag, &st, NULL); tries++) mg_sleep_ns(10000000ull);
+    if (rc == SQLITE_OK) rc = sqlite3_exec(h, "ROLLBACK", NULL, NULL, NULL);
+    if (rc == SQLITE_OK && sq_int(h, "SELECT count(*) FROM t WHERE name = 'held'") != 0) rc = SQLITE_CORRUPT;
+    sqlite3_close(h);
+    return rc == SQLITE_OK ? 0 : 1;
 }
 
 static void test_sqlite(const char *scratch)
@@ -3327,6 +3346,92 @@ static void test_sqlite(const char *scratch)
         mg_path_remove(attached, NULL);
         free(attached);
     }
+    /*
+     * Another process's connection, as a handle of its own holding SQLite's locks where SQLite takes them (a handle's
+     * locks bind every other, as Windows' handles' and Linux's open files' do): its writer (RESERVED's byte) keeps this
+     * connection from beginning to write and lets it read; its writer waiting (PENDING's byte) keeps a new reader out;
+     * its reader (the readers' range, shared) keeps this one from committing. And this connection's own locks, as the
+     * other handle sees them: a writer's RESERVED byte, then nothing once it is done. Google Play services' databases are
+     * every app's, open in several processes at once.
+     */
+    {
+        enum { PENDING = 0x40000000, RESERVED = PENDING + 1, SHARED_FIRST = PENDING + 2, SHARED_SIZE = 510 };
+        int err = 0;
+        mg_file *other = mg_file_open(path, MG_O_READ | MG_O_WRITE, &err);
+        say("SQLite: the locks of another process's connection, and this one's as another sees them");
+        CHECK(other != NULL);
+        a = NULL;
+        CHECK_INT(sqlite3_open_v2(path, &a, SQLITE_OPEN_READWRITE, NULL), SQLITE_OK);
+        sqlite3_busy_timeout(a, 0);
+        if (other) {
+            CHECK(mg_file_lock(other, RESERVED, 1, true, &err));
+            CHECK_INT(sqlite3_exec(a, "BEGIN IMMEDIATE", NULL, NULL, NULL), SQLITE_BUSY);
+            CHECK_INT(sq_int(a, "SELECT count(*) FROM t"), 5);
+            mg_file_unlock(other, RESERVED, 1);
+            CHECK_INT(sqlite3_exec(a, "BEGIN IMMEDIATE; INSERT INTO t(name) VALUES('six'); COMMIT", NULL, NULL, NULL), SQLITE_OK);
+            CHECK(mg_file_lock(other, PENDING, 1, true, &err));
+            CHECK_INT(sq_int(a, "SELECT count(*) FROM t"), -999);
+            mg_file_unlock(other, PENDING, 1);
+            CHECK_INT(sq_int(a, "SELECT count(*) FROM t"), 6);
+            CHECK(mg_file_lock(other, SHARED_FIRST, SHARED_SIZE, false, &err));
+            CHECK_INT(sqlite3_exec(a, "INSERT INTO t(name) VALUES('seven')", NULL, NULL, NULL), SQLITE_BUSY);
+            mg_file_unlock(other, SHARED_FIRST, SHARED_SIZE);
+            CHECK_INT(sqlite3_exec(a, "INSERT INTO t(name) VALUES('seven')", NULL, NULL, NULL), SQLITE_OK);
+            CHECK_INT(sqlite3_exec(a, "BEGIN IMMEDIATE", NULL, NULL, NULL), SQLITE_OK);
+            CHECK(mg_file_locked_elsewhere(other, RESERVED, 1) && !mg_file_lock(other, RESERVED, 1, true, &err) && err == MG_E_BUSY);
+            /* (As the app is suspended the shell waits for such a write to end, and gives up after the time it gives.) */
+            CHECK(mg_sqlite_locks_held() == 1 && !megler_settle_databases(20));
+            CHECK_INT(sqlite3_exec(a, "COMMIT", NULL, NULL, NULL), SQLITE_OK);
+            CHECK(mg_sqlite_locks_held() == 0 && megler_settle_databases(20));
+            CHECK(!mg_file_locked_elsewhere(other, RESERVED, 1) && !mg_file_locked_elsewhere(other, PENDING, 1) &&
+                  !mg_file_locked_elsewhere(other, SHARED_FIRST, SHARED_SIZE));
+            mg_file_close(other);
+        }
+        sqlite3_close(a);
+    }
+#ifdef _WIN32
+    /*
+     * And another process, for real: this program started again (--sqlite-hold), a write of its under way in the
+     * database, its journal there. This process reads beside it, taking the journal for that writer's and not for one
+     * left behind (which it would roll back under the writer), cannot begin to write, and can once the other has rolled
+     * its write back, which went as it should.
+     */
+    {
+        char *flag = mg_sprintf("%s/sqlite-held.flag", scratch), *exe = NULL, *qexe, *qdb, *qflag;
+        intptr_t child;
+        int tries, status = -1;
+        say("SQLite: a write of another process's");
+        mg_path_remove(flag, NULL);
+        /* (The other process is told what it is, and starts none of its own whatever it runs.) */
+        if (!getenv("MG_TESTS_SQLITE_CHILD")) _get_pgmptr(&exe);
+        _putenv("MG_TESTS_SQLITE_CHILD=1");
+        qexe = mg_sprintf("\"%s\"", exe ? exe : "");
+        qdb = mg_sprintf("\"%s\"", path);
+        qflag = mg_sprintf("\"%s\"", flag);
+        child = exe ? _spawnl(_P_NOWAIT, exe, qexe, "--sqlite-hold", qdb, qflag, NULL) : -1;
+        CHECK(child != -1);
+        for (tries = 0; tries < 3000 && child != -1 && !mg_path_stat(flag, &fs, NULL); tries++) mg_sleep_ns(10000000ull);
+        CHECK(mg_path_stat(flag, &fs, NULL) && mg_path_stat(journal, &fs, NULL));
+        a = NULL;
+        CHECK_INT(sqlite3_open_v2(path, &a, SQLITE_OPEN_READWRITE, NULL), SQLITE_OK);
+        sqlite3_busy_timeout(a, 0);
+        CHECK_INT(sq_int(a, "SELECT count(*) FROM t"), 7);
+        CHECK_INT(sqlite3_exec(a, "BEGIN IMMEDIATE", NULL, NULL, NULL), SQLITE_BUSY);
+        CHECK(mg_path_stat(journal, &fs, NULL));
+        mg_path_remove(flag, NULL);
+        if (child != -1) _cwait(&status, child, 0);
+        _putenv("MG_TESTS_SQLITE_CHILD=");
+        say("  the other process ended with %d", status);
+        CHECK(status == 0);
+        CHECK_INT(sqlite3_exec(a, "BEGIN IMMEDIATE; INSERT INTO t(name) VALUES('eight'); COMMIT", NULL, NULL, NULL), SQLITE_OK);
+        CHECK_INT(sq_int(a, "SELECT count(*) FROM t"), 8);
+        sqlite3_close(a);
+        free(qflag);
+        free(qdb);
+        free(qexe);
+        free(flag);
+    }
+#endif
     /* A database in memory, with a full-text table, as Android's build has them; and the clock. */
     CHECK_INT(sqlite3_open_v2(":memory:", &m, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL), SQLITE_OK);
     CHECK_INT(sqlite3_exec(m, "CREATE VIRTUAL TABLE f USING fts4(body); INSERT INTO f VALUES('a quick brown fox'), ('a lazy dog'), ('quick, quick');", NULL, NULL, NULL), SQLITE_OK);
@@ -3338,6 +3443,13 @@ static void test_sqlite(const char *scratch)
     free(journal);
 }
 #else
+int mg_tests_sqlite_hold(const char *db, const char *flag)
+{
+    (void)db;
+    (void)flag;
+    return 1;
+}
+
 static void test_sqlite(const char *scratch)
 {
     (void)scratch;

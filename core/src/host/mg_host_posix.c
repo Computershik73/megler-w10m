@@ -800,6 +800,70 @@ bool mg_file_truncate(mg_file *f, u64 size, int *err)
 
 bool mg_file_sync(mg_file *f) { return fsync(f->fd) == 0; }
 
+/*
+ * Linux's locks of an open file description (F_OFD_SETLK): each open's own and binding every other, of this process too,
+ * as Windows' handles' locks are -- and not let go when another descriptor of the file is closed, as POSIX's per-process
+ * locks are. A kernel or emulator without them gets the per-process kind (F_SETLK), which binds other processes only.
+ */
+#ifndef F_OFD_SETLK
+#define F_OFD_GETLK 36
+#define F_OFD_SETLK 37
+#endif
+static int g_ofd = 1;                  /* 1 the OFD kind, 0 the per-process kind once the first was refused */
+
+static int range_lock(int fd, int cmd_ofd, int cmd_process, struct flock *l)
+{
+    if (g_ofd) {
+        l->l_pid = 0;
+        if (fcntl(fd, cmd_ofd, l) == 0) return 0;
+        if (errno != EINVAL) return -1;
+        g_ofd = 0;
+    }
+    return fcntl(fd, cmd_process, l);
+}
+
+bool mg_file_lock(mg_file *f, u64 offset, u64 length, bool exclusive, int *err)
+{
+    struct flock l;
+    memset(&l, 0, sizeof(l));
+    l.l_type = exclusive ? F_WRLCK : F_RDLCK;
+    l.l_whence = SEEK_SET;
+    l.l_start = (off_t)offset;
+    l.l_len = (off_t)length;
+    if (range_lock(f->fd, F_OFD_SETLK, F_SETLK, &l) == 0) return true;
+    if (errno == EAGAIN || errno == EACCES) {
+        if (err) *err = MG_E_BUSY;
+        return false;
+    }
+    /* (A file system without locks: as if granted.) */
+    if (errno == ENOLCK || errno == EOPNOTSUPP || errno == EINVAL) return true;
+    if (err) *err = errno == EBADF ? MG_E_ACCESS : MG_E_IO;
+    return false;
+}
+
+void mg_file_unlock(mg_file *f, u64 offset, u64 length)
+{
+    struct flock l;
+    memset(&l, 0, sizeof(l));
+    l.l_type = F_UNLCK;
+    l.l_whence = SEEK_SET;
+    l.l_start = (off_t)offset;
+    l.l_len = (off_t)length;
+    range_lock(f->fd, F_OFD_SETLK, F_SETLK, &l);
+}
+
+bool mg_file_locked_elsewhere(mg_file *f, u64 offset, u64 length)
+{
+    struct flock l;
+    memset(&l, 0, sizeof(l));
+    l.l_type = F_WRLCK;
+    l.l_whence = SEEK_SET;
+    l.l_start = (off_t)offset;
+    l.l_len = (off_t)length;
+    if (range_lock(f->fd, F_OFD_GETLK, F_GETLK, &l) != 0) return false;
+    return l.l_type != F_UNLCK;
+}
+
 static void fill_stat(const struct stat *s, mg_stat *st)
 {
     st->is_dir = S_ISDIR(s->st_mode);
