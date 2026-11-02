@@ -2193,6 +2193,18 @@ generate key attestation"), as it does on such a device. The data app's
 `keystore-certificates` step checks both kinds of certificate, a chain set
 with a key, the refusal, and, on the second run, the first run's certificate.
 
+`android.util.Base64OutputStream` and `Base64InputStream` encode and decode
+as they go, with `Base64`'s flags as `Base64.encode` and `decode` take them
+(`MeglerBase64Coder`, in the overlay): lines of 76 and a line end, the last
+too, unless `NO_WRAP`; `CRLF`, `NO_PADDING`, `URL_SAFE`, and `NO_CLOSE` for
+the stream underneath. Both were the framework's stubs, which wrote and read
+nothing: Sberbank compressed a request's body through a
+`DeflaterOutputStream` over one, and the body went out empty (576). The data
+app's `base64-streams` step checks the output stream against
+`Base64.encode`, written a piece and a byte at a time, with the default flags
+and with `URL_SAFE | NO_WRAP | NO_PADDING`, and a `DeflaterOutputStream` over
+one read back through an `InflaterInputStream` over the other.
+
 **The built-in `java.lang` stays** as the first way to start
 (`mg_dvm_start(NULL, 0)`). It could be dropped now that every fixture passes on
 libcore too; it is kept because libcore is 40 MB that the ordinary package does

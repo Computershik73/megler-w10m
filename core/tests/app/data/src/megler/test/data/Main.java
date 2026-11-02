@@ -318,6 +318,7 @@ public class Main extends Activity {
         tls();
         keystore(run);
         keystoreCertificates(run);
+        base64Streams();
         codecs();
         userHandle();
         cleartext();
@@ -2632,6 +2633,44 @@ public class Main extends Activity {
             detail = "ec=" + ecCert + " rsa-defaults=" + rsaDefaults + " set=" + set + " attested=" + attested + " kept=" + keptSubject + " run=" + run;
             Log.i("DataTest", "keystore-certificates " + detail);
             return ecCert && rsaDefaults && set && refused && (run > 1 ? "CN=Megler test,O=Megler".equals(keptSubject) : kept == null);
+        });
+    }
+
+    /**
+     * android.util.Base64OutputStream and Base64InputStream, as Sberbank uses one under a DeflaterOutputStream: what
+     * goes through the one is what Base64.encode makes, written a piece and a byte at a time, with the default flags (lines of
+     * 76 and a line end) and URL_SAFE | NO_WRAP | NO_PADDING; and compressed and encoded, read back the other way (both were
+     * stubs that wrote and read nothing, package 576).
+     */
+    private void base64Streams() {
+        step("base64-streams", () -> {
+            byte[] data = new byte[1000];
+            new java.util.Random(7).nextBytes(data);
+            java.io.ByteArrayOutputStream plain = new java.io.ByteArrayOutputStream();
+            try (android.util.Base64OutputStream b = new android.util.Base64OutputStream(plain, android.util.Base64.DEFAULT)) {
+                b.write(data, 0, 500);
+                for (int i = 500; i < data.length; i++) b.write(data[i]);
+            }
+            boolean encoded = Arrays.equals(plain.toByteArray(), android.util.Base64.encode(data, android.util.Base64.DEFAULT));
+            int urlFlags = android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP | android.util.Base64.NO_PADDING;
+            java.io.ByteArrayOutputStream url = new java.io.ByteArrayOutputStream();
+            try (android.util.Base64OutputStream b = new android.util.Base64OutputStream(url, urlFlags)) {
+                b.write(data, 0, 998);
+            }
+            boolean urlSafe = Arrays.equals(url.toByteArray(), android.util.Base64.encode(data, 0, 998, urlFlags));
+            java.io.ByteArrayOutputStream packed = new java.io.ByteArrayOutputStream();
+            try (java.util.zip.DeflaterOutputStream d = new java.util.zip.DeflaterOutputStream(new android.util.Base64OutputStream(packed, android.util.Base64.NO_WRAP))) {
+                d.write(data);
+            }
+            java.io.ByteArrayOutputStream back = new java.io.ByteArrayOutputStream();
+            try (java.io.InputStream in = new java.util.zip.InflaterInputStream(new android.util.Base64InputStream(
+                    new java.io.ByteArrayInputStream(packed.toByteArray()), android.util.Base64.NO_WRAP))) {
+                byte[] buf = new byte[300];
+                for (int n; (n = in.read(buf)) > 0;) back.write(buf, 0, n);
+            }
+            boolean round = Arrays.equals(back.toByteArray(), data);
+            detail = "encoded=" + encoded + " url-safe=" + urlSafe + " round=" + round + " " + plain.size() + " characters, " + packed.size() + " packed";
+            return encoded && urlSafe && round;
         });
     }
 
