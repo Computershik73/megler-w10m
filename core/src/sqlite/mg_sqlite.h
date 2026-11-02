@@ -37,6 +37,8 @@ bool mg_sqlite_available(void);
  * False where there is no SQLite, or it would not start.
  */
 bool mg_sqlite_start(void);
+/* How many of this process's connections hold a lock on their database now, which other processes' may be waiting on. */
+int mg_sqlite_locks_held(void);
 
 #ifdef __cplusplus
 }

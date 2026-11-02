@@ -141,6 +141,8 @@ typedef struct sq_file {
 
 static mg_lock g_nodes_lock = MG_LOCK_INIT;
 static sq_node *g_nodes;
+/* The connections of this process that hold a lock on their database (SHARED or more): what another process may wait on. */
+static volatile i32 g_locking;
 
 static sq_node *node_get(const char *path)
 {
@@ -260,6 +262,7 @@ static int sq_lock(sqlite3_file *file, int level)
         if ((rc = os_lock(s, SQ_SHARED_FIRST, SQ_SHARED_SIZE, false)) == SQLITE_OK) {
             n->shared++;
             s->held = SQLITE_LOCK_SHARED;
+            g_locking++;
         }
     }
     /* RESERVED: its byte, one writer's at a time. (Not on the way to EXCLUSIVE, which a connection rolling a hot journal
@@ -315,7 +318,10 @@ static int sq_unlock(sqlite3_file *file, int level)
     if (n->exclusive == s) n->exclusive = NULL;
     if (n->pending == s) n->pending = NULL;
     if (n->reserved == s) n->reserved = NULL;
-    if (level == SQLITE_LOCK_NONE && held >= SQLITE_LOCK_SHARED) n->shared--;
+    if (level == SQLITE_LOCK_NONE && held >= SQLITE_LOCK_SHARED) {
+        n->shared--;
+        g_locking--;
+    }
     s->held = level;
     mg_lock_release(&g_nodes_lock);
     return rc;
@@ -441,6 +447,8 @@ int sqlite3_os_end(void) { return SQLITE_OK; }
 
 bool mg_sqlite_available(void) { return true; }
 
+int mg_sqlite_locks_held(void) { return g_locking; }
+
 bool mg_sqlite_start(void)
 {
     static mg_lock once = MG_LOCK_INIT;
@@ -461,6 +469,7 @@ bool mg_sqlite_start(void)
 #else
 
 bool mg_sqlite_available(void) { return false; }
+int mg_sqlite_locks_held(void) { return 0; }
 bool mg_sqlite_start(void) { return false; }
 
 #endif

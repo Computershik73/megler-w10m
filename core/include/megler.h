@@ -1617,6 +1617,12 @@ void megler_keyboard_height(int pixels);
 void megler_set_insets(int left, int top, int right, int bottom);
 /* The app went to the background or came back; lost or gained input focus. */
 void megler_set_paused(bool paused);
+/*
+ * Waits up to `ms` milliseconds until the app holds no lock on a database: Windows freezes a suspended app as it is, and a
+ * lock it held would keep the other apps waiting on that database (Google Play services' are every app's). The shell calls
+ * it as the app is suspended. True when none is held.
+ */
+bool megler_settle_databases(int ms);
 void megler_set_focused(bool focused);
 /* Asks the app to finish. Returns at once; on_exit follows. */
 void megler_stop(void);

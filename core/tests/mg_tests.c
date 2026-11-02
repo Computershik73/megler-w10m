@@ -3379,7 +3379,10 @@ static void test_sqlite(const char *scratch)
             CHECK_INT(sqlite3_exec(a, "INSERT INTO t(name) VALUES('seven')", NULL, NULL, NULL), SQLITE_OK);
             CHECK_INT(sqlite3_exec(a, "BEGIN IMMEDIATE", NULL, NULL, NULL), SQLITE_OK);
             CHECK(mg_file_locked_elsewhere(other, RESERVED, 1) && !mg_file_lock(other, RESERVED, 1, true, &err) && err == MG_E_BUSY);
+            /* (As the app is suspended the shell waits for such a write to end, and gives up after the time it gives.) */
+            CHECK(mg_sqlite_locks_held() == 1 && !megler_settle_databases(20));
             CHECK_INT(sqlite3_exec(a, "COMMIT", NULL, NULL, NULL), SQLITE_OK);
+            CHECK(mg_sqlite_locks_held() == 0 && megler_settle_databases(20));
             CHECK(!mg_file_locked_elsewhere(other, RESERVED, 1) && !mg_file_locked_elsewhere(other, PENDING, 1) &&
                   !mg_file_locked_elsewhere(other, SHARED_FIRST, SHARED_SIZE));
             mg_file_close(other);

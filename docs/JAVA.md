@@ -3557,7 +3557,11 @@ options and `#include "sqlite3.c"`:
   waits (Android's 2.5 s of `busy_timeout`, then "database is locked")
   instead of taking its journal for one left behind and rolling it back, or
   writing beside it. With the table alone it did, and Phenotype's database had
-  no table Packages in several apps' logs (576). The core tests lock the file
+  no table Packages in several apps' logs (576). As Windows suspends the app,
+  the shell waits up to a second for its connections to let their locks go
+  (`megler_settle_databases`), since Windows freezes it as it is and a lock
+  it kept would hold the other apps up until it came back; the log says when
+  one was kept all the same. The core tests lock the file
   through a handle of their own as another process would (its writer, its
   writer waiting, its reader), and on the PC start a second process
   (`mg_tests --sqlite-hold`) that holds a write with its journal while the
