@@ -808,6 +808,17 @@ public class Main extends Activity {
         // and ended on a NoSuchMethodError. By reflection: the app is built against Android 10's android.jar.
         // IntentFilter.matchCategories as Android has it: null when every category of the intent's is the filter's, else the first
         // that is not (it said null for anything; megler.MicroG matches Google Play services' services with it).
+        // SubscriptionManager's lists of active subscription ids, never null as on Android (Android 11's methods: by reflection)
+        // -- Google Play services' check-in took their length and ended on a NullPointerException, and Play Store had no
+        // Android ID.
+        step("subscription-ids", () -> {
+            android.telephony.SubscriptionManager sm = (android.telephony.SubscriptionManager) getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE);
+            Object active = android.telephony.SubscriptionManager.class.getMethod("getActiveSubscriptionIdList").invoke(sm);
+            Object complete = android.telephony.SubscriptionManager.class.getMethod("getCompleteActiveSubscriptionIdList").invoke(sm);
+            detail = "active=" + (active == null ? "null" : ((int[]) active).length) + " complete=" + (complete == null ? "null" : ((int[]) complete).length)
+                    + " infos=" + sm.getActiveSubscriptionInfoCount();
+            return active instanceof int[] && complete instanceof int[] && ((int[]) active).length == sm.getActiveSubscriptionInfoCount();
+        });
         step("filter-categories", () -> {
             android.content.IntentFilter f = new android.content.IntentFilter("megler.test.ACTION");
             f.addCategory(android.content.Intent.CATEGORY_DEFAULT);
