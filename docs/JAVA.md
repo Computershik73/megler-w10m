@@ -2176,6 +2176,23 @@ verifies, both keys found again through `KeyStore.getInstance
 makes it again. The keys are ordinary ones in the app's data
 (`.megler_keystore`), as the framework keeps them: nothing here is hardware-backed.
 
+A key pair's certificate is X.509, as Android's: self-signed with the pair's
+key, with the `KeyGenParameterSpec`'s subject, serial number and dates, or
+Android's own (`CN=fake`, 1, from 1970 to 2048), and kept with the keys
+(`.megler_keystore2.certs`, a file of its own, so a Megler of before it still
+reads the keys); a key set with a chain keeps that chain. It was an object of
+Megler's own class that carried only the public key, and Google Play services'
+device registration casts the certificate to `X509Certificate`: on 573, with the
+SIM list answered, the check-in ended there in a `ClassCastException` every
+time, and Play Store had no Android ID ("Server error"). A pair asked for with
+an attestation challenge is refused with a `ProviderException`, nothing kept
+under its alias, as on a device whose key store cannot attest
+(`AndroidKeyStoreKeyPairGeneratorSpi`): there is no keymaster to sign the chain
+up to Google's root, and the check-in goes on without attestation ("Failed to
+generate key attestation"), as it does on such a device. The data app's
+`keystore-certificates` step checks both kinds of certificate, a chain set
+with a key, the refusal, and, on the second run, the first run's certificate.
+
 **The built-in `java.lang` stays** as the first way to start
 (`mg_dvm_start(NULL, 0)`). It could be dropped now that every fixture passes on
 libcore too; it is kept because libcore is 40 MB that the ordinary package does
