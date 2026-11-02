@@ -2551,6 +2551,15 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK(*FN(lib, int *(*)(void), "t_tls_addr")() == 555);
     FN(lib, void (*)(int), "t_tls_set")(100);
     CHECK_INT(FN(lib, int (*)(int, int), "t_threads")(8, 2000), 16000);
+    /* A wait is woken by what it waits on: a byte passed back and forth over two pipes, with 32 other threads waiting
+       in epoll_wait each on an eventfd of its own (an app's Loopers), and with none. */
+    {
+        long long alone = FN(lib, long long (*)(int, int), "t_wait_herd")(0, 2000);
+        long long herd = FN(lib, long long (*)(int, int), "t_wait_herd")(32, 2000);
+        say("  2000 round trips over two pipes: %lld us with no other waiter, %lld us with 32 waiting elsewhere", alone, herd);
+        /* (Each change woke every waiter: 87 ms and 1.76 s.) */
+        CHECK(alone > 0 && herd > 0 && herd < alone * 3);
+    }
     /* Four thousand megabytes mapped and unmapped in two pieces each: the addresses come back. */
     CHECK_INT(FN(lib, int (*)(int), "t_map_pieces")(4096), 0);
     /* A 300 KB frame written bottom first, on this thread and on a new one. */

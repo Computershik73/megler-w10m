@@ -128,6 +128,8 @@ typedef struct mg_gthread {
     volatile i32 sig_unrestarted;      /* how many of them did not ask for SA_RESTART: a wait for a socket they cut short ends with EINTR */
     volatile i32 *volatile sig_wait_addr;  /* the word the thread is waiting on, while it is */
     mg_cond *volatile sig_wait_cond;   /* or the condition */
+    mg_cond io_cond;                   /* what its waits for descriptors wait on (mg_libc_io.c, "who waits for what") */
+    bool io_cond_ready;
     mg_thread *volatile sig_thread;    /* the thread itself, to interrupt it in the middle of guest code */
     /* While a guarded call of guest code runs on the thread (mg_jni_call_native_guarded): the stub setjmp's buffer it goes
        back to when that code faults beyond repair (mg_core.c), instead of the app ending. */
