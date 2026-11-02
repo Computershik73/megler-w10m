@@ -2093,6 +2093,22 @@ public class Main extends Activity {
             detail = name + ": " + value + ", the app's class loader " + appLoader;
             return "X-Megler".equals(name) && "legacy".equals(value) && appLoader;
         });
+        /* Its client made as Google's GSF makes it (GoogleHttpClient): AndroidHttpClient.newInstance with the app's context,
+           whose https is the platform's SSLCertificateSocketFactory.getHttpSocketFactory (a NoSuchMethodError before,
+           package 576), on 443, a socket factory of Apache's that says its sockets are secure. */
+        step("apache-http-client", () -> {
+            Class<?> clientClass = Class.forName("android.net.http.AndroidHttpClient");
+            Object client = clientClass.getMethod("newInstance", String.class, android.content.Context.class).invoke(null, "MeglerTest", this);
+            Object manager = clientClass.getMethod("getConnectionManager").invoke(client);
+            Object registry = Class.forName("org.apache.http.conn.ClientConnectionManager").getMethod("getSchemeRegistry").invoke(manager);
+            Object https = registry.getClass().getMethod("getScheme", String.class).invoke(registry, "https");
+            Object factory = https.getClass().getMethod("getSocketFactory").invoke(https);
+            int port = (Integer) https.getClass().getMethod("getDefaultPort").invoke(https);
+            boolean layered = Class.forName("org.apache.http.conn.scheme.LayeredSocketFactory").isInstance(factory);
+            clientClass.getMethod("close").invoke(client);
+            detail = "https on " + port + " through " + factory.getClass().getName() + ", layered " + layered;
+            return port == 443 && "org.apache.http.conn.ssl.SSLSocketFactory".equals(factory.getClass().getName()) && layered;
+        });
     }
 
     /**

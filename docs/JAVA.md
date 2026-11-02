@@ -2346,6 +2346,14 @@ no native code or has it for 32-bit ARM.
   and without it the app ended with "Failed to call JNI_OnLoad from 'liger'".
   The data app asks for it too, and its step "apache-http-legacy" makes and
   reads a `BasicHeader` through it and finds the classes are its own loader's.
+  Its client, `AndroidHttpClient.newInstance`, registers https with the
+  platform's `SSLCertificateSocketFactory.getHttpSocketFactory`, which the SDK
+  dropped at 23 and the platform kept for it: Megler's framework had it not,
+  and Google's GSF, which makes its `GoogleHttpClient` so, could not start
+  its `SubscribedFeedsProvider` (Gmail asks it at every start: a
+  `NoSuchMethodError`, 576). The step "apache-http-client" makes the client
+  as GSF does, with the app's context, and finds https on 443 through
+  Apache's `SSLSocketFactory`.
 - **Input is asked for, not delivered.** The framework's main loop calls
   `Native.pollInput` between messages, every 8 ms at most. `megler_touch`,
   `megler_key` and `megler_set_paused` only queue (256 events; a move may be
