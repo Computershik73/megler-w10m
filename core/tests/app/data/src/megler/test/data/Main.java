@@ -1205,6 +1205,33 @@ public class Main extends Activity {
             detail = "rows=" + list.getChildCount() + " took=" + took;
             return took && list.getChildCount() > 0;
         });
+        // A view animation's listener told as Android tells it once the view is in a window: through the view's handler, after
+        // the frame that started or ended the animation -- not inside its parent's drawing (Telegram changes its settings list
+        // from such a listener, which done inside a RecyclerView's layout ends the app). Said when the animation has ended.
+        step("animation-listener", () -> {
+            final boolean[] inDraw = new boolean[1];
+            final StringBuilder heard = new StringBuilder();
+            final android.widget.FrameLayout parent = new android.widget.FrameLayout(this) {
+                @Override protected void dispatchDraw(android.graphics.Canvas c) {
+                    inDraw[0] = true;
+                    try { super.dispatchDraw(c); } finally { inDraw[0] = false; }
+                }
+            };
+            android.view.View child = new android.view.View(this);
+            child.setBackgroundColor(0xff336699);
+            parent.addView(child, new android.widget.FrameLayout.LayoutParams(20, 20));
+            ((android.view.ViewGroup) text.getParent()).addView(parent, new android.view.ViewGroup.LayoutParams(40, 40));
+            android.view.animation.AlphaAnimation fade = new android.view.animation.AlphaAnimation(1f, 0.5f);
+            fade.setDuration(50);
+            fade.setAnimationListener(new android.view.animation.Animation.AnimationListener() {
+                @Override public void onAnimationStart(android.view.animation.Animation a) { heard.append(inDraw[0] ? "start-in-draw " : "start "); }
+                @Override public void onAnimationRepeat(android.view.animation.Animation a) {}
+                @Override public void onAnimationEnd(android.view.animation.Animation a) {
+                    heard.append(inDraw[0] ? "end-in-draw" : "end");
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                        Log.i("DataTest", "animation-listener heard=" + heard);
+                        ((android.view.ViewGroup) parent.getParent()).removeView(parent);
+                    });
                 }
             });
             child.startAnimation(fade);

@@ -1137,7 +1137,13 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         boolean animating = false;
         if (mAnimation != null) {
             Animation a = mAnimation;
-            if (!a.isInitialized()) { a.initialize(getWidth(), getHeight(), parent.getWidth(), parent.getHeight()); onAnimationStart(); }
+            if (!a.isInitialized()) {
+                a.initialize(getWidth(), getHeight(), parent.getWidth(), parent.getHeight());
+                // its listener told through the view's handler, as Android's applyLegacyAnimation has it (Animation.fireStart)
+                android.os.Handler h = getHandler();
+                if (h != null) a.setListenerHandler(h);
+                onAnimationStart();
+            }
             mAnimTx.clear();
             animating = a.getTransformation(android.view.animation.AnimationUtils.currentAnimationTimeMillis(), mAnimTx);
             if (animating) invalidateParent();
