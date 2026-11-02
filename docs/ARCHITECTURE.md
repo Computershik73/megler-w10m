@@ -1003,30 +1003,39 @@ loop is woken by, a socket and an eventfd, sockets and files. On Windows
 Windows 10 2004, it never reports a connection attempt that failed -- and
 nothing of Windows' waits on the layer's pipes and eventfds, which are not
 handles. So the wait is not the host's at all. Every descriptor of the layer
-already waited one way: under the descriptor table's lock, on the one
-condition that every change of a pipe or an eventfd is announced on. Sockets
+already waited one way: under the descriptor table's lock, each thread on a
+condition of its own, woken by the changes of what it looked at. Sockets
 were made to fit that:
 
 - Each host socket has an event that Winsock sets on each of its network
   events (`WSAEventSelect`), and a thread-pool wait watches the event. When it
   fires, the events are taken (`WSAEnumNetworkEvents`), what they say that
   cannot be asked later is kept (how a connection attempt ended, that the
-  other side closed), and the table's condition is announced, as when a pipe
-  is written to. On Linux one thread waits on all host sockets at once,
-  edge-triggered (`epoll` with `EPOLLET`), and announces likewise.
+  other side closed), and the change is announced (`mg_fd_notify`). On Linux
+  one thread waits on all host sockets at once, edge-triggered (`epoll` with
+  `EPOLLET`), and announces likewise.
 - A waiter looks at what holds under the lock -- for a host socket, `select()`
-  with no wait on Windows, `poll()` on Linux -- and then waits on the
-  condition. The announcement takes the same lock, so a change that comes
-  after the look wakes the waiter and none is missed, whichever kind of
-  descriptor changed.
+  with no wait on Windows, `poll()` on Linux -- noting each object it looks at,
+  and then waits on its condition. A pipe's or an eventfd's change wakes the
+  waiters that looked at that pipe (either end) or eventfd; an announcement,
+  which does not say which socket changed, wakes those that looked at any
+  socket. The announcement takes the same lock, so a change that comes after
+  the look wakes the waiter and none is missed; a wait that looks at a socket
+  also looks again every 200 ms at the latest.
 - Winsock's events are edges, and room to send (`FD_WRITE`) is announced only
   after a send that found none. So a send that took part of what it was given
   is asked again with the rest until Winsock has taken all of it or refused
   some: then the edge is armed.
 
-This costs one more thread hop per change than a native wait, wakes every
-waiter of the process on every change (as a pipe's write always did), and
-needs no thread of the layer's own on Windows. Blocking calls -- `accept`,
+This costs one more thread hop per change than a native wait, and needs no
+thread of the layer's own on Windows. Every change once woke every waiter of
+the process, which each looked again at all of its own, in turn, under the one
+lock: 2000 bytes passed back and forth between two threads over pipes took
+87 ms with no other waiter and 1.76 s while 32 other threads waited in
+`epoll_wait` each on an eventfd of its own, as an app's Loopers do, and Play
+Store downloaded apps at 270 KB/s, each QUIC packet of its 1.3 KB waking all of
+its threads and Google Play services' (package 575). Now 110 ms and 119 ms
+(`t_wait_herd`, `core/tests/guest/t_basic.c`). Blocking calls -- `accept`,
 `connect`, `recv`, `send` on a socket without `O_NONBLOCK` -- wait the same
 way, so `SO_RCVTIMEO` and `SO_SNDTIMEO` are the limits of that wait, and a
 signal sent to the thread ends it. That last matters for Java: libcore

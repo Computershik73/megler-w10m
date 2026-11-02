@@ -66,6 +66,21 @@ public class Main extends Activity {
                 check(gservicesValues != null, "microG's GServices provider answers a query");
                 gservicesValues.close();
             }
+            // microG's account provider, asked for the Google accounts as an app's GoogleAuthUtil asks it: it holds the caller's
+            // package (ContentProvider.getCallingPackage) against the one its pid names, the app's here. The provider's own
+            // package was said, and it refused Classroom every time ("UID [10100] is not related to packageName").
+            String accountsSaid;
+            try {
+                android.os.Bundle got = getContentResolver().call(android.net.Uri.parse("content://com.google.android.gms.auth.accounts"),
+                        "get_accounts", "com.google", null);
+                accountsSaid = got == null ? "null" : "accounts " + java.util.Arrays.toString(got.getParcelableArray("accounts"));
+            } catch (RuntimeException e) {
+                // (A SecurityException is what the check said; past it microG reads the caller's certificate, which this
+                // test app, unsigned, has none of: "CertData to small". An app from a store is signed.)
+                accountsSaid = e.getClass().getName() + ": " + e.getMessage();
+            }
+            android.util.Log.i("MicroGTest", "account provider: " + accountsSaid);
+            check(!accountsSaid.contains("is not related to packageName"), "microG's account provider takes the app for its caller: " + accountsSaid);
             Context gms = createPackageContext(GMS, CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY);
             check(gms.getSystemService(android.os.UserManager.class) != null, "GMS service context has user services");
             Context gmsDevice = gms.createDeviceProtectedStorageContext();

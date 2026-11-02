@@ -29,6 +29,9 @@ bool remove(const std::wstring& path);
 bool move(const std::wstring& from, const std::wstring& to);
 /// Copies, replacing what is there.
 bool copy(const std::wstring& from, const std::wstring& to);
+/// Whether two files are of one size and end with the same `bytes`: a copy that never finished is not (Windows gives it
+/// the whole size first, and what was never written of it reads as zeros).
+bool sameEnd(const std::wstring& a, const std::wstring& b, uint32_t bytes);
 
 /// The names (not paths) of the files in `directory` matching `pattern` ("*.apk").
 std::vector<std::wstring> list(const std::wstring& directory, const std::wstring& pattern);

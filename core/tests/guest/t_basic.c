@@ -1390,3 +1390,69 @@ int t_trap_hook(void)
     sigaction(4, &old, 0);
     return result;
 }
+
+/*
+ * A wait is woken by what it waits on, whatever else other threads wait for: two threads pass a byte back and forth over
+ * two pipes `rounds` times while `idle` other threads wait in epoll_wait, each on an eventfd of its own, as an app's
+ * Loopers do. The microseconds the passing took, or the negated step that failed.
+ */
+int eventfd(unsigned, int);
+static int g_idle_fd[64], g_ping[2], g_pong[2];
+static volatile int g_idle_in;
+
+static void *idle_waiter(void *arg)
+{
+    int i = (int)(long)arg, ep = epoll_create1(0);
+    struct { unsigned events; unsigned long long data; } ev[2];
+    memset(ev, 0, sizeof(ev));
+    ev[0].events = 1;                                /* EPOLLIN */
+    if (ep < 0 || epoll_ctl(ep, 1, g_idle_fd[i], ev) != 0) return (void *)-1L;
+    __sync_fetch_and_add(&g_idle_in, 1);
+    epoll_wait(ep, ev, 2, -1);
+    close(ep);
+    return 0;
+}
+
+static void *ponger(void *arg)
+{
+    int rounds = (int)(long)arg, i;
+    char b;
+    for (i = 0; i < rounds; i++)
+        if (read(g_ping[0], &b, 1) != 1 || write(g_pong[1], &b, 1) != 1) return (void *)-1L;
+    return 0;
+}
+
+long long t_wait_herd(int idle, int rounds)
+{
+    pthread_t t[64], p;
+    int i;
+    char b = 1;
+    unsigned long long one = 1;
+    struct t_timespec a, z;
+    long until;
+    if (idle > 64) idle = 64;
+    if (pipe(g_ping) || pipe(g_pong)) return -1;
+    g_idle_in = 0;
+    for (i = 0; i < idle; i++) {
+        g_idle_fd[i] = eventfd(0, 0);
+        if (g_idle_fd[i] < 0 || pthread_create(&t[i], 0, idle_waiter, (void *)(long)i) != 0) return -2;
+    }
+    for (until = now_ms() + 10000; g_idle_in < idle && now_ms() < until;) usleep(1000);
+    usleep(50000);                                   /* each is in its epoll_wait */
+    if (pthread_create(&p, 0, ponger, (void *)(long)rounds) != 0) return -3;
+    clock_gettime(1, &a);
+    for (i = 0; i < rounds; i++)
+        if (write(g_ping[1], &b, 1) != 1 || read(g_pong[0], &b, 1) != 1) return -4;
+    clock_gettime(1, &z);
+    pthread_join(p, 0);
+    for (i = 0; i < idle; i++) {
+        write(g_idle_fd[i], &one, 8);
+        pthread_join(t[i], 0);
+        close(g_idle_fd[i]);
+    }
+    close(g_ping[0]);
+    close(g_ping[1]);
+    close(g_pong[0]);
+    close(g_pong[1]);
+    return (long long)(z.tv_sec - a.tv_sec) * 1000000 + (z.tv_nsec - a.tv_nsec) / 1000;
+}

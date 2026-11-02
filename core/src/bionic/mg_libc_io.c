@@ -594,8 +594,73 @@ typedef struct gobj {
 static gobj *g_fds[MAX_FDS];
 static u8 g_cloexec[MAX_FDS];
 static mg_lock g_io_lock = MG_LOCK_INIT;
-static mg_cond g_io_cond;
 static bool g_io_inited;
+
+/*
+ * Who waits for what. Every thread that waits for descriptors -- poll, select and epoll_wait (wait_ready), a read or a
+ * write of a pipe or an eventfd, the calls of a socket (bionic/mg_net.c, mg_fd_wait_locked) -- waits on a condition of
+ * its own (mg_gthread.io_cond), and a change wakes those that wait on what changed: the objects their last look looked at
+ * (ready_locked notes each), a pipe by either of its ends. A change of an object whose module announces its changes
+ * without saying which (a socket: mg_fd_notify) wakes those that look at any such object.
+ *
+ * Every change woke every waiter, which each looked again at all of its own, in turn, under the one lock: 2000 bytes
+ * passed back and forth between two threads over pipes took 87 ms with no other waiter and 1.76 s while 32 other threads
+ * waited in epoll_wait each on an eventfd of its own, as an app's Loopers do (core/tests, t_wait_herd), and Play Store
+ * downloaded apps at 270 KB/s, each of its QUIC packets of 1.3 KB waking all of its threads and Google Play services'
+ * (package 575).
+ */
+#define IO_WATCH 32
+/*
+ * A wait that looks at an announcing object looks again after this at the latest: a change its module failed to announce
+ * is seen within it, as the many other changes, which each woke every waiter, made it seen before. (Their callers work out
+ * their own limits: a wait that ends so is one more look.)
+ */
+#define IO_ANNOUNCED_LOOK_NS 200000000ull
+typedef struct io_waiter {
+    struct io_waiter *prev, *next;     /* among g_waiters while it waits */
+    mg_cond *cond;
+    const void *watch[IO_WATCH];       /* what it waits on: an object, or for either end of a pipe its buffer */
+    int nwatch;
+    bool all;                          /* more than IO_WATCH, or not said: woken by every change */
+    bool announced;                    /* among them an object whose module announces its changes (mg_fd_notify) */
+} io_waiter;
+static io_waiter *g_waiters;           /* those waiting now */
+static io_waiter *g_looking;           /* the one whose look (wait_ready's check) is under way: ready_locked notes for it */
+
+static const void *wake_key(const gobj *o) { return o->pipe ? (const void *)o->pipe : (const void *)o; }
+static bool announces(const gobj *o) { return o->type == OBJ_EXT && o->ops && o->ops->announces; }
+
+static void watch_note(io_waiter *w, const gobj *o)
+{
+    const void *k = wake_key(o);
+    int i;
+    if (announces(o)) w->announced = true;
+    for (i = 0; i < w->nwatch; i++)
+        if (w->watch[i] == k) return;
+    if (w->nwatch < IO_WATCH) w->watch[w->nwatch++] = k;
+    else w->all = true;
+}
+
+/* Wakes, with the lock held, those that wait on `o`; NULL: every waiter. */
+static void wake_for(const gobj *o)
+{
+    const void *k = o ? wake_key(o) : NULL;
+    io_waiter *w;
+    int i;
+    for (w = g_waiters; w; w = w->next) {
+        bool hit = !o || w->all;
+        for (i = 0; !hit && i < w->nwatch; i++) hit = w->watch[i] == k;
+        if (hit) mg_cond_signal(w->cond);
+    }
+}
+
+/* Wakes, with the lock held, those that look at an object whose module announces its changes. */
+static void wake_announced(void)
+{
+    io_waiter *w;
+    for (w = g_waiters; w; w = w->next)
+        if (w->all || w->announced) mg_cond_signal(w->cond);
+}
 
 static void io_init(void)
 {
@@ -603,7 +668,6 @@ static void io_init(void)
     int i;
     if (g_io_inited) return;
     g_io_inited = true;
-    mg_cond_init(&g_io_cond);
     /* 0 reads as end of file; 1 and 2 are the log. */
     o = (gobj *)mg_alloc(sizeof(*o));
     o->type = OBJ_NULL;
@@ -680,7 +744,7 @@ static void fd_put(gobj *o)
         if (o->type == OBJ_PIPE_R) p->readers--;
         else p->writers--;
         if (p->readers || p->writers) p = NULL;
-        mg_cond_broadcast(&g_io_cond);
+        wake_for(o);
     }
     mg_lock_release(&g_io_lock);
     if (last) {
@@ -737,7 +801,7 @@ void *mg_fd_ext_hold(int fd, const mg_fd_ops *ops, void **held, int *flags)
 void mg_fd_notify(void)
 {
     mg_lock_acquire(&g_io_lock);
-    mg_cond_broadcast(&g_io_cond);
+    wake_announced();
     mg_lock_release(&g_io_lock);
 }
 
@@ -953,23 +1017,34 @@ static void timer_catch_up(gobj *o)
 }
 
 /*
- * Waits, with the lock held, for the state of some descriptor to change.
- * A signal sent to the thread ends the wait, and its handler runs -- with the
- * lock let go of -- before this returns. Returns MG_FD_* (mg_fd.h): woken,
- * the time (0: none) ran out, or a handler ran, and whether that one asked
- * for SA_RESTART.
+ * Waits, with the lock held, for a change of what `w` waits on (who waits for what, above), on the thread's own
+ * condition. A signal sent to the thread ends the wait, and its handler runs -- with the lock let go of -- before this
+ * returns. Returns MG_FD_* (mg_fd.h): woken, the time (0: none) ran out, or a handler ran, and whether that one asked for
+ * SA_RESTART.
  */
-static int io_wait(u64 ns)
+static int io_wait_as(io_waiter *w, u64 ns)
 {
     mg_gthread *t = mg_gthread_self();
     i32 handled = t->sig_handled, unrestarted = t->sig_unrestarted;
     bool ok = true;
-    t->sig_wait_cond = &g_io_cond;
+    if (!t->io_cond_ready) {
+        mg_cond_init(&t->io_cond);
+        t->io_cond_ready = true;
+    }
+    w->cond = &t->io_cond;
+    w->prev = NULL;
+    w->next = g_waiters;
+    if (g_waiters) g_waiters->prev = w;
+    g_waiters = w;
+    t->sig_wait_cond = w->cond;
     if (!mg_signals_ready(t)) {
-        if (ns) ok = mg_cond_wait_ns(&g_io_cond, &g_io_lock, ns);
-        else mg_cond_wait(&g_io_cond, &g_io_lock);
+        if (ns) ok = mg_cond_wait_ns(w->cond, &g_io_lock, ns);
+        else mg_cond_wait(w->cond, &g_io_lock);
     }
     t->sig_wait_cond = NULL;
+    if (w->prev) w->prev->next = w->next;
+    else g_waiters = w->next;
+    if (w->next) w->next->prev = w->prev;
     if (mg_signals_ready(t)) {
         mg_lock_release(&g_io_lock);
         mg_signals_check();
@@ -980,14 +1055,34 @@ static int io_wait(u64 ns)
     return ok ? MG_FD_WOKEN : MG_FD_TIMED_OUT;
 }
 
+/* io_wait_as for a change of one object (NULL: of anything), as a read or a write of a pipe or an eventfd waits. */
+static int io_wait_for(const gobj *o, u64 ns)
+{
+    io_waiter w;
+    w.nwatch = 0;
+    w.all = !o;
+    w.announced = false;
+    if (o) watch_note(&w, o);
+    return io_wait_as(&w, ns);
+}
+
 void mg_fd_lock(void)
 {
     io_init();
     mg_lock_acquire(&g_io_lock);
 }
 void mg_fd_unlock(void) { mg_lock_release(&g_io_lock); }
-void mg_fd_notify_locked(void) { mg_cond_broadcast(&g_io_cond); }
-int mg_fd_wait_locked(u64 timeout_ns) { return io_wait(timeout_ns); }
+void mg_fd_notify_locked(void) { wake_announced(); }
+/* A socket's call waits for a change of a socket (bionic/mg_net.c), which its module announces without saying which. */
+int mg_fd_wait_locked(u64 timeout_ns)
+{
+    io_waiter w;
+    w.nwatch = 0;
+    w.all = false;
+    w.announced = true;
+    if (!timeout_ns || timeout_ns > IO_ANNOUNCED_LOOK_NS) timeout_ns = IO_ANNOUNCED_LOOK_NS;
+    return io_wait_as(&w, timeout_ns);
+}
 
 static bool shm_copy(gobj *o, u64 at, void *buf, size_t n, bool write);
 
@@ -1036,14 +1131,14 @@ static i32 obj_read(gobj *o, void *buf, u32 n, bool positioned, u64 offset)
                 mg_set_errno(GE_AGAIN);
                 return -1;
             }
-            io_wait(0);
+            io_wait_for(o, 0);
         }
         while (got < n && p->count) {
             ((u8 *)buf)[got++] = p->data[p->head];
             p->head = (p->head + 1) % PIPE_CAP;
             p->count--;
         }
-        mg_cond_broadcast(&g_io_cond);
+        wake_for(o);
         mg_lock_release(&g_io_lock);
         return (i32)got;
     }
@@ -1060,11 +1155,11 @@ static i32 obj_read(gobj *o, void *buf, u32 n, bool positioned, u64 offset)
                 mg_set_errno(GE_AGAIN);
                 return -1;
             }
-            io_wait(0);
+            io_wait_for(o, 0);
         }
         v = o->semaphore ? 1 : o->counter;
         o->counter -= v;
-        mg_cond_broadcast(&g_io_cond);
+        wake_for(o);
         mg_lock_release(&g_io_lock);
         memcpy(buf, &v, 8);
         return 8;
@@ -1087,7 +1182,7 @@ static i32 obj_read(gobj *o, void *buf, u32 n, bool positioned, u64 offset)
                 return -1;
             }
             now = mg_time_monotonic_ns();
-            io_wait(o->timer_next ? (o->timer_next > now ? o->timer_next - now : 1) : 0);
+            io_wait_for(o, o->timer_next ? (o->timer_next > now ? o->timer_next - now : 1) : 0);
         }
         v = o->timer_ticks;
         o->timer_ticks = 0;
@@ -1170,14 +1265,14 @@ static i32 obj_write(gobj *o, const void *buf, u32 n, bool positioned, u64 offse
                     mg_set_errno(GE_AGAIN);
                     return -1;
                 }
-                mg_cond_broadcast(&g_io_cond);
-                io_wait(0);
+                wake_for(o);
+                io_wait_for(o, 0);
                 continue;
             }
             p->data[(p->head + p->count) % PIPE_CAP] = ((const u8 *)buf)[put++];
             p->count++;
         }
-        mg_cond_broadcast(&g_io_cond);
+        wake_for(o);
         mg_lock_release(&g_io_lock);
         return (i32)put;
     }
@@ -1190,7 +1285,7 @@ static i32 obj_write(gobj *o, const void *buf, u32 n, bool positioned, u64 offse
         memcpy(&v, buf, 8);
         mg_lock_acquire(&g_io_lock);
         o->counter += v;
-        mg_cond_broadcast(&g_io_cond);
+        wake_for(o);
         mg_lock_release(&g_io_lock);
         return 8;
     }
@@ -2404,7 +2499,7 @@ static int g_timerfd_settime(int fd, int flags, const g_itimerspec *set, g_itime
         o->timer_next = now + value;
     }
     /* Whoever waits on it works out again when to look. */
-    mg_cond_broadcast(&g_io_cond);
+    wake_for(o);
     mg_lock_release(&g_io_lock);
     fd_put(o);
     return 0;
@@ -2619,6 +2714,7 @@ static int ready_locked(gobj *o, int events)
 {
     static int epoll_depth;            /* (an epoll set in an epoll set: looked into, not for ever) */
     int r = 0, i;
+    if (g_looking) watch_note(g_looking, o);
     switch (o->type) {
     case OBJ_PIPE_R:
         if (o->pipe->count) r |= G_POLLIN;
@@ -2692,8 +2788,14 @@ static int wait_ready(ready_check check, void *ctx, int timeout_ms, bool interru
         bool looks_itself = false;
         int hits, w;
         u64 left = 0, wake;
+        io_waiter me;
         g_timer_wake = 0;
+        /* What the look looks at is what the wait is for (who waits for what, above). */
+        me.nwatch = 0;
+        me.all = me.announced = false;
+        g_looking = &me;
         hits = check(ctx, &looks_itself);
+        g_looking = NULL;
         wake = g_timer_wake;
         if (hits || timeout_ms == 0) {
             result = hits;
@@ -2713,7 +2815,8 @@ static int wait_ready(ready_check check, void *ctx, int timeout_ms, bool interru
             if (!left || until < left) left = until;
         }
         if (looks_itself && (!left || left > 5000000ull)) left = 5000000ull;
-        w = io_wait(left);
+        if (me.announced && (!left || left > IO_ANNOUNCED_LOOK_NS)) left = IO_ANNOUNCED_LOOK_NS;
+        w = io_wait_as(&me, left);
         if (interruptible && w >= MG_FD_HANDLER_RAN) {
             result = -1;
             break;
@@ -2938,7 +3041,7 @@ static int g_epoll_ctl(int epfd, int op, int fd, const g_epoll_event *ev)
     } else {
         r = GE_INVAL;
     }
-    mg_cond_broadcast(&g_io_cond);
+    wake_for(o);
     mg_lock_release(&g_io_lock);
     fd_put(o);
     if (r) {
@@ -2959,6 +3062,7 @@ static int epoll_check(void *ctx, bool *looks_itself)
     epoll_ctx *c = (epoll_ctx *)ctx;
     gobj *ep = c->ep;
     int i, n, got = 0;
+    if (g_looking) watch_note(g_looking, ep);      /* epoll_ctl changes it */
     /* A file that has gone is gone from every epoll set too, as on Linux when its last descriptor is closed. */
     for (i = 0; i < ep->nitems;) {
         int fd = ep->items[i].fd;

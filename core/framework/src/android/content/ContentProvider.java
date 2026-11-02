@@ -56,7 +56,13 @@ public abstract class ContentProvider implements ComponentCallbacks2 {
     public void onConfigurationChanged(android.content.res.Configuration c) {}
     public void onLowMemory() {}
     public void onTrimMemory(int level) {}
-    public final String getCallingPackage() { return mContext != null ? mContext.getPackageName() : null; }
+    /*
+     * Megler: the app's package. Every caller is in the app's one process here, whose uid (Binder.getCallingUid) and pid are
+     * the app's: Google Play services' providers, hosted in it, see the caller the pid names too. It was the provider's own
+     * package, and microG's account provider, called by Classroom's GoogleAuthUtil, said "UID [10100] is not related to
+     * packageName [com.google.android.gms] (seems to be com.google.android.apps.classroom)" for every list of accounts.
+     */
+    public final String getCallingPackage() { return megler.Native.packageName(); }
     public final String getCallingPackageUnchecked() { return getCallingPackage(); }
     public final String getReadPermission() { return mReadPermission; }
     public final String getWritePermission() { return mWritePermission; }

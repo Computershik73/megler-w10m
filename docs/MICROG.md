@@ -71,6 +71,17 @@ passes it through `/data/megler-services/results/`, and microG's app brings the
 caller to the front again. There is no account chooser, no visibility, and no
 session API.
 
+A content provider's caller (`ContentProvider.getCallingPackage`) is the app:
+every caller is in the app's one process, whose uid and pid are the app's, and
+microG's providers hold the package they are told against the one the pid
+names. It was the provider's own package, and microG's account provider, which
+an app's `GoogleAuthUtil` asks for the Google accounts, refused every app:
+"UID [10100] is not related to packageName [com.google.android.gms] (seems to
+be com.google.android.apps.classroom)". The test app `microg` asks it
+(`get_accounts`): past that check it reads the caller's certificate, which the
+unsigned test app has none of ("CertData to small"); an app from a store is
+signed.
+
 ## Parcels between a client and microG
 
 Megler's `Parcel` keeps a Parcelable as the object itself. A client and microG

@@ -230,7 +230,11 @@ void Library::load() {
                 bool copied = true;
                 for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"Phonesky.apk"}) {
                     const std::wstring destination = directory_ + L"\\bitgapps-" + name;
-                    if (!files::exists(destination) && !files::copy(bitgapps + L"\\" + name, destination)) {
+                    // (Through a .part, as every other copy here: one that does not finish -- Megler ended or suspended under
+                    // it, the phone full -- is not taken for the APK.)
+                    if (!files::exists(destination) &&
+                        !(files::copy(bitgapps + L"\\" + name, destination + L".part") && files::move(destination + L".part", destination))) {
+                        files::remove(destination + L".part");
                         copied = false;
                         shellLog::write("library: could not offer BiTGApps " + narrow(name));
                     }
@@ -238,6 +242,27 @@ void Library::load() {
                 if (copied) {
                     files::write(bitgappsStamp, "offered");
                     shellLog::write("library: offered locally bundled BiTGApps APKs");
+                }
+            }
+            /*
+             * A copy of the bundle's that never finished, which the first start made where it was to be, not through a
+             * .part (Megler before 576): the whole size, its end zeros. Its report was "Not a ZIP archive (no end
+             * record)", and Google Play services could not be installed from the library. Copied again when it is not the
+             * bundle's (its size and its end), which also brings the bundle's after an update of Megler.
+             */
+            for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"Phonesky.apk"}) {
+                const std::wstring own = directory_ + L"\\bitgapps-" + name;
+                const std::wstring source = bitgapps + L"\\" + name;
+                if (!files::exists(own) || files::exists(own + L".installed") || !files::exists(source) ||
+                    files::sameEnd(own, source, 65536))
+                    continue;
+                if (files::copy(source, own + L".part") && files::move(own + L".part", own)) {
+                    files::remove(own + L".json");
+                    files::remove(own + L".icon");
+                    shellLog::write("library: bitgapps-" + narrow(name) + " was not this Megler's bundle's (a copy that never finished, or an older one): copied again");
+                } else {
+                    files::remove(own + L".part");
+                    shellLog::write("library: bitgapps-" + narrow(name) + " is not the bundle's and could not be copied again");
                 }
             }
             // An older update could leave an .installed marker pointing at an APPX that Windows

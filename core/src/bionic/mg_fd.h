@@ -91,19 +91,20 @@ void *mg_fd_ext(int fd, const mg_fd_ops *ops);
  * ENOTSOCK when it is something else, sockets being what these are for.
  */
 void *mg_fd_ext_hold(int fd, const mg_fd_ops *ops, void **held, int *flags);
-/* Wake every poll: something a registered object reports has changed. */
+/* Wake every wait that looks at an object whose ops announce (a socket): something such an object reports has changed. */
 void mg_fd_notify(void);
 
 /*
- * Waiting as the layer's own descriptors wait: under the descriptor table's lock, on the one condition every change of every descriptor
- * is announced on. A module that looks at its object's state under the lock and then waits misses no announcement made after it looked.
+ * Waiting as the layer's own descriptors wait: under the descriptor table's lock, each thread on a condition of its own, woken by an
+ * announcement (mg_fd_notify, mg_fd_notify_locked) -- not by the changes of pipes and eventfds, which wake only their own waiters. A module
+ * that looks at its object's state under the lock and then waits misses no announcement made after it looked.
  */
 void mg_fd_lock(void);
 void mg_fd_unlock(void);
 void mg_fd_notify_locked(void);
 /* What ended a wait. MG_FD_INTERRUPTED: a handler that did not ask for SA_RESTART ran; MG_FD_HANDLER_RAN: one that did. */
 enum { MG_FD_WOKEN = 0, MG_FD_TIMED_OUT, MG_FD_HANDLER_RAN, MG_FD_INTERRUPTED };
-/* With the lock held: until something is announced, `timeout_ns` (0: no limit) has passed, or a signal for the thread has been handled (the lock let go of meanwhile). */
+/* With the lock held: until something is announced, `timeout_ns` (0: no limit) has passed, or a signal for the thread has been handled (the lock let go of meanwhile). It may end sooner, as a time run out (a look again at most every 200 ms): callers keep their own limits. */
 int mg_fd_wait_locked(u64 timeout_ns);
 
 /* Where a prefix of Android's file system is on the host. */

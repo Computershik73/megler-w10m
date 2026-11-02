@@ -476,7 +476,7 @@ struct Portal {
         filter.CookieUsageBehavior(HttpCookieUsageBehavior::NoCookies);
         client = HttpClient(filter);
         auto info = client.GetAsync(Uri(base() + L"/api/os/info")).get();
-        if (info.StatusCode() == HttpStatusCode::Unauthorized) return "The Device Portal asks for a user name and password, which Megler doesn't send yet.";
+        if (info.StatusCode() == HttpStatusCode::Unauthorized) return "The Device Portal asks for a user name and password: turn its Authentication off in Settings › Update & security › For developers";
         if (!info.IsSuccessStatusCode()) return format("The Device Portal answered %d.", int(info.StatusCode()));
         for (auto const& header : info.Headers()) {
             if (_wcsicmp(header.Key().c_str(), L"Set-Cookie")) continue;
