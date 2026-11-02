@@ -107,7 +107,15 @@ The offset of the slot array in the TEB (0xE10) is checked against `TlsGetValue`
 before it is trusted.
 
 What the guest's thread pointer points at is this layer's own block: bionic's slots,
-then each loaded library's thread-local data (ELF TLS, variant 1).
+then each loaded library's thread-local data (ELF TLS, variant 1). Slot 1 is the
+thread. Slot 2 is `TLS_SLOT_APP`, the app's own from Android 10 on, and empty on
+every thread until the app sets it: Go's runtime keeps its `g` there when the
+device says API 29 or later, which a Java app is told here (34). It held the
+thread's errno, as Android 9 had it there, and a Java thread calling into Go
+found a `g` that was no `g`: WhatsApp's `libgojni.so` ended at its start reading
+`g.m` (0x18) with no `g` (578). errno is the thread's own record's, through
+`__errno`. The guest test `t_tls_app_slot` reads the slot as Go does, on this
+thread and a new one.
 
 *Proven:* under qemu, with glibc's thread pointer standing where the TEB will be:
 initial-exec TLS in a Thumb library (four rewritten reads), `__tls_get_addr` in an

@@ -252,6 +252,46 @@ int t_threads(int threads, int n)
     return g_shared;
 }
 
+/*
+ * TLS_SLOT_APP, slot 2 of the thread pointer's block: the app's own from Android 10 on. Go's runtime keeps its g there,
+ * through `mrc p15, 0, rX, c13, c0, 3` as below, when the device says API 29 or later (WhatsApp's libgojni.so). Empty on
+ * a thread that has not set it, this one and a new one alike, kept as set, and left alone by what sets errno. 0 when so;
+ * otherwise which step found it otherwise.
+ */
+static void **tp_get(void)
+{
+    void **tp;
+    __asm__ volatile("mrc p15, 0, %0, c13, c0, 3" : "=r"(tp));
+    return tp;
+}
+
+static int app_slot_steps(int base)
+{
+    void **tp = tp_get();
+    if (tp[2] != 0) return base + 1;
+    tp[2] = (void *)(long)(0x51525354 + base);
+    if (close(-1) != -1 || *__errno() != 9 /* EBADF */) {
+        tp[2] = 0;
+        return base + 2;
+    }
+    if (tp[2] != (void *)(long)(0x51525354 + base)) return base + 3;
+    tp[2] = 0;
+    return 0;
+}
+
+static void *app_slot_thread(void *arg) { return (void *)(long)app_slot_steps((int)(long)arg); }
+
+int t_tls_app_slot(void)
+{
+    pthread_t t;
+    void *ret = (void *)-1L;
+    int r = app_slot_steps(10);
+    if (r) return r;
+    if (pthread_create(&t, 0, app_slot_thread, (void *)20L) != 0) return 30;
+    pthread_join(t, &ret);
+    return (int)(long)ret;
+}
+
 int t_tls_get(void) { return tls_counter; }
 void t_tls_set(int v) { tls_counter = v; }
 int *t_tls_addr(void) { return &tls_counter; }

@@ -483,8 +483,7 @@ static void thread_main(void *p)
     mg_gthread *t = (mg_gthread *)p;
     void **tp = mg_tls_thread_pointer();
     t->tp = tp;
-    tp[1] = t;
-    tp[2] = &t->gerrno;
+    tp[1] = t;                                 /* (slot 2 is the app's: mg_gthread_self) */
     mg_thread_stack_bounds(&t->stack_lo, &t->stack_hi);
     t->sig_thread = mg_thread_current();
     if (mg_app_threads_give_way()) mg_thread_runs_app_code();

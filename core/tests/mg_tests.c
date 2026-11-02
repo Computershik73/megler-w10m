@@ -2643,6 +2643,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK(*FN(lib, int *(*)(void), "t_tls_addr")() == 555);
     FN(lib, void (*)(int), "t_tls_set")(100);
     CHECK_INT(FN(lib, int (*)(int, int), "t_threads")(8, 2000), 16000);
+    CHECK_INT(FN(lib, int (*)(void), "t_tls_app_slot")(), 0);
     /* A wait is woken by what it waits on: a byte passed back and forth over two pipes, with 32 other threads waiting
        in epoll_wait each on an eventfd of its own (an app's Loopers), and with none. */
     {
