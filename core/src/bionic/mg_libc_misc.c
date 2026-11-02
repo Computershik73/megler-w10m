@@ -410,6 +410,11 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef int (*timerfd_create_fn)(int, int);
     typedef int (*timerfd_settime_fn)(int, int, const void *, void *);
     typedef int (*timerfd_gettime_fn)(int, void *);
+    typedef int (*pipe2_fn)(int *, int);
+    typedef int (*epoll_create1_fn)(int);
+    typedef int (*epoll_ctl_fn)(int, int, int, void *);
+    typedef int (*epoll_wait_fn)(int, void *, int, int);
+    typedef int (*eventfd_fn)(unsigned, int);
     switch (nr) {
     case 67:                                                                                                  /* sigaction */
         if (fault_signal_refused(a, b)) return -1;
@@ -433,6 +438,16 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 350: return ((timerfd_create_fn)mg_bionic_find("timerfd_create"))((int)a, (int)b);
     case 353: return ((timerfd_settime_fn)mg_bionic_find("timerfd_settime"))((int)a, (int)b, (const void *)(mg_addr)c, (void *)(mg_addr)d);
     case 354: return ((timerfd_gettime_fn)mg_bionic_find("timerfd_gettime"))((int)a, (void *)(mg_addr)b);
+    /* Pipes, epoll and eventfd asked for by number, as the libc's own are: Discord's media engine made its event loop so, and
+       each said "syscall(...) is not supported" (package 570). */
+    case 42: return ((pipe2_fn)mg_bionic_find("pipe2"))((int *)(mg_addr)a, 0);                                        /* pipe */
+    case 359: return ((pipe2_fn)mg_bionic_find("pipe2"))((int *)(mg_addr)a, (int)b);                                  /* pipe2 */
+    case 250: return ((epoll_create1_fn)mg_bionic_find("epoll_create1"))(0);                                          /* epoll_create */
+    case 357: return ((epoll_create1_fn)mg_bionic_find("epoll_create1"))((int)a);                                     /* epoll_create1 */
+    case 251: return ((epoll_ctl_fn)mg_bionic_find("epoll_ctl"))((int)a, (int)b, (int)c, (void *)(mg_addr)d);        /* epoll_ctl */
+    case 252: return ((epoll_wait_fn)mg_bionic_find("epoll_wait"))((int)a, (void *)(mg_addr)b, (int)c, (int)d);       /* epoll_wait */
+    case 351: return ((eventfd_fn)mg_bionic_find("eventfd"))((unsigned)a, 0);                                         /* eventfd */
+    case 356: return ((eventfd_fn)mg_bionic_find("eventfd"))((unsigned)a, (int)b);                                    /* eventfd2 */
     default:
         mg_note_once("syscall(%ld) is not supported", nr);
         mg_set_errno(GE_NOSYS);

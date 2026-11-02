@@ -1079,6 +1079,46 @@ static void test_media(const char *scratch)
  * (MAP_FIXED) it is given back, and zero when given access again; memory mapped with access is committed at once. Where
  * the host does not say what is committed (POSIX), the behaviour alone is checked.
  */
+/*
+ * syscall() by number for pipes, epoll and eventfd, as Discord's media engine made its event loop (it said "syscall(359) is
+ * not supported", and 357, 356, 351): each gives a descriptor that works -- a byte through the pipe, the eventfd's count,
+ * the pipe's read end ready in the epoll set.
+ */
+static void test_syscall_fds(void)
+{
+    typedef long (*syscall_fn)(long, long, long, long, long, long, long);
+    typedef int (*close_fn)(int);
+    typedef long (*io_fn)(int, void *, size_t);
+    syscall_fn sys = (syscall_fn)mg_bionic_find("syscall");
+    close_fn close_ = (close_fn)mg_bionic_find("close");
+    io_fn write_ = (io_fn)mg_bionic_find("write"), read_ = (io_fn)mg_bionic_find("read");
+    int fds[2] = { -1, -1 }, ev, ep, ready;
+    u8 b = 0;
+    u64 count = 0, one = 1;
+    u64 event[2] = { 1 /* EPOLLIN */, 7 }, got[2] = { 0, 0 };   /* ARM's epoll_event: events, then data at 8 */
+    say("syscall() by number: pipe2, eventfd2, eventfd, epoll_create1, epoll_ctl, epoll_wait");
+    CHECK(sys && close_ && write_ && read_);
+    if (!sys || !close_ || !write_ || !read_) return;
+    CHECK(sys(359, (long)(mg_addr)fds, 0, 0, 0, 0, 0) == 0 && fds[0] >= 0 && fds[1] >= 0);
+    b = 42;
+    CHECK(write_(fds[1], &b, 1) == 1);
+    ev = (int)sys(356, 0, 0, 0, 0, 0, 0);
+    CHECK(ev >= 0 && write_(ev, &one, 8) == 8 && read_(ev, &count, 8) == 8 && count == 1);
+    if (ev >= 0) close_(ev);
+    ev = (int)sys(351, 3, 0, 0, 0, 0, 0);
+    CHECK(ev >= 0 && read_(ev, &count, 8) == 8 && count == 3);
+    if (ev >= 0) close_(ev);
+    ep = (int)sys(357, 0, 0, 0, 0, 0, 0);
+    CHECK(ep >= 0 && sys(251, ep, 1 /* EPOLL_CTL_ADD */, fds[0], (long)(mg_addr)event, 0, 0) == 0);
+    ready = (int)sys(252, ep, (long)(mg_addr)got, 1, 0, 0, 0);
+    CHECK(ready == 1 && (got[0] & 1) && got[1] == 7);
+    b = 0;
+    CHECK(read_(fds[0], &b, 1) == 1 && b == 42);
+    if (ep >= 0) close_(ep);
+    close_(fds[0]);
+    close_(fds[1]);
+}
+
 static void test_mmap_commit(void)
 {
     typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
@@ -3355,6 +3395,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_arsc(libdir);
     test_kuser();
     test_palette();
+    test_syscall_fds();
     test_mmap_commit();
     test_mmap_file(scratch);
     test_mmap_madvise(scratch);
