@@ -505,6 +505,10 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 329: return ((renameat_fn)mg_bionic_find("renameat"))((int)a, (const char *)(mg_addr)b, (int)c, (const char *)(mg_addr)d);  /* renameat */
     case 334: return ((at_int_fn)mg_bionic_find("faccessat"))((int)a, (const char *)(mg_addr)b, (int)c, (int)d);     /* faccessat */
     case 358: return ((dup3_fn)mg_bionic_find("dup3"))((int)a, (int)b, (int)c);                                      /* dup3 */
+    /* syncfs: the file system a descriptor is on is synced as sync() syncs it, which is nothing more than Windows does
+       with what was written (it outlives the app); a descriptor not open is EBADF. Google Maps asks at start, and it
+       said "syscall(373) is not supported" (package 576). */
+    case 373: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, 1 /* F_GETFD */, 0) < 0 ? -1 : 0;                  /* syncfs */
     /* The processors a thread may run on: any, as the libc's sched_*affinity say (Sonolus's Unity asked by number). The
        raw call returns the size of the mask it wrote, the libc's 0. */
     case 241: return ((affinity_fn)mg_bionic_find("sched_setaffinity"))((int)a, (size_t)b, (void *)(mg_addr)c);      /* sched_setaffinity */

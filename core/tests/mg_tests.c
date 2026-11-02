@@ -1119,21 +1119,22 @@ static void test_syscall_fds(const char *scratch)
     close_(fds[1]);
 
     /* Files by number, as TikTok Lite's loader writes its libraries out (syscall(__NR_open)): open, write, close, open
-       again, lseek, read, fstat64 (st_size at 48 in ARM's struct stat64), close, unlink; and sched_getaffinity, whose raw
-       call says the mask's size. */
+       again, lseek, read, fstat64 (st_size at 48 in ARM's struct stat64), syncfs (and EBADF for a descriptor not open, as
+       Google Maps asks), close, unlink; and sched_getaffinity, whose raw call says the mask's size. */
     {
         const char *file = "/syscall-files/written.bin";
         char back[4] = { 0 };
         u8 st[104], mask[16];
         int fd;
         mg_fs_mount("/syscall-files", scratch);
-        say("syscall() by number: open, write, read, lseek, fstat64, close, unlink, sched_getaffinity");
+        say("syscall() by number: open, write, read, lseek, fstat64, syncfs, close, unlink, sched_getaffinity");
         fd = (int)sys(5, (long)(mg_addr)file, 01 | 0100 | 01000, 0600, 0, 0, 0);   /* O_WRONLY | O_CREAT | O_TRUNC */
         CHECK(fd >= 0 && sys(4, fd, (long)(mg_addr)"megler", 6, 0, 0, 0) == 6 && sys(6, fd, 0, 0, 0, 0, 0) == 0);
         fd = (int)sys(5, (long)(mg_addr)file, 0, 0, 0, 0, 0);
         CHECK(fd >= 0 && sys(19, fd, 2, 0, 0, 0, 0) == 2 && sys(3, fd, (long)(mg_addr)back, 4, 0, 0, 0) == 4 && !memcmp(back, "gler", 4));
         memset(st, 0, sizeof(st));
         CHECK(fd >= 0 && sys(197, fd, (long)(mg_addr)st, 0, 0, 0, 0) == 0 && mg_rd32(st + 48) == 6);
+        CHECK(fd >= 0 && sys(373, fd, 0, 0, 0, 0, 0) == 0 && sys(373, 999, 0, 0, 0, 0, 0) == -1);
         CHECK(fd >= 0 && sys(6, fd, 0, 0, 0, 0, 0) == 0 && sys(10, (long)(mg_addr)file, 0, 0, 0, 0, 0) == 0);
         CHECK(sys(5, (long)(mg_addr)file, 0, 0, 0, 0, 0) == -1);
         memset(mask, 0, sizeof(mask));
