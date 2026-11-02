@@ -1,0 +1,8 @@
+<<<
+            throw new ArrayIndexOutOfBoundsException(arrayLength, offset,
+                    count);
+===
+            // Megler: the message of the constructor Android has for it, which the SDK's android.jar does not
+            throw new ArrayIndexOutOfBoundsException("length=" + arrayLength + "; regionStart=" + offset
+                    + "; regionLength=" + count);
+>>>

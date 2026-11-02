@@ -1,0 +1,477 @@
+
+    // Megler: OpenJDK 11's equals, compare, compareUnsigned and mismatch of arrays and of their ranges, which Android 13 (API
+    // 33) has and Android 9's Arrays does not: Aliucord Manager's patching of Discord's APK called equals(byte[], int, int,
+    // byte[], int, int) and ended on a NoSuchMethodError (package 570). Written plainly, element by element, with the
+    // results OpenJDK specifies (floats and doubles compared as Float.compare and Double.compare compare them).
+
+    private static void megler_ranges(int aLength, int aFromIndex, int aToIndex, int bLength, int bFromIndex, int bToIndex) {
+        rangeCheck(aLength, aFromIndex, aToIndex);
+        rangeCheck(bLength, bFromIndex, bToIndex);
+    }
+
+    public static int mismatch(boolean[] a, boolean[] b) {
+        int length = Math.min(a.length, b.length);
+        if (a == b) return -1;
+        for (int i = 0; i < length; i++) if (a[i] != b[i]) return i;
+        return a.length == b.length ? -1 : length;
+    }
+
+    public static int mismatch(boolean[] a, int aFromIndex, int aToIndex, boolean[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex, length = Math.min(aLength, bLength);
+        for (int i = 0; i < length; i++) if (a[aFromIndex + i] != b[bFromIndex + i]) return i;
+        return aLength == bLength ? -1 : length;
+    }
+
+    public static boolean equals(boolean[] a, int aFromIndex, int aToIndex, boolean[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        if (aToIndex - aFromIndex != bToIndex - bFromIndex) return false;
+        return mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex) < 0;
+    }
+
+    public static int compare(boolean[] a, boolean[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int i = mismatch(a, b);
+        if (i >= 0 && i < Math.min(a.length, b.length)) return Boolean.compare(a[i], b[i]);
+        return a.length - b.length;
+    }
+
+    public static int compare(boolean[] a, int aFromIndex, int aToIndex, boolean[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex;
+        int i = mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex);
+        if (i >= 0 && i < Math.min(aLength, bLength)) return Boolean.compare(a[aFromIndex + i], b[bFromIndex + i]);
+        return aLength - bLength;
+    }
+
+    public static int mismatch(byte[] a, byte[] b) {
+        int length = Math.min(a.length, b.length);
+        if (a == b) return -1;
+        for (int i = 0; i < length; i++) if (a[i] != b[i]) return i;
+        return a.length == b.length ? -1 : length;
+    }
+
+    public static int mismatch(byte[] a, int aFromIndex, int aToIndex, byte[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex, length = Math.min(aLength, bLength);
+        for (int i = 0; i < length; i++) if (a[aFromIndex + i] != b[bFromIndex + i]) return i;
+        return aLength == bLength ? -1 : length;
+    }
+
+    public static boolean equals(byte[] a, int aFromIndex, int aToIndex, byte[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        if (aToIndex - aFromIndex != bToIndex - bFromIndex) return false;
+        return mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex) < 0;
+    }
+
+    public static int compare(byte[] a, byte[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int i = mismatch(a, b);
+        if (i >= 0 && i < Math.min(a.length, b.length)) return Byte.compare(a[i], b[i]);
+        return a.length - b.length;
+    }
+
+    public static int compare(byte[] a, int aFromIndex, int aToIndex, byte[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex;
+        int i = mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex);
+        if (i >= 0 && i < Math.min(aLength, bLength)) return Byte.compare(a[aFromIndex + i], b[bFromIndex + i]);
+        return aLength - bLength;
+    }
+
+    public static int compareUnsigned(byte[] a, byte[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int i = mismatch(a, b);
+        if (i >= 0 && i < Math.min(a.length, b.length)) return (a[i] & 0xff) - (b[i] & 0xff);
+        return a.length - b.length;
+    }
+
+    public static int compareUnsigned(byte[] a, int aFromIndex, int aToIndex, byte[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex;
+        int i = mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex);
+        if (i >= 0 && i < Math.min(aLength, bLength)) return (a[aFromIndex + i] & 0xff) - (b[bFromIndex + i] & 0xff);
+        return aLength - bLength;
+    }
+
+    public static int mismatch(char[] a, char[] b) {
+        int length = Math.min(a.length, b.length);
+        if (a == b) return -1;
+        for (int i = 0; i < length; i++) if (a[i] != b[i]) return i;
+        return a.length == b.length ? -1 : length;
+    }
+
+    public static int mismatch(char[] a, int aFromIndex, int aToIndex, char[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex, length = Math.min(aLength, bLength);
+        for (int i = 0; i < length; i++) if (a[aFromIndex + i] != b[bFromIndex + i]) return i;
+        return aLength == bLength ? -1 : length;
+    }
+
+    public static boolean equals(char[] a, int aFromIndex, int aToIndex, char[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        if (aToIndex - aFromIndex != bToIndex - bFromIndex) return false;
+        return mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex) < 0;
+    }
+
+    public static int compare(char[] a, char[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int i = mismatch(a, b);
+        if (i >= 0 && i < Math.min(a.length, b.length)) return Character.compare(a[i], b[i]);
+        return a.length - b.length;
+    }
+
+    public static int compare(char[] a, int aFromIndex, int aToIndex, char[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex;
+        int i = mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex);
+        if (i >= 0 && i < Math.min(aLength, bLength)) return Character.compare(a[aFromIndex + i], b[bFromIndex + i]);
+        return aLength - bLength;
+    }
+
+    public static int mismatch(short[] a, short[] b) {
+        int length = Math.min(a.length, b.length);
+        if (a == b) return -1;
+        for (int i = 0; i < length; i++) if (a[i] != b[i]) return i;
+        return a.length == b.length ? -1 : length;
+    }
+
+    public static int mismatch(short[] a, int aFromIndex, int aToIndex, short[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex, length = Math.min(aLength, bLength);
+        for (int i = 0; i < length; i++) if (a[aFromIndex + i] != b[bFromIndex + i]) return i;
+        return aLength == bLength ? -1 : length;
+    }
+
+    public static boolean equals(short[] a, int aFromIndex, int aToIndex, short[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        if (aToIndex - aFromIndex != bToIndex - bFromIndex) return false;
+        return mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex) < 0;
+    }
+
+    public static int compare(short[] a, short[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int i = mismatch(a, b);
+        if (i >= 0 && i < Math.min(a.length, b.length)) return Short.compare(a[i], b[i]);
+        return a.length - b.length;
+    }
+
+    public static int compare(short[] a, int aFromIndex, int aToIndex, short[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex;
+        int i = mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex);
+        if (i >= 0 && i < Math.min(aLength, bLength)) return Short.compare(a[aFromIndex + i], b[bFromIndex + i]);
+        return aLength - bLength;
+    }
+
+    public static int compareUnsigned(short[] a, short[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int i = mismatch(a, b);
+        if (i >= 0 && i < Math.min(a.length, b.length)) return (a[i] & 0xffff) - (b[i] & 0xffff);
+        return a.length - b.length;
+    }
+
+    public static int compareUnsigned(short[] a, int aFromIndex, int aToIndex, short[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex;
+        int i = mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex);
+        if (i >= 0 && i < Math.min(aLength, bLength)) return (a[aFromIndex + i] & 0xffff) - (b[bFromIndex + i] & 0xffff);
+        return aLength - bLength;
+    }
+
+    public static int mismatch(int[] a, int[] b) {
+        int length = Math.min(a.length, b.length);
+        if (a == b) return -1;
+        for (int i = 0; i < length; i++) if (a[i] != b[i]) return i;
+        return a.length == b.length ? -1 : length;
+    }
+
+    public static int mismatch(int[] a, int aFromIndex, int aToIndex, int[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex, length = Math.min(aLength, bLength);
+        for (int i = 0; i < length; i++) if (a[aFromIndex + i] != b[bFromIndex + i]) return i;
+        return aLength == bLength ? -1 : length;
+    }
+
+    public static boolean equals(int[] a, int aFromIndex, int aToIndex, int[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        if (aToIndex - aFromIndex != bToIndex - bFromIndex) return false;
+        return mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex) < 0;
+    }
+
+    public static int compare(int[] a, int[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int i = mismatch(a, b);
+        if (i >= 0 && i < Math.min(a.length, b.length)) return Integer.compare(a[i], b[i]);
+        return a.length - b.length;
+    }
+
+    public static int compare(int[] a, int aFromIndex, int aToIndex, int[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex;
+        int i = mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex);
+        if (i >= 0 && i < Math.min(aLength, bLength)) return Integer.compare(a[aFromIndex + i], b[bFromIndex + i]);
+        return aLength - bLength;
+    }
+
+    public static int compareUnsigned(int[] a, int[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int i = mismatch(a, b);
+        if (i >= 0 && i < Math.min(a.length, b.length)) return Integer.compareUnsigned(a[i], b[i]);
+        return a.length - b.length;
+    }
+
+    public static int compareUnsigned(int[] a, int aFromIndex, int aToIndex, int[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex;
+        int i = mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex);
+        if (i >= 0 && i < Math.min(aLength, bLength)) return Integer.compareUnsigned(a[aFromIndex + i], b[bFromIndex + i]);
+        return aLength - bLength;
+    }
+
+    public static int mismatch(long[] a, long[] b) {
+        int length = Math.min(a.length, b.length);
+        if (a == b) return -1;
+        for (int i = 0; i < length; i++) if (a[i] != b[i]) return i;
+        return a.length == b.length ? -1 : length;
+    }
+
+    public static int mismatch(long[] a, int aFromIndex, int aToIndex, long[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex, length = Math.min(aLength, bLength);
+        for (int i = 0; i < length; i++) if (a[aFromIndex + i] != b[bFromIndex + i]) return i;
+        return aLength == bLength ? -1 : length;
+    }
+
+    public static boolean equals(long[] a, int aFromIndex, int aToIndex, long[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        if (aToIndex - aFromIndex != bToIndex - bFromIndex) return false;
+        return mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex) < 0;
+    }
+
+    public static int compare(long[] a, long[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int i = mismatch(a, b);
+        if (i >= 0 && i < Math.min(a.length, b.length)) return Long.compare(a[i], b[i]);
+        return a.length - b.length;
+    }
+
+    public static int compare(long[] a, int aFromIndex, int aToIndex, long[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex;
+        int i = mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex);
+        if (i >= 0 && i < Math.min(aLength, bLength)) return Long.compare(a[aFromIndex + i], b[bFromIndex + i]);
+        return aLength - bLength;
+    }
+
+    public static int compareUnsigned(long[] a, long[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int i = mismatch(a, b);
+        if (i >= 0 && i < Math.min(a.length, b.length)) return Long.compareUnsigned(a[i], b[i]);
+        return a.length - b.length;
+    }
+
+    public static int compareUnsigned(long[] a, int aFromIndex, int aToIndex, long[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex;
+        int i = mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex);
+        if (i >= 0 && i < Math.min(aLength, bLength)) return Long.compareUnsigned(a[aFromIndex + i], b[bFromIndex + i]);
+        return aLength - bLength;
+    }
+
+    public static int mismatch(float[] a, float[] b) {
+        int length = Math.min(a.length, b.length);
+        if (a == b) return -1;
+        for (int i = 0; i < length; i++) if (Float.floatToIntBits(a[i]) != Float.floatToIntBits(b[i])) return i;
+        return a.length == b.length ? -1 : length;
+    }
+
+    public static int mismatch(float[] a, int aFromIndex, int aToIndex, float[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex, length = Math.min(aLength, bLength);
+        for (int i = 0; i < length; i++) if (Float.floatToIntBits(a[aFromIndex + i]) != Float.floatToIntBits(b[bFromIndex + i])) return i;
+        return aLength == bLength ? -1 : length;
+    }
+
+    public static boolean equals(float[] a, int aFromIndex, int aToIndex, float[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        if (aToIndex - aFromIndex != bToIndex - bFromIndex) return false;
+        return mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex) < 0;
+    }
+
+    public static int compare(float[] a, float[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int i = mismatch(a, b);
+        if (i >= 0 && i < Math.min(a.length, b.length)) return Float.compare(a[i], b[i]);
+        return a.length - b.length;
+    }
+
+    public static int compare(float[] a, int aFromIndex, int aToIndex, float[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex;
+        int i = mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex);
+        if (i >= 0 && i < Math.min(aLength, bLength)) return Float.compare(a[aFromIndex + i], b[bFromIndex + i]);
+        return aLength - bLength;
+    }
+
+    public static int mismatch(double[] a, double[] b) {
+        int length = Math.min(a.length, b.length);
+        if (a == b) return -1;
+        for (int i = 0; i < length; i++) if (Double.doubleToLongBits(a[i]) != Double.doubleToLongBits(b[i])) return i;
+        return a.length == b.length ? -1 : length;
+    }
+
+    public static int mismatch(double[] a, int aFromIndex, int aToIndex, double[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex, length = Math.min(aLength, bLength);
+        for (int i = 0; i < length; i++) if (Double.doubleToLongBits(a[aFromIndex + i]) != Double.doubleToLongBits(b[bFromIndex + i])) return i;
+        return aLength == bLength ? -1 : length;
+    }
+
+    public static boolean equals(double[] a, int aFromIndex, int aToIndex, double[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        if (aToIndex - aFromIndex != bToIndex - bFromIndex) return false;
+        return mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex) < 0;
+    }
+
+    public static int compare(double[] a, double[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int i = mismatch(a, b);
+        if (i >= 0 && i < Math.min(a.length, b.length)) return Double.compare(a[i], b[i]);
+        return a.length - b.length;
+    }
+
+    public static int compare(double[] a, int aFromIndex, int aToIndex, double[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex;
+        int i = mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex);
+        if (i >= 0 && i < Math.min(aLength, bLength)) return Double.compare(a[aFromIndex + i], b[bFromIndex + i]);
+        return aLength - bLength;
+    }
+
+    public static int mismatch(Object[] a, Object[] b) {
+        int length = Math.min(a.length, b.length);
+        if (a == b) return -1;
+        for (int i = 0; i < length; i++) if (!Objects.equals(a[i], b[i])) return i;
+        return a.length == b.length ? -1 : length;
+    }
+
+    public static int mismatch(Object[] a, int aFromIndex, int aToIndex, Object[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex, length = Math.min(aLength, bLength);
+        for (int i = 0; i < length; i++) if (!Objects.equals(a[aFromIndex + i], b[bFromIndex + i])) return i;
+        return aLength == bLength ? -1 : length;
+    }
+
+    public static <T> int mismatch(T[] a, T[] b, Comparator<? super T> cmp) {
+        Objects.requireNonNull(cmp);
+        int length = Math.min(a.length, b.length);
+        if (a == b) return -1;
+        for (int i = 0; i < length; i++) {
+            T oa = a[i], ob = b[i];
+            if (oa != ob && cmp.compare(oa, ob) != 0) return i;
+        }
+        return a.length == b.length ? -1 : length;
+    }
+
+    public static <T> int mismatch(T[] a, int aFromIndex, int aToIndex, T[] b, int bFromIndex, int bToIndex, Comparator<? super T> cmp) {
+        Objects.requireNonNull(cmp);
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex, length = Math.min(aLength, bLength);
+        for (int i = 0; i < length; i++) {
+            T oa = a[aFromIndex + i], ob = b[bFromIndex + i];
+            if (oa != ob && cmp.compare(oa, ob) != 0) return i;
+        }
+        return aLength == bLength ? -1 : length;
+    }
+
+    public static boolean equals(Object[] a, int aFromIndex, int aToIndex, Object[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        if (aToIndex - aFromIndex != bToIndex - bFromIndex) return false;
+        return mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex) < 0;
+    }
+
+    public static <T> boolean equals(T[] a, T[] a2, Comparator<? super T> cmp) {
+        Objects.requireNonNull(cmp);
+        if (a == a2) return true;
+        if (a == null || a2 == null) return false;
+        if (a.length != a2.length) return false;
+        return mismatch(a, a2, cmp) < 0;
+    }
+
+    public static <T> boolean equals(T[] a, int aFromIndex, int aToIndex, T[] b, int bFromIndex, int bToIndex, Comparator<? super T> cmp) {
+        Objects.requireNonNull(cmp);
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        if (aToIndex - aFromIndex != bToIndex - bFromIndex) return false;
+        return mismatch(a, aFromIndex, aToIndex, b, bFromIndex, bToIndex, cmp) < 0;
+    }
+
+    public static <T extends Comparable<? super T>> int compare(T[] a, T[] b) {
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int length = Math.min(a.length, b.length);
+        for (int i = 0; i < length; i++) {
+            T oa = a[i], ob = b[i];
+            if (oa != ob) {
+                if (oa == null || ob == null) return oa == null ? -1 : 1;
+                int v = oa.compareTo(ob);
+                if (v != 0) return v;
+            }
+        }
+        return a.length - b.length;
+    }
+
+    public static <T extends Comparable<? super T>> int compare(T[] a, int aFromIndex, int aToIndex, T[] b, int bFromIndex, int bToIndex) {
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex, length = Math.min(aLength, bLength);
+        for (int i = 0; i < length; i++) {
+            T oa = a[aFromIndex + i], ob = b[bFromIndex + i];
+            if (oa != ob) {
+                if (oa == null || ob == null) return oa == null ? -1 : 1;
+                int v = oa.compareTo(ob);
+                if (v != 0) return v;
+            }
+        }
+        return aLength - bLength;
+    }
+
+    public static <T> int compare(T[] a, T[] b, Comparator<? super T> cmp) {
+        Objects.requireNonNull(cmp);
+        if (a == b) return 0;
+        if (a == null || b == null) return a == null ? -1 : 1;
+        int length = Math.min(a.length, b.length);
+        for (int i = 0; i < length; i++) {
+            T oa = a[i], ob = b[i];
+            if (oa != ob) {
+                int v = cmp.compare(oa, ob);
+                if (v != 0) return v;
+            }
+        }
+        return a.length - b.length;
+    }
+
+    public static <T> int compare(T[] a, int aFromIndex, int aToIndex, T[] b, int bFromIndex, int bToIndex, Comparator<? super T> cmp) {
+        Objects.requireNonNull(cmp);
+        megler_ranges(a.length, aFromIndex, aToIndex, b.length, bFromIndex, bToIndex);
+        int aLength = aToIndex - aFromIndex, bLength = bToIndex - bFromIndex, length = Math.min(aLength, bLength);
+        for (int i = 0; i < length; i++) {
+            T oa = a[aFromIndex + i], ob = b[bFromIndex + i];
+            if (oa != ob) {
+                int v = cmp.compare(oa, ob);
+                if (v != 0) return v;
+            }
+        }
+        return aLength - bLength;
+    }

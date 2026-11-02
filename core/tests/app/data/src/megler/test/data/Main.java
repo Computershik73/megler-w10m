@@ -803,6 +803,31 @@ public class Main extends Activity {
             return v == 0xE3069283L && two.getValue() == v && three.getValue() == v && one.getValue() == 0x90F599E3L
                    && adler.getValue() == 0x091E01DEL && !direct.hasRemaining();
         });
+        // OpenJDK 11's comparisons of arrays and of their ranges, which Android 13 has (java.util.Arrays.equals(byte[], int, int,
+        // byte[], int, int) and the rest, the libcore overlay's): Aliucord Manager's patching of Discord's APK called that one
+        // and ended on a NoSuchMethodError. By reflection: the app is built against Android 10's android.jar.
+        step("arrays-ranges", () -> {
+            Class<?> a = java.util.Arrays.class;
+            byte[] one = { 1, 2, 3, 4, 5 }, two = { 9, 2, 3, 4, 8 };
+            java.lang.reflect.Method equals = a.getMethod("equals", byte[].class, int.class, int.class, byte[].class, int.class, int.class);
+            boolean inner = (Boolean) equals.invoke(null, one, 1, 4, two, 1, 4), whole = (Boolean) equals.invoke(null, one, 0, 5, two, 0, 5);
+            int mismatch = (Integer) a.getMethod("mismatch", byte[].class, byte[].class).invoke(null, one, two);
+            int shorter = (Integer) a.getMethod("mismatch", byte[].class, byte[].class).invoke(null, new byte[] { 1, 2 }, new byte[] { 1, 2, 3 });
+            int ints = (Integer) a.getMethod("compare", int[].class, int[].class).invoke(null, new int[] { 1, 2 }, new int[] { 1, 3 });
+            int unsigned = (Integer) a.getMethod("compareUnsigned", byte[].class, byte[].class).invoke(null, new byte[] { (byte) 0xff }, new byte[] { 1 });
+            int strings = (Integer) a.getMethod("compare", Comparable[].class, Comparable[].class).invoke(null, new String[] { "a", "b" }, new String[] { "a", "c" });
+            boolean nan = (Boolean) a.getMethod("equals", float[].class, int.class, int.class, float[].class, int.class, int.class)
+                    .invoke(null, new float[] { Float.NaN }, 0, 1, new float[] { Float.NaN }, 0, 1);
+            String refused = "none";
+            try {
+                equals.invoke(null, one, 3, 2, two, 0, 0);
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                refused = e.getCause().getClass().getSimpleName();
+            }
+            detail = "inner=" + inner + " whole=" + whole + " mismatch=" + mismatch + " shorter=" + shorter + " ints=" + ints + " unsigned=" + unsigned
+                    + " strings=" + strings + " nan=" + nan + " refused=" + refused;
+            return inner && !whole && mismatch == 0 && shorter == 2 && ints < 0 && unsigned > 0 && strings < 0 && nan && "IllegalArgumentException".equals(refused);
+        });
         // The frame stacks of threads Java starts: two thousand calls deep on a thread of the default size, twenty thousand
         // on one that asked for 16 MB, and a recursion without end the StackOverflowError it is on Android, caught there.
         step("thread-stack", () -> {
