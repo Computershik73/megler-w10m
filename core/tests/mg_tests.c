@@ -1096,6 +1096,12 @@ static void test_syscall_fds(const char *scratch)
     u8 b = 0;
     u64 count = 0, one = 1;
     u64 event[2] = { 1 /* EPOLLIN */, 7 }, got[2] = { 0, 0 };   /* ARM's epoll_event: events, then data at 8 */
+    /* syscall()'s arguments are longs, addresses among them, as on the guest's ARM: a long holds an address only where
+       both are 32 bits (Windows' x64 build has longs of 32 bits and addresses of 64). */
+    if (sizeof(long) < sizeof(void *)) {
+        say("syscall() by number: left out, a long does not hold an address on this build");
+        return;
+    }
     say("syscall() by number: pipe2, eventfd2, eventfd, epoll_create1, epoll_ctl, epoll_wait");
     CHECK(sys && close_ && write_ && read_);
     if (!sys || !close_ || !write_ || !read_) return;
