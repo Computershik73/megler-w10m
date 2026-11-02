@@ -496,8 +496,19 @@ static char *synthetic(const char *g, size_t *size)
         tb_add(&t, "%s", g_package);
         t.n++;                 /* the terminating NUL is part of the file */
     } else if (!strcmp(g, "/proc/self/status")) {
+        /* The memory lines as the kernel writes them: what the process uses (Windows' count of it) is its resident and
+           anonymous size, and its high-water mark the most it has been seen to use. Google Play services' memory metric
+           reads VmHWM, and "failed to find: VmHWM" when it was not there (package 576). */
+        static volatile u32 hwm_kb;
+        u32 rss = (u32)(mg_mem_usage() >> 10), hwm;
+        if (rss > hwm_kb) hwm_kb = rss;
+        hwm = hwm_kb > rss ? hwm_kb : rss;
         tb_add(&t, "Name:\t%.15s\nState:\tR (running)\nTgid:\t4242\nPid:\t4242\nPPid:\t1\nTracerPid:\t0\nUid:\t10100\t10100\t10100\t10100\n"
-                   "Gid:\t10100\t10100\t10100\t10100\nVmRSS:\t%u kB\nThreads:\t1\n", g_package, (unsigned)(mg_mem_usage() >> 10));
+                   "Gid:\t10100\t10100\t10100\t10100\n", g_package);
+        tb_add(&t, "VmPeak:\t%8u kB\nVmSize:\t%8u kB\nVmLck:\t%8u kB\nVmPin:\t%8u kB\nVmHWM:\t%8u kB\nVmRSS:\t%8u kB\n"
+                   "RssAnon:\t%8u kB\nRssFile:\t%8u kB\nRssShmem:\t%8u kB\nVmData:\t%8u kB\nVmStk:\t%8u kB\nVmExe:\t%8u kB\n"
+                   "VmLib:\t%8u kB\nVmPTE:\t%8u kB\nVmPMD:\t%8u kB\nVmSwap:\t%8u kB\nThreads:\t1\n",
+               hwm, rss, 0u, 0u, hwm, rss, rss, 0u, 0u, rss, 136u, 20u, 0u, 0u, 0u, 0u);
     } else if (!strcmp(g, "/proc/stat")) {
         tb_add(&t, "cpu  100 0 100 10000 0 0 0 0 0 0\n");
         for (i = 0; i < cpus; i++) tb_add(&t, "cpu%d 100 0 100 10000 0 0 0 0 0 0\n", i);
