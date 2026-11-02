@@ -3065,10 +3065,18 @@ bool mg_sock_set(mg_sock *k, int option, int value, int *err)
          * Linux's SO_REUSEADDR lets a server bind a port that connections of
          * its last run still hold in TIME_WAIT, which Windows allows without
          * being asked. Windows' own lets a second socket take a port another
-         * one is listening on, which Linux's never does: it is kept here and
-         * not passed on.
+         * one is listening on, which Linux's never does: for a stream it is
+         * kept here and not passed on. For datagrams the two are one: sockets
+         * that all ask for it share a port, as multicast receivers do. Google
+         * Play services' mDNS discovery (Cast's) binds 5353, which another
+         * socket on the phone holds, and failed with EADDRINUSE (YouTube, 576).
          */
         k->reuseaddr = value != 0;
+        if (k->type != MG_SOCK_DGRAM) return true;
+        if (setsockopt(k->s, SOL_SOCKET, SO_REUSEADDR, p, len) != 0) {
+            *err = option_err(option, WSAGetLastError());
+            return false;
+        }
         return true;
     }
     if (!(name = option_of(option, &level))) {
