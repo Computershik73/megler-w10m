@@ -117,8 +117,9 @@ public:
     /// An APK (or a bundle) opened in Megler from the phone's file manager: installed as importApk installs a picked one,
     /// once the user says yes in Material's dialog.
     void installApkFile(winrt::Windows::Storage::StorageFile const& file);
-    /// An APK at a path of Megler's own that an Android app (`from`, its name) asked to install: likewise, after a yes.
-    void installApkPath(const std::wstring& path, const std::string& name, const std::string& from);
+    /// An APK at a path of Megler's own that an Android app (`from`, its name) asked to install: likewise, after a yes. Once
+    /// the Device Portal has been asked (`portalAsked`), when it was not on.
+    void installApkPath(const std::wstring& path, const std::string& name, const std::string& from, bool portalAsked = false);
     /// Another app the phone has that an Android app (`from`, its name) asked to uninstall: after a yes, its own package and
     /// Megler's copy of it go; a no is told to the app that asked (library/PhoneAppsList.h).
     void uninstallApp(const std::string& package, const std::string& from);

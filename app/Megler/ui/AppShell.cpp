@@ -908,8 +908,8 @@ void AppShell::installApkFile(winrt::Windows::Storage::StorageFile const& file) 
             });
 }
 
-void AppShell::installApkPath(const std::wstring& path, const std::string& name, const std::string& from) {
-    shellLog::write("import: " + from + " asks to install " + name + " (" + narrow(path) + ")");
+void AppShell::installApkPath(const std::wstring& path, const std::string& name, const std::string& from, bool portalAsked) {
+    if (!portalAsked) shellLog::write("import: " + from + " asks to install " + name + " (" + narrow(path) + ")");
     /*
      * An APK an app's own package handed over (the shared folder's incoming\, player/SystemHost.cpp) goes once its request is
      * answered, whatever the answer: the library has a copy of its own (or its base and splits) by then, and an app that
@@ -920,7 +920,21 @@ void AppShell::installApkPath(const std::wstring& path, const std::string& name,
     const auto drop = [path, handed] {
         if (handed) files::remove(path);
     };
-    // Nothing is installed while the Device Portal is off: the app that asked is told so, and the shell says how to turn it on.
+    /*
+     * Nothing is installed while the Device Portal is off. Megler started or woken by an app's request has not asked the
+     * portal yet, or asked it long ago: it is asked first, and the request goes on once it answers, the app's installer
+     * session waiting for the outcome. Only a portal that does not answer then has the app that asked told so, and the
+     * shell say how to turn it on. Woken by Play Store's request for WhatsApp, after Play Store's request to uninstall the
+     * one installed before had started it, Megler answered at once that the portal "has not answered yet" (576).
+     */
+    if (separateApps::portal() != separateApps::Portal::on && !portalAsked) {
+        shellLog::write("import: " + name + " waits for the Device Portal's answer");
+        std::weak_ptr<AppShell> weak = weak_from_this();
+        separateApps::askPortal(*this, [weak, path, name, from] {
+            if (auto self = weak.lock()) self->installApkPath(path, name, from, true);
+        });
+        return;
+    }
     if (separateApps::portal() != separateApps::Portal::on) {
         const std::string why = separateApps::portal() == separateApps::Portal::off ? separateApps::portalProblem() : "it has not answered yet";
         phoneAppsList::installOutcome(name, "failed", "Not installed: Megler installs through the phone's Device Portal, which did not answer (" + why +

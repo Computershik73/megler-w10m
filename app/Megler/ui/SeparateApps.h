@@ -13,6 +13,7 @@
 
 #include "shell/AppPackage.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -62,6 +63,9 @@ std::string working();
 /// before it has been.
 enum class Portal { unknown, on, off };
 Portal portal();
+/// The portal asked again (or the asking under way waited for), and `then` called on the UI thread once it has answered or
+/// failed to: portal() says which. UI thread.
+void askPortal(AppShell& shell, std::function<void()> then);
 /// Whether an install may begin: only with the Device Portal on (the owner's wish, 2026-11-02 -- without it an install went
 /// as far as making the package and then failed). Otherwise the shell says how to turn it on, the portal is asked again for
 /// the next try, and false. UI thread.
