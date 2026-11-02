@@ -53,6 +53,8 @@ std::wstring serviceApk(bool microg = false);
 bool hasMicroG();
 /// microG's GmsCore.apk: the one registered by microG's own package, else the one published in the shared folder; empty when none.
 std::wstring microgApk();
+/// Whether Google's own Google Play services is installed as an app of its own (registered for the apps to start with).
+bool hasGoogleServices();
 std::wstring gsfApk();
 
 /// An app's own package, before its app starts: the app's private files that Megler handed over when it made the package

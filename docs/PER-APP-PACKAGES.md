@@ -194,6 +194,29 @@ shared folder as its storage, as an app's own package does. What it copied
 stays in LocalState. From then on the handover of an app's data (below) takes
 the private files alone: its part of the storage is the app's already.
 
+### What has to be there first
+
+Two things are asked for before anything else (the owner's wish, 2026-11-02):
+
+- **The Device Portal on.** Megler installs every app's package, Update All's and
+  its own update through the phone's Device Portal, and without it an install
+  went as far as making the package and then failed. Nothing is installed while
+  the portal has not answered (`separateApps::requirePortal`): picking an APK,
+  opening one, an app's request (Play Store's: it is told "Not installed: ...
+  the Device Portal is off"), Install and Update All each say how to turn it on
+  (Settings › Update & security › For developers: Developer mode, then Device
+  Portal, with a button that opens that page) and ask the portal again for the
+  next try.
+- **Google's own Google Play services before Google Play Store.** Play Store
+  starts, in its own package or when an app asks for it, only once Google's own
+  Google Play services, which Megler has built in, is installed as an app of its
+  own (`AppShell::playStoreCanStart`, `appPackage::hasGoogleServices`); until
+  then it says so, with the way to Google Play services' page in the Library
+  (from Play Store's own package: Megler opened with `megler:library`). And it
+  starts with Google's own whatever the setting of Google services says
+  (`player/Session.cpp`): with microG's, or with none, users' Play Store had no
+  Android ID and its front page said "Server error".
+
 ## A separate app, made on the phone
 
 `shell/AppPackage.cpp` makes an app's package, on a worker thread:

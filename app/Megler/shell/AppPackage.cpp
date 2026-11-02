@@ -674,6 +674,8 @@ std::wstring serviceApk(bool microg) {
 
 bool hasMicroG() { return !microgApk().empty(); }
 
+bool hasGoogleServices() { return !registeredApk(L"gms-package.txt").empty(); }
+
 std::wstring gsfApk() {
     const auto shared = sharedFolder();
     if (shared.empty()) return {};

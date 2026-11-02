@@ -58,4 +58,13 @@ void updateAll(AppShell& shell);
 /// What is going on, "Updating Instagram (2 of 3): Packing…"; empty when nothing is.
 std::string working();
 
+/// The phone's Device Portal, through which Megler installs: on once it answered, off when it could not be asked, unknown
+/// before it has been.
+enum class Portal { unknown, on, off };
+Portal portal();
+/// Whether an install may begin: only with the Device Portal on (the owner's wish, 2026-11-02 -- without it an install went
+/// as far as making the package and then failed). Otherwise the shell says how to turn it on, the portal is asked again for
+/// the next try, and false. UI thread.
+bool requirePortal(AppShell& shell);
+
 } // namespace megler::app::ui::separateApps

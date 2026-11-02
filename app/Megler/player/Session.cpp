@@ -202,11 +202,14 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     shellLog::write(format("session: starting %s (%s%s) at %dx%d, %d dpi", apk.id.c_str(), apk.report.package.c_str(),
                            apk.report.splits.empty() ? "" : format(", with %u splits", unsigned(apk.report.splits.size())).c_str(), width, height,
                            densityDpi));
-    std::thread([window, audio, width, height, densityDpi] {
+    // Google Play Store with Google's own Google Play services always, which it waits for to be installed (AppShell::playStoreCanStart):
+    // with microG's its front page had no Android ID ("Server error").
+    const bool playStore = apk.report.package == "com.android.vending";
+    std::thread([window, audio, width, height, densityDpi, playStore] {
         megler_run_config config = {};
         config.apk_path = gApkPath.c_str();
         // Google's own Google Play services, or microG's where the app (or Megler) is set to it (ui/SettingsScreen.cpp).
-        const bool microg = settings::get(settings::googleServices, "") == "microg";
+        const bool microg = !playStore && settings::get(settings::googleServices, "") == "microg";
         const std::string servicePath = narrow(appPackage::serviceApk(microg));
         // Said as what was chosen: Google's own when its package is installed, else microG's even where the setting is Google's
         // own (the log said "Google's own" for microG then, and a user's Play Store failed with microG's settings).
