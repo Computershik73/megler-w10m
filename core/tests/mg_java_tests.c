@@ -1848,6 +1848,9 @@ static int run_natives(void)
     char want[120];
     memset(pic, 0, sizeof(pic));
     expect_line("I/NativesTest: onCreate", &at, 120);
+    /* Its activity names its library with android.app.lib_name, as Qt's does, and the library has no NativeActivity entry:
+       the Java driver runs it, not the NativeActivity one. */
+    CHECK(find_line("run: megler.test.natives (", 0) >= 0 && find_line(") with the java driver", 0) >= 0);
     /* The library's own line (__android_log_print), from its JNI_OnLoad: run when the class that loads it is first used. */
     expect_line("I/NativesLib: JNI_OnLoad call 1", &at, 60);
     for (i = 0; i < (int)MG_COUNT(steps); i++) {

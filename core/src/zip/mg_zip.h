@@ -40,6 +40,8 @@ const mg_zip_entry *mg_zip_find(const mg_zip *z, const char *name);
 u8 *mg_zip_read(const mg_zip *z, const mg_zip_entry *e, size_t limit, size_t *size);
 /* Part of an entry into a caller's buffer; false when the range is outside it or it does not inflate. */
 bool mg_zip_read_into(const mg_zip *z, const mg_zip_entry *e, u8 *out, size_t size);
+/* Its first `want` bytes (all of it when it is smaller), malloc'd: inflated no further than they reach. NULL when damaged. */
+u8 *mg_zip_read_head(const mg_zip *z, const mg_zip_entry *e, size_t want, size_t *size);
 /* Where a stored entry's bytes are in the file; false for a deflated one (or a damaged one). */
 bool mg_zip_stored_at(const mg_zip *z, const mg_zip_entry *e, u64 *offset);
 /* Where an entry's bytes are in the file, as they are there (deflated, for a deflated one: e->csize of them); false when it is damaged. */

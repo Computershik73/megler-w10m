@@ -665,6 +665,91 @@ static void abi_add(mg_apk_info *info, const char *name)
     if (info->nabis < (int)MG_COUNT(info->abis)) mg_strlcpy(info->abis[info->nabis++], name, sizeof(info->abis[0]));
 }
 
+static const u8 *elf_at(const u8 *d, size_t n, u32 vaddr, u32 need);
+
+/* How many dynamic symbols: the SysV hash table says outright; the GNU one by its last chain. 0 when neither says. */
+static u32 elf_symbol_count(const u8 *d, size_t n, u32 hash, u32 gnu)
+{
+    u32 nsyms = 0;
+    if (hash) {
+        const u8 *h = elf_at(d, n, hash, 8);
+        if (h) nsyms = mg_rd32(h + 4);
+    }
+    if (!nsyms && gnu) {
+        const u8 *g = elf_at(d, n, gnu, 16);
+        if (g) {
+            u32 nb = mg_rd32(g), symoff = mg_rd32(g + 4), bloom = mg_rd32(g + 8), top = 0, b;
+            const u8 *buckets = nb < 0x1000000 && bloom < 0x1000000 ? elf_at(d, n, gnu + 16 + bloom * 4, nb * 4) : NULL;
+            if (buckets) {
+                for (b = 0; b < nb; b++)
+                    if (mg_rd32(buckets + b * 4) > top) top = mg_rd32(buckets + b * 4);
+                nsyms = symoff;
+                if (top >= symoff) {
+                    for (;; top++) {
+                        const u8 *chain = elf_at(d, n, gnu + 16 + bloom * 4 + nb * 4 + (top - symoff) * 4, 4);
+                        if (!chain) break;
+                        if (mg_rd32(chain) & 1) {
+                            nsyms = top + 1;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return nsyms;
+}
+
+/*
+ * Whether the library android.app.lib_name names exports NativeActivity's entry -- android.app.func_name, else
+ * ANativeActivity_onCreate --, looked for in the dynamic symbols of its first 32 MB, where an ELF file keeps them: 1 yes,
+ * 0 no, -1 not known (no such library, not ARM's ELF, its tables past what was read).
+ */
+static int native_entry(mg_zip *const *zips, int nzips, const mg_apk_info *info)
+{
+    char path[160];
+    const char *want = info->func_name[0] ? info->func_name : "ANativeActivity_onCreate";
+    int k, found = -1;
+    snprintf(path, sizeof(path), "lib/%s/lib%s.so", info->abi, info->native_library);
+    for (k = 0; k < nzips && found < 0; k++) {
+        const mg_zip_entry *e = mg_zip_find(zips[k], path);
+        size_t n = 0;
+        u8 *d = e ? mg_zip_read_head(zips[k], e, 32u << 20, &n) : NULL;
+        const Elf32_Ehdr *eh = (const Elf32_Ehdr *)d;
+        if (d && n > sizeof(Elf32_Ehdr) && !memcmp(d, "\177ELF", 4) && d[4] == 1 && eh->e_machine == EM_ARM &&
+            eh->e_phentsize == sizeof(Elf32_Phdr) && eh->e_phoff <= n && (size_t)eh->e_phnum * sizeof(Elf32_Phdr) <= n - eh->e_phoff) {
+            const Elf32_Phdr *ph = (const Elf32_Phdr *)(d + eh->e_phoff);
+            const Elf32_Dyn *dyn = NULL;
+            u32 ndyn = 0, symtab = 0, strtab = 0, strsz = 0, hash = 0, gnu = 0, nsyms, j;
+            int i;
+            for (i = 0; i < eh->e_phnum; i++)
+                if (ph[i].p_type == PT_DYNAMIC && ph[i].p_offset <= n && ph[i].p_filesz <= n - ph[i].p_offset) {
+                    dyn = (const Elf32_Dyn *)(d + ph[i].p_offset);
+                    ndyn = ph[i].p_filesz / sizeof(Elf32_Dyn);
+                }
+            for (j = 0; j < ndyn && dyn[j].d_tag != DT_NULL; j++) {
+                if (dyn[j].d_tag == DT_SYMTAB) symtab = dyn[j].d_val;
+                if (dyn[j].d_tag == DT_STRTAB) strtab = dyn[j].d_val;
+                if (dyn[j].d_tag == DT_STRSZ) strsz = dyn[j].d_val;
+                if (dyn[j].d_tag == DT_HASH) hash = dyn[j].d_val;
+                if (dyn[j].d_tag == DT_GNU_HASH) gnu = dyn[j].d_val;
+            }
+            nsyms = strtab && strsz ? elf_symbol_count(d, n, hash, gnu) : 0;
+            if (symtab && nsyms && nsyms < 4000000) {
+                const char *str = (const char *)elf_at(d, n, strtab, strsz);
+                const Elf32_Sym *sym = (const Elf32_Sym *)elf_at(d, n, symtab, nsyms * sizeof(Elf32_Sym));
+                if (str && sym && str[strsz - 1] == 0) {
+                    found = 0;
+                    for (j = 1; j < nsyms && !found; j++)
+                        if (sym[j].st_name < strsz && sym[j].st_shndx != SHN_UNDEF && !strcmp(str + sym[j].st_name, want)) found = 1;
+                }
+            }
+        }
+        free(d);
+    }
+    return found;
+}
+
 /*
  * What the app is and whether it runs, from its manifest and the native libraries of all its APKs (zips[0] the base, the
  * rest its splits). `bundle_abis` are the ABIs of the splits that the unpacking of a bundle left out: they are the app's,
@@ -710,7 +795,15 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
      */
     else if (w.has[L_FLUTTER] && info->activity[0] && mg_zip_find(zips[0], "classes.dex")) strcpy(info->engine, "java");
     else if (w.has[L_FLUTTER]) strcpy(info->engine, "flutter");
-    else if (!strcmp(info->activity, "android.app.NativeActivity") || (!info->has_code && w.count) || info->native_library[0]) strcpy(info->engine, "native-activity");
+    /*
+     * android.app.lib_name on an activity of the app's own is a subclass of NativeActivity's -- unless the library has no
+     * NativeActivity entry: then the activity is one that loads the library and starts it through JNI itself, and the app
+     * is a Java one. Qt's QtActivity names its library so: 2GIS (libv4android.so, 277 MB) was taken for a NativeActivity,
+     * and its start ended in "has no ANativeActivity_onCreate: it is not a NativeActivity library" (package 576).
+     */
+    else if (!strcmp(info->activity, "android.app.NativeActivity") || (!info->has_code && w.count) ||
+             (info->native_library[0] && !(info->has_code && info->activity[0] && mg_zip_find(zips[0], "classes.dex") && native_entry(zips, nzips, info) == 0)))
+        strcpy(info->engine, "native-activity");
     else if (w.has[L_SDL]) strcpy(info->engine, "sdl");
     /*
      * libGDX is a Java app as well: its AndroidApplication is an activity that draws with OpenGL ES on a GLSurfaceView, and
@@ -1067,33 +1160,7 @@ static void lib_report_one(const mg_zip_entry *e, void *user)
                         first_need = false;
                         mg_jstr(j, str + dyn[k].d_val);
                     }
-                    /* How many symbols: the SysV table says outright; the GNU one by its last chain. */
-                    if (hash) {
-                        const u8 *h = elf_at(d, n, hash, 8);
-                        if (h) nsyms = mg_rd32(h + 4);
-                    }
-                    if (!nsyms && gnu) {
-                        const u8 *g = elf_at(d, n, gnu, 16);
-                        if (g) {
-                            u32 nb = mg_rd32(g), symoff = mg_rd32(g + 4), bloom = mg_rd32(g + 8), top = 0, b;
-                            const u8 *buckets = nb < 0x1000000 && bloom < 0x1000000 ? elf_at(d, n, gnu + 16 + bloom * 4, nb * 4) : NULL;
-                            if (buckets) {
-                                for (b = 0; b < nb; b++)
-                                    if (mg_rd32(buckets + b * 4) > top) top = mg_rd32(buckets + b * 4);
-                                nsyms = symoff;
-                                if (top >= symoff) {
-                                    for (;; top++) {
-                                        const u8 *chain = elf_at(d, n, gnu + 16 + bloom * 4 + nb * 4 + (top - symoff) * 4, 4);
-                                        if (!chain) break;
-                                        if (mg_rd32(chain) & 1) {
-                                            nsyms = top + 1;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    nsyms = elf_symbol_count(d, n, hash, gnu);
                     if (symtab && nsyms && nsyms < 4000000) {
                         const Elf32_Sym *sym = (const Elf32_Sym *)elf_at(d, n, symtab, nsyms * sizeof(Elf32_Sym));
                         for (k = 1; sym && k < nsyms; k++) {

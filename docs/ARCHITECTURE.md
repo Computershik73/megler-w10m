@@ -1084,7 +1084,14 @@ package name, the data directories, the display, `Build`.
 
 A **driver** (`drivers/`) plays the part of one kind of app's Java shell. There is
 one so far: `NativeActivity`, which is what Android itself provides for apps with no
-Java (`android:hasCode="false"`, or `android.app.lib_name` in the manifest). It
+Java (`android:hasCode="false"`, or `android.app.lib_name` in the manifest). An
+activity of the app's own that names its library with `android.app.lib_name` is
+taken for NativeActivity's subclass only when the library exports its entry
+(`ANativeActivity_onCreate`, or `android.app.func_name`), looked for in the
+dynamic symbols of its first 32 MB (`native_entry`, `apk/mg_apk.c`): Qt's
+QtActivity names its library so and starts it through JNI itself, and 2GIS
+(`libv4android.so`, 277 MB) ended in "has no ANativeActivity_onCreate" until it
+was taken for the Java app it is (package 576). It
 loads the library, calls `ANativeActivity_onCreate`, and makes the activity's
 callbacks in the framework's order on a thread that stands for Android's main
 thread. Apps built on `android_native_app_glue` run on top of that.

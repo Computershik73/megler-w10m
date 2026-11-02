@@ -242,6 +242,52 @@ bool mg_zip_read_into(const mg_zip *z, const mg_zip_entry *e, u8 *out, size_t si
     return false;
 }
 
+u8 *mg_zip_read_head(const mg_zip *z, const mg_zip_entry *e, size_t want, size_t *size)
+{
+    enum { PIECE = 256 * 1024 };
+    u64 src = 0, left;
+    size_t n = e->usize < want ? (size_t)e->usize : want;
+    u8 *out, *in;
+    z_stream s;
+    int r = Z_OK;
+    if (!entry_data(z, e, &src) || e->usize > 0x7FFFFFF0u || e->csize > 0x7FFFFFF0u || !(out = (u8 *)malloc(n + 1))) return NULL;
+    out[n] = 0;
+    if (size) *size = n;
+    if (e->method == 0 && e->csize == e->usize) {
+        if (mg_zip_pread(z, src, out, n)) return out;
+        free(out);
+        return NULL;
+    }
+    if (e->method != 8 || !(in = (u8 *)malloc(PIECE))) {
+        free(out);
+        return NULL;
+    }
+    memset(&s, 0, sizeof(s));
+    if (inflateInit2(&s, -MAX_WBITS) != Z_OK) {
+        free(in);
+        free(out);
+        return NULL;
+    }
+    s.next_out = out;
+    s.avail_out = (uInt)n;
+    left = e->csize;
+    while (r == Z_OK && s.avail_out) {
+        size_t k = (size_t)(left > PIECE ? PIECE : left);
+        if (!k || !mg_zip_pread(z, src, in, k)) break;
+        src += k;
+        left -= k;
+        s.next_in = in;
+        s.avail_in = (uInt)k;
+        r = inflate(&s, Z_NO_FLUSH);
+        if (r == Z_BUF_ERROR && !s.avail_out) r = Z_OK;
+    }
+    inflateEnd(&s);
+    free(in);
+    if (s.total_out == n) return out;
+    free(out);
+    return NULL;
+}
+
 u8 *mg_zip_read(const mg_zip *z, const mg_zip_entry *e, size_t limit, size_t *size)
 {
     u8 *out;
