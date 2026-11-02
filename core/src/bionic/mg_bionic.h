@@ -90,6 +90,9 @@ enum {
 };
 
 int *mg_errno_ptr(void);
+/* argv as the kernel lays it out for a process, envp (empty) and the auxiliary vector after it: what a library's init
+   functions are given (mg_libc_misc.c). */
+char **mg_bionic_initial_argv(void);
 /* ARM EABI kernel convention: negative errno in r0, guest errno unchanged. */
 u32 mg_bionic_syscall_raw(const u32 *regs);
 void mg_set_errno(int guest_errno);

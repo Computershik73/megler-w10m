@@ -2690,6 +2690,9 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_aaudio")(), 2);
     CHECK_INT(FN(lib, int (*)(void), "t_cpuclock")(), 6);
     CHECK_INT(FN(lib, int (*)(const char *), "t_ffcalls")(buf), 7);
+    /* Go's runtime, as a library: its init function finds the auxiliary vector past envp, and its calls by number go. */
+    CHECK_INT(FN(lib, int (*)(void), "t_init_auxv")(), 1);
+    CHECK_INT(FN(lib, int (*)(const char *), "t_go_calls")(buf), 0);
     CHECK_INT(FN(lib, int (*)(void), "t_ifunc")(), 205);
     CHECK_INT(FN(lib, int (*)(void), "t_chrome_cmdline")(), 3);
     CHECK_INT(FN(lib, int (*)(const char *), "t_flock")(buf), 3);

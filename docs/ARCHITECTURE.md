@@ -112,10 +112,9 @@ thread. Slot 2 is `TLS_SLOT_APP`, the app's own from Android 10 on, and empty on
 every thread until the app sets it: Go's runtime keeps its `g` there when the
 device says API 29 or later, which a Java app is told here (34). It held the
 thread's errno, as Android 9 had it there, and a Java thread calling into Go
-found a `g` that was no `g`: WhatsApp's `libgojni.so` ended at its start reading
-`g.m` (0x18) with no `g` (578). errno is the thread's own record's, through
-`__errno`. The guest test `t_tls_app_slot` reads the slot as Go does, on this
-thread and a new one.
+found the errno's address where Go looks for its `g`. errno is the thread's own
+record's, through `__errno`. The guest test `t_tls_app_slot` reads the slot as
+Go does, on this thread and a new one.
 
 *Proven:* under qemu, with glibc's thread pointer standing where the TEB will be:
 initial-exec TLS in a Thumb library (four rewritten reads), `__tls_get_addr` in an
@@ -183,6 +182,25 @@ with arguments in `r0` through `r5` to the bionic syscall shims, writes the raw
 result (negative Linux errno on failure) to `r0`, and resumes after the instruction.
 Guest errno, sp and the other registers are preserved. Unknown numbers return
 `-ENOSYS` rather than entering the host kernel.
+
+**Go's runtime**, loaded as a library (WhatsApp's `libgojni.so`, Psiphon's
+tunnel core), has no libc calls of its own on Linux and calls the kernel by
+number for everything: these come here. It installs handlers for the faults'
+signals with `rt_sigaction` and ends at once when one is refused ("sigaction
+failed", read as an access violation at 0x18: `g.m` with no `g` yet): taken,
+as libc's `sigaction` takes them, and never called, since a fault is this
+layer's. The old `sigaction`'s number keeps refusing them, for mozglue (below,
+"syscall()"). Its sleeps (`nanosleep`: without it sysmon spun), its threads'
+signal masks (`rt_sigprocmask`, the kernel's 64-bit sets), `madvise`,
+`mincore`, its network poller's `epoll_pwait` (without which it ends:
+"netpoll failed"), `fcntl`, `exit_group` and `fallocate` are answered too.
+And loaded as a library it finds the auxiliary vector past `envp`, as the kernel
+lays them out on a process's first stack: a library's init functions get
+`argv`, an empty `envp` and the vector (the page size, `AT_RANDOM`'s 16 bytes,
+the hardware's capabilities) in one block (`mg_bionic_initial_argv`), where
+they got a separate `envp` and whatever came after it. The guest tests
+`t_init_auxv` (an init function reading them as Go does) and `t_go_calls`,
+and `t_ffcalls` for the two sigactions.
 
 The Thumb scanner recognises immediate/register moves and literal loads into
 `r7` immediately before `svc 0`; the ARM scanner recognises unconditional
