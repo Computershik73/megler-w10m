@@ -239,17 +239,6 @@ public class Main extends Activity {
                 null, null, null);
             check(checkin != null, "microG check-in provider answers");
             checkin.close();
-            // microG's device registration is on unless its settings turned it off (MicroG.registrationOn): Play Store has no
-            // Android ID without a check-in.
-            java.io.File microgPrefs = new java.io.File("/data/megler-services/" + GMS + "/shared_prefs/" + GMS + "_preferences.xml");
-            String saved = "";
-            try (java.io.FileInputStream in = new java.io.FileInputStream(microgPrefs)) {
-                byte[] all = new byte[(int) microgPrefs.length()];
-                int n = 0;
-                while (n < all.length) { int r = in.read(all, n, all.length - n); if (r < 0) break; n += r; }
-                saved = new String(all, 0, n, "UTF-8");
-            } catch (java.io.IOException e) { saved = e.toString(); }
-            check(saved.contains("checkin_enable_service") && saved.contains("true"), "microG's device registration is on: " + saved.replace((char) 10, ' '));
             android.net.Uri global = android.provider.Settings.Global.CONTENT_URI;
             android.content.ContentValues setting = new android.content.ContentValues();
             setting.put("name", "megler_checkin_probe");
@@ -437,6 +426,13 @@ public class Main extends Activity {
                 check(gmsInfo.uid != android.os.Process.myUid() && authenticator != null && authenticator.serviceInfo.applicationInfo.uid == gmsInfo.uid
                       && google != null && "com.google.android.gms".equals(google[0]) && !java.util.Arrays.asList(google).contains(getPackageName()),
                       "GmsCore's uid " + gmsInfo.uid + ": " + java.util.Arrays.toString(google));
+                // microG's device registration is on unless its settings turned it off (MicroG.registrationOn, at microG's boot,
+                // which its first service made here has had): Play Store has no Android ID without a check-in.
+                // (Read as microG reads it: its default preferences, through its package's context -- they are in the services' shared
+                // folder, or in the app's own data where there is none.)
+                android.content.SharedPreferences microgPrefs = createPackageContext(GMS, CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY)
+                        .getSharedPreferences(GMS + "_preferences", MODE_PRIVATE);
+                check(microgPrefs.getBoolean("checkin_enable_service", false), "microG's device registration is on: " + microgPrefs.getAll());
                 unbindService(this);
                 done = true;
                 Log.i("MicroGTest", "PASS isolated GmsCore broker, duplicate classes, reflection, arrays, advertising ID, storage and resources, dynamite modules, accounts, GCM's messenger and receiver context");
