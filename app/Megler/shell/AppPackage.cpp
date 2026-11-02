@@ -12,6 +12,8 @@
 
 #include <winrt/Windows.Graphics.Imaging.h>
 
+#include <atomic>
+
 namespace megler::app::appPackage {
 
 using namespace winrt;
@@ -919,6 +921,10 @@ void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
     }(path, std::move(done));
 }
 
+static std::atomic<bool> gSelfUpdating{false};
+
+bool selfUpdating() { return gSelfUpdating; }
+
 void installCopiedUpdate() {
     if (isSingleApp()) return;
     std::thread([] {
@@ -973,6 +979,11 @@ void installCopiedUpdate() {
             made.identity = "Megler " + best;
             shellLog::write("update: Megler " + best + " found in Pictures\\Megler (this is " + versionString() +
                             "): installed through the Device Portal, which closes this Megler");
+            // The screen stays on while the package goes: a phone that locks suspends Megler, and the try has no result.
+            struct Updating {
+                Updating() { gSelfUpdating = true; }
+                ~Updating() { gSelfUpdating = false; }
+            } updating;
             const PortalResult result = installThroughPortal(made, [](const std::string& step) { shellLog::write("update: " + step); });
             shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
             // A portal that could not be reached, or dropped the connection while the package went (0x80072eff, 512), said nothing

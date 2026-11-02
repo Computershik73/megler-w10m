@@ -101,6 +101,8 @@ std::string meglerVersion();
 /// closes this Megler to replace it. Tried once for each version (LocalState\update-tried-<version>). Megler's own package
 /// only, not an app's. Off the UI thread: started on a thread of its own.
 void installCopiedUpdate();
+/// Whether installCopiedUpdate is sending the newer Megler to the portal now (the screen is kept on meanwhile: ui/AppShell).
+bool selfUpdating();
 /// Megler: the Android files of older builds in the shared folder (<shared>\android\<version>, some 170 MB each) that no
 /// package in `installed` (the Device Portal's whole list) is of any more -- after Update All, every older build's. Slow:
 /// off the UI thread.

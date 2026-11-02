@@ -451,9 +451,13 @@ void AppShell::updateDisplayRequest() {
     // dims and locks after its timeout otherwise, and a locked phone
     // suspends us.
     const session::State state = session::snapshot().state;
+    // And while packages are installed: an app's own package made and installed (or updated, or uninstalled) through the
+    // portal, each of Update All's, and Megler's own update from Pictures\Megler. A phone that locks meanwhile suspends
+    // Megler, and the portal's upload ends with no result (the owner asked for it, 2026-11-02).
+    const bool installing = !separateApps::working().empty() || appPackage::selfUpdating();
     // And always, while Megler is in front, under the flag keep-screen-on (LocalState\flags): a phone left waiting for the
     // next package, which is copied to it and installed from it, or for a test, is not to lock meanwhile.
-    const bool wanted = state == session::State::starting || state == session::State::running || checks::running() ||
+    const bool wanted = state == session::State::starting || state == session::State::running || checks::running() || installing ||
                         files::exists(platform::localStateDirectory() + L"\\flags\\keep-screen-on");
     if (wanted == displayRequestActive_) return;
     try {
@@ -462,7 +466,8 @@ void AppShell::updateDisplayRequest() {
             displayRequest_.RequestActive();
         else
             displayRequest_.RequestRelease();
-        shellLog::write(wanted ? "display: keeping the screen on" : "display: screen timeout allowed again");
+        shellLog::write(wanted ? (installing ? "display: keeping the screen on while packages are installed" : "display: keeping the screen on")
+                               : "display: screen timeout allowed again");
     } catch (const hresult_error& e) {
         shellLog::write("display: DisplayRequest failed: " + narrow(e.message()));
     }
