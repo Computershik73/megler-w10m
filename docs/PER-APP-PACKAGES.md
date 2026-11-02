@@ -206,7 +206,10 @@ Two things are asked for before anything else (the owner's wish, 2026-11-02):
   the Device Portal is off"), Install and Update All each say how to turn it on
   (Settings › Update & security › For developers: Developer mode, then Device
   Portal, with a button that opens that page) and ask the portal again for the
-  next try.
+  next try. The portal's Authentication must be off there too: Megler asks the
+  portal on the phone itself and sends no user name and password, and a portal
+  that asks for them answers 401, which Megler says as "The Device Portal asks
+  for a user name and password: turn its Authentication off ...".
 - **Google's own Google Play services before Google Play Store.** Play Store
   starts, in its own package or when an app asks for it, only once Google's own
   Google Play services, which Megler has built in, is installed as an app of its

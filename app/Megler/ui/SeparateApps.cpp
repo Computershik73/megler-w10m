@@ -389,7 +389,9 @@ bool requirePortal(AppShell& shell) {
     shellLog::write("separate apps: nothing installed while the Device Portal is off: " + why);
     shell.confirm("Turn On the Device Portal",
                   "Megler installs apps through the phone's Device Portal, which did not answer (" + why +
-                      "). Turn it on in Settings › Update & security › For developers: Developer mode, then Device Portal. Then try again.",
+                      "). In Settings › Update & security › For developers, turn on Developer mode, then Device Portal, and turn the "
+                      "portal's Authentication off: Megler asks the portal on this phone itself, without a user name and password. "
+                      "Then try again.",
                   "Open Settings", false,
                   [] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(L"ms-settings:developers")); });
     return false;

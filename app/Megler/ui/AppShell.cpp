@@ -923,7 +923,8 @@ void AppShell::installApkPath(const std::wstring& path, const std::string& name,
     // Nothing is installed while the Device Portal is off: the app that asked is told so, and the shell says how to turn it on.
     if (separateApps::portal() != separateApps::Portal::on) {
         const std::string why = separateApps::portal() == separateApps::Portal::off ? separateApps::portalProblem() : "it has not answered yet";
-        phoneAppsList::installOutcome(name, "failed", "Not installed: Megler installs through the phone's Device Portal, which is off (" + why + ").");
+        phoneAppsList::installOutcome(name, "failed", "Not installed: Megler installs through the phone's Device Portal, which did not answer (" + why +
+                                                        "). Turn it on, with its Authentication off, in Settings › Update & security › For developers.");
         separateApps::requirePortal(*this);
         drop();
         return;
