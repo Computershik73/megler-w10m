@@ -233,6 +233,24 @@ static void test_env(void)
         }
         CHECK(bound != NULL && !check());
     }
+    /* RegisterNatives on a subclass for a native method its superclass declares: bound there, as ART looks up the superclasses
+       (Reanimated registers NativeProxyCommon's installJSIBindings on NativeProxy; Discord drew nothing for the miss). */
+    {
+        struct { mg_addr name, sig, fn; } table[1];
+        mg_dvm_method *inherited = mg_dvm_find_method(mg_dvm_find_class("t/NativeBase"), "installBindings", "()V", false);
+        table[0].name = (mg_addr)"installBindings";
+        table[0].sig = (mg_addr)"()V";
+        table[0].fn = (mg_addr)0x4321;
+        if (sizeof(mg_addr) == 4) {
+            CHECK_INT(J(215, i32 (*)(ENV, mg_jobj *, const void *, i32))(E, find("t/NativeChild"), table, 1), 0);
+            CHECK(inherited && inherited->nat && inherited->nat->jni == (void *)(mg_addr)0x4321);
+            if (inherited && inherited->nat) {
+                inherited->nat->jni = NULL;
+                inherited->nat->bound = false;
+            }
+        }
+        CHECK(inherited != NULL && !check());
+    }
 
     /* A class no DEX file defines: the layer's own, implemented in C as before, and its objects are objects bytecode can hold. */
     mg_jni_register(k_thing);

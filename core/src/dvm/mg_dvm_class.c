@@ -1097,17 +1097,25 @@ mg_dvm_class *mg_dvm_foreign_class(const char *name, mg_jclass *jc)
     return c;
 }
 
+/*
+ * RegisterNatives' method: a native one of that name and signature of the class or, as ART looks, of its superclasses --
+ * Reanimated registers NativeProxyCommon's installJSIBindings on its subclass NativeProxy, and Discord's root component
+ * never drew for the UnsatisfiedLinkError (package 570).
+ */
 bool mg_dvm_native_registered(mg_dvm_class *c, const char *name, const char *sig, void *fn)
 {
     const char *iname = mg_dvm_intern(name), *isig = mg_dvm_intern(sig);
+    mg_dvm_class *k;
     int group, i;
-    for (group = 0; group < 2; group++) {
-        mg_dvm_method *list = group ? c->virt : c->direct;
-        int n = group ? c->nvirt : c->ndirect;
-        for (i = 0; i < n; i++) {
-            if (list[i].name != iname || list[i].sig != isig || !(list[i].flags & DVM_ACC_NATIVE)) continue;
-            mg_dvm_native_of(&list[i])->jni = fn;
-            return true;
+    for (k = c; k; k = k->super) {
+        for (group = 0; group < 2; group++) {
+            mg_dvm_method *list = group ? k->virt : k->direct;
+            int n = group ? k->nvirt : k->ndirect;
+            for (i = 0; i < n; i++) {
+                if (list[i].name != iname || list[i].sig != isig || !(list[i].flags & DVM_ACC_NATIVE)) continue;
+                mg_dvm_native_of(&list[i])->jni = fn;
+                return true;
+            }
         }
     }
     return false;
