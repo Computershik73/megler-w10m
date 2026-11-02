@@ -7,7 +7,8 @@
  * mg_sqlite.c compiles the amalgamation into the core with an operating
  * system layer of this core's own under it: files through the host layer
  * (mg_file), so that a database is the same file handled the same way on
- * every host, locks kept inside the process (an app is one process here), and
+ * every host, locks kept for the process's connections and taken on the file
+ * for other processes' (Google Play services' databases are every app's), and
  * mutexes that are the host layer's locks. Where it has not, everything here
  * compiles to nothing, mg_sqlite_available is false, and whoever wants a
  * database says so in the log (drivers/mg_java_sqlite.c).

@@ -343,6 +343,16 @@ bool mg_file_truncate(mg_file *f, u64 size, int *err);
 bool mg_file_sync(mg_file *f);
 bool mg_file_stat(mg_file *f, mg_stat *st);
 /*
+ * A range of a file's bytes locked for this handle, shared or `exclusive`, as SQLite locks a database: at once or not at all
+ * (false with *err MG_E_BUSY when another handle holds a lock there that conflicts -- of another process or of this one, each
+ * handle its own as Windows' are). A file system that has no such locks grants every one, and says nothing. Unlocking what
+ * is not locked does nothing.
+ */
+bool mg_file_lock(mg_file *f, u64 offset, u64 length, bool exclusive, int *err);
+void mg_file_unlock(mg_file *f, u64 offset, u64 length);
+/* Whether another handle holds a lock on part of the range: a test, which takes nothing (SQLite's xCheckReservedLock). */
+bool mg_file_locked_elsewhere(mg_file *f, u64 offset, u64 length);
+/*
  * A view of [offset, offset + size) of a file, read-only, backed by the file (not memory of the process's): NULL when the
  * host cannot make one. `base` is what mg_section_unmap takes, with the size mapped from it (the view begins at the host's
  * granularity below `offset`).

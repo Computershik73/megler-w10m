@@ -105,12 +105,22 @@ static const sqlite3_mutex_methods k_mutexes = { mutex_init, mutex_end, mutex_al
 /* ------------------------------------------------------------------ files */
 
 /*
- * The locks SQLite takes on a database file, kept here: there is one process,
- * and its connections to one file must still exclude each other as SQLite's
- * protocol says -- any number of readers (SHARED); one who means to write
- * (RESERVED) beside them; then, to write, that one alone (EXCLUSIVE), with no
- * new reader let in while it waits for the others to finish (PENDING). A
- * file is known by its path as SQLite gives it, which is always the full one.
+ * The locks SQLite takes on a database file, as its protocol has them: any
+ * number of readers (SHARED); one who means to write (RESERVED) beside them;
+ * then, to write, that one alone (EXCLUSIVE), with no new reader let in while
+ * it waits for the others to finish (PENDING). Two places keep them. This
+ * process's connections to a file are in a table here, the file known by its
+ * path as SQLite gives it, which is always the full one. And every connection
+ * takes them on its own file as byte-range locks, where SQLite's own layers
+ * take them (PENDING's byte at 1 GB, RESERVED's after it, then 510 bytes for
+ * the readers; sq_lock follows SQLite's own layers), which bind the
+ * connections of other processes: every app here runs Google Play services,
+ * whose databases are every app's (/data/megler-services), open in several
+ * processes at once, and an app suspended in the middle of a transaction
+ * keeps its locks. With the table alone, another app's connection took the
+ * journal of a transaction under way for an abandoned one and rolled it back,
+ * or wrote beside it; Phenotype's database had no table Packages in several
+ * apps' logs (package 576).
  */
 typedef struct sq_node {
     char *path;
@@ -215,41 +225,75 @@ static int sq_size(sqlite3_file *file, sqlite3_int64 *size)
     return SQLITE_OK;
 }
 
+/* Where the locks lie in the file: SQLite's own places (sqlite3PendingByte), past any page it reads or writes. */
+#define SQ_PENDING_BYTE 0x40000000u
+#define SQ_RESERVED_BYTE (SQ_PENDING_BYTE + 1)
+#define SQ_SHARED_FIRST (SQ_PENDING_BYTE + 2)
+#define SQ_SHARED_SIZE 510
+
+/* A range of the file locked for this connection: SQLITE_BUSY when another connection, of any process, holds it. */
+static int os_lock(sq_file *s, u64 at, u64 n, bool exclusive)
+{
+    int err = 0;
+    if (mg_file_lock(s->f, at, n, exclusive, &err)) return SQLITE_OK;
+    return err == MG_E_BUSY ? SQLITE_BUSY : SQLITE_IOERR_LOCK;
+}
+
 static int sq_lock(sqlite3_file *file, int level)
 {
     sq_file *s = (sq_file *)file;
     sq_node *n = s->node;
-    int rc = SQLITE_OK;
+    int rc = SQLITE_OK, held;
+    bool got_pending = false;
     if (!n || level <= s->held) return SQLITE_OK;
     mg_lock_acquire(&g_nodes_lock);
-    if (s->held == SQLITE_LOCK_NONE) {
-        /* A reader comes in unless somebody is writing or waiting to. */
+    held = s->held;
+    /* A reader, or a writer on its way to EXCLUSIVE, takes PENDING's byte first: a writer waiting holds it, and keeps new
+       readers out. A reader takes it shared, as SQLite's Unix layer does (a file open only to be read takes no other
+       kind there), and only while it comes in. */
+    if (held == SQLITE_LOCK_NONE || (level == SQLITE_LOCK_EXCLUSIVE && held < SQLITE_LOCK_PENDING)) {
         if ((n->pending && n->pending != s) || (n->exclusive && n->exclusive != s)) rc = SQLITE_BUSY;
-        else {
+        else if ((rc = os_lock(s, SQ_PENDING_BYTE, 1, level == SQLITE_LOCK_EXCLUSIVE)) == SQLITE_OK) got_pending = true;
+    }
+    /* SHARED: the readers' range, shared with the other readers. */
+    if (rc == SQLITE_OK && level == SQLITE_LOCK_SHARED) {
+        if ((rc = os_lock(s, SQ_SHARED_FIRST, SQ_SHARED_SIZE, false)) == SQLITE_OK) {
             n->shared++;
             s->held = SQLITE_LOCK_SHARED;
         }
     }
-    if (rc == SQLITE_OK && level >= SQLITE_LOCK_RESERVED && s->held < SQLITE_LOCK_RESERVED) {
+    /* RESERVED: its byte, one writer's at a time. (Not on the way to EXCLUSIVE, which a connection rolling a hot journal
+       back goes to from SHARED: another would take the journal for a writer's and read what is being undone.) */
+    if (rc == SQLITE_OK && level == SQLITE_LOCK_RESERVED) {
         if (n->reserved && n->reserved != s) rc = SQLITE_BUSY;
-        else {
+        else if ((rc = os_lock(s, SQ_RESERVED_BYTE, 1, true)) == SQLITE_OK) {
             n->reserved = s;
             s->held = SQLITE_LOCK_RESERVED;
         }
     }
-    if (rc == SQLITE_OK && level >= SQLITE_LOCK_EXCLUSIVE) {
-        /* PENDING first, which keeps new readers out; EXCLUSIVE once this is the only reader left. */
-        if ((n->pending && n->pending != s) || (n->reserved && n->reserved != s)) rc = SQLITE_BUSY;
+    /* EXCLUSIVE: PENDING kept, then the readers' range made this one's alone, once no other reads in any process; until
+       then PENDING stays, and the range shared as it was. */
+    if (rc == SQLITE_OK && level == SQLITE_LOCK_EXCLUSIVE) {
+        if (n->reserved && n->reserved != s) rc = SQLITE_BUSY;
         else {
             n->pending = s;
             if (s->held < SQLITE_LOCK_PENDING) s->held = SQLITE_LOCK_PENDING;
+            got_pending = false;
             if (n->shared > 1) rc = SQLITE_BUSY;
             else {
-                n->exclusive = s;
-                s->held = SQLITE_LOCK_EXCLUSIVE;
+                mg_file_unlock(s->f, SQ_SHARED_FIRST, SQ_SHARED_SIZE);
+                rc = os_lock(s, SQ_SHARED_FIRST, SQ_SHARED_SIZE, true);
+                if (rc == SQLITE_OK) {
+                    n->exclusive = s;
+                    s->held = SQLITE_LOCK_EXCLUSIVE;
+                } else if (os_lock(s, SQ_SHARED_FIRST, SQ_SHARED_SIZE, false) != SQLITE_OK) {
+                    rc = SQLITE_IOERR_LOCK;
+                }
             }
         }
     }
+    /* (PENDING's byte, taken only to come in as a reader, or by a writer turned away before it waited.) */
+    if (got_pending) mg_file_unlock(s->f, SQ_PENDING_BYTE, 1);
     mg_lock_release(&g_nodes_lock);
     return rc;
 }
@@ -258,23 +302,35 @@ static int sq_unlock(sqlite3_file *file, int level)
 {
     sq_file *s = (sq_file *)file;
     sq_node *n = s->node;
-    if (!n || s->held <= level) return SQLITE_OK;
+    int rc = SQLITE_OK, held = s->held;
+    if (!n || held <= level) return SQLITE_OK;
     mg_lock_acquire(&g_nodes_lock);
+    if (held >= SQLITE_LOCK_EXCLUSIVE) {
+        mg_file_unlock(s->f, SQ_SHARED_FIRST, SQ_SHARED_SIZE);
+        if (level == SQLITE_LOCK_SHARED && os_lock(s, SQ_SHARED_FIRST, SQ_SHARED_SIZE, false) != SQLITE_OK) rc = SQLITE_IOERR_UNLOCK;
+    }
+    if (held >= SQLITE_LOCK_RESERVED) mg_file_unlock(s->f, SQ_RESERVED_BYTE, 1);
+    if (level == SQLITE_LOCK_NONE && held >= SQLITE_LOCK_SHARED) mg_file_unlock(s->f, SQ_SHARED_FIRST, SQ_SHARED_SIZE);
+    if (held >= SQLITE_LOCK_PENDING) mg_file_unlock(s->f, SQ_PENDING_BYTE, 1);
     if (n->exclusive == s) n->exclusive = NULL;
     if (n->pending == s) n->pending = NULL;
     if (n->reserved == s) n->reserved = NULL;
-    if (level == SQLITE_LOCK_NONE && s->held >= SQLITE_LOCK_SHARED) n->shared--;
+    if (level == SQLITE_LOCK_NONE && held >= SQLITE_LOCK_SHARED) n->shared--;
     s->held = level;
     mg_lock_release(&g_nodes_lock);
-    return SQLITE_OK;
+    return rc;
 }
 
+/* Whether a connection means to write: one of this process (the table), or of another (RESERVED's byte held elsewhere). */
 static int sq_check_reserved(sqlite3_file *file, int *out)
 {
     sq_file *s = (sq_file *)file;
+    int reserved;
     mg_lock_acquire(&g_nodes_lock);
-    *out = s->node && (s->node->reserved || s->node->pending || s->node->exclusive);
+    reserved = s->node && (s->node->reserved || s->node->pending || s->node->exclusive);
     mg_lock_release(&g_nodes_lock);
+    if (!reserved && s->node && s->held < SQLITE_LOCK_RESERVED) reserved = mg_file_locked_elsewhere(s->f, SQ_RESERVED_BYTE, 1);
+    *out = reserved;
     return SQLITE_OK;
 }
 
