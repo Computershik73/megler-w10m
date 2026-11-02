@@ -252,6 +252,26 @@ public final class ViewRoot implements ViewParent {
     }
 
     /*
+     * The windows of an activity that finished and has not stopped yet (AppRunner.finishNow), its own among them, hidden as
+     * the one below comes back, as Android hides a finishing activity's windows then: not drawn, and given no touches, keys
+     * or focus, and still attached until the activity stops.
+     */
+    public static void finishedHidden(android.app.Activity a) {
+        boolean any = false;
+        for (ViewRoot r : sRoots) {
+            if (r.mRemoved || r.mOwnerStopped || r.mLp.type >= WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW || activityOf(r.mView.getContext()) != a) continue;
+            r.mOwnerStopped = true;
+            r.mView.dispatchWindowVisibilityChanged(View.GONE);
+            any = true;
+        }
+        if (!any) return;
+        if (sTouchTarget != null && sTouchTarget.mOwnerStopped) sTouchTarget = null;
+        refocus();
+        fullRedraw("a finished activity's windows hidden");
+        scheduleFrame();
+    }
+
+    /*
      * The windows an activity that has been destroyed still had besides its own, removed, as Android's
      * WindowManagerGlobal.closeAll removes them ("has leaked window"); how many. A dialog an activity left showing as it
      * finished stayed in the list of windows, drawn with whatever came after it: WhatsApp's progress dialog of its phone

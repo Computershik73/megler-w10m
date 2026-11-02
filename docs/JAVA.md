@@ -4935,6 +4935,18 @@ on a looper thread of its own and takes it back with `next()`.
   never made ("Required value was null", package 561). The crash app's
   `Trampoline`, started as First finishes, is the root, and its `Main`, started
   twice so, finishes in `onCreate` and is never started.
+  An activity that finishes and gives its place back to the one below is
+  hidden at once (its windows not drawn and given no input,
+  `ViewRoot.finishedHidden`), and stopped and destroyed only after the next
+  frame, when the main thread is idle, ten seconds at most, as Android stops
+  a finishing activity once the next one is visible and its thread reports
+  idle. It was destroyed in the message that brought the one below back, and
+  what it had begun as it finished was cut off: Pyaterochka's sign-in saves
+  the address it was sent back to through DataStore from a coroutine of its
+  `lifecycleScope` and finishes, and the edit, which DataStore runs on the
+  main thread a message later, never ran ("No responseUri present", 576).
+  The crash app's `Gate` posts work from its `onPause` as it finishes, which
+  finds it not destroyed.
 
 - `android/widget/LinearLayout.java`, four statements: what a child with a
   weight and a size of 0 is given when the layout's own size is not exact.

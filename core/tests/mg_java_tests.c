@@ -2518,6 +2518,14 @@ static int run_crash(void)
        alias's name and the app ended, package 570.) */
     expect_line("I/CrashTest: gate recreated state=7 component=megler.test.crash.GateAlias", &at, 60);
     expect_line("I/CrashTest: first order resume,result:7:-1,resume,focus:true,", &at, 60);
+    /* Gate, finished, is stopped and destroyed only once First is back and drawn and the main thread is idle, as on Android:
+       work its onPause posted as it finished ran before, and found it not destroyed (Pyaterochka's sign-in saved its result
+       so, and lost it when the layer destroyed the activity in the same message). */
+    {
+        int work = find_line("I/CrashTest: gate work after finish destroyed=false", 0), after = work;
+        CHECK(work >= 0);
+        if (work >= 0) expect_line("I/CrashTest: gate onDestroy finishing", &after, 30);
+    }
     /*
      * FLAG_ACTIVITY_CLEAR_TOP as Android has it, First found by its class though started through an alias: with the flag
      * alone, Top goes and so does First, and a new First is made; with FLAG_ACTIVITY_SINGLE_TOP as well, Top goes and the

@@ -401,20 +401,57 @@ public final class AppRunner {
         AppResults.finished(a);
         Activity below = top();
         // (one below that is finishing too stays down: it goes when its own finish comes)
-        if (wasTop && below != null && resumeBelow && !below.isFinishing()) {
+        boolean back = wasTop && below != null && resumeBelow && !below.isFinishing();
+        if (back) {
+            a.meglerHideFinished();
             Activity caller = a.meglerCaller();
             if (caller != null && a.meglerRequestCode() >= 0 && caller == below) below.meglerActivityResult(a.meglerRequestCode(), a.meglerResultCode(), a.meglerResultData());
             if (!below.isResumedMegler()) {
                 if (!below.meglerVisible()) { below.meglerRestart(); below.meglerStart(); }
                 below.meglerResume();
             }
+            endWhenShown(a);
+            return;
         }
         a.meglerStop();
         a.meglerDestroy();
-        // the app ends with its last activity, unless one it started just before (finish(); startActivity(...)) is still to come
-        if (sStack.isEmpty()) sHandler.post(() -> { if (sStack.isEmpty()) Native.exit(); });
+        exitWhenLast();
     }
-    public static void finishAll() { sHandler.post(() -> { while (!sStack.isEmpty()) finishNow(top(), false); }); }
+    /** The app ends with its last activity, unless one it started just before (finish(); startActivity(...)) is still to come. */
+    private static void exitWhenLast() {
+        if (sStack.isEmpty()) sHandler.post(() -> { if (sStack.isEmpty()) { endPending(); Native.exit(); } });
+    }
+    /*
+     * A finished activity whose place the one below took (finishNow): hidden at once, and stopped and destroyed once the one
+     * below has been drawn and the main thread has nothing left to do, as Android stops a finishing activity only when the
+     * next one is visible, at its thread's idle report -- ten seconds at most. What the activity began as it finished goes
+     * on until then: Pyaterochka's sign-in (an OIDC library's HandleRedirectActivity) saves the address it was sent back to
+     * from a coroutine of its lifecycleScope, through DataStore, and finishes; destroyed in the same message, the coroutine
+     * was cancelled before DataStore ran its edit on the main thread, nothing was saved, and the app's sign-in said "No
+     * responseUri present" (package 576).
+     */
+    private static final ArrayList<Runnable> sEnding = new ArrayList<>();
+    private static void endWhenShown(final Activity a) {
+        final Runnable end = new Runnable() {
+            private boolean mDone;
+            @Override public void run() {
+                if (mDone) return;
+                mDone = true;
+                sEnding.remove(this);
+                sHandler.removeCallbacks(this);
+                a.meglerStop();
+                a.meglerDestroy();
+                exitWhenLast();
+            }
+        };
+        sEnding.add(end);
+        android.view.Choreographer.getMainThreadInstance().postCallback(android.view.Choreographer.CALLBACK_COMMIT,
+            () -> Looper.myQueue().addIdleHandler(() -> { end.run(); return false; }), null);
+        sHandler.postDelayed(end, 10_000);
+    }
+    /** The finished activities not stopped yet, stopped and destroyed now: before the app ends. */
+    private static void endPending() { for (Runnable r : new ArrayList<>(sEnding)) r.run(); }
+    public static void finishAll() { sHandler.post(() -> { while (!sStack.isEmpty()) finishNow(top(), false); endPending(); }); }
     /** Activity.finishAffinity(): the activity and those under it in the task go; activities it started, above it, stay. */
     public static void finishAffinity(Activity a) {
         sHandler.post(() -> {

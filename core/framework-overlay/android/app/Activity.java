@@ -186,6 +186,9 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     }
     /* Whether its windows other than its own are hidden: it was stopped and is not on the screen again (ViewRoot.ownerStopped). */
     private boolean mWindowsHidden;
+    /* It finished and the one below is back (AppRunner.finishNow): its windows, its own too, hidden until it stops, and
+       those it opens from now on with them (ViewRoot.finishedHidden). */
+    public final void meglerHideFinished() { mWindowsHidden = true; megler.ViewRoot.finishedHidden(this); }
     public final boolean meglerWindowsHidden() { return mWindowsHidden; }
     public final void meglerBack() { onBackPressedMegler(); }
     /* Whether it was started and not stopped since (AppRunner starts the activity below again when not); its window may be waiting (mStartedActivity). */

@@ -11,6 +11,9 @@ import android.widget.TextView;
  * Once, first, it recreates itself (Activity.recreate, as Facebook recreates its main activity when the app is ready): it is
  * stopped as one being made again, and the new one is the same component and has the state the old one saved -- and still
  * gives First its result.
+ * What it begins as it finishes still finds it there: work its onPause posts to the main thread runs before it is destroyed,
+ * as on Android, where a finished activity stops only once the one below is visible again. An OIDC library's sign-in saves
+ * its result so, from a coroutine of the finishing activity's lifecycleScope (Pyaterochka's).
  */
 public class Gate extends Activity {
     private static boolean sRecreated;
@@ -35,6 +38,18 @@ public class Gate extends Activity {
     protected void onStop() {
         super.onStop();
         if (!isFinishing()) Log.i("CrashTest", "gate stop changing=" + isChangingConfigurations());
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (isFinishing()) new Handler().post(() -> Log.i("CrashTest", "gate work after finish destroyed=" + isDestroyed()));
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (isFinishing()) Log.i("CrashTest", "gate onDestroy finishing");
     }
 
     @Override
