@@ -17,6 +17,7 @@ import android.widget.TextView;
  */
 public class Gate extends Activity {
     private static boolean sRecreated;
+    static volatile boolean sDestroyed;   // finished and destroyed: First waits for it
 
     @Override
     protected void onCreate(Bundle state) {
@@ -49,7 +50,10 @@ public class Gate extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (isFinishing()) Log.i("CrashTest", "gate onDestroy finishing");
+        if (isFinishing()) {
+            Log.i("CrashTest", "gate onDestroy finishing");
+            sDestroyed = true;
+        }
     }
 
     @Override

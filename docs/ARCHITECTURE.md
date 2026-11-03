@@ -194,13 +194,28 @@ layer's. The old `sigaction`'s number keeps refusing them, for mozglue (below,
 signal masks (`rt_sigprocmask`, the kernel's 64-bit sets), `madvise`,
 `mincore`, its network poller's `epoll_pwait` (without which it ends:
 "netpoll failed"), `fcntl`, `exit_group` and `fallocate` are answered too.
+So are the calls of Go's `net`, `os` and `syscall` packages, which Psiphon
+makes as WhatsApp starts its tunnel: the sockets' (`socket` through
+`recvmsg`, `accept4`, `recvmmsg`, `sendmmsg`), each the libc's call of the
+name; `splice`, refused as for sockets it will not splice (`EINVAL`), on
+which Go copies between two sockets itself, where `ENOSYS` would have been
+the copy's error; the files' that its Bolt database opens, locks, reads,
+writes, syncs and grows its file with (`pread64` and `pwrite64` with the
+offset in the register pair after a pad, `flock`, `fdatasync`,
+`ftruncate64`), a directory's entries (`getdents64`, the kernel's records,
+from a directory descriptor's position, which `lseek` sets back), and the
+limit on descriptors that its `syscall` package reads as it starts
+(`prlimit64`: `getrlimit64`'s limits are 64-bit now, where they were
+`getrlimit`'s 32-bit pair, the upper halves left as they were).
 And loaded as a library it finds the auxiliary vector past `envp`, as the kernel
 lays them out on a process's first stack: a library's init functions get
 `argv`, an empty `envp` and the vector (the page size, `AT_RANDOM`'s 16 bytes,
 the hardware's capabilities) in one block (`mg_bionic_initial_argv`), where
 they got a separate `envp` and whatever came after it. The guest tests
-`t_init_auxv` (an init function reading them as Go does) and `t_go_calls`,
-and `t_ffcalls` for the two sigactions.
+`t_init_auxv` (an init function reading them as Go does), `t_go_calls`,
+`t_go_net_files` (a TCP connection on loopback and a socket pair by number,
+a file as Bolt uses it, a directory read twice, the limits), and `t_ffcalls`
+for the two sigactions.
 
 The Thumb scanner recognises immediate/register moves and literal loads into
 `r7` immediately before `svc 0`; the ARM scanner recognises unconditional
@@ -286,7 +301,7 @@ This passes under qemu; the Instagram run on Windows still needs verification.
 | paths | `/data/data/<pkg>`, `/sdcard`, `/proc/cpuinfo` | a mount table onto folders under `LocalState` (see "Files and the shared storage"); the `/proc` and `/sys` files code reads are made up |
 | signals | delivered asynchronously | between the app's own threads they are: a thread in the middle of Android code is stopped, sent to the handler and put back (`SuspendThread`, `SetThreadContext`, the vectored handler); one that waits or sleeps in this layer is woken for it. Nothing comes from outside the process |
 | a thread's stack | all there from the start; code moves `sp` by any amount and writes | Windows hands a stack out a page at a time, through a guard page that code built for Windows touches in order. Android code does not, and a write beyond the guard page ends the process with no handler run. So the whole stack is committed, down to a guard page of its own, the first time a thread is given a guest thread pointer (`mg_thread_whole_stack`) |
-| `mmap`/`munmap` | any range of pages, unmapped in any pieces; an address asked for without `MAP_FIXED` is a hint, followed when that range is free | a reservation of the host's, which gives addresses back only whole: a region remembers which of its pages the app still has, decommits what is unmapped, and is released with its last page. A hint is followed where the host can reserve the range (on its 64 KB granularity): Chromium's PartitionAlloc picks the addresses of its 2 MB super pages itself, and gave up (an out-of-memory crash) when every answer was the same place Anonymous memory mapped with no access (`PROT_NONE`) is reserved and not committed until `mprotect` gives part of it access, and mapped again over itself with no access (`MAP_FIXED`) it is decommitted, zero when it comes back, as Linux has it: Windows charges committed memory against the app whether it is touched or not, and allocators such as PartitionAlloc reserve that way. A file mapped read-only and shared, from a descriptor opened read-only, is a view of the file itself (no memory of the app's); any other mapping of a file is a copy. Anonymous memory given back with `madvise` (`MADV_DONTNEED`, `MADV_FREE`) is decommitted and stays the app's: a page touched again is committed again, zero, by the fault handler, and one the system is about to write into (a read into it) before the call; PartitionAlloc and V8 give their free pages back so, and PartitionAlloc counts on them being zero |
+| `mmap`/`munmap` | any range of pages, unmapped in any pieces; an address asked for without `MAP_FIXED` is a hint, followed when that range is free | a reservation of the host's, which gives addresses back only whole: a region remembers which of its pages the app still has, decommits what is unmapped, and is released with its last page. A hint is followed where the host can reserve the range (on its 64 KB granularity): Chromium's PartitionAlloc picks the addresses of its 2 MB super pages itself, and gave up (an out-of-memory crash) when every answer was the same place Anonymous memory mapped with no access (`PROT_NONE`) is reserved and not committed until `mprotect` gives part of it access, and mapped again over itself with no access (`MAP_FIXED`) it is decommitted, zero when it comes back, as Linux has it: Windows charges committed memory against the app whether it is touched or not, and allocators such as PartitionAlloc reserve that way. A file mapped read-only and shared, from a descriptor opened read-only, is a view of the file itself (no memory of the app's); any other mapping of a file is a copy, and a shared one is kept in step with what is written to the file through any descriptor of it (`mg_mem_file_written`), as Bolt, LMDB and SQLite with `mmap_size` read what they wrote with `pwrite` through the mapping. Anonymous memory given back with `madvise` (`MADV_DONTNEED`, `MADV_FREE`) is decommitted and stays the app's: a page touched again is committed again, zero, by the fault handler, and one the system is about to write into (a read into it) before the call; PartitionAlloc and V8 give their free pages back so, and PartitionAlloc counts on them being zero |
 | shared memory (ashmem, `memfd_create`, `ASharedMemory`) | every `MAP_SHARED` mapping of a region is the same memory | a section of the host's (`mg_section`: a pagefile-backed file mapping on Windows, `MapViewOfFileFromApp`; a memfd on Linux), of which each mapping is a view at an address of its own; the descriptor holds no view of its own, its read and write mapping what they copy for the copy (a view of its own took a region's size in address space once more while the descriptor was open: Spotify's WebView ended out of memory on an image of 126 MB). Chromium maps a region twice, once where it writes and once where it reads (Mojo's data pipes, which carry everything between its browser and its renderer); with each mapping a copy of the region, as mappings of a file still are, every page the WebView loaded arrived empty |
 | address space | about 4 GB for a 32-bit process on a 64-bit kernel | 2 GB. An APK is read, never mapped; large textures an app uploads as plain RGBA8 are kept as DXT5 once it has asked for a great deal (and, while the process is short of addresses, those of 1024x1024 and more as BC1 or DXT5 at once), and ETC textures, which ANGLE would keep as RGBA8, go to it as BC1 or DXT5, their own size (`mg_gltex.c`) |
 

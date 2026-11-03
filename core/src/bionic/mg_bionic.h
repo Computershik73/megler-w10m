@@ -239,6 +239,12 @@ const char *mg_fs_package(void);
 
 /* Writes what an app wrote into shared file mappings back to their files (mg_libc_mem.c); at the app's end. */
 void mg_mem_write_back(void);
+/*
+ * Whether any copy of a file is mapped shared; and what was written to a file (a held one, mg_fd_hold) through a descriptor,
+ * `n` bytes at `at`, copied into every such mapping of it, as the kernel's mappings of a file show what is written to it.
+ */
+bool mg_mem_file_copies(void);
+void mg_mem_file_written(void *file, u64 at, const void *buf, size_t n);
 /* What madvise has given back to the host so far, and how much of it was touched (committed) again since. */
 void mg_mmap_given_back(u64 *given, u64 *again);
 /* What the app's mappings hold now, as far as they are its own (mapped, not made no-access, not given back): anonymous

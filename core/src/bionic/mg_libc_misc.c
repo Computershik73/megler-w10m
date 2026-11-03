@@ -476,6 +476,34 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef int (*ioctl_fn)(int, unsigned, void *);
     typedef int (*dup3_fn)(int, int, int);
     typedef int (*affinity_fn)(int, size_t, void *);
+    typedef int (*socket_fn)(int, int, int);
+    typedef int (*sock_addr_fn)(int, const void *, u32);
+    typedef int (*sock_name_fn)(int, void *, u32 *);
+    typedef int (*accept4_fn)(int, void *, u32 *, int);
+    typedef int (*socketpair_fn)(int, int, int, int *);
+    typedef i32 (*send_fn)(int, const void *, u32, int);
+    typedef i32 (*recv_fn)(int, void *, u32, int);
+    typedef i32 (*sendto_fn)(int, const void *, u32, int, const void *, u32);
+    typedef i32 (*recvfrom_fn)(int, void *, u32, int, void *, u32 *);
+    typedef int (*setsockopt_fn)(int, int, int, const void *, u32);
+    typedef int (*getsockopt_fn)(int, int, int, void *, u32 *);
+    typedef i32 (*msg_fn)(int, void *, int);
+    typedef int (*sendmmsg_fn)(int, void *, unsigned, int);
+    typedef int (*recvmmsg_fn)(int, void *, unsigned, int, const void *);
+    typedef i32 (*pio_fn)(int, void *, u32, i64);
+    typedef int (*ftruncate64_fn)(int, i64);
+    typedef int (*getdents_fn)(int, void *, u32);
+    typedef long (*readlinkat_fn)(int, const char *, char *, size_t);
+    typedef int (*utimensat_fn)(int, const char *, const void *, int);
+    typedef char *(*getcwd_fn)(char *, size_t);
+    typedef int (*buf_fn)(void *);
+    typedef int (*buf2_fn)(void *, void *);
+    typedef int (*id_fn)(void);
+    typedef int (*mprotect_fn)(void *, size_t, int);
+    typedef int (*poll_fn)(void *, unsigned, int);
+    typedef int (*ppoll_fn)(void *, unsigned, const void *, const void *);
+    typedef int (*rlimit_fn)(int, void *);
+    typedef int (*prlimit_fn)(int, int, const void *, void *);
     switch (nr) {
     case 67:                                                                                                  /* sigaction */
         if (fault_signal_refused(a, b)) return -1;
@@ -593,6 +621,77 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 242:                                                                                                         /* sched_getaffinity */
         if (((affinity_fn)mg_bionic_find("sched_getaffinity"))((int)a, (size_t)b, (void *)(mg_addr)c) != 0) return -1;
         return (long)(b < 4 ? b : 4);
+    /*
+     * Sockets by number, as Go's net and syscall packages make them, past libc: Psiphon's tunnel core in WhatsApp's
+     * libgojni.so, which WhatsApp makes as it starts. Each is the libc's call of that name here. splice, which Go tries
+     * before it copies from one socket to another, is the kernel's answer for sockets it will not splice (EINVAL), on
+     * which Go copies them itself; ENOSYS it would take for the copy's own error.
+     */
+    case 281: return ((socket_fn)mg_bionic_find("socket"))((int)a, (int)b, (int)c);                                     /* socket */
+    case 282: return ((sock_addr_fn)mg_bionic_find("bind"))((int)a, (const void *)(mg_addr)b, (u32)c);                   /* bind */
+    case 283: return ((sock_addr_fn)mg_bionic_find("connect"))((int)a, (const void *)(mg_addr)b, (u32)c);                /* connect */
+    case 284: return ((fd2_fn)mg_bionic_find("listen"))((int)a, (int)b);                                                 /* listen */
+    case 285: return ((sock_name_fn)mg_bionic_find("accept"))((int)a, (void *)(mg_addr)b, (u32 *)(mg_addr)c);            /* accept */
+    case 286: return ((sock_name_fn)mg_bionic_find("getsockname"))((int)a, (void *)(mg_addr)b, (u32 *)(mg_addr)c);       /* getsockname */
+    case 287: return ((sock_name_fn)mg_bionic_find("getpeername"))((int)a, (void *)(mg_addr)b, (u32 *)(mg_addr)c);       /* getpeername */
+    case 288: return ((socketpair_fn)mg_bionic_find("socketpair"))((int)a, (int)b, (int)c, (int *)(mg_addr)d);           /* socketpair */
+    case 289: return ((send_fn)mg_bionic_find("send"))((int)a, (const void *)(mg_addr)b, (u32)c, (int)d);                 /* send */
+    case 290: return ((sendto_fn)mg_bionic_find("sendto"))((int)a, (const void *)(mg_addr)b, (u32)c, (int)d, (const void *)(mg_addr)e, (u32)f);  /* sendto */
+    case 291: return ((recv_fn)mg_bionic_find("recv"))((int)a, (void *)(mg_addr)b, (u32)c, (int)d);                       /* recv */
+    case 292: return ((recvfrom_fn)mg_bionic_find("recvfrom"))((int)a, (void *)(mg_addr)b, (u32)c, (int)d, (void *)(mg_addr)e, (u32 *)(mg_addr)f);  /* recvfrom */
+    case 293: return ((fd2_fn)mg_bionic_find("shutdown"))((int)a, (int)b);                                               /* shutdown */
+    case 294: return ((setsockopt_fn)mg_bionic_find("setsockopt"))((int)a, (int)b, (int)c, (const void *)(mg_addr)d, (u32)e);  /* setsockopt */
+    case 295: return ((getsockopt_fn)mg_bionic_find("getsockopt"))((int)a, (int)b, (int)c, (void *)(mg_addr)d, (u32 *)(mg_addr)e);  /* getsockopt */
+    case 296: return ((msg_fn)mg_bionic_find("sendmsg"))((int)a, (void *)(mg_addr)b, (int)c);                            /* sendmsg */
+    case 297: return ((msg_fn)mg_bionic_find("recvmsg"))((int)a, (void *)(mg_addr)b, (int)c);                            /* recvmsg */
+    case 365: return ((recvmmsg_fn)mg_bionic_find("recvmmsg"))((int)a, (void *)(mg_addr)b, (unsigned)c, (int)d, (const void *)(mg_addr)e);  /* recvmmsg */
+    case 366: return ((accept4_fn)mg_bionic_find("accept4"))((int)a, (void *)(mg_addr)b, (u32 *)(mg_addr)c, (int)d);     /* accept4 */
+    case 374: return ((sendmmsg_fn)mg_bionic_find("sendmmsg"))((int)a, (void *)(mg_addr)b, (unsigned)c, (int)d);         /* sendmmsg */
+    case 340:                                                                                                            /* splice */
+        mg_set_errno(GE_INVAL);
+        return -1;
+    /*
+     * The files of Go's os package by number too: reads and writes at an offset (in the register pair after a pad), a
+     * file's lock, its data synced, its size (after a pad), a directory's entries, a link read, a file's mode, owner and
+     * times, a file system's size, the working directory. Psiphon keeps its data in a Bolt database, which opens, locks,
+     * reads, writes, syncs and grows its file so. A mode or an owner is not kept here: for a file that is there, done.
+     */
+    case 180: return ((pio_fn)mg_bionic_find("pread64"))((int)a, (void *)(mg_addr)b, (u32)c, (i64)(((u64)(u32)f << 32) | (u32)e));   /* pread64 */
+    case 181: return ((pio_fn)mg_bionic_find("pwrite64"))((int)a, (void *)(mg_addr)b, (u32)c, (i64)(((u64)(u32)f << 32) | (u32)e));  /* pwrite64 */
+    case 143: return ((fd2_fn)mg_bionic_find("flock"))((int)a, (int)b);                                                  /* flock */
+    case 148: return ((fd_fn)mg_bionic_find("fdatasync"))((int)a);                                                       /* fdatasync */
+    case 194: return ((ftruncate64_fn)mg_bionic_find("ftruncate64"))((int)a, (i64)(((u64)(u32)d << 32) | (u32)c));      /* ftruncate64 */
+    case 217: return ((getdents_fn)mg_bionic_find("getdents64"))((int)a, (void *)(mg_addr)b, (u32)c);                    /* getdents64 */
+    case 332: return ((readlinkat_fn)mg_bionic_find("readlinkat"))((int)a, (const char *)(mg_addr)b, (char *)(mg_addr)c, (size_t)d);  /* readlinkat */
+    case 94: return ((fd2_fn)mg_bionic_find("fchmod"))((int)a, (int)b);                                                  /* fchmod */
+    case 95: case 207: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, 1 /* F_GETFD */, 0) < 0 ? -1 : 0;              /* fchown, fchown32 */
+    case 325: case 333: return ((at_int_fn)mg_bionic_find("faccessat"))((int)a, (const char *)(mg_addr)b, 0 /* F_OK */, 0);  /* fchownat, fchmodat */
+    case 348: return ((utimensat_fn)mg_bionic_find("utimensat"))((int)a, (const char *)(mg_addr)b, (const void *)(mg_addr)c, (int)d);  /* utimensat */
+    case 266: return ((path_buf_fn)mg_bionic_find("statfs64"))((const char *)(mg_addr)a, (void *)(mg_addr)c);          /* statfs64: path, size, buffer */
+    case 267: return ((fd_buf_fn)mg_bionic_find("fstatfs64"))((int)a, (void *)(mg_addr)c);                              /* fstatfs64 */
+    case 183: {                                                                                     /* getcwd: the length, the NUL in it */
+        char *at = ((getcwd_fn)mg_bionic_find("getcwd"))((char *)(mg_addr)a, (size_t)b);
+        return at ? (long)strlen(at) + 1 : -1;
+    }
+    /*
+     * And the rest Go's packages ask the kernel for directly: the system's name, the ids (the 32-bit calls and the old
+     * ones), the parent's pid, the time of day, a page's access, poll, and the limits, which Go's syscall package reads as
+     * it starts, to raise the one on descriptors (prlimit64, or ugetrlimit where that is not there): as getrlimit says
+     * here, and a new one taken as setrlimit takes it.
+     */
+    case 122: return ((buf_fn)mg_bionic_find("uname"))((void *)(mg_addr)a);                                              /* uname */
+    case 24: case 199: return ((id_fn)mg_bionic_find("getuid"))();                                                       /* getuid32 */
+    case 47: case 200: return ((id_fn)mg_bionic_find("getgid"))();                                                       /* getgid32 */
+    case 49: case 201: return ((id_fn)mg_bionic_find("geteuid"))();                                                      /* geteuid32 */
+    case 50: case 202: return ((id_fn)mg_bionic_find("getegid"))();                                                      /* getegid32 */
+    case 64: return ((id_fn)mg_bionic_find("getppid"))();                                                                /* getppid */
+    case 78: return ((buf2_fn)mg_bionic_find("gettimeofday"))((void *)(mg_addr)a, (void *)(mg_addr)b);                   /* gettimeofday */
+    case 125: return ((mprotect_fn)mg_bionic_find("mprotect"))((void *)(mg_addr)a, (size_t)b, (int)c);                   /* mprotect */
+    case 168: return ((poll_fn)mg_bionic_find("poll"))((void *)(mg_addr)a, (unsigned)b, (int)c);                         /* poll */
+    case 336: return ((ppoll_fn)mg_bionic_find("ppoll"))((void *)(mg_addr)a, (unsigned)b, (const void *)(mg_addr)c, (const void *)(mg_addr)d);  /* ppoll */
+    case 191: return ((rlimit_fn)mg_bionic_find("getrlimit"))((int)a, (void *)(mg_addr)b);                               /* ugetrlimit */
+    case 75: return 0;                                                                                                   /* setrlimit */
+    case 369: return ((prlimit_fn)mg_bionic_find("prlimit64"))((int)a, (int)b, (const void *)(mg_addr)c, (void *)(mg_addr)d);  /* prlimit64 */
     default:
         mg_note_once("syscall(%ld) is not supported", nr);
         mg_set_errno(GE_NOSYS);
@@ -623,6 +722,31 @@ static int g_getrlimit(int resource, g_rlimit *r)
     return 0;
 }
 static int g_setrlimit(int resource, const g_rlimit *r) { (void)resource; (void)r; return 0; }
+/*
+ * getrlimit64's limits are 64-bit (rlim64_t), unlimited as RLIM64_INFINITY: getrlimit64 had getrlimit's two 32-bit ones,
+ * the upper halves left as they were (Go's syscall package reads the limit on descriptors so as it starts, by number).
+ * prlimit and prlimit64 say the process's own; a new limit is taken as setrlimit takes it.
+ */
+typedef struct g_rlimit64 {
+    u64 cur, max;
+} g_rlimit64;
+
+static int g_getrlimit64(int resource, g_rlimit64 *r)
+{
+    g_rlimit small;
+    g_getrlimit(resource, &small);
+    r->cur = small.cur == 0xFFFFFFFFu ? ~(u64)0 : small.cur;
+    r->max = small.max == 0xFFFFFFFFu ? ~(u64)0 : small.max;
+    return 0;
+}
+static int g_setrlimit64(int resource, const g_rlimit64 *r) { (void)resource; (void)r; return 0; }
+static int g_prlimit(int pid, int resource, const g_rlimit *nl, g_rlimit *old) { (void)pid; (void)nl; return old ? g_getrlimit(resource, old) : 0; }
+static int g_prlimit64(int pid, int resource, const g_rlimit64 *nl, g_rlimit64 *old)
+{
+    (void)pid;
+    (void)nl;
+    return old ? g_getrlimit64(resource, old) : 0;
+}
 static int g_getrusage(int who, void *usage)
 {
     (void)who;
@@ -1543,7 +1667,8 @@ const mg_sym mg_tab_misc[] = {
     M("getauxval", g_getauxval), M("prctl", g_prctl), M("cacheflush", g_cacheflush), M("syscall", g_syscall),
     M("openlog", g_openlog), M("closelog", g_closelog), M("setlogmask", g_setlogmask), M("syslog", g_syslog), M("vsyslog", g_vsyslog),
     M("process_vm_readv", g_process_vm_readv), M("process_vm_writev", g_process_vm_writev),
-    M("getrlimit", g_getrlimit), M("getrlimit64", g_getrlimit), M("setrlimit", g_setrlimit), M("getrusage", g_getrusage),
+    M("getrlimit", g_getrlimit), M("getrlimit64", g_getrlimit64), M("setrlimit", g_setrlimit), M("setrlimit64", g_setrlimit64),
+    M("prlimit", g_prlimit), M("prlimit64", g_prlimit64), M("getrusage", g_getrusage),
     M("getpriority", g_getpriority), M("setpriority", g_setpriority), M("nice", g_nice),
     M("qsort", g_qsort), M("bsearch", g_bsearch),
     M("rand", g_rand), M("srand", g_srand), M("rand_r", g_rand_r), M("random", g_random), M("srandom", g_srand),

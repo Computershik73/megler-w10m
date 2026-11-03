@@ -1599,3 +1599,106 @@ int t_go_calls(const char *dir)
     unlink(path);
     return 0;
 }
+
+/*
+ * Go's net and os packages by number, past libc, as Psiphon's tunnel core in WhatsApp's libgojni.so makes the calls: a
+ * TCP socket listening on loopback (non-blocking, as Go's are), one connecting to it, accepted, a few bytes each way, the
+ * ends' names, its error and its end; a socket pair with a message each way; splice refused as for sockets (EINVAL); a
+ * file locked, grown, written and read at offsets (each in a register pair after a pad) and synced; mapped read-only and
+ * shared, showing what is written to it afterwards, as Bolt reads its database; a directory's entries, twice; the limit on
+ * descriptors, the system's name and the ids. 0, or the step that failed.
+ */
+int t_go_net_files(const char *dir)
+{
+    struct { unsigned short family, port; unsigned addr; unsigned char zero[8]; } sa, peer;
+    struct { void *base; unsigned len; } io;
+    struct { void *name; unsigned namelen; void *iov; unsigned iovlen; void *control; unsigned controllen; int flags; } m;
+    struct { unsigned long long cur, max; } lim;
+    t_pollfd pf;
+    unsigned len, one = 1, st[32];
+    int ls, cs, as, sv[2], fd, fd2, dfd, n, off, found = 0, err = -1;
+    char buf[64], path[256], ents[2048];
+    unsigned char *map;
+    ls = syscall(281, 2 /* AF_INET */, 1 /* SOCK_STREAM */ | 04000 /* SOCK_NONBLOCK */ | 02000000 /* SOCK_CLOEXEC */, 0);
+    if (ls < 0) return 1;
+    if (syscall(294, ls, 1 /* SOL_SOCKET */, 2 /* SO_REUSEADDR */, &one, 4) != 0) return 2;
+    memset(&sa, 0, sizeof(sa));
+    sa.family = 2;
+    sa.addr = 0x0100007F;                              /* 127.0.0.1 */
+    if (syscall(282, ls, &sa, sizeof(sa)) != 0 || syscall(284, ls, 8) != 0) return 3;
+    len = sizeof(sa);
+    if (syscall(286, ls, &sa, &len) != 0 || !sa.port) return 4;
+    cs = syscall(281, 2, 1, 0);
+    if (cs < 0 || syscall(283, cs, &sa, sizeof(sa)) != 0) return 5;
+    pf.fd = ls;
+    pf.events = 1;                                     /* POLLIN */
+    pf.revents = 0;
+    if (syscall(168, &pf, 1, 5000) != 1) return 6;
+    len = sizeof(peer);
+    as = syscall(366, ls, &peer, &len, 02000000);
+    if (as < 0) return 7;
+    if (syscall(290, cs, "ping", 4, 0, 0, 0) != 4) return 8;
+    pf.fd = as;
+    if (syscall(168, &pf, 1, 5000) != 1 || syscall(292, as, buf, sizeof(buf), 0, 0, 0) != 4 || memcmp(buf, "ping", 4)) return 9;
+    if (syscall(289, as, "pong", 4, 0) != 4 || syscall(291, cs, buf, sizeof(buf), 0) != 4 || memcmp(buf, "pong", 4)) return 10;
+    len = sizeof(peer);
+    if (syscall(287, cs, &peer, &len) != 0 || peer.port != sa.port) return 11;
+    len = 4;
+    if (syscall(295, cs, 1, 4 /* SO_ERROR */, &err, &len) != 0 || err != 0) return 12;
+    if (syscall(293, cs, 1 /* SHUT_WR */) != 0 || syscall(168, &pf, 1, 5000) != 1 || syscall(292, as, buf, sizeof(buf), 0, 0, 0) != 0) return 13;
+    close(as);
+    close(cs);
+    close(ls);
+    if (syscall(288, 1 /* AF_UNIX */, 1, 0, sv) != 0) return 14;
+    memset(&m, 0, sizeof(m));
+    io.base = "hello";
+    io.len = 5;
+    m.iov = &io;
+    m.iovlen = 1;
+    if (syscall(296, sv[0], &m, 0) != 5) return 15;
+    io.base = buf;
+    io.len = sizeof(buf);
+    if (syscall(297, sv[1], &m, 0) != 5 || memcmp(buf, "hello", 5)) return 16;
+    close(sv[0]);
+    close(sv[1]);
+    if (syscall(340, 0, 0, 0, 0, 0, 0) != -1 || *__errno() != 22) return 17;
+    snprintf(path, sizeof(path), "%s/bolt.db", dir);
+    fd = open(path, 01102, 0600);                      /* O_RDWR | O_CREAT | O_TRUNC */
+    if (fd < 0) return 18;
+    if (syscall(143, fd, 2 | 4 /* LOCK_EX | LOCK_NB */) != 0) return 19;
+    if (syscall(194, fd, 0, 3 * 4096, 0) != 0 || fstat(fd, st) != 0 || st[12] != 3 * 4096) return 20;
+    if (syscall(181, fd, "meta", 4, 0, 4096, 0) != 4) return 21;
+    if (syscall(180, fd, buf, 4, 0, 4096, 0) != 4 || memcmp(buf, "meta", 4)) return 22;
+    if (syscall(148, fd) != 0) return 23;
+    map = mmap(0, 4 * 4096, 1 /* PROT_READ */, 1 /* MAP_SHARED */, fd, 0);
+    if (map == (void *)-1) return 24;
+    if (memcmp(map + 4096, "meta", 4)) return 25;
+    if (syscall(181, fd, "page", 4, 0, 2 * 4096 + 8, 0) != 4 || memcmp(map + 2 * 4096 + 8, "page", 4)) return 26;
+    fd2 = open(path, 02);
+    if (fd2 < 0) return 27;
+    if (syscall(194, fd2, 0, 4 * 4096, 0) != 0 || pwrite(fd2, "grow", 4, 3 * 4096) != 4) return 28;
+    close(fd2);
+    if (memcmp(map + 3 * 4096, "grow", 4)) return 29;
+    if (lseek(fd, 100, 0) != 100 || write(fd, "seq", 3) != 3 || memcmp(map + 100, "seq", 3)) return 30;
+    munmap(map, 4 * 4096);
+    close(fd);
+    dfd = open(dir, 040000 /* O_DIRECTORY */ | 02000000);
+    if (dfd < 0) return 31;
+    while ((n = syscall(217, dfd, ents, sizeof(ents))) > 0) {
+        for (off = 0; off < n;) {
+            unsigned short reclen;
+            memcpy(&reclen, ents + off + 16, 2);
+            if (!reclen || reclen % 8) return 32;
+            if (!strcmp(ents + off + 19, "bolt.db") && ents[off + 18] == 8 /* DT_REG */) found++;
+            off += reclen;
+        }
+    }
+    if (n < 0 || found != 1) return 33;
+    if (lseek(dfd, 0, 0) != 0 || syscall(217, dfd, ents, sizeof(ents)) <= 0) return 34;
+    close(dfd);
+    unlink(path);
+    if (syscall(369, 0, 7 /* RLIMIT_NOFILE */, 0, &lim) != 0 || !lim.cur || lim.cur > lim.max) return 35;
+    if (syscall(122, ents) != 0 || strcmp(ents, "Linux")) return 36;
+    if (syscall(199) < 0 || syscall(64) < 0) return 37;
+    return 0;
+}

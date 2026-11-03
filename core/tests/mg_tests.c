@@ -1258,6 +1258,86 @@ static void test_mmap_file(const char *scratch)
 }
 
 /*
+ * A file mapped shared shows what is written to it through a descriptor afterwards (bionic/mg_libc_mem.c,
+ * mg_mem_file_written), as a kernel's mapping of a file does. Bolt (Psiphon's database, in WhatsApp's libgojni.so) maps
+ * its file read-only and shared, from a descriptor open for writing, past the file's end; writes it with pwrite, and
+ * reads its new meta page through the mapping; grows the file and writes past the old end. LMDB writes its meta page
+ * through a second descriptor. The pages stay read-only (where the host says), one the app unmapped is left alone, and a
+ * writable mapping's bytes written back by msync reach a read-only mapping of the file too.
+ */
+static void test_mmap_file_written(const char *scratch)
+{
+    typedef int (*open_fn)(const char *, int, int);
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef int (*munmap_fn)(void *, size_t);
+    typedef int (*msync_fn)(void *, size_t, int);
+    typedef int (*close_fn)(int);
+    typedef int (*unlink_fn)(const char *);
+    typedef i32 (*pwrite_fn)(int, const void *, u32, i32);
+    typedef i32 (*write_fn)(int, const void *, u32);
+    typedef i32 (*lseek_fn)(int, i32, int);
+    typedef int (*ftruncate_fn)(int, i32);
+    enum { READ = 1, RW = 3, SHARED = 0x01, PAGE = 4096 };
+    open_fn open_ = (open_fn)mg_bionic_find("open");
+    mmap_fn mmap_ = (mmap_fn)mg_bionic_find("mmap");
+    munmap_fn munmap_ = (munmap_fn)mg_bionic_find("munmap");
+    msync_fn msync_ = (msync_fn)mg_bionic_find("msync");
+    close_fn close_ = (close_fn)mg_bionic_find("close");
+    unlink_fn unlink_ = (unlink_fn)mg_bionic_find("unlink");
+    pwrite_fn pwrite_ = (pwrite_fn)mg_bionic_find("pwrite");
+    write_fn write_ = (write_fn)mg_bionic_find("write");
+    lseek_fn lseek_ = (lseek_fn)mg_bionic_find("lseek");
+    ftruncate_fn ftruncate_ = (ftruncate_fn)mg_bionic_find("ftruncate");
+    const char *file = "/syscall-files/bolt.db";
+    u8 *p, *w;
+    int fd, fd2, prot = -1;
+    bool committed = false;
+    say("mmap: a file mapped shared shows what is written to it afterwards, through any descriptor of it");
+    mg_fs_mount("/syscall-files", scratch);
+    CHECK(open_ && mmap_ && munmap_ && msync_ && close_ && unlink_ && pwrite_ && write_ && lseek_ && ftruncate_);
+    if (!open_ || !mmap_ || !munmap_ || !msync_ || !close_ || !unlink_ || !pwrite_ || !write_ || !lseek_ || !ftruncate_) return;
+    fd = open_(file, 02 | 0100 | 01000, 0600);                   /* O_RDWR | O_CREAT | O_TRUNC */
+    CHECK(fd >= 0);
+    if (fd < 0) return;
+    CHECK(ftruncate_(fd, 3 * PAGE) == 0 && pwrite_(fd, "meta0", 5, PAGE) == 5);
+    p = (u8 *)mmap_(NULL, 4 * PAGE, READ, SHARED, fd, 0);         /* past the end, as Bolt maps */
+    CHECK(p && p != (u8 *)(mg_addr)-1);
+    if (p && p != (u8 *)(mg_addr)-1) {
+        CHECK(!memcmp(p + PAGE, "meta0", 5));
+        CHECK(pwrite_(fd, "meta1", 5, PAGE) == 5 && !memcmp(p + PAGE, "meta1", 5));
+        /* Across a page's edge, and by write() at the descriptor's offset. */
+        CHECK(pwrite_(fd, "edge", 4, 2 * PAGE - 2) == 4 && !memcmp(p + 2 * PAGE - 2, "edge", 4));
+        CHECK(lseek_(fd, 100, 0) == 100 && write_(fd, "seq", 3) == 3 && !memcmp(p + 100, "seq", 3));
+        /* Grown, and written past the old end, through another descriptor of the file. */
+        fd2 = open_(file, 02, 0);
+        CHECK(fd2 >= 0 && ftruncate_(fd2, 4 * PAGE) == 0 && pwrite_(fd2, "grow", 4, 3 * PAGE) == 4);
+        if (fd2 >= 0) close_(fd2);
+        CHECK(!memcmp(p + 3 * PAGE, "grow", 4));
+        if (mg_mem_page_state(p + PAGE, &committed, &prot)) CHECK(committed && prot == MG_PROT_R);
+        /* A page unmapped is left alone; the others still follow. */
+        CHECK(munmap_(p + 2 * PAGE, PAGE) == 0);
+        CHECK(pwrite_(fd, "gone", 4, 2 * PAGE + 8) == 4 && pwrite_(fd, "meta2", 5, PAGE) == 5 && !memcmp(p + PAGE, "meta2", 5));
+        CHECK(munmap_(p, 2 * PAGE) == 0 && munmap_(p + 3 * PAGE, PAGE) == 0);
+    }
+    /* A writable shared mapping's bytes, written back by msync, in a read-only mapping of the file. */
+    w = (u8 *)mmap_(NULL, PAGE, RW, SHARED, fd, 0);
+    p = (u8 *)mmap_(NULL, PAGE, READ, SHARED, fd, 0);
+    CHECK(w && w != (u8 *)(mg_addr)-1 && p && p != (u8 *)(mg_addr)-1);
+    if (w && w != (u8 *)(mg_addr)-1 && p && p != (u8 *)(mg_addr)-1) {
+        CHECK(!memcmp(w + 100, "seq", 3));
+        memcpy(w + 200, "mapped", 6);
+        CHECK(msync_(w, PAGE, 4 /* MS_SYNC */) == 0 && !memcmp(p + 200, "mapped", 6));
+        /* And what is written to the file, in both. */
+        CHECK(pwrite_(fd, "both", 4, 300) == 4 && !memcmp(w + 300, "both", 4) && !memcmp(p + 300, "both", 4));
+        munmap_(w, PAGE);
+        munmap_(p, PAGE);
+    }
+    CHECK(!mg_mem_file_copies());
+    close_(fd);
+    unlink_(file);
+}
+
+/*
  * Anonymous memory given back with madvise (MADV_DONTNEED, bionic/mg_libc_mem.c) is the system's again -- decommitted, where
  * the host says what is -- and still the app's: a page of it touched is zero, read or written; one the system itself writes
  * into (a file read into it) is read into; made no-access and given access again it is zero; what was not given back keeps
@@ -1779,6 +1859,14 @@ static void test_libc_odds(void)
     if (mg_bionic_find("res_search")) {
         u8 answer[64];
         CHECK(MG_GFN(int (*)(const char *, int, int, u8 *, int), (mg_addr)mg_bionic_find("res_search"))("example.com", 1, 16, answer, 64) == -1);
+    }
+    /* getrlimit64's limits are 64-bit: the limit on descriptors, and an unlimited one (RLIMIT_AS) as RLIM64_INFINITY. */
+    {
+        typedef int (*rlimit64_fn)(int, u64 *);
+        rlimit64_fn get64 = (rlimit64_fn)mg_bionic_find("getrlimit64");
+        u64 lim[2] = { 7, 7 };
+        CHECK(get64 && get64(7, lim) == 0 && lim[0] == 1024 && lim[1] == 1024);
+        CHECK(get64 && get64(9, lim) == 0 && lim[0] == ~(u64)0 && lim[1] == ~(u64)0);
     }
 }
 
@@ -2699,6 +2787,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     /* Go's runtime, as a library: its init function finds the auxiliary vector past envp, and its calls by number go. */
     CHECK_INT(FN(lib, int (*)(void), "t_init_auxv")(), 1);
     CHECK_INT(FN(lib, int (*)(const char *), "t_go_calls")(buf), 0);
+    CHECK_INT(FN(lib, int (*)(const char *), "t_go_net_files")(buf), 0);
     CHECK_INT(FN(lib, int (*)(void), "t_ifunc")(), 205);
     CHECK_INT(FN(lib, int (*)(void), "t_chrome_cmdline")(), 3);
     CHECK_INT(FN(lib, int (*)(const char *), "t_flock")(buf), 3);
@@ -3619,6 +3708,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_syscall_fds(scratch);
     test_mmap_commit();
     test_mmap_file(scratch);
+    test_mmap_file_written(scratch);
     test_mmap_madvise(scratch);
     test_pread_threads(scratch);
     test_rename_in_use(scratch);
