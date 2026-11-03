@@ -1780,6 +1780,14 @@ static void test_libc_odds(void)
         u8 answer[64];
         CHECK(MG_GFN(int (*)(const char *, int, int, u8 *, int), (mg_addr)mg_bionic_find("res_search"))("example.com", 1, 16, answer, 64) == -1);
     }
+    /* getrlimit64's limits are 64-bit: the limit on descriptors, and an unlimited one (RLIMIT_AS) as RLIM64_INFINITY. */
+    {
+        typedef int (*rlimit64_fn)(int, u64 *);
+        rlimit64_fn get64 = (rlimit64_fn)mg_bionic_find("getrlimit64");
+        u64 lim[2] = { 7, 7 };
+        CHECK(get64 && get64(7, lim) == 0 && lim[0] == 1024 && lim[1] == 1024);
+        CHECK(get64 && get64(9, lim) == 0 && lim[0] == ~(u64)0 && lim[1] == ~(u64)0);
+    }
 }
 
 /* ------------------------------------------------------------------ the decoders behind a Java app's MediaCodec */

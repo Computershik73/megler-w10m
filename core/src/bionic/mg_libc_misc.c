@@ -623,6 +623,31 @@ static int g_getrlimit(int resource, g_rlimit *r)
     return 0;
 }
 static int g_setrlimit(int resource, const g_rlimit *r) { (void)resource; (void)r; return 0; }
+/*
+ * getrlimit64's limits are 64-bit (rlim64_t), unlimited as RLIM64_INFINITY: getrlimit64 had getrlimit's two 32-bit ones,
+ * the upper halves left as they were (Go's syscall package reads the limit on descriptors so as it starts, by number).
+ * prlimit and prlimit64 say the process's own; a new limit is taken as setrlimit takes it.
+ */
+typedef struct g_rlimit64 {
+    u64 cur, max;
+} g_rlimit64;
+
+static int g_getrlimit64(int resource, g_rlimit64 *r)
+{
+    g_rlimit small;
+    g_getrlimit(resource, &small);
+    r->cur = small.cur == 0xFFFFFFFFu ? ~(u64)0 : small.cur;
+    r->max = small.max == 0xFFFFFFFFu ? ~(u64)0 : small.max;
+    return 0;
+}
+static int g_setrlimit64(int resource, const g_rlimit64 *r) { (void)resource; (void)r; return 0; }
+static int g_prlimit(int pid, int resource, const g_rlimit *nl, g_rlimit *old) { (void)pid; (void)nl; return old ? g_getrlimit(resource, old) : 0; }
+static int g_prlimit64(int pid, int resource, const g_rlimit64 *nl, g_rlimit64 *old)
+{
+    (void)pid;
+    (void)nl;
+    return old ? g_getrlimit64(resource, old) : 0;
+}
 static int g_getrusage(int who, void *usage)
 {
     (void)who;
@@ -1543,7 +1568,8 @@ const mg_sym mg_tab_misc[] = {
     M("getauxval", g_getauxval), M("prctl", g_prctl), M("cacheflush", g_cacheflush), M("syscall", g_syscall),
     M("openlog", g_openlog), M("closelog", g_closelog), M("setlogmask", g_setlogmask), M("syslog", g_syslog), M("vsyslog", g_vsyslog),
     M("process_vm_readv", g_process_vm_readv), M("process_vm_writev", g_process_vm_writev),
-    M("getrlimit", g_getrlimit), M("getrlimit64", g_getrlimit), M("setrlimit", g_setrlimit), M("getrusage", g_getrusage),
+    M("getrlimit", g_getrlimit), M("getrlimit64", g_getrlimit64), M("setrlimit", g_setrlimit), M("setrlimit64", g_setrlimit64),
+    M("prlimit", g_prlimit), M("prlimit64", g_prlimit64), M("getrusage", g_getrusage),
     M("getpriority", g_getpriority), M("setpriority", g_setpriority), M("nice", g_nice),
     M("qsort", g_qsort), M("bsearch", g_bsearch),
     M("rand", g_rand), M("srand", g_srand), M("rand_r", g_rand_r), M("random", g_random), M("srandom", g_srand),
