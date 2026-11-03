@@ -160,7 +160,9 @@ public final class ViewRoot implements ViewParent {
     private int adjustMode() {
         int m = mLp.softInputMode & WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST;
         if (m == WindowManager.LayoutParams.SOFT_INPUT_ADJUST_UNSPECIFIED)
-            m = hasScrollContainer(mView) ? WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE : WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN;
+            m = mFocused instanceof android.webkit.WebView || hasScrollContainer(mView)
+                    ? WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                    : WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN;
         return m;
     }
 
@@ -427,7 +429,11 @@ public final class ViewRoot implements ViewParent {
 
     // ---- insets from the host
     /** The screen's insets in pixels (Megler's host tells them), and the keyboard's height. */
-    public static void setInsets(int l, int t, int r, int b) { sInsets = new int[] { l, t, r, b }; for (ViewRoot v : sRoots) v.requestApplyInsets(); }
+    public static void setInsets(int l, int t, int r, int b) {
+        if (sInsets[0] == l && sInsets[1] == t && sInsets[2] == r && sInsets[3] == b) return;
+        sInsets = new int[] { l, t, r, b };
+        for (ViewRoot v : sRoots) v.requestApplyInsets();
+    }
     public static void setImeHeight(int h) { if (h != sImeBottom) { sImeBottom = h; for (ViewRoot v : sRoots) v.requestApplyInsets(); } }
     public static int imeHeight() { return sImeBottom; }
     public static int[] screenInsetsMegler() { return sInsets; }
