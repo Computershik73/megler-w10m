@@ -243,6 +243,8 @@ void mg_mmap_given_back(u64 *given, u64 *again);
 void mg_mmap_usage(u64 *anon, u64 *files);
 
 /* Android system properties, for __system_property_get. */
+int mg_sysprop_foreach(void (*visit)(const void *, void *), void *cookie);
+const void *mg_sysprop_find_nth(unsigned index);
 const char *mg_sysprop(const char *name);
 void mg_sysprop_set(const char *name, const char *value);
 
