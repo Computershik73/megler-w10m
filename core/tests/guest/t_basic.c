@@ -298,6 +298,7 @@ int t_tls_app_slot(void)
  * 16 random bytes in it.
  */
 static int g_init_argc = -1, g_init_env_after_argv, g_init_pagesz, g_init_random;
+static unsigned g_init_vdso;
 
 __attribute__((constructor)) static void auxv_probe(int argc, char **argv, char **envp)
 {
@@ -311,6 +312,7 @@ __attribute__((constructor)) static void auxv_probe(int argc, char **argv, char 
     auxv = (const unsigned *)&argv[n];
     for (i = 0; auxv[i] && i < 64; i += 2) {
         if (auxv[i] == 6) g_init_pagesz = (int)auxv[i + 1];
+        if (auxv[i] == 33) g_init_vdso = auxv[i + 1];
         if (auxv[i] == 25 && auxv[i + 1]) {
             const unsigned char *r = (const unsigned char *)(size_t)auxv[i + 1];
             int k, any = 0;
@@ -1701,4 +1703,90 @@ int t_go_net_files(const char *dir)
     if (syscall(122, ents) != 0 || strcmp(ents, "Linux")) return 36;
     if (syscall(199) < 0 || syscall(64) < 0) return 37;
     return 0;
+}
+
+/*
+ * The vDSO in the auxiliary vector (AT_SYSINFO_EHDR), read as Go's runtime reads it on Android: from /proc/self/auxv,
+ * which has the same vector as the init functions' block, the page size and AT_RANDOM in it too; then the image as
+ * runtime/vdso_linux.go reads one: the load offset from the first PT_LOAD, the dynamic table, the version LINUX_2.6
+ * among the definitions, __vdso_clock_gettime of that version through the hash table's chain. Called, it says the
+ * monotonic clock, between two readings of clock_gettime. 0, or the step that failed.
+ */
+int t_vdso(void)
+{
+    unsigned file[128], ehdr = 0, pagesz = 0, random = 0;
+    int fd = open("/proc/self/auxv", 0), got, k;
+    if (fd < 0) return 10;
+    got = read(fd, file, sizeof(file));
+    close(fd);
+    if (got <= 0 || got % 8) return 11;
+    for (k = 0; k + 1 < got / 4 && file[k]; k += 2) {
+        if (file[k] == 33) ehdr = file[k + 1];
+        if (file[k] == 6) pagesz = file[k + 1];
+        if (file[k] == 25) random = file[k + 1];
+    }
+    if (file[k] != 0 || !ehdr || ehdr != g_init_vdso || pagesz != 4096 || !random) return 12;
+    typedef struct { unsigned char ident[16]; unsigned short type, machine; unsigned version, entry, phoff, shoff, flags;
+                     unsigned short ehsize, phentsize, phnum, shentsize, shnum, shstrndx; } t_ehdr;
+    typedef struct { unsigned type, offset, vaddr, paddr, filesz, memsz, flags, align; } t_phdr;
+    typedef struct { int tag; unsigned val; } t_dyn;
+    typedef struct { unsigned name, value, size; unsigned char info, other; unsigned short shndx; } t_sym;
+    typedef struct { unsigned short version, flags, ndx, cnt; unsigned hash, aux, next; } t_verdef;
+    typedef int (*gettime_fn)(int, struct t_timespec *);
+    const t_ehdr *h = (const t_ehdr *)(size_t)g_init_vdso;
+    const t_phdr *ph;
+    const t_dyn *d = 0;
+    const unsigned *hash = 0;
+    const t_sym *syms = 0;
+    const char *strs = 0;
+    const unsigned short *versym = 0;
+    const t_verdef *vd = 0;
+    unsigned base, load = 0, i, ver = 0, chain;
+    int loaded = 0;
+    struct t_timespec a, b, c;
+    if (!h) return 1;
+    if (h->ident[0] != 0x7f || h->ident[1] != 'E' || h->ident[2] != 'L' || h->ident[3] != 'F' || h->ident[4] != 1 || h->machine != 40) return 2;
+    base = (unsigned)(size_t)h;
+    ph = (const t_phdr *)(size_t)(base + h->phoff);
+    for (i = 0; i < h->phnum; i++) {
+        if (ph[i].type == 1 && !loaded) {
+            loaded = 1;
+            load = base + ph[i].offset - ph[i].vaddr;
+        }
+        if (ph[i].type == 2) d = (const t_dyn *)(size_t)(base + ph[i].offset);
+    }
+    if (!loaded || !d) return 3;
+    for (; d->tag; d++) {
+        unsigned p = load + d->val;
+        if (d->tag == 4) hash = (const unsigned *)(size_t)p;
+        if (d->tag == 5) strs = (const char *)(size_t)p;
+        if (d->tag == 6) syms = (const t_sym *)(size_t)p;
+        if (d->tag == 0x6ffffff0) versym = (const unsigned short *)(size_t)p;
+        if (d->tag == 0x6ffffffc) vd = (const t_verdef *)(size_t)p;
+    }
+    if (!hash || !strs || !syms || !versym || !vd) return 4;
+    for (;;) {
+        if (!(vd->flags & 1)) {
+            const unsigned *aux = (const unsigned *)((const char *)vd + vd->aux);
+            if (vd->hash == 0x3ae75f6 && !strcmp(strs + aux[0], "LINUX_2.6")) {
+                ver = vd->ndx & 0x7fff;
+                break;
+            }
+        }
+        if (!vd->next) break;
+        vd = (const t_verdef *)((const char *)vd + vd->next);
+    }
+    if (!ver) return 5;
+    for (chain = hash[2 + 0xd35ec75 % hash[0]]; chain; chain = hash[2 + hash[0] + chain]) {
+        const t_sym *s = &syms[chain];
+        gettime_fn fn;
+        if ((s->info & 15) != 2 || (s->info >> 4) != 1 || !s->shndx || strcmp(strs + s->name, "__vdso_clock_gettime")) continue;
+        if ((versym[chain] & 0x7fff) != ver) continue;
+        fn = (gettime_fn)(size_t)(load + s->value);
+        if (clock_gettime(1, &a) != 0 || fn(1, &b) != 0 || clock_gettime(1, &c) != 0) return 7;
+        if ((long long)b.tv_sec * 1000000000 + b.tv_nsec < (long long)a.tv_sec * 1000000000 + a.tv_nsec) return 8;
+        if ((long long)c.tv_sec * 1000000000 + c.tv_nsec < (long long)b.tv_sec * 1000000000 + b.tv_nsec) return 9;
+        return 0;
+    }
+    return 6;
 }

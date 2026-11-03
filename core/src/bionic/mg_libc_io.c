@@ -492,6 +492,18 @@ static char *synthetic(const char *g, size_t *size)
             smaps_details(&t, MG_PAGE, PF_R | PF_W);
         }
         if (!t.s) tb_add(&t, "%s", "");
+    } else if (!strcmp(g, "/proc/self/auxv")) {
+        /*
+         * The auxiliary vector, as the kernel's file has it (bionic/mg_libc_misc.c, mg_bionic_auxv_words): the page size,
+         * AT_RANDOM's 16 bytes, the hardware's capabilities, the vDSO. Go's runtime, loaded as a library on Android, reads
+         * its vector from here, having none from its loader: without the file it probed the page size with mincore and
+         * read its clocks by number, thousands of faults a second, where the vDSO's clock is a call.
+         */
+        u32 words[64];
+        size_t n = mg_bionic_auxv_words(words, MG_COUNT(words));
+        t.s = (char *)mg_realloc(NULL, n * 4 + 1);
+        memcpy(t.s, words, n * 4);
+        t.n = n * 4;
     } else if (!strcmp(g, "/proc/self/cmdline")) {
         tb_add(&t, "%s", g_package);
         t.n++;                 /* the terminating NUL is part of the file */

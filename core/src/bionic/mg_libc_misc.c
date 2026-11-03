@@ -324,10 +324,89 @@ static int g_property_set(const char *name, const char *value)
 static u8 g_at_random[16];
 
 /*
+ * A vDSO of the kind the kernel maps into a process, for Go's runtime: its clocks read without a call by number. Go takes
+ * the image from the vector's AT_SYSINFO_EHDR as it starts, finds __vdso_clock_gettime of the version LINUX_2.6 in it,
+ * and calls that for every reading of its clocks (nanotime, walltime), thousands a second in a busy program. Without it
+ * each reading is a call by number, which here is a fault: the svc is an undefined instruction now (arm/mg_patch.c),
+ * answered from the fault handler. The image is ELF, as Linux's is, with what Go reads of one and no more: a program
+ * header table with a PT_LOAD at 0 and a PT_DYNAMIC; the dynamic table (DT_HASH, DT_SYMTAB, DT_STRTAB, DT_VERSYM and
+ * DT_VERDEF: Go reads the definitions without looking whether there are any); one hash bucket; the symbol, whose
+ * value is the distance from the image to libc's clock_gettime here; its version; the names. getauxval does not say
+ * where it is: libraries that read a vDSO's unwind tables or sections through getauxval find none, as before.
+ */
+static u32 g_vdso[96];
+
+static void put16(u8 *p, u16 v) { memcpy(p, &v, 2); }
+static void put32(u8 *p, u32 v) { memcpy(p, &v, 4); }
+
+static mg_addr vdso_image(void)
+{
+    enum { PH = 52, DYN = PH + 2 * 32, NDYN = 9, HASH = DYN + NDYN * 8, SYM = HASH + 5 * 4, VERSYM = SYM + 2 * 16,
+           VERDEF = VERSYM + 4, STR = VERDEF + 2 * 28, S_FN = 1, S_VER = 22, S_BASE = 32, STRSZ = 48, SIZE = STR + STRSZ };
+    static const char names[STRSZ] = "\0__vdso_clock_gettime\0LINUX_2.6\0linux-vdso.so.1";
+    static const u32 dyn[NDYN * 2] = { 4 /* DT_HASH */, HASH, 5 /* DT_STRTAB */, STR, 6 /* DT_SYMTAB */, SYM, 10 /* DT_STRSZ */, STRSZ,
+                                      11 /* DT_SYMENT */, 16, 0x6ffffff0u /* DT_VERSYM */, VERSYM, 0x6ffffffcu /* DT_VERDEF */, VERDEF,
+                                      0x6ffffffdu /* DT_VERDEFNUM */, 2, 0, 0 };
+    u8 *b = (u8 *)g_vdso;
+    mg_addr fn = (mg_addr)mg_bionic_find("clock_gettime");
+    if (!fn || SIZE > sizeof(g_vdso)) return 0;
+    memset(b, 0, sizeof(g_vdso));
+    memcpy(b, "\177ELF\1\1\1", 7);                    /* 32-bit, little-endian */
+    put16(b + 16, 3);                                   /* ET_DYN */
+    put16(b + 18, 40);                                  /* EM_ARM */
+    put32(b + 20, 1);
+    put32(b + 28, PH);
+    put32(b + 36, 0x05000400u);                         /* EABI 5, hard float */
+    put16(b + 40, 52);
+    put16(b + 42, 32);
+    put16(b + 44, 2);
+    put16(b + 46, 40);
+    put32(b + PH, 1);                                   /* PT_LOAD: the image, at 0 */
+    put32(b + PH + 16, SIZE);
+    put32(b + PH + 20, SIZE);
+    put32(b + PH + 24, 5);
+    put32(b + PH + 28, MG_PAGE);
+    put32(b + PH + 32, 2);                              /* PT_DYNAMIC */
+    put32(b + PH + 36, DYN);
+    put32(b + PH + 40, DYN);
+    put32(b + PH + 44, DYN);
+    put32(b + PH + 48, NDYN * 8);
+    put32(b + PH + 52, NDYN * 8);
+    put32(b + PH + 56, 4);
+    put32(b + PH + 60, 4);
+    memcpy(b + DYN, dyn, sizeof(dyn));
+    put32(b + HASH, 1);                                 /* one bucket; two in the chain, the second the symbol */
+    put32(b + HASH + 4, 2);
+    put32(b + HASH + 8, 1);
+    put32(b + SYM + 16, S_FN);                          /* the symbol: global, a function, defined */
+    put32(b + SYM + 20, (u32)(fn - (mg_addr)b));
+    b[SYM + 28] = 0x12;
+    put16(b + SYM + 30, 1);
+    put16(b + VERSYM + 2, 2);                           /* its version: LINUX_2.6 */
+    put16(b + VERDEF, 1);                               /* the image's own version, the base ... */
+    put16(b + VERDEF + 2, 1);
+    put16(b + VERDEF + 4, 1);
+    put16(b + VERDEF + 6, 1);
+    put32(b + VERDEF + 8, 0x0deebfa1u);                 /* (the ELF hash of its name) */
+    put32(b + VERDEF + 12, 20);
+    put32(b + VERDEF + 16, 28);
+    put32(b + VERDEF + 20, S_BASE);
+    put16(b + VERDEF + 28, 1);                          /* ... then LINUX_2.6, the second */
+    put16(b + VERDEF + 32, 2);
+    put16(b + VERDEF + 34, 1);
+    put32(b + VERDEF + 36, 0x03ae75f6u);
+    put32(b + VERDEF + 40, 20);
+    put32(b + VERDEF + 48, S_VER);
+    memcpy(b + STR, names, STRSZ);
+    return (mg_addr)b;
+}
+
+/*
  * What a library's init functions are given (ld/mg_ld.c, mg_ld_init), as bionic's linker gives them what the kernel put
  * on the process's first stack: argv, its NULL, the environment (none) and its NULL, then the auxiliary vector, pairs of
- * tag and value up to AT_NULL -- getauxval's own. Go's runtime, loaded as a library, finds the vector so, right after
- * envp's NULL, for the page size and the random bytes it starts from; there was what came after a separate array.
+ * tag and value up to AT_NULL -- getauxval's own, and the vDSO (AT_SYSINFO_EHDR, above). Go's runtime, loaded as a
+ * library, finds the vector so, right after envp's NULL, for the page size, the random bytes it starts from and the vDSO;
+ * there was what came after a separate array.
  */
 static unsigned long g_getauxval(unsigned long type);
 char **mg_bionic_initial_argv(void)
@@ -347,11 +426,34 @@ char **mg_bionic_initial_argv(void)
             block[n++] = (mg_addr)tags[i];
             block[n++] = (mg_addr)v;
         }
+        block[n] = vdso_image();
+        if (block[n]) {
+            block[n + 1] = block[n];
+            block[n] = 33;                               /* AT_SYSINFO_EHDR */
+            n += 2;
+        }
         block[n++] = 0;                                  /* AT_NULL */
         block[n] = 0;
         made = 1;
     }
     return (char **)block;
+}
+
+/*
+ * That vector as /proc/self/auxv has it: 32-bit tags and values, up to AT_NULL's pair and with it; the number of words.
+ * Go's runtime, loaded as a library on Android, takes no vector from its loader -- _rt0_arm_android_lib gives the runtime
+ * an argv of its own, "gojni", whose vector is empty -- and reads that file for it (bionic/mg_libc_io.c).
+ */
+size_t mg_bionic_auxv_words(u32 *out, size_t max)
+{
+    const mg_addr *v = (const mg_addr *)(void *)mg_bionic_initial_argv() + 3;
+    size_t n = 0;
+    for (; n + 2 <= max; v += 2) {
+        out[n++] = (u32)v[0];
+        out[n++] = (u32)v[1];
+        if (!v[0]) break;
+    }
+    return n;
 }
 
 static unsigned long g_getauxval(unsigned long type)
