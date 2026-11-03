@@ -160,7 +160,8 @@ bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir
 /*
  * A bundle of split APKs as they go about outside Google Play: an .apks file (SAI's, bundletool's, APKPure's: the base
  * APK and its splits in a ZIP archive, perhaps with APKPure's manifest.json and an icon) or an .xapk (APKPure's:
- * manifest.json, the APK or the base and its splits, an icon, and perhaps expansion files under Android/obb/<package>/).
+ * manifest.json, the APK or the base and its splits, an icon, and perhaps expansion files under Android/obb/<package>/)
+ * or an .apkm (APKMirror's: base.apk and split_*.apk, an info.json and an icon.png).
  * It is unpacked into what this phone can use, as an installer picks what to install:
  *
  *   apk_path      where the base APK is written (replaced if it is there)

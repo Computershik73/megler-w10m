@@ -1338,6 +1338,7 @@ void mg_bionic_init(void)
     mg_bionic_register(mg_tab_net);
     mg_bionic_register(mg_tab_netdb);
     mg_bionic_register(mg_tab_zlib);
+    mg_bionic_register(mg_tab_regex);
     mg_bionic_register(mg_tab_ndk);
     mg_bionic_register(mg_tab_native_activity);
     mg_bionic_register(mg_opensles_table());

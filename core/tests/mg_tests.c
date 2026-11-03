@@ -1338,6 +1338,178 @@ static void test_mmap_file_written(const char *scratch)
 }
 
 /*
+ * What Zalo's libraries import of libc, libm and libz that was not there (each a stub that ended the app when called): POSIX
+ * regular expressions (bionic/mg_regex.c), zlib's gzip files on the guest's files (bionic/mg_libz.c), j0 and j1,
+ * eventfd_read and eventfd_write, fchmodat.
+ */
+typedef struct t_regex {
+    int re_magic;
+    size_t re_nsub;
+    const char *re_endp;
+    void *re_g;
+} t_regex;
+typedef struct t_regmatch {
+    i32 so, eo;
+} t_regmatch;
+
+/* regexec of `pattern` (cflags) on `subject`: its result, and the first two matches' places as "so-eo so-eo" in `out`. */
+static int regex_run(const char *pattern, int cflags, const char *subject, int eflags, char *out, size_t out_size)
+{
+    typedef int (*regcomp_fn)(t_regex *, const char *, int);
+    typedef int (*regexec_fn)(const t_regex *, const char *, size_t, t_regmatch *, int);
+    typedef void (*regfree_fn)(t_regex *);
+    regcomp_fn comp = (regcomp_fn)mg_bionic_find("regcomp");
+    regexec_fn exec = (regexec_fn)mg_bionic_find("regexec");
+    regfree_fn rfree = (regfree_fn)mg_bionic_find("regfree");
+    t_regex re;
+    t_regmatch m[4];
+    int r;
+    if (out_size) out[0] = 0;
+    if (!comp || !exec || !rfree) return -100;
+    memset(&re, 0, sizeof(re));
+    r = comp(&re, pattern, cflags);
+    if (r) return -r;
+    memset(m, 0xff, sizeof(m));
+    if (eflags & 4) {          /* REG_STARTEND: the range in m[0] */
+        m[0].so = 2;
+        m[0].eo = (i32)strlen(subject) - 2;
+    }
+    r = exec(&re, subject, 4, m, eflags);
+    if (r == 0) snprintf(out, out_size, "%d-%d %d-%d %d-%d", (int)m[0].so, (int)m[0].eo, (int)m[1].so, (int)m[1].eo, (int)m[2].so, (int)m[2].eo);
+    rfree(&re);
+    return r;
+}
+
+static void test_libc_gaps(const char *scratch)
+{
+    enum { EXT = 1, ICASE = 2, NOSUB = 4, NEWLINE = 8 };
+    char out[96];
+    say("regcomp and regexec: extended and basic, the leftmost longest, subexpressions, classes, flags, errors");
+    CHECK(regex_run("a|ab", EXT, "xxab", 0, out, sizeof(out)) == 0 && !strncmp(out, "2-4", 3));
+    CHECK(regex_run("^([a-z]+)@([a-z]+)\\.com$", EXT, "bob@mail.com", 0, out, sizeof(out)) == 0 && !strcmp(out, "0-12 0-3 4-8"));
+    CHECK(regex_run("\\(ab\\)*c\\1", 0, "ababcab", 0, out, sizeof(out)) == 0 && !strncmp(out, "0-7 2-4", 7));
+    CHECK(regex_run("hello", ICASE, "Say HELLO", 0, out, sizeof(out)) == 0 && !strncmp(out, "4-9", 3));
+    CHECK(regex_run("^b", NEWLINE, "a\nb", 0, out, sizeof(out)) == 0 && !strncmp(out, "2-3", 3));
+    CHECK(regex_run("^b", 0, "a\nb", 0, out, sizeof(out)) == 1);
+    CHECK(regex_run("x{2,3}", EXT, "xxxx", 0, out, sizeof(out)) == 0 && !strncmp(out, "0-3", 3));
+    CHECK(regex_run("x\\{2\\}", 0, "axxx", 0, out, sizeof(out)) == 0 && !strncmp(out, "1-3", 3));
+    CHECK(regex_run("[[:digit:]]+", EXT, "ab123c", 0, out, sizeof(out)) == 0 && !strncmp(out, "2-5", 3));
+    CHECK(regex_run("[^[:space:]]+", EXT, "  hi ", 0, out, sizeof(out)) == 0 && !strncmp(out, "2-4", 3));
+    CHECK(regex_run("[]a]+", EXT, "x]a]", 0, out, sizeof(out)) == 0 && !strncmp(out, "1-4", 3));
+    CHECK(regex_run("[a-c-]+", EXT, "zb-cq", 0, out, sizeof(out)) == 0 && !strncmp(out, "1-4", 3));
+    CHECK(regex_run("\\bcat\\b", EXT, "concat cat", 0, out, sizeof(out)) == 0 && !strncmp(out, "7-10", 4));
+    CHECK(regex_run("(a*)+b", EXT, "aab", 0, out, sizeof(out)) == 0 && !strncmp(out, "0-3", 3));
+    CHECK(regex_run("b+", EXT | NOSUB, "abbbc", 0, out, sizeof(out)) == 0);
+    CHECK(regex_run("^abc$", EXT, "xxabcxx", 4 /* REG_STARTEND */, out, sizeof(out)) == 0 && !strncmp(out, "2-5", 3));
+    CHECK(regex_run("abc", EXT, "abd", 0, out, sizeof(out)) == 1);
+    CHECK(regex_run("", EXT, "anything", 0, out, sizeof(out)) == 0 && !strncmp(out, "0-0", 3));
+    /* The errors, as bionic's numbers. */
+    CHECK(regex_run("a(", EXT, "a", 0, out, sizeof(out)) == -8);
+    CHECK(regex_run("[a", EXT, "a", 0, out, sizeof(out)) == -7);
+    CHECK(regex_run("a{2,1}", EXT, "a", 0, out, sizeof(out)) == -10);
+    CHECK(regex_run("\\(a\\)\\2", 0, "aa", 0, out, sizeof(out)) == -6);
+    CHECK(regex_run("[[:foo:]]", EXT, "a", 0, out, sizeof(out)) == -4);
+    CHECK(regex_run("a\\", EXT, "a", 0, out, sizeof(out)) == -5);
+    {
+        typedef size_t (*regerror_fn)(int, const t_regex *, char *, size_t);
+        regerror_fn err = (regerror_fn)mg_bionic_find("regerror");
+        char text[16];
+        CHECK(err && err(1, NULL, text, sizeof(text)) == strlen("regexec() failed to match") + 1 && !strcmp(text, "regexec() faile"));
+    }
+    /* A long subject: one byte's repetition takes no stack a byte; a nested one gives up a path too deep, and returns. */
+    {
+        enum { N = 200000 };
+        char *big = (char *)mg_alloc(N + 2);
+        memset(big, 'a', N);
+        big[N] = 'b';
+        CHECK(regex_run(".*b", EXT, big, 0, out, sizeof(out)) == 0 && !strncmp(out, "0-200001", 8));
+        big[N] = 'a';
+        CHECK(regex_run("(a|b)*c", EXT, big, 0, out, sizeof(out)) == 1);
+        free(big);
+    }
+
+    say("gzip files on the guest's files: written, read back by lines, rewound; a plain file read as it is");
+    {
+        typedef void *(*gzopen_fn)(const char *, const char *);
+        typedef int (*gzputs_fn)(void *, const char *);
+        typedef int (*gzwrite_fn)(void *, const void *, unsigned);
+        typedef char *(*gzgets_fn)(void *, char *, int);
+        typedef int (*gzfile_fn)(void *);
+        typedef int (*open_fn)(const char *, int, int);
+        typedef long (*io_fn)(int, void *, size_t);
+        typedef int (*close_fn)(int);
+        gzopen_fn gzopen_ = (gzopen_fn)mg_bionic_find("gzopen");
+        gzputs_fn gzputs_ = (gzputs_fn)mg_bionic_find("gzputs");
+        gzwrite_fn gzwrite_ = (gzwrite_fn)mg_bionic_find("gzwrite");
+        gzgets_fn gzgets_ = (gzgets_fn)mg_bionic_find("gzgets");
+        gzfile_fn gzclose_ = (gzfile_fn)mg_bionic_find("gzclose"), gzeof_ = (gzfile_fn)mg_bionic_find("gzeof");
+        gzfile_fn gzrewind_ = (gzfile_fn)mg_bionic_find("gzrewind"), gzdirect_ = (gzfile_fn)mg_bionic_find("gzdirect");
+        open_fn open_ = (open_fn)mg_bionic_find("open");
+        io_fn read_ = (io_fn)mg_bionic_find("read"), write_ = (io_fn)mg_bionic_find("write");
+        close_fn close_ = (close_fn)mg_bionic_find("close");
+        const char *gz = "/syscall-files/log.gz", *plain = "/syscall-files/plain.txt";
+        char line[64];
+        u8 head[2] = { 0, 0 };
+        void *f;
+        int fd;
+        mg_fs_mount("/syscall-files", scratch);
+        CHECK(gzopen_ && gzputs_ && gzwrite_ && gzgets_ && gzclose_ && gzeof_ && gzrewind_ && gzdirect_ && open_ && read_ && write_ && close_);
+        if (gzopen_ && gzputs_ && gzwrite_ && gzgets_ && gzclose_ && gzeof_ && gzrewind_ && gzdirect_ && open_ && read_ && write_ && close_) {
+            f = gzopen_(gz, "wb6");
+            CHECK(f && gzputs_(f, "line one\n") == 9 && gzwrite_(f, "line two\n", 9) == 9 && gzclose_(f) == 0);
+            fd = open_(gz, 0, 0);
+            CHECK(fd >= 0 && read_(fd, head, 2) == 2 && head[0] == 0x1f && head[1] == 0x8b);
+            if (fd >= 0) close_(fd);
+            f = gzopen_(gz, "rb");
+            CHECK(f != NULL);
+            if (f) {
+                CHECK(gzgets_(f, line, sizeof(line)) && !strcmp(line, "line one\n"));
+                CHECK(gzgets_(f, line, sizeof(line)) && !strcmp(line, "line two\n"));
+                CHECK(!gzgets_(f, line, sizeof(line)) && gzeof_(f));
+                CHECK(gzrewind_(f) == 0 && gzgets_(f, line, sizeof(line)) && !strcmp(line, "line one\n") && !gzdirect_(f));
+                CHECK(gzclose_(f) == 0);
+            }
+            fd = open_(plain, 01 | 0100 | 01000, 0600);
+            CHECK(fd >= 0 && write_(fd, "as it is\n", 9) == 9);
+            if (fd >= 0) close_(fd);
+            f = gzopen_(plain, "rb");
+            CHECK(f && gzgets_(f, line, sizeof(line)) && !strcmp(line, "as it is\n") && gzdirect_(f));
+            if (f) gzclose_(f);
+        }
+    }
+
+    say("j0 and j1, eventfd_read and eventfd_write, fchmodat");
+    {
+        typedef double (*d_fn)(double);
+        typedef int (*eventfd_fn)(unsigned, int);
+        typedef int (*efd_read_fn)(int, u64 *);
+        typedef int (*efd_write_fn)(int, u64);
+        typedef int (*fchmodat_fn)(int, const char *, unsigned, int);
+        typedef int (*close_fn)(int);
+        d_fn j0_ = (d_fn)mg_bionic_find("j0"), j1_ = (d_fn)mg_bionic_find("j1");
+        eventfd_fn eventfd_ = (eventfd_fn)mg_bionic_find("eventfd");
+        efd_read_fn efd_read = (efd_read_fn)mg_bionic_find("eventfd_read");
+        efd_write_fn efd_write = (efd_write_fn)mg_bionic_find("eventfd_write");
+        fchmodat_fn fchmodat_ = (fchmodat_fn)mg_bionic_find("fchmodat");
+        close_fn close_ = (close_fn)mg_bionic_find("close");
+        u64 v = 0;
+        int fd;
+        CHECK(j0_ && j1_ && eventfd_ && efd_read && efd_write && fchmodat_ && close_);
+        if (j0_ && j1_) {
+            CHECK(fabs(j0_(0) - 1) < 1e-15 && fabs(j0_(1) - 0.7651976865579666) < 1e-12 && fabs(j0_(-3) - j0_(3)) < 1e-15);
+            CHECK(fabs(j0_(10) - -0.2459357644513483) < 1e-10 && fabs(j0_(20) - 0.1670246643405831) < 1e-10);
+            CHECK(fabs(j1_(1) - 0.4400505857449335) < 1e-12 && fabs(j1_(-1) + 0.4400505857449335) < 1e-12 && fabs(j1_(15) - 0.2051040386135228) < 1e-10);
+        }
+        if (eventfd_ && efd_read && efd_write && close_) {
+            fd = eventfd_(0, 0);
+            CHECK(fd >= 0 && efd_write(fd, 5) == 0 && efd_write(fd, 2) == 0 && efd_read(fd, &v) == 0 && v == 7);
+            if (fd >= 0) close_(fd);
+        }
+        if (fchmodat_) CHECK(fchmodat_(-100, "/syscall-files/log.gz", 0644, 0) == 0 && fchmodat_(-100, "/syscall-files/none", 0644, 0) == -1);
+    }
+}
+
+/*
  * Anonymous memory given back with madvise (MADV_DONTNEED, bionic/mg_libc_mem.c) is the system's again -- decommitted, where
  * the host says what is -- and still the app's: a page of it touched is zero, read or written; one the system itself writes
  * into (a file read into it) is read into; made no-access and given access again it is zero; what was not given back keeps
@@ -3710,6 +3882,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_mmap_commit();
     test_mmap_file(scratch);
     test_mmap_file_written(scratch);
+    test_libc_gaps(scratch);
     test_mmap_madvise(scratch);
     test_pread_threads(scratch);
     test_rename_in_use(scratch);

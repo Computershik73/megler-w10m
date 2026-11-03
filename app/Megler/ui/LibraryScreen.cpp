@@ -160,7 +160,7 @@ private:
         const auto entries = Library::instance().entries();
         if (entries.empty()) {
             auto empty = contentUnavailable(glyphs::game, "No Apps Yet",
-                                            "Pick an Android app's APK on this phone, or a bundle of split APKs (.apks, .xapk): "
+                                            "Pick an Android app's APK on this phone, or a bundle of split APKs (.apks, .xapk, .apkm): "
                                             "Megler reads it where it is, tells you whether it can run here, and installs it as an "
                                             "app of the phone's own.");
             empty.Margin(ThicknessHelper::FromLengths(8, 64, 8, 0));

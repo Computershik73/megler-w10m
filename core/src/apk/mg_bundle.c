@@ -1,5 +1,6 @@
 /*
- * Bundles of split APKs -- .apks (SAI's, bundletool's, APKPure's) and .xapk (APKPure's) -- unpacked into the base APK and
+ * Bundles of split APKs -- .apks (SAI's, bundletool's, APKPure's), .xapk (APKPure's) and .apkm (APKMirror's: base.apk and
+ * split_*.apk with an info.json and an icon.png, signed in META-INF by APKMirror) -- unpacked into the base APK and
  * the splits this phone can use, as an installer picks what to install of what Google Play offers (megler.h,
  * megler_bundle_unpack).
  *

@@ -3224,6 +3224,19 @@ static int g_epoll_pwait(int epfd, g_epoll_event *out, int max, int timeout_ms, 
 static int g_epoll_wait(int epfd, g_epoll_event *out, int max, int timeout_ms) { return g_epoll_pwait(epfd, out, max, timeout_ms, NULL); }
 
 static int g_eventfd(unsigned initial, int flags) { return mg_fd_eventfd(initial, flags); }
+/* The counter's eight bytes read or written, 0 or -1, as bionic's eventfd_read and eventfd_write (Zalo's libz3rdparty.so). */
+static int g_eventfd_read(int fd, u64 *value) { return g_read(fd, value, 8) == 8 ? 0 : -1; }
+static int g_eventfd_write(int fd, u64 value) { return g_write(fd, &value, 8) == 8 ? 0 : -1; }
+/*
+ * fchmodat: a file's mode is not kept here (as chmod's is not), so for a file that is there it is done, and for one that
+ * is not it is ENOENT. libc++'s std::filesystem::permissions calls it (Zalo's libc++_shared.so and libzinstant.so).
+ */
+static int g_fchmodat(int dirfd, const char *path, unsigned mode, int flags)
+{
+    (void)mode;
+    (void)flags;
+    return g_faccessat(dirfd, path, 0 /* F_OK */, 0);
+}
 
 static int g_fchmod(int fd, int mode) { (void)fd; (void)mode; return 0; }
 static int g_flock(int fd, int op) { (void)fd; (void)op; return 0; }
@@ -3269,6 +3282,7 @@ const mg_sym mg_tab_io[] = {
     IO("telldir", g_telldir), IO("seekdir", g_seekdir), IO("dirfd", g_dirfd), IO("scandir", g_scandir), IO("scandir64", g_scandir),
     IO("alphasort", g_alphasort), IO("alphasort64", g_alphasort), IO("getdents64", g_getdents64),
     IO("pipe", g_pipe), IO("pipe2", g_pipe2), IO("eventfd", g_eventfd), IO("memfd_create", g_memfd_create),
+    IO("eventfd_read", g_eventfd_read), IO("eventfd_write", g_eventfd_write), IO("fchmodat", g_fchmodat),
     IO("timerfd_create", g_timerfd_create), IO("timerfd_settime", g_timerfd_settime), IO("timerfd_gettime", g_timerfd_gettime), IO("dup", g_dup), IO("dup2", g_dup2), IO("dup3", g_dup3),
     IO("fcntl", g_fcntl), IO("__fcntl64", g_fcntl), IO("ioctl", g_ioctl), IO("isatty", g_isatty),
     IO("poll", g_poll), IO("__poll_chk", g_poll), IO("ppoll", g_ppoll), IO("__ppoll_chk", g_ppoll), IO("select", g_select),

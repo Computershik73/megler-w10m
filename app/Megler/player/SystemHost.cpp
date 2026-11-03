@@ -124,7 +124,7 @@ bool installApkThunk(void*, const char* hostPath, const char* name) {
         if (inside.size() != 1) {
             onUi([from, file] {
                 cannotLaunch(from + " wants to install " + file + " in several APKs at once, which Megler cannot take that way yet: "
-                                                                 "install its .apks or .xapk, or the APK, from the file manager.");
+                                                                 "install its .apks, .xapk or .apkm, or the APK, from the file manager.");
             });
             return false;
         }

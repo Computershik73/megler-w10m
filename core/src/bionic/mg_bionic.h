@@ -58,7 +58,7 @@ bool mg_bionic_is_system_lib(const char *soname);
 
 /* The tables, one per file; each ends with MG_END. */
 extern const mg_sym mg_tab_mem[], mg_tab_str[], mg_tab_wchar[], mg_tab_stdio[], mg_tab_io[], mg_tab_misc[], mg_tab_time[], mg_tab_math[],
-    mg_tab_pthread[], mg_tab_dl[], mg_tab_log[], mg_tab_aeabi[], mg_tab_net[], mg_tab_netdb[], mg_tab_zlib[], mg_tab_ndk[], mg_tab_native_activity[];
+    mg_tab_pthread[], mg_tab_dl[], mg_tab_log[], mg_tab_aeabi[], mg_tab_net[], mg_tab_netdb[], mg_tab_zlib[], mg_tab_ndk[], mg_tab_native_activity[], mg_tab_regex[];
 const mg_sym *mg_opensles_table(void);
 const mg_sym *mg_media_table(void);    /* ndk/mg_media.c */
 const mg_sym *mg_aaudio_table(void);   /* ndk/mg_aaudio.c */

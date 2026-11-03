@@ -360,7 +360,8 @@ bool Library::isBundle(const std::string& pickedName) {
         const size_t n = strlen(tail);
         return pickedName.size() > n && _stricmp(pickedName.c_str() + pickedName.size() - n, tail) == 0;
     };
-    return endsWith(".apks") || endsWith(".xapk");
+    // (.apkm: APKMirror's, base.apk and split_*.apk with its info.json, which the core unpacks as it unpacks the others.)
+    return endsWith(".apks") || endsWith(".xapk") || endsWith(".apkm");
 }
 
 std::string Library::idFor(const std::string& pickedName) {
