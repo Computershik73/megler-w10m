@@ -108,6 +108,56 @@ static int g_fesetround(int mode) { return mode == 0 ? 0 : -1; }
 static int g_fenv_nop(void *p) { (void)p; return 0; }
 static int g_fenv_nop_int(int e) { (void)e; return 0; }
 
+/*
+ * Bessel functions of the first kind, of orders 0 and 1: their power series up to 12, and Hankel's asymptotic expansion
+ * beyond, where the series' terms cancel too much. Taken to the term where the expansion starts to grow, it is good to
+ * about 1e-11 at 12 and better further out. Zalo's call library (libzrtc.so) imports j0.
+ */
+static double bessel_series(int n, double x)
+{
+    double q = -x * x / 4, term = n ? x / 2 : 1, sum = term;
+    int k;
+    for (k = 1; k < 300; k++) {
+        term *= q / ((double)k * (k + n));
+        sum += term;
+        if (fabs(term) <= 1e-17 * fabs(sum)) break;
+    }
+    return sum;
+}
+
+static double bessel_asymptotic(int n, double x)
+{
+    const double pi = 3.14159265358979323846;
+    double mu = 4.0 * n * n, p = 1, q = 0, term = 1, w = x - (n * 0.5 + 0.25) * pi;
+    int k;
+    for (k = 1; k < 60; k++) {
+        double next = term * (mu - (2.0 * k - 1) * (2.0 * k - 1)) / (k * 8.0 * x);
+        if (fabs(next) >= fabs(term)) break;
+        term = next;
+        /* P takes the even terms, Q the odd, each with alternating signs. */
+        switch (k & 3) {
+        case 1: q += term; break;
+        case 2: p -= term; break;
+        case 3: q -= term; break;
+        default: p += term; break;
+        }
+    }
+    return sqrt(2 / (pi * x)) * (p * cos(w) - q * sin(w));
+}
+
+static double g_j0(double x)
+{
+    x = fabs(x);
+    return x < 12 ? bessel_series(0, x) : bessel_asymptotic(0, x);
+}
+static double g_j1(double x)
+{
+    double a = fabs(x), v = a < 12 ? bessel_series(1, a) : bessel_asymptotic(1, a);
+    return x < 0 ? -v : v;
+}
+static float g_j0f(float x) { return (float)g_j0(x); }
+static float g_j1f(float x) { return (float)g_j1(x); }
+
 #define DM(n) MG_WRAP(#n, g_##n)
 
 const mg_sym mg_tab_math[] = {
@@ -122,7 +172,7 @@ const mg_sym mg_tab_math[] = {
     DM(exp10), DM(exp10f), DM(fma), DM(fmaf), DM(ldexp), DM(ldexpf), DM(scalbln), DM(scalblnf), DM(frexp), DM(frexpf),
     DM(modf), DM(modff), DM(remquo), DM(remquof), DM(nan), DM(nanf), DM(lround), DM(lroundf), DM(llround), DM(llroundf),
     DM(lrint), DM(lrintf), DM(llrint), DM(llrintf), DM(ilogb), DM(ilogbf), DM(sincos), DM(sincosf), DM(lgamma_r), DM(lgammaf_r),
-    DM(significand), DM(finite), DM(finitef),
+    DM(significand), DM(finite), DM(finitef), DM(j0), DM(j1), DM(j0f), DM(j1f),
     MG_WRAP("scalbn", g_ldexp), MG_WRAP("scalbnf", g_ldexpf), MG_WRAP("drem", g_remainder), MG_WRAP("dremf", g_remainderf),
     MG_WRAP("gamma", g_lgamma), MG_WRAP("gammaf", g_lgammaf), MG_WRAP("nexttoward", g_nextafter), MG_WRAP("pow10", g_exp10),
     MG_WRAP("pow10f", g_exp10f),
