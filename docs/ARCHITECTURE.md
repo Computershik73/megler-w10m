@@ -207,12 +207,37 @@ from a directory descriptor's position, which `lseek` sets back), and the
 limit on descriptors that its `syscall` package reads as it starts
 (`prlimit64`: `getrlimit64`'s limits are 64-bit now, where they were
 `getrlimit`'s 32-bit pair, the upper halves left as they were).
-And loaded as a library it finds the auxiliary vector past `envp`, as the kernel
-lays them out on a process's first stack: a library's init functions get
-`argv`, an empty `envp` and the vector (the page size, `AT_RANDOM`'s 16 bytes,
-the hardware's capabilities) in one block (`mg_bionic_initial_argv`), where
-they got a separate `envp` and whatever came after it. The guest tests
-`t_init_auxv` (an init function reading them as Go does), `t_go_calls`,
+A library's init functions get `argv`, an empty `envp` and the auxiliary
+vector (the page size, `AT_RANDOM`'s 16 bytes, the hardware's capabilities,
+the vDSO) in one block (`mg_bionic_initial_argv`), as the kernel lays them
+out on a process's first stack, where they got a separate `envp` and whatever
+came after it: a Go library built for Linux finds its vector there. One built
+for Android, as WhatsApp's is, takes nothing from its loader:
+`_rt0_arm_android_lib` gives the runtime an `argv` of its own ("gojni") with
+an empty vector, and the runtime reads `/proc/self/auxv` for one. That file
+is the same vector now, as the kernel's file has it (32-bit pairs up to
+`AT_NULL`, `mg_bionic_auxv_words`). Without it the runtime probed the page
+size with `mincore`, had no `AT_RANDOM`, and found no vDSO.
+
+**The vDSO.** Go's runtime reads its clocks (`nanotime`, `walltime`) through
+the vDSO's `__vdso_clock_gettime` (version `LINUX_2.6`) where the vector
+names one (`AT_SYSINFO_EHDR`), and otherwise by number. By number each reading
+is a fault here (the `svc` is an undefined instruction), answered from the
+fault handler: 270 in the first three seconds of WhatsApp's `libgojni.so`
+under qemu, idle. The layer's vDSO is an ELF image of 348 bytes in its own
+data (`vdso_image`, `mg_libc_misc.c`): an ELF header, a `PT_LOAD` at 0 and a
+`PT_DYNAMIC`, the dynamic table (`DT_HASH`, `DT_SYMTAB`, `DT_STRTAB`,
+`DT_VERSYM`, `DT_VERDEF`; Go reads the definitions without looking whether
+there are any), one hash bucket, the symbol, whose value is the distance
+from the image to libc's `clock_gettime`, its version, and the names. With
+it, the runtime's `vdsoClockgettimeSym` (read from `libgojni.so`'s data after
+the start, `mg_tests --load` with `MG_TESTS_LOAD_PEEK`) is that function, and
+no clock is read by number. `getauxval` does not name it: libraries that read
+a vDSO's unwind tables through `getauxval` find none, as before.
+
+The guest tests `t_init_auxv` (an init function reading the block as a Linux
+Go library does), `t_vdso` (`/proc/self/auxv` read, the image parsed as
+`runtime/vdso_linux.go` parses one, the clock called), `t_go_calls`,
 `t_go_net_files` (a TCP connection on loopback and a socket pair by number,
 a file as Bolt uses it, a directory read twice, the limits), and `t_ffcalls`
 for the two sigactions.

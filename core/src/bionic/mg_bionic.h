@@ -93,6 +93,8 @@ int *mg_errno_ptr(void);
 /* argv as the kernel lays it out for a process, envp (empty) and the auxiliary vector after it: what a library's init
    functions are given (mg_libc_misc.c). */
 char **mg_bionic_initial_argv(void);
+/* Its auxiliary vector as /proc/self/auxv has it: 32-bit tags and values, AT_NULL's pair the last; the number of words. */
+size_t mg_bionic_auxv_words(u32 *out, size_t max);
 /* ARM EABI kernel convention: negative errno in r0, guest errno unchanged. */
 u32 mg_bionic_syscall_raw(const u32 *regs);
 void mg_set_errno(int guest_errno);
