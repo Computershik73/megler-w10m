@@ -7,15 +7,17 @@ import pathlib
 import subprocess
 
 root = pathlib.Path(__file__).resolve().parents[1]
-jdk = pathlib.Path(os.environ.get('MEGLER_JDK', r'C:\Program Files\Android\Android Studio\jbr'))
+jdk = pathlib.Path(os.environ.get('MEGLER_JDK', r'C:\Program Files\Java\jdk1.8.0_202'))
 out = root / 'build/player-tests'
 out.mkdir(parents=True, exist_ok=True)
+for name in ('stubs', 'framework', 'mocks'):
+    (out/name).mkdir(exist_ok=True)   # JDK 8's javac does not make its -d folder
 
 def run(*args):
     subprocess.run([str(x) for x in args], cwd=root, check=True)
 
-run(jdk/'bin/javac.exe', '-nowarn', '-source', '8', '-target', '8', '-d', out/'stubs', '@build/framework/stubs.arg')
-run(jdk/'bin/javac.exe', '-nowarn', '-source', '8', '-target', '8', '-cp', out/'stubs', '-d', out/'framework', '@build/framework/sources.arg')
+run(jdk/'bin/javac.exe', '-nowarn', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-d', out/'stubs', '@build/framework/stubs.arg')
+run(jdk/'bin/javac.exe', '-nowarn', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-cp', out/'stubs', '-d', out/'framework', '@build/framework/sources.arg')
 files = {
     'android/os/Looper.java': 'package android.os; public class Looper { public static Looper myLooper(){return new Looper();} public static Looper getMainLooper(){return new Looper();} }',
     'android/os/Handler.java': '''package android.os; public class Handler {
@@ -89,5 +91,5 @@ for name, source in files.items():
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(source)
     paths.append(p)
-run(jdk/'bin/javac.exe', '-cp', out/'framework', '-d', out/'mocks', *paths)
+run(jdk/'bin/javac.exe', '-encoding', 'UTF-8', '-cp', out/'framework', '-d', out/'mocks', *paths)
 run(jdk/'bin/java.exe', '-cp', str(out/'mocks')+os.pathsep+str(out/'framework'), 'TestPlayer')

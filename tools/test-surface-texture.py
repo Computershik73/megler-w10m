@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-JDK = Path(os.environ.get('MEGLER_JDK', 'C:/Program Files/Android/Android Studio/jbr'))/'bin'
+JDK = Path(os.environ.get('MEGLER_JDK', 'C:/Program Files/Java/jdk1.8.0_202'))/'bin'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--baseline', action='store_true')
 args = parser.parse_args()
