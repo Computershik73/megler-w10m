@@ -692,6 +692,28 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 191: return ((rlimit_fn)mg_bionic_find("getrlimit"))((int)a, (void *)(mg_addr)b);                               /* ugetrlimit */
     case 75: return 0;                                                                                                   /* setrlimit */
     case 369: return ((prlimit_fn)mg_bionic_find("prlimit64"))((int)a, (int)b, (const void *)(mg_addr)c, (void *)(mg_addr)d);  /* prlimit64 */
+    /* The program break: none to move here, so 0, which Go's runtime takes for no break (sbrk0, as its 32-bit heap looks
+       where to begin), and a caller that asked for a new one for a break it cannot move. */
+    case 45: return 0;                                                                                                   /* brk */
+    /* The thread's capabilities: none, as an app has (an unknown version of the header asked for is told the one there is,
+       with EINVAL, as Linux tells it); setting them is refused. */
+    case 184: {                                                                                     /* capget: header, data */
+        u32 *hdr = (u32 *)(mg_addr)a;
+        if (!hdr) {
+            mg_set_errno(GE_FAULT);
+            return -1;
+        }
+        if (hdr[0] != 0x19980330u && hdr[0] != 0x20071026u && hdr[0] != 0x20080522u) {
+            hdr[0] = 0x20080522u;
+            mg_set_errno(GE_INVAL);
+            return -1;
+        }
+        if (b) memset((void *)(mg_addr)b, 0, hdr[0] == 0x19980330u ? 12 : 24);
+        return 0;
+    }
+    case 185:                                                                                                            /* capset */
+        mg_set_errno(GE_PERM);
+        return -1;
     default:
         mg_note_once("syscall(%ld) is not supported", nr);
         mg_set_errno(GE_NOSYS);
