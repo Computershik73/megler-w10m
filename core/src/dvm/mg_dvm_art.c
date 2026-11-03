@@ -26,6 +26,9 @@
 #include <stdio.h>
 
 #include "../bionic/mg_bionic.h"
+#include "../mg_core.h"
+
+const char *megler_data_dir(void);
 
 #define N(name) static void name(mg_jcall *c)
 
@@ -1309,6 +1312,7 @@ static void in_memory_dex(mg_jcall *c, const u8 *bytes, i64 limit, i32 start, i3
     mg_jobj *cookie;
     u8 *copy;
     size_t n;
+    u32 index;
     if (!bytes || start < 0 || end <= start || end > limit) {
         mg_dvm_throw("java/io/IOException", "no DEX file in the buffer given (%d to %d)", (int)start, (int)end);
         return;
@@ -1316,14 +1320,26 @@ static void in_memory_dex(mg_jcall *c, const u8 *bytes, i64 limit, i32 start, i3
     n = (size_t)(end - start);
     copy = (u8 *)mg_alloc(n);
     memcpy(copy, bytes + start, n);
-    snprintf(label, sizeof(label), "in-memory DEX %d", (int)mg_atomic_add(&count, 1));
-    if (!mg_dvm_add_dex(copy, n, label)) {
+    int number = (int)mg_atomic_add(&count, 1);
+    snprintf(label, sizeof(label), "in-memory DEX %d", number);
+    if (mg_flag("dump-memory-dex")) {
+        char *path = mg_sprintf("%s/memory-%d.dex", megler_data_dir(), number);
+        if (mg_file_write_all(path, copy, n)) mg_info("dvm: diagnostic DEX saved as memory-%d.dex", number);
+        free(path);
+    }
+    mg_dvm_lock();
+    index = mg_dvm_dex_count();
+    bool added = mg_dvm_add_dex(copy, n, label);
+    mg_dvm_unlock();
+    if (!added) {
         free(copy);
         mg_dvm_throw("java/io/IOException", "the buffer is not a DEX file this runtime can read (%s, %u bytes)", label, (unsigned)n);
         return;
     }
     cookie = mg_dvm_new_array("[J", 1);
-    if (cookie) ((i64 *)cookie->u.arr.data)[0] = 1;
+    /* Negative cookies identify an in-memory file; positive 1 is the original
+       shared file path. Its parent must not define the child's memory classes. */
+    if (cookie) ((i64 *)cookie->u.arr.data)[0] = -(i64)index - 1;
     c->ret.l = cookie;
 }
 
@@ -1355,14 +1371,27 @@ N(DexFile_defineClassNative)
     const char *name = mg_dvm_string_utf8(c->args[0].l);
     char internal[400];
     mg_dvm_class *k;
+    mg_dvm_dex *memory = NULL;
+    mg_jobj *cookie = c->args[2].l;
     size_t i;
     int scope = mg_dvm_loader_scope(c->args[1].l); /* defineClassNative(name, loader, cookie, dexFile) */
     if (!name || strlen(name) >= sizeof(internal)) return;
+    if (cookie && cookie->kind == MG_J_PRIM_ARRAY && cookie->u.arr.etype == 'J' && cookie->u.arr.len == 1) {
+        i64 id = ((i64 *)cookie->u.arr.data)[0];
+        if (id < 0 && id >= -(i64)mg_dvm_dex_count()) {
+            memory = mg_dvm_dex_at((u32)(-id - 1));
+            if (!memory || strncmp(memory->name, "in-memory DEX ", 14)) return;
+            if (memory->loader && memory->loader != c->args[1].l) return;
+            memory->loader = c->args[1].l;
+        }
+    }
     for (i = 0; name[i]; i++) internal[i] = name[i] == '.' ? '/' : name[i];
     internal[i] = 0;
     /* A class that is not there is null and no exception: the loader goes on to its next file, and throws ClassNotFoundException itself. */
     if (!mg_dvm_class_exists_scope(internal, scope)) return;
     k = mg_dvm_find_class_scope(internal, scope);
+    if (k && k->dex && !strncmp(k->dex->name, "in-memory DEX ", 14) && k->dex != memory) return;
+    if (memory && (!k || k->dex != memory)) return;
     /* A child scope's loader defines its own classes alone: its parent's, its loadClass asks the parent for. */
     if (k && scope >= SERVICE_SCOPES && k->scope != scope) return;
     c->ret.l = k ? mg_dvm_mirror(k) : NULL;
@@ -1535,6 +1564,14 @@ N(Class_classForName)
         mg_dvm_throw("java/lang/ClassNotFoundException", "%s", given);
     } else {
         k = mg_dvm_find_class_scope(name, scope);
+        if (k && k->dex && !strncmp(k->dex->name, "in-memory DEX ", 14) &&
+            (!c->args[2].l || k->dex->loader != c->args[2].l)) {
+            /* BootClassLoader.findClass uses classForName with a null loader.
+               A parent's lookup must fall through to the memory file's loader. */
+            mg_dvm_throw("java/lang/ClassNotFoundException", "%s", given);
+            free(name);
+            return;
+        }
         if (!k) {
             /* Named and not to be had: ClassNotFoundException, with what stopped it as the cause Java code looks for. */
             mg_jvalue a[2];
