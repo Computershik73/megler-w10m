@@ -492,6 +492,19 @@ contract, and keeps the software way for when there is no device for it.
   and uploaded again to be drawn: Compose's screen-sized layers cost that
   each, in the app's memory and on the processor, and Spotify ran out of
   both (`EndDraw` failing with `E_OUTOFMEMORY`, then an `OutOfMemoryError`).
+- **Canvases drawn into canvases.** A bitmap that one canvas alone draws into (a
+  `SurfaceTexture`'s buffer, a view drawn into a bitmap) is drawn elsewhere
+  from that canvas's target with the optional `draw_canvas`, without the
+  read-back settling the bitmap would cost, with the paint's mode, alpha,
+  filter, matrix and clip. A part of the source, a shadow, a canvas drawn into
+  itself, a source with an open layer and the software host say false, and
+  the core draws the bitmap as before. A RenderNode's temporary bitmap is let
+  go with `canvas_discard`, which skips the read-back of its last drawing; a
+  blit outside the clip is dropped before its source is settled; and a large
+  image whose version keeps changing is uploaded into a texture of the
+  drawing canvas's own (up to 4 MiB), not kept anew for every version. The
+  flag `no-canvas-copy` turns `draw_canvas` off. (mayconus's work,
+  docs/LUMIA-950XL.md: in TikTok Lite, 17.4 presents a second against 7.4.)
 - **Threads.** The Direct2D factory is the multithreaded kind: it serialises
   every call, contexts' and the device's included, and with them Direct2D's use
   of the Direct3D device, which the shell never calls itself. Each canvas is
