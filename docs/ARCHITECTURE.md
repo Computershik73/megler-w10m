@@ -194,13 +194,28 @@ layer's. The old `sigaction`'s number keeps refusing them, for mozglue (below,
 signal masks (`rt_sigprocmask`, the kernel's 64-bit sets), `madvise`,
 `mincore`, its network poller's `epoll_pwait` (without which it ends:
 "netpoll failed"), `fcntl`, `exit_group` and `fallocate` are answered too.
+So are the calls of Go's `net`, `os` and `syscall` packages, which Psiphon
+makes as WhatsApp starts its tunnel: the sockets' (`socket` through
+`recvmsg`, `accept4`, `recvmmsg`, `sendmmsg`), each the libc's call of the
+name; `splice`, refused as for sockets it will not splice (`EINVAL`), on
+which Go copies between two sockets itself, where `ENOSYS` would have been
+the copy's error; the files' that its Bolt database opens, locks, reads,
+writes, syncs and grows its file with (`pread64` and `pwrite64` with the
+offset in the register pair after a pad, `flock`, `fdatasync`,
+`ftruncate64`), a directory's entries (`getdents64`, the kernel's records,
+from a directory descriptor's position, which `lseek` sets back), and the
+limit on descriptors that its `syscall` package reads as it starts
+(`prlimit64`: `getrlimit64`'s limits are 64-bit now, where they were
+`getrlimit`'s 32-bit pair, the upper halves left as they were).
 And loaded as a library it finds the auxiliary vector past `envp`, as the kernel
 lays them out on a process's first stack: a library's init functions get
 `argv`, an empty `envp` and the vector (the page size, `AT_RANDOM`'s 16 bytes,
 the hardware's capabilities) in one block (`mg_bionic_initial_argv`), where
 they got a separate `envp` and whatever came after it. The guest tests
-`t_init_auxv` (an init function reading them as Go does) and `t_go_calls`,
-and `t_ffcalls` for the two sigactions.
+`t_init_auxv` (an init function reading them as Go does), `t_go_calls`,
+`t_go_net_files` (a TCP connection on loopback and a socket pair by number,
+a file as Bolt uses it, a directory read twice, the limits), and `t_ffcalls`
+for the two sigactions.
 
 The Thumb scanner recognises immediate/register moves and literal loads into
 `r7` immediately before `svc 0`; the ARM scanner recognises unconditional

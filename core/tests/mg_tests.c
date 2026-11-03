@@ -2787,6 +2787,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     /* Go's runtime, as a library: its init function finds the auxiliary vector past envp, and its calls by number go. */
     CHECK_INT(FN(lib, int (*)(void), "t_init_auxv")(), 1);
     CHECK_INT(FN(lib, int (*)(const char *), "t_go_calls")(buf), 0);
+    CHECK_INT(FN(lib, int (*)(const char *), "t_go_net_files")(buf), 0);
     CHECK_INT(FN(lib, int (*)(void), "t_ifunc")(), 205);
     CHECK_INT(FN(lib, int (*)(void), "t_chrome_cmdline")(), 3);
     CHECK_INT(FN(lib, int (*)(const char *), "t_flock")(buf), 3);

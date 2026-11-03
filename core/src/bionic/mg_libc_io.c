@@ -1447,6 +1447,16 @@ i64 mg_fd_seek(int fd, i64 offset, int whence)
         }
     } else if (o->type == OBJ_NULL || o->type == OBJ_RANDOM) {
         r = 0;
+    } else if (o->type == OBJ_DIRFD) {
+        /* A directory's: where getdents64 goes on from, the start again (Go's rewinddir) or a d_off it gave. */
+        if (whence == 0 && offset >= 0) {
+            o->pos = (u64)offset;
+            r = offset;
+        } else if (whence == 1 && offset == 0) {
+            r = (i64)o->pos;
+        } else {
+            mg_set_errno(GE_INVAL);
+        }
     } else {
         mg_set_errno(GE_SPIPE);
     }
@@ -2313,6 +2323,62 @@ static int g_closedir(g_dir *d)
     free(d->types);
     free(d);
     return 0;
+}
+
+/*
+ * getdents64: a directory's entries from a descriptor of it, in the kernel's records (struct linux_dirent64: d_ino, d_off,
+ * d_reclen, d_type, then the name and its NUL, each record 8-byte aligned), from where the last call left off, as many as
+ * fit; 0 at the end. Go's os package reads a directory so, by number (os.ReadDir: Psiphon's, in WhatsApp's libgojni.so).
+ * The listing is made again for each call, as opendir makes it.
+ */
+static int g_getdents64(int fd, void *buf, u32 count)
+{
+    gobj *o = fd_get(fd);
+    g_dir *d;
+    u32 used = 0;
+    bool more;
+    if (!o) {
+        mg_set_errno(GE_BADF);
+        return -1;
+    }
+    if (o->type != OBJ_DIRFD || !o->path) {
+        fd_put(o);
+        mg_set_errno(GE_NOTDIR);
+        return -1;
+    }
+    d = g_opendir(o->path);
+    if (!d) {
+        fd_put(o);
+        return -1;
+    }
+    d->at = o->pos < d->count ? (u32)o->pos : d->count;
+    while (d->at < d->count) {
+        const char *name = d->names[d->at];
+        size_t len = strlen(name);
+        u32 reclen = (u32)MG_ALIGN_UP(19 + len + 1, 8);
+        u8 *rec = (u8 *)buf + used;
+        u64 ino = path_hash(name);
+        i64 off = (i64)d->at + 1;
+        u16 rl = (u16)reclen;
+        if (used + reclen > count) break;
+        memset(rec, 0, reclen);
+        memcpy(rec, &ino, 8);
+        memcpy(rec + 8, &off, 8);
+        memcpy(rec + 16, &rl, 2);
+        rec[18] = d->types[d->at];
+        memcpy(rec + 19, name, len + 1);
+        used += reclen;
+        d->at++;
+    }
+    more = d->at < d->count;
+    o->pos = d->at;
+    g_closedir(d);
+    fd_put(o);
+    if (!used && more) {
+        mg_set_errno(GE_INVAL);          /* not even one fits */
+        return -1;
+    }
+    return (int)used;
 }
 
 static void g_rewinddir(g_dir *d) { if (d) d->at = 0; }
@@ -3189,7 +3255,7 @@ const mg_sym mg_tab_io[] = {
     IO("opendir", g_opendir), IO("fdopendir", g_fdopendir), IO("readdir", g_readdir), IO("readdir64", g_readdir),
     IO("readdir_r", g_readdir_r), IO("readdir64_r", g_readdir_r), IO("closedir", g_closedir), IO("rewinddir", g_rewinddir),
     IO("telldir", g_telldir), IO("seekdir", g_seekdir), IO("dirfd", g_dirfd), IO("scandir", g_scandir), IO("scandir64", g_scandir),
-    IO("alphasort", g_alphasort), IO("alphasort64", g_alphasort),
+    IO("alphasort", g_alphasort), IO("alphasort64", g_alphasort), IO("getdents64", g_getdents64),
     IO("pipe", g_pipe), IO("pipe2", g_pipe2), IO("eventfd", g_eventfd), IO("memfd_create", g_memfd_create),
     IO("timerfd_create", g_timerfd_create), IO("timerfd_settime", g_timerfd_settime), IO("timerfd_gettime", g_timerfd_gettime), IO("dup", g_dup), IO("dup2", g_dup2), IO("dup3", g_dup3),
     IO("fcntl", g_fcntl), IO("__fcntl64", g_fcntl), IO("ioctl", g_ioctl), IO("isatty", g_isatty),
