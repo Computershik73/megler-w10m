@@ -240,7 +240,7 @@ public final class AppRunner {
     }
 
     // ---- input from Megler
-    /** events: [n, then n x (phase, id, xbits, ybits)] -- phase 0 down, 1 move, 2 up, 3 cancel; 4 key (id = code, x = down); 5 back; 6 host pause (id 1) / resume (0); 7 text waiting; 8 insets changed; 9 web view events waiting */
+    /** events: [n, then n x (phase, id, xbits, ybits), optional n x (timeLow, timeHigh)] -- phase 0 down, 1 move, 2 up, 3 cancel; 4 key (id = code, x = down); 5 back; 6 host pause (id 1) / resume (0); 7 text waiting; 8 insets changed; 9 web view events waiting */
     private static void deliver(int[] ev) {
         int n = ev[0];
         for (int k = 0; k < n; k++) {
@@ -258,7 +258,13 @@ public final class AppRunner {
                     if (!InputMethods.key(ke)) ViewRootDispatch.key(ke);
                     continue;
                 }
-                touch(phase, id, x, y);
+                // Use the arrival time, even when several events were queued
+                // during a slow frame. VelocityTracker needs the real spacing.
+                int time = 1 + 4 * n + 2 * k;
+                long eventTime = ev.length >= 1 + 6 * n
+                        ? ((long) ev[time + 1] << 32) | (ev[time] & 0xffffffffL)
+                        : SystemClock.uptimeMillis();
+                touch(phase, id, x, y, eventTime);
             } catch (RuntimeException e) {
                 android.util.Log.e("Megler", "input threw", e);
                 throw e;
@@ -289,8 +295,7 @@ public final class AppRunner {
         if (pause) { if (a.isResumedMegler()) a.meglerPause(); }
         else if (!a.isResumedMegler()) a.meglerResume();
     }
-    private static void touch(int phase, int id, float x, float y) {
-        long now = SystemClock.uptimeMillis();
+    private static void touch(int phase, int id, float x, float y, long now) {
         int idx = -1;
         for (int i = 0; i < down; i++) if (ids[i] == id) idx = i;
         int action;

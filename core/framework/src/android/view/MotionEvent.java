@@ -57,6 +57,11 @@ public final class MotionEvent extends InputEvent {
     public final void setAction(int a) { action = a; }
     public final int getPointerCount() { return count; }
     public final int getPointerId(int i) { return ids[i]; }
+    public int getPointerIdBits() {
+        int bits = 0;
+        for (int i = 0; i < count; i++) bits |= 1 << ids[i];
+        return bits;
+    }
     public final int findPointerIndex(int id) { for (int i = 0; i < count; i++) if (ids[i] == id) return i; return -1; }
     public final float getX() { return xs[0]; }
     public final float getY() { return ys[0]; }
@@ -286,7 +291,6 @@ public final class MotionEvent extends InputEvent {
     public float getHistoricalTouchMinor(int p0) { return 0f; }
     public float getHistoricalTouchMinor(int p0, int p1) { return 0f; }
     public int getId() { return 0; }
-    public int getPointerIdBits() { return 0; }
     public int getSurfaceRotation() { return 0; }
     public float getToolMajor(int p0) { return 0f; }
     public float getToolMinor(int p0) { return 0f; }
