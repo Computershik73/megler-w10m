@@ -683,7 +683,7 @@ std::wstring gsfApk() {
     return canRead(path) ? path : std::wstring();
 }
 
-bool installedApps(std::vector<InstalledApp>& out, std::string& error) {
+bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std::function<void()>& reachable) {
     using namespace winrt::Windows::Data::Json;
     out.clear();
     try {
@@ -692,7 +692,17 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error) {
             error = why;
             return false;
         }
-        auto answer = portal.client.SendRequestAsync(portal.request(winrt::Windows::Web::Http::HttpMethod::Get(), L"/api/app/packagemanager/packages")).get();
+        // A successful info request proves reachability independently of the
+        // package enumeration, which can stop answering on Windows Mobile.
+        if (reachable) reachable();
+        auto listing = portal.client.SendRequestAsync(portal.request(winrt::Windows::Web::Http::HttpMethod::Get(), L"/api/app/packagemanager/packages"));
+        if (listing.wait_for(std::chrono::seconds(15)) == winrt::Windows::Foundation::AsyncStatus::Started) {
+            listing.Cancel();
+            error = "The Device Portal is reachable, but its package list did not answer within 15 seconds.";
+            shellLog::write("app package: " + error);
+            return false;
+        }
+        auto answer = listing.get();
         if (!answer.IsSuccessStatusCode()) {
             error = format("The Device Portal answered %d to the list of packages.", int(answer.StatusCode()));
             return false;

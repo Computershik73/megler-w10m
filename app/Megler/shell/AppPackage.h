@@ -92,7 +92,7 @@ struct InstalledApp {
 };
 /// The apps' own packages of Megler's publisher installed on the phone, as the Device Portal lists them; false, with why,
 /// when it could not be asked. Off the UI thread.
-bool installedApps(std::vector<InstalledApp>& out, std::string& error);
+bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std::function<void()>& reachable = {});
 /// Uninstalls one through the Device Portal: the package goes, with the app's own LocalState; what it has in the shared
 /// folder stays. Off the UI thread.
 PortalResult uninstallThroughPortal(const InstalledApp& app);
