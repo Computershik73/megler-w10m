@@ -44,17 +44,19 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FW="$ROOT/core/framework"
 JDK="${MEGLER_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
 SDK="${MEGLER_ANDROID_SDK:-$USERPROFILE/Documents}"
-D8="$SDK/build-tools/29.0.3/lib/d8.jar"
-LIB="$SDK/platforms/android-29/android.jar"
+BUILD_TOOLS="${MEGLER_BUILD_TOOLS_VERSION:-29.0.3}"
+PLATFORM="${MEGLER_ANDROID_PLATFORM:-android-29}"
+D8="$SDK/build-tools/$BUILD_TOOLS/lib/d8.jar"
+LIB="$SDK/platforms/$PLATFORM/android.jar"
 OVERLAY="$ROOT/core/framework-overlay"
 OUT="$ROOT/build/framework"
 DEX="$OUT/megler-framework.dex"
 FORCE=0
 [ "${1:-}" = --force ] && FORCE=1
 [ -x "$JDK/bin/javac" ] || [ -f "$JDK/bin/javac.exe" ] || { echo "no javac in $JDK (MEGLER_JDK)" >&2; exit 1; }
-[ -f "$D8" ] && [ -f "$LIB" ] || { echo "no build-tools/29.0.3/lib/d8.jar or platforms/android-29/android.jar in $SDK (MEGLER_ANDROID_SDK)" >&2; exit 1; }
+[ -f "$D8" ] && [ -f "$LIB" ] || { echo "no build-tools/$BUILD_TOOLS/lib/d8.jar or platforms/$PLATFORM/android.jar in $SDK (MEGLER_ANDROID_SDK)" >&2; exit 1; }
 
-if [ "$FORCE" = 0 ] && [ -f "$DEX" ] && [ -z "$(find "$FW/src" "$FW/gen-src" "$FW/stubs" "$OVERLAY" "$0" -newer "$DEX" -type f -print -quit)" ]; then
+if [ "$FORCE" = 0 ] && [ -f "$DEX" ] && [ -z "$(find "$FW/src" "$FW/gen-src" "$FW/stubs" "$OVERLAY" "$0" "$ROOT/tools/framework-sources.py" -newer "$DEX" -type f -print -quit)" ]; then
   echo "build/framework/megler-framework.dex is newer than its sources ($(( $(stat -c%s "$DEX") / 1024 )) KB)"
   exit 0
 fi
@@ -66,50 +68,7 @@ mkdir -p "$OUT/stubs" "$OUT/classes" "$OUT/dex"
 win() { sed -E 's|^/([a-zA-Z])/|\1:/|; s|.*|"&"|'; }
 m() { cygpath -m "$1"; }
 
-# The overlay's files, and the original's but for those the overlay replaces.
-(cd "$OVERLAY" && find . -name '*.java' | sed 's|^\./||' | sort) > "$OUT/overlay.txt"
-(cd "$OVERLAY" && find . -name '*.java.removed' | sed 's|^\./||; s|\.removed$||' | sort) > "$OUT/removed.txt"
-: > "$OUT/sources.txt"
-REPLACED=0
-REMOVED=0
-for tree in src gen-src; do
-  while IFS= read -r rel; do
-    if grep -q -x -F "$rel" "$OUT/overlay.txt"; then REPLACED=$((REPLACED + 1))
-    elif grep -q -x -F "$rel" "$OUT/removed.txt"; then REMOVED=$((REMOVED + 1))
-    else echo "$FW/$tree/$rel" >> "$OUT/sources.txt"; fi
-  done < <(cd "$FW/$tree" && find . -name '*.java' | sed 's|^\./||' | sort)
-done
-while IFS= read -r rel; do
-  [ -f "$FW/src/$rel" ] || [ -f "$FW/gen-src/$rel" ] || { echo "core/framework-overlay/$rel.removed takes away $rel, which the original does not have" >&2; exit 1; }
-done < "$OUT/removed.txt"
-ORIGINALS=$(wc -l < "$OUT/sources.txt")
-sed "s|^|$OVERLAY/|" "$OUT/overlay.txt" >> "$OUT/sources.txt"
-# The classes that are given more members: each compiled from a copy with the members in it, in place of the file it was made from.
-rm -rf "$OUT/members"
-ADDED=0
-while IFS= read -r rel; do
-  java="${rel%.members}"
-  base="$(grep -F "/$java" "$OUT/sources.txt" | grep -E "(/src|/gen-src|/framework-overlay)/$java\$" | head -1 || true)"
-  [ -n "$base" ] || { echo "core/framework-overlay/$rel adds members to $java, which is neither the original's nor the overlay's" >&2; exit 1; }
-  mkdir -p "$OUT/members/$(dirname "$java")"
-  python - "$(m "$base")" "$(m "$OVERLAY/$rel")" "$(m "$OUT/members/$java")" <<'EOF'
-import io, sys
-base, members, out = sys.argv[1:4]
-text = io.open(base, encoding='utf-8', newline='').read().replace('\r\n', '\n')
-more = io.open(members, encoding='utf-8', newline='').read().replace('\r\n', '\n')
-at = text.rstrip().rfind('}')
-if at < 0:
-    sys.exit('no closing brace in ' + base)
-io.open(out, 'w', encoding='utf-8', newline='\n').write(text[:at] + '    // ---- added by the overlay (' + members.rsplit('/', 1)[-1] + ')\n' + more + '}\n')
-EOF
-  grep -v -x -F "$base" "$OUT/sources.txt" > "$OUT/sources.tmp"
-  mv "$OUT/sources.tmp" "$OUT/sources.txt"
-  echo "$OUT/members/$java" >> "$OUT/sources.txt"
-  ADDED=$((ADDED + 1))
-done < <(cd "$OVERLAY" && find . -name '*.java.members' | sed 's|^\./||' | sort)
-win < "$OUT/sources.txt" > "$OUT/sources.arg"
-find "$FW/stubs" -name '*.java' | sort | win > "$OUT/stubs.arg"
-echo "framework: $ORIGINALS files of the original's, $(wc -l < "$OUT/overlay.txt") of the overlay ($REPLACED of them in place of an original), $ADDED classes given more members, $REMOVED of the original's taken away"
+python "$ROOT/tools/framework-sources.py" "$(m "$FW")" "$(m "$OVERLAY")" "$(m "$OUT")"
 
 "$JDK/bin/javac" -nowarn -source 8 -target 8 -encoding UTF-8 -d "$(m "$OUT/stubs")" "@$(m "$OUT/stubs.arg")" 2> "$OUT/javac-stubs.log" \
   || { grep -v '^Note:\|^warning:' "$OUT/javac-stubs.log" | head -40 >&2; echo "javac failed on the stubs" >&2; exit 1; }
