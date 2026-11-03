@@ -131,14 +131,26 @@ static void unity_main(void *arg)
     mg_info("unity: initJni done");
     a[0].l = mg_jni_class_object("com/unity3d/player/UnityWebRequest");
     if (mg_jni_native(PLAYER, "nativeInitWebRequest", NULL)) call("nativeInitWebRequest", "(Ljava/lang/Class;)V", a);
-    mg_atomic_xchg(&U.started, 1);
 
     /* What UnityPlayer queues for this thread once it has a surface, in the order it queues it. */
     a[0].j = 0;
     a[0].i = 0;
     a[1].l = U.surface;
-    call("nativeRecreateGfxState", "(ILandroid/view/Surface;)V", a);
-    mg_info("unity: nativeRecreateGfxState done");
+    const char *surface_sig = "(ILandroid/view/Surface;)V";
+    void *surface = native_of(PLAYER, "nativeRecreateGfxState", surface_sig);
+    bool legacy_surface = !surface;
+    if (legacy_surface) {
+        surface_sig = "(Landroid/view/Surface;)V";
+        surface = native_of(PLAYER, "nativeRecreateGfxState", surface_sig);
+    }
+    if (!surface) {
+        mg_run_set_error("Unity did not register a supported surface callback");
+        mg_atomic_xchg(&U.started, -1);
+        return;
+    }
+    mg_atomic_xchg(&U.started, 1);
+    mg_jni_call_native(surface, U.player, surface_sig, legacy_surface ? a + 1 : a);
+    if (legacy_surface) mg_info("unity: surface attached through the legacy signature");
     if (mg_jni_native(PLAYER, "nativeSendSurfaceChangedEvent", NULL)) call("nativeSendSurfaceChangedEvent", "()V", NULL);
     call("nativeResume", "()V", NULL);
     call_bool("nativeFocusChanged", true);
