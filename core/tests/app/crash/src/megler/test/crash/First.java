@@ -12,6 +12,9 @@ import android.widget.TextView;
  * And in between, FLAG_ACTIVITY_CLEAR_TOP: it starts Top, which starts it again with that flag (Top's step "standard"),
  * and Android finishes this one and makes another; that one starts Top again, which starts it with FLAG_ACTIVITY_SINGLE_TOP
  * as well (step "single"), and it stays and hears onNewIntent; then it starts the activity that throws.
+ * Before Top, it waits for Gate to be gone, its main thread idle between looks: a finished activity is destroyed once the
+ * one below is drawn and the main thread is idle, or ten seconds on, and the steps after Gate kept the main thread busy
+ * and ended the app, by the activity that throws, sooner than that.
  */
 public class First extends Activity {
     private static int creations;
@@ -84,6 +87,14 @@ public class First extends Activity {
         Log.i("CrashTest", "first onDestroy " + step);
     }
 
+    private void whenGateGone(Runnable next, int waited) {
+        if (Gate.sDestroyed || waited >= 15000) {
+            next.run();
+            return;
+        }
+        new android.os.Handler().postDelayed(() -> whenGateGone(next, waited + 100), 100);
+    }
+
     @Override
     public void onWindowFocusChanged(boolean focus) {
         super.onWindowFocusChanged(focus);
@@ -92,7 +103,7 @@ public class First extends Activity {
             started = true;
             if (step == null) {
                 Log.i("CrashTest", "first order " + order);
-                startActivity(new Intent(this, Top.class).putExtra("step", "standard"));
+                whenGateGone(() -> startActivity(new Intent(this, Top.class).putExtra("step", "standard")), 0);
             } else {
                 startActivity(new Intent(this, Top.class).putExtra("step", "single"));
             }
