@@ -623,7 +623,8 @@ static i64 wv_draw(wv_functor *f, int l, int t, int w, int h)
     aw_sync_params sync;
     aw_draw_gl_params p;
     int pw, ph;
-    u64 t0;
+    u64 t0, ready, rendered, finished;
+    t0 = mg_time_monotonic_ns();
     if (w <= 0 || h <= 0 || w > 8192 || h > 8192 || !f->cb.draw_gl || !wv_egl()) return 0;
     pw = wv_round(w);
     ph = wv_round(h);
@@ -645,7 +646,7 @@ static i64 wv_draw(wv_functor *f, int l, int t, int w, int h)
         mg_warn("webview: the render thread's context could not be made current (EGL error 0x%x)", (unsigned)W.get_error());
         return 0;
     }
-    t0 = mg_time_monotonic_ns();
+    ready = mg_time_monotonic_ns();
     memset(&sync, 0, sizeof(sync));
     sync.version = AW_DRAW_FN_VERSION;
     if (f->cb.on_sync) MG_GFN(void (*)(i32, void *, aw_sync_params *), f->cb.on_sync)(f->id, f->data, &sync);
@@ -684,13 +685,19 @@ static i64 wv_draw(wv_functor *f, int l, int t, int w, int h)
         MG_GFN(void (*)(i32, void *, aw_draw_gl_params *), f->cb.draw_gl)(f->id, f->data, &p);
         if (W.current_context() != W.context && !W.make_current(W.display, f->surface, f->surface, W.context)) return 0;
     }
+    rendered = mg_time_monotonic_ns();
     wv_trace(f, l, t, w, h);
     if (!mg_java_gl_share_frame(W.display, f->surface, &f->share, WV_PICTURES + f->id, f->pw, f->ph)) {
         mg_note_once("webview: the shell did not take a functor's picture: pages are drawn in software");
         return 0;
     }
     f->draws++;
-    f->draw_ns += mg_time_monotonic_ns() - t0;
+    finished = mg_time_monotonic_ns();
+    f->draw_ns += finished - t0;
+    if (finished - t0 >= 100000000ull && (f->draws < 20 || f->draws % 120 == 0))
+        mg_info("webview: slow frame %d: setup %.1f ms, Chromium %.1f ms, shared picture %.1f ms",
+                (int)f->id, (double)(ready - t0) / 1e6, (double)(rendered - ready) / 1e6,
+                (double)(finished - rendered) / 1e6);
     if (f->draws == 1 || f->draws % 600 == 0)
         mg_info("webview: draw functor %d drawn %u times, %u us each (the last %dx%d of a %dx%d pbuffer)", (int)f->id, (unsigned)f->draws,
                 (unsigned)(f->draw_ns / f->draws / 1000), w, h, f->pw, f->ph);
