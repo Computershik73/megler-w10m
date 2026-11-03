@@ -7,6 +7,8 @@
     public boolean meglerPostBitmap(Bitmap b) {
         synchronized (mLock) {
             if (mReleased || mLocked || b == null) return false;
+            if (mFrontCanvas != null) mFrontCanvas.meglerRelease();
+            mFrontCanvas = null;
             mFront = b;
             if (mBackCanvas != null) mBackCanvas.meglerRelease();
             mBack = null;

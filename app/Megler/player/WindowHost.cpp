@@ -327,6 +327,37 @@ void WindowHost::presentFrame() {
     }
     lastPresentError_ = S_OK;
     ++presented_;
+    if (samplingFrames_.load()) {
+        std::lock_guard<std::mutex> lock(frameSampleMutex_);
+        if (samplingFrames_.load()) {
+            LARGE_INTEGER counter;
+            QueryPerformanceCounter(&counter);
+            const uint64_t now = uint64_t(counter.QuadPart);
+            static const double millisecondsPerTick = [] {
+                LARGE_INTEGER frequency;
+                QueryPerformanceFrequency(&frequency);
+                return 1000.0 / double(frequency.QuadPart);
+            }();
+            if (frameSampleLast_) frameSampleMs_.push_back(double(now - frameSampleLast_) * millisecondsPerTick);
+            frameSampleLast_ = now;
+        }
+    }
+}
+
+void WindowHost::startFrameSample() {
+    std::lock_guard<std::mutex> lock(frameSampleMutex_);
+    frameSampleMs_.clear();
+    frameSampleMs_.reserve(256);
+    frameSampleLast_ = 0;
+    samplingFrames_ = true;
+}
+
+std::vector<double> WindowHost::endFrameSample() {
+    std::lock_guard<std::mutex> lock(frameSampleMutex_);
+    samplingFrames_ = false;
+    std::vector<double> result;
+    result.swap(frameSampleMs_);
+    return result;
 }
 
 void WindowHost::requestScreenshot(std::wstring path) {

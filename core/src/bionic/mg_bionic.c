@@ -1196,6 +1196,29 @@ const char *mg_sysprop(const char *name)
     return v;
 }
 
+/* Names are immutable and entries are never removed. Capture the head under
+ * the lock, then call guest code without the lock: callbacks may read or set
+ * properties themselves. Properties added during traversal belong to the next call. */
+int mg_sysprop_foreach(void (*visit)(const void *, void *), void *cookie)
+{
+    prop *p;
+    if (!visit) return -1;
+    mg_lock_acquire(&g_prop_lock);
+    p = g_props;
+    mg_lock_release(&g_prop_lock);
+    for (; p; p = p->next) visit(p->name, cookie);
+    return 0;
+}
+
+const void *mg_sysprop_find_nth(unsigned index)
+{
+    prop *p;
+    mg_lock_acquire(&g_prop_lock);
+    for (p = g_props; p && index; p = p->next) index--;
+    mg_lock_release(&g_prop_lock);
+    return p ? p->name : NULL;
+}
+
 /* The phone's time zone (mg_bionic.h). Kept here as well as in the property, because the properties' defaults are set later than a shell may speak. */
 static char g_timezone[64];
 

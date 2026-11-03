@@ -301,7 +301,10 @@ public class AlertDialog extends Dialog implements DialogInterface {
                     if (f.getVisibility() == GONE) continue;
                     LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) f.getLayoutParams();
                     int room = Math.max(0, left - lp.topMargin - lp.bottomMargin);
-                    measureChildWithMargins(f, w, 0, MeasureSpec.makeMeasureSpec(room, MeasureSpec.AT_MOST), 0);
+                    // Room is already net of the body padding and this child's margins.
+                    int width = getChildMeasureSpec(w, getPaddingLeft() + getPaddingRight()
+                            + lp.leftMargin + lp.rightMargin, lp.width);
+                    f.measure(width, MeasureSpec.makeMeasureSpec(room, MeasureSpec.AT_MOST));
                     lp.height = Math.min(f.getMeasuredHeight(), room);
                     left -= Math.min(f.getMeasuredHeight(), room) + lp.topMargin + lp.bottomMargin;
                 }

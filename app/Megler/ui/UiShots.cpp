@@ -3,6 +3,8 @@
 #include "ui/UiShots.h"
 
 #include "library/Library.h"
+#include "player/Session.h"
+#include "player/WindowHost.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
@@ -81,6 +83,54 @@ fire_and_forget shoot(std::wstring name) {
     }
 }
 
+// Runs only on demand in the foreground app. Use the normal input queue
+// and space samples with a dispatcher timer instead of blocking the UI.
+void scrollSample(bool upward) {
+    static DispatcherTimer timer{nullptr};
+    if (timer || session::snapshot().state != session::State::running) return;
+    auto window = session::window();
+    if (!window || !window->presented()) return;
+    const float x = window->surfaceWidth() * 0.50f;
+    const float from = window->surfaceHeight() * (upward ? 0.76f : 0.27f);
+    const float to = window->surfaceHeight() * (upward ? 0.27f : 0.76f);
+    const auto began = GetTickCount64();
+    const auto before = window->presented();
+    window->startFrameSample();
+    shellLog::write("ui: scroll sample started");
+    session::touch(0, 0, x, from);
+    timer = DispatcherTimer();
+    timer.Interval(std::chrono::milliseconds(16));
+    timer.Tick([window, x, from, to, began, before](auto&&, auto&&) {
+        const auto elapsed = GetTickCount64() - began;
+        if (session::window() != window || session::snapshot().state != session::State::running) {
+            window->endFrameSample();
+            timer.Stop();
+            timer = nullptr;
+            return;
+        }
+        if (elapsed < 320) {
+            session::touch(1, 0, x, from + (to - from) * (float(elapsed) / 320));
+        } else if (timer.Interval() < std::chrono::milliseconds(100)) {
+            // Release once even if the dispatcher stalled during the gesture.
+            session::touch(2, 0, x, to);
+            timer.Interval(std::chrono::milliseconds(100));
+        } else if (elapsed >= 2000) {
+            shellLog::write(format("ui: scroll sample ended, %u presents in %llu ms",
+                                   unsigned(window->presented() - before), elapsed));
+            auto intervals = window->endFrameSample();
+            if (!intervals.empty()) {
+                std::sort(intervals.begin(), intervals.end());
+                const size_t p95 = (intervals.size() * 95 + 99) / 100 - 1;
+                shellLog::write(format("ui: scroll intervals: %u, p50 %.1f ms, p95 %.1f ms, max %.1f ms",
+                    unsigned(intervals.size()), intervals[intervals.size() / 2], intervals[p95], intervals.back()));
+            }
+            timer.Stop();
+            timer = nullptr;
+        }
+    });
+    timer.Start();
+}
+
 } // namespace
 
 void poll(AppShell& shell) {
@@ -92,6 +142,22 @@ void poll(AppShell& shell) {
         shellLog::write("ui: flag " + narrow(flag));
         if (flag.rfind(L"ui-shot-", 0) == 0) {
             shoot(flag.substr(8));
+        } else if (flag.rfind(L"ui-scroll-up-", 0) == 0) {
+            scrollSample(true);
+        } else if (flag.rfind(L"ui-scroll-down-", 0) == 0) {
+            scrollSample(false);
+        } else if (flag.rfind(L"ui-tap-", 0) == 0) {
+            int x, y;
+            const auto window = session::window();
+            if (window && session::snapshot().state == session::State::running &&
+                swscanf_s(flag.c_str(), L"ui-tap-%d-%d", &x, &y) == 2 &&
+                x >= 0 && y >= 0 && x < window->surfaceWidth() && y < window->surfaceHeight()) {
+                session::touch(0, 0, float(x), float(y));
+                session::touch(2, 0, float(x), float(y));
+            }
+        } else if (flag.rfind(L"ui-frame-", 0) == 0) {
+            if (auto window = session::window())
+                window->requestScreenshot(platform::localStateDirectory() + L"\\shot-" + flag.substr(3) + L".bmp");
         } else if (flag.rfind(L"ui-tab-", 0) == 0) {
             const int tab = lastNumber(flag);
             if (tab >= 0 && tab <= 3) shell.selectTab(tab);

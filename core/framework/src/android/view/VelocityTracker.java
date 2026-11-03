@@ -14,7 +14,9 @@ public final class VelocityTracker {
     public void addMovement(MotionEvent e) {
         int am = e.getActionMasked();
         if (am == MotionEvent.ACTION_DOWN) clear();
-        float t = e.getEventTime();
+        // Keep the small interval within this gesture. A float cannot represent
+        // individual milliseconds once the device has been up for several hours.
+        float t = e.getEventTime() - e.getDownTime();
         for (int i = 0; i < e.getPointerCount(); i++) {
             int id = e.getPointerId(i);
             float[] h = mHist.get(id);

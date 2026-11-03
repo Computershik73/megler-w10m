@@ -2640,9 +2640,11 @@ N(G_cvDrawLines)
  * source or a destination with no area draws nothing, and a source that
  * reaches outside the bitmap is cut to it, the destination with it.
  */
-static void draw_bitmap(gcanvas *v, gbitmap *b, float *src, float *dst, const gpaint *p)
+static void draw_bitmap(gcanvas *v, gbitmap *b, float *src, float *dst, const gpaint *p, const float *matrix)
 {
+    static int canvas_copy = -1;
     megler_gfx_image image;
+    bool ready = false;
     float sw = src[2] - src[0], sh = src[3] - src[1], dw = dst[2] - dst[0], dh = dst[3] - dst[1], cut;
     if (!v || !v->host || !b || !(sw > 0) || !(sh > 0) || !(dw > 0) || !(dh > 0)) return;
     if (src[0] < 0) {
@@ -2666,9 +2668,33 @@ static void draw_bitmap(gcanvas *v, gbitmap *b, float *src, float *dst, const gp
         dst[3] -= cut * dh / sh;
     }
     if (!(src[2] > src[0]) || !(src[3] > src[1]) || !(dst[2] > dst[0]) || !(dst[3] > dst[1]) || !HAS(draw_bitmap)) return;
-    /* What is drawn from must be in the memory: also when it is the canvas's own bitmap. */
+    /* Reject an invisible blit before settling its source. A dirty source
+       can force a GPU readback even when the host would draw no pixels. */
+    const gstate *state = cv_state(v);
+    if (state->empty) return;
+    if (!(p->p.shadow_radius > 0 && (p->p.shadow_color >> 24))) {
+        float box[4];
+        matrix_box(matrix ? matrix : state->m, dst[0], dst[1], dst[2], dst[3], box);
+        /* Leave a pixel of slack for antialiasing and fractional coordinates. */
+        if (box[2] + 1 < state->clip[0] || box[0] - 1 > state->clip[2] ||
+            box[3] + 1 < state->clip[1] || box[1] - 1 > state->clip[3]) return;
+    }
+    /* A single current canvas can supply its picture without bringing it back
+       to memory. Do not use this for self-copies or competing bitmap canvases. */
+    if (canvas_copy < 0) canvas_copy = !mg_flag("no-canvas-copy");
+    if (G.draw_canvas && canvas_copy && v->bm != b) {
+        bool drawn = false;
+        if (!(ready = cv_draw(v, false))) return;
+        mg_lock_acquire(&g_lock);
+        gcanvas *source = b->canvases;
+        if (source && !source->next && source->host && !source->stale)
+            GFX(drawn = G.draw_canvas(G.user, v->host, source->host, src, dst, &p->p));
+        mg_lock_release(&g_lock);
+        if (drawn) return;
+    }
+    /* What is drawn from must otherwise be in memory, including self-copies. */
     bm_settle(b);
-    if (!cv_draw(v, false)) return;
+    if (!ready && !cv_draw(v, false)) return;
     image_of(b, &image);
     GFX(G.draw_bitmap(G.user, v->host, &image, src, dst, &p->p));
 }
@@ -2710,7 +2736,7 @@ N(G_cvDrawBitmap)
         memcpy(o->dst, dst, sizeof(dst));
         return;
     }
-    draw_bitmap(v, b, src, dst, &p);
+    draw_bitmap(v, b, src, dst, &p, NULL);
 }
 
 /* The whole bitmap through a matrix of its own, which is the canvas's for the one call. */
@@ -2723,7 +2749,7 @@ static void draw_bitmap_m(gcanvas *v, gbitmap *b, const float *m, const gpaint *
     src[3] = dst[3] = (float)b->h;
     matrix_concat(cv_state(v)->m, m, through);
     cv_send_matrix(v, through);
-    draw_bitmap(v, b, src, dst, p);
+    draw_bitmap(v, b, src, dst, p, through);
     cv_send_matrix(v, cv_state(v)->m);
 }
 
@@ -2966,7 +2992,7 @@ static void list_play(gcanvas *v, gdlist *l, int depth)
             const dl_bitmap *o = (const dl_bitmap *)h;
             memcpy(src, o->src, sizeof(src));
             memcpy(dst, o->dst, sizeof(dst));
-            draw_bitmap(v, o->b, src, dst, &o->p);
+            draw_bitmap(v, o->b, src, dst, &o->p, NULL);
             break;
         }
         case DL_BITMAP_M: draw_bitmap_m(v, ((const dl_bitmap *)h)->b, ((const dl_bitmap *)h)->m, &((const dl_bitmap *)h)->p); break;
@@ -3029,7 +3055,15 @@ static MG_NOINLINE void node_through_bitmap(gcanvas *v, const gnode *n, gdlist *
     src[0] = src[1] = dst[0] = dst[1] = 0;
     src[2] = dst[2] = (float)b->w;
     src[3] = dst[3] = (float)b->h;
-    draw_bitmap(v, b, src, dst, &p);
+    draw_bitmap(v, b, src, dst, &p, NULL);
+    /* This temporary has no readers after the composition. Its canvas must
+       submit pending commands, but reading its pixels back would be wasted. */
+    if (t->host && G.canvas_discard) {
+        while (t->depth > 0) cv_restore(t);
+        GFX(G.canvas_discard(G.user, t->host));
+        t->host = NULL;
+        t->dirty = false;
+    }
     cv_free(t);
     bm_free(b);
 }

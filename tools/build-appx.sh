@@ -319,6 +319,11 @@ else
   echo "    WITHOUT the WebP decoder: no build/webp/src (tools/webp-fetch.sh)"
 fi
 # The Dalvik runtime's generated sources and its tests' DEX files, before anything is compiled.
+SQLITE_FEATURE=0
+WEBP_FEATURE=0
+[[ " ${CORE_FLAGS[*]} " == *" /DMG_HAVE_SQLITE=1 "* ]] && SQLITE_FEATURE=1
+[[ " ${CORE_FLAGS[*]} " == *" /DMG_HAVE_WEBP=1 "* ]] && WEBP_FEATURE=1
+python "$(w "$ROOT/tools/invalidate-core-features.py")" "$(w "$ROOT")" "$(w "$OBJ")" "$SQLITE_FEATURE" "$WEBP_FEATURE"
 bash "$ROOT/tools/build-dvm-fixtures.sh"
 mapfile -t CORE_DIRS < <(find "$CORE" -type f -name '*.c' -printf '%h\n' | sort -u)
 for dir in "${CORE_DIRS[@]}"; do

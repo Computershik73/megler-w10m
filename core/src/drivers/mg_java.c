@@ -85,6 +85,7 @@ static struct {
     char *apk_path[MAX_APKS];
     mg_lock lock;
     i32 events[MAX_EVENTS * 4];
+    u64 event_ms[MAX_EVENTS];
     int nevents;
     volatile i32 stop, exited, ended;
     int end_status;
@@ -595,8 +596,8 @@ static void requested_activity(void)
 }
 
 /*
- * pollInput(): what has happened since the last call, as int[1 + 4n] --
- * n, then (phase, id, x bits, y bits) for each -- or null. Called by the main
+ * pollInput(): what has happened since the last call, as int[1 + 6n] --
+ * n, then (phase, id, x bits, y bits) for each, then each timestamp as two words. Called by the main
  * loop between messages, so this is also where a stop asked from outside
  * reaches the app: every activity is finished, on the thread they live on.
  * And where news of the battery does.
@@ -614,11 +615,15 @@ N(Native_pollInput)
     mg_lock_acquire(&J.lock);
     n = J.nevents;
     if (n) {
-        a = mg_dvm_new_array("[I", 1 + 4 * n);
+        a = mg_dvm_new_array("[I", 1 + 6 * n);
         if (a) {
             i32 *v = (i32 *)a->u.arr.data;
             v[0] = n;
             memcpy(v + 1, J.events, sizeof(i32) * 4 * (size_t)n);
+            for (int i = 0; i < n; i++) {
+                v[1 + 4 * n + 2 * i] = (i32)(u32)J.event_ms[i];
+                v[2 + 4 * n + 2 * i] = (i32)(J.event_ms[i] >> 32);
+            }
             J.nevents = 0;
         }
     }
@@ -1820,6 +1825,7 @@ static void place_libraries(void)
     char *guest = mg_sprintf("%s/lib", data ? data : ""), *host = data && data[0] ? mg_fs_host_path(guest) : NULL;
     int n;
     if (host && mg_path_mkdirs(host)) {
+        mg_ld_add_search_dir(host);
         n = mg_ld_apk_libs(place_one, host);
         if (n) mg_info("java: the app's %d native librar%s (%s) %s in %s", n, n == 1 ? "y" : "ies", mg_ld_abi(), n == 1 ? "is" : "are", guest);
     }
@@ -2156,8 +2162,10 @@ static void push_event(int phase, int id, i32 x, i32 y)
     }
     if (J.nevents == MAX_EVENTS) {
         memmove(J.events, J.events + 4, sizeof(i32) * 4 * (MAX_EVENTS - 1));
+        memmove(J.event_ms, J.event_ms + 1, sizeof(J.event_ms[0]) * (MAX_EVENTS - 1));
         J.nevents--;
     }
+    J.event_ms[J.nevents] = mg_time_monotonic_ns() / 1000000u;
     J.events[4 * J.nevents] = phase;
     J.events[4 * J.nevents + 1] = id;
     J.events[4 * J.nevents + 2] = x;

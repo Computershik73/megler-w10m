@@ -1811,6 +1811,11 @@ struct Canvas {
     Surface cover, source, extra;  // memory of the canvas's own that a drawing call is put together in
     std::vector<uint8_t> blurA, blurB;
     std::vector<uint32_t> tint;    // a bitmap's pixels as a paint's alpha and colour filter make them
+    // A changing large image (software video) gets a private upload texture.
+    // It is never shared with another canvas or a persistent bitmap shader.
+    uint32_t changingId = 0, changingVersion = 0;
+    int changingW = 0, changingH = 0;
+    Ref<ID2D1Bitmap1> changingBitmap;
     // On the graphics processor, what a drawing call is put together in there (workSurface): its colours times its
     // coverage, the coverage alone, colours or a shadow's coverage before they are cut, and a copy of the picture.
     enum { workA, workC, workS, workD, works };
@@ -1833,6 +1838,8 @@ struct Canvas {
     /// something had to be put on in memory.
     void leaveGpu() {
         if (!gc) return;
+        changingBitmap.reset();
+        changingId = 0;
         for (Level& level : levels)
             if (level.layer && level.layer->gc) {
                 level.layer->memory();
@@ -3035,7 +3042,7 @@ void* canvasNew(void*, void* pixels, int width, int height, int stride) {
 
 void restoreLevel(Canvas& cv);
 
-void canvasFree(void*, void* canvas) {
+void releaseCanvas(void* canvas, bool preserveMemory) {
     Canvas* cv = canvasOf(canvas);
     if (!cv) return;
     guarded("canvas_free", [&] {
@@ -3044,7 +3051,7 @@ void canvasFree(void*, void* canvas) {
         cv->base.end();
         if (cv->gc) {
             // (And should it not have been flushed, the memory gets what was drawn now, before the memory is the core's again.)
-            cv->base.pull(cv->base.bounds());
+            if (preserveMemory) cv->base.pull(cv->base.bounds());
             cv->base.giveBackGpu();
             for (Surface& s : cv->work) {
                 s.unbind();
@@ -3057,6 +3064,9 @@ void canvasFree(void*, void* canvas) {
     cv->magic = 0;
     delete cv;
 }
+
+void canvasFree(void*, void* canvas) { releaseCanvas(canvas, true); }
+void canvasDiscard(void*, void* canvas) { releaseCanvas(canvas, false); }
 
 /// Every 5 s while canvases are flushed: where the drawing's time went since the last line. Direct2D's own drawing
 /// is what remains of the core's "the shell's drawing" after these.
@@ -4285,6 +4295,44 @@ Ref<ID2D1Bitmap1> keptBitmap(const megler_gfx_image& image) {
     return out;
 }
 
+// Repeated versions of one large source should not allocate a GPU texture
+// every frame. Keep this texture private to the drawing canvas: global kept
+// images may still be referenced by other contexts or long-lived shaders.
+Ref<ID2D1Bitmap1> bitmapForDrawing(Canvas& cv, const megler_gfx_image& image) {
+    const uint64_t pixels = uint64_t(image.width) * uint64_t(image.height);
+    if (!image.id || pixels < 256 * 256 || pixels > (4u << 20) / 4) return keptBitmap(image);
+    if (cv.changingId != image.id || cv.changingW != image.width || cv.changingH != image.height) {
+        cv.changingBitmap.reset();
+        cv.changingId = image.id;
+        cv.changingVersion = image.version;
+        cv.changingW = image.width;
+        cv.changingH = image.height;
+        return keptBitmap(image);
+    }
+    if (cv.changingBitmap && cv.changingVersion == image.version) return cv.changingBitmap;
+    if (!cv.changingBitmap && cv.changingVersion == image.version) return keptBitmap(image);
+    const uint64_t started = ticksNow();
+    HRESULT hr;
+    if (cv.changingBitmap) {
+        // CopyFromMemory flushes a pending batch using this image before its
+        // contents change, preserving earlier drawings in this same context.
+        hr = cv.changingBitmap->CopyFromMemory(nullptr, image.pixels, UINT32(image.stride));
+    } else {
+        hr = cv.gc->dc->CreateBitmap(D2D1::SizeU(UINT32(image.width), UINT32(image.height)), image.pixels, UINT32(image.stride),
+            D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f),
+            cv.changingBitmap.put());
+    }
+    G().uploadTicks += ticksNow() - started;
+    ++G().uploads;
+    G().uploadPixels += pixels;
+    if (SUCCEEDED(hr)) {
+        cv.changingVersion = image.version;
+        return cv.changingBitmap;
+    }
+    cv.changingBitmap.reset();
+    return keptBitmap(image);
+}
+
 /// The part `part` (whole pixels) of an image, `src` of it stretched onto
 /// `dst` through the canvas's matrix, onto a surface on the graphics
 /// processor that is drawing, under the canvas's clip: from the kept bitmap,
@@ -4302,7 +4350,7 @@ bool gpuBitmapOn(Surface& s, Canvas& cv, const megler_gfx_image& image, const Bo
     s.rt->SetAntialiasMode((paint.flags & MEGLER_GFX_ANTI_ALIAS) ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED);
     // (Through a filter the kept copy is the tinted one, the paint's alpha in it already.)
     const float opacity = filtered ? 1.0f : float(paint.color >> 24) / 255.0f;
-    Ref<ID2D1Bitmap1> kept = filtered ? keptTinted(image, paint) : keptBitmap(image);
+    Ref<ID2D1Bitmap1> kept = filtered ? keptTinted(image, paint) : bitmapForDrawing(cv, image);
     const bool whole = part.l == 0 && part.t == 0 && part.r == image.width && part.b == image.height;
     if (kept && whole) {
         s.rt->DrawBitmap(kept.get(), &onto, opacity, sampling, &from);
@@ -4476,6 +4524,85 @@ void drawBitmap(void*, void* canvas, const megler_gfx_image* image, const float*
         compose(*target, box, source, cover, paint->blend);
         ++G().composed;
     });
+}
+
+// Draw a current bitmap canvas directly. The source remains dirty in memory:
+// only a later CPU reader needs flush/pull. Submit both contexts before either
+// canvas can be changed or returned to the pool.
+bool drawCanvas(void*, void* canvas, void* source, const float* src, const float* dst, const megler_gfx_paint* given) {
+    Canvas* cv = canvasOf(canvas);
+    Canvas* from = canvasOf(source);
+    if (!cv || !from || cv == from || !src || !dst || !given) return false;
+    bool drawn = false;
+    guarded("draw_canvas", [&] {
+        if (!cv->gc || !from->gc || gpuGone() || !from->base.gpu) return;
+        for (const Level& level : from->levels) if (level.isLayer) return;
+        // Subrectangles retain draw_bitmap's exact edge sampling fallback.
+        if (src[0] != 0 || src[1] != 0 || src[2] != float(from->memoryW) || src[3] != float(from->memoryH)) return;
+        if (!sane(dst[0], dst[1], dst[2], dst[3]) || !(dst[2] > dst[0]) || !(dst[3] > dst[1])) return;
+        const megler_gfx_paint paint = checked(*given);
+        if (paint.shadow_radius > 0 && (paint.shadow_color >> 24)) return;
+        Surface* target = cv->target();
+        if (!target || !target->gc) return;
+        Ink ink;
+        ink.kind = Ink::rectangle;
+        ink.box = D2D1::RectF(dst[0], dst[1], dst[2], dst[3]);
+        ink.l = dst[0]; ink.t = dst[1]; ink.r = dst[2]; ink.b = dst[3];
+        ink.smooth = (paint.flags & MEGLER_GFX_ANTI_ALIAS) != 0;
+        Box box = inkCover(ink, cv->matrix);
+        box.intersect(cv->clip().box);
+        box.intersect(target->bounds());
+        if (box.empty()) { drawn = true; return; }
+        from->base.end();
+        if (!from->base.memAhead.empty()) {
+            from->base.upload(from->base.memAhead);
+            from->base.memAhead = Box();
+        }
+        from->base.unbind();
+        GpuContext& g = *cv->gc;
+        Ref<ID2D1Image> image(from->base.gpu);
+        const unsigned alpha = paint.color >> 24;
+        if (alpha < 255) {
+            ID2D1Effect* opacity = g.effect(GpuContext::opacity);
+            if (!opacity) return;
+            const float k = float(alpha) / 255.0f;
+            opacity->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, D2D1::Matrix5x4F(k, 0, 0, 0, 0, k, 0, 0, 0, 0, k, 0, 0, 0, 0, k, 0, 0, 0, 0));
+            opacity->SetValue(D2D1_COLORMATRIX_PROP_ALPHA_MODE, matrixAsItStands);
+            opacity->SetInput(0, image.get());
+            image.reset();
+            opacity->GetOutput(image.put());
+        }
+        if (paint.filter_mode >= 0) image = filtered(g, image.get(), paint.filter_mode, paint.filter_color);
+        if (!image) return;
+        const auto interpolation = (paint.flags & MEGLER_GFX_FILTER_BITMAP) ? D2D1_INTERPOLATION_MODE_LINEAR : D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
+        Ref<ID2D1ImageBrush> brush;
+        const Matrix3x2F placement = Matrix3x2F::Scale((dst[2] - dst[0]) / src[2], (dst[3] - dst[1]) / src[3]) * Matrix3x2F::Translation(dst[0], dst[1]);
+        const HRESULT hr = g.dc->CreateImageBrush(image.get(),
+            D2D1::ImageBrushProperties(D2D1::RectF(src[0], src[1], src[2], src[3]), D2D1_EXTEND_MODE_CLAMP, D2D1_EXTEND_MODE_CLAMP, interpolation),
+            D2D1::BrushProperties(1.0f, placement), brush.put());
+        if (FAILED(hr)) return;
+        auto put = [&](Surface& s) {
+            if (!s.begin()) return false;
+            s.useClip(cv->clip());
+            s.setMatrix(cv->matrix);
+            s.rt->SetAntialiasMode(ink.smooth ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED);
+            s.rt->FillRectangle(ink.box, brush.get());
+            s.drew(box);
+            return true;
+        };
+        if (paint.blend == MEGLER_GFX_BLEND_SRC_OVER) {
+            if (!put(*target)) return;
+            ++G().direct;
+        } else {
+            const bool keeps = keepsUncovered(paint.blend);
+            Surface* cover = keeps ? nullptr : gpuCoverage(*cv, ink, box, true, Canvas::workC);
+            Surface* colours = keeps || cover ? workSurface(*cv, Canvas::workA, box) : nullptr;
+            if (!colours || !put(*colours) || !gpuPut(*cv, *target, box, colours->gpu.get(), cover ? cover->gpu.get() : nullptr, paint.blend)) return;
+        }
+        g.finish(State::endOther);
+        drawn = true;
+    });
+    return drawn;
 }
 
 // MARK: megler_gfx_host: shaders
@@ -6333,6 +6460,8 @@ megler_gfx_host GfxHost::callbacks() {
     host.gl_place = &glPlace;
     host.texture_frame = &textureFrame;
     host.draw_texture = &drawTexture;
+    host.draw_canvas = &drawCanvas;
+    host.canvas_discard = &canvasDiscard;
     return host;
 }
 

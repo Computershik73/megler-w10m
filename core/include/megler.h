@@ -1304,6 +1304,14 @@ typedef struct megler_gfx_host {
     void (*gl_place)(void *user, int layer, int x, int y, int width, int height);
     bool (*texture_frame)(void *user, int id, void *share_handle, int width, int height);
     void (*draw_texture)(void *user, void *canvas, int id, float left, float top, float right, float bottom, int alpha);
+    /* Optional bitmap-to-canvas drawing without a CPU readback. The source is
+       another canvas of the source bitmap, current and with no open layers.
+       False leaves the destination unchanged; the core then settles the bitmap
+       and uses draw_bitmap. The source remains readable through flush. */
+    bool (*draw_canvas)(void *user, void *canvas, void *source, const float *src, const float *dst, const megler_gfx_paint *paint);
+    /* Free a canvas whose pixels will never be read again. Like canvas_free,
+       but its memory need not receive the last drawing. */
+    void (*canvas_discard)(void *user, void *canvas);
 } megler_gfx_host;
 
 /*
