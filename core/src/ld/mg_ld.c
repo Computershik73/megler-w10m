@@ -30,7 +30,7 @@ bool mg_ld_add_service_apk(const char *path, int scope) {
     g_service_apk_ready[scope] = true;
     return true;
 }
-static char *g_dirs[8];
+static char *g_dirs[32];
 static int g_ndirs;
 static char *g_runtime_dirs[4];            /* where the runtime's own libraries are: never searched for an app's */
 static int g_nruntime_dirs;
@@ -113,7 +113,13 @@ const struct mg_zip *mg_ld_apk_at(int index) { return index >= 0 && index < g_na
 
 void mg_ld_add_search_dir(const char *dir)
 {
+    int i;
+    if (!dir || !dir[0]) return;
+    load_lock();
+    for (i = 0; i < g_ndirs; i++)
+        if (!strcmp(g_dirs[i], dir)) { load_unlock(); return; }
     if (g_ndirs < (int)MG_COUNT(g_dirs)) g_dirs[g_ndirs++] = mg_strdup(dir);
+    load_unlock();
 }
 
 void mg_ld_add_runtime_dir(const char *dir)
@@ -179,16 +185,19 @@ bool mg_ld_has_lib(const char *name)
 {
     const mg_zip *z;
     int i;
-    if (apk_lib(name, &z)) return true;
-    if (g_service_scope) return false;
+    bool found = false;
+    load_lock();
+    if (apk_lib(name, &z)) { load_unlock(); return true; }
+    if (g_service_scope) { load_unlock(); return false; }
     for (i = 0; i < g_ndirs; i++) {
         char *p = mg_sprintf("%s/%s", g_dirs[i], name);
         mg_stat st;
         bool ok = mg_path_stat(p, &st, NULL) && !st.is_dir;
         free(p);
-        if (ok) return true;
+        if (ok) { found = true; break; }
     }
-    return false;
+    load_unlock();
+    return found;
 }
 
 typedef struct libs_walk {
@@ -1218,7 +1227,21 @@ mg_lib *mg_ld_load_file(const char *host_path)
 {
     const char *slash = strrchr(host_path, '/'), *back = strrchr(host_path, '\\');
     const char *name = back && (!slash || back > slash) ? back + 1 : slash ? slash + 1 : host_path;
-    return load_lib(name, false, host_path);
+    mg_lib *lib;
+    load_lock();
+    /* Libraries unpacked by an app's native loader need their siblings too.
+     * Keep this in the app namespace; service scopes must not inherit it. */
+    if (!g_service_scope && name > host_path) {
+        size_t n = (size_t)(name - host_path - 1);
+        char *dir = (char *)mg_alloc(n + 1);
+        memcpy(dir, host_path, n);
+        dir[n] = 0;
+        mg_ld_add_search_dir(dir);
+        free(dir);
+    }
+    lib = load_lib(name, false, host_path);
+    load_unlock();
+    return lib;
 }
 
 bool mg_ld_init(mg_lib *lib)

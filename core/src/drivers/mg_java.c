@@ -1820,6 +1820,7 @@ static void place_libraries(void)
     char *guest = mg_sprintf("%s/lib", data ? data : ""), *host = data && data[0] ? mg_fs_host_path(guest) : NULL;
     int n;
     if (host && mg_path_mkdirs(host)) {
+        mg_ld_add_search_dir(host);
         n = mg_ld_apk_libs(place_one, host);
         if (n) mg_info("java: the app's %d native librar%s (%s) %s in %s", n, n == 1 ? "y" : "ies", mg_ld_abi(), n == 1 ? "is" : "are", guest);
     }
