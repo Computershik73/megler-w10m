@@ -1235,7 +1235,13 @@ static i32 obj_write(gobj *o, const void *buf, u32 n, bool positioned, u64 offse
     }
     case OBJ_FILE:
         r = positioned ? mg_file_pwrite(o->file, buf, n, offset, &err) : mg_file_write(o->file, buf, n, &err);
-        if (r < 0) mg_set_errno(mg_errno_of(err));
+        if (r < 0) {
+            mg_set_errno(mg_errno_of(err));
+        } else if (r > 0 && mg_mem_file_copies()) {
+            /* What was written, into the copies of the file that are mapped shared (mg_mem_file_written): where it went. */
+            i64 end = positioned ? (i64)offset + r : mg_file_seek(o->file, 0, 1, &err);
+            if (end >= r) mg_mem_file_written(o, (u64)(end - r), buf, (size_t)r);
+        }
         return (i32)r;
     case OBJ_NULL:
     case OBJ_RANDOM:
@@ -1358,7 +1364,24 @@ void *mg_fd_hold(int fd)
     }
     return o;
 }
-i32 mg_fd_held_pwrite(void *held, const void *buf, u32 n, u64 offset) { return held ? obj_write((gobj *)held, buf, n, true, offset) : -1; }
+/* (A shared mapping's own pages, which it writes back under the mappings' lock: the file is written, and the other mappings of
+   it are given the bytes by the one writing back, mg_libc_mem.c.) */
+i32 mg_fd_held_pwrite(void *held, const void *buf, u32 n, u64 offset)
+{
+    gobj *o = (gobj *)held;
+    int err = 0;
+    i64 r;
+    if (!o) return -1;
+    if (o->type != OBJ_FILE) return obj_write(o, buf, n, true, offset);
+    r = mg_file_pwrite(o->file, buf, n, offset, &err);
+    if (r < 0) mg_set_errno(mg_errno_of(err));
+    return (i32)r;
+}
+bool mg_fd_held_same(const void *a, const void *b)
+{
+    const gobj *x = (const gobj *)a, *y = (const gobj *)b;
+    return x == y || (x && y && x->type == OBJ_FILE && y->type == OBJ_FILE && x->path && y->path && !strcmp(x->path, y->path));
+}
 void mg_fd_let_go(void *held)
 {
     if (held) fd_put((gobj *)held);

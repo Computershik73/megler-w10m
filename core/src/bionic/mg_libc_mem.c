@@ -247,13 +247,18 @@ typedef struct region {
     u8 *live;
     u32 live_pages;
     /*
-     * A shared writable mapping of a file (MAP_SHARED, PROT_WRITE): the file, held, and which of its bytes the region
-     * holds from its base. The pages are the layer's own copy of them; what the app writes into them is written back to
-     * the file at msync, at munmap, and when the app ends (mg_mem_write_back) -- not as it is written, as the kernel would.
+     * A shared mapping of a file (MAP_SHARED) that is the layer's own copy of its bytes: the file, held, and which of its
+     * bytes the region holds from its base. What the app writes into a writable one (PROT_WRITE, `write_back`) is written
+     * back to the file at msync, at munmap, and when the app ends (mg_mem_write_back) -- not as it is written, as the
+     * kernel would. What is written to the file through a descriptor is copied into every such mapping of it as it is
+     * written (mg_mem_file_written), into pages made writable for the copy where they are not: `file_prot` is the access
+     * they were mapped with, for a host that cannot say a page's (mg_mem_page_state).
      */
     void *file;
     u64 file_offset;
     size_t file_bytes;
+    bool write_back;
+    int file_prot;
     /* A view of shared memory (mg_fd_shm_map): unmapped, not released, when its last page goes; its pages stay till then. */
     void *view;
     size_t view_size;
@@ -422,16 +427,73 @@ static void before_system_write(void *p, size_t size)
     mg_lock_release(&g_region_lock);
 }
 
-/* What the app wrote into [from, from + size) of a shared file mapping, back to the file: the pages it still has. Under the lock. */
+static volatile i32 g_file_copies;   /* regions holding a file: while there are none, a write to a file looks for none */
+
+/* Bytes copied into a region's pages, which the app may hold read-only: made writable for the copy, then given back the
+   access they had. Pages the app unmapped, and pages not committed, are left. Under the lock. */
+static void copy_into(region *r, u8 *to, const u8 *from, size_t n)
+{
+    u8 *page = (u8 *)MG_ALIGN_DOWN((mg_addr)to, (mg_addr)MG_PAGE);
+    for (; page < to + n; page += MG_PAGE) {
+        size_t index = (size_t)(page - r->base) / MG_PAGE;
+        u8 bit = (u8)(1u << (index & 7));
+        u8 *lo = page < to ? to : page, *hi = page + MG_PAGE < to + n ? page + MG_PAGE : to + n;
+        bool committed = true, writable;
+        int prot = -1;
+        if (!(r->live[index >> 3] & bit)) continue;
+        if (!mg_mem_page_state(page, &committed, &prot)) prot = r->noaccess && (r->noaccess[index >> 3] & bit) ? MG_PROT_NONE : r->file_prot;
+        if (!committed) continue;
+        writable = prot == MG_PROT_RW || prot == MG_PROT_RWX;
+        if (!writable && !mg_mem_protect(page, MG_PAGE, MG_PROT_RW)) continue;
+        memcpy(lo, from + (lo - to), (size_t)(hi - lo));
+        if (!writable) {
+            mg_mem_protect(page, MG_PAGE, prot < 0 ? MG_PROT_R : prot);
+            if (prot == MG_PROT_RX) mg_icache_flush(page, MG_PAGE);
+        }
+    }
+}
+
+/* `n` bytes written to `file` at `at`, into each region but `skip` that holds a copy of some of them. Under the lock. */
+static void copies_written(const region *skip, const void *file, u64 at, const u8 *buf, size_t n)
+{
+    region *r;
+    for (r = g_regions; r; r = r->next) {
+        u64 lo, hi;
+        if (r == skip || !r->file || !mg_fd_held_same(r->file, file)) continue;
+        lo = at > r->file_offset ? at : r->file_offset;
+        hi = at + n < r->file_offset + r->file_bytes ? at + n : r->file_offset + r->file_bytes;
+        if (lo < hi) copy_into(r, r->base + (size_t)(lo - r->file_offset), buf + (size_t)(lo - at), (size_t)(hi - lo));
+    }
+}
+
+bool mg_mem_file_copies(void) { return g_file_copies > 0; }
+
+/*
+ * What was written to a file through a descriptor, into the copies of it mapped shared. Bolt (Psiphon's database, in
+ * WhatsApp's libgojni.so) maps its file shared and read-only, writes it with pwrite and reads what it wrote, its new meta
+ * page first, through the mapping; with the copy as it was at mmap the next transaction saw the one before. LMDB writes
+ * its meta page through a second descriptor of the file, and SQLite with mmap_size reads through a mapping so too.
+ */
+void mg_mem_file_written(void *file, u64 at, const void *buf, size_t n)
+{
+    if (!n || !g_file_copies) return;
+    mg_lock_acquire(&g_region_lock);
+    copies_written(NULL, file, at, (const u8 *)buf, n);
+    mg_lock_release(&g_region_lock);
+}
+
+/* What the app wrote into [from, from + size) of a shared file mapping, back to the file, and into the file's other mappings:
+   the pages it still has. Under the lock. */
 static void write_back(region *r, size_t from, size_t size)
 {
     size_t end = from + size, page;
-    if (!r->file) return;
+    if (!r->file || !r->write_back) return;
     if (end > r->file_bytes) end = r->file_bytes;
     for (page = from / MG_PAGE; page * MG_PAGE < end; page++) {
         size_t a = page * MG_PAGE < from ? from : page * MG_PAGE, b = (page + 1) * MG_PAGE < end ? (page + 1) * MG_PAGE : end;
         if (!(r->live[page >> 3] & (1u << (page & 7)))) continue;
-        mg_fd_held_pwrite(r->file, r->base + a, (u32)(b - a), r->file_offset + a);
+        if (mg_fd_held_pwrite(r->file, r->base + a, (u32)(b - a), r->file_offset + a) > 0 && g_file_copies > 1)
+            copies_written(r, r->file, r->file_offset + a, r->base + a, b - a);
     }
 }
 
@@ -595,20 +657,22 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
             if (n <= 0) break;
             got += (size_t)n;
         }
-        if ((flags & G_MAP_SHARED) && (prot & G_PROT_WRITE)) {
-            if (flags & G_MAP_FIXED) {
-                mg_note_once("mmap: a shared writable file mapping over memory already mapped is a private copy here; writes do not reach the file");
-            } else {
-                /* The file, to write back to (region.file). */
-                mg_lock_acquire(&g_region_lock);
-                r = region_of(p);
-                if (r && !r->file) {
-                    r->file = mg_fd_hold(fd);
-                    r->file_offset = offset;
-                    r->file_bytes = len;
-                }
-                mg_lock_release(&g_region_lock);
+        if ((flags & G_MAP_SHARED) && (flags & G_MAP_FIXED) && (prot & G_PROT_WRITE)) {
+            mg_note_once("mmap: a shared writable file mapping over memory already mapped is a private copy here; writes do not reach the file");
+        } else if ((flags & G_MAP_SHARED) && !(flags & G_MAP_FIXED)) {
+            /* The file: to write back to (region.file) when the mapping is writable, and to keep the copy in step with as
+               the file is written through a descriptor (mg_mem_file_written). */
+            mg_lock_acquire(&g_region_lock);
+            r = region_of(p);
+            if (r && !r->file) {
+                r->file = mg_fd_hold(fd);
+                r->file_offset = offset;
+                r->file_bytes = len;
+                r->write_back = (prot & G_PROT_WRITE) != 0;
+                r->file_prot = host_prot(prot);
+                if (r->file) mg_atomic_add(&g_file_copies, 1);
             }
+            mg_lock_release(&g_region_lock);
         }
     }
     if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {
@@ -672,6 +736,7 @@ static int g_munmap(void *addr, size_t len)
             /* The last of it: the reservation goes back. */
             *link = r->next;
             mg_lock_release(&g_region_lock);
+            if (r->file) mg_atomic_add(&g_file_copies, -1);
             mg_fd_let_go(r->file);
             if (r->view) mg_section_unmap(r->view, r->view_size);
             else mg_mem_release(r->base, r->size);
@@ -983,6 +1048,7 @@ static int g_mprotect(void *addr, size_t len, int prot)
             size_t off = (size_t)(p - r->base), n = size < r->size - off ? size : r->size - off;
             if (r->gone_pages) gone_mark(r, off, n, false);
             noaccess_mark(r, off, n, !(prot & 7));
+            if (r->file) r->file_prot = host_prot(prot);
             mem_note((prot & 7) ? 'A' : 'P', p, n);
         }
         mg_lock_release(&g_region_lock);

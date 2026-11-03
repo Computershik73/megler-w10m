@@ -860,10 +860,30 @@ next start. Now the pages the app still has are written to the file at
 made of, held apart from the descriptor the app closes. Not as each byte is
 written, as Linux would: another process does not exist to see it, and a
 second mapping of the same file in this one does not see the first's writes
-until one of those. Over memory already mapped (`MAP_FIXED`) it is still a
-private copy, and the log says so. The storage tests map a file shared and
-writable, close its descriptor, write into the mapping, and read the file
-back after `msync` and after `munmap`.
+until one of those, and then it does. Over memory already mapped (`MAP_FIXED`)
+it is still a private copy, and the log says so. The storage tests map a file
+shared and writable, close its descriptor, write into the mapping, and read
+the file back after `msync` and after `munmap`.
+
+**A file mapped shared shows what is written to it.** A shared mapping of a
+file that is the layer's copy (any but a read-only view from a read-only
+descriptor) holds the file, and what is written to the file through any
+descriptor of it -- `write`, `pwrite`, by number or not -- is copied into the
+mapping as it is written (`mg_mem_file_written`), its pages made writable
+for the copy where they are not and given their access back; what a
+writable mapping writes back reaches the file's other mappings the same way.
+Before, the copy stayed as it was at `mmap`. Bolt, the database of Psiphon's
+tunnel core in WhatsApp's `libgojni.so`, maps its file shared and read-only,
+from a descriptor open for writing and past the file's end, writes it with
+`pwrite`, and reads its new meta page through the mapping: each transaction
+would have seen the one before it. LMDB writes its meta page through a second
+descriptor, and SQLite with `mmap_size` reads through a mapping so too. Two
+descriptors are of one file when they are of the same guest path. While no
+such mapping exists a write looks for none. `test_mmap_file_written` maps a
+file as Bolt does and writes it at an offset, across a page's edge, at the
+descriptor's position, grown through another descriptor, with a page
+unmapped, and through a writable mapping's `msync`; with the copies not kept
+in step six of its checks fail.
 
 **Names Windows refuses.** Android allows any character in a file's name but
 '/', and apps use that: MX Player's Amazon SDK names a database after an ARN,
