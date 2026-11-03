@@ -84,6 +84,7 @@
               <uap:FileType ContentType="application/vnd.android.package-archive">.apk</uap:FileType>
               <uap:FileType>.apks</uap:FileType>
               <uap:FileType>.xapk</uap:FileType>
+              <uap:FileType>.apkm</uap:FileType>
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>
         </uap:Extension>

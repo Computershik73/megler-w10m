@@ -6,7 +6,7 @@
 //   apks\Game.apk.icon     megler_apk_icon's bytes (PNG or WebP), when there is one
 //   apks\reports.version   which build made the cached reports
 //
-// An app that came as a bundle of split APKs (.apks, .xapk) is its base APK
+// An app that came as a bundle of split APKs (.apks, .xapk, .apkm) is its base APK
 // and, beside it, the folder megler_bundle_unpack made of its splits:
 //
 //   apks\Game.apk          the base
@@ -124,7 +124,7 @@ public:
     const std::wstring& directory() const { return directory_; }
 
     /// The file name a picked file's copy gets: its own name, made safe. A
-    /// bundle's (.apks, .xapk) is its name with .apk for its own extension:
+    /// bundle's (.apks, .xapk, .apkm) is its name with .apk for its own extension:
     /// what it is kept as is its base.
     static std::string idFor(const std::string& pickedName);
     /// Whether a picked file is a bundle of split APKs, by its name.

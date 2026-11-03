@@ -1109,7 +1109,7 @@ still and one more after each step of the script, and checks nothing. Verbose
 2 adds the framework's touch log, 3 its view dump. Three apps of the user's
 (`build/apps`, not in the repository) were run this way at 720 x 1280 and 280
 dpi; each starts in under half a minute. Given a bundle of split APKs (a name
-that ends in `.apks` or `.xapk`), it unpacks it first as the shell does, for
+that ends in `.apks`, `.xapk` or `.apkm`), it unpacks it first as the shell does, for
 the screen's density, and starts the base with its splits ("An app in several
 APKs" above says what came of BiP).
 
@@ -2828,8 +2828,9 @@ APK and splits: config splits for what depends on the phone -- the processor
 (`config.armeabi_v7a`: the native libraries), the screen's density
 (`config.xxhdpi`: the pictures) and the languages (`config.ru`: the strings)
 -- and feature splits and asset packs with more code, resources and assets.
-Outside Google Play they come as one file: an `.apks` (SAI's, bundletool's)
-or an `.xapk` (APKPure's, which may carry expansion files). Here such an app
+Outside Google Play they come as one file: an `.apks` (SAI's, bundletool's),
+an `.xapk` (APKPure's, which may carry expansion files) or an `.apkm`
+(APKMirror's: `base.apk` and `split_*.apk` with an `info.json`). Here such an app
 is kept as its base and a folder of its splits, and runs as one app, as
 Android runs an installed app with its splits.
 

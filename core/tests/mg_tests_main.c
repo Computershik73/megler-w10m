@@ -62,7 +62,7 @@
  *       checked, focus and the light where it has them, stop and close. A PC without a camera says so and has nothing to
  *       check. Only in the build tools/build-tests.sh win makes; any other says so and does nothing
  *   mg_tests --bundles <test apps dir> <scratch dir> [real bundles dir]
- *       bundles of split APKs (.apks, .xapk) unpacked as the shell unpacks them, and the APK report of what comes out
+ *       bundles of split APKs (.apks, .xapk, .apkm) unpacked as the shell unpacks them, and the APK report of what comes out
  *       (mg_bundle_tests.c): the test app `splits` in the folder of the test apps (build/guest/java), and the real bundles
  *       in the third folder where one is named
  *   mg_tests --icon <apk> <out file> [drawable]

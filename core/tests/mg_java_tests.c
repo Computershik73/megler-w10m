@@ -3052,9 +3052,10 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
     mg_gl_standin_set_complete(g_any_app || !strcmp(which, "webview"));
     /*
      * `splits` is given a bundle, unpacked first as the shell unpacks one; the app is its base and the folder of its splits.
-     * So is `app` when what it is given is named as a bundle (.apks, .xapk): a real app that comes in several APKs.
+     * So is `app` when what it is given is named as a bundle (.apks, .xapk, .apkm): a real app that comes in several APKs.
      */
-    if (!strcmp(which, "splits") || (g_any_app && strlen(apk) > 5 && (!strcmp(apk + strlen(apk) - 5, ".apks") || !strcmp(apk + strlen(apk) - 5, ".xapk")))) {
+    if (!strcmp(which, "splits") || (g_any_app && strlen(apk) > 5 && (!strcmp(apk + strlen(apk) - 5, ".apks") || !strcmp(apk + strlen(apk) - 5, ".xapk") ||
+                                       !strcmp(apk + strlen(apk) - 5, ".apkm")))) {
         char *base = NULL;
         if (!unpack_bundle(apk, &base)) {
             free(base);

@@ -854,6 +854,7 @@ winrt::fire_and_forget pickAndInstall(std::weak_ptr<AppShell> weakShell, std::sh
         picker.FileTypeFilter().Append(L".apk");
         picker.FileTypeFilter().Append(L".apks");
         picker.FileTypeFilter().Append(L".xapk");
+        picker.FileTypeFilter().Append(L".apkm");
         file = co_await picker.PickSingleFileAsync();
     } catch (const hresult_error& e) {
         error = format("0x%08X %s", unsigned(e.code()), narrow(e.message()).c_str());

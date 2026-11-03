@@ -103,7 +103,7 @@ public:
     void confirm(std::string title, std::string message, std::string confirmTitle, bool destructive,
                  std::function<void()> onConfirm, std::function<void()> onCancel = nullptr);
 
-    /// The file picker for an .apk, or a bundle of split APKs (.apks, .xapk),
+    /// The file picker for an .apk, or a bundle of split APKs (.apks, .xapk, .apkm),
     /// and the app installed (ui/SeparateApps.h). An APK is read where it is: a
     /// container can't open a picked file by its path, but the core is given it
     /// through the broker's handles (shell/PickedFile.h), and Megler copies it into
