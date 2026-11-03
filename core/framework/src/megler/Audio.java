@@ -33,6 +33,8 @@ public final class Audio {
     public static native int decRead(long dec, short[] buf);
     public static native void decSeek(long dec, int ms);
     public static native void decClose(long dec);
+    /** Next RGBA video frame converted to the bitmap; 1 frame, 0 EOS, -1 error. */
+    public static native int decVideo(long dec, android.graphics.Bitmap bitmap, long[] ptsUs);
 
     private static java.lang.reflect.Field sDescriptor;
     /** A FileDescriptor's number. */
