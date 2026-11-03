@@ -787,7 +787,14 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
     if (w.has[L_UNITY]) strcpy(info->engine, "unity");
     else if (w.has[L_UE4]) strcpy(info->engine, "unreal");
     else if (w.has[L_GODOT]) strcpy(info->engine, "godot");
-    else if (w.has[L_COCOS]) strcpy(info->engine, "cocos2d-x");
+    /*
+     * cocos2d-x in an app with bytecode and an activity of its own is a Java app's. cocos2d-x's Cocos2dxActivity is an
+     * Activity with a GLSurfaceView that loads the engine (libcocos2dcpp.so) through JNI and draws with OpenGL ES, as
+     * libGDX's does, and an app may carry the engine for a part of it: Zalo (com.zing.zalo), a messenger with 44 libraries,
+     * libcocos2dcpp.so among them, was refused as an app "built on cocos2d-x", for which there is no driver. It goes on
+     * below as the others do (NativeActivity, then Java). The engine with nothing to start it is still one.
+     */
+    else if (w.has[L_COCOS] && !(info->activity[0] && mg_zip_find(zips[0], "classes.dex"))) strcpy(info->engine, "cocos2d-x");
     /*
      * A Flutter app is a Java app: its activity (FlutterActivity or the app's own on top of it) starts Flutter's engine,
      * libflutter.so, through JNI, and the engine runs the app's Dart code (libapp.so) and draws into the activity's
@@ -874,6 +881,8 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
         note(info, "Built with Flutter: its engine runs inside the Java app and draws with OpenGL ES (there is no Vulkan here). Flutter apps are new here.");
     if (w.has[L_GDX] && !strcmp(info->engine, "java"))
         note(info, "Built with libGDX: the game runs as a Java app and draws with OpenGL ES.");
+    if (w.has[L_COCOS] && !strcmp(info->engine, "java"))
+        note(info, "With cocos2d-x: the engine runs inside the Java app, started by its activity, and draws with OpenGL ES.");
     if (w.has[L_DEXPROTECTOR])
         note(info, "Protected by DexProtector: most of the app's code is encrypted in the APK and decrypted while it starts by a packed native library made for Android's own runtime. Such an app may stop before its first screen.");
     if (!strcmp(info->engine, "native-activity") && info->has_code && strcmp(info->activity, "android.app.NativeActivity"))

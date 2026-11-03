@@ -586,9 +586,13 @@ int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *r
     static const char *const bip_kept[] = { "config.armeabi_v7a", "config.xxhdpi", "config.xxxhdpi" };
     static const char *const mangadex_kept[] = { "config.en", "config.ru", "config.xxhdpi" };
     static const char *const magnit_kept[] = { "config.en", "config.xhdpi" };
+    static const char *const zalo_kept[] = { "config.armeabi_v7a", "config.xxhdpi", "config.xxxhdpi", "mediapipe_faceeffect", "tensorflowLite" };
     static const real_bundle real[] = {
         { "BiP_v.4.2.42-HEAD(4450)(7.0-15.0)(arm7a,arm64-8a,x86,x86-64).apks", "com.turkcell.bip", "4.2.42-HEAD", "armeabi-v7a", true, bip_kept, 3, "config.arm64_v8a", NULL },
         { "MangaDex_1.0.0.0_APKPure.xapk", "org.mangadex.mangadex", "1.0.0.0", NULL, true, mangadex_kept, 3, "config.ja", NULL },
+        /* APKMirror's .apkm: base.apk and split_*.apk, its info.json and icon.png, its own signature in META-INF. Zalo carries
+           libcocos2dcpp.so among its 44 libraries, and is the Java app it is. */
+        { "com.zing.zalo_26.10.02-261002903_APKMirror.apkm", "com.zing.zalo", "26.10.02", "armeabi-v7a", true, zalo_kept, 5, "config.arm64_v8a", NULL },
         { "\xd0\x9c\xd0\xb0\xd0\xb3\xd0\xbd\xd0\xb8\xd1\x82_8.107.1.apks", "ru.tander.magnit", "8.107.1", NULL, false, magnit_kept, 2, "config.arm64_v8a",
           "no 32-bit ARM code: the bundle it came in has native code for arm64-v8a only" },
     };
@@ -600,8 +604,11 @@ int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *r
     test_odd_bundles(java_dir, scratch);
     {
         static const char *const flutter[] = { "libflutter.so", "libapp.so" }, *const gdx[] = { "libgdx.so", "libgdx-freetype.so", "libdexprotector.so" };
+        static const char *const cocos[] = { "libcocos2dcpp.so" };
         test_engine_app(java_dir, scratch, "Flutter", flutter, (int)MG_COUNT(flutter), "Built with Flutter", NULL);
         test_engine_app(java_dir, scratch, "libGDX", gdx, (int)MG_COUNT(gdx), "Built with libGDX", "Protected by DexProtector");
+        /* (Zalo's, a messenger's, as its mini-games' engine: it was refused as an app built on cocos2d-x.) */
+        test_engine_app(java_dir, scratch, "cocos2d-x", cocos, (int)MG_COUNT(cocos), "With cocos2d-x", NULL);
     }
     if (real_dir)
         for (i = 0; i < (int)MG_COUNT(real); i++) test_real(real_dir, scratch, &real[i]);
