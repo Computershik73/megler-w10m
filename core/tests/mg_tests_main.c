@@ -98,6 +98,7 @@
 static int load_mode(int argc, char **argv)
 {
     int i, bad = 0;
+    mg_lib *last = NULL;
     if (!mg_core_init()) return 1;
     mg_ld_set_verbosity(2);
     mg_ld_add_search_dir(argv[2]);
@@ -110,6 +111,7 @@ static int load_mode(int argc, char **argv)
             continue;
         }
         mg_ld_init(lib);
+        last = lib;
         mg_ld_get_stats(lib, &st);
         printf("%s: %u Thumb, %u ARM functions; %u unresolved; %u thread-pointer reads (%u failed), %u PLT entries, %u direct system calls\n", argv[i],
                st.thumb_functions, st.arm_functions, st.unresolved, st.tp_reads, st.tp_reads_failed, st.plt_entries, st.svc_sites);
@@ -144,6 +146,24 @@ static int load_mode(int argc, char **argv)
         }
     }
     printf("unresolved imports in all: %u\n", (unsigned)mg_ld_unresolved_count());
+    /* MG_TESTS_LOAD_WAIT_MS: a while longer for what the libraries' init functions started on threads of their own. Go's
+       runtime, loaded as a library, starts itself on one (_rt0_arm_lib), and the process ended before it ran. */
+    if (getenv("MG_TESTS_LOAD_WAIT_MS")) mg_sleep_ns((u64)atoi(getenv("MG_TESTS_LOAD_WAIT_MS")) * 1000000u);
+    /* MG_TESTS_LOAD_PEEK=OFFSET[,OFFSET...] (hex): the 32-bit words at those offsets of the last library loaded, as they are
+       after its init functions and the wait -- variables of its, such as Go's runtime.vdsoClockgettimeSym, which says whether
+       Go took the vDSO. */
+    if (getenv("MG_TESTS_LOAD_PEEK") && last) {
+        const char *at = getenv("MG_TESTS_LOAD_PEEK");
+        while (*at) {
+            char *end;
+            unsigned long off = strtoul(at, &end, 16);
+            u32 word;
+            if (end == at) break;
+            memcpy(&word, (u8 *)mg_ld_lib_base(last) + off, 4);
+            printf("word at +%lx: %08x (base %p)\n", off, (unsigned)word, mg_ld_lib_base(last));
+            at = *end == ',' ? end + 1 : end;
+        }
+    }
     return bad ? 1 : 0;
 }
 #endif
