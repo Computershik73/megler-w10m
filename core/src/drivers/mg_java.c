@@ -1440,7 +1440,7 @@ static void meter_census(void)
 {
     u64 process = mg_mem_usage();
     mg_dvm_stats s;
-    char mem[480];
+    char mem[560];
     mg_dvm_get_stats(&s);
     mem[0] = 0;
     if (process) {
@@ -1468,6 +1468,12 @@ static void meter_census(void)
             if (mg_host_address_space(&free_mb, &largest, &reserved, &committed))
                 snprintf(mem + used, sizeof(mem) - used, "; addresses %u MB free (the largest stretch %u), %u reserved, %u committed", (unsigned)free_mb,
                          (unsigned)largest, (unsigned)reserved, (unsigned)committed);
+        }
+        /* And the machine's free memory, by which the collector sizes its budget (mg_dvm_gc.c, memory_pressed). */
+        {
+            const u64 available = mg_mem_available();
+            size_t used = strlen(mem);
+            if (available) snprintf(mem + used, sizeof(mem) - used, "; the machine %u MB free", (unsigned)(available >> 20));
         }
     }
     /* Its own line, which the frames line had no room left for. */

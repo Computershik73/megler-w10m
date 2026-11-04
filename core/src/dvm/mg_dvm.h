@@ -206,6 +206,8 @@ void mg_dvm_gc_enable(bool on);
 /* For the tests: freed memory filled with 0xDB and never used again, so that an object freed too early shows; and a smaller budget. */
 void mg_dvm_gc_set_poison(bool on);
 void mg_dvm_gc_set_min_budget(u64 bytes);
+/* For the tests: what may be made before the next collection, as the last one left it. */
+u64 mg_dvm_gc_budget(void);
 /* Native memory an object keeps alive (VMRuntime.registerNativeAllocation, a bitmap's pixels): it counts toward the next collection. */
 void mg_dvm_gc_native(i64 bytes);
 /* Collections made so far and the time they took, for the frame meter. */

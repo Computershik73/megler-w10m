@@ -341,6 +341,50 @@ static void test_gc_gives_back(void)
     mg_dvm_gc_set_poison(true);
 }
 
+/*
+ * The budget a collection leaves (budget_after): half of what lived, at least the least; with the machine's free memory known,
+ * no more than half of what it has beyond 96 MB, and the least when it has less. TikTok Lite on a Lumia 650 was given the
+ * least by the app's limit, which Windows let it pass, and collected every 0.8 s (package 619).
+ */
+static u64 g_test_available;
+static u64 test_available(void) { return g_test_available; }
+
+static void test_gc_budget_by_free_memory(void)
+{
+    static mg_jobj *held[24];
+    static bool rooted;
+    mg_dvm_gc_result r;
+    int i;
+    say("the collector: the budget within the machine's free memory");
+    mg_dvm_gc_set_min_budget(1u << 20);
+    for (i = 0; i < (int)MG_COUNT(held); i++) {
+        held[i] = mg_dvm_new_array("[B", 1 << 20);
+        if (!rooted) mg_dvm_add_root(&held[i]);
+    }
+    rooted = true;
+    mg_mem_set_available_probe(test_available);
+    /* Unknown, and no limit either: half of what lived. */
+    g_test_available = 0;
+    CHECK(mg_dvm_gc("test budget", &r));
+    say("  %u MB live: the budget %u MB with the free memory unknown", (unsigned)(r.live_bytes >> 20), (unsigned)(mg_dvm_gc_budget() >> 20));
+    CHECK(r.live_bytes >= (24u << 20) && mg_dvm_gc_budget() == r.live_bytes / 2);
+    /* Plenty: half of what lived. */
+    g_test_available = 1ull << 30;
+    CHECK(mg_dvm_gc("test budget", &r));
+    CHECK(mg_dvm_gc_budget() == r.live_bytes / 2);
+    /* 10 MB beyond the 96 kept free: 5. */
+    g_test_available = (96ull + 10) << 20;
+    CHECK(mg_dvm_gc("test budget", &r));
+    CHECK(mg_dvm_gc_budget() == (5u << 20));
+    /* Less than what is kept free: the least. */
+    g_test_available = 64ull << 20;
+    CHECK(mg_dvm_gc("test budget", &r));
+    CHECK(mg_dvm_gc_budget() == (1u << 20));
+    mg_mem_set_available_probe(NULL);
+    for (i = 0; i < (int)MG_COUNT(held); i++) held[i] = NULL;
+    CHECK(mg_dvm_gc("test budget", &r));
+}
+
 void test_gc(void)
 {
     mg_jobj *small = mg_dvm_new_array("[B", 10), *mid = mg_dvm_new_array("[I", 300), *big = mg_dvm_new_array("[J", 2000);
@@ -368,4 +412,5 @@ void test_gc(void)
     mg_dvm_made_say();
     mg_dvm_made_say();
     test_gc_gives_back();
+    test_gc_budget_by_free_memory();
 }
