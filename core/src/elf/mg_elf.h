@@ -47,6 +47,10 @@ typedef struct {
 #define PF_W 2
 #define PF_R 4
 
+#define SHT_PROGBITS 1
+#define SHF_ALLOC 2
+#define SHF_EXECINSTR 4
+
 #define DT_NULL 0
 #define DT_NEEDED 1
 #define DT_PLTRELSZ 2

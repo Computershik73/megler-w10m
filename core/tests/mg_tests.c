@@ -3129,6 +3129,11 @@ static void test_guest(const char *libdir, const char *scratch)
                 /* An svc whose number was set two instructions back (Chromium's syscall()). */
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_far_number")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_dead_stub")(), 7);
+                {
+                    /* Read-only data in the executable segment: words that look like svc stay as the file has them. */
+                    const u32 *data = (const u32 *)SYM(svc, "t_svc_rodata");
+                    CHECK(data && data[0] == 0xEF000000u && data[1] == 0xDF002714u);
+                }
                 if (j == 0) {
                     /* As the file has it: libmetasec_ov.so sums such code, and ends the process when it has changed. */
                     const u8 *stub = (const u8 *)((mg_addr)SYM(svc, "t_svc_dead_stub") & ~(mg_addr)1);

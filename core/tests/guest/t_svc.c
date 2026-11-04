@@ -33,6 +33,10 @@ __attribute__((naked)) int t_svc_dead_stub(void)
     __asm__ volatile("adr r1, 1f\nmov pc, r1\nmov r0, pc\nsvc 0\npop {r0-r3, r7}\n.balign 4\n1: movs r0, #7\nbx lr\n");
 }
 
+/* Read-only data, in the executable segment here (--no-rosegment) as in libmetasec_ov.so, one of whose tables holds
+   0xEF000000: the word of an ARM svc 0, and a Thumb movs r7, #20 and svc 0. The loader leaves them: they are no code. */
+const unsigned t_svc_rodata[2] = { 0xEF000000u, 0xDF002714u };
+
 /* Chromium's cacheflush wrapper: start + length, flags 0, literal syscall nr. */
 __attribute__((naked)) int t_svc_cacheflush(void *start, unsigned length)
 {

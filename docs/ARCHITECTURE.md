@@ -250,7 +250,11 @@ right behind one is not reached by falling through. TikTok Lite's
 `libmetasec_ov.so` has 554 of those in its anti-disassembly stubs, which jump
 over them, and sums code that holds some: one of its init functions ends the
 process (the thread sent to `0x4000` with `sp` `0x2b`) when a byte of it has
-changed. The ARM scanner recognises unconditional `svc 0`. It does not replace every DF00 halfword: executable segments also hold
+changed. The ARM scanner recognises unconditional `svc 0`. Both look only at
+the library's executable sections when its section headers say which they are
+and agree with its segments (`read_code_sections`): read-only data shares the
+segment, and a table in that library's `.rodata` holds `0xEF000000`, the word
+of an ARM `svc 0`, which became a UDF before. The thread-pointer reads too. It does not replace every DF00 halfword: executable segments also hold
 literal data and Thumb-2 instructions. Other sequences and newly generated JIT
 code still need interception support.
 

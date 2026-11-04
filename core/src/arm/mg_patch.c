@@ -97,6 +97,17 @@ u32 mg_patch_count_tp_reads(const u8 *bytes, size_t size)
     return n;
 }
 
+/* Whether [at, at + n) lies in one of the library's executable sections (mg_lib's code); anywhere, when none are known. */
+static bool in_code(const mg_lib *lib, const u8 *at, size_t n)
+{
+    u32 v = (u32)(at - lib->base);
+    int k;
+    if (!lib->ncode) return true;
+    for (k = 0; k < lib->ncode; k++)
+        if (v >= lib->code[k][0] && v + n <= lib->code[k][1]) return true;
+    return false;
+}
+
 static void patch_tp_reads(mg_lib *lib, u8 *seg, size_t size)
 {
     u32 opc2 = 0, offset = 0;
@@ -108,6 +119,7 @@ static void patch_tp_reads(mg_lib *lib, u8 *seg, size_t size)
         bool thumb = is_t32_tp_read(site, &reg);
         u8 *tr;
         if (!thumb && ((i & 3) || !is_a32_tp_read(site, &reg))) continue;
+        if (!in_code(lib, site, 4)) continue;
         if (!host_ok) {
             lib->stats.tp_reads_failed++;
             continue;
@@ -255,6 +267,11 @@ static void patch_plt(mg_lib *lib, u8 *seg, size_t size)
  * which jump over them, and it sums code that holds some of them: one of its
  * init functions sends the thread to 0x4000 with sp 0x2b, and the process
  * ends, when a byte of that code has changed. They stay as the file has them.
+ *
+ * Only the library's executable sections are looked at, when its section
+ * headers say which they are (mg_lib's code): read-only data shares the
+ * segment, and a table in libmetasec_ov.so's .rodata holds 0xEF000000, the
+ * word of an ARM svc 0, which was patched into a UDF before.
  * trap-svc retains its diagnostic meaning: stop at the site without dispatch.
  */
 static volatile i32 g_trap_svc = -1;
@@ -317,9 +334,9 @@ static void patch_svc(mg_lib *lib, u8 *seg, size_t size)
     if (g_trap_svc < 0) g_trap_svc = mg_flag("trap-svc") ? 1 : 0;
     trap = g_trap_svc > 0;
     for (i = 2; i + 2 <= size; i += 2)
-        if (mg_rd16(seg + i) == 0xDF00 && t_svc_numbered(seg, i)) patch_svc_site(lib, seg + i, true, trap);
+        if (mg_rd16(seg + i) == 0xDF00 && t_svc_numbered(seg, i) && in_code(lib, seg + i, 2)) patch_svc_site(lib, seg + i, true, trap);
     for (i = (size_t)(MG_ALIGN_UP((mg_addr)seg, 4) - (mg_addr)seg); i + 4 <= size; i += 4)
-        if (mg_rd32(seg + i) == 0xEF000000u)
+        if (mg_rd32(seg + i) == 0xEF000000u && in_code(lib, seg + i, 4))
             patch_svc_site(lib, seg + i, false, trap);
 }
 

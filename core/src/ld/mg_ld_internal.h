@@ -68,6 +68,14 @@ struct mg_lib {
     bool runtime;              /* one of Android's own (mg_ld_load_runtime), not the app's: the two never see each other */
     mg_ld_stats stats;
     mg_svc_site *svc_sites;    /* immutable once executable; only our registered traps may resume */
+    /*
+     * Its executable sections (.text, .plt...), [start, end) by address, from the file's section headers when they agree
+     * with its segments: where the patcher looks for instructions. Read-only data shares the executable segment (gold's
+     * layout, lld's with --no-rosegment), and a table in libmetasec_ov.so's .rodata holds the word of an ARM svc 0. None
+     * known (ncode 0): the executable segments, whole.
+     */
+    u32 code[8][2];
+    int ncode;
     mg_lib *next;
 };
 
