@@ -106,6 +106,9 @@ public:
     int surfaceHeight() const { return surfaceHeight_.load(); }
     /// Frames presented so far.
     uint32_t presented() const { return presented_.load(); }
+    /// On-demand gesture measurement; intervals between successful Present calls.
+    void startFrameSample();
+    std::vector<double> endFrameSample();
     /// Any thread: the next frame the app presents is also written to this
     /// file, as a BMP at half its size. For a run nobody watches (the auto
     /// run's "shots"): what was on the screen, to be fetched with the logs.
@@ -168,6 +171,10 @@ private:
 
     std::atomic<int> surfaceWidth_, surfaceHeight_;
     std::atomic<uint32_t> presented_{0};
+    std::atomic<bool> samplingFrames_{false};
+    std::mutex frameSampleMutex_;
+    uint64_t frameSampleLast_ = 0;
+    std::vector<double> frameSampleMs_;
     /// The flag "no-present" (WindowHost.cpp): frames are counted and dropped.
     bool noPresent_ = false;
     std::mutex descriptionMutex_;

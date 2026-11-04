@@ -247,9 +247,18 @@ static void test_in_memory_dex(const char *fixtures)
     CHECK_STR(thrown(), "");
     memset(A, 0, sizeof(A));
     A[0].l = mg_dvm_new_string("t.FromMemory");
+    /* A parent's file path cannot claim a child's memory DEX. This matters for
+       Class.getClassLoader().getParent().findLibrary in dynamically loaded code. */
+    CHECK(vcall(parent, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;").l == NULL);
+    CHECK(strstr(thrown(), "ClassNotFoundException") != NULL);
+    memset(A, 0, sizeof(A));
+    A[0].l = mg_dvm_new_string("t.FromMemory");
     if (loader) cls = vcall(loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;").l;
     CHECK(cls != NULL);
     CHECK_STR(thrown(), "");
+    memset(A, 0, sizeof(A));
+    CHECK(vcall(cls, "getClassLoader", "()Ljava/lang/ClassLoader;").l == loader);
+    CHECK(vcall(loader, "getParent", "()Ljava/lang/ClassLoader;").l == parent);
     CHECK_INT(call("t/FromMemory", "answer", "()I").i, 42);
 }
 

@@ -371,7 +371,11 @@ private:
         }
         if (scale <= 0) scale = 1.0;
         const double pixelWidth = width * scale, pixelHeight = height * scale;
-        const int cap = settings::getInt(settings::renderCap, settings::renderCapDefault);
+        const auto flags = platform::localStateDirectory() + L"\\flags\\";
+        const bool measure = files::exists(flags + L"trace-fps");
+        traceFps_ = measure;
+        const int cap = measure && files::exists(flags + L"render-960")
+            ? 960 : settings::getInt(settings::renderCap, settings::renderCapDefault);
         const double longer = std::max(pixelWidth, pixelHeight);
         const double shrink = cap > 0 && longer > cap ? cap / longer : 1.0;
         // (Even sizes: some engines halve their buffers.)
@@ -413,7 +417,11 @@ private:
         const auto now = std::chrono::steady_clock::now();
         if (now - rateAnchorTime_ < std::chrono::seconds(1)) return;
         const double seconds = std::chrono::duration<double>(now - rateAnchorTime_).count();
-        framesPerSecond_ = int(double(frames - rateAnchorFrames_) / seconds + 0.5);
+        const uint32_t shown = frames >= rateAnchorFrames_ ? frames - rateAnchorFrames_ : 0;
+        const double fps = shown / seconds;
+        framesPerSecond_ = int(fps + 0.5);
+        if (traceFps_ && shown)
+            shellLog::write(format("player: fps sample %.1f (%u presents in %.3f s)", fps, unsigned(shown), seconds));
         rateAnchorTime_ = now;
         rateAnchorFrames_ = frames;
     }
@@ -1130,6 +1138,7 @@ private:
     std::chrono::steady_clock::time_point rateAnchorTime_ = std::chrono::steady_clock::now();
     uint32_t rateAnchorFrames_ = 0;
     int framesPerSecond_ = 0;
+    bool traceFps_ = false;
 
     winrt::Windows::UI::Text::Core::CoreTextEditContext editContext_{nullptr};
     std::wstring keyboardText_;   // what the edit context holds, as the app was last told it

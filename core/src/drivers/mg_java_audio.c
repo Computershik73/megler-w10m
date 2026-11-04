@@ -16,6 +16,8 @@
  * Every decoder gives 16-bit samples, at most two channels (a file with more gives its first two).
  */
 #include "mg_java.h"
+#include "mg_java_gfx.h"
+#include "../dvm/mg_dvm.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -208,7 +210,9 @@ typedef struct decoder {
     i32 file_channels;                 /* what the shell's decoder gives, which may be more than 2 */
     u8 *data;                          /* the file, kept while Vorbis or WAV reads from it */
     i32 rate, channels;
-    i64 frames;
+    i64 frames, duration_us;
+    i32 width, height;
+    u8 *rgba;
 } decoder;
 
 static const megler_media_host *media_host(void)
@@ -303,7 +307,7 @@ static bool open_media(decoder *d, const u8 *data, size_t len)
     if (!written) return false;
     memset(&info, 0, sizeof(info));
     d->media = h->open(h->user, d->path, &info);
-    if (d->media && (info.sample_rate <= 0 || info.channels <= 0)) {
+    if (d->media && ((info.sample_rate <= 0 || info.channels <= 0) && (info.width <= 0 || info.height <= 0))) {
         h->close(h->user, d->media);
         d->media = NULL;
     }
@@ -311,9 +315,12 @@ static bool open_media(decoder *d, const u8 *data, size_t len)
         mg_warn("audio: the shell cannot decode %s", d->path);
         return false;
     }
+    d->width = info.width;
+    d->height = info.height;
+    d->duration_us = info.duration_us;
     d->rate = info.sample_rate;
     d->file_channels = info.channels;
-    d->channels = info.channels > 1 ? 2 : 1;
+    d->channels = info.channels > 1 ? 2 : info.channels;
     d->frames = info.duration_us * info.sample_rate / 1000000;
     return true;
 }
@@ -330,6 +337,7 @@ static void dec_close(decoder *d)
         free(d->path);
     }
     free(d->data);
+    free(d->rgba);
     free(d);
 }
 
@@ -476,7 +484,8 @@ N(Audio_decInfo)
         i32 *v = (i32 *)o->u.arr.data;
         v[0] = d->rate;
         v[1] = d->channels;
-        v[2] = d->rate ? (i32)(d->frames * 1000 / d->rate) : 0;
+        v[2] = d->media ? (i32)(d->duration_us / 1000) : d->rate ? (i32)(d->frames * 1000 / d->rate) : 0;
+        if (o->u.arr.len >= 5) { v[3] = d->width; v[4] = d->height; }
     }
 }
 
@@ -493,7 +502,42 @@ N(Audio_decRead)
 N(Audio_decSeek)
 {
     decoder *d = (decoder *)(mg_addr)c->args[0].j;
-    if (d) dec_seek(d, (i64)c->args[1].i * d->rate / 1000);
+    if (d && d->media) {
+        const megler_media_host *h = media_host();
+        if (h && h->seek) h->seek(h->user, d->media, (i64)c->args[1].i * 1000);
+    } else if (d) dec_seek(d, (i64)c->args[1].i * d->rate / 1000);
+}
+
+/* A frame of the same source reader used for audio. Calls are serialized by MediaPlayer. */
+N(Audio_decVideo)
+{
+    decoder *d = (decoder *)(mg_addr)c->args[0].j;
+    const megler_media_host *h = media_host();
+    mg_jvalue native;
+    mg_java_gfx_bitmap b;
+    mg_jobj *bitmap = c->args[1].l, *time = c->args[2].l;
+    i64 pts = 0;
+    int result, x, y;
+    c->ret.i = -1;
+    if (!d || !d->media || !h || !h->read_video || !bitmap || !time || time->u.arr.len < 1) return;
+    if (d->width <= 0 || d->height <= 0 || d->width > 4096 || d->height > 4096) return;
+    native.j = 0;
+    if (!mg_dvm_get_field(bitmap, "mNative", &native)) { mg_dvm_clear_pending(); return; }
+    if (!mg_java_gfx_bitmap_info(native.j, &b) || b.width != d->width || b.height != d->height) return;
+    if (!d->rgba) d->rgba = (u8 *)mg_alloc((size_t)d->width * d->height * 4);
+    result = h->read_video(h->user, d->media, d->rgba, &pts);
+    c->ret.i = result;
+    if (result <= 0) return;
+    for (y = 0; y < d->height; y++) {
+        u8 *dst = (u8 *)b.pixels + (size_t)y * b.stride;
+        const u8 *src = d->rgba + (size_t)y * d->width * 4;
+        for (x = 0; x < d->width; x++) {
+            dst[x*4] = src[x*4+2]; dst[x*4+1] = src[x*4+1];
+            dst[x*4+2] = src[x*4]; dst[x*4+3] = src[x*4+3];
+        }
+    }
+    ((i64 *)time->u.arr.data)[0] = pts;
+    mg_java_gfx_bitmap_changed(native.j);
 }
 
 N(Audio_decClose) { dec_close((decoder *)(mg_addr)c->args[0].j); }
@@ -744,6 +788,7 @@ static const mg_jhle k_audio[] = {
     { "megler/Audio", "decRead", NULL, Audio_decRead },
     { "megler/Audio", "decSeek", NULL, Audio_decSeek },
     { "megler/Audio", "decClose", NULL, Audio_decClose },
+    { "megler/Audio", "decVideo", NULL, Audio_decVideo },
     { NULL, NULL, NULL, NULL },
 };
 

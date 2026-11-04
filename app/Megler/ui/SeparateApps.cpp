@@ -31,6 +31,7 @@ std::mutex gMutex;
 unsigned gGeneration = 1;
 bool gListing = false;               // the portal is being asked
 bool gListed = false;                // it answered at least once
+bool gPortalReachable = false;       // info answered, independently of its package list
 std::string gProblem;                // why it could not be asked last
 std::vector<appPackage::InstalledApp> gInstalled;
 std::map<std::string, Status> gStatus; // the actions' part (queued, step, made), by Android package
@@ -124,7 +125,15 @@ ApkEntry readPicked(const Job& job) {
 void list() {
     std::vector<appPackage::InstalledApp> apps;
     std::string error;
-    const bool ok = appPackage::installedApps(apps, error);
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        gPortalReachable = false;
+    }
+    const bool ok = appPackage::installedApps(apps, error, [] {
+        std::lock_guard<std::mutex> lock(gMutex);
+        gPortalReachable = true;
+        gGeneration++;
+    });
     {
         std::lock_guard<std::mutex> lock(gMutex);
         if (ok) {
@@ -393,6 +402,7 @@ Status status(const std::string& androidPackage) {
 
 Portal portal() {
     std::lock_guard<std::mutex> lock(gMutex);
+    if (gPortalReachable) return Portal::on;
     if (!gProblem.empty()) return Portal::off;
     return gListed ? Portal::on : Portal::unknown;
 }

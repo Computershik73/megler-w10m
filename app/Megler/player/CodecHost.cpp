@@ -272,6 +272,9 @@ struct CodecHost::Codec {
     int kind = 0;
     std::unique_ptr<Worker> worker;
     winrt::com_ptr<IMFTransform> transform;
+    winrt::com_ptr<IMFActivate> activation;
+    megler_codec_format initialFormat = {};
+    std::vector<uint8_t> configuration;
     std::string name;
     DWORD in = 0, out = 0;           // stream ids
     bool decoderSamples = false;     // the decoder brings its own output samples
@@ -672,6 +675,7 @@ struct CodecHost::Codec {
     }
 
     bool push(const uint8_t* data, size_t size, int64_t timeUs) {
+        if (!transform) { fail("no active decoder"); return false; }
         winrt::com_ptr<IMFSample> sample;
         winrt::com_ptr<IMFMediaBuffer> buffer;
         BYTE* to = nullptr;
@@ -702,18 +706,42 @@ struct CodecHost::Codec {
     }
 
     void drain() {
+        if (!transform) return;
         step = "ProcessMessage(COMMAND_DRAIN)";
         transform->ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN, 0);
         takeOutputs();
     }
 
     void flush() {
-        step = "ProcessMessage(COMMAND_FLUSH)";
-        transform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
-        std::lock_guard<std::mutex> lock(mutex);
-        for (Picture* p : ready) delete p;
-        ready.clear();
-        sound.clear();
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            for (Picture* p : ready) delete p;
+            ready.clear();
+            sound.clear();
+        }
+        // On Mobile's Microsoft H265 MFT, COMMAND_FLUSH leaves a black first
+        // picture and drops the tail of the next GOP (also on the Lumia 950 XL).
+        // Recreate the MFT, with owned configuration bytes, for an independent
+        // decode after a seek. All COM work stays on this codec's timed worker.
+        if (kind == MEGLER_CODEC_H265 && activation) {
+            spare = nullptr;
+            transform = nullptr;
+            step = "ShutdownObject after HEVC flush";
+            activation->ShutdownObject();
+            step = "ActivateObject after HEVC flush";
+            const HRESULT hr = activation->ActivateObject(__uuidof(IMFTransform), transform.put_void());
+            initialFormat.config = configuration.empty() ? nullptr : configuration.data();
+            initialFormat.config_size = configuration.size();
+            if (FAILED(hr) || !configure(initialFormat)) {
+                fail("could not recreate HEVC decoder after flush");
+                transform = nullptr;
+            } else {
+                shellLog::write("codec: HEVC decoder recreated after flush");
+            }
+        } else if (transform) {
+            step = "ProcessMessage(COMMAND_FLUSH)";
+            transform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
+        }
     }
 };
 
@@ -819,6 +847,12 @@ void* CodecHost::openThunk(void*, int kind, const megler_codec_format* asked) {
             c->transform = transform;
             c->failures = 0;
             *ok = c->configure(wanted);
+            if (*ok) {
+                c->activation = found.activates[i];
+                c->initialFormat = wanted;
+                c->configuration = *config;
+                c->initialFormat.config = c->configuration.empty() ? nullptr : c->configuration.data();
+            }
             if (!*ok) {
                 c->transform = nullptr;
                 found.activates[i]->ShutdownObject();
@@ -908,6 +942,7 @@ void CodecHost::closeThunk(void*, void* codec) {
                                (unsigned long long)c->failures));
         c->spare = nullptr;
         c->transform = nullptr;
+        c->activation = nullptr;
     });
     if (!ran) {
         c->gaveUp("closing it");

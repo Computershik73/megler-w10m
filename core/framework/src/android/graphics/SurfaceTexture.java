@@ -13,7 +13,7 @@ public class SurfaceTexture {
     private final Object mLock = new Object();
     private int mW, mH;
     private Bitmap mFront, mBack;
-    private Canvas mBackCanvas;
+    private Canvas mFrontCanvas, mBackCanvas;
     private boolean mLocked, mReleased;
     private long mTimestamp;
     private OnFrameAvailableListener mListener;
@@ -40,8 +40,10 @@ public class SurfaceTexture {
             if (mBack == null || mBack.getWidth() != w || mBack.getHeight() != h) {
                 if (mBackCanvas != null) mBackCanvas.meglerRelease();
                 mBack = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-                mBackCanvas = new Canvas(mBack);
+                mBackCanvas = null;
             }
+            // A bitmap supplied directly by a producer has no owned canvas yet.
+            if (mBackCanvas == null) mBackCanvas = new Canvas(mBack);
             mLocked = true;
             mBackCanvas.save();
             if (dirty != null) mBackCanvas.clipRect(dirty);
@@ -51,10 +53,23 @@ public class SurfaceTexture {
     public void meglerPost(Canvas c) {
         synchronized (mLock) {
             if (!mLocked) return;
+            if (mReleased) {
+                mLocked = false;
+                releaseCanvases();
+                mLock.notifyAll();
+                return;
+            }
             mBackCanvas.restore();
             Bitmap f = mFront; mFront = mBack; mBack = f;
-            if (mBack != null && (mBack.getWidth() != mFront.getWidth() || mBack.getHeight() != mFront.getHeight())) mBack = null;
-            mBackCanvas = mBack != null ? new Canvas(mBack) : null;
+            // The canvas belongs to its buffer. Creating another on every post
+            // leaves competing GPU copies until GC and forces their pixels back
+            // to CPU memory before the next drawing.
+            Canvas fc = mFrontCanvas; mFrontCanvas = mBackCanvas; mBackCanvas = fc;
+            if (mBack != null && (mBack.getWidth() != mFront.getWidth() || mBack.getHeight() != mFront.getHeight())) {
+                if (mBackCanvas != null) mBackCanvas.meglerRelease();
+                mBackCanvas = null;
+                mBack = null;
+            }
             mLocked = false; mTimestamp = System.nanoTime();
             mLock.notifyAll();
         }
@@ -89,6 +104,20 @@ public class SurfaceTexture {
     public long getTimestamp() { return mTimestamp; }
     public int getDataSpace() { return 0; }
     public boolean isSingleBuffered() { return false; }
-    public void release() { synchronized (mLock) { mReleased = true; mLock.notifyAll(); } }
+    public void release() {
+        synchronized (mLock) {
+            if (mReleased) return;
+            mReleased = true;
+            // A producer may still be drawing into the locked canvas. Retire
+            // it when posted, rather than freeing its native state underneath it.
+            if (!mLocked) releaseCanvases();
+            mLock.notifyAll();
+        }
+    }
+    private void releaseCanvases() {
+        if (mFrontCanvas != null) mFrontCanvas.meglerRelease();
+        if (mBackCanvas != null) mBackCanvas.meglerRelease();
+        mFrontCanvas = mBackCanvas = null;
+    }
     public boolean isReleased() { return mReleased; }
 }

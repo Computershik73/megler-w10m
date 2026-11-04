@@ -5607,6 +5607,18 @@ told each.
     (`--codec-windows`, which builds MediaHost.cpp in) reads the data app's
     `tone.mp3` and `tone.m4a`: half a second of 440 Hz each, as sound alone.
   A decoder gives 16-bit samples, at most two channels.
+- the shell's decoder gives a file's pictures as well (`decVideo`: the next one
+  into a bitmap, with its time; `decInfo` its width and height). `MediaPlayer`
+  (the overlay's, `core/framework-overlay/android/media/MediaPlayer.java`)
+  draws each on the Surface given by `setSurface` or `setDisplay`, fitted or
+  cropped (`setVideoScalingMode`), once its clock reaches the picture's time:
+  the track's position while there is sound, a monotonic clock after it or
+  without it. One worker decodes and writes, and stop, reset and release wait
+  for it; a generation number keeps an old worker or a cancelled
+  `prepareAsync` from reporting. A source is read whole into memory (256 MiB
+  at most), an HTTP one while preparing, with the headers given. `VideoView`
+  plays through it, and puts off `start` and `seekTo` until it is prepared.
+  (mayconus's work, docs/LUMIA-950XL.md.)
 
 The mixer gained per-channel volumes and a rate that can change
 (`mg_voice_set_gains`, `mg_voice_set_rate`) for these.

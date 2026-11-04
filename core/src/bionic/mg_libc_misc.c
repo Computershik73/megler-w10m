@@ -315,6 +315,10 @@ static void g_property_read_callback(const void *pi, mg_addr cb, void *cookie)
     const char *v = mg_sysprop((const char *)pi);
     MG_GFN(void (*)(void *, const char *, const char *, u32), cb)(cookie, (const char *)pi, v ? v : "", 0);
 }
+static int g_property_foreach(mg_addr callback, void *cookie)
+{
+    return callback ? mg_sysprop_foreach(MG_GFN(void (*)(const void *, void *), callback), cookie) : -1;
+}
 static int g_property_set(const char *name, const char *value)
 {
     mg_sysprop_set(name, value);
@@ -1788,6 +1792,7 @@ const mg_sym mg_tab_misc[] = {
     M("__system_property_get", g_property_get), M("__system_property_find", g_property_find),
     M("__system_property_read", g_property_read), M("__system_property_read_callback", g_property_read_callback),
     M("__system_property_set", g_property_set),
+    M("__system_property_foreach", g_property_foreach), M("__system_property_find_nth", mg_sysprop_find_nth),
     M("getauxval", g_getauxval), M("prctl", g_prctl), M("cacheflush", g_cacheflush), M("syscall", g_syscall),
     M("openlog", g_openlog), M("closelog", g_closelog), M("setlogmask", g_setlogmask), M("syslog", g_syslog), M("vsyslog", g_vsyslog),
     M("process_vm_readv", g_process_vm_readv), M("process_vm_writev", g_process_vm_writev),

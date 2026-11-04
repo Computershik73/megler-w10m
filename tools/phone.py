@@ -105,6 +105,15 @@ def _find_portal(patience=None):
     300)."""
     if patience is None:
         patience = float(os.environ.get("MEGLER_PHONE_PATIENCE", "300"))
+    # A verified explicit portal needs no scan of the USB service's other
+    # forwarded ports (many accept connections but never answer HTTP).
+    explicit = os.environ.get("MEGLER_PORTAL")
+    if explicit:
+        name = _portal_name(explicit)
+        if name == TARGET_NAME:
+            return explicit
+        if name:
+            sys.exit(f"the explicit portal {explicit} is {name}, not the target {TARGET_NAME}")
     candidates = []
     if os.environ.get("MEGLER_PORTAL"):
         candidates.append(os.environ["MEGLER_PORTAL"])

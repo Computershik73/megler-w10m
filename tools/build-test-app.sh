@@ -19,6 +19,9 @@
 # them (so that it needs them: DT_NEEDED). Where there is no NDK such an app is
 # not built, which is said, and its APK is not there for the tests to run.
 #
+# An app with a file named `built-by` is left to the script the file names: the
+# video app's films are made by ffmpeg (tools/build-video-test.py).
+#
 # An app with a module-src/ folder carries a second DEX file, made of those
 # sources alone, as assets/module.dex: a module of its own, for a class loader
 # the app makes (the data app's step delegate-last-scope).
@@ -84,6 +87,10 @@ fi
 
 for app in "$APPS"/*/; do
   name="$(basename "$app")"
+  if [ -f "$app/built-by" ]; then
+    echo "(the test app $name is built by $(head -1 "$app/built-by"))"
+    continue
+  fi
   if [ -f "$app/splits" ]; then
     # An app in several APKs: a base and splits, bundled as an .apks and an .xapk (tools/build-split-app.py says how).
     if [ "$FORCE" = 0 ] && [ -f "$OUT/$name.xapk" ] && [ -z "$(find "$app" "$0" "$ROOT/tools/build-split-app.py" -newer "$OUT/$name.xapk" -type f -print -quit)" ]; then

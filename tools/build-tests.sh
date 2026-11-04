@@ -261,7 +261,7 @@ EOF
     MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --gfx-windows - 2>&1" || STATUS=1
   fi
 elif [ "$MODE" = win ]; then
-  for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe; do
+  for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe "/c/Program Files (x86)/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe; do
     [ -f "$cl" ] && VC="${cl%/bin/Hostx64/x64/cl.exe}"
   done
   [ -n "${VC:-}" ] || { echo "no MSVC found" >&2; exit 1; }

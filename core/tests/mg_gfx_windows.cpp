@@ -305,6 +305,104 @@ int mg_gfx_windows_check_gl(const megler_gfx_host* h, void (*line)(const char* t
 /// read-back and the memory left alone; of a part, that part alone; and,
 /// after a flush, the memory exactly the picture shown, as the core's later
 /// reader gets it. Lines to `line`; how many checks failed.
+int mg_gfx_windows_check_canvas(const megler_gfx_host* h, void (*line)(const char* text, void* user), int* checks) {
+    int failed = 0;
+    auto check = [&](bool ok, const char* what) {
+        ++*checks;
+        if (!ok) { ++failed; line(what, nullptr); }
+    };
+    line("  bitmap canvases composed without CPU readbacks, compared with bitmap drawing", nullptr);
+    auto& gfx = megler::app::GfxHost::shared();
+    std::vector<uint32_t> source(16 * 16, 0), actual(32 * 32, 0), expected(32 * 32, 0);
+    void* sc = h->canvas_new(h->user, source.data(), 16, 16, 64);
+    void* ac = h->canvas_new(h->user, actual.data(), 32, 32, 128);
+    void* ec = h->canvas_new(h->user, expected.data(), 32, 32, 128);
+    check(sc && ac && ec && h->draw_canvas && h->canvas_discard, "  FAIL canvas composition callbacks or canvases missing");
+    if (!sc || !ac || !ec) return failed;
+    megler_gfx_paint paint = {};
+    paint.color = 0xFFFFFFFFu; paint.miter_limit = 4; paint.text_size = 12; paint.text_scale_x = 1;
+    paint.blend = MEGLER_GFX_BLEND_SRC_OVER; paint.filter_mode = -1;
+    const float src[] = {0, 0, 16, 16}, dst[] = {4, 4, 28, 28};
+    unsigned version = 0;
+    for (int filter = -1; filter < 18; ++filter) {
+        for (int blend = 0; blend < 18; ++blend) {
+            h->draw_color(h->user, sc, 0xA04080C0u, MEGLER_GFX_BLEND_SRC);
+            paint.color = 0xC0F02040u; paint.blend = MEGLER_GFX_BLEND_SRC_OVER; paint.filter_mode = -1;
+            h->draw_rect(h->user, sc, 2, 3, 10, 14, &paint, nullptr);
+            const auto before = source;
+            h->draw_color(h->user, ac, 0xE030A050u, MEGLER_GFX_BLEND_SRC);
+            h->draw_color(h->user, ec, 0xE030A050u, MEGLER_GFX_BLEND_SRC);
+            h->save(h->user, ac); h->save(h->user, ec);
+            h->clip_rect(h->user, ac, 6, 5, 25, 27, MEGLER_GFX_CLIP_INTERSECT);
+            h->clip_rect(h->user, ec, 6, 5, 25, 27, MEGLER_GFX_CLIP_INTERSECT);
+            paint.color = 0xA0FFFFFFu; paint.blend = blend; paint.filter_mode = filter; paint.filter_color = 0x806030E0u;
+            const auto counts = gfx.counts();
+            check(h->draw_canvas(h->user, ac, sc, src, dst, &paint), "  FAIL a supported canvas composition was rejected");
+            check(gfx.counts().readBacks == counts.readBacks && source == before, "  FAIL canvas composition read its source back");
+            h->restore(h->user, ac); h->restore(h->user, ec);
+            h->flush(h->user, sc);
+            megler_gfx_image image = {source.data(), 16, 16, 64, 0x7F000001u, ++version};
+            // Apply the same clip to the bitmap reference.
+            h->save(h->user, ec);
+            h->clip_rect(h->user, ec, 6, 5, 25, 27, MEGLER_GFX_CLIP_INTERSECT);
+            h->draw_bitmap(h->user, ec, &image, src, dst, &paint);
+            h->restore(h->user, ec);
+            h->flush(h->user, ac); h->flush(h->user, ec);
+            bool same = true;
+            for (size_t i = 0; i < actual.size(); ++i)
+                for (int shift = 0; shift < 32; shift += 8)
+                    if (std::abs(int((actual[i] >> shift) & 255) - int((expected[i] >> shift) & 255)) > 3) same = false;
+            if (!same) {
+                char text[120]; snprintf(text, sizeof(text), "  FAIL canvas pixels differ: filter %d, blend %d", filter, blend);
+                check(false, text);
+            } else check(true, "");
+        }
+    }
+    const float part[] = {1, 1, 15, 15};
+    const auto before = gfx.counts();
+    check(!h->draw_canvas(h->user, ac, sc, part, dst, &paint), "  FAIL a subrectangle did not request the bitmap fallback");
+    check(!h->draw_canvas(h->user, sc, sc, src, dst, &paint), "  FAIL self-copy did not request the bitmap fallback");
+    h->save_layer(h->user, sc, src, 255, MEGLER_GFX_BLEND_SRC_OVER);
+    check(!h->draw_canvas(h->user, ac, sc, src, dst, &paint), "  FAIL an open source layer did not request fallback");
+    h->restore(h->user, sc);
+    const auto memory = source;
+    h->canvas_discard(h->user, sc);
+    check(source == memory && gfx.counts().readBacks == before.readBacks, "  FAIL discarding a temporary read it back");
+    h->canvas_free(h->user, ac); h->canvas_free(h->user, ec);
+    h->bitmap_gone(h->user, 0x7F000001u);
+    // A changing upload must preserve earlier unflushed drawings, other
+    // canvases and a shader made from the original immutable image.
+    {
+        std::vector<uint32_t> pixels(256 * 256, 0xFF102030u), a(32 * 32), b(32 * 32);
+        void* ca = h->canvas_new(h->user, a.data(), 32, 32, 128);
+        void* cb = h->canvas_new(h->user, b.data(), 32, 32, 128);
+        megler_gfx_image image = {pixels.data(), 256, 256, 1024, 0x7F000002u, 1};
+        const auto counts = gfx.counts();
+        void* shader = h->shader_bitmap(h->user, &image, 0);
+        check(ca && cb && shader, "  FAIL changing image fixture could not be created");
+        paint.color = 0xFFFFFFFFu; paint.blend = MEGLER_GFX_BLEND_SRC_OVER; paint.filter_mode = -1;
+        const float whole[] = {0, 0, 256, 256};
+        for (unsigned i = 0; i < 12; ++i) {
+            std::fill(pixels.begin(), pixels.end(), 0xFF102030u + i * 0x00080704u);
+            image.version = i + 1;
+            const float stripe[] = {float(i * 2), 0, float(i * 2 + 2), 16};
+            h->draw_bitmap(h->user, ca, &image, whole, stripe, &paint);
+            h->draw_bitmap(h->user, cb, &image, whole, stripe, &paint);
+        }
+        h->draw_rect(h->user, ca, 0, 20, 32, 32, &paint, shader);
+        h->flush(h->user, ca); h->flush(h->user, cb);
+        for (unsigned i = 0; i < 12; ++i)
+            check(a[8 * 32 + i * 2 + 1] == 0xFF102030u + i * 0x00080704u && b[8 * 32 + i * 2 + 1] == a[8 * 32 + i * 2 + 1],
+                "  FAIL changing image overwrote an earlier frame or another canvas");
+        check(a[24 * 32 + 8] == 0xFF102030u, "  FAIL changing upload mutated an immutable shader snapshot");
+        check(gfx.counts().keptMade == counts.keptMade + 1, "  FAIL changing upload allocated a global bitmap for every version");
+        check(gfx.counts().uploads >= counts.uploads + 22, "  FAIL changing image did not reuse private upload textures");
+        h->shader_free(h->user, shader); h->canvas_free(h->user, ca); h->canvas_free(h->user, cb);
+        h->bitmap_gone(h->user, image.id);
+    }
+    return failed;
+}
+
 int mg_gfx_windows_check_present(const megler_gfx_host* h, void (*line)(const char* text, void* user), int* checks) {
     megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
     int failed = 0;
