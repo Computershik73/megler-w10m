@@ -2862,9 +2862,9 @@ bool gpuBlurRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, 
 void putShapedKey(const Shaped& shaped, std::vector<uint8_t>* key);
 
 /// What a shadow is made of, as bytes, to keep it by (gpuShadowKept): the ink -- a run's faces, sizes, glyphs and their
-/// places, or a rectangle's, a rounded one's or an oval's size -- its style, the matrix that lays it on the canvas but for
-/// that matrix's move in whole pixels (put in ix, iy; an eighth of a pixel of it is in the key), the blur, the offset and
-/// the colour. False for an ink not kept so (a path).
+/// places, a path's numbers, or a rectangle's, a rounded one's or an oval's size -- its style and stroke, the matrix that
+/// lays it on the canvas but for that matrix's move in whole pixels (put in ix, iy; an eighth of a pixel of it is in the
+/// key), the blur, the offset and the colour. False for an ink not kept so (a dashed stroke, a shape of other making).
 bool shadowKey(const Ink& ink, const Matrix3x2F& m, uint32_t colour, float sigma, int dx, int dy, std::vector<uint8_t>* key, int* ix, int* iy) {
     Matrix3x2F at;
     auto put = [key](const void* p, size_t n) {
@@ -2878,13 +2878,32 @@ bool shadowKey(const Ink& ink, const Matrix3x2F& m, uint32_t colour, float sigma
     put(&ink.style, sizeof(ink.style));
     put(&ink.strokeWidth, sizeof(ink.strokeWidth));
     put(&smooth, 1);
+    if (ink.style != MEGLER_GFX_FILL && ink.stroke) {
+        // How it is stroked; dashes are not kept by.
+        if (ink.stroke->GetDashStyle() != D2D1_DASH_STYLE_SOLID) return false;
+        const int how[3] = {int(ink.stroke->GetLineJoin()), int(ink.stroke->GetStartCap()), int(ink.stroke->GetEndCap())};
+        const float miter = ink.stroke->GetMiterLimit();
+        put(how, sizeof(how));
+        put(&miter, sizeof(miter));
+    }
     if (ink.kind == Ink::glyphs) {
         if (!ink.text) return false;
+        at = ink.textMatrix * m;
+        putShapedKey(*ink.text, key);
+    } else if (ink.kind == Ink::geometry && !ink.path && ink.text) {
+        // A run's outlines, stroked or made bold (drawText), by the run and the text's own matrix, before which the
+        // stroke's width is: TikTok Lite's names over its videos are bold, with a shadow, three a frame.
+        const uint8_t outlines = 1;
+        const float own[4] = {ink.textMatrix._11, ink.textMatrix._12, ink.textMatrix._21, ink.textMatrix._22};
+        put(&outlines, 1);
+        put(own, sizeof(own));
         at = ink.textMatrix * m;
         putShapedKey(*ink.text, key);
     } else if (ink.kind == Ink::geometry) {
         // A path, by its numbers (made again at each call, its geometry is no key): an icon's, drawn where the matrix says.
         if (!ink.path || ink.pathCount <= 0 || ink.pathCount > 65536) return false;
+        const uint8_t outlines = 0;
+        put(&outlines, 1);
         at = m;
         put(&ink.pathFill, sizeof(ink.pathFill));
         put(&ink.pathCount, sizeof(ink.pathCount));
