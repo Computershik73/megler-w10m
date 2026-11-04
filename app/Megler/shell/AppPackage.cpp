@@ -936,8 +936,15 @@ void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
 }
 
 static std::atomic<bool> gSelfUpdating{false};
+static std::mutex gSelfUpdateMutex;
+static std::string gSelfUpdateTo;
 
 bool selfUpdating() { return gSelfUpdating; }
+
+std::string selfUpdateVersion() {
+    std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
+    return gSelfUpdating ? gSelfUpdateTo : std::string();
+}
 
 void installCopiedUpdate() {
     if (isSingleApp()) return;
@@ -994,6 +1001,10 @@ void installCopiedUpdate() {
             shellLog::write("update: Megler " + best + " found in Pictures\\Megler (this is " + versionString() +
                             "): installed through the Device Portal, which closes this Megler");
             // The screen stays on while the package goes: a phone that locks suspends Megler, and the try has no result.
+            {
+                std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
+                gSelfUpdateTo = best;
+            }
             struct Updating {
                 Updating() { gSelfUpdating = true; }
                 ~Updating() { gSelfUpdating = false; }

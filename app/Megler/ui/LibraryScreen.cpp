@@ -5,6 +5,7 @@
 #include "pch.h"
 
 #include "library/Library.h"
+#include "shell/AppPackage.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 #include "ui/Components.h"
@@ -83,6 +84,24 @@ public:
         column_.Padding(ThicknessHelper::FromLengths(16, 8, 16, 96));
         if (auto warnings = platformWarnings()) add(column_, warnings);
 
+        // Megler's own update from Pictures\Megler, while it is sent to the portal: Megler closes once Windows takes it,
+        // and it went with nothing said, the phone's screen then going off as Windows installed it for minutes (a Lumia 650's,
+        // from 574 to 610).
+        updateText_ = text("", font::bodyMedium, weightNormal(), p.onSurface);
+        updateText_.TextWrapping(TextWrapping::Wrap);
+        ProgressBar updateBar;
+        updateBar.IsIndeterminate(true);
+        updateBar.Foreground(brush(p.primary));
+        updateBar.Background(brush(p.secondaryContainer));
+        updateBar.Margin(ThicknessHelper::FromLengths(0, 12, 0, 0));
+        auto updateColumn = vstack(0);
+        add(updateColumn, updateText_);
+        add(updateColumn, updateBar);
+        updateCard_ = card(updateColumn, 12, 16);
+        updateCard_.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
+        setVisible(updateCard_, false);
+        add(column_, updateCard_);
+
         // The copy of a picked APK, while it runs.
         importTitle_ = text("", font::titleMedium, weightMedium(), p.onSurface);
         importBar_ = ProgressBar();
@@ -145,6 +164,14 @@ public:
             importDetail_.Text(hs(formattedByteCount(import.copied) + " of " + formattedByteCount(import.total)));
         }
         addButton_.IsEnabled(!import.active);
+        const std::string updating = appPackage::selfUpdateVersion();
+        setVisible(updateCard_, !updating.empty());
+        if (!updating.empty() && updating != updateShown_) {
+            updateShown_ = updating;
+            updateText_.Text(hs("Megler " + updating + ", copied to Pictures\\Megler, is being installed. Megler closes when Windows takes "
+                                "it, and Windows installs it, which takes a few minutes (more on a phone of 1 GB): leave the phone "
+                                "on, then open Megler again."));
+        }
         const std::string working = separateApps::working();
         setVisible(workCard_, !working.empty());
         if (!working.empty() && narrow(std::wstring(workText_.Text())) != working) workText_.Text(hs(working));
@@ -284,6 +311,9 @@ private:
     TextBlock importDetail_{nullptr};
     ContentControl listHost_{nullptr};
     Border workCard_{nullptr};
+    Border updateCard_{nullptr};
+    TextBlock updateText_{nullptr};
+    std::string updateShown_;
     TextBlock workText_{nullptr};
     Button addButton_{nullptr};
     unsigned generation_ = 0, phoneGeneration_ = 0;

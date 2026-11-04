@@ -172,7 +172,8 @@ bool bundled() {
 }
 
 void tick(AppShell& shell) {
-    if (appPackage::isSingleApp() || !bundled()) return;
+    // (Not while Megler sends its own update to the portal: it closes in a moment, and the next one asks.)
+    if (appPackage::isSingleApp() || !bundled() || appPackage::selfUpdating()) return;
     switch (choice()) {
     case Choice::unasked:
         if (!gAsking && !shell.dialogShown()) ask(shell);
