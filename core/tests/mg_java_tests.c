@@ -2455,6 +2455,11 @@ static int run_data(void)
           && find_line("stuck:   megler/test/data/Main.stuckMain line ", 0) >= 0);
     /* And not its looper's wait for the next message, which is the main thread with nothing to do (looper_idle). */
     CHECK(find_line("in wait() of a android/os/MessageQueue", 0) < 0);
+    /* A translucent activity over the app's (F11, Main$Clear): the one below paused, not stopped, its window still there. TikTok
+       Lite's consent dialog, translucent, left the screen black behind it (package 619). */
+    megler_key(141, true);
+    megler_key(141, false);
+    expect_line("I/DataTest: translucent-over ok", &at, 30);
     for (i = 0; i < g_nlines; i++)
         if (strstr(g_lines[i], "/DataTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);
     settle();

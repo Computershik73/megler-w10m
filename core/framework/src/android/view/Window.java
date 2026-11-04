@@ -50,7 +50,7 @@ public class Window {
     private ViewGroup mContentParent;
     private int mFeatures, mLocalFeatures;
     private WindowManager mWindowManager;
-    private boolean mFloating, mDecorFits = true, mActive, mDestroyed, mIsActivityWindow;
+    private boolean mFloating, mTranslucent, mDecorFits = true, mActive, mDestroyed, mIsActivityWindow;
     private int mStatusBarColor, mNavigationBarColor;
     private CharSequence mTitle;
     private Drawable mBackground;
@@ -66,6 +66,7 @@ public class Window {
         Context c = mContext;
         TypedArray a = c.obtainStyledAttributes(megler.S.Window);
         mFloating = a.getBoolean(megler.S.Window_windowIsFloating, false);
+        mTranslucent = a.getBoolean(megler.S.Window_windowIsTranslucent, false);
         if (a.getBoolean(megler.S.Window_windowNoTitle, false)) mFeatures |= 1 << FEATURE_NO_TITLE;
         else if (a.getBoolean(megler.S.Window_windowActionBar, false) && (mFeatures & (1 << FEATURE_NO_TITLE)) == 0) mFeatures |= 1 << FEATURE_ACTION_BAR;
         if (a.getBoolean(megler.S.Window_windowFullscreen, false)) mAttrs.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN;
@@ -138,6 +139,8 @@ public class Window {
     public void setFeatureDrawable(int f, Drawable d) {}
     public void setFeatureInt(int f, int v) {}
     public boolean isFloating() { ensureStyle(); return mFloating; }
+    /** Whether its theme lets what is below show through (windowIsTranslucent): the activity below stays visible, as on Android. */
+    public boolean meglerIsTranslucent() { ensureStyle(); return mTranslucent; }
     public boolean isActive() { return mActive; }
     public void makeActive() { mActive = true; }
     public final boolean isDestroyed() { return mDestroyed; }

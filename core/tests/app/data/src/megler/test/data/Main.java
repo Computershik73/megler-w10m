@@ -2590,13 +2590,46 @@ public class Main extends Activity {
         });
     }
 
-    /** The harness's F12 (mg_java_tests.c, run_data): the main thread made to stand in Object.wait (stuckMain). */
+    /** The harness's F12 (mg_java_tests.c, run_data): the main thread made to stand in Object.wait (stuckMain); F11: a translucent
+        activity over this one (Clear). */
     @Override public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
         if (keyCode == android.view.KeyEvent.KEYCODE_F12) {
             stuckMain();
             return true;
         }
+        if (keyCode == android.view.KeyEvent.KEYCODE_F11) {
+            sMain = this;
+            sStoppedUnderClear = false;
+            sWatchStop = true;
+            startActivity(new android.content.Intent(this, Clear.class));
+            return true;
+        }
         return super.onKeyDown(keyCode, event);
+    }
+
+    /*
+     * A translucent activity over this one stays over it with this one visible: paused, not stopped, its window drawn below --
+     * as TikTok Lite's consent dialog (a translucent activity, not a floating one) is over its feed. Megler stopped the activity
+     * below one whose window was not floating, and took its window away: the screen behind the consent showed black, and
+     * stayed black once the consent's own view had gone (package 619).
+     */
+    static volatile Main sMain;
+    static volatile boolean sWatchStop, sStoppedUnderClear;
+    @Override protected void onStop() {
+        super.onStop();
+        if (sWatchStop) sStoppedUnderClear = true;
+    }
+    public static class Clear extends Activity {
+        @Override protected void onResume() {
+            super.onResume();
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                Main below = sMain;
+                boolean attached = below != null && below.getWindow().getDecorView().isAttachedToWindow();
+                Log.i("DataTest", "translucent-over " + (!sStoppedUnderClear && attached ? "ok" : "FAILED") + " stopped=" + sStoppedUnderClear + " attached=" + attached);
+                sWatchStop = false;
+                finish();
+            }, 500);
+        }
     }
 
     /**
