@@ -12,6 +12,8 @@ public final class Gfx {
     public static native void bmSetPixel(long bm, int x, int y, int argb);
     public static native void bmPixels(long bm, int[] px, int offset, int stride, int x, int y, int w, int h, boolean set);
     public static native void bmRaw(long bm, long address, boolean set);
+    /** Every pixel's alpha 255, its colours as they are: a frame an opaque TextureView shows. */
+    public static native void bmOpaque(long bm);
     public static native long bmAddress(long bm);
     public static native long bmDecode(byte[] data, int offset, int length, int sample, int[] outWH, boolean boundsOnly);
     public static native byte[] bmCompress(long bm, int format, int quality);

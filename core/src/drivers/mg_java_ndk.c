@@ -128,6 +128,9 @@ typedef struct view_window {
     u8 *rgba;                          /* a texture's buffer turned to R, G, B, A for it, when it is not that already */
     size_t rgba_size;
     u64 due;                           /* when the next post may return */
+    u32 posts;                         /* frames posted since the last line about them (texture_said) */
+    u64 said_at;                       /* when that line was written, 0 before the first */
+    bool failed_said;                  /* a post that threw has been said */
 } view_window;
 
 /* An EGL window surface on such a window: mg_java_gl.c's, and the window it is on. */
@@ -215,7 +218,8 @@ static bool vw_valid(const mg_nwindow *b)
 }
 
 /* A frame for a texture: w x h, R, G, B, A, rows bottom first when `flip` (as OpenGL reads them), handed to it. */
-static void post_rgba(mg_jobj *texture, const void *rgba, int width, int height, bool flip)
+/* A frame posted to a texture: false when the texture's Java threw, which is said once for each `said` (nothing else would). */
+static bool post_rgba(mg_jobj *texture, const void *rgba, int width, int height, bool flip, bool *said)
 {
     mg_jvalue args[4];
     memset(args, 0, sizeof(args));
@@ -223,7 +227,14 @@ static void post_rgba(mg_jobj *texture, const void *rgba, int width, int height,
     args[1].i = width;
     args[2].i = height;
     args[3].z = flip;
-    if (!mg_dvm_call_virtual(texture, "meglerPostRgba", "(JIIZ)V", args, NULL)) mg_dvm_clear_pending();
+    if (mg_dvm_call_virtual(texture, "meglerPostRgba", "(JIIZ)V", args, NULL)) return true;
+    if (said && !*said) {
+        char why[300];
+        *said = true;
+        mg_warn("java: a frame of %dx%d for a SurfaceTexture was not taken: %s", width, height, mg_dvm_describe_pending(why, sizeof(why)));
+    }
+    mg_dvm_clear_pending();
+    return false;
 }
 
 static void *vw_egl_create(mg_nwindow *b, void *const *configs, int count)
@@ -284,7 +295,7 @@ static bool vw_egl_swap(void *p)
         }
         /* (The frame read back is kept apart from the surface, which the swap may have replaced by one of a new size.) */
         rgba = mg_java_gl_window_pixels(s->gl, &fw, &fh);
-        if (rgba) post_rgba(s->w->texture, rgba, fw, fh, true);
+        if (rgba) post_rgba(s->w->texture, rgba, fw, fh, true, NULL);
         return true;
     }
     mg_java_gl_window_swap(s->gl, width, height);
@@ -415,7 +426,38 @@ static void post_texture(view_window *w)
         }
         rgba = w->rgba;
     }
-    post_rgba(w->texture, rgba, w->bw, w->bh, false);
+    if (post_rgba(w->texture, rgba, w->bw, w->bh, false, &w->failed_said)) w->posts++;
+}
+
+/*
+ * Every 5 s while native code draws a texture's window in software, what became of it: the frames posted, their size and
+ * the range of their alpha (a decoder's RGBA with alpha 0 is a picture an opaque TextureView still shows), and whether a
+ * view shows the texture. TikTok Lite's first video after its start, which its own decoder draws so, stayed black.
+ */
+static void texture_said(view_window *w)
+{
+    const u64 now = mg_time_monotonic_ns();
+    mg_jvalue view;
+    int lo = 255, hi = 0;
+    size_t i, n;
+    if (w->said_at && now - w->said_at < 5000000000ull) return;
+    w->said_at = now;
+    n = (size_t)w->bw * (size_t)w->bh;
+    if (w->bformat == FORMAT_RGBA_8888 && w->pixels)
+        for (i = 0; i < n; i += 61) {
+            const int a = w->pixels[i * 4 + 3];
+            if (a < lo) lo = a;
+            if (a > hi) hi = a;
+        }
+    view.j = 0;
+    if (!mg_dvm_get_field(w->texture, "meglerView", &view)) mg_dvm_clear_pending();
+    if (w->bformat == FORMAT_RGBA_8888)
+        mg_info("java: a SurfaceTexture drawn in software: %u frames of %dx%d posted, their alpha %d to %d, shown by %s", (unsigned)w->posts, (int)w->bw,
+                (int)w->bh, lo, hi, view.l ? mg_dvm_class_name(view.l) : "no view");
+    else
+        mg_info("java: a SurfaceTexture drawn in software: %u frames of %dx%d posted (format %d), shown by %s", (unsigned)w->posts, (int)w->bw,
+                (int)w->bh, (int)w->bformat, view.l ? mg_dvm_class_name(view.l) : "no view");
+    w->posts = 0;
 }
 
 /* The buffer, as a whole frame of the view's: into the next Bitmap, B, G, R, A and opaque, which the view is handed. */
@@ -466,8 +508,12 @@ static int vw_unlock(mg_nwindow *b)
     if (vw_valid(b)) {
         const u64 period = 16666667ull;
         u64 now;
-        if (w->texture) post_texture(w);
-        else post(w);
+        if (w->texture) {
+            post_texture(w);
+            texture_said(w);
+        } else {
+            post(w);
+        }
         /* No sooner than a sixtieth of a second after the post before, as a queued buffer is taken on Android. */
         now = mg_time_monotonic_ns();
         if (!w->due || now > w->due + 100000000ull) w->due = now;

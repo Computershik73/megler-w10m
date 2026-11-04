@@ -168,6 +168,20 @@ static volatile bool g_parallel;       /* the mark shared with the helpers right
  * every object that has them is followed again (they are C memory the layer may move as it adds one).
  */
 static volatile bool g_alongside;
+/*
+ * The app near what the OS lets it have (MemoryManager's limit, which the shell hands over): a phone of 1 GB lets an app
+ * have 390 MB, and Play Store's heap on a Lumia 650 grew from 133 to 270 MB while a marking that gave way to the app took
+ * 8.7 s, until Windows ended it. Then the markers keep their usual priority, what may be made before the next collection
+ * is a third of what is left, and one that makes a budget's worth while the marking goes on waits for it.
+ */
+static volatile bool g_pressed;
+
+/* Whether the app uses more than three fifths of what it may have; false where the host does not say. */
+static bool memory_pressed(void)
+{
+    const u64 limit = mg_mem_limit(), used = mg_mem_usage();
+    return limit && used > limit / 5 * 3;
+}
 
 static void spill(marker *k);
 
@@ -367,7 +381,7 @@ static void mark_shared(marker *k)
  */
 static void marker_priority(int *level)
 {
-    const int want = g_alongside ? -2 : 0;
+    const int want = g_alongside && !g_pressed ? -2 : 0;
     if (*level == want) return;
     *level = want;
     mg_thread_set_priority(NULL, want);
@@ -875,6 +889,21 @@ void mg_dvm_gc_native(i64 bytes)
 
 static bool due(void) { return (u64)(u32)g_since + (u64)(u32)g_native_since >= g_budget; }
 
+/*
+ * What may be made before the next collection, `live` having lived through this one: half of it, at least the least; and,
+ * where the host says what the app may have, no more than a third of what is left of it (g_pressed).
+ */
+static u64 budget_after(u64 live)
+{
+    const u64 limit = mg_mem_limit(), used = mg_mem_usage();
+    u64 budget = live / 2 > g_min_budget ? live / 2 : g_min_budget;
+    if (limit) {
+        const u64 room = used < limit ? (limit - used) / 3 : 0;
+        if (budget > room) budget = room > g_min_budget ? room : g_min_budget;
+    }
+    return budget;
+}
+
 bool mg_dvm_gc_counted(size_t bytes)
 {
     if (!g_enabled || !g_dvm.running || t_collecting) return false;
@@ -1055,7 +1084,7 @@ static bool collect(const char *reason, bool sweep, mg_dvm_gc_result *out)
          * Half what lived: three quarters had Play Store with Google Play services at 350 MB of heap before each collection,
          * for 200 that lived, in a process whose 2 GB the WebView needs too.
          */
-        g_budget = out->live_bytes / 2 > g_min_budget ? out->live_bytes / 2 : g_min_budget;
+        g_budget = budget_after(out->live_bytes);
         mg_atomic_xchg(&g_since, 0);
         mg_atomic_xchg(&g_native_since, 0);
         /* What the large objects are, when they are many (at most once in 30 s): Play Store's took 156 MB. */
@@ -1254,7 +1283,9 @@ static void collect_alongside(void)
         mg_warn("gc: alongside: not collected (a thread of the runtime's could not be stopped, or there was no memory for the mark stack)");
         return;
     }
-    /* Alongside the app: the collection's own thread below the app's threads meanwhile, as its helpers (marker_priority). */
+    /* Alongside the app: the collection's own thread below the app's threads meanwhile, as its helpers (marker_priority), unless
+       the app is near what it may have. */
+    g_pressed = memory_pressed();
     g_alongside = true;
     if (t_cycle) marker_priority(&t_cycle_level);
     if (g_nhelpers && G.main.n >= PARALLEL_MIN) drain_shared();
@@ -1293,7 +1324,7 @@ static void collect_alongside(void)
         r.sweep_ns = t8 - t7;
         /* (What lives is what the heap holds now: what was made alongside is marked without being counted.) */
         live = mg_dvm_live_bytes();
-        g_budget = live / 2 > g_min_budget ? live / 2 : g_min_budget;
+        g_budget = budget_after(live);
         mg_atomic_xchg(&g_since, 0);
         mg_atomic_xchg(&g_native_since, 0);
         if (t8 - g_large_said_ns > 30000000000ull && mg_dvm_heap_large_report(large, sizeof(large), 6)) g_large_said_ns = t8;
@@ -1441,7 +1472,7 @@ bool mg_dvm_gc(const char *reason, mg_dvm_gc_result *out)
          * Asked for, and the app goes on. One that makes three budgets' worth before the collection ends waits for it, so
          * that the heap does not grow without end while it marks.
          */
-        if ((u64)(u32)g_since > 3 * g_budget) mg_dvm_gc_alongside_wait();
+        if ((u64)(u32)g_since > (memory_pressed() ? 1 : 3) * g_budget) mg_dvm_gc_alongside_wait();
         return true;
     }
     mg_dvm_gc_alongside_wait();

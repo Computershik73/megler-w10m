@@ -83,7 +83,10 @@ public class SurfaceTexture {
     /** A native producer's frame (core/src/drivers/mg_java_ndk.c's TextureView windows, ANativeWindow_lock): w x h RGBA at addr, bottom row first when flip. */
     public void meglerPostRgba(long addr, int w, int h, boolean flip) {
         if (mStage == null || mStage.getWidth() != w || mStage.getHeight() != h) mStage = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-        mStage.meglerSetRgba(addr);
+        // A TextureView is opaque unless set otherwise, and Android then shows the producer's colours whatever their alpha: a
+        // decoder's RGBA with alpha 0 would be a transparent picture here.
+        android.view.View v = meglerView;
+        mStage.meglerSetRgba(addr, v instanceof android.view.TextureView && ((android.view.TextureView) v).isOpaque());
         Canvas c = meglerLock(null);
         if (c == null) return;
         try {
