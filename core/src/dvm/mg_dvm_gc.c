@@ -221,7 +221,9 @@ static void follow(marker *k, void *p)
     mg_jobj *j = &o->j;
     u32 i;
     if (j->kind == MG_J_OBJ_ARRAY) {
-        for (i = 0; i < j->u.oarr.len; i++) reach(k, j->u.oarr.v[i]);
+        /* (An array a stopped thread is making may have its length and not yet its elements: mg_dvm_alloc_array.) */
+        if (j->u.oarr.v)
+            for (i = 0; i < j->u.oarr.len; i++) reach(k, j->u.oarr.v[i]);
     } else if (j->kind != MG_J_PRIM_ARRAY && j->kind != MG_J_STRING && o->cls && o->cls->ref_slots_ready) {
         mg_jvalue *slots = mg_dvm_slots(j);
         bool reference = o->cls->gc_ref && g_referent >= 0 && g_pending_next >= 0;

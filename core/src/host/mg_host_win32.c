@@ -663,14 +663,23 @@ static mg_lock g_bp_lock = MG_LOCK_INIT;
 static DWORD g_bp_bvr[BP_MAX], g_bp_bcr[BP_MAX];
 static volatile LONG g_bp_n;
 
-/* A context given the list, the slots after it cleared. (No lock: a slot is written before the count takes it in.) */
+/*
+ * A context given the list, every other slot and the watchpoint cleared. (No lock: a slot is written before the count
+ * takes it in.) All of them: an exception's context has whatever was on the stack where the debug registers go, and
+ * NtContinue sets them all -- slot 7 once held an enabled context-ID breakpoint that matched every instruction, so the
+ * thread stopped at the first one of the exception dispatcher, again and again, until its stack ran out (TikTok Lite, 608).
+ */
 static void bp_fill(CONTEXT *c)
 {
     LONG n = g_bp_n, i;
     c->ContextFlags |= CONTEXT_DEBUG_REGISTERS;
-    for (i = 0; i < BP_MAX; i++) {
-        c->Bvr[i] = i < n ? g_bp_bvr[i] : 0;
-        c->Bcr[i] = i < n ? g_bp_bcr[i] : 0;
+    memset(c->Bvr, 0, sizeof(c->Bvr));
+    memset(c->Bcr, 0, sizeof(c->Bcr));
+    memset(c->Wvr, 0, sizeof(c->Wvr));
+    memset(c->Wcr, 0, sizeof(c->Wcr));
+    for (i = 0; i < n && i < BP_MAX; i++) {
+        c->Bvr[i] = g_bp_bvr[i];
+        c->Bcr[i] = g_bp_bcr[i];
     }
 }
 
@@ -3740,7 +3749,12 @@ static LONG CALLBACK bp_handler(EXCEPTION_POINTERS *info)
     EXCEPTION_RECORD *er = info->ExceptionRecord;
     mg_addr t = g_bp_target;
     if (er->ExceptionCode == EXCEPTION_MEGLER_SET_BREAKPOINT && er->NumberParameters == 2) {
+        /* (Every other slot cleared, as bp_fill does: the context has the stack's leavings there.) */
         c->ContextFlags |= CONTEXT_DEBUG_REGISTERS;
+        memset(c->Bvr, 0, sizeof(c->Bvr));
+        memset(c->Bcr, 0, sizeof(c->Bcr));
+        memset(c->Wvr, 0, sizeof(c->Wvr));
+        memset(c->Wcr, 0, sizeof(c->Wcr));
         c->Bvr[0] = (DWORD)er->ExceptionInformation[0];
         c->Bcr[0] = (DWORD)er->ExceptionInformation[1];
         return EXCEPTION_CONTINUE_EXECUTION;
@@ -3755,7 +3769,10 @@ static LONG CALLBACK bp_handler(EXCEPTION_POINTERS *info)
     else c->Cpsr &= ~(DWORD)0x20;
     c->Cpsr &= ~(DWORD)0x0600FC00;
     c->ContextFlags |= CONTEXT_DEBUG_REGISTERS;
+    memset(c->Bvr, 0, sizeof(c->Bvr));
     memset(c->Bcr, 0, sizeof(c->Bcr));
+    memset(c->Wvr, 0, sizeof(c->Wvr));
+    memset(c->Wcr, 0, sizeof(c->Wcr));
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 

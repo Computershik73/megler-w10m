@@ -387,6 +387,7 @@ struct State {
     std::atomic<uint64_t> clipSerial{1};
     std::atomic<uint64_t> canvases{0}, sessions{0}, direct{0}, composed{0}, layers{0}, runsShaped{0}, runsReused{0}, notes{0}, partTargets{0};
     std::atomic<uint64_t> layerBlurs{0}; // layers put onto the picture blurred (save_layer_blur)
+    std::atomic<uint64_t> layerPixels{0}; // the layers' extents, each cleared, drawn into and laid onto the picture
     // Where the drawing's time goes, in performance-counter ticks, and how much it moved: a line in the log every 5 s
     // while an app draws (noteDrawing).
     std::atomic<uint64_t> targetsMade{0}, makeTicks{0}, endTicks{0}, composeTicks{0}, composedPixels{0}, sessionPixels{0};
@@ -414,7 +415,7 @@ struct State {
     std::mutex statsMutex;
     uint64_t statsAt = 0; // when the last line was written (ticks); 0: never
     struct Totals {
-        uint64_t sessions = 0, direct = 0, composed = 0, layers = 0, layerBlurs = 0, partTargets = 0, targetsMade = 0, makeTicks = 0, endTicks = 0, composeTicks = 0,
+        uint64_t sessions = 0, direct = 0, composed = 0, layers = 0, layerBlurs = 0, layerPixels = 0, partTargets = 0, targetsMade = 0, makeTicks = 0, endTicks = 0, composeTicks = 0,
                  composedPixels = 0, sessionPixels = 0, uploads = 0, uploadPixels = 0, uploadTicks = 0, readBacks = 0, readBackPixels = 0,
                  readBackTicks = 0, byEffects = 0, throughMemory = 0, keptMade = 0, keptReused = 0, shown = 0, showTicks = 0, windowReadBacks = 0,
                  windowReadBackPixels = 0, windowReadBackTicks = 0, glFrames = 0, glWaitTicks = 0;
@@ -3353,6 +3354,7 @@ void noteDrawing() {
     t.composed = s.composed;
     t.layers = s.layers;
     t.layerBlurs = s.layerBlurs;
+    t.layerPixels = s.layerPixels;
     t.partTargets = s.partTargets;
     t.targetsMade = s.targetsMade;
     t.makeTicks = s.makeTicks;
@@ -3404,12 +3406,13 @@ void noteDrawing() {
         }
         const uint64_t windowBacks = t.windowReadBacks - l.windowReadBacks;
         say("%.1f s (graphics processor): %llu drawings begun and ended (%.1f ms ending them), %llu calls drawn by Direct2D, %llu by its effects, %llu "
-            "through memory (%.1f ms), %llu layers (%llu of them blurred); %llu pictures shown without the memory (%.1f ms), %llu OpenGL ES frames composed under them (%.1f "
+            "through memory (%.1f ms), %llu layers of %.1f Mpx (%llu of them blurred); %llu pictures shown without the memory (%.1f ms), %llu OpenGL ES frames composed under them (%.1f "
             "ms waiting for their copies); %llu uploads of %.2f Mpx (%.1f ms); read-backs "
             "(the wait for the processor in them): %llu of other canvases, %.2f Mpx (%.1f ms), %llu of the shown window's, %.2f Mpx (%.1f ms); bitmaps: "
             "%llu uploaded, %llu drawn from those kept, %zu kept in %.1f MB; canvases' bitmaps there now: %lld in %.1f MB (%.1f MB of them spare)",
             seconds, ull(t.sessions - l.sessions), ticksToMs(t.endTicks - l.endTicks), ull(t.direct - l.direct), ull(t.byEffects - l.byEffects),
-            ull(t.throughMemory - l.throughMemory), ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers), ull(t.layerBlurs - l.layerBlurs), ull(t.shown - l.shown),
+            ull(t.throughMemory - l.throughMemory), ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers),
+            double(t.layerPixels - l.layerPixels) / 1e6, ull(t.layerBlurs - l.layerBlurs), ull(t.shown - l.shown),
             ticksToMs(t.showTicks - l.showTicks), ull(t.glFrames - l.glFrames), ticksToMs(t.glWaitTicks - l.glWaitTicks), ull(t.uploads - l.uploads),
             double(t.uploadPixels - l.uploadPixels) / 1e6,
             ticksToMs(t.uploadTicks - l.uploadTicks), ull(t.readBacks - l.readBacks - windowBacks),
@@ -4105,6 +4108,7 @@ void beginLayer(Canvas* cv, const float* bounds, int alpha, int blend, float sig
             std::unique_ptr<Surface> layer(new Surface());
             // On the graphics processor where the canvas is: a target of the extent's size, cleared.
             if (cv->gc ? layer->allocateGpu(extent, cv->gc) : layer->allocate(extent)) level.layer = std::move(layer);
+            G().layerPixels += uint64_t(extent.width()) * uint64_t(extent.height());
         }
         ++G().layers;
         cv->levels.push_back(std::move(level));

@@ -23,6 +23,7 @@ Back. No real app has been tried.
 | Thumb-2 guest library: data, calls both ways, floats, variadics, 64-bit division, heap, `qsort` callbacks, `setjmp`, threads, TLS, files, pipes | **passes on the phone** |
 | The same library built in ARM mode | **passes on the phone** |
 | PLT entries rewritten; the rescue of an entry entered in Thumb state | **passes on the phone** |
+| A library that checks its own code (ByteDance's `libmetasec_ov.so` in TikTok Lite) left as the file has it: no PLT rewritten, its `svc`s and thread-pointer reads stopped at the processor's hardware breakpoints, every guest thread given them (docs/ARCHITECTURE.md, "Libraries left as the file has them") | **works on the phone** (HP Elite x3, 0.1.0.606 to 0.1.0.609): TikTok Lite starts and plays its feed, video after video, with unbroken sound |
 | Real libraries: OpenSSL `libcrypto.so`/`libssl.so` (ARM mode), CPU-Z's `libcpuid.so` | **load under qemu**; SHA-256, AES and bignum results correct. Not tried on the phone |
 | A NativeActivity app through `megler_run`: manifest, JNI, assets, looper, EGL, frames, touch, focus, pause, Back, teardown | **passes on the phone**, with a stand-in for OpenGL ES |
 | Sound: an OpenSL ES buffer-queue player, resampled and mixed to 44.1 kHz stereo for the shell | **passes on the phone** as far as the mixer's output (sample counts and levels) |

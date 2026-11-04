@@ -234,6 +234,13 @@ static void *small_alloc(size_t size)
         b->next = NULL;
     }
     if (cell) {
+        /*
+         * Zeroed before it is in use: the collector stops a thread wherever it is, and one stopped between the two left a
+         * cell marked in use with what an object of another size had left in it, which the second stop of marking alongside
+         * followed (TikTok Lite, after nine minutes: a "class" of two UTF-16 digits). A cell part made has zeros where its
+         * header is not written yet, which the collector passes over.
+         */
+        memset(cell, 0, b->cell);
         index = cell_index(b, (size_t)(cell - b->first));
         b->inuse[index >> 5] |= 1u << (index & 31);
         if (g_black) {
@@ -248,7 +255,6 @@ static void *small_alloc(size_t size)
         g_small_bytes += b->cell;
     }
     mg_lock_release(&g_heap_lock);
-    if (cell) memset(cell, 0, b->cell);
     return cell;
 }
 
