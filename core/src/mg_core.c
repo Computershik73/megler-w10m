@@ -113,6 +113,8 @@ static bool on_fault(mg_fault *f)
         mg_atomic_add(&g_wx_flips, 1);
         return true;
     }
+    /* An assertion of the system's own that is known to end the process for nothing (mg_host_win32.c). */
+    if (mg_host_repair_known_fault(f)) return true;
     /* Not one of ours to repair. Say where it was, in the guest's terms, before the process goes. */
     sym = pc ? mg_ld_symbol_at((const void *)pc, &lib, &sym_addr, &base) : NULL;
     /* (A pc of zero is a fault like any other: a call through a null pointer, and lr says whose.) */

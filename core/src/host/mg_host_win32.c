@@ -3461,6 +3461,60 @@ bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
     return true;
 }
 
+/*
+ * CoreUIComponents.dll keeps a state for each view (0 to 8, in a field at +0x12c of its object) and changes it in one
+ * function, which checks every change: one it does not allow ends the process on the spot, by writing to address 0
+ * (str.w r8, [r8], with r8 zero). On Windows 10 Mobile 15254 a view waiting for its window to be shown (state 7, after
+ * subscribing to CoreWindow.VisibilityChanged) is asked to go to 6, and the process ends: TikTok Lite's, every time,
+ * about three seconds after its start, on the shell's UI thread. Windows' own handler takes nothing there.
+ *
+ * Such a fault, in that function, is made into the change not happening: the old state is put back if the new one was
+ * stored already (the store is the function's 0x42nd byte), and the function returns to its caller through its own
+ * epilogue (pop.w {r1-r8, r11, pc}). The function is known by its first sixteen bytes and its epilogue; anywhere else,
+ * or with other bytes (another build of Windows), nothing is done and the fault ends the app as before.
+ */
+bool mg_host_repair_known_fault(mg_fault *f)
+{
+#if defined(_M_ARM)
+    static const u8 prologue[16] = { 0x2d, 0xe9, 0xfe, 0x49, 0x0d, 0xf1, 0x20, 0x0b, 0x50, 0x4b, 0xd0, 0xf8, 0x2c, 0x51, 0x0f, 0x46 };
+    static const u8 assertion[4] = { 0xc8, 0xf8, 0x00, 0x80 };      /* str.w r8, [r8] */
+    static const u8 epilogue[4] = { 0xbd, 0xe8, 0xfe, 0x89 };       /* pop.w {r1, r2, r3, r4, r5, r6, r7, r8, r11, pc} */
+    enum { STORE = 0x42, EPILOGUE = 0x132, STATE = 0x12c };
+    static volatile LONG repaired;
+    char module[64];
+    mg_addr base = 0, pc, start = 0, at;
+    u32 *r = f->regs;
+    LONG n;
+    if (!r || f->kind != MG_FAULT_ACCESS || !f->write || f->address != 0 || r[8] != 0) return false;
+    pc = r[15] & ~(mg_addr)1;
+    if (memcmp((const void *)pc, assertion, sizeof(assertion))) return false;
+    if (!mg_host_module_at(pc, module, sizeof(module), &base) || _stricmp(module, "CoreUIComponents.dll")) return false;
+    /* The function's start: no more than its own length back, in its module. */
+    for (at = pc & ~(mg_addr)1; at + EPILOGUE >= pc && at >= base; at -= 2)
+        if (!memcmp((const void *)at, prologue, sizeof(prologue))) {
+            start = at;
+            break;
+        }
+    if (!start || pc >= start + EPILOGUE || memcmp((const void *)(start + EPILOGUE), epilogue, sizeof(epilogue))) return false;
+    /* r6 is the view, r5 its state before, r7 the state asked for (the function's first lines put them there). */
+    if (pc > start + STORE) {
+        u32 *state = (u32 *)(DWORD_PTR)(r[6] + STATE);
+        if (!r[6] || *state != r[7]) return false;
+        *state = r[5];
+    }
+    n = InterlockedIncrement(&repaired);
+    if (n <= 5 || !(n & (n - 1)))
+        mg_warn("host: CoreUIComponents.dll would have ended the process over a change of a view's state from %u to %u "
+                "(at +0x%x): the change is left out instead (%ld so far)",
+                (unsigned)r[5], (unsigned)r[7], (unsigned)(pc - base), (long)n);
+    mg_fault_resume_at(f, (start + EPILOGUE) | 1);
+    return true;
+#else
+    (void)f;
+    return false;
+#endif
+}
+
 bool mg_host_module_dump(const char *name, const char *path, mg_addr *base_out, size_t *size_out)
 {
     wchar_t *w = wide_path(name);

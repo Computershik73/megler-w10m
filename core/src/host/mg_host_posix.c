@@ -1637,6 +1637,12 @@ bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
     return true;
 }
 
+bool mg_host_repair_known_fault(mg_fault *f)
+{
+    (void)f;
+    return false;
+}
+
 bool mg_host_module_dump(const char *name, const char *path, mg_addr *base, size_t *size)
 {
     (void)name; (void)path; (void)base; (void)size;

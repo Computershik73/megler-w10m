@@ -278,6 +278,12 @@ typedef struct mg_fault {
 } mg_fault;
 
 typedef bool (*mg_fault_handler)(mg_fault *f);
+/*
+ * A fault of the system's own that is a known assertion of it, made harmless where it is (mg_host_win32.c): true when
+ * the thread is to go on at f's registers as changed. Windows 10 Mobile's CoreUIComponents.dll ends the process over
+ * an invalid change of its view's state, which TikTok Lite's start brings about.
+ */
+bool mg_host_repair_known_fault(mg_fault *f);
 void mg_fault_set_handler(mg_fault_handler h);
 /*
  * Where the faulting thread goes on when the handler returns true. `target`
