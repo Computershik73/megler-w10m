@@ -275,6 +275,7 @@ typedef struct mg_fault {
     bool write, exec;
     u32 *regs;             /* r0..r15, writable; NULL on a host that is not ARM32 */
     u32 *cpsr;             /* writable */
+    bool unhandled;        /* the host's last word: nothing took the exception after the handler passed it on */
 } mg_fault;
 
 typedef bool (*mg_fault_handler)(mg_fault *f);
@@ -622,6 +623,12 @@ void *mg_dl_open(const char *name);
 void *mg_dl_sym(void *lib, const char *name);
 /* Which of the host's own modules (the app, a DLL of the package or of the system) an address is in: its file name and where it is loaded. For a crash report. */
 bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base);
+/*
+ * Whether an address is in a module of the system's own: one not loaded from the folder of the app's executable (its
+ * package). Such code may take its own faults with handlers of its own, which come after the layer's (mg_core.c, on_fault).
+ * Never on Linux, where the layer's handler is the only one.
+ */
+bool mg_host_module_is_system(mg_addr address);
 
 /* ------------------------------------------------------------------- misc */
 

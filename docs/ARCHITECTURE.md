@@ -277,6 +277,21 @@ wrong. The Weather Channel's `libsqliteJni.so` called the barrier and ended
 the app (package 501). `mg_tests`' "the kernel's user helpers" checks each
 helper and each form of load.
 
+### A fault in the system's own code
+
+The layer's vectored handler sees every exception of the process first, the
+system's own included, before any frame-based handler of the code that
+raised it. A fault in a module of the system's own (one not loaded from the
+package's folder, `mg_host_module_is_system`) on a thread that has never run
+Android code (the shell's UI thread, a thread pool's) is therefore not taken
+for the app's: the report goes to the log as a warning (`fault: passed on`)
+and the exception goes on to the system's handlers, which may take it. Windows'
+CoreUIComponents.dll raises such a fault on the shell's UI thread a moment
+after TikTok Lite starts to load the WebView, and takes it itself; the app
+had been ended for it every time. Should nothing take one, the process's
+unhandled exception filter brings it back to the core (`mg_fault.unhandled`),
+which reports it and ends the app as any other.
+
 ### A fault in another process's code
 
 A fault the layer cannot repair ends the app: the thread is parked, the crash

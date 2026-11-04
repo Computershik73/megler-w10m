@@ -934,6 +934,9 @@ bool mg_guest_tp_where(u32 *opc2, u32 *offset)
 /* ----------------------------------------------------------------- faults */
 
 static mg_fault_handler g_fault_handler;
+/* The folder of the app's executable, with its last backslash: a module from anywhere else is the system's. */
+static wchar_t g_own_folder[MAX_PATH];
+static DWORD g_own_folder_n;
 
 bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base);
 
@@ -1121,10 +1124,33 @@ static void overflow_landing(void)
 }
 #endif
 
-/* The last word, when nothing took an exception and Windows is about to end the process. */
+/*
+ * The last word, when nothing took an exception and Windows is about to end the process. A fault the core passed on to
+ * the system's own handlers (mg_core.c, on_fault) comes back to it here, to be reported and to end the app.
+ */
 static LONG WINAPI on_unhandled(EXCEPTION_POINTERS *ep)
 {
     note_exception(ep, "nothing handled this and Windows ends the process");
+#if defined(_M_ARM)
+    if (g_fault_handler) {
+        mg_fault f;
+        EXCEPTION_RECORD *er = ep->ExceptionRecord;
+        memset(&f, 0, sizeof(f));
+        f.unhandled = true;
+        f.code = er->ExceptionCode;
+        f.kind = er->ExceptionCode == EXCEPTION_ILLEGAL_INSTRUCTION ? MG_FAULT_ILLEGAL
+               : er->ExceptionCode == EXCEPTION_ACCESS_VIOLATION || er->ExceptionCode == EXCEPTION_IN_PAGE_ERROR ? MG_FAULT_ACCESS
+               : MG_FAULT_OTHER;
+        if (f.kind == MG_FAULT_ACCESS && er->NumberParameters >= 2) {
+            f.write = er->ExceptionInformation[0] == 1;
+            f.exec = er->ExceptionInformation[0] == 8;
+            f.address = (mg_addr)er->ExceptionInformation[1];
+        }
+        f.regs = (u32 *)&ep->ContextRecord->R0;
+        f.cpsr = (u32 *)&ep->ContextRecord->Cpsr;
+        g_fault_handler(&f);
+    }
+#endif
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
@@ -1306,7 +1332,11 @@ void mg_fault_set_handler(mg_fault_handler h)
     static bool installed;
     g_fault_handler = h;
     if (!installed) {
+        DWORD n = GetModuleFileNameW(NULL, g_own_folder, MAX_PATH);
         installed = true;
+        if (n >= MAX_PATH) n = 0;
+        while (n && g_own_folder[n - 1] != L'\\' && g_own_folder[n - 1] != L'/') n--;
+        g_own_folder_n = n;
         if (!AddVectoredExceptionHandler(1, on_exception)) mg_err("host: no vectored exception handler; faults in guest code cannot be repaired");
 #if defined(_M_ARM)
         {
@@ -3459,6 +3489,18 @@ bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
     if (size) name[size - 1] = 0;
     if (base) *base = (mg_addr)module;
     return true;
+}
+
+bool mg_host_module_is_system(mg_addr address)
+{
+    HMODULE module = NULL;
+    wchar_t path[MAX_PATH];
+    DWORD n;
+    /* FROM_ADDRESS | UNCHANGED_REFCOUNT */
+    if (!g_own_folder_n || !GetModuleHandleExW(0x4 | 0x2, (LPCWSTR)address, &module) || !module) return false;
+    n = GetModuleFileNameW(module, path, MAX_PATH);
+    if (!n || n >= MAX_PATH) return false;
+    return n < g_own_folder_n || CompareStringOrdinal(path, (int)g_own_folder_n, g_own_folder, (int)g_own_folder_n, TRUE) != CSTR_EQUAL;
 }
 
 /* ------------------------------------------------------------------- misc */
