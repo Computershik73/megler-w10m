@@ -1023,6 +1023,10 @@ struct GpuContext {
     Ref<ID2D1Effect> effects[roles];
     ID2D1Effect* effect(Role role);
 
+    // Layers' bitmaps laid from in what is drawing now: kept for another layer (giveBitmap) once that is handed over --
+    // another canvas's context could draw into them before it is (Surface::giveBackGpu).
+    std::vector<Ref<ID2D1Bitmap1>> givenAfter;
+
     /// Nothing drawing through it, and what was drawn handed over; `why` (State::EndWhy) for the log's count.
     void finish(int why);
 };
@@ -1179,6 +1183,14 @@ struct Surface {
     /// processor, since the next canvas's context may draw into them first.
     void giveBackGpu() {
         if (!gc) return;
+        if (gc->inDraw && gpu && gc->target != gpu.get() && !readable) {
+            // Laid from in what the context draws now (a layer restored): kept once that is handed over, which is not
+            // done here for it.
+            detach();
+            gc->givenAfter.push_back(std::move(gpu));
+            forgetGpu();
+            return;
+        }
         gc->finish(State::endOther);
         unbind();
         giveBitmap(std::move(gpu), false);
@@ -1521,6 +1533,8 @@ void GpuContext::finish(int why) {
     s.endsBy[why]++;
     s.endTicksBy[why] += took;
     if (FAILED(hr)) gpuFailed("ID2D1DeviceContext::EndDraw", hr);
+    for (Ref<ID2D1Bitmap1>& b : givenAfter) giveBitmap(std::move(b), false);
+    givenAfter.clear();
 }
 
 /// Direct2D and DirectWrite, at the first call from the core. False when the
@@ -4163,7 +4177,12 @@ void restoreLevel(Canvas& cv) {
         Surface* layer;
         ~GiveBack() { layer->giveBackGpu(); }
     } giveBack{top.layer.get()};
-    top.layer->end();
+    // On the graphics processor what was drawn into the layer stays in the context's batch, and what lays the layer below
+    // comes after it there; its bitmap is kept for another when the batch is handed over (giveBackGpu). An EndDraw for
+    // the layer and another for its bitmap were a sixth of TikTok Lite's frame, four layers a frame. (Read back below,
+    // it is handed over then: pull.)
+    if (top.layer->gc) top.layer->detach();
+    else top.layer->end();
     Surface* outer = cv.target();
     // A DST layer leaves the picture as it was: it is thrown away.
     if (!outer || top.blend == MEGLER_GFX_BLEND_DST) return;
