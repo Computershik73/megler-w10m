@@ -2909,8 +2909,7 @@ bool gpuShadowKept(Canvas& cv, Surface& target, const Ink& ink, uint32_t colour,
     std::vector<uint8_t> key;
     int ix = 0, iy = 0, ox = 0, oy = 0, w = 0, h = 0;
     Ref<ID2D1Bitmap1> bm;
-    // (Under a clip that is a shape, gpuShadow cuts it on its own small surface; here it would be a layer over the whole canvas.)
-    if (gpuGone() || cv.clip().g || !shadowKey(ink, cv.matrix, colour, sigma, dx, dy, &key, &ix, &iy)) return false;
+    if (gpuGone() || !shadowKey(ink, cv.matrix, colour, sigma, dx, dy, &key, &ix, &iy)) return false;
     const uint64_t hash = keyHash(key);
     {
         std::lock_guard<std::mutex> lock(s.shadowMutex);
@@ -3006,8 +3005,23 @@ bool gpuShadowKept(Canvas& cv, Surface& target, const Ink& ink, uint32_t colour,
     if (!target.begin()) return false;
     target.useBoxClip(drawn);
     target.setMatrix(Matrix3x2F::Identity());
-    const D2D1_RECT_F dst = D2D1::RectF(float(onto.l), float(onto.t), float(onto.r), float(onto.b));
-    target.rt->DrawBitmap(bm.get(), &dst, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr);
+    const Clip& clip = cv.clip();
+    if (clip.g) {
+        // Under a clip that is a shape (a view's rounded corners): that shape filled with the shadow, under the shadow's box,
+        // not a layer pushed over the canvas for it.
+        Ref<ID2D1BitmapBrush> brush;
+        if (FAILED(target.rt->CreateBitmapBrush(bm.get(),
+                                                D2D1::BitmapBrushProperties(D2D1_EXTEND_MODE_CLAMP, D2D1_EXTEND_MODE_CLAMP,
+                                                                            D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR),
+                                                D2D1::BrushProperties(1.0f, Matrix3x2F::Translation(float(onto.l), float(onto.t))),
+                                                brush.put())))
+            return false;
+        target.rt->SetAntialiasMode(clip.smooth ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED);
+        target.rt->FillGeometry(clip.g.get(), brush.get());
+    } else {
+        const D2D1_RECT_F dst = D2D1::RectF(float(onto.l), float(onto.t), float(onto.r), float(onto.b));
+        target.rt->DrawBitmap(bm.get(), &dst, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr);
+    }
     target.drew(drawn);
     ++s.direct;
     return true;
