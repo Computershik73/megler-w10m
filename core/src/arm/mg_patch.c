@@ -239,6 +239,14 @@ static void patch_plt(mg_lib *lib, u8 *seg, size_t size)
  * compiler-rt's __clear_cache (Facebook's libdexload.so) ends with movt:
  * movs r7,#2; movs r2,#0; movt r7,#15; svc 0. Left unpatched, that svc went
  * to Windows, failed, and __clear_cache's assertion aborted the app.
+ *
+ * And a Thumb svc with a pop right after it, or one instruction later, when
+ * the halfword before it does not begin a 32-bit instruction (of which DF00
+ * would be the second half): an obfuscated stub's, whose number was put in r7
+ * further back, through a computed jump. TikTok Lite's libmetasec_ov.so has
+ * 554 of them (mov pc, r1; mov r0, pc; svc 0; pop {r0-r3, r7}). Left
+ * unpatched, they went to Windows as calls of its own: a thread of the app came
+ * back at pc 0x8000 with sp 0x2b, and the process ended with no report.
  * trap-svc retains its diagnostic meaning: stop at the site without dispatch.
  */
 static volatile i32 g_trap_svc = -1;
@@ -261,6 +269,10 @@ static void patch_svc_site(mg_lib *lib, u8 *at, bool thumb, bool trap)
     else mg_wr32(at, site ? 0xE7F00AF6u : 0xE7F00AF5u);
 }
 
+/* A pop (pop {...}, pop.w), and the first halfword of a 32-bit Thumb instruction. */
+static bool is_t16_pop(u16 h) { return (h & 0xFE00) == 0xBC00 || h == 0xE8BD; }
+static bool is_t32_first(u16 h) { return (h >> 11) >= 0x1D; }
+
 static void patch_svc(mg_lib *lib, u8 *seg, size_t size)
 {
     size_t i;
@@ -268,14 +280,17 @@ static void patch_svc(mg_lib *lib, u8 *seg, size_t size)
     if (g_trap_svc < 0) g_trap_svc = mg_flag("trap-svc") ? 1 : 0;
     trap = g_trap_svc > 0;
     for (i = 2; i + 2 <= size; i += 2) {
-        u16 a, b;
+        u16 a, b, n1, n2;
         if (mg_rd16(seg + i) != 0xDF00) continue;
         a = mg_rd16(seg + i - 2);
         b = i >= 4 ? mg_rd16(seg + i - 4) : 0;
+        n1 = i + 4 <= size ? mg_rd16(seg + i + 2) : 0;
+        n2 = i + 6 <= size ? mg_rd16(seg + i + 4) : 0;
         /* movs r7,#n; ldr r7,[pc,#n]; mov r7,rN; mov.w/movw/movt r7,#n; ldr.w r7,[pc,+/-n]. */
         if ((a & 0xFF00) == 0x2700 || (a & 0xFF00) == 0x4F00 || (a & 0xFF87) == 0x4607
             || (((b & 0xFBF0) == 0xF040 || (b & 0xFBF0) == 0xF240 || (b & 0xFBF0) == 0xF2C0) && (a & 0x8F00) == 0x0700)
-            || ((b == 0xF8DF || b == 0xF85F) && (a & 0xF000) == 0x7000))
+            || ((b == 0xF8DF || b == 0xF85F) && (a & 0xF000) == 0x7000)
+            || (!is_t32_first(a) && (is_t16_pop(n1) || (!is_t32_first(n1) && is_t16_pop(n2)))))
             patch_svc_site(lib, seg + i, true, trap);
     }
     for (i = (size_t)(MG_ALIGN_UP((mg_addr)seg, 4) - (mg_addr)seg); i + 4 <= size; i += 4)

@@ -3120,11 +3120,13 @@ static void test_guest(const char *libdir, const char *scratch)
             if (svc) {
                 int saved = *mg_errno_ptr();
                 mg_ld_get_stats(svc, &st);
-                CHECK_INT(st.svc_sites, 5);
+                CHECK_INT(st.svc_sites, 6);
                 *mg_errno_ptr() = 123;
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_getpid")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_literal")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_unknown")(), -38);
+                /* An obfuscated stub's svc, its number set further back and a pop after it (libmetasec_ov.so). */
+                CHECK_INT(FN(svc, int (*)(void), "t_svc_far_number")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void *, unsigned), "t_svc_cacheflush")(SYM(svc, "t_svc_getpid"), 2), 0);
                 /* compiler-rt's __clear_cache, whose number is finished by movt: patched too, and it succeeds. */
                 CHECK_INT(FN(svc, int (*)(void *, unsigned), "t_svc_clear_cache")(SYM(svc, "t_svc_getpid"), 2), 0);
@@ -3146,7 +3148,7 @@ static void test_guest(const char *libdir, const char *scratch)
         if (svc) {
             mg_addr target;
             mg_ld_get_stats(svc, &st);
-            CHECK_INT(st.svc_sites, 5);
+            CHECK_INT(st.svc_sites, 6);
             fn = (const u8 *)((mg_addr)SYM(svc, "t_svc_getpid") & ~(mg_addr)1);
             for (k = 0; k < 16; k += 2) {
                 trapped |= mg_rd16(fn + k) == 0xDEA5;

@@ -20,6 +20,13 @@ __attribute__((naked)) int t_svc_clear_cache(void *start, unsigned length)
     __asm__ volatile("add r1, r0\npush {r7}\nmovs r7, #2\nmovs r2, #0\nmovt r7, #15\nsvc 0\npop {r7}\nbx lr\n");
 }
 
+/* An obfuscated stub's shape (TikTok Lite's libmetasec_ov.so): the number put in r7 further back, the instruction just
+   before the svc not one that sets it, and a pop right after it. */
+__attribute__((naked)) int t_svc_far_number(void)
+{
+    __asm__ volatile("push {r4, r7}\nmovs r7, #20\nmov r4, r4\nsvc 0\npop {r4, r7}\nbx lr\n");
+}
+
 /* Chromium's cacheflush wrapper: start + length, flags 0, literal syscall nr. */
 __attribute__((naked)) int t_svc_cacheflush(void *start, unsigned length)
 {
