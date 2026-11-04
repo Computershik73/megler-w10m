@@ -308,6 +308,16 @@ static void where_name(mg_addr a, char *out, size_t size)
         snprintf(out, size, "%08x", (unsigned)a);
 }
 
+bool megler_dump_module(const char *module, const char *path)
+{
+    mg_addr base = 0;
+    size_t size = 0;
+    bool ok = module && path && mg_host_module_dump(module, path, &base, &size);
+    if (ok) mg_info("%s at %08x, %u bytes of image, is in %s", module, (unsigned)base, (unsigned)size, path);
+    else mg_warn("%s: not dumped (no such module in this process, or %s could not be written)", module ? module : "?", path ? path : "?");
+    return ok;
+}
+
 bool megler_thread_where(unsigned thread_id, char *out, size_t size)
 {
     enum { WORDS = 16384 };                       /* 64 KB of its stack from sp up, as a fault's report looks */

@@ -622,6 +622,8 @@ void *mg_dl_open(const char *name);
 void *mg_dl_sym(void *lib, const char *name);
 /* Which of the host's own modules (the app, a DLL of the package or of the system) an address is in: its file name and where it is loaded. For a crash report. */
 bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base);
+/* A module of the process's, by file name, as it lies in memory into a file (megler_dump_module); its base and image size. */
+bool mg_host_module_dump(const char *name, const char *path, mg_addr *base, size_t *size);
 
 /* ------------------------------------------------------------------- misc */
 

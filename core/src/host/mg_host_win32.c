@@ -3461,6 +3461,43 @@ bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
     return true;
 }
 
+bool mg_host_module_dump(const char *name, const char *path, mg_addr *base_out, size_t *size_out)
+{
+    wchar_t *w = wide_path(name);
+    HMODULE module = w ? GetModuleHandleW(w) : NULL;
+    const u8 *base;
+    const IMAGE_NT_HEADERS *nt;
+    size_t size, at;
+    u8 *image;
+    bool ok;
+    free(w);
+    if (!module) return false;
+    base = (const u8 *)module;
+    nt = (const IMAGE_NT_HEADERS *)(base + ((const IMAGE_DOS_HEADER *)base)->e_lfanew);
+    size = nt->OptionalHeader.SizeOfImage;
+    image = (u8 *)calloc(1, size ? size : 1);
+    if (!image) return false;
+    /* Region by region: what is committed and readable is copied, the rest stays zeros. */
+    for (at = 0; at < size;) {
+        MEMORY_BASIC_INFORMATION info;
+        size_t end;
+        DWORD p;
+        if (VirtualQuery(base + at, &info, sizeof(info)) != sizeof(info) || !info.RegionSize) break;
+        end = (size_t)((const u8 *)info.BaseAddress - base) + info.RegionSize;
+        if (end > size) end = size;
+        p = info.Protect & 0xff;
+        if (info.State == MEM_COMMIT && !(info.Protect & PAGE_GUARD)
+            && (p & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
+            memcpy(image + at, base + at, end - at);
+        at = end;
+    }
+    ok = mg_file_write_all(path, image, size);
+    free(image);
+    if (base_out) *base_out = (mg_addr)module;
+    if (size_out) *size_out = size;
+    return ok;
+}
+
 /* ------------------------------------------------------------------- misc */
 
 int mg_host_d3d11_feature_level(void *device)

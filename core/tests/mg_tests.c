@@ -327,6 +327,21 @@ static void test_host(const char *scratch)
     CHECK(mg_path_rmdir(sub, &err));
     free(path);
     free(sub);
+#if defined(_WIN32)
+    {
+        /* A DLL of the system's as it lies in memory (megler_dump_module): its image, MZ first, SizeOfImage long. */
+        char *img = mg_sprintf("%s/kernel32.img", scratch);
+        mg_addr base = 0;
+        size_t size = 0, got = 0;
+        u8 *bytes;
+        CHECK(mg_host_module_dump("kernel32.dll", img, &base, &size) && base && size > 4096);
+        bytes = mg_file_read_all(img, &got);
+        CHECK(bytes && got == size && bytes[0] == 'M' && bytes[1] == 'Z' && !memcmp(bytes, (const void *)base, 512));
+        free(bytes);
+        CHECK(mg_path_remove(img, &err));
+        free(img);
+    }
+#endif
 }
 
 /* -------------------------------------------------------------------- zip */

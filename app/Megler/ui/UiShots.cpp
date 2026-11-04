@@ -3,6 +3,7 @@
 #include "ui/UiShots.h"
 
 #include "library/Library.h"
+#include "megler.h"
 #include "player/Session.h"
 #include "player/WindowHost.h"
 #include "shell/Platform.h"
@@ -155,6 +156,10 @@ void poll(AppShell& shell) {
                 session::touch(0, 0, float(x), float(y));
                 session::touch(2, 0, float(x), float(y));
             }
+        } else if (flag.rfind(L"ui-dump-module-", 0) == 0) {
+            // A DLL of the system's as it lies in memory (megler_dump_module), to read a fault in its code.
+            const std::wstring module = flag.substr(15);
+            megler_dump_module(narrow(module).c_str(), narrow(platform::localStateDirectory() + L"\\module-" + module + L".img").c_str());
         } else if (flag.rfind(L"ui-frame-", 0) == 0) {
             if (auto window = session::window())
                 window->requestScreenshot(platform::localStateDirectory() + L"\\shot-" + flag.substr(3) + L".bmp");
