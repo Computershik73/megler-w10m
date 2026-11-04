@@ -87,6 +87,13 @@ N(Audio_trackOpen)
     c->ret.i = id;
 }
 
+/* trackBuffer(int id, int frames): the frames written ahead it holds at most, AudioTrack's buffer size; how many it holds. */
+N(Audio_trackBuffer)
+{
+    track *t = track_of(c->args[0].i);
+    c->ret.i = t ? mg_pcm_buffer(t->pcm, c->args[1].i) : 0;
+}
+
 static i16 clamp16(float f)
 {
     f *= 32767.0f;
@@ -766,6 +773,7 @@ N(Audio_pauseAll)
 
 static const mg_jhle k_audio[] = {
     { "megler/Audio", "trackOpen", NULL, Audio_trackOpen },
+    { "megler/Audio", "trackBuffer", NULL, Audio_trackBuffer },
     { "megler/Audio", "trackWrite", NULL, Audio_trackWrite },
     { "megler/Audio", "trackWriteBytes", NULL, Audio_trackWriteBytes },
     { "megler/Audio", "trackWriteFloat", NULL, Audio_trackWriteFloat },

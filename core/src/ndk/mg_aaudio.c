@@ -57,6 +57,8 @@ enum { CALLBACK_CONTINUE = 0, CALLBACK_STOP = 1 };
 
 /* Buffers in the ring; at most one fewer may wait to be played, so the one being filled is never one of them. */
 #define AA_BUFFERS 16
+/* ... in a Java track's: it holds as many frames as the app asked for (stream_full), however its writes cut them up. */
+#define AA_JAVA_BUFFERS 64
 #define AA_DEFAULT_IN_USE 4
 
 typedef struct aa_builder {
@@ -74,10 +76,11 @@ typedef struct aa_stream {
     mg_cond cond;                      /* a buffer played, or the state changed */
     volatile i32 state;
     u32 frame_bytes, burst, in_use;    /* bytes per frame; frames per buffer; buffers that may wait at once */
-    u8 *mem;                           /* AA_BUFFERS * burst frames */
+    u32 ring;                          /* buffers in the ring: AA_BUFFERS, or AA_JAVA_BUFFERS for a Java track */
+    u8 *mem;                           /* ring * burst frames */
     u32 next, fill;                    /* the buffer being filled, and how many of its frames are */
     u32 waiting;                       /* buffers handed to the mixer and not yet played */
-    u32 frames_in[AA_BUFFERS];         /* how many frames each buffer handed over holds */
+    u32 frames_in[AA_JAVA_BUFFERS];    /* how many frames each buffer handed over holds */
     u32 waiting_frames;                /* and those of the buffers waiting, together */
     u32 generation;                    /* one more at each flush or stop: a waiting write gives up */
     u64 written;
@@ -216,7 +219,7 @@ static void voice_done(mg_voice *v, void *user)
         return;
     }
     if (s->waiting) {
-        u32 oldest = (s->next + AA_BUFFERS - s->waiting) % AA_BUFFERS;
+        u32 oldest = (s->next + s->ring - s->waiting) % s->ring;
         s->waiting_frames -= s->frames_in[oldest] < s->waiting_frames ? s->frames_in[oldest] : s->waiting_frames;
         s->waiting--;
     }
@@ -240,7 +243,7 @@ static void hand_over(aa_stream *s)
     s->waiting++;
     s->waiting_frames += frames;
     s->written += frames;
-    s->next = (s->next + 1) % AA_BUFFERS;
+    s->next = (s->next + 1) % s->ring;
     s->fill = 0;
 }
 
@@ -306,15 +309,16 @@ static i32 open_stream(aa_builder *b, aa_stream **out, bool java)
         free(s);
         return AA_ERROR_INVALID_FORMAT;
     }
+    s->ring = java ? AA_JAVA_BUFFERS : AA_BUFFERS;
     s->burst = b->frames_per_callback > 0 ? (u32)b->frames_per_callback : (u32)rate / 100;
     if (s->burst < 16) s->burst = 16;
     if (s->burst > (u32)rate) s->burst = (u32)rate;
     s->in_use = AA_DEFAULT_IN_USE;
     if (b->capacity > 0) {
         u32 n = ((u32)b->capacity + s->burst - 1) / s->burst;
-        s->in_use = n < 2 ? 2 : n > AA_BUFFERS - 1 ? AA_BUFFERS - 1 : n;
+        s->in_use = n < 2 ? 2 : n > s->ring - 1 ? s->ring - 1 : n;
     }
-    s->mem = (u8 *)mg_alloc((size_t)AA_BUFFERS * s->burst * s->frame_bytes);
+    s->mem = (u8 *)mg_alloc((size_t)s->ring * s->burst * s->frame_bytes);
     mg_lock_init(&s->lock);
     mg_cond_init(&s->cond);
     s->state = ST_OPEN;
@@ -460,6 +464,18 @@ static i32 AAudioStream_waitForStateChange(aa_stream *s, i32 input, i32 *next, i
 }
 
 /*
+ * Whether a write waits for room: as many buffers wait to be played as may. A Java track counts frames instead, as
+ * AudioTrack's size does -- as many wait as it holds -- since each of the app's writes ends a buffer: a track written a
+ * little at a time held a few of its hundred milliseconds, and the mixer ran dry whenever its writer was late.
+ */
+static bool stream_full(const aa_stream *s)
+{
+    if (s->fill) return false;
+    if (s->java) return s->waiting >= s->ring - 1 || s->waiting_frames >= s->in_use * s->burst;
+    return s->waiting >= s->in_use;
+}
+
+/*
  * Frames into the ring: as many as there is room for, waiting while every buffer waits to be played -- up to the
  * timeout, or with `forever` until there is room. A buffer goes to the mixer when it is full, and what is left in one
  * at the end goes as it is. Only a playing stream makes room: before the start (priming) or when paused, an AAudio
@@ -476,7 +492,7 @@ static i32 stream_write(aa_stream *s, const void *data, i32 frames, i64 timeout_
     generation = s->generation;
     while (done < frames && !s->closed && !s->released && s->generation == generation) {
         u32 n;
-        if (!s->fill && s->waiting >= s->in_use) {
+        if (stream_full(s)) {
             u64 now = mg_time_monotonic_ns();
             if (forever) {
                 if (s->state != ST_STARTED && !any_state) break;
@@ -520,14 +536,14 @@ static i32 AAudioStream_setBufferSizeInFrames(aa_stream *s, i32 frames)
     if (frames < 0) return AA_ERROR_ILLEGAL_ARGUMENT;
     n = ((u32)frames + s->burst - 1) / s->burst;
     mg_lock_acquire(&s->lock);
-    s->in_use = n < 2 ? 2 : n > AA_BUFFERS - 1 ? AA_BUFFERS - 1 : n;
+    s->in_use = n < 2 ? 2 : n > s->ring - 1 ? s->ring - 1 : n;
     mg_lock_release(&s->lock);
     return (i32)(s->in_use * s->burst);
 }
 
 static i32 AAudioStream_getBufferSizeInFrames(aa_stream *s) { return s ? (i32)(s->in_use * s->burst) : AA_ERROR_NULL; }
 static i32 AAudioStream_getFramesPerBurst(aa_stream *s) { return s ? (i32)s->burst : AA_ERROR_NULL; }
-static i32 AAudioStream_getBufferCapacityInFrames(aa_stream *s) { return s ? (i32)((AA_BUFFERS - 1) * s->burst) : AA_ERROR_NULL; }
+static i32 AAudioStream_getBufferCapacityInFrames(aa_stream *s) { return s ? (i32)((s->ring - 1) * s->burst) : AA_ERROR_NULL; }
 static i32 AAudioStream_getFramesPerDataCallback(aa_stream *s) { return s ? s->b.frames_per_callback : AA_ERROR_NULL; }
 static i32 AAudioStream_getXRunCount(aa_stream *s) { return s ? (i32)s->xruns : AA_ERROR_NULL; }
 static i32 AAudioStream_getSampleRate(aa_stream *s) { return s ? s->b.rate : AA_ERROR_NULL; }
@@ -616,6 +632,15 @@ mg_pcm *mg_pcm_open(int rate, int channels, int format, int buffer_ms)
     return s;
 }
 
+int mg_pcm_buffer(mg_pcm *p, int frames)
+{
+    i32 held;
+    if (!p || frames <= 0) return 0;
+    held = AAudioStream_setBufferSizeInFrames(p, frames);
+    mg_info("audio: the Java track holds %d frames (%d ms), %d asked for", (int)held, (int)((i64)held * 1000 / p->b.rate), frames);
+    return (int)held;
+}
+
 int mg_pcm_write(mg_pcm *p, const void *frames, int count, bool wait)
 {
     if (!p || !frames || count <= 0 || p->closed || p->released) return 0;
@@ -647,7 +672,12 @@ int mg_pcm_pending(mg_pcm *p) { return p && !p->released ? (int)(p->waiting_fram
 
 void mg_pcm_close(mg_pcm *p)
 {
-    if (p) AAudioStream_close(p);
+    if (!p) return;
+    /* (How often its sound broke off: the mixer found nothing of it while it played, its last frames' end included.) */
+    if (p->java && p->written)
+        mg_info("audio: a Java track closed: %llu frames written, it ran dry %u times while playing", (unsigned long long)p->written,
+                (unsigned)p->xruns);
+    AAudioStream_close(p);
 }
 
 #define D(fn) { #fn, (void *)(fn) }

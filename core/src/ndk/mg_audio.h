@@ -52,6 +52,8 @@ void mg_audio_film_begins(void);
  */
 typedef struct aa_stream mg_pcm;
 mg_pcm *mg_pcm_open(int rate, int channels, int format, int buffer_ms);
+/* At most `frames` frames written ahead (AudioTrack's buffer size), as many of them as it can hold: how many it holds. */
+int mg_pcm_buffer(mg_pcm *p, int frames);
 int mg_pcm_write(mg_pcm *p, const void *frames, int count, bool wait);
 void mg_pcm_play(mg_pcm *p, bool play);
 void mg_pcm_flush(mg_pcm *p);
