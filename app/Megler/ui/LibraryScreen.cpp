@@ -234,7 +234,7 @@ private:
             box.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
             add(top, box);
         }
-        // Google Play chosen at the first start and not installed yet: other apps wait for it (ui/GooglePlay.h).
+        // Google Play chosen at the first start and not installed yet: said, with microG meanwhile (ui/GooglePlay.h).
         if (const std::string waiting = googlePlay::pending(); !waiting.empty()) {
             auto line = text(waiting, font::bodyMedium, weightNormal(), palette().onSurfaceVariant);
             line.TextWrapping(TextWrapping::Wrap);

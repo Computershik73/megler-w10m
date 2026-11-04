@@ -466,8 +466,7 @@ void AppShell::poll() {
                 singleAppOpened_ = true;
                 shellLog::write("app package: opening " + entry->report.package);
                 const std::string id = entry->id;
-                if (entry->report.ready() && playStoreCanStart(entry->report.package) &&
-                    googlePlay::appsMayGo(*this, entry->report.package, true)) {
+                if (entry->report.ready() && playStoreCanStart(entry->report.package)) {
                     // The app's private files Megler handed over when it made this package, taken first (shell/AppPackage.h).
                     std::weak_ptr<AppShell> weak = weak_from_this();
                     runInBackground([] { appPackage::takeHandover(); },
@@ -1101,7 +1100,7 @@ void AppShell::openLink(winrt::Windows::Foundation::Uri const& uri) {
                                                                    "own: its page in the Library, Install.");
             return;
         }
-        if (!playStoreCanStart(found->report.package) || !googlePlay::appsMayGo(*this, found->report.package, true)) return;
+        if (!playStoreCanStart(found->report.package)) return;
         if (selectedTab_ != 0) selectTab(0);
         push(makePlayerScreen(*this, found->id));
     } else if (what == L"library") {
