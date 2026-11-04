@@ -368,6 +368,7 @@ public class AccountManager {
                 if (a == null) { result.fail(new AuthenticatorException("the service " + name + " is not an authenticator")); return; }
                 CALLS.execute(() -> {
                     try {
+                        if (added && auth.microG && !megler.MicroG.isMicroG()) checkedIn(activity);
                         Bundle now = call.run(a, wrapped);
                         if (now != null) wrapped.onResult(now);
                     } catch (NetworkErrorException e) {
@@ -394,6 +395,26 @@ public class AccountManager {
             try { if (auth.microG) megler.MicroG.unbind(bound[0]); else megler.Services.unbind(bound[0]); } catch (Throwable t) { }
         }));
         return result;
+    }
+
+    /**
+     * Before Google's own Play services adds an account: its first check-in ended, for at most a minute, since its sign-in
+     * gives up on one after its own 10 s and says Google's servers could not be reached (megler.Checkin). The user is told
+     * why the sign-in waits.
+     */
+    private void checkedIn(Activity activity) {
+        if (megler.Checkin.androidId() != 0) return;
+        final Context shown = activity != null ? activity : mContext;
+        android.util.Log.i(TAG, "Google Play services has not checked in yet: the sign-in waits for its check-in");
+        MAIN.post(() -> {
+            try {
+                android.widget.Toast.makeText(shown, "Google Play services is checking in with Google for the first time. The sign-in goes on when it is done.",
+                    android.widget.Toast.LENGTH_LONG).show();
+            } catch (Throwable t) {
+                android.util.Log.w(TAG, "the check-in's toast", t);
+            }
+        });
+        megler.Checkin.await(60000);
     }
 
     /** The options as the system passes them on: the caller's package, uid and pid added. */
