@@ -3120,13 +3120,23 @@ static void test_guest(const char *libdir, const char *scratch)
             if (svc) {
                 int saved = *mg_errno_ptr();
                 mg_ld_get_stats(svc, &st);
-                CHECK_INT(st.svc_sites, 6);
+                /* The dead stub's svc: left in Thumb code, behind its branch; taken in ARM code, where every svc 0 is. */
+                CHECK_INT(st.svc_sites, j == 0 ? 6 : 7);
                 *mg_errno_ptr() = 123;
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_getpid")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_literal")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_unknown")(), -38);
-                /* An obfuscated stub's svc, its number set further back and a pop after it (libmetasec_ov.so). */
+                /* An svc whose number was set two instructions back (Chromium's syscall()). */
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_far_number")(), 4242);
+                CHECK_INT(FN(svc, int (*)(void), "t_svc_dead_stub")(), 7);
+                if (j == 0) {
+                    /* As the file has it: libmetasec_ov.so sums such code, and ends the process when it has changed. */
+                    const u8 *stub = (const u8 *)((mg_addr)SYM(svc, "t_svc_dead_stub") & ~(mg_addr)1);
+                    bool kept = false;
+                    int k;
+                    for (k = 0; k < 16; k += 2) kept |= mg_rd16(stub + k) == 0xDF00;
+                    CHECK(kept);
+                }
                 CHECK_INT(FN(svc, int (*)(void *, unsigned), "t_svc_cacheflush")(SYM(svc, "t_svc_getpid"), 2), 0);
                 /* compiler-rt's __clear_cache, whose number is finished by movt: patched too, and it succeeds. */
                 CHECK_INT(FN(svc, int (*)(void *, unsigned), "t_svc_clear_cache")(SYM(svc, "t_svc_getpid"), 2), 0);

@@ -243,8 +243,14 @@ a file as Bolt uses it, a directory read twice, the limits), and `t_ffcalls`
 for the two sigactions.
 
 The Thumb scanner recognises immediate/register moves and literal loads into
-`r7` immediately before `svc 0`; the ARM scanner recognises unconditional
-`svc 0`. It does not replace every DF00 halfword: executable segments also hold
+`r7` within the eight halfwords before `svc 0` (Chromium's and bionic's
+`syscall()` set it a few instructions back), stopping at an instruction after
+which straight-line code ends (`mov pc`, `bx`, `b`, `pop {pc}`): an `svc`
+right behind one is not reached by falling through. TikTok Lite's
+`libmetasec_ov.so` has 554 of those in its anti-disassembly stubs, which jump
+over them, and sums code that holds some: one of its init functions ends the
+process (the thread sent to `0x4000` with `sp` `0x2b`) when a byte of it has
+changed. The ARM scanner recognises unconditional `svc 0`. It does not replace every DF00 halfword: executable segments also hold
 literal data and Thumb-2 instructions. Other sequences and newly generated JIT
 code still need interception support.
 
