@@ -100,6 +100,10 @@ public:
     /// `done` gets the index of the button pressed (-1: dismissed, by Back or a tap beside it) and the field's text.
     void dialog(DialogSpec spec, std::function<void(int button, std::string text)> done);
     void alert(std::string title, std::string message);
+    /// Whether a dialog is up (dialog() shows one at a time).
+    bool dialogShown() const { return dialogOpen_; }
+    /// The dialog up, answered with its button `button` (from the left) as if it had been pressed: a flag's (ui/UiShots.h).
+    void pressDialog(int button) { closeDialog(button); }
     void confirm(std::string title, std::string message, std::string confirmTitle, bool destructive,
                  std::function<void()> onConfirm, std::function<void()> onCancel = nullptr);
 

@@ -11,6 +11,7 @@
 #include "shell/Strings.h"
 
 #include <winrt/Windows.Graphics.Imaging.h>
+#include <winrt/Windows.Management.Deployment.h>
 
 #include <atomic>
 
@@ -572,6 +573,42 @@ PortalResult installThroughPortal(const Made& made, const std::function<void(con
     }
 }
 
+/*
+ * Windows 10 Mobile's deployment engine takes a packaged developer deployment with the option 0x8000 (its MinDeploy's; the
+ * public DevelopmentMode, 2, is for a loose manifest and refused for a package), and ForceApplicationShutdown closes the app
+ * the package updates -- Megler itself, for its own update. Each set of options is tried while the one before was refused
+ * at once; a deployment that has begun is waited for.
+ */
+PortalResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress) {
+    using namespace winrt::Windows::Management::Deployment;
+    const DeploymentOptions mobileDevelopment = static_cast<DeploymentOptions>(0x8000);
+    const DeploymentOptions tries[] = {mobileDevelopment | DeploymentOptions::ForceApplicationShutdown, DeploymentOptions::ForceApplicationShutdown,
+                                       mobileDevelopment, DeploymentOptions::None};
+    std::wstring uri = L"file:///" + path;
+    std::replace(uri.begin(), uri.end(), L'\\', L'/');
+    std::string said;
+    for (const DeploymentOptions options : tries) {
+        try {
+            PackageManager manager;
+            progress(format("Installing it through Windows's deployment engine (options 0x%x)…", unsigned(options)));
+            // (Said before it goes: an update of Megler's own package ends Megler as soon as it is installed.)
+            shellLog::flush();
+            const DeploymentResult result = manager.AddPackageAsync(winrt::Windows::Foundation::Uri(uri), nullptr, options).get();
+            if (result.ErrorText().empty()) {
+                shellLog::write(format("app package: %s installed by Windows's deployment engine (options 0x%x)",
+                                       narrow(path.substr(path.find_last_of(L'\\') + 1)).c_str(), unsigned(options)));
+                return {true, "Installed."};
+            }
+            said = format("0x%08x ", unsigned(result.ExtendedErrorCode())) + narrow(result.ErrorText());
+            shellLog::write(format("app package: the deployment engine refused it (options 0x%x): ", unsigned(options)) + said);
+        } catch (hresult_error const& e) {
+            said = format("0x%08x ", unsigned(e.code())) + narrow(e.message());
+            shellLog::write(format("app package: the deployment engine could not be asked (options 0x%x): ", unsigned(options)) + said);
+        }
+    }
+    return {false, "Windows's deployment engine did not install it: " + said};
+}
+
 bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullName, bool replace) {
     if (entry.report.package != "com.google.android.gms") return true;
     if (!entry.report.ok || installedFullName.empty() || installedFullName.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos || !canRead(entry.path)) return false;
@@ -683,9 +720,41 @@ std::wstring gsfApk() {
     return canRead(path) ? path : std::wstring();
 }
 
+namespace {
+std::atomic<int> gPackageManager{0}; // 1 Windows's package manager answered (packageQuery), -1 it would not, 0 not asked
+}
+
+bool packageManagerWorks() { return gPackageManager.load() > 0; }
+
 bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std::function<void()>& reachable) {
     using namespace winrt::Windows::Data::Json;
     out.clear();
+    /*
+     * Windows's package manager lists the user's packages at once (the restricted capability packageQuery), where the
+     * Device Portal took 11 s on an HP Elite x3, more than a minute on a Lumia 650, and at times never answered on a Lumia
+     * 950 XL. The portal is asked when the package manager will not answer.
+     */
+    if (gPackageManager.load() >= 0) {
+        try {
+            const std::wstring publisherId(Package::Current().Id().PublisherId());
+            std::vector<InstalledApp> found;
+            for (auto const& package : winrt::Windows::Management::Deployment::PackageManager().FindPackagesForUser(L"")) {
+                const auto id = package.Id();
+                const std::wstring name(id.Name());
+                if (name.compare(0, 10, L"MeglerApp.") != 0 || std::wstring(id.PublisherId()) != publisherId) continue;
+                const auto v = id.Version();
+                found.push_back({narrow(name), format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision), narrow(std::wstring(id.FullName()))});
+            }
+            if (gPackageManager.exchange(1) != 1) shellLog::write("app package: Windows's package manager lists the apps' packages");
+            if (reachable) reachable();
+            out = std::move(found);
+            return true;
+        } catch (hresult_error const& e) {
+            if (gPackageManager.exchange(-1) != -1)
+                shellLog::write(format("app package: Windows's package manager does not list packages (0x%08x): the Device Portal does",
+                                       unsigned(e.code())));
+        }
+    }
     try {
         Portal portal;
         if (std::string why = portal.open(); !why.empty()) {
@@ -734,6 +803,21 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std
 
 PortalResult uninstallThroughPortal(const InstalledApp& app) {
     using winrt::Windows::Foundation::Uri;
+    // Windows's package manager first (packageManagement), as installWithPackageManager installs; the portal when it refuses.
+    try {
+        const auto result = winrt::Windows::Management::Deployment::PackageManager().RemovePackageAsync(widen(app.fullName)).get();
+        if (result.ErrorText().empty()) {
+            unregisterServiceApk(app.fullName);
+            shellLog::write("app package: " + app.fullName + " uninstalled by Windows's package manager");
+            return {true, "Uninstalled."};
+        }
+        shellLog::write(format("app package: Windows's package manager did not uninstall %s (0x%08x): ", app.fullName.c_str(),
+                               unsigned(result.ExtendedErrorCode())) +
+                        narrow(result.ErrorText()));
+    } catch (hresult_error const& e) {
+        shellLog::write(format("app package: Windows's package manager could not be asked to uninstall %s (0x%08x)", app.fullName.c_str(),
+                               unsigned(e.code())));
+    }
     try {
         Portal portal;
         if (std::string why = portal.open(); !why.empty()) return {false, why};
@@ -936,8 +1020,15 @@ void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
 }
 
 static std::atomic<bool> gSelfUpdating{false};
+static std::mutex gSelfUpdateMutex;
+static std::string gSelfUpdateTo;
 
 bool selfUpdating() { return gSelfUpdating; }
+
+std::string selfUpdateVersion() {
+    std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
+    return gSelfUpdating ? gSelfUpdateTo : std::string();
+}
 
 void installCopiedUpdate() {
     if (isSingleApp()) return;
@@ -992,13 +1083,27 @@ void installCopiedUpdate() {
             made.certificate = std::wstring(certificate.Path());
             made.identity = "Megler " + best;
             shellLog::write("update: Megler " + best + " found in Pictures\\Megler (this is " + versionString() +
-                            "): installed through the Device Portal, which closes this Megler");
+                            "): installed by Windows's deployment engine, which closes this Megler");
             // The screen stays on while the package goes: a phone that locks suspends Megler, and the try has no result.
+            {
+                std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
+                gSelfUpdateTo = best;
+            }
             struct Updating {
                 Updating() { gSelfUpdating = true; }
                 ~Updating() { gSelfUpdating = false; }
             } updating;
-            const PortalResult result = installThroughPortal(made, [](const std::string& step) { shellLog::write("update: " + step); });
+            /*
+             * Windows's deployment engine reads the package where it lies (installWithPackageManager). The Device Portal is
+             * sent it from Megler's memory: a phone of 1 GB lets an app have 390 MB, and a Lumia 650's Megler 574 sending
+             * 610's 356 MB was ended by Windows with nothing said, three times. The portal only where the engine refuses.
+             */
+            const auto step = [](const std::string& said) { shellLog::write("update: " + said); };
+            PortalResult result = installWithPackageManager(made.appx, step);
+            if (!result.ok) {
+                shellLog::write("update: " + result.said + ": through the Device Portal instead");
+                result = installThroughPortal(made, step);
+            }
             shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
             // A portal that could not be reached, or dropped the connection while the package went (0x80072eff, 512), said nothing
             // of the package: that try is one without a result, made again.

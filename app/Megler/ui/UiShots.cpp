@@ -177,6 +177,11 @@ void poll(AppShell& shell) {
             if (n >= 0 && size_t(n) < entries.size()) shell.push(makeAppDetailScreen(shell, entries[size_t(n)].id));
         } else if (flag.rfind(L"ui-back-", 0) == 0) {
             shell.goBack();
+        } else if (flag.rfind(L"ui-dialog-", 0) == 0) {
+            // The dialog up now (the first start's question, an alert) answered with its button n, from the left.
+            const int n = lastNumber(flag);
+            shellLog::write(shell.dialogShown() ? format("ui: the dialog answered with its button %d", n) : std::string("ui: no dialog to answer"));
+            if (n >= 0) shell.pressDialog(n);
         } else if (flag == L"ui-update-all") {
             separateApps::updateAll(shell);
         } else if (flag.rfind(L"ui-update-", 0) == 0) {

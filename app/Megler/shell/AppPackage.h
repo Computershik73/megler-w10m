@@ -83,6 +83,10 @@ struct PortalResult {
 /// Installs `made` through the phone's own Device Portal, https://127.0.0.1 (its certificate, which the phone made for
 /// itself, taken as it is), with the certificate. Off the UI thread.
 PortalResult installThroughPortal(const Made& made, const std::function<void(const std::string&)>& progress);
+/// A package installed by Windows's deployment engine itself (PackageManager.AddPackageAsync, the restricted capability
+/// packageManagement), which reads it where it lies: nothing of it goes through Megler's memory. An update of Megler's own
+/// package closes Megler. Not installed, with what Windows said, when every option was refused. Off the UI thread.
+PortalResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress);
 
 /// An app's own package installed on the phone.
 struct InstalledApp {
@@ -90,9 +94,12 @@ struct InstalledApp {
     std::string version;   // its version, which is that of the Megler that made it: "0.1.0.358"
     std::string fullName;  // its full name, what the Device Portal uninstalls it by
 };
-/// The apps' own packages of Megler's publisher installed on the phone, as the Device Portal lists them; false, with why,
-/// when it could not be asked. Off the UI thread.
+/// The apps' own packages of Megler's publisher installed on the phone, as Windows's package manager lists them, else the
+/// Device Portal; false, with why, when neither could be asked. Off the UI thread.
 bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std::function<void()>& reachable = {});
+/// Whether Windows's package manager has answered here (the restricted capabilities packageQuery and packageManagement):
+/// packages are listed, installed and uninstalled by it, without the Device Portal.
+bool packageManagerWorks();
 /// Uninstalls one through the Device Portal: the package goes, with the app's own LocalState; what it has in the shared
 /// folder stays. Off the UI thread.
 PortalResult uninstallThroughPortal(const InstalledApp& app);
@@ -107,6 +114,8 @@ std::string meglerVersion();
 void installCopiedUpdate();
 /// Whether installCopiedUpdate is sending the newer Megler to the portal now (the screen is kept on meanwhile: ui/AppShell).
 bool selfUpdating();
+/// The version installCopiedUpdate is installing ("0.1.0.610"), empty when it is not: the Library says so.
+std::string selfUpdateVersion();
 /// Megler: the Android files of older builds in the shared folder (<shared>\android\<version>, some 170 MB each) that no
 /// package in `installed` (the Device Portal's whole list) is of any more -- after Update All, every older build's. Slow:
 /// off the UI thread.

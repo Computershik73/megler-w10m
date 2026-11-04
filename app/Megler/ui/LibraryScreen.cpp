@@ -5,9 +5,11 @@
 #include "pch.h"
 
 #include "library/Library.h"
+#include "shell/AppPackage.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 #include "ui/Components.h"
+#include "ui/GooglePlay.h"
 #include "ui/SeparateApps.h"
 
 namespace megler::app::ui {
@@ -82,6 +84,24 @@ public:
         column_.Padding(ThicknessHelper::FromLengths(16, 8, 16, 96));
         if (auto warnings = platformWarnings()) add(column_, warnings);
 
+        // Megler's own update from Pictures\Megler, while it is sent to the portal: Megler closes once Windows takes it,
+        // and it went with nothing said, the phone's screen then going off as Windows installed it for minutes (a Lumia 650's,
+        // from 574 to 610).
+        updateText_ = text("", font::bodyMedium, weightNormal(), p.onSurface);
+        updateText_.TextWrapping(TextWrapping::Wrap);
+        ProgressBar updateBar;
+        updateBar.IsIndeterminate(true);
+        updateBar.Foreground(brush(p.primary));
+        updateBar.Background(brush(p.secondaryContainer));
+        updateBar.Margin(ThicknessHelper::FromLengths(0, 12, 0, 0));
+        auto updateColumn = vstack(0);
+        add(updateColumn, updateText_);
+        add(updateColumn, updateBar);
+        updateCard_ = card(updateColumn, 12, 16);
+        updateCard_.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
+        setVisible(updateCard_, false);
+        add(column_, updateCard_);
+
         // The copy of a picked APK, while it runs.
         importTitle_ = text("", font::titleMedium, weightMedium(), p.onSurface);
         importBar_ = ProgressBar();
@@ -144,6 +164,14 @@ public:
             importDetail_.Text(hs(formattedByteCount(import.copied) + " of " + formattedByteCount(import.total)));
         }
         addButton_.IsEnabled(!import.active);
+        const std::string updating = appPackage::selfUpdateVersion();
+        setVisible(updateCard_, !updating.empty());
+        if (!updating.empty() && updating != updateShown_) {
+            updateShown_ = updating;
+            updateText_.Text(hs("Megler " + updating + ", copied to Pictures\\Megler, is being installed. Megler closes when Windows takes "
+                                "it, and Windows installs it, which takes a few minutes (more on a phone of 1 GB): leave the phone "
+                                "on, then open Megler again."));
+        }
         const std::string working = separateApps::working();
         setVisible(workCard_, !working.empty());
         if (!working.empty() && narrow(std::wstring(workText_.Text())) != working) workText_.Text(hs(working));
@@ -188,6 +216,32 @@ private:
         }
         // The apps made by another Megler, to update, while nothing is being done; and whether the portal could be asked.
         auto top = vstack(0);
+        // Which apps carry another Megler is known once the portal has listed the phone's apps, seconds after the start (more
+        // on a Lumia 650): said meanwhile, so that Update All's coming is expected (the owner's wish, 2026-11-04).
+        if (separateApps::checking()) {
+            auto column = vstack(0);
+            auto line = text("Please wait: checking whether the apps installed on the phone carry this Megler…", font::bodyMedium,
+                             weightNormal(), palette().onSurfaceVariant);
+            line.TextWrapping(TextWrapping::Wrap);
+            add(column, line);
+            ProgressBar bar;
+            bar.IsIndeterminate(true);
+            bar.Foreground(brush(palette().primary));
+            bar.Background(brush(palette().secondaryContainer));
+            bar.Margin(ThicknessHelper::FromLengths(0, 12, 0, 0));
+            add(column, bar);
+            auto box = card(column, 12, 16);
+            box.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
+            add(top, box);
+        }
+        // Google Play chosen at the first start and not installed yet: other apps wait for it (ui/GooglePlay.h).
+        if (const std::string waiting = googlePlay::pending(); !waiting.empty()) {
+            auto line = text(waiting, font::bodyMedium, weightNormal(), palette().onSurfaceVariant);
+            line.TextWrapping(TextWrapping::Wrap);
+            auto box = card(line, 12, 16);
+            box.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
+            add(top, box);
+        }
         const auto outdated = separateApps::outdatedIds();
         if (separateApps::working().empty() && !outdated.empty()) {
             auto column = vstack(16);
@@ -257,6 +311,9 @@ private:
     TextBlock importDetail_{nullptr};
     ContentControl listHost_{nullptr};
     Border workCard_{nullptr};
+    Border updateCard_{nullptr};
+    TextBlock updateText_{nullptr};
+    std::string updateShown_;
     TextBlock workText_{nullptr};
     Button addButton_{nullptr};
     unsigned generation_ = 0, phoneGeneration_ = 0;

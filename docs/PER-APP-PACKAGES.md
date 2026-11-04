@@ -117,6 +117,22 @@ package of makeappx's and signtool's and one of `appx-tool`'s pass it;
 the certificate's root not being trusted on the PC (as it should, and not at a
 digest). On the phone such a package installs and runs (above).
 
+## Installing: Windows's deployment engine, the Device Portal where it refuses
+
+Since 0.1.0.614 an app's package, and since 0.1.0.612 Megler's own update from
+`Pictures\Megler`, are installed by Windows's deployment engine
+(`PackageManager.AddPackageAsync`, the restricted capability `packageManagement`,
+`shell/AppPackage.cpp` installWithPackageManager), which reads the package where
+it lies: Windows 10 Mobile takes a packaged developer deployment with the option
+0x8000, and ForceApplicationShutdown closes the app being updated -- Megler
+itself, for its own update. Uninstalling is `RemovePackageAsync`. The Device
+Portal's upload, used before and still where the engine refuses, went through
+Megler's memory: a phone of 1 GB lets an app have 390 MB, and a Lumia 650's
+Megler 574 sending a Megler of 356 MB was ended by Windows with nothing said.
+Through the engine the Lumia 650 updated Megler in under a minute and installed
+Google Play services' package (277 MB) in 16 s, where the portal had taken
+almost 4 minutes.
+
 ## Megler as the place the apps are managed from
 
 Since 0.1.0.359 Megler does not run the library's apps itself (the player is left
@@ -124,8 +140,11 @@ for an auto run, `auto/AutoRun.cpp`, which pushes it on its own): an app is
 installed as an app of the phone's own, and Megler is where that is done
 (`ui/SeparateApps.cpp`, `ui/LibraryScreen.cpp`, `ui/AppDetailScreen.cpp`):
 
-- which apps are installed, and by which Megler, is asked of the Device Portal
-  (`/api/app/packagemanager/packages`) when the library or an app's page is
+- which apps are installed, and by which Megler, is asked of Windows's package
+  manager (`PackageManager.FindPackagesForUser`, the restricted capability
+  `packageQuery`, at once), else of the Device Portal
+  (`/api/app/packagemanager/packages`, 11 s on an HP Elite x3, more than a minute
+  on a Lumia 650), when the library or an app's page is
   shown and after every action: a package of Megler's publisher whose name begins
   `MeglerApp.` is an app's, its version the version of the Megler that made it. Each
   row of the library says Installed, Installed and made by another Megler (to

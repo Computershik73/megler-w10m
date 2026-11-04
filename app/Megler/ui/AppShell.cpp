@@ -13,6 +13,7 @@
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
+#include "ui/GooglePlay.h"
 #include "ui/SeparateApps.h"
 #include "ui/SharedFolders.h"
 #include "ui/Theme.h"
@@ -454,6 +455,8 @@ void AppShell::poll() {
         uiShots::poll(*this);
         phoneAppsList::publish();
         tellAskedInstalls();
+        // Google Play or not, asked at the first start; once wanted, Megler's own installed (ui/GooglePlay.h).
+        googlePlay::tick(*this);
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can
         // run here, else its page, which says why not. Before the player, Megler's folders the app has not got are offered
         // (ui/SharedFolders.h), once the phone's folders are known.
@@ -463,7 +466,8 @@ void AppShell::poll() {
                 singleAppOpened_ = true;
                 shellLog::write("app package: opening " + entry->report.package);
                 const std::string id = entry->id;
-                if (entry->report.ready() && playStoreCanStart(entry->report.package)) {
+                if (entry->report.ready() && playStoreCanStart(entry->report.package) &&
+                    googlePlay::appsMayGo(*this, entry->report.package, true)) {
                     // The app's private files Megler handed over when it made this package, taken first (shell/AppPackage.h).
                     std::weak_ptr<AppShell> weak = weak_from_this();
                     runInBackground([] { appPackage::takeHandover(); },
@@ -1097,7 +1101,7 @@ void AppShell::openLink(winrt::Windows::Foundation::Uri const& uri) {
                                                                    "own: its page in the Library, Install.");
             return;
         }
-        if (!playStoreCanStart(found->report.package)) return;
+        if (!playStoreCanStart(found->report.package) || !googlePlay::appsMayGo(*this, found->report.package, true)) return;
         if (selectedTab_ != 0) selectTab(0);
         push(makePlayerScreen(*this, found->id));
     } else if (what == L"library") {

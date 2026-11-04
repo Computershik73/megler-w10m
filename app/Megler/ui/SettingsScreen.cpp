@@ -18,6 +18,7 @@
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
+#include "ui/GooglePlay.h"
 #include "ui/SharedFolders.h"
 #include "ui/Theme.h"
 
@@ -171,16 +172,23 @@ private:
         const auto mine = own(settings::googleServices);
         const std::string chosen = mine.value_or(meglerOr(settings::googleServices, ""));
         const bool set = !forApp() || mine.has_value(), microg = appPackage::hasMicroG();
+        // Google's own only once it is installed as an app of its own: until then every app runs with microG (Session.cpp),
+        // and Google Play not wanted at the first start leaves it so until it is installed by hand (ui/GooglePlay.h).
+        const bool google = googlePlay::googleServicesChoosable();
         std::vector<UIElement> rows;
         if (forApp()) {
-            rows.push_back(choice("As in Megler", meglerOr(settings::googleServices, "") == "microg" ? "microG" : "Google Play services, Google's own", !mine,
-                                  [this] { put(settings::googleServices, std::nullopt); }));
+            rows.push_back(choice("As in Megler", meglerOr(settings::googleServices, "") == "microg" || !google ? "microG" : "Google Play services, Google's own",
+                                  !mine, [this] { put(settings::googleServices, std::nullopt); }));
         }
-        rows.push_back(choice("Google Play Services", "Google's own: every API of theirs, and hundreds of MB of memory in each app",
-                              set && chosen != "microg", [this] { put(settings::googleServices, std::string("google")); }));
+        rows.push_back(choice("Google Play Services",
+                              google ? "Google's own: every API of theirs, and hundreds of MB of memory in each app"
+                                     : "Not installed as an app of its own: install Google Play services from the Library first",
+                              set && chosen != "microg" && google, [this, google] {
+                                  if (google) put(settings::googleServices, std::string("google"));
+                              }));
         rows.push_back(choice("microG", microg ? "microG's services: a fraction of the memory, fewer of Google's APIs (push, location, sign-in work)"
                                                : "Not installed: add microG Services (com.google.android.gms by microG) to the library first",
-                              set && chosen == "microg", [this] { put(settings::googleServices, std::string("microg")); }));
+                              set && (chosen == "microg" || !google), [this] { put(settings::googleServices, std::string("microg")); }));
         return listSection("Google Services", rows,
                            "The Google Play services a heavy app runs with. microG takes far less memory where an app needs little of Google's." + applies());
     }

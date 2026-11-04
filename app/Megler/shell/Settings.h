@@ -56,6 +56,12 @@ constexpr const char* appTheme = "megler.appTheme";
 /// microG's, which takes far less memory and has fewer of Google's APIs. Empty: Google's own.
 constexpr const char* googleServices = "megler.googleServices";
 
+/// Megler's question at its first start (ui/GooglePlay.h): "yes", Google Play wanted -- Megler installs its Google Play
+/// services and Google Play Store, and apps wait for them; "no", apps run with microG; empty: not asked yet.
+constexpr const char* googlePlay = "megler.googlePlay";
+/// Megler's word to the apps' own packages while Google Play is wanted: "1" once both are installed, "0" while not.
+constexpr const char* googlePlayReady = "megler.googlePlayReady";
+
 /// A separate app (ui/SharedFolders.h): the names of Megler's folders the user said "Not Now" to, "a|b".
 constexpr const char* foldersNotNow = "megler.folders.notNow";
 

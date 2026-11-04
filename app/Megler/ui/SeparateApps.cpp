@@ -9,6 +9,7 @@
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
+#include "ui/GooglePlay.h"
 
 #include <algorithm>
 #include <deque>
@@ -223,8 +224,14 @@ void run(Job& job, int number, int total) {
             std::lock_guard<std::mutex> lock(gMutex);
             gStatus[package].made = made;
         }
-        const appPackage::PortalResult result =
-            appPackage::installThroughPortal(made, [&](const std::string& step) { setStep(package, stepOf(step)); });
+        // Windows's deployment engine reads the package where it lies; the Device Portal is sent it from Megler's memory, which
+        // a phone of 1 GB allows 390 MB of (shell/AppPackage.h): the portal only where the engine refuses.
+        const auto step = [&](const std::string& said) { setStep(package, stepOf(said)); };
+        appPackage::PortalResult result = appPackage::installWithPackageManager(made.appx, step);
+        if (!result.ok) {
+            shellLog::write("separate apps: " + result.said + ": through the Device Portal instead");
+            result = appPackage::installThroughPortal(made, step);
+        }
         if (!result.ok) {
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
             setStep(package, result.said + " The package is made: Windows's installer can install it (below)." +
@@ -395,6 +402,11 @@ std::string portalProblem() {
     return gProblem;
 }
 
+bool checking() {
+    std::lock_guard<std::mutex> lock(gMutex);
+    return !gListed && gProblem.empty();
+}
+
 Status status(const std::string& androidPackage) {
     std::lock_guard<std::mutex> lock(gMutex);
     return statusLocked(androidPackage);
@@ -432,6 +444,7 @@ void install(AppShell& shell, const std::string& apkId, bool whenRead) {
     if (!requirePortal(shell)) return;
     const auto entry = Library::instance().find(apkId);
     if (!entry || (!whenRead && entry->report.package.empty())) return;
+    if (!googlePlay::appsMayGo(shell, entry->report.package, false)) return;
     shellLog::write("separate apps: install " + apkId);
     Job job;
     job.entry = *entry;
@@ -443,6 +456,8 @@ void install(AppShell& shell, const std::string& apkId, bool whenRead) {
 
 void installPicked(AppShell& shell, std::shared_ptr<PickedFile> picked, const std::string& apkId) {
     if (!requirePortal(shell)) return;
+    // (Which app it is is not known until it is read: none but Google Play's own two while those are awaited.)
+    if (!googlePlay::appsMayGo(shell, std::string(), false)) return;
     shellLog::write("separate apps: install " + picked->name() + " where it is, as " + apkId);
     Job job;
     job.id = apkId;
@@ -476,7 +491,7 @@ std::vector<std::string> outdatedIds() {
 }
 
 void updateAll(AppShell& shell) {
-    if (!requirePortal(shell)) return;
+    if (!requirePortal(shell) || !googlePlay::appsMayGo(shell, std::string(), false)) return;
     const auto ids = outdatedIds();
     shellLog::write(format("separate apps: update all, %u", unsigned(ids.size())));
     for (const auto& id : ids) install(shell, id);
