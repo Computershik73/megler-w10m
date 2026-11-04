@@ -3481,8 +3481,8 @@ public class Main extends Activity {
     }
 
     /**
-     * Sound from Java, which megler.Audio plays: a playing AudioTrack takes a second of PCM in about a second, as its blocking
-     * write does; a MediaPlayer plays a WAV the step writes and an Ogg Vorbis asset (tone.ogg: 440 Hz, half a second, 22050 Hz
+     * Sound from Java, which megler.Audio plays: a playing AudioTrack of half a second's buffer takes a second of PCM in about
+     * half a second, as its blocking write does; a MediaPlayer plays a WAV the step writes and an Ogg Vorbis asset (tone.ogg: 440 Hz, half a second, 22050 Hz
      * mono, made with ffmpeg's libvorbis) through its descriptor, and says when each has played to its end; a SoundPool loads
      * the Ogg and plays it once it is loaded. The later lines are checked by the test.
      */
@@ -3501,7 +3501,9 @@ public class Main extends Activity {
             t.stop();
             t.release();
             detail = "wrote " + written + " in " + ms + " ms, head at " + head;
-            return written == rate && ms >= 600 && head > 0;
+            // Its buffer holds half a second (rate bytes of 16-bit mono), as the app asked (6c21a6e0): the first half goes in at
+            // once and the write returns once the rest is in, about half a second later, as Android's blocking write does.
+            return written == rate && ms >= 400 && head > 0;
         });
         step("media-player", () -> {
             java.io.File wav = new java.io.File(getCacheDir(), "tone.wav");
