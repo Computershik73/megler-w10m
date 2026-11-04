@@ -318,6 +318,7 @@ public class Main extends Activity {
         tls();
         keystore(run);
         keystoreCertificates(run);
+        keystoreForeignKey();
         base64Streams();
         pipedStreams();
         codecs();
@@ -2586,6 +2587,35 @@ public class Main extends Activity {
                     + " there-before=" + before + "," + beforeEc + "," + beforeAes + " run=" + run;
             Log.i("DataTest", "keystore " + detail);
             return rsaHeld && ecHeld && aesHeld && before == (run > 1) && beforeEc == (run > 1) && beforeAes == (run > 1);
+        });
+    }
+
+    /**
+     * A key no provider takes (a secret key with no encoding), for a transformation that AndroidKeyStoreBCWorkaround has too:
+     * Cipher.init ends at once in the first provider's exception, as on Android (conscrypt's NullPointerException for no
+     * encoding). That provider's cipher, the last one tried, chose a cipher again among them all, itself too, until the stack was
+     * full: Google Play services' mobstore key went 5026 frames deep (619).
+     */
+    private void keystoreForeignKey() {
+        step("keystore-foreign-key", () -> {
+            javax.crypto.SecretKey odd = new javax.crypto.SecretKey() {
+                public String getAlgorithm() { return "AES"; }
+                public String getFormat() { return null; }
+                public byte[] getEncoded() { return null; }
+            };
+            javax.crypto.Cipher gcm = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+            String said;
+            try {
+                gcm.init(javax.crypto.Cipher.ENCRYPT_MODE, odd);
+                said = "taken";
+            } catch (StackOverflowError e) {
+                said = "StackOverflowError";
+            } catch (Exception e) {
+                said = e.getClass().getName();
+            }
+            detail = said;
+            Log.i("DataTest", "keystore-foreign-key " + detail);
+            return !"taken".equals(said) && !"StackOverflowError".equals(said);
         });
     }
 

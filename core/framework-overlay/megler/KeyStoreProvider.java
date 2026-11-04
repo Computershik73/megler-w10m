@@ -500,11 +500,25 @@ public final class KeyStoreProvider extends Provider {
             for (int i = 0; i < CIPHERS.length; i++) put("Cipher." + CIPHERS[i], Delegate.class.getName() + "$C" + i);
         }
     }
-    /** A cipher of the default providers, for a transformation fixed by the subclass. */
+    /**
+     * A cipher of the default providers, for a transformation fixed by the subclass.
+     *
+     * Its own cipher is chosen by the key at init, among every provider -- this one too, the last. A key no other provider
+     * takes came back here, whose cipher chose again: Google Play services' mobstore key on a Lumia 650 went 5026 frames
+     * deep, each a stack trace for the exceptions of the providers that refused it (18% of what the app made). One init of
+     * a thread's is under way here (INIT): another is refused, as Android's AndroidKeyStoreBCWorkaround refuses a key that
+     * is not its keystore's, and the outer choice ends with the providers' InvalidKeyException.
+     */
     public static class Delegate extends javax.crypto.CipherSpi {
+        private static final ThreadLocal<Boolean> INIT = new ThreadLocal<>();
         private final String mTransformation;
         private javax.crypto.Cipher mCipher;
         Delegate(int i) { mTransformation = BCWorkaround.CIPHERS[i].replace("PKCS7Padding", "PKCS5Padding"); }
+        /** Before an init here: none of this thread's under way already (INIT). */
+        private void enter() throws InvalidKeyException {
+            if (INIT.get() != null) throw new InvalidKeyException("AndroidKeyStoreBCWorkaround: no other provider takes this key for " + mTransformation);
+            INIT.set(Boolean.TRUE);
+        }
         private javax.crypto.Cipher c() {
             if (mCipher == null) {
                 try { mCipher = javax.crypto.Cipher.getInstance(mTransformation); }
@@ -518,9 +532,18 @@ public final class KeyStoreProvider extends Provider {
         @Override protected int engineGetOutputSize(int n) { return c().getOutputSize(n); }
         @Override protected byte[] engineGetIV() { return c().getIV(); }
         @Override protected AlgorithmParameters engineGetParameters() { return c().getParameters(); }
-        @Override protected void engineInit(int op, Key k, SecureRandom r) throws InvalidKeyException { c().init(op, k, r); }
-        @Override protected void engineInit(int op, Key k, AlgorithmParameterSpec p, SecureRandom r) throws InvalidKeyException, InvalidAlgorithmParameterException { c().init(op, k, p, r); }
-        @Override protected void engineInit(int op, Key k, AlgorithmParameters p, SecureRandom r) throws InvalidKeyException, InvalidAlgorithmParameterException { c().init(op, k, p, r); }
+        @Override protected void engineInit(int op, Key k, SecureRandom r) throws InvalidKeyException {
+            enter();
+            try { c().init(op, k, r); } finally { INIT.remove(); }
+        }
+        @Override protected void engineInit(int op, Key k, AlgorithmParameterSpec p, SecureRandom r) throws InvalidKeyException, InvalidAlgorithmParameterException {
+            enter();
+            try { c().init(op, k, p, r); } finally { INIT.remove(); }
+        }
+        @Override protected void engineInit(int op, Key k, AlgorithmParameters p, SecureRandom r) throws InvalidKeyException, InvalidAlgorithmParameterException {
+            enter();
+            try { c().init(op, k, p, r); } finally { INIT.remove(); }
+        }
         @Override protected byte[] engineUpdate(byte[] in, int off, int len) { return c().update(in, off, len); }
         @Override protected int engineUpdate(byte[] in, int off, int len, byte[] out, int outOff) throws javax.crypto.ShortBufferException { return c().update(in, off, len, out, outOff); }
         @Override protected void engineUpdateAAD(byte[] src, int off, int len) { c().updateAAD(src, off, len); }
