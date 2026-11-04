@@ -8,6 +8,7 @@
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 #include "ui/Components.h"
+#include "ui/GooglePlay.h"
 #include "ui/SeparateApps.h"
 
 namespace megler::app::ui {
@@ -203,6 +204,14 @@ private:
             bar.Margin(ThicknessHelper::FromLengths(0, 12, 0, 0));
             add(column, bar);
             auto box = card(column, 12, 16);
+            box.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
+            add(top, box);
+        }
+        // Google Play chosen at the first start and not installed yet: other apps wait for it (ui/GooglePlay.h).
+        if (const std::string waiting = googlePlay::pending(); !waiting.empty()) {
+            auto line = text(waiting, font::bodyMedium, weightNormal(), palette().onSurfaceVariant);
+            line.TextWrapping(TextWrapping::Wrap);
+            auto box = card(line, 12, 16);
             box.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
             add(top, box);
         }

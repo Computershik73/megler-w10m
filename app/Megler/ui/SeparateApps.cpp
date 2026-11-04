@@ -9,6 +9,7 @@
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
+#include "ui/GooglePlay.h"
 
 #include <algorithm>
 #include <deque>
@@ -437,6 +438,7 @@ void install(AppShell& shell, const std::string& apkId, bool whenRead) {
     if (!requirePortal(shell)) return;
     const auto entry = Library::instance().find(apkId);
     if (!entry || (!whenRead && entry->report.package.empty())) return;
+    if (!googlePlay::appsMayGo(shell, entry->report.package, false)) return;
     shellLog::write("separate apps: install " + apkId);
     Job job;
     job.entry = *entry;
@@ -448,6 +450,8 @@ void install(AppShell& shell, const std::string& apkId, bool whenRead) {
 
 void installPicked(AppShell& shell, std::shared_ptr<PickedFile> picked, const std::string& apkId) {
     if (!requirePortal(shell)) return;
+    // (Which app it is is not known until it is read: none but Google Play's own two while those are awaited.)
+    if (!googlePlay::appsMayGo(shell, std::string(), false)) return;
     shellLog::write("separate apps: install " + picked->name() + " where it is, as " + apkId);
     Job job;
     job.id = apkId;
@@ -481,7 +485,7 @@ std::vector<std::string> outdatedIds() {
 }
 
 void updateAll(AppShell& shell) {
-    if (!requirePortal(shell)) return;
+    if (!requirePortal(shell) || !googlePlay::appsMayGo(shell, std::string(), false)) return;
     const auto ids = outdatedIds();
     shellLog::write(format("separate apps: update all, %u", unsigned(ids.size())));
     for (const auto& id : ids) install(shell, id);
