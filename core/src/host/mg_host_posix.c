@@ -248,6 +248,12 @@ static void *thread_main(void *p)
 }
 
 void mg_thread_runs_app_code(void) { }
+bool mg_thread_set_priority(mg_thread *t, int level)
+{
+    (void)t;
+    (void)level;
+    return false;
+}
 
 u64 mg_thread_cpu_ns(mg_thread *t)
 {

@@ -133,6 +133,9 @@ u32 mg_thread_id(const mg_thread *t);
  * to do, and otherwise runs as it would.
  */
 void mg_thread_runs_app_code(void);
+/* A thread's priority among the process's: -2 lowest, -1 below normal (an app's own, giving way to the shell's), 0 normal,
+   1 above normal, 2 highest; t NULL for the caller. False where the host has no such priorities. */
+bool mg_thread_set_priority(mg_thread *t, int level);
 /* The calling thread, however it was started; lives as long as the process. */
 mg_thread *mg_thread_current(void);
 /* The processor time a thread has used, user and kernel, in nanoseconds; the calling thread's when `t` is NULL. 0 when unknown. */

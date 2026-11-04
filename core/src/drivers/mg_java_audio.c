@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../bionic/mg_bionic.h"
 #include "../bionic/mg_fd.h"
 #include "../host/mg_host.h"
 #include "../jni/mg_jni.h"
@@ -102,6 +103,7 @@ static const u8 *elements(mg_jobj *arr, i32 off, i32 n, u32 esz)
 /* trackWrite(int id, short[] data, int off, int n, boolean blocking): samples taken. */
 N(Audio_trackWrite)
 {
+    mg_gthread_feeds_audio();
     track *t = track_of(c->args[0].i);
     const u8 *p = elements(c->args[1].l, c->args[2].i, c->args[3].i, 2);
     c->ret.i = 0;
@@ -121,6 +123,7 @@ static i16 *from_floats(const float *f, i32 n)
 /* trackWriteBytes(int id, byte[] data, int off, int n, int encoding, boolean blocking): bytes taken. Encoding 3 is 8-bit, 4 float, else 16-bit. */
 N(Audio_trackWriteBytes)
 {
+    mg_gthread_feeds_audio();
     track *t = track_of(c->args[0].i);
     const u8 *p = elements(c->args[1].l, c->args[2].i, c->args[3].i, 1);
     i32 n = c->args[3].i, enc = c->args[4].i;
@@ -145,6 +148,7 @@ N(Audio_trackWriteBytes)
 /* trackWriteFloat(int id, float[] data, int off, int n, boolean blocking): samples taken. */
 N(Audio_trackWriteFloat)
 {
+    mg_gthread_feeds_audio();
     track *t = track_of(c->args[0].i);
     const u8 *p = elements(c->args[1].l, c->args[2].i, c->args[3].i, 4);
     i16 *tmp;

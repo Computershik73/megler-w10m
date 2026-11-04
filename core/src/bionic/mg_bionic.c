@@ -257,6 +257,42 @@ void mg_gthreads_arm_breakpoints(void)
                 "next call of native code from Java", missed, said);
 }
 
+/*
+ * An Android nice value as the host's priority. Android's audio threads (THREAD_PRIORITY_AUDIO, -16 and below) are the
+ * most urgent here too; the display's (-4 and below) above normal; other urgent ones normal; 0 an app's own, below normal
+ * while app threads give way to the shell's (mg_app_threads_give_way); the background's (10 and up) lowest. Before this,
+ * nothing an app asked was done: every thread of an app ran below the shell's, its audio ones too, and TikTok Lite's
+ * player, short of time, left 15 % of the mixer's blocks silent.
+ */
+static int priority_of_nice(int nice)
+{
+    if (nice <= -16) return 2;
+    if (nice <= -4) return 1;
+    if (nice < 0) return 0;
+    if (nice < 10) return mg_app_threads_give_way() ? -1 : 0;
+    return -2;
+}
+
+void mg_gthread_set_nice(mg_gthread *t, int nice)
+{
+    mg_thread *host = t->sig_thread;
+    if (nice < -20) nice = -20;
+    if (nice > 19) nice = 19;
+    t->nice = nice;
+    if (t == mg_gthread_self()) mg_thread_set_priority(NULL, priority_of_nice(nice));
+    else if (host) mg_thread_set_priority(host, priority_of_nice(nice));
+}
+
+void mg_gthread_feeds_audio(void)
+{
+    /* (As Android's own players run their feeding thread: ExoPlayer's at THREAD_PRIORITY_AUDIO.) */
+    mg_gthread *t = mg_gthread_self();
+    if (t->nice > -16) {
+        mg_info("audio: guest thread %d feeds a track: it runs at an audio thread's priority from now on", (int)t->tid);
+        mg_gthread_set_nice(t, -16);
+    }
+}
+
 mg_thread *mg_gthread_host_of_tid(i32 tid)
 {
     /* (A host thread's record lives as long as the process; the guest thread's goes at its join, hence the lock.) */

@@ -882,8 +882,27 @@ static int g_getrusage(int who, void *usage)
     memset(usage, 0, 72);
     return 0;
 }
-static int g_getpriority(int which, int who) { (void)which; (void)who; return 0; }
-static int g_setpriority(int which, int who, int prio) { (void)which; (void)who; (void)prio; return 0; }
+/* PRIO_PROCESS with a thread's id, as Android sets a thread's (androidSetThreadPriority): that thread's nice value, and its
+   host thread's priority (mg_gthread_set_nice); 0 for the caller. Groups and users are left as they are. */
+static int g_getpriority(int which, int who)
+{
+    mg_gthread *t = mg_gthread_self();
+    return which == 0 && (who == 0 || who == t->tid) ? (int)t->nice : 0;
+}
+static int g_setpriority(int which, int who, int prio)
+{
+    mg_gthread *t = mg_gthread_self();
+    mg_thread *host;
+    if (which != 0) return 0;
+    if (who == 0 || who == t->tid) {
+        mg_gthread_set_nice(t, prio);
+        return 0;
+    }
+    /* Another thread of the app's: its host thread's priority (its record's nice value is its own to keep). */
+    host = mg_gthread_host_of_tid(who);
+    if (host) mg_thread_set_priority(host, prio <= -16 ? 2 : prio <= -4 ? 1 : prio < 0 ? 0 : prio < 10 ? (mg_app_threads_give_way() ? -1 : 0) : -2);
+    return 0;
+}
 static int g_nice(int inc) { (void)inc; return 0; }
 
 /* ------------------------------------------------------- sorting, searching */

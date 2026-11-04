@@ -483,6 +483,21 @@ static DWORD WINAPI thread_main(LPVOID p)
 
 void mg_thread_runs_app_code(void) { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL); }
 
+bool mg_thread_set_priority(mg_thread *t, int level)
+{
+    static const int levels[] = { THREAD_PRIORITY_LOWEST, THREAD_PRIORITY_BELOW_NORMAL, THREAD_PRIORITY_NORMAL, THREAD_PRIORITY_ABOVE_NORMAL,
+                                  THREAD_PRIORITY_HIGHEST };
+    const int p = levels[level < -2 ? 0 : level > 2 ? 4 : level + 2];
+    HANDLE h;
+    bool ok;
+    if (!t || t->id == GetCurrentThreadId()) return SetThreadPriority(GetCurrentThread(), p) != 0;
+    h = self_take(t);
+    if (!h) return false;
+    ok = SetThreadPriority(h, p) != 0;
+    self_give(t);
+    return ok;
+}
+
 mg_thread *mg_thread_current(void)
 {
     if (!t_current) {

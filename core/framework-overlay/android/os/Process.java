@@ -4,7 +4,8 @@
 // WhatsApp and React Native apps) keeps of Build.SUPPORTED_ABIS those of the process's width, which it asks
 // Process.is64Bit (SysUtil.MarshmallowSysdeps): told 64 bits, it kept none of the two 32-bit ones, and WhatsApp ended at
 // its start with "No supported ABIs found on this device" (package 270). And in myProcessName, which names the process of
-// the code that asks, as Application.getProcessName does (overlaid). Everything else is the original's, unchanged.
+// the code that asks, as Application.getProcessName does (overlaid). And in setThreadPriority, which sets the calling
+// thread's priority (megler.Native.threadNice) where the original did nothing. Everything else is the original's, unchanged.
 package android.os;
 
 public class Process {
@@ -14,8 +15,10 @@ public class Process {
     /** the calling thread id: one per thread, as gettid() gives (the main thread is the process id) */
     public static int myTid() { long id = Thread.currentThread().getId(); return id == 1 ? 4242 : 4242 + (int) id; }
     public static int myUid() { return 10100; }
-    public static void setThreadPriority(int p) {}
-    public static void setThreadPriority(int tid, int p) {}
+    /* The calling thread's priority, as the host's after it (megler.Native.threadNice): an app's audio thread above the
+       shell's, as Android's. Another thread's is not set: a thread's id here is not the host's to find it by. */
+    public static void setThreadPriority(int p) { megler.Native.threadNice(p); }
+    public static void setThreadPriority(int tid, int p) { if (tid == myTid() || tid == 0) megler.Native.threadNice(p); }
     public static int getThreadPriority(int tid) { return 0; }
     public static void killProcess(int pid) { megler.Native.exit(); }
     /* when the process started: the first use of this class, early in the app's start */

@@ -141,6 +141,8 @@ typedef struct mg_gthread {
     u32 *volatile fault_guard;
     /* How many of the host's hardware breakpoints the thread has been given (mg_gthread_take_breakpoints). */
     volatile i32 breakpoints;
+    /* Its Android nice value, -20 (most urgent) to 19, as setpriority or Process.setThreadPriority set it (mg_gthread_set_nice). */
+    volatile i32 nice;
     struct mg_gthread *next;
 } mg_gthread;
 
@@ -153,6 +155,13 @@ void mg_gthread_release_tid(i32 tid);
 mg_thread *mg_gthread_host_of_tid(i32 tid);
 /* The host's hardware breakpoints given to the caller and every live guest thread (a library left as the file has it). */
 void mg_gthreads_arm_breakpoints(void);
+/*
+ * A guest thread's Android nice value, and its host thread's priority after it (mg_bionic.c says how): what setpriority
+ * and Process.setThreadPriority set. `t` the caller's own or another's (one whose host thread is gone is only noted).
+ */
+void mg_gthread_set_nice(mg_gthread *t, int nice);
+/* The thread of the caller feeds an audio track: it has an audio thread's priority from now on, unless it asked for more. */
+void mg_gthread_feeds_audio(void);
 /*
  * The host's hardware breakpoints given to the calling guest thread, `t`, if it has fewer than the host has now: where a
  * thread starts and where it calls native code from Java, so that one the loader could not give them to (stopped, it would
