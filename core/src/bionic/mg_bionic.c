@@ -172,24 +172,44 @@ void mg_gthread_release_tid(i32 tid)
 void mg_gthreads_arm_breakpoints(void)
 {
     mg_thread **host = (mg_thread **)mg_alloc(sizeof(mg_thread *) * MG_COUNT(g_tid_thread));
+    i32 *tids = (i32 *)mg_alloc(sizeof(i32) * MG_COUNT(g_tid_thread));
     mg_thread *self = mg_thread_current();
-    int i, n = 0, armed = 0, missed = 0;
+    int i, k, n = 0, armed = 0, missed = 0;
+    char said[200];
+    size_t used = 0;
     /* (A host thread's record lives as long as the process: taken under the lock, used after it.) */
     thread_lock("mg_gthreads_arm_breakpoints");
     for (i = 1; i < (int)MG_COUNT(g_tid_thread); i++) {
         mg_gthread *g = g_tid_thread[i];
-        if (g && g->sig_thread && g->sig_thread != self) host[n++] = g->sig_thread;
+        if (g && g->sig_thread && g->sig_thread != self) {
+            tids[n] = g->tid;
+            host[n++] = g->sig_thread;
+        }
     }
     thread_unlock();
-    mg_breakpoints_arm(NULL);
+    mg_gthread_take_breakpoints(mg_gthread_self());
+    said[0] = 0;
     for (i = 0; i < n; i++) {
-        if (mg_breakpoints_arm(host[i])) armed++;
-        else missed++;
+        /* A thread not stopped the first time is asked again (one that has ended answers no each time). Each that still
+           has not got them takes them itself, at its next call of native code from Java (mg_gthread_take_breakpoints). */
+        bool ok = false;
+        for (k = 0; k < 3 && !ok; k++) {
+            if (k) mg_thread_yield();
+            ok = mg_breakpoints_arm(host[i]);
+        }
+        if (ok) {
+            armed++;
+        } else {
+            missed++;
+            if (used + 16 < sizeof(said)) used += (size_t)snprintf(said + used, sizeof(said) - used, "%s%d", used ? ", " : "", (int)tids[i]);
+        }
     }
     free(host);
-    mg_info("ld: %d hardware breakpoints given to this thread and %d other guest threads%s", mg_breakpoint_count(), armed,
-            missed ? " (some others had ended, or kept fewer)" : "");
-    if (missed) mg_warn("ld: %d guest threads did not take the hardware breakpoints", missed);
+    free(tids);
+    mg_info("ld: %d hardware breakpoints given to this thread and %d other guest threads", mg_breakpoint_count(), armed);
+    if (missed)
+        mg_warn("ld: %d guest threads did not take the hardware breakpoints, stopped (threads %s): each takes them itself at its "
+                "next call of native code from Java", missed, said);
 }
 
 mg_thread *mg_gthread_host_of_tid(i32 tid)
@@ -1166,7 +1186,7 @@ mg_gthread *mg_gthread_self(void)
     mg_thread_stack_bounds(&t->stack_lo, &t->stack_hi);
     t->sig_thread = mg_thread_current();
     /* The process's hardware breakpoints, if a library left as the file has it was loaded (arm/mg_patch.c). */
-    mg_breakpoints_arm(NULL);
+    mg_gthread_take_breakpoints(t);
     /*
      * bionic's slots: 1 is the thread. 2 is TLS_SLOT_APP, the app's own from Android 10 on, and nothing on a thread that
      * has not set it: it was this thread's errno, as Android 9 had it there, and Go's runtime, told the device is API 29

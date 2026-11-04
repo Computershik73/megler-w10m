@@ -949,6 +949,8 @@ static MG_NOINLINE int guarded(void *fn, mg_jobj *self_or_class, const char *sig
 {
     mg_gthread *t = mg_gthread_self();
     u32 jb[32];
+    /* (A comparison, unless a library left as the file has it was loaded since this thread last called native code.) */
+    mg_gthread_take_breakpoints(t);
     u32 *volatile outer = t->fault_guard;
     void *setjmp_stub = mg_stub(MG_STUB_SETJMP);
     if (!setjmp_stub) {
