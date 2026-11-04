@@ -68,6 +68,8 @@ mg_addr mg_chromium_oom_global(mg_addr pc)
     return f + 6 + 4 + (mg_addr)(intptr_t)(i32)offset;
 }
 
+const char *megler_data_dir(void);
+
 static bool on_fault(mg_fault *f)
 {
     const char *lib = NULL, *sym;
@@ -93,7 +95,19 @@ static bool on_fault(mg_fault *f)
     if (f->kind == MG_FAULT_ILLEGAL && f->regs) {
         mg_addr target = 0;
         if (mg_patch_svc_target(pc, &target)) {
+            /* The flag trace-syscalls: each one said, with its number, its first four arguments, what it gives and whose. */
+            static volatile i32 traced = -1, lines;
+            u32 nr = f->regs[7], a0 = f->regs[0], a1 = f->regs[1], a2 = f->regs[2], a3 = f->regs[3];
             f->regs[0] = mg_bionic_syscall_raw(f->regs);
+            if (traced < 0 && megler_data_dir()[0]) traced = mg_flag("trace-syscalls") ? 1 : 0;
+            if (traced > 0 && mg_atomic_add(&lines, 1) <= 30000) {
+                const char *where = NULL;
+                const void *s = NULL, *b = NULL;
+                mg_ld_symbol_at((const void *)pc, &where, &s, &b);
+                mg_info("syscall %u(0x%x, 0x%x, 0x%x, 0x%x) = %d on thread %u at %s+0x%x", (unsigned)nr, (unsigned)a0, (unsigned)a1,
+                        (unsigned)a2, (unsigned)a3, (int)f->regs[0], (unsigned)mg_thread_self_id(), where ? where : "?",
+                        (unsigned)(pc - (mg_addr)b));
+            }
             mg_fault_resume_at(f, target);
             return true;
         }
