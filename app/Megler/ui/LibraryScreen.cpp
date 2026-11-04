@@ -188,6 +188,24 @@ private:
         }
         // The apps made by another Megler, to update, while nothing is being done; and whether the portal could be asked.
         auto top = vstack(0);
+        // Which apps carry another Megler is known once the portal has listed the phone's apps, seconds after the start (more
+        // on a Lumia 650): said meanwhile, so that Update All's coming is expected (the owner's wish, 2026-11-04).
+        if (separateApps::checking()) {
+            auto column = vstack(0);
+            auto line = text("Please wait: checking whether the apps installed on the phone carry this Megler…", font::bodyMedium,
+                             weightNormal(), palette().onSurfaceVariant);
+            line.TextWrapping(TextWrapping::Wrap);
+            add(column, line);
+            ProgressBar bar;
+            bar.IsIndeterminate(true);
+            bar.Foreground(brush(palette().primary));
+            bar.Background(brush(palette().secondaryContainer));
+            bar.Margin(ThicknessHelper::FromLengths(0, 12, 0, 0));
+            add(column, bar);
+            auto box = card(column, 12, 16);
+            box.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
+            add(top, box);
+        }
         const auto outdated = separateApps::outdatedIds();
         if (separateApps::working().empty() && !outdated.empty()) {
             auto column = vstack(16);

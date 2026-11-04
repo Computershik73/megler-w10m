@@ -45,6 +45,9 @@ void refresh(AppShell& shell);
 unsigned generation();
 /// Why the portal could not be asked the last time; empty when it answered (or has not been asked).
 std::string portalProblem();
+/// Whether the portal's first list since Megler started is still awaited: which apps are installed, and which Megler
+/// made them, is not known yet (an HP Elite x3 answers in about 11 s, a Lumia 650 in more).
+bool checking();
 Status status(const std::string& androidPackage);
 
 /// Makes the app's package and installs it through the portal. When the portal cannot install it, the package stays

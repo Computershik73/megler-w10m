@@ -395,6 +395,11 @@ std::string portalProblem() {
     return gProblem;
 }
 
+bool checking() {
+    std::lock_guard<std::mutex> lock(gMutex);
+    return !gListed && gProblem.empty();
+}
+
 Status status(const std::string& androidPackage) {
     std::lock_guard<std::mutex> lock(gMutex);
     return statusLocked(androidPackage);
