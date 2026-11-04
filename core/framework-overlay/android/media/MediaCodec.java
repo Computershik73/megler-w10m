@@ -9,8 +9,10 @@
 // buffer and its source has samples, and its source holds up to fifty seconds: given buffers without end, it decodes
 // everything loaded in one turn of its loop -- seconds of decoding in a call that is meant to take milliseconds, and every
 // picture kept until its time to be shown (at 720p, 1.4 MB each). The NDK's decoder in this layer (core/src/ndk/mg_media.c)
-// learned the same from Unity, which played a film's whole sound in its first seconds. Everything else is the original's,
-// unchanged.
+// learned the same from Unity, which played a film's whole sound in its first seconds. It differs too in where a video
+// frame goes for a SurfaceTexture's Surface (drawSurfaceTexture: the texture's front buffer at the picture's own size),
+// and in saying INFO_OUTPUT_BUFFERS_CHANGED when its output slots grow (mBuffersChanged). Everything else is the
+// original's, unchanged.
 package android.media;
 
 import android.graphics.Bitmap;
@@ -79,6 +81,10 @@ public final class MediaCodec {
     private final ArrayDeque<Integer> mFreeInputs = new ArrayDeque<>();
     private final ArrayDeque<Out> mQueue = new ArrayDeque<>();
     private Out[] mSlots = new Out[16];
+    /* The slots grew since an output was last dequeued: INFO_OUTPUT_BUFFERS_CHANGED comes first, for an app that keeps
+       getOutputBuffers()'s array (TikTok Lite's player, which held more than sixteen outputs and indexed its array of
+       sixteen with 16 and 17: ArrayIndexOutOfBoundsException, and its next video never played). */
+    private boolean mBuffersChanged;
     private boolean mFormatPending, mStartPending;
     private int mOutW, mOutH, mRate, mChannels;
     private Callback mCallback; private Handler mCallbackHandler;
@@ -259,7 +265,7 @@ public final class MediaCodec {
         int gen; MediaFormat fmt;
         synchronized (mLock) {
             int i = 0; while (i < mSlots.length && mSlots[i] != null) i++;
-            if (i == mSlots.length) mSlots = java.util.Arrays.copyOf(mSlots, mSlots.length * 2);
+            if (i == mSlots.length) { mSlots = java.util.Arrays.copyOf(mSlots, mSlots.length * 2); if (mCallback == null) mBuffersChanged = true; }
             o.index = i; mSlots[i] = o;
             if (formatChanged && mCallback == null) mFormatPending = true;
             if (mCallback == null) { mQueue.add(o); mLock.notifyAll(); return; }
@@ -282,6 +288,7 @@ public final class MediaCodec {
             long end = System.nanoTime() + timeoutUs * 1000;
             for (;;) {
                 if (mFormatPending) { mFormatPending = false; return INFO_OUTPUT_FORMAT_CHANGED; }
+                if (mBuffersChanged) { mBuffersChanged = false; return INFO_OUTPUT_BUFFERS_CHANGED; }
                 Out o = mQueue.poll();
                 if (o != null) { info.set(0, o.size, o.pts, o.flags); return o.index; }
                 if (timeoutUs == 0) return INFO_TRY_AGAIN_LATER;
