@@ -336,6 +336,16 @@ static void test_bitmaps(void)
     CHECK_HEX(word(bm, 3, 2), 0xFF010203u);
     CHECK_HEX(call("bmGetPixel", 3, J(bm), I(0), I(0)).i, 0xFF010203u);
     call("bmRaw", 3, J(bm), J(0), Z(true));
+    /* A producer's RGBA with alpha 0, for an opaque TextureView (SurfaceTexture.meglerPostRgba): its colours, at alpha 255. */
+    for (i = 0; i < 12; i++) {
+        raw[4 * i] = 0x10;
+        raw[4 * i + 1] = 0x20;
+        raw[4 * i + 2] = 0x30;
+        raw[4 * i + 3] = 0;
+    }
+    call("bmRaw", 3, J(bm), J((i64)(mg_addr)raw), Z(true));
+    call("bmOpaque", 1, J(bm));
+    CHECK_HEX(word(bm, 1, 1), 0xFF102030u);
     /* For the app's native code (libjnigraphics) the memory itself is turned to Android's order, and back. */
     call("bmSetPixel", 4, J(bm), I(0), I(0), I((i32)0xFF0A0B0Cu));
     CHECK(mg_java_gfx_lock_rgba(bm, &info));
@@ -2439,7 +2449,7 @@ int mg_gfx_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     say("megler.Gfx's native methods, over the stand-in");
     /* One entry for each native method megler/Gfx.java declares. */
     for (e = mg_java_gfx_natives(); e->cls; e++) n += strcmp(e->cls, "megler/Gfx") == 0 && e->sig && e->fn;
-    CHECK_INT(n, 72);
+    CHECK_INT(n, 73);
     mg_java_gfx_set_host(mg_gfx_standin());
     mg_java_gfx_stats(&bytes0, &count0);
     test_bitmaps();

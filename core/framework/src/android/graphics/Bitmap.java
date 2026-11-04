@@ -140,7 +140,11 @@ public final class Bitmap implements android.os.Parcelable {
         try { if (sAddress == null) { sAddress = java.nio.Buffer.class.getDeclaredField("address"); sAddress.setAccessible(true); } return sAddress.getLong(b); } catch (Exception e) { return 0; }
     }
     /** Megler: premultiplied RGBA rows (top first) from native memory as the pixels. */
-    public void meglerSetRgba(long addr) { if (addr != 0) { megler.Gfx.bmRaw(mNative, addr, true); mGeneration++; } }
+    public void meglerSetRgba(long addr) { meglerSetRgba(addr, false); }
+    /** The pixels from R, G, B, A at addr; `opaque`: as if each alpha were 255 (an opaque TextureView's producer). */
+    public void meglerSetRgba(long addr, boolean opaque) {
+        if (addr != 0) { megler.Gfx.bmRaw(mNative, addr, true); if (opaque) megler.Gfx.bmOpaque(mNative); mGeneration++; }
+    }
     /** Megler: the raw (premultiplied RGBA, top row first) pixels into a buffer at its position. */
     public void meglerCopyRgba(java.nio.ByteBuffer dst) {
         long a = meglerAddress(dst);

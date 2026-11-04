@@ -1890,6 +1890,21 @@ N(G_bmRaw)
     }
 }
 
+/* (long bm): every pixel's alpha made 255 and its colours left as they are -- a frame that an opaque TextureView shows,
+   whose producer wrote RGBA with alpha 0 (SurfaceTexture.meglerPostRgba). */
+N(G_bmOpaque)
+{
+    gbitmap *b = bm_of(c->args[0].j);
+    i32 x, y;
+    if (!b) return;
+    bm_settle(b);
+    for (y = 0; y < b->h; y++) {
+        u32 *row = bm_row(b, y);
+        for (x = 0; x < b->w; x++) row[x] |= 0xFF000000u;
+    }
+    bm_changed(b);
+}
+
 /* Nothing in the framework's Java calls it. What it gives is the memory as it is here, B, G, R, A. */
 N(G_bmAddress)
 {
@@ -3927,6 +3942,7 @@ static const mg_jhle k_gfx[] = {
     { "megler/Gfx", "bmSetPixel", "(JIII)V", G_bmSetPixel },
     { "megler/Gfx", "bmPixels", "(J[IIIIIIIZ)V", G_bmPixels },
     { "megler/Gfx", "bmRaw", "(JJZ)V", G_bmRaw },
+    { "megler/Gfx", "bmOpaque", "(J)V", G_bmOpaque },
     { "megler/Gfx", "bmAddress", "(J)J", G_bmAddress },
     { "megler/Gfx", "bmDecode", "([BIII[IZ)J", G_bmDecode },
     { "megler/Gfx", "bmCompress", "(JII)[B", G_bmCompress },
