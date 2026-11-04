@@ -303,6 +303,13 @@ library is patched as any other. Which libraries: `lib_pristine`
 `libmetasec_ov.so` that is four sites: its `syscall()` stub's `svc`, its
 `vfork`'s, and two thread-pointer reads.
 
+A thread given the list has every slot of its context's breakpoints and its
+watchpoint set, the slots after the list cleared (`bp_fill`): a context an
+exception made holds whatever was on the stack there, and `NtContinue` sets
+them all. With 0.1.0.608 one such slot was an enabled context-ID breakpoint,
+which matched every instruction: the thread stopped at the first one of the
+exception dispatcher, again and again, until its stack ran out.
+
 ### The kernel's user helpers
 
 Linux maps a page of code at `0xffff0000` into every ARM process, which old
