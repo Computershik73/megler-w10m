@@ -1647,10 +1647,26 @@ static void hot_say(u32 samples, u32 outside, u32 collecting)
     mg_info("%s", line);
 }
 
+/*
+ * Whether the main thread is in a wait: Object.wait (a lock's, a latch's, Thread.join's, LockSupport's here), or waiting to
+ * enter a monitor. One it stands in for STUCK_AFTER_NS on one object, with no more than 250 ms out of it at a time (a wait in a
+ * loop of short ones), is said with the stacks once each time (mg_dvm_stuck_say), three times a run at most: an app whose
+ * screen stays black or frozen with its main thread waiting says on what. Its looper's wait for the next message is not one:
+ * the first that stands so long is found to be the looper's (its queue is then known, `idle_on`, and its waits are passed by).
+ */
+#define STUCK_AFTER_NS 5000000000ull
+static bool main_waits(const mg_dvm_thread *t, const mg_dvm_method *m)
+{
+    if (t->waiting_monitor) return true;
+    return m && (m->flags & DVM_ACC_NATIVE) && !strcmp(m->name, "wait") && !strcmp(m->cls->name, "java/lang/Object");
+}
+
 static void hot_main(void *arg)
 {
-    u32 samples = 0, outside = 0, collecting = 0;
-    u64 since = mg_time_monotonic_ns();
+    u32 samples = 0, outside = 0, collecting = 0, stuck_said = 0;
+    u64 since = mg_time_monotonic_ns(), wait_since = 0, wait_last = 0;
+    const void *wait_on = NULL, *idle_on = NULL;
+    bool wait_said = false;
     (void)arg;
     for (;;) {
         const mg_dvm_thread *t;
@@ -1661,6 +1677,33 @@ static void hot_main(void *arg)
         m = t ? t->running : NULL;
         if (m && (m->flags & DVM_ACC_NATIVE)) from = t->running_from;
         samples++;
+        /* (A collection stops the main thread whatever it does: its samples neither start nor end a wait.) */
+        if (t && !mg_dvm_gc_busy()) {
+            const u64 at = mg_time_monotonic_ns();
+            if (main_waits(t, m)) {
+                /* What it waits on, by its address alone (the object may go once the wait is over): another object, another wait. */
+                const void *on = t->waiting_monitor ? (const void *)t->waiting_monitor : (const void *)t->waiting_on;
+                if (on && on == idle_on) {
+                    wait_since = 0;
+                } else {
+                    if (!wait_since || (on && on != wait_on)) {
+                        wait_since = at;
+                        wait_on = on;
+                        wait_said = false;
+                    }
+                    wait_last = at;
+                    if (!wait_said && stuck_said < 3 && at - wait_since >= STUCK_AFTER_NS) {
+                        const void *idle = NULL;
+                        wait_said = true;
+                        if (mg_dvm_stuck_say((mg_dvm_thread *)t, (double)(at - wait_since) / 1e9, &idle)) stuck_said++;
+                        else if (idle) idle_on = idle;
+                    }
+                }
+            } else if (wait_since && at - wait_last > 250000000ull) {
+                wait_since = 0;
+                wait_said = false;
+            }
+        }
         if (mg_dvm_gc_busy()) {
             collecting++;
         } else if (!m) {

@@ -2443,6 +2443,18 @@ static int run_data(void)
     CHECK(find_line("sqlite: SQLite 3.", 0) >= 0);
     /* An empty list of decoders is the answer, not a gap: the codecs step asked, and nothing said the class was missing. */
     CHECK(find_line("megler/MediaCodecNative is not there yet", 0) < 0);
+    /*
+     * The main thread standing in Object.wait: F12 makes the app wait 8 s on a lock another thread notifies then (stuckMain), and after
+     * 5 s the main thread's sampler says its stack, the app's method in it, with what it waits on (mg_dvm_stuck_say). TikTok Lite's
+     * screen stayed black on a Lumia 650 with its main thread in Object.wait, and nothing said where (package 619).
+     */
+    megler_key(142, true);
+    megler_key(142, false);
+    expect_line("I/DataTest: stuck-main ok", &at, 60);
+    CHECK(find_line("stuck: the main thread has stood ", 0) >= 0 && find_line("in wait() of a java/lang/Object", 0) >= 0
+          && find_line("stuck:   megler/test/data/Main.stuckMain line ", 0) >= 0);
+    /* And not its looper's wait for the next message, which is the main thread with nothing to do (looper_idle). */
+    CHECK(find_line("in wait() of a android/os/MessageQueue", 0) < 0);
     for (i = 0; i < g_nlines; i++)
         if (strstr(g_lines[i], "/DataTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);
     settle();

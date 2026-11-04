@@ -798,6 +798,8 @@ typedef struct monitor_sample {
     u32 thread, owner, object;
     u64 waiting_ns;
     const char *object_class;
+    u32 waits_on;                      /* the object of the wait() it is in (mg_dvm_thread.waiting_on), and its class */
+    const char *waits_on_class;
     char name[80];
     mg_dvm_method *methods[32];
     u32 pcs[32];
@@ -818,6 +820,11 @@ static void monitor_sample_copy(mg_dvm_thread *t, monitor_sample *s)
         s->object_class = o->kind == MG_J_CLASS && o->native ? ((mg_dvm_class *)o->native)->name : mg_dvm_class_of(o)->name;
         s->owner = m ? m->owner : 0;
         s->waiting_ns = mg_time_monotonic_ns() - t->monitor_wait_ns;
+    }
+    if (t->waiting_on) {
+        mg_jobj *w = t->waiting_on;
+        s->waits_on = (u32)(mg_addr)w;
+        s->waits_on_class = w->kind == MG_J_CLASS && w->native ? ((mg_dvm_class *)w->native)->name : mg_dvm_class_of(w)->name;
     }
     for (cls = t->peer ? mg_dvm_class_of(t->peer) : NULL; cls; cls = cls->super) {
         int i;
@@ -1043,6 +1050,97 @@ static void stacks_observer(void *unused)
     }
 }
 
+/*
+ * The main thread standing in a wait (the sampler's report, mg_java.c hot_main): its stack, with the object of its wait() or
+ * the monitor it waits to enter and that monitor's owner, and the stacks of the threads that wait to enter a monitor, the
+ * owners named. Each thread is stopped only while its frames are copied, under the VM lock, as for trace-stacks. TikTok
+ * Lite's screen stayed black on a Lumia 650 with its main thread in Object.wait for minutes, and the log did not say whose
+ * wait (package 619; trace-stacks had used up its 6000 lines on 190 threads first). This report, in 620, found it idle in its
+ * looper: the window behind the app's translucent consent activity had been taken away (AppRunner.launch).
+ */
+#define STUCK_THREADS 12
+#define STUCK_FRAMES 16
+
+static void stuck_frames(const monitor_sample *s, int most)
+{
+    int j;
+    for (j = 0; j < s->frames && j < most; ++j) {
+        mg_dvm_method *m = s->methods[j];
+        int line = mg_dvm_dex_line(m, s->pcs[j]);
+        if (m->flags & DVM_ACC_NATIVE) mg_warn("stuck:   %s.%s (native)", m->cls->name, m->name);
+        else if (line >= 0) mg_warn("stuck:   %s.%s line %d", m->cls->name, m->name, line);
+        else mg_warn("stuck:   %s.%s at %u", m->cls->name, m->name, s->pcs[j]);
+    }
+    if (s->frames > most) mg_warn("stuck:   (%d frames more)", s->frames - most);
+}
+
+/*
+ * Whether a sample's wait is its looper's: the first frame that is not Object.wait is MessageQueue.next, where Megler's queue
+ * waits for its next message -- a main thread with nothing to do, not one that stands in a wait. The data app's main thread was
+ * said so at its start, idle.
+ */
+static bool looper_idle(const monitor_sample *s)
+{
+    int j;
+    for (j = 0; j < s->frames; ++j) {
+        const mg_dvm_method *m = s->methods[j];
+        if (!strcmp(m->cls->name, "java/lang/Object") && !strcmp(m->name, "wait")) continue;
+        return !strcmp(m->cls->name, "android/os/MessageQueue") && !strcmp(m->name, "next");
+    }
+    return false;
+}
+
+bool mg_dvm_stuck_say(mg_dvm_thread *main_thread, double seconds, const void **idle_on)
+{
+    static monitor_sample s[STUCK_THREADS];
+    mg_dvm_thread *t;
+    mg_thread_regs regs;
+    int count = 0, blocked = 0, i;
+    bool main_copied = false;
+    const void *on = NULL;
+    memset(s, 0, sizeof(s));
+    mg_dvm_lock();
+    for (t = g_threads; t && t != main_thread; t = t->next) {}
+    if (t && t->host && mg_thread_suspend(t->host, &regs)) {
+        monitor_sample_copy(t, &s[count++]);
+        on = (const void *)t->waiting_on;
+        mg_thread_resume(t->host);
+        main_copied = true;
+    }
+    if (main_copied && looper_idle(&s[0])) {
+        mg_dvm_unlock();
+        if (idle_on) *idle_on = on;
+        return false;
+    }
+    for (t = g_threads; t; t = t->next) {
+        if (t == main_thread || !t->waiting_monitor) continue;
+        ++blocked;
+        if (count == STUCK_THREADS || !t->host || !mg_thread_suspend(t->host, &regs)) continue;
+        monitor_sample_copy(t, &s[count++]);
+        mg_thread_resume(t->host);
+    }
+    mg_dvm_unlock();
+    if (!main_copied) {
+        mg_warn("stuck: the main thread has stood %.1f s in a wait, and could not be stopped to see where", seconds);
+        return true;
+    }
+    mg_warn("stuck: the main thread has stood %.1f s in a wait; its stack, and %d of the %d other threads that wait to enter a monitor:",
+            seconds, count - 1, blocked);
+    for (i = 0; i < count; ++i) {
+        const monitor_sample *x = &s[i];
+        if (x->object)
+            mg_warn("stuck: thread %u \"%s\", waiting %.1f s for the monitor of a %s (%08x) that thread %u holds:", x->thread, x->name,
+                    (double)x->waiting_ns / 1e9, x->object_class ? x->object_class : "?", x->object, x->owner);
+        else if (x->waits_on)
+            mg_warn("stuck: thread %u \"%s\", in wait() of a %s (%08x):", x->thread, x->name, x->waits_on_class ? x->waits_on_class : "?",
+                    x->waits_on);
+        else
+            mg_warn("stuck: thread %u \"%s\"%s", x->thread, x->name, x->frames ? ":" : ": no Java frames");
+        stuck_frames(x, i ? STUCK_FRAMES : 32);
+    }
+    return true;
+}
+
 void mg_dvm_stacks_trace_start(void)
 {
     mg_thread *observer;
@@ -1097,10 +1195,10 @@ void mg_dvm_monitor_enter(mg_jobj *o)
         mg_dvm_thread *self = mg_dvm_self();
         u64 started = self->native_depth ? 0 : mg_time_ticks();
         u32 observed_owner = m->owner;
-        if (g_monitor_trace) {
-            self->monitor_wait_ns = mg_time_monotonic_ns();
-            self->waiting_monitor = o;
-        }
+        /* (Published always, not for trace-monitors alone: a report of the main thread standing in a wait names the threads
+           waiting to enter a monitor, mg_dvm_stuck_say.) */
+        self->monitor_wait_ns = mg_time_monotonic_ns();
+        self->waiting_monitor = o;
         mg_lock_acquire(&m->mu);
         self->waiting_monitor = NULL;
         if (g_monitor_trace && me == g_monitor_trace_main)
@@ -1148,6 +1246,7 @@ bool mg_dvm_monitor_wait(mg_jobj *o, i64 ms)
         u32 seen = m->notified;
         u64 started = mg_time_monotonic_ns(), deadline = ms > 0 ? started + (u64)ms * 1000000ull : 0;
         mg_dvm_thread *self = mg_dvm_self();
+        self->waiting_on = o;
         while (m->notified == seen) {
             u64 now;
             if (!deadline) {
@@ -1158,6 +1257,7 @@ bool mg_dvm_monitor_wait(mg_jobj *o, i64 ms)
             if (now >= deadline) break;
             mg_cond_wait_ns(&m->cv, &m->mu, deadline - now);
         }
+        self->waiting_on = NULL;
         self->waited_ns += mg_time_monotonic_ns() - started;
     }
     m->owner = me;

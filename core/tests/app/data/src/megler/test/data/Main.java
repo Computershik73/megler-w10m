@@ -2590,6 +2590,38 @@ public class Main extends Activity {
         });
     }
 
+    /** The harness's F12 (mg_java_tests.c, run_data): the main thread made to stand in Object.wait (stuckMain). */
+    @Override public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
+        if (keyCode == android.view.KeyEvent.KEYCODE_F12) {
+            stuckMain();
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    /**
+     * The main thread waits 8 s on a lock that another thread notifies then: the main thread's sampler says its stack meanwhile,
+     * this method in it (mg_dvm_stuck_say), where its looper's idle wait is not said.
+     */
+    private void stuckMain() {
+        final Object lock = new Object();
+        final boolean[] done = new boolean[1];
+        new Thread(() -> {
+            try { Thread.sleep(8000); } catch (InterruptedException e) { }
+            synchronized (lock) {
+                done[0] = true;
+                lock.notifyAll();
+            }
+        }, "stuck-releaser").start();
+        long started = android.os.SystemClock.uptimeMillis();
+        synchronized (lock) {
+            while (!done[0]) {
+                try { lock.wait(); } catch (InterruptedException e) { break; }
+            }
+        }
+        Log.i("DataTest", "stuck-main ok waited=" + (android.os.SystemClock.uptimeMillis() - started) / 1000 + " s");
+    }
+
     /**
      * A key no provider takes (a secret key with no encoding), for a transformation that AndroidKeyStoreBCWorkaround has too:
      * Cipher.init ends at once in the first provider's exception, as on Android (conscrypt's NullPointerException for no
