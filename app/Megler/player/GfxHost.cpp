@@ -406,7 +406,9 @@ struct State {
     std::atomic<uint64_t> endsBy[endWhys] = {}, endTicksBy[endWhys] = {};
     // The calls put on by the effects (gpuPut), each a drawing ended, by what sent them there and by transfer mode: which of
     // an app's calls they are (TikTok Lite's feed, four a frame while a video plays, a third of the frame's time).
-    enum EffectsWhy { whyInkMode, whyInkShaderFilter, whyInkSweep, whyInkFillStroke, whyBitmapMode, whyColour, whyOther, effectsWhys };
+    enum EffectsWhy { whyInkMode, whyInkShaderFilter, whyInkSweep, whyInkFillStroke, whyBitmapMode, whyColour, whyShadowPath,
+                      whyShadowText, whyShadowShape, whyShadowLarge, whyShadowMode, whyRestore, whyBlurRestore, whyCanvas, whyOther,
+                      effectsWhys };
     enum { blendModes = 18 };
     std::atomic<uint64_t> effectsBy[effectsWhys] = {}, effectsMode[blendModes] = {};
     std::mutex statsMutex;
@@ -2735,6 +2737,7 @@ bool gpuDrawColor(Canvas& cv, Surface& target, const Box& box, uint32_t colour, 
 /// the save where that is more than its box.
 bool gpuRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, int alpha, int blend) {
     GpuContext& g = *cv.gc;
+    ++G().effectsBy[State::whyRestore];
     Surface* s = workSurface(cv, Canvas::workS, box, true);
     if (!s) return false;
     g.finish(State::endLayerMode);
@@ -2778,6 +2781,7 @@ bool gpuRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, int 
 /// clip, laid over the picture.
 bool gpuBlurRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, int alpha, float sigma, bool clamp) {
     GpuContext& g = *cv.gc;
+    ++G().effectsBy[State::whyBlurRestore];
     Surface* s = workSurface(cv, Canvas::workS, box, true);
     if (!s) return false;
     g.finish(State::endLayerBlur);
@@ -3044,6 +3048,14 @@ bool gpuShadow(Canvas& cv, Surface& target, const Ink& ink, const megler_gfx_pai
     lands.intersect(target.bounds());
     if (lands.empty()) return true;
     if (paint.blend == MEGLER_GFX_BLEND_SRC_OVER && gpuShadowKept(cv, target, ink, colour, sigma, reach, dx, dy)) return true;
+    {
+        Box full = inkCover(ink, cv.matrix);
+        full.inflate(reach);
+        ++G().effectsBy[paint.blend != MEGLER_GFX_BLEND_SRC_OVER ? State::whyShadowMode
+                        : int64_t(full.width()) * int64_t(full.height()) > (int64_t(1) << 20) ? State::whyShadowLarge
+                        : ink.kind == Ink::geometry ? (ink.path ? State::whyShadowPath : State::whyShadowText)
+                        : State::whyShadowShape];
+    }
     Box from = lands;
     from.move(-dx, -dy);
     from.inflate(reach);
@@ -3381,7 +3393,10 @@ void noteDrawing() {
         if (used) say("the drawings ended, by what ended them: %s", ends);
         static const char* const effectsWhys[State::effectsWhys] = {"a shape or text in another mode", "a shader with a colour filter",
                                                                    "a sweep", "a fill and stroke", "a bitmap in another mode",
-                                                                   "a colour", "other"};
+                                                                   "a colour", "a path's shadow", "an outline's shadow, not a path's",
+                                                                   "another shape's shadow", "a shadow over a million pixels",
+                                                                   "a shadow in another mode", "a layer in another mode",
+                                                                   "a blurred layer", "a canvas in another mode", "other"};
         static const char* const modes[State::blendModes] = {"CLEAR", "SRC", "DST", "SRC_OVER", "DST_OVER", "SRC_IN", "DST_IN",
                                                             "SRC_OUT", "DST_OUT", "SRC_ATOP", "DST_ATOP", "XOR", "PLUS", "MODULATE",
                                                             "SCREEN", "OVERLAY", "DARKEN", "LIGHTEN"};
@@ -4845,6 +4860,7 @@ bool drawCanvas(void*, void* canvas, void* source, const float* src, const float
             const bool keeps = keepsUncovered(paint.blend);
             Surface* cover = keeps ? nullptr : gpuCoverage(*cv, ink, box, true, Canvas::workC);
             Surface* colours = keeps || cover ? workSurface(*cv, Canvas::workA, box) : nullptr;
+            ++G().effectsBy[State::whyCanvas];
             if (!colours || !put(*colours) || !gpuPut(*cv, *target, box, colours->gpu.get(), cover ? cover->gpu.get() : nullptr, paint.blend)) return;
         }
         g.finish(State::endOther);
