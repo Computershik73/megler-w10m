@@ -1637,12 +1637,6 @@ bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
     return true;
 }
 
-bool mg_host_module_is_system(mg_addr address)
-{
-    (void)address;
-    return false;
-}
-
 /* ------------------------------------------------------------------- misc */
 
 bool mg_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb, u32 *committed_mb)

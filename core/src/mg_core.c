@@ -68,19 +68,12 @@ mg_addr mg_chromium_oom_global(mg_addr pc)
     return f + 6 + 4 + (mg_addr)(intptr_t)(i32)offset;
 }
 
-/* Faults passed on to the system's own handlers (on_fault), and the last one's thread and pc: it comes back, should nothing take it. */
-static volatile i32 g_passed_on;
-static volatile u32 g_passed_on_thread;
-static volatile mg_addr g_passed_on_pc;
-
 static bool on_fault(mg_fault *f)
 {
     const char *lib = NULL, *sym;
     const void *sym_addr = NULL, *base = NULL;
     char report[4000];
     mg_addr pc = f->regs ? (f->regs[15] & ~1u) : 0;
-    /* The host's last word on an exception nothing took: what was passed on below is reported now; the rest was already. */
-    if (f->unhandled && !(pc && g_passed_on_thread == mg_thread_self_id() && g_passed_on_pc == pc)) return false;
 #if MG_HOST_ARM32
     /* The kernel's user helpers, which Windows has no page of (arm/mg_kuser.h): a call of one, or a read of their version. */
     if (f->kind == MG_FAULT_ACCESS && f->regs && (f->address & 0xfffff000u) == 0xffff0000u) {
@@ -251,23 +244,6 @@ static bool on_fault(mg_fault *f)
                     }
                 }
             }
-        }
-        /*
-         * A fault in the system's own code on a thread that has never run Android code (the shell's UI thread, a thread
-         * pool's): the system's frame-based handlers come after this one, and it may well take it. CoreUIComponents.dll
-         * does, on the shell's UI thread, a moment after TikTok Lite starts to load the WebView: Windows went on as if
-         * nothing had happened, and the app had been ended here for nothing, every time. So it is said and passed on.
-         * Should nothing take it, the host's last word (mg_fault.unhandled) brings it back, and it ends the app then.
-         */
-        if (!f->unhandled && !lib && pc && !mg_guest_tp_get() && mg_host_module_is_system(pc)) {
-            i32 k = mg_atomic_add(&g_passed_on, 1);
-            g_passed_on_thread = mg_thread_self_id();
-            g_passed_on_pc = pc;
-            if (k <= 3)
-                mg_warn("fault: passed on to the system's own handlers, which may take it (its code, on a thread that has never run Android code):\n%s", report);
-            else if (!(k & (k - 1)))
-                mg_warn("fault: %d passed on to the system's own handlers so far, the last at pc %08x", (int)k, (unsigned)pc);
-            return false;
         }
         mg_err("%s", report);
         {

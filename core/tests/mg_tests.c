@@ -327,17 +327,6 @@ static void test_host(const char *scratch)
     CHECK(mg_path_rmdir(sub, &err));
     free(path);
     free(sub);
-
-    /* The system's code and the program's own: a fault in the former, on a thread that has never run Android code, is
-       passed on to the system's handlers (mg_core.c, on_fault). On Linux nothing is the system's. */
-    CHECK(!mg_host_module_is_system((mg_addr)(uintptr_t)test_host));
-#if defined(_WIN32)
-    {
-        void *kernel = mg_dl_open("kernel32.dll");
-        void *sleep = kernel ? mg_dl_sym(kernel, "Sleep") : NULL;
-        CHECK(sleep && mg_host_module_is_system((mg_addr)(uintptr_t)sleep));
-    }
-#endif
 }
 
 /* -------------------------------------------------------------------- zip */
