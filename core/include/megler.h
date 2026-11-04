@@ -1619,6 +1619,11 @@ bool megler_thread_where(unsigned thread_id, char *out, size_t size);
  * or the file could not be written.
  */
 bool megler_dump_module(const char *module, const char *path);
+/*
+ * Whether the system stops a thread at a hardware breakpoint set through its context (DBGBVR/DBGBCR), on another thread
+ * and on this one, Thumb and ARM: a probe, said in `out` and in the log. True when one stopped.
+ */
+bool megler_probe_breakpoints(char *out, size_t size);
 
 /* Touch, in surface pixels with y down (after undoing the flip). phase: 0 down, 1 move, 2 up, 3 cancel. */
 void megler_touch(int phase, int pointer_id, float x, float y);

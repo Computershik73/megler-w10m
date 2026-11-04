@@ -334,6 +334,13 @@ bool megler_dump_module(const char *module, const char *path)
     return ok;
 }
 
+bool megler_probe_breakpoints(char *out, size_t size)
+{
+    bool ok = mg_host_probe_breakpoints(out, size);
+    mg_info("breakpoints: %s", out);
+    return ok;
+}
+
 bool megler_thread_where(unsigned thread_id, char *out, size_t size)
 {
     enum { WORDS = 16384 };                       /* 64 KB of its stack from sp up, as a fault's report looks */

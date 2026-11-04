@@ -1649,6 +1649,12 @@ bool mg_host_module_dump(const char *name, const char *path, mg_addr *base, size
     return false;
 }
 
+bool mg_host_probe_breakpoints(char *out, size_t size)
+{
+    snprintf(out, size, "not probed on this host");
+    return false;
+}
+
 /* ------------------------------------------------------------------- misc */
 
 bool mg_host_address_space(u32 *free_mb, u32 *largest_free_mb, u32 *reserved_mb, u32 *committed_mb)

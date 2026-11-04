@@ -630,6 +630,8 @@ void *mg_dl_sym(void *lib, const char *name);
 bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base);
 /* A module of the process's, by file name, as it lies in memory into a file (megler_dump_module); its base and image size. */
 bool mg_host_module_dump(const char *name, const char *path, mg_addr *base, size_t *size);
+/* Whether the system stops a thread at a hardware breakpoint set through its context: a probe, said in `out` (megler_probe_breakpoints). */
+bool mg_host_probe_breakpoints(char *out, size_t size);
 
 /* ------------------------------------------------------------------- misc */
 

@@ -160,6 +160,11 @@ void poll(AppShell& shell) {
             // A DLL of the system's as it lies in memory (megler_dump_module), to read a fault in its code.
             const std::wstring module = flag.substr(15);
             megler_dump_module(narrow(module).c_str(), narrow(platform::localStateDirectory() + L"\\module-" + module + L".img").c_str());
+        } else if (flag == L"ui-probe-breakpoints") {
+            // Whether the system stops a thread at a hardware breakpoint (megler_probe_breakpoints): said in the log.
+            char out[2048];
+            megler_probe_breakpoints(out, sizeof(out));
+            shellLog::write(std::string("ui: breakpoints: ") + out);
         } else if (flag.rfind(L"ui-frame-", 0) == 0) {
             if (auto window = session::window())
                 window->requestScreenshot(platform::localStateDirectory() + L"\\shot-" + flag.substr(3) + L".bmp");
