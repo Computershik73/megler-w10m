@@ -409,6 +409,20 @@ void mg_thread_resume(mg_thread *t)
     while (mg_atomic_cas(&t->stopped, 0, 0) != 0) sched_yield();
 }
 
+/* No hardware breakpoints here (ptrace's, another process's, are no use from inside): see mg_host.h. */
+bool mg_breakpoints_available(void) { return false; }
+bool mg_breakpoint_add(mg_addr at)
+{
+    (void)at;
+    return false;
+}
+int mg_breakpoint_count(void) { return 0; }
+bool mg_breakpoints_arm(mg_thread *t)
+{
+    (void)t;
+    return true;
+}
+
 /* (Whether it found the thread in guest code is not known here: true means only that it was asked.) */
 bool mg_thread_interrupt(mg_thread *t)
 {

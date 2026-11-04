@@ -8,6 +8,10 @@
 typedef struct mg_svc_site {
     mg_addr pc;               /* bit 0: Thumb */
     struct mg_svc_site *next;
+    /* Left as the file has it, a hardware breakpoint on it (mg_patch.c, "left as the file has it"): an svc, or a
+       thread-pointer read into tp_reg (-1 for an svc, patched or not). */
+    bool watched;
+    i8 tp_reg;
 } mg_svc_site;
 
 struct mg_lib {

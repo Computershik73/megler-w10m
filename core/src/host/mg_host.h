@@ -155,6 +155,20 @@ bool mg_thread_interrupt(mg_thread *t);
 /* What has become of the interruptions asked for so far, in a line: for the tests and the log. */
 void mg_thread_interrupt_report(char *out, size_t size);
 /*
+ * Hardware breakpoints on guest code: the processor's breakpoint registers, which Windows on ARM keeps in each thread's
+ * context, for instructions of a library that must stay as the file has them (arm/mg_patch.c, "left as the file has
+ * it"). The list is the process's, and every guest thread is given it; a thread that reaches one stops before the
+ * instruction, a fault of kind MG_FAULT_BREAKPOINT at that address.
+ *   mg_breakpoints_available  whether the host has them at all (not qemu's Linux, nor the PC)
+ *   mg_breakpoint_add         an address put in the list, bit 0 set for Thumb: false when the list is full
+ *   mg_breakpoints_arm        the list given to a thread: another one, stopped for the moment and read back; the caller
+ *                             (t NULL or its own) through an exception's context. True at once with an empty list.
+ */
+bool mg_breakpoints_available(void);
+bool mg_breakpoint_add(mg_addr at);
+int mg_breakpoint_count(void);
+bool mg_breakpoints_arm(mg_thread *t);
+/*
  * Stopping another thread where it is, for the collector (dvm/): mg_thread_suspend stops `t`, whatever it is executing, and
  * reads its registers; it stays stopped until mg_thread_resume. Never the calling thread. The registers are only read: the
  * context is never written back (no SetThreadContext), so the thread goes on exactly where it was, in the state it was in.
@@ -266,7 +280,8 @@ bool mg_guest_tp_where(u32 *opc2, u32 *offset);
  * (a vectored exception handler; SIGILL/SIGSEGV/SIGBUS handlers under Linux).
  * The handler may change the registers and return true to resume.
  */
-enum { MG_FAULT_ILLEGAL = 1, MG_FAULT_ACCESS, MG_FAULT_OTHER };
+/* MG_FAULT_BREAKPOINT: a thread stopped at one of the process's hardware breakpoints (mg_breakpoint_add), before the instruction. */
+enum { MG_FAULT_ILLEGAL = 1, MG_FAULT_ACCESS, MG_FAULT_OTHER, MG_FAULT_BREAKPOINT };
 
 typedef struct mg_fault {
     int kind;

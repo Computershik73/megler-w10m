@@ -149,6 +149,8 @@ i32 mg_gthread_take_tid(mg_gthread *t);
 void mg_gthread_release_tid(i32 tid);
 /* The host thread of the live guest thread whose gettid() is `tid`, or NULL (its processor time, mg_libc_time.c). */
 mg_thread *mg_gthread_host_of_tid(i32 tid);
+/* The host's hardware breakpoints given to the caller and every live guest thread (a library left as the file has it). */
+void mg_gthreads_arm_breakpoints(void);
 
 /*
  * Signals between the guest's threads: pthread_kill and the handlers it

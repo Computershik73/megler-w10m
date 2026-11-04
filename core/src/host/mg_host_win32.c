@@ -625,6 +625,113 @@ bool mg_thread_interrupt(mg_thread *t)
 }
 #endif
 
+/* ------------------------------------------------------------ hardware breakpoints */
+
+#if defined(_M_ARM)
+/* DBGBCR: enabled, user mode only (PMC 0b10), the bytes of the word: a Thumb instruction's halfword, or all four for ARM. */
+static DWORD bp_control(mg_addr at, bool thumb)
+{
+    DWORD bas = thumb ? ((at & 2) ? 0xCu : 0x3u) : 0xFu;
+    return (bas << 5) | (2u << 1) | 1u;
+}
+
+/*
+ * The process's hardware breakpoints (mg_breakpoint_add), as each guest thread's context takes them: Bvr the address,
+ * Bcr from bp_control. The probe (megler_probe_breakpoints) found a thread stopped so on the Elite x3, build 15254, Thumb
+ * and ARM, given them by SetThreadContext while suspended or through an exception's context, which NtContinue takes back:
+ * STATUS_BREAKPOINT at the address, before the instruction. At most BP_MAX: the context has room for eight, and a phone
+ * keeps what its processor has (a Snapdragon 820's Kryo, six); arming another thread reads them back.
+ */
+#define EXCEPTION_MEGLER_ARM_BREAKPOINTS 0xE04D4703u
+enum { BP_MAX = 6 };
+static mg_lock g_bp_lock = MG_LOCK_INIT;
+static DWORD g_bp_bvr[BP_MAX], g_bp_bcr[BP_MAX];
+static volatile LONG g_bp_n;
+
+/* A context given the list, the slots after it cleared. (No lock: a slot is written before the count takes it in.) */
+static void bp_fill(CONTEXT *c)
+{
+    LONG n = g_bp_n, i;
+    c->ContextFlags |= CONTEXT_DEBUG_REGISTERS;
+    for (i = 0; i < BP_MAX; i++) {
+        c->Bvr[i] = i < n ? g_bp_bvr[i] : 0;
+        c->Bcr[i] = i < n ? g_bp_bcr[i] : 0;
+    }
+}
+
+static bool bp_listed(DWORD at)
+{
+    LONG n = g_bp_n, i;
+    for (i = 0; i < n; i++)
+        if (g_bp_bvr[i] == at) return true;
+    return false;
+}
+
+bool mg_breakpoints_available(void) { return true; }
+int mg_breakpoint_count(void) { return (int)g_bp_n; }
+
+bool mg_breakpoint_add(mg_addr at)
+{
+    DWORD a = (DWORD)(at & ~(mg_addr)1);
+    bool ok;
+    mg_lock_acquire(&g_bp_lock);
+    ok = bp_listed(a);
+    if (!ok && g_bp_n < BP_MAX) {
+        g_bp_bvr[g_bp_n] = a;
+        g_bp_bcr[g_bp_n] = bp_control(a, (at & 1) != 0);
+        InterlockedIncrement(&g_bp_n);
+        ok = true;
+    }
+    mg_lock_release(&g_bp_lock);
+    return ok;
+}
+
+bool mg_breakpoints_arm(mg_thread *t)
+{
+    CONTEXT ctx;
+    HANDLE h;
+    LONG n = g_bp_n, i;
+    bool ok;
+    if (!n) return true;
+    if (!t || t->id == GetCurrentThreadId()) {
+        RaiseException(EXCEPTION_MEGLER_ARM_BREAKPOINTS, 0, 0, NULL);
+        return true;
+    }
+    h = self_take(t);
+    if (!h) return false;
+    if (SuspendThread(h) == (DWORD)-1) {
+        self_give(t);
+        return false;
+    }
+    /* Nothing is taken while it is stopped (it may hold a lock): the registers set, and read back. */
+    memset(&ctx, 0, sizeof(ctx));
+    bp_fill(&ctx);
+    ok = SetThreadContext(h, &ctx) != 0;
+    if (ok) {
+        memset(&ctx, 0, sizeof(ctx));
+        ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        ok = GetThreadContext(h, &ctx) != 0;
+        for (i = 0; ok && i < n; i++) ok = ctx.Bvr[i] == g_bp_bvr[i] && ctx.Bcr[i] == g_bp_bcr[i];
+    }
+    ResumeThread(h);
+    self_give(t);
+    return ok;
+}
+#else
+bool mg_breakpoints_available(void) { return false; }
+bool mg_breakpoint_add(mg_addr at)
+{
+    (void)at;
+    return false;
+}
+int mg_breakpoint_count(void) { return 0; }
+bool mg_breakpoints_arm(mg_thread *t)
+{
+    (void)t;
+    return true;
+}
+#endif
+
 /* ------------------------------------------------- stopping a thread for the collector */
 
 #if WINAPI_FAMILY == WINAPI_FAMILY_APP && !defined(_M_ARM)
@@ -1176,9 +1283,25 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
         InterlockedExchange(&t->interrupted, 0);
         return EXCEPTION_CONTINUE_EXECUTION;
     }
+    if (er->ExceptionCode == EXCEPTION_MEGLER_ARM_BREAKPOINTS) {
+        /* A thread asking for the process's hardware breakpoints (mg_breakpoints_arm): NtContinue gives them to it. */
+        bp_fill(ep->ContextRecord);
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
 #endif
     memset(&f, 0, sizeof(f));
     f.code = er->ExceptionCode;
+#if defined(_M_ARM)
+    if (er->ExceptionCode == EXCEPTION_BREAKPOINT && bp_listed(ep->ContextRecord->Pc & ~(DWORD)1)) {
+        /* Stopped at one of the process's hardware breakpoints, before the instruction: the core does it. */
+        f.kind = MG_FAULT_BREAKPOINT;
+        f.regs = (u32 *)&ep->ContextRecord->R0;
+        f.cpsr = (u32 *)&ep->ContextRecord->Cpsr;
+        if (g_fault_handler && g_fault_handler(&f)) return EXCEPTION_CONTINUE_EXECUTION;
+        note_exception(ep, "passed on (a hardware breakpoint the core had nothing for)");
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+#endif
     switch (er->ExceptionCode) {
     case EXCEPTION_ILLEGAL_INSTRUCTION:
         f.kind = MG_FAULT_ILLEGAL;
@@ -3614,13 +3737,6 @@ static DWORD WINAPI bp_thread(LPVOID p)
     WaitForSingleObjectEx(r->go, INFINITE, FALSE);
     r->result = r->fn(1);
     return 0;
-}
-
-/* DBGBCR: enabled, user mode only (PMC 0b10), the bytes of the word: a Thumb instruction's halfword, or all four for ARM. */
-static DWORD bp_control(mg_addr at, bool thumb)
-{
-    DWORD bas = thumb ? ((at & 2) ? 0xCu : 0x3u) : 0xFu;
-    return (bas << 5) | (2u << 1) | 1u;
 }
 
 static size_t bp_try_thread(char *out, size_t size, const char *what, int (*fn)(int), bool thumb)

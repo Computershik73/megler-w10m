@@ -92,8 +92,10 @@ static bool on_fault(mg_fault *f)
         }
     }
 #endif
-    if (f->kind == MG_FAULT_ILLEGAL && f->regs) {
+    if ((f->kind == MG_FAULT_ILLEGAL || f->kind == MG_FAULT_BREAKPOINT) && f->regs) {
         mg_addr target = 0;
+        int reg;
+        /* A patched svc's UDF, or an svc left as the file has it, stopped at its hardware breakpoint. */
         if (mg_patch_svc_target(pc, &target)) {
             /* The flag trace-syscalls: each one said, with its number, its first four arguments, what it gives and whose. */
             static volatile i32 traced = -1, lines;
@@ -111,6 +113,13 @@ static bool on_fault(mg_fault *f)
             mg_fault_resume_at(f, target);
             return true;
         }
+        /* A thread-pointer read left as the file has it, stopped at its breakpoint: the guest's thread pointer. */
+        if (f->kind == MG_FAULT_BREAKPOINT && mg_patch_tp_target(pc, &reg, &target)) {
+            f->regs[reg] = (u32)(mg_addr)mg_guest_tp_get();
+            mg_fault_resume_at(f, target);
+            return true;
+        }
+        if (f->kind == MG_FAULT_BREAKPOINT) return false;
         if (mg_ld_plt_target(pc, &target) || mg_stubs_once_target(pc, &target)) {
             mg_fault_resume_at(f, target);
             mg_atomic_add(&g_plt_rescues, 1);
