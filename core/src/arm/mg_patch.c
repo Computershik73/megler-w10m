@@ -194,7 +194,12 @@ static void patch_plt(mg_lib *lib, u8 *seg, size_t size)
     u32 n = lib->pltrelsz / sizeof(Elf32_Rel), i, count = 0;
     u32 *slots;
     size_t off;
+    char flag[96];
     if (!n) return;
+    /* The flags no-plt-rewrite and no-plt-rewrite-<library>: its PLT left as the linker wrote it (ARM), for a library
+       that checks its own entries (TikTok Lite's libmetasec_ov.so ends the process when they are not its own). */
+    snprintf(flag, sizeof(flag), "no-plt-rewrite-%s", lib->name);
+    if (mg_flag("no-plt-rewrite") || mg_flag(flag)) return;
     slots = (u32 *)mg_alloc(sizeof(u32) * n);
     for (i = 0; i < n; i++)
         if (ELF_R_TYPE(lib->jmprel[i].r_info) == R_ARM_JUMP_SLOT) slots[count++] = lib->jmprel[i].r_offset;
