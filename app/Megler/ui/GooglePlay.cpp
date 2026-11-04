@@ -75,7 +75,7 @@ void ask(AppShell& shell) {
     spec.title = "Google Play?";
     spec.message =
         "Megler brings Google Play services and Google Play Store. With them, apps sign in with Google and install from Google "
-        "Play. Megler installs both now, and other apps wait until they are installed.\n\n"
+        "Play. Megler installs both now, and apps run with microG until Google Play services is installed.\n\n"
         "Without them, apps run with microG, which takes far less memory. Google Play services can still be installed from "
         "the Library later.\n\n"
         "On phones with 1 GB of memory or less, Google Play Store can be slow. A store such as Aurora Store installs apps "
@@ -90,16 +90,6 @@ void ask(AppShell& shell) {
         answer(button == 1);
         if (auto self = weak.lock()) self->refreshChrome();
     });
-}
-
-/// Megler's word to the apps' own packages: both installed ("1"), or not ("0") once the portal has said so.
-void tellApps(bool ready) {
-    const std::string value = ready ? "1" : "0";
-    if (settings::megler(settings::googlePlayReady).value_or("") != value) {
-        settings::setMegler(settings::googlePlayReady, value);
-        shellLog::write(ready ? "google play: Google Play services and Google Play Store are installed: apps may start"
-                              : "google play: Google Play services or Google Play Store is not installed: apps wait for them");
-    }
 }
 
 /// The bundle's copy put in the library again, on a worker thread: it had gone from there (removed, or lost to an update).
@@ -131,14 +121,8 @@ void restore(AppShell& shell, Bundled& b) {
 /// Once Google Play is wanted: what of it is not installed, installed (Google Play services first), when the portal has
 /// listed the phone's apps and nothing else is being installed.
 void ensureInstalled(AppShell& shell) {
-    const bool gms = installed(gmsPackage), store = installed(storePackage);
     const bool listed = separateApps::portal() == separateApps::Portal::on && separateApps::portalProblem().empty();
-    if (gms && store) {
-        tellApps(true);
-        return;
-    }
-    if (!listed) return;
-    tellApps(false);
+    if ((installed(gmsPackage) && installed(storePackage)) || !listed) return;
     if (!separateApps::working().empty() || gCopying) return;
     for (Bundled& b : gBundled) {
         if (installed(b.package)) continue;
@@ -186,34 +170,11 @@ void tick(AppShell& shell) {
     }
 }
 
-bool appsMayGo(AppShell& shell, const std::string& package, bool starting) {
-    if (choice() != Choice::wanted || package == gmsPackage || package == storePackage) return true;
-    // An app's own package goes by what Megler said last; Megler by what it knows.
-    const bool ready = appPackage::isSingleApp() ? settings::get(settings::googlePlayReady, "") == "1"
-                                                 : installed(gmsPackage) && installed(storePackage);
-    if (ready) return true;
-    shellLog::write(std::string("google play: ") + (package.empty() ? "an app" : package) + (starting ? " not started" : " not installed") +
-                    ": Megler's Google Play services and Google Play Store come first");
-    if (appPackage::isSingleApp()) {
-        shell.confirm("Google Play Comes First",
-                      "Google Play was chosen in Megler: Megler installs its Google Play services and Google Play Store, and apps start "
-                      "once both are installed. Open Megler to see how far it is.",
-                      "Open Megler", false,
-                      [] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(L"megler:library")); });
-    } else {
-        shell.alert("Google Play Comes First",
-                    std::string("Google Play was chosen: Megler is installing its Google Play services and Google Play Store (the Library "
-                                "says how far it is). Other apps can be ") +
-                        (starting ? "started" : "installed") + " once both are installed.");
-    }
-    return false;
-}
-
 std::string pending() {
     if (appPackage::isSingleApp() || !bundled() || choice() != Choice::wanted) return {};
     if (installed(gmsPackage) && installed(storePackage)) return {};
-    return "Google Play was chosen: Megler installs its Google Play services, then Google Play Store. Other apps can be installed "
-           "and started once both are.";
+    return "Google Play was chosen: Megler installs its Google Play services, then Google Play Store. Apps run with microG "
+           "until Google Play services is installed.";
 }
 
 bool googleServicesChoosable() { return appPackage::hasGoogleServices(); }
