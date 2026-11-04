@@ -716,9 +716,41 @@ std::wstring gsfApk() {
     return canRead(path) ? path : std::wstring();
 }
 
+namespace {
+std::atomic<int> gPackageManager{0}; // 1 Windows's package manager answered (packageQuery), -1 it would not, 0 not asked
+}
+
+bool packageManagerWorks() { return gPackageManager.load() > 0; }
+
 bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std::function<void()>& reachable) {
     using namespace winrt::Windows::Data::Json;
     out.clear();
+    /*
+     * Windows's package manager lists the user's packages at once (the restricted capability packageQuery), where the
+     * Device Portal took 11 s on an HP Elite x3, more than a minute on a Lumia 650, and at times never answered on a Lumia
+     * 950 XL. The portal is asked when the package manager will not answer.
+     */
+    if (gPackageManager.load() >= 0) {
+        try {
+            const std::wstring publisherId(Package::Current().Id().PublisherId());
+            std::vector<InstalledApp> found;
+            for (auto const& package : winrt::Windows::Management::Deployment::PackageManager().FindPackagesForUser(L"")) {
+                const auto id = package.Id();
+                const std::wstring name(id.Name());
+                if (name.compare(0, 10, L"MeglerApp.") != 0 || std::wstring(id.PublisherId()) != publisherId) continue;
+                const auto v = id.Version();
+                found.push_back({narrow(name), format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision), narrow(std::wstring(id.FullName()))});
+            }
+            if (gPackageManager.exchange(1) != 1) shellLog::write("app package: Windows's package manager lists the apps' packages");
+            if (reachable) reachable();
+            out = std::move(found);
+            return true;
+        } catch (hresult_error const& e) {
+            if (gPackageManager.exchange(-1) != -1)
+                shellLog::write(format("app package: Windows's package manager does not list packages (0x%08x): the Device Portal does",
+                                       unsigned(e.code())));
+        }
+    }
     try {
         Portal portal;
         if (std::string why = portal.open(); !why.empty()) {
@@ -767,6 +799,21 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std
 
 PortalResult uninstallThroughPortal(const InstalledApp& app) {
     using winrt::Windows::Foundation::Uri;
+    // Windows's package manager first (packageManagement), as installWithPackageManager installs; the portal when it refuses.
+    try {
+        const auto result = winrt::Windows::Management::Deployment::PackageManager().RemovePackageAsync(widen(app.fullName)).get();
+        if (result.ErrorText().empty()) {
+            unregisterServiceApk(app.fullName);
+            shellLog::write("app package: " + app.fullName + " uninstalled by Windows's package manager");
+            return {true, "Uninstalled."};
+        }
+        shellLog::write(format("app package: Windows's package manager did not uninstall %s (0x%08x): ", app.fullName.c_str(),
+                               unsigned(result.ExtendedErrorCode())) +
+                        narrow(result.ErrorText()));
+    } catch (hresult_error const& e) {
+        shellLog::write(format("app package: Windows's package manager could not be asked to uninstall %s (0x%08x)", app.fullName.c_str(),
+                               unsigned(e.code())));
+    }
     try {
         Portal portal;
         if (std::string why = portal.open(); !why.empty()) return {false, why};

@@ -94,9 +94,12 @@ struct InstalledApp {
     std::string version;   // its version, which is that of the Megler that made it: "0.1.0.358"
     std::string fullName;  // its full name, what the Device Portal uninstalls it by
 };
-/// The apps' own packages of Megler's publisher installed on the phone, as the Device Portal lists them; false, with why,
-/// when it could not be asked. Off the UI thread.
+/// The apps' own packages of Megler's publisher installed on the phone, as Windows's package manager lists them, else the
+/// Device Portal; false, with why, when neither could be asked. Off the UI thread.
 bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std::function<void()>& reachable = {});
+/// Whether Windows's package manager has answered here (the restricted capabilities packageQuery and packageManagement):
+/// packages are listed, installed and uninstalled by it, without the Device Portal.
+bool packageManagerWorks();
 /// Uninstalls one through the Device Portal: the package goes, with the app's own LocalState; what it has in the shared
 /// folder stays. Off the UI thread.
 PortalResult uninstallThroughPortal(const InstalledApp& app);

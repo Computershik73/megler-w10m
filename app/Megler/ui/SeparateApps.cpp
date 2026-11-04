@@ -224,8 +224,14 @@ void run(Job& job, int number, int total) {
             std::lock_guard<std::mutex> lock(gMutex);
             gStatus[package].made = made;
         }
-        const appPackage::PortalResult result =
-            appPackage::installThroughPortal(made, [&](const std::string& step) { setStep(package, stepOf(step)); });
+        // Windows's deployment engine reads the package where it lies; the Device Portal is sent it from Megler's memory, which
+        // a phone of 1 GB allows 390 MB of (shell/AppPackage.h): the portal only where the engine refuses.
+        const auto step = [&](const std::string& said) { setStep(package, stepOf(said)); };
+        appPackage::PortalResult result = appPackage::installWithPackageManager(made.appx, step);
+        if (!result.ok) {
+            shellLog::write("separate apps: " + result.said + ": through the Device Portal instead");
+            result = appPackage::installThroughPortal(made, step);
+        }
         if (!result.ok) {
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
             setStep(package, result.said + " The package is made: Windows's installer can install it (below)." +
