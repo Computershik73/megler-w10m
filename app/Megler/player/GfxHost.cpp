@@ -1830,11 +1830,19 @@ struct Canvas {
     Surface cover, source, extra;  // memory of the canvas's own that a drawing call is put together in
     std::vector<uint8_t> blurA, blurB;
     std::vector<uint32_t> tint;    // a bitmap's pixels as a paint's alpha and colour filter make them
-    // A changing large image (software video) gets a private upload texture.
-    // It is never shared with another canvas or a persistent bitmap shader.
-    uint32_t changingId = 0, changingVersion = 0;
-    int changingW = 0, changingH = 0;
-    Ref<ID2D1Bitmap1> changingBitmap;
+    // A changing large image (software video) gets a private upload texture, each of the last few drawn: a player that
+    // draws its frames into bitmaps in turn (MediaCodec onto a SurfaceTexture, three) has each frame put into its
+    // bitmap's texture, not into a texture made for the frame. Never shared with another canvas or a persistent bitmap
+    // shader.
+    struct Changing {
+        uint32_t id = 0, version = 0;
+        int w = 0, h = 0;
+        uint64_t used = 0;
+        Ref<ID2D1Bitmap1> bitmap;
+    };
+    enum { changings = 4 };
+    Changing changing[changings];
+    uint64_t changingClock = 0;
     // On the graphics processor, what a drawing call is put together in there (workSurface): its colours times its
     // coverage, the coverage alone, colours or a shadow's coverage before they are cut, and a copy of the picture.
     enum { workA, workC, workS, workD, workK, works };
@@ -1857,8 +1865,7 @@ struct Canvas {
     /// something had to be put on in memory.
     void leaveGpu() {
         if (!gc) return;
-        changingBitmap.reset();
-        changingId = 0;
+        for (Changing& c : changing) c = Changing();
         for (Level& level : levels)
             if (level.layer && level.layer->gc) {
                 level.layer->memory();
@@ -4563,35 +4570,44 @@ Ref<ID2D1Bitmap1> keptBitmap(const megler_gfx_image& image) {
 Ref<ID2D1Bitmap1> bitmapForDrawing(Canvas& cv, const megler_gfx_image& image) {
     const uint64_t pixels = uint64_t(image.width) * uint64_t(image.height);
     if (!image.id || pixels < 256 * 256 || pixels > (4u << 20) / 4) return keptBitmap(image);
-    if (cv.changingId != image.id || cv.changingW != image.width || cv.changingH != image.height) {
-        cv.changingBitmap.reset();
-        cv.changingId = image.id;
-        cv.changingVersion = image.version;
-        cv.changingW = image.width;
-        cv.changingH = image.height;
+    Canvas::Changing* slot = nullptr;
+    for (Canvas::Changing& c : cv.changing)
+        if (c.id == image.id && c.w == image.width && c.h == image.height) slot = &c;
+    if (!slot) {
+        // Not seen here before: the least recently drawn one's place is its, for the versions after this one.
+        slot = &cv.changing[0];
+        for (Canvas::Changing& c : cv.changing)
+            if (c.used < slot->used) slot = &c;
+        *slot = Canvas::Changing();
+        slot->id = image.id;
+        slot->version = image.version;
+        slot->w = image.width;
+        slot->h = image.height;
+        slot->used = ++cv.changingClock;
         return keptBitmap(image);
     }
-    if (cv.changingBitmap && cv.changingVersion == image.version) return cv.changingBitmap;
-    if (!cv.changingBitmap && cv.changingVersion == image.version) return keptBitmap(image);
+    slot->used = ++cv.changingClock;
+    if (slot->bitmap && slot->version == image.version) return slot->bitmap;
+    if (!slot->bitmap && slot->version == image.version) return keptBitmap(image);
     const uint64_t started = ticksNow();
     HRESULT hr;
-    if (cv.changingBitmap) {
+    if (slot->bitmap) {
         // CopyFromMemory flushes a pending batch using this image before its
         // contents change, preserving earlier drawings in this same context.
-        hr = cv.changingBitmap->CopyFromMemory(nullptr, image.pixels, UINT32(image.stride));
+        hr = slot->bitmap->CopyFromMemory(nullptr, image.pixels, UINT32(image.stride));
     } else {
         hr = cv.gc->dc->CreateBitmap(D2D1::SizeU(UINT32(image.width), UINT32(image.height)), image.pixels, UINT32(image.stride),
             D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f),
-            cv.changingBitmap.put());
+            slot->bitmap.put());
     }
     G().uploadTicks += ticksNow() - started;
     ++G().uploads;
     G().uploadPixels += pixels;
     if (SUCCEEDED(hr)) {
-        cv.changingVersion = image.version;
-        return cv.changingBitmap;
+        slot->version = image.version;
+        return slot->bitmap;
     }
-    cv.changingBitmap.reset();
+    slot->bitmap.reset();
     return keptBitmap(image);
 }
 
