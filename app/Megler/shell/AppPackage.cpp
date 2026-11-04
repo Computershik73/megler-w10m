@@ -594,7 +594,11 @@ PortalResult installWithPackageManager(const std::wstring& path, const std::func
             // (Said before it goes: an update of Megler's own package ends Megler as soon as it is installed.)
             shellLog::flush();
             const DeploymentResult result = manager.AddPackageAsync(winrt::Windows::Foundation::Uri(uri), nullptr, options).get();
-            if (result.ErrorText().empty()) return {true, "Installed."};
+            if (result.ErrorText().empty()) {
+                shellLog::write(format("app package: %s installed by Windows's deployment engine (options 0x%x)",
+                                       narrow(path.substr(path.find_last_of(L'\\') + 1)).c_str(), unsigned(options)));
+                return {true, "Installed."};
+            }
             said = format("0x%08x ", unsigned(result.ExtendedErrorCode())) + narrow(result.ErrorText());
             shellLog::write(format("app package: the deployment engine refused it (options 0x%x): ", unsigned(options)) + said);
         } catch (hresult_error const& e) {
