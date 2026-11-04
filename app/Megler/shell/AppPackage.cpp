@@ -11,6 +11,7 @@
 #include "shell/Strings.h"
 
 #include <winrt/Windows.Graphics.Imaging.h>
+#include <winrt/Windows.Management.Deployment.h>
 
 #include <atomic>
 
@@ -572,6 +573,38 @@ PortalResult installThroughPortal(const Made& made, const std::function<void(con
     }
 }
 
+/*
+ * Windows 10 Mobile's deployment engine takes a packaged developer deployment with the option 0x8000 (its MinDeploy's; the
+ * public DevelopmentMode, 2, is for a loose manifest and refused for a package), and ForceApplicationShutdown closes the app
+ * the package updates -- Megler itself, for its own update. Each set of options is tried while the one before was refused
+ * at once; a deployment that has begun is waited for.
+ */
+PortalResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress) {
+    using namespace winrt::Windows::Management::Deployment;
+    const DeploymentOptions mobileDevelopment = static_cast<DeploymentOptions>(0x8000);
+    const DeploymentOptions tries[] = {mobileDevelopment | DeploymentOptions::ForceApplicationShutdown, DeploymentOptions::ForceApplicationShutdown,
+                                       mobileDevelopment, DeploymentOptions::None};
+    std::wstring uri = L"file:///" + path;
+    std::replace(uri.begin(), uri.end(), L'\\', L'/');
+    std::string said;
+    for (const DeploymentOptions options : tries) {
+        try {
+            PackageManager manager;
+            progress(format("Installing it through Windows's deployment engine (options 0x%x)…", unsigned(options)));
+            // (Said before it goes: an update of Megler's own package ends Megler as soon as it is installed.)
+            shellLog::flush();
+            const DeploymentResult result = manager.AddPackageAsync(winrt::Windows::Foundation::Uri(uri), nullptr, options).get();
+            if (result.ErrorText().empty()) return {true, "Installed."};
+            said = format("0x%08x ", unsigned(result.ExtendedErrorCode())) + narrow(result.ErrorText());
+            shellLog::write(format("app package: the deployment engine refused it (options 0x%x): ", unsigned(options)) + said);
+        } catch (hresult_error const& e) {
+            said = format("0x%08x ", unsigned(e.code())) + narrow(e.message());
+            shellLog::write(format("app package: the deployment engine could not be asked (options 0x%x): ", unsigned(options)) + said);
+        }
+    }
+    return {false, "Windows's deployment engine did not install it: " + said};
+}
+
 bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullName, bool replace) {
     if (entry.report.package != "com.google.android.gms") return true;
     if (!entry.report.ok || installedFullName.empty() || installedFullName.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != std::string::npos || !canRead(entry.path)) return false;
@@ -999,7 +1032,7 @@ void installCopiedUpdate() {
             made.certificate = std::wstring(certificate.Path());
             made.identity = "Megler " + best;
             shellLog::write("update: Megler " + best + " found in Pictures\\Megler (this is " + versionString() +
-                            "): installed through the Device Portal, which closes this Megler");
+                            "): installed by Windows's deployment engine, which closes this Megler");
             // The screen stays on while the package goes: a phone that locks suspends Megler, and the try has no result.
             {
                 std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
@@ -1009,7 +1042,17 @@ void installCopiedUpdate() {
                 Updating() { gSelfUpdating = true; }
                 ~Updating() { gSelfUpdating = false; }
             } updating;
-            const PortalResult result = installThroughPortal(made, [](const std::string& step) { shellLog::write("update: " + step); });
+            /*
+             * Windows's deployment engine reads the package where it lies (installWithPackageManager). The Device Portal is
+             * sent it from Megler's memory: a phone of 1 GB lets an app have 390 MB, and a Lumia 650's Megler 574 sending
+             * 610's 356 MB was ended by Windows with nothing said, three times. The portal only where the engine refuses.
+             */
+            const auto step = [](const std::string& said) { shellLog::write("update: " + said); };
+            PortalResult result = installWithPackageManager(made.appx, step);
+            if (!result.ok) {
+                shellLog::write("update: " + result.said + ": through the Device Portal instead");
+                result = installThroughPortal(made, step);
+            }
             shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
             // A portal that could not be reached, or dropped the connection while the package went (0x80072eff, 512), said nothing
             // of the package: that try is one without a result, made again.

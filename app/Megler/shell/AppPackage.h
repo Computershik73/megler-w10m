@@ -83,6 +83,10 @@ struct PortalResult {
 /// Installs `made` through the phone's own Device Portal, https://127.0.0.1 (its certificate, which the phone made for
 /// itself, taken as it is), with the certificate. Off the UI thread.
 PortalResult installThroughPortal(const Made& made, const std::function<void(const std::string&)>& progress);
+/// A package installed by Windows's deployment engine itself (PackageManager.AddPackageAsync, the restricted capability
+/// packageManagement), which reads it where it lies: nothing of it goes through Megler's memory. An update of Megler's own
+/// package closes Megler. Not installed, with what Windows said, when every option was refused. Off the UI thread.
+PortalResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress);
 
 /// An app's own package installed on the phone.
 struct InstalledApp {
