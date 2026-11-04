@@ -2130,6 +2130,8 @@ struct Ink {
     D2D1_RECT_F box = {};            // the first three
     float rx = 0, ry = 0;
     ID2D1Geometry* shape = nullptr;  // geometry
+    const float* path = nullptr;     // ... and, made from a path, that path as megler.h has it (to keep its shadow by)
+    int pathCount = 0, pathFill = 0;
     const Shaped* text = nullptr;    // glyphs: a run laid out ...
     Matrix3x2F textMatrix;           // ... and what takes its own coordinates (the baseline's start at 0, 0) to the drawing's
     int style = MEGLER_GFX_FILL;
@@ -2855,6 +2857,13 @@ bool shadowKey(const Ink& ink, const Matrix3x2F& m, uint32_t colour, float sigma
         if (!ink.text) return false;
         at = ink.textMatrix * m;
         putShapedKey(*ink.text, key);
+    } else if (ink.kind == Ink::geometry) {
+        // A path, by its numbers (made again at each call, its geometry is no key): an icon's, drawn where the matrix says.
+        if (!ink.path || ink.pathCount <= 0 || ink.pathCount > 65536) return false;
+        at = m;
+        put(&ink.pathFill, sizeof(ink.pathFill));
+        put(&ink.pathCount, sizeof(ink.pathCount));
+        put(ink.path, size_t(ink.pathCount) * sizeof(float));
     } else if (ink.kind == Ink::rectangle || ink.kind == Ink::rounded || ink.kind == Ink::oval) {
         // The shape from its own corner, which the matrix's move takes along.
         const float size[4] = {ink.box.right - ink.box.left, ink.box.bottom - ink.box.top, ink.rx, ink.ry};
@@ -2900,7 +2909,8 @@ bool gpuShadowKept(Canvas& cv, Surface& target, const Ink& ink, uint32_t colour,
     std::vector<uint8_t> key;
     int ix = 0, iy = 0, ox = 0, oy = 0, w = 0, h = 0;
     Ref<ID2D1Bitmap1> bm;
-    if (gpuGone() || !shadowKey(ink, cv.matrix, colour, sigma, dx, dy, &key, &ix, &iy)) return false;
+    // (Under a clip that is a shape, gpuShadow cuts it on its own small surface; here it would be a layer over the whole canvas.)
+    if (gpuGone() || cv.clip().g || !shadowKey(ink, cv.matrix, colour, sigma, dx, dy, &key, &ix, &iy)) return false;
     const uint64_t hash = keyHash(key);
     {
         std::lock_guard<std::mutex> lock(s.shadowMutex);
@@ -2994,7 +3004,7 @@ bool gpuShadowKept(Canvas& cv, Surface& target, const Ink& ink, uint32_t colour,
     drawn.intersect(target.bounds());
     if (drawn.empty()) return true;
     if (!target.begin()) return false;
-    target.useClip(cv.clip());
+    target.useBoxClip(drawn);
     target.setMatrix(Matrix3x2F::Identity());
     const D2D1_RECT_F dst = D2D1::RectF(float(onto.l), float(onto.t), float(onto.r), float(onto.b));
     target.rt->DrawBitmap(bm.get(), &dst, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr);
@@ -4353,6 +4363,9 @@ void drawPath(void*, void* canvas, const float* path, int count, int fill, const
         Ink ink;
         ink.kind = Ink::geometry;
         ink.shape = shape.get();
+        ink.path = path;
+        ink.pathCount = count;
+        ink.pathFill = fill;
         ink.l = bounds.left;
         ink.t = bounds.top;
         ink.r = bounds.right;
