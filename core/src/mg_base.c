@@ -100,6 +100,14 @@ static struct {
     char text[TRACE_TEXT];
 } g_trace[TRACE_SLOTS];
 static volatile i32 g_trace_next;
+/*
+ * The flag trace-live: each thing done is said in the log too, as it is done, at most 30000 of them -- for an app
+ * that ends its process itself, before any fault's report could say the trace (TikTok Lite's libmetasec_ov.so).
+ * Read once the data folder is known (mg_flag is false before), and kept.
+ */
+static volatile i32 g_trace_live = -1, g_trace_live_lines;
+const char *megler_data_dir(void);
+bool mg_flag(const char *name);
 
 void mg_trace(const char *fmt, ...)
 {
@@ -110,6 +118,9 @@ void mg_trace(const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(g_trace[slot].text, TRACE_TEXT, fmt, ap);
     va_end(ap);
+    if (g_trace_live < 0 && megler_data_dir()[0]) g_trace_live = mg_flag("trace-live") ? 1 : 0;
+    if (g_trace_live > 0 && mg_atomic_add(&g_trace_live_lines, 1) <= 30000)
+        mg_info("live: %u %s", (unsigned)g_trace[slot].thread, g_trace[slot].text);
 }
 
 void mg_trace_dump(int level, int newest)

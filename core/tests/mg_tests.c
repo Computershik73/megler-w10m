@@ -327,6 +327,21 @@ static void test_host(const char *scratch)
     CHECK(mg_path_rmdir(sub, &err));
     free(path);
     free(sub);
+#if defined(_WIN32)
+    {
+        /* A DLL of the system's as it lies in memory (megler_dump_module): its image, MZ first, SizeOfImage long. */
+        char *img = mg_sprintf("%s/kernel32.img", scratch);
+        mg_addr base = 0;
+        size_t size = 0, got = 0;
+        u8 *bytes;
+        CHECK(mg_host_module_dump("kernel32.dll", img, &base, &size) && base && size > 4096);
+        bytes = mg_file_read_all(img, &got);
+        CHECK(bytes && got == size && bytes[0] == 'M' && bytes[1] == 'Z' && !memcmp(bytes, (const void *)base, 512));
+        free(bytes);
+        CHECK(mg_path_remove(img, &err));
+        free(img);
+    }
+#endif
 }
 
 /* -------------------------------------------------------------------- zip */
@@ -3105,11 +3120,28 @@ static void test_guest(const char *libdir, const char *scratch)
             if (svc) {
                 int saved = *mg_errno_ptr();
                 mg_ld_get_stats(svc, &st);
-                CHECK_INT(st.svc_sites, 5);
+                /* The dead stub's svc: left in Thumb code, behind its branch; taken in ARM code, where every svc 0 is. */
+                CHECK_INT(st.svc_sites, j == 0 ? 6 : 7);
                 *mg_errno_ptr() = 123;
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_getpid")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_literal")(), 4242);
                 CHECK_INT(FN(svc, int (*)(void), "t_svc_unknown")(), -38);
+                /* An svc whose number was set two instructions back (Chromium's syscall()). */
+                CHECK_INT(FN(svc, int (*)(void), "t_svc_far_number")(), 4242);
+                CHECK_INT(FN(svc, int (*)(void), "t_svc_dead_stub")(), 7);
+                {
+                    /* Read-only data in the executable segment: words that look like svc stay as the file has them. */
+                    const u32 *data = (const u32 *)SYM(svc, "t_svc_rodata");
+                    CHECK(data && data[0] == 0xEF000000u && data[1] == 0xDF002714u);
+                }
+                if (j == 0) {
+                    /* As the file has it: libmetasec_ov.so sums such code, and ends the process when it has changed. */
+                    const u8 *stub = (const u8 *)((mg_addr)SYM(svc, "t_svc_dead_stub") & ~(mg_addr)1);
+                    bool kept = false;
+                    int k;
+                    for (k = 0; k < 16; k += 2) kept |= mg_rd16(stub + k) == 0xDF00;
+                    CHECK(kept);
+                }
                 CHECK_INT(FN(svc, int (*)(void *, unsigned), "t_svc_cacheflush")(SYM(svc, "t_svc_getpid"), 2), 0);
                 /* compiler-rt's __clear_cache, whose number is finished by movt: patched too, and it succeeds. */
                 CHECK_INT(FN(svc, int (*)(void *, unsigned), "t_svc_clear_cache")(SYM(svc, "t_svc_getpid"), 2), 0);
@@ -3131,7 +3163,7 @@ static void test_guest(const char *libdir, const char *scratch)
         if (svc) {
             mg_addr target;
             mg_ld_get_stats(svc, &st);
-            CHECK_INT(st.svc_sites, 5);
+            CHECK_INT(st.svc_sites, 6);
             fn = (const u8 *)((mg_addr)SYM(svc, "t_svc_getpid") & ~(mg_addr)1);
             for (k = 0; k < 16; k += 2) {
                 trapped |= mg_rd16(fn + k) == 0xDEA5;

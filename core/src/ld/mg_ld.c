@@ -807,6 +807,46 @@ static size_t island_estimate(const lib_source *src, const Elf32_Phdr *ph, int p
     return MG_ALIGN_UP(need, 65536);
 }
 
+/*
+ * The library's executable sections from its section headers (mg_lib's code). Each must lie in an executable segment's
+ * bytes from the file, at the address that segment gives its offset; headers that do not (stripped, or made up to
+ * mislead a disassembler), or more than eight such sections, and none is known: the segments are then looked at whole.
+ */
+static void read_code_sections(mg_lib *lib, const lib_source *src, const Elf32_Ehdr *eh)
+{
+    size_t n = eh->e_shnum, size = src->size, i;
+    Elf32_Shdr *sh;
+    int found = 0, k;
+    if (!eh->e_shoff || eh->e_shentsize != sizeof(Elf32_Shdr) || !n || n > 4096 || eh->e_shoff > size
+        || n * sizeof(Elf32_Shdr) > size - eh->e_shoff)
+        return;
+    sh = (Elf32_Shdr *)mg_alloc(n * sizeof(Elf32_Shdr));
+    if (!src_read(src, eh->e_shoff, sh, n * sizeof(Elf32_Shdr))) {
+        free(sh);
+        return;
+    }
+    for (i = 0; i < n && found >= 0; i++) {
+        const Elf32_Shdr *s = &sh[i];
+        bool inside = false;
+        if (s->sh_type != SHT_PROGBITS || (s->sh_flags & (SHF_ALLOC | SHF_EXECINSTR)) != (SHF_ALLOC | SHF_EXECINSTR) || !s->sh_size) continue;
+        for (k = 0; k < lib->phnum && !inside; k++) {
+            const Elf32_Phdr *p = &lib->phdr[k];
+            inside = p->p_type == PT_LOAD && (p->p_flags & PF_X) && s->sh_addr >= p->p_vaddr && s->sh_size <= p->p_filesz
+                && s->sh_addr - p->p_vaddr <= p->p_filesz - s->sh_size && s->sh_offset >= p->p_offset
+                && s->sh_offset - p->p_offset == s->sh_addr - p->p_vaddr;
+        }
+        if (!inside || found == 8) {
+            found = -1;
+            break;
+        }
+        lib->code[found][0] = s->sh_addr;
+        lib->code[found][1] = s->sh_addr + s->sh_size;
+        found++;
+    }
+    free(sh);
+    lib->ncode = found > 0 ? found : 0;
+}
+
 static mg_lib *map_library(const char *name, const lib_source *src)
 {
     Elf32_Ehdr ehdr;
@@ -861,6 +901,7 @@ static mg_lib *map_library(const char *name, const lib_source *src)
     lib->vmax = vmax;
     lib->phnum = eh->e_phnum;
     lib->phdr = ph;
+    read_code_sections(lib, src, eh);
 
     /*
      * One reservation: [island] image [island]. A Thumb branch reaches 16 MB,

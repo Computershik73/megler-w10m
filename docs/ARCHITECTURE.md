@@ -243,8 +243,18 @@ a file as Bolt uses it, a directory read twice, the limits), and `t_ffcalls`
 for the two sigactions.
 
 The Thumb scanner recognises immediate/register moves and literal loads into
-`r7` immediately before `svc 0`; the ARM scanner recognises unconditional
-`svc 0`. It does not replace every DF00 halfword: executable segments also hold
+`r7` within the eight halfwords before `svc 0` (Chromium's and bionic's
+`syscall()` set it a few instructions back), stopping at an instruction after
+which straight-line code ends (`mov pc`, `bx`, `b`, `pop {pc}`): an `svc`
+right behind one is not reached by falling through. TikTok Lite's
+`libmetasec_ov.so` has 554 of those in its anti-disassembly stubs, which jump
+over them, and sums code that holds some: one of its init functions ends the
+process (the thread sent to `0x4000` with `sp` `0x2b`) when a byte of it has
+changed. The ARM scanner recognises unconditional `svc 0`. Both look only at
+the library's executable sections when its section headers say which they are
+and agree with its segments (`read_code_sections`): read-only data shares the
+segment, and a table in that library's `.rodata` holds `0xEF000000`, the word
+of an ARM `svc 0`, which became a UDF before. The thread-pointer reads too. It does not replace every DF00 halfword: executable segments also hold
 literal data and Thumb-2 instructions. Other sequences and newly generated JIT
 code still need interception support.
 
@@ -258,6 +268,40 @@ exception path with this wrapper still needs a phone run.
 
 The diagnostic flag `trap-svc` instead writes an unregistered `udf #165` and
 leaves the fault fatal, named by library and offset in the crash report.
+
+### Libraries left as the file has them
+
+Some libraries sum their own code and end the process when a byte of it has
+changed. TikTok Lite's `libmetasec_ov.so` (ByteDance's protection) does: an
+init function sums code around its anti-disassembly stubs, the function at
+`+0x86d54` sums its ARM `syscall()` stub (13 words, with a real `svc 0`), and
+a sum that differs calls one of three routines that put `0x2b` in `r1`, `r11`,
+`r12`, `lr` and `sp`, fill the stack below with `0x2b` to `0x7a` (`r7` ends at
+123) and jump to `0x1000`, `0x4000` or `0x8000` in ARM state. The process ends
+with no report. Windows' crash dump (the Device Portal's, once enabled for the
+package) shows the thread; `sp` was `r0` + 320, and the frame above it, with the
+saved `lr` of whoever called that function, says which check it was.
+
+Nothing in such a library is written. Its PLT stays the linker's (ARM code,
+which runs as it is on the phones tried), and its system calls and
+thread-pointer reads stop at **hardware breakpoints**: the processor's
+breakpoint registers, which Windows on ARM keeps in each thread's context
+(`Bvr`, `Bcr`). The shell's flag `ui-probe-breakpoints` showed that on the
+Elite x3 (build 15254) a thread given them, by `SetThreadContext` while it is
+suspended or through an exception's context that `NtContinue` takes back,
+stops before the instruction with `STATUS_BREAKPOINT`, in Thumb and in ARM
+code. The list is the process's (at most six, what a Snapdragon 820 has), and
+every guest thread is given it: those alive when such a library is loaded,
+each stopped for a moment and its registers read back, and new ones as they
+start. At a stop the fault handler does the instruction as it does a patched
+one's UDF: the system call by number, or the guest's thread pointer into the
+register. A site past the breakpoints is patched as in any other library, and
+said. A sigreturn's `svc` is neither: a handler returns to this layer here,
+never through its restorer. Where the host has none (qemu's Linux), such a
+library is patched as any other. Which libraries: `lib_pristine`
+(`arm/mg_patch.c`); the flag `pristine-<library>` adds one, for trying. In
+`libmetasec_ov.so` that is four sites: its `syscall()` stub's `svc`, its
+`vfork`'s, and two thread-pointer reads.
 
 ### The kernel's user helpers
 

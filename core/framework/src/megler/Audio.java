@@ -7,6 +7,8 @@ package megler;
 public final class Audio {
     private Audio() {}
     public static native int trackOpen(int rate, int channels);
+    /** The frames the track holds written ahead at most (AudioTrack's buffer size); how many it holds. */
+    public static native int trackBuffer(int id, int frames);
     public static native int trackWrite(int id, short[] data, int off, int n, boolean blocking);
     public static native int trackWriteBytes(int id, byte[] data, int off, int n, int encoding, boolean blocking);
     public static native int trackWriteFloat(int id, float[] data, int off, int n, boolean blocking);

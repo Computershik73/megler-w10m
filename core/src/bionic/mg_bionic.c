@@ -169,6 +169,130 @@ void mg_gthread_release_tid(i32 tid)
     thread_unlock();
 }
 
+/* Threads that would not take the hardware breakpoints when they were asked: asked again every 20 ms for two seconds. */
+typedef struct bp_retry {
+    mg_thread **host;
+    i32 *tids;
+    int n;
+} bp_retry;
+
+static void bp_retry_main(void *arg)
+{
+    bp_retry *r = (bp_retry *)arg;
+    int i, k, left = r->n;
+    for (k = 0; k < 100 && left; k++) {
+        mg_sleep_ns(20000000ull);
+        for (i = 0; i < r->n; i++) {
+            if (!r->host[i] || !mg_breakpoints_arm(r->host[i])) continue;
+            mg_info("ld: guest thread %d took the hardware breakpoints, asked again %d times", (int)r->tids[i], k + 1);
+            r->host[i] = NULL;
+            left--;
+        }
+    }
+    for (i = 0; i < r->n; i++)
+        if (r->host[i]) mg_warn("ld: guest thread %d never took the hardware breakpoints: %s", (int)r->tids[i], mg_breakpoints_why());
+    free(r->host);
+    free(r->tids);
+    free(r);
+}
+
+void mg_gthreads_arm_breakpoints(void)
+{
+    mg_thread **host = (mg_thread **)mg_alloc(sizeof(mg_thread *) * MG_COUNT(g_tid_thread));
+    i32 *tids = (i32 *)mg_alloc(sizeof(i32) * MG_COUNT(g_tid_thread));
+    mg_thread *self = mg_thread_current();
+    int i, k, n = 0, armed = 0, missed = 0;
+    char said[200];
+    size_t used = 0;
+    /* (A host thread's record lives as long as the process: taken under the lock, used after it.) */
+    thread_lock("mg_gthreads_arm_breakpoints");
+    for (i = 1; i < (int)MG_COUNT(g_tid_thread); i++) {
+        mg_gthread *g = g_tid_thread[i];
+        if (g && g->sig_thread && g->sig_thread != self) {
+            tids[n] = g->tid;
+            host[n++] = g->sig_thread;
+        }
+    }
+    thread_unlock();
+    mg_gthread_take_breakpoints(mg_gthread_self());
+    said[0] = 0;
+    for (i = 0; i < n; i++) {
+        /* A thread not stopped the first time is asked again (one that has ended answers no each time). Each that still
+           has not got them takes them itself, at its next call of native code from Java (mg_gthread_take_breakpoints). */
+        bool ok = false;
+        for (k = 0; k < 3 && !ok; k++) {
+            if (k) mg_thread_yield();
+            ok = mg_breakpoints_arm(host[i]);
+        }
+        if (ok) {
+            armed++;
+        } else {
+            missed++;
+            mg_warn("ld: guest thread %d did not take the hardware breakpoints: %s", (int)tids[i], mg_breakpoints_why());
+            if (used + 16 < sizeof(said)) used += (size_t)snprintf(said + used, sizeof(said) - used, "%s%d", used ? ", " : "", (int)tids[i]);
+            /* Kept, for the thread that asks them again a while (bp_retry_main). */
+            host[missed - 1] = host[i];
+            tids[missed - 1] = tids[i];
+        }
+    }
+    if (missed) {
+        bp_retry *r = (bp_retry *)mg_alloc(sizeof(*r));
+        r->host = host;
+        r->tids = tids;
+        r->n = missed;
+        mg_thread *th = mg_thread_start(bp_retry_main, r, 64u << 10, "breakpoints");
+        if (th) {
+            mg_thread_detach(th);
+            host = NULL;
+            tids = NULL;
+        } else {
+            free(r);
+        }
+    }
+    free(host);
+    free(tids);
+    mg_info("ld: %d hardware breakpoints given to this thread and %d other guest threads", mg_breakpoint_count(), armed);
+    if (missed)
+        mg_warn("ld: %d guest threads did not take the hardware breakpoints, stopped (threads %s): each takes them itself at its "
+                "next call of native code from Java", missed, said);
+}
+
+/*
+ * An Android nice value as the host's priority. Android's audio threads (THREAD_PRIORITY_AUDIO, -16 and below) are the
+ * most urgent here too; the display's (-4 and below) above normal; other urgent ones normal; 0 an app's own, below normal
+ * while app threads give way to the shell's (mg_app_threads_give_way); the background's (10 and up) lowest. Before this,
+ * nothing an app asked was done: every thread of an app ran below the shell's, its audio ones too, and TikTok Lite's
+ * player, short of time, left 15 % of the mixer's blocks silent.
+ */
+static int priority_of_nice(int nice)
+{
+    if (nice <= -16) return 2;
+    if (nice <= -4) return 1;
+    if (nice < 0) return 0;
+    if (nice < 10) return mg_app_threads_give_way() ? -1 : 0;
+    return -2;
+}
+
+void mg_gthread_set_nice(mg_gthread *t, int nice)
+{
+    mg_thread *host = t->sig_thread;
+    if (nice < -20) nice = -20;
+    if (nice > 19) nice = 19;
+    t->nice = nice;
+    if (t == mg_gthread_self()) mg_thread_set_priority(NULL, priority_of_nice(nice));
+    else if (host) mg_thread_set_priority(host, priority_of_nice(nice));
+}
+
+void mg_gthread_feeds_audio(void)
+{
+    /* (As Android's own players run their feeding thread: ExoPlayer's at THREAD_PRIORITY_AUDIO.) */
+    mg_gthread *t = mg_gthread_self();
+    if (t->nice > -16) {
+        mg_info("audio: guest thread %d feeds a track: it runs at an audio thread's priority from now on", (int)t->tid);
+        mg_gthread_set_nice(t, -16);
+    }
+}
+
 mg_thread *mg_gthread_host_of_tid(i32 tid)
 {
     /* (A host thread's record lives as long as the process; the guest thread's goes at its join, hence the lock.) */
@@ -1142,6 +1266,8 @@ mg_gthread *mg_gthread_self(void)
     t->tid = mg_gthread_take_tid(t);
     mg_thread_stack_bounds(&t->stack_lo, &t->stack_hi);
     t->sig_thread = mg_thread_current();
+    /* The process's hardware breakpoints, if a library left as the file has it was loaded (arm/mg_patch.c). */
+    mg_gthread_take_breakpoints(t);
     /*
      * bionic's slots: 1 is the thread. 2 is TLS_SLOT_APP, the app's own from Android 10 on, and nothing on a thread that
      * has not set it: it was this thread's errno, as Android 9 had it there, and Go's runtime, told the device is API 29

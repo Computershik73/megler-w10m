@@ -133,6 +133,9 @@ u32 mg_thread_id(const mg_thread *t);
  * to do, and otherwise runs as it would.
  */
 void mg_thread_runs_app_code(void);
+/* A thread's priority among the process's: -2 lowest, -1 below normal (an app's own, giving way to the shell's), 0 normal,
+   1 above normal, 2 highest; t NULL for the caller. False where the host has no such priorities. */
+bool mg_thread_set_priority(mg_thread *t, int level);
 /* The calling thread, however it was started; lives as long as the process. */
 mg_thread *mg_thread_current(void);
 /* The processor time a thread has used, user and kernel, in nanoseconds; the calling thread's when `t` is NULL. 0 when unknown. */
@@ -154,6 +157,22 @@ void mg_thread_set_interrupt(void (*fn)(void), bool (*in_guest_code)(mg_addr pc)
 bool mg_thread_interrupt(mg_thread *t);
 /* What has become of the interruptions asked for so far, in a line: for the tests and the log. */
 void mg_thread_interrupt_report(char *out, size_t size);
+/*
+ * Hardware breakpoints on guest code: the processor's breakpoint registers, which Windows on ARM keeps in each thread's
+ * context, for instructions of a library that must stay as the file has them (arm/mg_patch.c, "left as the file has
+ * it"). The list is the process's, and every guest thread is given it; a thread that reaches one stops before the
+ * instruction, a fault of kind MG_FAULT_BREAKPOINT at that address.
+ *   mg_breakpoints_available  whether the host has them at all (not qemu's Linux, nor the PC)
+ *   mg_breakpoint_add         an address put in the list, bit 0 set for Thumb: false when the list is full
+ *   mg_breakpoints_arm        the list given to a thread: another one, stopped for the moment and read back; the caller
+ *                             (t NULL or its own) through an exception's context. True at once with an empty list.
+ */
+bool mg_breakpoints_available(void);
+bool mg_breakpoint_add(mg_addr at);
+int mg_breakpoint_count(void);
+bool mg_breakpoints_arm(mg_thread *t);
+/* Why the last mg_breakpoints_arm that failed did, with the thread's own id: for the log. */
+const char *mg_breakpoints_why(void);
 /*
  * Stopping another thread where it is, for the collector (dvm/): mg_thread_suspend stops `t`, whatever it is executing, and
  * reads its registers; it stays stopped until mg_thread_resume. Never the calling thread. The registers are only read: the
@@ -266,7 +285,8 @@ bool mg_guest_tp_where(u32 *opc2, u32 *offset);
  * (a vectored exception handler; SIGILL/SIGSEGV/SIGBUS handlers under Linux).
  * The handler may change the registers and return true to resume.
  */
-enum { MG_FAULT_ILLEGAL = 1, MG_FAULT_ACCESS, MG_FAULT_OTHER };
+/* MG_FAULT_BREAKPOINT: a thread stopped at one of the process's hardware breakpoints (mg_breakpoint_add), before the instruction. */
+enum { MG_FAULT_ILLEGAL = 1, MG_FAULT_ACCESS, MG_FAULT_OTHER, MG_FAULT_BREAKPOINT };
 
 typedef struct mg_fault {
     int kind;
@@ -278,6 +298,12 @@ typedef struct mg_fault {
 } mg_fault;
 
 typedef bool (*mg_fault_handler)(mg_fault *f);
+/*
+ * A fault of the system's own that is a known assertion of it, made harmless where it is (mg_host_win32.c): true when
+ * the thread is to go on at f's registers as changed. Windows 10 Mobile's CoreUIComponents.dll ends the process over
+ * an invalid change of its view's state, which TikTok Lite's start brings about.
+ */
+bool mg_host_repair_known_fault(mg_fault *f);
 void mg_fault_set_handler(mg_fault_handler h);
 /*
  * Where the faulting thread goes on when the handler returns true. `target`
@@ -622,6 +648,10 @@ void *mg_dl_open(const char *name);
 void *mg_dl_sym(void *lib, const char *name);
 /* Which of the host's own modules (the app, a DLL of the package or of the system) an address is in: its file name and where it is loaded. For a crash report. */
 bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base);
+/* A module of the process's, by file name, as it lies in memory into a file (megler_dump_module); its base and image size. */
+bool mg_host_module_dump(const char *name, const char *path, mg_addr *base, size_t *size);
+/* Whether the system stops a thread at a hardware breakpoint set through its context: a probe, said in `out` (megler_probe_breakpoints). */
+bool mg_host_probe_breakpoints(char *out, size_t size);
 
 /* ------------------------------------------------------------------- misc */
 

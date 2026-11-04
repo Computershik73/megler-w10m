@@ -695,10 +695,12 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std
         // A successful info request proves reachability independently of the
         // package enumeration, which can stop answering on Windows Mobile.
         if (reachable) reachable();
+        // The list is asked in the background, and installs go on meanwhile (reachable). An HP Elite x3 answers it in
+        // about 11 s, and in more than 15 right after Megler installed itself; a Lumia 950 XL at times never does.
         auto listing = portal.client.SendRequestAsync(portal.request(winrt::Windows::Web::Http::HttpMethod::Get(), L"/api/app/packagemanager/packages"));
-        if (listing.wait_for(std::chrono::seconds(15)) == winrt::Windows::Foundation::AsyncStatus::Started) {
+        if (listing.wait_for(std::chrono::seconds(60)) == winrt::Windows::Foundation::AsyncStatus::Started) {
             listing.Cancel();
-            error = "The Device Portal is reachable, but its package list did not answer within 15 seconds.";
+            error = "The Device Portal is reachable, but its package list did not answer within a minute.";
             shellLog::write("app package: " + error);
             return false;
         }

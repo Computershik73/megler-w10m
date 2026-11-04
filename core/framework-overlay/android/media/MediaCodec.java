@@ -9,8 +9,10 @@
 // buffer and its source has samples, and its source holds up to fifty seconds: given buffers without end, it decodes
 // everything loaded in one turn of its loop -- seconds of decoding in a call that is meant to take milliseconds, and every
 // picture kept until its time to be shown (at 720p, 1.4 MB each). The NDK's decoder in this layer (core/src/ndk/mg_media.c)
-// learned the same from Unity, which played a film's whole sound in its first seconds. Everything else is the original's,
-// unchanged.
+// learned the same from Unity, which played a film's whole sound in its first seconds. It differs too in where a video
+// frame goes for a SurfaceTexture's Surface (drawSurfaceTexture: the texture's front buffer at the picture's own size),
+// and in saying INFO_OUTPUT_BUFFERS_CHANGED when its output slots grow (mBuffersChanged). Everything else is the
+// original's, unchanged.
 package android.media;
 
 import android.graphics.Bitmap;
@@ -28,7 +30,8 @@ import java.util.ArrayDeque;
 /**
  * A decoder (megler.MediaCodecNative). Input is decoded as it is queued, on the queuing thread; outputs wait in order for
  * dequeueOutputBuffer, or go to the Callback on its handler (the async mode ExoPlayer uses). A video frame released with render
- * is drawn into the output Surface (a SurfaceView's software buffer), scaled to it. No encoders, no DRM.
+ * is drawn into the output Surface (a SurfaceView's software buffer), scaled to it; to a SurfaceTexture's Surface it goes at its
+ * own size, as a decoder's buffers do on Android, for the consumer to scale (drawSurfaceTexture). No encoders, no DRM.
  */
 @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
 public final class MediaCodec {
@@ -78,11 +81,18 @@ public final class MediaCodec {
     private final ArrayDeque<Integer> mFreeInputs = new ArrayDeque<>();
     private final ArrayDeque<Out> mQueue = new ArrayDeque<>();
     private Out[] mSlots = new Out[16];
+    /* The slots grew since an output was last dequeued: INFO_OUTPUT_BUFFERS_CHANGED comes first, for an app that keeps
+       getOutputBuffers()'s array (TikTok Lite's player, which held more than sixteen outputs and indexed its array of
+       sixteen with 16 and 17: ArrayIndexOutOfBoundsException, and its next video never played). */
+    private boolean mBuffersChanged;
     private boolean mFormatPending, mStartPending;
     private int mOutW, mOutH, mRate, mChannels;
     private Callback mCallback; private Handler mCallbackHandler;
     private OnFrameRenderedListener mRendered; private Handler mRenderedHandler;
     private Bitmap mFrame;
+    /* The frames handed to a SurfaceTexture, three in turn (drawSurfaceTexture). */
+    private final Bitmap[] mTextureFrames = new Bitmap[3];
+    private int mTextureNext;
     private final Paint mPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final long[] mInfo = new long[3];
 
@@ -255,7 +265,7 @@ public final class MediaCodec {
         int gen; MediaFormat fmt;
         synchronized (mLock) {
             int i = 0; while (i < mSlots.length && mSlots[i] != null) i++;
-            if (i == mSlots.length) mSlots = java.util.Arrays.copyOf(mSlots, mSlots.length * 2);
+            if (i == mSlots.length) { mSlots = java.util.Arrays.copyOf(mSlots, mSlots.length * 2); if (mCallback == null) mBuffersChanged = true; }
             o.index = i; mSlots[i] = o;
             if (formatChanged && mCallback == null) mFormatPending = true;
             if (mCallback == null) { mQueue.add(o); mLock.notifyAll(); return; }
@@ -278,6 +288,7 @@ public final class MediaCodec {
             long end = System.nanoTime() + timeoutUs * 1000;
             for (;;) {
                 if (mFormatPending) { mFormatPending = false; return INFO_OUTPUT_FORMAT_CHANGED; }
+                if (mBuffersChanged) { mBuffersChanged = false; return INFO_OUTPUT_BUFFERS_CHANGED; }
                 Out o = mQueue.poll();
                 if (o != null) { info.set(0, o.size, o.pts, o.flags); return o.index; }
                 if (timeoutUs == 0) return INFO_TRY_AGAIN_LATER;
@@ -325,6 +336,10 @@ public final class MediaCodec {
         Surface s = mSurface;
         if (TRACE && mDrawn++ % 30 == 0) android.util.Log.d("MediaCodec", mName + ": frame " + mDrawn + " at " + o.pts + " (" + mSkipped + " skipped, " + (mDrawn > 1 ? mDrawNs / 1000000 / (mDrawn - 1) : 0) + " ms a draw) " + mOutW + "x" + mOutH + " to " + (s != null ? s.meglerView : null));
         if (s == null || !s.isValid() || mOutW <= 0 || mOutH <= 0) return;
+        if (s.meglerTexture != null) {
+            if (drawSurfaceTexture(o, s.meglerTexture)) rendered(o);
+            return;
+        }
         if (mFrame == null || mFrame.getWidth() != mOutW || mFrame.getHeight() != mOutH) mFrame = Bitmap.createBitmap(mOutW, mOutH, Bitmap.Config.ARGB_8888);
         if (!megler.MediaCodecNative.renderFrame(o.frame, mFrame)) return;
         Canvas c;
@@ -341,6 +356,25 @@ public final class MediaCodec {
             c.drawColor(0xFF000000);
             c.drawBitmap(mFrame, null, dst, mPaint);
         } finally { s.unlockCanvasAndPost(c); }
+        rendered(o);
+    }
+    /*
+     * A frame for a SurfaceTexture's Surface (a TextureView's, as TikTok Lite's player has it): the texture's front buffer at the
+     * picture's own size, as a decoder's buffers are on Android, where the consumer scales them -- the TextureView to the view,
+     * under the app's transform. One of three bitmaps in turn, posted whole (SurfaceTexture.meglerPostBitmap, as the camera's
+     * preview is), so the producer never writes into the one shown nor the one before it. Drawn into a canvas of the texture's
+     * size first, it was scaled to the view on the graphics processor, read back whole, posted, and sent up again: at 1440x2560
+     * 15 MB each way a frame, which left TikTok Lite's videos at four pictures a second.
+     */
+    private boolean drawSurfaceTexture(Out o, android.graphics.SurfaceTexture t) {
+        int i = mTextureNext;
+        Bitmap b = mTextureFrames[i];
+        if (b == null || b.getWidth() != mOutW || b.getHeight() != mOutH) mTextureFrames[i] = b = Bitmap.createBitmap(mOutW, mOutH, Bitmap.Config.ARGB_8888);
+        if (!megler.MediaCodecNative.renderFrame(o.frame, b)) return false;
+        mTextureNext = (i + 1) % mTextureFrames.length;
+        return t.meglerPostBitmap(b);
+    }
+    private void rendered(Out o) {
         OnFrameRenderedListener l = mRendered;
         if (l != null) {
             final long pts = o.pts, now = System.nanoTime();

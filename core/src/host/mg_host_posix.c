@@ -248,6 +248,12 @@ static void *thread_main(void *p)
 }
 
 void mg_thread_runs_app_code(void) { }
+bool mg_thread_set_priority(mg_thread *t, int level)
+{
+    (void)t;
+    (void)level;
+    return false;
+}
 
 u64 mg_thread_cpu_ns(mg_thread *t)
 {
@@ -408,6 +414,21 @@ void mg_thread_resume(mg_thread *t)
     if (pthread_kill(t->t, RESUME_SIGNAL) != 0) return;
     while (mg_atomic_cas(&t->stopped, 0, 0) != 0) sched_yield();
 }
+
+/* No hardware breakpoints here (ptrace's, another process's, are no use from inside): see mg_host.h. */
+bool mg_breakpoints_available(void) { return false; }
+bool mg_breakpoint_add(mg_addr at)
+{
+    (void)at;
+    return false;
+}
+int mg_breakpoint_count(void) { return 0; }
+bool mg_breakpoints_arm(mg_thread *t)
+{
+    (void)t;
+    return true;
+}
+const char *mg_breakpoints_why(void) { return ""; }
 
 /* (Whether it found the thread in guest code is not known here: true means only that it was asked.) */
 bool mg_thread_interrupt(mg_thread *t)
@@ -1635,6 +1656,24 @@ bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
     snprintf(name, size, "%s", file ? file + 1 : info.dli_fname);
     if (base) *base = (mg_addr)info.dli_fbase;
     return true;
+}
+
+bool mg_host_repair_known_fault(mg_fault *f)
+{
+    (void)f;
+    return false;
+}
+
+bool mg_host_module_dump(const char *name, const char *path, mg_addr *base, size_t *size)
+{
+    (void)name; (void)path; (void)base; (void)size;
+    return false;
+}
+
+bool mg_host_probe_breakpoints(char *out, size_t size)
+{
+    snprintf(out, size, "not probed on this host");
+    return false;
 }
 
 /* ------------------------------------------------------------------- misc */

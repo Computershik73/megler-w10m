@@ -139,6 +139,10 @@ typedef struct mg_gthread {
     /* While a guarded call of guest code runs on the thread (mg_jni_call_native_guarded): the stub setjmp's buffer it goes
        back to when that code faults beyond repair (mg_core.c), instead of the app ending. */
     u32 *volatile fault_guard;
+    /* How many of the host's hardware breakpoints the thread has been given (mg_gthread_take_breakpoints). */
+    volatile i32 breakpoints;
+    /* Its Android nice value, -20 (most urgent) to 19, as setpriority or Process.setThreadPriority set it (mg_gthread_set_nice). */
+    volatile i32 nice;
     struct mg_gthread *next;
 } mg_gthread;
 
@@ -149,6 +153,25 @@ i32 mg_gthread_take_tid(mg_gthread *t);
 void mg_gthread_release_tid(i32 tid);
 /* The host thread of the live guest thread whose gettid() is `tid`, or NULL (its processor time, mg_libc_time.c). */
 mg_thread *mg_gthread_host_of_tid(i32 tid);
+/* The host's hardware breakpoints given to the caller and every live guest thread (a library left as the file has it). */
+void mg_gthreads_arm_breakpoints(void);
+/*
+ * A guest thread's Android nice value, and its host thread's priority after it (mg_bionic.c says how): what setpriority
+ * and Process.setThreadPriority set. `t` the caller's own or another's (one whose host thread is gone is only noted).
+ */
+void mg_gthread_set_nice(mg_gthread *t, int nice);
+/* The thread of the caller feeds an audio track: it has an audio thread's priority from now on, unless it asked for more. */
+void mg_gthread_feeds_audio(void);
+/*
+ * The host's hardware breakpoints given to the calling guest thread, `t`, if it has fewer than the host has now: where a
+ * thread starts and where it calls native code from Java, so that one the loader could not give them to (stopped, it would
+ * not take them) has them before it runs such a library's code. A comparison when it has them.
+ */
+static inline void mg_gthread_take_breakpoints(mg_gthread *t)
+{
+    int n = mg_breakpoint_count();
+    if (t->breakpoints != n && mg_breakpoints_arm(NULL)) t->breakpoints = n;
+}
 
 /*
  * Signals between the guest's threads: pthread_kill and the handlers it

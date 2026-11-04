@@ -48,6 +48,8 @@ public final class Choreographer {
         long now = System.nanoTime(), next = Math.max(now, mLastFrame + FRAME_NS);
         mHandler.postDelayed(mDoFrame, Math.max(0, (next - now) / 1_000_000L));
     }
+    /* Android's own, which apps reach by reflection (TikTok Lite posts a commit callback through it). */
+    private void postCallbackDelayedInternal(int type, Object action, Object token, long delayMs) { add(type, action, token, delayMs); }
     public void postCallback(int type, Runnable r, Object token) { add(type, r, token, 0); }
     public void postCallbackDelayed(int type, Runnable r, Object token, long delayMs) { add(type, r, token, delayMs); }
     public void removeCallbacks(int type, Runnable r, Object token) { remove(type, r, token); }

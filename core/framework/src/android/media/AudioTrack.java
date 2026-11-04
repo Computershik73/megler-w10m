@@ -35,7 +35,12 @@ public class AudioTrack implements AudioRouting {
         mChannels = AudioFormat.channelCount(channelConfig);
         mEncoding = audioFormat == AudioFormat.ENCODING_DEFAULT ? AudioFormat.ENCODING_PCM_16BIT : audioFormat;
         mMode = mode; mBufferBytes = bufferSizeInBytes; mSession = sessionId;
-        if (mode == MODE_STREAM) { mId = megler.Audio.trackOpen(mRate, mChannels); mState = mId >= 0 ? STATE_INITIALIZED : STATE_UNINITIALIZED; }
+        if (mode == MODE_STREAM) {
+            mId = megler.Audio.trackOpen(mRate, mChannels);
+            mState = mId >= 0 ? STATE_INITIALIZED : STATE_UNINITIALIZED;
+            // As much written ahead as the app asked for, a tenth of a second at least (the track's own until now).
+            if (mId >= 0) megler.Audio.trackBuffer(mId, Math.max(mRate / 10, bufferSizeInBytes / Math.max(1, frameBytes())));
+        }
         else { mStatic = new byte[Math.max(0, bufferSizeInBytes)]; mState = STATE_NO_STATIC_DATA; }
     }
     public AudioTrack(AudioAttributes attributes, AudioFormat format, int bufferSizeInBytes, int mode, int sessionId) {

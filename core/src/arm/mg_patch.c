@@ -35,6 +35,7 @@
  * mode", says what happens to them.
  */
 #include "../mg_core.h"
+#include "../bionic/mg_bionic.h"
 #include "../host/mg_host.h"
 #include "../ld/mg_ld_internal.h"
 
@@ -97,48 +98,54 @@ u32 mg_patch_count_tp_reads(const u8 *bytes, size_t size)
     return n;
 }
 
-static void patch_tp_reads(mg_lib *lib, u8 *seg, size_t size)
+/* Whether [at, at + n) lies in one of the library's executable sections (mg_lib's code); anywhere, when none are known. */
+static bool in_code(const mg_lib *lib, const u8 *at, size_t n)
+{
+    u32 v = (u32)(at - lib->base);
+    int k;
+    if (!lib->ncode) return true;
+    for (k = 0; k < lib->ncode; k++)
+        if (v >= lib->code[k][0] && v + n <= lib->code[k][1]) return true;
+    return false;
+}
+
+/* One read made a branch to the island, which reads the guest's thread pointer: false when it could not be. */
+static bool patch_tp_read(mg_lib *lib, u8 *site, bool thumb, int reg)
 {
     u32 opc2 = 0, offset = 0;
-    bool host_ok = mg_guest_tp_where(&opc2, &offset);
+    u8 *tr;
+    if (!mg_guest_tp_where(&opc2, &offset)) return false;
+    tr = mg_island_alloc(lib, (mg_addr)site, 12, thumb ? (1u << 24) - 16 : (1u << 25) - 16);
+    if (!tr) return false;
+    if (thumb) {
+        /* mrc p15, 0, reg, c13, c0, opc2 ; ldr.w reg, [reg, #offset] ; b.w back */
+        mg_wr16(tr + 0, 0xEE1D);
+        mg_wr16(tr + 2, (u16)((reg << 12) | 0x0F10 | (opc2 << 5)));
+        mg_wr16(tr + 4, (u16)(0xF8D0 | reg));
+        mg_wr16(tr + 6, (u16)((reg << 12) | offset));
+        /* The site is untouched when its own branch could not be encoded (it is written last). */
+        return t32_b_w(tr + 8, (mg_addr)tr + 8, (mg_addr)site + 4) && t32_b_w(site, (mg_addr)site, (mg_addr)tr);
+    }
+    mg_wr32(tr + 0, 0xEE1D0F10u | ((u32)reg << 12) | (opc2 << 5));
+    mg_wr32(tr + 4, 0xE5900000u | ((u32)reg << 16) | ((u32)reg << 12) | offset);
+    return a32_b(tr + 8, (mg_addr)tr + 8, (mg_addr)site + 4) && a32_b(site, (mg_addr)site, (mg_addr)tr);
+}
+
+static void patch_tp_reads(mg_lib *lib, u8 *seg, size_t size)
+{
     size_t i;
     int reg;
     for (i = 0; i + 4 <= size; i += 2) {
         u8 *site = seg + i;
         bool thumb = is_t32_tp_read(site, &reg);
-        u8 *tr;
         if (!thumb && ((i & 3) || !is_a32_tp_read(site, &reg))) continue;
-        if (!host_ok) {
+        if (!in_code(lib, site, 4)) continue;
+        if (!patch_tp_read(lib, site, thumb, reg)) {
             lib->stats.tp_reads_failed++;
             continue;
-        }
-        tr = mg_island_alloc(lib, (mg_addr)site, 12, thumb ? (1u << 24) - 16 : (1u << 25) - 16);
-        if (!tr) {
-            lib->stats.tp_reads_failed++;
-            continue;
-        }
-        if (thumb) {
-            /* mrc p15, 0, reg, c13, c0, opc2 ; ldr.w reg, [reg, #offset] ; b.w back */
-            mg_wr16(tr + 0, 0xEE1D);
-            mg_wr16(tr + 2, (u16)((reg << 12) | 0x0F10 | (opc2 << 5)));
-            mg_wr16(tr + 4, (u16)(0xF8D0 | reg));
-            mg_wr16(tr + 6, (u16)((reg << 12) | offset));
-            if (!t32_b_w(tr + 8, (mg_addr)tr + 8, (mg_addr)site + 4) || !t32_b_w(site, (mg_addr)site, (mg_addr)tr)) {
-                /* The site is untouched when its own branch could not be encoded (it is written last). */
-                lib->stats.tp_reads_failed++;
-                continue;
-            }
-            i += 2;
-        } else {
-            mg_wr32(tr + 0, 0xEE1D0F10u | ((u32)reg << 12) | (opc2 << 5));
-            mg_wr32(tr + 4, 0xE5900000u | ((u32)reg << 16) | ((u32)reg << 12) | offset);
-            if (!a32_b(tr + 8, (mg_addr)tr + 8, (mg_addr)site + 4) || !a32_b(site, (mg_addr)site, (mg_addr)tr)) {
-                lib->stats.tp_reads_failed++;
-                continue;
-            }
-            i += 2;
         }
         lib->stats.tp_reads++;
+        i += 2;
     }
 }
 
@@ -194,7 +201,12 @@ static void patch_plt(mg_lib *lib, u8 *seg, size_t size)
     u32 n = lib->pltrelsz / sizeof(Elf32_Rel), i, count = 0;
     u32 *slots;
     size_t off;
+    char flag[96];
     if (!n) return;
+    /* The flags no-plt-rewrite and no-plt-rewrite-<library>: its PLT left as the linker wrote it (ARM), for finding out
+       whether a library minds its entries rewritten. (One left as the file has it, below, has none rewritten.) */
+    snprintf(flag, sizeof(flag), "no-plt-rewrite-%s", lib->name);
+    if (mg_flag("no-plt-rewrite") || mg_flag(flag)) return;
     slots = (u32 *)mg_alloc(sizeof(u32) * n);
     for (i = 0; i < n; i++)
         if (ELF_R_TYPE(lib->jmprel[i].r_info) == R_ARM_JUMP_SLOT) slots[count++] = lib->jmprel[i].r_offset;
@@ -239,6 +251,22 @@ static void patch_plt(mg_lib *lib, u8 *seg, size_t size)
  * compiler-rt's __clear_cache (Facebook's libdexload.so) ends with movt:
  * movs r7,#2; movs r2,#0; movt r7,#15; svc 0. Left unpatched, that svc went
  * to Windows, failed, and __clear_cache's assertion aborted the app.
+ *
+ * The number may be set a few instructions back: Chromium's own syscall()
+ * (mov r7, r0; ldr r0, [r6]; svc 0; pop {r7, pc}), bionic's (mov r7, r0, three
+ * moves, ldmia ip, {r3-r6}; svc 0). Up to eight halfwords before the svc are
+ * looked at, back to an instruction after which straight-line code ends
+ * (mov pc, rN; bx rN; b; pop {..., pc}): an svc right behind one is not reached
+ * by falling through to it. TikTok Lite's libmetasec_ov.so has 554 such in its
+ * anti-disassembly stubs (mov pc, r1; mov r0, pc; svc 0; pop {r0-r3, r7}),
+ * which jump over them, and it sums code that holds some of them: one of its
+ * init functions sends the thread to 0x4000 with sp 0x2b, and the process
+ * ends, when a byte of that code has changed. They stay as the file has them.
+ *
+ * Only the library's executable sections are looked at, when its section
+ * headers say which they are (mg_lib's code): read-only data shares the
+ * segment, and a table in libmetasec_ov.so's .rodata holds 0xEF000000, the
+ * word of an ARM svc 0, which was patched into a UDF before.
  * trap-svc retains its diagnostic meaning: stop at the site without dispatch.
  */
 static volatile i32 g_trap_svc = -1;
@@ -251,6 +279,8 @@ static void patch_svc_site(mg_lib *lib, u8 *at, bool thumb, bool trap)
     lib->stats.svc_sites++;
     if (site) {
         site->pc = (mg_addr)at | (thumb ? 1u : 0u);
+        site->watched = false;
+        site->tp_reg = -1;
         site->next = lib->svc_sites;
         lib->svc_sites = site;
     } else if (!trap) {
@@ -261,25 +291,49 @@ static void patch_svc_site(mg_lib *lib, u8 *at, bool thumb, bool trap)
     else mg_wr32(at, site ? 0xE7F00AF6u : 0xE7F00AF5u);
 }
 
+/* The first halfword of a 32-bit Thumb instruction. */
+static bool is_t32_first(u16 h) { return (h >> 11) >= 0x1D; }
+/* 16-bit instructions that set r7: movs r7,#n; ldr r7,[pc,#n]; mov r7,rN. */
+static bool t16_sets_r7(u16 h) { return (h & 0xFF00) == 0x2700 || (h & 0xFF00) == 0x4F00 || (h & 0xFF87) == 0x4607; }
+/* 32-bit ones, f the first halfword and s the second: mov.w/movw/movt r7,#n; ldr.w r7,[pc,+/-n]. */
+static bool t32_sets_r7(u16 f, u16 s)
+{
+    return (((f & 0xFBF0) == 0xF040 || (f & 0xFBF0) == 0xF240 || (f & 0xFBF0) == 0xF2C0) && (s & 0x8F00) == 0x0700)
+        || ((f == 0xF8DF || f == 0xF85F) && (s & 0xF000) == 0x7000);
+}
+/* 16-bit instructions after which straight-line code ends: mov pc, rN; bx rN; b; pop {..., pc}. */
+static bool t16_ends_flow(u16 h)
+{
+    return (h & 0xFF87) == 0x4687 || (h & 0xFF87) == 0x4700 || (h & 0xF800) == 0xE000 || (h & 0xFF00) == 0xBD00;
+}
+
+/*
+ * Whether the Thumb svc at seg + i makes a system call: r7 set within the eight halfwords before it, and no instruction
+ * between after which straight-line code ends. A first half of a 32-bit instruction is never taken for one that ends
+ * it (they are 0xE800 and up); a second half may be, which leaves such an svc as it is.
+ */
+static bool t_svc_numbered(const u8 *seg, size_t i)
+{
+    size_t k;
+    if (is_t32_first(mg_rd16(seg + i - 2))) return false;   /* DF00 the second half of a 32-bit instruction */
+    for (k = 2; k <= 16 && k <= i; k += 2) {
+        u16 s = mg_rd16(seg + i - k), f = k + 2 <= i ? mg_rd16(seg + i - k - 2) : 0;
+        if (t16_ends_flow(s)) return false;
+        if (t16_sets_r7(s) || t32_sets_r7(f, s)) return true;
+    }
+    return false;
+}
+
 static void patch_svc(mg_lib *lib, u8 *seg, size_t size)
 {
     size_t i;
     bool trap;
     if (g_trap_svc < 0) g_trap_svc = mg_flag("trap-svc") ? 1 : 0;
     trap = g_trap_svc > 0;
-    for (i = 2; i + 2 <= size; i += 2) {
-        u16 a, b;
-        if (mg_rd16(seg + i) != 0xDF00) continue;
-        a = mg_rd16(seg + i - 2);
-        b = i >= 4 ? mg_rd16(seg + i - 4) : 0;
-        /* movs r7,#n; ldr r7,[pc,#n]; mov r7,rN; mov.w/movw/movt r7,#n; ldr.w r7,[pc,+/-n]. */
-        if ((a & 0xFF00) == 0x2700 || (a & 0xFF00) == 0x4F00 || (a & 0xFF87) == 0x4607
-            || (((b & 0xFBF0) == 0xF040 || (b & 0xFBF0) == 0xF240 || (b & 0xFBF0) == 0xF2C0) && (a & 0x8F00) == 0x0700)
-            || ((b == 0xF8DF || b == 0xF85F) && (a & 0xF000) == 0x7000))
-            patch_svc_site(lib, seg + i, true, trap);
-    }
+    for (i = 2; i + 2 <= size; i += 2)
+        if (mg_rd16(seg + i) == 0xDF00 && t_svc_numbered(seg, i) && in_code(lib, seg + i, 2)) patch_svc_site(lib, seg + i, true, trap);
     for (i = (size_t)(MG_ALIGN_UP((mg_addr)seg, 4) - (mg_addr)seg); i + 4 <= size; i += 4)
-        if (mg_rd32(seg + i) == 0xEF000000u)
+        if (mg_rd32(seg + i) == 0xEF000000u && in_code(lib, seg + i, 4))
             patch_svc_site(lib, seg + i, false, trap);
 }
 
@@ -290,16 +344,140 @@ bool mg_patch_svc_target(mg_addr pc, mg_addr *target)
     if (!lib) return false;
     for (site = lib->svc_sites; site; site = site->next) {
         bool thumb = (site->pc & 1) != 0;
-        if ((site->pc & ~(mg_addr)1) != pc) continue;
-        if (thumb ? mg_rd16((const void *)pc) != 0xDEA6 : mg_rd32((const void *)pc) != 0xE7F00AF6u) return false;
+        if ((site->pc & ~(mg_addr)1) != pc || site->tp_reg >= 0) continue;
+        /* A watched one is as the file has it, a patched one the registered UDF. */
+        if (site->watched ? (thumb ? mg_rd16((const void *)pc) != 0xDF00 : mg_rd32((const void *)pc) != 0xEF000000u)
+                          : (thumb ? mg_rd16((const void *)pc) != 0xDEA6 : mg_rd32((const void *)pc) != 0xE7F00AF6u))
+            return false;
         *target = (pc + (thumb ? 2 : 4)) | (thumb ? 1u : 0u);
         return true;
     }
     return false;
 }
 
+bool mg_patch_tp_target(mg_addr pc, int *reg, mg_addr *target)
+{
+    mg_lib *lib = mg_ld_lib_of((const void *)pc);
+    mg_svc_site *site;
+    if (!lib) return false;
+    for (site = lib->svc_sites; site; site = site->next) {
+        if ((site->pc & ~(mg_addr)1) != pc || site->tp_reg < 0) continue;
+        *reg = site->tp_reg;
+        *target = (pc + 4) | (site->pc & 1);
+        return true;
+    }
+    return false;
+}
+
+/* ------------------------------------------------ libraries left as the file has them */
+
+/*
+ * A library that sums its own code and ends the process when a byte of it has changed. TikTok Lite's libmetasec_ov.so,
+ * ByteDance's protection, sums its syscall() stub (+0x86e7c, 13 words, by the function at +0x86d54) and code around its
+ * anti-disassembly stubs (an init function, +0x6e9a4 to +0x6ea56), among others: a sum that differs sends the thread to
+ * 0x1000, 0x4000 or 0x8000 with sp 0x2b, and the process ends with no report. Nothing in such a library is written. Its
+ * PLT stays the linker's, ARM code, which threads keep on the phones tried ("ARM mode" in docs/ARCHITECTURE.md), and
+ * its system calls and thread-pointer reads stop at hardware breakpoints (mg_breakpoint_add), where the fault handler does
+ * them as it does a patched one's. A phone has few of those (a Snapdragon 820, six), shared by the process: a site past
+ * them is patched as in any other library, and said. A sigreturn's svc is neither: a handler returns to this layer here,
+ * never through its restorer. Where the host has no breakpoints (qemu's Linux), such a library is patched as any other.
+ * The flag pristine-<library> makes another library so.
+ */
+static bool lib_pristine(const mg_lib *lib)
+{
+    static const char *const names[] = { "libmetasec_ov.so" };
+    char flag[96];
+    size_t i;
+    for (i = 0; i < MG_COUNT(names); i++)
+        if (!strcmp(lib->name, names[i])) return true;
+    snprintf(flag, sizeof(flag), "pristine-%s", lib->name);
+    return mg_flag(flag);
+}
+
+/* A site recorded and a breakpoint put on it: tp_reg the register a thread-pointer read sets, -1 for an svc. */
+static bool watch_site(mg_lib *lib, u8 *at, bool thumb, int tp_reg)
+{
+    mg_svc_site *site = (mg_svc_site *)mg_alloc(sizeof(*site));
+    site->pc = (mg_addr)at | (thumb ? 1u : 0u);
+    site->watched = true;
+    site->tp_reg = (i8)tp_reg;
+    site->next = lib->svc_sites;
+    /* Recorded before the breakpoint is there: a thread that stops at it finds it. */
+    lib->svc_sites = site;
+    if (mg_breakpoint_add(site->pc)) return true;
+    lib->svc_sites = site->next;
+    free(site);
+    return false;
+}
+
+/* A sigreturn's svc: 119 or 173 put in r7 just before it, a signal restorer's. */
+static bool t_svc_sigreturn(const u8 *seg, size_t i)
+{
+    u16 a = mg_rd16(seg + i - 2);
+    return a == 0x2777 || a == 0x27AD;
+}
+static bool a_svc_sigreturn(const u8 *seg, size_t i)
+{
+    u32 a = i >= 4 ? mg_rd32(seg + i - 4) : 0;
+    return a == 0xE3A07077u || a == 0xE3A070ADu;
+}
+
+static void watch_segment(mg_lib *lib, u8 *seg, size_t size)
+{
+    u32 svc = 0, tp = 0, patched = 0;
+    bool trap;
+    size_t i;
+    int reg;
+    if (g_trap_svc < 0) g_trap_svc = mg_flag("trap-svc") ? 1 : 0;
+    trap = g_trap_svc > 0;
+    for (i = 0; i + 4 <= size; i += 2) {
+        u8 *at = seg + i;
+        bool thumb = is_t32_tp_read(at, &reg);
+        if (!thumb && ((i & 3) || !is_a32_tp_read(at, &reg))) continue;
+        if (!in_code(lib, at, 4)) continue;
+        if (watch_site(lib, at, thumb, reg)) {
+            tp++;
+        } else if (patch_tp_read(lib, at, thumb, reg)) {
+            lib->stats.tp_reads++;
+            patched++;
+        } else {
+            lib->stats.tp_reads_failed++;
+        }
+        i += 2;
+    }
+    for (i = 2; i + 2 <= size; i += 2) {
+        if (mg_rd16(seg + i) != 0xDF00 || !t_svc_numbered(seg, i) || !in_code(lib, seg + i, 2) || t_svc_sigreturn(seg, i)) continue;
+        if (watch_site(lib, seg + i, true, -1)) {
+            svc++;
+        } else {
+            patch_svc_site(lib, seg + i, true, trap);
+            patched++;
+        }
+    }
+    for (i = (size_t)(MG_ALIGN_UP((mg_addr)seg, 4) - (mg_addr)seg); i + 4 <= size; i += 4) {
+        if (mg_rd32(seg + i) != 0xEF000000u || !in_code(lib, seg + i, 4) || a_svc_sigreturn(seg, i)) continue;
+        if (watch_site(lib, seg + i, false, -1)) {
+            svc++;
+        } else {
+            patch_svc_site(lib, seg + i, false, trap);
+            patched++;
+        }
+    }
+    mg_info("ld: %s is left as the file has it, as it sums its own code: %u system calls and %u thread-pointer reads stop at "
+            "hardware breakpoints (%d of the process's)", lib->name, (unsigned)svc, (unsigned)tp, mg_breakpoint_count());
+    if (patched)
+        mg_warn("ld: %s: %u more patched as in any other library, past the hardware breakpoints the phone has: if it sums them, "
+                "it ends the process", lib->name, (unsigned)patched);
+    /* Every guest thread, this one first, which is about to run the library's init functions. */
+    if (svc || tp) mg_gthreads_arm_breakpoints();
+}
+
 void mg_patch_segment(mg_lib *lib, u8 *seg, size_t size)
 {
+    if (lib_pristine(lib) && mg_breakpoints_available()) {
+        watch_segment(lib, seg, size);
+        return;
+    }
     patch_plt(lib, seg, size);
     patch_tp_reads(lib, seg, size);
     patch_svc(lib, seg, size);

@@ -1612,6 +1612,18 @@ const char *megler_last_error(void);
  * when it does not answer. False when it could not be stopped (it ended, it is the caller, or the host cannot).
  */
 bool megler_thread_where(unsigned thread_id, char *out, size_t size);
+/*
+ * A module of the process's (a DLL of the system's, by file name: "CoreUIComponents.dll") as it lies in memory, into a
+ * file: its image from its base, SizeOfImage long, with what is not committed or not readable as zeros. For reading a
+ * fault in the system's own code, where the phone does not hand out the DLL itself. False when there is no such module
+ * or the file could not be written.
+ */
+bool megler_dump_module(const char *module, const char *path);
+/*
+ * Whether the system stops a thread at a hardware breakpoint set through its context (DBGBVR/DBGBCR), on another thread
+ * and on this one, Thumb and ARM: a probe, said in `out` and in the log. True when one stopped.
+ */
+bool megler_probe_breakpoints(char *out, size_t size);
 
 /* Touch, in surface pixels with y down (after undoing the flip). phase: 0 down, 1 move, 2 up, 3 cancel. */
 void megler_touch(int phase, int pointer_id, float x, float y);

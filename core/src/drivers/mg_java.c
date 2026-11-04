@@ -1119,6 +1119,9 @@ N(Native_thrownInService)
     }
 }
 
+/* threadNice(int): Process.setThreadPriority for the calling thread (mg_gthread_set_nice). */
+N(Native_threadNice) { mg_gthread_set_nice(mg_gthread_self(), c->args[0].i); }
+
 N(Native_exit)
 {
     mg_jvalue looper;
@@ -1193,6 +1196,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "vibrate", NULL, Native_nothing },
     { "megler/Native", "openUrl", NULL, Native_openUrl },
     { "megler/Native", "exit", NULL, Native_exit },
+    { "megler/Native", "threadNice", NULL, Native_threadNice },
     { "megler/Native", "uptimeNanos", NULL, Native_uptimeNanos },
     { "megler/Native", "frameMark", NULL, Native_frameMark },
     { "megler/Native", "presentRect", NULL, Native_presentRect },

@@ -2,6 +2,7 @@ r"""Set, list or clear Megler's flag files on the phone (LocalState\flags).
 
     python tools/phone-flags.py list
     python tools/phone-flags.py set shots play-170 tap-100-640-424
+    python tools/phone-flags.py unset shots      # removes those flags alone
     python tools/phone-flags.py clear            # removes every flag
     python tools/phone-flags.py only shots ...   # clear, then set
     python tools/phone-flags.py --app com.instagram.android set trace-net
@@ -76,12 +77,15 @@ def main():
     app = None
     if len(args) >= 2 and args[0] == "--app":
         app, args = args[1], args[2:]
-    if not args or args[0] not in ("list", "set", "clear", "only"):
+    if not args or args[0] not in ("list", "set", "unset", "clear", "only"):
         sys.exit(__doc__)
     PFN = app_package(app) if app else phone.package()["PackageFullName"]
     cmd, wanted = args[0], args[1:]
     if cmd in ("clear", "only"):
         for name in names():
+            remove(name)
+    if cmd == "unset":
+        for name in sorted(set(wanted) & set(names())):
             remove(name)
     if cmd in ("set", "only"):
         for name in wanted:

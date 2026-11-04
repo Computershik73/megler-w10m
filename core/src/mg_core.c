@@ -68,6 +68,8 @@ mg_addr mg_chromium_oom_global(mg_addr pc)
     return f + 6 + 4 + (mg_addr)(intptr_t)(i32)offset;
 }
 
+const char *megler_data_dir(void);
+
 static bool on_fault(mg_fault *f)
 {
     const char *lib = NULL, *sym;
@@ -90,13 +92,34 @@ static bool on_fault(mg_fault *f)
         }
     }
 #endif
-    if (f->kind == MG_FAULT_ILLEGAL && f->regs) {
+    if ((f->kind == MG_FAULT_ILLEGAL || f->kind == MG_FAULT_BREAKPOINT) && f->regs) {
         mg_addr target = 0;
+        int reg;
+        /* A patched svc's UDF, or an svc left as the file has it, stopped at its hardware breakpoint. */
         if (mg_patch_svc_target(pc, &target)) {
+            /* The flag trace-syscalls: each one said, with its number, its first four arguments, what it gives and whose. */
+            static volatile i32 traced = -1, lines;
+            u32 nr = f->regs[7], a0 = f->regs[0], a1 = f->regs[1], a2 = f->regs[2], a3 = f->regs[3];
             f->regs[0] = mg_bionic_syscall_raw(f->regs);
+            if (traced < 0 && megler_data_dir()[0]) traced = mg_flag("trace-syscalls") ? 1 : 0;
+            if (traced > 0 && mg_atomic_add(&lines, 1) <= 30000) {
+                const char *where = NULL;
+                const void *s = NULL, *b = NULL;
+                mg_ld_symbol_at((const void *)pc, &where, &s, &b);
+                mg_info("syscall %u(0x%x, 0x%x, 0x%x, 0x%x) = %d on thread %u at %s+0x%x", (unsigned)nr, (unsigned)a0, (unsigned)a1,
+                        (unsigned)a2, (unsigned)a3, (int)f->regs[0], (unsigned)mg_thread_self_id(), where ? where : "?",
+                        (unsigned)(pc - (mg_addr)b));
+            }
             mg_fault_resume_at(f, target);
             return true;
         }
+        /* A thread-pointer read left as the file has it, stopped at its breakpoint: the guest's thread pointer. */
+        if (f->kind == MG_FAULT_BREAKPOINT && mg_patch_tp_target(pc, &reg, &target)) {
+            f->regs[reg] = (u32)(mg_addr)mg_guest_tp_get();
+            mg_fault_resume_at(f, target);
+            return true;
+        }
+        if (f->kind == MG_FAULT_BREAKPOINT) return false;
         if (mg_ld_plt_target(pc, &target) || mg_stubs_once_target(pc, &target)) {
             mg_fault_resume_at(f, target);
             mg_atomic_add(&g_plt_rescues, 1);
@@ -113,6 +136,8 @@ static bool on_fault(mg_fault *f)
         mg_atomic_add(&g_wx_flips, 1);
         return true;
     }
+    /* An assertion of the system's own that is known to end the process for nothing (mg_host_win32.c). */
+    if (mg_host_repair_known_fault(f)) return true;
     /* Not one of ours to repair. Say where it was, in the guest's terms, before the process goes. */
     sym = pc ? mg_ld_symbol_at((const void *)pc, &lib, &sym_addr, &base) : NULL;
     /* (A pc of zero is a fault like any other: a call through a null pointer, and lr says whose.) */
@@ -306,6 +331,23 @@ static void where_name(mg_addr a, char *out, size_t size)
         snprintf(out, size, "%s+0x%x", module, (unsigned)(a - base));
     else
         snprintf(out, size, "%08x", (unsigned)a);
+}
+
+bool megler_dump_module(const char *module, const char *path)
+{
+    mg_addr base = 0;
+    size_t size = 0;
+    bool ok = module && path && mg_host_module_dump(module, path, &base, &size);
+    if (ok) mg_info("%s at %08x, %u bytes of image, is in %s", module, (unsigned)base, (unsigned)size, path);
+    else mg_warn("%s: not dumped (no such module in this process, or %s could not be written)", module ? module : "?", path ? path : "?");
+    return ok;
+}
+
+bool megler_probe_breakpoints(char *out, size_t size)
+{
+    bool ok = mg_host_probe_breakpoints(out, size);
+    mg_info("breakpoints: %s", out);
+    return ok;
 }
 
 bool megler_thread_where(unsigned thread_id, char *out, size_t size)

@@ -4,6 +4,8 @@
     // android.os.BatteryManager, both overlaid here to ask this instead).
     /** level, scale, status, plugged, health, millivolts, tenths of a degree Celsius, present (1 or 0): the numbers of Android's ACTION_BATTERY_CHANGED. */
     public static native int[] battery();
+    /** The calling thread's Android priority (Process.setThreadPriority), -20 to 19: the host thread's after it (core/src/drivers/mg_java.c). */
+    public static native void threadNice(int nice);
     /** The SIM as the shell said it (megler_set_cellular): ready (1/0), operator name, MCC+MNC, network type, roaming (1/0),
      *  separated by tabs (core/src/drivers/mg_java.c). */
     public static native String cellular();

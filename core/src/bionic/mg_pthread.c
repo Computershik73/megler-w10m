@@ -486,6 +486,8 @@ static void thread_main(void *p)
     tp[1] = t;                                 /* (slot 2 is the app's: mg_gthread_self) */
     mg_thread_stack_bounds(&t->stack_lo, &t->stack_hi);
     t->sig_thread = mg_thread_current();
+    /* The process's hardware breakpoints, if a library left as the file has it was loaded (arm/mg_patch.c). */
+    mg_gthread_take_breakpoints(t);
     if (mg_app_threads_give_way()) mg_thread_runs_app_code();
     t->retval = MG_GFN(void *(*)(void *), t->start)(t->arg);
     thread_finish(t);

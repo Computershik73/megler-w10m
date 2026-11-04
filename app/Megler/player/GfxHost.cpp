@@ -321,6 +321,17 @@ struct State {
     };
     std::unordered_map<TintKey, Kept, TintHash> tinted;
     uint64_t keptBytes = 0, keptClock = 0;
+    // Shadows laid, kept for the next time the same ink throws the same one (gpuShadowKept), under shadowMutex.
+    std::mutex shadowMutex;
+    struct KeptShadow {
+        std::vector<uint8_t> key;
+        Ref<ID2D1Bitmap1> bitmap;
+        int ox = 0, oy = 0, w = 0, h = 0; // where its pixels lie from the ink's whole-pixel origin
+        uint64_t used = 0;
+    };
+    std::unordered_map<uint64_t, KeptShadow> shadows;
+    uint64_t shadowBytes = 0, shadowClock = 0;
+    std::atomic<uint64_t> shadowsMade{0}, shadowsReused{0};
     // Where a window's picture is shown without the memory (GfxHost::setWindow, present), and the target bitmap over
     // its texture, made for the texture it last gave (windowMutex).
     std::mutex windowMutex;
@@ -393,6 +404,13 @@ struct State {
     // ended some 21 a frame, 2 ms each (package 531), and the line says which.
     enum EndWhy { endPresent, endFlush, endEffects, endBackdrop, endUpload, endReadBack, endLayerMode, endLayerBlur, endSweep, endCompose, endOther, endWhys };
     std::atomic<uint64_t> endsBy[endWhys] = {}, endTicksBy[endWhys] = {};
+    // The calls put on by the effects (gpuPut), each a drawing ended, by what sent them there and by transfer mode: which of
+    // an app's calls they are (TikTok Lite's feed, four a frame while a video plays, a third of the frame's time).
+    enum EffectsWhy { whyInkMode, whyInkShaderFilter, whyInkSweep, whyInkFillStroke, whyBitmapMode, whyColour, whyShadowPath,
+                      whyShadowText, whyShadowShape, whyShadowLarge, whyShadowMode, whyRestore, whyBlurRestore, whyCanvas, whyOther,
+                      effectsWhys };
+    enum { blendModes = 18 };
+    std::atomic<uint64_t> effectsBy[effectsWhys] = {}, effectsMode[blendModes] = {};
     std::mutex statsMutex;
     uint64_t statsAt = 0; // when the last line was written (ticks); 0: never
     struct Totals {
@@ -401,6 +419,7 @@ struct State {
                  readBackTicks = 0, byEffects = 0, throughMemory = 0, keptMade = 0, keptReused = 0, shown = 0, showTicks = 0, windowReadBacks = 0,
                  windowReadBackPixels = 0, windowReadBackTicks = 0, glFrames = 0, glWaitTicks = 0;
         uint64_t endsBy[endWhys] = {}, endTicksBy[endWhys] = {};
+        uint64_t effectsBy[effectsWhys] = {}, effectsMode[blendModes] = {};
     } statsLast;
 };
 
@@ -1004,6 +1023,10 @@ struct GpuContext {
     Ref<ID2D1Effect> effects[roles];
     ID2D1Effect* effect(Role role);
 
+    // Layers' bitmaps laid from in what is drawing now: kept for another layer (giveBitmap) once that is handed over --
+    // another canvas's context could draw into them before it is (Surface::giveBackGpu).
+    std::vector<Ref<ID2D1Bitmap1>> givenAfter;
+
     /// Nothing drawing through it, and what was drawn handed over; `why` (State::EndWhy) for the log's count.
     void finish(int why);
 };
@@ -1160,6 +1183,14 @@ struct Surface {
     /// processor, since the next canvas's context may draw into them first.
     void giveBackGpu() {
         if (!gc) return;
+        if (gc->inDraw && gpu && gc->target != gpu.get() && !readable) {
+            // Laid from in what the context draws now (a layer restored): kept once that is handed over, which is not
+            // done here for it.
+            detach();
+            gc->givenAfter.push_back(std::move(gpu));
+            forgetGpu();
+            return;
+        }
         gc->finish(State::endOther);
         unbind();
         giveBitmap(std::move(gpu), false);
@@ -1502,6 +1533,8 @@ void GpuContext::finish(int why) {
     s.endsBy[why]++;
     s.endTicksBy[why] += took;
     if (FAILED(hr)) gpuFailed("ID2D1DeviceContext::EndDraw", hr);
+    for (Ref<ID2D1Bitmap1>& b : givenAfter) giveBitmap(std::move(b), false);
+    givenAfter.clear();
 }
 
 /// Direct2D and DirectWrite, at the first call from the core. False when the
@@ -1811,14 +1844,22 @@ struct Canvas {
     Surface cover, source, extra;  // memory of the canvas's own that a drawing call is put together in
     std::vector<uint8_t> blurA, blurB;
     std::vector<uint32_t> tint;    // a bitmap's pixels as a paint's alpha and colour filter make them
-    // A changing large image (software video) gets a private upload texture.
-    // It is never shared with another canvas or a persistent bitmap shader.
-    uint32_t changingId = 0, changingVersion = 0;
-    int changingW = 0, changingH = 0;
-    Ref<ID2D1Bitmap1> changingBitmap;
+    // A changing large image (software video) gets a private upload texture, each of the last few drawn: a player that
+    // draws its frames into bitmaps in turn (MediaCodec onto a SurfaceTexture, three) has each frame put into its
+    // bitmap's texture, not into a texture made for the frame. Never shared with another canvas or a persistent bitmap
+    // shader.
+    struct Changing {
+        uint32_t id = 0, version = 0;
+        int w = 0, h = 0;
+        uint64_t used = 0;
+        Ref<ID2D1Bitmap1> bitmap;
+    };
+    enum { changings = 4 };
+    Changing changing[changings];
+    uint64_t changingClock = 0;
     // On the graphics processor, what a drawing call is put together in there (workSurface): its colours times its
     // coverage, the coverage alone, colours or a shadow's coverage before they are cut, and a copy of the picture.
-    enum { workA, workC, workS, workD, works };
+    enum { workA, workC, workS, workD, workK, works };
     Surface work[works];
 
     Clip& clip() { return levels.back().clip; }
@@ -1838,8 +1879,7 @@ struct Canvas {
     /// something had to be put on in memory.
     void leaveGpu() {
         if (!gc) return;
-        changingBitmap.reset();
-        changingId = 0;
+        for (Changing& c : changing) c = Changing();
         for (Level& level : levels)
             if (level.layer && level.layer->gc) {
                 level.layer->memory();
@@ -2113,6 +2153,8 @@ struct Ink {
     D2D1_RECT_F box = {};            // the first three
     float rx = 0, ry = 0;
     ID2D1Geometry* shape = nullptr;  // geometry
+    const float* path = nullptr;     // ... and, made from a path, that path as megler.h has it (to keep its shadow by)
+    int pathCount = 0, pathFill = 0;
     const Shaped* text = nullptr;    // glyphs: a run laid out ...
     Matrix3x2F textMatrix;           // ... and what takes its own coordinates (the baseline's start at 0, 0) to the drawing's
     int style = MEGLER_GFX_FILL;
@@ -2466,6 +2508,7 @@ Ref<ID2D1Image> filtered(GpuContext& g, ID2D1Image* colours, int mode, uint32_t 
 /// False when it cannot be done there.
 bool gpuPut(Canvas& cv, Surface& target, const Box& box, ID2D1Image* a, ID2D1Image* c, int blend) {
     GpuContext& g = *cv.gc;
+    if (blend >= 0 && blend < State::blendModes) ++G().effectsMode[blend];
     const D2D1_POINT_2F at = D2D1::Point2F(float(box.l - target.ox), float(box.t - target.oy));
     const D2D1_RECT_F part = D2D1::RectF(0, 0, float(box.width()), float(box.height()));
     D2D1_COMPOSITE_MODE composite = D2D1_COMPOSITE_MODE_SOURCE_OVER;
@@ -2640,6 +2683,10 @@ bool gpuPaintInk(Canvas& cv, Surface& target, const Ink& ink, const megler_gfx_p
     if (box.empty()) return true;
     const bool keeps = keepsUncovered(paint.blend);
     const bool apart = (shader && (shader->kind == Shader::sweep || paint.filter_mode >= 0)) || paint.style == MEGLER_GFX_FILL_AND_STROKE;
+    ++G().effectsBy[paint.blend != MEGLER_GFX_BLEND_SRC_OVER ? State::whyInkMode
+                    : shader && shader->kind == Shader::sweep ? State::whyInkSweep
+                    : shader && paint.filter_mode >= 0 ? State::whyInkShaderFilter
+                    : paint.style == MEGLER_GFX_FILL_AND_STROKE ? State::whyInkFillStroke : State::whyOther];
     Surface* c = nullptr;
     if (!keeps || apart) {
         c = gpuCoverage(cv, ink, box, true, Canvas::workC);
@@ -2702,6 +2749,7 @@ bool gpuDrawColor(Canvas& cv, Surface& target, const Box& box, uint32_t colour, 
     s->rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
     s->brush->SetColor(colorOf(colour));
     s->rt->FillRectangle(D2D1::RectF(float(box.l), float(box.t), float(box.r), float(box.b)), s->brush.get());
+    ++G().effectsBy[State::whyColour];
     return gpuPut(cv, target, box, s->gpu.get(), c ? c->gpu.get() : nullptr, blend);
 }
 
@@ -2710,6 +2758,7 @@ bool gpuDrawColor(Canvas& cv, Surface& target, const Box& box, uint32_t colour, 
 /// the save where that is more than its box.
 bool gpuRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, int alpha, int blend) {
     GpuContext& g = *cv.gc;
+    ++G().effectsBy[State::whyRestore];
     Surface* s = workSurface(cv, Canvas::workS, box, true);
     if (!s) return false;
     g.finish(State::endLayerMode);
@@ -2753,6 +2802,7 @@ bool gpuRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, int 
 /// clip, laid over the picture.
 bool gpuBlurRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, int alpha, float sigma, bool clamp) {
     GpuContext& g = *cv.gc;
+    ++G().effectsBy[State::whyBlurRestore];
     Surface* s = workSurface(cv, Canvas::workS, box, true);
     if (!s) return false;
     g.finish(State::endLayerBlur);
@@ -2808,6 +2858,219 @@ bool gpuBlurRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, 
 /// of 0.57735 * radius + 0.5 grown with the matrix's scale, as in memory),
 /// moved by the offset, cut by the clip, in the shadow's colour, put on by
 /// the paint's transfer mode.
+/// A run's faces, sizes, glyphs and their places, as bytes after `key` (shadowKey; defined with the runs, below).
+void putShapedKey(const Shaped& shaped, std::vector<uint8_t>* key);
+
+/// What a shadow is made of, as bytes, to keep it by (gpuShadowKept): the ink -- a run's faces, sizes, glyphs and their
+/// places, a path's numbers, or a rectangle's, a rounded one's or an oval's size -- its style and stroke, the matrix that
+/// lays it on the canvas but for that matrix's move in whole pixels (put in ix, iy; an eighth of a pixel of it is in the
+/// key), the blur, the offset and the colour. False for an ink not kept so (a dashed stroke, a shape of other making).
+bool shadowKey(const Ink& ink, const Matrix3x2F& m, uint32_t colour, float sigma, int dx, int dy, std::vector<uint8_t>* key, int* ix, int* iy) {
+    Matrix3x2F at;
+    auto put = [key](const void* p, size_t n) {
+        const uint8_t* b = static_cast<const uint8_t*>(p);
+        key->insert(key->end(), b, b + n);
+    };
+    key->clear();
+    const int kind = int(ink.kind);
+    const uint8_t smooth = ink.smooth ? 1 : 0;
+    put(&kind, sizeof(kind));
+    put(&ink.style, sizeof(ink.style));
+    put(&ink.strokeWidth, sizeof(ink.strokeWidth));
+    put(&smooth, 1);
+    if (ink.style != MEGLER_GFX_FILL && ink.stroke) {
+        // How it is stroked; dashes are not kept by.
+        if (ink.stroke->GetDashStyle() != D2D1_DASH_STYLE_SOLID) return false;
+        const int how[3] = {int(ink.stroke->GetLineJoin()), int(ink.stroke->GetStartCap()), int(ink.stroke->GetEndCap())};
+        const float miter = ink.stroke->GetMiterLimit();
+        put(how, sizeof(how));
+        put(&miter, sizeof(miter));
+    }
+    if (ink.kind == Ink::glyphs) {
+        if (!ink.text) return false;
+        at = ink.textMatrix * m;
+        putShapedKey(*ink.text, key);
+    } else if (ink.kind == Ink::geometry && !ink.path && ink.text) {
+        // A run's outlines, stroked or made bold (drawText), by the run and the text's own matrix, before which the
+        // stroke's width is: TikTok Lite's names over its videos are bold, with a shadow, three a frame.
+        const uint8_t outlines = 1;
+        const float own[4] = {ink.textMatrix._11, ink.textMatrix._12, ink.textMatrix._21, ink.textMatrix._22};
+        put(&outlines, 1);
+        put(own, sizeof(own));
+        at = ink.textMatrix * m;
+        putShapedKey(*ink.text, key);
+    } else if (ink.kind == Ink::geometry) {
+        // A path, by its numbers (made again at each call, its geometry is no key): an icon's, drawn where the matrix says.
+        if (!ink.path || ink.pathCount <= 0 || ink.pathCount > 65536) return false;
+        const uint8_t outlines = 0;
+        put(&outlines, 1);
+        at = m;
+        put(&ink.pathFill, sizeof(ink.pathFill));
+        put(&ink.pathCount, sizeof(ink.pathCount));
+        put(ink.path, size_t(ink.pathCount) * sizeof(float));
+    } else if (ink.kind == Ink::rectangle || ink.kind == Ink::rounded || ink.kind == Ink::oval) {
+        // The shape from its own corner, which the matrix's move takes along.
+        const float size[4] = {ink.box.right - ink.box.left, ink.box.bottom - ink.box.top, ink.rx, ink.ry};
+        put(size, sizeof(size));
+        at = Matrix3x2F::Translation(ink.box.left, ink.box.top) * m;
+    } else {
+        return false;
+    }
+    const float linear[4] = {at._11, at._12, at._21, at._22};
+    const float fx = std::floor(at._31), fy = std::floor(at._32);
+    if (!(std::fabs(fx) < 1e7f && std::fabs(fy) < 1e7f)) return false;
+    const int16_t eighths[2] = {int16_t(std::lround((at._31 - fx) * 8)), int16_t(std::lround((at._32 - fy) * 8))};
+    put(linear, sizeof(linear));
+    put(eighths, sizeof(eighths));
+    put(&colour, sizeof(colour));
+    put(&sigma, sizeof(sigma));
+    put(&dx, sizeof(dx));
+    put(&dy, sizeof(dy));
+    *ix = int(fx);
+    *iy = int(fy);
+    return true;
+}
+
+/// Shadows kept on the graphics processor: at most this many bytes, the least recently laid going first.
+constexpr uint64_t shadowBudget = 16ull << 20;
+
+uint64_t keyHash(const std::vector<uint8_t>& key) {
+    uint64_t h = 0xcbf29ce484222325ull;
+    for (uint8_t b : key) h = (h ^ b) * 0x100000001b3ull;
+    return h;
+}
+
+/*
+ * A shadow laid from those kept, or made once and kept, for an ink drawn in the plain mode: TikTok Lite's feed draws the
+ * same few lines of white text with a shadow over its playing video at every frame, and each shadow was a blur through
+ * the effects and a drawing ended for them (3.6 ms each, four a frame, a third of the frame). Made, the ink's whole shadow,
+ * unclipped, goes into a bitmap of its own, blurred and in its colour as gpuShadow makes it; laid, that bitmap goes where
+ * the ink is now, its place moved by whole pixels, under the canvas's clip: nothing through the effects. False when the
+ * ink is not kept so, or its shadow is over a million pixels: gpuShadow lays it then.
+ */
+bool gpuShadowKept(Canvas& cv, Surface& target, const Ink& ink, uint32_t colour, float sigma, int reach, int dx, int dy) {
+    State& s = G();
+    std::vector<uint8_t> key;
+    int ix = 0, iy = 0, ox = 0, oy = 0, w = 0, h = 0;
+    Ref<ID2D1Bitmap1> bm;
+    if (gpuGone() || !shadowKey(ink, cv.matrix, colour, sigma, dx, dy, &key, &ix, &iy)) return false;
+    const uint64_t hash = keyHash(key);
+    {
+        std::lock_guard<std::mutex> lock(s.shadowMutex);
+        auto found = s.shadows.find(hash);
+        if (found != s.shadows.end() && found->second.key == key) {
+            found->second.used = ++s.shadowClock;
+            bm = found->second.bitmap;
+            ox = found->second.ox;
+            oy = found->second.oy;
+            w = found->second.w;
+            h = found->second.h;
+        }
+    }
+    if (bm) {
+        ++s.shadowsReused;
+    } else {
+        Box full = inkCover(ink, cv.matrix);
+        full.inflate(reach);
+        full.move(dx, dy);
+        if (full.empty() || int64_t(full.width()) * int64_t(full.height()) > (int64_t(1) << 20)) return false;
+        Box from = full;
+        from.move(-dx, -dy);
+        from.inflate(reach);
+        GpuContext& g = *cv.gc;
+        Surface* ink0 = gpuCoverage(cv, ink, from, false, Canvas::workS);
+        if (!ink0) return false;
+        ID2D1Effect* blur = g.effect(GpuContext::shadowBlur);
+        ID2D1Effect* e = g.effect(GpuContext::opacity);
+        if (!blur || !e) return false;
+        blur->SetInput(0, ink0->gpu.get());
+        blur->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, sigma);
+        blur->SetValue(D2D1_GAUSSIANBLUR_PROP_OPTIMIZATION, D2D1_GAUSSIANBLUR_OPTIMIZATION_QUALITY);
+        blur->SetValue(D2D1_GAUSSIANBLUR_PROP_BORDER_MODE, D2D1_BORDER_MODE_SOFT);
+        // Each output channel the colour's times the blurred coverage's alpha, as gpuShadow has it.
+        const D2D1_VECTOR_4F v = vectorOf(premultiplied(colour));
+        e->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, D2D1::Matrix5x4F(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, v.x, v.y, v.z, v.w, 0, 0, 0, 0));
+        e->SetValue(D2D1_COLORMATRIX_PROP_ALPHA_MODE, matrixAsItStands);
+        e->SetInputEffect(0, blur);
+        Ref<ID2D1Image> coloured;
+        e->GetOutput(coloured.put());
+        Surface* k = workSurface(cv, Canvas::workK, full);
+        if (!k || !coloured) return false;
+        k->rt->SetTransform(Matrix3x2F::Identity());
+        const D2D1_POINT_2F at = D2D1::Point2F(float(from.l + dx - full.l), float(from.t + dy - full.t));
+        const D2D1_RECT_F part = D2D1::RectF(0, 0, float(from.width()), float(from.height()));
+        g.dc->DrawImage(coloured.get(), &at, &part, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_COMPOSITE_MODE_SOURCE_OVER);
+        // (Ended, so that the copy below reads what was drawn.)
+        g.finish(State::endEffects);
+        w = full.width();
+        h = full.height();
+        bm = gpuBitmap(w, h, D2D1_BITMAP_OPTIONS_NONE);
+        if (!bm) return false;
+        const D2D1_POINT_2U origin = D2D1::Point2U(0, 0);
+        const D2D1_RECT_U src = D2D1::RectU(0, 0, UINT32(w), UINT32(h));
+        if (FAILED(bm->CopyFromBitmap(&origin, k->gpu.get(), &src))) return false;
+        ox = full.l - ix;
+        oy = full.t - iy;
+        const uint64_t bytes = uint64_t(w) * uint64_t(h) * 4;
+        std::lock_guard<std::mutex> lock(s.shadowMutex);
+        auto old = s.shadows.find(hash);
+        if (old != s.shadows.end()) {
+            s.shadowBytes -= uint64_t(old->second.w) * uint64_t(old->second.h) * 4;
+            s.shadows.erase(old);
+        }
+        while (s.shadowBytes + bytes > shadowBudget && !s.shadows.empty()) {
+            auto oldest = s.shadows.begin();
+            for (auto it = s.shadows.begin(); it != s.shadows.end(); ++it)
+                if (it->second.used < oldest->second.used) oldest = it;
+            s.shadowBytes -= uint64_t(oldest->second.w) * uint64_t(oldest->second.h) * 4;
+            s.shadows.erase(oldest);
+        }
+        State::KeptShadow& kept = s.shadows[hash];
+        kept.key = std::move(key);
+        kept.bitmap = bm;
+        kept.ox = ox;
+        kept.oy = oy;
+        kept.w = w;
+        kept.h = h;
+        kept.used = ++s.shadowClock;
+        s.shadowBytes += bytes;
+        ++s.shadowsMade;
+    }
+    // Laid as it is where the ink is now, under the canvas's clip.
+    Box onto;
+    onto.l = ix + ox;
+    onto.t = iy + oy;
+    onto.r = onto.l + w;
+    onto.b = onto.t + h;
+    Box drawn = onto;
+    drawn.intersect(cv.clip().box);
+    drawn.intersect(target.bounds());
+    if (drawn.empty()) return true;
+    if (!target.begin()) return false;
+    target.useBoxClip(drawn);
+    target.setMatrix(Matrix3x2F::Identity());
+    const Clip& clip = cv.clip();
+    if (clip.g) {
+        // Under a clip that is a shape (a view's rounded corners): that shape filled with the shadow, under the shadow's box,
+        // not a layer pushed over the canvas for it.
+        Ref<ID2D1BitmapBrush> brush;
+        if (FAILED(target.rt->CreateBitmapBrush(bm.get(),
+                                                D2D1::BitmapBrushProperties(D2D1_EXTEND_MODE_CLAMP, D2D1_EXTEND_MODE_CLAMP,
+                                                                            D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR),
+                                                D2D1::BrushProperties(1.0f, Matrix3x2F::Translation(float(onto.l), float(onto.t))),
+                                                brush.put())))
+            return false;
+        target.rt->SetAntialiasMode(clip.smooth ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED);
+        target.rt->FillGeometry(clip.g.get(), brush.get());
+    } else {
+        const D2D1_RECT_F dst = D2D1::RectF(float(onto.l), float(onto.t), float(onto.r), float(onto.b));
+        target.rt->DrawBitmap(bm.get(), &dst, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr);
+    }
+    target.drew(drawn);
+    ++s.direct;
+    return true;
+}
+
 bool gpuShadow(Canvas& cv, Surface& target, const Ink& ink, const megler_gfx_paint& paint) {
     uint32_t colour = paint.shadow_color;
     if ((colour >> 24) == 255) colour = (colour & 0x00FFFFFFu) | (paint.color & 0xFF000000u);
@@ -2824,6 +3087,15 @@ bool gpuShadow(Canvas& cv, Surface& target, const Ink& ink, const megler_gfx_pai
     lands.intersect(cv.clip().box);
     lands.intersect(target.bounds());
     if (lands.empty()) return true;
+    if (paint.blend == MEGLER_GFX_BLEND_SRC_OVER && gpuShadowKept(cv, target, ink, colour, sigma, reach, dx, dy)) return true;
+    {
+        Box full = inkCover(ink, cv.matrix);
+        full.inflate(reach);
+        ++G().effectsBy[paint.blend != MEGLER_GFX_BLEND_SRC_OVER ? State::whyShadowMode
+                        : int64_t(full.width()) * int64_t(full.height()) > (int64_t(1) << 20) ? State::whyShadowLarge
+                        : ink.kind == Ink::geometry ? (ink.path ? State::whyShadowPath : State::whyShadowText)
+                        : State::whyShadowShape];
+    }
     Box from = lands;
     from.move(-dx, -dy);
     from.inflate(reach);
@@ -3109,6 +3381,8 @@ void noteDrawing() {
         t.endsBy[k] = s.endsBy[k];
         t.endTicksBy[k] = s.endTicksBy[k];
     }
+    for (int k = 0; k < State::effectsWhys; k++) t.effectsBy[k] = s.effectsBy[k];
+    for (int k = 0; k < State::blendModes; k++) t.effectsMode[k] = s.effectsMode[k];
     const State::Totals& l = s.statsLast;
     typedef unsigned long long ull;
     if (s.statsAt && t.sessions != l.sessions && s.gpu && !gpuGone()) {
@@ -3157,6 +3431,31 @@ void noteDrawing() {
                                     ticksToMs(t.endTicksBy[k] - l.endTicksBy[k])));
         }
         if (used) say("the drawings ended, by what ended them: %s", ends);
+        static const char* const effectsWhys[State::effectsWhys] = {"a shape or text in another mode", "a shader with a colour filter",
+                                                                   "a sweep", "a fill and stroke", "a bitmap in another mode",
+                                                                   "a colour", "a path's shadow", "an outline's shadow, not a path's",
+                                                                   "another shape's shadow", "a shadow over a million pixels",
+                                                                   "a shadow in another mode", "a layer in another mode",
+                                                                   "a blurred layer", "a canvas in another mode", "other"};
+        static const char* const modes[State::blendModes] = {"CLEAR", "SRC", "DST", "SRC_OVER", "DST_OVER", "SRC_IN", "DST_IN",
+                                                            "SRC_OUT", "DST_OUT", "SRC_ATOP", "DST_ATOP", "XOR", "PLUS", "MODULATE",
+                                                            "SCREEN", "OVERLAY", "DARKEN", "LIGHTEN"};
+        char why[700];
+        used = 0;
+        for (int k = 0; k < State::effectsWhys && used + 100 < sizeof(why); k++) {
+            const uint64_t n = t.effectsBy[k] - l.effectsBy[k];
+            if (n) used += size_t(snprintf(why + used, sizeof(why) - used, "%s%s %llu", used ? ", " : "", effectsWhys[k], ull(n)));
+        }
+        for (int k = 0; k < State::blendModes && used + 40 < sizeof(why); k++) {
+            const uint64_t n = t.effectsMode[k] - l.effectsMode[k];
+            if (n) used += size_t(snprintf(why + used, sizeof(why) - used, "%s%s %llu", used ? "; " : "", modes[k], ull(n)));
+        }
+        if (used) say("the calls put on by the effects, by why and by mode: %s", why);
+        if (s.shadowsMade || s.shadowsReused) {
+            std::lock_guard<std::mutex> lock(s.shadowMutex);
+            say("shadows, in all: %llu made and kept, %llu laid from those kept; %zu kept in %.1f MB", ull(s.shadowsMade.load()),
+                ull(s.shadowsReused.load()), s.shadows.size(), double(s.shadowBytes) / 1048576.0);
+        }
     } else if (s.statsAt && t.sessions != l.sessions) {
         const double seconds = ticksToMs(now - s.statsAt) / 1000.0;
         const uint64_t sessions = t.sessions - l.sessions;
@@ -3897,7 +4196,12 @@ void restoreLevel(Canvas& cv) {
         Surface* layer;
         ~GiveBack() { layer->giveBackGpu(); }
     } giveBack{top.layer.get()};
-    top.layer->end();
+    // On the graphics processor what was drawn into the layer stays in the context's batch, and what lays the layer below
+    // comes after it there; its bitmap is kept for another when the batch is handed over (giveBackGpu). An EndDraw for
+    // the layer and another for its bitmap were a sixth of TikTok Lite's frame, four layers a frame. (Read back below,
+    // it is handed over then: pull.)
+    if (top.layer->gc) top.layer->detach();
+    else top.layer->end();
     Surface* outer = cv.target();
     // A DST layer leaves the picture as it was: it is thrown away.
     if (!outer || top.blend == MEGLER_GFX_BLEND_DST) return;
@@ -4133,6 +4437,9 @@ void drawPath(void*, void* canvas, const float* path, int count, int fill, const
         Ink ink;
         ink.kind = Ink::geometry;
         ink.shape = shape.get();
+        ink.path = path;
+        ink.pathCount = count;
+        ink.pathFill = fill;
         ink.l = bounds.left;
         ink.t = bounds.top;
         ink.r = bounds.right;
@@ -4301,35 +4608,44 @@ Ref<ID2D1Bitmap1> keptBitmap(const megler_gfx_image& image) {
 Ref<ID2D1Bitmap1> bitmapForDrawing(Canvas& cv, const megler_gfx_image& image) {
     const uint64_t pixels = uint64_t(image.width) * uint64_t(image.height);
     if (!image.id || pixels < 256 * 256 || pixels > (4u << 20) / 4) return keptBitmap(image);
-    if (cv.changingId != image.id || cv.changingW != image.width || cv.changingH != image.height) {
-        cv.changingBitmap.reset();
-        cv.changingId = image.id;
-        cv.changingVersion = image.version;
-        cv.changingW = image.width;
-        cv.changingH = image.height;
+    Canvas::Changing* slot = nullptr;
+    for (Canvas::Changing& c : cv.changing)
+        if (c.id == image.id && c.w == image.width && c.h == image.height) slot = &c;
+    if (!slot) {
+        // Not seen here before: the least recently drawn one's place is its, for the versions after this one.
+        slot = &cv.changing[0];
+        for (Canvas::Changing& c : cv.changing)
+            if (c.used < slot->used) slot = &c;
+        *slot = Canvas::Changing();
+        slot->id = image.id;
+        slot->version = image.version;
+        slot->w = image.width;
+        slot->h = image.height;
+        slot->used = ++cv.changingClock;
         return keptBitmap(image);
     }
-    if (cv.changingBitmap && cv.changingVersion == image.version) return cv.changingBitmap;
-    if (!cv.changingBitmap && cv.changingVersion == image.version) return keptBitmap(image);
+    slot->used = ++cv.changingClock;
+    if (slot->bitmap && slot->version == image.version) return slot->bitmap;
+    if (!slot->bitmap && slot->version == image.version) return keptBitmap(image);
     const uint64_t started = ticksNow();
     HRESULT hr;
-    if (cv.changingBitmap) {
+    if (slot->bitmap) {
         // CopyFromMemory flushes a pending batch using this image before its
         // contents change, preserving earlier drawings in this same context.
-        hr = cv.changingBitmap->CopyFromMemory(nullptr, image.pixels, UINT32(image.stride));
+        hr = slot->bitmap->CopyFromMemory(nullptr, image.pixels, UINT32(image.stride));
     } else {
         hr = cv.gc->dc->CreateBitmap(D2D1::SizeU(UINT32(image.width), UINT32(image.height)), image.pixels, UINT32(image.stride),
             D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f),
-            cv.changingBitmap.put());
+            slot->bitmap.put());
     }
     G().uploadTicks += ticksNow() - started;
     ++G().uploads;
     G().uploadPixels += pixels;
     if (SUCCEEDED(hr)) {
-        cv.changingVersion = image.version;
-        return cv.changingBitmap;
+        slot->version = image.version;
+        return slot->bitmap;
     }
-    cv.changingBitmap.reset();
+    slot->bitmap.reset();
     return keptBitmap(image);
 }
 
@@ -4450,6 +4766,7 @@ void drawBitmap(void*, void* canvas, const megler_gfx_image* image, const float*
             const bool keeps = keepsUncovered(paint->blend);
             Surface* c = keeps ? nullptr : gpuCoverage(*cv, ink, box, true, Canvas::workC);
             Surface* s = keeps || c ? workSurface(*cv, Canvas::workA, box) : nullptr;
+            ++G().effectsBy[State::whyBitmapMode];
             if (s && gpuBitmapOn(*s, *cv, *image, part, src, dst, *paint) && gpuPut(*cv, *target, box, s->gpu.get(), c ? c->gpu.get() : nullptr, paint->blend))
                 return;
         }
@@ -4597,6 +4914,7 @@ bool drawCanvas(void*, void* canvas, void* source, const float* src, const float
             const bool keeps = keepsUncovered(paint.blend);
             Surface* cover = keeps ? nullptr : gpuCoverage(*cv, ink, box, true, Canvas::workC);
             Surface* colours = keeps || cover ? workSurface(*cv, Canvas::workA, box) : nullptr;
+            ++G().effectsBy[State::whyCanvas];
             if (!colours || !put(*colours) || !gpuPut(*cv, *target, box, colours->gpu.get(), cover ? cover->gpu.get() : nullptr, paint.blend)) return;
         }
         g.finish(State::endOther);
@@ -5487,6 +5805,25 @@ inline float scaleOf(const megler_gfx_paint& paint) { return paint.text_scale_x 
 
 /// A run's glyphs on a surface that is drawing, each run in the brush, or
 /// (`ownColours`) a colour glyph's layers in their own colours at `alpha`.
+void putShapedKey(const Shaped& shaped, std::vector<uint8_t>* key) {
+    auto put = [key](const void* p, size_t n) {
+        const uint8_t* b = static_cast<const uint8_t*>(p);
+        key->insert(key->end(), b, b + n);
+    };
+    for (const TextRun& run : shaped.plain) {
+        const uintptr_t face = reinterpret_cast<uintptr_t>(run.face.get());
+        const uint32_t n = uint32_t(run.glyphs.size()), na = uint32_t(run.advances.size()), no = uint32_t(run.offsets.size());
+        put(&face, sizeof(face));
+        put(&run.em, sizeof(run.em));
+        put(&n, sizeof(n));
+        put(&na, sizeof(na));
+        put(&no, sizeof(no));
+        if (n) put(run.glyphs.data(), n * sizeof(UINT16));
+        if (na) put(run.advances.data(), na * sizeof(FLOAT));
+        if (no) put(run.offsets.data(), no * sizeof(DWRITE_GLYPH_OFFSET));
+    }
+}
+
 void drawGlyphs(Surface& s, const Ink& ink, const Matrix3x2F& world, ID2D1Brush* brush, bool ownColours, uint32_t alpha) {
     const Shaped& shaped = *ink.text;
     s.setMatrix(ink.textMatrix * world);

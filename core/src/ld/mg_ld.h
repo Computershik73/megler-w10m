@@ -151,6 +151,8 @@ size_t mg_ld_unresolved_count(void);
 void mg_patch_set_trap_svc(bool on);
 /* Exact registered trap lookup; returns the continuation with its ISA bit. */
 bool mg_patch_svc_target(mg_addr pc, mg_addr *target);
+/* A thread-pointer read left as the file has it, at a hardware breakpoint: the register it sets, and where to go on. */
+bool mg_patch_tp_target(mg_addr pc, int *reg, mg_addr *target);
 /* 0 quiet, 1 one line per library, 2 every unresolved import as well. */
 void mg_ld_set_verbosity(int v);
 

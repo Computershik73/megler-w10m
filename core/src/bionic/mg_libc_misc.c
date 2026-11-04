@@ -476,6 +476,7 @@ static unsigned long g_getauxval(unsigned long type)
 static int g_prctl(int option, unsigned long a, unsigned long b, unsigned long c, unsigned long d)
 {
     (void)b; (void)c; (void)d;
+    mg_trace("prctl(%d, 0x%lx)", option, a);
     if (option == 15 && a) mg_strlcpy(mg_gthread_self()->name, (const char *)(mg_addr)a, sizeof(mg_gthread_self()->name));   /* PR_SET_NAME */
     if (option == 16 && a) mg_strlcpy((char *)(mg_addr)a, mg_gthread_self()->name, 16);                                    /* PR_GET_NAME */
     return 0;
@@ -881,8 +882,27 @@ static int g_getrusage(int who, void *usage)
     memset(usage, 0, 72);
     return 0;
 }
-static int g_getpriority(int which, int who) { (void)which; (void)who; return 0; }
-static int g_setpriority(int which, int who, int prio) { (void)which; (void)who; (void)prio; return 0; }
+/* PRIO_PROCESS with a thread's id, as Android sets a thread's (androidSetThreadPriority): that thread's nice value, and its
+   host thread's priority (mg_gthread_set_nice); 0 for the caller. Groups and users are left as they are. */
+static int g_getpriority(int which, int who)
+{
+    mg_gthread *t = mg_gthread_self();
+    return which == 0 && (who == 0 || who == t->tid) ? (int)t->nice : 0;
+}
+static int g_setpriority(int which, int who, int prio)
+{
+    mg_gthread *t = mg_gthread_self();
+    mg_thread *host;
+    if (which != 0) return 0;
+    if (who == 0 || who == t->tid) {
+        mg_gthread_set_nice(t, prio);
+        return 0;
+    }
+    /* Another thread of the app's: its host thread's priority (its record's nice value is its own to keep). */
+    host = mg_gthread_host_of_tid(who);
+    if (host) mg_thread_set_priority(host, prio <= -16 ? 2 : prio <= -4 ? 1 : prio < 0 ? 0 : prio < 10 ? (mg_app_threads_give_way() ? -1 : 0) : -2);
+    return 0;
+}
 static int g_nice(int inc) { (void)inc; return 0; }
 
 /* ------------------------------------------------------- sorting, searching */
@@ -1301,8 +1321,22 @@ int mg_signal_mask(int how, const u32 *set, u32 *old)
     return 0;
 }
 
-static int g_kill(int pid, int sig) { return (pid == g_getpid() || pid == 0) && sig ? g_raise(sig) : 0; }
-static int g_tgkill(int tgid, int tid, int sig) { (void)tgid; (void)tid; return sig ? g_raise(sig) : 0; }
+static int g_kill(int pid, int sig)
+{
+    mg_trace("kill(%d, %d)", pid, sig);
+    return (pid == g_getpid() || pid == 0) && sig ? g_raise(sig) : 0;
+}
+static int g_tgkill(int tgid, int tid, int sig)
+{
+    mg_trace("tgkill(%d, %d, %d)", tgid, tid, sig);
+    return sig ? g_raise(sig) : 0;
+}
+/* fork and vfork: no process here makes another (said in the trace: anti-debugging forks to watch its parent). */
+static int g_fork(void)
+{
+    mg_trace("fork() = -1 ENOSYS");
+    return g_fail_nosys();
+}
 static int g_sigprocmask(int how, const u32 *set, u32 *old)
 {
     int e = mg_signal_mask(how, set, old);
@@ -1600,7 +1634,8 @@ static int g_capget(u32 *header, u32 *data)
  */
 static long g_ptrace(int request, int pid, void *addr, void *data)
 {
-    (void)request; (void)pid; (void)addr; (void)data;
+    (void)addr; (void)data;
+    mg_trace("ptrace(%d, %d) = -1 EPERM", request, pid);
     mg_set_errno(GE_PERM);
     return -1;
 }
@@ -1783,7 +1818,7 @@ const mg_sym mg_tab_misc[] = {
     M("__cxa_guard_abort", g_cxa_guard_abort),
     M("getpid", g_getpid), M("getppid", g_getppid), M("getuid", g_getuid), M("geteuid", g_getuid), M("getgid", g_getuid),
     M("getegid", g_getuid), M("setuid", g_zero), M("setgid", g_zero), M("setresuid", g_zero), M("setresgid", g_zero), M("setgroups", g_zero), M("getpgrp", g_getpid), M("setsid", g_getpid),
-    M("fork", g_fail_nosys), M("vfork", g_fail_nosys), M("execv", g_fail_nosys), M("execve", g_fail_nosys), M("execvp", g_fail_nosys),
+    M("fork", g_fork), M("vfork", g_fork), M("execv", g_fail_nosys), M("execve", g_fail_nosys), M("execvp", g_fail_nosys),
     M("execl", g_fail_nosys), M("execlp", g_fail_nosys), M("wait", g_fail_nosys), M("waitpid", g_fail_nosys), M("system", g_system),
     M("getenv", g_getenv), M("setenv", g_setenv), M("unsetenv", g_unsetenv), M("putenv", g_putenv), M("clearenv", g_clearenv),
     M("secure_getenv", g_getenv), MG_DATA("environ", &g_environ),

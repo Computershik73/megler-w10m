@@ -483,6 +483,21 @@ static DWORD WINAPI thread_main(LPVOID p)
 
 void mg_thread_runs_app_code(void) { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL); }
 
+bool mg_thread_set_priority(mg_thread *t, int level)
+{
+    static const int levels[] = { THREAD_PRIORITY_LOWEST, THREAD_PRIORITY_BELOW_NORMAL, THREAD_PRIORITY_NORMAL, THREAD_PRIORITY_ABOVE_NORMAL,
+                                  THREAD_PRIORITY_HIGHEST };
+    const int p = levels[level < -2 ? 0 : level > 2 ? 4 : level + 2];
+    HANDLE h;
+    bool ok;
+    if (!t || t->id == GetCurrentThreadId()) return SetThreadPriority(GetCurrentThread(), p) != 0;
+    h = self_take(t);
+    if (!h) return false;
+    ok = SetThreadPriority(h, p) != 0;
+    self_give(t);
+    return ok;
+}
+
 mg_thread *mg_thread_current(void)
 {
     if (!t_current) {
@@ -623,6 +638,132 @@ bool mg_thread_interrupt(mg_thread *t)
     (void)t;
     return false;
 }
+#endif
+
+/* ------------------------------------------------------------ hardware breakpoints */
+
+#if defined(_M_ARM)
+/* DBGBCR: enabled, user mode only (PMC 0b10), the bytes of the word: a Thumb instruction's halfword, or all four for ARM. */
+static DWORD bp_control(mg_addr at, bool thumb)
+{
+    DWORD bas = thumb ? ((at & 2) ? 0xCu : 0x3u) : 0xFu;
+    return (bas << 5) | (2u << 1) | 1u;
+}
+
+/*
+ * The process's hardware breakpoints (mg_breakpoint_add), as each guest thread's context takes them: Bvr the address,
+ * Bcr from bp_control. The probe (megler_probe_breakpoints) found a thread stopped so on the Elite x3, build 15254, Thumb
+ * and ARM, given them by SetThreadContext while suspended or through an exception's context, which NtContinue takes back:
+ * STATUS_BREAKPOINT at the address, before the instruction. At most BP_MAX: the context has room for eight, and a phone
+ * keeps what its processor has (a Snapdragon 820's Kryo, six); arming another thread reads them back.
+ */
+#define EXCEPTION_MEGLER_ARM_BREAKPOINTS 0xE04D4703u
+enum { BP_MAX = 6 };
+static mg_lock g_bp_lock = MG_LOCK_INIT;
+static DWORD g_bp_bvr[BP_MAX], g_bp_bcr[BP_MAX];
+static volatile LONG g_bp_n;
+
+/* A context given the list, the slots after it cleared. (No lock: a slot is written before the count takes it in.) */
+static void bp_fill(CONTEXT *c)
+{
+    LONG n = g_bp_n, i;
+    c->ContextFlags |= CONTEXT_DEBUG_REGISTERS;
+    for (i = 0; i < BP_MAX; i++) {
+        c->Bvr[i] = i < n ? g_bp_bvr[i] : 0;
+        c->Bcr[i] = i < n ? g_bp_bcr[i] : 0;
+    }
+}
+
+static bool bp_listed(DWORD at)
+{
+    LONG n = g_bp_n, i;
+    for (i = 0; i < n; i++)
+        if (g_bp_bvr[i] == at) return true;
+    return false;
+}
+
+bool mg_breakpoints_available(void) { return true; }
+int mg_breakpoint_count(void) { return (int)g_bp_n; }
+
+bool mg_breakpoint_add(mg_addr at)
+{
+    DWORD a = (DWORD)(at & ~(mg_addr)1);
+    bool ok;
+    mg_lock_acquire(&g_bp_lock);
+    ok = bp_listed(a);
+    if (!ok && g_bp_n < BP_MAX) {
+        g_bp_bvr[g_bp_n] = a;
+        g_bp_bcr[g_bp_n] = bp_control(a, (at & 1) != 0);
+        InterlockedIncrement(&g_bp_n);
+        ok = true;
+    }
+    mg_lock_release(&g_bp_lock);
+    return ok;
+}
+
+static char g_bp_why[200];
+const char *mg_breakpoints_why(void) { return g_bp_why; }
+
+bool mg_breakpoints_arm(mg_thread *t)
+{
+    CONTEXT ctx;
+    HANDLE h;
+    LONG n = g_bp_n, i;
+    bool ok;
+    DWORD err = 0;
+    if (!n) return true;
+    if (!t || t->id == GetCurrentThreadId()) {
+        RaiseException(EXCEPTION_MEGLER_ARM_BREAKPOINTS, 0, 0, NULL);
+        return true;
+    }
+    h = self_take(t);
+    if (!h) {
+        snprintf(g_bp_why, sizeof(g_bp_why), "thread %lu has ended", (unsigned long)t->id);
+        return false;
+    }
+    if (SuspendThread(h) == (DWORD)-1) {
+        snprintf(g_bp_why, sizeof(g_bp_why), "thread %lu: SuspendThread failed (%lu)", (unsigned long)t->id, (unsigned long)GetLastError());
+        self_give(t);
+        return false;
+    }
+    /* Nothing is taken while it is stopped (it may hold a lock): the registers set, and read back. */
+    memset(&ctx, 0, sizeof(ctx));
+    bp_fill(&ctx);
+    ok = SetThreadContext(h, &ctx) != 0;
+    if (!ok) {
+        err = GetLastError();
+        snprintf(g_bp_why, sizeof(g_bp_why), "thread %lu: SetThreadContext failed (%lu)", (unsigned long)t->id, (unsigned long)err);
+    } else {
+        memset(&ctx, 0, sizeof(ctx));
+        ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        ok = GetThreadContext(h, &ctx) != 0;
+        if (!ok) snprintf(g_bp_why, sizeof(g_bp_why), "thread %lu: GetThreadContext failed (%lu)", (unsigned long)t->id, (unsigned long)GetLastError());
+        for (i = 0; ok && i < n; i++) {
+            ok = ctx.Bvr[i] == g_bp_bvr[i] && ctx.Bcr[i] == g_bp_bcr[i];
+            if (!ok)
+                snprintf(g_bp_why, sizeof(g_bp_why), "thread %lu: read back %08lx %08lx in slot %ld, where %08lx %08lx was set (flags %08lx, pc %08lx)",
+                         (unsigned long)t->id, (unsigned long)ctx.Bvr[i], (unsigned long)ctx.Bcr[i], (long)i, (unsigned long)g_bp_bvr[i],
+                         (unsigned long)g_bp_bcr[i], (unsigned long)ctx.ContextFlags, (unsigned long)ctx.Pc);
+        }
+    }
+    ResumeThread(h);
+    self_give(t);
+    return ok;
+}
+#else
+bool mg_breakpoints_available(void) { return false; }
+bool mg_breakpoint_add(mg_addr at)
+{
+    (void)at;
+    return false;
+}
+int mg_breakpoint_count(void) { return 0; }
+bool mg_breakpoints_arm(mg_thread *t)
+{
+    (void)t;
+    return true;
+}
+const char *mg_breakpoints_why(void) { return ""; }
 #endif
 
 /* ------------------------------------------------- stopping a thread for the collector */
@@ -1176,9 +1317,25 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
         InterlockedExchange(&t->interrupted, 0);
         return EXCEPTION_CONTINUE_EXECUTION;
     }
+    if (er->ExceptionCode == EXCEPTION_MEGLER_ARM_BREAKPOINTS) {
+        /* A thread asking for the process's hardware breakpoints (mg_breakpoints_arm): NtContinue gives them to it. */
+        bp_fill(ep->ContextRecord);
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
 #endif
     memset(&f, 0, sizeof(f));
     f.code = er->ExceptionCode;
+#if defined(_M_ARM)
+    if (er->ExceptionCode == EXCEPTION_BREAKPOINT && bp_listed(ep->ContextRecord->Pc & ~(DWORD)1)) {
+        /* Stopped at one of the process's hardware breakpoints, before the instruction: the core does it. */
+        f.kind = MG_FAULT_BREAKPOINT;
+        f.regs = (u32 *)&ep->ContextRecord->R0;
+        f.cpsr = (u32 *)&ep->ContextRecord->Cpsr;
+        if (g_fault_handler && g_fault_handler(&f)) return EXCEPTION_CONTINUE_EXECUTION;
+        note_exception(ep, "passed on (a hardware breakpoint the core had nothing for)");
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+#endif
     switch (er->ExceptionCode) {
     case EXCEPTION_ILLEGAL_INSTRUCTION:
         f.kind = MG_FAULT_ILLEGAL;
@@ -3460,6 +3617,278 @@ bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
     if (base) *base = (mg_addr)module;
     return true;
 }
+
+/*
+ * CoreUIComponents.dll keeps a state for each view (0 to 8, in a field at +0x12c of its object) and changes it in one
+ * function, which checks every change: one it does not allow ends the process on the spot, by writing to address 0
+ * (str.w r8, [r8], with r8 zero). On Windows 10 Mobile 15254 a view waiting for its window to be shown (state 7, after
+ * subscribing to CoreWindow.VisibilityChanged) is asked to go to 6, and the process ends: TikTok Lite's, every time,
+ * about three seconds after its start, on the shell's UI thread. Windows' own handler takes nothing there.
+ *
+ * Such a fault, in that function, is made into the change not happening: the old state is put back if the new one was
+ * stored already (the store is the function's 0x42nd byte), and the function returns to its caller through its own
+ * epilogue (pop.w {r1-r8, r11, pc}). The function is known by its first sixteen bytes and its epilogue; anywhere else,
+ * or with other bytes (another build of Windows), nothing is done and the fault ends the app as before.
+ */
+bool mg_host_repair_known_fault(mg_fault *f)
+{
+#if defined(_M_ARM)
+    static const u8 prologue[16] = { 0x2d, 0xe9, 0xfe, 0x49, 0x0d, 0xf1, 0x20, 0x0b, 0x50, 0x4b, 0xd0, 0xf8, 0x2c, 0x51, 0x0f, 0x46 };
+    static const u8 assertion[4] = { 0xc8, 0xf8, 0x00, 0x80 };      /* str.w r8, [r8] */
+    static const u8 epilogue[4] = { 0xbd, 0xe8, 0xfe, 0x89 };       /* pop.w {r1, r2, r3, r4, r5, r6, r7, r8, r11, pc} */
+    enum { STORE = 0x42, EPILOGUE = 0x132, STATE = 0x12c };
+    static volatile LONG repaired;
+    char module[64];
+    mg_addr base = 0, pc, start = 0, at;
+    u32 *r = f->regs;
+    LONG n;
+    if (!r || f->kind != MG_FAULT_ACCESS || !f->write || f->address != 0 || r[8] != 0) return false;
+    pc = r[15] & ~(mg_addr)1;
+    if (memcmp((const void *)pc, assertion, sizeof(assertion))) return false;
+    if (!mg_host_module_at(pc, module, sizeof(module), &base) || _stricmp(module, "CoreUIComponents.dll")) return false;
+    /* The function's start: no more than its own length back, in its module. */
+    for (at = pc & ~(mg_addr)1; at + EPILOGUE >= pc && at >= base; at -= 2)
+        if (!memcmp((const void *)at, prologue, sizeof(prologue))) {
+            start = at;
+            break;
+        }
+    if (!start || pc >= start + EPILOGUE || memcmp((const void *)(start + EPILOGUE), epilogue, sizeof(epilogue))) return false;
+    /* r6 is the view, r5 its state before, r7 the state asked for (the function's first lines put them there). */
+    if (pc > start + STORE) {
+        u32 *state = (u32 *)(DWORD_PTR)(r[6] + STATE);
+        if (!r[6] || *state != r[7]) return false;
+        *state = r[5];
+    }
+    n = InterlockedIncrement(&repaired);
+    if (n <= 5 || !(n & (n - 1)))
+        mg_warn("host: CoreUIComponents.dll would have ended the process over a change of a view's state from %u to %u "
+                "(at +0x%x): the change is left out instead (%ld so far)",
+                (unsigned)r[5], (unsigned)r[7], (unsigned)(pc - base), (long)n);
+    mg_fault_resume_at(f, (start + EPILOGUE) | 1);
+    return true;
+#else
+    (void)f;
+    return false;
+#endif
+}
+
+bool mg_host_module_dump(const char *name, const char *path, mg_addr *base_out, size_t *size_out)
+{
+    wchar_t *w = wide_path(name);
+    HMODULE module = w ? GetModuleHandleW(w) : NULL;
+    const u8 *base;
+    const IMAGE_NT_HEADERS *nt;
+    size_t size, at;
+    u8 *image;
+    bool ok;
+    free(w);
+    if (!module) return false;
+    base = (const u8 *)module;
+    nt = (const IMAGE_NT_HEADERS *)(base + ((const IMAGE_DOS_HEADER *)base)->e_lfanew);
+    size = nt->OptionalHeader.SizeOfImage;
+    image = (u8 *)calloc(1, size ? size : 1);
+    if (!image) return false;
+    /* Region by region: what is committed and readable is copied, the rest stays zeros. */
+    for (at = 0; at < size;) {
+        MEMORY_BASIC_INFORMATION info;
+        size_t end;
+        DWORD p;
+        if (VirtualQuery(base + at, &info, sizeof(info)) != sizeof(info) || !info.RegionSize) break;
+        end = (size_t)((const u8 *)info.BaseAddress - base) + info.RegionSize;
+        if (end > size) end = size;
+        p = info.Protect & 0xff;
+        if (info.State == MEM_COMMIT && !(info.Protect & PAGE_GUARD)
+            && (p & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
+            memcpy(image + at, base + at, end - at);
+        at = end;
+    }
+    ok = mg_file_write_all(path, image, size);
+    free(image);
+    if (base_out) *base_out = (mg_addr)module;
+    if (size_out) *size_out = size;
+    return ok;
+}
+
+/* ------------------------------------------------------------ hardware breakpoints */
+
+#if defined(_M_ARM)
+/*
+ * The probe of hardware breakpoints (megler_probe_breakpoints, the shell's flag ui-probe-breakpoints): whether the
+ * phone's kernel takes a thread's breakpoint registers from its context (Bvr and Bcr: DBGBVR and DBGBCR as the
+ * architecture has them) and stops the thread at the address, and with which exception. A library that sums its own
+ * code (TikTok Lite's libmetasec_ov.so sums its syscall() stub) cannot have an svc in it made a UDF; a breakpoint on
+ * the svc would leave every byte as the file has it.
+ *
+ * Three tries: a Thumb function on another thread, set with SetThreadContext while that thread is suspended; an ARM one
+ * (a page of mov r0, #42; bx lr) the same way; and the Thumb one on the calling thread, set through an exception's
+ * context, which NtContinue takes back. A call stopped at its function returns 4242, and the breakpoint goes.
+ */
+#define EXCEPTION_MEGLER_SET_BREAKPOINT 0xE04D4702u
+
+static volatile mg_addr g_bp_target;
+static volatile LONG g_bp_hits;
+static volatile DWORD g_bp_code;
+
+__declspec(noinline) static int bp_thumb(int x)
+{
+    return x + 1;
+}
+
+static LONG CALLBACK bp_handler(EXCEPTION_POINTERS *info)
+{
+    CONTEXT *c = info->ContextRecord;
+    EXCEPTION_RECORD *er = info->ExceptionRecord;
+    mg_addr t = g_bp_target;
+    if (er->ExceptionCode == EXCEPTION_MEGLER_SET_BREAKPOINT && er->NumberParameters == 2) {
+        c->ContextFlags |= CONTEXT_DEBUG_REGISTERS;
+        c->Bvr[0] = (DWORD)er->ExceptionInformation[0];
+        c->Bcr[0] = (DWORD)er->ExceptionInformation[1];
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    if (!t || (c->Pc & ~(DWORD)1) != (DWORD)(t & ~(mg_addr)1)) return EXCEPTION_CONTINUE_SEARCH;
+    InterlockedIncrement(&g_bp_hits);
+    g_bp_code = er->ExceptionCode;
+    /* As if the function had returned 4242, the state from bit 0 of the return address; and the breakpoint off. */
+    c->R0 = 4242;
+    c->Pc = c->Lr;
+    if (c->Lr & 1) c->Cpsr |= 0x20;
+    else c->Cpsr &= ~(DWORD)0x20;
+    c->Cpsr &= ~(DWORD)0x0600FC00;
+    c->ContextFlags |= CONTEXT_DEBUG_REGISTERS;
+    memset(c->Bcr, 0, sizeof(c->Bcr));
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+typedef struct bp_run {
+    HANDLE go;
+    int (*fn)(int);
+    volatile int result;
+} bp_run;
+
+static DWORD WINAPI bp_thread(LPVOID p)
+{
+    bp_run *r = (bp_run *)p;
+    WaitForSingleObjectEx(r->go, INFINITE, FALSE);
+    r->result = r->fn(1);
+    return 0;
+}
+
+static size_t bp_try_thread(char *out, size_t size, const char *what, int (*fn)(int), bool thumb)
+{
+    mg_addr at = (mg_addr)(DWORD_PTR)fn & ~(mg_addr)1;
+    bp_run *r = (bp_run *)calloc(1, sizeof(*r));
+    HANDLE th = NULL;
+    CONTEXT ctx;
+    BOOL got, set;
+    DWORD flags_got, bcr_got, bvr_back = 0, bcr_back = 0, err = 0, waited;
+    int n;
+    if (r) {
+        r->fn = fn;
+        r->result = -1;
+        r->go = CreateEventExW(NULL, NULL, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS);
+        if (r->go) th = CreateThread(NULL, 0, bp_thread, r, CREATE_SUSPENDED, NULL);
+    }
+    if (!th) {
+        n = snprintf(out, size, "%s: no thread (%lu). ", what, (unsigned long)GetLastError());
+        if (r && r->go) CloseHandle(r->go);
+        free(r);
+        return n > 0 ? (size_t)n : 0;
+    }
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+    got = GetThreadContext(th, &ctx);
+    flags_got = ctx.ContextFlags;
+    bcr_got = ctx.Bcr[0];
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+    ctx.Bvr[0] = (DWORD)at;
+    ctx.Bcr[0] = bp_control(at, thumb);
+    set = SetThreadContext(th, &ctx);
+    if (!set) err = GetLastError();
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+    if (GetThreadContext(th, &ctx)) {
+        bvr_back = ctx.Bvr[0];
+        bcr_back = ctx.Bcr[0];
+    }
+    g_bp_hits = 0;
+    g_bp_code = 0;
+    g_bp_target = at;
+    ResumeThread(th);
+    SetEvent(r->go);
+    waited = WaitForSingleObjectEx(th, 5000, FALSE);
+    g_bp_target = 0;
+    n = snprintf(out, size,
+                 "%s at %08x: read %d (flags %08lx, bcr0 %08lx), set %d (error %lu) with bcr0 %08lx, read back bvr0 %08lx bcr0 %08lx; "
+                 "the call gave %d (%d unstopped), %ld stops, exception %08lx%s. ",
+                 what, (unsigned)at, (int)got, (unsigned long)flags_got, (unsigned long)bcr_got, (int)set, (unsigned long)err,
+                 (unsigned long)bp_control(at, thumb), (unsigned long)bvr_back, (unsigned long)bcr_back, (int)r->result,
+                 thumb ? 2 : 42, (long)g_bp_hits, (unsigned long)g_bp_code, waited == WAIT_OBJECT_0 ? "" : ", the thread did not end");
+    CloseHandle(th);
+    /* (A thread that did not end still has them.) */
+    if (waited == WAIT_OBJECT_0) {
+        CloseHandle(r->go);
+        free(r);
+    }
+    return n > 0 ? (size_t)n : 0;
+}
+
+bool mg_host_probe_breakpoints(char *out, size_t size)
+{
+    int (*volatile thumb)(int) = bp_thumb;
+    mg_addr at = (mg_addr)(DWORD_PTR)bp_thumb & ~(mg_addr)1;
+    ULONG_PTR args[2];
+    PVOID handler;
+    void *page;
+    size_t n = 0;
+    LONG stops = 0;
+    int result;
+    out[0] = 0;
+    handler = AddVectoredExceptionHandler(1, bp_handler);
+    if (!handler) {
+        snprintf(out, size, "no exception handler");
+        return false;
+    }
+    n += bp_try_thread(out + n, size - n, "Thumb, another thread", thumb, true);
+    stops += g_bp_hits;
+    page = valloc(NULL, MG_PAGE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (page) {
+        ((u32 *)page)[0] = 0xE3A0002Au;     /* mov r0, #42 */
+        ((u32 *)page)[1] = 0xE12FFF1Eu;     /* bx lr */
+        if (n < size && vprotect(page, MG_PAGE, PAGE_EXECUTE_READ)) {
+            FlushInstructionCache(GetCurrentProcess(), page, MG_PAGE);
+            n += bp_try_thread(out + n, size - n, "ARM, another thread", (int (*)(int))page, false);
+            stops += g_bp_hits;
+        }
+    }
+    if (n < size) {
+        g_bp_hits = 0;
+        g_bp_code = 0;
+        g_bp_target = at;
+        args[0] = at;
+        args[1] = bp_control(at, true);
+        RaiseException(EXCEPTION_MEGLER_SET_BREAKPOINT, 0, 2, args);
+        result = thumb(1);
+        g_bp_target = 0;
+        if (!g_bp_hits) {
+            args[1] = 0;
+            RaiseException(EXCEPTION_MEGLER_SET_BREAKPOINT, 0, 2, args);
+        }
+        stops += g_bp_hits;
+        snprintf(out + n, size - n, "Thumb, this thread, through an exception's context: the call gave %d, %ld stops, exception %08lx.",
+                 result, (long)g_bp_hits, (unsigned long)g_bp_code);
+    }
+    RemoveVectoredExceptionHandler(handler);
+    /* (The page is kept: a thread that did not end may still be in it.) */
+    return stops > 0;
+}
+#else
+bool mg_host_probe_breakpoints(char *out, size_t size)
+{
+    snprintf(out, size, "not probed on this processor");
+    return false;
+}
+#endif
 
 /* ------------------------------------------------------------------- misc */
 

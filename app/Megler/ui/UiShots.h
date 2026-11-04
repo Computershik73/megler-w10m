@@ -10,6 +10,7 @@
 //   ui-back-<name>          Back, as the phone's button
 //   ui-update-all           Update All (ui/SeparateApps.h): each app package made by another Megler made and installed again
 //   ui-update-<package>     the same for the one app of that Android package (ui-update-com.here.app.maps), outdated or not
+//   ui-probe-breakpoints    whether the system stops a thread at a hardware breakpoint (megler_probe_breakpoints), in the log
 #pragma once
 
 namespace megler::app::ui {
