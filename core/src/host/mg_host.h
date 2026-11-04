@@ -168,6 +168,8 @@ bool mg_breakpoints_available(void);
 bool mg_breakpoint_add(mg_addr at);
 int mg_breakpoint_count(void);
 bool mg_breakpoints_arm(mg_thread *t);
+/* Why the last mg_breakpoints_arm that failed did, with the thread's own id: for the log. */
+const char *mg_breakpoints_why(void);
 /*
  * Stopping another thread where it is, for the collector (dvm/): mg_thread_suspend stops `t`, whatever it is executing, and
  * reads its registers; it stays stopped until mg_thread_resume. Never the calling thread. The registers are only read: the

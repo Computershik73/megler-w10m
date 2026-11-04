@@ -686,20 +686,28 @@ bool mg_breakpoint_add(mg_addr at)
     return ok;
 }
 
+static char g_bp_why[200];
+const char *mg_breakpoints_why(void) { return g_bp_why; }
+
 bool mg_breakpoints_arm(mg_thread *t)
 {
     CONTEXT ctx;
     HANDLE h;
     LONG n = g_bp_n, i;
     bool ok;
+    DWORD err = 0;
     if (!n) return true;
     if (!t || t->id == GetCurrentThreadId()) {
         RaiseException(EXCEPTION_MEGLER_ARM_BREAKPOINTS, 0, 0, NULL);
         return true;
     }
     h = self_take(t);
-    if (!h) return false;
+    if (!h) {
+        snprintf(g_bp_why, sizeof(g_bp_why), "thread %lu has ended", (unsigned long)t->id);
+        return false;
+    }
     if (SuspendThread(h) == (DWORD)-1) {
+        snprintf(g_bp_why, sizeof(g_bp_why), "thread %lu: SuspendThread failed (%lu)", (unsigned long)t->id, (unsigned long)GetLastError());
         self_give(t);
         return false;
     }
@@ -707,11 +715,21 @@ bool mg_breakpoints_arm(mg_thread *t)
     memset(&ctx, 0, sizeof(ctx));
     bp_fill(&ctx);
     ok = SetThreadContext(h, &ctx) != 0;
-    if (ok) {
+    if (!ok) {
+        err = GetLastError();
+        snprintf(g_bp_why, sizeof(g_bp_why), "thread %lu: SetThreadContext failed (%lu)", (unsigned long)t->id, (unsigned long)err);
+    } else {
         memset(&ctx, 0, sizeof(ctx));
         ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
         ok = GetThreadContext(h, &ctx) != 0;
-        for (i = 0; ok && i < n; i++) ok = ctx.Bvr[i] == g_bp_bvr[i] && ctx.Bcr[i] == g_bp_bcr[i];
+        if (!ok) snprintf(g_bp_why, sizeof(g_bp_why), "thread %lu: GetThreadContext failed (%lu)", (unsigned long)t->id, (unsigned long)GetLastError());
+        for (i = 0; ok && i < n; i++) {
+            ok = ctx.Bvr[i] == g_bp_bvr[i] && ctx.Bcr[i] == g_bp_bcr[i];
+            if (!ok)
+                snprintf(g_bp_why, sizeof(g_bp_why), "thread %lu: read back %08lx %08lx in slot %ld, where %08lx %08lx was set (flags %08lx, pc %08lx)",
+                         (unsigned long)t->id, (unsigned long)ctx.Bvr[i], (unsigned long)ctx.Bcr[i], (long)i, (unsigned long)g_bp_bvr[i],
+                         (unsigned long)g_bp_bcr[i], (unsigned long)ctx.ContextFlags, (unsigned long)ctx.Pc);
+        }
     }
     ResumeThread(h);
     self_give(t);
@@ -730,6 +748,7 @@ bool mg_breakpoints_arm(mg_thread *t)
     (void)t;
     return true;
 }
+const char *mg_breakpoints_why(void) { return ""; }
 #endif
 
 /* ------------------------------------------------- stopping a thread for the collector */

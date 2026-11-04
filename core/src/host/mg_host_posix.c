@@ -422,6 +422,7 @@ bool mg_breakpoints_arm(mg_thread *t)
     (void)t;
     return true;
 }
+const char *mg_breakpoints_why(void) { return ""; }
 
 /* (Whether it found the thread in guest code is not known here: true means only that it was asked.) */
 bool mg_thread_interrupt(mg_thread *t)

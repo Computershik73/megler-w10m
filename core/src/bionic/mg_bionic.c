@@ -169,6 +169,33 @@ void mg_gthread_release_tid(i32 tid)
     thread_unlock();
 }
 
+/* Threads that would not take the hardware breakpoints when they were asked: asked again every 20 ms for two seconds. */
+typedef struct bp_retry {
+    mg_thread **host;
+    i32 *tids;
+    int n;
+} bp_retry;
+
+static void bp_retry_main(void *arg)
+{
+    bp_retry *r = (bp_retry *)arg;
+    int i, k, left = r->n;
+    for (k = 0; k < 100 && left; k++) {
+        mg_sleep_ns(20000000ull);
+        for (i = 0; i < r->n; i++) {
+            if (!r->host[i] || !mg_breakpoints_arm(r->host[i])) continue;
+            mg_info("ld: guest thread %d took the hardware breakpoints, asked again %d times", (int)r->tids[i], k + 1);
+            r->host[i] = NULL;
+            left--;
+        }
+    }
+    for (i = 0; i < r->n; i++)
+        if (r->host[i]) mg_warn("ld: guest thread %d never took the hardware breakpoints: %s", (int)r->tids[i], mg_breakpoints_why());
+    free(r->host);
+    free(r->tids);
+    free(r);
+}
+
 void mg_gthreads_arm_breakpoints(void)
 {
     mg_thread **host = (mg_thread **)mg_alloc(sizeof(mg_thread *) * MG_COUNT(g_tid_thread));
@@ -201,7 +228,25 @@ void mg_gthreads_arm_breakpoints(void)
             armed++;
         } else {
             missed++;
+            mg_warn("ld: guest thread %d did not take the hardware breakpoints: %s", (int)tids[i], mg_breakpoints_why());
             if (used + 16 < sizeof(said)) used += (size_t)snprintf(said + used, sizeof(said) - used, "%s%d", used ? ", " : "", (int)tids[i]);
+            /* Kept, for the thread that asks them again a while (bp_retry_main). */
+            host[missed - 1] = host[i];
+            tids[missed - 1] = tids[i];
+        }
+    }
+    if (missed) {
+        bp_retry *r = (bp_retry *)mg_alloc(sizeof(*r));
+        r->host = host;
+        r->tids = tids;
+        r->n = missed;
+        mg_thread *th = mg_thread_start(bp_retry_main, r, 64u << 10, "breakpoints");
+        if (th) {
+            mg_thread_detach(th);
+            host = NULL;
+            tids = NULL;
+        } else {
+            free(r);
         }
     }
     free(host);
