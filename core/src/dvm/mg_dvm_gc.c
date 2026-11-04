@@ -359,9 +359,23 @@ static void mark_shared(marker *k)
     }
 }
 
+/*
+ * The priority a marking thread takes for a round: while the app goes on beside it (marking alongside), the lowest, below
+ * the app's own threads, which give way to the shell's (mg_app_threads_give_way) -- four markers had the four cores of an
+ * HP Elite x3 for up to a second at each of TikTok Lite's collections, every ten seconds, and its frames stopped; with the
+ * world stopped, the usual one, so that the stop is short. `level` the thread's own, as last set.
+ */
+static void marker_priority(int *level)
+{
+    const int want = g_alongside ? -2 : 0;
+    if (*level == want) return;
+    *level = want;
+    mg_thread_set_priority(NULL, want);
+}
+
 static void helper_main(void *arg)
 {
-    int worker = (int)((marker *)arg - g_markers);
+    int worker = (int)((marker *)arg - g_markers), level = 0;
     /*
      * From the first round: the helpers are made before any (helpers_start), and one that starts running late must still
      * take its part in it, which the others wait for.
@@ -372,6 +386,7 @@ static void helper_main(void *arg)
         while (g_generation == seen) mg_cond_wait(&g_mark_start, &g_mark_lock);
         seen = g_generation;
         mg_lock_release(&g_mark_lock);
+        marker_priority(&level);
         g_round_fn(g_round_arg, worker);
         mg_lock_acquire(&g_mark_lock);
         g_finished++;
@@ -813,6 +828,9 @@ void mg_dvm_gc_thread_gone(mg_dvm_thread *t) { (void)t; }
 
 static mg_lock g_gc_lock = MG_LOCK_INIT;
 static MG_THREAD_LOCAL bool t_collecting;
+/* The thread of collections alongside the app (cycle_main), and its priority as marker_priority last set it. */
+static MG_THREAD_LOCAL bool t_cycle;
+static MG_THREAD_LOCAL int t_cycle_level;
 static bool g_enabled, g_poison;
 /*
  * When the next collection is due: bytes made since the last one, and native bytes registered since (VMRuntime, bitmaps).
@@ -1236,11 +1254,13 @@ static void collect_alongside(void)
         mg_warn("gc: alongside: not collected (a thread of the runtime's could not be stopped, or there was no memory for the mark stack)");
         return;
     }
-    /* Alongside the app. */
+    /* Alongside the app: the collection's own thread below the app's threads meanwhile, as its helpers (marker_priority). */
     g_alongside = true;
+    if (t_cycle) marker_priority(&t_cycle_level);
     if (g_nhelpers && G.main.n >= PARALLEL_MIN) drain_shared();
     while (G.main.n) follow(&G.main, G.main.stack[--G.main.n]);
     g_alongside = false;
+    if (t_cycle) marker_priority(&t_cycle_level);
     t3 = mg_time_monotonic_ns();
     /* The second stop. */
     locks_take();
@@ -1305,6 +1325,7 @@ static void collect_alongside(void)
 static void cycle_main(void *arg)
 {
     (void)arg;
+    t_cycle = true;
     for (;;) {
         mg_lock_acquire(&g_cycle_lock);
         while (!g_cycle_asked) mg_cond_wait(&g_cycle_wake, &g_cycle_lock);
