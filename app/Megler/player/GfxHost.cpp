@@ -321,6 +321,17 @@ struct State {
     };
     std::unordered_map<TintKey, Kept, TintHash> tinted;
     uint64_t keptBytes = 0, keptClock = 0;
+    // Shadows laid, kept for the next time the same ink throws the same one (gpuShadowKept), under shadowMutex.
+    std::mutex shadowMutex;
+    struct KeptShadow {
+        std::vector<uint8_t> key;
+        Ref<ID2D1Bitmap1> bitmap;
+        int ox = 0, oy = 0, w = 0, h = 0; // where its pixels lie from the ink's whole-pixel origin
+        uint64_t used = 0;
+    };
+    std::unordered_map<uint64_t, KeptShadow> shadows;
+    uint64_t shadowBytes = 0, shadowClock = 0;
+    std::atomic<uint64_t> shadowsMade{0}, shadowsReused{0};
     // Where a window's picture is shown without the memory (GfxHost::setWindow, present), and the target bitmap over
     // its texture, made for the texture it last gave (windowMutex).
     std::mutex windowMutex;
@@ -1824,7 +1835,7 @@ struct Canvas {
     Ref<ID2D1Bitmap1> changingBitmap;
     // On the graphics processor, what a drawing call is put together in there (workSurface): its colours times its
     // coverage, the coverage alone, colours or a shadow's coverage before they are cut, and a copy of the picture.
-    enum { workA, workC, workS, workD, works };
+    enum { workA, workC, workS, workD, workK, works };
     Surface work[works];
 
     Clip& clip() { return levels.back().clip; }
@@ -2820,6 +2831,178 @@ bool gpuBlurRestore(Canvas& cv, Surface& outer, Surface& layer, const Box& box, 
 /// of 0.57735 * radius + 0.5 grown with the matrix's scale, as in memory),
 /// moved by the offset, cut by the clip, in the shadow's colour, put on by
 /// the paint's transfer mode.
+/// A run's faces, sizes, glyphs and their places, as bytes after `key` (shadowKey; defined with the runs, below).
+void putShapedKey(const Shaped& shaped, std::vector<uint8_t>* key);
+
+/// What a shadow is made of, as bytes, to keep it by (gpuShadowKept): the ink -- a run's faces, sizes, glyphs and their
+/// places, or a rectangle's, a rounded one's or an oval's size -- its style, the matrix that lays it on the canvas but for
+/// that matrix's move in whole pixels (put in ix, iy; an eighth of a pixel of it is in the key), the blur, the offset and
+/// the colour. False for an ink not kept so (a path).
+bool shadowKey(const Ink& ink, const Matrix3x2F& m, uint32_t colour, float sigma, int dx, int dy, std::vector<uint8_t>* key, int* ix, int* iy) {
+    Matrix3x2F at;
+    auto put = [key](const void* p, size_t n) {
+        const uint8_t* b = static_cast<const uint8_t*>(p);
+        key->insert(key->end(), b, b + n);
+    };
+    key->clear();
+    const int kind = int(ink.kind);
+    const uint8_t smooth = ink.smooth ? 1 : 0;
+    put(&kind, sizeof(kind));
+    put(&ink.style, sizeof(ink.style));
+    put(&ink.strokeWidth, sizeof(ink.strokeWidth));
+    put(&smooth, 1);
+    if (ink.kind == Ink::glyphs) {
+        if (!ink.text) return false;
+        at = ink.textMatrix * m;
+        putShapedKey(*ink.text, key);
+    } else if (ink.kind == Ink::rectangle || ink.kind == Ink::rounded || ink.kind == Ink::oval) {
+        // The shape from its own corner, which the matrix's move takes along.
+        const float size[4] = {ink.box.right - ink.box.left, ink.box.bottom - ink.box.top, ink.rx, ink.ry};
+        put(size, sizeof(size));
+        at = Matrix3x2F::Translation(ink.box.left, ink.box.top) * m;
+    } else {
+        return false;
+    }
+    const float linear[4] = {at._11, at._12, at._21, at._22};
+    const float fx = std::floor(at._31), fy = std::floor(at._32);
+    if (!(std::fabs(fx) < 1e7f && std::fabs(fy) < 1e7f)) return false;
+    const int16_t eighths[2] = {int16_t(std::lround((at._31 - fx) * 8)), int16_t(std::lround((at._32 - fy) * 8))};
+    put(linear, sizeof(linear));
+    put(eighths, sizeof(eighths));
+    put(&colour, sizeof(colour));
+    put(&sigma, sizeof(sigma));
+    put(&dx, sizeof(dx));
+    put(&dy, sizeof(dy));
+    *ix = int(fx);
+    *iy = int(fy);
+    return true;
+}
+
+/// Shadows kept on the graphics processor: at most this many bytes, the least recently laid going first.
+constexpr uint64_t shadowBudget = 16ull << 20;
+
+uint64_t keyHash(const std::vector<uint8_t>& key) {
+    uint64_t h = 0xcbf29ce484222325ull;
+    for (uint8_t b : key) h = (h ^ b) * 0x100000001b3ull;
+    return h;
+}
+
+/*
+ * A shadow laid from those kept, or made once and kept, for an ink drawn in the plain mode: TikTok Lite's feed draws the
+ * same few lines of white text with a shadow over its playing video at every frame, and each shadow was a blur through
+ * the effects and a drawing ended for them (3.6 ms each, four a frame, a third of the frame). Made, the ink's whole shadow,
+ * unclipped, goes into a bitmap of its own, blurred and in its colour as gpuShadow makes it; laid, that bitmap goes where
+ * the ink is now, its place moved by whole pixels, under the canvas's clip: nothing through the effects. False when the
+ * ink is not kept so, or its shadow is over a million pixels: gpuShadow lays it then.
+ */
+bool gpuShadowKept(Canvas& cv, Surface& target, const Ink& ink, uint32_t colour, float sigma, int reach, int dx, int dy) {
+    State& s = G();
+    std::vector<uint8_t> key;
+    int ix = 0, iy = 0, ox = 0, oy = 0, w = 0, h = 0;
+    Ref<ID2D1Bitmap1> bm;
+    if (gpuGone() || !shadowKey(ink, cv.matrix, colour, sigma, dx, dy, &key, &ix, &iy)) return false;
+    const uint64_t hash = keyHash(key);
+    {
+        std::lock_guard<std::mutex> lock(s.shadowMutex);
+        auto found = s.shadows.find(hash);
+        if (found != s.shadows.end() && found->second.key == key) {
+            found->second.used = ++s.shadowClock;
+            bm = found->second.bitmap;
+            ox = found->second.ox;
+            oy = found->second.oy;
+            w = found->second.w;
+            h = found->second.h;
+        }
+    }
+    if (bm) {
+        ++s.shadowsReused;
+    } else {
+        Box full = inkCover(ink, cv.matrix);
+        full.inflate(reach);
+        full.move(dx, dy);
+        if (full.empty() || int64_t(full.width()) * int64_t(full.height()) > (int64_t(1) << 20)) return false;
+        Box from = full;
+        from.move(-dx, -dy);
+        from.inflate(reach);
+        GpuContext& g = *cv.gc;
+        Surface* ink0 = gpuCoverage(cv, ink, from, false, Canvas::workS);
+        if (!ink0) return false;
+        ID2D1Effect* blur = g.effect(GpuContext::shadowBlur);
+        ID2D1Effect* e = g.effect(GpuContext::opacity);
+        if (!blur || !e) return false;
+        blur->SetInput(0, ink0->gpu.get());
+        blur->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, sigma);
+        blur->SetValue(D2D1_GAUSSIANBLUR_PROP_OPTIMIZATION, D2D1_GAUSSIANBLUR_OPTIMIZATION_QUALITY);
+        blur->SetValue(D2D1_GAUSSIANBLUR_PROP_BORDER_MODE, D2D1_BORDER_MODE_SOFT);
+        // Each output channel the colour's times the blurred coverage's alpha, as gpuShadow has it.
+        const D2D1_VECTOR_4F v = vectorOf(premultiplied(colour));
+        e->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, D2D1::Matrix5x4F(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, v.x, v.y, v.z, v.w, 0, 0, 0, 0));
+        e->SetValue(D2D1_COLORMATRIX_PROP_ALPHA_MODE, matrixAsItStands);
+        e->SetInputEffect(0, blur);
+        Ref<ID2D1Image> coloured;
+        e->GetOutput(coloured.put());
+        Surface* k = workSurface(cv, Canvas::workK, full);
+        if (!k || !coloured) return false;
+        k->rt->SetTransform(Matrix3x2F::Identity());
+        const D2D1_POINT_2F at = D2D1::Point2F(float(from.l + dx - full.l), float(from.t + dy - full.t));
+        const D2D1_RECT_F part = D2D1::RectF(0, 0, float(from.width()), float(from.height()));
+        g.dc->DrawImage(coloured.get(), &at, &part, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_COMPOSITE_MODE_SOURCE_OVER);
+        // (Ended, so that the copy below reads what was drawn.)
+        g.finish(State::endEffects);
+        w = full.width();
+        h = full.height();
+        bm = gpuBitmap(w, h, D2D1_BITMAP_OPTIONS_NONE);
+        if (!bm) return false;
+        const D2D1_POINT_2U origin = D2D1::Point2U(0, 0);
+        const D2D1_RECT_U src = D2D1::RectU(0, 0, UINT32(w), UINT32(h));
+        if (FAILED(bm->CopyFromBitmap(&origin, k->gpu.get(), &src))) return false;
+        ox = full.l - ix;
+        oy = full.t - iy;
+        const uint64_t bytes = uint64_t(w) * uint64_t(h) * 4;
+        std::lock_guard<std::mutex> lock(s.shadowMutex);
+        auto old = s.shadows.find(hash);
+        if (old != s.shadows.end()) {
+            s.shadowBytes -= uint64_t(old->second.w) * uint64_t(old->second.h) * 4;
+            s.shadows.erase(old);
+        }
+        while (s.shadowBytes + bytes > shadowBudget && !s.shadows.empty()) {
+            auto oldest = s.shadows.begin();
+            for (auto it = s.shadows.begin(); it != s.shadows.end(); ++it)
+                if (it->second.used < oldest->second.used) oldest = it;
+            s.shadowBytes -= uint64_t(oldest->second.w) * uint64_t(oldest->second.h) * 4;
+            s.shadows.erase(oldest);
+        }
+        State::KeptShadow& kept = s.shadows[hash];
+        kept.key = std::move(key);
+        kept.bitmap = bm;
+        kept.ox = ox;
+        kept.oy = oy;
+        kept.w = w;
+        kept.h = h;
+        kept.used = ++s.shadowClock;
+        s.shadowBytes += bytes;
+        ++s.shadowsMade;
+    }
+    // Laid as it is where the ink is now, under the canvas's clip.
+    Box onto;
+    onto.l = ix + ox;
+    onto.t = iy + oy;
+    onto.r = onto.l + w;
+    onto.b = onto.t + h;
+    Box drawn = onto;
+    drawn.intersect(cv.clip().box);
+    drawn.intersect(target.bounds());
+    if (drawn.empty()) return true;
+    if (!target.begin()) return false;
+    target.useClip(cv.clip());
+    target.setMatrix(Matrix3x2F::Identity());
+    const D2D1_RECT_F dst = D2D1::RectF(float(onto.l), float(onto.t), float(onto.r), float(onto.b));
+    target.rt->DrawBitmap(bm.get(), &dst, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr);
+    target.drew(drawn);
+    ++s.direct;
+    return true;
+}
+
 bool gpuShadow(Canvas& cv, Surface& target, const Ink& ink, const megler_gfx_paint& paint) {
     uint32_t colour = paint.shadow_color;
     if ((colour >> 24) == 255) colour = (colour & 0x00FFFFFFu) | (paint.color & 0xFF000000u);
@@ -2836,6 +3019,7 @@ bool gpuShadow(Canvas& cv, Surface& target, const Ink& ink, const megler_gfx_pai
     lands.intersect(cv.clip().box);
     lands.intersect(target.bounds());
     if (lands.empty()) return true;
+    if (paint.blend == MEGLER_GFX_BLEND_SRC_OVER && gpuShadowKept(cv, target, ink, colour, sigma, reach, dx, dy)) return true;
     Box from = lands;
     from.move(-dx, -dy);
     from.inflate(reach);
@@ -3188,6 +3372,11 @@ void noteDrawing() {
             if (n) used += size_t(snprintf(why + used, sizeof(why) - used, "%s%s %llu", used ? "; " : "", modes[k], ull(n)));
         }
         if (used) say("the calls put on by the effects, by why and by mode: %s", why);
+        if (s.shadowsMade || s.shadowsReused) {
+            std::lock_guard<std::mutex> lock(s.shadowMutex);
+            say("shadows, in all: %llu made and kept, %llu laid from those kept; %zu kept in %.1f MB", ull(s.shadowsMade.load()),
+                ull(s.shadowsReused.load()), s.shadows.size(), double(s.shadowBytes) / 1048576.0);
+        }
     } else if (s.statsAt && t.sessions != l.sessions) {
         const double seconds = ticksToMs(now - s.statsAt) / 1000.0;
         const uint64_t sessions = t.sessions - l.sessions;
@@ -5519,6 +5708,25 @@ inline float scaleOf(const megler_gfx_paint& paint) { return paint.text_scale_x 
 
 /// A run's glyphs on a surface that is drawing, each run in the brush, or
 /// (`ownColours`) a colour glyph's layers in their own colours at `alpha`.
+void putShapedKey(const Shaped& shaped, std::vector<uint8_t>* key) {
+    auto put = [key](const void* p, size_t n) {
+        const uint8_t* b = static_cast<const uint8_t*>(p);
+        key->insert(key->end(), b, b + n);
+    };
+    for (const TextRun& run : shaped.plain) {
+        const uintptr_t face = reinterpret_cast<uintptr_t>(run.face.get());
+        const uint32_t n = uint32_t(run.glyphs.size()), na = uint32_t(run.advances.size()), no = uint32_t(run.offsets.size());
+        put(&face, sizeof(face));
+        put(&run.em, sizeof(run.em));
+        put(&n, sizeof(n));
+        put(&na, sizeof(na));
+        put(&no, sizeof(no));
+        if (n) put(run.glyphs.data(), n * sizeof(UINT16));
+        if (na) put(run.advances.data(), na * sizeof(FLOAT));
+        if (no) put(run.offsets.data(), no * sizeof(DWRITE_GLYPH_OFFSET));
+    }
+}
+
 void drawGlyphs(Surface& s, const Ink& ink, const Matrix3x2F& world, ID2D1Brush* brush, bool ownColours, uint32_t alpha) {
     const Shaped& shaped = *ink.text;
     s.setMatrix(ink.textMatrix * world);
