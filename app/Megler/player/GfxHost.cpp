@@ -393,6 +393,11 @@ struct State {
     // ended some 21 a frame, 2 ms each (package 531), and the line says which.
     enum EndWhy { endPresent, endFlush, endEffects, endBackdrop, endUpload, endReadBack, endLayerMode, endLayerBlur, endSweep, endCompose, endOther, endWhys };
     std::atomic<uint64_t> endsBy[endWhys] = {}, endTicksBy[endWhys] = {};
+    // The calls put on by the effects (gpuPut), each a drawing ended, by what sent them there and by transfer mode: which of
+    // an app's calls they are (TikTok Lite's feed, four a frame while a video plays, a third of the frame's time).
+    enum EffectsWhy { whyInkMode, whyInkShaderFilter, whyInkSweep, whyInkFillStroke, whyBitmapMode, whyColour, whyOther, effectsWhys };
+    enum { blendModes = 18 };
+    std::atomic<uint64_t> effectsBy[effectsWhys] = {}, effectsMode[blendModes] = {};
     std::mutex statsMutex;
     uint64_t statsAt = 0; // when the last line was written (ticks); 0: never
     struct Totals {
@@ -401,6 +406,7 @@ struct State {
                  readBackTicks = 0, byEffects = 0, throughMemory = 0, keptMade = 0, keptReused = 0, shown = 0, showTicks = 0, windowReadBacks = 0,
                  windowReadBackPixels = 0, windowReadBackTicks = 0, glFrames = 0, glWaitTicks = 0;
         uint64_t endsBy[endWhys] = {}, endTicksBy[endWhys] = {};
+        uint64_t effectsBy[effectsWhys] = {}, effectsMode[blendModes] = {};
     } statsLast;
 };
 
@@ -2466,6 +2472,7 @@ Ref<ID2D1Image> filtered(GpuContext& g, ID2D1Image* colours, int mode, uint32_t 
 /// False when it cannot be done there.
 bool gpuPut(Canvas& cv, Surface& target, const Box& box, ID2D1Image* a, ID2D1Image* c, int blend) {
     GpuContext& g = *cv.gc;
+    if (blend >= 0 && blend < State::blendModes) ++G().effectsMode[blend];
     const D2D1_POINT_2F at = D2D1::Point2F(float(box.l - target.ox), float(box.t - target.oy));
     const D2D1_RECT_F part = D2D1::RectF(0, 0, float(box.width()), float(box.height()));
     D2D1_COMPOSITE_MODE composite = D2D1_COMPOSITE_MODE_SOURCE_OVER;
@@ -2640,6 +2647,10 @@ bool gpuPaintInk(Canvas& cv, Surface& target, const Ink& ink, const megler_gfx_p
     if (box.empty()) return true;
     const bool keeps = keepsUncovered(paint.blend);
     const bool apart = (shader && (shader->kind == Shader::sweep || paint.filter_mode >= 0)) || paint.style == MEGLER_GFX_FILL_AND_STROKE;
+    ++G().effectsBy[paint.blend != MEGLER_GFX_BLEND_SRC_OVER ? State::whyInkMode
+                    : shader && shader->kind == Shader::sweep ? State::whyInkSweep
+                    : shader && paint.filter_mode >= 0 ? State::whyInkShaderFilter
+                    : paint.style == MEGLER_GFX_FILL_AND_STROKE ? State::whyInkFillStroke : State::whyOther];
     Surface* c = nullptr;
     if (!keeps || apart) {
         c = gpuCoverage(cv, ink, box, true, Canvas::workC);
@@ -2702,6 +2713,7 @@ bool gpuDrawColor(Canvas& cv, Surface& target, const Box& box, uint32_t colour, 
     s->rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
     s->brush->SetColor(colorOf(colour));
     s->rt->FillRectangle(D2D1::RectF(float(box.l), float(box.t), float(box.r), float(box.b)), s->brush.get());
+    ++G().effectsBy[State::whyColour];
     return gpuPut(cv, target, box, s->gpu.get(), c ? c->gpu.get() : nullptr, blend);
 }
 
@@ -3109,6 +3121,8 @@ void noteDrawing() {
         t.endsBy[k] = s.endsBy[k];
         t.endTicksBy[k] = s.endTicksBy[k];
     }
+    for (int k = 0; k < State::effectsWhys; k++) t.effectsBy[k] = s.effectsBy[k];
+    for (int k = 0; k < State::blendModes; k++) t.effectsMode[k] = s.effectsMode[k];
     const State::Totals& l = s.statsLast;
     typedef unsigned long long ull;
     if (s.statsAt && t.sessions != l.sessions && s.gpu && !gpuGone()) {
@@ -3157,6 +3171,23 @@ void noteDrawing() {
                                     ticksToMs(t.endTicksBy[k] - l.endTicksBy[k])));
         }
         if (used) say("the drawings ended, by what ended them: %s", ends);
+        static const char* const effectsWhys[State::effectsWhys] = {"a shape or text in another mode", "a shader with a colour filter",
+                                                                   "a sweep", "a fill and stroke", "a bitmap in another mode",
+                                                                   "a colour", "other"};
+        static const char* const modes[State::blendModes] = {"CLEAR", "SRC", "DST", "SRC_OVER", "DST_OVER", "SRC_IN", "DST_IN",
+                                                            "SRC_OUT", "DST_OUT", "SRC_ATOP", "DST_ATOP", "XOR", "PLUS", "MODULATE",
+                                                            "SCREEN", "OVERLAY", "DARKEN", "LIGHTEN"};
+        char why[700];
+        used = 0;
+        for (int k = 0; k < State::effectsWhys && used + 100 < sizeof(why); k++) {
+            const uint64_t n = t.effectsBy[k] - l.effectsBy[k];
+            if (n) used += size_t(snprintf(why + used, sizeof(why) - used, "%s%s %llu", used ? ", " : "", effectsWhys[k], ull(n)));
+        }
+        for (int k = 0; k < State::blendModes && used + 40 < sizeof(why); k++) {
+            const uint64_t n = t.effectsMode[k] - l.effectsMode[k];
+            if (n) used += size_t(snprintf(why + used, sizeof(why) - used, "%s%s %llu", used ? "; " : "", modes[k], ull(n)));
+        }
+        if (used) say("the calls put on by the effects, by why and by mode: %s", why);
     } else if (s.statsAt && t.sessions != l.sessions) {
         const double seconds = ticksToMs(now - s.statsAt) / 1000.0;
         const uint64_t sessions = t.sessions - l.sessions;
@@ -4450,6 +4481,7 @@ void drawBitmap(void*, void* canvas, const megler_gfx_image* image, const float*
             const bool keeps = keepsUncovered(paint->blend);
             Surface* c = keeps ? nullptr : gpuCoverage(*cv, ink, box, true, Canvas::workC);
             Surface* s = keeps || c ? workSurface(*cv, Canvas::workA, box) : nullptr;
+            ++G().effectsBy[State::whyBitmapMode];
             if (s && gpuBitmapOn(*s, *cv, *image, part, src, dst, *paint) && gpuPut(*cv, *target, box, s->gpu.get(), c ? c->gpu.get() : nullptr, paint->blend))
                 return;
         }
