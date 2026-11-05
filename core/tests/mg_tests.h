@@ -55,8 +55,8 @@ void mg_dvm_tests_bench(const char *fixtures, const char *android_root, int ms);
 
 /*
  * Runs an APK for `milliseconds` with a stand-in for OpenGL ES, touches it and
- * presses Back, printing what happened. Only where guest code can run (an
- * ARM32 host); megler_init first. Returns 0 if the app started and ended cleanly.
+ * presses Back, printing what happened. Only where guest code can run
+ * (MG_GUEST_CODE); megler_init first. Returns 0 if the app started and ended cleanly.
  */
 int mg_tests_smoke_run(const char *apk, int milliseconds);
 

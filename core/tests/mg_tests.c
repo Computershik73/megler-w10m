@@ -3,13 +3,18 @@
  *
  *   mg_tests <guest library dir> <scratch dir>
  *
- * Everything that needs no ARM code runs anywhere (the x64 build on this PC).
- * The rest loads the guest test libraries (tools/build-guest.sh) and calls
- * into them, which needs a 32-bit ARM host: the same tests run under qemu-arm
- * (tools/build-tests.sh arm) and, linked into the app, on the phone itself.
+ * Everything that needs no guest code runs anywhere (MSVC's x64 build on this
+ * PC). The rest loads the guest test libraries of the build's own ABI
+ * (tools/build-guest.sh <abi>) and calls into them, which needs a build that
+ * runs guest code (MG_GUEST_CODE): the 32-bit ARM one under qemu-arm
+ * (tools/build-tests.sh arm) and, linked into the app, on the phone itself;
+ * Linux on x86_64 (tools/build-tests.sh linux64); the core's ELF on desktop
+ * Windows (tools/build-desktop.sh). What is 32-bit ARM's alone -- Thumb and ARM
+ * mode, rewritten PLT entries, svc, the kernel's helpers -- is tested on ARM.
  *
  * A guest function with floating-point parameters is called here through a
- * pointer typed with u32/u64 -- the softfp convention, spelled out.
+ * pointer typed with gfloat/gdouble (mg_base.h): their bits on 32-bit ARM, the
+ * softfp convention spelled out, and the values themselves elsewhere.
  */
 #include "mg_camera_standin.h"
 #include "mg_codec_standin.h"
@@ -2678,7 +2683,7 @@ static void test_input(void)
     say("  wakes with nothing to take: %d", (int)G_INPUT.idle_wakes);
 }
 
-#if MG_HOST_ARM32
+#if MG_GUEST_CODE
 
 /*
  * An interface proxy of Unity's (jni/mg_jni_loop.c): a call through it and its
@@ -2687,7 +2692,7 @@ static void test_input(void)
  * this one disables the proxy and then "deletes" what was behind it; no call
  * may find it deleted. On a phone a film skipped with a tap did exactly that
  * to its decoder's thread before there was a lock. (Here, where a native
- * method can be a function of this program: it is called as 32-bit ARM code.)
+ * method can be a function of this program: it is called as guest code.)
  */
 typedef struct proxied {
     volatile i32 alive, stop, calls, dead;
@@ -2746,7 +2751,7 @@ typedef struct proxy_caller {
     proxied *p;
 } proxy_caller;
 
-static void proxy_caller_thread(void *arg)
+static MG_HOSTCB void proxy_caller_thread(void *arg)
 {
     proxy_caller *c = (proxy_caller *)arg;
     while (!c->p->stop) mg_jni_unref(mg_jni_proxy_call(c->proxy, "java/lang/Runnable", "run", "()V", NULL, 0));
@@ -2755,8 +2760,8 @@ static void proxy_caller_thread(void *arg)
 static void test_proxies(void)
 {
     enum { ROUNDS = 200 };
-    /* The JNIEnv's own functions, by their places in its table, as an app's library calls them. */
-    typedef struct { u32 name, sig, fn; } native_method;
+    /* The JNIEnv's own functions, by their places in its table, as an app's library calls them; JNINativeMethod, three pointers. */
+    typedef struct { const char *name, *sig; void *fn; } native_method;
     typedef mg_jobj *(*find_class_fn)(void *, const char *);
     typedef i32 (*register_fn)(void *, mg_jobj *, const native_method *, i32);
     typedef void *(*static_id_fn)(void *, mg_jobj *, const char *, const char *);
@@ -2777,9 +2782,9 @@ static void test_proxies(void)
     env = mg_jni_env();
     table = *(void ***)env;
     cls = ((find_class_fn)table[6])(env, bridge);
-    m.name = (u32)(mg_addr)"invoke";
-    m.sig = (u32)(mg_addr)invoke_sig;
-    m.fn = (u32)(mg_addr)proxied_invoke;
+    m.name = "invoke";
+    m.sig = invoke_sig;
+    m.fn = (void *)proxied_invoke;
     ((register_fn)table[215])(env, cls, &m, 1);
     CHECK(mg_jni_native(bridge, "invoke", invoke_sig) == (void *)proxied_invoke);
     new_id = ((static_id_fn)table[113])(env, cls, "newInterfaceProxy", "(J[Ljava/lang/Class;)Ljava/lang/Object;");
@@ -2864,11 +2869,28 @@ static void test_proxies(void)
 }
 
 static int host_times_three(int v) { return v * 3; }
-/* Called by guest code with softfp arguments: bits in, bits out. */
-static u64 host_hypot(u64 a, u64 b) { return mg_db(sqrt(mg_d(a) * mg_d(a) + mg_d(b) * mg_d(b))); }
+/* Called by guest code with the guest's floats: on 32-bit ARM softfp's, bits in, bits out. */
+static gdouble host_hypot(gdouble a, gdouble b) { return mg_gdb(sqrt(mg_gd(a) * mg_gd(a) + mg_gd(b) * mg_gd(b))); }
+
+/*
+ * MG_TESTS_SKIP=name,name...: guest functions of the test libraries that are not called (a function that returns 0 is,
+ * and the check of it fails) -- to see what comes after one that ends the process, as one can on a processor whose
+ * guest code has just begun to run.
+ */
+static int skipped_call(void) { return 0; }
+
+static void *guest_fn(mg_lib *lib, const char *name)
+{
+    const char *list = getenv("MG_TESTS_SKIP"), *at = list ? strstr(list, name) : NULL;
+    size_t n = strlen(name);
+    while (at && ((at != list && at[-1] != ',') || (at[n] && at[n] != ','))) at = strstr(at + 1, name);
+    if (!at) return mg_ld_sym(lib, name);
+    say("  (%s is not called: MG_TESTS_SKIP)", name);
+    return (void *)skipped_call;
+}
 
 #define SYM(lib, name) mg_ld_sym(lib, name)
-#define FN(lib, type, name) MG_GFN(type, SYM(lib, name))
+#define FN(lib, type, name) MG_GFN(type, guest_fn(lib, name))
 
 static void test_library(mg_lib *lib, const char *what, const char *scratch)
 {
@@ -2892,16 +2914,16 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK(SYM(lib, "t_exported_value") && *(int *)SYM(lib, "t_exported_value") == 0x1234);
 
     /* Floating point across the boundary, both ways. */
-    CHECK(near(mg_d(FN(lib, u64 (*)(u64, u32), "t_fmul")(mg_db(1.5), mg_fb(4.0f))), 6.0));
-    /* (int, float, double, float, int, double): r0, r1, [r2:r3], then the stack -- float, int, pad, double. */
-    CHECK(near(mg_f(FN(lib, u32 (*)(int, u32, u64, u32, int, u64), "t_mixed")(1, mg_fb(2.0f), mg_db(3.0), mg_fb(4.0f), 5, mg_db(6.5))), 21.5));
-    CHECK(near(mg_f(FN(lib, u32 (*)(u32), "t_sqrt")(mg_fb(2.25f))), 1.5));
-    CHECK(near(mg_d(FN(lib, u64 (*)(u64), "t_sin")(mg_db(0.5))), sin(0.5)));
-    CHECK(near(mg_d(FN(lib, u64 (*)(u64, u64), "t_pow")(mg_db(2.0), mg_db(10.0))), 1024.0));
-    CHECK_INT(FN(lib, long (*)(u64), "t_lround")(mg_db(-2.5)), -3);
-    CHECK(near(mg_d(FN(lib, u64 (*)(u64, double *), "t_modf")(mg_db(3.75), &ip)), 0.75) && near(ip, 3.0));
-    CHECK(near(mg_d(FN(lib, u64 (*)(const char *), "t_strtod")("-12.5e2")), -1250.0));
-    CHECK(near(mg_d(FN(lib, u64 (*)(void *, u64, u64), "t_call_d")((void *)host_hypot, mg_db(3.0), mg_db(4.0))), 5.0));
+    CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble, gfloat), "t_fmul")(mg_gdb(1.5), mg_gfb(4.0f))), 6.0));
+    /* (int, float, double, float, int, double): on ARM r0, r1, [r2:r3], then the stack -- float, int, pad, double. */
+    CHECK(near(mg_gf(FN(lib, gfloat (*)(int, gfloat, gdouble, gfloat, int, gdouble), "t_mixed")(1, mg_gfb(2.0f), mg_gdb(3.0), mg_gfb(4.0f), 5, mg_gdb(6.5))), 21.5));
+    CHECK(near(mg_gf(FN(lib, gfloat (*)(gfloat), "t_sqrt")(mg_gfb(2.25f))), 1.5));
+    CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble), "t_sin")(mg_gdb(0.5))), sin(0.5)));
+    CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble, gdouble), "t_pow")(mg_gdb(2.0), mg_gdb(10.0))), 1024.0));
+    CHECK_INT(FN(lib, long (*)(gdouble), "t_lround")(mg_gdb(-2.5)), -3);
+    CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble, double *), "t_modf")(mg_gdb(3.75), &ip)), 0.75) && near(ip, 3.0));
+    CHECK(near(mg_gd(FN(lib, gdouble (*)(const char *), "t_strtod")("-12.5e2")), -1250.0));
+    CHECK(near(mg_gd(FN(lib, gdouble (*)(void *, gdouble, gdouble), "t_call_d")((void *)host_hypot, mg_gdb(3.0), mg_gdb(4.0))), 5.0));
 
     /* Variadics. */
     CHECK_INT(FN(lib, int (*)(char *, int), "t_format")(buf, sizeof(buf)), (int)strlen("42 str 3.142 1234567890123 z beef"));
@@ -2965,9 +2987,14 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_props")(), 28);
     CHECK_INT(FN(lib, int (*)(void), "t_dl")(), 4);
     CHECK_INT(FN(lib, int (*)(void), "t_loader_dl")(), 5);
+#if MG_ARCH_ARM32
+    /* (Thumb's hooks on libc's hookable entries, and a Thumb or ARM udf as an app's trap: 32-bit ARM's alone.) */
     CHECK_INT(FN(lib, int (*)(void), "t_libc_inline_hook")(), 0);
+#endif
     CHECK_INT(FN(lib, int (*)(void), "t_own_code_hook")(), 0);
+#if MG_ARCH_ARM32
     CHECK_INT(FN(lib, int (*)(void), "t_trap_hook")(), 0);
+#endif
     CHECK_INT(FN(lib, int (*)(void), "t_libc_more")(), 6);
     CHECK_INT(FN(lib, int (*)(void), "t_shm")(), 9);
     CHECK_INT(FN(lib, int (*)(void), "t_ashmem")(), 10);
@@ -3087,8 +3114,12 @@ static void test_guest(const char *libdir, const char *scratch)
     CHECK(mg_ld_init(basic));
     mg_ld_get_stats(basic, &st);
     CHECK(st.tp_reads >= 4);                        /* the initial-exec TLS accesses */
+#if MG_ARCH_ARM32
     CHECK(st.thumb_functions > 20 && st.arm_functions == 0);
     test_library(basic, "Thumb-2", scratch);
+#else
+    test_library(basic, MG_GUEST_ABI, scratch);
+#endif
 
     /* Loaded first as an app asks with android_dlopen_ext: into a range it reserved; the PLT's tests below run on it there. */
     say("guest library: loaded into a range the app reserved (android_dlopen_ext, ANDROID_DLEXT_RESERVED_ADDRESS)");
@@ -3097,25 +3128,32 @@ static void test_guest(const char *libdir, const char *scratch)
     CHECK(dep != NULL);
     if (dep) {
         u32 before = mg_core_plt_rescues();
-        say("guest library: calls through a rewritten PLT");
+        say(MG_ARCH_ARM32 ? "guest library: calls through a rewritten PLT" : "guest library: calls through a PLT");
         CHECK(mg_ld_init(dep));
         mg_ld_get_stats(dep, &st);
+#if MG_ARCH_ARM32
         CHECK_INT(st.plt_entries, 5);
+#endif
         CHECK_INT(FN(dep, int (*)(int, int), "d_add_twice")(1, 2), 5);
         CHECK_INT(FN(dep, int (*)(void), "d_bump")(), 6);
         CHECK_INT(*FN(basic, int *(*)(void), "t_counter_ptr")(), 6);
         CHECK_INT(FN(dep, int (*)(void), "d_hello_len")(), 16);
-        CHECK(near(mg_d(FN(dep, u64 (*)(u64, u32), "d_fmul")(mg_db(2.0), mg_fb(3.0f))), 7.0));
+        CHECK(near(mg_gd(FN(dep, gdouble (*)(gdouble, gfloat), "d_fmul")(mg_gdb(2.0), mg_gfb(3.0f))), 7.0));
         CHECK_INT(FN(dep, int (*)(void), "d_value")(), 0x1234);
         CHECK(FN(dep, void *(*)(void), "d_add_ptr")() == SYM(basic, "t_add"));
         CHECK_INT(FN(dep, int (*)(int), "d_spin")(2000000), 2000000);
+#if MG_ARCH_ARM32
         say("  PLT entries rescued after an interrupt: %u", mg_core_plt_rescues() - before);
+#else
+        (void)before;
+#endif
     }
 
     CHECK(mg_ld_find_lib("libt_basic.so") == basic && mg_ld_lib_of(SYM(basic, "t_add")) == basic);
     CHECK(mg_ld_load("libc.so") == NULL && mg_ld_load("libnothere.so") == NULL);
     test_guest_kinds(libdir);
 
+#if MG_ARCH_ARM32
     /* Both ISAs must return the shim pid (4242), never the host kernel's pid.
      * Literal r7 loads and a 4-byte-aligned guest sp reproduce Chromium's stub. */
     {
@@ -3181,6 +3219,7 @@ static void test_guest(const char *libdir, const char *scratch)
             CHECK(trapped && !left);
         }
     }
+#endif
 
     /*
      * AAudio as Spotify's core uses it (core/tests/guest/t_aaudio.c says what each result is): libaaudio.so opened by name and
@@ -3219,6 +3258,7 @@ static void test_guest(const char *libdir, const char *scratch)
     }
 }
 
+#if MG_ARCH_ARM32
 /*
  * The same library built in ARM mode, run as it is. Last of all: on a host
  * that does not keep a thread in ARM state this is where the process ends,
@@ -3323,10 +3363,26 @@ static void test_suspend_arm(void)
     CHECK_INT(still, 0);
     CHECK(job.done && job.result >= seen);
 }
+#else
+/*
+ * The same library with packed relocations (Android's APS2 and RELR) and GNU hash only, its thread-local variables
+ * found through __tls_get_addr (global-dynamic): the loader's paths libt_basic_arm.so takes on 32-bit ARM, on this ABI's
+ * relocations (tools/build-guest.sh). Last, as that one is.
+ */
+static void test_guest_packed(const char *scratch)
+{
+    mg_lib *packed = mg_ld_load("libt_basic_packed.so");
+    CHECK(packed != NULL);
+    if (packed) {
+        CHECK(mg_ld_init(packed));
+        test_library(packed, "packed relocations, global-dynamic TLS", scratch);
+    }
+}
+#endif
 
 #include "mg_tests_app.inc"
 
-#endif /* MG_HOST_ARM32 */
+#endif /* MG_GUEST_CODE */
 
 /*
  * The Dalvik runtime's tests (mg_dvm_tests.c). They start the runtime, which
@@ -3938,20 +3994,26 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
         g_failed += mg_gfx_tests_run(g_sink, g_sink_user, &checks);
         g_checks += checks;
     }
-#if MG_HOST_ARM32
+#if MG_GUEST_CODE
     test_proxies();
     if (can_run) {
+#if MG_ARCH_ARM32
 #if !MG_HOST_WINDOWS
         /* (First, while this process has few threads of its own: the test forks.) */
         test_chromium_oom_end();
 #endif
         test_mechanisms();
         test_suspend_arm();
+#endif
         if (libdir) {
             test_guest(libdir, scratch);
             test_app(libdir);
             test_dvm(libdir, scratch, true);
+#if MG_ARCH_ARM32
             test_guest_arm(scratch);
+#else
+            test_guest_packed(scratch);
+#endif
         } else {
             test_dvm(NULL, scratch, false);
         }
@@ -3962,7 +4024,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     }
 #else
     (void)can_run;
-    say("(not a 32-bit ARM host: the guest-code tests are skipped)");
+    say("(this build runs no guest code -- MSVC's x64 build, Windows' convention: the guest-code tests are skipped)");
     test_dvm(libdir, scratch, false);
 #endif
     say("%d checks, %d failed", g_checks, g_failed);

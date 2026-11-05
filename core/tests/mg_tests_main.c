@@ -94,7 +94,7 @@
 #include "mg_storage_tests.h"
 #include "mg_tests.h"
 
-#if MG_HOST_ARM32
+#if MG_GUEST_CODE
 static int load_mode(int argc, char **argv)
 {
     int i, bad = 0;
@@ -981,7 +981,7 @@ int main(int argc, char **argv)
         return mg_bundle_tests_run(argv[2], argv[3], argc >= 5 ? argv[4] : NULL) ? 1 : 0;
     }
     if (argc >= 4 && !strcmp(argv[1], "--sqlite-hold")) return mg_tests_sqlite_hold(argv[2], argv[3]);
-#if MG_HOST_ARM32
+#if MG_GUEST_CODE
     if (argc >= 4 && !strcmp(argv[1], "--load")) return load_mode(argc, argv);
     if (argc >= 4 && !strcmp(argv[1], "--run")) {
         megler_config config;

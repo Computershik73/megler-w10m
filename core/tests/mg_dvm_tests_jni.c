@@ -309,7 +309,10 @@ static void test_guarded_call(void)
     CHECK(!faulted);
     (void)mg_jni_call_native(read_tp, NULL, "()I", NULL);
 }
+#endif
 
+/* Wherever guest code runs: the library is the build's own ABI's (tools/build-guest.sh <abi>). */
+#if MG_GUEST_CODE
 static void test_guest_natives(const char *guest_dir)
 {
     mg_lib *lib;
@@ -425,6 +428,8 @@ void test_jni(const char *guest_dir, const char *fixtures)
     if (fixtures) test_scoped_throw(fixtures);
 #if MG_HOST_ARM32
     test_guarded_call();
+#endif
+#if MG_GUEST_CODE
     if (guest_dir) test_guest_natives(guest_dir);
     else say("(no guest libraries were named: native methods in a guest library are not tested)");
 #else
