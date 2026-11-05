@@ -1026,23 +1026,24 @@ bool canRead(const std::wstring& apk) {
     return h && ReadFile(h.get(), head, sizeof(head), &got, nullptr) && got == 4 && !memcmp(head, "PK\3\4", 4);
 }
 
-std::vector<std::pair<std::wstring, uint64_t>> installedSplits(const std::string& fullName) {
-    std::vector<std::pair<std::wstring, uint64_t>> splits;
-    const std::wstring apk = installedApk(fullName); // <folder>\app\app.apk, the block map <folder>\AppxBlockMap.xml
-    std::string map;
-    if (!files::read(apk.substr(0, apk.size() - wcslen(L"\\app\\app.apk")) + L"\\AppxBlockMap.xml", map)) {
-        shellLog::write(format("app package: %s's block map could not be read (error %lu)", fullName.c_str(), GetLastError()));
+std::vector<std::wstring> installedSplits(const std::string& fullName) {
+    using namespace winrt::Windows::Data::Json;
+    std::vector<std::wstring> splits;
+    // The app's report, packed beside its APK (make: app\app.apk.json), names the splits it was read with; a bundle's are
+    // unpacked as split_<name>.apk (core/src/apk/mg_bundle.c). (The package's block map would list them, but Windows
+    // refuses another package the package's own files: AppxBlockMap.xml gave error 5 on a Lumia 650.)
+    std::string json;
+    if (!files::read(installedApk(fullName) + L".json", json)) {
+        shellLog::write(format("app package: the report in %s could not be read (error %lu)", fullName.c_str(), GetLastError()));
         return splits;
     }
-    // <File Name="app\app.apk.splits\split_config.armeabi_v7a.apk" Size="..." ...>: the parts of Megler's packages are
-    // named plainly, and their Size comes next (core/src/appx/mg_appx.c).
-    static const std::string folder = "<File Name=\"app\\app.apk.splits\\";
-    for (size_t at = map.find(folder); at != std::string::npos; at = map.find(folder, at + folder.size())) {
-        const size_t name = at + folder.size(), end = map.find('"', name);
-        if (end == std::string::npos) break;
-        const std::string split = map.substr(name, end - name);
-        if (!plainName(split) || split.find('/') != std::string::npos || map.compare(end, 8, "\" Size=\"") != 0) continue;
-        splits.emplace_back(widen(split), std::strtoull(map.c_str() + end + 8, nullptr, 10));
+    JsonObject o{nullptr};
+    if (!JsonObject::TryParse(widen(json), o) || !o.HasKey(L"splits") || o.GetNamedValue(L"splits").ValueType() != JsonValueType::Array)
+        return splits;
+    for (IJsonValue const& value : o.GetNamedArray(L"splits")) {
+        if (value.ValueType() != JsonValueType::String) continue;
+        const std::string name = "split_" + narrow(value.GetString()) + ".apk";
+        if (plainName(name) && name.find('/') == std::string::npos) splits.push_back(widen(name));
     }
     return splits;
 }

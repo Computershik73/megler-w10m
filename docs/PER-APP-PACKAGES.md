@@ -195,17 +195,20 @@ update of the app (Update All) is made from it. Whether an app container may
 read another package's install folder is not known for Windows 10 Mobile: the
 check is made after each install, and where it fails Megler keeps (or makes) a
 copy, as before, and the log says so. A package installed as the Store installs
-an app (0.1.0.640 on) lets Megler open its files by their paths but shows it
-none of its folders: `app\app.apk.splits` has no attributes and no list for
-Megler, though the app's own package starts with its splits. The core reads an
-app's splits as a folder, so an app in several APKs installed so keeps Megler's
-copy (`ui/SeparateApps.cpp`); 640 and 641 let it go, and the library took such
-an app for a base without its splits, which Update All left out (TikTok Lite on
-a Lumia 650): since 0.1.0.642 its APKs are copied back at the library's load,
-the splits named by the package's block map (`AppxBlockMap.xml` in its install
-folder, `appPackage::installedSplits`). Before Uninstall, the APK and splits are
-copied back into `LocalState\apks` (`Library::restore`, the splits named so where
-their folder is not shown), so that the library keeps the app. A picked APK that cannot run here, or that was not installed,
+an app (0.1.0.640 on) lets Megler open its app's files by their paths but shows
+it none of its folders: `app\app.apk.splits` has no attributes and no list for
+Megler, though the app's own package starts with its splits, and the package's
+own files (`AppxBlockMap.xml`) give error 5. Right after its install, a large
+one's APK may not be read yet either (Google Play services, Google Maps: Megler
+asks again for 20 s, then keeps its copy). The core reads an app's splits as a
+folder, so an app in several APKs installed so keeps Megler's copy
+(`ui/SeparateApps.cpp`); 640 and 641 let it go, and the library took such an
+app for a base without its splits, which Update All left out (TikTok Lite on a
+Lumia 650): since 0.1.0.643 its APKs are copied back at the library's load, the
+splits named by the report packed with the app (`app\app.apk.json`,
+`appPackage::installedSplits`). Before Uninstall, the APK and splits are copied
+back into `LocalState\apks` (`Library::restore`, the splits named so where their
+folder is not shown), so that the library keeps the app. A picked APK that cannot run here, or that was not installed,
 is copied into the library, so that its page and Install stay.
 
 **Settings** (`shell/Settings.h`, `ui/SettingsScreen.cpp`). Render size,

@@ -259,14 +259,27 @@ void run(Job& job, int number, int total) {
         // (appPackage::installedSplits), and the core reads an app's splits as a folder: an app in several APKs keeps its copy.
         const std::wstring installed = appPackage::installedApk(made.fullName);
         const bool splitsSeen = entry.splitsDir.empty() || files::exists(Library::splitsDirFor(installed));
-        if (appPackage::canRead(installed) && files::size(installed) == apkSize && splitsSeen) {
+        // Right after its install, a large package installed as the Store installs an app may not let Megler read its APK
+        // yet (Google Play services' 277 MB and Google Maps' 301 MB on a Lumia 650, 642; Play services' was read 20 minutes
+        // later): asked again for a while.
+        std::string unread = splitsSeen ? std::string() : "'s splits are in a folder its package does not show Megler";
+        for (int tries = 0; splitsSeen; tries++) {
+            if (!appPackage::canRead(installed)) {
+                unread = format(" can't be read by Megler (error %lu)", GetLastError());
+            } else if (const uint64_t size = files::size(installed); size != apkSize) {
+                unread = format(" is %llu bytes, %s %llu", (unsigned long long)size, narrow(apkPath).c_str(), (unsigned long long)apkSize);
+            } else {
+                unread.clear();
+                break;
+            }
+            if (tries == 10) break;
+            Sleep(2000);
+        }
+        if (unread.empty()) {
             Library::instance().adopt(job.id, made.fullName);
             setStep(package, "Installed. Megler reads its APK in the installed app and keeps no copy.");
         } else {
-            shellLog::write("separate apps: " + narrow(installed) +
-                            (splitsSeen ? " can't be read by Megler (or is not as large as " + narrow(apkPath) + ")"
-                                        : "'s splits are in a folder its package does not show Megler") +
-                            ": Megler keeps a copy of the APK");
+            shellLog::write("separate apps: " + narrow(installed) + unread + ": Megler keeps a copy of the APK");
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
             setStep(package, "Installed." + (kept.empty() ? std::string() : " Megler could not keep a copy of the APK for updates: " + kept));
         }

@@ -137,13 +137,12 @@ namespace {
 
 /// Copies an installed app's APK (appPackage::installedApk), and its splits, to `own` and own + ".splits": each beside its
 /// place and moved into it, so that nothing half copied is taken for the app. The splits are named by their folder's list,
-/// else by the package's block map: a package installed as the Store installs an app shows another package none of its
-/// folders (appPackage::installedSplits). Empty when copied, else why not.
+/// else by the report packed with the app: a package installed as the Store installs an app shows another package none of
+/// its folders (appPackage::installedSplits). Empty when copied, else why not.
 std::string copyFromInstalled(const std::string& fullName, const std::wstring& own) {
     const std::wstring apk = appPackage::installedApk(fullName), splitsDir = Library::splitsDirFor(apk);
     std::vector<std::wstring> splits = files::list(splitsDir, L"*");
-    if (splits.empty())
-        for (const auto& split : appPackage::installedSplits(fullName)) splits.push_back(split.first);
+    if (splits.empty()) splits = appPackage::installedSplits(fullName);
     if (!files::copy(apk, own + L".part") || !files::move(own + L".part", own)) {
         const DWORD error = GetLastError();
         files::remove(own + L".part");
@@ -359,8 +358,8 @@ void Library::load() {
             // An app in several APKs whose package shows Megler none of its folders (installed as the Store installs an app,
             // by 640 and 641, which let their copy go): the core reads an app's splits as a folder, so the library had it
             // without them, as an APK that cannot run, and Update All left it out. Its APKs are copied back from the package
-            // by the names its block map gives, and the library keeps its own copy again, as it does for such an app since
-            // (ui/SeparateApps.cpp). (The block map is read only for an app read with splits, or that cannot run.)
+            // by the names the report packed with it gives, and the library keeps its own copy again, as it does for such an
+            // app since (ui/SeparateApps.cpp). (That report is read only for an app read with splits, or that cannot run.)
             if (entry.splitsDir.empty() && (!entry.report.splits.empty() || !entry.report.runnable) &&
                 !appPackage::installedSplits(fullName).empty()) {
                 const std::string error = copyFromInstalled(fullName, directory_ + L"\\" + widen(id));
