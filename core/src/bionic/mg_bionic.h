@@ -19,8 +19,10 @@
  *   - Android's armeabi-v7a passes floating-point arguments and results in the
  *     integer registers (softfp); the host passes them in VFP registers. So a
  *     wrapper never has a float or double parameter or result. It takes and
- *     returns u32 / u64 -- the bits -- which is exactly how softfp passes a
- *     float / a double, and converts with mg_f / mg_d / mg_fb / mg_db.
+ *     returns gfloat / gdouble (mg_base.h) -- on 32-bit ARM the bits, u32 / u64,
+ *     which is exactly how softfp passes a float / a double; on desktop Windows,
+ *     where the core is of the guest's ABI (docs/DESKTOP.md), the values -- and
+ *     converts with mg_gf / mg_gd / mg_gfb / mg_gdb.
  *   - Variadic functions take everything in integer registers and on the stack
  *     in both conventions, and a va_list is one pointer in both, so a host
  *     variadic function is called by the guest as it is, and a guest va_list
@@ -43,6 +45,19 @@ typedef struct mg_sym {
     const char *name;
     void *addr;
 } mg_sym;
+
+/*
+ * bionic's own integer types, as wide as the guest's: `long` is 32 bits in 32-bit Android and 64 in 64-bit Android, and
+ * every build of the core that runs guest code has its guest's `long` -- MSVC and gcc for 32-bit ARM, gcc for Linux on
+ * the others, and the core's ELF on desktop Windows (docs/DESKTOP.md), compiled for the guest's ABI. A field, parameter
+ * or result that bionic declares long, ssize_t, off_t or time_t is one of these; one that holds a pointer is a pointer or
+ * a uintptr_t, never a u32; a float or a double is a gfloat or a gdouble (mg_base.h).
+ */
+typedef long glong;
+typedef unsigned long gulong;
+typedef long gssize;
+typedef long goff;
+typedef long gtime;
 
 #define MG_DIRECT(fn) { #fn, (void *)(fn) }
 #define MG_WRAP(name, impl) { name, (void *)(impl) }
@@ -67,11 +82,11 @@ const mg_sym *mg_ahb_table(void);      /* ndk/mg_ahb.c: AHardwareBuffer */
 int mg_sdk_level(void);
 const mg_sym *mg_java_ndk_table(void); /* drivers/mg_java_ndk.c: libjnigraphics, on the Java framework's Bitmap; ANativeWindow_fromSurface */
 
-/* Float wrappers: the host function named, taking and returning bits. */
-#define MG_SF_D_D(name, fn) static u64 name(u64 x) { return mg_db(fn(mg_d(x))); }
-#define MG_SF_D_DD(name, fn) static u64 name(u64 x, u64 y) { return mg_db(fn(mg_d(x), mg_d(y))); }
-#define MG_SF_F_F(name, fn) static u32 name(u32 x) { return mg_fb(fn(mg_f(x))); }
-#define MG_SF_F_FF(name, fn) static u32 name(u32 x, u32 y) { return mg_fb(fn(mg_f(x), mg_f(y))); }
+/* Float wrappers: the host function named, taking and returning floats as the guest passes them (bits on 32-bit ARM). */
+#define MG_SF_D_D(name, fn) static gdouble name(gdouble x) { return mg_gdb(fn(mg_gd(x))); }
+#define MG_SF_D_DD(name, fn) static gdouble name(gdouble x, gdouble y) { return mg_gdb(fn(mg_gd(x), mg_gd(y))); }
+#define MG_SF_F_F(name, fn) static gfloat name(gfloat x) { return mg_gfb(fn(mg_gf(x))); }
+#define MG_SF_F_FF(name, fn) static gfloat name(gfloat x, gfloat y) { return mg_gfb(fn(mg_gf(x), mg_gf(y))); }
 
 /* ----------------------------------------------------------------- errno
  *

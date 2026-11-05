@@ -203,10 +203,33 @@ static inline u32 mg_rd32(const void *p) { u32 v; memcpy(&v, p, 4); return v; }
 static inline void mg_wr16(void *p, u16 v) { memcpy(p, &v, 2); }
 static inline void mg_wr32(void *p, u32 v) { memcpy(p, &v, 4); }
 
-/* Floats cross the guest boundary as their bits (see docs/ARCHITECTURE.md, "Floating point"). */
+/* Floats cross the guest boundary as their bits on 32-bit ARM (see docs/ARCHITECTURE.md, "Floating point"). */
 static inline float mg_f(u32 bits) { float f; memcpy(&f, &bits, 4); return f; }
 static inline u32 mg_fb(float f) { u32 b; memcpy(&b, &f, 4); return b; }
 static inline double mg_d(u64 bits) { double d; memcpy(&d, &bits, 8); return d; }
+
+/*
+ * A float or a double as guest code passes it to the core and takes it back, in a function the guest calls or a guest
+ * function the core calls: its bits in an integer on 32-bit ARM, where Android passes floats in the integer registers
+ * (softfp) and the host in VFP registers; the value itself everywhere else, where the core's convention is the guest's
+ * (docs/DESKTOP.md). mg_gf / mg_gd take one as a value, mg_gfb / mg_gdb make one of a value. A wrapper written with these
+ * is right for both.
+ */
+#if MG_GUEST_SOFTFP
+typedef u32 gfloat;
+typedef u64 gdouble;
+static inline float mg_gf(gfloat x) { return mg_f(x); }
+static inline double mg_gd(gdouble x) { return mg_d(x); }
+static inline gfloat mg_gfb(float f) { return mg_fb(f); }
+#define mg_gdb(d) mg_db(d)
+#else
+typedef float gfloat;
+typedef double gdouble;
+static inline float mg_gf(gfloat x) { return x; }
+static inline double mg_gd(gdouble x) { return x; }
+static inline gfloat mg_gfb(float f) { return f; }
+#define mg_gdb(d) ((gdouble)(d))
+#endif
 static inline u64 mg_db(double d) { u64 b; memcpy(&b, &d, 8); return b; }
 
 #endif /* MG_BASE_H */
