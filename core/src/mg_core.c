@@ -1,4 +1,5 @@
 /* Start-up of the core, and the one fault handler everything else hangs off. */
+#include "../include/megler.h"
 #include "mg_core.h"
 #include "ndk/mg_egl.h"
 
