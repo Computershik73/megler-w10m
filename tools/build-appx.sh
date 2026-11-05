@@ -558,7 +558,9 @@ if [ ! -d "$STAGE/selftest/dvm" ] && [ -d "$ROOT/build/guest/armeabi-v7a/dvm" ];
 fi
 if [ "$JAVA" = 1 ]; then
   # The Java framework and the test apps, built where their sources are newer (a JDK and the Android SDK's build tools).
-  { bash "$ROOT/tools/build-framework.sh" && bash "$ROOT/tools/build-test-app.sh"; } > "$BUILD/build-java.log" 2>&1 ||
+  # (With msys's conversion of paths, which this script turns off for its own tools: build-framework.sh hands Python
+  # /c/... paths, and in a fresh checkout, where the framework is not built yet, Python was given C:\c\Users\....)
+  { env -u MSYS2_ARG_CONV_EXCL bash "$ROOT/tools/build-framework.sh" && env -u MSYS2_ARG_CONV_EXCL bash "$ROOT/tools/build-test-app.sh"; } > "$BUILD/build-java.log" 2>&1 ||
     { echo "--java: the Java framework or the test apps could not be built (build/appx-$ARCH/build-java.log)" >&2; exit 1; }
 fi
 if [ "$LIBCORE" = 1 ]; then
