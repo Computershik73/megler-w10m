@@ -386,6 +386,17 @@ typedef struct megler_media_host {
  *                 ready. Its memory stays as it is until release_picture.
  *   release_picture  done with a picture. Any thread, any time, before or
  *                 after its decoder is closed.
+ *   read_picture  optional, with show_picture: a MEGLER_CODEC_GPU picture
+ *                 brought into memory, *picture then what it is there
+ *                 (MEGLER_CODEC_BGRA or NV12, the same size and time), its
+ *                 memory kept until release_picture. False when it cannot be:
+ *                 the picture is then not shown.
+ *   show_picture  a MEGLER_CODEC_GPU picture made the newest of the gfx
+ *                 host's texture `texture_id` (megler_gfx_host.texture_frame's
+ *                 ids: draw_texture draws it in a view's place, the right way
+ *                 up), on the graphics processor, nothing read back. False
+ *                 when it cannot be: the layer then reads it and draws it as
+ *                 a picture in memory.
  *   pull_sound    the next block of 16-bit sound into *sound, true; false when
  *                 none is ready. Its samples stay until the next call for that
  *                 decoder.
@@ -413,7 +424,13 @@ typedef struct megler_media_host {
  * BT.601 for pictures under 720 lines and BT.709 for the rest, as Android
  * does); `full_range` is luma from 0 to 255 rather than 16 to 235.
  * MEGLER_CODEC_RGBA: `data` is R, G, B, A bytes, rows `stride` apart, and the
- * rest is not used.
+ * rest is not used; MEGLER_CODEC_BGRA the same in the bitmaps' order, B, G, R,
+ * A. MEGLER_CODEC_GPU: the picture is on the graphics processor, decoded there
+ * and already turned into colour on the gfx host's Direct3D device, and
+ * `data` and `chroma` are NULL: read_picture brings it into memory where it
+ * is needed there, and show_picture shows it where a view shows the frames of
+ * a texture, which is what a decoder on the graphics processor is for (a
+ * TextureView's video, nothing copied through the memory).
  *
  * A block of sound is `frames` frames of `channels` interleaved samples (one
  * or two: a decoder of more channels is asked for two), at `sample_rate`;
@@ -426,7 +443,7 @@ typedef struct megler_media_host {
  * a phone without them.
  */
 enum { MEGLER_CODEC_H264 = 1, MEGLER_CODEC_H265 = 2, MEGLER_CODEC_AAC = 3, MEGLER_CODEC_MP3 = 4 };
-enum { MEGLER_CODEC_NV12 = 1, MEGLER_CODEC_RGBA = 2 };
+enum { MEGLER_CODEC_NV12 = 1, MEGLER_CODEC_RGBA = 2, MEGLER_CODEC_BGRA = 3, MEGLER_CODEC_GPU = 4 };
 enum { MEGLER_CODEC_BT601 = 1, MEGLER_CODEC_BT709 = 2 };
 
 typedef struct megler_codec_format {
@@ -437,7 +454,7 @@ typedef struct megler_codec_format {
 } megler_codec_format;
 
 typedef struct megler_codec_picture {
-    int format;                        /* MEGLER_CODEC_NV12 or MEGLER_CODEC_RGBA */
+    int format;                        /* MEGLER_CODEC_NV12, _RGBA, _BGRA or _GPU */
     int width, height;
     const uint8_t *data, *chroma;
     int stride, chroma_stride;
@@ -464,6 +481,8 @@ typedef struct megler_codec_host {
     bool (*pull_sound)(void *user, void *codec, megler_codec_sound *sound);
     void (*flush)(void *user, void *codec);
     void (*close)(void *user, void *codec);
+    bool (*read_picture)(void *user, void *picture, megler_codec_picture *out);
+    bool (*show_picture)(void *user, void *picture, int texture_id);
 } megler_codec_host;
 
 /*

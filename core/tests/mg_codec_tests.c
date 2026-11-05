@@ -119,12 +119,25 @@ static void take_pictures(mg_mcodec *c, const stream *s, pictures *out)
         int number = picture_number(info[0]), second = out->split && number >= out->split, want = 16 + 8 * (second ? number - out->split : number), x, y;
         i32 w = second ? out->split_width : s->width, h = second ? out->split_height : s->height;
         long sum = 0;
-        u8 *bgra = (u8 *)mg_alloc((size_t)p->width * (size_t)p->height * 4);
-        for (y = p->height / 2 - 8; y < p->height / 2 + 8; y++)
-            for (x = p->width / 2 - 8; x < p->width / 2 + 8; x++) sum += p->data[(size_t)y * (size_t)p->stride + (size_t)x];
-        if (labs(sum / 256 - want) > 4) {
-            if (out->grey) say("  picture %d: its luma is %ld, not %d", number, sum / 256, want);
+        u8 *bgra;
+        if (!p) {
+            /* (A picture on the graphics processor that could not be read into memory.) */
+            if (out->grey) say("  picture %d: not to be had in memory", number);
             out->grey = false;
+            if (out->n < (int)MG_COUNT(out->numbers)) out->numbers[out->n] = number;
+            out->n++;
+            mg_mcodec_free_frame(f);
+            continue;
+        }
+        bgra = (u8 *)mg_alloc((size_t)p->width * (size_t)p->height * 4);
+        /* (The luma itself where the picture is NV12; one turned into colour by the host is checked by its colour alone.) */
+        if (p->format == MEGLER_CODEC_NV12) {
+            for (y = p->height / 2 - 8; y < p->height / 2 + 8; y++)
+                for (x = p->width / 2 - 8; x < p->width / 2 + 8; x++) sum += p->data[(size_t)y * (size_t)p->stride + (size_t)x];
+            if (labs(sum / 256 - want) > 4) {
+                if (out->grey) say("  picture %d: its luma is %ld, not %d", number, sum / 256, want);
+                out->grey = false;
+            }
         }
         if (mg_mcodec_render(p, bgra, p->width, p->height, p->width * 4)) {
             const u8 *px = bgra + ((size_t)(p->height / 2) * (size_t)p->width + (size_t)(p->width / 2)) * 4;
@@ -587,14 +600,14 @@ static void speed_of(const char *dir, const char *file)
         mg_mframe *f;
         mg_mcodec_decode(c, s.samples[i].data, s.samples[i].size, s.samples[i].time_us, i == s.nsamples - 1 ? 4 : 0);
         while ((f = mg_mcodec_next_frame(c, info)) != NULL) {
-            const megler_codec_picture *p = mg_mcodec_frame_picture(f);
             u64 t = mg_time_monotonic_ns();
-            if (p->width <= s.width && p->height <= s.height) mg_mcodec_render(p, bgra, p->width, p->height, p->width * 4);
+            const megler_codec_picture *p = mg_mcodec_frame_picture(f);
+            if (p && p->width <= s.width && p->height <= s.height) mg_mcodec_render(p, bgra, p->width, p->height, p->width * 4);
             render_ns += mg_time_monotonic_ns() - t;
             if (info[0] <= last) ordered = false;
             last = info[0];
-            w = p->width;
-            h = p->height;
+            w = (i32)info[1];
+            h = (i32)info[2];
             if (!pictures++) first_after = i + 1;
             mg_mcodec_free_frame(f);
         }
@@ -672,6 +685,97 @@ int mg_codec_tests_h265_run(const char *streams, const struct megler_codec_host 
     test_pictures(streams, "hevc.mgau", name);
     snprintf(name, sizeof(name), "H.265 Main 10, %s", how);
     test_pictures(streams, "hevc10.mgau", name);
+    mg_java_media_set_host(NULL);
+    *checks += g_checks;
+    return g_failed;
+}
+
+/*
+ * Pictures decoded on the graphics processor: avc.mgau through a host whose pictures stay there (MEGLER_CODEC_GPU), each
+ * shown as the newest frame of a texture of the gfx host's (show_picture) and drawn by a canvas on the graphics processor
+ * (draw_texture), as a TextureView draws a video's, and read into memory too (read_picture): the middle is the grey the
+ * picture's number says both ways. 24 pictures, in order, every one of them on the graphics processor.
+ */
+int mg_codec_gpu_run(const char *streams, const struct megler_codec_host *host, const struct megler_gfx_host *gfx, mg_test_sink sink, void *user,
+                     int *checks)
+{
+    enum { SIDE = 64, ID = 7 };
+    stream s;
+    mg_mcodec *c;
+    u32 *px = (u32 *)mg_alloc(SIDE * SIDE * 4);
+    void *cv;
+    int i, shown = 0, read = 0, gpu = 0, total = 0, last = -1;
+    bool ordered = true;
+    i64 info[3];
+    g_checks = g_failed = 0;
+    g_sink = sink;
+    g_sink_user = user;
+    mg_java_media_set_host(host);
+    say("pictures decoded on the graphics processor, shown from there and read back (avc.mgau)");
+    if (!stream_read(&s, streams, "avc.mgau")) {
+        CHECK(!"avc.mgau can be read");
+        mg_java_media_set_host(NULL);
+        free(px);
+        *checks += g_checks;
+        return g_failed;
+    }
+    cv = gfx->canvas_new(gfx->user, px, SIDE, SIDE, SIDE * 4);
+    c = open_pictures(&s, CSD);
+    CHECK(c != NULL && cv != NULL);
+    for (i = 0; c && cv && i < s.nsamples; i++) {
+        mg_mframe *f;
+        mg_mcodec_decode(c, s.samples[i].data, s.samples[i].size, s.samples[i].time_us, i == s.nsamples - 1 ? 4 : 0);
+        while ((f = mg_mcodec_next_frame(c, info)) != NULL) {
+            int number = picture_number(info[0]), want = (298 * (16 + 8 * number - 16) + 128) >> 8;
+            const megler_codec_picture *p;
+            total++;
+            if (number <= last) ordered = false;
+            last = number;
+            if (mg_mcodec_frame_on_gpu(f)) {
+                gpu++;
+                if (mg_mcodec_frame_show(f, ID)) {
+                    u32 mid;
+                    int r, g, b;
+                    gfx->draw_color(gfx->user, cv, 0xFF000000u, MEGLER_GFX_BLEND_SRC);
+                    gfx->draw_texture(gfx->user, cv, ID, 0, 0, SIDE, SIDE, 255);
+                    gfx->flush(gfx->user, cv);
+                    mid = px[(SIDE / 2) * SIDE + SIDE / 2];
+                    b = (int)(mid & 255), g = (int)(mid >> 8 & 255), r = (int)(mid >> 16 & 255);
+                    if (abs(r - want) <= 8 && abs(g - want) <= 8 && abs(b - want) <= 8) shown++;
+                    else if (shown >= 0) {
+                        say("  picture %d shown from the graphics processor: %d, %d, %d, not %d", number, r, g, b, want);
+                        shown = -1000;
+                    }
+                }
+            }
+            p = mg_mcodec_frame_picture(f);
+            if (p && p->format != MEGLER_CODEC_NV12) {
+                u32 mid;
+                memcpy(&mid, p->data + (size_t)(p->height / 2) * (size_t)p->stride + (size_t)(p->width / 2) * 4, 4);
+                if (abs((int)(mid & 255) - want) <= 8 && abs((int)(mid >> 8 & 255) - want) <= 8 && abs((int)(mid >> 16 & 255) - want) <= 8) read++;
+                else if (read >= 0) {
+                    say("  picture %d read back: %d, %d, %d, not %d", number, (int)(mid >> 16 & 255), (int)(mid >> 8 & 255), (int)(mid & 255), want);
+                    read = -1000;
+                }
+            }
+            mg_mcodec_free_frame(f);
+        }
+    }
+    say("  %d pictures, %d of them on the graphics processor, %d shown from there as they should be, %d read back as they should be", total, gpu, shown,
+        read);
+    if (!gpu) {
+        say("  (this host's pictures are not on the graphics processor: nothing more to check)");
+    } else {
+        CHECK(total == s.nsamples && ordered);
+        CHECK(gpu == total);
+        CHECK(shown == total);
+        CHECK(read == total);
+    }
+    if (c) mg_mcodec_destroy(c);
+    if (cv) gfx->canvas_free(gfx->user, cv);
+    gfx->texture_frame(gfx->user, ID, NULL, 0, 0);
+    stream_free(&s);
+    free(px);
     mg_java_media_set_host(NULL);
     *checks += g_checks;
     return g_failed;

@@ -2,11 +2,13 @@
 
 #include "player/CodecHost.h"
 
+#include "player/GfxHost.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
+#include <d3d10.h> // ID3D10Multithread
 #include <mfapi.h>
 #include <mferror.h>
 #include <mftransform.h>
@@ -252,18 +254,161 @@ std::string subtypeName(const GUID& g) {
     return format("%08lX", g.Data1);
 }
 
+/// Pictures decoded on the graphics processor, as venetium-w10m's Chromium decodes them on ANGLE's device: the decoder is
+/// given the device the app's views are drawn on (GfxHost's, made with the video interfaces) through a DXGI device manager
+/// (MFT_MESSAGE_SET_D3D_MANAGER) and decodes there (DXVA); each picture is turned into B8G8R8A8 by the video processor
+/// (which feature level 9_3 has: a shader there cannot sample NV12) into a texture of this file's own, and the decoder's
+/// sample goes back to it at once, so its pool never runs dry however many pictures an app holds. A TextureView shows such
+/// a picture from there (GfxHost::showVideoFrame); only where an app wants it in memory is it read back (read_picture).
+/// The device's immediate context is Direct2D's too: every call that may use it is made under GfxHost's lock, and the
+/// device is multithread-protected for what the decoder does on threads of its own.
+struct GpuVideo {
+    bool ok = false;
+    std::string described;              // for the log: where, or why not
+    winrt::com_ptr<ID3D11Device> device;
+    winrt::com_ptr<ID3D11DeviceContext> immediate;
+    winrt::com_ptr<ID3D11VideoDevice> video;
+    winrt::com_ptr<ID3D11VideoContext> videoContext;
+    winrt::com_ptr<IMFDXGIDeviceManager> manager;
+    D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_9_1;
+};
+
+/// The flag file codec-no-gpu in LocalState\flags: pictures decoded in software, as before, to compare.
+bool gpuWanted() {
+    static const bool wanted = !files::exists(platform::localStateDirectory() + L"\\flags\\codec-no-gpu");
+    return wanted;
+}
+
+/// Made the first time a picture decoder asks after the app's first drawing (GfxHost has its device, or knows it has none,
+/// from then on); a decoder asked for before that decodes in software, and the next one asks again. Said once in the log.
+GpuVideo& gpuVideo() {
+    static GpuVideo* const g = new GpuVideo(); // never destroyed: decoders may outlive everything else
+    static std::mutex mutex;
+    static std::atomic<bool> settled{false};
+    if (settled.load(std::memory_order_acquire)) return *g;
+    std::lock_guard<std::mutex> lock(mutex);
+    if (settled.load(std::memory_order_relaxed)) return *g;
+    {
+        GfxHost& gfx = GfxHost::shared();
+        ID3D11Device* device = gfx.device();
+        if (!device && gpuWanted() && !gfx.counts().started) return *g; // (no drawing yet: asked again by the next decoder)
+        if (!gpuWanted()) {
+            g->described = "not asked for (the flag codec-no-gpu)";
+        } else if (!device) {
+            g->described = "no graphics processor's device (the views are drawn in memory)";
+        } else if (!gfx.videoSupport()) {
+            g->described = "the device has no video interfaces";
+        } else {
+            g->device.copy_from(device);
+            g->device->GetImmediateContext(g->immediate.put());
+            g->level = g->device->GetFeatureLevel();
+            g->video = g->device.try_as<ID3D11VideoDevice>();
+            g->videoContext = g->immediate.try_as<ID3D11VideoContext>();
+            UINT token = 0;
+            HRESULT hr = g->video && g->videoContext ? MFCreateDXGIDeviceManager(&token, g->manager.put()) : E_NOINTERFACE;
+            if (SUCCEEDED(hr)) {
+                if (auto mt = g->device.try_as<ID3D10Multithread>()) mt->SetMultithreadProtected(TRUE);
+                hr = g->manager->ResetDevice(g->device.get(), token);
+            }
+            if (FAILED(hr)) {
+                g->described = format("the device's video interfaces cannot be had (0x%08X)", unsigned(hr));
+                g->manager = nullptr;
+            } else {
+                g->ok = true;
+                g->described = format("on the graphics processor (DXVA, feature level %d_%d), shown from there", int(g->level) >> 12, (int(g->level) >> 8) & 15);
+            }
+        }
+        shellLog::write("codec: pictures are decoded " + std::string(g->ok ? "" : "in software: ") + g->described);
+    }
+    settled.store(true, std::memory_order_release);
+    return *g;
+}
+
+/// GfxHost's lock on the device, held for whatever may use its immediate context; nothing where `on` is false.
+class DeviceLock {
+public:
+    explicit DeviceLock(bool on) : on_(on) {
+        if (on_) GfxHost::shared().lockDevice();
+    }
+    ~DeviceLock() {
+        if (on_) GfxHost::shared().unlockDevice();
+    }
+    DeviceLock(const DeviceLock&) = delete;
+    DeviceLock& operator=(const DeviceLock&) = delete;
+
+private:
+    bool on_;
+};
+
+/// The textures a decoder's pictures are turned into, B8G8R8A8 of the pictures' visible size: one each while the picture is
+/// held, then back here for the next (at most four kept). Shared with the pictures, which may outlive their decoder.
+struct GpuPool {
+    struct Slot {
+        winrt::com_ptr<ID3D11Texture2D> texture;
+        winrt::com_ptr<ID3D11VideoProcessorOutputView> view; // made for the decoder's enumerator of that generation
+        uint64_t madeFor = 0;
+    };
+    std::mutex mutex;
+    int width = 0, height = 0;
+    std::vector<Slot> free;
+    winrt::com_ptr<ID3D11Texture2D> staging; // for read_picture, under GfxHost's lock
+
+    /// A slot of width x height: a kept one, or a new texture; empty when none can be made.
+    Slot take(ID3D11Device* device, int w, int h) {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (w != width || h != height) {
+                free.clear();
+                staging = nullptr;
+                width = w;
+                height = h;
+            }
+            if (!free.empty()) {
+                Slot s = std::move(free.back());
+                free.pop_back();
+                return s;
+            }
+        }
+        Slot s;
+        D3D11_TEXTURE2D_DESC desc = {};
+        desc.Width = UINT(w);
+        desc.Height = UINT(h);
+        desc.MipLevels = 1;
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+        if (FAILED(device->CreateTexture2D(&desc, nullptr, s.texture.put()))) s.texture = nullptr;
+        return s;
+    }
+
+    void give(Slot&& s) {
+        if (!s.texture) return;
+        D3D11_TEXTURE2D_DESC desc = {};
+        s.texture->GetDesc(&desc);
+        std::lock_guard<std::mutex> lock(mutex);
+        if (int(desc.Width) == width && int(desc.Height) == height && free.size() < 4) free.push_back(std::move(s));
+    }
+};
+
 } // namespace
 
-/// A picture out of a decoder: its buffer held (locked) until the core lets it go, or a copy of it.
+/// A picture out of a decoder: its buffer held (locked) until the core lets it go, or a copy of it; or, decoded on the
+/// graphics processor, a texture of its pool's (MEGLER_CODEC_GPU), and its memory once read_picture has read it there.
 struct CodecHost::Picture {
     megler_codec_picture info = {};
     winrt::com_ptr<IMFMediaBuffer> buffer;
     winrt::com_ptr<IMF2DBuffer> planar; // when locked as one
     std::vector<uint8_t> copy;
+    std::shared_ptr<GpuPool> pool;
+    GpuPool::Slot slot;
+    megler_codec_picture read = {}; // a picture on the graphics processor as read into `copy`
 
     ~Picture() {
         if (planar) planar->Unlock2D();
         else if (buffer) buffer->Unlock();
+        if (pool) pool->give(std::move(slot));
     }
 };
 
@@ -283,6 +428,24 @@ struct CodecHost::Codec {
     bool tenBitsFirst = false;       // P010 is taken where NV12 is offered too (CodecHost::preferTenBits, for the tests)
     DWORD outSize = 0, outAlign = 0; // of ours
     winrt::com_ptr<IMFSample> spare; // an output sample of ours the decoder did not fill
+
+    // On the graphics processor (gpuVideo()): the decoder took the device, and what turns its pictures into colour there.
+    bool gpu = false;
+    bool gpuOff = false;             // the video processor failed: pictures read back from the decoder's buffers instead
+    bool bigSaid = false;            // pictures too big to keep a copy of each on this feature level, said
+    std::string gpuWhy;              // why it decodes in software where the device is there
+    winrt::com_ptr<ID3D11VideoProcessorEnumerator> vpEnumerator;
+    winrt::com_ptr<ID3D11VideoProcessor> vp;
+    uint64_t vpGeneration = 0;       // which enumerator a pool slot's output view was made for
+    int vpInWidth = 0, vpInHeight = 0, vpOutWidth = 0, vpOutHeight = 0;
+    struct InputView {
+        winrt::com_ptr<ID3D11Texture2D> texture;
+        UINT slice = 0;
+        winrt::com_ptr<ID3D11VideoProcessorInputView> view;
+    };
+    std::vector<InputView> inputViews; // the decoder's textures' slices, as the video processor reads them
+    std::shared_ptr<GpuPool> pool = std::make_shared<GpuPool>();
+    uint64_t gpuPictures = 0;
 
     // Pictures: what the output type says.
     int frameWidth = 0, frameHeight = 0, cropX = 0, cropY = 0, visibleWidth = 0, visibleHeight = 0, stride = 0;
@@ -325,6 +488,172 @@ struct CodecHost::Codec {
         }
     }
 
+    /// The decoder given the graphics processor's device (gpuVideo()), where it takes one: it then decodes there (DXVA).
+    /// Before its types are set, as Media Foundation asks. Else it decodes in software, as before, and `gpuWhy` says why.
+    void useGpu() {
+        gpu = gpuOff = false;
+        gpuWhy.clear();
+        dropProcessor();
+        if (!isVideo(kind) || !transform) return;
+        GpuVideo& g = gpuVideo();
+        if (!g.ok) return;
+        winrt::com_ptr<IMFAttributes> attributes;
+        if (FAILED(transform->GetAttributes(attributes.put())) || !attributes || !MFGetAttributeUINT32(attributes.get(), MF_SA_D3D11_AWARE, FALSE)) {
+            gpuWhy = "it takes no Direct3D 11 device";
+            return;
+        }
+        step = "ProcessMessage(SET_D3D_MANAGER)";
+        DeviceLock lock(true);
+        const HRESULT hr = transform->ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, ULONG_PTR(g.manager.get()));
+        if (FAILED(hr)) {
+            gpuWhy = format("it refused the device (0x%08X)", unsigned(hr));
+            return;
+        }
+        gpu = true;
+    }
+
+    /// The decoder in software again, after it would not be set up with the device.
+    void leaveGpu(const std::string& why) {
+        if (!gpu) return;
+        DeviceLock lock(true);
+        transform->ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, 0);
+        gpu = false;
+        gpuWhy = why;
+        dropProcessor();
+    }
+
+    void dropProcessor() {
+        vp = nullptr;
+        vpEnumerator = nullptr;
+        inputViews.clear();
+        vpInWidth = vpInHeight = vpOutWidth = vpOutHeight = 0;
+    }
+
+    /// The video processor for the pictures as the output type has them now: the decoded size in, the visible part out at
+    /// its own size, B8G8R8A8; colour as the stream says (BT.601 or BT.709, video or full range, the same defaults as the
+    /// core's own conversion), and nothing of the driver's own (no "enhancements"). Under GfxHost's lock.
+    bool videoProcessor() {
+        if (vp && vpInWidth == frameWidth && vpInHeight == frameHeight && vpOutWidth == visibleWidth && vpOutHeight == visibleHeight) return true;
+        dropProcessor();
+        GpuVideo& g = gpuVideo();
+        D3D11_VIDEO_PROCESSOR_CONTENT_DESC desc = {};
+        desc.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
+        desc.InputFrameRate = {30, 1};
+        desc.InputWidth = UINT(frameWidth);
+        desc.InputHeight = UINT(frameHeight);
+        desc.OutputFrameRate = {30, 1};
+        desc.OutputWidth = UINT(visibleWidth);
+        desc.OutputHeight = UINT(visibleHeight);
+        desc.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
+        step = "CreateVideoProcessor";
+        HRESULT hr = g.video->CreateVideoProcessorEnumerator(&desc, vpEnumerator.put());
+        UINT in = 0, out = 0;
+        if (SUCCEEDED(hr)) hr = vpEnumerator->CheckVideoProcessorFormat(DXGI_FORMAT_NV12, &in);
+        if (SUCCEEDED(hr)) hr = vpEnumerator->CheckVideoProcessorFormat(DXGI_FORMAT_B8G8R8A8_UNORM, &out);
+        if (SUCCEEDED(hr) && (!(in & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_INPUT) || !(out & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_OUTPUT))) hr = E_NOTIMPL;
+        if (SUCCEEDED(hr)) hr = g.video->CreateVideoProcessor(vpEnumerator.get(), 0, vp.put());
+        if (FAILED(hr)) {
+            fail(format("no video processor from NV12 %dx%d to B8G8R8A8 %dx%d (0x%08X): its pictures are read back instead", frameWidth, frameHeight, visibleWidth,
+                        visibleHeight, unsigned(hr)));
+            dropProcessor();
+            gpuOff = true;
+            return false;
+        }
+        vpGeneration++;
+        vpInWidth = frameWidth;
+        vpInHeight = frameHeight;
+        vpOutWidth = visibleWidth;
+        vpOutHeight = visibleHeight;
+        const bool b709 = matrix == MEGLER_CODEC_BT709 || (matrix != MEGLER_CODEC_BT601 && visibleHeight >= 720);
+        D3D11_VIDEO_PROCESSOR_COLOR_SPACE from = {}, to = {};
+        from.YCbCr_Matrix = b709 ? 1 : 0;
+        from.Nominal_Range = fullRange ? D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_0_255 : D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_16_235;
+        to.RGB_Range = 0; // 0 to 255
+        g.videoContext->VideoProcessorSetStreamColorSpace(vp.get(), 0, &from);
+        g.videoContext->VideoProcessorSetOutputColorSpace(vp.get(), &to);
+        g.videoContext->VideoProcessorSetStreamFrameFormat(vp.get(), 0, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE);
+        g.videoContext->VideoProcessorSetStreamAutoProcessingMode(vp.get(), 0, FALSE);
+        const RECT source = {cropX, cropY, cropX + visibleWidth, cropY + visibleHeight}, whole = {0, 0, visibleWidth, visibleHeight};
+        g.videoContext->VideoProcessorSetStreamSourceRect(vp.get(), 0, TRUE, &source);
+        g.videoContext->VideoProcessorSetStreamDestRect(vp.get(), 0, TRUE, &whole);
+        g.videoContext->VideoProcessorSetOutputTargetRect(vp.get(), TRUE, &whole);
+        return true;
+    }
+
+    /// The video processor's view of a slice of one of the decoder's textures, made once (the decoder's pool is a few
+    /// texture arrays that stay as they are until the output type changes).
+    ID3D11VideoProcessorInputView* inputView(ID3D11Texture2D* texture, UINT slice) {
+        for (const InputView& v : inputViews)
+            if (v.texture.get() == texture && v.slice == slice) return v.view.get();
+        if (inputViews.size() >= 64) inputViews.clear();
+        D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC desc = {};
+        desc.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
+        desc.Texture2D.ArraySlice = slice;
+        InputView v;
+        v.texture.copy_from(texture);
+        v.slice = slice;
+        if (FAILED(gpuVideo().video->CreateVideoProcessorInputView(texture, vpEnumerator.get(), &desc, v.view.put()))) return nullptr;
+        inputViews.push_back(std::move(v));
+        return inputViews.back().view.get();
+    }
+
+    /// A picture the decoder made on the graphics processor, turned into colour there, into a texture of the pool's, and
+    /// queued as MEGLER_CODEC_GPU; the decoder's sample is let go as this returns. False where the sample is not on the
+    /// graphics processor or that cannot be done: it is then read back as any other.
+    bool takeGpuPicture(IMFSample* sample) {
+        winrt::com_ptr<IMFMediaBuffer> buffer;
+        if (FAILED(sample->GetBufferByIndex(0, buffer.put()))) return false;
+        auto dxgi = buffer.try_as<IMFDXGIBuffer>();
+        winrt::com_ptr<ID3D11Texture2D> texture;
+        UINT slice = 0;
+        if (!dxgi || FAILED(dxgi->GetResource(__uuidof(ID3D11Texture2D), texture.put_void())) || FAILED(dxgi->GetSubresourceIndex(&slice))) return false;
+        if (!videoProcessor()) return false;
+        GpuVideo& g = gpuVideo();
+        ID3D11VideoProcessorInputView* input = inputView(texture.get(), slice);
+        GpuPool::Slot out = pool->take(g.device.get(), visibleWidth, visibleHeight);
+        if (out.texture && (!out.view || out.madeFor != vpGeneration)) {
+            D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC desc = {};
+            desc.ViewDimension = D3D11_VPOV_DIMENSION_TEXTURE2D;
+            out.view = nullptr;
+            if (FAILED(g.video->CreateVideoProcessorOutputView(out.texture.get(), vpEnumerator.get(), &desc, out.view.put()))) out.view = nullptr;
+            out.madeFor = vpGeneration;
+        }
+        if (!input || !out.texture || !out.view) {
+            fail(format("a picture of %dx%d on the graphics processor has no %s there: read back instead", visibleWidth, visibleHeight,
+                        !input ? "input view" : !out.texture ? "texture to be turned into" : "output view"));
+            return false;
+        }
+        D3D11_VIDEO_PROCESSOR_STREAM stream = {};
+        stream.Enable = TRUE;
+        stream.pInputSurface = input;
+        step = "VideoProcessorBlt";
+        const HRESULT hr = g.videoContext->VideoProcessorBlt(vp.get(), out.view.get(), 0, 1, &stream);
+        if (FAILED(hr)) {
+            fail(format("VideoProcessorBlt 0x%08X: its pictures are read back instead", unsigned(hr)));
+            gpuOff = true;
+            return false;
+        }
+        LONGLONG time = 0;
+        if (FAILED(sample->GetSampleTime(&time))) time = lastInputUs * 10;
+        auto picture = std::make_unique<Picture>();
+        picture->pool = pool;
+        picture->slot = std::move(out);
+        megler_codec_picture& p = picture->info;
+        p.format = MEGLER_CODEC_GPU;
+        p.width = visibleWidth;
+        p.height = visibleHeight;
+        p.matrix = matrix;
+        p.full_range = fullRange;
+        p.time_us = time / 10;
+        if (!pictures++)
+            shellLog::write(format("codec: the first %s picture from %s, %dx%d on the graphics processor (decoded %dx%d, slice %u of the decoder's texture), at %lld ms",
+                                   kindName(kind), name.c_str(), visibleWidth, visibleHeight, frameWidth, frameHeight, slice, (long long)(time / 10000)));
+        gpuPictures++;
+        std::lock_guard<std::mutex> lock(mutex);
+        ready.push_back(picture.release());
+        return true;
+    }
+
     /// The first output type of this subtype the decoder offers, or null.
     winrt::com_ptr<IMFMediaType> offeredOutput(const GUID& wanted) {
         for (DWORD i = 0;; i++) {
@@ -339,6 +668,8 @@ struct CodecHost::Codec {
     /// The picture's output type: NV12 (or, from a decoder of ten-bit streams that offers nothing else, P010), the size,
     /// the visible part, the rows.
     bool chooseVideoOutput() {
+        // (A new output type is new textures of the decoder's, maybe of a new size: the video processor is made again.)
+        dropProcessor();
         step = "GetOutputAvailableType";
         winrt::com_ptr<IMFMediaType> type = tenBitsFirst ? offeredOutput(MFVideoFormat_P010) : nullptr;
         p010 = type != nullptr;
@@ -454,6 +785,7 @@ struct CodecHost::Codec {
 
     /// The decoder set up for `format`; false, said in the log, when it will not be.
     bool configure(const megler_codec_format& f) {
+        DeviceLock lock(gpu);
         DWORD ins = 0, outs = 0;
         if (SUCCEEDED(transform->GetStreamCount(&ins, &outs)) && (ins != 1 || outs != 1)) {
             fail(format("%lu inputs and %lu outputs", ins, outs));
@@ -518,8 +850,22 @@ struct CodecHost::Codec {
         return sample;
     }
 
-    /// A decoded picture into the queue: its buffer held, or (a decoder's own buffer) copied.
+    /// A decoded picture into the queue: on the graphics processor, where it was decoded there (takeGpuPicture); else its
+    /// buffer held, or (a decoder's own buffer, the graphics processor's too) copied.
     void takePicture(IMFSample* sample) {
+        if (gpu && !gpuOff) {
+            // Below feature level 10_0 every picture held is a B8G8R8A8 copy of its own, four bytes a pixel, as on
+            // venetium-w10m: up to 1280x720 there (an app holds up to eight, 30 MB); larger ones are read back as NV12.
+            if (gpuVideo().level < D3D_FEATURE_LEVEL_10_0 && size_t(visibleWidth) * size_t(visibleHeight) > size_t(1280) * 720) {
+                if (!bigSaid)
+                    shellLog::write(format("codec: %s pictures of %dx%d are decoded on the graphics processor and read back: at feature level 9_3 a copy "
+                                           "of each held there would be %d MB",
+                                           kindName(kind), visibleWidth, visibleHeight, visibleWidth * visibleHeight * 4 >> 20));
+                bigSaid = true;
+            } else if (takeGpuPicture(sample)) {
+                return;
+            }
+        }
         auto picture = std::make_unique<Picture>();
         LONGLONG time = 0;
         if (FAILED(sample->GetSampleTime(&time))) time = lastInputUs * 10;
@@ -531,11 +877,24 @@ struct CodecHost::Codec {
         BYTE* base = nullptr;
         LONG pitch = 0;
         DWORD length = 0;
+        // The chroma follows the luma of all the rows there are: a picture on the graphics processor (read back here, the
+        // buffer mapping its texture) has its texture's height of them, which may be more than the output type's (a
+        // decoder's textures are of whole macroblocks).
+        size_t lumaRows = size_t(frameHeight);
+        if (auto dxgi = buffer.try_as<IMFDXGIBuffer>()) {
+            winrt::com_ptr<ID3D11Texture2D> texture;
+            D3D11_TEXTURE2D_DESC desc = {};
+            if (SUCCEEDED(dxgi->GetResource(__uuidof(ID3D11Texture2D), texture.put_void())) && texture) {
+                texture->GetDesc(&desc);
+                if (int(desc.Height) > frameHeight) lumaRows = desc.Height;
+            }
+        }
         if (auto planar = buffer.try_as<IMF2DBuffer>(); planar && SUCCEEDED(planar->Lock2D(&base, &pitch)) && base && pitch > 0) {
             picture->planar = planar;
-            length = DWORD(pitch) * DWORD(frameHeight) * 3 / 2;
+            length = DWORD(pitch) * DWORD(lumaRows) * 3 / 2;
         } else if (SUCCEEDED(buffer->Lock(&base, nullptr, &length)) && base) {
             pitch = stride;
+            lumaRows = size_t(frameHeight);
         } else {
             fail("a picture's buffer could not be locked");
             return;
@@ -547,7 +906,7 @@ struct CodecHost::Codec {
         }
         const size_t bytes = p010 ? 2 : 1; // a sample's
         const BYTE* luma = base + size_t(cropY) * size_t(pitch) + size_t(cropX) * bytes;
-        const BYTE* chroma = base + size_t(frameHeight) * size_t(pitch) + size_t(cropY / 2) * size_t(pitch) + size_t(cropX) * bytes;
+        const BYTE* chroma = base + lumaRows * size_t(pitch) + size_t(cropY / 2) * size_t(pitch) + size_t(cropX) * bytes;
         if (decoderSamples || p010) {
             // The decoder's own buffer goes back to it, or P010 is made NV12: the visible part copied out, eight bits a
             // sample (P010 has its ten in the high bits of sixteen: the high byte of each, little-endian).
@@ -676,6 +1035,8 @@ struct CodecHost::Codec {
 
     bool push(const uint8_t* data, size_t size, int64_t timeUs) {
         if (!transform) { fail("no active decoder"); return false; }
+        // (A decoder on the graphics processor uses the device's immediate context, which Direct2D draws with too.)
+        DeviceLock lock(gpu);
         winrt::com_ptr<IMFSample> sample;
         winrt::com_ptr<IMFMediaBuffer> buffer;
         BYTE* to = nullptr;
@@ -707,6 +1068,7 @@ struct CodecHost::Codec {
 
     void drain() {
         if (!transform) return;
+        DeviceLock lock(gpu);
         step = "ProcessMessage(COMMAND_DRAIN)";
         transform->ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN, 0);
         takeOutputs();
@@ -723,6 +1085,7 @@ struct CodecHost::Codec {
         // picture and drops the tail of the next GOP (also on the Lumia 950 XL).
         // Recreate the MFT, with owned configuration bytes, for an independent
         // decode after a seek. All COM work stays on this codec's timed worker.
+        DeviceLock lock(gpu);
         if (kind == MEGLER_CODEC_H265 && activation) {
             spare = nullptr;
             transform = nullptr;
@@ -732,11 +1095,14 @@ struct CodecHost::Codec {
             const HRESULT hr = activation->ActivateObject(__uuidof(IMFTransform), transform.put_void());
             initialFormat.config = configuration.empty() ? nullptr : configuration.data();
             initialFormat.config_size = configuration.size();
+            const bool wasGpu = gpu;
+            if (SUCCEEDED(hr) && wasGpu) useGpu();
             if (FAILED(hr) || !configure(initialFormat)) {
                 fail("could not recreate HEVC decoder after flush");
                 transform = nullptr;
+                gpu = false;
             } else {
-                shellLog::write("codec: HEVC decoder recreated after flush");
+                shellLog::write(std::string("codec: HEVC decoder recreated after flush") + (wasGpu && !gpu ? ", in software now (" + gpuWhy + ")" : ""));
             }
         } else if (transform) {
             step = "ProcessMessage(COMMAND_FLUSH)";
@@ -764,6 +1130,8 @@ megler_codec_host CodecHost::callbacks() {
     host.pull_sound = &pullSoundThunk;
     host.flush = &flushThunk;
     host.close = &closeThunk;
+    host.read_picture = &readPictureThunk;
+    host.show_picture = &showPictureThunk;
     return host;
 }
 
@@ -846,7 +1214,14 @@ void* CodecHost::openThunk(void*, int kind, const megler_codec_format* asked) {
             }
             c->transform = transform;
             c->failures = 0;
+            c->useGpu();
             *ok = c->configure(wanted);
+            if (!*ok && c->gpu) {
+                // (Set up for the graphics processor it would not be: in software, as before.)
+                c->leaveGpu("its types were refused with the device");
+                c->failures = 0;
+                *ok = c->configure(wanted);
+            }
             if (*ok) {
                 c->activation = found.activates[i];
                 c->initialFormat = wanted;
@@ -860,8 +1235,11 @@ void* CodecHost::openThunk(void*, int kind, const megler_codec_format* asked) {
         }
         if (*ok) {
             if (isVideo(kind))
-                shellLog::write(format("codec: an %s decoder, %s, for %dx%d%s", kindName(kind), c->name.c_str(), wanted.width, wanted.height,
-                                       c->lowLatency ? ", low latency" : lowLatencyWanted() ? ", low latency refused" : ", low latency not asked for (flag)"));
+                shellLog::write(format("codec: an %s decoder, %s, for %dx%d%s, %s", kindName(kind), c->name.c_str(), wanted.width, wanted.height,
+                                       c->lowLatency ? ", low latency" : lowLatencyWanted() ? ", low latency refused" : ", low latency not asked for (flag)",
+                                       c->gpu ? "on the graphics processor"
+                                       : c->gpuWhy.empty() ? "in software"
+                                                           : ("in software: " + c->gpuWhy).c_str()));
             else
                 shellLog::write(format("codec: an %s decoder, %s, for %d Hz in %d channels (gives %d Hz in %d)", kindName(kind), c->name.c_str(), wanted.sample_rate,
                                        wanted.channels, c->rate, c->outChannels));
@@ -906,6 +1284,67 @@ void* CodecHost::pullPictureThunk(void*, void* codec, megler_codec_picture* pict
 
 void CodecHost::releasePictureThunk(void*, void* picture) { delete static_cast<Picture*>(picture); }
 
+bool CodecHost::readPictureThunk(void*, void* picture, megler_codec_picture* out) {
+    auto* p = static_cast<Picture*>(picture);
+    if (p->info.format != MEGLER_CODEC_GPU) {
+        *out = p->info;
+        return true;
+    }
+    if (p->read.data) {
+        *out = p->read;
+        return true;
+    }
+    GpuVideo& g = gpuVideo();
+    if (!p->slot.texture || !p->pool || !g.ok) return false;
+    const int w = p->info.width, h = p->info.height;
+    bool ok = false;
+    {
+        // One staging texture of the pool's, the picture copied into it and mapped (which waits for the copy).
+        DeviceLock lock(true);
+        std::lock_guard<std::mutex> staging(p->pool->mutex);
+        winrt::com_ptr<ID3D11Texture2D>& s = p->pool->staging;
+        D3D11_TEXTURE2D_DESC desc = {};
+        if (s) s->GetDesc(&desc);
+        if (!s || int(desc.Width) != w || int(desc.Height) != h) {
+            s = nullptr;
+            desc = {};
+            desc.Width = UINT(w);
+            desc.Height = UINT(h);
+            desc.MipLevels = 1;
+            desc.ArraySize = 1;
+            desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            desc.SampleDesc.Count = 1;
+            desc.Usage = D3D11_USAGE_STAGING;
+            desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            if (FAILED(g.device->CreateTexture2D(&desc, nullptr, s.put()))) s = nullptr;
+        }
+        D3D11_MAPPED_SUBRESOURCE mapped = {};
+        if (s) {
+            g.immediate->CopyResource(s.get(), p->slot.texture.get());
+            if (SUCCEEDED(g.immediate->Map(s.get(), 0, D3D11_MAP_READ, 0, &mapped)) && mapped.pData) {
+                p->copy.resize(size_t(w) * size_t(h) * 4);
+                for (int y = 0; y < h; y++)
+                    memcpy(p->copy.data() + size_t(y) * size_t(w) * 4, static_cast<const uint8_t*>(mapped.pData) + size_t(y) * mapped.RowPitch, size_t(w) * 4);
+                g.immediate->Unmap(s.get(), 0);
+                ok = true;
+            }
+        }
+    }
+    if (!ok) return false;
+    p->read = p->info;
+    p->read.format = MEGLER_CODEC_BGRA;
+    p->read.data = p->copy.data();
+    p->read.stride = w * 4;
+    *out = p->read;
+    return true;
+}
+
+bool CodecHost::showPictureThunk(void*, void* picture, int textureId) {
+    auto* p = static_cast<Picture*>(picture);
+    return p->info.format == MEGLER_CODEC_GPU && p->slot.texture &&
+           GfxHost::shared().showVideoFrame(textureId, p->slot.texture.get(), p->info.width, p->info.height);
+}
+
 bool CodecHost::pullSoundThunk(void*, void* codec, megler_codec_sound* sound) {
     auto* c = static_cast<Codec*>(codec);
     std::lock_guard<std::mutex> lock(c->mutex);
@@ -933,14 +1372,17 @@ void CodecHost::closeThunk(void*, void* codec) {
         return;
     }
     const bool ran = c->worker->run([c] {
+        DeviceLock lock(c->gpu);
         if (c->transform) {
             c->transform->ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
             c->transform->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
         }
-        shellLog::write(format("codec: an %s decoder (%s) closed after %llu samples, %llu pictures, %llu blocks of sound, %llu failures", kindName(c->kind),
-                               c->name.c_str(), (unsigned long long)c->pushed, (unsigned long long)c->pictures, (unsigned long long)c->blocks,
-                               (unsigned long long)c->failures));
+        shellLog::write(format("codec: an %s decoder (%s) closed after %llu samples, %llu pictures (%llu of them on the graphics processor), %llu blocks of "
+                               "sound, %llu failures",
+                               kindName(c->kind), c->name.c_str(), (unsigned long long)c->pushed, (unsigned long long)c->pictures,
+                               (unsigned long long)c->gpuPictures, (unsigned long long)c->blocks, (unsigned long long)c->failures));
         c->spare = nullptr;
+        c->dropProcessor();
         c->transform = nullptr;
         c->activation = nullptr;
     });

@@ -20,7 +20,15 @@ extern "C" {
  * checks and adds the number made to *checks.
  */
 struct megler_codec_host;
+struct megler_gfx_host;
 int mg_codec_tests_run(const char *streams, const struct megler_codec_host *host, mg_test_sink sink, void *user, int *checks);
+/*
+ * Pictures decoded on the graphics processor (the shell's host with GfxHost's device): avc.mgau, every picture shown as a
+ * texture's frame and drawn by a canvas of `gfx` on the graphics processor, and read back, the grey its number says both
+ * ways. Where the host's pictures are not on the graphics processor, that is said and nothing more is checked.
+ */
+int mg_codec_gpu_run(const char *streams, const struct megler_codec_host *host, const struct megler_gfx_host *gfx, mg_test_sink sink, void *user,
+                     int *checks);
 /* Only the tests of H.265, Main and Main 10 (`how` says in their names what is different about the host this time). */
 int mg_codec_tests_h265_run(const char *streams, const struct megler_codec_host *host, const char *how, mg_test_sink sink, void *user, int *checks);
 

@@ -20,6 +20,22 @@
 // (MF_E_TRANSFORM_STREAM_CHANGE) is followed: the output type is chosen again
 // and the next pictures say their new size.
 //
+// Pictures are decoded on the graphics processor wherever a decoder takes a
+// Direct3D 11 device (MF_SA_D3D11_AWARE), as venetium-w10m's Chromium decodes
+// on ANGLE's: the device is GfxHost's own, the one the app's views are drawn
+// on (made with the video interfaces), handed to the decoder through a DXGI
+// device manager. Each picture is turned into B8G8R8A8 there by the video
+// processor (feature level 9_3 has that, though a shader there cannot sample
+// NV12) into a texture of a small pool of this file's, and the decoder's
+// sample goes back to it at once. The core gets it as MEGLER_CODEC_GPU: a
+// TextureView shows it from there (show_picture, GfxHost::showVideoFrame),
+// and only what wants it in memory has it read back (read_picture). Every
+// call that may use the device's immediate context, the decoder's own
+// included, is made under GfxHost's lock, Direct2D drawing with it too.
+// Below feature level 10_0 pictures larger than 1280x720 are read back as
+// NV12 instead, a copy of each held one in B8G8R8A8 being too big there. The
+// flag codec-no-gpu decodes in software, as before.
+//
 // Each decoder has a thread of its own in COM's multithreaded apartment, where
 // all of its Media Foundation calls are made: the threads that ask are the
 // app's, running Android code on stacks of the size the app chose (as
@@ -71,6 +87,8 @@ private:
     static bool pullSoundThunk(void* user, void* codec, megler_codec_sound* sound);
     static void flushThunk(void* user, void* codec);
     static void closeThunk(void* user, void* codec);
+    static bool readPictureThunk(void* user, void* picture, megler_codec_picture* out);
+    static bool showPictureThunk(void* user, void* picture, int textureId);
 };
 
 } // namespace megler::app

@@ -761,6 +761,23 @@ static int codec_windows_mode(int argc, char **argv)
     failed += mg_codec_tests_h265_run(argv[2], mg_codec_windows_host(), "P010 taken where the decoder offers it", NULL, NULL, &checks);
     mg_codec_windows_ten_bits(0);
     if (argc >= 5) failed += mg_codec_speed_run(argv[4], mg_codec_windows_host(), NULL, NULL, &checks);
+#ifdef MG_GFX_WINDOWS
+    {
+        /* And on the graphics processor: the shell's drawing started there first, as an app's first drawing starts it, its
+           device then the decoders' too (CodecHost decodes on GfxHost's device, DXVA), the pictures shown from there. */
+        const megler_gfx_host *gfx = mg_gfx_windows_host(print_line, NULL, 0);
+        u32 px[16];
+        void *cv = gfx->canvas_new(gfx->user, px, 4, 4, 16);
+        if (cv) {
+            gfx->draw_color(gfx->user, cv, 0xFF000000u, MEGLER_GFX_BLEND_SRC);
+            gfx->flush(gfx->user, cv);
+            gfx->canvas_free(gfx->user, cv);
+        }
+        if (mg_gfx_windows_on_gpu()) failed += mg_codec_gpu_run(argv[2], mg_codec_windows_host(), gfx, NULL, NULL, &checks);
+        else printf("  (no graphics processor to draw on here: pictures decoded on it are not tried)\n");
+        if (argc >= 5 && mg_gfx_windows_on_gpu()) failed += mg_codec_speed_run(argv[4], mg_codec_windows_host(), NULL, NULL, &checks);
+    }
+#endif
     /* A decoder that does not come back from a call (the phone's HEVCVideoExtension did not, from its first sample): the
        call is given up on after its limit, and the next one answers at once, so that the app's thread is not held. */
     /* Files of sound alone, which the reader of films refused ("no picture in the file") until it took them for their sound. */
