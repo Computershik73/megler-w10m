@@ -353,8 +353,17 @@ private:
     bool on_;
 };
 
+/// The bytes of the textures pictures are turned into that are there now, every decoder's (GpuPool): what a held picture
+/// costs on the graphics processor, which on a phone is the phone's memory.
+std::atomic<int64_t> gPictureBytes{0};
+
+/// How much of that there may be before a decoder's next pictures are read back instead: 64 MB below feature level 10_0
+/// (phones of 1 GB, whose apps get about 390 MB), 256 MB above. TikTok Lite holds a few pictures of each of two or three
+/// decoders, and its process was at 770 MB on a Lumia 650.
+int64_t pictureBudget(D3D_FEATURE_LEVEL level) { return int64_t(level < D3D_FEATURE_LEVEL_10_0 ? 64 : 256) << 20; }
+
 /// The textures a decoder's pictures are turned into, B8G8R8A8 of the pictures' visible size: one each while the picture is
-/// held, then back here for the next (at most four kept). Shared with the pictures, which may outlive their decoder.
+/// held, then back here for the next (at most two kept). Shared with the pictures, which may outlive their decoder.
 struct GpuPool {
     struct Slot {
         winrt::com_ptr<ID3D11Texture2D> texture;
@@ -366,11 +375,16 @@ struct GpuPool {
     std::vector<Slot> free;
     winrt::com_ptr<ID3D11Texture2D> staging; // for read_picture, under GfxHost's lock
 
+    static int64_t bytes(int w, int h) { return int64_t(w) * int64_t(h) * 4; }
+
+    ~GpuPool() { gPictureBytes -= int64_t(free.size()) * bytes(width, height); }
+
     /// A slot of width x height: a kept one, or a new texture; empty when none can be made.
     Slot take(ID3D11Device* device, int w, int h) {
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (w != width || h != height) {
+                gPictureBytes -= int64_t(free.size()) * bytes(width, height);
                 free.clear();
                 staging = nullptr;
                 width = w;
@@ -393,6 +407,7 @@ struct GpuPool {
         desc.Usage = D3D11_USAGE_DEFAULT;
         desc.BindFlags = D3D11_BIND_RENDER_TARGET;
         if (FAILED(device->CreateTexture2D(&desc, nullptr, s.texture.put()))) s.texture = nullptr;
+        else gPictureBytes += bytes(w, h);
         return s;
     }
 
@@ -401,7 +416,12 @@ struct GpuPool {
         D3D11_TEXTURE2D_DESC desc = {};
         s.texture->GetDesc(&desc);
         std::lock_guard<std::mutex> lock(mutex);
-        if (int(desc.Width) == width && int(desc.Height) == height && free.size() < 4) free.push_back(std::move(s));
+        if (int(desc.Width) == width && int(desc.Height) == height && free.size() < 2) {
+            free.push_back(std::move(s));
+            return;
+        }
+        gPictureBytes -= bytes(int(desc.Width), int(desc.Height));
+        s.texture = nullptr;
     }
 };
 
@@ -446,6 +466,7 @@ struct CodecHost::Codec {
     bool gpu = false;
     bool gpuOff = false;             // the video processor failed: pictures read back from the decoder's buffers instead
     bool bigSaid = false;            // pictures too big to keep a copy of each on this feature level, said
+    uint64_t overBudget = 0;         // pictures read back because those held on the graphics processor were as many as they may be
     std::string gpuWhy;              // why it decodes in software where the device is there
     winrt::com_ptr<ID3D11VideoProcessorEnumerator> vpEnumerator;
     winrt::com_ptr<ID3D11VideoProcessor> vp;
@@ -885,6 +906,12 @@ struct CodecHost::Codec {
                                            "of each held there would be %d MB",
                                            kindName(kind), visibleWidth, visibleHeight, visibleWidth * visibleHeight * 4 >> 20));
                 bigSaid = true;
+            } else if (gPictureBytes.load() + GpuPool::bytes(visibleWidth, visibleHeight) > pictureBudget(gpuVideo().level)) {
+                // (The pictures held on the graphics processor, every decoder's, are as many as they may be: this one is read
+                // back, and the next goes there again once the app has let some go.)
+                if (!overBudget++)
+                    shellLog::write(format("codec: %s (%s): pictures held on the graphics processor reached %lld MB: one is read back instead (said once)",
+                                           kindName(kind), name.c_str(), (long long)(gPictureBytes.load() >> 20)));
             } else if (takeGpuPicture(sample)) {
                 return;
             }
@@ -1064,11 +1091,13 @@ struct CodecHost::Codec {
         if (!timesFrom) timesFrom = now;
         if (now - timesFrom < 5000000000ull || !isVideo(kind)) return;
         const double ms = 1e-6;
+        const std::string read = overBudget ? format(" (%llu read back for that so far)", (unsigned long long)overBudget) : std::string();
         shellLog::write(format("codec: %s (%s), %.1f s: %llu samples, %llu pictures (%llu on the graphics processor); %.0f ms in the decoder's calls%s, %.0f ms "
-                               "turning pictures into colour",
+                               "turning pictures into colour; every decoder's pictures there take %lld MB now%s",
                                kindName(kind), name.c_str(), double(now - timesFrom) * 1e-9, (unsigned long long)timesSamples, (unsigned long long)timesPictures,
                                (unsigned long long)timesGpu, double(callNs - std::min(callNs, colourNs)) * ms,
-                               gpu ? (lockDecoderCalls() ? " (holding the device's lock)" : " (not holding the device's lock)") : "", double(colourNs) * ms));
+                               gpu ? (lockDecoderCalls() ? " (holding the device's lock)" : " (not holding the device's lock)") : "", double(colourNs) * ms,
+                               (long long)(gPictureBytes.load() >> 20), read.c_str()));
         timesFrom = now;
         callNs = colourNs = timesSamples = timesPictures = timesGpu = 0;
     }
