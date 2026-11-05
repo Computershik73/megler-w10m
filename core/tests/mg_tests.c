@@ -1102,45 +1102,85 @@ static void test_media(const char *scratch)
  * (MAP_FIXED) it is given back, and zero when given access again; memory mapped with access is committed at once. Where
  * the host does not say what is committed (POSIX), the behaviour alone is checked.
  */
+#if MG_GUEST_CODE && !MG_ARCH_ARM32
+/* g_abi_nr: the guest ABI's number of each call of syscall()'s and 32-bit ARM's (bionic/mg_syscall_abi.c). */
+#include "../src/bionic/mg_syscall_abi.inc"
+#endif
+
+/* The guest ABI's number of the call 32-bit ARM numbers `arm`, which the tests below are written in; -1 where it has none. */
+static long abi_nr(long arm)
+{
+#if MG_GUEST_CODE && !MG_ARCH_ARM32
+    size_t i;
+    for (i = 0; i < MG_COUNT(g_abi_nr); i++)
+        if (g_abi_nr[i][1] == arm) return g_abi_nr[i][0];
+    return -1;
+#else
+    return arm;
+#endif
+}
+
+typedef long (*syscall_fn)(long, long, long, long, long, long, long);
+static syscall_fn g_sys;
+
+/* syscall() with 32-bit ARM's number of a call, as the guest's ABI numbers it (ENOSYS for one it has not). */
+static long sys(long arm, long a, long b, long c, long d, long e, long f)
+{
+    long nr = abi_nr(arm);
+    return g_sys(nr < 0 ? 100000 : nr, a, b, c, d, e, f);
+}
+
 /*
  * syscall() by number for pipes, epoll and eventfd, as Discord's media engine made its event loop (it said "syscall(359) is
  * not supported", and 357, 356, 351): each gives a descriptor that works -- a byte through the pipe, the eventfd's count,
- * the pipe's read end ready in the epoll set.
+ * the pipe's read end ready in the epoll set. Each call by the ABI's own number (ARM64 has no eventfd, epoll_wait, open or
+ * unlink, only their newer forms, which take their place there).
  */
 static void test_syscall_fds(const char *scratch)
 {
-    typedef long (*syscall_fn)(long, long, long, long, long, long, long);
     typedef int (*close_fn)(int);
     typedef long (*io_fn)(int, void *, size_t);
-    syscall_fn sys = (syscall_fn)mg_bionic_find("syscall");
     close_fn close_ = (close_fn)mg_bionic_find("close");
     io_fn write_ = (io_fn)mg_bionic_find("write"), read_ = (io_fn)mg_bionic_find("read");
     int fds[2] = { -1, -1 }, ev, ep, ready;
     u8 b = 0;
     u64 count = 0, one = 1;
-    u64 event[2] = { 1 /* EPOLLIN */, 7 }, got[2] = { 0, 0 };   /* ARM's epoll_event: events, then data at 8 */
+    u64 event[2] = { 1 /* EPOLLIN */, 7 }, got[2] = { 0, 0 };   /* epoll_event: events, then data at 8 (at 4 on x86_64, packed) */
     /* syscall()'s arguments are longs, addresses among them, as on the guest's ARM: a long holds an address only where
        both are 32 bits (Windows' x64 build has longs of 32 bits and addresses of 64). */
     if (sizeof(long) < sizeof(void *)) {
         say("syscall() by number: left out, a long does not hold an address on this build");
         return;
     }
+    g_sys = (syscall_fn)mg_bionic_find("syscall");
     say("syscall() by number: pipe2, eventfd2, eventfd, epoll_create1, epoll_ctl, epoll_wait");
-    CHECK(sys && close_ && write_ && read_);
-    if (!sys || !close_ || !write_ || !read_) return;
+    CHECK(g_sys && close_ && write_ && read_);
+    if (!g_sys || !close_ || !write_ || !read_) return;
+#if MG_ARCH_X86_64
+    /* (x86_64's epoll_event is packed: its data at 4.) */
+    event[0] = 1 | (7ull << 32);
+    event[1] = 0;
+#endif
     CHECK(sys(359, (long)(mg_addr)fds, 0, 0, 0, 0, 0) == 0 && fds[0] >= 0 && fds[1] >= 0);
     b = 42;
     CHECK(write_(fds[1], &b, 1) == 1);
     ev = (int)sys(356, 0, 0, 0, 0, 0, 0);
     CHECK(ev >= 0 && write_(ev, &one, 8) == 8 && read_(ev, &count, 8) == 8 && count == 1);
     if (ev >= 0) close_(ev);
-    ev = (int)sys(351, 3, 0, 0, 0, 0, 0);
-    CHECK(ev >= 0 && read_(ev, &count, 8) == 8 && count == 3);
-    if (ev >= 0) close_(ev);
+    if (abi_nr(351) >= 0) {
+        ev = (int)sys(351, 3, 0, 0, 0, 0, 0);
+        CHECK(ev >= 0 && read_(ev, &count, 8) == 8 && count == 3);
+        if (ev >= 0) close_(ev);
+    }
     ep = (int)sys(357, 0, 0, 0, 0, 0, 0);
     CHECK(ep >= 0 && sys(251, ep, 1 /* EPOLL_CTL_ADD */, fds[0], (long)(mg_addr)event, 0, 0) == 0);
-    ready = (int)sys(252, ep, (long)(mg_addr)got, 1, 0, 0, 0);
+    /* (epoll_wait where the ABI has it, else epoll_pwait with no mask.) */
+    ready = abi_nr(252) >= 0 ? (int)sys(252, ep, (long)(mg_addr)got, 1, 0, 0, 0) : (int)sys(346, ep, (long)(mg_addr)got, 1, 0, 0, 0);
+#if MG_ARCH_X86_64
+    CHECK(ready == 1 && (got[0] & 1) && (got[0] >> 32) == 7);
+#else
     CHECK(ready == 1 && (got[0] & 1) && got[1] == 7);
+#endif
     b = 0;
     CHECK(read_(fds[0], &b, 1) == 1 && b == 42);
     if (ep >= 0) close_(ep);
@@ -1150,8 +1190,8 @@ static void test_syscall_fds(const char *scratch)
     /* Files by number, as TikTok Lite's loader writes its libraries out (syscall(__NR_open)): open, write, close, open
        again, lseek, read, fstat64 (st_size at 48 in ARM's struct stat64, at 44 in x86's, whose long long is 4-aligned, and
        at 48 in the 64-bit ABIs' struct stat, 144 bytes on x86_64), syncfs (and EBADF for a descriptor not open, as Google
-       Maps asks), close, unlink; and sched_getaffinity, whose raw call says the mask's size. (The numbers are ARM EABI's,
-       which the core's syscall() takes on every processor.) */
+       Maps asks), close, unlink; and sched_getaffinity, whose raw call says the mask's size. (Each by the ABI's own number:
+       openat and unlinkat where it has no open or unlink, ARM64.) */
     {
         enum { ST_SIZE_AT = MG_ARCH_X86 ? 44 : 48 };
         const char *file = "/syscall-files/written.bin";
@@ -1160,15 +1200,19 @@ static void test_syscall_fds(const char *scratch)
         int fd;
         mg_fs_mount("/syscall-files", scratch);
         say("syscall() by number: open, write, read, lseek, fstat64, syncfs, close, unlink, sched_getaffinity");
-        fd = (int)sys(5, (long)(mg_addr)file, 01 | 0100 | 01000, 0600, 0, 0, 0);   /* O_WRONLY | O_CREAT | O_TRUNC */
+#define OPEN_(path, flags, mode) (abi_nr(5) >= 0 ? sys(5, (long)(mg_addr)(path), flags, mode, 0, 0, 0) \
+                                                : sys(322, -100 /* AT_FDCWD */, (long)(mg_addr)(path), flags, mode, 0, 0))
+        fd = (int)OPEN_(file, 01 | 0100 | 01000, 0600);   /* O_WRONLY | O_CREAT | O_TRUNC */
         CHECK(fd >= 0 && sys(4, fd, (long)(mg_addr)"megler", 6, 0, 0, 0) == 6 && sys(6, fd, 0, 0, 0, 0, 0) == 0);
-        fd = (int)sys(5, (long)(mg_addr)file, 0, 0, 0, 0, 0);
+        fd = (int)OPEN_(file, 0, 0);
         CHECK(fd >= 0 && sys(19, fd, 2, 0, 0, 0, 0) == 2 && sys(3, fd, (long)(mg_addr)back, 4, 0, 0, 0) == 4 && !memcmp(back, "gler", 4));
         memset(st, 0, sizeof(st));
         CHECK(fd >= 0 && sys(197, fd, (long)(mg_addr)st, 0, 0, 0, 0) == 0 && mg_rd32(st + ST_SIZE_AT) == 6);
         CHECK(fd >= 0 && sys(373, fd, 0, 0, 0, 0, 0) == 0 && sys(373, 999, 0, 0, 0, 0, 0) == -1);
-        CHECK(fd >= 0 && sys(6, fd, 0, 0, 0, 0, 0) == 0 && sys(10, (long)(mg_addr)file, 0, 0, 0, 0, 0) == 0);
-        CHECK(sys(5, (long)(mg_addr)file, 0, 0, 0, 0, 0) == -1);
+        CHECK(fd >= 0 && sys(6, fd, 0, 0, 0, 0, 0) == 0
+              && (abi_nr(10) >= 0 ? sys(10, (long)(mg_addr)file, 0, 0, 0, 0, 0) : sys(328, -100, (long)(mg_addr)file, 0, 0, 0, 0)) == 0);
+        CHECK(OPEN_(file, 0, 0) == -1);
+#undef OPEN_
         memset(mask, 0, sizeof(mask));
         CHECK(sys(242, 0, sizeof(mask), (long)(mg_addr)mask, 0, 0, 0) == 4 && mask[0] != 0 && sys(241, 0, sizeof(mask), (long)(mg_addr)mask, 0, 0, 0) == 0);
     }

@@ -147,6 +147,12 @@ char **mg_bionic_initial_argv(void);
 size_t mg_bionic_auxv_words(gulong *out, size_t max);
 /* ARM EABI kernel convention: negative errno in r0, guest errno unchanged. */
 u32 mg_bionic_syscall_raw(const u32 *regs);
+#if MG_GUEST_CODE && !MG_ARCH_ARM32
+/* bionic/mg_syscall_abi.c: the guest's call `nr` and its arguments as 32-bit ARM's, -1 for one not handled, -2 for arguments
+   ARM's cannot take. mg_bionic_syscall: a system call by the guest's own number, -errno on failure (ARM64's svc traps). */
+long mg_syscall_abi_to_arm(long nr, long a[6]);
+long mg_bionic_syscall(long nr, const long args[6]);
+#endif
 void mg_set_errno(int guest_errno);
 /* A host file-layer error (MG_E_*) as a Linux errno. */
 int mg_errno_of(int host_err);

@@ -176,6 +176,16 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
             mg_fault_resume_at(f, target);
             return true;
         }
+#elif MG_ARCH_ARM64
+        /* A patched svc's UDF (arm64/mg_patch_arm64.c): the call's number in x8, its arguments in x0..x5, what it gives in x0. */
+        if (mg_patch_svc_target(pc, &target)) {
+            long args[6];
+            int i;
+            for (i = 0; i < 6; i++) args[i] = (long)f->regs[i];
+            f->regs[0] = (mg_addr)mg_bionic_syscall((long)f->regs[8], args);
+            mg_fault_resume_at(f, target);
+            return true;
+        }
 #endif
         if (f->kind == MG_FAULT_BREAKPOINT) return false;
         if (mg_ld_plt_target(pc, &target) || mg_stubs_once_target(pc, &target)) {

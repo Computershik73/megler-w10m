@@ -504,28 +504,42 @@ static int g_cacheflush(long start, long end, long flags)
  * rt_sigaction by number: the kernel's struct (handler, flags, restorer, a 64-bit mask) to bionic's 32-bit sigaction
  * (handler, a 32-bit mask, flags, restorer) and back. The mask's real-time half is not kept: sigaction here has none.
  */
-static long rt_sigaction(int sig, const u32 *act, u32 *old, size_t mask_size)
+static long rt_sigaction(int sig, const gulong *act, gulong *old, size_t mask_size)
 {
-    typedef int (*sigaction_fn)(int, const u32 *, u32 *);
-    u32 in[4], out[4];
+    /*
+     * The kernel's struct sigaction -- handler, flags, restorer, then the 64-bit mask, each a long -- made bionic's and
+     * back: on the 32-bit ABIs handler, mask (the lower 32 signals), flags, restorer; on the 64-bit ones flags (an int),
+     * handler, mask, restorer (sigaction below).
+     */
+#if MG_GUEST_LP64
+    typedef struct { int flags; gulong handler, mask, restorer; } bionic_sigaction;
+#else
+    typedef struct { gulong handler, mask, flags, restorer; } bionic_sigaction;
+#endif
+    typedef int (*sigaction_fn)(int, const bionic_sigaction *, bionic_sigaction *);
+    bionic_sigaction in, out;
     int r;
     if (mask_size != 8) {
         mg_set_errno(GE_INVAL);
         return -1;
     }
+    memset(&in, 0, sizeof(in));
+    memset(&out, 0, sizeof(out));
     if (act) {
-        in[0] = act[0];
-        in[1] = act[3];
-        in[2] = act[1];
-        in[3] = act[2];
+        in.handler = act[0];
+        in.flags = (int)act[1];
+        in.restorer = act[2];
+        in.mask = act[3];
     }
-    r = ((sigaction_fn)mg_bionic_find("sigaction"))(sig, act ? in : NULL, old ? out : NULL);
+    r = ((sigaction_fn)mg_bionic_find("sigaction"))(sig, act ? &in : NULL, old ? &out : NULL);
     if (r == 0 && old) {
-        old[0] = out[0];
-        old[1] = out[2];
-        old[2] = out[3];
-        old[3] = out[1];
+        old[0] = out.handler;
+        old[1] = (gulong)out.flags;
+        old[2] = out.restorer;
+        old[3] = out.mask;
+#if !MG_GUEST_LP64
         old[4] = 0;
+#endif
     }
     return r;
 }
@@ -622,11 +636,30 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef int (*ppoll_fn)(void *, unsigned, const void *, const void *);
     typedef int (*rlimit_fn)(int, void *);
     typedef int (*prlimit_fn)(int, int, const void *, void *);
+#if MG_GUEST_CODE && !MG_ARCH_ARM32
+    {
+        /* Another ABI's number and arguments, made 32-bit ARM's, which the calls below are written in (mg_syscall_abi.c). */
+        long args[6], arm;
+        args[0] = a; args[1] = b; args[2] = c; args[3] = d; args[4] = e; args[5] = f;
+        arm = mg_syscall_abi_to_arm(nr, args);
+        if (arm == -2) {
+            mg_set_errno(GE_INVAL);
+            return -1;
+        }
+        if (arm < 0) {
+            mg_note_once("syscall(%ld) is not supported", nr);
+            mg_set_errno(GE_NOSYS);
+            return -1;
+        }
+        nr = arm;
+        a = args[0]; b = args[1]; c = args[2]; d = args[3]; e = args[4]; f = args[5];
+    }
+#endif
     switch (nr) {
     case 67:                                                                                                  /* sigaction */
         if (fault_signal_refused(a, b)) return -1;
         return ((sigaction_fn)mg_bionic_find("sigaction"))((int)a, (const void *)(mg_addr)b, (void *)(mg_addr)c);
-    case 174: return rt_sigaction((int)a, (const u32 *)(mg_addr)b, (u32 *)(mg_addr)c, (size_t)d);           /* rt_sigaction */
+    case 174: return rt_sigaction((int)a, (const gulong *)(mg_addr)b, (gulong *)(mg_addr)c, (size_t)d);     /* rt_sigaction */
     case 186: return ((sigaltstack_fn)mg_bionic_find("sigaltstack"))((const void *)(mg_addr)a, (void *)(mg_addr)b);  /* sigaltstack */
     case 385: return ((memfd_fn)mg_bionic_find("memfd_create"))((const char *)(mg_addr)a, (unsigned)b);           /* memfd_create */
     case 20: return g_getpid();                                            /* getpid */
@@ -838,6 +871,19 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
         return -1;
     }
 }
+
+#if MG_GUEST_CODE && !MG_ARCH_ARM32
+/* A system call by the guest's own number, as an svc of its code makes it (ARM64's traps, mg_core.c): -errno on failure. */
+long mg_bionic_syscall(long nr, const long args[6])
+{
+    int *err = mg_errno_ptr();
+    int saved = *err;
+    long result = g_syscall(nr, args[0], args[1], args[2], args[3], args[4], args[5]);
+    if (result == -1) result = -*err;
+    *err = saved;
+    return result;
+}
+#endif
 
 u32 mg_bionic_syscall_raw(const u32 *r)
 {
