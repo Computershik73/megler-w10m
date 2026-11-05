@@ -1242,7 +1242,16 @@ static mg_lib *load_lib(const char *name, bool runtime, const char *host_path)
                 lib->name, (void *)(lib->base + lib->vmin), (unsigned)((lib->vmax - lib->vmin) >> 10), lib->stats.thumb_functions, lib->stats.arm_functions,
                 lib->stats.tp_reads, lib->stats.plt_entries, lib->stats.unresolved ? ", with unresolved imports" : "");
         if (lib->stats.unresolved) mg_warn("ld: %s: %u imports are not provided", lib->name, lib->stats.unresolved);
+#if MG_ARCH_ARM32
         if (lib->stats.tp_reads_failed) mg_err("ld: %s: %u thread-pointer reads are out of an island's reach", lib->name, lib->stats.tp_reads_failed);
+#elif MG_ARCH_X86_64 || MG_ARCH_X86
+        /* (x86/mg_patch_x86.c: libcrypto's 16 were all data among its code -- ChaCha's "expand 32-byte k", AES's tables.) */
+        if (lib->stats.tp_reads_failed)
+            mg_warn("ld: %s: %u reads of the thread pointer's segment at other places than bionic's two slots are left as they are "
+                    "(data among the code reads as such, too)", lib->name, lib->stats.tp_reads_failed);
+#else
+        if (lib->stats.tp_reads_failed) mg_err("ld: %s: %u accesses of the thread pointer are left as they are", lib->name, lib->stats.tp_reads_failed);
+#endif
     }
     load_unlock();
     return lib;
