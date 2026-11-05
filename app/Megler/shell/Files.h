@@ -29,6 +29,9 @@ bool remove(const std::wstring& path);
 bool move(const std::wstring& from, const std::wstring& to);
 /// Copies, replacing what is there.
 bool copy(const std::wstring& from, const std::wstring& to);
+/// What is written of the file put on the disk now (FlushFileBuffers), not when Windows gets to it: a phone that restarts by
+/// itself keeps a file's name and size and may lose what was not on the disk yet.
+bool flush(const std::wstring& path);
 /// Whether two files are of one size and end with the same `bytes`: a copy that never finished is not (Windows gives it
 /// the whole size first, and what was never written of it reads as zeros).
 bool sameEnd(const std::wstring& a, const std::wstring& b, uint32_t bytes);

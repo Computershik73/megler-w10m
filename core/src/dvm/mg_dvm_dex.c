@@ -245,9 +245,23 @@ bool mg_dvm_dex_ready(mg_dvm_dex *d)
         b = (const u8 *)mg_file_map(f, d->map_at, d->map_size, &base, &mapped);
         mg_file_close(f);
     }
-    /* The same file as when its classes were registered, and whole. */
+    /*
+     * The same file as when its classes were registered, and whole. Which check failed is said, with the file and where in
+     * it: Google Play services' shared copy had a DEX file whose bytes did not sum to its checksum on a Lumia 650 after the
+     * phone restarted by itself, and no class of it could be had (package 625).
+     */
     if (!b || ((mg_addr)b & 3) || mg_dvm_rd32(b + 32) != d->size || mg_dvm_rd32(b + 8) != d->checksum || adler32(b + 12, d->size - 12) != d->checksum) {
-        mg_warn("dvm: %s: %s, and none of its classes can be had", d->name, b ? "it is not the file its classes were found in, or it is damaged" : "it cannot be viewed again");
+        if (!b)
+            mg_warn("dvm: %s: it cannot be viewed again (%s at %llu, error %d), and none of its classes can be had", d->name, d->map_path,
+                    (unsigned long long)d->map_at, err);
+        else if (((mg_addr)b & 3) || mg_dvm_rd32(b + 32) != d->size || mg_dvm_rd32(b + 8) != d->checksum)
+            mg_warn("dvm: %s: it is not the file its classes were found in (%s at %llu: its header says %u bytes, checksum %08x; "
+                    "registered %u, %08x), and none of its classes can be had", d->name, d->map_path, (unsigned long long)d->map_at,
+                    (unsigned)mg_dvm_rd32(b + 32), (unsigned)mg_dvm_rd32(b + 8), (unsigned)d->size, (unsigned)d->checksum);
+        else
+            mg_warn("dvm: %s: it is damaged (%s at %llu: its %u bytes sum to %08x, its checksum is %08x), and none of its classes can "
+                    "be had", d->name, d->map_path, (unsigned long long)d->map_at, (unsigned)d->size, (unsigned)adler32(b + 12, d->size - 12),
+                    (unsigned)d->checksum);
         if (base) mg_section_unmap(base, mapped);
         d->lazy_failed = true;
         return false;

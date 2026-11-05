@@ -1132,6 +1132,27 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (mScrollX == 0 && mScrollY == 0) bg.draw(c);
         else { c.translate(mScrollX, mScrollY); bg.draw(c); c.translate(-mScrollX, -mScrollY); }
     }
+    /*
+     * trace-views (megler.ViewRoot's window pictures): each view as its parent draws it, indented by its depth -- where, its
+     * transform, alpha, the canvas's clip then, its layer, and why it was not drawn. TikTok Lite's feed and its consent dialog
+     * drew nothing below some view of their own on a Lumia 650, the views all there (package 623).
+     */
+    public static volatile boolean sMeglerTraceDraw;
+    private void meglerTraceDraw(Canvas c, ViewGroup parent, float alpha, String why) {
+        Rect clip = new Rect();
+        boolean any = c.getClipBounds(clip);
+        StringBuilder b = new StringBuilder();
+        for (ViewParent p = getParent(); p instanceof View; p = ((View) p).getParent()) b.append(' ');
+        b.append(getClass().getName()).append(' ').append(mLeft).append(',').append(mTop).append(' ').append(getWidth()).append('x').append(getHeight());
+        if (!hasIdentityMatrix()) b.append(" matrix ").append(getMatrix().toShortString());
+        b.append(" alpha ").append(alpha).append(" clip ").append(any ? clip.toShortString() : "EMPTY");
+        if (mLayerType != LAYER_TYPE_NONE) b.append(" layer ").append(mLayerType);
+        if (getClipToOutline()) b.append(" clipped to its outline");
+        if (mClipBounds != null) b.append(" clipBounds ").append(mClipBounds.toShortString());
+        if (meglerListable() && meglerListsOn()) b.append(" (its list)");
+        if (why != null) b.append(": ").append(why);
+        android.util.Log.d("ViewDraw", b.toString());
+    }
     /** As a parent draws a child: its position, transform, alpha and clip, then draw(). */
     void drawFromParent(Canvas c, ViewGroup parent) {
         boolean animating = false;
@@ -1155,7 +1176,11 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (!hasIdentityMatrix()) c.concat(getMatrix());
         float alpha = mAlpha;
         if (mAnimation != null) { if (!mAnimTx.getMatrix().isIdentity()) c.concat(mAnimTx.getMatrix()); alpha *= mAnimTx.getAlpha(); }
-        if (alpha <= 0.002f) { c.restoreToCount(save); return; }
+        if (alpha <= 0.002f) {
+            if (sMeglerTraceDraw) meglerTraceDraw(c, parent, alpha, "not drawn: its alpha is " + alpha);
+            c.restoreToCount(save);
+            return;
+        }
         int w = getWidth(), h = getHeight();
         if (parent.getClipChildren()) c.clipRect(0, 0, w, h);
         // Megler: while the window draws only part of itself, a child wholly outside that part is not drawn
@@ -1169,6 +1194,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
                 else c.clipRect(o.mRect);
             } else if (o.mPath != null) c.clipPath(o.mPath);
         }
+        if (sMeglerTraceDraw) meglerTraceDraw(c, parent, alpha, null);
         /* a view with a layer (software or hardware) draws into one of its own, as Android's: its blending (a DST_IN mask, a CLEAR)
            then stays inside it instead of reaching what is under it in the window */
         /* a view with a blur RenderEffect draws into a layer that is put onto what is under it blurred (the shell's save_layer_blur) */

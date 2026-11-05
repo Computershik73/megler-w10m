@@ -219,6 +219,11 @@ void mg_mem_set_probe(u64 (*limit)(void), u64 (*usage)(void)) { g_limit = limit;
 u64 mg_mem_limit(void) { return g_limit ? g_limit() : 0; }
 u64 mg_mem_usage(void) { return g_usage ? g_usage() : 0; }
 
+/* Not known here (the tests run on whatever machine), but through a test's probe. */
+static u64 (*g_available_probe)(void);
+void mg_mem_set_available_probe(u64 (*available)(void)) { g_available_probe = available; }
+u64 mg_mem_available(void) { return g_available_probe ? g_available_probe() : 0; }
+
 /* --------------------------------------------------------------- threads */
 
 struct mg_thread {

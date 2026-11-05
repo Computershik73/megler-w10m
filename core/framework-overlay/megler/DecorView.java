@@ -273,4 +273,6 @@ public final class DecorView extends FrameLayout {
     @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); Window.Callback cb = mWindow.getCallback(); if (cb != null && !mWindow.isDestroyed()) cb.onAttachedToWindow(); }
     @Override protected void onDetachedFromWindow() { super.onDetachedFromWindow(); Window.Callback cb = mWindow.getCallback(); if (cb != null) cb.onDetachedFromWindow(); }
     public Window getWindowMegler() { return mWindow; }
+    /** The window's background it draws (the theme's windowBackground, or what the app set), for trace-views. */
+    public Drawable meglerWindowBackground() { return mBackground; }
 }

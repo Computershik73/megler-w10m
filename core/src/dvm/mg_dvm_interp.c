@@ -54,18 +54,28 @@ static MG_NOINLINE mg_dvm_frame *stack_full(mg_dvm_thread *t, mg_dvm_method *m, 
     {
         /*
          * A stack this deep is a recursion that does not end, and the error's own trace is too long to be read for which
-         * one: the innermost frames go to the log, where the cycle shows. The first few times only; a program that
-         * catches the error and tries again would otherwise fill the log.
+         * one: the innermost frames go to the log, where the cycle shows, and the outermost, where it began, with the
+         * thread's name -- TikTok Lite's route selection recursed so on a pool's thread whose task swallowed the error,
+         * and nothing else said where (package 625). The first few times only; a program that catches the error and
+         * tries again would otherwise fill the log.
          */
         static volatile i32 said;
         if (mg_atomic_add(&said, 1) <= 3) {
-            char text[1800];
+            char text[1800], outer[900], who[64];
+            const mg_dvm_frame *ring[10], *up;
             size_t k = 0;
-            const mg_dvm_frame *up;
-            int n;
+            int n, total, i;
             for (up = t->top, n = 0; up && n < 28 && k + 160 < sizeof(text); up = up->prev, n++)
                 k += (size_t)snprintf(text + k, sizeof(text) - k, "%s%s.%s", n ? " < " : "", up->m->cls->name, up->m->name);
-            mg_warn("dvm: the stack is full %d frames deep, calling %s.%s; innermost first: %s", t->depth, m->cls->name, m->name, text);
+            /* The last ten frames of the walk to the bottom, in a ring: the outermost. */
+            for (up = t->top, total = 0; up; up = up->prev, total++) ring[total % 10] = up;
+            k = 0;
+            outer[0] = 0;
+            for (i = total < 10 ? 0 : total - 10; i < total && k + 160 < sizeof(outer); i++)
+                k += (size_t)snprintf(outer + k, sizeof(outer) - k, "%s%s.%s", k ? " < " : "", ring[i % 10]->m->cls->name, ring[i % 10]->m->name);
+            mg_dvm_thread_label(t, who, sizeof(who));
+            mg_warn("dvm: the stack is full %d frames deep on %s, calling %s.%s; innermost first: %s", t->depth, who, m->cls->name, m->name, text);
+            mg_warn("dvm: ... and its outermost frames, the last the bottom: %s", outer);
         }
     }
     mg_dvm_throw("java/lang/StackOverflowError", "%d frames deep, calling %s.%s", t->depth, m->cls->name, m->name);

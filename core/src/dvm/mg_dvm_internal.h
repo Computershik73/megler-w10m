@@ -365,10 +365,12 @@ struct mg_dvm_thread {
      */
     int native_depth;
     volatile u64 native_ticks, natives, alloc_ticks, allocs, blocked_ticks;
-    /* Opt-in monitor diagnosis. Published only while entering a contended
-     * monitor; sampled with this thread suspended and the VM lock held. */
+    /* The monitor it waits to enter, published while it enters a contended one; read with this thread suspended and the VM
+     * lock held (trace-monitors, and a report of the main thread standing in a wait). */
     mg_jobj *volatile waiting_monitor;
     volatile u64 monitor_wait_ns;
+    /* The object whose wait() it is in (mg_dvm_monitor_wait), for a report of the main thread standing in one (mg_dvm_stuck_say). */
+    mg_jobj *volatile waiting_on;
     /*
      * What it has made (mg_dvm_get_stats sums every thread's), and the bytes not yet counted toward the next collection:
      * counted by the thread alone, and handed to the collector a few kilobytes at a time (alloc_raw), so that an
@@ -622,6 +624,12 @@ void mg_dvm_fault_frames(char *out, size_t cap);
 bool mg_dvm_in_frames(const mg_dvm_thread *t, const void *p, size_t size);
 void mg_dvm_monitor_trace_start(void);
 void mg_dvm_stacks_trace_start(void);
+/* The main thread standing in a wait for `seconds`: its stack said, with what it waits on, and those of the threads that wait
+   to enter a monitor (mg_dvm_object.c); true when said. False when the wait is its looper's, for its next message: then
+   `idle_on` is the queue it waits on. From the main thread's sampler (mg_java.c, hot_main), never from the main thread. */
+bool mg_dvm_stuck_say(mg_dvm_thread *main_thread, double seconds, const void **idle_on);
+/* A thread as a report names it: its java.lang.Thread's name in quotes (ASCII; another character a ?), or "thread N". */
+void mg_dvm_thread_label(const mg_dvm_thread *t, char *out, size_t n);
 void mg_dvm_call_trace_add(const char *prefix);
 void mg_dvm_call_trace_within_add(const char *prefix);
 /* mg_dvm_class.c: whether a framework method is one of the signatures alone of megler-stubs.txt (mg_dvm_stubs_load). */

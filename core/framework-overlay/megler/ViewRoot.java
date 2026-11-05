@@ -490,6 +490,63 @@ public final class ViewRoot implements ViewParent {
         sBars = bars;
         Native.systemBars(bars);
     }
+    /*
+     * trace-views: what a window is for the drawing -- its place among the windows, type, flags, dim, alpha, whether it is
+     * hidden with its stopped owner, removed or not visible, and the background its decor draws (TikTok Lite's screen stayed
+     * all black on a Lumia 650 with its feed's window, a translucent activity's window and a dialog laid out, package 621).
+     */
+    private String windowState() {
+        StringBuilder b = new StringBuilder();
+        b.append("window ").append(sRoots.indexOf(this)).append(" of ").append(sRoots.size()).append(' ').append(mW).append('x').append(mH)
+         .append(" at ").append(mX).append(',').append(mY).append(" type ").append(mLp.type).append(" flags 0x").append(Integer.toHexString(mLp.flags))
+         .append(" dim ").append(mLp.dimAmount).append(" alpha ").append(mLp.alpha).append(" format ").append(mLp.format);
+        if (mOwnerStopped) b.append(" HIDDEN (owner stopped)");
+        if (mView.getVisibility() != View.VISIBLE) b.append(" NOT VISIBLE");
+        if (mView instanceof DecorView) {
+            DecorView d = (DecorView) mView;
+            android.graphics.drawable.Drawable bg = d.meglerWindowBackground();
+            b.append(" background ").append(bg == null ? "none" : bg.getClass().getSimpleName()
+                + (bg instanceof android.graphics.drawable.ColorDrawable ? " #" + Integer.toHexString(((android.graphics.drawable.ColorDrawable) bg).getColor()) : "")
+                + " alpha " + bg.getAlpha() + (bg.getOpacity() == PixelFormat.OPAQUE ? " opaque" : ""));
+            Window w = d.getWindowMegler();
+            if (w != null) b.append(w.isFloating() ? " floating" : "").append(w.meglerIsTranslucent() ? " translucent" : "");
+            android.app.Activity a = activityOf(mView.getContext());
+            if (a != null) b.append(" of ").append(a.getClass().getName()).append(a.isResumedMegler() ? " (resumed)" : "").append(a.meglerWindowsHidden() ? " (windows hidden)" : "");
+        }
+        return b.toString();
+    }
+    private int mWindowShots;
+    /* trace-views: the window's views drawn straight into a bitmap of its own, not through the screen's frame, as
+       window-I-N.png in the app's files (I its place among the windows; its first 8). */
+    private void windowShot() {
+        if (mW <= 0 || mH <= 0 || mWindowShots >= 8 || AppRunner.application() == null) return;
+        java.io.File f = new java.io.File(AppRunner.application().getFilesDir(), "window-" + sRoots.indexOf(this) + "-" + (mWindowShots++) + ".png");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) {
+            Bitmap b = Bitmap.createBitmap(mW, mH, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(b);
+            // (Its first picture with every view said as its parent draws it: View.meglerTraceDraw.)
+            View.sMeglerTraceDraw = mWindowShots == 1;
+            try { mView.draw(c); } finally { View.sMeglerTraceDraw = false; }
+            b.compress(Bitmap.CompressFormat.PNG, 100, out);
+            b.recycle();
+            android.util.Log.d("ViewDump", "window as its views draw it: " + f);
+        } catch (Exception e) {
+            android.util.Log.w("ViewDump", "window as its views draw it: " + e);
+        }
+    }
+    private static int sShots;
+    /* trace-views: the screen as the render thread last drew it, as screen-N.png in the app's files (its first 30, every 4 s). */
+    private static void screenShot() {
+        if (sScreen == null || sShots >= 30 || AppRunner.application() == null) return;
+        Gfx.frameWait();
+        java.io.File f = new java.io.File(AppRunner.application().getFilesDir(), "screen-" + (sShots++) + ".png");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) {
+            sScreen.compress(Bitmap.CompressFormat.PNG, 100, out);
+            android.util.Log.d("ViewDump", "screen as drawn: " + f + " (presented any " + sPresentedAny + ")");
+        } catch (Exception e) {
+            android.util.Log.w("ViewDump", "screen as drawn: " + e);
+        }
+    }
     /** Pixels of the screen the last drawAll drew: its dirty rectangle, or all of them when it drew the whole screen. */
     private static int sRedrawn;
     private static Boolean sDump;
@@ -621,7 +678,22 @@ public final class ViewRoot implements ViewParent {
             if (!mDumpTimer) {                  /* and again every 4 s, laid out again or not: a window that never relayouts shows why */
                 mDumpTimer = true;
                 final Runnable[] again = new Runnable[1];
-                again[0] = () -> { if (mRemoved) return; android.util.Log.d("ViewDump", "---- " + mView.getClass().getName() + " (timer; layout requested " + mView.isLayoutRequested() + ")"); dump(mView, 0); mainHandler().postDelayed(again[0], 4000); };
+                again[0] = () -> {
+                    if (mRemoved) return;
+                    android.util.Log.d("ViewDump", "---- " + mView.getClass().getName() + " (timer; layout requested " + mView.isLayoutRequested() + "): " + windowState());
+                    dump(mView, 0);
+                    windowShot();
+                    if (sRoots.indexOf(this) == 0) {
+                        screenShot();
+                        // and the whole screen drawn again from the views, then looked at: what a missed invalidation left
+                        // stale comes back, what draws wrong stays wrong
+                        for (ViewRoot r : sRoots) r.mDirtyAll = true;
+                        fullRedraw("trace-views: every window drawn again");
+                        scheduleFrame();
+                        mainHandler().postDelayed(ViewRoot::screenShot, 300);
+                    }
+                    mainHandler().postDelayed(again[0], 4000);
+                };
                 mainHandler().postDelayed(again[0], 4000);
             }
         }

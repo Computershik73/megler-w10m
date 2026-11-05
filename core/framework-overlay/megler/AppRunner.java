@@ -226,8 +226,10 @@ public final class AppRunner {
         if (!a.isFinishing()) { a.meglerStart(); if (state != null) a.meglerRestoreState(state); a.meglerResume(); }
         if (prev != null && !a.isFinishing()) {
             final Activity p = prev;
-            // the one below stops once the new one covers it (a translucent or floating window leaves it visible)
-            if (!a.getWindow().isFloating()) p.meglerStop();
+            // the one below stops once the new one covers it (a translucent or floating window leaves it visible, as Android's
+            // ActivityInfo.isTranslucentOrFloating): TikTok Lite's consent, a translucent activity, took its feed's window away,
+            // and the screen behind it was black, then all black once its own view had gone (package 619)
+            if (!a.getWindow().isFloating() && !a.getWindow().meglerIsTranslucent()) p.meglerStop();
         }
         return a;
     }

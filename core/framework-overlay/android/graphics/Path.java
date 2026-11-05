@@ -12,7 +12,9 @@
 // phone, while the camera streamed and every picture was drawn under it.
 //
 // And in getPathIterator, which gave null: now an iterator over the segments megler.Gfx draws (PathIterator's overlay),
-// which Compose walks paths with on Android 14 and later. Everything else is the original's, unchanged.
+// which Compose walks paths with on Android 14 and later. And in op, which did UNION alone and left the path as it was for
+// the rest: DIFFERENCE, REVERSE_DIFFERENCE, XOR and INTERSECT as the even-odd rule does them (see op). Everything else is
+// the original's, unchanged.
 package android.graphics;
 
 /** A path, kept as the op stream megler.Gfx draws (see core/src/drivers/mg_java_gfx.c: OP_*). */
@@ -106,8 +108,76 @@ public class Path {
         megler.Gfx.pathBounds(ops, n, o);
         bounds.set(o[0], o[1], o[2], o[3]);
     }
-    public boolean op(Path p, Op op) { if (op == Op.UNION) { addPath(p); return true; } return false; }
-    public boolean op(Path a, Path b, Op op) { set(a); return op(b, op); }
+    /*
+     * Boolean operations, done with what megler.Gfx fills: a shape within a rectangle taken out of it is the two with the
+     * even-odd rule -- TikTok Lite rounds its frames' corners so, the frame's rectangle less its rounded rectangle painted
+     * with DST_OUT over the content, and op, which answered false and left the whole rectangle, took the whole content
+     * away: its consent dialog and its feed showed nothing (package 624). Exactly: DIFFERENCE and REVERSE_DIFFERENCE of
+     * a rectangle and a shape within it, XOR of two shapes (a rectangle, an oval or a rounded rectangle each), INTERSECT
+     * of a rectangle and a shape within it, and shapes whose bounds do not meet. Otherwise DIFFERENCE, REVERSE_DIFFERENCE
+     * and XOR are the even-odd sum all the same (right wherever the one lies within the other) and INTERSECT is left
+     * undone, answered false, as before -- each said once in the log.
+     */
+    public boolean op(Path p, Op op) {
+        if (op == Op.UNION) { addPath(p); return true; }
+        RectF a = shapeBounds(this), b = shapeBounds(p);
+        switch (op) {
+        case DIFFERENCE:
+            if (a != null && b != null && !RectF.intersects(a, b)) return true;
+            if (a != null && isRectShape(p) && b.contains(a)) { reset(); return true; }
+            if (!(isRectShape(this) && b != null && a.contains(b))) saidInexact(op);
+            evenOddSum(p);
+            return true;
+        case REVERSE_DIFFERENCE: {
+            if (a != null && b != null && !RectF.intersects(a, b)) { set(p); return true; }
+            if (b != null && isRectShape(this) && a.contains(b)) { reset(); return true; }
+            if (!(isRectShape(p) && a != null && b.contains(a))) saidInexact(op);
+            Path out = new Path(p);
+            out.evenOddSum(this);
+            set(out);
+            return true;
+        }
+        case XOR:
+            if (a == null || b == null) saidInexact(op);
+            evenOddSum(p);
+            return true;
+        case INTERSECT:
+            if (a != null && b != null && !RectF.intersects(a, b)) { reset(); return true; }
+            if (isRectShape(this) && b != null && a.contains(b)) { set(p); return true; }
+            if (isRectShape(p) && a != null && b.contains(a)) return true;
+            saidInexact(op);
+            return false;
+        default:
+            return false;
+        }
+    }
+    public boolean op(Path a, Path b, Op op) {
+        Path second = b == this ? new Path(b) : b;
+        set(a);
+        return op(second, op);
+    }
+    /** This and `p` as one path with the even-odd rule: what one covers and the other does not. */
+    private void evenOddSum(Path p) {
+        Path q = p == this ? new Path(p) : p;
+        addPath(q);
+        fill = FillType.EVEN_ODD;
+    }
+    /** Its bounds when it is one shape alone -- a rectangle, an oval or a rounded rectangle, not inverse -- else null. */
+    private static RectF shapeBounds(Path s) {
+        if (s.n == 0 || s.isInverseFillType()) return null;
+        int op = (int) s.ops[0], len = op == RECT || op == OVAL ? 6 : op == RRECT ? 8 : op == RRECT8 ? 14 : -1;
+        if (len < 0 || s.n != len) return null;
+        return new RectF(Math.min(s.ops[1], s.ops[3]), Math.min(s.ops[2], s.ops[4]), Math.max(s.ops[1], s.ops[3]), Math.max(s.ops[2], s.ops[4]));
+    }
+    private static boolean isRectShape(Path s) { return s.n == 6 && (int) s.ops[0] == RECT && !s.isInverseFillType(); }
+    private static final java.util.Set<Op> sSaidInexact = java.util.EnumSet.noneOf(Op.class);
+    private static void saidInexact(Op op) {
+        synchronized (sSaidInexact) {
+            if (!sSaidInexact.add(op)) return;
+        }
+        android.util.Log.w("Path", "Path.op " + op + " of paths this does not combine exactly: "
+            + (op == Op.INTERSECT ? "left as it was, answered false" : "the even-odd sum of the two, right where the one lies within the other"));
+    }
     public float[] approximate(float acceptableError) { return new float[0]; }
     /** Its segments as they are drawn (PathIterator). */
     public PathIterator getPathIterator() { return new PathIterator(this); }

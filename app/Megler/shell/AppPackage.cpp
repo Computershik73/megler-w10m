@@ -628,8 +628,16 @@ bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullN
     const auto folder = shared + L"\\services\\" + widen(token);
     if (!files::makeDirectories(folder)) return false;
     const auto apk = folder + L"\\GmsCore.apk";
-    if (!files::copy(entry.path, apk + L".part") || !files::move(apk + L".part", apk)) return false;
-    if (!files::write(record + L".part", "package=" + installedFullName + "\ncache=" + token + "\n") ||
+    // On the disk, and whole, before its name says it is there: a Lumia 650 that restarted by itself soon after an Update All
+    // kept the copy's name and size, and one of its DEX files no longer summed to its checksum, so no app could have the
+    // classes in it (package 625: TikTok Lite's advertising ID failed).
+    if (!files::copy(entry.path, apk + L".part") || !files::flush(apk + L".part") || !files::sameEnd(entry.path, apk + L".part", 1u << 20) ||
+        !files::move(apk + L".part", apk)) {
+        shellLog::write("microG: the shared copy of " + narrow(entry.path) + " could not be made whole");
+        files::remove(apk + L".part");
+        return false;
+    }
+    if (!files::write(record + L".part", "package=" + installedFullName + "\ncache=" + token + "\n") || !files::flush(record + L".part") ||
         !files::move(record + L".part", record)) return false;
     shellLog::write(std::string(entry.report.microg ? "microG: registered microG's " : "microG: registered Google's own ") + installedFullName);
     removeUnusedServiceCopies();

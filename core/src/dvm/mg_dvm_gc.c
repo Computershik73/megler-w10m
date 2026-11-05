@@ -169,18 +169,29 @@ static volatile bool g_parallel;       /* the mark shared with the helpers right
  */
 static volatile bool g_alongside;
 /*
- * The app near what the OS lets it have (MemoryManager's limit, which the shell hands over): a phone of 1 GB lets an app
- * have 390 MB, and Play Store's heap on a Lumia 650 grew from 133 to 270 MB while a marking that gave way to the app took
- * 8.7 s, until Windows ended it. Then the markers keep their usual priority, what may be made before the next collection
- * is a third of what is left, and one that makes a budget's worth while the marking goes on waits for it.
+ * The machine near the end of its memory: Play Store's heap on a Lumia 650 grew from 133 to 270 MB while a marking that
+ * gave way to the app took 8.7 s, until Windows ended it with the phone's 927 MB gone. Then the markers keep their usual
+ * priority, and one that makes a budget's worth while the marking goes on waits for it (budget_after keeps the budget
+ * within what is free).
+ *
+ * Not the app's limit, which Windows 10 Mobile does not hold a foreground app to: TikTok Lite ran at 500 MB of a
+ * "limit" of 390, and judged by three fifths of it, every collection was pressed and the budget the least, 8 MB: one
+ * collection each 0.8 s, which freed 7 MB each of a heap that lived at 175 (package 619).
  */
 static volatile bool g_pressed;
+#define PRESSED_BELOW (160ull << 20) /* the machine's free memory under which the collector is pressed */
+#define KEEP_FREE (96ull << 20)      /* what a budget leaves the machine at least */
 
-/* Whether the app uses more than three fifths of what it may have; false where the host does not say. */
+/* Whether the machine has less than PRESSED_BELOW free; where the host does not say, whether the app uses more than three
+   fifths of its limit (a test's probes); false where neither is known. */
 static bool memory_pressed(void)
 {
-    const u64 limit = mg_mem_limit(), used = mg_mem_usage();
-    return limit && used > limit / 5 * 3;
+    const u64 available = mg_mem_available();
+    if (available) return available < PRESSED_BELOW;
+    {
+        const u64 limit = mg_mem_limit(), used = mg_mem_usage();
+        return limit && used > limit / 5 * 3;
+    }
 }
 
 static void spill(marker *k);
@@ -869,6 +880,8 @@ void mg_dvm_gc_set_min_budget(u64 bytes)
     g_budget = bytes;
 }
 
+u64 mg_dvm_gc_budget(void) { return g_budget; }
+
 void mg_dvm_gc_totals(u64 *collections, u64 *pause_ns)
 {
     if (collections) *collections = (u64)(u32)g_collections;
@@ -890,17 +903,22 @@ void mg_dvm_gc_native(i64 bytes)
 static bool due(void) { return (u64)(u32)g_since + (u64)(u32)g_native_since >= g_budget; }
 
 /*
- * What may be made before the next collection, `live` having lived through this one: half of it, at least the least; and,
- * where the host says what the app may have, no more than a third of what is left of it (g_pressed).
+ * What may be made before the next collection, `live` having lived through this one: half of it, at least the least; and no
+ * more than half of what the machine has free beyond KEEP_FREE (g_pressed) -- where the host does not say, a third of what
+ * is left of the app's limit.
  */
 static u64 budget_after(u64 live)
 {
-    const u64 limit = mg_mem_limit(), used = mg_mem_usage();
-    u64 budget = live / 2 > g_min_budget ? live / 2 : g_min_budget;
-    if (limit) {
-        const u64 room = used < limit ? (limit - used) / 3 : 0;
-        if (budget > room) budget = room > g_min_budget ? room : g_min_budget;
+    const u64 available = mg_mem_available();
+    u64 budget = live / 2 > g_min_budget ? live / 2 : g_min_budget, room;
+    if (available) {
+        room = available > KEEP_FREE ? (available - KEEP_FREE) / 2 : 0;
+    } else {
+        const u64 limit = mg_mem_limit(), used = mg_mem_usage();
+        if (!limit) return budget;
+        room = used < limit ? (limit - used) / 3 : 0;
     }
+    if (budget > room) budget = room > g_min_budget ? room : g_min_budget;
     return budget;
 }
 
@@ -939,31 +957,6 @@ static void note_maker(mg_dvm_thread *t, void *user)
     k->bytes[i] = made;
 }
 
-/* A thread's name, its java.lang.Thread's (ASCII; another character a ?), or its number. */
-static void maker_name(const mg_dvm_thread *t, char *out, size_t n)
-{
-    const mg_dvm_class *cls;
-    snprintf(out, n, "thread %u", (unsigned)t->id);
-    for (cls = t->peer ? mg_dvm_class_of(t->peer) : NULL; cls; cls = cls->super) {
-        int i;
-        for (i = 0; i < cls->nifields; ++i) {
-            const mg_dvm_field *field = &cls->ifields[i];
-            if (!strcmp(field->name, "name") && !strcmp(field->type, "Ljava/lang/String;")) {
-                const mg_jobj *name = mg_dvm_slots(t->peer)[field->slot].l;
-                if (name && name->kind == MG_J_STRING && n > 3) {
-                    size_t j, len = (size_t)name->u.str.len16;
-                    if (len > n - 3) len = n - 3;
-                    out[0] = '"';
-                    for (j = 0; j < len; ++j) out[1 + j] = name->u.str.u16[j] >= 32 && name->u.str.u16[j] < 127 ? (char)name->u.str.u16[j] : '?';
-                    out[1 + len] = '"';
-                    out[2 + len] = 0;
-                }
-                return;
-            }
-        }
-    }
-}
-
 static void say_makers(char *out, size_t n)
 {
     makers k;
@@ -974,7 +967,7 @@ static void say_makers(char *out, size_t n)
     mg_dvm_threads_each(note_maker, &k);
     for (i = 0; i < MAKERS && k.t[i] && at + 60 < n; i++) {
         char name[48];
-        maker_name(k.t[i], name, sizeof(name));
+        mg_dvm_thread_label(k.t[i], name, sizeof(name));
         at += (size_t)snprintf(out + at, n - at, "%s%s %.1f MB", i ? ", " : "", name, (double)k.bytes[i] / 1048576.0);
     }
     if (at && at + 30 < n) snprintf(out + at, n - at, " (of %.1f MB)", (double)k.all / 1048576.0);
@@ -1284,7 +1277,7 @@ static void collect_alongside(void)
         return;
     }
     /* Alongside the app: the collection's own thread below the app's threads meanwhile, as its helpers (marker_priority), unless
-       the app is near what it may have. */
+       the machine is near the end of its memory. */
     g_pressed = memory_pressed();
     g_alongside = true;
     if (t_cycle) marker_priority(&t_cycle_level);

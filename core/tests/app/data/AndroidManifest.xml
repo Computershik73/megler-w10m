@@ -29,6 +29,8 @@
         <!-- Asked for by another app (megler_start_activity, from the test's C side) and finished with a result for it: the result
              of an activity one app starts in another for one (Main's "app-results"). -->
         <activity android:name=".Main$Answer" android:exported="true" />
+        <!-- A translucent activity over Main, as TikTok Lite's consent dialog is (Main's "translucent-over", F11). -->
+        <activity android:name=".Main$Clear" android:theme="@android:style/Theme.Translucent.NoTitleBar" android:exported="false" />
         <receiver android:name=".Main$Off" android:enabled="false" android:exported="false">
             <intent-filter>
                 <action android:name="megler.test.RELAY" />

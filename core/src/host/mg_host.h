@@ -113,6 +113,13 @@ u32 mg_views_kb(void);
 u64 mg_mem_limit(void);
 u64 mg_mem_usage(void);
 void mg_mem_set_probe(u64 (*limit)(void), u64 (*usage)(void));
+/*
+ * The machine's physical memory that is free or can be made so, which the app may still take; 0 when unknown. Windows 10
+ * Mobile does not end a foreground app at its limit (mg_mem_limit): a Lumia 650 said 390 MB and let TikTok Lite use 500,
+ * and ended Play Store at 877 MB, when the phone's 927 MB were gone. A test may set what it says (mg_mem_set_available_probe).
+ */
+u64 mg_mem_available(void);
+void mg_mem_set_available_probe(u64 (*available)(void));
 
 /* --------------------------------------------------------------- threads */
 

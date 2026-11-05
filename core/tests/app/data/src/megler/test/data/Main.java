@@ -318,6 +318,8 @@ public class Main extends Activity {
         tls();
         keystore(run);
         keystoreCertificates(run);
+        keystoreForeignKey();
+        pathOps();
         base64Streams();
         pipedStreams();
         codecs();
@@ -2590,6 +2592,152 @@ public class Main extends Activity {
     }
 
     /**
+     * Path.op as views round their corners: a frame's rectangle less its rounded rectangle, painted with DST_OUT over the
+     * content in a layer, takes away the corners alone (TikTok Lite's frames: op left the whole rectangle and the content
+     * went with it, package 624); a rectangle's intersection with an oval within it is the oval; two overlapping squares'
+     * XOR leaves out where they overlap.
+     */
+    private void pathOps() {
+        step("path-op", () -> {
+            android.graphics.Paint red = new android.graphics.Paint();
+            red.setColor(0xFFFF0000);
+            android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(bm);
+            int saved = c.saveLayer(new android.graphics.RectF(0, 0, 100, 100), null, android.graphics.Canvas.ALL_SAVE_FLAG);
+            c.drawRect(0, 0, 100, 100, red);
+            android.graphics.Path round = new android.graphics.Path();
+            round.addRoundRect(new android.graphics.RectF(0, 0, 100, 100), new float[] { 30, 30, 30, 30, 30, 30, 30, 30 }, android.graphics.Path.Direction.CW);
+            android.graphics.Path corners = new android.graphics.Path();
+            corners.addRect(0, 0, 100, 100, android.graphics.Path.Direction.CW);
+            boolean difference = corners.op(round, android.graphics.Path.Op.DIFFERENCE);
+            android.graphics.Paint away = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            away.setColor(0xFFFFFFFF);
+            away.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_OUT));
+            c.drawPath(corners, away);
+            c.restoreToCount(saved);
+            int centre = bm.getPixel(50, 50), corner = bm.getPixel(1, 1), edge = bm.getPixel(50, 1);
+
+            android.graphics.Bitmap b2 = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Path square = new android.graphics.Path();
+            square.addRect(0, 0, 100, 100, android.graphics.Path.Direction.CW);
+            android.graphics.Path oval = new android.graphics.Path();
+            oval.addOval(new android.graphics.RectF(20, 20, 80, 80), android.graphics.Path.Direction.CW);
+            boolean intersect = square.op(oval, android.graphics.Path.Op.INTERSECT);
+            new android.graphics.Canvas(b2).drawPath(square, red);
+            int inOval = b2.getPixel(50, 50), outOval = b2.getPixel(5, 5);
+
+            android.graphics.Bitmap b3 = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Path x = new android.graphics.Path(), y = new android.graphics.Path();
+            x.addRect(0, 0, 60, 60, android.graphics.Path.Direction.CW);
+            y.addRect(40, 40, 100, 100, android.graphics.Path.Direction.CW);
+            boolean xor = x.op(y, android.graphics.Path.Op.XOR);
+            new android.graphics.Canvas(b3).drawPath(x, red);
+            int overlap = b3.getPixel(50, 50), onlyX = b3.getPixel(10, 10), onlyY = b3.getPixel(90, 90);
+
+            detail = String.format("difference=%b centre=%08x corner=%08x edge=%08x intersect=%b in=%08x out=%08x xor=%b overlap=%08x x=%08x y=%08x",
+                    difference, centre, corner, edge, intersect, inOval, outOval, xor, overlap, onlyX, onlyY);
+            Log.i("DataTest", "path-op " + detail);
+            return difference && centre == 0xFFFF0000 && (corner >>> 24) == 0 && edge == 0xFFFF0000
+                    && intersect && inOval == 0xFFFF0000 && (outOval >>> 24) == 0
+                    && xor && (overlap >>> 24) == 0 && onlyX == 0xFFFF0000 && onlyY == 0xFFFF0000;
+        });
+    }
+
+    /** The harness's F12 (mg_java_tests.c, run_data): the main thread made to stand in Object.wait (stuckMain); F11: a translucent
+        activity over this one (Clear). */
+    @Override public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
+        if (keyCode == android.view.KeyEvent.KEYCODE_F12) {
+            stuckMain();
+            return true;
+        }
+        if (keyCode == android.view.KeyEvent.KEYCODE_F11) {
+            sMain = this;
+            sStoppedUnderClear = false;
+            sWatchStop = true;
+            startActivity(new android.content.Intent(this, Clear.class));
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    /*
+     * A translucent activity over this one stays over it with this one visible: paused, not stopped, its window drawn below --
+     * as TikTok Lite's consent dialog (a translucent activity, not a floating one) is over its feed. Megler stopped the activity
+     * below one whose window was not floating, and took its window away: the screen behind the consent showed black, and
+     * stayed black once the consent's own view had gone (package 619).
+     */
+    static volatile Main sMain;
+    static volatile boolean sWatchStop, sStoppedUnderClear;
+    @Override protected void onStop() {
+        super.onStop();
+        if (sWatchStop) sStoppedUnderClear = true;
+    }
+    public static class Clear extends Activity {
+        @Override protected void onResume() {
+            super.onResume();
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                Main below = sMain;
+                boolean attached = below != null && below.getWindow().getDecorView().isAttachedToWindow();
+                Log.i("DataTest", "translucent-over " + (!sStoppedUnderClear && attached ? "ok" : "FAILED") + " stopped=" + sStoppedUnderClear + " attached=" + attached);
+                sWatchStop = false;
+                finish();
+            }, 500);
+        }
+    }
+
+    /**
+     * The main thread waits 8 s on a lock that another thread notifies then: the main thread's sampler says its stack meanwhile,
+     * this method in it (mg_dvm_stuck_say), where its looper's idle wait is not said.
+     */
+    private void stuckMain() {
+        final Object lock = new Object();
+        final boolean[] done = new boolean[1];
+        new Thread(() -> {
+            try { Thread.sleep(8000); } catch (InterruptedException e) { }
+            synchronized (lock) {
+                done[0] = true;
+                lock.notifyAll();
+            }
+        }, "stuck-releaser").start();
+        long started = android.os.SystemClock.uptimeMillis();
+        synchronized (lock) {
+            while (!done[0]) {
+                try { lock.wait(); } catch (InterruptedException e) { break; }
+            }
+        }
+        Log.i("DataTest", "stuck-main ok waited=" + (android.os.SystemClock.uptimeMillis() - started) / 1000 + " s");
+    }
+
+    /**
+     * A key no provider takes (a secret key with no encoding), for a transformation that AndroidKeyStoreBCWorkaround has too:
+     * Cipher.init ends at once in the first provider's exception, as on Android (conscrypt's NullPointerException for no
+     * encoding). That provider's cipher, the last one tried, chose a cipher again among them all, itself too, until the stack was
+     * full: Google Play services' mobstore key went 5026 frames deep (619).
+     */
+    private void keystoreForeignKey() {
+        step("keystore-foreign-key", () -> {
+            javax.crypto.SecretKey odd = new javax.crypto.SecretKey() {
+                public String getAlgorithm() { return "AES"; }
+                public String getFormat() { return null; }
+                public byte[] getEncoded() { return null; }
+            };
+            javax.crypto.Cipher gcm = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+            String said;
+            try {
+                gcm.init(javax.crypto.Cipher.ENCRYPT_MODE, odd);
+                said = "taken";
+            } catch (StackOverflowError e) {
+                said = "StackOverflowError";
+            } catch (Exception e) {
+                said = e.getClass().getName();
+            }
+            detail = said;
+            Log.i("DataTest", "keystore-foreign-key " + detail);
+            return !"taken".equals(said) && !"StackOverflowError".equals(said);
+        });
+    }
+
+    /**
      * The certificates of Android's key store's key pairs, as Google Play services' device registration and many apps read them: an
      * X509Certificate (which they cast to), self-signed with the pair's key, with the spec's subject, serial number and dates (one
      * after 2049, a GeneralizedTime) or Android's own (CN=fake, 1, 1970 to 2048), kept for the next run as it was made; a key set with
@@ -3386,8 +3534,8 @@ public class Main extends Activity {
     }
 
     /**
-     * Sound from Java, which megler.Audio plays: a playing AudioTrack takes a second of PCM in about a second, as its blocking
-     * write does; a MediaPlayer plays a WAV the step writes and an Ogg Vorbis asset (tone.ogg: 440 Hz, half a second, 22050 Hz
+     * Sound from Java, which megler.Audio plays: a playing AudioTrack of half a second's buffer takes a second of PCM in about
+     * half a second, as its blocking write does; a MediaPlayer plays a WAV the step writes and an Ogg Vorbis asset (tone.ogg: 440 Hz, half a second, 22050 Hz
      * mono, made with ffmpeg's libvorbis) through its descriptor, and says when each has played to its end; a SoundPool loads
      * the Ogg and plays it once it is loaded. The later lines are checked by the test.
      */
@@ -3406,7 +3554,9 @@ public class Main extends Activity {
             t.stop();
             t.release();
             detail = "wrote " + written + " in " + ms + " ms, head at " + head;
-            return written == rate && ms >= 600 && head > 0;
+            // Its buffer holds half a second (rate bytes of 16-bit mono), as the app asked (6c21a6e0): the first half goes in at
+            // once and the write returns once the rest is in, about half a second later, as Android's blocking write does.
+            return written == rate && ms >= 400 && head > 0;
         });
         step("media-player", () -> {
             java.io.File wav = new java.io.File(getCacheDir(), "tone.wav");

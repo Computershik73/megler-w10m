@@ -409,6 +409,23 @@ void mg_mem_set_probe(u64 (*limit)(void), u64 (*usage)(void)) { g_limit = limit;
 u64 mg_mem_limit(void) { return g_limit ? g_limit() : 0; }
 u64 mg_mem_usage(void) { return g_usage ? g_usage() : 0; }
 
+/* GlobalMemoryStatusEx's ullAvailPhys, read again after 100 ms: in KB and ms, words a reader cannot see half written. */
+static u64 (*g_available_probe)(void);
+static volatile u32 g_available_kb, g_available_ms;
+void mg_mem_set_available_probe(u64 (*available)(void)) { g_available_probe = available; }
+u64 mg_mem_available(void)
+{
+    const u32 now = (u32)(mg_time_monotonic_ns() / 1000000ull);
+    if (g_available_probe) return g_available_probe();
+    if (!g_available_ms || now - g_available_ms >= 100) {
+        MEMORYSTATUSEX m;
+        m.dwLength = sizeof(m);
+        g_available_kb = GlobalMemoryStatusEx(&m) ? (u32)(m.ullAvailPhys >> 10) : 0;
+        g_available_ms = now ? now : 1;
+    }
+    return (u64)g_available_kb << 10;
+}
+
 /* --------------------------------------------------------------- threads */
 
 struct mg_thread {

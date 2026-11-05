@@ -21,6 +21,7 @@
 #include "shell/AppPackage.h"
 #include "shell/Checks.h"
 #include "shell/Files.h"
+#include "shell/PicturesDiag.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
 #include "shell/ShellLog.h"
@@ -206,6 +207,8 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
     // with microG's its front page had no Android ID ("Server error").
     const bool playStore = apk.report.package == "com.android.vending";
     std::thread([window, audio, width, height, densityDpi, playStore] {
+        // The flags a diagnosis over USB asked for, in place before the run reads them (shell/PicturesDiag.h).
+        picturesDiag::waitForFlags();
         megler_run_config config = {};
         config.apk_path = gApkPath.c_str();
         // Google's own Google Play services, or microG's where the app (or Megler) is set to it (ui/SettingsScreen.cpp).

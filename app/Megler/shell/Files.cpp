@@ -96,6 +96,14 @@ bool copy(const std::wstring& from, const std::wstring& to) {
     return SUCCEEDED(CopyFile2(from.c_str(), to.c_str(), nullptr));
 }
 
+bool flush(const std::wstring& path) {
+    HANDLE h = open(path, GENERIC_WRITE, OPEN_EXISTING);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    const bool ok = FlushFileBuffers(h) != 0;
+    CloseHandle(h);
+    return ok;
+}
+
 namespace {
 
 bool readEnd(const std::wstring& path, uint32_t bytes, uint64_t& size, std::string& out) {
