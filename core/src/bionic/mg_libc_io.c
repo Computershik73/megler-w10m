@@ -396,21 +396,33 @@ static void smaps_details(textbuf *t, u32 size, int prot)
            (unsigned)(size >> 10), (prot & PF_R) ? " rd" : "", (prot & PF_W) ? " wr" : "", (prot & PF_X) ? " ex" : "");
 }
 
+/* The folder of an APK's libraries for the ABI: lib/arm, lib/arm64, lib/x86, lib/x86_64. */
+#if MG_ARCH_ARM32
+#define G_LIB_ISA "arm"
+#elif MG_ARCH_ARM64
+#define G_LIB_ISA "arm64"
+#elif MG_ARCH_X86_64
+#define G_LIB_ISA "x86_64"
+#else
+#define G_LIB_ISA "x86"
+#endif
+
+/* A loaded library's segments, as the kernel's maps has them: addresses of eight hex digits at least, as many as they take. */
 static int maps_one(mg_addr bias, const char *name, const void *phdr, unsigned phnum, void *user)
 {
     maps_out *o = (maps_out *)user;
     textbuf *t = o->t;
-    const Elf32_Phdr *ph = (const Elf32_Phdr *)phdr;
+    const ElfW(Phdr) *ph = (const ElfW(Phdr) *)phdr;
     unsigned i;
     for (i = 0; i < phnum; i++) {
-        u32 lo, hi;
+        mg_addr lo, hi;
         if (ph[i].p_type != PT_LOAD) continue;
-        lo = MG_ALIGN_DOWN(ph[i].p_vaddr, MG_PAGE);
-        hi = MG_ALIGN_UP(ph[i].p_vaddr + ph[i].p_memsz, MG_PAGE);
-        tb_add(t, "%08x-%08x %c%c%cp %08x 103:01 %u /data/app/%s-1/lib/arm/%s\n", (unsigned)(bias + lo), (unsigned)(bias + hi),
-               (ph[i].p_flags & PF_R) ? 'r' : '-', (ph[i].p_flags & PF_W) ? 'w' : '-', (ph[i].p_flags & PF_X) ? 'x' : '-',
-               (unsigned)MG_ALIGN_DOWN(ph[i].p_offset, MG_PAGE), 1000 + i, g_package, name);
-        if (o->details) smaps_details(t, hi - lo, (int)ph[i].p_flags);
+        lo = (mg_addr)MG_ALIGN_DOWN(ph[i].p_vaddr, MG_PAGE);
+        hi = (mg_addr)MG_ALIGN_UP(ph[i].p_vaddr + ph[i].p_memsz, MG_PAGE);
+        tb_add(t, "%08llx-%08llx %c%c%cp %08llx 103:01 %u /data/app/%s-1/lib/" G_LIB_ISA "/%s\n", (unsigned long long)(bias + lo),
+               (unsigned long long)(bias + hi), (ph[i].p_flags & PF_R) ? 'r' : '-', (ph[i].p_flags & PF_W) ? 'w' : '-',
+               (ph[i].p_flags & PF_X) ? 'x' : '-', (unsigned long long)MG_ALIGN_DOWN(ph[i].p_offset, MG_PAGE), 1000 + i, g_package, name);
+        if (o->details) smaps_details(t, (u32)(hi - lo), (int)ph[i].p_flags);
     }
     return 0;
 }
@@ -499,11 +511,11 @@ static char *synthetic(const char *g, size_t *size)
          * its vector from here, having none from its loader: without the file it probed the page size with mincore and
          * read its clocks by number, thousands of faults a second, where the vDSO's clock is a call.
          */
-        u32 words[64];
+        gulong words[64];
         size_t n = mg_bionic_auxv_words(words, MG_COUNT(words));
-        t.s = (char *)mg_realloc(NULL, n * 4 + 1);
-        memcpy(t.s, words, n * 4);
-        t.n = n * 4;
+        t.s = (char *)mg_realloc(NULL, n * sizeof(gulong) + 1);
+        memcpy(t.s, words, n * sizeof(gulong));
+        t.n = n * sizeof(gulong);
     } else if (!strcmp(g, "/proc/self/cmdline")) {
         tb_add(&t, "%s", g_package);
         t.n++;                 /* the terminating NUL is part of the file */
@@ -610,7 +622,8 @@ typedef struct gobj {
 #define G_O_TRUNC 01000
 #define G_O_APPEND 02000
 #define G_O_NONBLOCK 04000
-#define G_O_DIRECTORY 040000
+/* (The one of these that is the processor's: ARM's and arm64's 040000, the x86s' 0200000, where 040000 is O_DIRECT.) */
+#define G_O_DIRECTORY (MG_ARCH_X86_64 || MG_ARCH_X86 ? 0200000 : 040000)
 #define G_O_CLOEXEC 02000000
 
 #define MAX_FDS 1024
@@ -991,6 +1004,9 @@ static int g_openat(int dirfd, const char *path, int flags, int mode)
 }
 
 static int g_creat(const char *path, int mode) { return g_open(path, 1 | G_O_CREAT | G_O_TRUNC, mode); }
+/* What _FORTIFY_SOURCE calls for an open whose flags need no mode: the same, with none. */
+static int g_open_2(const char *path, int flags) { return g_open(path, flags, 0); }
+static int g_openat_2(int dirfd, const char *path, int flags) { return g_openat(dirfd, path, flags, 0); }
 
 static int g_close(int fd)
 {
@@ -1335,26 +1351,27 @@ static i32 obj_write(gobj *o, const void *buf, u32 n, bool positioned, u64 offse
         return fail;                \
     }
 
-static i32 g_read(int fd, void *buf, u32 n)
+/* (A count of more than MG_RW_MAX is a short read or write of that many, as on Linux: mg_rw_count.) */
+static gssize g_read(int fd, void *buf, size_t n)
 {
     i32 r;
     WITH_FD(fd, o, -1)
-    r = obj_read(o, buf, n, false, 0);
+    r = obj_read(o, buf, mg_rw_count(n), false, 0);
     fd_put(o);
     return r;
 }
 
-static i32 g_write(int fd, const void *buf, u32 n)
+static gssize g_write(int fd, const void *buf, size_t n)
 {
     i32 r;
     WITH_FD(fd, o, -1)
-    r = obj_write(o, buf, n, false, 0);
+    r = obj_write(o, buf, mg_rw_count(n), false, 0);
     fd_put(o);
     return r;
 }
 
-i32 mg_fd_read(int fd, void *buf, u32 n) { return g_read(fd, buf, n); }
-i32 mg_fd_write(int fd, const void *buf, u32 n) { return g_write(fd, buf, n); }
+i32 mg_fd_read(int fd, void *buf, u32 n) { return (i32)g_read(fd, buf, n); }
+i32 mg_fd_write(int fd, const void *buf, u32 n) { return (i32)g_write(fd, buf, n); }
 int mg_fd_close(int fd) { return g_close(fd); }
 
 i32 mg_fd_pread(int fd, void *buf, u32 n, u64 offset)
@@ -1410,45 +1427,47 @@ void mg_fd_let_go(void *held)
     if (held) fd_put((gobj *)held);
 }
 
-static i32 g_pread(int fd, void *buf, u32 n, i32 offset) { return mg_fd_pread(fd, buf, n, (u64)(u32)offset); }
-static i32 g_pread64(int fd, void *buf, u32 n, i64 offset) { return mg_fd_pread(fd, buf, n, (u64)offset); }
+/* (An off_t is a long: 32 bits in 32-bit Android, where pread's is taken as unsigned, as it always was here.) */
+static gssize g_pread(int fd, void *buf, size_t n, goff offset) { return mg_fd_pread(fd, buf, mg_rw_count(n), (u64)(gulong)offset); }
+static gssize g_pread64(int fd, void *buf, size_t n, i64 offset) { return mg_fd_pread(fd, buf, mg_rw_count(n), (u64)offset); }
 
-static i32 g_pwrite64(int fd, const void *buf, u32 n, i64 offset)
+static gssize g_pwrite64(int fd, const void *buf, size_t n, i64 offset)
 {
     i32 r;
     WITH_FD(fd, o, -1)
-    r = obj_write(o, buf, n, true, (u64)offset);
+    r = obj_write(o, buf, mg_rw_count(n), true, (u64)offset);
     fd_put(o);
     return r;
 }
-static i32 g_pwrite(int fd, const void *buf, u32 n, i32 offset) { return g_pwrite64(fd, buf, n, (i64)(u32)offset); }
+static gssize g_pwrite(int fd, const void *buf, size_t n, goff offset) { return g_pwrite64(fd, buf, n, (i64)(gulong)offset); }
 
 typedef struct g_iovec {
-    u32 base, len;
+    void *base;
+    size_t len;
 } g_iovec;
 
-static i32 g_readv(int fd, const g_iovec *iov, int count)
+static gssize g_readv(int fd, const g_iovec *iov, int count)
 {
-    i32 total = 0;
+    gssize total = 0;
     int i;
     for (i = 0; i < count; i++) {
-        i32 r = g_read(fd, (void *)(mg_addr)iov[i].base, iov[i].len);
+        gssize r = g_read(fd, iov[i].base, iov[i].len);
         if (r < 0) return total ? total : -1;
         total += r;
-        if ((u32)r < iov[i].len) break;
+        if ((size_t)r < iov[i].len) break;
     }
     return total;
 }
 
-static i32 g_writev(int fd, const g_iovec *iov, int count)
+static gssize g_writev(int fd, const g_iovec *iov, int count)
 {
-    i32 total = 0;
+    gssize total = 0;
     int i;
     for (i = 0; i < count; i++) {
-        i32 r = g_write(fd, (const void *)(mg_addr)iov[i].base, iov[i].len);
+        gssize r = g_write(fd, iov[i].base, iov[i].len);
         if (r < 0) return total ? total : -1;
         total += r;
-        if ((u32)r < iov[i].len) break;
+        if ((size_t)r < iov[i].len) break;
     }
     return total;
 }
@@ -1487,14 +1506,15 @@ i64 mg_fd_seek(int fd, i64 offset, int whence)
     return r;
 }
 
-static i32 g_lseek(int fd, i32 offset, int whence)
+static goff g_lseek(int fd, goff offset, int whence)
 {
     i64 r = mg_fd_seek(fd, offset, whence);
-    if (r > 0x7FFFFFFF) {
+    /* A position past a 32-bit off_t (32-bit Android's) is EOVERFLOW, as there: lseek64 says it. */
+    if (sizeof(goff) < sizeof(i64) && r > 0x7FFFFFFF) {
         mg_set_errno(GE_OVERFLOW);
         return -1;
     }
-    return (i32)r;
+    return (goff)r;
 }
 static i64 g_lseek64(int fd, i64 offset, int whence) { return mg_fd_seek(fd, offset, whence); }
 
@@ -1630,7 +1650,7 @@ static int g_ftruncate64(int fd, i64 size)
     fd_put(o);
     return r;
 }
-static int g_ftruncate(int fd, i32 size) { return g_ftruncate64(fd, size); }
+static int g_ftruncate(int fd, goff size) { return g_ftruncate64(fd, size); }
 
 /* posix_fadvise: advice, taken and not acted on; the descriptor must be one. Returns the error, as POSIX has it. */
 static int g_posix_fadvise64(int fd, i64 offset, i64 len, int advice)
@@ -1642,7 +1662,7 @@ static int g_posix_fadvise64(int fd, i64 offset, i64 len, int advice)
     fd_put(o);
     return advice < 0 || advice > 5 ? GE_INVAL : 0;
 }
-static int g_posix_fadvise(int fd, i32 offset, i32 len, int advice) { return g_posix_fadvise64(fd, offset, len, advice); }
+static int g_posix_fadvise(int fd, goff offset, goff len, int advice) { return g_posix_fadvise64(fd, offset, len, advice); }
 
 static int g_fsync(int fd)
 {
@@ -1654,6 +1674,36 @@ static int g_fsync(int fd)
 
 /* ------------------------------------------------------------------- stat */
 
+/*
+ * bionic's struct stat (and stat64, the same), as each ABI lays it out: the kernel's stat64 on 32-bit ARM and on x86 (whose
+ * 64-bit fields are 4-byte aligned, as the compiler aligns them for the core too), the generic one on arm64, x86_64's own.
+ * (The 64-bit ABIs' longs are written i64 and u64 here: the same in their builds, and the same layout in MSVC's x64 one,
+ * whose long is 32 bits.)
+ */
+#if MG_ARCH_X86_64
+typedef struct g_stat {
+    u64 st_dev, st_ino;
+    u64 st_nlink;
+    u32 st_mode, st_uid, st_gid, pad0;
+    u64 st_rdev;
+    i64 st_size;
+    i64 st_blksize, st_blocks;
+    i64 at_sec, at_nsec, mt_sec, mt_nsec, ct_sec, ct_nsec;
+    i64 unused[3];
+} g_stat;
+#elif MG_ARCH_ARM64
+typedef struct g_stat {
+    u64 st_dev, st_ino;
+    u32 st_mode, st_nlink, st_uid, st_gid;
+    u64 st_rdev;
+    u64 pad1;
+    i64 st_size;
+    i32 st_blksize, pad2;
+    i64 st_blocks;
+    i64 at_sec, at_nsec, mt_sec, mt_nsec, ct_sec, ct_nsec;
+    u32 unused4, unused5;
+} g_stat;
+#else
 typedef struct g_stat {
     u64 st_dev;
     u8 pad0[4];
@@ -1664,9 +1714,15 @@ typedef struct g_stat {
     i64 st_size;
     u32 st_blksize;
     u64 st_blocks;
-    i32 at_sec, at_nsec, mt_sec, mt_nsec, ct_sec, ct_nsec;
+    gtime at_sec;
+    glong at_nsec;
+    gtime mt_sec;
+    glong mt_nsec;
+    gtime ct_sec;
+    glong ct_nsec;
     u64 st_ino;
 } g_stat;
+#endif
 
 #define G_S_IFREG 0100000u
 #define G_S_IFDIR 0040000u
@@ -1684,19 +1740,22 @@ static void fill_stat(g_stat *out, const mg_stat *st, const char *gpath)
 {
     memset(out, 0, sizeof(*out));
     out->st_dev = 0x801;
-    out->st_ino = out->st_ino32 = path_hash(gpath);
+    out->st_ino = path_hash(gpath);
+#if !MG_GUEST_LP64
+    out->st_ino32 = (u32)out->st_ino;              /* (the kernel's stat64 has it twice) */
+#endif
     out->st_mode = st->is_dir ? (G_S_IFDIR | 0771) : (G_S_IFREG | 0660);
     out->st_nlink = 1;
     out->st_uid = out->st_gid = 10100;
     out->st_size = (i64)st->size;
     out->st_blksize = 4096;
     out->st_blocks = (st->size + 511) / 512;
-    out->at_sec = (i32)(st->atime_ns / 1000000000ll);
-    out->at_nsec = (i32)(st->atime_ns % 1000000000ll);
-    out->mt_sec = (i32)(st->mtime_ns / 1000000000ll);
-    out->mt_nsec = (i32)(st->mtime_ns % 1000000000ll);
-    out->ct_sec = (i32)(st->ctime_ns / 1000000000ll);
-    out->ct_nsec = (i32)(st->ctime_ns % 1000000000ll);
+    out->at_sec = (gtime)(st->atime_ns / 1000000000ll);
+    out->at_nsec = (glong)(st->atime_ns % 1000000000ll);
+    out->mt_sec = (gtime)(st->mtime_ns / 1000000000ll);
+    out->mt_nsec = (glong)(st->mtime_ns % 1000000000ll);
+    out->ct_sec = (gtime)(st->ctime_ns / 1000000000ll);
+    out->ct_nsec = (glong)(st->ctime_ns % 1000000000ll);
 }
 
 static void fill_special(g_stat *out, u32 mode, u64 size, const char *gpath)
@@ -1861,11 +1920,12 @@ static int g_faccessat(int dirfd, const char *path, int mode, int flags)
  * through a handle). 4 KB blocks. Where the host cannot say: 16 GB, 4 GB of
  * them free, which is what was always said before.
  */
+/* (The kernel's statfs64, whose words other than the counts and the id are longs: 32 bits in 32-bit Android, 64 in 64-bit.) */
 typedef struct g_statfs {
-    u32 f_type, f_bsize;
+    gulong f_type, f_bsize;
     u64 f_blocks, f_bfree, f_bavail, f_files, f_ffree;
     i32 f_fsid[2];
-    u32 f_namelen, f_frsize, f_flags, f_spare[4];
+    gulong f_namelen, f_frsize, f_flags, f_spare[4];
 } g_statfs;
 
 static void volume_blocks(u64 *blocks, u64 *free_blocks)
@@ -1895,10 +1955,24 @@ static int g_statfs_fn(const char *path, g_statfs *out)
 }
 static int g_fstatfs_fn(int fd, g_statfs *out) { (void)fd; return g_statfs_fn("", out); }
 
+/* (Every field a long, and 24 bytes kept free at the end in 64-bit Android.) */
 typedef struct g_statvfs {
-    u32 f_bsize, f_frsize;
-    u32 f_blocks, f_bfree, f_bavail, f_files, f_ffree, f_favail, f_fsid, f_flag, f_namemax;
+    gulong f_bsize, f_frsize;
+    gulong f_blocks, f_bfree, f_bavail, f_files, f_ffree, f_favail, f_fsid, f_flag, f_namemax;
+#if MG_GUEST_LP64
+    u32 reserved[6];
+#endif
 } g_statvfs;
+
+/* A count of blocks as a long of the guest's: 32-bit Android's holds 16 TB in 4 KB blocks before it would not fit. */
+static gulong statvfs_count(u64 n)
+{
+#if MG_GUEST_LP64
+    return (gulong)n;
+#else
+    return n > 0xFFFFFFFFu ? 0xFFFFFFFFu : (gulong)n;
+#endif
+}
 
 static int g_statvfs_fn(const char *path, g_statvfs *out)
 {
@@ -1907,9 +1981,8 @@ static int g_statvfs_fn(const char *path, g_statvfs *out)
     volume_blocks(&blocks, &free_blocks);
     memset(out, 0, sizeof(*out));
     out->f_bsize = out->f_frsize = 4096;
-    /* (32-bit counts: 16 TB in 4 KB blocks before they would not fit.) */
-    out->f_blocks = blocks > 0xFFFFFFFFu ? 0xFFFFFFFFu : (u32)blocks;
-    out->f_bfree = out->f_bavail = free_blocks > 0xFFFFFFFFu ? 0xFFFFFFFFu : (u32)free_blocks;
+    out->f_blocks = statvfs_count(blocks);
+    out->f_bfree = out->f_bavail = statvfs_count(free_blocks);
     out->f_files = out->f_ffree = out->f_favail = 1000000;
     out->f_namemax = 255;
     return 0;
@@ -1995,7 +2068,7 @@ static int g_rename(const char *from, const char *to)
 }
 static int g_renameat(int d1, const char *from, int d2, const char *to) { (void)d1; (void)d2; return g_rename(from, to); }
 
-static int g_truncate(const char *path, i32 size)
+static int g_truncate(const char *path, goff size)
 {
     int fd = g_open(path, 1, 0), r;
     if (fd < 0) return -1;
@@ -2046,15 +2119,15 @@ static char *g_realpath(const char *path, char *out)
     return out;
 }
 
-static i32 g_readlink(const char *path, char *buf, size_t n)
+static gssize g_readlink(const char *path, char *buf, size_t n)
 {
-    /* The one link code reads: its own executable. */
+    /* The one link code reads: its own executable, the zygote of the ABI's width. */
     if (path && !strcmp(path, "/proc/self/exe")) {
-        const char *exe = "/system/bin/app_process32";
+        const char *exe = MG_GUEST_LP64 ? "/system/bin/app_process64" : "/system/bin/app_process32";
         size_t len = strlen(exe);
         if (len > n) len = n;
         memcpy(buf, exe, len);
-        return (i32)len;
+        return (gssize)len;
     }
     mg_set_errno(GE_INVAL);
     return -1;
@@ -2076,7 +2149,7 @@ static int g_fail_link(const char *a, const char *b)
  * And their *at forms, which Flutter's engine (dart:io) imports: as this file's other *at calls, the path as it is, its
  * directory descriptor not looked at. Each was missing, and its first call would have ended in the unresolved stub.
  */
-static i32 g_readlinkat(int dirfd, const char *path, char *buf, size_t n) { (void)dirfd; return g_readlink(path, buf, n); }
+static gssize g_readlinkat(int dirfd, const char *path, char *buf, size_t n) { (void)dirfd; return g_readlink(path, buf, n); }
 static int g_symlinkat(const char *target, int dirfd, const char *path) { (void)dirfd; return g_fail_link(target, path); }
 static int g_utimensat(int dirfd, const char *path, const void *times, int flags) { (void)dirfd; (void)flags; return g_utime(path, times); }
 static int g_futimens(int fd, const void *times) { return g_futimes(fd, times); }
@@ -2085,22 +2158,22 @@ static int g_futimesat(int dirfd, const char *path, const void *times) { (void)d
 static int g_umask(int mask) { (void)mask; return 022; }
 /* The checked forms a library built with _FORTIFY_SOURCE calls: the same, the buffer's size being the caller's business. */
 static int g_umask_chk(int mask) { return g_umask(mask); }
-static i32 g_pread64_chk(int fd, void *buf, u32 n, i64 offset, u32 buf_size)
+static gssize g_pread64_chk(int fd, void *buf, size_t n, i64 offset, size_t buf_size)
 {
     (void)buf_size;
-    return mg_fd_pread(fd, buf, n, (u64)offset);
+    return g_pread64(fd, buf, n, offset);
 }
-static i32 g_pread_chk(int fd, void *buf, u32 n, i32 offset, u32 buf_size)
+static gssize g_pread_chk(int fd, void *buf, size_t n, goff offset, size_t buf_size)
 {
     (void)buf_size;
-    return mg_fd_pread(fd, buf, n, (u64)(u32)offset);
+    return g_pread(fd, buf, n, offset);
 }
-static i32 g_pwrite64_chk(int fd, const void *buf, u32 n, i64 offset, u32 buf_size)
+static gssize g_pwrite64_chk(int fd, const void *buf, size_t n, i64 offset, size_t buf_size)
 {
     (void)buf_size;
     return g_pwrite64(fd, buf, n, offset);
 }
-static i32 g_readlink_chk(const char *path, char *buf, size_t n, size_t buf_size)
+static gssize g_readlink_chk(const char *path, char *buf, size_t n, size_t buf_size)
 {
     (void)buf_size;
     return g_readlink(path, buf, n);
@@ -2111,30 +2184,30 @@ static i32 g_readlink_chk(const char *path, char *buf, size_t n, size_t buf_size
  * move them without a copy, so they are read and written; with an offset the
  * source's own position is left where it was, as the call promises.
  */
-static i32 send_file(int out_fd, int in_fd, i64 *offset, u32 count)
+static gssize send_file(int out_fd, int in_fd, i64 *offset, size_t n)
 {
     char buf[4096];
-    u32 done = 0;
+    u32 done = 0, count = mg_rw_count(n);
     while (done < count) {
         u32 want = count - done < sizeof(buf) ? count - done : (u32)sizeof(buf);
         i32 got = offset ? mg_fd_pread(in_fd, buf, want, (u64)*offset) : mg_fd_read(in_fd, buf, want), put;
-        if (got < 0) return done ? (i32)done : -1;
+        if (got < 0) return done ? (gssize)done : -1;
         if (got == 0) break;
         put = mg_fd_write(out_fd, buf, (u32)got);
-        if (put < 0) return done ? (i32)done : -1;
+        if (put < 0) return done ? (gssize)done : -1;
         if (offset) *offset += put;
         else if (put < got) mg_fd_seek(in_fd, (i64)put - got, 1);    /* what was read and not taken is still to be read */
         done += (u32)put;
         if (put < got) break;
     }
-    return (i32)done;
+    return (gssize)done;
 }
-static i32 g_sendfile64(int out_fd, int in_fd, i64 *offset, u32 count) { return send_file(out_fd, in_fd, offset, count); }
-static i32 g_sendfile(int out_fd, int in_fd, i32 *offset, u32 count)
+static gssize g_sendfile64(int out_fd, int in_fd, i64 *offset, size_t count) { return send_file(out_fd, in_fd, offset, count); }
+static gssize g_sendfile(int out_fd, int in_fd, goff *offset, size_t count)
 {
     i64 at = offset ? *offset : 0;
-    i32 n = send_file(out_fd, in_fd, offset ? &at : NULL, count);
-    if (offset) *offset = (i32)at;
+    gssize n = send_file(out_fd, in_fd, offset ? &at : NULL, count);
+    if (offset) *offset = (goff)at;
     return n;
 }
 
@@ -2158,18 +2231,21 @@ static int g_posix_fallocate64(int fd, i64 offset, i64 len)
     *mg_errno_ptr() = saved;
     return err ? err : GE_IO;
 }
-/* (The 32-bit offsets' form, which bionic has beside it.) */
-static int g_posix_fallocate(int fd, i32 offset, i32 len) { return g_posix_fallocate64(fd, offset, len); }
+/* (The form of off_t's width, which bionic has beside it.) */
+static int g_posix_fallocate(int fd, goff offset, goff len) { return g_posix_fallocate64(fd, offset, len); }
 
-/* What this file system does not have: pipes spliced in the kernel, FIFOs and device files, extended attributes, watches. */
-static int g_io_nosys(void) { mg_set_errno(GE_NOSYS); return -1; }
+/*
+ * What this file system does not have: pipes spliced in the kernel, FIFOs and device files, extended attributes, watches.
+ * (A long -1, which is the int -1 too: splice's and getxattr's results are ssize_t.)
+ */
+static glong g_io_nosys(void) { mg_set_errno(GE_NOSYS); return -1; }
 static int g_io_perm(void) { mg_set_errno(GE_PERM); return -1; }
-static int g_io_notsup(void) { mg_set_errno(GE_OPNOTSUPP); return -1; }
+static glong g_io_notsup(void) { mg_set_errno(GE_OPNOTSUPP); return -1; }
 /* And no descriptor is a terminal. */
 static int g_io_notty(void) { mg_set_errno(GE_NOTTY); return -1; }
 
 /* pathconf: the limits of the one kind of file system there is. Those it has no figure for answer -1 and leave errno alone, which is how "no limit" is said. */
-static i32 g_pathconf(const char *path, int name)
+static glong g_pathconf(const char *path, int name)
 {
     (void)path;
     switch (name) {
@@ -2186,7 +2262,7 @@ static i32 g_pathconf(const char *path, int name)
     default: mg_set_errno(GE_INVAL); return -1;
     }
 }
-static i32 g_fpathconf(int fd, int name) { (void)fd; return g_pathconf("", name); }
+static glong g_fpathconf(int fd, int name) { (void)fd; return g_pathconf("", name); }
 
 /* ------------------------------------------------------------ directories */
 
@@ -2354,11 +2430,11 @@ static int g_closedir(g_dir *d)
  * fit; 0 at the end. Go's os package reads a directory so, by number (os.ReadDir: Psiphon's, in WhatsApp's libgojni.so).
  * The listing is made again for each call, as opendir makes it.
  */
-static int g_getdents64(int fd, void *buf, u32 count)
+static gssize g_getdents64(int fd, void *buf, size_t size)
 {
     gobj *o = fd_get(fd);
     g_dir *d;
-    u32 used = 0;
+    u32 used = 0, count = mg_rw_count(size);
     bool more;
     if (!o) {
         mg_set_errno(GE_BADF);
@@ -2401,7 +2477,7 @@ static int g_getdents64(int fd, void *buf, u32 count)
         mg_set_errno(GE_INVAL);          /* not even one fits */
         return -1;
     }
-    return (int)used;
+    return (gssize)used;
 }
 
 static void g_rewinddir(g_dir *d) { if (d) d->at = 0; }
@@ -2546,7 +2622,10 @@ static int g_memfd_create(const char *name, unsigned flags)
  * watch expires.
  */
 typedef struct g_itimerspec {
-    i32 interval_sec, interval_nsec, value_sec, value_nsec;
+    gtime interval_sec;
+    glong interval_nsec;
+    gtime value_sec;
+    glong value_nsec;
 } g_itimerspec;
 
 static int g_timerfd_create(int clock, int flags)
@@ -2572,10 +2651,10 @@ static int g_timerfd_create(int clock, int flags)
 static void timer_left(gobj *o, g_itimerspec *out)
 {
     u64 now = mg_time_monotonic_ns(), left = o->timer_next ? (o->timer_next > now ? o->timer_next - now : 1) : 0;
-    out->interval_sec = (i32)(o->timer_interval / 1000000000ull);
-    out->interval_nsec = (i32)(o->timer_interval % 1000000000ull);
-    out->value_sec = (i32)(left / 1000000000ull);
-    out->value_nsec = (i32)(left % 1000000000ull);
+    out->interval_sec = (gtime)(o->timer_interval / 1000000000ull);
+    out->interval_nsec = (glong)(o->timer_interval % 1000000000ull);
+    out->value_sec = (gtime)(left / 1000000000ull);
+    out->value_nsec = (glong)(left % 1000000000ull);
 }
 
 /* The timer a descriptor is, held; NULL with EBADF or EINVAL. */
@@ -2702,9 +2781,13 @@ static int g_dup3(int fd, int nfd, int flags)
 }
 static int g_dup2(int fd, int nfd) { return g_dup3(fd, nfd, 0); }
 
-static int g_fcntl(int fd, int cmd, int arg)
+/*
+ * fcntl's third argument is an int or a pointer, as the command has it, and is taken here as wide as a pointer: an int
+ * is its low half (on the 64-bit ABIs a caller leaves the rest of the register as it was).
+ */
+static int g_fcntl(int fd, int cmd, uintptr_t parg)
 {
-    int r = 0;
+    int r = 0, arg = (int)parg;
     WITH_FD(fd, o, -1)
     switch (cmd) {
     case 0: /* F_DUPFD */
@@ -2738,11 +2821,11 @@ static int g_fcntl(int fd, int cmd, int arg)
          * mode asks this of its -shm file before it uses it; the struct came back as it was asked, F_WRLCK, which says
          * another process holds the lock: SQLITE_BUSY at every try, then SQLITE_PROTOCOL ("locking protocol").
          */
-        if (!arg) {
+        if (!parg) {
             mg_set_errno(GE_FAULT);
             r = -1;
         } else {
-            mg_wr16((u8 *)(mg_addr)(u32)arg, 2);
+            mg_wr16((u8 *)parg, 2);
         }
         break;
     default: break;                                /* setting locks, and the rest: granted */
@@ -2756,6 +2839,10 @@ static int g_fcntl(int fd, int cmd, int arg)
  * its size (set while nothing maps it), its protection (only ever narrowed), and pinning, which is always granted with
  * nothing purged, since nothing is ever taken back here.
  */
+/* (Two of them say a long's size in their number: _IOW(0x77, 3, size_t), _IOW(0x77, 5, unsigned long).) */
+#define G_ASHMEM_SET_SIZE (0x40007703u | (u32)sizeof(size_t) << 16)
+#define G_ASHMEM_SET_PROT_MASK (0x40007705u | (u32)sizeof(gulong) << 16)
+
 static int shm_ioctl(gobj *o, unsigned request, void *arg)
 {
     switch (request) {
@@ -2769,13 +2856,13 @@ static int shm_ioctl(gobj *o, unsigned request, void *arg)
     case 0x81007702:                               /* ASHMEM_GET_NAME */
         snprintf((char *)arg, 256, "%s", o->path && !strncmp(o->path, "/dev/ashmem/", 12) ? o->path + 12 : "");
         return 0;
-    case 0x40047703: {                             /* ASHMEM_SET_SIZE */
+    case G_ASHMEM_SET_SIZE: {
         size_t size = (size_t)(mg_addr)arg;
         if (size > 0x40000000u) break;
         return shm_resize(o, size) ? 0 : -1;
     }
     case 0x7704: return (int)o->mem_size;          /* ASHMEM_GET_SIZE */
-    case 0x40047705:                               /* ASHMEM_SET_PROT_MASK */
+    case G_ASHMEM_SET_PROT_MASK:
         if ((u32)(mg_addr)arg & ~(u32)o->shm_prot & 7u) break;
         o->shm_prot = (int)((u32)(mg_addr)arg & 7u);
         return 0;
@@ -2891,11 +2978,12 @@ static int ready_locked(gobj *o, int events)
  * `interruptible`: a signal handled meanwhile ends the wait with EINTR, as
  * poll, select and epoll_wait do on Linux whatever the handler asked for.
  * The layer's own callers (the looper) go on waiting instead. `mask`: the
- * signal mask while waiting (ppoll, pselect, epoll_pwait).
+ * signal mask while waiting (ppoll, pselect, epoll_pwait), a sigset_t: an
+ * unsigned long, whose signals 1 to 32 are what is kept of it here.
  */
 typedef int (*ready_check)(void *ctx, bool *looks_itself);
 
-static int wait_ready(ready_check check, void *ctx, int timeout_ms, bool interruptible, const u32 *mask)
+static int wait_ready(ready_check check, void *ctx, int timeout_ms, bool interruptible, const gulong *mask)
 {
     u64 deadline = timeout_ms > 0 ? mg_time_monotonic_ns() + (u64)timeout_ms * 1000000ull : 0;
     mg_gthread *t = mask ? mg_gthread_self() : NULL;
@@ -2904,7 +2992,7 @@ static int wait_ready(ready_check check, void *ctx, int timeout_ms, bool interru
     io_init();
     if (t) {
         saved = t->sig_blocked;
-        t->sig_blocked = *mask;
+        t->sig_blocked = (u32)*mask;
     }
     mg_lock_acquire(&g_io_lock);
     for (;;) {
@@ -2996,19 +3084,20 @@ static int g_poll(mg_pollfd *fds, unsigned count, int timeout_ms)
     return wait_ready(poll_check, &c, timeout_ms, true, NULL);
 }
 
-/* A struct timespec / timeval (two 32-bit words) as milliseconds, rounded up; -2 when it is not one. */
-static int timeout_of(const i32 *t, i64 per_ms)
+/* A struct timespec's or timeval's seconds and fraction as milliseconds, rounded up; -2 when they are not a time. */
+static int timeout_of(gtime sec, glong frac, i64 per_ms)
 {
     i64 ms;
-    if (t[0] < 0 || t[1] < 0 || t[1] >= per_ms * 1000) return -2;
-    ms = (i64)t[0] * 1000 + ((i64)t[1] + per_ms - 1) / per_ms;
+    if (sec < 0 || frac < 0 || frac >= per_ms * 1000) return -2;
+    if (sec > 0x7FFFFFFF / 1000) return 0x7FFFFFFF;
+    ms = (i64)sec * 1000 + ((i64)frac + per_ms - 1) / per_ms;
     return ms > 0x7FFFFFFF ? 0x7FFFFFFF : (int)ms;
 }
 
-static int g_ppoll(mg_pollfd *fds, unsigned count, const i32 *ts, const u32 *mask)
+static int g_ppoll(mg_pollfd *fds, unsigned count, const g_timespec *ts, const gulong *mask)
 {
     poll_ctx c;
-    int ms = ts ? timeout_of(ts, 1000000) : -1;
+    int ms = ts ? timeout_of(ts->tv_sec, ts->tv_nsec, 1000000) : -1;
     if (ms == -2) {
         mg_set_errno(GE_INVAL);
         return -1;
@@ -3018,12 +3107,17 @@ static int g_ppoll(mg_pollfd *fds, unsigned count, const i32 *ts, const u32 *mas
     return wait_ready(poll_check, &c, ms, true, mask);
 }
 
-/* select: bionic's fd_set is 1024 bits in 32-bit words. Readable, writable and exceptional are what Linux makes of poll's bits. */
-static int select_wait(int nfds, u32 *rd, u32 *wr, u32 *ex, int timeout_ms, const u32 *mask)
+/*
+ * select: bionic's fd_set is 1024 bits in longs, and on a little-endian processor descriptor n is bit n % 32 of the
+ * 32-bit word n / 32 whatever a long's width, which is how they are read here; what is cleared of them is whole longs,
+ * as Linux clears them. Readable, writable and exceptional are what Linux makes of poll's bits.
+ */
+static int select_wait(int nfds, u32 *rd, u32 *wr, u32 *ex, int timeout_ms, const gulong *mask)
 {
     mg_pollfd *p;
     poll_ctx c;
     int n = 0, i, hits, total = 0;
+    size_t bytes = (size_t)((nfds + 8 * sizeof(gulong) - 1) / (8 * sizeof(gulong))) * sizeof(gulong);
     if (nfds < 0 || nfds > MAX_FDS || timeout_ms == -2) {
         mg_set_errno(GE_INVAL);
         return -1;
@@ -3056,9 +3150,9 @@ static int select_wait(int nfds, u32 *rd, u32 *wr, u32 *ex, int timeout_ms, cons
         free(p);
         return -1;
     }
-    if (rd) memset(rd, 0, (size_t)((nfds + 31) / 32) * 4);
-    if (wr) memset(wr, 0, (size_t)((nfds + 31) / 32) * 4);
-    if (ex) memset(ex, 0, (size_t)((nfds + 31) / 32) * 4);
+    if (rd) memset(rd, 0, bytes);
+    if (wr) memset(wr, 0, bytes);
+    if (ex) memset(ex, 0, bytes);
     for (i = 0; i < n && hits > 0; i++) {
         int fd = p[i].fd;
         if (rd && (p[i].revents & (G_POLLIN | G_POLLHUP | G_POLLERR)) && (p[i].events & G_POLLIN)) { rd[fd / 32] |= 1u << (fd % 32); total++; }
@@ -3069,22 +3163,22 @@ static int select_wait(int nfds, u32 *rd, u32 *wr, u32 *ex, int timeout_ms, cons
     return total;
 }
 
-static int g_select(int nfds, u32 *rd, u32 *wr, u32 *ex, i32 *tv)
+static int g_select(int nfds, u32 *rd, u32 *wr, u32 *ex, g_timeval *tv)
 {
     u64 began = mg_time_monotonic_ns();
-    int ms = tv ? timeout_of(tv, 1000) : -1, r = select_wait(nfds, rd, wr, ex, ms, NULL);
+    int ms = tv ? timeout_of(tv->tv_sec, tv->tv_usec, 1000) : -1, r = select_wait(nfds, rd, wr, ex, ms, NULL);
     if (tv && ms >= 0 && r >= 0) {
         /* As Linux does: the time that was left. */
         u64 spent = (mg_time_monotonic_ns() - began) / 1000ull, all = (u64)ms * 1000ull, left = spent < all ? all - spent : 0;
-        tv[0] = (i32)(left / 1000000ull);
-        tv[1] = (i32)(left % 1000000ull);
+        tv->tv_sec = (gtime)(left / 1000000ull);
+        tv->tv_usec = (glong)(left % 1000000ull);
     }
     return r;
 }
 
-static int g_pselect(int nfds, u32 *rd, u32 *wr, u32 *ex, const i32 *ts, const u32 *mask)
+static int g_pselect(int nfds, u32 *rd, u32 *wr, u32 *ex, const g_timespec *ts, const gulong *mask)
 {
-    return select_wait(nfds, rd, wr, ex, ts ? timeout_of(ts, 1000000) : -1, mask);
+    return select_wait(nfds, rd, wr, ex, ts ? timeout_of(ts->tv_sec, ts->tv_nsec, 1000000) : -1, mask);
 }
 
 /*
@@ -3096,10 +3190,17 @@ static int g_pselect(int nfds, u32 *rd, u32 *wr, u32 *ex, const i32 *ts, const u
  * not yet emptied, which this cannot tell.) EPOLLONESHOT disarms an item once
  * it is reported, until EPOLL_CTL_MOD.
  */
+/* bionic's struct epoll_event: packed on x86_64 alone, as the kernel's is there (12 bytes; 16 on ARM, 12 on x86). */
+#if MG_ARCH_X86_64
+#pragma pack(push, 1)
+#endif
 typedef struct g_epoll_event {
     u32 events;
     u64 data;
 } g_epoll_event;
+#if MG_ARCH_X86_64
+#pragma pack(pop)
+#endif
 
 #define G_EPOLLRDHUP 0x2000u
 #define G_EPOLLONESHOT 0x40000000u
@@ -3214,7 +3315,7 @@ static int epoll_check(void *ctx, bool *looks_itself)
     return got;
 }
 
-static int g_epoll_pwait(int epfd, g_epoll_event *out, int max, int timeout_ms, const u32 *mask)
+static int g_epoll_pwait(int epfd, g_epoll_event *out, int max, int timeout_ms, const gulong *mask)
 {
     epoll_ctx c;
     int got;
@@ -3256,8 +3357,8 @@ static void g_sync(void) { }
 #define IO(n, f) MG_WRAP(n, f)
 
 const mg_sym mg_tab_io[] = {
-    IO("open", g_open), IO("open64", g_open), IO("__open_2", g_open), IO("openat", g_openat), IO("openat64", g_openat),
-    IO("__openat_2", g_openat), IO("creat", g_creat), IO("creat64", g_creat), IO("close", g_close),
+    IO("open", g_open), IO("open64", g_open), IO("__open_2", g_open_2), IO("openat", g_openat), IO("openat64", g_openat),
+    IO("__openat_2", g_openat_2), IO("creat", g_creat), IO("creat64", g_creat), IO("close", g_close),
     IO("read", g_read), IO("write", g_write), IO("__read_chk", g_read), IO("__write_chk", g_write),
     IO("pread", g_pread), IO("pread64", g_pread64), IO("pwrite", g_pwrite), IO("pwrite64", g_pwrite64),
     IO("__pread_chk", g_pread_chk), IO("__pread64_chk", g_pread64_chk), IO("__umask_chk", g_umask_chk),

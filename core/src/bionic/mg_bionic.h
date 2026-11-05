@@ -59,6 +59,23 @@ typedef long gssize;
 typedef long goff;
 typedef long gtime;
 
+/* struct timespec and struct timeval as guest code has them: a time_t and a long. */
+typedef struct g_timespec {
+    gtime tv_sec;
+    glong tv_nsec;
+} g_timespec;
+typedef struct g_timeval {
+    gtime tv_sec;
+    glong tv_usec;
+} g_timeval;
+/*
+ * The largest count read, write and their kin move at once: Linux's MAX_RW_COUNT, which it gives a caller asking for more
+ * (the rest is a short read or write, as POSIX allows). It keeps the descriptors' layer's counts 31 bits wide where size_t
+ * is 64.
+ */
+#define MG_RW_MAX 0x7FFFF000u
+static inline u32 mg_rw_count(size_t n) { return n > MG_RW_MAX ? MG_RW_MAX : (u32)n; }
+
 #define MG_DIRECT(fn) { #fn, (void *)(fn) }
 #define MG_WRAP(name, impl) { name, (void *)(impl) }
 #define MG_DATA(name, ptr) { name, (void *)(ptr) }
@@ -108,8 +125,8 @@ int *mg_errno_ptr(void);
 /* argv as the kernel lays it out for a process, envp (empty) and the auxiliary vector after it: what a library's init
    functions are given (mg_libc_misc.c). */
 char **mg_bionic_initial_argv(void);
-/* Its auxiliary vector as /proc/self/auxv has it: 32-bit tags and values, AT_NULL's pair the last; the number of words. */
-size_t mg_bionic_auxv_words(u32 *out, size_t max);
+/* Its auxiliary vector as /proc/self/auxv has it: tags and values as longs, AT_NULL's pair the last; the number of words. */
+size_t mg_bionic_auxv_words(gulong *out, size_t max);
 /* ARM EABI kernel convention: negative errno in r0, guest errno unchanged. */
 u32 mg_bionic_syscall_raw(const u32 *regs);
 void mg_set_errno(int guest_errno);
@@ -202,7 +219,7 @@ static inline void mg_gthread_take_breakpoints(mg_gthread *t)
  * asked again a millisecond later.
  */
 int mg_signal_send(mg_gthread *t, int sig);            /* pthread_kill: 0 or an errno; signals 1 to 64 */
-int mg_signal_mask(int how, const u32 *set, u32 *old); /* pthread_sigmask */
+int mg_signal_mask(int how, const gulong *set, gulong *old); /* pthread_sigmask: a sigset_t, a long */
 /* Runs the handlers of the signals waiting for the calling thread. Only where no lock of this layer is held. */
 MG_HOSTCB void mg_signals_check(void);
 /* A fault's signal for the app's own handler (an inline hook's trap, mg_mmap_app_trap): true if one ran and f says where to go on. */

@@ -25,15 +25,14 @@
 #define G_EAGAIN 11
 #define G_ESRCH 3
 
-typedef struct g_timespec {
-    i32 tv_sec, tv_nsec;
-} g_timespec;
+/* A struct timespec's time in nanoseconds (as unsigned: one before 1970 is far in the future, as it always was here). */
+static u64 ns_of(const g_timespec *t) { return (u64)(gulong)t->tv_sec * 1000000000ull + (u64)(gulong)t->tv_nsec; }
 
 /* How long from now until an absolute time on the realtime (or monotonic) clock; 0 when it has passed. */
 static u64 until(const g_timespec *abs, bool monotonic)
 {
     u64 now = monotonic ? mg_time_monotonic_ns() : mg_time_realtime_ns();
-    u64 at = (u64)(u32)abs->tv_sec * 1000000000ull + (u64)(u32)abs->tv_nsec;
+    u64 at = ns_of(abs);
     return at > now ? at - now : 0;
 }
 
@@ -146,7 +145,7 @@ static int g_mutex_lock_timeout_np(volatile i32 *m, unsigned ms)
     return r == G_ETIMEDOUT ? G_EBUSY : r;
 }
 
-static int g_mutex_init(volatile i32 *m, const i32 *attr)
+static int g_mutex_init(volatile i32 *m, const glong *attr)
 {
     i32 v = 0;
     if (attr) {
@@ -160,17 +159,18 @@ static int g_mutex_init(volatile i32 *m, const i32 *attr)
 }
 
 static int g_mutex_destroy(volatile i32 *m) { (void)m; return 0; }
-static int g_mutexattr_init(i32 *a) { *a = 0; return 0; }
-static int g_mutexattr_destroy(i32 *a) { (void)a; return 0; }
-static int g_mutexattr_settype(i32 *a, int type)
+/* The attributes are a long in bionic (pthread_mutexattr_t, pthread_condattr_t, pthread_rwlockattr_t), the type in its low bits. */
+static int g_mutexattr_init(glong *a) { *a = 0; return 0; }
+static int g_mutexattr_destroy(glong *a) { (void)a; return 0; }
+static int g_mutexattr_settype(glong *a, int type)
 {
     if (type < 0 || type > 2) return G_EINVAL;
     *a = (*a & ~15) | type;
     return 0;
 }
-static int g_mutexattr_gettype(const i32 *a, int *type) { *type = *a & 15; return 0; }
-static int g_mutexattr_setpshared(i32 *a, int shared) { *a = shared ? (*a | 0x10) : (*a & ~0x10); return 0; }
-static int g_mutexattr_getpshared(const i32 *a, int *shared) { *shared = (*a & 0x10) ? 1 : 0; return 0; }
+static int g_mutexattr_gettype(const glong *a, int *type) { *type = (int)(*a & 15); return 0; }
+static int g_mutexattr_setpshared(glong *a, int shared) { *a = shared ? (*a | 0x10) : (*a & ~0x10); return 0; }
+static int g_mutexattr_getpshared(const glong *a, int *shared) { *shared = (*a & 0x10) ? 1 : 0; return 0; }
 
 /* -------------------------------------------------------------- condition */
 
@@ -202,7 +202,7 @@ static int g_cond_timedwait_monotonic(volatile i32 *c, volatile i32 *m, const g_
 }
 static int g_cond_timedwait_relative(volatile i32 *c, volatile i32 *m, const g_timespec *rel)
 {
-    return cond_wait(c, m, (u64)(u32)rel->tv_sec * 1000000000ull + (u64)(u32)rel->tv_nsec, true);
+    return cond_wait(c, m, ns_of(rel), true);
 }
 static int g_cond_timeout_np(volatile i32 *c, volatile i32 *m, unsigned ms) { return cond_wait(c, m, (u64)ms * 1000000ull, true); }
 
@@ -220,20 +220,20 @@ static int g_cond_broadcast(volatile i32 *c)
     return 0;
 }
 
-static int g_cond_init(volatile i32 *c, const i32 *attr) { *c = attr ? (*attr & (C_SHARED | C_MONOTONIC)) : 0; return 0; }
+static int g_cond_init(volatile i32 *c, const glong *attr) { *c = attr ? (i32)(*attr & (C_SHARED | C_MONOTONIC)) : 0; return 0; }
 static int g_cond_destroy(volatile i32 *c) { (void)c; return 0; }
-static int g_condattr_init(i32 *a) { *a = 0; return 0; }
-static int g_condattr_destroy(i32 *a) { (void)a; return 0; }
-static int g_condattr_setclock(i32 *a, int clock)
+static int g_condattr_init(glong *a) { *a = 0; return 0; }
+static int g_condattr_destroy(glong *a) { (void)a; return 0; }
+static int g_condattr_setclock(glong *a, int clock)
 {
     /* CLOCK_REALTIME 0, CLOCK_MONOTONIC 1 */
     if (clock != 0 && clock != 1) return G_EINVAL;
     *a = (*a & ~C_MONOTONIC) | (clock ? C_MONOTONIC : 0);
     return 0;
 }
-static int g_condattr_getclock(const i32 *a, int *clock) { *clock = (*a & C_MONOTONIC) ? 1 : 0; return 0; }
-static int g_condattr_setpshared(i32 *a, int shared) { *a = shared ? (*a | C_SHARED) : (*a & ~C_SHARED); return 0; }
-static int g_condattr_getpshared(const i32 *a, int *shared) { *shared = *a & C_SHARED; return 0; }
+static int g_condattr_getclock(const glong *a, int *clock) { *clock = (*a & C_MONOTONIC) ? 1 : 0; return 0; }
+static int g_condattr_setpshared(glong *a, int shared) { *a = shared ? (*a | C_SHARED) : (*a & ~C_SHARED); return 0; }
+static int g_condattr_getpshared(const glong *a, int *shared) { *shared = (int)(*a & C_SHARED); return 0; }
 
 /* -------------------------------------------------------------- semaphore */
 
@@ -289,7 +289,10 @@ static int g_sem_destroy(volatile i32 *s) { (void)s; return 0; }
 
 /* ----------------------------------------------------------------- rwlock */
 
-/* pthread_rwlock_t is 40 bytes in 32-bit bionic and all zeros when static: room for a lock, a condition and the counts. */
+/*
+ * pthread_rwlock_t is 40 bytes in 32-bit bionic (56 in 64-bit) and all zeros when static: room for a lock, a condition and
+ * the counts.
+ */
 typedef struct g_rwlock {
     volatile i32 lock, cond;
     i32 readers, writer, pending_writers;
@@ -352,10 +355,10 @@ static int g_rwlock_unlock(g_rwlock *rw)
 
 static int g_rwlock_init(g_rwlock *rw, const void *attr) { (void)attr; memset(rw, 0, sizeof(*rw)); return 0; }
 static int g_rwlock_destroy(g_rwlock *rw) { (void)rw; return 0; }
-static int g_attr_long_init(i32 *a) { *a = 0; return 0; }
-static int g_attr_long_nop(i32 *a) { (void)a; return 0; }
-static int g_attr_long_set(i32 *a, int v) { (void)a; (void)v; return 0; }
-static int g_attr_long_get(const i32 *a, int *v) { (void)a; *v = 0; return 0; }
+static int g_attr_long_init(glong *a) { *a = 0; return 0; }
+static int g_attr_long_nop(glong *a) { (void)a; return 0; }
+static int g_attr_long_set(glong *a, int v) { (void)a; (void)v; return 0; }
+static int g_attr_long_get(const glong *a, int *v) { (void)a; *v = 0; return 0; }
 
 /* ------------------------------------------------------------------- once */
 
@@ -446,15 +449,22 @@ static void run_key_destructors(mg_gthread *t)
 
 /* ---------------------------------------------------------------- threads */
 
+/* bionic's pthread_attr_t, whose fields only these functions read. */
 typedef struct g_attr {
     u32 flags;             /* 1: detached */
-    u32 stack_base;
-    u32 stack_size, guard_size;
+    void *stack_base;
+    size_t stack_size, guard_size;
     i32 sched_policy, sched_priority;
+#if MG_GUEST_LP64
+    char reserved[16];
+#endif
 } g_attr;
 
+/* bionic's __pthread_cleanup_t, which pthread_cleanup_push puts on the guest's stack. */
 typedef struct g_cleanup {
-    u32 prev, routine, arg;
+    struct g_cleanup *prev;
+    mg_addr routine;
+    void *arg;
 } g_cleanup;
 
 static void thread_finish(mg_gthread *t)
@@ -569,7 +579,7 @@ static int g_attr_getdetachstate(const g_attr *a, int *state) { *state = a->flag
 static int g_attr_setstacksize(g_attr *a, size_t size)
 {
     if (size < 8192) return G_EINVAL;
-    a->stack_size = (u32)size;
+    a->stack_size = size;
     return 0;
 }
 static int g_attr_getstacksize(const g_attr *a, size_t *size) { *size = a->stack_size; return 0; }
@@ -577,16 +587,16 @@ static int g_attr_setstack(g_attr *a, void *base, size_t size)
 {
     /* The host makes the stack; an app that brings its own gets one of that size. */
     (void)base;
-    a->stack_size = (u32)size;
+    a->stack_size = size;
     return 0;
 }
 static int g_attr_getstack(const g_attr *a, void **base, size_t *size)
 {
-    *base = (void *)(mg_addr)a->stack_base;
+    *base = a->stack_base;
     *size = a->stack_size;
     return 0;
 }
-static int g_attr_setguardsize(g_attr *a, size_t size) { a->guard_size = (u32)size; return 0; }
+static int g_attr_setguardsize(g_attr *a, size_t size) { a->guard_size = size; return 0; }
 static int g_attr_getguardsize(const g_attr *a, size_t *size) { *size = a->guard_size; return 0; }
 static int g_attr_setschedpolicy(g_attr *a, int policy) { a->sched_policy = policy; return 0; }
 static int g_attr_getschedpolicy(const g_attr *a, int *policy) { *policy = a->sched_policy; return 0; }
@@ -602,8 +612,8 @@ static int g_getattr_np(mg_gthread *t, g_attr *a)
     g_attr_init(a);
     if (!t) return G_ESRCH;
     if (!t->stack_lo && t == mg_gthread_self()) mg_thread_stack_bounds(&t->stack_lo, &t->stack_hi);
-    a->stack_base = (u32)(mg_addr)t->stack_lo;
-    a->stack_size = (u32)((u8 *)t->stack_hi - (u8 *)t->stack_lo);
+    a->stack_base = t->stack_lo;
+    a->stack_size = (size_t)((u8 *)t->stack_hi - (u8 *)t->stack_lo);
     if (t->detached == 1) a->flags |= 1;
     return 0;
 }
@@ -620,7 +630,7 @@ static int g_getname_np(mg_gthread *t, char *buf, size_t n)
     return 0;
 }
 static int g_kill(mg_gthread *t, int sig) { return mg_signal_send(t, sig); }
-static int g_sigmask(int how, const u32 *set, u32 *old) { return mg_signal_mask(how, set, old); }
+static int g_sigmask(int how, const gulong *set, gulong *old) { return mg_signal_mask(how, set, old); }
 static int g_setschedparam(mg_gthread *t, int policy, const i32 *param) { (void)t; (void)policy; (void)param; return 0; }
 static int g_getschedparam(mg_gthread *t, int *policy, i32 *param)
 {
@@ -643,9 +653,9 @@ static void g_testcancel(void) { }
 static void g_cleanup_push(g_cleanup *c, mg_addr routine, void *arg)
 {
     mg_gthread *t = mg_gthread_self();
-    c->prev = (u32)(mg_addr)t->cleanup;
-    c->routine = (u32)routine;
-    c->arg = (u32)(mg_addr)arg;
+    c->prev = (g_cleanup *)t->cleanup;
+    c->routine = routine;
+    c->arg = arg;
     t->cleanup = c;
 }
 
@@ -693,6 +703,7 @@ static int g_sched_cpucount(size_t size, const u8 *set)
     return n;
 }
 static int g_sched_setscheduler(int pid, int policy, const void *param) { (void)pid; (void)policy; (void)param; return 0; }
+static int g_sched_setparam(int pid, const void *param) { (void)pid; (void)param; return 0; }
 static int g_sched_getscheduler(int pid) { (void)pid; return 0; }
 static int g_sched_getparam(int pid, i32 *param) { (void)pid; if (param) *param = 0; return 0; }
 
@@ -707,7 +718,7 @@ long mg_g_futex(volatile i32 *addr, int op, int val, const g_timespec *timeout)
             return -1;
         }
         if (timeout) {
-            u64 ns = (op & 0x7F) == 9 ? until(timeout, !(op & 256)) : (u64)(u32)timeout->tv_sec * 1000000000ull + (u64)(u32)timeout->tv_nsec;
+            u64 ns = (op & 0x7F) == 9 ? until(timeout, !(op & 256)) : ns_of(timeout);
             if (!ns || !mg_gwait(addr, val, ns)) {
                 mg_set_errno(GE_TIMEDOUT);
                 return -1;
@@ -771,6 +782,6 @@ const mg_sym mg_tab_pthread[] = {
     MG_WRAP("sched_get_priority_min", g_sched_get_priority), MG_WRAP("sched_getcpu", g_sched_getcpu),
     MG_WRAP("pthread_getcpuclockid", g_pthread_getcpuclockid), MG_WRAP("sched_setaffinity", g_sched_setaffinity), MG_WRAP("sched_getaffinity", g_sched_getaffinity), MG_WRAP("__sched_cpucount", g_sched_cpucount),
     MG_WRAP("sched_setscheduler", g_sched_setscheduler), MG_WRAP("sched_getscheduler", g_sched_getscheduler),
-    MG_WRAP("sched_getparam", g_sched_getparam), MG_WRAP("sched_setparam", g_sched_setscheduler),
+    MG_WRAP("sched_getparam", g_sched_getparam), MG_WRAP("sched_setparam", g_sched_setparam),
     MG_END
 };

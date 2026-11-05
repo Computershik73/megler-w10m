@@ -16,14 +16,15 @@
 
 /*
  * A gzip file. It starts as zlib's gzFile_s, which zlib.h's gzgetc macro reads (have, next, pos): `have` stays 0 here,
- * so the macro calls gzgetc. Reading takes a gzip stream (one member after another) or a file as it is (zlib reads such a
- * file transparently); writing makes a gzip stream at the level and strategy the mode says. Zalo's libraries write their
- * logs with gzopen, gzwrite and gzclose (libz3rdparty, libznetwork, libzmedia), and libzjxl reads with gzgets; an import
- * not provided is a stub that ends the app when called.
+ * so the macro calls gzgetc. (pos is a z_off64_t there, which is 4 bytes in 32-bit Android unless the app was built with
+ * _LARGEFILE64_SOURCE: the low half of this one either way.) Reading takes a gzip stream (one member after another) or a
+ * file as it is (zlib reads such a file transparently); writing makes a gzip stream at the level and strategy the mode
+ * says. Zalo's libraries write their logs with gzopen, gzwrite and gzclose (libz3rdparty, libznetwork, libzmedia), and
+ * libzjxl reads with gzgets; an import not provided is a stub that ends the app when called.
  */
 typedef struct g_gz {
     u32 have;                  /* zlib's gzFile_s, as the gzgetc macro reads it */
-    u32 next;
+    u8 *next;
     i64 pos;                   /* the uncompressed bytes read or written so far */
     int fd;
     bool writing, eof, transparent, started, inflating;
@@ -328,6 +329,13 @@ static int g_gzdirect(g_gz *g) { return g && !g->writing && g->transparent; }
 static long g_gztell(g_gz *g) { return g ? (long)g->pos : -1; }
 static i64 g_gztell64(g_gz *g) { return g ? g->pos : -1; }
 
+/*
+ * zlib's *_combine take a z_off_t, which Android's zlib.h has as a long (32 bits in 32-bit Android); the vendored zlib's is
+ * 64 bits wide whatever the processor, which on 32-bit ARM read a register the caller had not set.
+ */
+static uLong g_adler32_combine(uLong a, uLong b, glong len) { return adler32_combine(a, b, (z_off_t)len); }
+static uLong g_crc32_combine(uLong a, uLong b, glong len) { return crc32_combine(a, b, (z_off_t)len); }
+
 static int g_gzsetparams(g_gz *g, int level, int strategy)
 {
     if (!g || !g->writing) return Z_STREAM_ERROR;
@@ -341,9 +349,9 @@ const mg_sym mg_tab_zlib[] = {
     MG_DIRECT(inflateSetDictionary), MG_DIRECT(inflateSync), MG_DIRECT(inflateCopy), MG_DIRECT(inflateReset),
     MG_DIRECT(inflateReset2), MG_DIRECT(inflatePrime), MG_DIRECT(inflateMark), MG_DIRECT(inflateGetHeader),
     MG_DIRECT(inflateBack), MG_DIRECT(inflateBackEnd), MG_DIRECT(zlibCompileFlags), MG_DIRECT(compress), MG_DIRECT(compress2),
-    MG_DIRECT(compressBound), MG_DIRECT(uncompress), MG_DIRECT(adler32), MG_DIRECT(crc32), MG_DIRECT(adler32_combine),
-    MG_DIRECT(crc32_combine), MG_DIRECT(deflateInit_), MG_DIRECT(inflateInit_), MG_DIRECT(deflateInit2_), MG_DIRECT(inflateInit2_),
-    MG_DIRECT(inflateBackInit_), MG_DIRECT(zError), MG_DIRECT(inflateSyncPoint), MG_DIRECT(get_crc_table),
+    MG_DIRECT(compressBound), MG_DIRECT(uncompress), MG_DIRECT(adler32), MG_DIRECT(crc32),
+    MG_WRAP("adler32_combine", g_adler32_combine), MG_WRAP("crc32_combine", g_crc32_combine), MG_DIRECT(deflateInit_),
+    MG_DIRECT(inflateInit_), MG_DIRECT(deflateInit2_), MG_DIRECT(inflateInit2_), MG_DIRECT(inflateBackInit_), MG_DIRECT(zError), MG_DIRECT(inflateSyncPoint), MG_DIRECT(get_crc_table),
     MG_WRAP("gzopen", g_gzopen), MG_WRAP("gzopen64", g_gzopen), MG_WRAP("gzdopen", g_gzdopen), MG_WRAP("gzread", g_gzread),
     MG_WRAP("gzwrite", g_gzwrite), MG_WRAP("gzputs", g_gzputs), MG_WRAP("gzputc", g_gzputc), MG_WRAP("gzgets", g_gzgets),
     MG_WRAP("gzgetc", g_gzgetc), MG_WRAP("gzgetc_", g_gzgetc), MG_WRAP("gzflush", g_gzflush), MG_WRAP("gzeof", g_gzeof),
