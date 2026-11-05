@@ -279,6 +279,19 @@ bool gpuWanted() {
     return wanted;
 }
 
+/// Whether a decoder's own calls (Media Foundation's, which use the device's immediate context for its DXVA work) are made
+/// under GfxHost's lock, as everything of this file's own that uses the context is: unless the flag file codec-gpu-unlocked
+/// is in LocalState\flags, which leaves them to the device's multithread protection alone, so that Direct2D's drawing
+/// does not wait for a decode -- to compare.
+bool lockDecoderCalls() {
+    static const bool locked = !files::exists(platform::localStateDirectory() + L"\\flags\\codec-gpu-unlocked");
+    return locked;
+}
+
+uint64_t nowNs() {
+    return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
 /// Made the first time a picture decoder asks after the app's first drawing (GfxHost has its device, or knows it has none,
 /// from then on); a decoder asked for before that decodes in software, and the next one asks again. Said once in the log.
 GpuVideo& gpuVideo() {
@@ -446,6 +459,8 @@ struct CodecHost::Codec {
     std::vector<InputView> inputViews; // the decoder's textures' slices, as the video processor reads them
     std::shared_ptr<GpuPool> pool = std::make_shared<GpuPool>();
     uint64_t gpuPictures = 0;
+    // Every 5 s while it decodes, what its time went to (sayTimes): the decoder's calls, and the video processor's.
+    uint64_t timesFrom = 0, callNs = 0, colourNs = 0, timesSamples = 0, timesPictures = 0, timesGpu = 0;
 
     // Pictures: what the output type says.
     int frameWidth = 0, frameHeight = 0, cropX = 0, cropY = 0, visibleWidth = 0, visibleHeight = 0, stride = 0;
@@ -607,6 +622,14 @@ struct CodecHost::Codec {
         winrt::com_ptr<ID3D11Texture2D> texture;
         UINT slice = 0;
         if (!dxgi || FAILED(dxgi->GetResource(__uuidof(ID3D11Texture2D), texture.put_void())) || FAILED(dxgi->GetSubresourceIndex(&slice))) return false;
+        // (The video processor uses the immediate context: under GfxHost's lock, however the decoder's own calls are made.)
+        DeviceLock device(true);
+        const uint64_t from = nowNs();
+        struct Spent {
+            uint64_t& into;
+            uint64_t from;
+            ~Spent() { into += nowNs() - from; }
+        } spent{colourNs, from};
         if (!videoProcessor()) return false;
         GpuVideo& g = gpuVideo();
         ID3D11VideoProcessorInputView* input = inputView(texture.get(), slice);
@@ -785,7 +808,7 @@ struct CodecHost::Codec {
 
     /// The decoder set up for `format`; false, said in the log, when it will not be.
     bool configure(const megler_codec_format& f) {
-        DeviceLock lock(gpu);
+        DeviceLock lock(gpu && lockDecoderCalls());
         DWORD ins = 0, outs = 0;
         if (SUCCEEDED(transform->GetStreamCount(&ins, &outs)) && (ins != 1 || outs != 1)) {
             fail(format("%lu inputs and %lu outputs", ins, outs));
@@ -1033,10 +1056,39 @@ struct CodecHost::Codec {
         return false;
     }
 
+    /// Every 5 s of decoding, a line of what the time went to: the decoder's calls (under GfxHost's lock, or not: the flag
+    /// codec-gpu-unlocked), and the video processor's turning its pictures into colour; where a picture decoder's time goes
+    /// is where an app's drawing waits.
+    void sayTimes() {
+        const uint64_t now = nowNs();
+        if (!timesFrom) timesFrom = now;
+        if (now - timesFrom < 5000000000ull || !isVideo(kind)) return;
+        const double ms = 1e-6;
+        shellLog::write(format("codec: %s (%s), %.1f s: %llu samples, %llu pictures (%llu on the graphics processor); %.0f ms in the decoder's calls%s, %.0f ms "
+                               "turning pictures into colour",
+                               kindName(kind), name.c_str(), double(now - timesFrom) * 1e-9, (unsigned long long)timesSamples, (unsigned long long)timesPictures,
+                               (unsigned long long)timesGpu, double(callNs - std::min(callNs, colourNs)) * ms,
+                               gpu ? (lockDecoderCalls() ? " (holding the device's lock)" : " (not holding the device's lock)") : "", double(colourNs) * ms));
+        timesFrom = now;
+        callNs = colourNs = timesSamples = timesPictures = timesGpu = 0;
+    }
+
     bool push(const uint8_t* data, size_t size, int64_t timeUs) {
         if (!transform) { fail("no active decoder"); return false; }
+        const uint64_t from = nowNs(), picturesBefore = pictures, gpuBefore = gpuPictures;
+        struct Said {
+            Codec& c;
+            uint64_t from, pictures, gpu;
+            ~Said() {
+                c.callNs += nowNs() - from;
+                c.timesSamples++;
+                c.timesPictures += c.pictures - pictures;
+                c.timesGpu += c.gpuPictures - gpu;
+                c.sayTimes();
+            }
+        } said{*this, from, picturesBefore, gpuBefore};
         // (A decoder on the graphics processor uses the device's immediate context, which Direct2D draws with too.)
-        DeviceLock lock(gpu);
+        DeviceLock lock(gpu && lockDecoderCalls());
         winrt::com_ptr<IMFSample> sample;
         winrt::com_ptr<IMFMediaBuffer> buffer;
         BYTE* to = nullptr;
@@ -1068,7 +1120,7 @@ struct CodecHost::Codec {
 
     void drain() {
         if (!transform) return;
-        DeviceLock lock(gpu);
+        DeviceLock lock(gpu && lockDecoderCalls());
         step = "ProcessMessage(COMMAND_DRAIN)";
         transform->ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN, 0);
         takeOutputs();
@@ -1085,7 +1137,7 @@ struct CodecHost::Codec {
         // picture and drops the tail of the next GOP (also on the Lumia 950 XL).
         // Recreate the MFT, with owned configuration bytes, for an independent
         // decode after a seek. All COM work stays on this codec's timed worker.
-        DeviceLock lock(gpu);
+        DeviceLock lock(gpu && lockDecoderCalls());
         if (kind == MEGLER_CODEC_H265 && activation) {
             spare = nullptr;
             transform = nullptr;
@@ -1372,7 +1424,7 @@ void CodecHost::closeThunk(void*, void* codec) {
         return;
     }
     const bool ran = c->worker->run([c] {
-        DeviceLock lock(c->gpu);
+        DeviceLock lock(c->gpu && lockDecoderCalls());
         if (c->transform) {
             c->transform->ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
             c->transform->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
