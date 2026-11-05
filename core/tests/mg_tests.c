@@ -972,9 +972,10 @@ static void test_media(const char *scratch)
     int (*ex_fd)(void *, int, i64, i64) = (int (*)(void *, int, i64, i64))mg_bionic_find("AMediaExtractor_setDataSourceFd");
     u32 (*ex_count)(void *) = (u32 (*)(void *))mg_bionic_find("AMediaExtractor_getTrackCount");
     void *(*ex_format)(void *, u32) = (void *(*)(void *, u32))mg_bionic_find("AMediaExtractor_getTrackFormat");
-    int (*ex_select)(void *, u32) = (int (*)(void *, u32))mg_bionic_find("AMediaExtractor_selectTrack");
-    int (*ex_unselect)(void *, u32) = (int (*)(void *, u32))mg_bionic_find("AMediaExtractor_unselectTrack");
-    i32 (*ex_read)(void *, u8 *, u32) = (i32 (*)(void *, u8 *, u32))mg_bionic_find("AMediaExtractor_readSampleData");
+    /* (The NDK's types: indexes and sizes are size_t, counts ssize_t, an offset off_t -- 64 bits on the 64-bit ABIs.) */
+    int (*ex_select)(void *, size_t) = (int (*)(void *, size_t))mg_bionic_find("AMediaExtractor_selectTrack");
+    int (*ex_unselect)(void *, size_t) = (int (*)(void *, size_t))mg_bionic_find("AMediaExtractor_unselectTrack");
+    gssize (*ex_read)(void *, u8 *, size_t) = (gssize (*)(void *, u8 *, size_t))mg_bionic_find("AMediaExtractor_readSampleData");
     i64 (*ex_time)(void *) = (i64 (*)(void *))mg_bionic_find("AMediaExtractor_getSampleTime");
     int (*ex_track)(void *) = (int (*)(void *))mg_bionic_find("AMediaExtractor_getSampleTrackIndex");
     u8 (*ex_advance)(void *) = (u8 (*)(void *))mg_bionic_find("AMediaExtractor_advance");
@@ -986,12 +987,12 @@ static void test_media(const char *scratch)
     void *(*codec_new)(const char *) = (void *(*)(const char *))mg_bionic_find("AMediaCodec_createDecoderByType");
     int (*codec_configure)(void *, void *, void *, void *, u32) = (int (*)(void *, void *, void *, void *, u32))mg_bionic_find("AMediaCodec_configure");
     int (*codec_start)(void *) = (int (*)(void *))mg_bionic_find("AMediaCodec_start");
-    i32 (*codec_in)(void *, i64) = (i32 (*)(void *, i64))mg_bionic_find("AMediaCodec_dequeueInputBuffer");
-    u8 *(*codec_in_buffer)(void *, u32, u32 *) = (u8 *(*)(void *, u32, u32 *))mg_bionic_find("AMediaCodec_getInputBuffer");
-    int (*codec_queue)(void *, u32, i32, u32, u64, u32) = (int (*)(void *, u32, i32, u32, u64, u32))mg_bionic_find("AMediaCodec_queueInputBuffer");
-    i32 (*codec_out)(void *, buffer_info *, i64) = (i32 (*)(void *, buffer_info *, i64))mg_bionic_find("AMediaCodec_dequeueOutputBuffer");
-    u8 *(*codec_out_buffer)(void *, u32, u32 *) = (u8 *(*)(void *, u32, u32 *))mg_bionic_find("AMediaCodec_getOutputBuffer");
-    int (*codec_release)(void *, u32, u8) = (int (*)(void *, u32, u8))mg_bionic_find("AMediaCodec_releaseOutputBuffer");
+    gssize (*codec_in)(void *, i64) = (gssize (*)(void *, i64))mg_bionic_find("AMediaCodec_dequeueInputBuffer");
+    u8 *(*codec_in_buffer)(void *, size_t, size_t *) = (u8 *(*)(void *, size_t, size_t *))mg_bionic_find("AMediaCodec_getInputBuffer");
+    int (*codec_queue)(void *, size_t, goff, size_t, u64, u32) = (int (*)(void *, size_t, goff, size_t, u64, u32))mg_bionic_find("AMediaCodec_queueInputBuffer");
+    gssize (*codec_out)(void *, buffer_info *, i64) = (gssize (*)(void *, buffer_info *, i64))mg_bionic_find("AMediaCodec_dequeueOutputBuffer");
+    u8 *(*codec_out_buffer)(void *, size_t, size_t *) = (u8 *(*)(void *, size_t, size_t *))mg_bionic_find("AMediaCodec_getOutputBuffer");
+    int (*codec_release)(void *, size_t, u8) = (int (*)(void *, size_t, u8))mg_bionic_find("AMediaCodec_releaseOutputBuffer");
     int (*codec_delete)(void *) = (int (*)(void *))mg_bionic_find("AMediaCodec_delete");
     const char **key_mime = (const char **)mg_bionic_find("AMEDIAFORMAT_KEY_MIME");
     char *path = mg_sprintf("%s/film-source.bin", scratch);
@@ -1042,29 +1043,29 @@ static void test_media(const char *scratch)
     codec_start(codec);
     CHECK_INT(codec_out(codec, &info, 0), -1);              /* nothing queued yet */
     for (;;) {
-        u32 size = 0;
-        i32 slot = codec_in(codec, 0), n;
-        u8 *buffer = codec_in_buffer(codec, (u32)slot, &size);
-        n = ex_read(ex, buffer, size);
+        size_t size = 0;
+        i32 slot = (i32)codec_in(codec, 0), n;
+        u8 *buffer = codec_in_buffer(codec, (size_t)slot, &size);
+        n = (i32)ex_read(ex, buffer, size);
         if (n < 0) {
-            codec_queue(codec, (u32)slot, 0, 0, 0, 4);
+            codec_queue(codec, (size_t)slot, 0, 0, 0, 4);
             break;
         }
-        codec_queue(codec, (u32)slot, 0, (u32)n, (u64)ex_time(ex), 0);
+        codec_queue(codec, (size_t)slot, 0, (size_t)n, (u64)ex_time(ex), 0);
         ex_advance(ex);
     }
     CHECK_INT(codec_out(codec, &info, 0), -2);
     for (i = 0; i < 3; i++) {
-        u32 size = 0;
-        i32 slot = codec_out(codec, &info, 0);
-        const u8 *frame = slot >= 0 ? codec_out_buffer(codec, (u32)slot, &size) : NULL;
+        size_t size = 0;
+        i32 slot = (i32)codec_out(codec, &info, 0);
+        const u8 *frame = slot >= 0 ? codec_out_buffer(codec, (size_t)slot, &size) : NULL;
         CHECK(slot >= 0 && frame && size == 32 && frame[0] == 10 + i && info.size == 32 && info.time_us == (i64)i * 33333 && !info.flags);
-        if (slot >= 0) codec_release(codec, (u32)slot, 1);
+        if (slot >= 0) codec_release(codec, (size_t)slot, 1);
     }
     {
-        i32 slot = codec_out(codec, &info, 0);
+        i32 slot = (i32)codec_out(codec, &info, 0);
         CHECK(slot >= 0 && (info.flags & 4) && !info.size);
-        if (slot >= 0) codec_release(codec, (u32)slot, 0);
+        if (slot >= 0) codec_release(codec, (size_t)slot, 0);
     }
     CHECK_INT(codec_out(codec, &info, 0), -1);
     codec_delete(codec);
@@ -1074,9 +1075,9 @@ static void test_media(const char *scratch)
     codec_configure(codec, NULL, NULL, NULL, 0);
     codec_start(codec);
     for (i = 0; i < 64 && codec_in(codec, 0) == 0; i++) {
-        u32 size = 0;
+        size_t size = 0;
         u8 *buffer = codec_in_buffer(codec, 0, &size);
-        codec_queue(codec, 0, 0, (u32)ex_read(ex, buffer, size), 0, 0);
+        codec_queue(codec, 0, 0, (size_t)ex_read(ex, buffer, size), 0, 0);
     }
     CHECK(i >= 2 && i <= 16);
     CHECK_INT(codec_in(codec, 0), -1);
