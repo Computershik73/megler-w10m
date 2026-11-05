@@ -168,10 +168,24 @@ static int prot_of(u32 flags)
     return MG_PROT_R;
 }
 
+/*
+ * The core's file, whole, or NULL with what stood in the way in `why`. (The first start of a package registered from its
+ * folder a moment before -- developer mode, tools/build-appx.sh's stage folder registered again over the last build -- is
+ * refused it, "access denied", for as long as that process lives; the next start reads it.)
+ */
+static u8 *read_core(const char *path, size_t *size, int *why)
+{
+    mg_file *f = mg_file_open(path, MG_O_READ, why);
+    if (!f) return NULL;
+    mg_file_close(f);
+    return mg_file_read_all(path, size);
+}
+
 bool mg_core_load(const char *path, char *err, size_t errlen)
 {
     size_t size = 0;
-    u8 *file = mg_file_read_all(path, &size);
+    int why = 0;
+    u8 *file = read_core(path, &size, &why);
     const Ehdr *eh = (const Ehdr *)file;
     const Phdr *ph;
     const Dyn *dyn = NULL;
@@ -185,7 +199,9 @@ bool mg_core_load(const char *path, char *err, size_t errlen)
     if (g_core.base) return true;
     mg_crt_bridge_init();
     if (!file) {
-        fail(err, errlen, "the core (%s) could not be read%s", path, NULL);
+        fail(err, errlen, "the core (%s) could not be read%s", path,
+             why == MG_E_NOENT || why == MG_E_NOTDIR ? ": there is no such file" : why == MG_E_ACCESS ? ": access denied"
+             : why == MG_E_BUSY ? ": another process holds it" : NULL);
         return false;
     }
     if (size < sizeof(Ehdr) || memcmp(eh->e_ident, "\177ELF", 4) || eh->e_ident[4] != ELF_CLASS || eh->e_type != ET_DYN
