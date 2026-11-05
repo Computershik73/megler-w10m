@@ -519,4 +519,97 @@ int mg_gfx_windows_check_present(const megler_gfx_host* h, void (*line)(const ch
     return failed;
 }
 
+/// A TextureView's video under the views (GfxHost::showVideoFrame, draw_texture on the window's own canvas), as a decoder on
+/// the graphics processor shows its pictures: the window has the video's picture where the view drew it, scaled up, the
+/// views over it there and their own picture elsewhere; a new picture is shown composed with the views as they were last
+/// shown, nothing of them drawn (showVideoFrame says 2); drawn at half its alpha it is among the views again, and no longer
+/// under them (1). The pictures are textures of the device as a decoder's are, top row first. Lines to `line`; checks
+/// that failed.
+int mg_gfx_windows_check_video(const megler_gfx_host* h, void (*line)(const char* text, void* user), int* checks) {
+    megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
+    int failed = 0;
+    char text[300];
+    auto check = [&](bool ok, const char* what) {
+        ++*checks;
+        if (ok) return;
+        ++failed;
+        snprintf(text, sizeof(text), "  FAIL a video under the views: %s", what);
+        line(text, nullptr);
+    };
+    line("  a TextureView's video under the views: composed with them, a new picture shown with nothing of the views drawn", nullptr);
+    ID3D11Device* device = gfx.device();
+    check(device != nullptr, "no device");
+    if (!device) return failed;
+    megler::app::GfxHost::Window window;
+    window.target = windowTarget;
+    window.show = windowShow;
+    gfx.setWindow(window);
+    // A picture of 16 x 16, one colour above and another below (to see it the right way up), as a decoder's is made.
+    auto picture = [&](uint32_t top, uint32_t bottom) {
+        std::vector<uint32_t> px(16 * 16);
+        for (int y = 0; y < 16; y++)
+            for (int x = 0; x < 16; x++) px[size_t(y) * 16 + x] = y < 8 ? top : bottom;
+        D3D11_TEXTURE2D_DESC td = {};
+        td.Width = td.Height = 16;
+        td.MipLevels = td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_RENDER_TARGET;
+        D3D11_SUBRESOURCE_DATA data = {px.data(), 16 * 4, 0};
+        ID3D11Texture2D* t = nullptr;
+        if (FAILED(device->CreateTexture2D(&td, &data, &t))) t = nullptr;
+        return t;
+    };
+    ID3D11Texture2D* green = picture(0xFF00C000u, 0xFF00C0C0u);
+    ID3D11Texture2D* blue = picture(0xFF0000C0u, 0xFFC0C000u);
+    const int w = 64, hgt = 48, id = 9;
+    std::vector<uint32_t> memory(size_t(w) * hgt, 0), shown;
+    void* cv = h->canvas_new(h->user, memory.data(), w, hgt, w * 4);
+    check(cv && green && blue, "no canvas or no pictures");
+    if (cv && green && blue) {
+        megler_gfx_paint p = {};
+        p.miter_limit = 4;
+        p.text_size = 12;
+        p.text_scale_x = 1;
+        p.blend = MEGLER_GFX_BLEND_SRC_OVER;
+        p.filter_mode = -1;
+        p.color = 0xFFFF0000u;
+        // The window shown once from the canvas, which makes it the window's; then the first picture, which no view has drawn
+        // yet: kept for its view.
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        h->present(h->user, cv, 0, 0, w, hgt);
+        check(gfx.showVideoFrame(id, green, 16, 16) == 1, "a picture of a video that is under no views was not kept for its view (1)");
+        // The view draws it into 16,8 - 48,40 (twice its size), and the views draw a red square over part of it.
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        h->draw_texture(h->user, cv, id, 16, 8, 48, 40, 255);
+        h->draw_rect(h->user, cv, 20, 10, 28, 18, &p, nullptr);
+        check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown), "the window was not shown");
+        check(shown.size() == size_t(w) * hgt && shown[14 * w + 40] == 0xFF00C000u && shown[34 * w + 40] == 0xFF00C0C0u,
+              "the video's picture is not where its view drew it, the right way up (green at 40,14, cyan at 40,34)");
+        check(shown.size() == size_t(w) * hgt && shown[14 * w + 24] == 0xFFFF0000u, "the views are not over the video (red at 24,14)");
+        check(shown.size() == size_t(w) * hgt && shown[4 * w + 4] == 0xFFFFFFFFu && shown[24 * w + 56] == 0xFFFFFFFFu,
+              "the views are not the window's picture outside the video (white at 4,4 and 56,24)");
+        // A new picture: shown at once, composed with the views as they were, nothing of them drawn.
+        const int was = g_window.shown;
+        check(gfx.showVideoFrame(id, blue, 16, 16) == 2, "a new picture of a video under the views was not shown composed (2)");
+        check(g_window.shown == was + 1 && readWindow(shown) && shown[14 * w + 40] == 0xFF0000C0u && shown[34 * w + 40] == 0xFFC0C000u &&
+                  shown[14 * w + 24] == 0xFFFF0000u && shown[4 * w + 4] == 0xFFFFFFFFu,
+              "the new picture is not what the window shows, under the views as they were");
+        // Drawn at half its alpha it is among the views, and no longer under them.
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        h->draw_texture(h->user, cv, id, 16, 8, 48, 40, 128);
+        h->present(h->user, cv, 0, 0, w, hgt);
+        check(gfx.showVideoFrame(id, green, 16, 16) == 1, "a video its view draws among the views was still taken as under them");
+        h->texture_frame(h->user, id, nullptr, 0, 0);
+        h->canvas_free(h->user, cv);
+    }
+    if (green) green->Release();
+    if (blue) blue->Release();
+    gfx.setWindow(megler::app::GfxHost::Window());
+    if (g_window.texture) g_window.texture->Release();
+    g_window = TestWindow();
+    return failed;
+}
+
 } // extern "C"

@@ -698,9 +698,12 @@ const megler_codec_picture *mg_mcodec_frame_picture(mg_mframe *f)
 
 bool mg_mcodec_frame_on_gpu(const mg_mframe *f) { return f && f->p.format == MEGLER_CODEC_GPU; }
 
-bool mg_mcodec_frame_show(mg_mframe *f, i32 texture_id)
+int mg_mcodec_frame_show(mg_mframe *f, i32 texture_id)
 {
-    return f && texture_id > 0 && f->p.format == MEGLER_CODEC_GPU && g_host.show_picture && g_host.show_picture(g_host.user, f->picture, (int)texture_id);
+    int shown;
+    if (!f || texture_id <= 0 || f->p.format != MEGLER_CODEC_GPU || !g_host.show_picture) return 0;
+    shown = g_host.show_picture(g_host.user, f->picture, (int)texture_id);
+    return shown >= 0 && shown <= 2 ? shown : 0;
 }
 
 void mg_mcodec_free_frame(mg_mframe *f) { frame_free(f); }
@@ -900,8 +903,9 @@ N(Media_renderFrame)
 }
 
 /* showFrame(long frame, int texture): a picture on the graphics processor made the newest frame of a TextureView's texture
-   (SurfaceTexture.meglerGpuId), drawn from there; false where it is not on it or cannot be shown so (renderFrame then). */
-N(Media_showFrame) { c->ret.j = mg_mcodec_frame_show((mg_mframe *)(mg_addr)c->args[0].j, c->args[1].i) ? 1 : 0; }
+   (SurfaceTexture.meglerGpuId), drawn from there: 1, for the view to draw; 2, shown already under the views, the view not to
+   be drawn again; 0 where it is not on it or cannot be shown so (renderFrame then). */
+N(Media_showFrame) { c->ret.i = mg_mcodec_frame_show((mg_mframe *)(mg_addr)c->args[0].j, c->args[1].i); }
 
 N(Media_freeFrame) { mg_mcodec_free_frame((mg_mframe *)(mg_addr)c->args[0].j); }
 N(Media_flush) { mg_mcodec_flush(CODEC); }

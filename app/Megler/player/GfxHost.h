@@ -215,8 +215,17 @@ public:
     /// texture `id` (megler_gfx_host.texture_frame's ids, which draw_texture
     /// draws in a view's place): copied into one of the id's own on the
     /// graphics processor, so the caller may reuse its texture at once.
-    /// False where it cannot be; the caller then has it read back.
-    bool showVideoFrame(int id, ID3D11Texture2D* picture, int width, int height);
+    /// 0 where it cannot be (the caller then has it read back); 1 kept, for
+    /// the view to draw; 2 shown already: the id's video is under the views
+    /// (draw_texture put it there, setVideoUnder) and the window has been
+    /// composed of the new picture and the views as they were last shown,
+    /// so the view need not be drawn again.
+    int showVideoFrame(int id, ID3D11Texture2D* picture, int width, int height);
+    /// Whether a TextureView's video drawn onto the window's own canvas,
+    /// upright, opaque and whole, goes under the views as a layer of the
+    /// window's composition, the views drawing a hole for it (the default),
+    /// or is drawn among them as a bitmap. Before the first drawing.
+    void setVideoUnder(bool under);
 
     /// A folder with Android's own fonts in it (Roboto-Regular.ttf and the
     /// rest of Android 9's /system/fonts that its named families are made

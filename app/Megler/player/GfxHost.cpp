@@ -299,6 +299,9 @@ struct State {
     UINT32 gpuMaxSize = 4096;            // the largest bitmap the device takes, each way
     std::string gpuName;                 // the adapter's, for the log
     bool videoSupport = false;           // made with D3D11_CREATE_DEVICE_VIDEO_SUPPORT (decoders and the video processor on it)
+    bool videoUnder = true;              // a TextureView's video drawn on the window's canvas goes under the views (setVideoUnder)
+    std::atomic<uint64_t> videosPlaced{0}, videosComposed{0}; // places taken (drawTexture), pictures composed with no views drawn
+    uint64_t videosPlacedSaid = 0, videosComposedSaid = 0;    // as the last line about them had them (statsMutex)
     // Contexts and target bitmaps of canvases that are gone, for the next ones (gpuMutex).
     std::mutex gpuMutex;
     std::vector<GpuContext*> freeContexts;
@@ -3469,6 +3472,14 @@ void noteDrawing() {
             ull(t.composed - l.composed), double(t.composedPixels - l.composedPixels) / 1e6, ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers),
             ull(t.targetsMade - l.targetsMade), ticksToMs(t.makeTicks - l.makeTicks), ull(t.partTargets - l.partTargets));
     }
+    // And the videos laid under the views (drawTexture, GfxHost::showVideoFrame): a picture composed so cost no drawing.
+    const uint64_t placed = s.videosPlaced.load(), videos = s.videosComposed.load();
+    if (s.statsAt && (placed != s.videosPlacedSaid || videos != s.videosComposedSaid))
+        say("%.1f s: videos under the views: %llu places taken as the views were drawn, %llu pictures composed with the views as they were last shown and "
+            "shown, nothing of the views drawn for them",
+            ticksToMs(now - s.statsAt) / 1000.0, ull(placed - s.videosPlacedSaid), ull(videos - s.videosComposedSaid));
+    s.videosPlacedSaid = placed;
+    s.videosComposedSaid = videos;
     s.statsLast = t;
     s.statsAt = now;
 }
@@ -3547,6 +3558,30 @@ Ref<ID2D1Bitmap1> windowBitmapFor(ID3D11Texture2D* texture, bool* fresh) {
 /// frame, and the views' picture as present last showed it. All of it under
 /// `mutex`, on the app's main thread (present, gl_place) and the GL threads
 /// (gl_frame, gl_place).
+/// A TextureView's frames that an app makes with OpenGL ES, kept here by the texture's id: the last one copied out of ANGLE's
+/// texture into one of the id's own, as gl_frame copies a layer's, which a canvas draws among the views (drawTexture), nothing
+/// read back. Under `mutex`, on the GL threads (textureFrame) and the canvases' (drawTexture).
+struct KeptTextures {
+    struct Texture {
+        void* handle = nullptr;      // the shared handle ANGLE's texture was opened by
+        Ref<ID3D11Texture2D> shared; // ANGLE's texture, opened on this device
+        Ref<IDXGIKeyedMutex> mutex;  // its keyed mutex, where ANGLE shares it with one
+        Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
+        Ref<ID2D1Bitmap1> frame;     // the copy as Direct2D draws it: rows bottom first
+        bool have = false;           // a frame has been copied
+        bool topFirst = false;       // the frames are a decoder's (GfxHost::showVideoFrame): rows top first, no shared handle
+    };
+    std::mutex mutex;
+    std::unordered_map<int, Texture> byId;
+    Ref<ID3D11Query> copied;         // signalled when a copy is done, for a texture without a keyed mutex
+};
+
+KeptTextures& keptTextures() {
+    // Never destroyed, as State is not.
+    static KeptTextures* const k = new KeptTextures();
+    return *k;
+}
+
 struct Composition {
     struct Layer {
         Box rect;                    // where its frames go, in the window's (the views') pixels; empty: nowhere
@@ -3556,9 +3591,18 @@ struct Composition {
         Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
         Ref<ID2D1Bitmap1> frame;     // the copy as Direct2D draws it: rows bottom first, alpha ignored (a frame is opaque)
     };
+    /// A TextureView's video under the views (drawTexture on the window's canvas): its picture is the id's newest in
+    /// KeptTextures, rows top first, scaled to `rect`, shown where the views left `clip` open for it.
+    struct Video {
+        int id = 0;
+        Box rect, clip;              // in the window's (the views') pixels
+        uint64_t order = 0;          // later ones over earlier ones
+    };
     std::mutex mutex;
     bool layered = false;            // frames or places have come: present keeps the views and composes the window here
     Layer layers[8];
+    std::vector<Video> videos;
+    uint64_t videoOrder = 0;
     Ref<ID2D1Bitmap1> views;         // the views' picture as present last showed it, rows top first
     int width = 0, height = 0;
     bool haveViews = false;
@@ -3571,6 +3615,18 @@ Composition& composition() {
     // Never destroyed, as State is not.
     static Composition* const c = new Composition();
     return *c;
+}
+
+/// A video no longer under the views (its view draws it among them now, or its texture is gone): what it covered is
+/// composed again at the next showing.
+void forgetVideo(int id) {
+    Composition& c = composition();
+    std::lock_guard<std::mutex> lock(c.mutex);
+    for (size_t i = c.videos.size(); i-- > 0;) {
+        if (c.videos[i].id != id) continue;
+        c.pending.include(c.videos[i].clip);
+        c.videos.erase(c.videos.begin() + std::ptrdiff_t(i));
+    }
 }
 
 /// With the composition's lock held: `part` of the window (the views'
@@ -3621,6 +3677,34 @@ bool composeWindow(ID2D1Bitmap1* onto, Box part) {
         dc->DrawBitmap(c.views.get(), &over, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, &over, nullptr);
         dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
         dc->PopAxisAlignedClip();
+    }
+    // And the videos under the views: each newest picture (rows top first, so drawn turned as the views are), smoothly
+    // scaled to its rectangle, in the part the views left open, then the views over it there.
+    if (!c.videos.empty()) {
+        std::vector<Composition::Video> videos = c.videos;
+        std::sort(videos.begin(), videos.end(), [](const Composition::Video& a, const Composition::Video& b) { return a.order < b.order; });
+        for (const Composition::Video& v : videos) {
+            Box b = v.clip;
+            b.intersect(part);
+            if (b.empty()) continue;
+            Ref<ID2D1Bitmap1> frame;
+            {
+                KeptTextures& k = keptTextures();
+                std::lock_guard<std::mutex> lock(k.mutex);
+                const auto found = k.byId.find(v.id);
+                if (found != k.byId.end() && found->second.have && found->second.topFirst) frame = found->second.frame;
+            }
+            if (!frame) continue;
+            dc->SetTransform(turned);
+            const D2D1_RECT_F open = D2D1::RectF(float(b.l), float(b.t), float(b.r), float(b.b));
+            dc->PushAxisAlignedClip(open, D2D1_ANTIALIAS_MODE_ALIASED);
+            const D2D1_RECT_F at = D2D1::RectF(float(v.rect.l), float(v.rect.t), float(v.rect.r), float(v.rect.b));
+            dc->DrawBitmap(frame.get(), &at, 1.0f, D2D1_INTERPOLATION_MODE_LINEAR, nullptr, nullptr);
+            dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
+            dc->DrawBitmap(c.views.get(), &open, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, &open, nullptr);
+            dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+            dc->PopAxisAlignedClip();
+        }
     }
     dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
     const HRESULT hr = dc->EndDraw();
@@ -3770,29 +3854,6 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
 
 // MARK: Pictures kept on the graphics processor for views to draw (megler_gfx_host.texture_frame, draw_texture)
 
-/// A TextureView's frames that an app makes with OpenGL ES, kept here by the texture's id: the last one copied out of ANGLE's
-/// texture into one of the id's own, as gl_frame copies a layer's, which a canvas draws among the views (drawTexture), nothing
-/// read back. Under `mutex`, on the GL threads (textureFrame) and the canvases' (drawTexture).
-struct KeptTextures {
-    struct Texture {
-        void* handle = nullptr;      // the shared handle ANGLE's texture was opened by
-        Ref<ID3D11Texture2D> shared; // ANGLE's texture, opened on this device
-        Ref<IDXGIKeyedMutex> mutex;  // its keyed mutex, where ANGLE shares it with one
-        Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
-        Ref<ID2D1Bitmap1> frame;     // the copy as Direct2D draws it: rows bottom first
-        bool have = false;           // a frame has been copied
-        bool topFirst = false;       // the frames are a decoder's (GfxHost::showVideoFrame): rows top first, no shared handle
-    };
-    std::mutex mutex;
-    std::unordered_map<int, Texture> byId;
-    Ref<ID3D11Query> copied;         // signalled when a copy is done, for a texture without a keyed mutex
-};
-
-KeptTextures& keptTextures() {
-    // Never destroyed, as State is not.
-    static KeptTextures* const k = new KeptTextures();
-    return *k;
-}
 
 /// megler_gfx_host.texture_frame: the id's new frame, in ANGLE's texture, opened here by its shared handle and copied into the
 /// id's own (holding the keyed mutex the core let go of for the call, as gl_frame does; without one, the copy waited for);
@@ -3801,8 +3862,11 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
     State& s = G();
     KeptTextures& k = keptTextures();
     if (!handle) {
-        std::lock_guard<std::mutex> lock(k.mutex);
-        k.byId.erase(id);
+        {
+            std::lock_guard<std::mutex> lock(k.mutex);
+            k.byId.erase(id);
+        }
+        forgetVideo(id);
         return true;
     }
     if (id <= 0 || width <= 0 || height <= 0 || !started() || !s.gpu || gpuGone()) return false;
@@ -3908,6 +3972,60 @@ void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b
             return;
         }
         if (!target->begin()) return;
+        State& s = G();
+        const Matrix3x2F& m = cv->matrix;
+        bool windowCanvas = false;
+        {
+            std::lock_guard<std::mutex> lock(s.windowMutex);
+            windowCanvas = s.windowCanvas == cv->serial && s.window.target;
+        }
+        // A video's picture drawn upright and whole onto the window's own canvas (not into a layer of it, no shape of a clip,
+        // no turn): the window is composed of the picture and the views over it, as of an OpenGL ES view's frames, and here
+        // the views get a hole where it shows. A new picture then needs the views neither drawn again nor shown from them,
+        // only the composition (GfxHost::showVideoFrame), as a SurfaceView's surface on Android or a video's layer in
+        // Chromium. Its place is taken as the list is drawn, so it follows the view through a scroll that only moves it.
+        if (topFirst && alpha >= 255 && s.videoUnder && windowCanvas && target == &cv->base && !cv->clip().g && m._12 == 0.0f && m._21 == 0.0f &&
+            m._11 > 0.0f && m._22 > 0.0f) {
+            Composition::Video v;
+            v.id = id;
+            v.rect.l = int(std::lround(l * m._11 + m._31));
+            v.rect.t = int(std::lround(t * m._22 + m._32));
+            v.rect.r = int(std::lround(r * m._11 + m._31));
+            v.rect.b = int(std::lround(b * m._22 + m._32));
+            v.clip = v.rect;
+            v.clip.intersect(cv->clip().box);
+            v.clip.intersect(target->bounds());
+            if (v.clip.empty()) return;
+            target->popClip();
+            target->rt->SetTransform(Matrix3x2F::Identity());
+            target->rt->PushAxisAlignedClip(D2D1::RectF(float(v.clip.l - target->ox), float(v.clip.t - target->oy), float(v.clip.r - target->ox),
+                                                        float(v.clip.b - target->oy)),
+                                             D2D1_ANTIALIAS_MODE_ALIASED);
+            target->rt->Clear(D2D1::ColorF(0, 0, 0, 0));
+            target->rt->PopAxisAlignedClip();
+            target->setMatrix(cv->matrix);
+            target->drew(v.clip);
+            Composition& c = composition();
+            std::lock_guard<std::mutex> lock(c.mutex);
+            c.layered = true;
+            bool known = false;
+            for (Composition::Video& w : c.videos) {
+                if (w.id != id) continue;
+                c.pending.include(w.clip);
+                v.order = w.order;
+                w = v;
+                known = true;
+            }
+            if (!known) {
+                v.order = ++c.videoOrder;
+                c.videos.push_back(v);
+            }
+            c.pending.include(v.clip);
+            ++s.videosPlaced;
+            return;
+        }
+        // (Drawn among the views: no longer under them, if it was.)
+        if (topFirst) forgetVideo(id);
         target->useClip(cv->clip());
         const Matrix3x2F turned = topFirst ? cv->matrix : Matrix3x2F::Scale(1.0f, -1.0f, D2D1::Point2F(0.0f, (t + b) / 2.0f)) * cv->matrix;
         target->setMatrix(turned);
@@ -6740,52 +6858,73 @@ bool GfxHost::videoSupport() {
     return device() && s.videoSupport;
 }
 
-bool GfxHost::showVideoFrame(int id, ID3D11Texture2D* picture, int width, int height) {
+void GfxHost::setVideoUnder(bool under) {
     State& s = G();
-    if (id <= 0 || !picture || width <= 0 || height <= 0 || !device()) return false;
+    std::lock_guard<std::mutex> lock(s.startMutex);
+    s.videoUnder = under;
+}
+
+int GfxHost::showVideoFrame(int id, ID3D11Texture2D* picture, int width, int height) {
+    State& s = G();
+    if (id <= 0 || !picture || width <= 0 || height <= 0 || !device()) return 0;
     KeptTextures& k = keptTextures();
-    bool taken = false;
+    int shown = 0;
     guarded("show_video_frame", [&] {
-        std::lock_guard<std::mutex> lock(k.mutex);
-        KeptTextures::Texture& t = k.byId[id];
-        D3D11_TEXTURE2D_DESC have = {};
-        if (t.copy) t.copy->GetDesc(&have);
-        if (!t.topFirst || !t.copy || !t.frame || int(have.Width) != width || int(have.Height) != height) {
-            t = KeptTextures::Texture{};
-            D3D11_TEXTURE2D_DESC desc = {};
-            desc.Width = UINT(width);
-            desc.Height = UINT(height);
-            desc.MipLevels = 1;
-            desc.ArraySize = 1;
-            desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-            desc.SampleDesc.Count = 1;
-            desc.Usage = D3D11_USAGE_DEFAULT;
-            desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-            HRESULT hr = s.d3d->CreateTexture2D(&desc, nullptr, t.copy.put());
-            Ref<IDXGISurface> surface;
-            if (SUCCEEDED(hr)) hr = t.copy->QueryInterface(__uuidof(IDXGISurface), reinterpret_cast<void**>(surface.put()));
-            if (SUCCEEDED(hr))
-                hr = s.gpuResource->CreateBitmapFromDxgiSurface(
-                    surface.get(), D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(desc.Format, D2D1_ALPHA_MODE_IGNORE), 96.0f, 96.0f),
-                    t.frame.put());
-            if (FAILED(hr)) {
-                note("video-frame", "a video's picture of %dx%d on the graphics processor cannot be drawn here (0x%08lX): it is read back instead", width, height,
-                     static_cast<unsigned long>(hr));
-                k.byId.erase(id);
-                return;
+        {
+            std::lock_guard<std::mutex> lock(k.mutex);
+            KeptTextures::Texture& t = k.byId[id];
+            D3D11_TEXTURE2D_DESC have = {};
+            if (t.copy) t.copy->GetDesc(&have);
+            if (!t.topFirst || !t.copy || !t.frame || int(have.Width) != width || int(have.Height) != height) {
+                t = KeptTextures::Texture{};
+                D3D11_TEXTURE2D_DESC desc = {};
+                desc.Width = UINT(width);
+                desc.Height = UINT(height);
+                desc.MipLevels = 1;
+                desc.ArraySize = 1;
+                desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+                desc.SampleDesc.Count = 1;
+                desc.Usage = D3D11_USAGE_DEFAULT;
+                desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+                HRESULT hr = s.d3d->CreateTexture2D(&desc, nullptr, t.copy.put());
+                Ref<IDXGISurface> surface;
+                if (SUCCEEDED(hr)) hr = t.copy->QueryInterface(__uuidof(IDXGISurface), reinterpret_cast<void**>(surface.put()));
+                if (SUCCEEDED(hr))
+                    hr = s.gpuResource->CreateBitmapFromDxgiSurface(
+                        surface.get(), D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(desc.Format, D2D1_ALPHA_MODE_IGNORE), 96.0f, 96.0f),
+                        t.frame.put());
+                if (FAILED(hr)) {
+                    note("video-frame", "a video's picture of %dx%d on the graphics processor cannot be drawn here (0x%08lX): it is read back instead", width, height,
+                         static_cast<unsigned long>(hr));
+                    k.byId.erase(id);
+                    return;
+                }
+                t.topFirst = true;
             }
-            t.topFirst = true;
+            Ref<ID3D11DeviceContext> context;
+            s.d3d->GetImmediateContext(context.put());
+            const D3D11_BOX box = {0, 0, 0, UINT(width), UINT(height), 1};
+            lockDevice();
+            context->CopySubresourceRegion(t.copy.get(), 0, 0, 0, 0, picture, 0, &box);
+            unlockDevice();
+            t.have = true;
+            shown = 1;
         }
-        Ref<ID3D11DeviceContext> context;
-        s.d3d->GetImmediateContext(context.put());
-        const D3D11_BOX box = {0, 0, 0, UINT(width), UINT(height), 1};
-        lockDevice();
-        context->CopySubresourceRegion(t.copy.get(), 0, 0, 0, 0, picture, 0, &box);
-        unlockDevice();
-        t.have = true;
-        taken = true;
+        // A video under the views already (drawTexture placed it): composed with them as present last showed them, and
+        // shown, nothing of the views drawn or shown again.
+        Composition& c = composition();
+        std::lock_guard<std::mutex> lock(c.mutex);
+        for (const Composition::Video& v : c.videos) {
+            if (v.id != id) continue;
+            if (c.haveViews && showComposed(v.clip, false)) {
+                shown = 2;
+                ++s.videosComposed;
+            }
+            break;
+        }
     });
-    return taken;
+    if (shown == 2) noteDrawing();
+    return shown;
 }
 
 void GfxHost::setFontFolder(const wchar_t* folder) {

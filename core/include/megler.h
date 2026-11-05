@@ -394,9 +394,12 @@ typedef struct megler_media_host {
  *   show_picture  a MEGLER_CODEC_GPU picture made the newest of the gfx
  *                 host's texture `texture_id` (megler_gfx_host.texture_frame's
  *                 ids: draw_texture draws it in a view's place, the right way
- *                 up), on the graphics processor, nothing read back. False
- *                 when it cannot be: the layer then reads it and draws it as
- *                 a picture in memory.
+ *                 up), on the graphics processor, nothing read back: 1, and
+ *                 the view is to be drawn again; 2 where the shell has shown
+ *                 it already, the texture's video lying under the views of
+ *                 the window it composes, and the view need not be drawn
+ *                 again. 0 when it cannot be: the layer then reads it and
+ *                 draws it as a picture in memory.
  *   pull_sound    the next block of 16-bit sound into *sound, true; false when
  *                 none is ready. Its samples stay until the next call for that
  *                 decoder.
@@ -482,7 +485,7 @@ typedef struct megler_codec_host {
     void (*flush)(void *user, void *codec);
     void (*close)(void *user, void *codec);
     bool (*read_picture)(void *user, void *picture, megler_codec_picture *out);
-    bool (*show_picture)(void *user, void *picture, int texture_id);
+    int (*show_picture)(void *user, void *picture, int texture_id);
 } megler_codec_host;
 
 /*

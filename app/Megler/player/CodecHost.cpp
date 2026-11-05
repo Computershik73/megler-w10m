@@ -1391,10 +1391,10 @@ bool CodecHost::readPictureThunk(void*, void* picture, megler_codec_picture* out
     return true;
 }
 
-bool CodecHost::showPictureThunk(void*, void* picture, int textureId) {
+int CodecHost::showPictureThunk(void*, void* picture, int textureId) {
     auto* p = static_cast<Picture*>(picture);
-    return p->info.format == MEGLER_CODEC_GPU && p->slot.texture &&
-           GfxHost::shared().showVideoFrame(textureId, p->slot.texture.get(), p->info.width, p->info.height);
+    if (p->info.format != MEGLER_CODEC_GPU || !p->slot.texture) return 0;
+    return GfxHost::shared().showVideoFrame(textureId, p->slot.texture.get(), p->info.width, p->info.height);
 }
 
 bool CodecHost::pullSoundThunk(void*, void* codec, megler_codec_sound* sound) {
