@@ -325,24 +325,32 @@ static long g_strtol(const char *s, char **end, int base) PARSE(long, strtol, st
 static unsigned long g_strtoul(const char *s, char **end, int base) PARSE(unsigned long, strtoul, strtoul(s, end, base))
 static i64 g_strtoll(const char *s, char **end, int base) PARSE(i64, strtoll, strtoll(s, end, base))
 static u64 g_strtoull(const char *s, char **end, int base) PARSE(u64, strtoull, strtoull(s, end, base))
-static u64 g_strtod(const char *s, char **end) PARSE(u64, strtod, mg_db(strtod(s, end)))
-static u32 g_strtof(const char *s, char **end) PARSE(u32, strtof, mg_fb(strtof(s, end)))
+static double parse_double(const char *s, char **end) PARSE(double, strtod, strtod(s, end))
+static float parse_float(const char *s, char **end) PARSE(float, strtof, strtof(s, end))
+static gdouble g_strtod(const char *s, char **end) { return mg_gdb(parse_double(s, end)); }
+static gfloat g_strtof(const char *s, char **end) { return mg_gfb(parse_float(s, end)); }
+static gldouble g_strtold(const char *s, char **end) { return mg_gldb(parse_double(s, end)); }
 static long g_strtol_l(const char *s, char **end, int base, void *loc) { (void)loc; return g_strtol(s, end, base); }
 static unsigned long g_strtoul_l(const char *s, char **end, int base, void *loc) { (void)loc; return g_strtoul(s, end, base); }
 static i64 g_strtoll_l(const char *s, char **end, int base, void *loc) { (void)loc; return g_strtoll(s, end, base); }
 static u64 g_strtoull_l(const char *s, char **end, int base, void *loc) { (void)loc; return g_strtoull(s, end, base); }
-static u64 g_strtod_l(const char *s, char **end, void *loc) { (void)loc; return g_strtod(s, end); }
-static u32 g_strtof_l(const char *s, char **end, void *loc) { (void)loc; return g_strtof(s, end); }
+static gdouble g_strtod_l(const char *s, char **end, void *loc) { (void)loc; return g_strtod(s, end); }
+static gfloat g_strtof_l(const char *s, char **end, void *loc) { (void)loc; return g_strtof(s, end); }
+static gldouble g_strtold_l(const char *s, char **end, void *loc) { (void)loc; return g_strtold(s, end); }
 static int g_atoi(const char *s) { return (int)strtol(s, NULL, 10); }
 static long g_atol(const char *s) { return strtol(s, NULL, 10); }
 static i64 g_atoll(const char *s) { return strtoll(s, NULL, 10); }
-static u64 g_atof(const char *s) { return mg_db(strtod(s, NULL)); }
+static gdouble g_atof(const char *s) { return mg_gdb(strtod(s, NULL)); }
 static int g_abs(int v) { return v < 0 ? -v : v; }
+static glong g_labs(glong v) { return v < 0 ? -v : v; }
 static i64 g_llabs(i64 v) { return v < 0 ? -v : v; }
 
+/* div_t, ldiv_t (two longs: two ints in 32-bit Android, as div_t) and lldiv_t, returned by value. */
 typedef struct g_div_t { int quot, rem; } g_div_t;
+typedef struct g_ldiv_t { glong quot, rem; } g_ldiv_t;
 typedef struct g_lldiv_t { i64 quot, rem; } g_lldiv_t;
 static g_div_t g_div(int a, int b) { g_div_t r; r.quot = a / b; r.rem = a % b; return r; }
+static g_ldiv_t g_ldiv(glong a, glong b) { g_ldiv_t r; r.quot = a / b; r.rem = a % b; return r; }
 static g_lldiv_t g_lldiv(i64 a, i64 b) { g_lldiv_t r; r.quot = a / b; r.rem = a % b; return r; }
 
 /* ------------------------------------------------------------------- ctype
@@ -527,12 +535,12 @@ const mg_sym mg_tab_str[] = {
     MG_WRAP("strerror_l", g_strerror), MG_WRAP("strsignal", g_strsignal),
     MG_WRAP("strtol", g_strtol), MG_WRAP("strtoul", g_strtoul), MG_WRAP("strtoll", g_strtoll), MG_WRAP("strtoull", g_strtoull),
     MG_WRAP("strtoimax", g_strtoll), MG_WRAP("strtoumax", g_strtoull), MG_WRAP("strtoq", g_strtoll), MG_WRAP("strtouq", g_strtoull),
-    MG_WRAP("strtod", g_strtod), MG_WRAP("strtold", g_strtod), MG_WRAP("strtof", g_strtof),
+    MG_WRAP("strtod", g_strtod), MG_WRAP("strtold", g_strtold), MG_WRAP("strtof", g_strtof),
     MG_WRAP("strtol_l", g_strtol_l), MG_WRAP("strtoul_l", g_strtoul_l), MG_WRAP("strtoll_l", g_strtoll_l),
-    MG_WRAP("strtoull_l", g_strtoull_l), MG_WRAP("strtod_l", g_strtod_l), MG_WRAP("strtold_l", g_strtod_l), MG_WRAP("strtof_l", g_strtof_l),
+    MG_WRAP("strtoull_l", g_strtoull_l), MG_WRAP("strtod_l", g_strtod_l), MG_WRAP("strtold_l", g_strtold_l), MG_WRAP("strtof_l", g_strtof_l),
     MG_WRAP("atoi", g_atoi), MG_WRAP("atol", g_atol), MG_WRAP("atoll", g_atoll), MG_WRAP("atof", g_atof),
-    MG_WRAP("abs", g_abs), MG_WRAP("labs", g_abs), MG_WRAP("llabs", g_llabs), MG_WRAP("imaxabs", g_llabs),
-    MG_WRAP("div", g_div), MG_WRAP("ldiv", g_div), MG_WRAP("lldiv", g_lldiv), MG_WRAP("imaxdiv", g_lldiv),
+    MG_WRAP("abs", g_abs), MG_WRAP("labs", g_labs), MG_WRAP("llabs", g_llabs), MG_WRAP("imaxabs", g_llabs),
+    MG_WRAP("div", g_div), MG_WRAP("ldiv", g_ldiv), MG_WRAP("lldiv", g_lldiv), MG_WRAP("imaxdiv", g_lldiv),
     MG_WRAP("isalpha", g_isalpha), MG_WRAP("isupper", g_isupper), MG_WRAP("islower", g_islower), MG_WRAP("isdigit", g_isdigit),
     MG_WRAP("isxdigit", g_isxdigit), MG_WRAP("isspace", g_isspace), MG_WRAP("ispunct", g_ispunct), MG_WRAP("isalnum", g_isalnum),
     MG_WRAP("isprint", g_isprint), MG_WRAP("isgraph", g_isgraph), MG_WRAP("iscntrl", g_iscntrl), MG_WRAP("isblank", g_isblank),

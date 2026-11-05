@@ -99,11 +99,29 @@ const mg_sym *mg_ahb_table(void);      /* ndk/mg_ahb.c: AHardwareBuffer */
 int mg_sdk_level(void);
 const mg_sym *mg_java_ndk_table(void); /* drivers/mg_java_ndk.c: libjnigraphics, on the Java framework's Bitmap; ANativeWindow_fromSurface */
 
+/*
+ * A long double as guest code passes it: a double's bits on 32-bit ARM, where it is a double (softfp); the value
+ * elsewhere -- a double on x86 too, IEEE's 128-bit quad on the 64-bit ABIs, which the core's compiler has as it is
+ * (docs/DESKTOP.md). mg_gld takes one as a double, mg_gldb makes one of a double: the *l functions here compute in double.
+ */
+#if MG_GUEST_SOFTFP
+typedef gdouble gldouble;
+#define mg_gld(x) mg_gd(x)
+#define mg_gldb(d) mg_gdb(d)
+#else
+typedef long double gldouble;
+#define mg_gld(x) ((double)(x))
+#define mg_gldb(d) ((gldouble)(d))
+#endif
+
 /* Float wrappers: the host function named, taking and returning floats as the guest passes them (bits on 32-bit ARM). */
 #define MG_SF_D_D(name, fn) static gdouble name(gdouble x) { return mg_gdb(fn(mg_gd(x))); }
 #define MG_SF_D_DD(name, fn) static gdouble name(gdouble x, gdouble y) { return mg_gdb(fn(mg_gd(x), mg_gd(y))); }
 #define MG_SF_F_F(name, fn) static gfloat name(gfloat x) { return mg_gfb(fn(mg_gf(x))); }
 #define MG_SF_F_FF(name, fn) static gfloat name(gfloat x, gfloat y) { return mg_gfb(fn(mg_gf(x), mg_gf(y))); }
+/* And the long double ones, computed in double. */
+#define MG_SF_L_L(name, fn) static gldouble name(gldouble x) { return mg_gldb(fn(mg_gld(x))); }
+#define MG_SF_L_LL(name, fn) static gldouble name(gldouble x, gldouble y) { return mg_gldb(fn(mg_gld(x), mg_gld(y))); }
 
 /* ----------------------------------------------------------------- errno
  *

@@ -349,8 +349,9 @@ typedef long (*strtol_fn)(const char *, char **, int);
 typedef unsigned long (*strtoul_fn)(const char *, char **, int);
 typedef i64 (*strtoll_fn)(const char *, char **, int);
 typedef u64 (*strtoull_fn)(const char *, char **, int);
-typedef u64 (*strtod_fn)(const char *, char **);
-typedef u32 (*strtof_fn)(const char *, char **);
+typedef gdouble (*strtod_fn)(const char *, char **);
+typedef gfloat (*strtof_fn)(const char *, char **);
+typedef gldouble (*strtold_fn)(const char *, char **);
 
 /* Number syntax is ASCII, so a narrow parser's "bytes consumed" is also "characters consumed". */
 #define WPARSE(ret, name, fn_type, sym, call)                         \
@@ -367,15 +368,17 @@ WPARSE(long, g_wcstol(const gwc *s, gwc **end, int base), strtol_fn, "strtol", (
 WPARSE(unsigned long, g_wcstoul(const gwc *s, gwc **end, int base), strtoul_fn, "strtoul", (text, &e, base))
 WPARSE(i64, g_wcstoll(const gwc *s, gwc **end, int base), strtoll_fn, "strtoll", (text, &e, base))
 WPARSE(u64, g_wcstoull(const gwc *s, gwc **end, int base), strtoull_fn, "strtoull", (text, &e, base))
-WPARSE(u64, g_wcstod(const gwc *s, gwc **end), strtod_fn, "strtod", (text, &e))
-WPARSE(u32, g_wcstof(const gwc *s, gwc **end), strtof_fn, "strtof", (text, &e))
+WPARSE(gdouble, g_wcstod(const gwc *s, gwc **end), strtod_fn, "strtod", (text, &e))
+WPARSE(gfloat, g_wcstof(const gwc *s, gwc **end), strtof_fn, "strtof", (text, &e))
+WPARSE(gldouble, g_wcstold(const gwc *s, gwc **end), strtold_fn, "strtold", (text, &e))
 
 static long g_wcstol_l(const gwc *s, gwc **end, int base, void *loc) { (void)loc; return g_wcstol(s, end, base); }
 static unsigned long g_wcstoul_l(const gwc *s, gwc **end, int base, void *loc) { (void)loc; return g_wcstoul(s, end, base); }
 static i64 g_wcstoll_l(const gwc *s, gwc **end, int base, void *loc) { (void)loc; return g_wcstoll(s, end, base); }
 static u64 g_wcstoull_l(const gwc *s, gwc **end, int base, void *loc) { (void)loc; return g_wcstoull(s, end, base); }
-static u64 g_wcstod_l(const gwc *s, gwc **end, void *loc) { (void)loc; return g_wcstod(s, end); }
-static u32 g_wcstof_l(const gwc *s, gwc **end, void *loc) { (void)loc; return g_wcstof(s, end); }
+static gdouble g_wcstod_l(const gwc *s, gwc **end, void *loc) { (void)loc; return g_wcstod(s, end); }
+static gfloat g_wcstof_l(const gwc *s, gwc **end, void *loc) { (void)loc; return g_wcstof(s, end); }
+static gldouble g_wcstold_l(const gwc *s, gwc **end, void *loc) { (void)loc; return g_wcstold(s, end); }
 
 /* --------------------------------------------------------------- formatting */
 
@@ -505,7 +508,8 @@ static int g_wcsncasecmp(const gwc *a, const gwc *b, size_t n)
 
 enum { WC_ALNUM = 1, WC_ALPHA, WC_BLANK, WC_CNTRL, WC_DIGIT, WC_GRAPH, WC_LOWER, WC_PRINT, WC_PUNCT, WC_SPACE, WC_UPPER, WC_XDIGIT };
 
-static int g_wctype(const char *name)
+/* A wctype_t is a long in bionic: one of these numbers, 0 for none. */
+static glong g_wctype(const char *name)
 {
     static const char *const names[] = { "alnum", "alpha", "blank", "cntrl", "digit", "graph", "lower", "print", "punct", "space", "upper", "xdigit" };
     int i;
@@ -514,7 +518,7 @@ static int g_wctype(const char *name)
     return 0;
 }
 
-static int g_iswctype(gwc c, int type)
+static int g_iswctype(gwc c, glong type)
 {
     switch (type) {
     case WC_ALNUM: return g_iswalnum(c);
@@ -542,8 +546,8 @@ static gwc g_towlower_l(gwc c, void *loc) { (void)loc; return g_towlower(c); }
 static gwc g_towupper_l(gwc c, void *loc) { (void)loc; return g_towupper(c); }
 static int g_wcscoll_l(const gwc *a, const gwc *b, void *loc) { (void)loc; return g_wcscmp(a, b); }
 static size_t g_wcsxfrm_l(gwc *d, const gwc *s, size_t n, void *loc) { (void)loc; return g_wcsxfrm(d, s, n); }
-static int g_iswctype_l(gwc c, int type, void *loc) { (void)loc; return g_iswctype(c, type); }
-static int g_wctype_l(const char *name, void *loc) { (void)loc; return g_wctype(name); }
+static int g_iswctype_l(gwc c, glong type, void *loc) { (void)loc; return g_iswctype(c, type); }
+static glong g_wctype_l(const char *name, void *loc) { (void)loc; return g_wctype(name); }
 
 #define W(n, f) MG_WRAP(n, f)
 
@@ -559,9 +563,9 @@ const mg_sym mg_tab_wchar[] = {
     W("mbstowcs", g_mbstowcs), W("wcsnrtombs", g_wcsnrtombs), W("wcsrtombs", g_wcsrtombs), W("wcstombs", g_wcstombs),
     W("btowc", g_btowc), W("wctob", g_wctob),
     W("wcstol", g_wcstol), W("wcstoul", g_wcstoul), W("wcstoll", g_wcstoll), W("wcstoull", g_wcstoull), W("wcstod", g_wcstod),
-    W("wcstold", g_wcstod), W("wcstof", g_wcstof), W("wcstoimax", g_wcstoll), W("wcstoumax", g_wcstoull),
+    W("wcstold", g_wcstold), W("wcstof", g_wcstof), W("wcstoimax", g_wcstoll), W("wcstoumax", g_wcstoull),
     W("wcstol_l", g_wcstol_l), W("wcstoul_l", g_wcstoul_l), W("wcstoll_l", g_wcstoll_l), W("wcstoull_l", g_wcstoull_l),
-    W("wcstod_l", g_wcstod_l), W("wcstold_l", g_wcstod_l), W("wcstof_l", g_wcstof_l),
+    W("wcstod_l", g_wcstod_l), W("wcstold_l", g_wcstold_l), W("wcstof_l", g_wcstof_l),
     W("vswprintf", g_vswprintf), W("swprintf", g_swprintf), W("vswscanf", g_vswscanf), W("swscanf", g_swscanf), W("wcsftime", g_wcsftime),
     W("iswalpha", g_iswalpha), W("iswdigit", g_iswdigit), W("iswalnum", g_iswalnum), W("iswxdigit", g_iswxdigit),
     W("iswspace", g_iswspace), W("iswblank", g_iswblank), W("iswcntrl", g_iswcntrl), W("iswprint", g_iswprint),
