@@ -65,13 +65,58 @@ would be called with the wrong convention without a word from the compiler
 
 | | |
 |---|---|
-| `tools/build-desktop.sh x64\|arm64\|x86 tests` | builds the core's ELF and Megler.exe's half, and runs the tests where the processor is this machine's |
+| `tools/build-desktop.sh x64\|arm64\|x86 tests` | builds the core's ELF and Megler.exe's half, and runs the tests where the processor is this machine's, with the guest test libraries of `build/guest/<abi>` (`tools/build-guest.sh <abi>`) |
+| `tools/build-desktop.sh <arch> app`, `tools/build-appx.sh x64\|arm64\|x86` | the package: Megler.exe of that processor, `megler-core.so` beside it, the Android root of the ABI (`tools/dvm-android-root.sh --abi`) |
 | `host/win32/mg_core_loader.c` | loads `megler-core.so`: its segments, its relocations (`RELATIVE`, `GLOB_DAT`, `JUMP_SLOT`, the absolute one), its imports bound by name to Megler.exe's functions, its initialisers. It refuses what the core is built not to have (packed relocations, a TLS segment, a processor not its own) |
 | `host/win32/mg_crt_bridge.c` | the C library under Android's names and convention; where the two differ beyond the convention (`long` in `strtol`, `lround`, `scalbln`, `time` and `struct tm`; 32-bit `wchar_t` in `wcslen`; a comparator of the core's for `qsort`), the guest's way |
 | `crt/mg_crt_format.c` | printf, scanf and their kin, the core's own: their arguments are Android's, which Windows' functions cannot read. A floating-point conversion alone goes to Windows' `snprintf`, one value at a time |
 | `crt/mg_crt_setjmp.c` | setjmp for the collector, which spills its registers before scanning its own stack; `__emutls_get_address` |
 | `host/win32/mg_host_base.c` | what the host layer calls of `mg_base.c` (`mg_alloc`, `mg_log`), on Megler.exe's side; its log lines go to the core's log once the core is loaded |
 | `tools/desktop-stubs.py` | from the ELF's own symbols: a stub in Megler.exe for each function the core exports, jumping through a slot the loader fills, and the table of Megler.exe's functions the core imports |
+| `tools/abi-check.py` | what the core gives guest code -- every binding of bionic's and the NDK's names, 54 structures -- against the NDK's headers, for each of the four ABIs (0 differences) |
+
+## Guest code of the processor's own
+
+The guest linker (`ld/mg_ld.c`) reads ELF64 and RELA as well as ELF32 and
+REL, packed relocations of both kinds (APS2, RELR), and each processor's
+relocation types (`elf/mg_elf.h`). An app's libraries are those of the
+processor's ABI alone, `MG_GUEST_ABI` (`MG_APK_ABI_ARM` keeps 32-bit ARM's on
+the phone): the loader, the APK's analysis and a bundle's splits choose them,
+and Build, the system properties and `uname` say it (`megler/Abis.java`).
+
+What compiled Android code does that cannot run as it is here is rewritten
+before the code is made executable:
+
+- **x86_64 and x86** (`x86/mg_patch_x86.c`, with an instruction length
+  decoder, `x86/mg_x86_decode.c`): bionic's thread pointer and stack guard
+  are read straight from the segment, `%fs:0` and `%fs:0x28` (`%gs:0`,
+  `%gs:0x14` on x86). Each such instruction is given Windows' segment and a
+  slot of the TEB's TlsSlots that holds the same value on every guest thread
+  -- `mov %gs:0x1480+8*slot, %rax` -- the same length, in place. The two slots
+  are taken as the process starts (`.CRT$XIU`): later, XAML's DLLs have used
+  the TEB's 64. A read at another place of the segment is left, and said:
+  all of Android 9's libcrypto's are data among its code.
+- **ARM64** (`arm64/mg_patch_arm64.c`): `mrs xN, tpidr_el0` becomes
+  `ldr xN, [x18, #0x1480+8*slot]` (x18 is the TEB, and Android's compiler
+  leaves it alone), the canary following through the guest's own block;
+  `svc #0` becomes a UDF the fault handler does the call for.
+- **System calls by number**: `syscall()` and ARM64's traps take the ABI's
+  own numbers, made 32-bit ARM's (`bionic/mg_syscall_abi.c`, its table made
+  by `tools/syscall-numbers.py` from the NDK's headers), with the arguments
+  ARM's passes otherwise (a 64-bit offset in one register, mmap's in bytes).
+
+A native method is called with the processor's convention (`jni/mg_jni.c`,
+System V's six and eight registers, AAPCS64's eight and eight, x86's stack);
+a fault's and a stopped thread's registers are each processor's; a guest
+thread is interrupted where it runs (what a signal does) by its context, the
+x64 one below the 128 bytes System V code may keep under its stack pointer.
+
+### Where the two sides meet on x86
+
+Android's x86 ABI aligns a 64-bit field at 4 bytes, MSVC's x86 at 8:
+`mg_host.h`'s and `megler.h`'s structures are packed to 4 on both sides. And
+the stack is 16-aligned for Android's code, 4 for Windows': what Windows calls
+of the core realigns it (`MG_HOSTCB`, `MEGLER_API`).
 
 What the core needs of the processor's ABI that Windows does not give is
 taken care of at compile time:
@@ -92,22 +137,55 @@ The phone's build, MSVC's x64 build of the tests and the Linux builds see
 none of this: the macros are empty there, `MG_CORE_ELF` and `MG_ELF_HOST` are
 not defined, and the new files compile to nothing.
 
-*Proven* (x64, this PC, 2026-11-05): `tools/build-desktop.sh x64 tests` runs
-the core's tests in `megler-core.so` loaded into a Windows x64 process: 5005
-checks, 0 failed -- the host layer, files and the shared storage, sockets and
-poll/epoll over loopback, the Dalvik runtime on its own java.lang, the Java
-side of drawing, OpenGL ES through its stand-in, the decoders' and cameras'
-stand-ins, bundles and APKs. Guest code does not run yet in this build.
+## Proven
 
-## What is left, in order
+On this PC (x64, Windows 11 26300), 2026-11-05:
 
-1. Guest code on x86_64: ELF64 and its relocations in `ld/mg_ld.c`; the
-   instructions that cannot run here (`%fs`-relative loads of bionic's thread
-   pointer and stack canary, `syscall`); the fault handler and a thread's
-   interruption for x64's registers; a native method's call for System V.
-2. bionic's structures for the 64-bit ABIs: the core's own definitions of
-   them were written for 32-bit ARM (pointers as `u32`, `time_t` as `i32`), and
-   are checked against the NDK's headers.
-3. libcore's native libraries for each ABI (`tools/android9-natives.sh <abi>`).
-4. The shell and its package for each processor, with ANGLE.
-5. x86 and ARM64 the same way.
+- `tools/build-desktop.sh x64 tests`, the core in `megler-core.so` loaded into
+  a Windows x64 process, with the x86_64 guest test libraries: 5313 checks, 4
+  failed -- t_vdso (no vDSO image off 32-bit ARM yet) and the three float
+  checks of the GLES stand-in (below). ELF64 with RELA, APS2 and RELR
+  relocations, IFUNC, 90 patched thread-pointer and canary reads in one
+  library, initial-exec and global-dynamic thread-local variables, PLT calls,
+  JNI with every kind of argument, threads, a thread interrupted twenty times
+  where it was, setjmp, system calls by number, an app from its APK through
+  NativeActivity.
+- `tools/build-desktop.sh x86 tests` (through WOW64): 5322 checks, 2 failed
+  (t_vdso, and a timing check of a few milliseconds).
+- `tools/build-tests.sh win` (MSVC's x64 build of the tests): 5023 checks, 0
+  failed; `tools/abi-check.py`: 0 differences on all four ABIs; the phone's
+  core compiles for ARM32 with MSVC, 148 of 148, and its tests under qemu-arm
+  (`tools/build-tests.sh arm`) give 5429 checks, 0 failed, as before.
+- The x64 and x86 packages (`tools/build-appx.sh x64 --java --auto java`),
+  registered from their stage folder in developer mode and started: the core
+  loads, "megler core on win32-x64"; Android 9's libcore runs its natives
+  through the runtime's tests (the x86 package's Self-test: 2437 checks, 3
+  failed, none of them the port's); and the Java test app hello.apk starts,
+  draws (its first picture after 3.8 s on x64, 0.8 s on x86, through Direct2D
+  and Direct3D 11.1), counts presses of its button and goes through onPause,
+  onStop and onDestroy on Back, status 0.
+- ARM64 builds -- the core's ELF, the tests' program, the package -- and is
+  not run: there is no ARM64 machine here.
+
+In developer mode the first start after the stage folder was registered again
+over an earlier build is refused the package's files ("core: not loaded: ...
+access denied"); the next start is not.
+
+## What is left
+
+1. **OpenGL ES.** ANGLE for desktop Windows on each processor, and a layer of
+   adapters in front of it: ANGLE's functions are of Windows' convention
+   (Microsoft's x64 one, `__stdcall` on x86), guest code's of Android's, and
+   only ARM64's are the same. Every GL and EGL entry point needs one, made from
+   the NDK's GLES headers; the float adapters of `ndk/mg_egl.c` are 32-bit
+   ARM's (softfp) and pass x86_64's floats wrong (the three checks above).
+2. **The vDSO** for the other ABIs: Go's runtime reads its clock through it.
+3. **`syscall` in x86_64 code of an app's own** is counted, not rewritten: a
+   trap's fault would put Windows' exception frame over the 128 bytes below
+   rsp that the code may be using; it takes a jump to an island.
+4. **WebView**: Android's System WebView for x86_64 and arm64 (the phone's is
+   32-bit ARM's).
+5. **ARM64 on a device**: the patched TPIDR_EL0 reads, x18 left alone by the
+   guest's code (Android 9's prebuilt libcrypto among others), the context of
+   a stopped or interrupted thread.
+6. A ping socket (IcmpCreateFile) is refused in a desktop app container.
