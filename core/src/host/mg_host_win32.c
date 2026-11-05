@@ -641,7 +641,7 @@ void mg_thread_set_interrupt(void (*fn)(void), bool (*in_guest_code)(mg_addr pc)
 /* Raised by a thread that has finished an interruption, for the vectored handler to put it back where it was. */
 #define EXCEPTION_MEGLER_RESUME 0xE04D4701u
 
-#if defined(_M_ARM)
+#if defined(_M_ARM) || defined(_M_X64) || defined(_M_IX86) || defined(_M_ARM64)
 #if WINAPI_FAMILY == WINAPI_FAMILY_APP
 /* Left out of the app partition by the SDK's headers, in the phone's kernelbase like any other (see AddVectoredExceptionHandler below). */
 WINBASEAPI DWORD WINAPI SuspendThread(HANDLE hThread);
@@ -676,6 +676,25 @@ static void interrupt_landing(mg_thread *t)
     for (;;) Sleep(INFINITE);
 }
 
+#if defined(_M_IX86)
+/* (x86 passes an argument on the stack, which is the stopped thread's to write: it finds its own instead.) */
+static void interrupt_landing_x86(void) { interrupt_landing(t_current); }
+#endif
+
+/* Where a stopped thread is executing. */
+static mg_addr context_pc(const CONTEXT *c)
+{
+#if defined(_M_ARM)
+    return (mg_addr)(c->Pc & ~1u);
+#elif defined(_M_X64)
+    return (mg_addr)c->Rip;
+#elif defined(_M_IX86)
+    return (mg_addr)c->Eip;
+#else
+    return (mg_addr)c->Pc;
+#endif
+}
+
 bool mg_thread_interrupt(mg_thread *t)
 {
     CONTEXT ctx;
@@ -705,10 +724,16 @@ bool mg_thread_interrupt(mg_thread *t)
     if (!GetThreadContext(h, &ctx)) {
         InterlockedExchange(&g_int_error, (LONG)GetLastError());
         InterlockedIncrement(&g_int_get_failed);
-    } else if (!g_interrupt_in_guest((mg_addr)(ctx.Pc & ~1u))) {
+    } else if (!g_interrupt_in_guest(context_pc(&ctx))) {
         InterlockedIncrement(&g_int_elsewhere);
     } else {
         t->was = ctx;
+        /*
+         * Nothing is written to the thread's stack from here: what lies below its stack pointer may be its guard page, which
+         * only the thread itself may touch to grow the stack. It is sent to the landing as if called there, its argument in
+         * a register, and writes its stack itself.
+         */
+#if defined(_M_ARM)
         /* Android code keeps nothing below its stack pointer (a signal may land there at any time); the gap is for good measure. */
         ctx.Sp = (ctx.Sp - 512) & ~7u;
         ctx.R0 = (DWORD)(DWORD_PTR)t;
@@ -716,6 +741,21 @@ bool mg_thread_interrupt(mg_thread *t)
         /* Thumb state both ways it can be said, and out of any IT block the thread was in. */
         ctx.Pc = (DWORD)(DWORD_PTR)interrupt_landing | 1u;
         ctx.Cpsr = (ctx.Cpsr & ~0x0600FC00u) | 0x20u;
+#elif defined(_M_X64)
+        /* Below the 128 bytes Android's x86_64 code may keep under its stack pointer (System V's red zone) and the gap; then
+           as after a call: 8 below a 16-byte boundary, the return address's place, with Windows' shadow space above it. */
+        ctx.Rsp = ((ctx.Rsp - 128 - 512) & ~(DWORD64)15) - 8;
+        ctx.Rcx = (DWORD64)(DWORD_PTR)t;
+        ctx.Rip = (DWORD64)(DWORD_PTR)interrupt_landing;
+#elif defined(_M_IX86)
+        ctx.Esp = ((ctx.Esp - 512) & ~(DWORD)15) - 4;
+        ctx.Eip = (DWORD)(DWORD_PTR)interrupt_landing_x86;
+#else
+        ctx.Sp = (ctx.Sp - 512) & ~(DWORD64)15;
+        ctx.X0 = (DWORD64)(DWORD_PTR)t;
+        ctx.Lr = 0;
+        ctx.Pc = (DWORD64)(DWORD_PTR)interrupt_landing;
+#endif
         done = SetThreadContext(h, &ctx) != 0;
         if (done) InterlockedIncrement(&g_int_redirected);
         else {
@@ -1527,6 +1567,16 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
 {
     mg_fault f;
     EXCEPTION_RECORD *er = ep->ExceptionRecord;
+#if !defined(_M_ARM)
+    if (er->ExceptionCode == EXCEPTION_MEGLER_RESUME && er->NumberParameters == 1) {
+        /* A thread back from an interruption: every register as it was (the integer ones, the control ones, the vector ones). */
+        mg_thread *t = (mg_thread *)er->ExceptionInformation[0];
+        *ep->ContextRecord = t->was;
+        InterlockedIncrement(&g_int_resumed);
+        InterlockedExchange(&t->interrupted, 0);
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+#endif
 #if defined(_M_ARM)
     if (er->ExceptionCode == EXCEPTION_MEGLER_RESUME && er->NumberParameters == 1) {
         /* A thread back from an interruption: every register as it was. Its state is taken from bit 0 of Pc. */

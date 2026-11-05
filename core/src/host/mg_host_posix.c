@@ -301,14 +301,23 @@ static void on_interrupt(int sig, siginfo_t *si, void *ctx)
 {
     int saved = errno;
     (void)sig; (void)si;
+    /* (Where the thread was, in each processor's own context: the handler runs on its stack, below what it held.) */
 #if defined(__arm__)
-    if (g_interrupt_fn && g_interrupt_in_guest && g_interrupt_in_guest((mg_addr)(((ucontext_t *)ctx)->uc_mcontext.arm_pc & ~1u))) {
+    mg_addr pc = (mg_addr)(((ucontext_t *)ctx)->uc_mcontext.arm_pc & ~1u);
+#elif defined(__x86_64__)
+    mg_addr pc = (mg_addr)((ucontext_t *)ctx)->uc_mcontext.gregs[REG_RIP];
+#elif defined(__i386__)
+    mg_addr pc = (mg_addr)((ucontext_t *)ctx)->uc_mcontext.gregs[REG_EIP];
+#elif defined(__aarch64__)
+    mg_addr pc = (mg_addr)((ucontext_t *)ctx)->uc_mcontext.pc;
+#else
+    mg_addr pc = 0;
+    (void)ctx;
+#endif
+    if (pc && g_interrupt_fn && g_interrupt_in_guest && g_interrupt_in_guest(pc)) {
         mg_atomic_add(&g_interrupts_done, 1);
         g_interrupt_fn();
     }
-#else
-    (void)ctx;
-#endif
     errno = saved;
 }
 
