@@ -1168,6 +1168,24 @@ static DWORD tp_slot(void)
     return g_tp_slot;
 }
 
+#if !defined(_M_ARM)
+/*
+ * Both slots are taken as the process starts, among the C runtime's initializers, before any of the system's DLLs that
+ * come later can take the TEB's 64: in a desktop app's process XAML and what it loads had taken 76 by the time the shell
+ * started the core, and the two the core got then were in TlsExpansionSlots, out of reach of a patched instruction.
+ */
+static int __cdecl take_slots_early(void)
+{
+    tp_slot();
+    return 0;
+}
+#pragma section(".CRT$XIU", long, read)
+#if defined(__clang__)
+__attribute__((used))
+#endif
+__declspec(allocate(".CRT$XIU")) static int(__cdecl *const g_take_slots_early)(void) = take_slots_early;
+#endif
+
 void mg_guest_tp_set(void *tp) { TlsSetValue(tp_slot(), tp); }
 void *mg_guest_tp_get(void) { return TlsGetValue(tp_slot()); }
 
@@ -1217,6 +1235,9 @@ bool mg_guest_tp_where(u32 *opc2, u32 *offset)
         if (!g_tp_slot_usable)
             mg_err("host: TLS slots %lu and %lu are not in the TEB at 0x%X; guest thread-pointer reads cannot be redirected", (unsigned long)slot,
                    (unsigned long)g_guard_slot, MG_TEB_TLS_SLOTS);
+        else
+            mg_info("host: the guest's thread pointer is in TLS slot %lu, its stack guard in slot %lu", (unsigned long)slot,
+                    (unsigned long)g_guard_slot);
     }
     if (!g_tp_slot_usable) return false;
 #if defined(_M_X64)
