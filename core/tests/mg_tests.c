@@ -3035,6 +3035,14 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     /* A reader kept out by a waiting writer goes in when the writer gives up (pthread_rwlock_timedwrlock): it slept on
        until the next unlock. */
     CHECK_INT(FN(lib, int (*)(void), "t_rwlock_writer_gives_up")(), 0);
+    /* A timed rwlock wait ends at its deadline however often it is woken: a writer waits 250 ms for the lock while ten
+       readers let go of it one by one every 100 ms. (Each wait was given the whole timeout again: woken by every
+       unlock, the writer waited on until the last reader had gone, a second on, and took the lock.) */
+    {
+        int ms = -1, e = FN(lib, int (*)(int *), "t_rwlock_deadline")(&ms);
+        say("  a writer's 250 ms pthread_rwlock_timedwrlock, readers leaving every 100 ms: %d after %d ms", e, ms);
+        CHECK(e == GE_TIMEDOUT && ms >= 240 && ms < 600);
+    }
 
     /* Files, the made-up /proc, properties, dlopen. */
     snprintf(buf, sizeof(buf), "/scratch");

@@ -1925,6 +1925,77 @@ int t_rwlock_writer_gives_up(void)
 }
 
 /*
+ * A timed rwlock wait ends at its deadline, however often it is woken before then: ten threads hold read locks, a
+ * writer waits for the lock until 250 ms on, and from when it began the readers let go one by one every 100 ms, the
+ * last a second on. Each unlock wakes the writer; while each of its waits was given the whole timeout again, it waited
+ * on until the last reader had gone and took the lock. The writer's result (ETIMEDOUT), the milliseconds it waited in
+ * *ms; or -1 a thread not made, -2 the read locks not all had within three seconds, -3 the writer still waiting five
+ * seconds on. Every wait here is bounded: threads that have not ended by then are left as they are.
+ */
+enum { RWD_READERS = 10 };
+static t_rwlock g_rwd;
+static volatile int g_rwd_in, g_rwd_ended, g_rwd_done, g_rwd_result, g_rwd_ms;
+static volatile long g_rwd_start;                    /* when the writer began, on now_ms()'s clock; 0 until then */
+
+static void *rwd_reader(void *arg)
+{
+    long i = (long)arg, until, left;
+    if (pthread_rwlock_rdlock(&g_rwd) == 0) {
+        __sync_fetch_and_add(&g_rwd_in, 1);
+        for (until = now_ms() + 5000; !g_rwd_start && now_ms() < until;) usleep(1000);
+        until = (g_rwd_start ? g_rwd_start : now_ms()) + (i + 1) * 100;
+        while ((left = until - now_ms()) > 0) usleep((unsigned)left * 1000);
+        pthread_rwlock_unlock(&g_rwd);
+    }
+    __sync_fetch_and_add(&g_rwd_ended, 1);
+    return 0;
+}
+
+static void *rwd_writer(void *arg)
+{
+    struct t_timespec at;
+    long began;
+    (void)arg;
+    clock_gettime(0, &at);
+    at.tv_nsec += 250000000;
+    if (at.tv_nsec >= 1000000000) {
+        at.tv_sec++;
+        at.tv_nsec -= 1000000000;
+    }
+    g_rwd_start = began = now_ms();
+    g_rwd_result = pthread_rwlock_timedwrlock(&g_rwd, &at);
+    g_rwd_ms = (int)(now_ms() - began);
+    if (g_rwd_result == 0) pthread_rwlock_unlock(&g_rwd);
+    g_rwd_done = 1;
+    return 0;
+}
+
+int t_rwlock_deadline(int *ms)
+{
+    pthread_t r[RWD_READERS], w;
+    int made, i, result;
+    long until;
+    g_rwd_in = g_rwd_ended = g_rwd_done = 0;
+    g_rwd_start = 0;
+    g_rwd_ms = -1;
+    for (made = 0; made < RWD_READERS && pthread_create(&r[made], 0, rwd_reader, (void *)(long)made) == 0; made++) { }
+    for (until = now_ms() + 3000; g_rwd_in < made && now_ms() < until;) usleep(1000);
+    result = made < RWD_READERS ? -1 : g_rwd_in < made ? -2 : 0;
+    if (!result && pthread_create(&w, 0, rwd_writer, 0) != 0) result = -1;
+    if (!result) {
+        for (until = now_ms() + 5000; !g_rwd_done && now_ms() < until;) usleep(1000);
+        if (g_rwd_done) pthread_join(w, 0);
+        result = g_rwd_done ? g_rwd_result : -3;
+    }
+    if (!g_rwd_start) g_rwd_start = now_ms();       /* (with no writer the readers let go all the same) */
+    for (until = now_ms() + 3000; g_rwd_ended < made && now_ms() < until;) usleep(1000);
+    if (g_rwd_ended == made)
+        for (i = 0; i < made; i++) pthread_join(r[i], 0);
+    *ms = g_rwd_ms;
+    return result;
+}
+
+/*
  * What Go's runtime calls by number, past libc: nanosleep, rt_sigprocmask (a 64-bit set; another size refused), madvise
  * and mincore on a page of its own, epoll_pwait, fcntl, and fallocate with its offset and length in register pairs (a
  * mode other than 0 refused). 0, or the step that failed.
