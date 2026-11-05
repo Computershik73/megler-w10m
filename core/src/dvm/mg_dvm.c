@@ -239,7 +239,7 @@ bool mg_dvm_start_android(const char *root)
      * not start, and with them none could.
      */
     crypto = mg_sprintf("%s/lib/libjavacrypto.so", root);
-    g_dvm.conscrypt = MG_HOST_ARM32 && mg_path_stat(crypto, &st, NULL) && !st.is_dir;
+    g_dvm.conscrypt = MG_GUEST_CODE && mg_path_stat(crypto, &st, NULL) && !st.is_dir;
     free(crypto);
     for (i = 0; i < MG_COUNT(names); i++) {
         made[i] = mg_sprintf("%s/framework/%s.dex", root, names[i]);

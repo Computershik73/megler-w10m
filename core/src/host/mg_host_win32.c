@@ -3874,12 +3874,28 @@ WINBASEAPI BOOL WINAPI GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModuleName, H
 WINBASEAPI DWORD WINAPI GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize);
 #endif
 
+#if defined(MG_ELF_HOST)
+bool mg_core_image(mg_addr *base, size_t *size);
+#endif
+
 bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
 {
     HMODULE module = NULL;
     wchar_t path[MAX_PATH];
     const wchar_t *file;
     DWORD n;
+#if defined(MG_ELF_HOST)
+    {
+        /* The core's own ELF, which Windows does not know as a module (docs/DESKTOP.md): named as the others are. */
+        mg_addr core = 0;
+        size_t extent = 0;
+        if (mg_core_image(&core, &extent) && address >= core && address < core + extent) {
+            mg_strlcpy(name, "megler-core.so", size);
+            *base = core;
+            return true;
+        }
+    }
+#endif
     /* FROM_ADDRESS | UNCHANGED_REFCOUNT */
     if (!GetModuleHandleExW(0x4 | 0x2, (LPCWSTR)address, &module) || !module) return false;
     n = GetModuleFileNameW(module, path, MAX_PATH);

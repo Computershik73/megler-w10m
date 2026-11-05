@@ -1595,8 +1595,8 @@ static mg_jobj *j_NewObject(JNIEnvP e, mg_jobj *cls, jmeth *m, ...)
 }
 
 /*
- * The Call<Type>Method families. Floating-point results go back as bits in
- * integer registers, like every float that crosses to the guest.
+ * The Call<Type>Method families. Floating-point results go back as the guest's convention has them (gfloat, gdouble): as
+ * bits in integer registers on 32-bit ARM, like every float that crosses to the guest there.
  */
 #define RET_L(v) return (v).l
 /* A field read hands the guest a reference of its own, which it may delete. */
@@ -1607,8 +1607,8 @@ static mg_jobj *j_NewObject(JNIEnvP e, mg_jobj *cls, jmeth *m, ...)
 #define RET_S(v) return (v).s
 #define RET_I(v) return (v).i
 #define RET_J(v) return (v).j
-#define RET_F(v) return mg_fb((v).f)
-#define RET_D(v) return mg_db((v).d)
+#define RET_F(v) return mg_gfb((v).f)
+#define RET_D(v) return mg_gdb((v).d)
 #define RET_V(v) (void)(v)
 
 #define CALL_FAMILY(Name, ctype, RET)                                                                       \
@@ -1670,8 +1670,8 @@ CALL_FAMILY(Char, u16, RET_C)
 CALL_FAMILY(Short, i16, RET_S)
 CALL_FAMILY(Int, i32, RET_I)
 CALL_FAMILY(Long, i64, RET_J)
-CALL_FAMILY(Float, u32, RET_F)
-CALL_FAMILY(Double, u64, RET_D)
+CALL_FAMILY(Float, gfloat, RET_F)
+CALL_FAMILY(Double, gdouble, RET_D)
 CALL_FAMILY(Void, void, RET_V)
 
 /* Static calls: the class stands where the object did. */
@@ -1709,8 +1709,8 @@ STATIC_FAMILY(Char, u16, RET_C)
 STATIC_FAMILY(Short, i16, RET_S)
 STATIC_FAMILY(Int, i32, RET_I)
 STATIC_FAMILY(Long, i64, RET_J)
-STATIC_FAMILY(Float, u32, RET_F)
-STATIC_FAMILY(Double, u64, RET_D)
+STATIC_FAMILY(Float, gfloat, RET_F)
+STATIC_FAMILY(Double, gdouble, RET_D)
 STATIC_FAMILY(Void, void, RET_V)
 
 /* Fields. */
@@ -1753,8 +1753,8 @@ FIELD_FAMILY(Char, u16, c, RET_C, SAME)
 FIELD_FAMILY(Short, i16, s, RET_S, SAME)
 FIELD_FAMILY(Int, i32, i, RET_I, SAME)
 FIELD_FAMILY(Long, i64, j, RET_J, SAME)
-FIELD_FAMILY(Float, u32, f, RET_F, mg_f)
-FIELD_FAMILY(Double, u64, d, RET_D, mg_d)
+FIELD_FAMILY(Float, gfloat, f, RET_F, mg_gf)
+FIELD_FAMILY(Double, gdouble, d, RET_D, mg_gd)
 
 /* Strings. */
 static mg_jobj *j_NewString(JNIEnvP e, const u16 *chars, i32 len)
@@ -1911,8 +1911,10 @@ static void j_SetArrayRegion(JNIEnvP e, mg_jobj *a, i32 start, i32 len, const vo
     memcpy((u8 *)a->u.arr.data + (size_t)start * a->u.arr.esz, buf, (size_t)len * a->u.arr.esz);
 }
 
+/* JNINativeMethod: three of the guest's pointers. */
 typedef struct g_native_method {
-    u32 name, sig, fn;
+    const char *name, *sig;
+    void *fn;
 } g_native_method;
 
 static i32 j_RegisterNatives(JNIEnvP e, mg_jobj *cls, const g_native_method *methods, i32 count)
@@ -1922,12 +1924,12 @@ static i32 j_RegisterNatives(JNIEnvP e, mg_jobj *cls, const g_native_method *met
     (void)e;
     for (i = 0; i < count; i++) {
         jnative *n = (jnative *)mg_alloc(sizeof(*n));
-        const char *sig = (const char *)(mg_addr)methods[i].sig;
+        const char *sig = methods[i].sig;
         /* An exclamation mark before the signature asked older Androids for a faster kind of call; it is not part of it. */
         if (sig[0] == '!') sig++;
-        n->name = mg_strdup((const char *)(mg_addr)methods[i].name);
+        n->name = mg_strdup(methods[i].name);
         n->sig = mg_strdup(sig);
-        n->fn = (void *)(mg_addr)methods[i].fn;
+        n->fn = methods[i].fn;
         mg_lock_acquire(&g_jni_lock);
         n->next = c->natives;
         c->natives = n;
@@ -2056,7 +2058,8 @@ enum { G_JNI_OK = 0, G_JNI_ERR = -1, G_JNI_EDETACHED = -2, G_JNI_EVERSION = -3 }
 
 typedef struct g_attach_args {
     i32 version;
-    u32 name, group;                   /* the guest's pointers */
+    const char *name;                  /* the guest's pointers */
+    mg_jobj *group;
 } g_attach_args;
 
 static MG_THREAD_LOCAL bool t_attached;
@@ -2073,7 +2076,7 @@ static i32 attach(void **env, const g_attach_args *args, bool daemon)
             mg_err("jni: bad JNI version passed to AttachCurrentThread: %d", (int)args->version);
             return G_JNI_EVERSION;
         }
-        if (!mg_dvm_thread_attach(args ? (const char *)(mg_addr)args->name : NULL, args ? (mg_jobj *)(mg_addr)args->group : NULL, daemon)) {
+        if (!mg_dvm_thread_attach(args ? args->name : NULL, args ? args->group : NULL, daemon)) {
             *env = NULL;
             return G_JNI_ERR;
         }
