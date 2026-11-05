@@ -2947,7 +2947,8 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     say("guest library: %s", what);
     mg_ld_get_stats(lib, &st);
     CHECK_INT(st.unresolved, 0);
-    CHECK_INT(st.tp_reads_failed, 0);
+    /* (x86_64: t_fs_left's access of the segment through a register, which nothing can take the place of, is left.) */
+    CHECK_INT(st.tp_reads_failed, MG_ARCH_X86_64 ? 1 : 0);
 
     /* Relocations, data, constructors. */
     CHECK_INT(FN(lib, int (*)(void), "t_ctor_ran")(), 1234);
@@ -3061,6 +3062,11 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     /* System calls of the library's own (x86/mg_patch_x86.c): six of its seven led out to the core, the seventh left. */
     CHECK_INT(st.svc_sites, 6);
     CHECK_INT(FN(lib, int (*)(void), "t_raw_syscall")(), 0);
+    /* Accesses of the thread pointer's segment through a register, Go's and C's initial-exec ones (x86/mg_patch_x86.c):
+       nineteen led out to pieces of island, t_fs_left's left; on this thread and a new one, registers and flags kept, a
+       thread interrupted two hundred times in the middle of them. */
+    CHECK_INT(st.tp_led_out, 19);
+    CHECK_INT(FN(lib, int (*)(void), "t_fs_access")(), 0);
 #endif
     CHECK_INT(FN(lib, int (*)(void), "t_ifunc")(), 205);
     CHECK_INT(FN(lib, int (*)(void), "t_chrome_cmdline")(), 3);
