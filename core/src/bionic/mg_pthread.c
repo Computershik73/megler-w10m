@@ -302,9 +302,28 @@ typedef struct g_rwlock {
     i32 unused[5];
 } g_rwlock;
 
+/*
+ * One wait on the rwlock's condition, the inner lock held, for no longer than is left until `deadline` on the monotonic
+ * clock (0: no deadline); G_ETIMEDOUT, without waiting, once nothing is left. A wait that times out comes back for one
+ * more look at the lock, as mutex_acquire and sem_take do.
+ */
+static int rw_wait(g_rwlock *rw, u64 deadline)
+{
+    u64 now;
+    if (!deadline) return cond_wait(&rw->cond, &rw->lock, 0, false);
+    now = mg_time_monotonic_ns();
+    if (now >= deadline) return G_ETIMEDOUT;
+    cond_wait(&rw->cond, &rw->lock, deadline - now, true);
+    return 0;
+}
+
 static int rw_lock(g_rwlock *rw, bool write, u64 timeout_ns, bool timed)
 {
     i32 tid = mg_gthread_self()->tid;
+    /* The deadline is fixed once, and each wait is given what is left of it: every unlock wakes the waiters, and a
+       wait given the whole timeout again after each wake ran on far past the deadline, or for ever while unlocks kept
+       coming. */
+    u64 deadline = timed && timeout_ns > 1 ? mg_time_monotonic_ns() + timeout_ns : 0;
     int r = 0;
     bool waited = false, let_in = false;
     g_mutex_lock(&rw->lock);
@@ -317,7 +336,7 @@ static int rw_lock(g_rwlock *rw, bool write, u64 timeout_ns, bool timed)
         while (rw->readers || rw->writer) {
             if (timed && timeout_ns <= 1) { r = timeout_ns ? G_EBUSY : G_ETIMEDOUT; break; }
             waited = true;
-            if (cond_wait(&rw->cond, &rw->lock, timeout_ns, timed)) { r = G_ETIMEDOUT; break; }
+            if (rw_wait(rw, deadline)) { r = G_ETIMEDOUT; break; }
         }
         rw->pending_writers--;
         if (!r) rw->writer = tid;
@@ -328,7 +347,7 @@ static int rw_lock(g_rwlock *rw, bool write, u64 timeout_ns, bool timed)
         /* Writers first, or a steady stream of readers starves them. */
         while (rw->writer || rw->pending_writers) {
             if (timed && timeout_ns <= 1) { r = timeout_ns ? G_EBUSY : G_ETIMEDOUT; break; }
-            if (cond_wait(&rw->cond, &rw->lock, timeout_ns, timed)) { r = G_ETIMEDOUT; break; }
+            if (rw_wait(rw, deadline)) { r = G_ETIMEDOUT; break; }
         }
         if (!r) rw->readers++;
     }
