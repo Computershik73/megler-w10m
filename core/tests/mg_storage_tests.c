@@ -1237,6 +1237,46 @@ static void test_shared_mapping(void)
     CHECK(C.unlink(path) == 0);
 }
 
+/*
+ * A file made shorter while it is mapped shared and writable stays so as its mapping is written back: Linux writes a mapping
+ * back no further than the file's end (a page past it is a SIGBUS), and the layer's copy would have made the file whole again.
+ */
+static void test_shared_mapping_shortened(void)
+{
+    void *(*map)(void *, size_t, int, int, int, i32) = (void *(*)(void *, size_t, int, int, int, i32))mg_bionic_find("mmap");
+    int (*unmap)(void *, size_t) = (int (*)(void *, size_t))mg_bionic_find("munmap");
+    int (*trunc)(int, i32) = (int (*)(int, i32))mg_bionic_find("ftruncate");
+    i32 (*pread_)(int, void *, u32, i32) = (i32 (*)(int, void *, u32, i32))mg_bionic_find("pread");
+    static const char path[] = "/data/data/" PKG "/files/kv-short.bin";
+    static char zeros[8192];
+    char *p, back[8];
+    int fd;
+    say("a file made shorter while mapped shared: written back no further than its end");
+    CHECK(map && unmap && trunc && pread_);
+    if (!map || !unmap || !trunc || !pread_) return;
+    fd = C.open(path, T_RDWR | T_CREAT | T_TRUNC, 0600);
+    CHECK(fd >= 0 && C.write(fd, zeros, sizeof(zeros)) == (i32)sizeof(zeros));
+    p = (char *)map(NULL, sizeof(zeros), 3 /* PROT_READ | PROT_WRITE */, 1 /* MAP_SHARED */, fd, 0);
+    CHECK(p && p != (char *)-1);
+    if (!p || p == (char *)-1) {
+        C.close(fd);
+        return;
+    }
+    CHECK(trunc(fd, 4096) == 0);
+    C.close(fd);
+    memcpy(p + 100, "kept", 4);
+    memcpy(p + 6000, "beyond", 6);
+    megler_settle_files();
+    CHECK(size_of(path) == 4096);
+    fd = C.open(path, T_RDONLY, 0);
+    memset(back, 0, sizeof(back));
+    CHECK(fd >= 0 && pread_(fd, back, 4, 100) == 4 && !memcmp(back, "kept", 4));
+    C.close(fd);
+    CHECK(unmap(p, sizeof(zeros)) == 0);
+    CHECK(size_of(path) == 4096);
+    CHECK(C.unlink(path) == 0);
+}
+
 static void worker_run(void *arg)
 {
     worker *w = (worker *)arg;
@@ -1607,6 +1647,7 @@ static int run_in(const char *base, mg_storage_host_maker make, mg_test_sink sin
             test_threads();
             test_odd_names();
             test_shared_mapping();
+            test_shared_mapping_shortened();
             test_check();
             test_no_links(data);
             /* As the tests after this one found things: no links, nobody to ask, and the current directory where it was. */

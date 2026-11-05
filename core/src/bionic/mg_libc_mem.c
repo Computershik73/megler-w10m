@@ -504,7 +504,10 @@ static void write_back(region *r, size_t from, size_t size)
             /* (Not a page the app made no-access, or gave back: reading it would fault, and it holds nothing of the file's.) */
             if (!(r->live[page >> 3] & (1u << (page & 7))) || (r->noaccess && (r->noaccess[page >> 3] & (1u << (page & 7)))) || gone_has(r, page))
                 continue;
-            if (got >= (i32)(b - at) && !memcmp(g_file_chunk + (a - at), r->base + a, b - a)) continue;
+            /* Up to the file's end, which the app may have moved in since it mapped it: Linux writes a mapping back no further. */
+            if (got >= 0 && b > at + (size_t)got) b = at + (size_t)got;
+            if (b <= a) continue;
+            if (got >= 0 && !memcmp(g_file_chunk + (a - at), r->base + a, b - a)) continue;
             if (mg_fd_held_pwrite(r->file, r->base + a, (u32)(b - a), r->file_offset + a) > 0 && g_file_copies > 1)
                 copies_written(r, r->file, r->file_offset + a, r->base + a, b - a);
         }
