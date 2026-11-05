@@ -291,6 +291,8 @@ static void (*g_interrupt_fn)(void);
 static bool (*g_interrupt_in_guest)(mg_addr pc);
 
 static volatile i32 g_interrupts_asked, g_interrupts_done;
+/* The patcher's word for a register (mg_guest_scratch_where, below with the guest thread pointer), which on_interrupt keeps. */
+static __thread mg_addr g_guest_scratch __attribute__((tls_model("initial-exec")));
 
 void mg_thread_interrupt_report(char *out, size_t size)
 {
@@ -315,8 +317,12 @@ static void on_interrupt(int sig, siginfo_t *si, void *ctx)
     (void)ctx;
 #endif
     if (pc && g_interrupt_fn && g_interrupt_in_guest && g_interrupt_in_guest(pc)) {
+        /* (The patcher's word for a register: the thread may have been in the middle of a piece of island that keeps one
+           there, and what runs here may use the word too.) */
+        mg_addr scratch = g_guest_scratch;
         mg_atomic_add(&g_interrupts_done, 1);
         g_interrupt_fn();
+        g_guest_scratch = scratch;
     }
     errno = saved;
 }
@@ -669,6 +675,8 @@ bool mg_guest_guard_where(u32 *opc2, u32 *offset)
 }
 
 void mg_guest_guard_set(mg_addr guard) { g_guest_guard = guard; }
+
+bool mg_guest_scratch_where(u32 *opc2, u32 *offset) { return slot_where(&g_guest_scratch, opc2, offset); }
 
 /* ----------------------------------------------------------------- faults */
 

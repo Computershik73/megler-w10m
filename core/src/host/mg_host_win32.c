@@ -667,11 +667,18 @@ void mg_thread_interrupt_report(char *out, size_t size)
              (long)g_int_suspend_failed, (long)g_int_get_failed, (long)g_int_set_failed, (long)g_int_error);
 }
 
+static void *scratch_word(void);
+static void scratch_word_set(void *value);
+
 static void interrupt_landing(mg_thread *t)
 {
     ULONG_PTR arg = (ULONG_PTR)t;
+    /* The patcher's word for a register (mg_guest_scratch_where): the thread may have been stopped in the middle of a piece
+       of island that keeps one there, and what it runs here may use the word too. */
+    void *scratch = scratch_word();
     InterlockedIncrement(&g_int_landed);
     g_interrupt_fn();
+    scratch_word_set(scratch);
     RaiseException(EXCEPTION_MEGLER_RESUME, 0, 1, &arg);
     for (;;) Sleep(INFINITE);
 }
@@ -1206,7 +1213,7 @@ void mg_tls_set(u32 key, void *value) { TlsSetValue(key, value); }
 #define MG_TEB_TLS_SLOTS 0x1480u
 #endif
 
-static DWORD g_tp_slot = TLS_OUT_OF_INDEXES, g_guard_slot = TLS_OUT_OF_INDEXES;
+static DWORD g_tp_slot = TLS_OUT_OF_INDEXES, g_guard_slot = TLS_OUT_OF_INDEXES, g_scratch_slot = TLS_OUT_OF_INDEXES;
 static int g_tp_slot_usable = -1;      /* -1 not checked yet */
 
 static DWORD tp_slot(void)
@@ -1220,13 +1227,17 @@ static DWORD tp_slot(void)
         g_guard_slot = TlsAlloc();
         if (g_guard_slot == TLS_OUT_OF_INDEXES) mg_fatal("no thread-local slot for the guest stack guard");
 #endif
+#if defined(_M_X64)
+        /* (And the patcher's word for a register, for x86_64's pieces of island alone: without it they are not made.) */
+        g_scratch_slot = TlsAlloc();
+#endif
     }
     return g_tp_slot;
 }
 
 #if !defined(_M_ARM)
 /*
- * Both slots are taken as the process starts, among the C runtime's initializers, before any of the system's DLLs that
+ * The slots are taken as the process starts, among the C runtime's initializers, before any of the system's DLLs that
  * come later can take the TEB's 64: in a desktop app's process XAML and what it loads had taken 76 by the time the shell
  * started the core, and the two the core got then were in TlsExpansionSlots, out of reach of a patched instruction.
  */
@@ -1330,6 +1341,46 @@ void mg_guest_guard_set(mg_addr guard)
 #else
     tp_slot();
     TlsSetValue(g_guard_slot, (void *)guard);
+#endif
+}
+
+bool mg_guest_scratch_where(u32 *opc2, u32 *offset)
+{
+#if defined(_M_X64)
+    static int usable = -1;
+    u32 tp_offset;
+    if (!mg_guest_tp_where(opc2, &tp_offset)) return false;
+    if (usable < 0) {
+        usable = slot_in_teb(g_scratch_slot) ? 1 : 0;
+        if (!usable)
+            mg_err("host: TLS slot %lu is not in the TEB: accesses of the thread pointer's segment through a register are left as they are",
+                   (unsigned long)g_scratch_slot);
+    }
+    if (!usable) return false;
+    *offset = MG_TEB_TLS_SLOTS + 8u * g_scratch_slot;
+    return true;
+#else
+    (void)opc2;
+    (void)offset;
+    return false;
+#endif
+}
+
+/* The word on the calling thread, for an interruption to keep (interrupt_landing). */
+static void *scratch_word(void)
+{
+#if defined(_M_X64)
+    if (g_scratch_slot != TLS_OUT_OF_INDEXES) return TlsGetValue(g_scratch_slot);
+#endif
+    return NULL;
+}
+
+static void scratch_word_set(void *value)
+{
+#if defined(_M_X64)
+    if (g_scratch_slot != TLS_OUT_OF_INDEXES) TlsSetValue(g_scratch_slot, value);
+#else
+    (void)value;
 #endif
 }
 
