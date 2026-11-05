@@ -3054,6 +3054,14 @@ static mg_sock *sock_wrap(SOCKET s, int family, int type, int *err)
  * reading the socket gives it as Linux does, the ICMP header and the data with no IP header, the identifier the socket's
  * own (Linux puts its "port" there, which getsockname says) and the sequence the request's. No reply in time: nothing to
  * read, as on Linux. One echo at a time: a request written while one is under way is taken and not sent.
+ *
+ * A desktop app container gets no echo at all: IcmpCreateFile and Icmp6CreateFile fail there with ERROR_ACCESS_DENIED
+ * whatever the package's capabilities. They open no device but register with the NSI service for the echo's replies,
+ * which turns an app container away, and the echo itself goes to \\.\Nsi, which refuses any process of Low integrity, as
+ * every app container is (Windows 11 26300, 2026-11-05: a probe in app containers with none, each and all of
+ * internetClient, internetClientServer and privateNetworkClientServer; outside one the same program pings). Windows 10
+ * Mobile's app container is let through. The socket is refused then with EACCES, Linux's answer to a program that may not
+ * have one, and isReachable goes on to its TCP connection; the reason is said once.
  */
 #define PING_DATA 2048
 
@@ -3132,19 +3140,24 @@ static VOID CALLBACK ping_work(PTP_CALLBACK_INSTANCE instance, PVOID context, PT
 
 static mg_sock *ping_open(int family, int type, int *err)
 {
-    static volatile LONG next;
+    static volatile LONG next, said;
     mg_sock *k = (mg_sock *)mg_alloc(sizeof(*k));
     mg_ping *p = (mg_ping *)mg_alloc(sizeof(*p));
     LONG id;
+    DWORD error;
     k->s = INVALID_SOCKET;
     k->ev = WSA_INVALID_EVENT;
     k->family = family;
     k->type = type;
     k->ping = p;
     p->icmp = family == MG_AF_INET ? IcmpCreateFile() : Icmp6CreateFile();
+    error = GetLastError();
     p->work = p->icmp != INVALID_HANDLE_VALUE ? CreateThreadpoolWork(ping_work, k, NULL) : NULL;
     if (p->icmp == INVALID_HANDLE_VALUE || !p->work) {
-        *err = p->icmp == INVALID_HANDLE_VALUE ? MG_NE_PROTONOSUPPORT : MG_NE_NOBUFS;
+        if (p->icmp == INVALID_HANDLE_VALUE && !InterlockedExchange(&said, 1))
+            mg_warn("host: no ping socket: %s failed with error %lu%s", family == MG_AF_INET ? "IcmpCreateFile" : "Icmp6CreateFile",
+                    (unsigned long)error, error == ERROR_ACCESS_DENIED ? " (Windows gives an app container no ICMP echo)" : "");
+        *err = p->icmp != INVALID_HANDLE_VALUE ? MG_NE_NOBUFS : error == ERROR_ACCESS_DENIED ? MG_NE_ACCES : MG_NE_PROTONOSUPPORT;
         if (p->icmp != INVALID_HANDLE_VALUE) IcmpCloseHandle(p->icmp);
         free(p);
         free(k);

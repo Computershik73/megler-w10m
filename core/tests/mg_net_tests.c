@@ -687,6 +687,12 @@ static void test_ping(void)
         say("  (no ping socket for this user here: errno %d)", err());
         return;
     }
+#else
+    /* (A desktop app container, the package's Self-test: Windows gives it no ICMP echo whatever its capabilities, ping_open.) */
+    if (s < 0 && err() == GE_ACCES) {
+        say("  (no ping socket in an app container: Windows refuses it ICMP echo, EACCES as Linux says it)");
+        return;
+    }
 #endif
     CHECK(s >= 0);
     if (s < 0) return;
