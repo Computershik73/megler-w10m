@@ -47,15 +47,23 @@ static u64 until(const g_timespec *abs, bool monotonic)
 #define M_ERRORCHECK 0x8000
 #define M_OWNER(v) ((i32)((u32)(v) >> 16))
 
-/* Take the lock, with the owner field set to `owner` (0 for a normal mutex). timeout_ns: 0 forever, 1 do not wait. */
+/*
+ * Take the lock, with the owner field set to `owner` (0 for a normal mutex). timeout_ns: 0 forever, 1 do not wait.
+ *
+ * The state bits are 1 while the lock is held, 2 while it is held and may be waited for: mutex_release wakes a sleeper
+ * only for 2, and leaves the lock free with no record of the sleepers it did not wake. The one it wakes has to put that
+ * record back, so a thread that has waited once takes the lock as contended from then on, as the mutexes of Drepper's
+ * "Futexes Are Tricky" do. Taken with 1 -- by a woken waiter that lost the lock to another thread and came round to find
+ * it free -- the lock's release woke nobody, and the other sleepers slept on a free lock for ever.
+ */
 static int mutex_acquire(volatile i32 *m, i32 owner, u64 timeout_ns)
 {
     u64 deadline = timeout_ns > 1 ? mg_time_monotonic_ns() + timeout_ns : 0;
+    i32 taken = 1;
     for (;;) {
         i32 v = *m, flags = v & (M_TYPE | M_SHARED);
         if (!(v & M_STATE)) {
-            /* Free. A thread that had to wait marks the lock contended, since it cannot know it was the only waiter. */
-            if (mg_atomic_cas(m, v, flags | (owner << 16) | 1) == v) return 0;
+            if (mg_atomic_cas(m, v, flags | (owner << 16) | taken) == v) return 0;
             continue;
         }
         if (timeout_ns == 1) return G_EBUSY;
@@ -70,12 +78,7 @@ static int mutex_acquire(volatile i32 *m, i32 owner, u64 timeout_ns)
         } else {
             mg_gwait(m, v, 0);
         }
-        /* Woken or changed: try for it, and leave it marked contended. */
-        for (;;) {
-            v = *m;
-            if (v & M_STATE) break;
-            if (mg_atomic_cas(m, v, (v & (M_TYPE | M_SHARED)) | (owner << 16) | 2) == v) return 0;
-        }
+        taken = 2;
     }
 }
 
