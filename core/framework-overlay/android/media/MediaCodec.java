@@ -369,8 +369,9 @@ public final class MediaCodec {
     private boolean drawSurfaceTexture(Out o, android.graphics.SurfaceTexture t) {
         // A picture decoded on the graphics processor stays there: the texture's newest frame, which its TextureView draws
         // from there (as an OpenGL ES frame), nothing read back into a bitmap and sent up again.
-        int id = t.meglerGpuId();
-        if (id != 0 && megler.MediaCodecNative.showFrame(o.frame, id)) { t.meglerGpuFrame(id, mOutW, mOutH); return true; }
+        // Where the shell lays the video under the views, it has shown the window already: the view is not drawn again.
+        int id = t.meglerGpuId(), shown = id != 0 ? megler.MediaCodecNative.showFrame(o.frame, id) : 0;
+        if (shown != 0) { t.meglerGpuFrame(id, mOutW, mOutH, shown == 2); return true; }
         int i = mTextureNext;
         Bitmap b = mTextureFrames[i];
         if (b == null || b.getWidth() != mOutW || b.getHeight() != mOutH) mTextureFrames[i] = b = Bitmap.createBitmap(mOutW, mOutH, Bitmap.Config.ARGB_8888);

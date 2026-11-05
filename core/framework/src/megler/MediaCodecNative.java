@@ -12,8 +12,8 @@ public final class MediaCodecNative {
     /** The next decoded 16-bit PCM, null when none; info = { ptsUs, sampleRate, channels }. */
     public static native byte[] nextPcm(long h, long[] info);
     public static native boolean renderFrame(long frame, android.graphics.Bitmap dst);
-    /** A frame decoded on the graphics processor made the newest of a TextureView's texture there (SurfaceTexture.meglerGpuId); false: renderFrame instead. */
-    public static native boolean showFrame(long frame, int texture);
+    /** A frame decoded on the graphics processor made the newest of a TextureView's texture there (SurfaceTexture.meglerGpuId): 1, for the view to draw; 2, shown already under the views; 0: renderFrame instead. */
+    public static native int showFrame(long frame, int texture);
     public static native void freeFrame(long frame);
     public static native void flush(long h);
     public static native void destroy(long h);

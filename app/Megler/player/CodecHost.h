@@ -88,7 +88,7 @@ private:
     static void flushThunk(void* user, void* codec);
     static void closeThunk(void* user, void* codec);
     static bool readPictureThunk(void* user, void* picture, megler_codec_picture* out);
-    static bool showPictureThunk(void* user, void* picture, int textureId);
+    static int showPictureThunk(void* user, void* picture, int textureId);
 };
 
 } // namespace megler::app
