@@ -742,6 +742,18 @@ std::wstring gsfApk() {
 
 namespace {
 std::atomic<int> gPackageManager{0}; // 1 Windows's package manager answered (packageQuery), -1 it would not, 0 not asked
+
+/// Whether Windows counts `package` with the developer's packages, of which a phone takes only so many (0x80073d11:
+/// installWithPackageManager), and what signed it: "developer's, signed Developer", for the log.
+std::string howInstalled(const Package& package) {
+    static const char* const kinds[] = {"none", "Developer", "Enterprise", "Store", "System"};
+    try {
+        const unsigned kind = unsigned(package.SignatureKind());
+        return std::string(package.IsDevelopmentMode() ? "developer's" : "not a developer's") + ", signed " + (kind < 5 ? kinds[kind] : "?");
+    } catch (hresult_error const&) {
+        return "?";
+    }
+}
 }
 
 bool packageManagerWorks() { return gPackageManager.load() > 0; }
@@ -758,14 +770,29 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std
         try {
             const std::wstring publisherId(Package::Current().Id().PublisherId());
             std::vector<InstalledApp> found;
+            // Once a run, for the log: how many of the phone's packages Windows counts as a developer's, and how Megler's are.
+            const bool tell = gPackageManager.load() != 1;
+            unsigned all = 0, developers = 0;
+            std::string own;
             for (auto const& package : winrt::Windows::Management::Deployment::PackageManager().FindPackagesForUser(L"")) {
                 const auto id = package.Id();
                 const std::wstring name(id.Name());
+                if (tell) {
+                    all++;
+                    try {
+                        if (package.IsDevelopmentMode()) developers++;
+                    } catch (hresult_error const&) {
+                    }
+                    if ((name == L"Megler" || name.compare(0, 10, L"MeglerApp.") == 0) && std::wstring(id.PublisherId()) == publisherId)
+                        own += "; " + narrow(name) + " " + howInstalled(package);
+                }
                 if (name.compare(0, 10, L"MeglerApp.") != 0 || std::wstring(id.PublisherId()) != publisherId) continue;
                 const auto v = id.Version();
                 found.push_back({narrow(name), format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision), narrow(std::wstring(id.FullName()))});
             }
-            if (gPackageManager.exchange(1) != 1) shellLog::write("app package: Windows's package manager lists the apps' packages");
+            if (gPackageManager.exchange(1) != 1)
+                shellLog::write(format("app package: Windows's package manager lists the apps' packages; %u of the %u packages are developer's",
+                                       developers, all) + own);
             if (reachable) reachable();
             out = std::move(found);
             return true;
