@@ -185,7 +185,7 @@ void mg_mem_release(void *p, size_t size) { munmap(p, size); }
 
 void mg_icache_flush(void *p, size_t size)
 {
-#if defined(__arm__)
+#if defined(__arm__) || defined(__aarch64__)
     __builtin___clear_cache((char *)p, (char *)p + size);
 #else
     (void)p; (void)size;
@@ -379,6 +379,17 @@ static void on_suspend(int sig, siginfo_t *si, void *ctx)
         t->regs.flags = (u32)g[REG_EFL];
         for (i = 0; i < (int)MG_COUNT(which); i++) t->regs.r[i] = (mg_addr)g[which[i]];
         t->regs.n = (int)MG_COUNT(which);
+    }
+#elif defined(__aarch64__)
+    {
+        /* (x0..x28, fp and lr: regs[] of the kernel's sigcontext, bionic's and glibc's alike.) */
+        const mcontext_t *m = &((ucontext_t *)ctx)->uc_mcontext;
+        int i;
+        t->regs.sp = (mg_addr)m->sp;
+        t->regs.pc = (mg_addr)m->pc;
+        t->regs.flags = (u32)m->pstate;
+        for (i = 0; i < 31; i++) t->regs.r[i] = (mg_addr)m->regs[i];
+        t->regs.n = 31;
     }
 #else
     (void)ctx;
