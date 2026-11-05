@@ -450,39 +450,32 @@ static void test_foreign_paths(const char *scratch)
  * The C library as an app's code has it. The structures are bionic's, as
  * mg_libc_io.c fills them in: of the build's processor (struct stat is laid
  * out three ways, x86_64's, ARM64's and the 32-bit ABIs'), in the guest's
- * widths (glong: 64 bits in 64-bit Android).
+ * widths (glong: 64 bits in 64-bit Android). The 64-bit ABIs' are written in
+ * u64 and i64, as mg_libc_io.c's g_stat is: MSVC's x64 build of the tests has
+ * 32-bit longs, and with glong this one came out 104 bytes against the core's
+ * 144, and the storage test's stack was overwritten (0xC0000409).
  */
 #if MG_ARCH_X86_64
 typedef struct t_stat {
     u64 st_dev, st_ino;
-    gulong st_nlink;
+    u64 st_nlink;
     u32 st_mode, st_uid, st_gid, pad0;
     u64 st_rdev;
     i64 st_size;
-    glong st_blksize, st_blocks;
-    gtime at_sec;
-    glong at_nsec;
-    gtime mt_sec;
-    glong mt_nsec;
-    gtime ct_sec;
-    glong ct_nsec;
-    glong unused[3];
+    i64 st_blksize, st_blocks;
+    i64 at_sec, at_nsec, mt_sec, mt_nsec, ct_sec, ct_nsec;
+    i64 unused[3];
 } t_stat;
 #elif MG_ARCH_ARM64
 typedef struct t_stat {
     u64 st_dev, st_ino;
     u32 st_mode, st_nlink, st_uid, st_gid;
     u64 st_rdev;
-    gulong pad1;
+    u64 pad1;
     i64 st_size;
     i32 st_blksize, pad2;
-    glong st_blocks;
-    gtime at_sec;
-    glong at_nsec;
-    gtime mt_sec;
-    glong mt_nsec;
-    gtime ct_sec;
-    glong ct_nsec;
+    i64 st_blocks;
+    i64 at_sec, at_nsec, mt_sec, mt_nsec, ct_sec, ct_nsec;
     u32 unused4, unused5;
 } t_stat;
 #else
