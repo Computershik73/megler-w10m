@@ -3155,6 +3155,54 @@ static void test_guest_kinds(const char *libdir)
     }
 }
 
+#if !MG_ARCH_X86
+/*
+ * A goroutine's stack in Go's heap, given back with madvise and run on again (core/tests/guest/t_go.c: a library of Go's
+ * by its build ID note). Given back as Go's runtime gives its heap's pages back, by number from its own code: committed
+ * again at once (bionic/mg_libc_mem.c), zero, the app's memory as the frames line counts it as before, and nothing takes
+ * a page back -- not the goroutine's first frame on its stack, not a read of the rest of the heap -- there is none to
+ * take. (Decommitted instead, that frame's first touch ends the process on Windows: the fault's records are due on the
+ * very page the stack pointer is in.) Given back by any other code, on a POSIX host: decommitted, and the goroutine's
+ * first touch of its own stack's page is a fault the handler takes on its stack for faults (host/mg_host_posix.c) and
+ * repairs.
+ */
+static void test_go_stack(void)
+{
+    enum { STACK = 256 * 1024 };
+    mg_lib *go = mg_ld_load("libt_go.so");
+    mg_ld_stats st;
+    u64 given0 = 0, again0 = 0, anon0 = 0, given = 0, again = 0, anon = 0;
+    say("guest library: a goroutine's stack in Go's heap, given back with madvise and run on again");
+    CHECK(go && mg_ld_init(go));
+    if (!go) return;
+    CHECK(mg_ld_lib_is_go(go));
+    mg_ld_get_stats(go, &st);
+    CHECK_INT(st.svc_sites, 1);
+    CHECK_INT(FN(go, long (*)(long), "t_go_heap_new")(3), 14);
+    mg_mmap_given_back(&given0, &again0);
+    mg_mmap_usage(&anon0, NULL);
+    CHECK_INT(FN(go, long (*)(long), "t_go_give_back")(0), 0);
+    CHECK_INT(FN(go, long (*)(long), "t_go_give_back")(1), 0);
+    mg_mmap_given_back(&given, &again);
+    mg_mmap_usage(&anon, NULL);
+    CHECK(given - given0 == 2 * STACK && anon == anon0);
+    CHECK_INT(FN(go, long (*)(long), "t_go_run")(4), 16);
+    CHECK_INT(FN(go, long (*)(long), "t_go_nonzero")(1), 0);
+    mg_mmap_given_back(&given, &again);
+    CHECK(again == again0);
+#if !defined(_WIN32) && !defined(MG_CORE_ELF)
+    CHECK_INT(FN(go, long (*)(long), "t_go_give_back")(2), 0);
+    mg_mmap_usage(&anon, NULL);
+    CHECK(anon0 - anon == STACK);
+    CHECK_INT(FN(go, long (*)(long), "t_go_run")(5), 18);
+    mg_mmap_given_back(&given, &again0);
+    say("  given back by other code: %u KB taken back by the goroutine's faults on its own stack", (unsigned)((again0 - again) >> 10));
+    CHECK(again0 > again);
+#endif
+    FN(go, void (*)(void), "t_go_heap_free")();
+}
+#endif
+
 static void test_guest(const char *libdir, const char *scratch)
 {
     mg_lib *basic, *dep;
@@ -3316,6 +3364,9 @@ static void test_guest(const char *libdir, const char *scratch)
             CHECK_INT(r[19], 1);
         }
     }
+#if !MG_ARCH_X86
+    test_go_stack();
+#endif
 }
 
 #if MG_ARCH_ARM32
