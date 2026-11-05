@@ -574,19 +574,24 @@ PortalResult installThroughPortal(const Made& made, const std::function<void(con
 }
 
 /*
- * Windows 10 Mobile's deployment engine takes a packaged developer deployment with the option 0x8000 (its MinDeploy's; the
- * public DevelopmentMode, 2, is for a loose manifest and refused for a package), and ForceApplicationShutdown closes the app
- * the package updates -- Megler itself, for its own update. Each set of options is tried while the one before was refused
- * at once; a deployment that has begun is waited for.
+ * Windows's deployment engine installs a package as the Store installs an app (ForceApplicationShutdown, which closes the
+ * app the package updates -- Megler itself, for its own update -- or None), or, on Windows 10 Mobile, as a developer's
+ * package (the option 0x8000, its MinDeploy's packaged developer deployment; the public DevelopmentMode, 2, is for a loose
+ * manifest and refused for a package). A phone takes only so many developer's packages and refuses one more (0x80073d11,
+ * ERROR_DEV_SIDELOAD_LIMIT_EXCEEDED: a Megler 575 could not install Aurora Store through the Device Portal, which installs
+ * only so; a Lumia 650 had 20 of them, Megler's and its four apps' among them, each installed so by 612 to 639). The
+ * Store's way is not a developer's deployment: it goes first, as WinArchive's developer, whose way of installing this is,
+ * advised, and a developer's deployment only where it is refused. Each set of options is tried while the one before was
+ * refused at once; a deployment that has begun is waited for.
  */
 PortalResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress) {
     using namespace winrt::Windows::Management::Deployment;
     const DeploymentOptions mobileDevelopment = static_cast<DeploymentOptions>(0x8000);
-    const DeploymentOptions tries[] = {mobileDevelopment | DeploymentOptions::ForceApplicationShutdown, DeploymentOptions::ForceApplicationShutdown,
-                                       mobileDevelopment, DeploymentOptions::None};
+    const DeploymentOptions tries[] = {DeploymentOptions::ForceApplicationShutdown, DeploymentOptions::None,
+                                       mobileDevelopment | DeploymentOptions::ForceApplicationShutdown, mobileDevelopment};
     std::wstring uri = L"file:///" + path;
     std::replace(uri.begin(), uri.end(), L'\\', L'/');
-    std::string said;
+    std::string said, asTheStore;
     for (const DeploymentOptions options : tries) {
         try {
             PackageManager manager;
@@ -605,8 +610,10 @@ PortalResult installWithPackageManager(const std::wstring& path, const std::func
             said = format("0x%08x ", unsigned(e.code())) + narrow(e.message());
             shellLog::write(format("app package: the deployment engine could not be asked (options 0x%x): ", unsigned(options)) + said);
         }
+        if (!(unsigned(options) & 0x8000) && asTheStore.empty()) asTheStore = said;
     }
-    return {false, "Windows's deployment engine did not install it: " + said};
+    // What the Store's way was refused for first: a developer's deployment is refused for their number alone.
+    return {false, "Windows's deployment engine did not install it: as the Store installs, " + asTheStore + "; as a developer's package, " + said};
 }
 
 bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullName, bool replace) {

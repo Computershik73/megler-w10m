@@ -123,9 +123,17 @@ Since 0.1.0.614 an app's package, and since 0.1.0.612 Megler's own update from
 `Pictures\Megler`, are installed by Windows's deployment engine
 (`PackageManager.AddPackageAsync`, the restricted capability `packageManagement`,
 `shell/AppPackage.cpp` installWithPackageManager), which reads the package where
-it lies: Windows 10 Mobile takes a packaged developer deployment with the option
-0x8000, and ForceApplicationShutdown closes the app being updated -- Megler
-itself, for its own update. Uninstalling is `RemovePackageAsync`. The Device
+it lies; ForceApplicationShutdown closes the app being updated -- Megler itself,
+for its own update. Since 0.1.0.640 a package is installed as the Store installs
+an app (ForceApplicationShutdown, else None), as WinArchive's developer, whose
+way of installing it is, advised, and as a developer's package (Windows 10
+Mobile's option 0x8000) only where that is refused: a phone takes only so many
+developer's packages and refuses one more with 0x80073d11
+(ERROR_DEV_SIDELOAD_LIMIT_EXCEEDED). A Megler 575 could not install Aurora Store
+so, and a Lumia 650 had 20 developer's packages (the portal's PackageOrigin 5),
+Megler's and its four apps' among them, installed so by 0.1.0.612 to 0.1.0.639.
+The Device Portal installs only a developer's package. Uninstalling is
+`RemovePackageAsync`. The Device
 Portal's upload, used before and still where the engine refuses, went through
 Megler's memory: a phone of 1 GB lets an app have 390 MB, and a Lumia 650's
 Megler 574 sending a Megler of 356 MB was ended by Windows with nothing said.

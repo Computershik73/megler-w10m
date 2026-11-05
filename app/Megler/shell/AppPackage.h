@@ -84,8 +84,10 @@ struct PortalResult {
 /// itself, taken as it is), with the certificate. Off the UI thread.
 PortalResult installThroughPortal(const Made& made, const std::function<void(const std::string&)>& progress);
 /// A package installed by Windows's deployment engine itself (PackageManager.AddPackageAsync, the restricted capability
-/// packageManagement), which reads it where it lies: nothing of it goes through Megler's memory. An update of Megler's own
-/// package closes Megler. Not installed, with what Windows said, when every option was refused. Off the UI thread.
+/// packageManagement), which reads it where it lies: nothing of it goes through Megler's memory. Installed as the Store
+/// installs an app, and as a developer's package (of which a phone takes only so many) only where that is refused. An update
+/// of Megler's own package closes Megler. Not installed, with what Windows said, when every option was refused. Off the UI
+/// thread.
 PortalResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress);
 
 /// An app's own package installed on the phone.

@@ -229,7 +229,10 @@ void run(Job& job, int number, int total) {
         appPackage::PortalResult result = appPackage::installWithPackageManager(made.appx, step);
         if (!result.ok) {
             shellLog::write("separate apps: " + result.said + ": through the Device Portal instead");
+            const std::string engine = result.said;
             result = appPackage::installThroughPortal(made, step);
+            // The portal installs only a developer's package: why the engine refused the Store's way is said too.
+            if (!result.ok) result.said = engine + ". The Device Portal: " + result.said;
         }
         if (!result.ok) {
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
