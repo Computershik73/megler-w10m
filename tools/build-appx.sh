@@ -513,7 +513,9 @@ cp "$APP/Assets/"*.png "$STAGE/Assets/"
 # (tools/android9-unpack.sh fonts), where they are. Without them the shell's text is Segoe UI.
 mkdir -p "$STAGE/fonts"
 for f in Roboto-Regular.ttf Roboto-Medium.ttf Roboto-Bold.ttf DroidSansMono.ttf; do
-  if [ -f "$ANDROID_ROOT/fonts/$f" ]; then cp "$ANDROID_ROOT/fonts/$f" "$STAGE/fonts/"; fi
+  # (Or from the system image's fonts, which every ABI's root has: a desktop ABI's root may not be made yet.)
+  if [ -f "$ANDROID_ROOT/fonts/$f" ]; then cp "$ANDROID_ROOT/fonts/$f" "$STAGE/fonts/"
+  elif [ -f "$ROOT/build/android9/system/fonts/$f" ]; then cp "$ROOT/build/android9/system/fonts/$f" "$STAGE/fonts/"; fi
 done
 echo "    fonts: $(ls "$STAGE/fonts" | tr '\n' ' ')"
 
