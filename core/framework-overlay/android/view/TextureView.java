@@ -101,7 +101,9 @@ public class TextureView extends View {
         SurfaceTexture t = mTexture;
         if (t != null && t.meglerGpuNewest()) {
             // A frame on the graphics processor: drawn by the shell from its copy, scaled to the view and transformed as a bitmap's.
-            if (mShownGpu != t.getTimestamp() + 1) { mShownGpu = t.getTimestamp() + 1; if (mListener != null) mListener.onSurfaceTextureUpdated(t); }
+            // The listener hears of each new one, as of each bitmap (a video decoded on the graphics processor is a frame each
+            // time; the bitmap's stamp, which this went by, stays as it was).
+            if (mShownGpu != t.meglerGpuAt()) { mShownGpu = t.meglerGpuAt(); if (mListener != null) mListener.onSurfaceTextureUpdated(t); }
             int save = c.save();
             c.concat(mMatrix);
             Paint p = mLayerPaint != null ? mLayerPaint : mPaint;
