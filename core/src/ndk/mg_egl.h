@@ -26,6 +26,24 @@
 extern "C" {
 #endif
 
+/*
+ * Whether ANGLE's functions are given as adapters between two calling conventions (mg_gl_adapters.c, made by
+ * tools/gl-adapters.py from the NDK's headers): desktop Windows on x86_64 and x86, where ANGLE's are Windows' (MG_GLAPI)
+ * and what calls them, guest code and the core alike, is of Android's ABI.
+ */
+#if defined(MG_CORE_ELF) && (MG_ARCH_X86_64 || MG_ARCH_X86)
+#define MG_GL_ADAPTERS 1
+#else
+#define MG_GL_ADAPTERS 0
+#endif
+/*
+ * The adapter for ANGLE's function `host` of that name, which it calls from then on; NULL for no function, and for a name
+ * none of the NDK's headers declares (there is no adapter for it).
+ */
+void *mg_gl_adapter(const char *name, void *host);
+/* How many bytes that function's arguments take on x86's stack, -1 for a name with no adapter (the tests' stand-in for ANGLE). */
+int mg_gl_adapter_arg_bytes(const char *name);
+
 /* The address to bind a guest import of an EGL or GLES function to (an adapter, or ANGLE's own), or NULL. Loads ANGLE on first use. */
 void *mg_egl_resolve(const char *name);
 /* Whether a name is one this module answers for, without loading anything (for reports). */

@@ -159,6 +159,27 @@ typedef int64_t i64;
 #define MG_HOSTAPI
 #define MG_HOSTCB
 #endif
+/*
+ * And EGL's and OpenGL ES's, which are ANGLE's, Windows' code:
+ *
+ *   MG_GLAPI    on the type of a pointer to one of ANGLE's functions, and on a stand-in for one (the tests);
+ *   MG_GLCB     on a function of the core's that ANGLE calls through a GL_APIENTRY or EGLAPIENTRY pointer (a debug
+ *               message callback).
+ *
+ * The Khronos headers give them KHRONOS_APIENTRY, which on Windows is __stdcall: on x86 the callee takes its arguments
+ * off the stack, where Android's cdecl leaves them to the caller. On x86_64 that is Windows' one convention, and ARM64's
+ * are the same AAPCS64 again. Guest code and the core call them through the adapters of ndk/mg_gl_adapters.c.
+ */
+#if defined(MG_CORE_ELF) && MG_ARCH_X86_64
+#define MG_GLAPI __attribute__((ms_abi))
+#define MG_GLCB __attribute__((ms_abi))
+#elif defined(MG_CORE_ELF) && MG_ARCH_X86
+#define MG_GLAPI __attribute__((stdcall))
+#define MG_GLCB __attribute__((stdcall, force_align_arg_pointer))
+#else
+#define MG_GLAPI
+#define MG_GLCB
+#endif
 /* A function of the core's that Megler.exe looks up by name in the core's ELF and calls (besides megler.h's). */
 #if defined(MG_CORE_ELF)
 #define MG_EXPORT MG_HOSTCB __attribute__((visibility("default")))
