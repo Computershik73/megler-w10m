@@ -20,6 +20,7 @@
 #include "player/Session.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
+#include "shell/PicturesDiag.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
 #include "shell/ShellLog.h"
@@ -73,6 +74,8 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
             // until it came back. A second at most for its transactions to end.
             if (!megler_settle_databases(1000)) shellLog::write("app: suspended with a database still locked");
             shellLog::flush();
+            // (And the log where a diagnosis over USB asked for it: shell/PicturesDiag.h.)
+            picturesDiag::exportNow();
         });
         Resuming([this](auto&&, auto&&) {
             shellLog::write("app: resuming");
@@ -92,6 +95,8 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
 
     void OnLaunched(LaunchActivatedEventArgs const& args) {
         shellLog::write("app: launched (previous state " + std::to_string(int(args.PreviousExecutionState())) + ")");
+        // A diagnosis asked for over USB: its flags in place before an app runs, the log copied out (shell/PicturesDiag.h).
+        picturesDiag::start();
         copySystemDlls();
         ensureContent();
         Window::Current().Activate();
