@@ -94,8 +94,25 @@ before the code is made executable:
   slot of the TEB's TlsSlots that holds the same value on every guest thread
   -- `mov %gs:0x1480+8*slot, %rax` -- the same length, in place. The two slots
   are taken as the process starts (`.CRT$XIU`): later, XAML's DLLs have used
-  the TEB's 64. A read at another place of the segment is left, and said:
-  all of Android 9's libcrypto's are data among its code.
+  the TEB's 64. A read at another absolute place of the segment is left, and
+  said: all of Android 9's libcrypto's are data among its code.
+- **An access of `%fs` through a register on x86_64**, the offset in a
+  register: Go's runtime reaches its g so (`mov runtime.tls_g(%rip), %r14;
+  mov %fs:(%r14), %r14` after every call to its assembly; its stores of g,
+  `mov %rdi, %fs:(%rax)`), and C of the initial-exec model its variables
+  (`mov x@gottpoff(%rip), %rax; mov %fs:(%rax), %eax`). The instruction and
+  whole instructions next to it, as a system call's below, become a jump to
+  a piece of the library's island that makes the access on the guest's
+  thread pointer: a register the instruction does not use is kept in a third
+  TEB slot (the patcher's word: not the stack, a goroutine's has nothing to
+  spare), loaded with the thread pointer, the operand's base added by `lea`,
+  the instruction made with that register as its base, the register given
+  back -- no flag and no register it does not write changes. An interrupted
+  thread finds the word as it was (`mg_thread_interrupt` keeps it across
+  what it runs there). Only in a library that says it reaches the segment
+  so -- `DF_STATIC_TLS`, or Go's build ID note -- since elsewhere such bytes
+  have been data (libcrypto's ChaCha constant reads as `and %dh,
+  %fs:(%rbx)`).
 - **`syscall` in x86_64 code of an app's own** (Go's runtime makes every
   system call so, anti-tamper libraries some): a trap would put Windows'
   exception frame over the 128 bytes below rsp that System V code may keep
@@ -107,8 +124,10 @@ before the code is made executable:
   and the XSAVE state kept, on the thread's own stack below its red zone, or,
   when the code runs on a stack of its own (a goroutine's), on a stack of the
   thread's for system calls (slot 15 of its guest block) that the TEB is told
-  while it is used. A syscall with no such place around it (a jump into it,
-  an operand relative to rip) is left and said.
+  while it is used. An instruction taken with it that has an operand relative
+  to rip is given the displacement that reaches the same place from the
+  piece. A syscall with no such place around it (a jump into it, a jump or a
+  return on both sides) is left and said.
 - **ARM64** (`arm64/mg_patch_arm64.c`): `mrs xN, tpidr_el0` becomes
   `ldr xN, [x18, #0x1480+8*slot]` (x18 is the TEB, and Android's compiler
   leaves it alone), the canary following through the guest's own block --
@@ -165,8 +184,9 @@ not defined, and the new files compile to nothing.
 On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
 
 - `tools/build-desktop.sh x64 tests`, the core in `megler-core.so` loaded into
-  a Windows x64 process, with the x86_64 guest test libraries: 5317 checks, 3
-  failed -- the three float checks of the GLES stand-in (below). ELF64 with
+  a Windows x64 process, with the x86_64 guest test libraries: 5321 checks, 3
+  failed -- the three float checks of the GLES stand-in (below); now and then
+  one or two more under load, the herd test's timing check. ELF64 with
   RELA, APS2 and RELR relocations, IFUNC, 90 patched thread-pointer and canary
   reads in one library, initial-exec and global-dynamic thread-local
   variables, PLT calls, JNI with every kind of argument, threads, a thread
@@ -175,13 +195,31 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   `syscall` led out to the core in six places of the seven t_raw_syscall has
   (the seventh, with a jump into it, left): every register but rax, the flags
   with DF set, xmm0, xmm15, ymm1's upper half and the red zone as they were,
-  six arguments, a stack of the caller's own, four threads at once.
+  six arguments, a stack of the caller's own, four threads at once. And its
+  accesses of `%fs` through a register, 19 of t_fs_access's 20 led out to
+  pieces (the 20th, a jump to it and nothing to move around it, left): Go's
+  forms -- its reload of g, its stores, rt0_go's -- and C's initial-exec ones
+  through the GOT, an index too, on two threads; the flags, every register
+  the access does not write and the red zone as they were; and a thread
+  interrupted two hundred times in the middle of them by a handler that makes
+  them too (with the patcher's word not kept across an interruption, its
+  registers came back changed: t_fs_access 32, on Linux as well).
 - `tools/build-desktop.sh x86 tests` (through WOW64): 5322 checks, 0 failed
   (now and then 1 under load: a timing check of a few milliseconds).
+- A library of Go's: a c-shared one for android/amd64 that Go 1.27.1 made
+  here (with the NDK's clang for cgo; not in the repository), loaded by
+  `mg_tests --load` on x64 and on WSL's Linux: its 468 accesses of `%fs`
+  through a register and its 40 system calls all led out, its runtime started
+  on a thread of its own (runtime.main ran, tls_g 16, the vDSO taken), and its
+  exports called from the loading thread (`MG_TESTS_LOAD_CALL`: cgocallback,
+  needm) -- 1000 goroutines allocating and sending, the collector run, the
+  sums right. Some runs end in a goroutine's first write to a page of its
+  stack that madvise gave back (What is left).
 - `tools/build-tests.sh win` (MSVC's x64 build of the tests): 5023 checks, 0
   failed, and 5087 on Android's libcore, 0 failed; `tools/build-tests.sh
-  linux64` (x86_64 on WSL's Linux): 5311 checks, 3 failed (the float checks
-  above), an app's own `syscall` led out there too; `tools/abi-check.py`: 0
+  linux64` (x86_64 on WSL's Linux): 5315 checks, 3 failed (the float checks
+  above), an app's own `syscall` and accesses of `%fs` through a register led
+  out there too; `tools/abi-check.py`: 0
   differences on all four ABIs; the phone's
   core compiles for ARM32 with MSVC, 148 of 148, and its tests under qemu-arm
   (`tools/build-tests.sh arm`) give 5429 checks, 0 failed, as before.
@@ -216,9 +254,17 @@ access denied"); the next start is not.
    the NDK's GLES headers; the float adapters of `ndk/mg_egl.c` are 32-bit
    ARM's (softfp) and pass x86_64's and ARM64's floats wrong (the three
    checks above).
-2. **Go on x86_64**: its runtime reads its g through `%fs:(%reg)` (the
-   initial-exec model through a register), which the patcher leaves; its
-   system calls and its clock are the core's now.
+2. **Go on x86_64**: its g, its system calls and its clock are the core's
+   now, and a library's exports run (above). But a goroutine's stack is part
+   of Go's heap, whose pages its scavenger gives back with madvise, which the
+   core decommits (`bionic/mg_libc_mem.c`) to commit them again at the first
+   touch: when the goroutine whose stack it is touches such a page first, the
+   fault's own frame -- the kernel's signal frame on Linux, Windows' exception
+   dispatch -- is due on that same page, the core's handler never runs, and
+   the process ends (some runs of 1000 goroutines with 64 KB frames). And a
+   fault in Go's code is not given to its handler off 32-bit ARM
+   (`mg_signal_fault`): a nil dereference ends the process instead of
+   panicking.
 3. **`int 0x80` in x86 code of an app's own** is counted, not rewritten (x86
    keeps nothing below its stack pointer: a trap would do there).
 4. **WebView**: Android's System WebView for x86_64 and arm64 (the phone's is
