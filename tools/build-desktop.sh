@@ -6,8 +6,9 @@
 #
 #   tests   the core's ELF with the tests in it (build/desktop-<arch>/megler-core.so) and the test program that loads it
 #           (build/desktop-<arch>/mg_tests.exe); then, on a machine of that processor, runs it as tools/build-tests.sh
-#           win runs the x64 build of the tests: everything that needs no guest code, the Dalvik runtime on its own
-#           java.lang.
+#           win runs the x64 build of the tests -- everything that needs no guest code, the Dalvik runtime on its own
+#           java.lang -- and the guest-code tests on the guest test libraries of the processor's ABI
+#           (build/guest/x86_64, arm64-v8a or x86: tools/build-guest.sh <abi>, built here when they are not there).
 #   app     what tools/build-appx.sh links Megler.exe of for that processor: the core's ELF as the package carries it
 #           (build/desktop-<arch>/app/megler-core.so: the tests the Self-test runs, no test program's main) and Megler.exe's
 #           half of the core compiled for an app container (build/desktop-<arch>/app/coff/*.obj).
@@ -171,6 +172,11 @@ if [ "$RUN" = 1 ]; then
     x64:AMD64|x86:AMD64|x86:x86|arm64:ARM64|x64:ARM64|x86:ARM64) ;;
     *) echo "(not run: this machine's processor is $PROCESSOR_ARCHITECTURE)"; exit 0 ;;
   esac
+  # The guest test libraries of the processor's ABI, built again when any of their sources is newer than the first of them.
+  case "$ARCH" in x64) GUEST_ABI=x86_64 ;; arm64) GUEST_ABI=arm64-v8a ;; *) GUEST_ABI=x86 ;; esac
+  GUEST="$ROOT/build/guest/$GUEST_ABI"
+  { [ -f "$GUEST/libt_basic.so" ] && [ -z "$(find "$ROOT/core/tests/guest" -type f -newer "$GUEST/libt_basic.so" -print -quit)" ]; } \
+    || bash "$ROOT/tools/build-guest.sh" "$GUEST_ABI" > /dev/null
   rm -rf "$OUT/scratch"
-  "$OUT/mg_tests.exe" - "$(w "$OUT/scratch")" --dvm "$(w "$ROOT/build/guest/armeabi-v7a/dvm")" ${EXTRA[@]+"${EXTRA[@]}"}
+  "$OUT/mg_tests.exe" "$(w "$GUEST")" "$(w "$OUT/scratch")" --dvm "$(w "$ROOT/build/guest/armeabi-v7a/dvm")" ${EXTRA[@]+"${EXTRA[@]}"}
 fi

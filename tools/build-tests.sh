@@ -5,6 +5,17 @@
 #       The 32-bit ARM build, in WSL with arm-linux-gnueabihf-gcc, run under
 #       qemu-arm: the one that executes guest code. Thumb-2 and hard-float,
 #       like the phone's build. Needs the guest libraries (tools/build-guest.sh).
+#   tools/build-tests.sh linux64 [--no-run] [--no-libcore] [-- extra arguments for mg_tests]
+#       The x86_64 build, in WSL with its own gcc, run there natively: Linux's
+#       x86_64 ABI is Android's (System V, LP64), so this build runs the guest
+#       libraries of x86_64 (tools/build-guest.sh x86_64, build/guest/x86_64)
+#       as they are, as desktop Windows' core does (docs/DESKTOP.md) -- the
+#       guest linker's ELF64 and RELA, the x86 patcher, System V's native calls
+#       -- with gdb at hand. Run as the arm build is: the tests, again on
+#       Android's libcore (build/android9/root-x86_64, with x86_64's natives),
+#       the bundles; not the Java test apps, whose native libraries are
+#       armeabi-v7a's. Objects go to ~/megler-build-x64 (MEGLER_WSL_BUILD's
+#       folder with -x64 after its name).
 #   tools/build-tests.sh win
 #       The x64 build with MSVC, run here: the Win32 host layer and everything
 #       that needs no ARM code. And the shell's drawing for a Java app
@@ -104,6 +115,8 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# MG_TESTS_SKIP (core/tests/mg_tests.c: guest functions left uncalled) reaches what WSL runs too.
+if [ -n "${MG_TESTS_SKIP:-}" ]; then export WSLENV="${WSLENV:+$WSLENV:}MG_TESTS_SKIP"; fi
 
 # The Dalvik runtime's generated sources and its tests' DEX files (build/guest/armeabi-v7a/dvm).
 bash "$ROOT/tools/build-dvm-fixtures.sh"
@@ -260,6 +273,50 @@ EOF
     # The shell's drawing (Direct2D, DirectWrite, WIC) is only in the Windows build: this one has the mode and says so.
     MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --gfx-windows - 2>&1" || STATUS=1
   fi
+elif [ "$MODE" = linux64 ]; then
+  # x86_64's guest libraries again when any of their sources is newer than the first of them build-guest.sh makes.
+  { [ -f "$ROOT/build/guest/x86_64/libt_basic.so" ] \
+    && [ -z "$(find "$ROOT/core/tests/guest" -type f -newer "$ROOT/build/guest/x86_64/libt_basic.so" -print -quit)" ]; } || bash "$ROOT/tools/build-guest.sh" x86_64 > /dev/null
+  WROOT="/mnt/${ROOT:1:1}${ROOT:2}"
+  WB="$WB-x64"
+  cat > "$ROOT/build/tests-linux64.sh" <<EOF
+set -e
+OUT=$WB
+mkdir -p \$OUT/obj
+cd "$WROOT"
+CFLAGS="-std=gnu11 -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-format-truncation -Icore/third_party/zlib -D_GNU_SOURCE $SQLITE_GCC $WEBP_GCC"
+compile() {
+  src="\$1"; obj="\$OUT/obj/\$(echo "\$src" | tr '/' '_').o"
+  if [ ! -f "\$obj" ] || [ "\$src" -nt "\$obj" ] || [ -n "\$(find core/include core/src core/tests \( -name '*.h' -o -name '*.inc' \) -newer "\$obj" -print -quit)" ] \\
+     || { [ "\$src" = core/src/sqlite/mg_sqlite3.c ] && [ -f build/sqlite/sqlite3.c ] && [ build/sqlite/sqlite3.c -nt "\$obj" ]; }; then
+    gcc \$CFLAGS \$2 -c "\$src" -o "\$obj" || exit 1
+  fi
+}
+# (With SQLite or without, with the WebP decoder or without, is a matter of flags, which no object file remembers: when they change, everything is compiled again.)
+[ "\$(cat \$OUT/sqlite.flags 2>/dev/null)" = "$SQLITE_GCC $WEBP_GCC" ] || rm -f \$OUT/obj/*.o
+echo "$SQLITE_GCC $WEBP_GCC" > \$OUT/sqlite.flags
+export -f compile
+export OUT CFLAGS
+printf '%s\n' ${SRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} ""'
+printf '%s\n' ${ZSRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} "-w"'
+gcc -o \$OUT/mg_tests \$OUT/obj/*.o -lm -lpthread -ldl
+echo "built \$OUT/mg_tests"
+EOF
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash "$WROOT/build/tests-linux64.sh"
+  if [ "$RUN" = 1 ]; then
+    # (The layer's log is the program's standard error; the two are joined inside WSL, where lines stay whole. The Dalvik
+    # runtime's DEX fixtures are every ABI's: build-dvm-fixtures.sh keeps them beside armeabi-v7a's libraries.)
+    DVM="--dvm '$WROOT/build/guest/armeabi-v7a/dvm'"
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch && $WB/mg_tests '$WROOT/build/guest/x86_64' $WB/scratch $DVM ${EXTRA[*]:-} 2>&1" || STATUS=1
+    if [ "$LIBCORE" = 1 ]; then
+      bash "$ROOT/tools/dvm-android-root.sh" --abi x86_64
+      echo "$AGAIN, with x86_64's natives (build/android9/root-x86_64)"
+      # The folder is copied into WSL's own disk: the Windows drive is slow from there, and ICU maps 24 MB of it.
+      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$WROOT/build/android9/root-x86_64/.' $WB/android-root/ && rm -rf $WB/scratch && $WB/mg_tests '$WROOT/build/guest/x86_64' $WB/scratch $DVM --dvm-android $WB/android-root ${EXTRA[*]:-} 2>&1" || STATUS=1
+    fi
+    # Bundles of split APKs, unpacked as the shell unpacks them.
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch-bundles && $WB/mg_tests --bundles '$WROOT/build/guest/java' $WB/scratch-bundles '$WROOT/build/bundles' 2>&1; STATUS=\$?; rm -rf $WB/scratch-bundles; exit \$STATUS" || STATUS=1
+  fi
 elif [ "$MODE" = win ]; then
   for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe "/c/Program Files (x86)/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe; do
     [ -f "$cl" ] && VC="${cl%/bin/Hostx64/x64/cl.exe}"
@@ -413,7 +470,7 @@ elif [ "$MODE" = win ]; then
     done
   fi
 else
-  echo "usage: tools/build-tests.sh arm|win" >&2
+  echo "usage: tools/build-tests.sh arm|linux64|win" >&2
   exit 2
 fi
 exit $STATUS
