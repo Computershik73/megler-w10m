@@ -86,6 +86,8 @@ typedef int64_t i64;
 #else
 #define MG_GUEST_ABI "x86"
 #endif
+/* The machine uname() says, which libcore makes os.arch of. */
+#define MG_GUEST_MACHINE (MG_ARCH_ARM32 ? "armv7l" : MG_ARCH_ARM64 ? "aarch64" : MG_ARCH_X86_64 ? "x86_64" : "i686")
 
 /* The 32-bit ARM host: the phone, and qemu-arm's Linux. What is ARM32's alone (Thumb, the kernel's helpers, the JIT) asks this. */
 #define MG_HOST_ARM32 MG_ARCH_ARM32
@@ -102,6 +104,20 @@ typedef int64_t i64;
 #define MG_GUEST_CODE 1
 #else
 #define MG_GUEST_CODE 0
+#endif
+/*
+ * The native libraries an app's APKs are read and loaded for: 32-bit ARM's (armeabi-v7a, then the older armeabi, which
+ * every ARMv7 runs) on the phone and in the builds that run no guest code, which look at APKs as the phone does; the
+ * processor's own ABI alone elsewhere (MG_GUEST_ABI: no other processor's code is translated, docs/DESKTOP.md).
+ */
+#define MG_APK_ABI_ARM (MG_ARCH_ARM32 || !MG_GUEST_CODE)
+/* That ABI's name, and the second one Android's Build.CPU_ABI2 names (none on the desktop's processors). */
+#if MG_APK_ABI_ARM
+#define MG_APK_ABI "armeabi-v7a"
+#define MG_APK_ABI2 "armeabi"
+#else
+#define MG_APK_ABI MG_GUEST_ABI
+#define MG_APK_ABI2 ""
 #endif
 /* Floats cross the guest boundary as their bits in integer registers (Android's softfp, 32-bit ARM only). */
 #define MG_GUEST_SOFTFP MG_ARCH_ARM32

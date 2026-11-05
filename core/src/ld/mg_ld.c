@@ -136,19 +136,27 @@ static void count_one(const mg_zip_entry *e, void *user)
     if (n > 3 && !strcmp(e->name + n - 3, ".so")) ++*(int *)user;
 }
 
-/* armeabi-v7a when any APK has it; the older armeabi (ARMv5, which every ARMv7 runs) otherwise. */
+/*
+ * The ABIs whose libraries are loaded, the best first (MG_APK_ABI_ARM): armeabi-v7a when any APK has it, the older armeabi
+ * (ARMv5, which every ARMv7 runs) otherwise; elsewhere the processor's own.
+ */
+#if MG_APK_ABI_ARM
+static const char *const g_abis[] = { "armeabi-v7a", "armeabi" };
+#else
+static const char *const g_abis[] = { MG_GUEST_ABI };
+#endif
+
 const char *mg_ld_abi(void)
 {
-    static const char *const abis[] = { "armeabi-v7a", "armeabi" };
     int a, i;
     if (g_abi) return g_abi;
-    for (a = 0; a < 2; a++) {
+    for (a = 0; a < (int)MG_COUNT(g_abis); a++) {
         char prefix[40];
         int n = 0;
-        snprintf(prefix, sizeof(prefix), "lib/%s/", abis[a]);
+        snprintf(prefix, sizeof(prefix), "lib/%s/", g_abis[a]);
         for (i = 0; i < g_napks; i++) mg_zip_each(&g_apks[i], prefix, count_one, &n);
         if (n) {
-            g_abi = abis[a];
+            g_abi = g_abis[a];
             return g_abi;
         }
     }
@@ -161,12 +169,14 @@ static const mg_zip_entry *apk_lib(const char *name, const mg_zip **in)
     char path[300];
     int i;
     if (g_service_scope) {
-        const mg_zip_entry *e;
+        const mg_zip_entry *e = NULL;
+        int a;
         if (g_service_scope >= MG_LD_MAX_SCOPES || !g_service_apk_ready[g_service_scope]) return NULL;
         *in = &g_service_apks[g_service_scope];
-        snprintf(path, sizeof(path), "lib/armeabi-v7a/%s", name);
-        e = mg_zip_find(*in, path);
-        if (!e) { snprintf(path, sizeof(path), "lib/armeabi/%s", name); e = mg_zip_find(*in, path); }
+        for (a = 0; a < (int)MG_COUNT(g_abis) && !e; a++) {
+            snprintf(path, sizeof(path), "lib/%s/%s", g_abis[a], name);
+            e = mg_zip_find(*in, path);
+        }
         return e;
     }
     if (!abi) return NULL;
