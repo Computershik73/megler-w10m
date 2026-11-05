@@ -40,5 +40,8 @@ void setAtStart(bool on);
 std::string summary();
 /// While a newer Megler is downloaded: true, with its version, what has come and its size (the Library's card).
 bool downloading(std::string& version, uint64_t& got, uint64_t& total);
+/// While a newer Megler is downloaded or installed: the screen is kept on (ui/AppShell), for a phone that locks suspends
+/// Megler, and its download with it.
+bool busy();
 
 } // namespace megler::app::ui::ota
