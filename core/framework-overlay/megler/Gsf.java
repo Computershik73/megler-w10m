@@ -81,8 +81,17 @@ public final class Gsf {
         }
         return instance;
     }
-    public static PackageInfo packageInfo(String packageName) { Gsf g = get(); return g != null && GooglePackages.GSF.equals(packageName) ? g.info : null; }
-    public static Context context(String packageName) { Gsf g = get(); return g != null && GooglePackages.GSF.equals(packageName) ? g.context : null; }
+    /* (The package asked for first, as MicroG's: get() reads the framework's manifest the first time.) */
+    public static PackageInfo packageInfo(String packageName) {
+        if (!GooglePackages.GSF.equals(packageName)) return null;
+        Gsf g = get();
+        return g != null ? g.info : null;
+    }
+    public static Context context(String packageName) {
+        if (!GooglePackages.GSF.equals(packageName)) return null;
+        Gsf g = get();
+        return g != null ? g.context : null;
+    }
     public static ContentProvider provider(String authority) {
         Gsf g = get();
         if (g == null || authority == null) return null;

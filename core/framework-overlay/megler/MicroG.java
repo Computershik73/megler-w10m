@@ -107,8 +107,19 @@ public final class MicroG {
     /** The context GmsCore's activities here are based on, and their Application. */
     public static Context activityBase() { MicroG g = get(); return g == null ? null : g.context; }
     public static Application activityApplication() throws Exception { MicroG g = get(); return g == null ? null : g.application(); }
-    public static PackageInfo packageInfo(String pkg) { MicroG g = get(); return g != null && GooglePackages.GMS.equals(pkg) ? g.info : null; }
-    public static Context context(String pkg) { MicroG g = get(); return g != null && GooglePackages.GMS.equals(pkg) ? g.context : null; }
+    /* (The package asked for first: get() reads GmsCore's manifest the first time, 3.8 s on a Lumia 650, and Android System
+       WebView's start asks for its own package's context so -- inside TikTok Lite's cookie lock, which held its every request,
+       its servers' speed tests too, until then; package 628.) */
+    public static PackageInfo packageInfo(String pkg) {
+        if (!GooglePackages.GMS.equals(pkg)) return null;
+        MicroG g = get();
+        return g != null ? g.info : null;
+    }
+    public static Context context(String pkg) {
+        if (!GooglePackages.GMS.equals(pkg)) return null;
+        MicroG g = get();
+        return g != null ? g.context : null;
+    }
     /** Whether the Google Play services hosted here are microG's (its classes are org.microg's), not Google's own. */
     public static boolean isMicroG() {
         MicroG g = get();

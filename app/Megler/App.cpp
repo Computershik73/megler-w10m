@@ -73,6 +73,8 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
             // Windows freezes the app as it is: a database lock it held would keep the other apps' Play services waiting
             // until it came back. A second at most for its transactions to end.
             if (!megler_settle_databases(1000)) shellLog::write("app: suspended with a database still locked");
+            // And what the app wrote into its files' shared mappings, to the files: Windows may end it while it is suspended.
+            megler_settle_files();
             shellLog::flush();
             // (And the log where a diagnosis over USB asked for it: shell/PicturesDiag.h.)
             picturesDiag::exportNow();

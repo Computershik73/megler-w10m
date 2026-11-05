@@ -137,6 +137,7 @@ bool megler_settle_databases(int ms)
     }
     return true;
 }
+void megler_settle_files(void) { mg_mem_write_back_all(0); }
 void megler_set_focused(bool focused) { mg_run_set_focused(focused); }
 void megler_stop(void) { mg_run_stop(); }
 void megler_start_activity(const char *activity_class) { mg_java_start_activity(activity_class); }

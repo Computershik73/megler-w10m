@@ -1389,6 +1389,17 @@ i32 mg_fd_held_pwrite(void *held, const void *buf, u32 n, u64 offset)
     if (r < 0) mg_set_errno(mg_errno_of(err));
     return (i32)r;
 }
+i32 mg_fd_held_pread(void *held, void *buf, u32 n, u64 offset)
+{
+    gobj *o = (gobj *)held;
+    int err = 0;
+    i64 r;
+    if (!o) return -1;
+    if (o->type != OBJ_FILE) return obj_read(o, buf, n, true, offset);
+    r = mg_file_pread(o->file, buf, n, offset, &err);
+    if (r < 0) mg_set_errno(mg_errno_of(err));
+    return (i32)r;
+}
 bool mg_fd_held_same(const void *a, const void *b)
 {
     const gobj *x = (const gobj *)a, *y = (const gobj *)b;
