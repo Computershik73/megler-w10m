@@ -38,13 +38,25 @@ bool describe(const std::wstring& dir, const Item& item) {
                                "\n" + std::to_string((long long)item.versionCode) + "\n";
     std::string had;
     if (files::read(out + L"\\source.txt", had) && had == source && files::exists(out + L"\\activities.json")) return true;
-    files::removeTree(out);
+    // Described beside the one there ('~' is in no Android package's name), which goes only once the new one is whole: an APK
+    // Megler could not read (in a package installed as the Store installs an app, by 640 to 644) had left the app with none,
+    // and the other apps without its activities and its certificates.
+    const std::wstring fresh = out + L"~new";
+    files::removeTree(fresh);
     const std::string splits = item.splits.empty() || !files::exists(item.splits) ? std::string() : narrow(item.splits);
-    if (!megler_apk_describe_activities(narrow(item.apk).c_str(), splits.empty() ? nullptr : splits.c_str(), narrow(out).c_str())) {
-        shellLog::write("phone apps: the activities of " + item.package + " could not be read");
+    if (!megler_apk_describe_activities(narrow(item.apk).c_str(), splits.empty() ? nullptr : splits.c_str(), narrow(fresh).c_str())) {
+        files::removeTree(fresh);
+        const bool kept = files::exists(out + L"\\activities.json");
+        shellLog::write("phone apps: the activities of " + item.package + " could not be read" + (kept ? "; those described before are kept" : ""));
+        return kept;
+    }
+    files::write(fresh + L"\\source.txt", source);
+    files::removeTree(out);
+    if (!files::move(fresh, out)) {
+        shellLog::write(format("phone apps: the description of %s could not be put in place (error %lu)", item.package.c_str(), GetLastError()));
+        files::removeTree(fresh);
         return false;
     }
-    files::write(out + L"\\source.txt", source);
     return true;
 }
 
