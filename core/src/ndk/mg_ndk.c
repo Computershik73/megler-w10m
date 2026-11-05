@@ -428,26 +428,27 @@ static int g_mo_meta(const g_input_event *e) { return e->meta; }
 static int g_mo_zero(const g_input_event *e) { (void)e; return 0; }
 static i64 g_mo_down_time(const g_input_event *e) { return e->down_time; }
 static i64 g_mo_event_time(const g_input_event *e) { return e->event_time; }
-static u32 g_mo_count(const g_input_event *e) { return (u32)e->pointer_count; }
-static int g_mo_pointer_id(const g_input_event *e, u32 i) { return i < (u32)e->pointer_count ? e->ids[i] : -1; }
-/* Floats go back to the guest as bits. */
-static u32 g_mo_x(const g_input_event *e, u32 i) { return mg_fb(i < (u32)e->pointer_count ? e->xs[i] : 0); }
-static u32 g_mo_y(const g_input_event *e, u32 i) { return mg_fb(i < (u32)e->pointer_count ? e->ys[i] : 0); }
-static u32 g_mo_one(const g_input_event *e, u32 i) { (void)e; (void)i; return mg_fb(1.0f); }
-static u32 g_mo_fzero(const g_input_event *e, u32 i) { (void)e; (void)i; return mg_fb(0.0f); }
-static u32 g_mo_fzero0(const g_input_event *e) { (void)e; return mg_fb(0.0f); }
-static u32 g_mo_fone0(const g_input_event *e) { (void)e; return mg_fb(1.0f); }
-static u32 g_mo_axis(const g_input_event *e, int axis, u32 i)
+/* (Pointer indexes and counts are size_t's.) */
+static size_t g_mo_count(const g_input_event *e) { return (size_t)e->pointer_count; }
+static int g_mo_pointer_id(const g_input_event *e, size_t i) { return i < (size_t)e->pointer_count ? e->ids[i] : -1; }
+/* Floats go back to the guest as it takes them: gfloat, the bits on 32-bit ARM. */
+static gfloat g_mo_x(const g_input_event *e, size_t i) { return mg_gfb(i < (size_t)e->pointer_count ? e->xs[i] : 0); }
+static gfloat g_mo_y(const g_input_event *e, size_t i) { return mg_gfb(i < (size_t)e->pointer_count ? e->ys[i] : 0); }
+static gfloat g_mo_one(const g_input_event *e, size_t i) { (void)e; (void)i; return mg_gfb(1.0f); }
+static gfloat g_mo_fzero(const g_input_event *e, size_t i) { (void)e; (void)i; return mg_gfb(0.0f); }
+static gfloat g_mo_fzero0(const g_input_event *e) { (void)e; return mg_gfb(0.0f); }
+static gfloat g_mo_fone0(const g_input_event *e) { (void)e; return mg_gfb(1.0f); }
+static gfloat g_mo_axis(const g_input_event *e, int axis, size_t i)
 {
     if (axis == 0) return g_mo_x(e, i);
     if (axis == 1) return g_mo_y(e, i);
-    return mg_fb(axis == 2 ? 1.0f : 0.0f);         /* AXIS_PRESSURE */
+    return mg_gfb(axis == 2 ? 1.0f : 0.0f);        /* AXIS_PRESSURE */
 }
-static u32 g_mo_hist_size(const g_input_event *e) { (void)e; return 0; }
-static u32 g_mo_hist_f(const g_input_event *e, u32 i, u32 h) { (void)h; return g_mo_x(e, i); }
-static u32 g_mo_hist_fy(const g_input_event *e, u32 i, u32 h) { (void)h; return g_mo_y(e, i); }
-static i64 g_mo_hist_time(const g_input_event *e, u32 h) { (void)h; return e->event_time; }
-static int g_mo_tool(const g_input_event *e, u32 i) { (void)e; (void)i; return 1; }   /* TOOL_TYPE_FINGER */
+static size_t g_mo_hist_size(const g_input_event *e) { (void)e; return 0; }
+static gfloat g_mo_hist_f(const g_input_event *e, size_t i, size_t h) { (void)h; return g_mo_x(e, i); }
+static gfloat g_mo_hist_fy(const g_input_event *e, size_t i, size_t h) { (void)h; return g_mo_y(e, i); }
+static i64 g_mo_hist_time(const g_input_event *e, size_t h) { (void)h; return e->event_time; }
+static int g_mo_tool(const g_input_event *e, size_t i) { (void)e; (void)i; return 1; }   /* TOOL_TYPE_FINGER */
 static int g_key_action(const g_input_event *e) { return e->action; }
 static int g_key_code(const g_input_event *e) { return e->keycode; }
 static int g_key_repeat(const g_input_event *e) { return e->repeat; }
@@ -534,10 +535,11 @@ static i64 g_asset_seek64(g_asset *a, i64 offset, int whence)
     a->pos = (u64)at;
     return at;
 }
-static i32 g_asset_seek(g_asset *a, i32 offset, int whence) { return (i32)g_asset_seek64(a, offset, whence); }
-static i32 g_asset_length(g_asset *a) { return a ? (i32)a->size : 0; }
+/* (The plain forms' offsets are off_t's: longs, 32 bits in 32-bit Android.) */
+static goff g_asset_seek(g_asset *a, goff offset, int whence) { return (goff)g_asset_seek64(a, offset, whence); }
+static goff g_asset_length(g_asset *a) { return a ? (goff)a->size : 0; }
 static i64 g_asset_length64(g_asset *a) { return a ? (i64)a->size : 0; }
-static i32 g_asset_remaining(g_asset *a) { return a ? (i32)(a->size - a->pos) : 0; }
+static goff g_asset_remaining(g_asset *a) { return a ? (goff)(a->size - a->pos) : 0; }
 static i64 g_asset_remaining64(g_asset *a) { return a ? (i64)(a->size - a->pos) : 0; }
 static const void *g_asset_buffer(g_asset *a) { return a ? asset_bytes(a) : NULL; }
 static int g_asset_is_allocated(g_asset *a) { return a && !a->stored ? 1 : 0; }
@@ -553,13 +555,13 @@ static int g_asset_open_fd64(g_asset *a, i64 *start, i64 *length)
     *length = (i64)a->size;
     return fd;
 }
-static int g_asset_open_fd(g_asset *a, i32 *start, i32 *length)
+static int g_asset_open_fd(g_asset *a, goff *start, goff *length)
 {
     i64 s = 0, l = 0;
     int fd = g_asset_open_fd64(a, &s, &l);
     if (fd >= 0) {
-        *start = (i32)s;
-        *length = (i32)l;
+        *start = (goff)s;
+        *length = (goff)l;
     }
     return fd;
 }
@@ -675,11 +677,12 @@ static void *g_sensor_null(void *m, int type) { (void)m; (void)type; return NULL
 static int g_sensor_list(void *m, void **list) { (void)m; if (list) *list = NULL; return 0; }
 static void *g_sensor_queue(void *m, void *looper, int ident, mg_addr cb, void *data) { (void)m; (void)looper; (void)ident; (void)cb; (void)data; return &g_sensor_manager_tag; }
 static int g_sensor_int(void *a, void *b) { (void)a; (void)b; return -1; }
+static int g_sensor_has_events(void *q) { (void)q; return -1; }
 /* There are no sensors, so no ASensor to ask; these answer for a NULL one. */
 static int g_sensor_zero(const void *s) { (void)s; return 0; }
 static const char *g_sensor_text(const void *s) { (void)s; return ""; }
-static u32 g_sensor_fzero(const void *s) { (void)s; return mg_fb(0.0f); }
-static int g_sensor_events(void *q, void *events, size_t n) { (void)q; (void)events; (void)n; return 0; }
+static gfloat g_sensor_fzero(const void *s) { (void)s; return mg_gfb(0.0f); }
+static gssize g_sensor_events(void *q, void *events, size_t n) { (void)q; (void)events; (void)n; return 0; }
 
 /*
  * ASharedMemory (API 26): the descriptor layer's shared memory (mg_fd_shm_create). Chromium's linker keeps a copy of its
@@ -778,9 +781,9 @@ static const char *g_font_path(const g_font *f) { return f ? f->path : NULL; }
 static u32 g_font_weight(const g_font *f) { return f ? f->weight : 400; }
 static int g_font_italic(const g_font *f) { return f && f->italic; }
 static const char *g_font_locale(const g_font *f) { (void)f; return NULL; }
-static u32 g_font_zero(const g_font *f) { (void)f; return 0; }
+static size_t g_font_zero(const g_font *f) { (void)f; return 0; }
 static u32 g_font_axis_tag(const g_font *f, u32 i) { (void)f; (void)i; return 0; }
-static u32 g_font_axis_value(const g_font *f, u32 i) { (void)f; (void)i; return mg_fb(0.0f); }
+static gfloat g_font_axis_value(const g_font *f, u32 i) { (void)f; (void)i; return mg_gfb(0.0f); }
 
 /*
  * Surface control (Android 10's ASurfaceControl and ASurfaceTransaction): the system compositor's layers, which an app can
@@ -907,7 +910,7 @@ const mg_sym mg_tab_ndk[] = {
     N("ASensorManager_createEventQueue", g_sensor_queue), N("ASensorManager_destroyEventQueue", g_sensor_int),
     N("ASensorEventQueue_enableSensor", g_sensor_int), N("ASensorEventQueue_disableSensor", g_sensor_int),
     N("ASensorEventQueue_setEventRate", g_sensor_int), N("ASensorEventQueue_getEvents", g_sensor_events),
-    N("ASensorEventQueue_hasEvents", g_sensor_int),
+    N("ASensorEventQueue_hasEvents", g_sensor_has_events),
     N("ASensor_getType", g_sensor_zero), N("ASensor_getMinDelay", g_sensor_zero), N("ASensor_getResolution", g_sensor_fzero),
     N("ASensor_getName", g_sensor_text), N("ASensor_getVendor", g_sensor_text), N("ASensor_getStringType", g_sensor_text),
     N("ATrace_isEnabled", g_trace_enabled), N("ATrace_beginSection", g_trace_begin), N("ATrace_endSection", g_trace_end),

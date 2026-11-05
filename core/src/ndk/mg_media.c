@@ -76,7 +76,7 @@ typedef struct fmt_entry {
     float f;
     char *s;
     void *data;
-    u32 size;
+    size_t size;
     struct fmt_entry *next;
 } fmt_entry;
 
@@ -135,13 +135,13 @@ static void fmt_set_str(g_format *f, const char *key, const char *v) { if (f && 
 
 static void g_AMediaFormat_setInt32(g_format *f, const char *key, i32 v) { fmt_set_i32(f, key, v); }
 static void g_AMediaFormat_setInt64(g_format *f, const char *key, i64 v) { fmt_set_i64(f, key, v); }
-/* (A float comes from Android code in an integer register: its bits.) */
-static void g_AMediaFormat_setFloat(g_format *f, const char *key, u32 bits)
+/* (A float as the guest passes it: in an integer register, its bits, on 32-bit ARM.) */
+static void g_AMediaFormat_setFloat(g_format *f, const char *key, gfloat v)
 {
-    if (f && key) memcpy(&fmt_entry_for(f, key, 'f')->f, &bits, 4);
+    if (f && key) fmt_entry_for(f, key, 'f')->f = mg_gf(v);
 }
 static void g_AMediaFormat_setString(g_format *f, const char *key, const char *v) { fmt_set_str(f, key, v); }
-static void g_AMediaFormat_setBuffer(g_format *f, const char *key, const void *data, u32 size)
+static void g_AMediaFormat_setBuffer(g_format *f, const char *key, const void *data, size_t size)
 {
     fmt_entry *e;
     if (!f || !key) return;
@@ -193,7 +193,7 @@ static u8 g_AMediaFormat_getString(g_format *f, const char *key, const char **ou
     if (e && out) *out = e->s;
     return e != NULL;
 }
-static u8 g_AMediaFormat_getBuffer(g_format *f, const char *key, void **data, u32 *size)
+static u8 g_AMediaFormat_getBuffer(g_format *f, const char *key, void **data, size_t *size)
 {
     fmt_entry *e = fmt_find(f, key, 'b');
     if (e && data) *data = e->data;
@@ -328,10 +328,11 @@ static void g_AMediaDataSource_setReadAt(g_data_source *s, mg_addr fn) { if (s) 
 static void g_AMediaDataSource_setGetSize(g_data_source *s, mg_addr fn) { if (s) s->get_size = fn; }
 static void g_AMediaDataSource_setClose(g_data_source *s, mg_addr fn) { if (s) s->close = fn; }
 
+/* The app's AMediaDataSourceReadAt: ssize_t (void *userdata, off64_t offset, void *buffer, size_t size). */
 static i32 read_data_source(void *user, i64 offset, void *buffer, u32 size)
 {
     g_data_source *s = (g_data_source *)user;
-    return MG_GFN(i32 (*)(void *, i64, void *, u32), s->read_at)(s->userdata, offset, buffer, size);
+    return (i32)MG_GFN(gssize (*)(void *, i64, void *, size_t), s->read_at)(s->userdata, offset, buffer, size);
 }
 
 /* ----------------------------------------------------------- AMediaExtractor */
@@ -473,19 +474,20 @@ static int g_AMediaExtractor_setDataSourceCustom(g_extractor *ex, g_data_source 
 {
     i64 size;
     if (!ex || ex->media || !src || !src->read_at || !src->get_size) return AMEDIA_ERROR_INVALID_PARAMETER;
-    size = MG_GFN(i32 (*)(void *), src->get_size)(src->userdata);
+    size = MG_GFN(gssize (*)(void *), src->get_size)(src->userdata);       /* AMediaDataSourceGetSize: a ssize_t */
     SAY("extractor: a file through the app's own reader, %lld bytes", (long long)size);
     return extractor_opened(ex, media_open(read_data_source, src, size));
 }
 
-static u32 g_AMediaExtractor_getTrackCount(g_extractor *ex) { return ex ? (u32)ex->ntracks : 0; }
+/* (Track numbers and counts are size_t's.) */
+static size_t g_AMediaExtractor_getTrackCount(g_extractor *ex) { return ex ? (size_t)ex->ntracks : 0; }
 
 /* A copy: the caller deletes what it is given. */
-static g_format *g_AMediaExtractor_getTrackFormat(g_extractor *ex, u32 index)
+static g_format *g_AMediaExtractor_getTrackFormat(g_extractor *ex, size_t index)
 {
     g_format *copy;
     const fmt_entry *e;
-    if (!ex || index >= (u32)ex->ntracks) return NULL;
+    if (!ex || index >= (size_t)ex->ntracks) return NULL;
     copy = g_AMediaFormat_new();
     for (e = ex->tracks[index].format->first; e; e = e->next) {
         if (e->type == 'i') fmt_set_i32(copy, e->key, e->i);
@@ -496,22 +498,22 @@ static g_format *g_AMediaExtractor_getTrackFormat(g_extractor *ex, u32 index)
     return copy;
 }
 
-static int g_AMediaExtractor_selectTrack(g_extractor *ex, u32 index)
+static int g_AMediaExtractor_selectTrack(g_extractor *ex, size_t index)
 {
-    if (!ex || index >= (u32)ex->ntracks) return AMEDIA_ERROR_INVALID_PARAMETER;
+    if (!ex || index >= (size_t)ex->ntracks) return AMEDIA_ERROR_INVALID_PARAMETER;
     ex->tracks[index].selected = true;
     SAY("extractor: track %u selected", (unsigned)index);
     return AMEDIA_OK;
 }
 
-static int g_AMediaExtractor_unselectTrack(g_extractor *ex, u32 index)
+static int g_AMediaExtractor_unselectTrack(g_extractor *ex, size_t index)
 {
-    if (!ex || index >= (u32)ex->ntracks) return AMEDIA_ERROR_INVALID_PARAMETER;
+    if (!ex || index >= (size_t)ex->ntracks) return AMEDIA_ERROR_INVALID_PARAMETER;
     ex->tracks[index].selected = false;
     return AMEDIA_OK;
 }
 
-static i32 g_AMediaExtractor_readSampleData(g_extractor *ex, u8 *buffer, u32 capacity)
+static gssize g_AMediaExtractor_readSampleData(g_extractor *ex, u8 *buffer, size_t capacity)
 {
     int k = current_track(ex);
     ticket t;
@@ -522,7 +524,7 @@ static i32 g_AMediaExtractor_readSampleData(g_extractor *ex, u8 *buffer, u32 cap
     t.index = ex->tracks[k].index;
     t.media = ex->media;
     memcpy(buffer, &t, sizeof(t));
-    return (i32)sizeof(t);
+    return (gssize)sizeof(t);
 }
 
 static u32 g_AMediaExtractor_getSampleFlags(g_extractor *ex) { return current_track(ex) >= 0 ? 1u : 0u; }   /* every sample a sync sample */
@@ -885,7 +887,8 @@ static int g_AMediaCodec_flush(g_codec *c)
 enum { VIDEO_AHEAD = 8, AUDIO_AHEAD = 16 };
 
 /* There is one input buffer, free again the moment it has been queued (nothing is kept of what it held) unless the decoder is full. */
-static i32 g_AMediaCodec_dequeueInputBuffer(g_codec *c, i64 timeout_us)
+/* (Buffer indexes are size_t's, and a dequeue's answer a ssize_t: an index, or a negative INFO_*.) */
+static gssize g_AMediaCodec_dequeueInputBuffer(g_codec *c, i64 timeout_us)
 {
     u32 limit;
     i32 seen;
@@ -905,20 +908,20 @@ static i32 g_AMediaCodec_dequeueInputBuffer(g_codec *c, i64 timeout_us)
     return full ? INFO_TRY_AGAIN_LATER : 0;
 }
 
-static u8 *g_AMediaCodec_getInputBuffer(g_codec *c, u32 index, u32 *size)
+static u8 *g_AMediaCodec_getInputBuffer(g_codec *c, size_t index, size_t *size)
 {
     if (!c || index != 0) return NULL;
     if (size) *size = sizeof(c->input);
     return c->input;
 }
 
-static int g_AMediaCodec_queueInputBuffer(g_codec *c, u32 index, i32 offset, u32 size, u64 time_us, u32 flags)
+static int g_AMediaCodec_queueInputBuffer(g_codec *c, size_t index, goff offset, size_t size, u64 time_us, u32 flags)
 {
     ticket t;
     (void)time_us;
     if (!c || index != 0) return AMEDIA_ERROR_INVALID_PARAMETER;
     mg_lock_acquire(&c->lock);
-    if (size >= sizeof(t) && offset >= 0 && (u32)offset + sizeof(t) <= sizeof(c->input)) {
+    if (size >= sizeof(t) && offset >= 0 && (size_t)offset + sizeof(t) <= sizeof(c->input)) {
         memcpy(&t, c->input + offset, sizeof(t));
         if (t.magic == TICKET_MAGIC && t.media) {
             if (!c->media) {
@@ -957,7 +960,7 @@ static g_format *output_format(g_codec *c)
 
 static g_format *g_AMediaCodec_getOutputFormat(g_codec *c) { return c ? output_format(c) : NULL; }
 
-static i32 g_AMediaCodec_dequeueOutputBuffer(g_codec *c, g_buffer_info *info, i64 timeout_us)
+static gssize g_AMediaCodec_dequeueOutputBuffer(g_codec *c, g_buffer_info *info, i64 timeout_us)
 {
     const megler_media_host *h = host();
     out_slot *slot = NULL;
@@ -1043,14 +1046,14 @@ static i32 g_AMediaCodec_dequeueOutputBuffer(g_codec *c, g_buffer_info *info, i6
     return index;
 }
 
-static u8 *g_AMediaCodec_getOutputBuffer(g_codec *c, u32 index, u32 *size)
+static u8 *g_AMediaCodec_getOutputBuffer(g_codec *c, size_t index, size_t *size)
 {
     if (!c || index >= OUT_SLOTS || !c->out[index].held) return NULL;
     if (size) *size = c->out[index].size;
     return c->out[index].data;
 }
 
-static int g_AMediaCodec_releaseOutputBuffer(g_codec *c, u32 index, u8 render)
+static int g_AMediaCodec_releaseOutputBuffer(g_codec *c, size_t index, u8 render)
 {
     out_slot *slot;
     if (!c || index >= OUT_SLOTS) return AMEDIA_ERROR_INVALID_PARAMETER;
@@ -1060,7 +1063,7 @@ static int g_AMediaCodec_releaseOutputBuffer(g_codec *c, u32 index, u8 render)
     return AMEDIA_OK;
 }
 
-static int g_AMediaCodec_releaseOutputBufferAtTime(g_codec *c, u32 index, i64 time_ns)
+static int g_AMediaCodec_releaseOutputBufferAtTime(g_codec *c, size_t index, i64 time_ns)
 {
     (void)time_ns;
     return g_AMediaCodec_releaseOutputBuffer(c, index, 1);

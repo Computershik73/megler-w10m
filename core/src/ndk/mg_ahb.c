@@ -157,8 +157,8 @@ static int g_allocate(const g_desc *d, void **out)
     b->anwb.magic = ANWB_MAGIC;
     b->anwb.version = (i32)sizeof(mg_ahb_anwb);
 #if MG_HOST_ARM32
-    b->anwb.inc_ref = (u32)(mg_addr)anwb_inc;
-    b->anwb.dec_ref = (u32)(mg_addr)anwb_dec;
+    b->anwb.inc_ref = (mg_addr)anwb_inc;
+    b->anwb.dec_ref = (mg_addr)anwb_dec;
 #endif
     b->anwb.width = (i32)d->width;
     b->anwb.height = (i32)d->height;

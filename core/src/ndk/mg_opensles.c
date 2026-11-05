@@ -144,8 +144,9 @@ static const void *const g_object_table[] = {
 
 /* ----------------------------------------------------------------- engine */
 
+/* SLDataSource: where the sound comes from and its format, both SLuint32 structures of their own. */
 typedef struct g_data_source {
-    u32 locator, format;
+    const void *locator, *format;
 } g_data_source;
 
 static void voice_done(mg_voice *v, void *user)
@@ -163,8 +164,8 @@ static u32 eng_CreateAudioPlayer(sl_itf *self, sl_itf **out, const g_data_source
     (void)self; (void)sink; (void)n; (void)ids; (void)req;
     if (!out || !src || !src->locator || !src->format) return SL_PARAMETER_INVALID;
     *out = NULL;
-    locator = (const u32 *)(mg_addr)src->locator;
-    format = (const u32 *)(mg_addr)src->format;
+    locator = (const u32 *)src->locator;
+    format = (const u32 *)src->format;
     SL_SAY("CreateAudioPlayer: locator 0x%x, format type %u, %u channels, %u mHz, %u bits in %u, channel mask 0x%x, %u interfaces asked for",
            (unsigned)locator[0], (unsigned)format[0], (unsigned)format[1], (unsigned)format[2], (unsigned)format[3], (unsigned)format[4],
            (unsigned)format[5], (unsigned)n);
@@ -210,6 +211,14 @@ static u32 eng_QueryNum(sl_itf *self, u32 id, u32 *count)
     return SL_OK;
 }
 
+/* QueryNumSupportedExtensions has no object id: the count is the second argument. */
+static u32 eng_QueryNumExtensions(sl_itf *self, u32 *count)
+{
+    (void)self;
+    if (count) *count = 0;
+    return SL_OK;
+}
+
 static const void *const g_engine_table[] = {
     (void *)unsupported,        /* CreateLEDDevice */
     (void *)unsupported,        /* CreateVibraDevice */
@@ -223,7 +232,7 @@ static const void *const g_engine_table[] = {
     (void *)unsupported,        /* CreateExtensionObject */
     (void *)eng_QueryNum,       /* QueryNumSupportedInterfaces */
     (void *)unsupported,        /* QuerySupportedInterfaces */
-    (void *)eng_QueryNum,       /* QueryNumSupportedExtensions */
+    (void *)eng_QueryNumExtensions,
     (void *)unsupported,        /* QuerySupportedExtension */
     (void *)unsupported,        /* IsExtensionSupported */
 };
@@ -336,9 +345,10 @@ static void apply_volume(sl_object *o)
     if (o->voice) mg_voice_set_gain(o->voice, o->mute ? 0.0f : (float)pow(10.0, (double)o->volume_mb / 2000.0));
 }
 
-static u32 vol_SetLevel(sl_itf *self, int millibels)
+/* (An SLmillibel is a 16-bit integer, which an arm64 caller leaves the rest of the register beside.) */
+static u32 vol_SetLevel(sl_itf *self, i16 millibels)
 {
-    self->obj->volume_mb = (i16)millibels > 0 ? 0 : (i16)millibels;
+    self->obj->volume_mb = millibels > 0 ? 0 : millibels;
     apply_volume(self->obj);
     return SL_OK;
 }
