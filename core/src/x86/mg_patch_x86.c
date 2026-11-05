@@ -51,10 +51,11 @@
  * The entry is the core's code, not the library's: a thread in it is not interrupted for a signal (mg_thread_interrupt
  * waits until it is back in guest code), which would find it on that stack and could make a second call there.
  *
- * Only where it can be done safely: the instructions taken with the syscall whole, as the walk decoded them, none with an
- * operand relative to rip and none a jump, call, return or another system call; nothing of the library's jumping into
- * the middle of them (its direct jumps and calls are looked at); a place in the island within a jump's reach. Where that
- * cannot be had, the syscall is left as it is and said.
+ * Only where it can be done safely: the instructions taken with the syscall whole, as the walk decoded them, none a jump,
+ * call, return or another system call, and one with an operand relative to rip given the displacement that reaches the
+ * same place from the piece; nothing of the library's jumping into the middle of them (its direct jumps and calls are
+ * looked at); a place in the island within a jump's reach. Where that cannot be had, the syscall is left as it is and
+ * said.
  *
  * x86's `int 0x80` is counted and said, not rewritten.
  */
@@ -479,11 +480,18 @@ static void find_targets(walk *w, u8 *lo, u8 *hi)
     }
 }
 
-/* An instruction that runs elsewhere as it does here: no operand relative to rip; no jump, call, return or system call. */
+/* An operand relative to rip: ModRM's mod 0 and rm 5, which on x86_64 is rip plus the displacement. */
+static bool rip_relative(const mg_x86_insn *in) { return in->has_modrm && !in->has_sib && (in->modrm >> 6) == 0 && (in->modrm & 7) == 5; }
+
+/*
+ * An instruction that runs elsewhere as it does here: no jump, call, return or system call. One with an operand relative
+ * to rip is moved with its displacement made right for its new place (copy_moved) -- not one of 32-bit addresses, whose
+ * eip-relative address is cut to 32 bits.
+ */
 static bool movable(const mg_x86_insn *in)
 {
     u8 op = in->op;
-    if (in->has_modrm && (in->modrm >> 6) == 0 && (in->modrm & 7) == 5) return false;   /* rip-relative (rm 5: no SIB) */
+    if (rip_relative(in) && in->adsize) return false;
     if (in->vex) return true;
     if (in->map == 0)
         return !((op >= 0x70 && op <= 0x7F) || (op >= 0xE0 && op <= 0xE3) || op == 0xE8 || op == 0xE9 || op == 0xEB || op == 0xC2 ||
@@ -540,6 +548,31 @@ static bool window(const sc_site *s, const u8 *free_from, u8 **start, u8 **end)
     return false;
 }
 
+/*
+ * Whole instructions [from, to) copied to `dst`, each with an operand relative to rip given the displacement that reaches
+ * the same place from its new one. False when one cannot (the place more than 2 GB away from there).
+ */
+static bool copy_moved(u8 *dst, const u8 *from, const u8 *to)
+{
+    while (from < to) {
+        mg_x86_insn in;
+        if (!mg_x86_decode(from, (size_t)(to - from), IS64, &in)) return false;
+        memcpy(dst, from, in.len);
+        if (rip_relative(&in)) {
+            i32 d;
+            i64 moved;
+            memcpy(&d, from + in.disp_at, 4);
+            moved = (i64)d + (i64)((mg_addr)from - (mg_addr)dst);
+            if (moved != (i32)moved) return false;
+            d = (i32)moved;
+            memcpy(dst + in.disp_at, &d, 4);
+        }
+        dst += in.len;
+        from += in.len;
+    }
+    return true;
+}
+
 /* The site's piece of island, and the jump to it in [start, end): false when the island has no room within reach. */
 static bool lead_out(walk *w, const sc_site *s, u8 *start, u8 *end)
 {
@@ -549,7 +582,7 @@ static bool lead_out(walk *w, const sc_site *s, u8 *start, u8 *end)
     i32 rel;
     if (!piece) return false;
     q = piece;
-    memcpy(q, start, before);
+    if (!copy_moved(q, start, s->at)) return false;
     q += before;
     *q++ = (u8)w->tp_seg;                              /* mov %seg:tp_at, %r11 */
     *q++ = 0x4C;
@@ -571,7 +604,7 @@ static bool lead_out(walk *w, const sc_site *s, u8 *start, u8 *end)
     q += 4;
     memcpy(q, &entry, 8);
     q += 8;
-    memcpy(q, s->at + s->len, after);                  /* on: what was after it */
+    if (!copy_moved(q, s->at + s->len, end)) return false;   /* on: what was after it */
     q += after;
     *q++ = 0xE9;                                       /* jmp end */
     rel = (i32)(end - (q + 4));
