@@ -6,6 +6,7 @@
 #include "library/Library.h"
 #include "player/Session.h"
 #include "shell/Files.h"
+#include "shell/PickedFile.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
@@ -218,8 +219,10 @@ const SingleApp& single() {
         if (!files::read(install + L"\\MeglerApp.ini", text)) return s;
         s.package = iniValue(text, "package");
         s.label = iniValue(text, "label");
-        s.apkFolder = install + L"\\" + widen(iniValue(text, "apk"));
+        const std::string apk = iniValue(text, "apk");
         const std::wstring shared = sharedFolder();
+        // Since 645 the app's APK is in the shared folder (make: apk=shared:apks\<identity>\<token>); before, in the package.
+        s.apkFolder = apk.rfind("shared:", 0) == 0 ? shared + L"\\" + widen(apk.substr(7)) : install + L"\\" + widen(apk);
         if (!shared.empty()) s.androidRoot = shared + L"\\" + widen(iniValue(text, "root"));
         shellLog::write("app package: this is " + s.package + "'s own package; Android's files in " + narrow(s.androidRoot));
         return s;
@@ -258,7 +261,69 @@ void takeHandover() {
                     (hadOwn ? "; the app's own are in " + narrow(aside) : std::string()));
 }
 
-Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress) {
+namespace {
+
+/// The folder of the shared folder `entry`'s files are kept in for its package (make), in `folder`: the entry's own when it is
+/// there already (an app whose package was made before: nothing is copied), else a new one, apks\<identity>\<token>, its APK
+/// and splits copied into it (`picked`: read where it was picked), byte for byte (files::mend), and put in place whole; then
+/// its report, its icon and the build its report is of, as the library has them now. Empty, or why not.
+std::string keepInShared(const ApkEntry& entry, const std::string& identity, const std::vector<std::wstring>& splits,
+                         const PickedFile* picked, const std::function<void(const std::string&)>& progress, std::wstring& folder) {
+    const std::wstring apks = sharedFolder() + L"\\apks\\" + widen(identity);
+    if (entry.path.size() > apks.size() + 1 && _wcsnicmp(entry.path.c_str(), (apks + L"\\").c_str(), apks.size() + 1) == 0 &&
+        files::exists(entry.path)) {
+        folder = entry.path.substr(0, entry.path.find_last_of(L'\\'));
+    } else {
+        progress("Copying the APK to the shared folder…");
+        FILETIME time;
+        GetSystemTimeAsFileTime(&time);
+        folder = apks + L"\\" + widen(format("%08lx%08lx-%08lx", time.dwHighDateTime, time.dwLowDateTime, GetCurrentProcessId()));
+        const std::wstring part = folder + L".part";
+        files::removeTree(part);
+        if (!files::makeDirectories(part)) return format("The APK's folder in the shared folder could not be made (error %lu).", GetLastError());
+        uint64_t mended = 0;
+        const auto put = [&mended](const std::wstring& from, const std::wstring& to) {
+            return files::copy(from, to) && files::flush(to) && files::sameEnd(from, to, 1u << 20) && files::mend(from, to, mended);
+        };
+        std::string error;
+        if (picked)
+            error = picked->copyTo(part + L"\\app.apk");
+        else if (!put(entry.path, part + L"\\app.apk"))
+            error = format("The APK could not be copied to the shared folder (error %lu).", GetLastError());
+        if (error.empty() && !splits.empty() && !files::makeDirectory(part + L"\\app.apk.splits"))
+            error = format("The folder of the split APKs in the shared folder could not be made (error %lu).", GetLastError());
+        for (size_t i = 0; error.empty() && i < splits.size(); i++)
+            if (!put(entry.splitsDir + L"\\" + splits[i], part + L"\\app.apk.splits\\" + splits[i]))
+                error = format("The split APK %s could not be copied to the shared folder (error %lu).", narrow(splits[i]).c_str(), GetLastError());
+        if (error.empty() && !files::move(part, folder))
+            error = format("The APK's folder in the shared folder could not be put in place (error %lu).", GetLastError());
+        if (!error.empty()) {
+            files::removeTree(part);
+            return error;
+        }
+        if (mended)
+            shellLog::write(format("app package: %llu bytes of the APK's copy in the shared folder differed after the copy, and were written again",
+                                   (unsigned long long)mended));
+        shellLog::write("app package: the APK copied to " + narrow(folder) + ", " + formattedByteCount(entry.size));
+    }
+    // Small: each written beside and moved into place.
+    const std::wstring cached = Library::instance().directory() + L"\\" + widen(entry.id);
+    const std::wstring icon = !entry.iconPath.empty() && files::exists(entry.iconPath) ? entry.iconPath : entry.path + L".icon";
+    const std::pair<std::wstring, const wchar_t*> besides[] = {{files::exists(cached + L".json") ? cached + L".json" : entry.path + L".json", L"app.apk.json"},
+                                                             {icon, L"app.apk.icon"},
+                                                             {Library::instance().directory() + L"\\reports.version", L"reports.version"}};
+    for (const auto& [from, name] : besides) {
+        const std::wstring to = folder + L"\\" + name;
+        if (_wcsicmp(from.c_str(), to.c_str()) == 0 || !files::exists(from)) continue;
+        if (!files::copy(from, to + L".part") || !files::move(to + L".part", to))
+            shellLog::write(format("app package: %s could not be put beside the APK in the shared folder (error %lu)", narrow(name).c_str(), GetLastError()));
+    }
+    return std::string();
+}
+
+}  // namespace
+
+Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress, const PickedFile* picked) {
     Made made;
     auto fail = [&made](std::string why) {
         made.error = std::move(why);
@@ -416,7 +481,16 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     collect(install, L"", parts, skipped);
     for (const auto& s : skipped) shellLog::write("app package: left out, its name would need escaping: " + s);
 
-    progress(format("Packing %u files of Megler and the APK (%s)…", unsigned(parts.size()), formattedByteCount(entry.size).c_str()));
+    // The app's APK, its splits, its report and its icon in the shared folder, where the package's app reads them
+    // (MeglerApp.ini: apk=shared:...) and Megler does too. In the package itself, as before 645, Megler could not read them
+    // once Windows installed it as the Store installs an app: such a package shows another package none of its folders and
+    // refuses it its files (error 5 on a Lumia 650, 644), and Megler kept a second copy of each such app's APK. One copy
+    // now, which the app's next packages take as it is: Update All packs Megler's own files alone.
+    std::wstring folder;
+    if (const std::string error = keepInShared(entry, identity, splits, picked, progress, folder); !error.empty()) return fail(error);
+    made.apkFolder = folder.substr(shared.size() + 1);
+
+    progress(format("Packing %u files of Megler…", unsigned(parts.size())));
     megler_appx* a = megler_appx_begin(narrow(made.appx).c_str(), err, sizeof(err));
     if (!a) return fail(std::string("The package could not be begun: ") + err);
     // (A failure on the way makes the rest fail at once; finish says what it was.)
@@ -428,17 +502,9 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     for (const auto& [name, png] : logos) megler_appx_add_data(a, name.c_str(), png.data(), png.size());
     megler_appx_add_data(a, "AppxManifest.xml", manifestText.data(), manifestText.size());
     megler_appx_add_data(a, "resources.pri", pri.data(), pri.size());
-    const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=app\r\nroot=android\\" + version + "\r\n";
+    const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=shared:" + narrow(made.apkFolder) + "\r\nroot=android\\" +
+                            version + "\r\n";
     megler_appx_add_data(a, "MeglerApp.ini", ini.data(), ini.size());
-    megler_appx_add_file(a, "app/app.apk", narrow(entry.path).c_str());
-    for (const auto& name : splits)
-        megler_appx_add_file(a, ("app/app.apk.splits/" + narrow(name)).c_str(), narrow(entry.splitsDir + L"\\" + name).c_str());
-    if (files::exists(entry.path + L".json")) megler_appx_add_file(a, "app/app.apk.json", narrow(entry.path + L".json").c_str());
-    // The icon as the library keeps it (beside Megler's copy, or in the library for an APK installed where it was picked).
-    const std::wstring iconFile = !entry.iconPath.empty() && files::exists(entry.iconPath) ? entry.iconPath : entry.path + L".icon";
-    if (files::exists(iconFile)) megler_appx_add_file(a, "app/app.apk.icon", narrow(iconFile).c_str());
-    const std::wstring stamp = Library::instance().directory() + L"\\reports.version";
-    if (files::exists(stamp)) megler_appx_add_file(a, "app/reports.version", narrow(stamp).c_str());
     progress("Signing the package…");
     if (!megler_appx_finish(a, key, err, sizeof(err))) return fail(std::string("The package could not be made: ") + err);
     shellLog::write("app package: " + narrow(made.appx) + " made, " + formattedByteCount(files::size(made.appx)) + ", for " + r.package);
@@ -1026,15 +1092,15 @@ bool canRead(const std::wstring& apk) {
     return h && ReadFile(h.get(), head, sizeof(head), &got, nullptr) && got == 4 && !memcmp(head, "PK\3\4", 4);
 }
 
-std::vector<std::wstring> installedSplits(const std::string& fullName) {
+std::vector<std::wstring> reportedSplits(const std::wstring& apk) {
     using namespace winrt::Windows::Data::Json;
     std::vector<std::wstring> splits;
-    // The app's report, packed beside its APK (make: app\app.apk.json), names the splits it was read with; a bundle's are
-    // unpacked as split_<name>.apk (core/src/apk/mg_bundle.c). (The package's block map would list them, but Windows
-    // refuses another package the package's own files: AppxBlockMap.xml gave error 5 on a Lumia 650.)
+    // The app's report, beside its APK (make: app.apk.json), names the splits it was read with; a bundle's are unpacked as
+    // split_<name>.apk (core/src/apk/mg_bundle.c). (A package's block map would list them, but Windows refuses another package
+    // the package's own files: AppxBlockMap.xml gave error 5 on a Lumia 650.)
     std::string json;
-    if (!files::read(installedApk(fullName) + L".json", json)) {
-        shellLog::write(format("app package: the report in %s could not be read (error %lu)", fullName.c_str(), GetLastError()));
+    if (!files::read(apk + L".json", json)) {
+        shellLog::write(format("app package: the report beside %s could not be read (error %lu)", narrow(apk).c_str(), GetLastError()));
         return splits;
     }
     JsonObject o{nullptr};
@@ -1046,6 +1112,59 @@ std::vector<std::wstring> installedSplits(const std::string& fullName) {
         if (plainName(name) && name.find('/') == std::string::npos) splits.push_back(widen(name));
     }
     return splits;
+}
+
+bool inSharedApks(const std::wstring& path) {
+    const std::wstring shared = sharedFolder();
+    if (shared.empty()) return false;
+    const std::wstring apks = shared + L"\\apks\\";
+    return path.size() > apks.size() && _wcsnicmp(path.c_str(), apks.c_str(), apks.size()) == 0;
+}
+
+void sharedApkInstalled(const Made& made) {
+    const size_t slash = made.apkFolder.find_last_of(L'\\');
+    if (made.apkFolder.empty() || slash == std::wstring::npos) return;
+    const std::wstring dir = sharedFolder() + L"\\" + made.apkFolder.substr(0, slash), record = dir + L"\\installed.txt";
+    if (!files::write(record + L".part", narrow(made.apkFolder.substr(slash + 1))) || !files::move(record + L".part", record))
+        shellLog::write(format("app package: %s could not be written (error %lu): the APK's folder stays while Megler's library reads it",
+                               narrow(record).c_str(), GetLastError()));
+}
+
+void removeUnusedSharedApks(const std::vector<InstalledApp>& installed, const std::vector<std::wstring>& used) {
+    const std::wstring shared = sharedFolder();
+    if (shared.empty()) return;
+    const std::wstring apks = shared + L"\\apks";
+    FILETIME time;
+    GetSystemTimeAsFileTime(&time);
+    const uint64_t now = (uint64_t(time.dwHighDateTime) << 32) | time.dwLowDateTime, hour = 36000000000ull;
+    uint64_t freed = 0;
+    unsigned open = 0;
+    for (const auto& identity : files::listFolders(apks, L"*")) {
+        const std::wstring dir = apks + L"\\" + identity;
+        const bool isInstalled = std::any_of(installed.begin(), installed.end(), [&](const InstalledApp& a) { return widen(a.identity) == identity; });
+        std::string current;
+        if (!isInstalled) files::remove(dir + L"\\installed.txt");
+        else if (!files::read(dir + L"\\installed.txt", current)) current.clear();
+        for (const auto& token : files::listFolders(dir, L"*")) {
+            const std::wstring folder = dir + L"\\" + token;
+            if ((!current.empty() && narrow(token) == current) ||
+                std::any_of(used.begin(), used.end(), [&](const std::wstring& u) { return _wcsicmp(u.c_str(), folder.c_str()) == 0; }))
+                continue;
+            // A folder of the last hour may be a package's being made, which nothing names yet: its name begins with the time
+            // it was begun at (keepInShared).
+            const uint64_t begun = token.size() >= 16 ? std::wcstoull(token.substr(0, 16).c_str(), nullptr, 16) : 0;
+            if (begun && (begun > now || now - begun < hour)) continue;
+            const uint64_t size = files::size(folder + L"\\app.apk") + files::folderSize(folder + L"\\app.apk.splits");
+            if (files::removeTree(folder))
+                freed += size;
+            else
+                open++;
+        }
+        RemoveDirectoryW(dir.c_str()); // (only when nothing is left in it)
+    }
+    if (freed || open)
+        shellLog::write("app package: apps' APKs no package and no library entry uses removed from the shared folder, " + formattedByteCount(freed) +
+                        (open ? format("; %u still open in an app, left for the next time", open) : std::string()));
 }
 
 bool meglersStorageShared() {

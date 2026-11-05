@@ -185,35 +185,27 @@ from them.
 
 After an install, the package made (`LocalState\packages\<identity>.appx`) is
 removed; it stays only when the portal did not install it, for Windows's
-installer. And when Megler can read the installed package's APK
-(`app\app.apk` in its install folder, beside Megler's own: the folder above
-`Package::Current().InstalledLocation`) and it is as large as the one packed,
-Megler keeps no copy: its own copy and splits go, if there were any, and
-`LocalState\apks\<id>.installed` says the package's full name; the library's
-entry is that APK, its report and icon cached as before (`Library::adopt`). An
-update of the app (Update All) is made from it. Whether an app container may
-read another package's install folder is not known for Windows 10 Mobile: the
-check is made after each install, and where it fails Megler keeps (or makes) a
-copy, as before, and the log says so. A package installed as the Store installs
-an app (0.1.0.640 on) lets Megler open its app's files by their paths but shows
-it none of its folders: `app\app.apk.splits` has no attributes and no list for
-Megler, though the app's own package starts with its splits, and the package's
-own files (`AppxBlockMap.xml`) give error 5. The APK itself gave error 5 too in
-every package first installed so (Google Maps, AIDA64, Avito, Apktool M, Apple
-Music on a Lumia 650, 644), and in Google Play services' from its third update
-so, while Google Play Store's and WhatsApp's, first installed as a developer's,
-were read after each update: Megler asks again for 20 s after an install, then
-keeps its copy, and lets the copy go at a later listing of the packages once
-the APK can be read (`adoptLater`). The core reads an app's splits as a
-folder, so an app in several APKs installed so keeps Megler's copy
-(`ui/SeparateApps.cpp`); 640 and 641 let it go, and the library took such an
-app for a base without its splits, which Update All left out (TikTok Lite on a
-Lumia 650): since 0.1.0.643 its APKs are copied back at the library's load, the
-splits named by the report packed with the app (`app\app.apk.json`,
-`appPackage::installedSplits`). Before Uninstall, the APK and splits are copied
-back into `LocalState\apks` (`Library::restore`, the splits named so where their
-folder is not shown), so that the library keeps the app. A picked APK that cannot run here, or that was not installed,
-is copied into the library, so that its page and Install stay.
+installer. Megler keeps no copy of the app's APK: the one in the shared folder,
+which the installed package's app reads (above), is the library's entry from
+then on (`Library::adopt`), its report and icon cached as before, and an update
+of the app (Update All) is made from it. Packages made before 0.1.0.645 had the
+APK in them, and Megler read it there (`app\app.apk` in the package's install
+folder, beside Megler's own: the folder above `Package::Current().InstalledLocation`)
+while Windows let it. A package installed as the Store installs an app
+(0.1.0.640 on) does not: it lets Megler open some of its app's files by their
+paths, but shows it none of its folders (`app\app.apk.splits` has no attributes
+and no list for Megler, though the app's own package starts with its splits),
+its own files (`AppxBlockMap.xml`) give error 5, and so did the APK of every
+package first installed so (Google Maps, AIDA64, Avito, Apktool M, Apple Music
+on a Lumia 650, 644) and of Google Play services' from its third update so;
+Megler then kept a copy of each such APK beside the package's. Hence the shared
+folder. A package of 640 to 644 that let Megler's copy of an app in several
+APKs go, its splits unseen (TikTok Lite on a Lumia 650), has them copied back
+at the library's load, named by the report packed with the app
+(`app\app.apk.json`, `appPackage::reportedSplits`). Before Uninstall, the APK
+and splits are copied back into `LocalState\apks` (`Library::restore`), so that
+the library keeps the app. A picked APK that cannot run here, or that was not
+installed, is copied into the library, so that its page and Install stay.
 
 **Settings** (`shell/Settings.h`, `ui/SettingsScreen.cpp`). Render size,
 language and region, and location are kept in the shared folder, where every
@@ -305,11 +297,27 @@ Two things are asked for before anything else (the owner's wish, 2026-11-02):
      Megler's library offers; the services an app hosts come from
      `<shared>\services`; the packages up to 0.1.0.458 carried them, some
      110 MB of Megler's in each instead of some 12 MB), its `resources.pri`
-     and what the packaging makes itself; that manifest and `resources.pri`; `MeglerApp.ini`; and
-     `app\app.apk` with the library's report and icon of it (`app.apk.json`,
-     `app.apk.icon`, `reports.version`), so that the app is not read again.
-     An app of split APKs (an `.apks` or `.xapk` unpacked) has its splits in
-     `app\app.apk.splits`, beside the base, where the library looks for them.
+     and what the packaging makes itself; that manifest and `resources.pri`; and `MeglerApp.ini`.
+     The app's APK is not in it since 0.1.0.645: it is in the shared folder,
+     `<shared>\apks\<identity name>\<token>\app.apk`, with the library's report
+     and icon of it (`app.apk.json`, `app.apk.icon`, `reports.version`), so
+     that the app is not read again, and `MeglerApp.ini` says
+     `apk=shared:apks\<identity name>\<token>`. An app of split APKs (an
+     `.apks` or `.xapk` unpacked) has its splits in `app.apk.splits` beside the
+     base, where the library looks for them. The first package of an app copies
+     them there (byte for byte, `files::mend`; `<token>` is the time it began);
+     the app's next packages (every Update All) take that folder as it is, so
+     a package is Megler's own files alone, some 12 MB, whatever the app's
+     size. After an install `<shared>\apks\<identity name>\installed.txt` says
+     which folder the installed package reads, and the library's entry is that
+     APK (`Library::adopt`: `<id>.installed` says the package's full name, then
+     `shared=<folder>`): one copy of each APK on the phone. A folder that no
+     installed package and no entry of the library names any more (a newer APK
+     installed, the app uninstalled) goes at a later listing of the packages,
+     when no package is being made and it is over an hour old
+     (`appPackage::removeUnusedSharedApks`). Packages made before 0.1.0.645
+     carried the APK as `app\app.apk` (`apk=app`), and are read as they are
+     until Update All makes them again.
      The certificate is copied beside it.
   6. The logos: the app's icon (`megler_apk_icon`'s PNG, decoded by
      `Windows.Graphics.Imaging`, or WebP, which the phone's WIC cannot read,
@@ -379,8 +387,9 @@ Commander's and for names with capitals, digits, `.` and `-`).
 A package with `MeglerApp.ini` in its install folder is one app's
 (`shell/AppPackage.cpp`, `single()`):
 
-- the library reads the package's `app` folder instead of `LocalState\apks`,
-  and leaves it as it is;
+- the library reads the app's folder (`MeglerApp.ini`'s `apk`: in the shared
+  folder since 0.1.0.645, the package's `app` folder before) instead of
+  `LocalState\apks`, and leaves it as it is;
 - the shell opens the app as soon as the library has it, into the player (or
   its page, when it cannot run here), and Back after the app has ended leaves;
   until then it shows the splash screen's picture on black, as Windows showed

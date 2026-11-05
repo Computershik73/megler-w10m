@@ -135,14 +135,30 @@ std::string ApkEntry::title() const {
 
 namespace {
 
-/// Copies an installed app's APK (appPackage::installedApk), and its splits, to `own` and own + ".splits": each beside its
-/// place and moved into it, so that nothing half copied is taken for the app. The splits are named by their folder's list,
-/// else by the report packed with the app: a package installed as the Store installs an app shows another package none of
-/// its folders (appPackage::installedSplits). Empty when copied, else why not.
-std::string copyFromInstalled(const std::string& fullName, const std::wstring& own) {
-    const std::wstring apk = appPackage::installedApk(fullName), splitsDir = Library::splitsDirFor(apk);
+/// What an id.apk.installed says (Library::adopt): the package's full name, then, for a package made since 645, the folder of
+/// the shared folder its app's APK is in; and so where that APK is.
+struct Installed {
+    std::string fullName;
+    std::wstring apk;
+};
+
+Installed installedOf(const std::string& marker) {
+    Installed installed;
+    installed.fullName = marker.substr(0, marker.find_first_of("\r\n"));
+    std::string folder;
+    if (const size_t at = marker.find("\nshared="); at != std::string::npos) folder = marker.substr(at + 8, marker.find_first_of("\r\n", at + 8) - (at + 8));
+    installed.apk = folder.empty() ? appPackage::installedApk(installed.fullName) : appPackage::sharedFolder() + L"\\" + widen(folder) + L"\\app.apk";
+    return installed;
+}
+
+/// Copies an installed app's APK `apk` (in the shared folder, or in its package), and its splits, to `own` and own +
+/// ".splits": each beside its place and moved into it, so that nothing half copied is taken for the app. The splits are
+/// named by their folder's list, else by the app's report beside the APK: a package installed as the Store installs an app
+/// shows another package none of its folders (appPackage::reportedSplits). Empty when copied, else why not.
+std::string copyFromInstalled(const std::wstring& apk, const std::wstring& own) {
+    const std::wstring splitsDir = Library::splitsDirFor(apk);
     std::vector<std::wstring> splits = files::list(splitsDir, L"*");
-    if (splits.empty()) splits = appPackage::installedSplits(fullName);
+    if (splits.empty()) splits = appPackage::reportedSplits(apk);
     if (!files::copy(apk, own + L".part") || !files::move(own + L".part", own)) {
         const DWORD error = GetLastError();
         files::remove(own + L".part");
@@ -305,8 +321,8 @@ void Library::load() {
             for (const wchar_t* name : {L"PrebuiltGmsCore.apk", L"Phonesky.apk"}) {
                 const std::wstring own = directory_ + L"\\bitgapps-" + name;
                 const std::wstring marker = own + L".installed";
-                std::string fullName;
-                if (!files::read(marker, fullName) || appPackage::canRead(appPackage::installedApk(fullName))) continue;
+                std::string text;
+                if (!files::read(marker, text) || appPackage::canRead(installedOf(text).apk)) continue;
                 const std::wstring source = bitgapps + L"\\" + name;
                 if (!files::exists(source)) continue;
                 if (files::copy(source, own + L".part") && files::move(own + L".part", own)) {
@@ -350,19 +366,21 @@ void Library::load() {
         // The apps whose APK is an installed package's (Megler has no copy of it).
         for (const auto& name : files::list(directory_, L"*.apk.installed")) {
             const std::string id = narrow(name.substr(0, name.size() - 10));
-            std::string fullName;
+            std::string marker;
             if (std::any_of(entries_.begin(), entries_.end(), [&](const ApkEntry& e) { return e.id == id; }) ||
-                !files::read(directory_ + L"\\" + name, fullName))
+                !files::read(directory_ + L"\\" + name, marker))
                 continue;
-            ApkEntry entry = installedEntry(id, fullName);
-            // An app in several APKs whose package shows Megler none of its folders (installed as the Store installs an app,
-            // by 640 and 641, which let their copy go): the core reads an app's splits as a folder, so the library had it
-            // without them, as an APK that cannot run, and Update All left it out. Its APKs are copied back from the package
-            // by the names the report packed with it gives, and the library keeps its own copy again, as it does for such an
-            // app since (ui/SeparateApps.cpp). (That report is read only for an app read with splits, or that cannot run.)
-            if (entry.splitsDir.empty() && (!entry.report.splits.empty() || !entry.report.runnable) &&
-                !appPackage::installedSplits(fullName).empty()) {
-                const std::string error = copyFromInstalled(fullName, directory_ + L"\\" + widen(id));
+            ApkEntry entry = installedEntry(id, marker);
+            const std::string fullName = entry.installedPackage;
+            // An app in several APKs whose package (one made by 640 to 644, with the APK in it) shows Megler none of its
+            // folders, as one installed as the Store installs an app does, which those let their copy go for: the core reads
+            // an app's splits as a folder, so the library had it without them, as an APK that cannot run, and Update All left
+            // it out. Its APKs are copied back from the package by the names its report gives, and the library has its own
+            // copy again, for its next package to take to the shared folder. (That report is read only for an app read with
+            // splits, or that cannot run.)
+            if (!appPackage::inSharedApks(entry.path) && entry.splitsDir.empty() && (!entry.report.splits.empty() || !entry.report.runnable) &&
+                !appPackage::reportedSplits(entry.path).empty()) {
+                const std::string error = copyFromInstalled(entry.path, directory_ + L"\\" + widen(id));
                 if (error.empty()) {
                     files::remove(directory_ + L"\\" + name);
                     shellLog::write("library: " + id + "'s APK and its splits copied back from " + fullName + ", whose folders Megler is not shown");
@@ -654,12 +672,13 @@ void Library::analyse(const std::string& id) {
     ++generation_;
 }
 
-ApkEntry Library::installedEntry(const std::string& id, const std::string& fullName) const {
+ApkEntry Library::installedEntry(const std::string& id, const std::string& marker) const {
     const std::wstring own = directory_ + L"\\" + widen(id);
+    const Installed installed = installedOf(marker);
     ApkEntry entry;
     entry.id = id;
-    entry.installedPackage = fullName;
-    entry.path = appPackage::installedApk(fullName);
+    entry.installedPackage = installed.fullName;
+    entry.path = installed.apk;
     entry.size = files::size(entry.path);
     if (files::exists(splitsDirFor(entry.path))) {
         entry.splitsDir = splitsDirFor(entry.path);
@@ -677,17 +696,18 @@ ApkEntry Library::installedEntry(const std::string& id, const std::string& fullN
     return entry;
 }
 
-void Library::adopt(const std::string& id, const std::string& fullName) {
+void Library::adopt(const std::string& id, const std::string& fullName, const std::wstring& sharedApk) {
     std::lock_guard<std::mutex> lock(mutex_);
     const std::wstring own = directory_ + L"\\" + widen(id);
-    if (!files::write(own + L".installed", fullName)) {
+    const std::string marker = sharedApk.empty() ? fullName : fullName + "\r\nshared=" + narrow(sharedApk) + "\r\n";
+    if (!files::write(own + L".installed", marker)) {
         shellLog::write("library: " + id + " keeps its copy: " + narrow(own) + ".installed could not be written");
         return;
     }
     const bool hadCopy = files::exists(own);
     files::remove(own);
     files::removeTree(splitsDirFor(own));
-    ApkEntry entry = installedEntry(id, fullName);
+    ApkEntry entry = installedEntry(id, marker);
     const std::string package = entry.report.package;
     auto existing = std::find_if(entries_.begin(), entries_.end(), [&](const ApkEntry& e) { return e.id == id; });
     if (existing != entries_.end())
@@ -709,17 +729,16 @@ void Library::adopt(const std::string& id, const std::string& fullName) {
 }
 
 std::string Library::restore(const std::string& id) {
-    std::string fullName;
-    std::wstring own;
+    std::wstring apk, own;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = std::find_if(entries_.begin(), entries_.end(), [&](const ApkEntry& e) { return e.id == id; });
         if (it == entries_.end()) return "it is not in the library";
         if (it->installedPackage.empty()) return std::string();
-        fullName = it->installedPackage;
+        apk = it->path;
         own = directory_ + L"\\" + widen(id);
     }
-    if (const std::string error = copyFromInstalled(fullName, own); !error.empty()) return error;
+    if (const std::string error = copyFromInstalled(apk, own); !error.empty()) return error;
     std::lock_guard<std::mutex> lock(mutex_);
     files::remove(own + L".installed");
     for (auto& e : entries_) {

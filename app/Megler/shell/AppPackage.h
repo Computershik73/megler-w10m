@@ -3,10 +3,12 @@
 // a package, what it is.
 //
 // Such a package is Megler with a file MeglerApp.ini in its install folder, which says the app (its Android package and
-// label), where its APK is (app\app.apk, with the library's report and icon of it beside), and where Android's libcore and
-// framework are: a folder of the publisher cache folder "shared", copied there by Megler the first time it makes a package
-// with that build. Started, it goes straight to the app, and keeps its shared storage (/sdcard and the apps' own parts of
-// it) in that folder too, where every such package finds it; the app's private files stay in its own LocalState.
+// label), where its APK is (with the library's report and icon of it beside), and where Android's libcore and framework
+// are: a folder of the publisher cache folder "shared", copied there by Megler the first time it makes a package with that
+// build. The APK is in the shared folder too since 0.1.0.645 (apks\<identity>\<token>, MeglerApp.ini's apk=shared:...),
+// where Megler reads it as well; before, in the package (apk=app: app\app.apk). Started, it goes straight to the app, and
+// keeps its shared storage (/sdcard and the apps' own parts of it) in that folder too, where every such package finds it;
+// the app's private files stay in its own LocalState.
 #pragma once
 
 #include <cstdint>
@@ -17,6 +19,7 @@
 
 namespace megler::app {
 struct ApkEntry;
+class PickedFile;
 }
 
 namespace megler::app::appPackage {
@@ -25,7 +28,7 @@ namespace megler::app::appPackage {
 struct SingleApp {
     std::string package;
     std::string label;
-    std::wstring apkFolder;    // the folder with app.apk and its report (in the install folder)
+    std::wstring apkFolder;    // the folder with app.apk and its report (in the shared folder; in the install folder before 645)
     std::wstring androidRoot;  // Android's libcore and framework, in the shared folder
 };
 const SingleApp& single();
@@ -69,12 +72,15 @@ struct Made {
     std::wstring certificate;  // the certificate it is signed with (the phone has to trust it), beside it
     std::string identity;      // its identity name
     std::string fullName;      // its full name once installed: the name of its install folder
+    std::wstring apkFolder;    // the folder of the shared folder its app's APK is in, relative to it: apks\<identity>\<token>
     std::string error;         // set when it was not made
 };
-/// Makes the package of `entry`. Slow (copies Android's files once per build, reads the whole APK): off the UI thread.
-/// The first package made of an app takes the app's data in Megler along: its part of Android's storage to the shared one,
-/// its private files to the shared folder's handover\<package>, for takeHandover. `progress` is told each step.
-Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress);
+/// Makes the package of `entry` (`picked`: the APK picked where it is, which entry's path names for the core). Its APK, splits,
+/// report and icon are put in the shared folder, where the package's app reads them: a folder of their own the first time,
+/// which the app's next packages take as it is. Slow (copies Android's files once per build and the APK once): off the UI
+/// thread. The first package made of an app takes the app's data in Megler along: its part of Android's storage to the
+/// shared one, its private files to the shared folder's handover\<package>, for takeHandover. `progress` is told each step.
+Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress, const PickedFile* picked = nullptr);
 
 /// What the Device Portal did: whether it did it, and what it said, or why it did not.
 struct PortalResult {
@@ -138,12 +144,22 @@ void removeUnusedAndroidRoots(const std::vector<InstalledApp>& installed);
 /// update is made from the installed one (Library, ui/SeparateApps.cpp).
 std::wstring installedApk(const std::string& fullName);
 bool canRead(const std::wstring& apk);
-/// An installed app's split APKs (app\app.apk.splits beside installedApk), by their files' names, as the report packed
-/// beside its APK names them; none for an app in one APK. A package installed as the Store installs an app
-/// (installWithPackageManager) lets another package open the files of its app by their paths, but shows it none of its
-/// folders: their attributes and lists are refused (a Lumia 650, 640: TikTok Lite's splits were not seen, though its own
-/// package started with them).
-std::vector<std::wstring> installedSplits(const std::string& fullName);
+/// An app's split APKs (the folder `apk`.splits), by their files' names, as the report beside `apk` (`apk`.json) names them;
+/// none for an app in one APK. A package installed as the Store installs an app (installWithPackageManager) lets another
+/// package open some files of its app by their paths, but shows it none of its folders: their attributes and lists are
+/// refused (a Lumia 650, 640: TikTok Lite's splits were not seen, though its own package started with them).
+std::vector<std::wstring> reportedSplits(const std::wstring& apk);
+
+/// Whether `path` is in the shared folder's apks, where apps' APKs are kept for their packages (make).
+bool inSharedApks(const std::wstring& path);
+/// After `made` was installed: its folder of the shared folder (Made::apkFolder) written down as its package's
+/// (apks\<identity>\installed.txt), which removeUnusedSharedApks keeps while the package is installed.
+void sharedApkInstalled(const Made& made);
+/// The folders of apps' APKs in the shared folder that no installed package was made with (installed.txt, while its package
+/// is in `installed`) and the library does not read (`used`, full paths), removed: a later APK's package was installed, the
+/// app uninstalled, a package never installed. One a running app has open stays until the next time. Off the UI thread,
+/// while no package is being made.
+void removeUnusedSharedApks(const std::vector<InstalledApp>& installed, const std::vector<std::wstring>& used);
 
 /// Megler's own storage (/sdcard, and each app's part of it) is the shared folder's, as the apps' own packages' is: true
 /// once shareMeglersStorage has copied Megler's of before there (LocalState\storage-in-shared.txt). From the start after.
