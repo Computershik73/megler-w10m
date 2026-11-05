@@ -18,7 +18,8 @@ sizeof in a file that includes the first (-fdump-record-layouts). Then, per ABI:
               and of the result as the ABI passes it -- an integer of N bytes (a pointer is one of the pointer's size,
               which is how all four pass it), a float, a double, a long double, a structure of N bytes by value (one
               of integers alone, up to a pointer's size, as that integer). On armeabi-v7a a float is passed as an
-              integer of 4 bytes and a double as one of 8 (softfp), which is what the wrappers there take. A function
+              integer of 4 bytes and a double as one of 8 (softfp), which is what the wrappers there take (a float or
+              a double of the core's own is the phone's MSVC's, in VFP registers, and differs). A function
               that takes fewer parameters than the name has and leaves the rest is right on all four (the caller
               removes what it passed); one that takes more is not. So is a wider integer result than the name's (the
               caller reads its low bits), and an int for a char or a short except on arm64-v8a (whose callers do not
@@ -27,6 +28,8 @@ sizeof in a file that includes the first (-fdump-record-layouts). Then, per ABI:
               as far as the convention goes -- the arguments are where a call that is not variadic puts them -- and
               is listed apart with what it takes for the variadic part (--variadic): whether that is what callers pass
               (a pointer for fcntl's F_GETLK, an int for open's mode) is for a person to read.
+              And for a pointer parameter, the size of what it points at where that is an integer, a pointer or a
+              float on both sides (a size_t's out-parameter written as a u32).
   interfaces  the same for each entry of a table of functions guest code calls through as an interface of the NDK's
               (OpenSL ES's, JNI's), against the structure of function pointers it stands for (VTABLES below).
   objects     for each name bound to an object (MG_DATA): its size, and for an array of no declared length its
@@ -35,7 +38,8 @@ sizeof in a file that includes the first (-fdump-record-layouts). Then, per ABI:
               structure it stands for against the core's field at that offset (by offset: the core may name fields
               otherwise, merge them or keep a field as bytes); and a field of the core's where the NDK has none, or
               one named as the NDK's somewhere else. One the core keeps in storage the guest owns (the inside of a
-              pthread_rwlock_t) need only fit there; one the guest reads only the start of, only that.
+              pthread_rwlock_t) need only fit there; one the guest reads only the start of, only that. A difference
+              EXPLAINED below says why it is right is printed with its reason and not counted.
 
 Names the NDK's headers do not declare (and EXTRA_DECLS below does not) are counted and listed with --unknown:
 bionic's own (__sF, __aeabi_*), Android's libraries without a header (libopenjdkjvm's JVM_*), what is newer than API
@@ -225,9 +229,12 @@ STRUCTS = [
     ('bionic/mg_libc_misc.c', 'g_lconv', 'struct lconv', 'same'),
     ('bionic/mg_libc_misc.c', 'g_passwd', 'struct passwd', 'same'),
     ('bionic/mg_libc_misc.c', 'g_group', 'struct group', 'same'),
+    ('bionic/mg_libc_misc.c', 'g_sysinfo_buf', 'struct sysinfo', 'same'),
+    ('bionic/mg_libc_misc.c', 'g_vm_iovec', 'struct iovec', 'same'),
     ('bionic/mg_libc_str.c', 'g_div_t', 'div_t', 'same'),
+    ('bionic/mg_libc_str.c', 'g_ldiv_t', 'ldiv_t', 'same'),
     ('bionic/mg_libc_str.c', 'g_lldiv_t', 'lldiv_t', 'same'),
-    ('bionic/mg_libc_time.c', 'g_timespec', 'struct timespec', 'same'),
+    ('bionic/mg_libc_time.c', 'g_timespec', 'struct timespec', 'same'),      # (mg_bionic.h's, for every file)
     ('bionic/mg_libc_time.c', 'g_timeval', 'struct timeval', 'same'),
     ('bionic/mg_libc_time.c', 'g_tm', 'struct tm', 'same'),
     ('bionic/mg_libc_time.c', 'g_tms', 'struct tms', 'same'),
@@ -238,13 +245,13 @@ STRUCTS = [
     ('bionic/mg_net.c', 'g_iovec', 'struct iovec', 'same'),
     ('bionic/mg_net.c', 'g_msghdr', 'struct msghdr', 'same'),
     ('bionic/mg_net.c', 'g_mmsghdr', 'struct mmsghdr', 'same'),
+    ('bionic/mg_net.c', 'g_cmsghdr', 'struct cmsghdr', 'same'),
     ('bionic/mg_netdb.c', 'g_addrinfo', 'struct addrinfo', 'same'),
     ('bionic/mg_netdb.c', 'g_hostent', 'struct hostent', 'same'),
     ('bionic/mg_netdb.c', 'g_servent', 'struct servent', 'same'),
     ('bionic/mg_netdb.c', 'g_protoent', 'struct protoent', 'same'),
     ('bionic/mg_netdb.c', 'g_ifaddrs', 'struct ifaddrs', 'same'),
     ('bionic/mg_netdb.c', 'g_nameindex', 'struct if_nameindex', 'same'),
-    ('bionic/mg_pthread.c', 'g_timespec', 'struct timespec', 'same'),
     ('bionic/mg_pthread.c', 'g_rwlock', 'pthread_rwlock_t', 'fits'),
     ('bionic/mg_pthread.c', 'g_attr', 'pthread_attr_t', 'same'),
     ('bionic/mg_pthread.c', 'g_cleanup', 'struct __pthread_cleanup_t', 'same'),
@@ -261,6 +268,13 @@ STRUCTS = [
     ('jni/mg_jni.c', 'g_native_method', 'JNINativeMethod', 'same'),
     ('jni/mg_jni.c', 'g_attach_args', 'JavaVMAttachArgs', 'same'),
 ]
+# What differs and is right: (file, the core's structure) -> (the ABIs, why). Said, and not counted.
+EXPLAINED = {
+    ('bionic/mg_libz.c', 'g_gz'): (('i686', 'armv7a'), "gzFile_s.pos is a z_off64_t, 4 bytes in 32-bit Android unless the "
+                                   "app was built with _LARGEFILE64_SOURCE, 8 with it; the core's 8 have the 4 as their "
+                                   "low half, which is all gzgetc's macro touches"),
+}
+
 # The core's tables of functions that guest code calls through as an interface of the NDK's: (file, the table, the
 # NDK's structure of function pointers its entries stand for in order). Built by an initializer, or by assignments to
 # its elements (g_env_table[4] = (void *)j_GetVersion).
@@ -459,7 +473,9 @@ class Env:
                 return Cls('ptr', self.ptr)
             return Cls('func', None)
         if t.endswith('*'):
-            return Cls('ptr', self.ptr)
+            # What it points at, for a parameter's (a void, a function or an unknown type is no one's business).
+            pointee = self.classify(t[:-1], depth + 1) if depth < 4 else None
+            return Cls('ptr', self.ptr, elem=pointee)
         w = ' '.join(x for x in t.split() if x not in QUALIFIERS)
         if w.startswith('_Atomic(') and w.endswith(')'):
             return self.classify(w[len('_Atomic('):-1], depth + 1)
@@ -507,8 +523,10 @@ class Env:
                     'armv7a': Cls('record', 4), 'i686': Cls('ptr', 4)}[self.abi]
         return None
 
-    def key(self, c, param=False):
-        """What decides how the ABI passes a value of class c (param: as an argument, else as a result)."""
+    def key(self, c, param=False, core=False):
+        """What decides how the ABI passes a value of class c (param: as an argument, else as a result). On
+        armeabi-v7a the core's own float or double is passed as the phone's MSVC passes it, in VFP registers, where
+        the guest's softfp has the bits in integer registers (mg_bionic.h): a wrapper takes gfloat and gdouble."""
         k = c.kind
         if param and k in ('array', 'func'):
             return ('i', self.ptr)
@@ -517,6 +535,8 @@ class Env:
         if k == 'int':
             return ('i', c.size)
         if k in ('float', 'double', 'ldouble'):
+            if self.softfp and core:
+                return ('vfp', c.size)
             return ('i', c.size) if self.softfp else ('f', c.size)
         if k == 'record':
             # A structure of integers alone, as small as an integer register, is passed in one as that integer would
@@ -533,7 +553,7 @@ class Env:
     def result_ok(self, core, ndk):
         """Whether a result of the core's class is read right as the NDK's: the same, or an integer at least as wide
         (the caller reads its low bits), or anything in a register where the caller expects nothing."""
-        ck, nk = self.key(core), self.key(ndk)
+        ck, nk = self.key(core, core=True), self.key(ndk)
         return ck == nk or (ck[0] == nk[0] == 'i' and ck[1] is not None and nk[1] is not None and ck[1] >= nk[1]) or \
             (nk == ('v', 0) and ck[0] in ('i', 'f'))
 
@@ -952,7 +972,10 @@ def scan(job):
         if r:
             result['records'][w] = {'size': r['size'], 'align': r['align'], 'leaves': flatten(r, records, env)}
     if kind != 'ndk':
-        result['g_records'] = sorted(t[len('struct '):] for t in tags if re.match(r'^struct g_\w+$', t))
+        # The structures named g_* the file itself defines (those of the headers it includes are their own files').
+        src = open(os.path.join(ROOT, path), encoding='utf-8', errors='replace').read()
+        mine = set(re.findall(r'^(?:typedef\s+)?struct\s+(g_\w+)\s*\{', src, re.M))
+        result['g_records'] = sorted(t[len('struct '):] for t in tags if t[len('struct '):] in mine)
     return result
 
 
@@ -987,16 +1010,20 @@ def compare_function(core, ndk, env):
         issues.append('convention %s' % ', '.join(core['conv']))
     if core['noproto']:
         issues.append('no prototype')
+    def core_text(c, param):
+        return repr(c) + (' in VFP registers' if env.key(c, param, core=True)[0] == 'vfp' else '')
     if not env.result_ok(core['ret'], ndk['ret']):
-        issues.append('result %r, NDK %r' % (core['ret'], ndk['ret']))
+        issues.append('result %s, NDK %r' % (core_text(core['ret'], False), ndk['ret']))
     cp, np_ = core['params'], ndk['params']
     for i in range(min(len(cp), len(np_))):
-        ck, nk = env.key(cp[i], True), env.key(np_[i], True)
+        ck, nk = env.key(cp[i], True, core=True), env.key(np_[i], True)
         # An integer narrower than 4 bytes is extended to 4 by the caller on armeabi-v7a (AAPCS says so) and on the
         # x86 ABIs (clang and gcc do it and clang counts on it), not on arm64-v8a: a wrapper may take it as an int.
         widened = ck == ('i', 4) and nk[0] == 'i' and nk[1] in (1, 2) and env.abi != 'aarch64'
         if ck != nk and not widened:
-            issues.append('arg %d %r, NDK %r' % (i + 1, cp[i], np_[i]))
+            issues.append('arg %d %s, NDK %r' % (i + 1, core_text(cp[i], True), np_[i]))
+        elif cp[i].kind == np_[i].kind == 'ptr' and pointee_differs(cp[i].elem, np_[i].elem):
+            issues.append('arg %d points at %r, NDK at %r' % (i + 1, cp[i].elem, np_[i].elem))
     note = None
     if len(cp) > len(np_):
         if ndk['variadic']:
@@ -1008,6 +1035,17 @@ def compare_function(core, ndk, env):
     if note and core['variadic'] == ndk['variadic']:
         note = None
     return issues, note
+
+
+def pointee_differs(c, n):
+    """Whether what a pointer parameter points at is of another size in the core than in the NDK, an integer, a pointer
+    or a float on both sides, neither a byte (bytes are how the core takes a buffer): a size_t written as a u32 leaves half
+    of it as it was. (A structure is STRUCTS' business: the core may hold more behind a handle than the NDK says, or keep
+    its own state in the first word of a pthread_mutex_t.)"""
+    known = ('int', 'ptr', 'float', 'double', 'ldouble')
+    if c is None or n is None or c.kind not in known or n.kind not in known or c.size is None or n.size is None:
+        return False
+    return c.size != n.size and c.size > 1 and n.size > 1
 
 
 def compare_object(core, ndk, env):
@@ -1040,8 +1078,8 @@ def compare_record(core, ndk, how):
         if core['align'] != ndk['align']:
             out.append('align %d, NDK %d' % (core['align'], ndk['align']))
     limit = min(core['size'], ndk['size']) if how == 'start' else max(core['size'], ndk['size'])
-    cl = [x for x in core['leaves'] if x[1] is not None]
-    nl = [x for x in ndk['leaves'] if x[1] is not None and x[0] < limit]
+    cl = [x for x in core['leaves'] if x[1]]
+    nl = [x for x in ndk['leaves'] if x[1] and x[0] < limit]         # (not a field of no size: char _f[0])
     said = set()
     for off, size, c, name, in_union in nl:
         end = off + size
@@ -1148,6 +1186,7 @@ def main():
         return 2
 
     lines = defaultdict(list)       # text -> [abi]
+    explained = defaultdict(list)
     variadic = defaultdict(list)
     unknown = defaultdict(set)      # abi -> names
     summary = {}
@@ -1219,7 +1258,10 @@ def main():
                                                     'the core\'s' if core is None else 'the NDK\'s')].append(a)
                 continue
             issues = compare_record(core, nrec, how)
-            if issues:
+            why = EXPLAINED.get((rel, core_name))
+            if issues and why and a in why[0]:
+                explained['%s %s ~ %s: %s (%s)' % (rel, core_name, ndk_type, '; '.join(issues[:6]), why[1])].append(a)
+            elif issues:
                 n_struct_bad += 1
                 more = ' (and %d more)' % (len(issues) - 6) if len(issues) > 6 else ''
                 lines['%s %s ~ %s: %s%s' % (rel, core_name, ndk_type, '; '.join(issues[:6]), more)].append(a)
@@ -1258,6 +1300,8 @@ def main():
               % (a, n_bind, n_bad, n_unknown, n_var, n_struct, n_struct_bad))
     for text in sorted(lines, key=lambda t: (t.split(' ')[0], t)):
         print('%s  %s' % (','.join(lines[text]), text))
+    for text in sorted(explained):
+        print('%s  explained  %s' % (','.join(explained[text]), text))
     if args.variadic:
         for text in sorted(variadic):
             print('%s  variadic  %s' % (','.join(variadic[text]), text))
