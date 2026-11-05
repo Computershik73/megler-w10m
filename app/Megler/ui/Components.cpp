@@ -131,6 +131,10 @@ UIElement platformWarnings() {
         column.Children().Append(warningCard(
             "This phone has not let Megler make code executable (the codeGeneration capability, which an "
             "interop-unlocked phone grants). APKs can be added and looked at, but none can run."));
+#elif defined(MG_ELF_HOST)
+        column.Children().Append(warningCard(
+            "Megler's core did not load, or Windows has not let it make code executable (the codeGeneration "
+            "capability): the log says which. APKs can be added and looked at, but none can run."));
 #else
         column.Children().Append(warningCard(
             "This build is not for an ARM phone: Android code cannot run in it. APKs can be added and looked at."));
