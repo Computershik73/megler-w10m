@@ -448,8 +448,44 @@ static void test_foreign_paths(const char *scratch)
 /* ------------------------------------------------- the storage an app sees
  *
  * The C library as an app's code has it. The structures are bionic's, as
- * mg_libc_io.c fills them in.
+ * mg_libc_io.c fills them in: of the build's processor (struct stat is laid
+ * out three ways, x86_64's, ARM64's and the 32-bit ABIs'), in the guest's
+ * widths (glong: 64 bits in 64-bit Android).
  */
+#if MG_ARCH_X86_64
+typedef struct t_stat {
+    u64 st_dev, st_ino;
+    gulong st_nlink;
+    u32 st_mode, st_uid, st_gid, pad0;
+    u64 st_rdev;
+    i64 st_size;
+    glong st_blksize, st_blocks;
+    gtime at_sec;
+    glong at_nsec;
+    gtime mt_sec;
+    glong mt_nsec;
+    gtime ct_sec;
+    glong ct_nsec;
+    glong unused[3];
+} t_stat;
+#elif MG_ARCH_ARM64
+typedef struct t_stat {
+    u64 st_dev, st_ino;
+    u32 st_mode, st_nlink, st_uid, st_gid;
+    u64 st_rdev;
+    gulong pad1;
+    i64 st_size;
+    i32 st_blksize, pad2;
+    glong st_blocks;
+    gtime at_sec;
+    glong at_nsec;
+    gtime mt_sec;
+    glong mt_nsec;
+    gtime ct_sec;
+    glong ct_nsec;
+    u32 unused4, unused5;
+} t_stat;
+#else
 typedef struct t_stat {
     u64 st_dev;
     u8 pad0[4];
@@ -460,9 +496,15 @@ typedef struct t_stat {
     i64 st_size;
     u32 st_blksize;
     u64 st_blocks;
-    i32 at_sec, at_nsec, mt_sec, mt_nsec, ct_sec, ct_nsec;
+    gtime at_sec;
+    glong at_nsec;
+    gtime mt_sec;
+    glong mt_nsec;
+    gtime ct_sec;
+    glong ct_nsec;
     u64 st_ino;
 } t_stat;
+#endif
 
 typedef struct t_dirent {
     u64 d_ino;
@@ -472,19 +514,25 @@ typedef struct t_dirent {
     char d_name[256];
 } t_dirent;
 
+/* (statfs's words but the counts and the id are 64 bits in 64-bit Android; statvfs's are all longs there, and 24 bytes more.) */
 typedef struct t_statfs {
-    u32 f_type, f_bsize;
+    gulong f_type, f_bsize;
     u64 f_blocks, f_bfree, f_bavail, f_files, f_ffree;
     i32 f_fsid[2];
-    u32 f_namelen, f_frsize, f_flags, f_spare[4];
+    gulong f_namelen, f_frsize, f_flags, f_spare[4];
 } t_statfs;
 
 typedef struct t_statvfs {
-    u32 f_bsize, f_frsize;
-    u32 f_blocks, f_bfree, f_bavail, f_files, f_ffree, f_favail, f_fsid, f_flag, f_namemax;
+    gulong f_bsize, f_frsize;
+    gulong f_blocks, f_bfree, f_bavail, f_files, f_ffree, f_favail, f_fsid, f_flag, f_namemax;
+#if MG_GUEST_LP64
+    u32 reserved[6];
+#endif
 } t_statvfs;
 
-enum { T_RDONLY = 0, T_WRONLY = 1, T_RDWR = 2, T_CREAT = 0100, T_EXCL = 0200, T_TRUNC = 01000, T_APPEND = 02000, T_DIRECTORY = 040000 };
+/* (O_DIRECTORY is the x86s' own number there, ARM's 040000 being their O_DIRECT.) */
+enum { T_RDONLY = 0, T_WRONLY = 1, T_RDWR = 2, T_CREAT = 0100, T_EXCL = 0200, T_TRUNC = 01000, T_APPEND = 02000,
+       T_DIRECTORY = MG_ARCH_X86_64 || MG_ARCH_X86 ? 0200000 : 040000 };
 #define T_IFDIR 0040000u
 #define T_IFREG 0100000u
 #define T_DT_DIR 4
@@ -493,8 +541,8 @@ enum { T_RDONLY = 0, T_WRONLY = 1, T_RDWR = 2, T_CREAT = 0100, T_EXCL = 0200, T_
 static struct {
     int (*open)(const char *, int, int);
     int (*close)(int);
-    i32 (*read)(int, void *, u32);
-    i32 (*write)(int, const void *, u32);
+    gssize (*read)(int, void *, size_t);
+    gssize (*write)(int, const void *, size_t);
     int (*stat)(const char *, t_stat *);
     int (*fstat)(int, t_stat *);
     int (*access)(const char *, int);

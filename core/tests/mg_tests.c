@@ -1143,12 +1143,15 @@ static void test_syscall_fds(const char *scratch)
     close_(fds[1]);
 
     /* Files by number, as TikTok Lite's loader writes its libraries out (syscall(__NR_open)): open, write, close, open
-       again, lseek, read, fstat64 (st_size at 48 in ARM's struct stat64), syncfs (and EBADF for a descriptor not open, as
-       Google Maps asks), close, unlink; and sched_getaffinity, whose raw call says the mask's size. */
+       again, lseek, read, fstat64 (st_size at 48 in ARM's struct stat64, at 44 in x86's, whose long long is 4-aligned, and
+       at 48 in the 64-bit ABIs' struct stat, 144 bytes on x86_64), syncfs (and EBADF for a descriptor not open, as Google
+       Maps asks), close, unlink; and sched_getaffinity, whose raw call says the mask's size. (The numbers are ARM EABI's,
+       which the core's syscall() takes on every processor.) */
     {
+        enum { ST_SIZE_AT = MG_ARCH_X86 ? 44 : 48 };
         const char *file = "/syscall-files/written.bin";
         char back[4] = { 0 };
-        u8 st[104], mask[16];
+        u8 st[160], mask[16];
         int fd;
         mg_fs_mount("/syscall-files", scratch);
         say("syscall() by number: open, write, read, lseek, fstat64, syncfs, close, unlink, sched_getaffinity");
@@ -1157,7 +1160,7 @@ static void test_syscall_fds(const char *scratch)
         fd = (int)sys(5, (long)(mg_addr)file, 0, 0, 0, 0, 0);
         CHECK(fd >= 0 && sys(19, fd, 2, 0, 0, 0, 0) == 2 && sys(3, fd, (long)(mg_addr)back, 4, 0, 0, 0) == 4 && !memcmp(back, "gler", 4));
         memset(st, 0, sizeof(st));
-        CHECK(fd >= 0 && sys(197, fd, (long)(mg_addr)st, 0, 0, 0, 0) == 0 && mg_rd32(st + 48) == 6);
+        CHECK(fd >= 0 && sys(197, fd, (long)(mg_addr)st, 0, 0, 0, 0) == 0 && mg_rd32(st + ST_SIZE_AT) == 6);
         CHECK(fd >= 0 && sys(373, fd, 0, 0, 0, 0, 0) == 0 && sys(373, 999, 0, 0, 0, 0, 0) == -1);
         CHECK(fd >= 0 && sys(6, fd, 0, 0, 0, 0, 0) == 0 && sys(10, (long)(mg_addr)file, 0, 0, 0, 0, 0) == 0);
         CHECK(sys(5, (long)(mg_addr)file, 0, 0, 0, 0, 0) == -1);
@@ -1168,7 +1171,7 @@ static void test_syscall_fds(const char *scratch)
 
 static void test_mmap_commit(void)
 {
-    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
     typedef int (*mprotect_fn)(void *, size_t, int);
     typedef int (*munmap_fn)(void *, size_t);
     enum { NONE = 0, RW = 3, PRIVATE = 0x02, ANONYMOUS = 0x20, FIXED = 0x10, MB = 1 << 20 };
@@ -1227,7 +1230,7 @@ static void test_mmap_commit(void)
  */
 static void test_mmap_file(const char *scratch)
 {
-    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
     typedef int (*munmap_fn)(void *, size_t);
     typedef int (*close_fn)(int);
     enum { READ = 1, SHARED = 0x01, CHUNK = 65536, LEN = 3 * 65536 + 100 };
@@ -1283,15 +1286,15 @@ static void test_mmap_file(const char *scratch)
 static void test_mmap_file_written(const char *scratch)
 {
     typedef int (*open_fn)(const char *, int, int);
-    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
     typedef int (*munmap_fn)(void *, size_t);
     typedef int (*msync_fn)(void *, size_t, int);
     typedef int (*close_fn)(int);
     typedef int (*unlink_fn)(const char *);
-    typedef i32 (*pwrite_fn)(int, const void *, u32, i32);
-    typedef i32 (*write_fn)(int, const void *, u32);
-    typedef i32 (*lseek_fn)(int, i32, int);
-    typedef int (*ftruncate_fn)(int, i32);
+    typedef gssize (*pwrite_fn)(int, const void *, size_t, goff);
+    typedef gssize (*write_fn)(int, const void *, size_t);
+    typedef goff (*lseek_fn)(int, goff, int);
+    typedef int (*ftruncate_fn)(int, goff);
     enum { READ = 1, RW = 3, SHARED = 0x01, PAGE = 4096 };
     open_fn open_ = (open_fn)mg_bionic_find("open");
     mmap_fn mmap_ = (mmap_fn)mg_bionic_find("mmap");
@@ -1363,8 +1366,9 @@ typedef struct t_regex {
     const char *re_endp;
     void *re_g;
 } t_regex;
+/* (regoff_t is an off_t: 32 bits in 32-bit Android, 64 in 64-bit.) */
 typedef struct t_regmatch {
-    i32 so, eo;
+    goff so, eo;
 } t_regmatch;
 
 /* regexec of `pattern` (cflags) on `subject`: its result, and the first two matches' places as "so-eo so-eo" in `out`. */
@@ -1495,7 +1499,7 @@ static void test_libc_gaps(const char *scratch)
 
     say("j0 and j1, eventfd_read and eventfd_write, fchmodat");
     {
-        typedef double (*d_fn)(double);
+        typedef gdouble (*d_fn)(gdouble);                /* (as guest code calls them: softfp's bits on 32-bit ARM) */
         typedef int (*eventfd_fn)(unsigned, int);
         typedef int (*efd_read_fn)(int, u64 *);
         typedef int (*efd_write_fn)(int, u64);
@@ -1511,9 +1515,13 @@ static void test_libc_gaps(const char *scratch)
         int fd;
         CHECK(j0_ && j1_ && eventfd_ && efd_read && efd_write && fchmodat_ && close_);
         if (j0_ && j1_) {
-            CHECK(fabs(j0_(0) - 1) < 1e-15 && fabs(j0_(1) - 0.7651976865579666) < 1e-12 && fabs(j0_(-3) - j0_(3)) < 1e-15);
-            CHECK(fabs(j0_(10) - -0.2459357644513483) < 1e-10 && fabs(j0_(20) - 0.1670246643405831) < 1e-10);
-            CHECK(fabs(j1_(1) - 0.4400505857449335) < 1e-12 && fabs(j1_(-1) + 0.4400505857449335) < 1e-12 && fabs(j1_(15) - 0.2051040386135228) < 1e-10);
+#define J0(x) mg_gd(j0_(mg_gdb(x)))
+#define J1(x) mg_gd(j1_(mg_gdb(x)))
+            CHECK(fabs(J0(0) - 1) < 1e-15 && fabs(J0(1) - 0.7651976865579666) < 1e-12 && fabs(J0(-3) - J0(3)) < 1e-15);
+            CHECK(fabs(J0(10) - -0.2459357644513483) < 1e-10 && fabs(J0(20) - 0.1670246643405831) < 1e-10);
+            CHECK(fabs(J1(1) - 0.4400505857449335) < 1e-12 && fabs(J1(-1) + 0.4400505857449335) < 1e-12 && fabs(J1(15) - 0.2051040386135228) < 1e-10);
+#undef J0
+#undef J1
         }
         if (eventfd_ && efd_read && efd_write && close_) {
             fd = eventfd_(0, 0);
@@ -1532,11 +1540,11 @@ static void test_libc_gaps(const char *scratch)
  */
 static void test_mmap_madvise(const char *scratch)
 {
-    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
     typedef int (*munmap_fn)(void *, size_t);
     typedef int (*mprotect_fn)(void *, size_t, int);
     typedef int (*madvise_fn)(void *, size_t, int);
-    typedef i32 (*read_fn)(int, void *, u32);
+    typedef gssize (*read_fn)(int, void *, size_t);
     typedef int (*close_fn)(int);
     enum { NONE = 0, RW = 3, PRIVATE = 0x02, ANONYMOUS = 0x20, DONTNEED = 4, MB = 1 << 20, FILE_BYTES = 8000 };
     mmap_fn mmap_ = (mmap_fn)mg_bionic_find("mmap");
@@ -1755,12 +1763,12 @@ static void test_rename_dir_in_use(const char *scratch)
  */
 static void test_shm_views(void)
 {
-    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
     typedef int (*munmap_fn)(void *, size_t);
     typedef int (*close_fn)(int);
-    typedef i32 (*pread_fn)(int, void *, u32, i32);
-    typedef i32 (*pwrite_fn)(int, const void *, u32, i32);
-    typedef int (*ftruncate_fn)(int, i32);
+    typedef gssize (*pread_fn)(int, void *, size_t, goff);
+    typedef gssize (*pwrite_fn)(int, const void *, size_t, goff);
+    typedef int (*ftruncate_fn)(int, goff);
     enum { MB = 1 << 20, SIZE = 24 * MB, RW = 3, SHARED = 1 };
     mmap_fn mmap_ = (mmap_fn)mg_bionic_find("mmap");
     munmap_fn munmap_ = (munmap_fn)mg_bionic_find("munmap");
