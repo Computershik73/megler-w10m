@@ -550,6 +550,11 @@ public final class ViewRoot implements ViewParent {
     /** Pixels of the screen the last drawAll drew: its dirty rectangle, or all of them when it drew the whole screen. */
     private static int sRedrawn;
     private static Boolean sDump;
+    /** Whether trace-views is on (a file of that name in the data folder's flags): megler.DecorView says its content's changes then. */
+    static boolean traceViews() {
+        if (sDump == null) sDump = System.getenv("TL_VIEW_DUMP") != null || Native.flag("trace-views");
+        return sDump;
+    }
     private long mLastDump;
     /** TL_VIEW_DUMP: the window's views, with their frames, to the log (every 3 s while it lays out). */
     private static void dump(View v, int depth) {

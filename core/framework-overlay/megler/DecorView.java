@@ -145,11 +145,29 @@ public final class DecorView extends FrameLayout {
             mActionBar = mTitle;
             mStack.addView(mTitle, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, h));
         }
-        mContent = new FrameLayout(c);
+        mContent = new FrameLayout(c) {
+            @Override public void onViewAdded(View child) { super.onViewAdded(child); traceContent("added", child); }
+            @Override public void onViewRemoved(View child) { super.onViewRemoved(child); traceContent("taken away", child); }
+        };
         mContent.setId(android.R.id.content);
         mStack.addView(mContent, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
         addView(mStack, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         return mContent;
+    }
+    /*
+     * trace-views: each view put into the window's content frame or taken from it, with its tags (a fragment's view carries its
+     * fragment) and the stack that did it. TikTok Lite's feed played its sound under an empty black frame that something of its
+     * own laid over the whole content, and the view dumps could not say what (package 631).
+     */
+    private static void traceContent(String what, View child) {
+        if (!ViewRoot.traceViews()) return;
+        StringBuilder b = new StringBuilder("the window's content: ").append(what).append(' ').append(child.getClass().getName());
+        if (child.getId() != View.NO_ID) b.append(" #").append(Integer.toHexString(child.getId()));
+        Drawable bg = child.getBackground();
+        if (bg instanceof android.graphics.drawable.ColorDrawable) b.append(" bg=#").append(Integer.toHexString(((android.graphics.drawable.ColorDrawable) bg).getColor()));
+        else if (bg != null) b.append(" bg=").append(bg.getClass().getName());
+        b.append(child.meglerTagsText());
+        android.util.Log.d("ViewDump", b.toString(), new Throwable("by"));
     }
     public void setTitle(CharSequence t) { if (mTitle != null) mTitle.setTitle(t); }
     public View actionBarView() { return mActionBar; }
