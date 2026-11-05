@@ -17,8 +17,9 @@
  * so nothing moves, no island is needed, and no register or flag changes that the original did not change.
  *
  * Only the instructions whose memory operand is an absolute address in the segment, [disp32] or moffs, are of this kind,
- * and only the two slots: what is read at another place of the segment (a thread-local variable at a negative offset,
- * the initial-exec model's other form; a segment-relative access through a register) is counted and said, and left.
+ * and only the two slots: what is read at another absolute place of the segment (a thread-local variable at a negative
+ * offset, the local-exec model's) is counted and said, and left. An access through a register is the subject of a
+ * paragraph of its own, below.
  *
  * The code is walked an instruction at a time (x86/mg_x86_decode.c) through the library's executable sections only
  * (mg_lib's code, read from its section headers), so that a byte of data, or a byte inside another instruction, is never
@@ -57,7 +58,41 @@
  * looked at); a place in the island within a jump's reach. Where that cannot be had, the syscall is left as it is and
  * said.
  *
- * x86's `int 0x80` is counted and said, not rewritten.
+ * An access of the segment through a register -- an instruction whose memory operand is the segment's with a base or an
+ * index, `mov %fs:(%rcx), %rax`, `mov %rdx, %fs:-0x10(%rcx)` -- reaches a place at an offset from the thread pointer that
+ * a register holds. Go's runtime on android/amd64 reaches its g so, at the offset its variable runtime.tls_g holds
+ * (TLS_SLOT_APP's, 16): `mov runtime.tls_g(%rip), %r14; mov %fs:(%r14), %r14` after each call to its assembly, 437 of
+ * the 468 such accesses of a small c-shared library of Go 1.27.1's, the rest loads and stores through other registers
+ * (setg's `mov %rdi, %fs:(%rax)`, rt0_go's `mov %fs:-0x10(%rcx), %rcx`); and C code of the initial-exec model each of its
+ * variables, `mov x@gottpoff(%rip), %rax; mov %fs:(%rax), %eax`. Each such instruction is led out as a system call is,
+ * with whole instructions next to it (or alone, where it has five bytes), to a piece that makes the access on the guest's
+ * thread pointer:
+ *
+ *         the instructions that were before it, as they were
+ *         mov   %rS, %gs:<the patcher's word>
+ *         mov   %gs:<the slot of the guest's thread pointer>, %rS
+ *         lea   (%rS,<its base>,1), %rS
+ *         the instruction, its segment's prefix gone and %rS its base, its index, scale and displacement as they were
+ *         mov   %gs:<the patcher's word>, %rS
+ *         the instructions that were after it, as they were
+ *         jmp   <where the last of them ended>
+ *
+ * %rS is one of rcx, rbx, rsi and rdi that the instruction does not name, nor use without naming it: no register but
+ * those the instruction writes, and no flag, changes. Its value waits in a word of the host's thread block, beside the
+ * thread pointer's (mg_guest_scratch_where), not on the stack: a goroutine's has nothing to spare below its stack
+ * pointer. A thread interrupted in the middle of a piece finds the word as it was when it goes back (mg_thread_interrupt
+ * keeps it across what it makes the thread run), and nothing else runs on a thread there: a fault in a piece is not
+ * given to the app's handler on this processor.
+ *
+ * Only in a library that says it reaches the segment so: one the linker marked for the initial-exec model (DF_STATIC_TLS,
+ * for its TPOFF relocations), or one of Go's (its build ID note, owner "Go"). Elsewhere such bytes have been data among
+ * the code -- ChaCha's constant "expand 32-byte k" in libcrypto reads as `and %dh, %fs:(%rbx)` -- which a jump in their
+ * place would wreck: they are counted and said, and left, as before. lea (the segment is no part of the address it
+ * makes), a hint (prefetch, a long nop) and a jump or call through memory are left too, and an access of 32-bit
+ * addresses.
+ *
+ * x86's `int 0x80` is counted and said, not rewritten; and its accesses of %gs through a register are left (Go's
+ * android/386 makes them so).
  */
 #include "../mg_core.h"
 #include "../bionic/mg_bionic.h"
@@ -77,8 +112,11 @@
 #define IS64 false
 #endif
 
-/* x86_64's own system calls led out to the core: where guest code runs (not MSVC's build of the tests, which runs none). */
-#define SYSCALLS (MG_ARCH_X86_64 && MG_GUEST_CODE)
+/*
+ * x86_64's code of an app's own led out to pieces of the library's island -- its system calls, its accesses of the
+ * segment through a register -- where guest code runs (not MSVC's build of the tests, which runs none).
+ */
+#define PIECES (MG_ARCH_X86_64 && MG_GUEST_CODE)
 
 static bool g_trap_svc;
 
@@ -87,22 +125,47 @@ bool mg_patch_svc_target(mg_addr pc, mg_addr *target) { (void)pc; (void)target; 
 bool mg_patch_tp_target(mg_addr pc, int *reg, mg_addr *target) { (void)pc; (void)reg; (void)target; return false; }
 
 /*
- * A system call's piece of island at most: four instructions of fifteen bytes taken with it, the 30 bytes of the way to
- * the entry and the five of the way back.
+ * A piece of island at most: four instructions of fifteen bytes taken with the site, and the five bytes of the way back;
+ * a system call's 30 bytes of the way to the entry, or an access's 9 + 9 + 4 of its address, itself (fourteen bytes,
+ * its segment's prefix gone) and 9 of its register given back.
  */
-enum { SC_PIECE_MAX = 96 };
+enum { SC_PIECE_MAX = 96, ACCESS_PIECE_MAX = 112 };
+
+#if PIECES
+/*
+ * What an access of the segment through a register mostly looks like, for the island's estimate: a mov to or from a
+ * register or of an immediate (8B, 89, C7), after the segment's prefix and maybe a REX, whose ModRM's memory operand has
+ * a base or an index. (Go's are all of them; C's initial-exec loads and stores mostly.)
+ */
+static bool access_shape(const u8 *p, size_t avail)
+{
+    size_t at = 1;
+    u8 mod, rm;
+    if (at < avail && (p[at] & 0xF0) == 0x40) at++;
+    if (at + 1 >= avail || (p[at] != 0x8B && p[at] != 0x89 && p[at] != 0xC7)) return false;
+    mod = p[at + 1] >> 6;
+    rm = p[at + 1] & 7;
+    if (mod == 3 || (mod == 0 && rm == 5)) return false;
+    /* ([disp32] through a SIB of base 5 and index 4: an absolute place, rewritten where it is.) */
+    return !(mod == 0 && rm == 4 && at + 2 < avail && (p[at + 2] & 7) == 5 && ((p[at + 2] >> 3) & 7) == 4);
+}
+#endif
 
 /*
  * Island space the loader keeps for a library (ld/mg_ld.c, island_estimate, 16 bytes for each one counted): the thread
- * pointer's reads need none, each keeping its place; a system call its piece, for every two bytes that may be one.
+ * pointer's reads need none, each keeping its place; a system call its piece, for every two bytes that may be one; an
+ * access of the segment through a register its piece, for every shape of one (whether the library's are led out is not
+ * known yet: see reaches_through_registers).
  */
 u32 mg_patch_count_tp_reads(const u8 *bytes, size_t size)
 {
-#if SYSCALLS
+#if PIECES
     size_t i;
     u32 n = 0;
-    for (i = 0; i + 1 < size; i++)
+    for (i = 0; i + 1 < size; i++) {
         if (bytes[i] == 0x0F && bytes[i + 1] == 0x05) n += SC_PIECE_MAX / 16;
+        else if (bytes[i] == GUEST_SEG && access_shape(bytes + i, size - i)) n += ACCESS_PIECE_MAX / 16;
+    }
     return n;
 #else
     (void)bytes;
@@ -111,24 +174,26 @@ u32 mg_patch_count_tp_reads(const u8 *bytes, size_t size)
 #endif
 }
 
-/* A syscall the walk found: where, and the instructions it found before it. */
-typedef struct sc_site {
+/* A site the walk found -- a system call, or an access of the segment through a register: where, and the instructions it found before it. */
+typedef struct site {
     u8 *at;
     u8 len;                            /* (prefixes and all) */
+    bool access;                       /* an access of the segment through a register; else a system call */
     u8 *before[3];                     /* the instructions before it, the nearest first; NULL where the walk had none */
     u8 *lo, *hi;                       /* the stretch of code it is in */
     u8 targets[12];                    /* jumps of the library's to [at - 48, at + 48): a bit for each byte */
-} sc_site;
+} site;
 
 /* One walk of a segment's code. */
 typedef struct walk {
     mg_lib *lib;
     u8 *seg;
     size_t size;
-    u32 tp_seg, tp_at, guard_seg, guard_at;
+    u32 tp_seg, tp_at, guard_seg, guard_at, scratch_seg, scratch_at;
     bool have_slots;
+    bool through_registers;            /* the library's accesses of the segment through a register are led out */
     u32 odd, calls;
-    sc_site *sites;
+    site *sites;
     u32 nsites, cap;
 } walk;
 
@@ -148,25 +213,97 @@ static void retarget(u8 *p, const mg_x86_insn *in, u32 seg, u32 offset)
     }
 }
 
-#if SYSCALLS
-static void add_site(walk *w, u8 *p, const mg_x86_insn *in, u8 *const before[3], u8 *lo, u8 *hi)
+#if PIECES
+static void add_site(walk *w, u8 *p, const mg_x86_insn *in, u8 *const before[3], u8 *lo, u8 *hi, bool access)
 {
-    sc_site *s;
+    site *s;
     if (w->nsites == w->cap) {
         w->cap = w->cap ? w->cap * 2 : 16;
-        w->sites = (sc_site *)mg_realloc(w->sites, sizeof(sc_site) * w->cap);
+        w->sites = (site *)mg_realloc(w->sites, sizeof(site) * w->cap);
     }
     s = &w->sites[w->nsites++];
     memset(s, 0, sizeof(*s));
     s->at = p;
     s->len = in->len;
+    s->access = access;
     memcpy(s->before, before, sizeof(s->before));
     s->lo = lo;
     s->hi = hi;
 }
+
+/*
+ * An access of the segment through a register that a piece can make: a memory operand with a base or an index, and not
+ * relative to rip or of 32-bit addresses; in the legacy encodings (none such has been seen in VEX's or EVEX's); its base
+ * not rsp. Not lea (the segment is no part of the address it makes), not a hint (prefetch, a long nop: no access), not
+ * a jump or call through memory (the piece would go on from its own place, a call leave that as the return address).
+ */
+static bool through_register(const mg_x86_insn *in)
+{
+    u8 mod = in->modrm >> 6, ext = (in->modrm >> 3) & 7;
+    if (in->vex || !in->has_modrm || mod == 3 || in->adsize) return false;
+    if (in->has_sib) {
+        bool base = !(mod == 0 && (in->sib & 7) == 5), index = ((in->sib >> 3) & 7) != 4 || (in->rex & 2);
+        if (!base && !index) return false;
+        if (base && (in->sib & 7) == 4 && !(in->rex & 1)) return false;
+    } else if (mod == 0 && (in->modrm & 7) == 5) {
+        return false;
+    }
+    if (in->map == 0) return !(in->op == 0x8D || (in->op == 0xFF && ext >= 2 && ext <= 5));
+    if (in->map == 1) return !((in->op >= 0x18 && in->op <= 0x1F) || in->op == 0x0D);
+    return true;
+}
+
+/* Note `name` of `type` among the notes in [p, p + size), each name and description padded to `align`. */
+static bool has_note(const u8 *p, size_t size, size_t align, const char *name, u32 type)
+{
+    size_t n = strlen(name) + 1;
+    while (size >= 12) {
+        u32 namesz, descsz, kind;
+        size_t whole;
+        memcpy(&namesz, p, 4);
+        memcpy(&descsz, p + 4, 4);
+        memcpy(&kind, p + 8, 4);
+        if (namesz > size || descsz > size) return false;
+        whole = 12 + MG_ALIGN_UP((size_t)namesz, align) + MG_ALIGN_UP((size_t)descsz, align);
+        if (whole > size) return false;
+        if (kind == type && namesz >= n && namesz <= MG_ALIGN_UP(n, 4) && !memcmp(p + 12, name, n)) return true;
+        p += whole;
+        size -= whole;
+    }
+    return false;
+}
+
+/*
+ * Whether the library says that its code reaches the segment through registers: the linker's DF_STATIC_TLS (the
+ * initial-exec model's TPOFF relocations), or Go's build ID note (owner "Go", type 4), which every library of Go's has
+ * in a PT_NOTE of its first segment. Elsewhere such bytes have been data among the code.
+ */
+static bool reaches_through_registers(const mg_lib *lib)
+{
+    const ElfW(Dyn) *d;
+    int i, k;
+    for (d = lib->dyn; d && d->d_tag != DT_NULL; d++)
+        if (d->d_tag == DT_FLAGS && (d->d_val & DF_STATIC_TLS)) return true;
+    for (i = 0; i < lib->phnum; i++) {
+        const ElfW(Phdr) *note = &lib->phdr[i];
+        if (note->p_type != PT_NOTE) continue;
+        /* (Only where a segment has the notes' bytes from the file: elsewhere the image is not committed.) */
+        for (k = 0; k < lib->phnum; k++) {
+            const ElfW(Phdr) *load = &lib->phdr[k];
+            if (load->p_type == PT_LOAD && note->p_vaddr >= load->p_vaddr && note->p_filesz <= load->p_filesz &&
+                note->p_vaddr - load->p_vaddr <= load->p_filesz - note->p_filesz &&
+                has_note(lib->base + note->p_vaddr, (size_t)note->p_filesz, note->p_align == 8 ? 8 : 4, "Go", 4))
+                return true;
+        }
+    }
+    return false;
+}
 #endif
 
-/* Walks [lo, hi) of the library's code, an instruction at a time: the thread pointer's reads rewritten, system calls found. */
+/*
+ * Walks [lo, hi) of the library's code, an instruction at a time: the thread pointer's reads rewritten; system calls and
+ * accesses of the segment through a register found.
+ */
 static void patch_range(walk *w, u8 *lo, u8 *hi)
 {
     u8 *p = lo, *before[3] = { NULL, NULL, NULL };
@@ -181,8 +318,8 @@ static void patch_range(walk *w, u8 *lo, u8 *hi)
 #if MG_ARCH_X86_64
         if (in.map == 1 && in.op == 0x05 && !in.vex) {                         /* syscall */
             w->calls++;
-#if SYSCALLS
-            add_site(w, p, &in, before, lo, hi);
+#if PIECES
+            add_site(w, p, &in, before, lo, hi, false);
 #endif
         }
 #else
@@ -193,7 +330,13 @@ static void patch_range(walk *w, u8 *lo, u8 *hi)
                 if (at == 0) retarget(p, &in, w->tp_seg, w->tp_at);
                 else retarget(p, &in, w->guard_seg, w->guard_at);
                 w->lib->stats.tp_reads++;
-            } else {
+            }
+#if PIECES
+            else if (w->through_registers && through_register(&in)) {
+                add_site(w, p, &in, before, lo, hi, true);
+            }
+#endif
+            else {
                 if (w->odd < 4)
                     mg_warn("ld: %s+0x%x: a read of the thread pointer's segment that is not one of its two slots is left as it is",
                             w->lib->name, (unsigned)(p - w->lib->base));
@@ -225,7 +368,7 @@ static void each_range(walk *w, void (*fn)(walk *, u8 *, u8 *))
     }
 }
 
-#if SYSCALLS
+#if PIECES
 /* ------------------------------------------------ system calls of the library's own */
 
 /* The way out (below), and what it reads of the extended state it keeps. */
@@ -430,9 +573,11 @@ static void xsave_setup(void)
     mg_x86_xsave_use = 1;
 }
 
+/* ------------------------------------------------ the places that become jumps to pieces of island */
+
 static int site_order(const void *a, const void *b)
 {
-    const u8 *x = ((const sc_site *)a)->at, *y = ((const sc_site *)b)->at;
+    const u8 *x = ((const site *)a)->at, *y = ((const site *)b)->at;
     return x < y ? -1 : x > y;
 }
 
@@ -486,12 +631,14 @@ static bool rip_relative(const mg_x86_insn *in) { return in->has_modrm && !in->h
 /*
  * An instruction that runs elsewhere as it does here: no jump, call, return or system call. One with an operand relative
  * to rip is moved with its displacement made right for its new place (copy_moved) -- not one of 32-bit addresses, whose
- * eip-relative address is cut to 32 bits.
+ * eip-relative address is cut to 32 bits. Not an access of the segment through a register either: a site of its own,
+ * or one left, which a piece would make as it is.
  */
 static bool movable(const mg_x86_insn *in)
 {
     u8 op = in->op;
     if (rip_relative(in) && in->adsize) return false;
+    if (in->seg == GUEST_SEG && through_register(in)) return false;
     if (in->vex) return true;
     if (in->map == 0)
         return !((op >= 0x70 && op <= 0x7F) || (op >= 0xE0 && op <= 0xE3) || op == 0xE8 || op == 0xE9 || op == 0xEB || op == 0xC2 ||
@@ -503,7 +650,7 @@ static bool movable(const mg_x86_insn *in)
     return true;
 }
 
-static bool jumped_into(const sc_site *s, const u8 *start, const u8 *end)
+static bool jumped_into(const site *s, const u8 *start, const u8 *end)
 {
     const u8 *p;
     for (p = start + 1; p < end; p++) {
@@ -514,11 +661,11 @@ static bool jumped_into(const sc_site *s, const u8 *start, const u8 *end)
 }
 
 /*
- * The place the jump takes, [start, end): the syscall with whole instructions around it, five bytes or more, every one
- * movable, none before `free_from` (a site before it already took that), nothing jumping into it but at its start. The
- * fewest instructions, those before it first. False when there is none.
+ * The place the jump takes, [start, end): the site with whole instructions around it, five bytes or more (or the site
+ * alone, where it has five), every one movable, none before `free_from` (a site before it already took that), nothing
+ * jumping into it but at its start. The fewest instructions, those before it first. False when there is none.
  */
-static bool window(const sc_site *s, const u8 *free_from, u8 **start, u8 **end)
+static bool window(const site *s, const u8 *free_from, u8 **start, u8 **end)
 {
     u8 *from[4], *to[4];
     int nbefore = 0, nafter = 0, n, k;
@@ -537,7 +684,7 @@ static bool window(const sc_site *s, const u8 *free_from, u8 **start, u8 **end)
         to[nafter + 1] = to[nafter] + in.len;
         nafter++;
     }
-    for (n = 1; n <= nbefore + nafter && n <= 4; n++) {
+    for (n = 0; n <= nbefore + nafter && n <= 4; n++) {
         for (k = n < nbefore ? n : nbefore; k >= 0 && n - k <= nafter; k--) {
             if (to[n - k] - from[k] < 5 || jumped_into(s, from[k], to[n - k])) continue;
             *start = from[k];
@@ -574,7 +721,7 @@ static bool copy_moved(u8 *dst, const u8 *from, const u8 *to)
 }
 
 /* The site's piece of island, and the jump to it in [start, end): false when the island has no room within reach. */
-static bool lead_out(walk *w, const sc_site *s, u8 *start, u8 *end)
+static bool lead_out(walk *w, const site *s, u8 *start, u8 *end)
 {
     size_t before = (size_t)(s->at - start), after = (size_t)(end - (s->at + s->len));
     u8 *piece = mg_island_alloc(w->lib, (mg_addr)start, before + 9 + 7 + 14 + after + 5, 0x7FFF0000u), *q, *on;
@@ -616,32 +763,157 @@ static bool lead_out(walk *w, const sc_site *s, u8 *start, u8 *end)
     return true;
 }
 
-/* Every system call the walk found led out, where it can be; said where it cannot. */
+/* ------------------------------------------------ accesses of the segment through a register */
+
+/*
+ * The register a piece keeps the address in (S above): the first of rcx, rbx, rsi and rdi -- none needs a REX, none is
+ * a ModRM's or a SIB's special case -- that the instruction does not name, as its ModRM's reg or the operand's base or
+ * index (each taken as the register of its low three bits, which costs only a choice; a reg of 4 to 7 with no REX as
+ * the one whose byte ah, ch, dh or bh it may be too), nor uses without naming it: rax and rdx never (mul, div, cmpxchg,
+ * xsave), rcx where a shift counts by cl and in shld, shrd and cmpxchg16b, rbx in cmpxchg16b. -1 when all four are.
+ */
+static int scratch_reg(const mg_x86_insn *in)
+{
+    static const int order[4] = { 1, 3, 6, 7 };
+    int reg = (in->modrm >> 3) & 7, k;
+    u32 used = 1u << 0 | 1u << 2 | 1u << reg;
+    if (!in->rex && reg >= 4) used |= 1u << (reg - 4);
+    if (in->has_sib) used |= 1u << (in->sib & 7) | 1u << ((in->sib >> 3) & 7);
+    else used |= 1u << (in->modrm & 7);
+    if ((in->map == 0 && (in->op == 0xD2 || in->op == 0xD3)) || (in->map == 1 && (in->op == 0xA5 || in->op == 0xAD))) used |= 1u << 1;
+    if (in->map == 1 && in->op == 0xC7) used |= 1u << 1 | 1u << 3;
+    for (k = 0; k < 4; k++)
+        if (!(used & (1u << order[k]))) return order[k];
+    return -1;
+}
+
+/* The memory operand's base register (REX.B its fourth bit), or -1 where it has none ([disp32 + index * scale]). */
+static int base_reg(const mg_x86_insn *in)
+{
+    if (in->has_sib) {
+        if ((in->modrm >> 6) == 0 && (in->sib & 7) == 5) return -1;
+        return (in->sib & 7) | (in->rex & 1) << 3;
+    }
+    return (in->modrm & 7) | (in->rex & 1) << 3;
+}
+
+/*
+ * The instruction `in` at `p` written at `out` with its segments' prefixes left out (the others are no part of an address
+ * on x86_64) and `r` its base, every other byte as it was: one where it had none takes ModRM's mod 2, whose 32-bit
+ * displacement it had already. Its length.
+ */
+static size_t rebase(u8 *out, const u8 *p, const mg_x86_insn *in, int r)
+{
+    size_t n = 0, i, opcode = (size_t)in->op_at - (in->map == 0 ? 0 : in->map == 1 ? 1 : 2), cut;
+    u8 *modrm;
+    for (i = 0; i < in->len; i++) {
+        u8 b = p[i];
+        if (i < opcode && (b == 0x26 || b == 0x2E || b == 0x36 || b == 0x3E || b == 0x64 || b == 0x65)) continue;
+        out[n++] = b;
+    }
+    cut = in->len - n;
+    /* (The prefixes all come before the opcode, REX right before it.) */
+    if (in->rex) out[opcode - 1 - cut] &= (u8)~1u;
+    modrm = out + in->modrm_at - cut;
+    if (in->has_sib) {
+        if ((*modrm >> 6) == 0 && (modrm[1] & 7) == 5) *modrm = (u8)((*modrm & 0x3F) | 0x80);
+        modrm[1] = (u8)((modrm[1] & 0xF8) | r);
+    } else {
+        *modrm = (u8)((*modrm & 0xF8) | r);
+    }
+    return n;
+}
+
+/* `mov %r, %seg:at` (op 0x89) or `mov %seg:at, %r` (0x8B), r one of the first eight registers: nine bytes. */
+static u8 *seg_word(u8 *q, u32 seg, u8 op, int r, u32 at)
+{
+    *q++ = (u8)seg;
+    *q++ = 0x48;
+    *q++ = op;
+    *q++ = (u8)(r << 3 | 4);
+    *q++ = 0x25;
+    memcpy(q, &at, 4);
+    return q + 4;
+}
+
+/* An access's piece of island (at the top), and the jump to it in [start, end): false when it cannot be made. */
+static bool lead_out_access(walk *w, const site *s, u8 *start, u8 *end)
+{
+    size_t before = (size_t)(s->at - start), after = (size_t)(end - (s->at + s->len));
+    mg_x86_insn in;
+    int r, base;
+    u8 *piece, *q;
+    i32 rel;
+    if (!mg_x86_decode(s->at, s->len, IS64, &in) || (r = scratch_reg(&in)) < 0) return false;
+    base = base_reg(&in);
+    piece = mg_island_alloc(w->lib, (mg_addr)start, before + 9 + 9 + (base >= 0 ? 4 : 0) + in.len + 9 + after + 5, 0x7FFF0000u);
+    if (!piece) return false;
+    q = piece;
+    if (!copy_moved(q, start, s->at)) return false;
+    q += before;
+    q = seg_word(q, w->scratch_seg, 0x89, r, w->scratch_at);          /* mov %r, %seg:scratch */
+    q = seg_word(q, w->tp_seg, 0x8B, r, w->tp_at);                     /* mov %seg:tp, %r */
+    if (base >= 0) {
+        *q++ = (u8)(0x48 | (base >= 8 ? 2 : 0));                       /* lea (%r,%base,1), %r */
+        *q++ = 0x8D;
+        *q++ = (u8)(r << 3 | 4);
+        *q++ = (u8)((base & 7) << 3 | r);
+    }
+    q += rebase(q, s->at, &in, r);
+    q = seg_word(q, w->scratch_seg, 0x8B, r, w->scratch_at);          /* mov %seg:scratch, %r */
+    if (!copy_moved(q, s->at + s->len, end)) return false;
+    q += after;
+    *q++ = 0xE9;                                                       /* jmp end */
+    rel = (i32)(end - (q + 4));
+    memcpy(q, &rel, 4);
+    start[0] = 0xE9;                                   /* the jump to the piece; traps in the rest of the place */
+    rel = (i32)(piece - (start + 5));
+    memcpy(start + 1, &rel, 4);
+    memset(start + 5, 0xCC, (size_t)(end - start - 5));
+    return true;
+}
+
+/* Every site the walk found led out, where it can be; said where it cannot. */
 static void lead_out_all(walk *w)
 {
-    u32 i, done = 0, left = 0;
+    u32 i, calls = 0, calls_left = 0, accesses = 0, accesses_left = 0;
     u8 *free_from = NULL;
-    qsort(w->sites, w->nsites, sizeof(sc_site), site_order);
+    qsort(w->sites, w->nsites, sizeof(site), site_order);
     each_range(w, find_targets);
     xsave_setup();
     for (i = 0; i < w->nsites; i++) {
-        sc_site *s = &w->sites[i];
+        site *s = &w->sites[i];
         u8 *start, *end;
-        if (w->have_slots && window(s, free_from, &start, &end) && lead_out(w, s, start, end)) {
+        if (w->have_slots && window(s, free_from, &start, &end) &&
+            (s->access ? lead_out_access(w, s, start, end) : lead_out(w, s, start, end))) {
             free_from = end;
-            done++;
+            if (s->access) accesses++;
+            else calls++;
             continue;
         }
-        if (left++ < 4)
-            mg_warn("ld: %s+0x%x: a system call of its own is left as it is: %s", w->lib->name, (unsigned)(s->at - w->lib->base),
+        if (s->access ? accesses_left++ < 4 : calls_left++ < 4)
+            mg_warn("ld: %s+0x%x: %s is left as it is: %s", w->lib->name, (unsigned)(s->at - w->lib->base),
+                    s->access ? "an access of the thread pointer's segment through a register" : "a system call of its own",
                     !w->have_slots ? "no slot for the thread pointer" : "no whole instructions around it to take its place");
     }
-    if (done) mg_tls_syscall_stacks();
-    w->lib->stats.svc_sites += done;
-    mg_info("ld: %s: %u system calls of its own go to the core%s", w->lib->name, (unsigned)done, left ? "" : ", all of them");
-    if (left) mg_warn("ld: %s: %u system calls of its own are left as they are: they would be the host's", w->lib->name, (unsigned)left);
+    if (calls) mg_tls_syscall_stacks();
+    w->lib->stats.svc_sites += calls;
+    w->lib->stats.tp_led_out += accesses;
+    w->lib->stats.tp_reads_failed += accesses_left;
+    if (calls || calls_left) {
+        mg_info("ld: %s: %u system calls of its own go to the core%s", w->lib->name, (unsigned)calls, calls_left ? "" : ", all of them");
+        if (calls_left)
+            mg_warn("ld: %s: %u system calls of its own are left as they are: they would be the host's", w->lib->name, (unsigned)calls_left);
+    }
+    if (accesses || accesses_left) {
+        mg_info("ld: %s: %u accesses of the thread pointer's segment through a register go to pieces of island%s", w->lib->name,
+                (unsigned)accesses, accesses_left ? "" : ", all of them");
+        if (accesses_left)
+            mg_warn("ld: %s: %u accesses of the thread pointer's segment through a register are left as they are: they would reach the host's",
+                    w->lib->name, (unsigned)accesses_left);
+    }
 }
-#endif /* SYSCALLS */
+#endif /* PIECES */
 
 void mg_patch_segment(mg_lib *lib, u8 *seg, size_t size)
 {
@@ -652,8 +924,11 @@ void mg_patch_segment(mg_lib *lib, u8 *seg, size_t size)
     w.size = size;
     w.have_slots = mg_guest_tp_where(&w.tp_seg, &w.tp_at) && mg_guest_guard_where(&w.guard_seg, &w.guard_at);
     if (!w.have_slots) mg_err("ld: %s: the host has no place for the guest's thread pointer; its reads are left as they are", lib->name);
+#if PIECES
+    w.through_registers = w.have_slots && reaches_through_registers(lib) && mg_guest_scratch_where(&w.scratch_seg, &w.scratch_at);
+#endif
     each_range(&w, patch_range);
-#if SYSCALLS
+#if PIECES
     if (w.nsites) lead_out_all(&w);
     free(w.sites);
 #else
