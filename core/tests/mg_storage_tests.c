@@ -1193,7 +1193,8 @@ static void test_odd_names(void)
 
 /*
  * A shared writable mapping of a file, as MMKV and MX Player's mx-kv keep their stores: what is written into the mapping
- * reaches the file at msync, and at munmap, though the descriptor was closed right after mapping.
+ * reaches the file at msync, and at munmap, though the descriptor was closed right after mapping; and with neither, as the
+ * shell settles the app's files when it is suspended (megler_settle_files), as TikTok Lite's KEVA needs (it does not msync).
  * (The pages are the layer's copy; Linux would write them back by itself.)
  */
 static void test_shared_mapping(void)
@@ -1220,6 +1221,12 @@ static void test_shared_mapping(void)
     fd = C.open(path, T_RDONLY, 0);
     memset(back, 0, sizeof(back));
     CHECK(fd >= 0 && pread_(fd, back, 6, 4096) == 6 && !memcmp(back, "synced", 6));
+    C.close(fd);
+    memcpy(p + 6000, "settled", 7);
+    megler_settle_files();
+    fd = C.open(path, T_RDONLY, 0);
+    memset(back, 0, sizeof(back));
+    CHECK(fd >= 0 && pread_(fd, back, 7, 6000) == 7 && !memcmp(back, "settled", 7));
     C.close(fd);
     memcpy(p, "unmapped", 8);
     CHECK(unmap(p, sizeof(zeros)) == 0);

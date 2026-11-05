@@ -482,18 +482,32 @@ void mg_mem_file_written(void *file, u64 at, const void *buf, size_t n)
     mg_lock_release(&g_region_lock);
 }
 
-/* What the app wrote into [from, from + size) of a shared file mapping, back to the file, and into the file's other mappings:
-   the pages it still has. Under the lock. */
+/* The file's bytes as they are, a chunk at a time, to compare a mapping's pages with before writing them back. Under the lock. */
+#define FILE_CHUNK (16 * MG_PAGE)
+static u8 g_file_chunk[FILE_CHUNK];
+
+/*
+ * What the app wrote into [from, from + size) of a shared file mapping, back to the file, and into the file's other mappings:
+ * the pages it still has, and of them those that differ from what the file holds -- most of a store's pages are as they were
+ * the last time, and write_back_loop goes over them every few seconds. Under the lock.
+ */
 static void write_back(region *r, size_t from, size_t size)
 {
-    size_t end = from + size, page;
+    size_t end = from + size, at;
     if (!r->file || !r->write_back) return;
     if (end > r->file_bytes) end = r->file_bytes;
-    for (page = from / MG_PAGE; page * MG_PAGE < end; page++) {
-        size_t a = page * MG_PAGE < from ? from : page * MG_PAGE, b = (page + 1) * MG_PAGE < end ? (page + 1) * MG_PAGE : end;
-        if (!(r->live[page >> 3] & (1u << (page & 7)))) continue;
-        if (mg_fd_held_pwrite(r->file, r->base + a, (u32)(b - a), r->file_offset + a) > 0 && g_file_copies > 1)
-            copies_written(r, r->file, r->file_offset + a, r->base + a, b - a);
+    for (at = from / MG_PAGE * MG_PAGE; at < end; at += FILE_CHUNK) {
+        size_t chunk_end = at + FILE_CHUNK < end ? at + FILE_CHUNK : end, page;
+        i32 got = mg_fd_held_pread(r->file, g_file_chunk, (u32)(chunk_end - at), r->file_offset + at);
+        for (page = at / MG_PAGE; page * MG_PAGE < chunk_end; page++) {
+            size_t a = page * MG_PAGE < from ? from : page * MG_PAGE, b = (page + 1) * MG_PAGE < chunk_end ? (page + 1) * MG_PAGE : chunk_end;
+            /* (Not a page the app made no-access, or gave back: reading it would fault, and it holds nothing of the file's.) */
+            if (!(r->live[page >> 3] & (1u << (page & 7))) || (r->noaccess && (r->noaccess[page >> 3] & (1u << (page & 7)))) || gone_has(r, page))
+                continue;
+            if (got >= (i32)(b - at) && !memcmp(g_file_chunk + (a - at), r->base + a, b - a)) continue;
+            if (mg_fd_held_pwrite(r->file, r->base + a, (u32)(b - a), r->file_offset + a) > 0 && g_file_copies > 1)
+                copies_written(r, r->file, r->file_offset + a, r->base + a, b - a);
+        }
     }
 }
 
@@ -504,6 +518,49 @@ void mg_mem_write_back(void)
     if (!mg_lock_try(&g_region_lock)) return;
     for (r = g_regions; r; r = r->next) write_back(r, 0, r->file_bytes);
     mg_lock_release(&g_region_lock);
+}
+
+/*
+ * Every writable shared file mapping written back, one region at a time under the lock (a fault or an mmap of another thread
+ * waits for one region, not for all of them). The kernel's page cache holds what an app writes into such a mapping, and the file
+ * has it even when the app is killed; here it was in the mapping alone until msync, munmap or the app's end. A phone's app is
+ * suspended and then ended without notice, and TikTok Lite's key-value store (KEVA), which maps its files so and does not
+ * msync, found them half written at the next start: 368 "fail to mark" a start on a Lumia 650 from its second start on, and
+ * what it kept was wrong (package 628). Now also as the app is suspended (megler_settle_files), all of them, and every 5 s
+ * (write_back_loop) those of up to `largest` bytes: each pass reads what it compares, and a store's files are small, where
+ * a database mapped whole and written so (Realm's) may not be.
+ */
+void mg_mem_write_back_all(size_t largest)
+{
+    u32 index;
+    for (index = 0;; index++) {
+        region *r;
+        u32 i = 0;
+        mg_lock_acquire(&g_region_lock);
+        for (r = g_regions; r && i < index; r = r->next) i++;
+        if (r && (!largest || r->file_bytes <= largest)) write_back(r, 0, r->file_bytes);
+        mg_lock_release(&g_region_lock);
+        if (!r) break;
+    }
+}
+
+static void write_back_loop(void *unused)
+{
+    (void)unused;
+    for (;;) {
+        mg_sleep_ns(5000000000ull);
+        mg_mem_write_back_all(4u << 20);
+    }
+}
+
+/* The thread of write_back_loop, once there is a writable shared file mapping. */
+static void write_back_start(void)
+{
+    static volatile i32 started;
+    mg_thread *t;
+    if (started || mg_atomic_xchg(&started, 1)) return;
+    t = mg_thread_start(write_back_loop, NULL, 64u * 1024u, "mmap-write-back");
+    if (t) mg_thread_detach(t);
 }
 
 static region *region_of(const void *p)
@@ -673,6 +730,7 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
                 if (r->file) mg_atomic_add(&g_file_copies, 1);
             }
             mg_lock_release(&g_region_lock);
+            if (prot & G_PROT_WRITE) write_back_start();
         }
     }
     if ((prot & G_PROT_WRITE) && (prot & G_PROT_EXEC)) {

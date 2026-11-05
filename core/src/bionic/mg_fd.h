@@ -31,6 +31,7 @@ i32 mg_fd_pread(int fd, void *buf, u32 n, u64 offset);
  */
 void *mg_fd_hold(int fd);
 i32 mg_fd_held_pwrite(void *held, const void *buf, u32 n, u64 offset);
+i32 mg_fd_held_pread(void *held, void *buf, u32 n, u64 offset);
 /* Whether two held files are one: the same open file, or files of the same guest path (another descriptor of it). */
 bool mg_fd_held_same(const void *a, const void *b);
 void mg_fd_let_go(void *held);

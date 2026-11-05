@@ -1644,6 +1644,11 @@ void megler_set_paused(bool paused);
  * it as the app is suspended. True when none is held.
  */
 bool megler_settle_databases(int ms);
+/*
+ * Writes what the app wrote into its shared mappings of files to the files now (they hold it, not the files, until msync,
+ * munmap or the app's end): Windows ends a suspended app without notice. The shell calls it as the app is suspended.
+ */
+void megler_settle_files(void);
 void megler_set_focused(bool focused);
 /* Asks the app to finish. Returns at once; on_exit follows. */
 void megler_stop(void);
