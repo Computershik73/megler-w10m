@@ -14,6 +14,7 @@
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/GooglePlay.h"
+#include "ui/Ota.h"
 #include "ui/SeparateApps.h"
 #include "ui/SharedFolders.h"
 #include "ui/Theme.h"
@@ -457,6 +458,8 @@ void AppShell::poll() {
         tellAskedInstalls();
         // Google Play or not, asked at the first start; once wanted, Megler's own installed (ui/GooglePlay.h).
         googlePlay::tick(*this);
+        // A newer Megler on GitHub, for this Windows and processor: offered, downloaded and installed (ui/Ota.h).
+        ota::tick(*this);
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can
         // run here, else its page, which says why not. Before the player, Megler's folders the app has not got are offered
         // (ui/SharedFolders.h), once the phone's folders are known.

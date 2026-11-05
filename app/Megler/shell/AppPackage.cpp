@@ -853,9 +853,6 @@ PortalResult uninstallThroughPortal(const InstalledApp& app) {
 
 std::string meglerVersion() { return versionString(); }
 
-namespace {
-
-/// "0.1.0.354" before "0.1.0.358".
 bool olderVersion(const std::string& a, const std::string& b) {
     unsigned x[4] = {}, y[4] = {};
     sscanf_s(a.c_str(), "%u.%u.%u.%u", &x[0], &x[1], &x[2], &x[3]);
@@ -864,6 +861,8 @@ bool olderVersion(const std::string& a, const std::string& b) {
         if (x[i] != y[i]) return x[i] < y[i];
     return false;
 }
+
+namespace {
 
 uint64_t treeSize(const std::wstring& dir) {
     uint64_t total = 0;
@@ -1043,6 +1042,43 @@ std::string selfUpdateVersion() {
     return gSelfUpdating ? gSelfUpdateTo : std::string();
 }
 
+PortalResult installOwnUpdate(const std::wstring& appx, const std::wstring& certificate, const std::string& version, const std::string& from) {
+    const std::wstring tried = platform::localStateDirectory() + L"\\update-tried-" + widen(version);
+    files::append(tried, "Megler " + versionString() + " installs " + version + "\r\n");
+    Made made;
+    made.appx = appx;
+    made.certificate = certificate;
+    made.identity = "Megler " + version;
+    shellLog::write("update: Megler " + version + " " + from + " (this is " + versionString() +
+                    "): installed by Windows's deployment engine, which closes this Megler");
+    // The screen stays on while the package goes: a phone that locks suspends Megler, and the try has no result.
+    {
+        std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
+        gSelfUpdateTo = version;
+    }
+    struct Updating {
+        Updating() { gSelfUpdating = true; }
+        ~Updating() { gSelfUpdating = false; }
+    } updating;
+    /*
+     * Windows's deployment engine reads the package where it lies (installWithPackageManager). The Device Portal is
+     * sent it from Megler's memory: a phone of 1 GB lets an app have 390 MB, and a Lumia 650's Megler 574 sending
+     * 610's 356 MB was ended by Windows with nothing said, three times. The portal only where the engine refuses.
+     */
+    const auto step = [](const std::string& said) { shellLog::write("update: " + said); };
+    PortalResult result = installWithPackageManager(made.appx, step);
+    if (!result.ok) {
+        shellLog::write("update: " + result.said + ": through the Device Portal instead");
+        result = installThroughPortal(made, step);
+    }
+    shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
+    // A portal that could not be reached, or dropped the connection while the package went (0x80072eff, 512), said nothing
+    // of the package: that try is one without a result, made again.
+    const bool unreached = !result.ok && result.said.rfind("The Device Portal could not be reached", 0) == 0;
+    files::append(tried, std::string(unreached ? "no result: " : "result: ") + (result.ok ? "installed: " : "not installed: ") + result.said + "\r\n");
+    return result;
+}
+
 void installCopiedUpdate() {
     if (isSingleApp()) return;
     std::thread([] {
@@ -1090,38 +1126,7 @@ void installCopiedUpdate() {
                 shellLog::write("update: Megler " + best + " is in Pictures\\Megler without Megler.cer beside it: not installed");
                 return;
             }
-            files::append(tried, "Megler " + versionString() + " installs " + best + "\r\n");
-            Made made;
-            made.appx = std::wstring(bestFile.Path());
-            made.certificate = std::wstring(certificate.Path());
-            made.identity = "Megler " + best;
-            shellLog::write("update: Megler " + best + " found in Pictures\\Megler (this is " + versionString() +
-                            "): installed by Windows's deployment engine, which closes this Megler");
-            // The screen stays on while the package goes: a phone that locks suspends Megler, and the try has no result.
-            {
-                std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
-                gSelfUpdateTo = best;
-            }
-            struct Updating {
-                Updating() { gSelfUpdating = true; }
-                ~Updating() { gSelfUpdating = false; }
-            } updating;
-            /*
-             * Windows's deployment engine reads the package where it lies (installWithPackageManager). The Device Portal is
-             * sent it from Megler's memory: a phone of 1 GB lets an app have 390 MB, and a Lumia 650's Megler 574 sending
-             * 610's 356 MB was ended by Windows with nothing said, three times. The portal only where the engine refuses.
-             */
-            const auto step = [](const std::string& said) { shellLog::write("update: " + said); };
-            PortalResult result = installWithPackageManager(made.appx, step);
-            if (!result.ok) {
-                shellLog::write("update: " + result.said + ": through the Device Portal instead");
-                result = installThroughPortal(made, step);
-            }
-            shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
-            // A portal that could not be reached, or dropped the connection while the package went (0x80072eff, 512), said nothing
-            // of the package: that try is one without a result, made again.
-            const bool unreached = !result.ok && result.said.rfind("The Device Portal could not be reached", 0) == 0;
-            files::append(tried, std::string(unreached ? "no result: " : "result: ") + (result.ok ? "installed: " : "not installed: ") + result.said + "\r\n");
+            installOwnUpdate(std::wstring(bestFile.Path()), std::wstring(certificate.Path()), best, "found in Pictures\\Megler");
         } catch (hresult_error const& e) {
             shellLog::write(format("update: Pictures\\Megler could not be read: 0x%08x ", unsigned(e.code())) + narrow(e.message()));
         }
