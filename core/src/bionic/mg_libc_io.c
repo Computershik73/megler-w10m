@@ -476,17 +476,115 @@ static bool is_synthetic(const char *g)
  * The content of a /proc or /sys file some code reads to learn about the device, or of the Chromium command line; NULL
  * when there is none by that name.
  */
+#if MG_ARCH_X86_64 || MG_ARCH_X86
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+static void cpuid(u32 leaf, u32 sub, u32 r[4])
+{
+    int v[4];
+    __cpuidex(v, (int)leaf, (int)sub);
+    r[0] = (u32)v[0]; r[1] = (u32)v[1]; r[2] = (u32)v[2]; r[3] = (u32)v[3];
+}
+#else
+#include <cpuid.h>
+static void cpuid(u32 leaf, u32 sub, u32 r[4]) { __cpuid_count(leaf, sub, r[0], r[1], r[2], r[3]); }
+#endif
+
+/*
+ * The x86 processor as Linux's /proc/cpuinfo says it, from cpuid: its vendor, family, model and stepping, its name, and the
+ * features Linux names, so that code choosing its routines by the file finds what the processor has (code that asks
+ * cpuid itself gets the processor's own answer: the instruction is not the system's to answer).
+ */
+typedef struct x86_cpu {
+    char vendor[13], name[49], flags[640];
+    int family, model, stepping;
+    u32 max_leaf;
+} x86_cpu;
+
+static void x86_cpu_read(x86_cpu *c)
+{
+    static const struct { u8 leaf, reg, bit; const char *name; } features[] = {
+        /* leaf 1: edx (reg 3), ecx (reg 2); leaf 7: ebx (reg 1), ecx (reg 2), edx (reg 3); 0x81 (0x80000001): ecx, edx */
+        { 1, 3, 0, "fpu" }, { 1, 3, 1, "vme" }, { 1, 3, 2, "de" }, { 1, 3, 3, "pse" }, { 1, 3, 4, "tsc" }, { 1, 3, 5, "msr" },
+        { 1, 3, 6, "pae" }, { 1, 3, 7, "mce" }, { 1, 3, 8, "cx8" }, { 1, 3, 9, "apic" }, { 1, 3, 11, "sep" }, { 1, 3, 12, "mtrr" },
+        { 1, 3, 13, "pge" }, { 1, 3, 14, "mca" }, { 1, 3, 15, "cmov" }, { 1, 3, 16, "pat" }, { 1, 3, 17, "pse36" },
+        { 1, 3, 19, "clflush" }, { 1, 3, 23, "mmx" }, { 1, 3, 24, "fxsr" }, { 1, 3, 25, "sse" }, { 1, 3, 26, "sse2" },
+        { 1, 3, 28, "ht" }, { 0x81, 3, 11, "syscall" }, { 0x81, 3, 20, "nx" }, { 0x81, 3, 27, "rdtscp" }, { 0x81, 3, 29, "lm" },
+        { 1, 2, 0, "pni" }, { 1, 2, 1, "pclmulqdq" }, { 1, 2, 9, "ssse3" }, { 1, 2, 12, "fma" }, { 1, 2, 13, "cx16" },
+        { 1, 2, 19, "sse4_1" }, { 1, 2, 20, "sse4_2" }, { 1, 2, 22, "movbe" }, { 1, 2, 23, "popcnt" }, { 1, 2, 25, "aes" },
+        { 1, 2, 26, "xsave" }, { 1, 2, 28, "avx" }, { 1, 2, 29, "f16c" }, { 1, 2, 30, "rdrand" }, { 1, 2, 31, "hypervisor" },
+        { 0x81, 2, 0, "lahf_lm" }, { 0x81, 2, 5, "abm" }, { 0x81, 2, 8, "3dnowprefetch" },
+        { 7, 1, 0, "fsgsbase" }, { 7, 1, 3, "bmi1" }, { 7, 1, 5, "avx2" }, { 7, 1, 8, "bmi2" }, { 7, 1, 9, "erms" },
+        { 7, 1, 16, "avx512f" }, { 7, 1, 17, "avx512dq" }, { 7, 1, 18, "rdseed" }, { 7, 1, 19, "adx" },
+        { 7, 1, 23, "clflushopt" }, { 7, 1, 28, "avx512cd" }, { 7, 1, 29, "sha_ni" }, { 7, 1, 30, "avx512bw" },
+        { 7, 1, 31, "avx512vl" }, { 7, 2, 9, "vaes" }, { 7, 2, 10, "vpclmulqdq" },
+    };
+    u32 r[4], l1[4] = { 0 }, l7[4] = { 0 }, x1[4] = { 0 }, max_ext;
+    size_t i, n = 0;
+    memset(c, 0, sizeof(*c));
+    cpuid(0, 0, r);
+    c->max_leaf = r[0];
+    memcpy(c->vendor, &r[1], 4);
+    memcpy(c->vendor + 4, &r[3], 4);
+    memcpy(c->vendor + 8, &r[2], 4);
+    if (c->max_leaf >= 1) cpuid(1, 0, l1);
+    if (c->max_leaf >= 7) cpuid(7, 0, l7);
+    cpuid(0x80000000u, 0, r);
+    max_ext = r[0];
+    if (max_ext >= 0x80000001u) cpuid(0x80000001u, 0, x1);
+    if (max_ext >= 0x80000004u) {
+        cpuid(0x80000002u, 0, r); memcpy(c->name, r, 16);
+        cpuid(0x80000003u, 0, r); memcpy(c->name + 16, r, 16);
+        cpuid(0x80000004u, 0, r); memcpy(c->name + 32, r, 16);
+    }
+    for (i = 0; c->name[i] == ' '; i++) {}
+    if (i) memmove(c->name, c->name + i, strlen(c->name + i) + 1);
+    if (!c->name[0]) mg_strlcpy(c->name, "x86 processor", sizeof(c->name));
+    c->family = (int)((l1[0] >> 8) & 15);
+    c->model = (int)((l1[0] >> 4) & 15);
+    if (c->family == 15) c->family += (int)((l1[0] >> 20) & 255);
+    if (c->family == 6 || c->family >= 15) c->model |= (int)((l1[0] >> 12) & 0xF0);
+    c->stepping = (int)(l1[0] & 15);
+    for (i = 0; i < MG_COUNT(features); i++) {
+        const u32 *regs = features[i].leaf == 1 ? l1 : features[i].leaf == 7 ? l7 : x1;
+        int len;
+        if (!(regs[features[i].reg] >> features[i].bit & 1)) continue;
+        len = snprintf(c->flags + n, sizeof(c->flags) - n, "%s%s", n ? " " : "", features[i].name);
+        if (len < 0 || (size_t)len >= sizeof(c->flags) - n) break;
+        n += (size_t)len;
+    }
+}
+#endif
+
 static char *synthetic(const char *g, size_t *size)
 {
     textbuf t;
     int cpus = mg_cpu_count(), i;
     memset(&t, 0, sizeof(t));
     if (!strcmp(g, "/proc/cpuinfo")) {
+        /* The processor's own, as Linux's file for it says it: what an app chooses its code by (NEON, sse4_2, asimd). */
+#if MG_ARCH_X86_64 || MG_ARCH_X86
+        x86_cpu c;
+        x86_cpu_read(&c);
+        for (i = 0; i < cpus; i++)
+            tb_add(&t, "processor\t: %d\nvendor_id\t: %s\ncpu family\t: %d\nmodel\t\t: %d\nmodel name\t: %s\nstepping\t: %d\n"
+                       "cpu MHz\t\t: 2000.000\ncache size\t: 4096 KB\nphysical id\t: 0\nsiblings\t: %d\ncore id\t\t: %d\ncpu cores\t: %d\n"
+                       "fpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: %u\nwp\t\t: yes\nflags\t\t: %s\nbogomips\t: 4000.00\n"
+                       "clflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 39 bits physical, 48 bits virtual\n\n",
+                   i, c.vendor, c.family, c.model, c.name, c.stepping, cpus, i, cpus, (unsigned)c.max_leaf, c.flags);
+#elif MG_ARCH_ARM64
+        /* (ARMv8's features every Windows on ARM device has: Advanced SIMD, the cryptographic extension, CRC32.) */
+        for (i = 0; i < cpus; i++)
+            tb_add(&t, "processor\t: %d\nBogoMIPS\t: 38.40\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 cpuid\n"
+                       "CPU implementer\t: 0x51\nCPU architecture: 8\nCPU variant\t: 0xd\nCPU part\t: 0x805\nCPU revision\t: 14\n\n", i);
+        tb_add(&t, "Hardware\t: Qualcomm Technologies, Inc\n");
+#else
         for (i = 0; i < cpus; i++)
             tb_add(&t, "processor\t: %d\nmodel name\t: ARMv7 Processor rev 4 (v7l)\nBogoMIPS\t: 38.40\n"
                        "Features\t: half thumb fastmult vfp edsp neon vfpv3 tls vfpv4 idiva idivt vfpd32 lpae\n"
                        "CPU implementer\t: 0x41\nCPU architecture: 7\nCPU variant\t: 0x0\nCPU part\t: 0xd03\nCPU revision\t: 4\n\n", i);
         tb_add(&t, "Hardware\t: Qualcomm Technologies, Inc MSM\nRevision\t: 0000\nSerial\t\t: 0000000000000000\n");
+#endif
     } else if (!strcmp(g, "/proc/meminfo")) {
         u64 limit = mg_mem_limit(), used = mg_mem_usage();
         if (!limit) limit = 1024ull * 1024 * 1024;
