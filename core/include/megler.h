@@ -20,6 +20,14 @@ extern "C" {
 #endif
 
 /*
+ * x86 (desktop Windows): the structures here are laid out alike by the core's ELF, which aligns a 64-bit field at 4
+ * bytes as Android's x86 ABI does, and by the shell, which MSVC's x86 aligns at 8. Both sides take 4.
+ */
+#if defined(_M_IX86) || (defined(__i386__) && defined(MG_CORE_ELF))
+#pragma pack(push, 4)
+#endif
+
+/*
  * On desktop Windows the core is an ELF library of Android's ABI that Megler.exe loads (docs/DESKTOP.md), and the shell
  * calls it the way Windows calls: MEGLER_API on each function the core exports, MEGLER_CB on each callback of the shell's
  * the core calls. On x86_64 that is Windows' calling convention (ms_abi); on x86 a call from Windows realigns the stack
@@ -496,15 +504,15 @@ typedef struct megler_codec_sound {
 typedef struct megler_codec_host {
     void *user;
     int reorder;
-    bool (*supports)(void *user, int kind);
-    void *(*open)(void *user, int kind, const megler_codec_format *format);
-    bool (*push)(void *user, void *codec, const uint8_t *data, size_t size, int64_t time_us);
-    void (*drain)(void *user, void *codec);
-    void *(*pull_picture)(void *user, void *codec, megler_codec_picture *picture);
-    void (*release_picture)(void *user, void *picture);
-    bool (*pull_sound)(void *user, void *codec, megler_codec_sound *sound);
-    void (*flush)(void *user, void *codec);
-    void (*close)(void *user, void *codec);
+    bool (MEGLER_CB *supports)(void *user, int kind);
+    void *(MEGLER_CB *open)(void *user, int kind, const megler_codec_format *format);
+    bool (MEGLER_CB *push)(void *user, void *codec, const uint8_t *data, size_t size, int64_t time_us);
+    void (MEGLER_CB *drain)(void *user, void *codec);
+    void *(MEGLER_CB *pull_picture)(void *user, void *codec, megler_codec_picture *picture);
+    void (MEGLER_CB *release_picture)(void *user, void *picture);
+    bool (MEGLER_CB *pull_sound)(void *user, void *codec, megler_codec_sound *sound);
+    void (MEGLER_CB *flush)(void *user, void *codec);
+    void (MEGLER_CB *close)(void *user, void *codec);
     bool (MEGLER_CB *read_picture)(void *user, void *picture, megler_codec_picture *out);
     int (MEGLER_CB *show_picture)(void *user, void *picture, int texture_id);
 } megler_codec_host;
@@ -1940,6 +1948,10 @@ char *megler_appx_app_manifest(const char *megler_manifest, const char *android_
    (err says why) when the template is not such a file. */
 bool megler_appx_pri_rename(const uint8_t *pri, size_t size, const char *placeholder, uint32_t tail1, uint32_t tail2, const char *name,
                           uint8_t *out, char *err, size_t errlen);
+
+#if defined(_M_IX86) || (defined(__i386__) && defined(MG_CORE_ELF))
+#pragma pack(pop)
+#endif
 
 #ifdef __cplusplus
 }
