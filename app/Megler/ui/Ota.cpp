@@ -408,6 +408,11 @@ bool downloading(std::string& version, uint64_t& got, uint64_t& total) {
     return true;
 }
 
+bool busy() {
+    std::lock_guard<std::mutex> lock(gMutex);
+    return gStep == Step::downloading || gStep == Step::installing;
+}
+
 void tick(AppShell& shell) {
     if (appPackage::isSingleApp() || packageSuffix().empty()) return;
     if (!gTidied) {

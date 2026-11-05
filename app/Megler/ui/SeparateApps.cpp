@@ -121,6 +121,22 @@ ApkEntry readPicked(const Job& job) {
     return entry;
 }
 
+/// The folders of apps' APKs in the shared folder that nothing reads any more (appPackage::removeUnusedSharedApks): those the
+/// library's entries are in kept, and only while no job is queued or running. (A package being made has a folder no
+/// installed package and no entry names yet; removeUnusedSharedApks leaves a folder of the last hour alone besides.) Off
+/// the UI thread.
+void removeUnusedApks(const std::vector<appPackage::InstalledApp>& installed) {
+    if (appPackage::isSingleApp()) return;
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        if (gWorking || !gJobs.empty()) return;
+    }
+    std::vector<std::wstring> used;
+    for (const ApkEntry& entry : Library::instance().entries())
+        if (appPackage::inSharedApks(entry.path)) used.push_back(entry.path.substr(0, entry.path.find_last_of(L'\\')));
+    appPackage::removeUnusedSharedApks(installed, used);
+}
+
 /// The portal's list, asked again. Off the UI thread.
 void list() {
     std::vector<appPackage::InstalledApp> apps;
@@ -150,6 +166,7 @@ void list() {
     // the copies of Google Play services' APK but the one registered, and the APKs apps handed over that were left. Then what
     // the shared folder holds, once a run.
     if (ok) appPackage::removeUnusedAndroidRoots(apps);
+    if (ok) removeUnusedApks(apps);
     appPackage::removeUnusedServiceCopies();
     appPackage::removeOldHandedApks();
     appPackage::logSharedSpace();
@@ -194,26 +211,10 @@ void run(Job& job, int number, int total) {
                 return;
             }
         }
-        // Windows removes the old APPX during an update. Keep its APK in Megler first,
-        // so a new package that Megler cannot read cannot leave a marker to a vanished file.
-        if (!job.picked && !entry.installedPackage.empty()) {
-            setStep(package, stepOf("Keeping the APK for this update…"));
-            const std::string error = Library::instance().restore(job.id);
-            if (!error.empty()) {
-                setStep(package, "The installed APK could not be kept for the update: " + error);
-                return;
-            }
-            const auto restored = Library::instance().find(job.id);
-            if (!restored) {
-                setStep(package, "The APK kept for the update is missing from the library.");
-                return;
-            }
-            entry = *restored;
-        }
-        const std::wstring apkPath = entry.path;
-        const uint64_t apkSize = job.picked ? job.picked->size() : files::size(entry.path);
+        // The APK is not packed: make keeps it in the shared folder, where the package's app reads it. An update takes it
+        // from there as it is, or, from a package made before 645, copies it there while that package is still installed.
         setStep(package, stepOf("Making the package…"));
-        const appPackage::Made made = appPackage::make(entry, [&](const std::string& step) { setStep(package, stepOf(step)); });
+        const appPackage::Made made = appPackage::make(entry, [&](const std::string& step) { setStep(package, stepOf(step)); }, job.picked.get());
         if (!made.error.empty()) {
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
             setStep(package, made.error + (kept.empty() ? std::string() : " (" + kept + ")"));
@@ -229,7 +230,10 @@ void run(Job& job, int number, int total) {
         appPackage::PortalResult result = appPackage::installWithPackageManager(made.appx, step);
         if (!result.ok) {
             shellLog::write("separate apps: " + result.said + ": through the Device Portal instead");
+            const std::string engine = result.said;
             result = appPackage::installThroughPortal(made, step);
+            // The portal installs only a developer's package: why the engine refused the Store's way is said too.
+            if (!result.ok) result.said = engine + ". The Device Portal: " + result.said;
         }
         if (!result.ok) {
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
@@ -237,7 +241,11 @@ void run(Job& job, int number, int total) {
                                  (kept.empty() ? std::string() : " (" + kept + ")"));
             return;
         }
-        const bool servicePublished = appPackage::registerServiceApk(entry, made.fullName, true);
+        // The APK as the installed package's app reads it, in the shared folder (that of a package made before is gone now).
+        ApkEntry inShared = entry;
+        inShared.path = appPackage::sharedFolder() + L"\\" + made.apkFolder + L"\\app.apk";
+        inShared.splitsDir = files::exists(Library::splitsDirFor(inShared.path)) ? Library::splitsDirFor(inShared.path) : std::wstring();
+        const bool servicePublished = appPackage::registerServiceApk(inShared, made.fullName, true);
         if (!servicePublished) shellLog::write("microG: installed, but its shared service APK could not be published; launch microG to retry");
         // Installed: the package made is the installed one now, and goes (Windows's installer is not wanted for it). The
         // app is listed as installed at once; the portal's list is asked again once the queue is done.
@@ -251,17 +259,11 @@ void run(Job& job, int number, int total) {
             gInstalled.push_back({made.identity, appPackage::meglerVersion(), made.fullName});
             gGeneration++;
         }
-        // Megler keeps no copy of the APK when it can read the installed one in its place; else it keeps (or makes) one.
-        const std::wstring installed = appPackage::installedApk(made.fullName);
-        if (appPackage::canRead(installed) && files::size(installed) == apkSize) {
-            Library::instance().adopt(job.id, made.fullName);
-            setStep(package, "Installed. Megler reads its APK in the installed app and keeps no copy.");
-        } else {
-            shellLog::write("separate apps: " + narrow(installed) + " can't be read by Megler (or is not as large as " + narrow(apkPath) +
-                            "): Megler keeps a copy of the APK");
-            const std::string kept = job.picked ? keepCopy(job, package) : std::string();
-            setStep(package, "Installed." + (kept.empty() ? std::string() : " Megler could not keep a copy of the APK for updates: " + kept));
-        }
+        // The library's entry is that APK now, and Megler's own copy, if it had one, goes: one copy of it on the phone. (In the
+        // package, as before 645, Megler could not read it once Windows installed it as the Store installs an app.)
+        appPackage::sharedApkInstalled(made);
+        Library::instance().adopt(job.id, made.fullName, made.apkFolder);
+        setStep(package, "Installed. Its APK is kept once, in the shared folder, where the app and Megler read it.");
     } else {
         appPackage::InstalledApp app;
         {
