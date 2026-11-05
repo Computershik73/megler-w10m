@@ -2,11 +2,15 @@
 # Builds Megler for desktop Windows on x64, ARM64 or x86 (docs/DESKTOP.md).
 #
 #   tools/build-desktop.sh x64|arm64|x86 tests [--no-run] [-- arguments for mg_tests]
+#   tools/build-desktop.sh x64|arm64|x86 app
 #
 #   tests   the core's ELF with the tests in it (build/desktop-<arch>/megler-core.so) and the test program that loads it
 #           (build/desktop-<arch>/mg_tests.exe); then, on a machine of that processor, runs it as tools/build-tests.sh
 #           win runs the x64 build of the tests: everything that needs no guest code, the Dalvik runtime on its own
 #           java.lang.
+#   app     what tools/build-appx.sh links Megler.exe of for that processor: the core's ELF as the package carries it
+#           (build/desktop-<arch>/app/megler-core.so: the tests the Self-test runs, no test program's main) and Megler.exe's
+#           half of the core compiled for an app container (build/desktop-<arch>/app/coff/*.obj).
 #
 # The core is compiled by clang for Android's ABI of the processor (--target=x86_64-linux-android29 and so on) against
 # the bionic headers of the NDK's sysroot, into an ELF shared object with ld.lld; Megler.exe's half -- the host layer, the
@@ -40,7 +44,7 @@ case "$ARCH" in
   x86) TRIPLE=i686-linux-android29; RT=i686; WIN=i686-pc-windows-msvc; VCARCH=x86; MACHINE=X86 ;;
   *) echo "usage: tools/build-desktop.sh x64|arm64|x86 tests [--no-run]" >&2; exit 2 ;;
 esac
-[ "$WHAT" = tests ] || { echo "only 'tests' can be built so far" >&2; exit 2; }
+case "$WHAT" in tests|app) ;; *) echo "tests or app, not $WHAT" >&2; exit 2 ;; esac
 
 NDK="${MEGLER_NDK:-/c/Users/User/Documents/android-ndk-r21e}"
 LLVM="${MEGLER_LLVM:-/c/Program Files/LLVM/bin}"
@@ -52,8 +56,11 @@ BUILTINS="$(ls "$NDK"/toolchains/llvm/prebuilt/windows-x86_64/lib64/clang/*/lib/
 [ -x "$LLVM/clang.exe" ] || { echo "no clang in $LLVM (set MEGLER_LLVM)" >&2; exit 1; }
 
 OUT="$ROOT/build/desktop-$ARCH"
-mkdir -p "$OUT/elf" "$OUT/coff"
+mkdir -p "$OUT/elf" "$OUT/coff" "$OUT/app/coff"
 cd "$ROOT"
+# (clang.exe is handed the ELF's paths as msys writes them, /c/...: tools/build-appx.sh, which calls this, has turned
+# msys's conversion of them off for its own tools. Megler.exe's half turns it off again below.)
+unset MSYS2_ARG_CONV_EXCL
 
 # MARK: the core's ELF
 
@@ -100,14 +107,24 @@ done
 [ "$missing" = 0 ] || exit 1
 # The ELF: one shared object Megler.exe's loader takes as it is (host/win32/mg_core_loader.c): each segment on pages of
 # its own, both hash tables, plain relocations, everything bound at load. Undefined names are what Megler.exe gives.
-"$LLVM/ld.lld.exe" -shared -soname megler-core.so -o "$OUT/megler-core.so" "$OUT/elf/"*.o "$BUILTINS" \
+# (The app's is the same but for the test program's main.)
+CORE="$OUT/megler-core.so"
+GLUE="$OUT/coff/core_glue.c"
+ELF_OBJS=("$OUT/elf/"*.o)
+if [ "$WHAT" = app ]; then
+  CORE="$OUT/app/megler-core.so"
+  GLUE="$OUT/app/coff/core_glue.c"
+  ELF_OBJS=()
+  for o in "$OUT/elf/"*.o; do [ "$(basename "$o")" = core_tests_mg_tests_main.c.o ] || ELF_OBJS+=("$o"); done
+fi
+"$LLVM/ld.lld.exe" -shared -soname megler-core.so -o "$CORE" "${ELF_OBJS[@]}" "$BUILTINS" \
   --hash-style=both -z max-page-size=4096 -z separate-loadable-segments --pack-dyn-relocs=none -z now -z relro \
   --exclude-libs=ALL --gc-sections --build-id=sha1
-echo "built $OUT/megler-core.so ($(stat -c %s "$OUT/megler-core.so") bytes)"
+echo "built $CORE ($(stat -c %s "$CORE") bytes)"
 
 # MARK: Megler.exe's half
 
-python tools/desktop-stubs.py "$OUT/megler-core.so" "$ARCH" "$OUT/coff/core_glue.c" "$LLVM/llvm-nm.exe"
+python tools/desktop-stubs.py "$CORE" "$ARCH" "$GLUE" "$LLVM/llvm-nm.exe"
 
 if [ -z "${MEGLER_VC:-}" ]; then
   for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe; do
@@ -122,19 +139,29 @@ export INCLUDE="$(w "$MEGLER_VC/include");$(w "$SDK/Include/$SDKV/ucrt");$(w "$S
 export LIB="$(w "$MEGLER_VC/lib/$VCARCH");$(w "$SDK/Lib/$SDKV/ucrt/$VCARCH");$(w "$SDK/Lib/$SDKV/um/$VCARCH")"
 export MSYS2_ARG_CONV_EXCL="*"
 HOST_SRCS=(core/src/host/mg_host_win32.c core/src/host/mg_host_common.c core/src/host/win32/mg_core_loader.c
-           core/src/host/win32/mg_crt_bridge.c core/src/host/win32/mg_host_base.c core/src/host/win32/mg_desktop_tests.c
-           "$OUT/coff/core_glue.c")
+           core/src/host/win32/mg_crt_bridge.c core/src/host/win32/mg_host_base.c "$GLUE")
+[ "$WHAT" = tests ] && HOST_SRCS+=(core/src/host/win32/mg_desktop_tests.c)
 for s in core/src/appx/*.c; do HOST_SRCS+=("$s"); done
 COFF_FLAGS=(--target=$WIN /nologo /c /O2 /MT /W3 /utf-8 /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_ELF_HOST=1
             /Icore/src /Icore/third_party/zlib -Wno-microsoft-anon-tag -Wno-unused-parameter)
-rm -f "$OUT/coff/"*.obj
+COFF_OUT="$OUT/coff"
+if [ "$WHAT" = app ]; then
+  # As the phone's package compiles the core: for an app container, whose headers show what an app may call.
+  COFF_FLAGS+=(/DWINAPI_FAMILY=WINAPI_FAMILY_APP /DWIN32 /D_WIN32 /DUNICODE /D_UNICODE /DNOMINMAX /DWIN32_LEAN_AND_MEAN /DNDEBUG /Z7)
+  COFF_OUT="$OUT/app/coff"
+fi
+rm -f "$COFF_OUT/"*.obj
 objs=()
 for s in "${HOST_SRCS[@]}" "${ZSRCS[@]}"; do
   case "$s" in /*) src="$s" ;; *) src="$ROOT/$s" ;; esac
-  obj="$OUT/coff/$(basename "$(dirname "$s")")_$(basename "${s%.c}").obj"
+  obj="$COFF_OUT/$(basename "$(dirname "$s")")_$(basename "${s%.c}").obj"
   "$LLVM/clang-cl.exe" "${COFF_FLAGS[@]}" "/Fo$(w "$obj")" "$(w "$src")" || { echo "FAILED: $s" >&2; exit 1; }
   objs+=("$(w "$obj")")
 done
+if [ "$WHAT" = app ]; then
+  echo "built ${#objs[@]} objects of Megler.exe's half of the core in $COFF_OUT"
+  exit 0
+fi
 "$LLVM/lld-link.exe" /nologo /machine:$MACHINE /subsystem:console "/out:$(w "$OUT/mg_tests.exe")" "${objs[@]}" \
   bcrypt.lib synchronization.lib ws2_32.lib iphlpapi.lib ole32.lib oleaut32.lib d3d11.lib dxgi.lib
 echo "built $OUT/mg_tests.exe"
