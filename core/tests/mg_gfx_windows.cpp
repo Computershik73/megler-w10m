@@ -596,7 +596,28 @@ int mg_gfx_windows_check_video(const megler_gfx_host* h, void (*line)(const char
         check(g_window.shown == was + 1 && readWindow(shown) && shown[14 * w + 40] == 0xFF0000C0u && shown[34 * w + 40] == 0xFFC0C000u &&
                   shown[14 * w + 24] == 0xFFFF0000u && shown[4 * w + 4] == 0xFFFFFFFFu,
               "the new picture is not what the window shows, under the views as they were");
-        // Drawn at half its alpha it is among the views, and no longer under them.
+        // A drawing of a part of the window (a small view's animation over the video) clips the list to that part: the video is
+        // still under the whole of its view, and its next picture is shown there whole.
+        h->save(h->user, cv);
+        h->clip_rect(h->user, cv, 20, 10, 28, 18, MEGLER_GFX_CLIP_INTERSECT);
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        h->draw_texture(h->user, cv, id, 16, 8, 48, 40, 255);
+        h->draw_rect(h->user, cv, 20, 10, 28, 18, &p, nullptr);
+        h->restore(h->user, cv);
+        h->present(h->user, cv, 20, 10, 8, 8);
+        check(gfx.showVideoFrame(id, green, 16, 16) == 2 && readWindow(shown) && shown[14 * w + 40] == 0xFF00C000u && shown[34 * w + 40] == 0xFF00C0C0u &&
+                  shown[14 * w + 24] == 0xFFFF0000u,
+              "after the views were drawn in a part over the video, its next picture is not shown whole under them");
+        // The views drawn again without it (its view scrolled away): the video is no longer under them, and its window is the views'.
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown) && shown[14 * w + 40] == 0xFFFFFFFFu && shown[34 * w + 40] == 0xFFFFFFFFu,
+              "the views drawn again without the video still show it");
+        check(gfx.showVideoFrame(id, blue, 16, 16) == 1 && readWindow(shown) && shown[34 * w + 40] == 0xFFFFFFFFu,
+              "a video the views no longer draw was still put under them");
+        // Its view drawing it again puts it back; drawn at half its alpha it is among the views, and no longer under them.
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        h->draw_texture(h->user, cv, id, 16, 8, 48, 40, 255);
+        check(h->present(h->user, cv, 0, 0, w, hgt) && gfx.showVideoFrame(id, green, 16, 16) == 2, "a video drawn again by its view was not under the views");
         h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
         h->draw_texture(h->user, cv, id, 16, 8, 48, 40, 128);
         h->present(h->user, cv, 0, 0, w, hgt);

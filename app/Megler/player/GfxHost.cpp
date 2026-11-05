@@ -3596,13 +3596,15 @@ struct Composition {
     struct Video {
         int id = 0;
         Box rect, clip;              // in the window's (the views') pixels
-        uint64_t order = 0;          // later ones over earlier ones
+        uint64_t order = 0;          // later ones over earlier ones: the order the views last drew them in
+        uint64_t seen = 0;           // the drawing of the views (cycle) that last drew it
     };
     std::mutex mutex;
     bool layered = false;            // frames or places have come: present keeps the views and composes the window here
     Layer layers[8];
     std::vector<Video> videos;
     uint64_t videoOrder = 0;
+    uint64_t cycle = 1;              // the drawing of the views going on now: one more at each present
     Ref<ID2D1Bitmap1> views;         // the views' picture as present last showed it, rows top first
     int width = 0, height = 0;
     bool haveViews = false;
@@ -4008,18 +4010,23 @@ void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b
             Composition& c = composition();
             std::lock_guard<std::mutex> lock(c.mutex);
             c.layered = true;
+            // Drawn again where it was, the place keeps what the views left open for it before too: a drawing of a part of the
+            // window (a small view's animation over the video) clips the list to that part, and what it did not draw keeps the
+            // hole it had. Drawn elsewhere (moved), it is where it is now. Either way it is over what the views drew before it.
+            v.seen = c.cycle;
+            v.order = ++c.videoOrder;
             bool known = false;
             for (Composition::Video& w : c.videos) {
                 if (w.id != id) continue;
-                c.pending.include(w.clip);
-                v.order = w.order;
+                if (w.rect.l == v.rect.l && w.rect.t == v.rect.t && w.rect.r == v.rect.r && w.rect.b == v.rect.b) {
+                    v.clip.include(w.clip);
+                } else {
+                    c.pending.include(w.clip);
+                }
                 w = v;
                 known = true;
             }
-            if (!known) {
-                v.order = ++c.videoOrder;
-                c.videos.push_back(v);
-            }
+            if (!known) c.videos.push_back(v);
             c.pending.include(v.clip);
             ++s.videosPlaced;
             return;
@@ -4126,6 +4133,18 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
                     s.windowCanvas = cv->serial;
                 }
                 if (fresh) part = base.bounds();
+                // A video under the views that this drawing of them did not draw where it drew is no longer there (its view
+                // scrolled away, or was hidden): every view in a part drawn again is drawn again, its TextureView too. It no
+                // longer goes under them, nor over another video put there since.
+                for (size_t i = comp.videos.size(); i-- > 0;) {
+                    const Composition::Video& v = comp.videos[i];
+                    Box both = v.clip;
+                    both.intersect(part);
+                    if (v.seen == comp.cycle || both.empty()) continue;
+                    comp.pending.include(v.clip);
+                    comp.videos.erase(comp.videos.begin() + std::ptrdiff_t(i));
+                }
+                comp.cycle++;
                 const D2D1_POINT_2U at = D2D1::Point2U(UINT32(part.l), UINT32(part.t));
                 const D2D1_RECT_U source = D2D1::RectU(UINT32(part.l), UINT32(part.t), UINT32(part.r), UINT32(part.b));
                 const HRESULT hr = comp.views->CopyFromBitmap(&at, base.gpu.get(), &source);
