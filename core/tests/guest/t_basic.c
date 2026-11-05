@@ -1162,28 +1162,28 @@ enum { NR_sigaction = 67, NR_rt_sigaction = 174, NR_munmap = 91, NR_timerfd_crea
        NR_accept4 = 366, NR_sendto = 290, NR_recvfrom = 292, NR_send = 289, NR_recv = 291, NR_getpeername = 287, NR_getsockopt = 295,
        NR_shutdown = 293, NR_socketpair = 288, NR_sendmsg = 296, NR_recvmsg = 297, NR_splice = 340, NR_flock = 143, NR_ftruncate = 194,
        NR_pwrite64 = 181, NR_pread64 = 180, NR_fdatasync = 148, NR_getdents64 = 217, NR_prlimit64 = 369, NR_uname = 122, NR_getuid = 199,
-       NR_getppid = 64 };
+       NR_getppid = 64, NR_futex = 240 };
 #elif defined(__i386__)
 enum { NR_sigaction = 67, NR_rt_sigaction = 174, NR_munmap = 91, NR_timerfd_create = 322, NR_timerfd_settime = 325, NR_timerfd_gettime = 326,
        NR_nanosleep = 162, NR_rt_sigprocmask = 175, NR_madvise = 219, NR_mincore = 218, NR_epoll_pwait = 319, NR_fcntl = 55, NR_fallocate = 324,
        NR_socket = 359, NR_setsockopt = 366, NR_bind = 361, NR_listen = 363, NR_getsockname = 367, NR_connect = 362, NR_poll = 168,
        NR_accept4 = 364, NR_sendto = 369, NR_recvfrom = 371, NR_getpeername = 368, NR_getsockopt = 365, NR_shutdown = 373, NR_socketpair = 360,
        NR_sendmsg = 370, NR_recvmsg = 372, NR_splice = 313, NR_flock = 143, NR_ftruncate = 194, NR_pwrite64 = 181, NR_pread64 = 180,
-       NR_fdatasync = 148, NR_getdents64 = 220, NR_prlimit64 = 340, NR_uname = 122, NR_getuid = 199, NR_getppid = 64 };
+       NR_fdatasync = 148, NR_getdents64 = 220, NR_prlimit64 = 340, NR_uname = 122, NR_getuid = 199, NR_getppid = 64, NR_futex = 240 };
 #elif defined(__x86_64__)
 enum { NR_rt_sigaction = 13, NR_munmap = 11, NR_timerfd_create = 283, NR_timerfd_settime = 286, NR_timerfd_gettime = 287, NR_nanosleep = 35,
        NR_rt_sigprocmask = 14, NR_madvise = 28, NR_mincore = 27, NR_epoll_pwait = 281, NR_fcntl = 72, NR_fallocate = 285, NR_socket = 41,
        NR_setsockopt = 54, NR_bind = 49, NR_listen = 50, NR_getsockname = 51, NR_connect = 42, NR_poll = 7, NR_accept4 = 288, NR_sendto = 44,
        NR_recvfrom = 45, NR_getpeername = 52, NR_getsockopt = 55, NR_shutdown = 48, NR_socketpair = 53, NR_sendmsg = 46, NR_recvmsg = 47,
        NR_splice = 275, NR_flock = 73, NR_ftruncate = 77, NR_pwrite64 = 18, NR_pread64 = 17, NR_fdatasync = 75, NR_getdents64 = 217,
-       NR_prlimit64 = 302, NR_uname = 63, NR_getuid = 102, NR_getppid = 110 };
+       NR_prlimit64 = 302, NR_uname = 63, NR_getuid = 102, NR_getppid = 110, NR_futex = 202 };
 #else
 enum { NR_rt_sigaction = 134, NR_munmap = 215, NR_timerfd_create = 85, NR_timerfd_settime = 86, NR_timerfd_gettime = 87, NR_nanosleep = 101,
        NR_rt_sigprocmask = 135, NR_madvise = 233, NR_mincore = 232, NR_epoll_pwait = 22, NR_fcntl = 25, NR_fallocate = 47, NR_socket = 198,
        NR_setsockopt = 208, NR_bind = 200, NR_listen = 201, NR_getsockname = 204, NR_connect = 203, NR_ppoll = 73, NR_accept4 = 242,
        NR_sendto = 206, NR_recvfrom = 207, NR_getpeername = 205, NR_getsockopt = 209, NR_shutdown = 210, NR_socketpair = 199, NR_sendmsg = 211,
        NR_recvmsg = 212, NR_splice = 76, NR_flock = 32, NR_ftruncate = 46, NR_pwrite64 = 68, NR_pread64 = 67, NR_fdatasync = 83,
-       NR_getdents64 = 61, NR_prlimit64 = 261, NR_uname = 160, NR_getuid = 174, NR_getppid = 173 };
+       NR_getdents64 = 61, NR_prlimit64 = 261, NR_uname = 160, NR_getuid = 174, NR_getppid = 173, NR_futex = 98 };
 #endif
 
 static void ff_handler(int sig) { (void)sig; }
@@ -1761,6 +1761,95 @@ long long t_wait_herd(int idle, int rounds)
     close(g_pong[0]);
     close(g_pong[1]);
     return (long long)(z.tv_sec - a.tv_sec) * 1000000 + (z.tv_nsec - a.tv_nsec) / 1000;
+}
+
+/*
+ * Mutexes under contention: `threads` threads take a normal mutex and a recursive one (that twice over) `iters` times
+ * each, round after round, every round started and its ends counted through two semaphores, until `ms` milliseconds have
+ * gone by and at least a hundred rounds are done. A round in which ten seconds go by without another of its threads
+ * ending has stalled: a thread asleep on a mutex nobody holds, as one was left when a woken waiter that lost the race took
+ * the lock as uncontended (mg_pthread.c, mutex_acquire). Its sleepers are then woken by hand, FUTEX_WAKE on the mutexes'
+ * words, until the round ends, and the rounds stop there, so that the check fails rather than hangs. The rounds done; or
+ * -1 the threads could not be made, -2 a round stalled, -3 a count is wrong (two threads were inside one mutex at once),
+ * -4 the round did not end even so.
+ */
+int sem_timedwait(t_sem *, const struct t_timespec *);
+static pthread_mutex_t g_stress_lock = T_MUTEX_INITIALIZER, g_stress_rlock = T_RECURSIVE_MUTEX_INITIALIZER;
+static t_sem g_stress_go, g_stress_done;
+static volatile int g_stress_stop;
+static int g_stress_iters, g_stress_count, g_stress_rcount;
+
+static void *stress_worker(void *arg)
+{
+    int i;
+    (void)arg;
+    for (;;) {
+        sem_wait(&g_stress_go);
+        if (g_stress_stop) return 0;
+        for (i = 0; i < g_stress_iters; i++) {
+            pthread_mutex_lock(&g_stress_lock);
+            g_stress_count++;
+            pthread_mutex_unlock(&g_stress_lock);
+            pthread_mutex_lock(&g_stress_rlock);
+            pthread_mutex_lock(&g_stress_rlock);
+            g_stress_rcount++;
+            pthread_mutex_unlock(&g_stress_rlock);
+            pthread_mutex_unlock(&g_stress_rlock);
+        }
+        sem_post(&g_stress_done);
+    }
+}
+
+/* One more of the round's threads has ended, waited for up to `ms`: sem_timedwait's deadline is on the realtime clock. */
+static int stress_ended(long ms)
+{
+    struct t_timespec at;
+    clock_gettime(0, &at);
+    at.tv_sec += ms / 1000;
+    at.tv_nsec += (ms % 1000) * 1000000;
+    if (at.tv_nsec >= 1000000000) {
+        at.tv_sec++;
+        at.tv_nsec -= 1000000000;
+    }
+    return sem_timedwait(&g_stress_done, &at) == 0;
+}
+
+int t_mutex_stress(int threads, int iters, int ms)
+{
+    pthread_t t[32];
+    int made, i, ended, rounds = 0, result = 0;
+    long start = now_ms(), until;
+    if (threads > 32) threads = 32;
+    g_stress_iters = iters;
+    g_stress_count = g_stress_rcount = 0;
+    g_stress_stop = 0;
+    sem_init(&g_stress_go, 0, 0);
+    sem_init(&g_stress_done, 0, 0);
+    for (made = 0; made < threads && pthread_create(&t[made], 0, stress_worker, 0) == 0; made++) { }
+    if (made < threads) result = -1;
+    while (!result && (rounds < 100 || now_ms() - start < ms) && rounds < 100000) {
+        for (i = 0; i < threads; i++) sem_post(&g_stress_go);
+        for (ended = 0; ended < threads && stress_ended(10000); ended++) { }
+        if (ended < threads) {
+            __android_log_print(5, "t_basic", "mutex round %d stalled: %d of %d threads ended, the mutexes' words %08x and %08x",
+                                rounds, ended, threads, *(volatile unsigned *)&g_stress_lock, *(volatile unsigned *)&g_stress_rlock);
+            for (until = now_ms() + 10000; ended < threads && now_ms() < until;) {
+                syscall(NR_futex, &g_stress_lock, 1 /* FUTEX_WAKE */, 0x7FFFFFFF, 0, 0, 0);
+                syscall(NR_futex, &g_stress_rlock, 1, 0x7FFFFFFF, 0, 0, 0);
+                if (stress_ended(1)) ended++;
+            }
+            /* (Threads still inside a round are left as they are: they would never take the stop.) */
+            if (ended < threads) return -4;
+            result = -2;
+        }
+        rounds++;
+    }
+    g_stress_stop = 1;
+    for (i = 0; i < made; i++) sem_post(&g_stress_go);
+    for (i = 0; i < made; i++) pthread_join(t[i], 0);
+    if (result) return result;
+    if (g_stress_count != rounds * threads * iters || g_stress_rcount != rounds * threads * iters) return -3;
+    return rounds;
 }
 
 /*

@@ -3000,6 +3000,16 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK(counter && *counter == 555);
     FN(lib, void (*)(int), "t_tls_set")(100);
     CHECK_INT(FN(lib, int (*)(int, int), "t_threads")(8, 2000), 16000);
+    /* Sixteen threads in rounds for a second, short turns on a normal and a recursive mutex: no round stalls. (When a
+       woken waiter that lost the race took the lock as uncontended, a thread was left asleep on a free mutex: on this
+       PC's x64 build one round in about a thousand, and t_threads hung now and then.) */
+    {
+        u64 t0 = mg_time_monotonic_ns();
+        int rounds = FN(lib, int (*)(int, int, int), "t_mutex_stress")(16, 20, 1000);
+        say("  %d rounds of 16 threads taking two mutexes 20 times each, in %d ms (-2: a round stalled)", rounds,
+            (int)((mg_time_monotonic_ns() - t0) / 1000000));
+        CHECK(rounds >= 100);
+    }
     CHECK_INT(FN(lib, int (*)(void), "t_tls_app_slot")(), 0);
     /* A wait is woken by what it waits on: a byte passed back and forth over two pipes, with 32 other threads waiting
        in epoll_wait each on an eventfd of its own (an app's Loopers), and with none. */
