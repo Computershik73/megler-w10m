@@ -550,6 +550,12 @@ if ls "$GUEST"/*.so > /dev/null 2>&1; then
 else
   echo "    WARNING: no guest test libraries in build/guest/$ABI; the self-test will fail the tests that load them" >&2
 fi
+# (The DEX files are every ABI's, and tools/build-dvm-fixtures.sh keeps them beside 32-bit ARM's libraries: a desktop
+# package without guest libraries of its own takes them from there, or the runtime's tests fail for want of them.)
+if [ ! -d "$STAGE/selftest/dvm" ] && [ -d "$ROOT/build/guest/armeabi-v7a/dvm" ]; then
+  mkdir -p "$STAGE/selftest/dvm" && cp "$ROOT/build/guest/armeabi-v7a/dvm/"* "$STAGE/selftest/dvm/"
+  echo "    selftest: the Dalvik runtime's DEX files, $(ls "$STAGE/selftest/dvm" | wc -l) files"
+fi
 if [ "$JAVA" = 1 ]; then
   # The Java framework and the test apps, built where their sources are newer (a JDK and the Android SDK's build tools).
   { bash "$ROOT/tools/build-framework.sh" && bash "$ROOT/tools/build-test-app.sh"; } > "$BUILD/build-java.log" 2>&1 ||
