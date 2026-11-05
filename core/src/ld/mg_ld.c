@@ -508,6 +508,26 @@ static bool reloc_symbol(reloc_ctx *c, u32 index, bool want_fn, mg_addr *addr, c
 static mg_addr rd_word(const u8 *place) { mg_addr v; memcpy(&v, place, sizeof(v)); return v; }
 static void wr_word(u8 *place, mg_addr v) { memcpy(place, &v, sizeof(v)); }
 
+#if MG_ARCH_ARM64 && MG_GUEST_CODE
+/*
+ * ARM64's TLS descriptors (R_AARCH64_TLSDESC), its compilers' way to a thread-local variable of another module or of the
+ * global-dynamic kind: two words, a function and its argument. Code calls the function with x0 the descriptor and adds
+ * what it returns in x0 to its thread pointer; the function may change no other register. Every library's thread-local
+ * block is in this layer's static block (ld/mg_tls.c), so one function serves them all: it returns the descriptor's
+ * second word, the variable's offset from the thread pointer.
+ */
+void mg_tlsdesc_static(void);
+__asm__(".text\n"
+        ".p2align 2\n"
+        ".globl mg_tlsdesc_static\n"
+        ".hidden mg_tlsdesc_static\n"
+        ".type mg_tlsdesc_static, %function\n"
+        "mg_tlsdesc_static:\n"
+        "ldr x0, [x0, #8]\n"
+        "ret\n"
+        ".size mg_tlsdesc_static, .-mg_tlsdesc_static\n");
+#endif
+
 /*
  * One relocation. `addend` is RELA's (the 64-bit ABIs), or for REL (the 32-bit ones) what the place holds, read here when
  * `has_addend` is false. The values are the same on every processor, but for TLS: a thread pointer offset is from the
@@ -563,6 +583,17 @@ static void apply_reloc(reloc_ctx *c, mg_addr r_offset, mg_addr r_info, mg_addr 
             return;
         }
         wr_word(place, owner->tls_offset + s + addend);
+#if MG_ARCH_ARM64 && MG_GUEST_CODE
+    } else if (type == MG_R_TLSDESC) {
+        mg_lib *owner = index ? def : lib;
+        if (!owner || !owner->has_tls || r_offset > lib->vmax - 2 * sizeof(mg_addr)) {
+            mg_err("ld: %s: a TLS descriptor against a library with no thread-local data, or outside the image", lib->name);
+            c->failed = true;
+            return;
+        }
+        wr_word(place, (mg_addr)mg_tlsdesc_static);
+        wr_word(place + sizeof(mg_addr), owner->tls_offset + s + addend);
+#endif
     } else {
         mg_err("ld: %s: relocation type %u is not supported", lib->name, type);
         c->failed = true;
