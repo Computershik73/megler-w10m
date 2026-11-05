@@ -35,6 +35,11 @@ bool flush(const std::wstring& path);
 /// Whether two files are of one size and end with the same `bytes`: a copy that never finished is not (Windows gives it
 /// the whole size first, and what was never written of it reads as zeros).
 bool sameEnd(const std::wstring& a, const std::wstring& b, uint32_t bytes);
+/// Whether `copy` now holds `source`'s bytes, every 1 MB chunk of it compared and those that differ written again from
+/// `source` (read twice alike first), put on the disk and read back; `mended`: how many bytes were written so. A Lumia 650's
+/// copies of Google Play services' 277 MB APK came out twice with a byte wrong in their middle, each time in a DEX file
+/// of it that no app could then use (packages 625 and 632).
+bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended);
 
 /// The names (not paths) of the files in `directory` matching `pattern` ("*.apk").
 std::vector<std::wstring> list(const std::wstring& directory, const std::wstring& pattern);
