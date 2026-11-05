@@ -126,12 +126,16 @@ ApkEntry readPicked(const Job& job) {
 /// for 20 s after their install; Play services' was read 20 minutes after another of its installs). Once the APK can be read,
 /// and is the copy's (a package this Megler made: the same size and the same last megabyte), it is taken for the copy, which
 /// goes, as after an install. Not for an app in several APKs (its splits are in a folder such a package does not show
-/// Megler), and only while no job is queued or running. Off the UI thread.
+/// Megler), nor for one the library has another APK of (Library::adopt lets the others go: one added since, not installed
+/// yet, would be lost), and only while no job is queued or running. Off the UI thread.
 void adoptLater(const std::vector<appPackage::InstalledApp>& installed) {
     if (appPackage::isSingleApp()) return;
     const std::string version = appPackage::meglerVersion();
-    for (const ApkEntry& entry : Library::instance().entries()) {
+    const std::vector<ApkEntry> entries = Library::instance().entries();
+    for (const ApkEntry& entry : entries) {
         if (!entry.installedPackage.empty() || !entry.splitsDir.empty() || entry.report.package.empty()) continue;
+        if (std::count_if(entries.begin(), entries.end(), [&](const ApkEntry& e) { return e.report.package == entry.report.package; }) > 1)
+            continue;
         const std::string identity = identityOf(entry.report.package);
         const auto app = std::find_if(installed.begin(), installed.end(), [&](const appPackage::InstalledApp& a) { return a.identity == identity; });
         if (app == installed.end() || app->version != version) continue;

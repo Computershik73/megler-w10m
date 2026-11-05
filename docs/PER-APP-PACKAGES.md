@@ -198,9 +198,13 @@ copy, as before, and the log says so. A package installed as the Store installs
 an app (0.1.0.640 on) lets Megler open its app's files by their paths but shows
 it none of its folders: `app\app.apk.splits` has no attributes and no list for
 Megler, though the app's own package starts with its splits, and the package's
-own files (`AppxBlockMap.xml`) give error 5. Right after its install, a large
-one's APK may not be read yet either (Google Play services, Google Maps: Megler
-asks again for 20 s, then keeps its copy). The core reads an app's splits as a
+own files (`AppxBlockMap.xml`) give error 5. The APK itself gave error 5 too in
+every package first installed so (Google Maps, AIDA64, Avito, Apktool M, Apple
+Music on a Lumia 650, 644), and in Google Play services' from its third update
+so, while Google Play Store's and WhatsApp's, first installed as a developer's,
+were read after each update: Megler asks again for 20 s after an install, then
+keeps its copy, and lets the copy go at a later listing of the packages once
+the APK can be read (`adoptLater`). The core reads an app's splits as a
 folder, so an app in several APKs installed so keeps Megler's copy
 (`ui/SeparateApps.cpp`); 640 and 641 let it go, and the library took such an
 app for a base without its splits, which Update All left out (TikTok Lite on a
