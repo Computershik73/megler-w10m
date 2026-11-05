@@ -306,6 +306,7 @@ static int rw_lock(g_rwlock *rw, bool write, u64 timeout_ns, bool timed)
 {
     i32 tid = mg_gthread_self()->tid;
     int r = 0;
+    bool waited = false, let_in = false;
     g_mutex_lock(&rw->lock);
     if (write) {
         if (rw->writer == tid) {
@@ -315,10 +316,14 @@ static int rw_lock(g_rwlock *rw, bool write, u64 timeout_ns, bool timed)
         rw->pending_writers++;
         while (rw->readers || rw->writer) {
             if (timed && timeout_ns <= 1) { r = timeout_ns ? G_EBUSY : G_ETIMEDOUT; break; }
+            waited = true;
             if (cond_wait(&rw->cond, &rw->lock, timeout_ns, timed)) { r = G_ETIMEDOUT; break; }
         }
         rw->pending_writers--;
         if (!r) rw->writer = tid;
+        /* Readers that came while it waited wait behind it; when it gives up with no other writer about, nothing else
+           would tell them they may go in now. */
+        else let_in = waited && !rw->pending_writers && !rw->writer;
     } else {
         /* Writers first, or a steady stream of readers starves them. */
         while (rw->writer || rw->pending_writers) {
@@ -328,6 +333,7 @@ static int rw_lock(g_rwlock *rw, bool write, u64 timeout_ns, bool timed)
         if (!r) rw->readers++;
     }
     g_mutex_unlock(&rw->lock);
+    if (let_in) g_cond_broadcast(&rw->cond);
     return r;
 }
 

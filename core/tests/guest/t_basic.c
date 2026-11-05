@@ -1853,6 +1853,78 @@ int t_mutex_stress(int threads, int iters, int ms)
 }
 
 /*
+ * A writer that gives up lets in the readers it held back: this thread holds a read lock, a writer waits for the lock
+ * until 300 ms on, and a reader that comes after it waits behind it (writers first). Once the writer has given up nothing
+ * keeps the reader out, though this thread still reads. 0, or the step that failed: 1 the first read lock, 2 a thread
+ * not made, 3 the writer never seemed to wait, 4 the writer did not end with ETIMEDOUT, 5 the reader was still kept out
+ * three seconds on, 6 the reader's lock failed.
+ */
+typedef struct { int private_[14]; } t_rwlock;    /* bionic's pthread_rwlock_t: 40 bytes on the 32-bit ABIs, 56 on the 64-bit ones */
+int pthread_rwlock_rdlock(t_rwlock *);
+int pthread_rwlock_tryrdlock(t_rwlock *);
+int pthread_rwlock_timedwrlock(t_rwlock *, const struct t_timespec *);
+int pthread_rwlock_unlock(t_rwlock *);
+static t_rwlock g_rw;
+static volatile int g_rw_reader_in;
+
+static void *rw_writer(void *arg)
+{
+    struct t_timespec at;
+    int e;
+    (void)arg;
+    clock_gettime(0, &at);
+    at.tv_nsec += 300000000;
+    if (at.tv_nsec >= 1000000000) {
+        at.tv_sec++;
+        at.tv_nsec -= 1000000000;
+    }
+    e = pthread_rwlock_timedwrlock(&g_rw, &at);
+    if (e == 0) pthread_rwlock_unlock(&g_rw);
+    return (void *)(long)e;
+}
+
+static void *rw_reader(void *arg)
+{
+    (void)arg;
+    if (pthread_rwlock_rdlock(&g_rw) != 0) return (void *)-1L;
+    g_rw_reader_in = 1;
+    pthread_rwlock_unlock(&g_rw);
+    return 0;
+}
+
+int t_rwlock_writer_gives_up(void)
+{
+    pthread_t w, r;
+    void *wrote = 0, *read = 0;
+    long until;
+    int e = 0, reader = 0, in = 0;
+    g_rw_reader_in = 0;
+    if (pthread_rwlock_rdlock(&g_rw) != 0) return 1;
+    if (pthread_create(&w, 0, rw_writer, 0) != 0) {
+        pthread_rwlock_unlock(&g_rw);
+        return 2;
+    }
+    /* The writer is waiting once another read lock is refused. */
+    for (until = now_ms() + 3000; now_ms() < until && (e = pthread_rwlock_tryrdlock(&g_rw)) == 0;) {
+        pthread_rwlock_unlock(&g_rw);
+        usleep(1000);
+    }
+    if (e == 16 /* EBUSY */ && pthread_create(&r, 0, rw_reader, 0) == 0) {
+        reader = 1;
+        for (until = now_ms() + 3000; !g_rw_reader_in && now_ms() < until;) usleep(1000);
+        in = g_rw_reader_in;
+    }
+    pthread_rwlock_unlock(&g_rw);
+    pthread_join(w, &wrote);
+    if (reader) pthread_join(r, &read);
+    if (e != 16) return 3;
+    if (!reader) return 2;
+    if ((long)wrote != 110 /* ETIMEDOUT */) return 4;
+    if (!in) return 5;
+    return read ? 6 : 0;
+}
+
+/*
  * What Go's runtime calls by number, past libc: nanosleep, rt_sigprocmask (a 64-bit set; another size refused), madvise
  * and mincore on a page of its own, epoll_pwait, fcntl, and fallocate with its offset and length in register pairs (a
  * mode other than 0 refused). 0, or the step that failed.

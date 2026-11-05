@@ -3010,6 +3010,9 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
             (int)((mg_time_monotonic_ns() - t0) / 1000000));
         CHECK(rounds >= 100);
     }
+    /* A reader kept out by a waiting writer goes in when the writer gives up (pthread_rwlock_timedwrlock): it slept on
+       until the next unlock. */
+    CHECK_INT(FN(lib, int (*)(void), "t_rwlock_writer_gives_up")(), 0);
     CHECK_INT(FN(lib, int (*)(void), "t_tls_app_slot")(), 0);
     /* A wait is woken by what it waits on: a byte passed back and forth over two pipes, with 32 other threads waiting
        in epoll_wait each on an eventfd of its own (an app's Loopers), and with none. */
