@@ -19,6 +19,27 @@
 extern "C" {
 #endif
 
+/*
+ * On desktop Windows the core is an ELF library of Android's ABI that Megler.exe loads (docs/DESKTOP.md), and the shell
+ * calls it the way Windows calls: MEGLER_API on each function the core exports, MEGLER_CB on each callback of the shell's
+ * the core calls. On x86_64 that is Windows' calling convention (ms_abi); on x86 a call from Windows realigns the stack
+ * to Android's 16 bytes; on ARM64 the two conventions are one. Nothing at all for the phone and the tests. MG_CORE_ELF is
+ * defined where the core's ELF is compiled.
+ */
+#if defined(MG_CORE_ELF) && defined(__x86_64__)
+#define MEGLER_API __attribute__((ms_abi, visibility("default")))
+#define MEGLER_CB __attribute__((ms_abi))
+#elif defined(MG_CORE_ELF) && defined(__i386__)
+#define MEGLER_API __attribute__((force_align_arg_pointer, visibility("default")))
+#define MEGLER_CB
+#elif defined(MG_CORE_ELF)
+#define MEGLER_API __attribute__((visibility("default")))
+#define MEGLER_CB
+#else
+#define MEGLER_API
+#define MEGLER_CB
+#endif
+
 /* ------------------------------------------------------------------ setup */
 
 enum { MEGLER_LOG_DEBUG = 0, MEGLER_LOG_INFO, MEGLER_LOG_WARN, MEGLER_LOG_ERROR };
@@ -484,8 +505,8 @@ typedef struct megler_codec_host {
     bool (*pull_sound)(void *user, void *codec, megler_codec_sound *sound);
     void (*flush)(void *user, void *codec);
     void (*close)(void *user, void *codec);
-    bool (*read_picture)(void *user, void *picture, megler_codec_picture *out);
-    int (*show_picture)(void *user, void *picture, int texture_id);
+    bool (MEGLER_CB *read_picture)(void *user, void *picture, megler_codec_picture *out);
+    int (MEGLER_CB *show_picture)(void *user, void *picture, int texture_id);
 } megler_codec_host;
 
 /*
