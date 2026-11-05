@@ -201,7 +201,10 @@ typedef struct mg_thread_regs {
     mg_addr sp, pc;
     u32 flags;                         /* CPSR on ARM: bit 5 is the Thumb state */
     int n;
-    /* The general registers that may hold anything, sp and pc not among them: on 32-bit ARM r0..r12 and lr (r[13]). */
+    /*
+     * The general registers that may hold anything, sp and pc not among them: on 32-bit ARM r0..r12 and lr (r[13]); on
+     * x86_64 rax, rcx, rdx, rbx, rbp, rsi, rdi, r8..r15; on x86 eax, ecx, edx, ebx, ebp, esi, edi; on ARM64 x0..x28, fp, lr.
+     */
     mg_addr r[32];
 } mg_thread_regs;
 MG_HOSTAPI bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out);

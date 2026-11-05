@@ -918,6 +918,22 @@ bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out)
     out->r[6] = ctx.Rdi; out->r[7] = ctx.R8; out->r[8] = ctx.R9; out->r[9] = ctx.R10; out->r[10] = ctx.R11; out->r[11] = ctx.R12;
     out->r[12] = ctx.R13; out->r[13] = ctx.R14; out->r[14] = ctx.R15;
     out->n = 15;
+#elif defined(_M_ARM64)
+    out->sp = (mg_addr)ctx.Sp;
+    out->pc = (mg_addr)ctx.Pc;
+    out->flags = ctx.Cpsr;
+    {
+        int i;
+        for (i = 0; i < 31; i++) out->r[i] = (mg_addr)ctx.X[i];     /* x0..x28, fp, lr */
+    }
+    out->n = 31;
+#elif defined(_M_IX86)
+    out->sp = (mg_addr)ctx.Esp;
+    out->pc = (mg_addr)ctx.Eip;
+    out->flags = ctx.EFlags;
+    out->r[0] = ctx.Eax; out->r[1] = ctx.Ecx; out->r[2] = ctx.Edx; out->r[3] = ctx.Ebx; out->r[4] = ctx.Ebp; out->r[5] = ctx.Esi;
+    out->r[6] = ctx.Edi;
+    out->n = 7;
 #else
     ResumeThread(h);
     return false;
@@ -4450,6 +4466,10 @@ const char *mg_host_name(void)
     return "win32-arm";
 #elif defined(_M_X64)
     return "win32-x64";
+#elif defined(_M_ARM64)
+    return "win32-arm64";
+#elif defined(_M_IX86)
+    return "win32-x86";
 #else
     return "win32";
 #endif
