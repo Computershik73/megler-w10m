@@ -724,7 +724,7 @@ static void wv_releases(void)
     }
 }
 
-static void wv_main(void *arg)
+static MG_HOSTCB void wv_main(void *arg)
 {
     (void)arg;
     /* A thread of the app's: Chromium's code runs on it, and may call Java. */

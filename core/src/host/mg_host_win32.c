@@ -27,6 +27,7 @@
 #define COBJMACROS
 #include <d3d11.h>
 #include <dxgi1_4.h>
+#include <intrin.h>
 
 #include "mg_host.h"
 
@@ -103,7 +104,12 @@ static BOOL vprotect(void *p, size_t size, DWORD prot)
 /*
  * The probe of mg_mem_rwx: a page of `movs r0, #42; bx lr`, made writable and executable with the plain VirtualProtect, run;
  * then written `movs r0, #7` while executable, and run again. A fault in the page while it runs (refused after all) returns
- * to the caller with 0, through a handler of its own ahead of the host's.
+ * to the caller with 0, through a handler of its own ahead of the host's. The same on desktop Windows (docs/DESKTOP.md),
+ * the same rule -- the plain VirtualProtect, beside VirtualProtectFromApp -- with the processor's own two instructions:
+ * `mov eax, 42; ret` on x86_64 and x86, `mov w0, #42; ret` on ARM64. There it matters more than on the phone: a page
+ * flipped between writable and executable by a fault (bionic/mg_libc_mem.c) is a fault inside guest code, and on x86_64
+ * Windows lays its exception records on the stack right below rsp, over the 128 bytes there that Android's code keeps its
+ * locals in without moving rsp (the red zone).
  */
 static volatile mg_addr g_probe_page;
 static volatile LONG g_probe_faulted;
@@ -124,11 +130,55 @@ static LONG CALLBACK probe_fault(EXCEPTION_POINTERS *info)
     else c->Cpsr &= ~(DWORD)0x20;
     c->Cpsr &= ~(DWORD)0x0600FC00;     /* no IT block */
     return EXCEPTION_CONTINUE_EXECUTION;
+#elif defined(_M_X64)
+    CONTEXT *c = info->ContextRecord;
+    mg_addr page = g_probe_page;
+    if (!page || (c->Rip & ~(DWORD64)(MG_PAGE - 1)) != page) return EXCEPTION_CONTINUE_SEARCH;
+    InterlockedExchange(&g_probe_faulted, 1);
+    c->Rax = 0;
+    c->Rip = *(const DWORD64 *)c->Rsp;
+    c->Rsp += 8;
+    return EXCEPTION_CONTINUE_EXECUTION;
+#elif defined(_M_IX86)
+    CONTEXT *c = info->ContextRecord;
+    mg_addr page = g_probe_page;
+    if (!page || (c->Eip & ~(DWORD)(MG_PAGE - 1)) != page) return EXCEPTION_CONTINUE_SEARCH;
+    InterlockedExchange(&g_probe_faulted, 1);
+    c->Eax = 0;
+    c->Eip = *(const DWORD *)c->Esp;
+    c->Esp += 4;
+    return EXCEPTION_CONTINUE_EXECUTION;
+#elif defined(_M_ARM64)
+    CONTEXT *c = info->ContextRecord;
+    mg_addr page = g_probe_page;
+    if (!page || (c->Pc & ~(DWORD64)(MG_PAGE - 1)) != page) return EXCEPTION_CONTINUE_SEARCH;
+    InterlockedExchange(&g_probe_faulted, 1);
+    c->X0 = 0;
+    c->Pc = c->Lr;
+    return EXCEPTION_CONTINUE_EXECUTION;
 #else
     (void)info;
     return EXCEPTION_CONTINUE_SEARCH;
 #endif
 }
+
+#if defined(_M_X64) || defined(_M_IX86) || defined(_M_ARM64)
+/* The probe's code for this processor: a function that returns `value`, written at `at`. */
+static void probe_code(volatile u8 *at, u8 value)
+{
+#if defined(_M_ARM64)
+    u32 insn[2];
+    insn[0] = 0x52800000u | ((u32)value << 5);   /* mov w0, #value */
+    insn[1] = 0xd65f03c0u;                       /* ret */
+    memcpy((void *)at, insn, sizeof(insn));
+#else
+    at[0] = 0xb8;                                /* mov eax, value */
+    at[1] = value;
+    at[2] = at[3] = at[4] = 0;
+    at[5] = 0xc3;                                /* ret */
+#endif
+}
+#endif
 
 static bool page_is_rwx(void *p)
 {
@@ -161,6 +211,37 @@ static int probe_rwx(void)
             first = run();
             if (first == 42 && !g_probe_faulted && page_is_rwx(page)) {
                 code[0] = 0x2007;      /* movs r0, #7 */
+                FlushInstructionCache(GetCurrentProcess(), page, MG_PAGE);
+                second = run();
+            }
+            RemoveVectoredExceptionHandler(guard);
+        }
+        g_probe_page = 0;
+    }
+    VirtualFree(page, 0, MEM_RELEASE);
+    return first == 42 && second == 7 && !g_probe_faulted;
+#elif defined(_M_X64) || defined(_M_IX86) || defined(_M_ARM64)
+    fn_plain_protect fn = plain_protect();
+    volatile u8 *code;
+    void *page;
+    DWORD old = 0;
+    int first = 0, second = 0;
+    PVOID guard;
+    if (!fn) return 0;
+    page = valloc(NULL, MG_PAGE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (!page) return 0;
+    code = (volatile u8 *)page;
+    probe_code(code, 42);
+    if (fn(page, MG_PAGE, PAGE_EXECUTE_READWRITE, &old) && page_is_rwx(page)) {
+        int (*run)(void) = (int (*)(void))page;
+        g_probe_faulted = 0;
+        g_probe_page = (mg_addr)page;
+        guard = AddVectoredExceptionHandler(1, probe_fault);
+        if (guard) {
+            FlushInstructionCache(GetCurrentProcess(), page, MG_PAGE);
+            first = run();
+            if (first == 42 && !g_probe_faulted && page_is_rwx(page)) {
+                probe_code(code, 7);
                 FlushInstructionCache(GetCurrentProcess(), page, MG_PAGE);
                 second = run();
             }
@@ -560,7 +641,7 @@ void mg_thread_set_interrupt(void (*fn)(void), bool (*in_guest_code)(mg_addr pc)
 /* Raised by a thread that has finished an interruption, for the vectored handler to put it back where it was. */
 #define EXCEPTION_MEGLER_RESUME 0xE04D4701u
 
-#if defined(_M_ARM)
+#if defined(_M_ARM) || defined(_M_X64) || defined(_M_IX86) || defined(_M_ARM64)
 #if WINAPI_FAMILY == WINAPI_FAMILY_APP
 /* Left out of the app partition by the SDK's headers, in the phone's kernelbase like any other (see AddVectoredExceptionHandler below). */
 WINBASEAPI DWORD WINAPI SuspendThread(HANDLE hThread);
@@ -595,6 +676,25 @@ static void interrupt_landing(mg_thread *t)
     for (;;) Sleep(INFINITE);
 }
 
+#if defined(_M_IX86)
+/* (x86 passes an argument on the stack, which is the stopped thread's to write: it finds its own instead.) */
+static void interrupt_landing_x86(void) { interrupt_landing(t_current); }
+#endif
+
+/* Where a stopped thread is executing. */
+static mg_addr context_pc(const CONTEXT *c)
+{
+#if defined(_M_ARM)
+    return (mg_addr)(c->Pc & ~1u);
+#elif defined(_M_X64)
+    return (mg_addr)c->Rip;
+#elif defined(_M_IX86)
+    return (mg_addr)c->Eip;
+#else
+    return (mg_addr)c->Pc;
+#endif
+}
+
 bool mg_thread_interrupt(mg_thread *t)
 {
     CONTEXT ctx;
@@ -624,10 +724,16 @@ bool mg_thread_interrupt(mg_thread *t)
     if (!GetThreadContext(h, &ctx)) {
         InterlockedExchange(&g_int_error, (LONG)GetLastError());
         InterlockedIncrement(&g_int_get_failed);
-    } else if (!g_interrupt_in_guest((mg_addr)(ctx.Pc & ~1u))) {
+    } else if (!g_interrupt_in_guest(context_pc(&ctx))) {
         InterlockedIncrement(&g_int_elsewhere);
     } else {
         t->was = ctx;
+        /*
+         * Nothing is written to the thread's stack from here: what lies below its stack pointer may be its guard page, which
+         * only the thread itself may touch to grow the stack. It is sent to the landing as if called there, its argument in
+         * a register, and writes its stack itself.
+         */
+#if defined(_M_ARM)
         /* Android code keeps nothing below its stack pointer (a signal may land there at any time); the gap is for good measure. */
         ctx.Sp = (ctx.Sp - 512) & ~7u;
         ctx.R0 = (DWORD)(DWORD_PTR)t;
@@ -635,6 +741,21 @@ bool mg_thread_interrupt(mg_thread *t)
         /* Thumb state both ways it can be said, and out of any IT block the thread was in. */
         ctx.Pc = (DWORD)(DWORD_PTR)interrupt_landing | 1u;
         ctx.Cpsr = (ctx.Cpsr & ~0x0600FC00u) | 0x20u;
+#elif defined(_M_X64)
+        /* Below the 128 bytes Android's x86_64 code may keep under its stack pointer (System V's red zone) and the gap; then
+           as after a call: 8 below a 16-byte boundary, the return address's place, with Windows' shadow space above it. */
+        ctx.Rsp = ((ctx.Rsp - 128 - 512) & ~(DWORD64)15) - 8;
+        ctx.Rcx = (DWORD64)(DWORD_PTR)t;
+        ctx.Rip = (DWORD64)(DWORD_PTR)interrupt_landing;
+#elif defined(_M_IX86)
+        ctx.Esp = ((ctx.Esp - 512) & ~(DWORD)15) - 4;
+        ctx.Eip = (DWORD)(DWORD_PTR)interrupt_landing_x86;
+#else
+        ctx.Sp = (ctx.Sp - 512) & ~(DWORD64)15;
+        ctx.X0 = (DWORD64)(DWORD_PTR)t;
+        ctx.Lr = 0;
+        ctx.Pc = (DWORD64)(DWORD_PTR)interrupt_landing;
+#endif
         done = SetThreadContext(h, &ctx) != 0;
         if (done) InterlockedIncrement(&g_int_redirected);
         else {
@@ -837,6 +958,22 @@ bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out)
     out->r[6] = ctx.Rdi; out->r[7] = ctx.R8; out->r[8] = ctx.R9; out->r[9] = ctx.R10; out->r[10] = ctx.R11; out->r[11] = ctx.R12;
     out->r[12] = ctx.R13; out->r[13] = ctx.R14; out->r[14] = ctx.R15;
     out->n = 15;
+#elif defined(_M_ARM64)
+    out->sp = (mg_addr)ctx.Sp;
+    out->pc = (mg_addr)ctx.Pc;
+    out->flags = ctx.Cpsr;
+    {
+        int i;
+        for (i = 0; i < 31; i++) out->r[i] = (mg_addr)ctx.X[i];     /* x0..x28, fp, lr */
+    }
+    out->n = 31;
+#elif defined(_M_IX86)
+    out->sp = (mg_addr)ctx.Esp;
+    out->pc = (mg_addr)ctx.Eip;
+    out->flags = ctx.EFlags;
+    out->r[0] = ctx.Eax; out->r[1] = ctx.Ecx; out->r[2] = ctx.Edx; out->r[3] = ctx.Ebx; out->r[4] = ctx.Ebp; out->r[5] = ctx.Esi;
+    out->r[6] = ctx.Edi;
+    out->n = 7;
 #else
     ResumeThread(h);
     return false;
@@ -857,7 +994,7 @@ void mg_thread_resume(mg_thread *t)
 WINBASEAPI HANDLE WINAPI OpenThread(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwThreadId);
 #endif
 
-int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, u32 *words, int max_words)
+int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, mg_addr *words, int max_words)
 {
     mg_thread t;
     MEMORY_BASIC_INFORMATION mbi;
@@ -875,9 +1012,9 @@ int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, u32 *words, int max_word
         return -1;
     }
     if (regs->sp && VirtualQuery((const void *)(DWORD_PTR)regs->sp, &mbi, sizeof(mbi)) && mbi.State == MEM_COMMIT) {
-        mg_addr end = (mg_addr)(DWORD_PTR)mbi.BaseAddress + (mg_addr)mbi.RegionSize, at = regs->sp & ~(mg_addr)3;
-        n = (int)((end - at) / 4 < (mg_addr)max_words ? (end - at) / 4 : (mg_addr)max_words);
-        memcpy(words, (const void *)(DWORD_PTR)at, (size_t)n * 4);
+        mg_addr end = (mg_addr)(DWORD_PTR)mbi.BaseAddress + (mg_addr)mbi.RegionSize, at = regs->sp & ~(mg_addr)(sizeof(mg_addr) - 1);
+        n = (int)((end - at) / sizeof(mg_addr) < (mg_addr)max_words ? (end - at) / sizeof(mg_addr) : (mg_addr)max_words);
+        memcpy(words, (const void *)(DWORD_PTR)at, (size_t)n * sizeof(mg_addr));
     }
     ResumeThread(h);
     CloseHandle(h);
@@ -1056,9 +1193,20 @@ void mg_tls_set(u32 key, void *value) { TlsSetValue(key, value); }
  * TlsGetValue before it is trusted, so a build of Windows that moved it makes
  * mg_guest_tp_where fail instead of handing guest code a wrong pointer.
  */
+/*
+ * The same on desktop Windows (docs/DESKTOP.md), where guest code reads its thread pointer through the segment or
+ * register Windows keeps its TEB in: gs on x86_64 (the 64-bit TEB's TlsSlots at 0x1480, eight bytes each), fs on x86
+ * (the 32-bit TEB's at 0xE10), x18 on ARM64 (0x1480). The patcher (x86/mg_patch_x86.c) makes `mov %fs:0, %rax` into
+ * `mov %gs:0x1480+8*slot, %rax`, the same length; and the stack guard, which that code reads at %fs:0x28 (bionic's slot
+ * 5), into a load of a second slot that holds it on every guest thread.
+ */
+#if defined(_M_ARM) || defined(_M_IX86)
 #define MG_TEB_TLS_SLOTS 0xE10u
+#else
+#define MG_TEB_TLS_SLOTS 0x1480u
+#endif
 
-static DWORD g_tp_slot = TLS_OUT_OF_INDEXES;
+static DWORD g_tp_slot = TLS_OUT_OF_INDEXES, g_guard_slot = TLS_OUT_OF_INDEXES;
 static int g_tp_slot_usable = -1;      /* -1 not checked yet */
 
 static DWORD tp_slot(void)
@@ -1067,12 +1215,56 @@ static DWORD tp_slot(void)
         /* Racing first calls would each allocate; the startup path calls this once before any guest thread exists. */
         g_tp_slot = TlsAlloc();
         if (g_tp_slot == TLS_OUT_OF_INDEXES) mg_fatal("no thread-local slot for the guest thread pointer");
+#if !defined(_M_ARM)
+        /* (And the stack guard's, at once: both have to be among the first 64, which are in the TEB itself.) */
+        g_guard_slot = TlsAlloc();
+        if (g_guard_slot == TLS_OUT_OF_INDEXES) mg_fatal("no thread-local slot for the guest stack guard");
+#endif
     }
     return g_tp_slot;
 }
 
+#if !defined(_M_ARM)
+/*
+ * Both slots are taken as the process starts, among the C runtime's initializers, before any of the system's DLLs that
+ * come later can take the TEB's 64: in a desktop app's process XAML and what it loads had taken 76 by the time the shell
+ * started the core, and the two the core got then were in TlsExpansionSlots, out of reach of a patched instruction.
+ */
+static int __cdecl take_slots_early(void)
+{
+    tp_slot();
+    return 0;
+}
+#pragma section(".CRT$XIU", long, read)
+#if defined(__clang__)
+__attribute__((used))
+#endif
+__declspec(allocate(".CRT$XIU")) static int(__cdecl *const g_take_slots_early)(void) = take_slots_early;
+#endif
+
 void mg_guest_tp_set(void *tp) { TlsSetValue(tp_slot(), tp); }
 void *mg_guest_tp_get(void) { return TlsGetValue(tp_slot()); }
+
+#if !defined(_M_ARM)
+/* Whether a slot's value is where the patched code will read it: at TlsSlots + slot in the TEB, which is what gs/fs/x18 hold. */
+static bool slot_in_teb(DWORD slot)
+{
+    void *saved = TlsGetValue(slot), *probe = (void *)(uintptr_t)0x5A17C0DEu, *seen;
+    bool ok;
+    if (slot >= 64) return false;
+    TlsSetValue(slot, probe);
+#if defined(_M_X64)
+    seen = (void *)__readgsqword(MG_TEB_TLS_SLOTS + 8u * slot);
+#elif defined(_M_IX86)
+    seen = (void *)(uintptr_t)__readfsdword(MG_TEB_TLS_SLOTS + 4u * slot);
+#else
+    seen = *(void **)((u8 *)NtCurrentTeb() + MG_TEB_TLS_SLOTS + 8u * slot);
+#endif
+    ok = seen == probe;
+    TlsSetValue(slot, saved);
+    return ok;
+}
+#endif
 
 bool mg_guest_tp_where(u32 *opc2, u32 *offset)
 {
@@ -1093,8 +1285,51 @@ bool mg_guest_tp_where(u32 *opc2, u32 *offset)
     *offset = MG_TEB_TLS_SLOTS + 4u * slot;
     return true;
 #else
+    DWORD slot = tp_slot();
+    if (g_tp_slot_usable < 0) {
+        g_tp_slot_usable = slot_in_teb(slot) && slot_in_teb(g_guard_slot) ? 1 : 0;
+        if (!g_tp_slot_usable)
+            mg_err("host: TLS slots %lu and %lu are not in the TEB at 0x%X; guest thread-pointer reads cannot be redirected", (unsigned long)slot,
+                   (unsigned long)g_guard_slot, MG_TEB_TLS_SLOTS);
+        else
+            mg_info("host: the guest's thread pointer is in TLS slot %lu, its stack guard in slot %lu", (unsigned long)slot,
+                    (unsigned long)g_guard_slot);
+    }
+    if (!g_tp_slot_usable) return false;
+#if defined(_M_X64)
+    *opc2 = 0x65;                      /* gs */
+    *offset = MG_TEB_TLS_SLOTS + 8u * slot;
+#elif defined(_M_IX86)
+    *opc2 = 0x64;                      /* fs */
+    *offset = MG_TEB_TLS_SLOTS + 4u * slot;
+#else
+    *opc2 = 18;                        /* x18 */
+    *offset = MG_TEB_TLS_SLOTS + 8u * slot;
+#endif
+    return true;
+#endif
+}
+
+bool mg_guest_guard_where(u32 *opc2, u32 *offset)
+{
+#if defined(_M_ARM)
     (void)opc2; (void)offset;
     return false;
+#else
+    u32 tp_offset;
+    if (!mg_guest_tp_where(opc2, &tp_offset)) return false;
+    *offset = MG_TEB_TLS_SLOTS + (u32)sizeof(void *) * g_guard_slot;
+    return true;
+#endif
+}
+
+void mg_guest_guard_set(mg_addr guard)
+{
+#if defined(_M_ARM)
+    (void)guard;
+#else
+    tp_slot();
+    TlsSetValue(g_guard_slot, (void *)guard);
 #endif
 }
 
@@ -1269,7 +1504,7 @@ static __declspec(noinline) void overflow_report(void)
     memset(&f, 0, sizeof(f));
     f.kind = MG_FAULT_OTHER;
     f.code = g_overflow_record.ExceptionCode;
-    f.regs = (u32 *)&g_overflow_context.R0;
+    f.regs = (mg_addr *)&g_overflow_context.R0;
     f.cpsr = (u32 *)&g_overflow_context.Cpsr;
     /* Reports, and keeps a thread of the app's for good. */
     if (g_fault_handler) g_fault_handler(&f);
@@ -1332,6 +1567,16 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
 {
     mg_fault f;
     EXCEPTION_RECORD *er = ep->ExceptionRecord;
+#if !defined(_M_ARM)
+    if (er->ExceptionCode == EXCEPTION_MEGLER_RESUME && er->NumberParameters == 1) {
+        /* A thread back from an interruption: every register as it was (the integer ones, the control ones, the vector ones). */
+        mg_thread *t = (mg_thread *)er->ExceptionInformation[0];
+        *ep->ContextRecord = t->was;
+        InterlockedIncrement(&g_int_resumed);
+        InterlockedExchange(&t->interrupted, 0);
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+#endif
 #if defined(_M_ARM)
     if (er->ExceptionCode == EXCEPTION_MEGLER_RESUME && er->NumberParameters == 1) {
         /* A thread back from an interruption: every register as it was. Its state is taken from bit 0 of Pc. */
@@ -1355,7 +1600,7 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
     if (er->ExceptionCode == EXCEPTION_BREAKPOINT && bp_listed(ep->ContextRecord->Pc & ~(DWORD)1)) {
         /* Stopped at one of the process's hardware breakpoints, before the instruction: the core does it. */
         f.kind = MG_FAULT_BREAKPOINT;
-        f.regs = (u32 *)&ep->ContextRecord->R0;
+        f.regs = (mg_addr *)&ep->ContextRecord->R0;
         f.cpsr = (u32 *)&ep->ContextRecord->Cpsr;
         if (g_fault_handler && g_fault_handler(&f)) return EXCEPTION_CONTINUE_EXECUTION;
         note_exception(ep, "passed on (a hardware breakpoint the core had nothing for)");
@@ -1451,7 +1696,8 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
          * noted and passed on.
          */
         f.kind = MG_FAULT_OTHER;
-        if (!g_interrupt_in_guest || !g_interrupt_in_guest((mg_addr)(DWORD_PTR)er->ExceptionAddress & ~(mg_addr)1)) {
+        if (!g_interrupt_in_guest || !g_interrupt_in_guest(MG_ARCH_ARM32 ? (mg_addr)(DWORD_PTR)er->ExceptionAddress & ~(mg_addr)1
+                                                                             : (mg_addr)(DWORD_PTR)er->ExceptionAddress)) {
             note_exception(ep, "passed on");
             return EXCEPTION_CONTINUE_SEARCH;
         }
@@ -1459,8 +1705,32 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
     }
 #if defined(_M_ARM)
     /* R0..R12, Sp, Lr, Pc are sixteen consecutive ULONGs in the ARM CONTEXT, Cpsr the next. */
-    f.regs = (u32 *)&ep->ContextRecord->R0;
+    f.regs = (mg_addr *)&ep->ContextRecord->R0;
     f.cpsr = (u32 *)&ep->ContextRecord->Cpsr;
+#elif defined(_M_X64)
+    /* Rax, Rcx, Rdx, Rbx, Rsp, Rbp, Rsi, Rdi, R8..R15 and Rip are seventeen consecutive DWORD64s in the x64 CONTEXT. */
+    f.regs = (mg_addr *)&ep->ContextRecord->Rax;
+    f.cpsr = (u32 *)&ep->ContextRecord->EFlags;
+#elif defined(_M_ARM64)
+    /* X0..X30 (Fp and Lr the last two), Sp and Pc are consecutive DWORD64s in the ARM64 CONTEXT. */
+    f.regs = (mg_addr *)&ep->ContextRecord->X0;
+    f.cpsr = (u32 *)&ep->ContextRecord->Cpsr;
+#elif defined(_M_IX86)
+    {
+        /* The x86 CONTEXT keeps them in an order of its own: copied out in the instructions' order, and back. */
+        CONTEXT *c = ep->ContextRecord;
+        mg_addr regs[MG_REG_COUNT];
+        bool resume;
+        regs[0] = c->Eax; regs[1] = c->Ecx; regs[2] = c->Edx; regs[3] = c->Ebx; regs[4] = c->Esp; regs[5] = c->Ebp;
+        regs[6] = c->Esi; regs[7] = c->Edi; regs[8] = c->Eip;
+        f.regs = regs;
+        f.cpsr = (u32 *)&c->EFlags;
+        resume = g_fault_handler && g_fault_handler(&f);
+        if (!resume) return EXCEPTION_CONTINUE_SEARCH;
+        c->Eax = regs[0]; c->Ecx = regs[1]; c->Edx = regs[2]; c->Ebx = regs[3]; c->Esp = regs[4]; c->Ebp = regs[5];
+        c->Esi = regs[6]; c->Edi = regs[7]; c->Eip = regs[8];
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
 #endif
     if (g_fault_handler && g_fault_handler(&f)) return EXCEPTION_CONTINUE_EXECUTION;
     return EXCEPTION_CONTINUE_SEARCH;
@@ -1469,9 +1739,13 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
 void mg_fault_resume_at(mg_fault *f, mg_addr target)
 {
     if (!f->regs) return;
+#if defined(_M_ARM)
     /* Bit 0 stays in Pc: that, not the T bit, is what the thread's state is taken from when the context is resumed. */
     f->regs[15] = (u32)target;
     if (f->cpsr) *f->cpsr = (target & 1) ? (*f->cpsr | 0x20u) : (*f->cpsr & ~0x20u);
+#else
+    f->regs[MG_REG_PC] = target;
+#endif
 }
 
 #if MG_UWP
@@ -1694,6 +1968,66 @@ static HANDLE foreign_handle(const char *path, int flags, int kind, int *err)
         return NULL;
     }
     return h;
+}
+
+/* A path's own handle, as a foreign path's owner hands one out (mg_host.h): the tests' stand-in of the shell's storage. */
+static int handle_err(DWORD e)
+{
+    switch (e) {
+    case ERROR_FILE_NOT_FOUND: case ERROR_PATH_NOT_FOUND: return MG_E_NOENT;
+    case ERROR_ACCESS_DENIED: return MG_E_ACCESS;
+    case ERROR_FILE_EXISTS: case ERROR_ALREADY_EXISTS: return MG_E_EXIST;
+    case ERROR_DIRECTORY: return MG_E_NOTDIR;
+    default: return MG_E_IO;
+    }
+}
+
+void *mg_host_open_handle(const char *path, int flags, int kind, int *err)
+{
+    int n = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
+    wchar_t *w = (wchar_t *)mg_alloc(sizeof(wchar_t) * (size_t)(n > 0 ? n : 1)), *p;
+    CREATEFILE2_EXTENDED_PARAMETERS ex;
+    DWORD access = 0, disposition = OPEN_EXISTING;
+    HANDLE h;
+    void *out = NULL;
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, w, n);
+    for (p = w; *p; p++)
+        if (*p == L'/') *p = L'\\';
+    memset(&ex, 0, sizeof(ex));
+    ex.dwSize = sizeof(ex);
+    ex.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
+    if (kind == MG_FOREIGN_FILE) {
+        if (flags & MG_O_READ) access |= GENERIC_READ;
+        if (flags & MG_O_WRITE) access |= GENERIC_WRITE;
+        if (!access) access = GENERIC_READ;
+        if ((flags & MG_O_CREATE) && (flags & MG_O_EXCL)) disposition = CREATE_NEW;
+        else if ((flags & MG_O_CREATE) && (flags & MG_O_TRUNC)) disposition = CREATE_ALWAYS;
+        else if (flags & MG_O_CREATE) disposition = OPEN_ALWAYS;
+        else if (flags & MG_O_TRUNC) disposition = TRUNCATE_EXISTING;
+    } else {
+        /* The one way Windows opens a directory; a file opens this way too. */
+        ex.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
+        access = kind == MG_FOREIGN_DIR ? GENERIC_READ : FILE_READ_ATTRIBUTES;
+    }
+    h = CreateFile2(w, access, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, disposition, &ex);
+    free(w);
+    if (h == INVALID_HANDLE_VALUE) {
+        DWORD e = GetLastError();
+        mg_stat st;
+        *err = handle_err(e);
+        if (e == ERROR_ACCESS_DENIED && kind == MG_FOREIGN_FILE && mg_path_stat(path, &st, NULL) && st.is_dir) *err = MG_E_ISDIR;
+    } else if (kind == MG_FOREIGN_DIR) {
+        FILE_STANDARD_INFO si;
+        if (GetFileInformationByHandleEx(h, FileStandardInfo, &si, sizeof(si)) && si.Directory) {
+            out = h;
+        } else {
+            CloseHandle(h);
+            *err = MG_E_NOTDIR;
+        }
+    } else {
+        out = h;
+    }
+    return out;
 }
 
 /* ------------------------------------------------ files by handle (mg_host.h) */
@@ -2720,6 +3054,14 @@ static mg_sock *sock_wrap(SOCKET s, int family, int type, int *err)
  * reading the socket gives it as Linux does, the ICMP header and the data with no IP header, the identifier the socket's
  * own (Linux puts its "port" there, which getsockname says) and the sequence the request's. No reply in time: nothing to
  * read, as on Linux. One echo at a time: a request written while one is under way is taken and not sent.
+ *
+ * A desktop app container gets no echo at all: IcmpCreateFile and Icmp6CreateFile fail there with ERROR_ACCESS_DENIED
+ * whatever the package's capabilities. They open no device but register with the NSI service for the echo's replies,
+ * which turns an app container away, and the echo itself goes to \\.\Nsi, which refuses any process of Low integrity, as
+ * every app container is (Windows 11 26300, 2026-11-05: a probe in app containers with none, each and all of
+ * internetClient, internetClientServer and privateNetworkClientServer; outside one the same program pings). Windows 10
+ * Mobile's app container is let through. The socket is refused then with EACCES, Linux's answer to a program that may not
+ * have one, and isReachable goes on to its TCP connection; the reason is said once.
  */
 #define PING_DATA 2048
 
@@ -2798,19 +3140,24 @@ static VOID CALLBACK ping_work(PTP_CALLBACK_INSTANCE instance, PVOID context, PT
 
 static mg_sock *ping_open(int family, int type, int *err)
 {
-    static volatile LONG next;
+    static volatile LONG next, said;
     mg_sock *k = (mg_sock *)mg_alloc(sizeof(*k));
     mg_ping *p = (mg_ping *)mg_alloc(sizeof(*p));
     LONG id;
+    DWORD error;
     k->s = INVALID_SOCKET;
     k->ev = WSA_INVALID_EVENT;
     k->family = family;
     k->type = type;
     k->ping = p;
     p->icmp = family == MG_AF_INET ? IcmpCreateFile() : Icmp6CreateFile();
+    error = GetLastError();
     p->work = p->icmp != INVALID_HANDLE_VALUE ? CreateThreadpoolWork(ping_work, k, NULL) : NULL;
     if (p->icmp == INVALID_HANDLE_VALUE || !p->work) {
-        *err = p->icmp == INVALID_HANDLE_VALUE ? MG_NE_PROTONOSUPPORT : MG_NE_NOBUFS;
+        if (p->icmp == INVALID_HANDLE_VALUE && !InterlockedExchange(&said, 1))
+            mg_warn("host: no ping socket: %s failed with error %lu%s", family == MG_AF_INET ? "IcmpCreateFile" : "Icmp6CreateFile",
+                    (unsigned long)error, error == ERROR_ACCESS_DENIED ? " (Windows gives an app container no ICMP echo)" : "");
+        *err = p->icmp != INVALID_HANDLE_VALUE ? MG_NE_NOBUFS : error == ERROR_ACCESS_DENIED ? MG_NE_ACCES : MG_NE_PROTONOSUPPORT;
         if (p->icmp != INVALID_HANDLE_VALUE) IcmpCloseHandle(p->icmp);
         free(p);
         free(k);
@@ -3627,12 +3974,28 @@ WINBASEAPI BOOL WINAPI GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModuleName, H
 WINBASEAPI DWORD WINAPI GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize);
 #endif
 
+#if defined(MG_ELF_HOST)
+bool mg_core_image(mg_addr *base, size_t *size);
+#endif
+
 bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
 {
     HMODULE module = NULL;
     wchar_t path[MAX_PATH];
     const wchar_t *file;
     DWORD n;
+#if defined(MG_ELF_HOST)
+    {
+        /* The core's own ELF, which Windows does not know as a module (docs/DESKTOP.md): named as the others are. */
+        mg_addr core = 0;
+        size_t extent = 0;
+        if (mg_core_image(&core, &extent) && address >= core && address < core + extent) {
+            mg_strlcpy(name, "megler-core.so", size);
+            *base = core;
+            return true;
+        }
+    }
+#endif
     /* FROM_ADDRESS | UNCHANGED_REFCOUNT */
     if (!GetModuleHandleExW(0x4 | 0x2, (LPCWSTR)address, &module) || !module) return false;
     n = GetModuleFileNameW(module, path, MAX_PATH);
@@ -4166,6 +4529,10 @@ const char *mg_host_name(void)
     return "win32-arm";
 #elif defined(_M_X64)
     return "win32-x64";
+#elif defined(_M_ARM64)
+    return "win32-arm64";
+#elif defined(_M_IX86)
+    return "win32-x86";
 #else
     return "win32";
 #endif

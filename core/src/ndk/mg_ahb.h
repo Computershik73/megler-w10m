@@ -8,8 +8,8 @@
  *
  * Code that is given one may look inside it as Android lays a GraphicBuffer out: ANGLE, inside Chromium's WebView, takes
  * the ANativeWindowBuffer two pointers into it (EGLClientBuffer, android_util.cpp in AOSP's external/angle) and reads its
- * width, height, layer count, format and usage there. So a buffer begins as a GraphicBuffer does on 32-bit ARM -- two
- * words, then the ANativeWindowBuffer -- and what is the layer's own comes after.
+ * width, height, layer count, format and usage there. So a buffer begins as a GraphicBuffer does -- two pointers (ANGLE's
+ * kAHardwareBufferToANativeWindowBufferOffset), then the ANativeWindowBuffer -- and what is the layer's own comes after.
  */
 #ifndef MG_AHB_H
 #define MG_AHB_H
@@ -21,23 +21,23 @@
 extern "C" {
 #endif
 
-/* Android's ANativeWindowBuffer as 32-bit ARM lays it out (nativebase.h): 96 bytes. Pointers are words of the guest's. */
+/* Android's ANativeWindowBuffer (nativebase.h): 96 bytes in 32-bit Android, 168 in 64-bit. */
 typedef struct mg_ahb_anwb {
     i32 magic, version;                /* android_native_base_t: '_bfr', sizeof(ANativeWindowBuffer) */
-    u32 reserved[4];
-    u32 inc_ref, dec_ref;              /* its reference counting: functions of the layer's (32-bit ARM hosts), else 0 */
+    void *reserved[4];
+    mg_addr inc_ref, dec_ref;          /* its reference counting: functions of the layer's (32-bit ARM hosts), else 0 */
     i32 width, height, stride, format, usage_deprecated;
-    u32 layer_count;
-    u32 reserved1;
-    u32 handle;                        /* const native_handle_t *: none */
-    u32 usage_lo, usage_hi;            /* uint64_t usage */
-    u32 reserved_proc[6];
+    uintptr_t layer_count;
+    void *reserved1;
+    const void *handle;                /* const native_handle_t *: none */
+    u32 usage_lo, usage_hi;            /* uint64_t usage, at an offset that is a multiple of 8 in both */
+    void *reserved_proc[8 - 8 / sizeof(void *)];
 } mg_ahb_anwb;
 
-#define MG_AHB_ANWB_OFFSET 8           /* where the ANativeWindowBuffer is in an AHardwareBuffer, as ANGLE has it */
+#define MG_AHB_ANWB_OFFSET (2 * sizeof(void *))    /* where the ANativeWindowBuffer is in an AHardwareBuffer, as ANGLE has it */
 
 typedef struct mg_ahb {
-    u32 vtable, refbase;               /* where a GraphicBuffer has its vtable and RefBase's member: nothing here */
+    void *vtable, *refbase;            /* where a GraphicBuffer has its vtable and RefBase's member: nothing here */
     mg_ahb_anwb anwb;
     /* The layer's own. */
     u32 magic;

@@ -20,7 +20,7 @@ static MG_NOINLINE void hold_in_a_local(held *h)
     h->object = mine;
 }
 
-static void holder_main(void *p)
+static MG_HOSTCB void holder_main(void *p)
 {
     held *h = (held *)p;
     mg_dvm_self();
@@ -228,7 +228,7 @@ static u32 along_damage(void)
     return bad;
 }
 
-static void along_main(void *p)
+static MG_HOSTCB void along_main(void *p)
 {
     u32 seed = (u32)(mg_addr)p * 2654435761u + 1u, n = 0;
     mg_dvm_self();
@@ -347,7 +347,7 @@ static void test_gc_gives_back(void)
  * least by the app's limit, which Windows let it pass, and collected every 0.8 s (package 619).
  */
 static u64 g_test_available;
-static u64 test_available(void) { return g_test_available; }
+static MG_HOSTCB u64 test_available(void) { return g_test_available; }
 
 static void test_gc_budget_by_free_memory(void)
 {

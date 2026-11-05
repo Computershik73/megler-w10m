@@ -19,8 +19,10 @@
  *   - Android's armeabi-v7a passes floating-point arguments and results in the
  *     integer registers (softfp); the host passes them in VFP registers. So a
  *     wrapper never has a float or double parameter or result. It takes and
- *     returns u32 / u64 -- the bits -- which is exactly how softfp passes a
- *     float / a double, and converts with mg_f / mg_d / mg_fb / mg_db.
+ *     returns gfloat / gdouble (mg_base.h) -- on 32-bit ARM the bits, u32 / u64,
+ *     which is exactly how softfp passes a float / a double; on desktop Windows,
+ *     where the core is of the guest's ABI (docs/DESKTOP.md), the values -- and
+ *     converts with mg_gf / mg_gd / mg_gfb / mg_gdb.
  *   - Variadic functions take everything in integer registers and on the stack
  *     in both conventions, and a va_list is one pointer in both, so a host
  *     variadic function is called by the guest as it is, and a guest va_list
@@ -43,6 +45,36 @@ typedef struct mg_sym {
     const char *name;
     void *addr;
 } mg_sym;
+
+/*
+ * bionic's own integer types, as wide as the guest's: `long` is 32 bits in 32-bit Android and 64 in 64-bit Android, and
+ * every build of the core that runs guest code has its guest's `long` -- MSVC and gcc for 32-bit ARM, gcc for Linux on
+ * the others, and the core's ELF on desktop Windows (docs/DESKTOP.md), compiled for the guest's ABI. A field, parameter
+ * or result that bionic declares long, ssize_t, off_t or time_t is one of these; one that holds a pointer is a pointer or
+ * a uintptr_t, never a u32; a float or a double is a gfloat or a gdouble (mg_base.h).
+ */
+typedef long glong;
+typedef unsigned long gulong;
+typedef long gssize;
+typedef long goff;
+typedef long gtime;
+
+/* struct timespec and struct timeval as guest code has them: a time_t and a long. */
+typedef struct g_timespec {
+    gtime tv_sec;
+    glong tv_nsec;
+} g_timespec;
+typedef struct g_timeval {
+    gtime tv_sec;
+    glong tv_usec;
+} g_timeval;
+/*
+ * The largest count read, write and their kin move at once: Linux's MAX_RW_COUNT, which it gives a caller asking for more
+ * (the rest is a short read or write, as POSIX allows). It keeps the descriptors' layer's counts 31 bits wide where size_t
+ * is 64.
+ */
+#define MG_RW_MAX 0x7FFFF000u
+static inline u32 mg_rw_count(size_t n) { return n > MG_RW_MAX ? MG_RW_MAX : (u32)n; }
 
 #define MG_DIRECT(fn) { #fn, (void *)(fn) }
 #define MG_WRAP(name, impl) { name, (void *)(impl) }
@@ -67,11 +99,29 @@ const mg_sym *mg_ahb_table(void);      /* ndk/mg_ahb.c: AHardwareBuffer */
 int mg_sdk_level(void);
 const mg_sym *mg_java_ndk_table(void); /* drivers/mg_java_ndk.c: libjnigraphics, on the Java framework's Bitmap; ANativeWindow_fromSurface */
 
-/* Float wrappers: the host function named, taking and returning bits. */
-#define MG_SF_D_D(name, fn) static u64 name(u64 x) { return mg_db(fn(mg_d(x))); }
-#define MG_SF_D_DD(name, fn) static u64 name(u64 x, u64 y) { return mg_db(fn(mg_d(x), mg_d(y))); }
-#define MG_SF_F_F(name, fn) static u32 name(u32 x) { return mg_fb(fn(mg_f(x))); }
-#define MG_SF_F_FF(name, fn) static u32 name(u32 x, u32 y) { return mg_fb(fn(mg_f(x), mg_f(y))); }
+/*
+ * A long double as guest code passes it: a double's bits on 32-bit ARM, where it is a double (softfp); the value
+ * elsewhere -- a double on x86 too, IEEE's 128-bit quad on the 64-bit ABIs, which the core's compiler has as it is
+ * (docs/DESKTOP.md). mg_gld takes one as a double, mg_gldb makes one of a double: the *l functions here compute in double.
+ */
+#if MG_GUEST_SOFTFP
+typedef gdouble gldouble;
+#define mg_gld(x) mg_gd(x)
+#define mg_gldb(d) mg_gdb(d)
+#else
+typedef long double gldouble;
+#define mg_gld(x) ((double)(x))
+#define mg_gldb(d) ((gldouble)(d))
+#endif
+
+/* Float wrappers: the host function named, taking and returning floats as the guest passes them (bits on 32-bit ARM). */
+#define MG_SF_D_D(name, fn) static gdouble name(gdouble x) { return mg_gdb(fn(mg_gd(x))); }
+#define MG_SF_D_DD(name, fn) static gdouble name(gdouble x, gdouble y) { return mg_gdb(fn(mg_gd(x), mg_gd(y))); }
+#define MG_SF_F_F(name, fn) static gfloat name(gfloat x) { return mg_gfb(fn(mg_gf(x))); }
+#define MG_SF_F_FF(name, fn) static gfloat name(gfloat x, gfloat y) { return mg_gfb(fn(mg_gf(x), mg_gf(y))); }
+/* And the long double ones, computed in double. */
+#define MG_SF_L_L(name, fn) static gldouble name(gldouble x) { return mg_gldb(fn(mg_gld(x))); }
+#define MG_SF_L_LL(name, fn) static gldouble name(gldouble x, gldouble y) { return mg_gldb(fn(mg_gld(x), mg_gld(y))); }
 
 /* ----------------------------------------------------------------- errno
  *
@@ -93,10 +143,16 @@ int *mg_errno_ptr(void);
 /* argv as the kernel lays it out for a process, envp (empty) and the auxiliary vector after it: what a library's init
    functions are given (mg_libc_misc.c). */
 char **mg_bionic_initial_argv(void);
-/* Its auxiliary vector as /proc/self/auxv has it: 32-bit tags and values, AT_NULL's pair the last; the number of words. */
-size_t mg_bionic_auxv_words(u32 *out, size_t max);
+/* Its auxiliary vector as /proc/self/auxv has it: tags and values as longs, AT_NULL's pair the last; the number of words. */
+size_t mg_bionic_auxv_words(gulong *out, size_t max);
 /* ARM EABI kernel convention: negative errno in r0, guest errno unchanged. */
 u32 mg_bionic_syscall_raw(const u32 *regs);
+#if MG_GUEST_CODE && !MG_ARCH_ARM32
+/* bionic/mg_syscall_abi.c: the guest's call `nr` and its arguments as 32-bit ARM's, -1 for one not handled, -2 for arguments
+   ARM's cannot take. mg_bionic_syscall: a system call by the guest's own number, -errno on failure (ARM64's svc traps). */
+long mg_syscall_abi_to_arm(long nr, long a[6]);
+long mg_bionic_syscall(long nr, const long args[6]);
+#endif
 void mg_set_errno(int guest_errno);
 /* A host file-layer error (MG_E_*) as a Linux errno. */
 int mg_errno_of(int host_err);
@@ -138,7 +194,7 @@ typedef struct mg_gthread {
     mg_thread *volatile sig_thread;    /* the thread itself, to interrupt it in the middle of guest code */
     /* While a guarded call of guest code runs on the thread (mg_jni_call_native_guarded): the stub setjmp's buffer it goes
        back to when that code faults beyond repair (mg_core.c), instead of the app ending. */
-    u32 *volatile fault_guard;
+    mg_addr *volatile fault_guard;
     /* How many of the host's hardware breakpoints the thread has been given (mg_gthread_take_breakpoints). */
     volatile i32 breakpoints;
     /* Its Android nice value, -20 (most urgent) to 19, as setpriority or Process.setThreadPriority set it (mg_gthread_set_nice). */
@@ -187,9 +243,9 @@ static inline void mg_gthread_take_breakpoints(mg_gthread *t)
  * asked again a millisecond later.
  */
 int mg_signal_send(mg_gthread *t, int sig);            /* pthread_kill: 0 or an errno; signals 1 to 64 */
-int mg_signal_mask(int how, const u32 *set, u32 *old); /* pthread_sigmask */
+int mg_signal_mask(int how, const gulong *set, gulong *old); /* pthread_sigmask: a sigset_t, a long */
 /* Runs the handlers of the signals waiting for the calling thread. Only where no lock of this layer is held. */
-void mg_signals_check(void);
+MG_HOSTCB void mg_signals_check(void);
 /* A fault's signal for the app's own handler (an inline hook's trap, mg_mmap_app_trap): true if one ran and f says where to go on. */
 bool mg_signal_fault(int sig, mg_fault *f);
 static inline bool mg_signals_ready(const mg_gthread *t)

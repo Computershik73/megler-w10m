@@ -21,7 +21,7 @@ extern "C" {
  */
 struct megler_codec_host;
 struct megler_gfx_host;
-int mg_codec_tests_run(const char *streams, const struct megler_codec_host *host, mg_test_sink sink, void *user, int *checks);
+MEGLER_API int mg_codec_tests_run(const char *streams, const struct megler_codec_host *host, mg_test_sink sink, void *user, int *checks);
 /*
  * Pictures decoded on the graphics processor (the shell's host with GfxHost's device): avc.mgau, every picture shown as a
  * texture's frame and drawn by a canvas of `gfx` on the graphics processor, and read back, the grey its number says both
@@ -41,7 +41,7 @@ int mg_codec_tests_h265_run(const char *streams, const struct megler_codec_host 
  * every picture came out, in order, at the stream's size. Returns the number of failed checks and adds the number made
  * to *checks.
  */
-int mg_codec_speed_run(const char *streams, const struct megler_codec_host *host, mg_test_sink sink, void *user, int *checks);
+MEGLER_API int mg_codec_speed_run(const char *streams, const struct megler_codec_host *host, mg_test_sink sink, void *user, int *checks);
 
 #ifdef __cplusplus
 }

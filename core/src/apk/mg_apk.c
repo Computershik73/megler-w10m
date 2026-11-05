@@ -665,7 +665,29 @@ static void abi_add(mg_apk_info *info, const char *name)
     if (info->nabis < (int)MG_COUNT(info->abis)) mg_strlcpy(info->abis[info->nabis++], name, sizeof(info->abis[0]));
 }
 
-static const u8 *elf_at(const u8 *d, size_t n, u32 vaddr, u32 need);
+/*
+ * The ELF of the libraries an app's APKs are looked at for (MG_APK_ABI_ARM): 32-bit ARM's on the phone and in the builds
+ * that run no guest code, the processor's own elsewhere -- ELF64 on x86_64 and ARM64.
+ */
+#if MG_APK_ABI_ARM
+typedef Elf32_Ehdr A_Ehdr;
+typedef Elf32_Phdr A_Phdr;
+typedef Elf32_Dyn A_Dyn;
+typedef Elf32_Sym A_Sym;
+#define A_CLASS 1
+#define A_MACHINE EM_ARM
+#else
+typedef ElfW(Ehdr) A_Ehdr;
+typedef ElfW(Phdr) A_Phdr;
+typedef ElfW(Dyn) A_Dyn;
+typedef ElfW(Sym) A_Sym;
+#define A_CLASS MG_ELFCLASS
+#define A_MACHINE MG_EM
+#endif
+/* (A word of the GNU hash table's bloom filter is the class's: 8 bytes in ELF64.) */
+#define A_BLOOM_WORD (A_CLASS == 2 ? 8u : 4u)
+
+static const u8 *elf_at(const u8 *d, size_t n, u64 vaddr, u64 need);
 
 /* How many dynamic symbols: the SysV hash table says outright; the GNU one by its last chain. 0 when neither says. */
 static u32 elf_symbol_count(const u8 *d, size_t n, u32 hash, u32 gnu)
@@ -679,14 +701,14 @@ static u32 elf_symbol_count(const u8 *d, size_t n, u32 hash, u32 gnu)
         const u8 *g = elf_at(d, n, gnu, 16);
         if (g) {
             u32 nb = mg_rd32(g), symoff = mg_rd32(g + 4), bloom = mg_rd32(g + 8), top = 0, b;
-            const u8 *buckets = nb < 0x1000000 && bloom < 0x1000000 ? elf_at(d, n, gnu + 16 + bloom * 4, nb * 4) : NULL;
+            const u8 *buckets = nb < 0x1000000 && bloom < 0x1000000 ? elf_at(d, n, gnu + 16 + bloom * A_BLOOM_WORD, nb * 4) : NULL;
             if (buckets) {
                 for (b = 0; b < nb; b++)
                     if (mg_rd32(buckets + b * 4) > top) top = mg_rd32(buckets + b * 4);
                 nsyms = symoff;
                 if (top >= symoff) {
                     for (;; top++) {
-                        const u8 *chain = elf_at(d, n, gnu + 16 + bloom * 4 + nb * 4 + (top - symoff) * 4, 4);
+                        const u8 *chain = elf_at(d, n, gnu + 16 + bloom * A_BLOOM_WORD + nb * 4 + (top - symoff) * 4, 4);
                         if (!chain) break;
                         if (mg_rd32(chain) & 1) {
                             nsyms = top + 1;
@@ -715,29 +737,29 @@ static int native_entry(mg_zip *const *zips, int nzips, const mg_apk_info *info)
         const mg_zip_entry *e = mg_zip_find(zips[k], path);
         size_t n = 0;
         u8 *d = e ? mg_zip_read_head(zips[k], e, 32u << 20, &n) : NULL;
-        const Elf32_Ehdr *eh = (const Elf32_Ehdr *)d;
-        if (d && n > sizeof(Elf32_Ehdr) && !memcmp(d, "\177ELF", 4) && d[4] == 1 && eh->e_machine == EM_ARM &&
-            eh->e_phentsize == sizeof(Elf32_Phdr) && eh->e_phoff <= n && (size_t)eh->e_phnum * sizeof(Elf32_Phdr) <= n - eh->e_phoff) {
-            const Elf32_Phdr *ph = (const Elf32_Phdr *)(d + eh->e_phoff);
-            const Elf32_Dyn *dyn = NULL;
+        const A_Ehdr *eh = (const A_Ehdr *)d;
+        if (d && n > sizeof(A_Ehdr) && !memcmp(d, "\177ELF", 4) && d[4] == A_CLASS && eh->e_machine == A_MACHINE &&
+            eh->e_phentsize == sizeof(A_Phdr) && eh->e_phoff <= n && (size_t)eh->e_phnum * sizeof(A_Phdr) <= n - eh->e_phoff) {
+            const A_Phdr *ph = (const A_Phdr *)(d + eh->e_phoff);
+            const A_Dyn *dyn = NULL;
             u32 ndyn = 0, symtab = 0, strtab = 0, strsz = 0, hash = 0, gnu = 0, nsyms, j;
             int i;
             for (i = 0; i < eh->e_phnum; i++)
                 if (ph[i].p_type == PT_DYNAMIC && ph[i].p_offset <= n && ph[i].p_filesz <= n - ph[i].p_offset) {
-                    dyn = (const Elf32_Dyn *)(d + ph[i].p_offset);
-                    ndyn = ph[i].p_filesz / sizeof(Elf32_Dyn);
+                    dyn = (const A_Dyn *)(d + ph[i].p_offset);
+                    ndyn = (u32)(ph[i].p_filesz / sizeof(A_Dyn));
                 }
             for (j = 0; j < ndyn && dyn[j].d_tag != DT_NULL; j++) {
-                if (dyn[j].d_tag == DT_SYMTAB) symtab = dyn[j].d_val;
-                if (dyn[j].d_tag == DT_STRTAB) strtab = dyn[j].d_val;
-                if (dyn[j].d_tag == DT_STRSZ) strsz = dyn[j].d_val;
-                if (dyn[j].d_tag == DT_HASH) hash = dyn[j].d_val;
-                if (dyn[j].d_tag == DT_GNU_HASH) gnu = dyn[j].d_val;
+                if (dyn[j].d_tag == DT_SYMTAB) symtab = (u32)dyn[j].d_val;
+                if (dyn[j].d_tag == DT_STRTAB) strtab = (u32)dyn[j].d_val;
+                if (dyn[j].d_tag == DT_STRSZ) strsz = (u32)dyn[j].d_val;
+                if (dyn[j].d_tag == DT_HASH) hash = (u32)dyn[j].d_val;
+                if (dyn[j].d_tag == DT_GNU_HASH) gnu = (u32)dyn[j].d_val;
             }
             nsyms = strtab && strsz ? elf_symbol_count(d, n, hash, gnu) : 0;
             if (symtab && nsyms && nsyms < 4000000) {
                 const char *str = (const char *)elf_at(d, n, strtab, strsz);
-                const Elf32_Sym *sym = (const Elf32_Sym *)elf_at(d, n, symtab, nsyms * sizeof(Elf32_Sym));
+                const A_Sym *sym = (const A_Sym *)elf_at(d, n, symtab, nsyms * sizeof(A_Sym));
                 if (str && sym && str[strsz - 1] == 0) {
                     found = 0;
                     for (j = 1; j < nsyms && !found; j++)
@@ -762,17 +784,31 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
     int i, k;
     bool v7 = false, v5 = false, any64 = false, in_parts = info->nsplits > 0 || info->nleft_out > 0, abi_split_missing;
     for (k = 0; k < nzips; k++) mg_zip_each(zips[k], "lib/", abi_seen, info);
+    /* (The processor's own ABI elsewhere than on 32-bit ARM: MG_APK_ABI_ARM.) */
     for (i = 0; i < info->nabis; i++) {
+#if MG_APK_ABI_ARM
         if (!strcmp(info->abis[i], "armeabi-v7a")) v7 = true;
         else if (!strcmp(info->abis[i], "armeabi")) v5 = true;
+#else
+        if (!strcmp(info->abis[i], MG_GUEST_ABI)) v7 = true;
+#endif
     }
+#if MG_APK_ABI_ARM
     if (v7) strcpy(info->abi, "armeabi-v7a");
     else if (v5) strcpy(info->abi, "armeabi");
+#else
+    if (v7) strcpy(info->abi, MG_GUEST_ABI);
+    (void)v5;
+#endif
     for (i = 0; i < nbundle_abis; i++) abi_add(info, bundle_abis[i]);
     others[0] = 0;
     for (i = 0; i < info->nabis; i++) {
         if (!strcmp(info->abis[i], "arm64-v8a")) any64 = true;
+#if MG_APK_ABI_ARM
         if (strcmp(info->abis[i], "armeabi-v7a") && strcmp(info->abis[i], "armeabi") && strlen(others) + strlen(info->abis[i]) + 3 < sizeof(others))
+#else
+        if (strcmp(info->abis[i], MG_GUEST_ABI) && strlen(others) + strlen(info->abis[i]) + 3 < sizeof(others))
+#endif
             snprintf(others + strlen(others), sizeof(others) - strlen(others), "%s%s", others[0] ? ", " : "", info->abis[i]);
     }
 
@@ -857,12 +893,22 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
         mg_strlcpy(info->reason, "This app has no native code: it is written in Java only, which this layer does not run yet.", sizeof(info->reason));
     } else if (!info->abi[0]) {
         info->runnable = false;
+#if !MG_APK_ABI_ARM
+        (void)any64;
+        if (in_parts)
+            snprintf(info->reason, sizeof(info->reason), "This app has no %s code: the bundle it came in has native code for %s only. This Megler runs its own processor's code and translates no other's; look for a version of the app built for %s.",
+                     MG_GUEST_ABI, others[0] ? others : info->abis[0], MG_GUEST_ABI);
+        else
+            snprintf(info->reason, sizeof(info->reason), "This APK has no %s code (only %s). This Megler runs its own processor's code and translates no other's; look for a version of the app that includes %s.",
+                     MG_GUEST_ABI, others[0] ? others : info->abis[0], MG_GUEST_ABI);
+#else
         if (in_parts)
             snprintf(info->reason, sizeof(info->reason), "This app has no 32-bit ARM code: the bundle it came in has native code for %s only. Windows 10 Mobile is a 32-bit system and cannot run it; look for a version of the app that still includes armeabi-v7a.",
                      others[0] ? others : info->abis[0]);
         else
             snprintf(info->reason, sizeof(info->reason), "This APK has no 32-bit ARM code (only %s). Windows 10 Mobile is a 32-bit system and cannot run it; look for a version of the app that still includes armeabi-v7a.",
                      any64 ? "arm64-v8a" : info->abis[0]);
+#endif
     } else if (!info->supported) {
         info->runnable = false;
         if (!strcmp(info->engine, "unknown"))
@@ -1046,7 +1092,7 @@ typedef struct split_list {
     int n, cap;
 } split_list;
 
-static void split_seen(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void split_seen(const char *name, bool is_dir, void *user)
 {
     split_list *l = (split_list *)user;
     size_t n = strlen(name);
@@ -1102,10 +1148,10 @@ typedef struct lib_report {
 } lib_report;
 
 /* Where a virtual address is in the file, by the program headers; NULL when it is not in the file. */
-static const u8 *elf_at(const u8 *d, size_t n, u32 vaddr, u32 need)
+static const u8 *elf_at(const u8 *d, size_t n, u64 vaddr, u64 need)
 {
-    const Elf32_Ehdr *eh = (const Elf32_Ehdr *)d;
-    const Elf32_Phdr *ph = (const Elf32_Phdr *)(d + eh->e_phoff);
+    const A_Ehdr *eh = (const A_Ehdr *)d;
+    const A_Phdr *ph = (const A_Phdr *)(d + eh->e_phoff);
     int i;
     for (i = 0; i < eh->e_phnum; i++) {
         if (ph[i].p_type != PT_LOAD || vaddr < ph[i].p_vaddr || vaddr - ph[i].p_vaddr > ph[i].p_filesz) continue;
@@ -1139,26 +1185,26 @@ static void lib_report_one(const mg_zip_entry *e, void *user)
 
     owned = mg_zip_read(r->zip, e, 512u << 20, &n);
     d = owned;
-    if (d && n > sizeof(Elf32_Ehdr) && !memcmp(d, "\177ELF", 4) && d[4] == 1) {
-        const Elf32_Ehdr *eh = (const Elf32_Ehdr *)d;
-        if (eh->e_machine == EM_ARM && eh->e_phentsize == sizeof(Elf32_Phdr) && eh->e_phoff <= n && (size_t)eh->e_phnum * sizeof(Elf32_Phdr) <= n - eh->e_phoff) {
-            const Elf32_Phdr *ph = (const Elf32_Phdr *)(d + eh->e_phoff);
-            const Elf32_Dyn *dyn = NULL;
+    if (d && n > sizeof(A_Ehdr) && !memcmp(d, "\177ELF", 4) && d[4] == A_CLASS) {
+        const A_Ehdr *eh = (const A_Ehdr *)d;
+        if (eh->e_machine == A_MACHINE && eh->e_phentsize == sizeof(A_Phdr) && eh->e_phoff <= n && (size_t)eh->e_phnum * sizeof(A_Phdr) <= n - eh->e_phoff) {
+            const A_Phdr *ph = (const A_Phdr *)(d + eh->e_phoff);
+            const A_Dyn *dyn = NULL;
             u32 ndyn = 0, symtab = 0, strtab = 0, strsz = 0, hash = 0, gnu = 0, nsyms = 0, k;
             int i;
             bool first_need = true;
             for (i = 0; i < eh->e_phnum; i++) {
                 if (ph[i].p_type == PT_DYNAMIC && ph[i].p_offset <= n && ph[i].p_filesz <= n - ph[i].p_offset) {
-                    dyn = (const Elf32_Dyn *)(d + ph[i].p_offset);
-                    ndyn = ph[i].p_filesz / sizeof(Elf32_Dyn);
+                    dyn = (const A_Dyn *)(d + ph[i].p_offset);
+                    ndyn = (u32)(ph[i].p_filesz / sizeof(A_Dyn));
                 }
             }
             for (k = 0; k < ndyn && dyn[k].d_tag != DT_NULL; k++) {
-                if (dyn[k].d_tag == DT_SYMTAB) symtab = dyn[k].d_val;
-                if (dyn[k].d_tag == DT_STRTAB) strtab = dyn[k].d_val;
-                if (dyn[k].d_tag == DT_STRSZ) strsz = dyn[k].d_val;
-                if (dyn[k].d_tag == DT_HASH) hash = dyn[k].d_val;
-                if (dyn[k].d_tag == DT_GNU_HASH) gnu = dyn[k].d_val;
+                if (dyn[k].d_tag == DT_SYMTAB) symtab = (u32)dyn[k].d_val;
+                if (dyn[k].d_tag == DT_STRTAB) strtab = (u32)dyn[k].d_val;
+                if (dyn[k].d_tag == DT_STRSZ) strsz = (u32)dyn[k].d_val;
+                if (dyn[k].d_tag == DT_HASH) hash = (u32)dyn[k].d_val;
+                if (dyn[k].d_tag == DT_GNU_HASH) gnu = (u32)dyn[k].d_val;
             }
             if (strtab && strsz) {
                 const char *str = (const char *)elf_at(d, n, strtab, strsz);
@@ -1171,7 +1217,7 @@ static void lib_report_one(const mg_zip_entry *e, void *user)
                     }
                     nsyms = elf_symbol_count(d, n, hash, gnu);
                     if (symtab && nsyms && nsyms < 4000000) {
-                        const Elf32_Sym *sym = (const Elf32_Sym *)elf_at(d, n, symtab, nsyms * sizeof(Elf32_Sym));
+                        const A_Sym *sym = (const A_Sym *)elf_at(d, n, symtab, nsyms * sizeof(A_Sym));
                         for (k = 1; sym && k < nsyms; k++) {
                             const char *sn;
                             if (sym[k].st_name >= strsz) continue;

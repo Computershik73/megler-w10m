@@ -1,6 +1,7 @@
 // Overlay of core/framework/src/android/os/SystemProperties.java (tools/build-framework.sh).
-// It differs in the processor's properties, ro.product.cpu.abi and the abilists, which are 32-bit ARM's, as Build's (the
-// overlay of Build.java says why) and as the C library's properties are. Everything else is the original's, unchanged.
+// It differs in the processor's properties, ro.product.cpu.abi and the abilists, which are the ABIs the layer runs (32-bit
+// ARM's on the phone; megler/Abis.java), as Build's (the overlay of Build.java says why) and as the C library's properties
+// are. Everything else is the original's, unchanged.
 package android.os;
 
 /** The hidden SystemProperties apps read by reflection (ro.build.*, ro.product.*, vendor checks): the device's build values as
@@ -27,10 +28,11 @@ public class SystemProperties {
             case "ro.product.name": return Build.PRODUCT;
             case "ro.product.device": return Build.DEVICE;
             case "ro.product.manufacturer": return Build.MANUFACTURER;
-            case "ro.product.cpu.abi": return "armeabi-v7a";
-            case "ro.product.cpu.abi2": return "armeabi";
-            case "ro.product.cpu.abilist": case "ro.product.cpu.abilist32": return "armeabi-v7a,armeabi";
-            case "ro.product.cpu.abilist64": return "";
+            case "ro.product.cpu.abi": return megler.Abis.PRIMARY;
+            case "ro.product.cpu.abi2": return megler.Abis.SECOND;
+            case "ro.product.cpu.abilist": return String.join(",", megler.Abis.ALL);
+            case "ro.product.cpu.abilist32": return String.join(",", megler.Abis.ALL_32);
+            case "ro.product.cpu.abilist64": return String.join(",", megler.Abis.ALL_64);
             case "ro.hardware": return Build.HARDWARE;
             case "ro.debuggable": case "ro.secure": return key.equals("ro.secure") ? "1" : "0";
             case "persist.sys.locale": return java.util.Locale.getDefault().toLanguageTag();

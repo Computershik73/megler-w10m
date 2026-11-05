@@ -72,15 +72,16 @@ static void *g_dlopen(const char *name, int flags)
 }
 
 /*
- * android_dlextinfo as Android 9's bionic has it for 32-bit ARM (android/dlext.h), and its flags. Laid out by hand: the
- * guest's pointers are 32 bits whatever the host compiling this is.
+ * android_dlextinfo as Android 9's bionic has it (android/dlext.h), and its flags: pointers and size_t of the guest's
+ * width, which every build that runs guest code has (on 32-bit ARM 32 bits, in the desktop's ELF its processor's).
  */
 typedef struct g_dlextinfo {
     u64 flags;
-    u32 reserved_addr, reserved_size;
+    void *reserved_addr;
+    size_t reserved_size;
     i32 relro_fd, library_fd;
     u64 library_fd_offset;
-    u32 library_namespace;
+    void *library_namespace;
 } g_dlextinfo;
 
 enum {
@@ -94,7 +95,7 @@ static bool relro_of(const mg_lib *lib, u8 **start, size_t *size)
 {
     int i;
     for (i = 0; i < lib->phnum; i++) {
-        const Elf32_Phdr *p = &lib->phdr[i];
+        const ElfW(Phdr) *p = &lib->phdr[i];
         if (p->p_type != PT_GNU_RELRO) continue;
         *start = lib->base + MG_ALIGN_DOWN(p->p_vaddr, MG_PAGE);
         *size = (size_t)(MG_ALIGN_UP(p->p_vaddr + p->p_memsz, MG_PAGE) - MG_ALIGN_DOWN(p->p_vaddr, MG_PAGE));
@@ -123,7 +124,7 @@ static void *g_android_dlopen_ext(const char *name, int flags, const void *info)
     char why[200];
     mg_lib *lib;
     if (!x || !name || !(x->flags & (DLEXT_RESERVED_ADDRESS | DLEXT_RESERVED_ADDRESS_HINT | DLEXT_WRITE_RELRO | DLEXT_USE_RELRO))) return g_dlopen(name, flags);
-    mg_trace("android_dlopen_ext(%s, flags 0x%x, at %08x, %u bytes, relro fd %d)", name, (unsigned)x->flags, (unsigned)x->reserved_addr,
+    mg_trace("android_dlopen_ext(%s, flags 0x%x, at %p, %u bytes, relro fd %d)", name, (unsigned)x->flags, x->reserved_addr,
              (unsigned)x->reserved_size, (int)x->relro_fd);
     if (x->flags & ~(u64)DLEXT_VALID) {
         snprintf(g_dlerror, sizeof(g_dlerror), "invalid extended flags to android_dlopen_ext: 0x%llx", (unsigned long long)x->flags);
@@ -141,7 +142,7 @@ static void *g_android_dlopen_ext(const char *name, int flags, const void *info)
             set_error("dlopen failed: library \"%s\" not found", name);
             return NULL;
         }
-        lib = mg_ld_load_placed(base, (void *)(mg_addr)x->reserved_addr, x->reserved_size, !(x->flags & DLEXT_RESERVED_ADDRESS),
+        lib = mg_ld_load_placed(base, x->reserved_addr, x->reserved_size, !(x->flags & DLEXT_RESERVED_ADDRESS),
                                 (x->flags & DLEXT_RESERVED_ADDRESS_RECURSIVE) != 0, why, sizeof(why));
         if (!lib) {
             set_error("%s", why[0] ? why : "dlopen failed: the library could not be loaded");
@@ -207,7 +208,10 @@ static const char *g_dlerror_fn(void)
 }
 
 typedef struct g_dl_info {
-    u32 dli_fname, dli_fbase, dli_sname, dli_saddr;
+    const char *dli_fname;
+    const void *dli_fbase;
+    const char *dli_sname;
+    const void *dli_saddr;
 } g_dl_info;
 
 static int g_dladdr(const void *addr, g_dl_info *info)
@@ -216,18 +220,21 @@ static int g_dladdr(const void *addr, g_dl_info *info)
     const void *sym_addr = NULL, *base = NULL;
     sym = mg_ld_symbol_at(addr, &lib, &sym_addr, &base);
     if (!lib) return 0;
-    info->dli_fname = (u32)(mg_addr)lib;
-    info->dli_fbase = (u32)(mg_addr)base;
-    info->dli_sname = (u32)(mg_addr)sym;
-    info->dli_saddr = (u32)(mg_addr)sym_addr;
+    info->dli_fname = lib;
+    info->dli_fbase = base;
+    info->dli_sname = sym;
+    info->dli_saddr = sym_addr;
     return 1;
 }
 
 typedef struct g_dl_phdr_info {
-    u32 dlpi_addr, dlpi_name, dlpi_phdr;
+    mg_addr dlpi_addr;
+    const char *dlpi_name;
+    const void *dlpi_phdr;
     u16 dlpi_phnum;
     u64 dlpi_adds, dlpi_subs;
-    u32 dlpi_tls_modid, dlpi_tls_data;
+    size_t dlpi_tls_modid;
+    void *dlpi_tls_data;
 } g_dl_phdr_info;
 
 typedef struct iterate_ctx {
@@ -240,9 +247,9 @@ static int iterate_one(mg_addr bias, const char *name, const void *phdr, unsigne
     iterate_ctx *c = (iterate_ctx *)user;
     g_dl_phdr_info info;
     memset(&info, 0, sizeof(info));
-    info.dlpi_addr = (u32)bias;
-    info.dlpi_name = (u32)(mg_addr)name;
-    info.dlpi_phdr = (u32)(mg_addr)phdr;
+    info.dlpi_addr = bias;
+    info.dlpi_name = name;
+    info.dlpi_phdr = phdr;
     info.dlpi_phnum = (u16)phnum;
     info.dlpi_adds = 1;
     return MG_GFN(int (*)(g_dl_phdr_info *, size_t, void *), c->cb)(&info, sizeof(info), c->data);
@@ -259,11 +266,20 @@ static int g_dl_iterate_phdr(mg_addr cb, void *data)
 /* The ARM unwinder asks the C library which exception index covers a return address. */
 static const void *g_find_exidx(mg_addr pc, int *count) { return mg_ld_find_exidx(pc, count); }
 
+/* bionic's TLS_INDEX: two unsigned longs. */
 typedef struct g_tls_index {
-    u32 module, offset;
+    gulong module, offset;
 } g_tls_index;
 
-static void *g_tls_get_addr(const g_tls_index *ti) { return mg_tls_get_addr(ti->module, ti->offset); }
+static void *g_tls_get_addr(const g_tls_index *ti) { return mg_tls_get_addr((u32)ti->module, (mg_addr)ti->offset); }
+#if MG_ARCH_X86
+/*
+ * x86's global-dynamic thread-local variables go through ___tls_get_addr (three underscores), which takes its tls_index in
+ * %eax (regparm(1)), not on the stack: GNU's i386 TLS ABI, which Android's x86 follows. Without it such a variable read
+ * as NULL (the guest tests' t_user_tls_len).
+ */
+static __attribute__((regparm(1))) void *g_tls_get_addr_x86(const g_tls_index *ti) { return g_tls_get_addr(ti); }
+#endif
 
 static int g_target_sdk(void) { return 28; }
 static void g_set_target_sdk(int v) { (void)v; }
@@ -302,6 +318,9 @@ const mg_sym mg_tab_dl[] = {
     MG_WRAP("dl_unwind_find_exidx", g_find_exidx),
     MG_WRAP("__gnu_Unwind_Find_exidx", g_find_exidx),
     MG_WRAP("__tls_get_addr", g_tls_get_addr),
+#if MG_ARCH_X86
+    MG_WRAP("___tls_get_addr", g_tls_get_addr_x86),
+#endif
     MG_WRAP("android_get_application_target_sdk_version", g_target_sdk),
     MG_WRAP("android_set_application_target_sdk_version", g_set_target_sdk),
     MG_WRAP("android_get_device_api_level", mg_sdk_level),

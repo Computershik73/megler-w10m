@@ -10,6 +10,11 @@
 
 #include "megler.h"
 
+#if defined(MG_ELF_HOST)
+// core/src/host/win32/mg_core_loader.h: the core's ELF into this process (desktop Windows, docs/DESKTOP.md).
+extern "C" bool mg_core_load(const char* path, char* err, size_t errlen);
+#endif
+
 namespace megler::app::platform {
 
 using namespace winrt;
@@ -31,8 +36,14 @@ uint64_t memoryLimit() { return gMemoryLimit.load(std::memory_order_relaxed); }
 uint64_t memoryUsage() { return gMemoryUsage.load(std::memory_order_relaxed); }
 
 // What libEGL.dll and libGLESv2.dll need beside them, in the order they
-// depend on each other (tools/build-appx.sh stages all five or none).
+// depend on each other (tools/build-appx.sh stages all or none). On desktop
+// Windows the two are Megler's own build of gecko-w10m's ANGLE, with the C
+// runtime linked in and no mozglue (tools/build-angle.py --arch).
+#if defined(MG_ELF_HOST)
+const wchar_t* const angleFiles[] = {L"libGLESv2.dll", L"libEGL.dll"};
+#else
 const wchar_t* const angleFiles[] = {L"vcruntime140.dll", L"msvcp140.dll", L"mozglue.dll", L"libGLESv2.dll", L"libEGL.dll"};
+#endif
 
 DWORD WINAPI threadEntry(void* parameter) {
     std::unique_ptr<std::function<void()>> work(static_cast<std::function<void()>*>(parameter));
@@ -82,8 +93,12 @@ std::string packageVersion() {
 std::string architecture() {
 #if defined(_M_ARM)
     return "ARM";
+#elif defined(_M_ARM64)
+    return "ARM64";
 #elif defined(_M_X64)
     return "x64";
+#elif defined(_M_IX86)
+    return "x86";
 #else
     return "other";
 #endif
@@ -128,6 +143,20 @@ void initializeCore() {
     // The phone's folders for an app's storage are looked for now, on a thread of their own: by the time an app is started they are known.
     StorageHost::shared().start();
 
+#if defined(MG_ELF_HOST)
+    {
+        // On desktop Windows the core is an ELF of Android's ABI beside Megler.exe (docs/DESKTOP.md), loaded before
+        // anything of it is called; until it is, every function of megler.h does nothing and says 0.
+        char why[2048] = {};
+        static const std::string corePath = packageDirectory + "\\megler-core.so";
+        if (!mg_core_load(corePath.c_str(), why, sizeof(why))) {
+            shellLog::write(std::string("core: not loaded: ") + why);
+            gCanRun = false;
+            return;
+        }
+        shellLog::write("core: " + corePath + " loaded");
+    }
+#endif
     megler_config config = {};
     config.data_dir = dataDirectory.c_str();
     config.package_dir = packageDirectory.c_str();
@@ -171,7 +200,7 @@ void angleLoadCheck(const std::function<void(const std::string&)>& line) {
     }
     std::string order;
     for (const wchar_t* name : angleFiles) order += std::string(order.empty() ? "" : ", ") + narrow(name);
-    line("angle-package: all five DLLs are in the package; loading them in this order: " + order);
+    line(format("angle-package: all %d DLLs are in the package; loading them in this order: ", (int)std::size(angleFiles)) + order);
     for (const wchar_t* name : angleFiles) {
         SetLastError(0);
         HMODULE module = LoadPackagedLibrary(name, 0);

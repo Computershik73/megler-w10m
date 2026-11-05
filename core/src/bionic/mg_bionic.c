@@ -176,7 +176,7 @@ typedef struct bp_retry {
     int n;
 } bp_retry;
 
-static void bp_retry_main(void *arg)
+static MG_HOSTCB void bp_retry_main(void *arg)
 {
     bp_retry *r = (bp_retry *)arg;
     int i, k, left = r->n;
@@ -355,7 +355,7 @@ static int cpu_round(u64 *before, mg_thread **host, cpu_use *top, int *threads)
     return n;
 }
 
-static void cpu_observer(void *unused)
+static MG_HOSTCB void cpu_observer(void *unused)
 {
     u64 *before = (u64 *)mg_alloc(sizeof(u64) * MG_COUNT(g_tid_thread));
     mg_thread **host = (mg_thread **)mg_alloc(sizeof(mg_thread *) * MG_COUNT(g_tid_thread));
@@ -418,7 +418,7 @@ typedef struct native_stack {
     i32 tid;
     char name[32];
     mg_addr pc, lr;
-    u32 words[STACK_WORDS];
+    mg_addr words[STACK_WORDS];
     int nwords;
 } native_stack;
 
@@ -429,7 +429,7 @@ static bool code_at(mg_addr a, char *out, size_t size)
     const void *sym = NULL, *base = NULL;
     char module[96];
     mg_addr mbase = 0;
-    a &= ~(mg_addr)1;
+    a = MG_CODE_ADDR(a);
     if (a < 0x10000) return false;
     if (mg_ld_is_guest_code(a)) {
         mg_ld_symbol_at((const void *)a, &lib, &sym, &base);
@@ -447,7 +447,7 @@ static bool code_at(mg_addr a, char *out, size_t size)
 static void stacks_round(native_stack *stacks, int *lines)
 {
     int n = 0, i, k;
-#if !defined(_WIN32)
+#if !MG_HOST_WINDOWS
     if (!*lines) mg_info("stacks: native threads are not looked at on this host (a thread is stopped by a signal here, which it may hold back)");
     ++*lines;
     return;
@@ -463,12 +463,12 @@ static void stacks_round(native_stack *stacks, int *lines)
         s->tid = i;
         mg_strlcpy(s->name, g->name, sizeof(s->name));
         s->pc = regs.pc;
-        s->lr = regs.n > 13 ? regs.r[13] : 0;
+        s->lr = MG_ARCH_ARM32 && regs.n > 13 ? regs.r[13] : 0;
         s->nwords = 0;
         if (g->stack_lo && g->stack_hi && regs.sp >= (mg_addr)g->stack_lo && regs.sp < (mg_addr)g->stack_hi) {
-            mg_addr top = (mg_addr)g->stack_hi, at = regs.sp & ~(mg_addr)3;
-            s->nwords = (int)((top - at) / 4 < STACK_WORDS ? (top - at) / 4 : STACK_WORDS);
-            memcpy(s->words, (const void *)at, (size_t)s->nwords * 4);
+            mg_addr top = (mg_addr)g->stack_hi, at = regs.sp & ~(mg_addr)(sizeof(mg_addr) - 1);
+            s->nwords = (int)((top - at) / sizeof(mg_addr) < STACK_WORDS ? (top - at) / sizeof(mg_addr) : STACK_WORDS);
+            memcpy(s->words, (const void *)at, (size_t)s->nwords * sizeof(mg_addr));
         }
         mg_thread_resume(h);
         n++;
@@ -480,12 +480,12 @@ static void stacks_round(native_stack *stacks, int *lines)
         char text[900], where[128];
         size_t at;
         int found = 0;
-        u32 last = 0;
+        mg_addr last = 0;
         at = (size_t)snprintf(text, sizeof(text), "stacks: native thread %d \"%s\": pc ", (int)s->tid, s->name);
         at += (size_t)snprintf(text + at, sizeof(text) - at, "%s", code_at(s->pc, where, sizeof(where)) ? where : "?");
         at += (size_t)snprintf(text + at, sizeof(text) - at, ", lr %s; on the stack:", code_at(s->lr, where, sizeof(where)) ? where : "?");
         for (k = 0; k < s->nwords && found < 14 && at + 64 < sizeof(text); k++) {
-            u32 w = s->words[k] & ~1u;
+            mg_addr w = MG_CODE_ADDR(s->words[k]);
             if (w == last || !code_at(w, where, sizeof(where))) continue;
             at += (size_t)snprintf(text + at, sizeof(text) - at, "%s %s", found ? "," : "", where);
             last = w;
@@ -496,7 +496,7 @@ static void stacks_round(native_stack *stacks, int *lines)
     }
 }
 
-static void stacks_observer(void *unused)
+static MG_HOSTCB void stacks_observer(void *unused)
 {
     native_stack *stacks = (native_stack *)mg_alloc(sizeof(native_stack) * 60);
     int lines = 0;
@@ -514,7 +514,7 @@ void mg_bionic_native_stacks_start(void)
     static volatile i32 started;
     mg_thread *t;
     if (mg_atomic_xchg(&started, 1)) return;
-#if !defined(_WIN32)
+#if !MG_HOST_WINDOWS
     /* (Said at once, not at the first round ten seconds on: a run may be over before it.) */
     mg_info("stacks: native threads are not looked at on this host (a thread is stopped by a signal here, which it may hold back)");
     return;
@@ -706,7 +706,7 @@ static void prof_add(mg_addr *addr, u32 *count, mg_addr a)
     /* (Nothing free near it: the sample is in the totals only.) */
 }
 
-static void prof_sample(prof_slot *s, u32 *words)
+static void prof_sample(prof_slot *s, mg_addr *words)
 {
     mg_gthread *g;
     mg_thread_regs regs;
@@ -722,13 +722,13 @@ static void prof_sample(prof_slot *s, u32 *words)
     }
     g_prof_stopping = 0;
     if (g->stack_lo && g->stack_hi && regs.sp >= (mg_addr)g->stack_lo && regs.sp < (mg_addr)g->stack_hi) {
-        mg_addr top = (mg_addr)g->stack_hi, at = regs.sp & ~(mg_addr)3;
-        n = (int)((top - at) / 4 < PROF_WORDS ? (top - at) / 4 : PROF_WORDS);
-        memcpy(words, (const void *)at, (size_t)n * 4);
+        mg_addr top = (mg_addr)g->stack_hi, at = regs.sp & ~(mg_addr)(sizeof(mg_addr) - 1);
+        n = (int)((top - at) / sizeof(mg_addr) < PROF_WORDS ? (top - at) / sizeof(mg_addr) : PROF_WORDS);
+        memcpy(words, (const void *)at, (size_t)n * sizeof(mg_addr));
     }
     mg_thread_resume(s->host);
     thread_unlock();
-    pc = regs.pc & ~(mg_addr)1;
+    pc = MG_CODE_ADDR(regs.pc);
     s->samples++;
     s->w_samples++;
     m = pc >= 0x10000 ? prof_module_of(pc, NULL) : -1;
@@ -736,7 +736,7 @@ static void prof_sample(prof_slot *s, u32 *words)
         prof_add(s->under_addr, s->under_count, pc);
     } else {
         for (k = 0; k < n; k++) {
-            mg_addr w = (mg_addr)(words[k] & ~1u);
+            mg_addr w = MG_CODE_ADDR(words[k]);
             int wm;
             if (w < 0x10000) continue;
             wm = prof_module_of(w, NULL);
@@ -751,7 +751,7 @@ static void prof_sample(prof_slot *s, u32 *words)
         mg_addr w = 0;
         for (k = 0; k < n && from < 0; k++) {
             int wm;
-            w = (mg_addr)(words[k] & ~1u);
+            w = MG_CODE_ADDR(words[k]);
             if (w < 0x10000) continue;
             wm = prof_module_of(w, NULL);
             if (wm >= 0 && g_pmod[wm].kind == PROF_OTHER && prof_is_code(wm, w)) from = wm;
@@ -947,12 +947,12 @@ static void prof_choose(prof_slot *slots, u64 *before, mg_thread **host, u64 spa
     }
 }
 
-static void prof_observer(void *unused)
+static MG_HOSTCB void prof_observer(void *unused)
 {
     prof_slot *slots = (prof_slot *)mg_alloc(sizeof(prof_slot) * PROF_THREADS);
     u64 *before = (u64 *)mg_alloc(sizeof(u64) * MG_COUNT(g_tid_thread));
     mg_thread **host = (mg_thread **)mg_alloc(sizeof(mg_thread *) * MG_COUNT(g_tid_thread));
-    u32 *words = (u32 *)mg_alloc(PROF_WORDS * 4);
+    mg_addr *words = (mg_addr *)mg_alloc(PROF_WORDS * sizeof(mg_addr));
     u64 began = mg_time_monotonic_ns(), chose = began, reported = began;
     int i;
     (void)unused;
@@ -982,7 +982,7 @@ void mg_bionic_profile_start(void)
     static volatile i32 started;
     mg_thread *t;
     if (mg_atomic_xchg(&started, 1)) return;
-#if !defined(_WIN32)
+#if !MG_HOST_WINDOWS
     if (prof_line_left()) mg_info("profile: threads are not sampled on this host (a thread is stopped by a signal here, which it may hold back)");
     return;
 #endif
@@ -1016,7 +1016,7 @@ typedef struct hang_thread {
     u32 host_id;
     char name[32];
     mg_addr pc, lr;
-    u32 words[HANG_WORDS];
+    mg_addr words[HANG_WORDS];
     int nwords;
 } hang_thread;
 
@@ -1024,7 +1024,7 @@ typedef struct hang_thread {
 typedef struct hang_holder {
     u32 host_id;
     mg_addr pc, lr;
-    u32 words[HANG_HOLDER_WORDS];
+    mg_addr words[HANG_HOLDER_WORDS];
     int nwords;
 } hang_holder;
 
@@ -1067,12 +1067,12 @@ static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *h
         memcpy(s->name, g->name, sizeof(s->name));
         s->name[sizeof(s->name) - 1] = 0;
         s->pc = regs.pc;
-        s->lr = regs.n > 13 ? regs.r[13] : 0;
+        s->lr = MG_ARCH_ARM32 && regs.n > 13 ? regs.r[13] : 0;
         s->nwords = 0;
         if (g->stack_lo && g->stack_hi && regs.sp >= (mg_addr)g->stack_lo && regs.sp < (mg_addr)g->stack_hi) {
-            mg_addr top = (mg_addr)g->stack_hi, from = regs.sp & ~(mg_addr)3;
-            s->nwords = (int)((top - from) / 4 < HANG_WORDS ? (top - from) / 4 : HANG_WORDS);
-            memcpy(s->words, (const void *)from, (size_t)s->nwords * 4);
+            mg_addr top = (mg_addr)g->stack_hi, from = regs.sp & ~(mg_addr)(sizeof(mg_addr) - 1);
+            s->nwords = (int)((top - from) / sizeof(mg_addr) < HANG_WORDS ? (top - from) / sizeof(mg_addr) : HANG_WORDS);
+            memcpy(s->words, (const void *)from, (size_t)s->nwords * sizeof(mg_addr));
         }
         mg_thread_resume(h);
         n++;
@@ -1090,7 +1090,7 @@ static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *h
         if (hd->nwords < 0) continue;
         hd->host_id = holder_ids[k];
         hd->pc = regs.pc;
-        hd->lr = regs.n > 13 ? regs.r[13] : 0;
+        hd->lr = MG_ARCH_ARM32 && regs.n > 13 ? regs.r[13] : 0;
         nholders++;
     }
     at = hang_add(text, text_cap, at, "hang: %s\n", what);
@@ -1099,11 +1099,11 @@ static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *h
     for (i = 0; i < n; i++) {
         hang_thread *s = &threads[i];
         int shown = 0;
-        at = hang_add(text, text_cap, at, "hang: thread %d \"%s\" (host %u): pc 0x%x, lr 0x%x; on the stack:", (int)s->tid, s->name, (unsigned)s->host_id,
-                      (unsigned)s->pc, (unsigned)s->lr);
+        at = hang_add(text, text_cap, at, "hang: thread %d \"%s\" (host %u): pc 0x%llx, lr 0x%llx; on the stack:", (int)s->tid, s->name,
+                      (unsigned)s->host_id, (unsigned long long)s->pc, (unsigned long long)s->lr);
         for (k = 0; k < s->nwords && shown < 24; k++)
-            if (s->words[k] >= 0x10000u && (mg_ld_is_guest_code(s->words[k] & ~1u) || (s->words[k] & 1u))) {
-                at = hang_add(text, text_cap, at, " 0x%x", (unsigned)s->words[k]);
+            if (s->words[k] >= 0x10000u && (mg_ld_is_guest_code(MG_CODE_ADDR(s->words[k])) || (MG_ARCH_ARM32 && (s->words[k] & 1u)))) {
+                at = hang_add(text, text_cap, at, " 0x%llx", (unsigned long long)s->words[k]);
                 shown++;
             }
         at = hang_add(text, text_cap, at, "\n");
@@ -1111,11 +1111,11 @@ static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *h
     for (i = 0; i < nholders; i++) {
         hang_holder *hd = &holders[i];
         int shown = 0;
-        at = hang_add(text, text_cap, at, "hang: host thread %u, not one of the app's: pc 0x%x, lr 0x%x; on the stack:", (unsigned)hd->host_id, (unsigned)hd->pc,
-                      (unsigned)hd->lr);
+        at = hang_add(text, text_cap, at, "hang: host thread %u, not one of the app's: pc 0x%llx, lr 0x%llx; on the stack:", (unsigned)hd->host_id,
+                      (unsigned long long)hd->pc, (unsigned long long)hd->lr);
         for (k = 0; k < hd->nwords && shown < 64; k++)
-            if (hd->words[k] >= 0x10000u && (hd->words[k] & 1u)) {
-                at = hang_add(text, text_cap, at, " 0x%x", (unsigned)hd->words[k]);
+            if (hd->words[k] >= 0x10000u && (MG_ARCH_ARM32 ? (hd->words[k] & 1u) != 0 : mg_ld_is_guest_code(hd->words[k]))) {
+                at = hang_add(text, text_cap, at, " 0x%llx", (unsigned long long)hd->words[k]);
                 shown++;
             }
         at = hang_add(text, text_cap, at, "\n");
@@ -1125,13 +1125,13 @@ static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *h
     at = mark;
     for (i = 0; i < n; i++) {
         hang_thread *s = &threads[i];
-        u32 last = 0;
+        mg_addr last = 0;
         int found = 0;
         at = hang_add(text, text_cap, at, "hang: thread %d \"%s\" (host %u): pc %s", (int)s->tid, s->name, (unsigned)s->host_id,
                       code_at(s->pc, where, sizeof(where)) ? where : "?");
         at = hang_add(text, text_cap, at, ", lr %s; on the stack:", code_at(s->lr, where, sizeof(where)) ? where : "?");
         for (k = 0; k < s->nwords && found < 14; k++) {
-            u32 w = s->words[k] & ~1u;
+            mg_addr w = MG_CODE_ADDR(s->words[k]);
             if (w == last || !code_at(w, where, sizeof(where))) continue;
             at = hang_add(text, text_cap, at, "%s %s", found ? "," : "", where);
             last = w;
@@ -1141,13 +1141,13 @@ static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *h
     }
     for (i = 0; i < nholders; i++) {
         hang_holder *hd = &holders[i];
-        u32 last = 0;
+        mg_addr last = 0;
         int found = 0;
         at = hang_add(text, text_cap, at, "hang: host thread %u, not one of the app's: pc %s", (unsigned)hd->host_id,
                       code_at(hd->pc, where, sizeof(where)) ? where : "?");
         at = hang_add(text, text_cap, at, ", lr %s; on the stack:", code_at(hd->lr, where, sizeof(where)) ? where : "?");
         for (k = 0; k < hd->nwords && found < 48; k++) {
-            u32 w = hd->words[k] & ~1u;
+            mg_addr w = MG_CODE_ADDR(hd->words[k]);
             if (w == last || !code_at(w, where, sizeof(where))) continue;
             at = hang_add(text, text_cap, at, "%s %s", found ? "," : "", where);
             last = w;
@@ -1169,7 +1169,7 @@ static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *h
     }
 }
 
-static void hang_observer(void *unused)
+static MG_HOSTCB void hang_observer(void *unused)
 {
     hang_thread *threads = (hang_thread *)mg_alloc(sizeof(hang_thread) * HANG_THREADS);
     hang_holder *holders = (hang_holder *)mg_alloc(sizeof(hang_holder) * 2);
@@ -1230,7 +1230,7 @@ void mg_bionic_hang_watch_start(void)
     static volatile i32 started;
     mg_thread *t;
     if (mg_atomic_xchg(&started, 1)) return;
-#if !defined(_WIN32)
+#if !MG_HOST_WINDOWS
     return;
 #endif
     t = mg_thread_start(hang_observer, NULL, 64u * 1024u, "hang-observer");
@@ -1438,11 +1438,20 @@ static void default_props(void)
         { "ro.product.device", "sailfish" },
         { "ro.product.board", "sailfish" },
         { "ro.product.manufacturer", "Google" },
+        /* The processor's: 32-bit ARM's on the phone, the desktop's own elsewhere, which alone it runs (MG_APK_ABI_ARM). */
+#if MG_APK_ABI_ARM
         { "ro.product.cpu.abi", "armeabi-v7a" },
         { "ro.product.cpu.abi2", "armeabi" },
         { "ro.product.cpu.abilist", "armeabi-v7a,armeabi" },
         { "ro.product.cpu.abilist32", "armeabi-v7a,armeabi" },
         { "ro.product.cpu.abilist64", "" },
+#else
+        { "ro.product.cpu.abi", MG_GUEST_ABI },
+        { "ro.product.cpu.abi2", "" },
+        { "ro.product.cpu.abilist", MG_GUEST_ABI },
+        { "ro.product.cpu.abilist32", MG_GUEST_LP64 ? "" : MG_GUEST_ABI },
+        { "ro.product.cpu.abilist64", MG_GUEST_LP64 ? MG_GUEST_ABI : "" },
+#endif
         { "ro.hardware", "sailfish" },
         { "ro.board.platform", "msm8996" },
         { "ro.debuggable", "0" },
@@ -1483,7 +1492,10 @@ void mg_bionic_init(void)
     mg_bionic_register(mg_tab_pthread);
     mg_bionic_register(mg_tab_dl);
     mg_bionic_register(mg_tab_log);
+#if MG_ARCH_ARM32
+    /* (ARM's run-time ABI: no other processor's code imports __aeabi_*.) */
     mg_bionic_register(mg_tab_aeabi);
+#endif
     mg_bionic_register(mg_tab_net);
     mg_bionic_register(mg_tab_netdb);
     mg_bionic_register(mg_tab_zlib);

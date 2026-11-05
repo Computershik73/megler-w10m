@@ -1,14 +1,15 @@
 /*
  * A second guest library that needs the first (DT_NEEDED libt_basic.so): its
  * calls into it go through this library's PLT, whose entries the linker wrote
- * in ARM mode and the loader rewrote (arm/mg_patch.c).
+ * in ARM mode and the loader rewrote (arm/mg_patch.c) on armeabi-v7a, and which
+ * are the ABI's own elsewhere.
  */
 int t_add(int a, int b);
 int *t_counter_ptr(void);
 const char *t_hello(void);
 double t_fmul(double a, float b);
 extern int t_exported_value;
-unsigned strlen(const char *);
+__SIZE_TYPE__ strlen(const char *);
 
 int d_add_twice(int a, int b) { return t_add(t_add(a, b), b); }
 int d_bump(void) { return ++*t_counter_ptr(); }

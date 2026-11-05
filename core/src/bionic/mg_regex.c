@@ -33,8 +33,9 @@ typedef struct g_regex {
     void *re_g;
 } g_regex;
 
+/* regoff_t is an off_t in bionic: a long, 32 bits in 32-bit Android. */
 typedef struct g_regmatch {
-    i32 rm_so, rm_eo;
+    goff rm_so, rm_eo;
 } g_regmatch;
 
 #define RE_MAGIC 0xf265

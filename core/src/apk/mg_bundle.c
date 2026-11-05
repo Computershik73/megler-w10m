@@ -56,7 +56,7 @@ typedef struct ctx {
     char *mjson;
     size_t mjson_size;
     /* progress */
-    void (*progress)(void *user, uint64_t done, uint64_t total);
+    void (MEGLER_CB *progress)(void *user, uint64_t done, uint64_t total);
     void *user;
     u64 done, total, piece_from;
     /* what was written, to take away again if it does not come to a whole */
@@ -242,7 +242,7 @@ static bool move_into_place(ctx *c, const char *from, const char *to)
 }
 
 /* What a folder of splits held before: removed, so that a split of an older version is not read with a newer base. */
-static void clear_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void clear_one(const char *name, bool is_dir, void *user)
 {
     const char *dir = (const char *)user;
     char *path;
@@ -334,7 +334,7 @@ static void policy(ctx *c, int density_dpi, const char *languages)
     if (density_dpi <= 0) density_dpi = 160;
     for (i = 0; i < c->nitems; i++) {
         const item *it = &c->items[i];
-        if (it->kind == K_ABI && !strcmp(it->abi, "armeabi-v7a")) c->v7 = true;
+        if (it->kind == K_ABI && !strcmp(it->abi, MG_APK_ABI_ARM ? "armeabi-v7a" : MG_GUEST_ABI)) c->v7 = true;
         if (it->kind == K_DENSITY) {
             if (it->density >= density_dpi && (!c->above || it->density < c->above)) c->above = it->density;
             if (it->density < density_dpi && it->density > c->below) c->below = it->density;
@@ -351,9 +351,15 @@ static void decide(const ctx *c, item *it)
         it->keep = false;
         mg_strlcpy(it->why, "a standalone APK, for Android versions without splits", sizeof(it->why));
     } else if (it->kind == K_ABI) {
+#if MG_APK_ABI_ARM
         it->keep = !strcmp(it->abi, "armeabi-v7a") || (!c->v7 && !strcmp(it->abi, "armeabi"));
         if (!it->keep)
             snprintf(it->why, sizeof(it->why), strcmp(it->abi, "armeabi") ? "native code for %s, which Windows 10 Mobile cannot run" : "native code for %s, which the armeabi-v7a split stands in for", it->abi);
+#else
+        /* (The processor's own alone: MG_APK_ABI_ARM.) */
+        it->keep = !strcmp(it->abi, MG_GUEST_ABI);
+        if (!it->keep) snprintf(it->why, sizeof(it->why), "native code for %s, which this processor does not run", it->abi);
+#endif
     } else if (it->kind == K_DENSITY) {
         it->keep = it->density == c->above || it->density == c->below;
         if (!it->keep) snprintf(it->why, sizeof(it->why), "pictures for another screen density (%d dpi)", it->density);
@@ -379,11 +385,24 @@ static int base_by_name(const ctx *c, const item *it)
     return it->kind == K_BASE || it->kind == K_PART ? 1 : 0;
 }
 
-/* A standalone APK as the whole app, when there is no base: the one for 32-bit ARM first, then a universal one. */
+/* A standalone APK as the whole app, when there is no base: the one for this processor (32-bit ARM's on the phone) first, then a universal one. */
 static int standalone_score(const item *it)
 {
+#if MG_APK_ABI_ARM
+    bool ours = strstr(it->e->name, "armeabi_v7a") || strstr(it->e->name, "armeabi-v7a");
+#else
+    char underscored[24];
+    size_t k;
+    bool ours;
+    mg_strlcpy(underscored, MG_GUEST_ABI, sizeof(underscored));
+    for (k = 0; underscored[k]; k++)
+        if (underscored[k] == '-') underscored[k] = '_';
+    /* (x86 is in x86_64's name too: a standalone for x86_64 is not one for x86.) */
+    ours = (strstr(it->e->name, MG_GUEST_ABI) || strstr(it->e->name, underscored))
+        && (MG_ARCH_X86_64 || !strstr(it->e->name, "x86_64"));
+#endif
     if (it->kind != K_STANDALONE) return 0;
-    return 1 + (strstr(it->e->name, "armeabi_v7a") || strstr(it->e->name, "armeabi-v7a") ? 2 : 0) + (strstr(it->e->name, "universal") ? 1 : 0);
+    return 1 + (ours ? 2 : 0) + (strstr(it->e->name, "universal") ? 1 : 0);
 }
 
 /*
@@ -651,7 +670,7 @@ static char *answer(ctx *c, const char *bundle_path, const item *base, const cha
 }
 
 char *megler_bundle_unpack(const char *bundle_path, const char *apk_path, const char *splits_dir, int density_dpi, const char *languages,
-                         void (*progress)(void *user, uint64_t done, uint64_t total), void *user)
+                         void (MEGLER_CB *progress)(void *user, uint64_t done, uint64_t total), void *user)
 {
     ctx *c = (ctx *)mg_alloc(sizeof(ctx));
     expansions *obbs = (expansions *)mg_alloc(sizeof(expansions));

@@ -214,7 +214,7 @@ static bool cut_out(const sstate *s, i32 x, i32 y)
     return false;
 }
 
-static void *s_canvas_new(void *user, void *pixels, int width, int height, int stride)
+static MEGLER_CB void *s_canvas_new(void *user, void *pixels, int width, int height, int stride)
 {
     scanvas *v;
     (void)user;
@@ -233,7 +233,7 @@ static void *s_canvas_new(void *user, void *pixels, int width, int height, int s
     return v;
 }
 
-static void s_canvas_free(void *user, void *canvas)
+static MEGLER_CB void s_canvas_free(void *user, void *canvas)
 {
     scanvas *v = (scanvas *)canvas;
     (void)user;
@@ -243,13 +243,13 @@ static void s_canvas_free(void *user, void *canvas)
     free(v);
 }
 
-static void s_nothing(void *user, void *canvas)
+static MEGLER_CB void s_nothing(void *user, void *canvas)
 {
     (void)user;
     (void)canvas;
 }
 
-static void s_save(void *user, void *canvas)
+static MEGLER_CB void s_save(void *user, void *canvas)
 {
     scanvas *v = (scanvas *)canvas;
     (void)user;
@@ -261,7 +261,7 @@ static void s_save(void *user, void *canvas)
     v->depth++;
 }
 
-static void s_save_layer(void *user, void *canvas, const float *bounds, int alpha, int blend)
+static MEGLER_CB void s_save_layer(void *user, void *canvas, const float *bounds, int alpha, int blend)
 {
     scanvas *v = (scanvas *)canvas;
     i32 box[4];
@@ -274,7 +274,7 @@ static void s_save_layer(void *user, void *canvas, const float *bounds, int alph
     state(v)->alpha = mul255(state(v)->alpha, (u32)(alpha < 0 ? 0 : alpha > 255 ? 255 : alpha));
 }
 
-static void s_restore(void *user, void *canvas)
+static MEGLER_CB void s_restore(void *user, void *canvas)
 {
     scanvas *v = (scanvas *)canvas;
     float m[6];
@@ -286,13 +286,13 @@ static void s_restore(void *user, void *canvas)
     memcpy(state(v)->m, m, sizeof(m));
 }
 
-static void s_set_matrix(void *user, void *canvas, const float *matrix)
+static MEGLER_CB void s_set_matrix(void *user, void *canvas, const float *matrix)
 {
     (void)user;
     memcpy(state((scanvas *)canvas)->m, matrix, sizeof(float) * 6);
 }
 
-static void s_clip_rect(void *user, void *canvas, float left, float top, float right, float bottom, int op)
+static MEGLER_CB void s_clip_rect(void *user, void *canvas, float left, float top, float right, float bottom, int op)
 {
     scanvas *v = (scanvas *)canvas;
     sstate *s = state(v);
@@ -610,7 +610,7 @@ static void draw_points(scanvas *v, spoints *p, int rule, const megler_gfx_paint
     points_free(p);
 }
 
-static void s_draw_rect(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader)
+static MEGLER_CB void s_draw_rect(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader)
 {
     spoints p;
     (void)user;
@@ -619,7 +619,7 @@ static void s_draw_rect(void *user, void *canvas, float left, float top, float r
     draw_points((scanvas *)canvas, &p, MEGLER_GFX_WINDING, paint, shader);
 }
 
-static void s_draw_round_rect(void *user, void *canvas, float left, float top, float right, float bottom, float rx, float ry, const megler_gfx_paint *paint,
+static MEGLER_CB void s_draw_round_rect(void *user, void *canvas, float left, float top, float right, float bottom, float rx, float ry, const megler_gfx_paint *paint,
                               void *shader)
 {
     float path[64];
@@ -630,12 +630,12 @@ static void s_draw_round_rect(void *user, void *canvas, float left, float top, f
     draw_points((scanvas *)canvas, &p, MEGLER_GFX_WINDING, paint, shader);
 }
 
-static void s_draw_oval(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader)
+static MEGLER_CB void s_draw_oval(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader)
 {
     s_draw_round_rect(user, canvas, left, top, right, bottom, (right - left) / 2, (bottom - top) / 2, paint, shader);
 }
 
-static void s_draw_path(void *user, void *canvas, const float *path, int count, int fill, const megler_gfx_paint *paint, void *shader)
+static MEGLER_CB void s_draw_path(void *user, void *canvas, const float *path, int count, int fill, const megler_gfx_paint *paint, void *shader)
 {
     spoints p;
     (void)user;
@@ -645,7 +645,7 @@ static void s_draw_path(void *user, void *canvas, const float *path, int count, 
 }
 
 /* The clip becomes what of it is in the box of the path, or that box is cut out of it: see the top of the file. */
-static void s_clip_path(void *user, void *canvas, const float *path, int count, int fill, int op)
+static MEGLER_CB void s_clip_path(void *user, void *canvas, const float *path, int count, int fill, int op)
 {
     scanvas *v = (scanvas *)canvas;
     sstate *s = state(v);
@@ -673,7 +673,7 @@ static void s_clip_path(void *user, void *canvas, const float *path, int count, 
     points_free(&p);
 }
 
-static void s_draw_color(void *user, void *canvas, uint32_t color, int blend)
+static MEGLER_CB void s_draw_color(void *user, void *canvas, uint32_t color, int blend)
 {
     scanvas *v = (scanvas *)canvas;
     const sstate *s = state(v);
@@ -694,7 +694,7 @@ static void s_draw_color(void *user, void *canvas, uint32_t color, int blend)
  * of the image that the same place in `src` falls in: the nearest one, never
  * one outside `src`.
  */
-static void s_draw_bitmap(void *user, void *canvas, const megler_gfx_image *image, const float *src, const float *dst, const megler_gfx_paint *paint)
+static MEGLER_CB void s_draw_bitmap(void *user, void *canvas, const megler_gfx_image *image, const float *src, const float *dst, const megler_gfx_paint *paint)
 {
     scanvas *v = (scanvas *)canvas;
     const sstate *s = state(v);
@@ -746,7 +746,7 @@ static float advance_of(const megler_gfx_paint *p) { return (0.6f + p->letter_sp
 static float box_width(const megler_gfx_paint *p) { return 0.5f * p->text_size * p->text_scale_x; }
 static bool inked(u16 unit) { return unit > 0x20 && unit != 0xA0; }
 
-static float s_text_measure(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface)
+static MEGLER_CB float s_text_measure(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface)
 {
     (void)user;
     (void)text;
@@ -754,7 +754,7 @@ static float s_text_measure(void *user, const uint16_t *text, int count, const m
     return count > 0 ? (float)count * advance_of(paint) : 0;
 }
 
-static float s_text_metrics(void *user, const megler_gfx_paint *paint, void *typeface, float *out)
+static MEGLER_CB float s_text_metrics(void *user, const megler_gfx_paint *paint, void *typeface, float *out)
 {
     float up = 0.8f * paint->text_size, down = 0.2f * paint->text_size;
     (void)user;
@@ -767,7 +767,7 @@ static float s_text_metrics(void *user, const megler_gfx_paint *paint, void *typ
     return up + down;
 }
 
-static void s_text_bounds(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface, float *out)
+static MEGLER_CB void s_text_bounds(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface, float *out)
 {
     int i, first = -1, last = -1;
     (void)user;
@@ -786,7 +786,7 @@ static void s_text_bounds(void *user, const uint16_t *text, int count, const meg
 
 static bool spacing(u16 unit) { return unit == ' ' || unit == '\t' || unit == '\n'; }
 
-static int s_text_break(void *user, const uint16_t *text, int count, float max_width, const megler_gfx_paint *paint, void *typeface, bool words)
+static MEGLER_CB int s_text_break(void *user, const uint16_t *text, int count, float max_width, const megler_gfx_paint *paint, void *typeface, bool words)
 {
     float advance = advance_of(paint);
     int line = count, fit = 0, i, kept, best = -1;
@@ -810,7 +810,7 @@ static int s_text_break(void *user, const uint16_t *text, int count, float max_w
     return best >= 0 ? best : fit;
 }
 
-static void s_text_widths(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface, float *out)
+static MEGLER_CB void s_text_widths(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface, float *out)
 {
     int i;
     (void)user;
@@ -819,7 +819,7 @@ static void s_text_widths(void *user, const uint16_t *text, int count, const meg
     for (i = 0; i < count; i++) out[i] = advance_of(paint);
 }
 
-static void s_draw_text(void *user, void *canvas, const uint16_t *text, int count, float x, float y, const megler_gfx_paint *paint, void *typeface,
+static MEGLER_CB void s_draw_text(void *user, void *canvas, const uint16_t *text, int count, float x, float y, const megler_gfx_paint *paint, void *typeface,
                         void *shader)
 {
     scanvas *v = (scanvas *)canvas;
@@ -853,7 +853,7 @@ static void *face_new(int weight, bool italic)
     return f;
 }
 
-static void *s_typeface_create(void *user, const char *family, int generic, int weight, bool italic)
+static MEGLER_CB void *s_typeface_create(void *user, const char *family, int generic, int weight, bool italic)
 {
     (void)user;
     (void)family;
@@ -861,7 +861,7 @@ static void *s_typeface_create(void *user, const char *family, int generic, int 
     return face_new(weight, italic);
 }
 
-static void *s_typeface_derive(void *user, void *typeface, int weight, bool italic)
+static MEGLER_CB void *s_typeface_derive(void *user, void *typeface, int weight, bool italic)
 {
     (void)user;
     (void)typeface;
@@ -869,7 +869,7 @@ static void *s_typeface_derive(void *user, void *typeface, int weight, bool ital
 }
 
 /* A font file is known by how it begins: TrueType, OpenType with CFF, a collection. */
-static void *s_typeface_from_data(void *user, const void *data, size_t size)
+static MEGLER_CB void *s_typeface_from_data(void *user, const void *data, size_t size)
 {
     static const char *const magic[] = { "\0\1\0\0", "OTTO", "true", "ttcf" };
     size_t i;
@@ -887,7 +887,7 @@ static void *shader_new(u32 premultiplied_color)
     return s;
 }
 
-static void *s_shader_linear(void *user, float x0, float y0, float x1, float y1, const uint32_t *colors, const float *positions, int count, int tile)
+static MEGLER_CB void *s_shader_linear(void *user, float x0, float y0, float x1, float y1, const uint32_t *colors, const float *positions, int count, int tile)
 {
     (void)user;
     (void)x0;
@@ -899,32 +899,32 @@ static void *s_shader_linear(void *user, float x0, float y0, float x1, float y1,
     return count > 0 ? shader_new(premultiplied(colors[0])) : NULL;
 }
 
-static void *s_shader_radial(void *user, float cx, float cy, float radius, const uint32_t *colors, const float *positions, int count, int tile)
+static MEGLER_CB void *s_shader_radial(void *user, float cx, float cy, float radius, const uint32_t *colors, const float *positions, int count, int tile)
 {
     (void)radius;
     return s_shader_linear(user, cx, cy, 0, 0, colors, positions, count, tile);
 }
 
-static void *s_shader_sweep(void *user, float cx, float cy, const uint32_t *colors, const float *positions, int count)
+static MEGLER_CB void *s_shader_sweep(void *user, float cx, float cy, const uint32_t *colors, const float *positions, int count)
 {
     return s_shader_linear(user, cx, cy, 0, 0, colors, positions, count, 0);
 }
 
-static void *s_shader_bitmap(void *user, const megler_gfx_image *image, int tile)
+static MEGLER_CB void *s_shader_bitmap(void *user, const megler_gfx_image *image, int tile)
 {
     (void)user;
     (void)tile;
     return image && image->pixels && image->width > 0 && image->height > 0 ? shader_new(mg_rd32(image->pixels)) : NULL;
 }
 
-static void s_shader_matrix(void *user, void *shader, const float *matrix)
+static MEGLER_CB void s_shader_matrix(void *user, void *shader, const float *matrix)
 {
     (void)user;
     (void)shader;
     (void)matrix;
 }
 
-static void s_shader_free(void *user, void *shader)
+static MEGLER_CB void s_shader_free(void *user, void *shader)
 {
     (void)user;
     free(shader);
@@ -1083,7 +1083,7 @@ done:
     return out;
 }
 
-static bool s_image_size(void *user, const void *data, size_t size, int *width, int *height)
+static MEGLER_CB bool s_image_size(void *user, const void *data, size_t size, int *width, int *height)
 {
     spng p;
     (void)user;
@@ -1093,7 +1093,7 @@ static bool s_image_size(void *user, const void *data, size_t size, int *width, 
     return true;
 }
 
-static bool s_image_decode(void *user, const void *data, size_t size, void *pixels, int width, int height, int stride)
+static MEGLER_CB bool s_image_decode(void *user, const void *data, size_t size, void *pixels, int width, int height, int stride)
 {
     spng p;
     u8 *rgba;
@@ -1125,7 +1125,7 @@ static size_t png_chunk(u8 *out, const char *type, const u8 *data, u32 len)
     return 12 + (size_t)len;
 }
 
-static bool s_image_encode(void *user, const void *pixels, int width, int height, int stride, int format, int quality, megler_gfx_write write, void *sink)
+static MEGLER_CB bool s_image_encode(void *user, const void *pixels, int width, int height, int stride, int format, int quality, megler_gfx_write write, void *sink)
 {
     size_t line = (size_t)width * 4 + 1, nraw = line * (size_t)height, at;
     u8 *raw, *packed = NULL, *out = NULL, head[13];
@@ -1171,7 +1171,7 @@ static bool s_image_encode(void *user, const void *pixels, int width, int height
     return ok;
 }
 
-static void s_bitmap_gone(void *user, uint32_t id)
+static MEGLER_CB void s_bitmap_gone(void *user, uint32_t id)
 {
     (void)user;
     (void)id;

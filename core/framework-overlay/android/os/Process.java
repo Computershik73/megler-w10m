@@ -1,5 +1,6 @@
 // Overlay of core/framework/src/android/os/Process.java (tools/build-framework.sh).
-// It differs in is64Bit: false. The process is a 32-bit ARM one on Windows 10 Mobile, as Build (overlaid) says with
+// It differs in is64Bit: the process's own width (megler/Abis.java), 64 bits for desktop Windows' x86_64 and ARM64, and
+// false on the phone. The process is a 32-bit ARM one on Windows 10 Mobile, as Build (overlaid) says with
 // SUPPORTED_ABIS = { armeabi-v7a, armeabi }; the original, written for 64-bit iOS, said true. SoLoader (Facebook's, in
 // WhatsApp and React Native apps) keeps of Build.SUPPORTED_ABIS those of the process's width, which it asks
 // Process.is64Bit (SysUtil.MarshmallowSysdeps): told 64 bits, it kept none of the two 32-bit ones, and WhatsApp ended at
@@ -23,7 +24,8 @@ public class Process {
     public static void killProcess(int pid) { megler.Native.exit(); }
     /* when the process started: the first use of this class, early in the app's start */
     private static final long START_NANOS = System.nanoTime(), START_ELAPSED = SystemClock.elapsedRealtime(), START_UPTIME = SystemClock.uptimeMillis();
-    public static boolean is64Bit() { return false; }
+    /* (On desktop Windows the process is of the processor's own width: x86_64's and ARM64's are 64-bit; megler/Abis.java.) */
+    public static boolean is64Bit() { return megler.Abis.IS_64; }
     /**
      * The process of the code that asks, as Application.getProcessName (overlaid): the package's name, as Android names an app's
      * main process, or for code of another Android process of the app's -- a class scope of its own here (megler.Processes) --

@@ -30,11 +30,18 @@ static mg_lock g_angle_lock = MG_LOCK_INIT;    /* loading ANGLE: taken while the
 
 void mg_egl_set_provider(void *(*resolve)(const char *name)) { g_provider = resolve; }
 
-/* ANGLE's own function by name. */
+/* On x86_64 and x86 ANGLE's function is given as its adapter (mg_gl_adapters.c), of the core's convention, which is the guest's. */
+#if MG_GL_ADAPTERS
+#define ADAPTED(name, p) mg_gl_adapter(name, p)
+#else
+#define ADAPTED(name, p) (p)
+#endif
+
+/* ANGLE's own function by name, or its adapter: everything here, and everything given to guest code, calls ANGLE through this. */
 static void *angle(const char *name)
 {
     void *p;
-    if (g_provider) return g_provider(name);
+    if (g_provider) return ADAPTED(name, g_provider(name));
     if (!g_angle_tried) {
         mg_lock_acquire(&g_angle_lock);
         if (!g_angle_tried) {
@@ -48,7 +55,7 @@ static void *angle(const char *name)
     }
     p = g_lib_egl ? mg_dl_sym(g_lib_egl, name) : NULL;
     if (!p && g_lib_gles) p = mg_dl_sym(g_lib_gles, name);
-    return p;
+    return ADAPTED(name, p);
 }
 
 /* -------------------------------------------------------------- EGL names */
@@ -248,7 +255,7 @@ static service G_SERVICE = { MG_LOCK_INIT, MG_COND_INIT, MG_COND_INIT, 0, 0, 0, 
 static service G_BUFFERS = { MG_LOCK_INIT, MG_COND_INIT, MG_COND_INIT, 0, 0, 0, 0, 0, "graphics-buffers" };
 static service G_BUFFERS_WEBVIEW = { MG_LOCK_INIT, MG_COND_INIT, MG_COND_INIT, 0, 0, 0, 0, 0, "graphics-buffers-webview" };
 
-static void service_main(void *p)
+static MG_HOSTCB void service_main(void *p)
 {
     service *s = (service *)p;
     mg_lock_acquire(&s->lock);
@@ -391,7 +398,7 @@ static void blob_path(char *out, size_t size, const void *key, blob_size key_siz
     snprintf(out, size, "%s/%016llx.blob", g_blob_dir, (unsigned long long)blob_hash(key, key_size));
 }
 
-static void blob_count_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void blob_count_one(const char *name, bool is_dir, void *user)
 {
     char path[700];
     mg_stat st;
@@ -401,7 +408,7 @@ static void blob_count_one(const char *name, bool is_dir, void *user)
     if (mg_path_stat(path, &st, NULL)) g_blob_bytes += st.size;
 }
 
-static void blob_remove_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void blob_remove_one(const char *name, bool is_dir, void *user)
 {
     char path[700];
     (void)user;
@@ -2362,10 +2369,14 @@ static EGLint g_eglDupNativeFenceFDANDROID(EGLDisplay d, void *sync)
 
 /* ----------------------------------------------- GLES functions with floats
  *
- * One adapter per function: it receives each float as the 32 bits the guest
- * put in an integer register and calls ANGLE with real floats. The letters
- * name the parameters in order -- i for anything integer-sized, f for a float.
+ * 32-bit ARM's (Android's softfp): one adapter per function: it receives each
+ * float as the 32 bits the guest put in an integer register and calls ANGLE
+ * with real floats. The letters name the parameters in order -- i for anything
+ * integer-sized, f for a float. Elsewhere the guest passes floats as floats,
+ * as the core does (on x86_64 and x86 every function has an adapter of
+ * mg_gl_adapters.c's for the calling convention, floats among the rest).
  */
+#if MG_GUEST_SOFTFP
 #define AD_f(n) static void (*h_##n)(float); static void w_##n(u32 a) { h_##n(mg_f(a)); }
 #define AD_ff(n) static void (*h_##n)(float, float); static void w_##n(u32 a, u32 b) { h_##n(mg_f(a), mg_f(b)); }
 #define AD_fff(n) static void (*h_##n)(float, float, float); static void w_##n(u32 a, u32 b, u32 c) { h_##n(mg_f(a), mg_f(b), mg_f(c)); }
@@ -2407,6 +2418,7 @@ typedef struct adapter {
 #define X(kind, name) { #name, (void *)w_##name, (void **)&h_##name },
 static const adapter g_adapters[] = { GL_FLOAT_FUNCTIONS(X) };
 #undef X
+#endif
 
 static const mg_sym g_egl_overrides[] = {
     MG_WRAP("eglGetError", g_eglGetError),
@@ -2466,12 +2478,14 @@ static void *resolve(const char *name)
         if (!h_link_program) h_link_program = (fn_gl_uint)angle(name);
         return h_link_program ? (void *)w_link_program : NULL;
     }
+#if MG_GUEST_SOFTFP
     for (i = 0; i < MG_COUNT(g_adapters); i++) {
         if (strcmp(g_adapters[i].name, name)) continue;
         if (!*g_adapters[i].host) *g_adapters[i].host = angle(name);
         /* ANGLE may not have it (an OpenGL ES 1 function): then the guest gets "no such function", not an adapter to nothing. */
         return *g_adapters[i].host ? g_adapters[i].wrapper : NULL;
     }
+#endif
     return mg_gltex_wrap(name, angle(name));
 }
 

@@ -2,6 +2,7 @@
 #include "mg_bionic.h"
 
 #include "../mg_core.h"
+#include "../elf/mg_elf.h"
 #include "../ld/mg_ld.h"
 
 #include <stdio.h>
@@ -12,7 +13,7 @@ long mg_g_futex(volatile i32 *addr, int op, int val, const void *timeout);
 
 /* ---------------------------------------------------------------- process */
 
-static u32 g_stack_chk_guard;
+static uintptr_t g_stack_chk_guard;
 
 static void g_stack_chk_fail(void) { mg_fatal("guest: stack corruption detected (__stack_chk_fail)"); }
 
@@ -281,7 +282,7 @@ static int g_uname(g_utsname *u)
     strcpy(u->nodename, "localhost");
     strcpy(u->release, "4.4.0-megler");
     strcpy(u->version, "#1 SMP PREEMPT");
-    strcpy(u->machine, "armv7l");
+    strcpy(u->machine, MG_ARCH_ARM32 ? "armv7l" : MG_ARCH_ARM64 ? "aarch64" : MG_ARCH_X86_64 ? "x86_64" : "i686");
     strcpy(u->domainname, "localdomain");
     return 0;
 }
@@ -329,79 +330,162 @@ static u8 g_at_random[16];
 
 /*
  * A vDSO of the kind the kernel maps into a process, for Go's runtime: its clocks read without a call by number. Go takes
- * the image from the vector's AT_SYSINFO_EHDR as it starts, finds __vdso_clock_gettime of the version LINUX_2.6 in it,
- * and calls that for every reading of its clocks (nanotime, walltime), thousands a second in a busy program. Without it
- * each reading is a call by number, which here is a fault: the svc is an undefined instruction now (arm/mg_patch.c),
- * answered from the fault handler. The image is ELF, as Linux's is, with what Go reads of one and no more: a program
- * header table with a PT_LOAD at 0 and a PT_DYNAMIC; the dynamic table (DT_HASH, DT_SYMTAB, DT_STRTAB, DT_VERSYM and
- * DT_VERDEF: Go reads the definitions without looking whether there are any); one hash bucket; the symbol, whose
- * value is the distance from the image to libc's clock_gettime here; its version; the names. getauxval does not say
- * where it is: libraries that read a vDSO's unwind tables or sections through getauxval find none, as before.
+ * the image from the vector's AT_SYSINFO_EHDR as it starts, finds its clock function of its kernel's version in it, and
+ * calls that for every reading of its clocks (nanotime, walltime), thousands a second in a busy program. Without it
+ * each reading is a call by number: on 32-bit ARM a fault, the svc being an undefined instruction now (arm/mg_patch.c),
+ * answered from the fault handler.
+ *
+ * The image is each processor's as its kernel's is, of its own class and machine, with the names and the version Go's
+ * runtime looks for there (runtime/vdso_linux_*.go): __vdso_clock_gettime of LINUX_2.6 on 32-bit ARM, x86 and x86_64,
+ * the x86s' with __vdso_gettimeofday, __vdso_time and __vdso_clock_getres beside it, as their kernels' have (Go takes
+ * __vdso_gettimeofday there too); __kernel_clock_gettime, __kernel_gettimeofday and __kernel_clock_getres of
+ * LINUX_2.6.39 on ARM64. A symbol's value is the distance from the image to libc's function of that name here, which
+ * takes its arguments as the kernel's function does, in the processor's own convention.
+ *
+ * It is ELF with what Go reads of one and no more: a program header table with a PT_LOAD at 0 and a PT_DYNAMIC; the
+ * dynamic table (DT_HASH, DT_SYMTAB, DT_STRTAB, DT_VERSYM and DT_VERDEF: Go reads the definitions without looking
+ * whether there are any); one hash bucket, every symbol in its chain; the symbols; their version; the names. getauxval
+ * does not say where it is: libraries that read a vDSO's unwind tables or sections through getauxval find none, as
+ * before.
  */
-static u32 g_vdso[96];
+typedef struct vdso_verdef {
+    u16 version, flags, ndx, cnt;
+    u32 hash, aux, next;
+    u32 name, aux_next;                /* its one Verdaux, right behind it */
+} vdso_verdef;
 
-static void put16(u8 *p, u16 v) { memcpy(p, &v, 2); }
-static void put32(u8 *p, u32 v) { memcpy(p, &v, 4); }
+/* The ELF hash (System V's), which a version's definition carries of its name. */
+static u32 elf_hash(const char *s)
+{
+    u32 h = 0, g;
+    for (; *s; s++) {
+        h = (h << 4) + (u8)*s;
+        g = h & 0xf0000000u;
+        if (g) h ^= g >> 24;
+        h &= ~g;
+    }
+    return h;
+}
 
 static mg_addr vdso_image(void)
 {
-    enum { PH = 52, DYN = PH + 2 * 32, NDYN = 9, HASH = DYN + NDYN * 8, SYM = HASH + 5 * 4, VERSYM = SYM + 2 * 16,
-           VERDEF = VERSYM + 4, STR = VERDEF + 2 * 28, S_FN = 1, S_VER = 22, S_BASE = 32, STRSZ = 48, SIZE = STR + STRSZ };
-    static const char names[STRSZ] = "\0__vdso_clock_gettime\0LINUX_2.6\0linux-vdso.so.1";
-    static const u32 dyn[NDYN * 2] = { 4 /* DT_HASH */, HASH, 5 /* DT_STRTAB */, STR, 6 /* DT_SYMTAB */, SYM, 10 /* DT_STRSZ */, STRSZ,
-                                      11 /* DT_SYMENT */, 16, 0x6ffffff0u /* DT_VERSYM */, VERSYM, 0x6ffffffcu /* DT_VERDEF */, VERDEF,
-                                      0x6ffffffdu /* DT_VERDEFNUM */, 2, 0, 0 };
-    u8 *b = (u8 *)g_vdso;
-    mg_addr fn = (mg_addr)mg_bionic_find("clock_gettime");
-    if (!fn || SIZE > sizeof(g_vdso)) return 0;
-    memset(b, 0, sizeof(g_vdso));
-    memcpy(b, "\177ELF\1\1\1", 7);                    /* 32-bit, little-endian */
-    put16(b + 16, 3);                                   /* ET_DYN */
-    put16(b + 18, 40);                                  /* EM_ARM */
-    put32(b + 20, 1);
-    put32(b + 28, PH);
-    put32(b + 36, 0x05000400u);                         /* EABI 5, hard float */
-    put16(b + 40, 52);
-    put16(b + 42, 32);
-    put16(b + 44, 2);
-    put16(b + 46, 40);
-    put32(b + PH, 1);                                   /* PT_LOAD: the image, at 0 */
-    put32(b + PH + 16, SIZE);
-    put32(b + PH + 20, SIZE);
-    put32(b + PH + 24, 5);
-    put32(b + PH + 28, MG_PAGE);
-    put32(b + PH + 32, 2);                              /* PT_DYNAMIC */
-    put32(b + PH + 36, DYN);
-    put32(b + PH + 40, DYN);
-    put32(b + PH + 44, DYN);
-    put32(b + PH + 48, NDYN * 8);
-    put32(b + PH + 52, NDYN * 8);
-    put32(b + PH + 56, 4);
-    put32(b + PH + 60, 4);
-    memcpy(b + DYN, dyn, sizeof(dyn));
-    put32(b + HASH, 1);                                 /* one bucket; two in the chain, the second the symbol */
-    put32(b + HASH + 4, 2);
-    put32(b + HASH + 8, 1);
-    put32(b + SYM + 16, S_FN);                          /* the symbol: global, a function, defined */
-    put32(b + SYM + 20, (u32)(fn - (mg_addr)b));
-    b[SYM + 28] = 0x12;
-    put16(b + SYM + 30, 1);
-    put16(b + VERSYM + 2, 2);                           /* its version: LINUX_2.6 */
-    put16(b + VERDEF, 1);                               /* the image's own version, the base ... */
-    put16(b + VERDEF + 2, 1);
-    put16(b + VERDEF + 4, 1);
-    put16(b + VERDEF + 6, 1);
-    put32(b + VERDEF + 8, 0x0deebfa1u);                 /* (the ELF hash of its name) */
-    put32(b + VERDEF + 12, 20);
-    put32(b + VERDEF + 16, 28);
-    put32(b + VERDEF + 20, S_BASE);
-    put16(b + VERDEF + 28, 1);                          /* ... then LINUX_2.6, the second */
-    put16(b + VERDEF + 32, 2);
-    put16(b + VERDEF + 34, 1);
-    put32(b + VERDEF + 36, 0x03ae75f6u);
-    put32(b + VERDEF + 40, 20);
-    put32(b + VERDEF + 48, S_VER);
-    memcpy(b + STR, names, STRSZ);
+    /* Each symbol's name in the image, and libc's function it is. */
+#if MG_ARCH_ARM64
+    static const char *const names[][2] = { { "__kernel_clock_gettime", "clock_gettime" }, { "__kernel_gettimeofday", "gettimeofday" },
+                                            { "__kernel_clock_getres", "clock_getres" } };
+    static const char version[] = "LINUX_2.6.39";
+#elif MG_ARCH_ARM32
+    static const char *const names[][2] = { { "__vdso_clock_gettime", "clock_gettime" } };
+    static const char version[] = "LINUX_2.6";
+#else
+    static const char *const names[][2] = { { "__vdso_clock_gettime", "clock_gettime" }, { "__vdso_gettimeofday", "gettimeofday" },
+                                            { "__vdso_time", "time" }, { "__vdso_clock_getres", "clock_getres" } };
+    static const char version[] = "LINUX_2.6";
+#endif
+    static const char soname[] = "linux-vdso.so.1";
+    enum { NSYM = (int)MG_COUNT(names) + 1, NDYN = 9 };
+    static u64 image[256];             /* 2 KB, aligned for ELF64: the largest of the images takes some 650 bytes */
+    u8 *b = (u8 *)image;
+    ElfW(Ehdr) *eh = (ElfW(Ehdr) *)b;
+    ElfW(Phdr) *ph;
+    ElfW(Dyn) *dyn;
+    ElfW(Sym) *sym;
+    u32 *hash, name_at[NSYM];
+    u16 *versym;
+    vdso_verdef *vd;
+    size_t ph_at = sizeof(ElfW(Ehdr)), dyn_at = ph_at + 2 * sizeof(ElfW(Phdr)), hash_at = dyn_at + NDYN * sizeof(ElfW(Dyn));
+    size_t sym_at = MG_ALIGN_UP(hash_at + (3 + NSYM) * 4, 8), versym_at = sym_at + NSYM * sizeof(ElfW(Sym));
+    size_t verdef_at = MG_ALIGN_UP(versym_at + NSYM * 2, 4), str_at = verdef_at + 2 * sizeof(vdso_verdef), at, version_at, soname_at;
+    int i;
+    /* (No guest code runs in MSVC's x64 build of the tests, whose libc is of Windows' convention.) */
+    if (!MG_GUEST_CODE) return 0;
+    memset(image, 0, sizeof(image));
+    at = str_at + 1;                   /* the names, after the empty one */
+    for (i = 1; i < NSYM; i++) {
+        size_t n = strlen(names[i - 1][0]) + 1;
+        if (at + n > sizeof(image)) return 0;
+        name_at[i] = (u32)(at - str_at);
+        memcpy(b + at, names[i - 1][0], n);
+        at += n;
+    }
+    version_at = at - str_at;
+    soname_at = version_at + sizeof(version);
+    at += sizeof(version) + sizeof(soname);
+    if (at > sizeof(image)) return 0;
+    memcpy(b + str_at + version_at, version, sizeof(version));
+    memcpy(b + str_at + soname_at, soname, sizeof(soname));
+
+    memcpy(eh->e_ident, "\177ELF", 4);
+    eh->e_ident[4] = MG_ELFCLASS;
+    eh->e_ident[5] = 1;                /* little-endian */
+    eh->e_ident[6] = 1;
+    eh->e_type = ET_DYN;
+    eh->e_machine = MG_EM;
+    eh->e_version = 1;
+    eh->e_phoff = ph_at;
+    eh->e_flags = MG_ARCH_ARM32 ? 0x05000400u : 0;     /* EABI 5, hard float */
+    eh->e_ehsize = (u16)sizeof(ElfW(Ehdr));
+    eh->e_phentsize = (u16)sizeof(ElfW(Phdr));
+    eh->e_phnum = 2;
+    eh->e_shentsize = (u16)sizeof(ElfW(Shdr));
+    ph = (ElfW(Phdr) *)(b + ph_at);
+    ph[0].p_type = PT_LOAD;            /* the image, at 0 */
+    ph[0].p_filesz = ph[0].p_memsz = at;
+    ph[0].p_flags = PF_R | PF_X;
+    ph[0].p_align = MG_PAGE;
+    ph[1].p_type = PT_DYNAMIC;
+    ph[1].p_offset = ph[1].p_vaddr = ph[1].p_paddr = dyn_at;
+    ph[1].p_filesz = ph[1].p_memsz = NDYN * sizeof(ElfW(Dyn));
+    ph[1].p_flags = PF_R;
+    ph[1].p_align = sizeof(mg_addr);
+    dyn = (ElfW(Dyn) *)(b + dyn_at);
+    dyn[0].d_tag = DT_HASH;
+    dyn[0].d_val = hash_at;
+    dyn[1].d_tag = DT_STRTAB;
+    dyn[1].d_val = str_at;
+    dyn[2].d_tag = DT_SYMTAB;
+    dyn[2].d_val = sym_at;
+    dyn[3].d_tag = DT_STRSZ;
+    dyn[3].d_val = at - str_at;
+    dyn[4].d_tag = DT_SYMENT;
+    dyn[4].d_val = sizeof(ElfW(Sym));
+    dyn[5].d_tag = 0x6ffffff0;         /* DT_VERSYM */
+    dyn[5].d_val = versym_at;
+    dyn[6].d_tag = 0x6ffffffc;         /* DT_VERDEF */
+    dyn[6].d_val = verdef_at;
+    dyn[7].d_tag = 0x6ffffffd;         /* DT_VERDEFNUM */
+    dyn[7].d_val = 2;                  /* (dyn[8], DT_NULL, the end) */
+    hash = (u32 *)(b + hash_at);       /* one bucket, every symbol in its chain */
+    hash[0] = 1;
+    hash[1] = NSYM;
+    hash[2] = 1;
+    sym = (ElfW(Sym) *)(b + sym_at);
+    versym = (u16 *)(b + versym_at);
+    for (i = 1; i < NSYM; i++) {
+        mg_addr fn = (mg_addr)mg_bionic_find(names[i - 1][1]);
+        if (!fn) return 0;
+        hash[3 + i] = i + 1 < NSYM ? (u32)(i + 1) : 0;
+        sym[i].st_name = name_at[i];
+        sym[i].st_info = (u8)((STB_GLOBAL << 4) | STT_FUNC);
+        sym[i].st_shndx = 1;           /* defined */
+        sym[i].st_value = fn - (mg_addr)b;
+        versym[i] = 2;                 /* the version below */
+    }
+    vd = (vdso_verdef *)(b + verdef_at);
+    vd[0].version = 1;                 /* the image's own name, the base ... */
+    vd[0].flags = 1;
+    vd[0].ndx = 1;
+    vd[0].cnt = 1;
+    vd[0].hash = elf_hash(soname);
+    vd[0].aux = 20;
+    vd[0].next = (u32)sizeof(vdso_verdef);
+    vd[0].name = (u32)soname_at;
+    vd[1].version = 1;                 /* ... then the kernel's version, the second */
+    vd[1].ndx = 2;
+    vd[1].cnt = 1;
+    vd[1].hash = elf_hash(version);
+    vd[1].aux = 20;
+    vd[1].name = (u32)version_at;
     return (mg_addr)b;
 }
 
@@ -444,29 +528,39 @@ char **mg_bionic_initial_argv(void)
 }
 
 /*
- * That vector as /proc/self/auxv has it: 32-bit tags and values, up to AT_NULL's pair and with it; the number of words.
+ * That vector as /proc/self/auxv has it: tags and values as longs (32 bits in 32-bit Android), up to AT_NULL's pair and with
+ * it; the number of words.
  * Go's runtime, loaded as a library on Android, takes no vector from its loader -- _rt0_arm_android_lib gives the runtime
  * an argv of its own, "gojni", whose vector is empty -- and reads that file for it (bionic/mg_libc_io.c).
  */
-size_t mg_bionic_auxv_words(u32 *out, size_t max)
+size_t mg_bionic_auxv_words(gulong *out, size_t max)
 {
     const mg_addr *v = (const mg_addr *)(void *)mg_bionic_initial_argv() + 3;
     size_t n = 0;
     for (; n + 2 <= max; v += 2) {
-        out[n++] = (u32)v[0];
-        out[n++] = (u32)v[1];
+        out[n++] = (gulong)v[0];
+        out[n++] = (gulong)v[1];
         if (!v[0]) break;
     }
     return n;
 }
 
+/* AT_PLATFORM and AT_HWCAP are the processor's: x86's say nothing (its code asks cpuid), arm64's what every ARMv8 has. */
 static unsigned long g_getauxval(unsigned long type)
 {
     switch (type) {
     case 6: return MG_PAGE;                        /* AT_PAGESZ */
-    case 15: return (unsigned long)(mg_addr)"v7l"; /* AT_PLATFORM */
-    case 16:                                       /* AT_HWCAP: half thumb fastmult vfp edsp neon vfpv3 tls vfpv4 idiva idivt vfpd32 */
+    case 15:                                       /* AT_PLATFORM */
+        return (unsigned long)(mg_addr)(MG_ARCH_ARM32 ? "v7l" : MG_ARCH_ARM64 ? "aarch64" : MG_ARCH_X86_64 ? "x86_64" : "i686");
+    case 16:                                       /* AT_HWCAP */
+#if MG_ARCH_ARM32
+        /* half thumb fastmult vfp edsp neon vfpv3 tls vfpv4 idiva idivt vfpd32 */
         return 2u | 4u | 16u | 64u | 128u | 4096u | 8192u | 32768u | 65536u | (1u << 17) | (1u << 18) | (1u << 19);
+#elif MG_ARCH_ARM64
+        return 1u | 2u;                            /* fp asimd */
+#else
+        return 0;
+#endif
     case 25: return (unsigned long)(mg_addr)g_at_random;   /* AT_RANDOM */
     case 26: return 0;                             /* AT_HWCAP2: no ARMv8 crypto claimed */
     default: return 0;
@@ -493,28 +587,42 @@ static int g_cacheflush(long start, long end, long flags)
  * rt_sigaction by number: the kernel's struct (handler, flags, restorer, a 64-bit mask) to bionic's 32-bit sigaction
  * (handler, a 32-bit mask, flags, restorer) and back. The mask's real-time half is not kept: sigaction here has none.
  */
-static long rt_sigaction(int sig, const u32 *act, u32 *old, size_t mask_size)
+static long rt_sigaction(int sig, const gulong *act, gulong *old, size_t mask_size)
 {
-    typedef int (*sigaction_fn)(int, const u32 *, u32 *);
-    u32 in[4], out[4];
+    /*
+     * The kernel's struct sigaction -- handler, flags, restorer, then the 64-bit mask, each a long -- made bionic's and
+     * back: on the 32-bit ABIs handler, mask (the lower 32 signals), flags, restorer; on the 64-bit ones flags (an int),
+     * handler, mask, restorer (sigaction below).
+     */
+#if MG_GUEST_LP64
+    typedef struct { int flags; gulong handler, mask, restorer; } bionic_sigaction;
+#else
+    typedef struct { gulong handler, mask, flags, restorer; } bionic_sigaction;
+#endif
+    typedef int (*sigaction_fn)(int, const bionic_sigaction *, bionic_sigaction *);
+    bionic_sigaction in, out;
     int r;
     if (mask_size != 8) {
         mg_set_errno(GE_INVAL);
         return -1;
     }
+    memset(&in, 0, sizeof(in));
+    memset(&out, 0, sizeof(out));
     if (act) {
-        in[0] = act[0];
-        in[1] = act[3];
-        in[2] = act[1];
-        in[3] = act[2];
+        in.handler = act[0];
+        in.flags = (int)act[1];
+        in.restorer = act[2];
+        in.mask = act[3];
     }
-    r = ((sigaction_fn)mg_bionic_find("sigaction"))(sig, act ? in : NULL, old ? out : NULL);
+    r = ((sigaction_fn)mg_bionic_find("sigaction"))(sig, act ? &in : NULL, old ? &out : NULL);
     if (r == 0 && old) {
-        old[0] = out[0];
-        old[1] = out[2];
-        old[2] = out[3];
-        old[3] = out[1];
+        old[0] = out.handler;
+        old[1] = (gulong)out.flags;
+        old[2] = out.restorer;
+        old[3] = out.mask;
+#if !MG_GUEST_LP64
         old[4] = 0;
+#endif
     }
     return r;
 }
@@ -555,7 +663,7 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef int (*epoll_ctl_fn)(int, int, int, void *);
     typedef int (*epoll_wait_fn)(int, void *, int, int);
     typedef int (*nanosleep_fn)(const void *, void *);
-    typedef int (*sigprocmask_fn)(int, const u32 *, u32 *);
+    typedef int (*sigprocmask_fn)(int, const gulong *, gulong *);
     typedef int (*madvise_fn)(void *, size_t, int);
     typedef int (*mincore_fn)(void *, size_t, void *);
     typedef int (*epoll_pwait_fn)(int, void *, int, int, const void *);
@@ -577,9 +685,9 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef int (*at_int_fn)(int, const char *, int, int);
     typedef int (*renameat_fn)(int, const char *, int, const char *);
     typedef long (*readlink_fn)(const char *, char *, size_t);
-    typedef long (*lseek_fn)(int, long, int);
+    typedef goff (*lseek_fn)(int, goff, int);
     typedef i64 (*lseek64_fn)(int, i64, int);
-    typedef int (*fcntl_fn)(int, int, long);
+    typedef int (*fcntl_fn)(int, int, uintptr_t);
     typedef int (*ioctl_fn)(int, unsigned, void *);
     typedef int (*dup3_fn)(int, int, int);
     typedef int (*affinity_fn)(int, size_t, void *);
@@ -588,18 +696,18 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef int (*sock_name_fn)(int, void *, u32 *);
     typedef int (*accept4_fn)(int, void *, u32 *, int);
     typedef int (*socketpair_fn)(int, int, int, int *);
-    typedef i32 (*send_fn)(int, const void *, u32, int);
-    typedef i32 (*recv_fn)(int, void *, u32, int);
-    typedef i32 (*sendto_fn)(int, const void *, u32, int, const void *, u32);
-    typedef i32 (*recvfrom_fn)(int, void *, u32, int, void *, u32 *);
+    typedef gssize (*send_fn)(int, const void *, size_t, int);
+    typedef gssize (*recv_fn)(int, void *, size_t, int);
+    typedef gssize (*sendto_fn)(int, const void *, size_t, int, const void *, u32);
+    typedef gssize (*recvfrom_fn)(int, void *, size_t, int, void *, u32 *);
     typedef int (*setsockopt_fn)(int, int, int, const void *, u32);
     typedef int (*getsockopt_fn)(int, int, int, void *, u32 *);
-    typedef i32 (*msg_fn)(int, void *, int);
+    typedef gssize (*msg_fn)(int, void *, int);
     typedef int (*sendmmsg_fn)(int, void *, unsigned, int);
     typedef int (*recvmmsg_fn)(int, void *, unsigned, int, const void *);
-    typedef i32 (*pio_fn)(int, void *, u32, i64);
+    typedef gssize (*pio_fn)(int, void *, size_t, i64);
     typedef int (*ftruncate64_fn)(int, i64);
-    typedef int (*getdents_fn)(int, void *, u32);
+    typedef gssize (*getdents_fn)(int, void *, size_t);
     typedef long (*readlinkat_fn)(int, const char *, char *, size_t);
     typedef int (*utimensat_fn)(int, const char *, const void *, int);
     typedef char *(*getcwd_fn)(char *, size_t);
@@ -611,11 +719,30 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     typedef int (*ppoll_fn)(void *, unsigned, const void *, const void *);
     typedef int (*rlimit_fn)(int, void *);
     typedef int (*prlimit_fn)(int, int, const void *, void *);
+#if MG_GUEST_CODE && !MG_ARCH_ARM32
+    {
+        /* Another ABI's number and arguments, made 32-bit ARM's, which the calls below are written in (mg_syscall_abi.c). */
+        long args[6], arm;
+        args[0] = a; args[1] = b; args[2] = c; args[3] = d; args[4] = e; args[5] = f;
+        arm = mg_syscall_abi_to_arm(nr, args);
+        if (arm == -2) {
+            mg_set_errno(GE_INVAL);
+            return -1;
+        }
+        if (arm < 0) {
+            mg_note_once("syscall(%ld) is not supported", nr);
+            mg_set_errno(GE_NOSYS);
+            return -1;
+        }
+        nr = arm;
+        a = args[0]; b = args[1]; c = args[2]; d = args[3]; e = args[4]; f = args[5];
+    }
+#endif
     switch (nr) {
     case 67:                                                                                                  /* sigaction */
         if (fault_signal_refused(a, b)) return -1;
         return ((sigaction_fn)mg_bionic_find("sigaction"))((int)a, (const void *)(mg_addr)b, (void *)(mg_addr)c);
-    case 174: return rt_sigaction((int)a, (const u32 *)(mg_addr)b, (u32 *)(mg_addr)c, (size_t)d);           /* rt_sigaction */
+    case 174: return rt_sigaction((int)a, (const gulong *)(mg_addr)b, (gulong *)(mg_addr)c, (size_t)d);     /* rt_sigaction */
     case 186: return ((sigaltstack_fn)mg_bionic_find("sigaltstack"))((const void *)(mg_addr)a, (void *)(mg_addr)b);  /* sigaltstack */
     case 385: return ((memfd_fn)mg_bionic_find("memfd_create"))((const char *)(mg_addr)a, (unsigned)b);           /* memfd_create */
     case 20: return g_getpid();                                            /* getpid */
@@ -670,7 +797,7 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 195: return ((path_buf_fn)mg_bionic_find("stat64"))((const char *)(mg_addr)a, (void *)(mg_addr)b);         /* stat64 */
     case 196: return ((path_buf_fn)mg_bionic_find("lstat64"))((const char *)(mg_addr)a, (void *)(mg_addr)b);        /* lstat64 */
     case 197: return ((fd_buf_fn)mg_bionic_find("fstat64"))((int)a, (void *)(mg_addr)b);                             /* fstat64 */
-    case 221: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, (int)b, c);                                         /* fcntl64 */
+    case 221: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, (int)b, (uintptr_t)c);                              /* fcntl64 */
     case 322: return ((openat_fn)mg_bionic_find("openat"))((int)a, (const char *)(mg_addr)b, (int)c, (unsigned)d);   /* openat */
     case 323: return ((at_fn)mg_bionic_find("mkdirat"))((int)a, (const char *)(mg_addr)b, (int)c);                   /* mkdirat */
     case 327: return ((at_buf_fn)mg_bionic_find("fstatat64"))((int)a, (const char *)(mg_addr)b, (void *)(mg_addr)c, (int)d);  /* fstatat64 */
@@ -690,7 +817,7 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
      */
     case 162: return ((nanosleep_fn)mg_bionic_find("nanosleep"))((const void *)(mg_addr)a, (void *)(mg_addr)b);      /* nanosleep */
     case 175: {                                                                                       /* rt_sigprocmask */
-        u32 set = 0, old = 0;
+        gulong set = 0, old = 0;
         int r;
         if (d != 8) {
             mg_set_errno(GE_INVAL);
@@ -699,7 +826,7 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
         if (b) set = ((const u32 *)(mg_addr)b)[0];
         r = ((sigprocmask_fn)mg_bionic_find("sigprocmask"))((int)a, b ? &set : NULL, c ? &old : NULL);
         if (r == 0 && c) {
-            ((u32 *)(mg_addr)c)[0] = old;
+            ((u32 *)(mg_addr)c)[0] = (u32)old;
             ((u32 *)(mg_addr)c)[1] = 0;
         }
         return r;
@@ -707,7 +834,7 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 220: return ((madvise_fn)mg_bionic_find("madvise"))((void *)(mg_addr)a, (size_t)b, (int)c);                 /* madvise */
     case 219: return ((mincore_fn)mg_bionic_find("mincore"))((void *)(mg_addr)a, (size_t)b, (void *)(mg_addr)c);     /* mincore */
     case 346: return ((epoll_pwait_fn)mg_bionic_find("epoll_pwait"))((int)a, (void *)(mg_addr)b, (int)c, (int)d, (const void *)(mg_addr)e);  /* epoll_pwait */
-    case 55: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, (int)b, c);                                           /* fcntl */
+    case 55: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, (int)b, (uintptr_t)c);                                /* fcntl */
     case 248: ((exit_fn)mg_bionic_find("_exit"))((int)a); return 0;                                                    /* exit_group */
     case 352: {                                                                                     /* fallocate */
         int r;
@@ -742,10 +869,10 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     case 286: return ((sock_name_fn)mg_bionic_find("getsockname"))((int)a, (void *)(mg_addr)b, (u32 *)(mg_addr)c);       /* getsockname */
     case 287: return ((sock_name_fn)mg_bionic_find("getpeername"))((int)a, (void *)(mg_addr)b, (u32 *)(mg_addr)c);       /* getpeername */
     case 288: return ((socketpair_fn)mg_bionic_find("socketpair"))((int)a, (int)b, (int)c, (int *)(mg_addr)d);           /* socketpair */
-    case 289: return ((send_fn)mg_bionic_find("send"))((int)a, (const void *)(mg_addr)b, (u32)c, (int)d);                 /* send */
-    case 290: return ((sendto_fn)mg_bionic_find("sendto"))((int)a, (const void *)(mg_addr)b, (u32)c, (int)d, (const void *)(mg_addr)e, (u32)f);  /* sendto */
-    case 291: return ((recv_fn)mg_bionic_find("recv"))((int)a, (void *)(mg_addr)b, (u32)c, (int)d);                       /* recv */
-    case 292: return ((recvfrom_fn)mg_bionic_find("recvfrom"))((int)a, (void *)(mg_addr)b, (u32)c, (int)d, (void *)(mg_addr)e, (u32 *)(mg_addr)f);  /* recvfrom */
+    case 289: return ((send_fn)mg_bionic_find("send"))((int)a, (const void *)(mg_addr)b, (size_t)c, (int)d);              /* send */
+    case 290: return ((sendto_fn)mg_bionic_find("sendto"))((int)a, (const void *)(mg_addr)b, (size_t)c, (int)d, (const void *)(mg_addr)e, (u32)f);  /* sendto */
+    case 291: return ((recv_fn)mg_bionic_find("recv"))((int)a, (void *)(mg_addr)b, (size_t)c, (int)d);                    /* recv */
+    case 292: return ((recvfrom_fn)mg_bionic_find("recvfrom"))((int)a, (void *)(mg_addr)b, (size_t)c, (int)d, (void *)(mg_addr)e, (u32 *)(mg_addr)f);  /* recvfrom */
     case 293: return ((fd2_fn)mg_bionic_find("shutdown"))((int)a, (int)b);                                               /* shutdown */
     case 294: return ((setsockopt_fn)mg_bionic_find("setsockopt"))((int)a, (int)b, (int)c, (const void *)(mg_addr)d, (u32)e);  /* setsockopt */
     case 295: return ((getsockopt_fn)mg_bionic_find("getsockopt"))((int)a, (int)b, (int)c, (void *)(mg_addr)d, (u32 *)(mg_addr)e);  /* getsockopt */
@@ -763,12 +890,12 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
      * times, a file system's size, the working directory. Psiphon keeps its data in a Bolt database, which opens, locks,
      * reads, writes, syncs and grows its file so. A mode or an owner is not kept here: for a file that is there, done.
      */
-    case 180: return ((pio_fn)mg_bionic_find("pread64"))((int)a, (void *)(mg_addr)b, (u32)c, (i64)(((u64)(u32)f << 32) | (u32)e));   /* pread64 */
-    case 181: return ((pio_fn)mg_bionic_find("pwrite64"))((int)a, (void *)(mg_addr)b, (u32)c, (i64)(((u64)(u32)f << 32) | (u32)e));  /* pwrite64 */
+    case 180: return ((pio_fn)mg_bionic_find("pread64"))((int)a, (void *)(mg_addr)b, (size_t)c, (i64)(((u64)(u32)f << 32) | (u32)e));   /* pread64 */
+    case 181: return ((pio_fn)mg_bionic_find("pwrite64"))((int)a, (void *)(mg_addr)b, (size_t)c, (i64)(((u64)(u32)f << 32) | (u32)e));  /* pwrite64 */
     case 143: return ((fd2_fn)mg_bionic_find("flock"))((int)a, (int)b);                                                  /* flock */
     case 148: return ((fd_fn)mg_bionic_find("fdatasync"))((int)a);                                                       /* fdatasync */
     case 194: return ((ftruncate64_fn)mg_bionic_find("ftruncate64"))((int)a, (i64)(((u64)(u32)d << 32) | (u32)c));      /* ftruncate64 */
-    case 217: return ((getdents_fn)mg_bionic_find("getdents64"))((int)a, (void *)(mg_addr)b, (u32)c);                    /* getdents64 */
+    case 217: return ((getdents_fn)mg_bionic_find("getdents64"))((int)a, (void *)(mg_addr)b, (size_t)c);                 /* getdents64 */
     case 332: return ((readlinkat_fn)mg_bionic_find("readlinkat"))((int)a, (const char *)(mg_addr)b, (char *)(mg_addr)c, (size_t)d);  /* readlinkat */
     case 94: return ((fd2_fn)mg_bionic_find("fchmod"))((int)a, (int)b);                                                  /* fchmod */
     case 95: case 207: return ((fcntl_fn)mg_bionic_find("fcntl"))((int)a, 1 /* F_GETFD */, 0) < 0 ? -1 : 0;              /* fchown, fchown32 */
@@ -828,6 +955,19 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     }
 }
 
+#if MG_GUEST_CODE && !MG_ARCH_ARM32
+/* A system call by the guest's own number, as an svc of its code makes it (ARM64's traps, mg_core.c): -errno on failure. */
+long mg_bionic_syscall(long nr, const long args[6])
+{
+    int *err = mg_errno_ptr();
+    int saved = *err;
+    long result = g_syscall(nr, args[0], args[1], args[2], args[3], args[4], args[5]);
+    if (result == -1) result = -*err;
+    *err = saved;
+    return result;
+}
+#endif
+
 u32 mg_bionic_syscall_raw(const u32 *r)
 {
     int *err = mg_errno_ptr();
@@ -838,8 +978,9 @@ u32 mg_bionic_syscall_raw(const u32 *r)
     return (u32)result;
 }
 
+/* rlim_t is an unsigned long, RLIM_INFINITY all its bits. */
 typedef struct g_rlimit {
-    u32 cur, max;
+    gulong cur, max;
 } g_rlimit;
 
 static int g_getrlimit(int resource, g_rlimit *r)
@@ -847,7 +988,7 @@ static int g_getrlimit(int resource, g_rlimit *r)
     /* RLIMIT_STACK 3, RLIMIT_NOFILE 7; everything else unlimited */
     if (resource == 3) r->cur = r->max = 8u * 1024 * 1024;
     else if (resource == 7) r->cur = r->max = 1024;
-    else r->cur = r->max = 0xFFFFFFFFu;
+    else r->cur = r->max = (gulong)-1;
     return 0;
 }
 static int g_setrlimit(int resource, const g_rlimit *r) { (void)resource; (void)r; return 0; }
@@ -864,8 +1005,8 @@ static int g_getrlimit64(int resource, g_rlimit64 *r)
 {
     g_rlimit small;
     g_getrlimit(resource, &small);
-    r->cur = small.cur == 0xFFFFFFFFu ? ~(u64)0 : small.cur;
-    r->max = small.max == 0xFFFFFFFFu ? ~(u64)0 : small.max;
+    r->cur = small.cur == (gulong)-1 ? ~(u64)0 : small.cur;
+    r->max = small.max == (gulong)-1 ? ~(u64)0 : small.max;
     return 0;
 }
 static int g_setrlimit64(int resource, const g_rlimit64 *r) { (void)resource; (void)r; return 0; }
@@ -876,10 +1017,11 @@ static int g_prlimit64(int pid, int resource, const g_rlimit64 *nl, g_rlimit64 *
     (void)nl;
     return old ? g_getrlimit64(resource, old) : 0;
 }
+/* struct rusage: two timevals and fourteen longs, none of them counted here. */
 static int g_getrusage(int who, void *usage)
 {
     (void)who;
-    memset(usage, 0, 72);
+    memset(usage, 0, 2 * sizeof(g_timeval) + 14 * sizeof(glong));
     return 0;
 }
 /* PRIO_PROCESS with a thread's id, as Android sets a thread's (androidSetThreadPriority): that thread's nice value, and its
@@ -997,7 +1139,7 @@ static u64 r48_next(void)
 static void g_srand48(long seed) { g_r48 = (((u64)(u32)seed) << 16) | 0x330E; }
 static long g_lrand48(void) { return (long)(r48_next() >> 17); }
 static long g_mrand48(void) { return (long)(i32)(r48_next() >> 16); }
-static u64 g_drand48(void) { return mg_db((double)r48_next() / 281474976710656.0); }
+static gdouble g_drand48(void) { return mg_gdb((double)r48_next() / 281474976710656.0); }
 
 static u32 g_arc4random(void)
 {
@@ -1008,7 +1150,7 @@ static u32 g_arc4random(void)
 static u32 g_arc4random_uniform(u32 bound) { return bound ? g_arc4random() % bound : 0; }
 static void g_arc4random_buf(void *buf, size_t n) { mg_random(buf, n); }
 static int g_getentropy(void *buf, size_t n) { mg_random(buf, n); return 0; }
-static i32 g_getrandom(void *buf, size_t n, unsigned flags) { (void)flags; mg_random(buf, n); return (i32)n; }
+static gssize g_getrandom(void *buf, size_t n, unsigned flags) { (void)flags; mg_random(buf, n); return (gssize)n; }
 
 /* ---------------------------------------------------------------- signals
  *
@@ -1018,17 +1160,33 @@ static i32 g_getrandom(void *buf, size_t n, unsigned flags) { (void)flags; mg_ra
  * fault in guest code is this layer's to repair or to report, not the guest's,
  * but for a trap the app wrote into its code for its SIGILL (mg_signal_fault).
  *
- * 32-bit bionic's sigset_t is one word: signals 1 to 32. The real-time ones,
- * 33 to 64, are sent all the same (libcore's AsynchronousCloseMonitor sends
- * 34 to wake a thread blocked on a socket being closed); a thread keeps them
- * in a word of their own, and a 32-bit mask has no say over them.
+ * bionic's sigset_t is an unsigned long: signals 1 to 32 in 32-bit Android, 1 to
+ * 64 in 64-bit. The real-time ones, 33 to 64, are sent all the same (libcore's
+ * AsynchronousCloseMonitor sends 34 to wake a thread blocked on a socket being
+ * closed); a thread keeps them in a word of their own, which a 32-bit mask has
+ * no say over and a 64-bit one has in its upper half (set_rt).
  */
+#if MG_GUEST_LP64
 typedef struct g_sigaction {
-    u32 handler, mask, flags, restorer;
+    int flags;
+    mg_addr handler;
+    gulong mask;
+    mg_addr restorer;
 } g_sigaction;
+#else
+typedef struct g_sigaction {
+    mg_addr handler;
+    gulong mask;
+    u32 flags;
+    mg_addr restorer;
+} g_sigaction;
+#endif
 static g_sigaction g_sigs[65];
 
 #define SIG_BIT(sig) (1u << ((sig) - 1))
+/* A sigset_t's real-time half: none in 32-bit Android. */
+static u32 set_rt(gulong set) { return (u32)((u64)set >> 32); }
+#define SIGSET_BITS (8 * (int)sizeof(gulong))
 #define SIG_RT_BIT(sig) (1u << ((sig) - 33))
 #define G_SA_SIGINFO 4u
 #define G_SA_RESTART 0x10000000u
@@ -1045,10 +1203,10 @@ static int g_sigaction_fn(int sig, const g_sigaction *act, g_sigaction *old)
     return 0;
 }
 
-static u32 g_signal(int sig, u32 handler)
+static mg_addr g_signal(int sig, mg_addr handler)
 {
-    u32 old;
-    if (sig < 1 || sig > 64) return 0xFFFFFFFFu;
+    mg_addr old;
+    if (sig < 1 || sig > 64) return (mg_addr)-1;                  /* SIG_ERR */
     old = g_sigs[sig].handler;
     g_sigs[sig].handler = handler;
     g_sigs[sig].flags = 0;
@@ -1078,9 +1236,17 @@ static void call_handler(const g_sigaction *a, int sig)
  * (si_code ILL_ILLOPC, si_addr the pc) and a ucontext laid out as bionic's for ARM: the registers in uc_mcontext from 0x20,
  * pc at 0x5c, cpsr at 0x60. The thread goes on with the registers the ucontext holds when the handler returns. False when
  * the app has no such handler: the fault is then reported as any other.
+ *
+ * That ucontext is 32-bit ARM's. The other processors' are laid out otherwise, and none of them is made here, so there it
+ * is false too: a handler handed ARM's registers would send the thread on to a pc that is not one.
  */
 bool mg_signal_fault(int sig, mg_fault *f)
 {
+#if !MG_ARCH_ARM32
+    (void)sig;
+    (void)f;
+    return false;
+#else
     g_sigaction a;
     u32 info[32], uc[192];
     u32 pc, cpsr, i;
@@ -1106,6 +1272,7 @@ bool mg_signal_fault(int sig, mg_fault *f)
     *f->cpsr = (*f->cpsr & ~0xF80F0000u) | (uc[24] & 0xF80F0000u);
     mg_fault_resume_at(f, (uc[23] & ~1u) | ((uc[24] & 0x20u) ? 1u : 0));
     return true;
+#endif
 }
 
 static int g_raise(int sig)
@@ -1122,7 +1289,7 @@ static int g_raise(int sig)
     return 0;
 }
 
-void mg_signals_check(void)
+MG_HOSTCB void mg_signals_check(void)
 {
     mg_gthread *t = mg_gthread_self();
     for (;;) {
@@ -1150,7 +1317,8 @@ void mg_signals_check(void)
         /* While it runs, the signals its sigaction names are held back, and the signal itself unless it asked otherwise. */
         saved = t->sig_blocked;
         saved_rt = t->sig_blocked_rt;
-        t->sig_blocked |= a.mask;
+        t->sig_blocked |= (u32)a.mask;
+        t->sig_blocked_rt |= set_rt(a.mask);
         if (!(a.flags & G_SA_NODEFER)) {
             if (sig <= 32) t->sig_blocked |= bit;
             else t->sig_blocked_rt |= bit;
@@ -1192,7 +1360,7 @@ static struct {
     volatile i32 busy;
 } G_SIGPUMP;
 
-static void sigpump_main(void *arg)
+static MG_HOSTCB void sigpump_main(void *arg)
 {
     (void)arg;
     for (;;) {
@@ -1214,7 +1382,7 @@ static void sigpump_main(void *arg)
     }
 }
 
-static bool sig_in_guest_code(mg_addr pc) { return mg_ld_is_guest_code(pc); }
+static MG_HOSTCB bool sig_in_guest_code(mg_addr pc) { return mg_ld_is_guest_code(pc); }
 
 static void sigpump_add(mg_gthread *t)
 {
@@ -1243,7 +1411,7 @@ void mg_signals_thread_gone(mg_gthread *t)
 
 int mg_signal_send(mg_gthread *t, int sig)
 {
-    u32 handler;
+    mg_addr handler;
     volatile i32 *word;
     u32 bit;
     if (!t) return 3;                              /* ESRCH */
@@ -1307,15 +1475,24 @@ void mg_gsleep(u64 ns)
     }
 }
 
-int mg_signal_mask(int how, const u32 *set, u32 *old)
+int mg_signal_mask(int how, const gulong *set, gulong *old)
 {
     mg_gthread *t = mg_gthread_self();
-    if (old) *old = t->sig_blocked;
+    if (old) *old = (gulong)((u64)t->sig_blocked | (sizeof(gulong) > 4 ? (u64)t->sig_blocked_rt << 32 : 0));
     if (set) {
-        if (how == 0) t->sig_blocked |= *set;              /* SIG_BLOCK */
-        else if (how == 1) t->sig_blocked &= ~*set;        /* SIG_UNBLOCK */
-        else if (how == 2) t->sig_blocked = *set;          /* SIG_SETMASK */
-        else return GE_INVAL;
+        u32 low = (u32)*set, rt = set_rt(*set);
+        if (how == 0) {                                     /* SIG_BLOCK */
+            t->sig_blocked |= low;
+            t->sig_blocked_rt |= rt;
+        } else if (how == 1) {                              /* SIG_UNBLOCK */
+            t->sig_blocked &= ~low;
+            t->sig_blocked_rt &= ~rt;
+        } else if (how == 2) {                              /* SIG_SETMASK: a 32-bit set leaves the real-time ones as they were */
+            t->sig_blocked = low;
+            if (sizeof(gulong) > 4) t->sig_blocked_rt = rt;
+        } else {
+            return GE_INVAL;
+        }
         if (mg_signals_ready(t)) mg_signals_check();
     }
     return 0;
@@ -1337,7 +1514,7 @@ static int g_fork(void)
     mg_trace("fork() = -1 ENOSYS");
     return g_fail_nosys();
 }
-static int g_sigprocmask(int how, const u32 *set, u32 *old)
+static int g_sigprocmask(int how, const gulong *set, gulong *old)
 {
     int e = mg_signal_mask(how, set, old);
     if (e) {
@@ -1346,12 +1523,12 @@ static int g_sigprocmask(int how, const u32 *set, u32 *old)
     }
     return 0;
 }
-static int g_sigemptyset(u32 *set) { *set = 0; return 0; }
-static int g_sigfillset(u32 *set) { *set = 0xFFFFFFFFu; return 0; }
-static int g_sigaddset(u32 *set, int sig) { if (sig >= 1 && sig <= 32) *set |= 1u << (sig - 1); return 0; }
-static int g_sigdelset(u32 *set, int sig) { if (sig >= 1 && sig <= 32) *set &= ~(1u << (sig - 1)); return 0; }
-static int g_sigismember(const u32 *set, int sig) { return sig >= 1 && sig <= 32 ? (int)((*set >> (sig - 1)) & 1) : 0; }
-static int g_sigpending(u32 *set)
+static int g_sigemptyset(gulong *set) { *set = 0; return 0; }
+static int g_sigfillset(gulong *set) { *set = (gulong)-1; return 0; }
+static int g_sigaddset(gulong *set, int sig) { if (sig >= 1 && sig <= SIGSET_BITS) *set |= (gulong)1 << (sig - 1); return 0; }
+static int g_sigdelset(gulong *set, int sig) { if (sig >= 1 && sig <= SIGSET_BITS) *set &= ~((gulong)1 << (sig - 1)); return 0; }
+static int g_sigismember(const gulong *set, int sig) { return sig >= 1 && sig <= SIGSET_BITS ? (int)((*set >> (sig - 1)) & 1) : 0; }
+static int g_sigpending(gulong *set)
 {
     mg_gthread *t = mg_gthread_self();
     *set = (u32)t->sig_pending & t->sig_blocked;
@@ -1359,12 +1536,12 @@ static int g_sigpending(u32 *set)
 }
 
 /* Waits, with `set` as the mask, until a handler has run on this thread. */
-static int g_sigsuspend(const u32 *set)
+static int g_sigsuspend(const gulong *set)
 {
     mg_gthread *t = mg_gthread_self();
     u32 saved = t->sig_blocked;
     i32 before = t->sig_handled;
-    t->sig_blocked = set ? *set : 0;
+    t->sig_blocked = set ? (u32)*set : 0;
     for (;;) {
         i32 park = t->sig_park;
         mg_signals_check();
@@ -1376,25 +1553,25 @@ static int g_sigsuspend(const u32 *set)
     mg_set_errno(GE_INTR);
     return -1;
 }
-static int g_sigwait(const u32 *set, int *sig) { (void)set; (void)sig; mg_set_errno(GE_INVAL); return GE_INVAL; }
+static int g_sigwait(const gulong *set, int *sig) { (void)set; (void)sig; mg_set_errno(GE_INVAL); return GE_INVAL; }
 
 typedef struct g_stack_t {
-    u32 sp;
+    void *sp;
     i32 flags;
-    u32 size;
+    size_t size;
 } g_stack_t;
 
 static int g_sigaltstack(const g_stack_t *ss, g_stack_t *old)
 {
     mg_gthread *t = mg_gthread_self();
     if (old) {
-        old->sp = (u32)(mg_addr)t->altstack_sp;
+        old->sp = t->altstack_sp;
         old->size = t->altstack_size;
         old->flags = t->altstack_sp ? 0 : 2;       /* SS_DISABLE */
     }
     if (ss) {
-        t->altstack_sp = (void *)(mg_addr)ss->sp;
-        t->altstack_size = ss->size;
+        t->altstack_sp = ss->sp;
+        t->altstack_size = (u32)ss->size;
     }
     return 0;
 }
@@ -1405,8 +1582,8 @@ static int g_sigrtmax(void) { return 64; }
 /* ---------------------------------------------------------------- locales */
 
 typedef struct g_lconv {
-    u32 decimal_point, thousands_sep, grouping, int_curr_symbol, currency_symbol, mon_decimal_point, mon_thousands_sep, mon_grouping,
-        positive_sign, negative_sign;
+    const char *decimal_point, *thousands_sep, *grouping, *int_curr_symbol, *currency_symbol, *mon_decimal_point, *mon_thousands_sep,
+        *mon_grouping, *positive_sign, *negative_sign;
     char int_frac_digits, frac_digits, p_cs_precedes, p_sep_by_space, n_cs_precedes, n_sep_by_space, p_sign_posn, n_sign_posn,
         int_p_cs_precedes, int_p_sep_by_space, int_n_cs_precedes, int_n_sep_by_space, int_p_sign_posn, int_n_sign_posn;
 } g_lconv;
@@ -1416,14 +1593,14 @@ static int g_locale_c;                             /* what a locale_t points at 
 static g_lconv *g_localeconv(void)
 {
     static const char dot[] = ".", empty[] = "";
-    u32 *p = &g_lconv_c.decimal_point;
-    int i;
-    if (!g_lconv_c.decimal_point) {
-        p[0] = (u32)(mg_addr)dot;
-        for (i = 1; i < 10; i++) p[i] = (u32)(mg_addr)empty;
-        memset(&g_lconv_c.int_frac_digits, 127, 14);
+    g_lconv *c = &g_lconv_c;
+    if (!c->decimal_point) {
+        c->thousands_sep = c->grouping = c->int_curr_symbol = c->currency_symbol = c->mon_decimal_point = c->mon_thousands_sep =
+            c->mon_grouping = c->positive_sign = c->negative_sign = empty;
+        memset(&c->int_frac_digits, 127, 14);
+        c->decimal_point = dot;
     }
-    return &g_lconv_c;
+    return c;
 }
 
 static char *g_setlocale(int category, const char *locale)
@@ -1522,33 +1699,40 @@ static char *g_mkdtemp(char *tmpl)
     return ((mkdir_fn)mg_bionic_find("mkdir"))(tmpl, 0700) == 0 ? tmpl : NULL;
 }
 
+/* bionic's struct passwd: pw_gecos is a field of its own in 64-bit Android only (pw_passwd's other name in 32-bit). */
 typedef struct g_passwd {
-    u32 pw_name, pw_passwd;
+    const char *pw_name, *pw_passwd;
     u32 pw_uid, pw_gid;
-    u32 pw_dir, pw_shell;
+#if MG_GUEST_LP64
+    const char *pw_gecos;
+#endif
+    const char *pw_dir, *pw_shell;
 } g_passwd;
 
 static g_passwd *g_getpwuid(int uid)
 {
     static g_passwd pw;
     (void)uid;
-    pw.pw_name = (u32)(mg_addr)"u0_a100";
-    pw.pw_passwd = (u32)(mg_addr)"";
+    pw.pw_name = "u0_a100";
+    pw.pw_passwd = "";
+#if MG_GUEST_LP64
+    pw.pw_gecos = "";
+#endif
     pw.pw_uid = pw.pw_gid = 10100;
-    pw.pw_dir = (u32)(mg_addr)mg_fs_internal_dir();
-    pw.pw_shell = (u32)(mg_addr)"/system/bin/sh";
+    pw.pw_dir = mg_fs_internal_dir();
+    pw.pw_shell = "/system/bin/sh";
     return &pw;
 }
 static g_passwd *g_getpwnam(const char *name) { (void)name; return g_getpwuid(10100); }
 /* The reentrant forms: the same one user, written into the caller's own structure. */
-static int g_getpwuid_r(int uid, g_passwd *pw, char *buf, size_t n, u32 *result)
+static int g_getpwuid_r(int uid, g_passwd *pw, char *buf, size_t n, g_passwd **result)
 {
     (void)buf; (void)n;
     *pw = *g_getpwuid(uid);
-    *result = (u32)(mg_addr)pw;
+    *result = pw;
     return 0;
 }
-static int g_getpwnam_r(const char *name, g_passwd *pw, char *buf, size_t n, u32 *result)
+static int g_getpwnam_r(const char *name, g_passwd *pw, char *buf, size_t n, g_passwd **result)
 {
     (void)name;
     return g_getpwuid_r(10100, pw, buf, n, result);
@@ -1558,25 +1742,27 @@ static const char *g_getprogname(void) { return g_progname; }
 
 /* One group as there is one user, the app's own, under the same name. Any other is not found, which is an answer and not an error. */
 typedef struct g_group {
-    u32 gr_name, gr_passwd, gr_gid, gr_mem;
+    char *gr_name, *gr_passwd;
+    u32 gr_gid;
+    char **gr_mem;
 } g_group;
-static int group_into(bool found, g_group *grp, char *buf, size_t n, u32 *result)
+static int group_into(bool found, g_group *grp, char *buf, size_t n, g_group **result)
 {
     static const char name[] = "u0_a100";
-    static const u32 no_members = 0;
-    *result = 0;
+    static char *no_members[1];
+    *result = NULL;
     if (!found) return 0;
     if (n < sizeof(name)) return GE_RANGE;
     memcpy(buf, name, sizeof(name));
-    grp->gr_name = (u32)(mg_addr)buf;
-    grp->gr_passwd = (u32)(mg_addr)(buf + sizeof(name) - 1);
+    grp->gr_name = buf;
+    grp->gr_passwd = buf + sizeof(name) - 1;
     grp->gr_gid = 10100;
-    grp->gr_mem = (u32)(mg_addr)&no_members;
-    *result = (u32)(mg_addr)grp;
+    grp->gr_mem = no_members;
+    *result = grp;
     return 0;
 }
-static int g_getgrgid_r(u32 gid, g_group *grp, char *buf, size_t n, u32 *result) { return group_into(gid == 10100, grp, buf, n, result); }
-static int g_getgrnam_r(const char *name, g_group *grp, char *buf, size_t n, u32 *result)
+static int g_getgrgid_r(u32 gid, g_group *grp, char *buf, size_t n, g_group **result) { return group_into(gid == 10100, grp, buf, n, result); }
+static int g_getgrnam_r(const char *name, g_group *grp, char *buf, size_t n, g_group **result)
 {
     return group_into(name && !strcmp(name, "u0_a100"), grp, buf, n, result);
 }
@@ -1682,20 +1868,43 @@ static int g_system(const char *cmd)
  * getopt's globals, which code that parses its own arguments reads (libchrome links them though nothing here runs it as a
  * program). getopt itself is not here.
  */
-static u32 g_optarg;
+static char *g_optarg;
 static i32 g_optind = 1, g_opterr = 1, g_optopt;
 
-/* sysinfo (Linux's struct sysinfo, 64 bytes on 32-bit): the uptime, the memory the app may use and what is free of it. */
-static int g_sysinfo(u32 *out)
+/* Linux's struct sysinfo: longs, 64 bytes in 32-bit Android (with 8 of padding at the end) and 112 in 64-bit. */
+typedef struct g_sysinfo_buf {
+    glong uptime;
+    gulong loads[3];
+    gulong totalram, freeram, sharedram, bufferram, totalswap, freeswap;
+    u16 procs, pad;
+    gulong totalhigh, freehigh;
+    u32 mem_unit;
+#if !MG_GUEST_LP64
+    char rest[8];
+#endif
+} g_sysinfo_buf;
+
+/* A count of bytes as a long of the guest's: 32-bit Android's says 4 GB at most. */
+static gulong sysinfo_bytes(u64 n)
+{
+#if MG_GUEST_LP64
+    return (gulong)n;
+#else
+    return n > 0xFFFFFFFFu ? 0xFFFFFFFFu : (gulong)n;
+#endif
+}
+
+/* sysinfo: the uptime, the memory the app may use and what is free of it. */
+static int g_sysinfo(g_sysinfo_buf *out)
 {
     u64 limit = mg_mem_limit(), used = mg_mem_usage();
     if (!limit) limit = 2048ull << 20;
-    memset(out, 0, 64);
-    out[0] = (u32)(mg_time_monotonic_ns() / 1000000000ull);   /* uptime */
-    out[4] = (u32)(limit > 0xFFFFFFFFu ? 0xFFFFFFFFu : limit);  /* totalram */
-    out[5] = (u32)(limit > used ? (limit - used > 0xFFFFFFFFu ? 0xFFFFFFFFu : limit - used) : 0);   /* freeram */
-    ((u16 *)out)[20] = 1;                                     /* procs */
-    out[13] = 1;                                              /* mem_unit */
+    memset(out, 0, sizeof(*out));
+    out->uptime = (glong)(mg_time_monotonic_ns() / 1000000000ull);
+    out->totalram = sysinfo_bytes(limit);
+    out->freeram = sysinfo_bytes(limit > used ? limit - used : 0);
+    out->procs = 1;
+    out->mem_unit = 1;
     return 0;
 }
 
@@ -1763,38 +1972,43 @@ static void g_syslog(int priority, const char *fmt, ...)
 
 /*
  * process_vm_readv and process_vm_writev: this process's own memory only (getpid() is 4242 here), copied between the two
- * lists of pieces; another process is ESRCH. 32-bit iovecs: a base and a length.
+ * lists of pieces (struct iovec: a base and a length); another process is ESRCH.
  */
-static i32 vm_copy(int pid, const u32 *local, unsigned nlocal, const u32 *remote, unsigned nremote, bool read)
+typedef struct g_vm_iovec {
+    u8 *base;
+    size_t len;
+} g_vm_iovec;
+
+static gssize vm_copy(int pid, const g_vm_iovec *local, gulong nlocal, const g_vm_iovec *remote, gulong nremote, bool read)
 {
-    unsigned li = 0, ri = 0;
-    u32 loff = 0, roff = 0;
-    i32 done = 0;
+    gulong li = 0, ri = 0;
+    size_t loff = 0, roff = 0;
+    gssize done = 0;
     if (pid != 4242) {
         mg_set_errno(GE_SRCH);
         return -1;
     }
     while (li < nlocal && ri < nremote) {
-        u32 lleft = local[2 * li + 1] - loff, rleft = remote[2 * ri + 1] - roff, n = lleft < rleft ? lleft : rleft;
-        u8 *l = (u8 *)(mg_addr)local[2 * li] + loff, *rm = (u8 *)(mg_addr)remote[2 * ri] + roff;
+        size_t lleft = local[li].len - loff, rleft = remote[ri].len - roff, n = lleft < rleft ? lleft : rleft;
+        u8 *l = local[li].base + loff, *rm = remote[ri].base + roff;
         if (n) {
             if (read) memcpy(l, rm, n);
             else memcpy(rm, l, n);
-            done += (i32)n;
+            done += (gssize)n;
         }
         loff += n;
         roff += n;
-        if (loff == local[2 * li + 1]) { li++; loff = 0; }
-        if (roff == remote[2 * ri + 1]) { ri++; roff = 0; }
+        if (loff == local[li].len) { li++; loff = 0; }
+        if (roff == remote[ri].len) { ri++; roff = 0; }
     }
     return done;
 }
-static i32 g_process_vm_readv(int pid, const u32 *local, unsigned nl, const u32 *remote, unsigned nr, unsigned flags)
+static gssize g_process_vm_readv(int pid, const g_vm_iovec *local, gulong nl, const g_vm_iovec *remote, gulong nr, gulong flags)
 {
     (void)flags;
     return vm_copy(pid, local, nl, remote, nr, true);
 }
-static i32 g_process_vm_writev(int pid, const u32 *local, unsigned nl, const u32 *remote, unsigned nr, unsigned flags)
+static gssize g_process_vm_writev(int pid, const g_vm_iovec *local, gulong nl, const g_vm_iovec *remote, gulong nr, gulong flags)
 {
     (void)flags;
     return vm_copy(pid, local, nl, remote, nr, false);

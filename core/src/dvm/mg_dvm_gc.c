@@ -398,7 +398,7 @@ static void marker_priority(int *level)
     mg_thread_set_priority(NULL, want);
 }
 
-static void helper_main(void *arg)
+static MG_HOSTCB void helper_main(void *arg)
 {
     int worker = (int)((marker *)arg - g_markers), level = 0;
     /*
@@ -1346,7 +1346,7 @@ static void collect_alongside(void)
     if (ok && (g_pending_refs || g_nto_finalize)) reference_work();
 }
 
-static void cycle_main(void *arg)
+static MG_HOSTCB void cycle_main(void *arg)
 {
     (void)arg;
     t_cycle = true;
@@ -1404,7 +1404,7 @@ void mg_dvm_gc_alongside_wait(void)
  * finalize() on the objects found to finalize, catching what each throws. An object stays a root while it waits; after its
  * finalize() the next collection frees it, unless it made itself reachable again.
  */
-static void reference_main(void *arg)
+static MG_HOSTCB void reference_main(void *arg)
 {
     mg_jvalue v;
     (void)arg;

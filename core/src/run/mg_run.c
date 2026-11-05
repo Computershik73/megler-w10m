@@ -159,7 +159,7 @@ static int link_refuses(int link, bool has_function)
     return link_writable(link) && has_function ? 0 : MG_E_ACCESS;
 }
 
-static void *storage_open(void *user, int link, const char *path, int flags, int kind, int *err)
+static MG_HOSTCB void *storage_open(void *user, int link, const char *path, int flags, int kind, int *err)
 {
     bool changes = kind == MG_FOREIGN_FILE && (flags & (MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC | MG_O_APPEND));
     (void)user;
@@ -167,21 +167,21 @@ static void *storage_open(void *user, int link, const char *path, int flags, int
     return *err ? NULL : g_storage.open(g_storage.user, link, path, flags, kind, err);
 }
 
-static bool storage_mkdir(void *user, int link, const char *path, int *err)
+static MG_HOSTCB bool storage_mkdir(void *user, int link, const char *path, int *err)
 {
     (void)user;
     *err = link_refuses(link, g_storage.make_folder != NULL);
     return !*err && g_storage.make_folder(g_storage.user, link, path, err);
 }
 
-static bool storage_remove(void *user, int link, const char *path, bool dir, int *err)
+static MG_HOSTCB bool storage_remove(void *user, int link, const char *path, bool dir, int *err)
 {
     (void)user;
     *err = link_refuses(link, g_storage.remove != NULL);
     return !*err && g_storage.remove(g_storage.user, link, path, dir, err);
 }
 
-static bool storage_rename(void *user, int from_link, const char *from, int to_link, const char *to, int *err)
+static MG_HOSTCB bool storage_rename(void *user, int from_link, const char *from, int to_link, const char *to, int *err)
 {
     (void)user;
     *err = link_refuses(from_link, g_storage.rename != NULL);
@@ -264,7 +264,7 @@ typedef struct left_behind {
     char names[160];
 } left_behind;
 
-static void left_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void left_one(const char *name, bool is_dir, void *user)
 {
     left_behind *l = (left_behind *)user;
     size_t at = strlen(l->names);
@@ -284,7 +284,7 @@ typedef struct other_apps {
     int count;
 } other_apps;
 
-static void other_app(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void other_app(const char *name, bool is_dir, void *user)
 {
     other_apps *o = (other_apps *)user;
     const char *c;
@@ -333,7 +333,7 @@ struct tree {
 
 static void remove_tree(const char *path, struct tree *t);
 
-static void remove_entry(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void remove_entry(const char *name, bool is_dir, void *user)
 {
     struct tree *t = (struct tree *)user;
     char *path = mg_sprintf("%s/%s", t->path, name);

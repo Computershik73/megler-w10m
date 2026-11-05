@@ -743,7 +743,7 @@ static void png_filter(u8 *out, int how, const u8 *row, const u8 *up, size_t n, 
     }
 }
 
-static bool sink_write(void *sink, const void *data, size_t size)
+static MEGLER_CB bool sink_write(void *sink, const void *data, size_t size)
 {
     bytes_add((tbytes *)sink, data, size);
     return true;

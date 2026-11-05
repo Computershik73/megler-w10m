@@ -279,14 +279,27 @@ static void test_version(void)
 /*
  * Hardware buffers (ndk/mg_ahb.c) and EGL images of them (mg_egl.c), as Chromium's GPU service and the ANGLE inside it use
  * them, over the stand-in, whose textures keep their pixels and whose EGL images share them: a 4x2 R8G8B8A8 buffer laid out
- * where ANGLE reads it (the ANativeWindowBuffer eight bytes in), written by the CPU, made an EGL image of with no context,
- * a texture of the test's own made of that image and read through a framebuffer object (the CPU's pixels, rows in the
- * buffer's order), cleared green by the graphics processor and locked for reading (green); formats refused; one sent
- * through a socket of the process and received.
+ * where ANGLE reads it (the ANativeWindowBuffer two pointers in, laid out with the guest's pointers: 96 bytes in 32-bit
+ * Android, 168 in 64-bit), written by the CPU, made an EGL image of with no context, a texture of the test's own made of
+ * that image and read through a framebuffer object (the CPU's pixels, rows in the buffer's order), cleared green by the
+ * graphics processor and locked for reading (green); formats refused; one sent through a socket of the process and
+ * received.
  */
 static void test_hardware_buffers(void)
 {
     typedef struct { u32 width, height, layers, format; u64 usage; u32 stride, rfu0; u64 rfu1; } desc_t;
+    /* Android's ANativeWindowBuffer as ANGLE declares it (android_util.cpp). */
+    typedef struct {
+        i32 magic, version;
+        void *reserved[4];
+        void *inc_ref, *dec_ref;
+        i32 width, height, stride, format, usage_deprecated;
+        uintptr_t layer_count;
+        void *reserved1;
+        const void *handle;
+        u64 usage;
+        void *reserved_proc[8 - sizeof(u64) / sizeof(void *)];
+    } anwb_t;
     typedef int (*alloc_fn)(const desc_t *, void **);
     typedef void (*ref_fn)(void *);
     typedef void (*describe_fn)(const void *, desc_t *);
@@ -314,26 +327,26 @@ static void test_hardware_buffers(void)
         (void *(*)(void *, void *, unsigned, void *, const int *))mg_egl_resolve("eglCreateImageKHR");
     unsigned (*destroy_image)(void *, void *) = (unsigned (*)(void *, void *))mg_egl_resolve("eglDestroyImageKHR");
     /* The test's own context and texture: the stand-in's own functions, as an app's GL would be its driver's. */
-    void *(*create_ctx)(void *, void *, void *, const int *) = (void *(*)(void *, void *, void *, const int *))mg_gl_standin("eglCreateContext");
-    unsigned (*make_current)(void *, void *, void *, void *) = (unsigned (*)(void *, void *, void *, void *))mg_gl_standin("eglMakeCurrent");
-    unsigned (*destroy_ctx)(void *, void *) = (unsigned (*)(void *, void *))mg_gl_standin("eglDestroyContext");
-    void (*gen_textures)(i32, u32 *) = (void (*)(i32, u32 *))mg_gl_standin("glGenTextures");
-    void (*delete_textures)(i32, const u32 *) = (void (*)(i32, const u32 *))mg_gl_standin("glDeleteTextures");
-    void (*bind_texture)(u32, u32) = (void (*)(u32, u32))mg_gl_standin("glBindTexture");
-    void (*target_image)(u32, void *) = (void (*)(u32, void *))mg_gl_standin("glEGLImageTargetTexture2DOES");
-    void (*gen_fbos)(i32, u32 *) = (void (*)(i32, u32 *))mg_gl_standin("glGenFramebuffers");
-    void (*bind_fbo)(u32, u32) = (void (*)(u32, u32))mg_gl_standin("glBindFramebuffer");
-    void (*fbo_texture)(u32, u32, u32, u32, i32) = (void (*)(u32, u32, u32, u32, i32))mg_gl_standin("glFramebufferTexture2D");
-    void (*read_pixels)(i32, i32, i32, i32, u32, u32, void *) = (void (*)(i32, i32, i32, i32, u32, u32, void *))mg_gl_standin("glReadPixels");
-    void (*clear_color)(float, float, float, float) = (void (*)(float, float, float, float))mg_gl_standin("glClearColor");
-    void (*clear)(u32) = (void (*)(u32))mg_gl_standin("glClear");
+    void *(MG_GLAPI *create_ctx)(void *, void *, void *, const int *) = (void *(MG_GLAPI *)(void *, void *, void *, const int *))mg_gl_standin("eglCreateContext");
+    unsigned (MG_GLAPI *make_current)(void *, void *, void *, void *) = (unsigned (MG_GLAPI *)(void *, void *, void *, void *))mg_gl_standin("eglMakeCurrent");
+    unsigned (MG_GLAPI *destroy_ctx)(void *, void *) = (unsigned (MG_GLAPI *)(void *, void *))mg_gl_standin("eglDestroyContext");
+    void (MG_GLAPI *gen_textures)(i32, u32 *) = (void (MG_GLAPI *)(i32, u32 *))mg_gl_standin("glGenTextures");
+    void (MG_GLAPI *delete_textures)(i32, const u32 *) = (void (MG_GLAPI *)(i32, const u32 *))mg_gl_standin("glDeleteTextures");
+    void (MG_GLAPI *bind_texture)(u32, u32) = (void (MG_GLAPI *)(u32, u32))mg_gl_standin("glBindTexture");
+    void (MG_GLAPI *target_image)(u32, void *) = (void (MG_GLAPI *)(u32, void *))mg_gl_standin("glEGLImageTargetTexture2DOES");
+    void (MG_GLAPI *gen_fbos)(i32, u32 *) = (void (MG_GLAPI *)(i32, u32 *))mg_gl_standin("glGenFramebuffers");
+    void (MG_GLAPI *bind_fbo)(u32, u32) = (void (MG_GLAPI *)(u32, u32))mg_gl_standin("glBindFramebuffer");
+    void (MG_GLAPI *fbo_texture)(u32, u32, u32, u32, i32) = (void (MG_GLAPI *)(u32, u32, u32, u32, i32))mg_gl_standin("glFramebufferTexture2D");
+    void (MG_GLAPI *read_pixels)(i32, i32, i32, i32, u32, u32, void *) = (void (MG_GLAPI *)(i32, i32, i32, i32, u32, u32, void *))mg_gl_standin("glReadPixels");
+    void (MG_GLAPI *clear_color)(float, float, float, float) = (void (MG_GLAPI *)(float, float, float, float))mg_gl_standin("glClearColor");
+    void (MG_GLAPI *clear)(u32) = (void (MG_GLAPI *)(u32))mg_gl_standin("glClear");
     static const int es2[] = { 0x3098, 2, 0x3038 };
     static const int preserved[] = { 0x30D2, 1, 0x3038 };
     desc_t want = { 4, 2, 1, 1, 0x333, 0, 0, 0 }, got, fp16 = { 4, 2, 1, 0x16, 0x300, 0, 0, 0 };
     void *b = NULL, *again = NULL, *client, *image, *ctx, *d, *bad = (void *)1;
     u8 *px = NULL, read[32];
-    const u8 *anwb;
-    u32 tex = 0, fbo = 0, word;
+    const anwb_t *anwb;
+    u32 tex = 0, fbo = 0;
     int i, sv[2] = { -1, -1 }, fence = 0;
     bool same = true, green = true;
     say("Hardware buffers and EGL images of them (AHardwareBuffer, EGL_ANDROID_image_native_buffer)");
@@ -351,24 +364,16 @@ static void test_hardware_buffers(void)
     if (!b) return;
     describe(b, &got);
     CHECK(got.width == 4 && got.height == 2 && got.layers == 1 && got.format == 1 && got.usage == 0x333 && got.stride == 4);
-    /* Where ANGLE looks: the ANativeWindowBuffer at +8, its magic, size, width, height, stride, format, layer count, usage. */
-    anwb = (const u8 *)b + 8;
-    memcpy(&word, anwb, 4);
-    CHECK_HEX(word, 0x5f626672);
-    memcpy(&word, anwb + 4, 4);
-    CHECK(word == 96);
-    memcpy(&word, anwb + 32, 4);
-    CHECK(word == 4);
-    memcpy(&word, anwb + 36, 4);
-    CHECK(word == 2);
-    memcpy(&word, anwb + 40, 4);
-    CHECK(word == 4);
-    memcpy(&word, anwb + 44, 4);
-    CHECK(word == 1);
-    memcpy(&word, anwb + 52, 4);
-    CHECK(word == 1);
-    memcpy(&word, anwb + 64, 4);
-    CHECK_HEX(word, 0x333);
+    /* Where ANGLE looks: the ANativeWindowBuffer at two pointers in, its magic, size, width, height, stride, format, layer count, usage. */
+    anwb = (const anwb_t *)((const u8 *)b + 2 * sizeof(void *));
+    CHECK_HEX((u32)anwb->magic, 0x5f626672);
+    CHECK(anwb->version == (i32)sizeof(anwb_t) && sizeof(anwb_t) == (sizeof(void *) == 8 ? 168 : 96));
+    CHECK(anwb->width == 4);
+    CHECK(anwb->height == 2);
+    CHECK(anwb->stride == 4);
+    CHECK(anwb->format == 1);
+    CHECK(anwb->layer_count == 1);
+    CHECK_HEX((u32)anwb->usage, 0x333);
     /* The CPU writes: pixel i is (i * 30, 255 - i * 30, i, 255). */
     CHECK(lock(b, 0x30, -1, NULL, (void **)&px) == 0 && px);
     if (!px) return;
@@ -509,9 +514,9 @@ static void test_fence_syncs(void)
     const char *(*query)(void *, int) = (const char *(*)(void *, int))mg_egl_resolve("eglQueryString");
     pipe_fn pipe_ = (pipe_fn)mg_bionic_find("pipe");
     close_fn close_ = (close_fn)mg_bionic_find("close");
-    void *(*create_ctx)(void *, void *, void *, const int *) = (void *(*)(void *, void *, void *, const int *))mg_gl_standin("eglCreateContext");
-    unsigned (*make_current)(void *, void *, void *, void *) = (unsigned (*)(void *, void *, void *, void *))mg_gl_standin("eglMakeCurrent");
-    unsigned (*destroy_ctx)(void *, void *) = (unsigned (*)(void *, void *))mg_gl_standin("eglDestroyContext");
+    void *(MG_GLAPI *create_ctx)(void *, void *, void *, const int *) = (void *(MG_GLAPI *)(void *, void *, void *, const int *))mg_gl_standin("eglCreateContext");
+    unsigned (MG_GLAPI *make_current)(void *, void *, void *, void *) = (unsigned (MG_GLAPI *)(void *, void *, void *, void *))mg_gl_standin("eglMakeCurrent");
+    unsigned (MG_GLAPI *destroy_ctx)(void *, void *) = (unsigned (MG_GLAPI *)(void *, void *))mg_gl_standin("eglDestroyContext");
     static const int es2[] = { 0x3098, 2, 0x3038 }, none[] = { 0x3038 }, bad[] = { 0x3145, 3, 0x3038 };
     int fds[2] = { -1, -1 }, native_attribs[3], v = 0;
     void *d, *ctx, *f, *n;
@@ -937,7 +942,7 @@ static struct {
     volatile i32 frames, done;
 } G;
 
-static void swapping(void *arg)
+static MG_HOSTCB void swapping(void *arg)
 {
     int i;
     (void)arg;
@@ -1348,7 +1353,7 @@ static void fn_destroyed(i32 id, void *data)
     FT.gone++;
 }
 
-static bool fn_texture_frame(void *user, int id, void *share, int width, int height)
+static MEGLER_CB bool fn_texture_frame(void *user, int id, void *share, int width, int height)
 {
     const u8 *rgba;
     int w, h;
@@ -1373,7 +1378,7 @@ static bool fn_texture_frame(void *user, int id, void *share, int width, int hei
     return true;
 }
 
-static void fn_draw_texture(void *user, void *canvas, int id, float l, float t, float r, float b, int alpha)
+static MEGLER_CB void fn_draw_texture(void *user, void *canvas, int id, float l, float t, float r, float b, int alpha)
 {
     (void)user, (void)canvas, (void)id, (void)l, (void)t, (void)r, (void)b, (void)alpha;
 }

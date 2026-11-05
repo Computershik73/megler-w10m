@@ -113,7 +113,7 @@ typedef struct seen_progress {
     bool backwards;
 } seen_progress;
 
-static void progress(void *user, uint64_t done, uint64_t total)
+static MEGLER_CB void progress(void *user, uint64_t done, uint64_t total)
 {
     seen_progress *p = (seen_progress *)user;
     if (p->calls && done < p->last_done) p->backwards = true;
@@ -125,7 +125,7 @@ static void progress(void *user, uint64_t done, uint64_t total)
 /* Every file of a folder and its subfolders, and the folder: what the tests unpacked, taken away again. */
 static void remove_tree(const char *dir);
 
-static void remove_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void remove_one(const char *name, bool is_dir, void *user)
 {
     char *path = mg_sprintf("%s/%s", (const char *)user, name);
     if (is_dir) remove_tree(path);

@@ -5,6 +5,31 @@
 #       The 32-bit ARM build, in WSL with arm-linux-gnueabihf-gcc, run under
 #       qemu-arm: the one that executes guest code. Thumb-2 and hard-float,
 #       like the phone's build. Needs the guest libraries (tools/build-guest.sh).
+#   tools/build-tests.sh linux64 [--no-run] [--no-libcore] [-- extra arguments for mg_tests]
+#       The x86_64 build, in WSL with its own gcc, run there natively: Linux's
+#       x86_64 ABI is Android's (System V, LP64), so this build runs the guest
+#       libraries of x86_64 (tools/build-guest.sh x86_64, build/guest/x86_64)
+#       as they are, as desktop Windows' core does (docs/DESKTOP.md) -- the
+#       guest linker's ELF64 and RELA, the x86 patcher, System V's native calls
+#       -- with gdb at hand. Run as the arm build is: the tests, again on
+#       Android's libcore (build/android9/root-x86_64, with x86_64's natives),
+#       the bundles; not the Java test apps, whose native libraries are
+#       armeabi-v7a's. Objects go to ~/megler-build-x64 (MEGLER_WSL_BUILD's
+#       folder with -x64 after its name).
+#   tools/build-tests.sh arm64 [--no-run] [--no-libcore] [-- extra arguments for mg_tests]
+#       ARM64's, with no ARM64 machine: the same core and tests compiled by
+#       clang for Android's own aarch64 ABI against the NDK's bionic
+#       (MEGLER_NDK, r21e: the static libc.a of API 29 in its sysroot), linked
+#       into one static program (build/tests-arm64/mg_tests) and run in WSL
+#       under qemu-aarch64 with the POSIX host, on the arm64-v8a guest test
+#       libraries (tools/build-guest.sh arm64-v8a): ELF64, the patcher's
+#       thread-pointer reads (through the island, bionic's own TPIDR_EL0
+#       being the host's here), svc traps, AAPCS64's native calls and faults;
+#       then again on Android's libcore with arm64-v8a's natives
+#       (build/android9/root-arm64-v8a). Not the bundles, whose tests choose
+#       32-bit ARM's splits, nor the Java test apps. The program is copied to
+#       ~/megler-build-arm64 (MEGLER_WSL_BUILD's folder with -arm64 after its
+#       name). Needs qemu-aarch64 in WSL (qemu-user).
 #   tools/build-tests.sh win
 #       The x64 build with MSVC, run here: the Win32 host layer and everything
 #       that needs no ARM code. And the shell's drawing for a Java app
@@ -104,6 +129,8 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# MG_TESTS_SKIP (core/tests/mg_tests.c: guest functions left uncalled) reaches what WSL runs too.
+if [ -n "${MG_TESTS_SKIP:-}" ]; then export WSLENV="${WSLENV:+$WSLENV:}MG_TESTS_SKIP"; fi
 
 # The Dalvik runtime's generated sources and its tests' DEX files (build/guest/armeabi-v7a/dvm).
 bash "$ROOT/tools/build-dvm-fixtures.sh"
@@ -260,6 +287,109 @@ EOF
     # The shell's drawing (Direct2D, DirectWrite, WIC) is only in the Windows build: this one has the mode and says so.
     MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --gfx-windows - 2>&1" || STATUS=1
   fi
+elif [ "$MODE" = linux64 ]; then
+  # x86_64's guest libraries again when any of their sources is newer than the first of them build-guest.sh makes.
+  { [ -f "$ROOT/build/guest/x86_64/libt_basic.so" ] \
+    && [ -z "$(find "$ROOT/core/tests/guest" -type f -newer "$ROOT/build/guest/x86_64/libt_basic.so" -print -quit)" ]; } || bash "$ROOT/tools/build-guest.sh" x86_64 > /dev/null
+  WROOT="/mnt/${ROOT:1:1}${ROOT:2}"
+  WB="$WB-x64"
+  cat > "$ROOT/build/tests-linux64.sh" <<EOF
+set -e
+OUT=$WB
+mkdir -p \$OUT/obj
+cd "$WROOT"
+CFLAGS="-std=gnu11 -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-format-truncation -Icore/third_party/zlib -D_GNU_SOURCE $SQLITE_GCC $WEBP_GCC"
+compile() {
+  src="\$1"; obj="\$OUT/obj/\$(echo "\$src" | tr '/' '_').o"
+  if [ ! -f "\$obj" ] || [ "\$src" -nt "\$obj" ] || [ -n "\$(find core/include core/src core/tests \( -name '*.h' -o -name '*.inc' \) -newer "\$obj" -print -quit)" ] \\
+     || { [ "\$src" = core/src/sqlite/mg_sqlite3.c ] && [ -f build/sqlite/sqlite3.c ] && [ build/sqlite/sqlite3.c -nt "\$obj" ]; }; then
+    gcc \$CFLAGS \$2 -c "\$src" -o "\$obj" || exit 1
+  fi
+}
+# (With SQLite or without, with the WebP decoder or without, is a matter of flags, which no object file remembers: when they change, everything is compiled again.)
+[ "\$(cat \$OUT/sqlite.flags 2>/dev/null)" = "$SQLITE_GCC $WEBP_GCC" ] || rm -f \$OUT/obj/*.o
+echo "$SQLITE_GCC $WEBP_GCC" > \$OUT/sqlite.flags
+export -f compile
+export OUT CFLAGS
+printf '%s\n' ${SRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} ""'
+printf '%s\n' ${ZSRCS[*]} | xargs -P 8 -I{} bash -c 'compile {} "-w"'
+gcc -o \$OUT/mg_tests \$OUT/obj/*.o -lm -lpthread -ldl
+echo "built \$OUT/mg_tests"
+EOF
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash "$WROOT/build/tests-linux64.sh"
+  if [ "$RUN" = 1 ]; then
+    # (The layer's log is the program's standard error; the two are joined inside WSL, where lines stay whole. The Dalvik
+    # runtime's DEX fixtures are every ABI's: build-dvm-fixtures.sh keeps them beside armeabi-v7a's libraries.)
+    DVM="--dvm '$WROOT/build/guest/armeabi-v7a/dvm'"
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch && $WB/mg_tests '$WROOT/build/guest/x86_64' $WB/scratch $DVM ${EXTRA[*]:-} 2>&1" || STATUS=1
+    if [ "$LIBCORE" = 1 ]; then
+      bash "$ROOT/tools/dvm-android-root.sh" --abi x86_64
+      echo "$AGAIN, with x86_64's natives (build/android9/root-x86_64)"
+      # The folder is copied into WSL's own disk: the Windows drive is slow from there, and ICU maps 24 MB of it.
+      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$WROOT/build/android9/root-x86_64/.' $WB/android-root/ && rm -rf $WB/scratch && $WB/mg_tests '$WROOT/build/guest/x86_64' $WB/scratch $DVM --dvm-android $WB/android-root ${EXTRA[*]:-} 2>&1" || STATUS=1
+    fi
+    # Bundles of split APKs, unpacked as the shell unpacks them.
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "rm -rf $WB/scratch-bundles && $WB/mg_tests --bundles '$WROOT/build/guest/java' $WB/scratch-bundles '$WROOT/build/bundles' 2>&1; STATUS=\$?; rm -rf $WB/scratch-bundles; exit \$STATUS" || STATUS=1
+  fi
+elif [ "$MODE" = arm64 ]; then
+  NDK="${MEGLER_NDK:-/c/Users/User/Documents/android-ndk-r21e}"
+  LLVM="${MEGLER_LLVM:-/c/Program Files/LLVM/bin}"
+  SYSROOT="$NDK/toolchains/llvm/prebuilt/windows-x86_64/sysroot"
+  LIBDIR="$SYSROOT/usr/lib/aarch64-linux-android/29"
+  BUILTINS="$(ls "$NDK"/toolchains/llvm/prebuilt/windows-x86_64/lib64/clang/*/lib/linux/libclang_rt.builtins-aarch64-android.a 2>/dev/null | head -1)"
+  { [ -f "$LIBDIR/libc.a" ] && [ -f "$BUILTINS" ]; } || { echo "no static bionic or compiler-rt for aarch64 in $NDK (set MEGLER_NDK)" >&2; exit 1; }
+  [ -x "$LLVM/clang.exe" ] || { echo "no clang in $LLVM (set MEGLER_LLVM)" >&2; exit 1; }
+  { [ -f "$ROOT/build/guest/arm64-v8a/libt_basic.so" ] \
+    && [ -z "$(find "$ROOT/core/tests/guest" -type f -newer "$ROOT/build/guest/arm64-v8a/libt_basic.so" -print -quit)" ]; } || bash "$ROOT/tools/build-guest.sh" arm64-v8a > /dev/null
+  OUT="$ROOT/build/tests-arm64"
+  mkdir -p "$OUT/obj"
+  cd "$ROOT"
+  # The linux64 build's flags, for Android's ABI; atomics inline (NDK r21e's compiler-rt has no __aarch64_ldadd4_acq_rel
+  # and its kin, which clang's outline atomics call).
+  FLAGS=(--target=aarch64-linux-android29 "--sysroot=$SYSROOT" -std=gnu11 -O1 -g -mno-outline-atomics -Wall -Wextra -Wno-unused-parameter
+         -Wno-sign-compare -Wno-format-truncation -Icore/third_party/zlib -D_GNU_SOURCE $SQLITE_GCC $WEBP_GCC)
+  [ "$(cat "$OUT/obj/flags" 2>/dev/null)" = "${FLAGS[*]}" ] || rm -f "$OUT/obj/"*.o
+  echo "${FLAGS[*]}" > "$OUT/obj/flags"
+  newest_header="$(find core/include core/src core/tests \( -name '*.h' -o -name '*.inc' \) | xargs ls -t | head -1)"
+  compile_arm64() {
+    local src="$1" extra="$2" obj="$OUT/obj/$(echo "$1" | tr '/' '_').o"
+    if [ ! -f "$obj" ] || [ "$src" -nt "$obj" ] || [ "$newest_header" -nt "$obj" ] \
+       || { [ "$src" = core/src/sqlite/mg_sqlite3.c ] && [ -f build/sqlite/sqlite3.c ] && [ build/sqlite/sqlite3.c -nt "$obj" ]; }; then
+      "$LLVM/clang.exe" "${FLAGS[@]}" $extra -c "$src" -o "$obj" 2> "$obj.log" || { cat "$obj.log" >&2; rm -f "$obj"; echo "FAILED: $src" >&2; return 1; }
+    fi
+  }
+  for s in "${SRCS[@]}"; do
+    compile_arm64 "$s" "" &
+    while [ "$(jobs -r | wc -l)" -ge "${MEGLER_JOBS:-12}" ]; do sleep 0.1; done
+  done
+  for s in "${ZSRCS[@]}"; do
+    compile_arm64 "$s" "-w" &
+    while [ "$(jobs -r | wc -l)" -ge "${MEGLER_JOBS:-12}" ]; do sleep 0.1; done
+  done
+  wait
+  for s in "${SRCS[@]}" "${ZSRCS[@]}"; do
+    [ -f "$OUT/obj/$(echo "$s" | tr '/' '_').o" ] || { echo "not compiled: $s" >&2; exit 1; }
+  done
+  # One static program: bionic's static libc of API 29 (static bionic's dlopen loads nothing, and nothing here needs it:
+  # the guest libraries are the core's own loader's). -nostdlib, as clang's own runtime libraries are not the NDK's.
+  "$LLVM/clang.exe" --target=aarch64-linux-android29 "--sysroot=$SYSROOT" -static -nostdlib -fuse-ld=lld -Wl,-z,max-page-size=4096 \
+    -o "$OUT/mg_tests" "$LIBDIR/crtbegin_static.o" "$OUT/obj/"*.o \
+    -Wl,--start-group "$LIBDIR/libm.a" "$LIBDIR/libdl.a" "$BUILTINS" "$LIBDIR/libc.a" -Wl,--end-group "$LIBDIR/crtend_android.o"
+  echo "built $OUT/mg_tests"
+  WROOT="/mnt/${ROOT:1:1}${ROOT:2}"
+  WB="$WB-arm64"
+  if [ "$RUN" = 1 ]; then
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "command -v qemu-aarch64 > /dev/null" \
+      || { echo "no qemu-aarch64 in WSL (sudo apt install qemu-user)" >&2; exit 1; }
+    DVM="--dvm '$WROOT/build/guest/armeabi-v7a/dvm'"
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB && cp '$WROOT/build/tests-arm64/mg_tests' $WB/mg_tests && rm -rf $WB/scratch && qemu-aarch64 $WB/mg_tests '$WROOT/build/guest/arm64-v8a' $WB/scratch $DVM ${EXTRA[*]:-} 2>&1" || STATUS=1
+    if [ "$LIBCORE" = 1 ]; then
+      bash "$ROOT/tools/dvm-android-root.sh" --abi arm64-v8a
+      echo "$AGAIN, with arm64-v8a's natives (build/android9/root-arm64-v8a)"
+      # The folder is copied into WSL's own disk: the Windows drive is slow from there, and ICU maps 24 MB of it.
+      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "mkdir -p $WB/android-root && cp -ru '$WROOT/build/android9/root-arm64-v8a/.' $WB/android-root/ && rm -rf $WB/scratch && qemu-aarch64 $WB/mg_tests '$WROOT/build/guest/arm64-v8a' $WB/scratch $DVM --dvm-android $WB/android-root ${EXTRA[*]:-} 2>&1" || STATUS=1
+    fi
+  fi
 elif [ "$MODE" = win ]; then
   for cl in "/c/Program Files/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe "/c/Program Files (x86)/Microsoft Visual Studio/2022/"*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe; do
     [ -f "$cl" ] && VC="${cl%/bin/Hostx64/x64/cl.exe}"
@@ -413,7 +543,7 @@ elif [ "$MODE" = win ]; then
     done
   fi
 else
-  echo "usage: tools/build-tests.sh arm|win" >&2
+  echo "usage: tools/build-tests.sh arm|linux64|arm64|win" >&2
   exit 2
 fi
 exit $STATUS

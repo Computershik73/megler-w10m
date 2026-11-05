@@ -1,12 +1,14 @@
 #ifndef MG_TESTS_H
 #define MG_TESTS_H
 
+#include "../include/megler.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* A line of the tests' own output; NULL sends it to stdout. */
-typedef void (*mg_test_sink)(const char *line, void *user);
+typedef void (MEGLER_CB *mg_test_sink)(const char *line, void *user);
 
 /*
  * Runs the core's tests. `libdir` holds the guest test libraries (NULL: skip
@@ -53,8 +55,8 @@ void mg_dvm_tests_bench(const char *fixtures, const char *android_root, int ms);
 
 /*
  * Runs an APK for `milliseconds` with a stand-in for OpenGL ES, touches it and
- * presses Back, printing what happened. Only where guest code can run (an
- * ARM32 host); megler_init first. Returns 0 if the app started and ended cleanly.
+ * presses Back, printing what happened. Only where guest code can run
+ * (MG_GUEST_CODE); megler_init first. Returns 0 if the app started and ended cleanly.
  */
 int mg_tests_smoke_run(const char *apk, int milliseconds);
 
@@ -69,7 +71,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
 void mg_tests_java_set_screen(int width, int height, int dpi);
 /* For `app`: what to do to it once it is still ("tap:X,Y", "drag:X,Y,X2,Y2", "wait:MS", "back", "key:CODE"); the strings are kept, not copied. */
 void mg_tests_java_set_script(int count, char **steps);
-void mg_java_tests_log(int level, const char *line, void *user);
+MEGLER_CB void mg_java_tests_log(int level, const char *line, void *user);
 
 /*
  * Bundles of split APKs (mg_bundle_tests.c): the test app's .apks and .xapk out of `java_dir` (build/guest/java), unpacked

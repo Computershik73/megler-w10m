@@ -25,17 +25,20 @@
 #include "../run/mg_run.h"
 #include "mg_driver.h"
 
-/* android/native_activity.h, with pointers as the guest holds them. */
+/* android/native_activity.h: the app's callbacks are guest code, called through MG_GFN. */
 typedef struct g_callbacks {
-    u32 onStart, onResume, onSaveInstanceState, onPause, onStop, onDestroy, onWindowFocusChanged, onNativeWindowCreated,
+    mg_addr onStart, onResume, onSaveInstanceState, onPause, onStop, onDestroy, onWindowFocusChanged, onNativeWindowCreated,
         onNativeWindowResized, onNativeWindowRedrawNeeded, onNativeWindowDestroyed, onInputQueueCreated, onInputQueueDestroyed,
         onContentRectChanged, onConfigurationChanged, onLowMemory;
 } g_callbacks;
 
 typedef struct g_activity {
-    u32 callbacks, vm, env, clazz, internalDataPath, externalDataPath;
+    g_callbacks *callbacks;
+    void *vm, *env, *clazz;
+    const char *internalDataPath, *externalDataPath;
     i32 sdkVersion;
-    u32 instance, assetManager, obbPath;
+    void *instance, *assetManager;
+    const char *obbPath;
 } g_activity;
 
 enum { REQ_NONE = 0, REQ_PAUSE, REQ_RESUME, REQ_FOCUS, REQ_BLUR, REQ_STOP };
@@ -66,7 +69,7 @@ static void request(int what)
     mg_lock_release(&N.lock);
 }
 
-static void main_thread(void *arg)
+static MG_HOSTCB void main_thread(void *arg)
 {
     mg_lib *lib;
     void *entry;
@@ -157,15 +160,15 @@ static bool na_start(const megler_run_config *config, const mg_apk_info *info)
 
     N.window = mg_nwindow_create(config->width, config->height);
     N.queue = mg_input_queue_create();
-    N.activity.callbacks = (u32)(mg_addr)&N.callbacks;
-    N.activity.vm = (u32)(mg_addr)mg_jni_vm();
-    N.activity.env = (u32)(mg_addr)mg_jni_env();
-    N.activity.clazz = (u32)(mg_addr)activity;
-    N.activity.internalDataPath = (u32)(mg_addr)N.internal;
-    N.activity.externalDataPath = (u32)(mg_addr)N.external;
+    N.activity.callbacks = &N.callbacks;
+    N.activity.vm = mg_jni_vm();
+    N.activity.env = mg_jni_env();
+    N.activity.clazz = activity;
+    N.activity.internalDataPath = N.internal;
+    N.activity.externalDataPath = N.external;
     N.activity.sdkVersion = 28;
-    N.activity.assetManager = (u32)(mg_addr)mg_asset_manager();
-    N.activity.obbPath = (u32)(mg_addr)N.obb;
+    N.activity.assetManager = mg_asset_manager();
+    N.activity.obbPath = N.obb;
 
     N.main = mg_thread_start(main_thread, NULL, 2 * 1024 * 1024, "android-main");
     if (!N.main) {

@@ -50,7 +50,7 @@ struct flags_each {
     void *user;
 };
 
-static void flags_each_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void flags_each_one(const char *name, bool is_dir, void *user)
 {
     struct flags_each *e = (struct flags_each *)user;
     size_t n = strlen(e->prefix);

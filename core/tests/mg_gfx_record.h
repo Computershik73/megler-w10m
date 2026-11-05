@@ -30,7 +30,7 @@ extern "C" {
  * ended.
  */
 int mg_gfx_record_run(const char *which, const char *apk, const char *android_root, const char *record_file);
-void mg_gfx_record_log(int level, const char *line, void *user);
+MEGLER_CB void mg_gfx_record_log(int level, const char *line, void *user);
 
 /*
  * Plays a record back through `host` and writes each picture the app

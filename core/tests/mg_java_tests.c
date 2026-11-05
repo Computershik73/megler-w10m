@@ -114,7 +114,7 @@ static volatile i32 g_nlines;
 static int g_verbose;
 
 /* Every line of the layer's log, kept; the app's own (android.util.Log) are among them as "I/Tag: text". */
-void mg_java_tests_log(int level, const char *line, void *user)
+MEGLER_CB void mg_java_tests_log(int level, const char *line, void *user)
 {
     (void)user;
     mg_lock_acquire(&g_log_lock);
@@ -194,7 +194,7 @@ static struct {
     volatile i32 from_canvas;
 } W = { MG_LOCK_INIT, NULL, 0, 0, 0, 0, NULL, 0, 0, 0 };
 
-static void present_pixels(void *user, const void *pixels, int width, int height, int stride)
+static MEGLER_CB void present_pixels(void *user, const void *pixels, int width, int height, int stride)
 {
     (void)user;
     mg_lock_acquire(&W.lock);
@@ -225,7 +225,7 @@ static long pixels_differing(const u8 *a, const u8 *b, int n)
  * would, and the rest is compared with what was kept. A pixel that changed outside the rectangle would be stale on such a
  * shell: the window's dirty region missed it.
  */
-static void present_pixels_part(void *user, const void *pixels, int width, int height, int stride, int x, int y, int part_width, int part_height)
+static MEGLER_CB void present_pixels_part(void *user, const void *pixels, int width, int height, int stride, int x, int y, int part_width, int part_height)
 {
     const u8 *src = (const u8 *)pixels;
     int row;
@@ -309,7 +309,7 @@ static void gl_compose(void)
     mg_atomic_add(&GL.composed, 1);
 }
 
-static bool gl_frame(void *user, int layer, void *share_handle, int width, int height)
+static MEGLER_CB bool gl_frame(void *user, int layer, void *share_handle, int width, int height)
 {
     const u8 *rgba;
     int w, h;
@@ -336,7 +336,7 @@ static bool gl_frame(void *user, int layer, void *share_handle, int width, int h
     return true;
 }
 
-static void gl_place(void *user, int layer, int x, int y, int width, int height)
+static MEGLER_CB void gl_place(void *user, int layer, int x, int y, int width, int height)
 {
     (void)user;
     if (layer < 0 || layer >= GL_LAYERS) return;
@@ -355,7 +355,7 @@ static void gl_place(void *user, int layer, int x, int y, int width, int height)
     mg_atomic_add(&GL.places, 1);
 }
 
-static bool present_canvas(void *user, void *canvas, int x, int y, int width, int height)
+static MEGLER_CB bool present_canvas(void *user, void *canvas, int x, int y, int width, int height)
 {
     const void *pixels;
     int w, h, stride, r;
@@ -477,7 +477,7 @@ static struct {
     u32 thread;                        /* the thread the last request came on */
 } K;
 
-static void keyboard_show(void *user, int kind, int flags, int enter)
+static MEGLER_CB void keyboard_show(void *user, int kind, int flags, int enter)
 {
     (void)user;
     K.kind = kind;
@@ -487,7 +487,7 @@ static void keyboard_show(void *user, int kind, int flags, int enter)
     mg_atomic_add(&K.shown, 1);
 }
 
-static void keyboard_hide(void *user)
+static MEGLER_CB void keyboard_hide(void *user)
 {
     (void)user;
     K.thread = mg_thread_self_id();
@@ -541,7 +541,7 @@ static bool running(void)
     return !g_exited;
 }
 
-static void on_exit_cb(void *user, int status, const char *reason)
+static MEGLER_CB void on_exit_cb(void *user, int status, const char *reason)
 {
     (void)user;
     g_status = status;
@@ -555,7 +555,7 @@ static const char *g_android_root;
 static char g_bars_heard[128];
 static mg_lock g_bars_lock = MG_LOCK_INIT;
 
-static void bars_wanted(void *user, int bars)
+static MEGLER_CB void bars_wanted(void *user, int bars)
 {
     size_t n;
     (void)user;
@@ -578,7 +578,7 @@ static void media_heard(const char *what)
     mg_lock_release(&g_media_lock);
 }
 
-static void media_state(void *user, int state, long long actions)
+static MEGLER_CB void media_state(void *user, int state, long long actions)
 {
     char t[64];
     (void)user;
@@ -586,7 +586,7 @@ static void media_state(void *user, int state, long long actions)
     media_heard(t);
 }
 
-static void media_metadata(void *user, const char *title, const char *artist, const char *album, const uint32_t *art, int w, int h)
+static MEGLER_CB void media_metadata(void *user, const char *title, const char *artist, const char *album, const uint32_t *art, int w, int h)
 {
     char t[200];
     (void)user;
@@ -609,7 +609,7 @@ static void system_heard(const char *what)
 
 static const char *phone_apps_fixture(void);
 
-static bool system_install(void *user, const char *host_path, const char *name)
+static MEGLER_CB bool system_install(void *user, const char *host_path, const char *name)
 {
     char t[160], inside[32] = "";
     mg_stat st;
@@ -653,7 +653,7 @@ static bool system_install(void *user, const char *host_path, const char *name)
 
 /* What Megler does with the apps the app asks to uninstall, as the app learns it: com.example.split goes from the phone's
    apps (the list as the fixture made it); the user keeps com.example.other. */
-static bool system_uninstall(void *user, const char *package)
+static MEGLER_CB bool system_uninstall(void *user, const char *package)
 {
     (void)user;
     if (!strcmp(package, "com.example.split")) {
@@ -687,7 +687,7 @@ static volatile i32 g_mic_on;
 static mg_thread *g_mic_thread;
 static int g_mic_rate, g_mic_channels;
 
-static void mic_feed(void *arg)
+static MG_HOSTCB void mic_feed(void *arg)
 {
     int16_t s[320];
     int16_t next = 0;
@@ -701,7 +701,7 @@ static void mic_feed(void *arg)
     }
 }
 
-static bool mic_start(void *user, int rate, int channels)
+static MEGLER_CB bool mic_start(void *user, int rate, int channels)
 {
     size_t n = strlen(g_mic_heard);
     (void)user;
@@ -713,7 +713,7 @@ static bool mic_start(void *user, int rate, int channels)
     return true;
 }
 
-static void mic_stop(void *user)
+static MEGLER_CB void mic_stop(void *user)
 {
     size_t n = strlen(g_mic_heard);
     (void)user;
@@ -730,13 +730,13 @@ static void mic_stop(void *user)
  */
 static char g_bio_heard[256];
 
-static int bio_available(void *user)
+static MEGLER_CB int bio_available(void *user)
 {
     (void)user;
     return MEGLER_BIOMETRIC_READY;
 }
 
-static int bio_verify(void *user, const char *message)
+static MEGLER_CB int bio_verify(void *user, const char *message)
 {
     size_t n = strlen(g_bio_heard), i;
     (void)user;
@@ -746,7 +746,7 @@ static int bio_verify(void *user, const char *message)
     return strstr(message, "Sign in") ? MEGLER_BIOMETRIC_VERIFIED : MEGLER_BIOMETRIC_CANCELED;
 }
 
-static bool system_launch(void *user, const char *package, const char *activity)
+static MEGLER_CB bool system_launch(void *user, const char *package, const char *activity)
 {
     char t[200];
     (void)user;

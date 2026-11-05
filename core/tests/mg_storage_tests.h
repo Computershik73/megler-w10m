@@ -28,7 +28,7 @@ int mg_storage_tests_run(const char *scratch, mg_test_sink sink, void *user, int
  * is run on a PC (mg_tests --storage-windows, core/tests/mg_storage_windows.cpp).
  */
 struct megler_storage_host;
-typedef const struct megler_storage_host *(*mg_storage_host_maker)(const char *const *names, const char *const *folders, int count);
+typedef const struct megler_storage_host *(MEGLER_CB *mg_storage_host_maker)(const char *const *names, const char *const *folders, int count);
 int mg_storage_tests_run_shell(const char *scratch, mg_storage_host_maker make, mg_test_sink sink, void *user, int *checks);
 
 /*

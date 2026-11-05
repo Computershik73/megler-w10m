@@ -223,7 +223,7 @@ static void set_java_loaded(mg_lib *lib)
  */
 static bool load_native(const char *name_or_path, bool runtime, char *why, size_t why_size)
 {
-#if MG_HOST_ARM32
+#if MG_GUEST_CODE
     const char *slash = strrchr(name_or_path, '/'), *base = slash ? slash + 1 : name_or_path;
     mg_dvm_thread *t = mg_dvm_self();
     mg_lib *lib = runtime ? mg_ld_find_runtime_lib(base) : mg_ld_find_lib(base);
@@ -314,7 +314,7 @@ static bool load_runtime_library(const char *name)
 
 bool mg_dvm_load_libcore_natives(const char *root)
 {
-#if MG_HOST_ARM32
+#if MG_GUEST_CODE
     static bool registered;
     char *dir = mg_sprintf("%s/lib", root), *probe = mg_sprintf("%s/lib/libjavacore.so", root);
     mg_stat st;

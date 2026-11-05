@@ -1713,7 +1713,7 @@ static void tell_egl(gl_view *g, gl_ctx *x, gl_surf *s)
     if (!mg_dvm_call_static("javax/microedition/khronos/egl/MeglerEGL", "meglerRenderThread", "(JJIIILandroid/view/SurfaceView;)V", args, NULL)) mg_dvm_clear_pending();
 }
 
-static void gl_main(void *arg)
+static MG_HOSTCB void gl_main(void *arg)
 {
     gl_view *g = (gl_view *)arg;
     char name[32];

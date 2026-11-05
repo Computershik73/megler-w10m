@@ -48,7 +48,7 @@ static bool g_stacks_trace;
 static void stacks_thread_ends(mg_dvm_thread *t);
 
 /* The calling thread has ended (the host's hook, mg_thread_set_end_hook): it is no longer one of the runtime's, to be stopped or scanned. */
-static void thread_ends(void)
+static MG_HOSTCB void thread_ends(void)
 {
     mg_dvm_thread *t = t_self, **p;
     if (!t) return;
@@ -872,7 +872,7 @@ static void monitor_sample_copy(mg_dvm_thread *t, monitor_sample *s)
     }
 }
 
-static void monitor_observer(void *unused)
+static MG_HOSTCB void monitor_observer(void *unused)
 {
     u64 last = 0, last_totals = 0;
     (void)unused;
@@ -1005,7 +1005,7 @@ static void stacks_thread_ends(mg_dvm_thread *t)
     if (stacks_line_left()) mg_info("stacks: thread %u \"%s\" ends, %d Java frames left", s.thread, s.name, s.frames);
 }
 
-static void stacks_observer(void *unused)
+static MG_HOSTCB void stacks_observer(void *unused)
 {
     static monitor_sample now[STACKS_THREADS], before[STACKS_THREADS];
     int nbefore = 0, round = 1;

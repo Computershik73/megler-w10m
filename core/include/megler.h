@@ -53,7 +53,7 @@ extern "C" {
 enum { MEGLER_LOG_DEBUG = 0, MEGLER_LOG_INFO, MEGLER_LOG_WARN, MEGLER_LOG_ERROR };
 
 /* A line of the log. May be called from any thread, one call at a time. */
-typedef void (*megler_log_fn)(int level, const char *line, void *user);
+typedef void (MEGLER_CB *megler_log_fn)(int level, const char *line, void *user);
 
 typedef struct megler_config {
     /* Where everything the layer keeps lives: each app's files, saves and settings (the package's LocalState folder). */
@@ -63,8 +63,8 @@ typedef struct megler_config {
     megler_log_fn log;
     void *log_user;
     /* What the OS allows the app to use and what it uses now (MemoryManager), in bytes; either may be NULL. */
-    uint64_t (*memory_limit)(void);
-    uint64_t (*memory_usage)(void);
+    uint64_t (MEGLER_CB *memory_limit)(void);
+    uint64_t (MEGLER_CB *memory_usage)(void);
     /* Where the shared storage is kept: <storage_dir>/sdcard, and each app's own part of it, <storage_dir>/apps/<package>/
        sdcard, which other apps see in /sdcard/Android/data and obb. NULL for data_dir. The package of one Android app
        gives the publisher cache folder that every such package shares, so that what one app keeps in the shared storage
@@ -77,9 +77,9 @@ typedef struct megler_config {
  * at all -- the codeGeneration capability is missing, so no memory can be made
  * executable. The APK functions below still work then.
  */
-bool megler_init(const megler_config *config);
-const char *megler_version(void);
-void megler_free(void *p);
+MEGLER_API bool megler_init(const megler_config *config);
+MEGLER_API const char *megler_version(void);
+MEGLER_API void megler_free(void *p);
 
 /* ------------------------------------------------------------------- APKs */
 
@@ -118,14 +118,14 @@ void megler_free(void *p);
  *
  * It reads the APK and nothing else: no code is loaded.
  */
-char *megler_apk_report(const char *apk_path);
+MEGLER_API char *megler_apk_report(const char *apk_path);
 
 /*
  * The APK's launcher icon as the bytes of its image file (free with megler_free),
  * or false when it has none this layer can find. A PNG when the APK has one in
  * any density; otherwise a WebP, which Windows 10 Mobile cannot decode.
  */
-bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size);
+MEGLER_API bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size);
 
 /*
  * A WebP picture, which the phone's own decoder (WIC) cannot read, decoded by the core (libwebp's decoder, where the build
@@ -133,8 +133,8 @@ bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size);
  * scaled to that size when it is another. False when it is no WebP file this build decodes. For an icon the shell draws
  * itself (an app package's tiles, shell/AppPackage.cpp).
  */
-bool megler_webp_size(const void *data, size_t size, int *width, int *height);
-bool megler_webp_decode(const void *data, size_t size, void *pixels, int width, int height, int stride);
+MEGLER_API bool megler_webp_size(const void *data, size_t size, int *width, int *height);
+MEGLER_API bool megler_webp_decode(const void *data, size_t size, void *pixels, int width, int height, int stride);
 
 /*
  * A file the shell reaches only through handles -- one the user picked, which an app container may not open by its
@@ -144,8 +144,8 @@ bool megler_webp_decode(const void *data, size_t size, void *pixels, int width, 
  * Writing to it is refused. The path is compared without regard to case or to '/' and '\'. NULL `open` takes the path
  * back; the caller keeps `user` alive until then. A few at a time. Windows only: false elsewhere.
  */
-typedef void *(*megler_handle_opener)(void *user);
-bool megler_file_by_handle(const char *path, megler_handle_opener open, void *user);
+typedef void *(MEGLER_CB *megler_handle_opener)(void *user);
+MEGLER_API bool megler_file_by_handle(const char *path, megler_handle_opener open, void *user);
 
 /*
  * An app in several APKs: a base and its split APKs, as Google Play installs an app built as an Android App Bundle.
@@ -162,8 +162,8 @@ bool megler_file_by_handle(const char *path, megler_handle_opener open, void *us
  * megler_apk_icon_splits finds the icon in every APK (a density split often has the only pictures of it) and else takes the
  * icon the bundle came with.
  */
-char *megler_apk_report_splits(const char *apk_path, const char *splits_dir);
-bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_t **data, size_t *size);
+MEGLER_API char *megler_apk_report_splits(const char *apk_path, const char *splits_dir);
+MEGLER_API bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_t **data, size_t *size);
 
 /*
  * An app's activities as another app's launcher sees them (megler.PhoneApps; the shell writes them beside the list of the
@@ -184,7 +184,7 @@ bool megler_apk_icon_splits(const char *apk_path, const char *splits_dir, uint8_
  * as the app's signatures; Google Play compares them with its own record). `splits_dir` as megler_apk_report_splits has it.
  * False when the APK's manifest cannot be read or the description cannot be written.
  */
-bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir, const char *out_dir);
+MEGLER_API bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir, const char *out_dir);
 
 /*
  * A bundle of split APKs as they go about outside Google Play: an .apks file (SAI's, bundletool's, APKPure's: the base
@@ -224,8 +224,8 @@ bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir
  * it takes as long as the files take to unpack (seconds for hundreds of megabytes on a phone): not on the UI thread.
  * The base and the splits it writes are what megler_apk_report_splits and megler_run_config.splits_dir take.
  */
-char *megler_bundle_unpack(const char *bundle_path, const char *apk_path, const char *splits_dir, int density_dpi, const char *languages,
-                         void (*progress)(void *user, uint64_t done, uint64_t total), void *user);
+MEGLER_API char *megler_bundle_unpack(const char *bundle_path, const char *apk_path, const char *splits_dir, int density_dpi, const char *languages,
+                         void (MEGLER_CB *progress)(void *user, uint64_t done, uint64_t total), void *user);
 
 /* ---------------------------------------------------------------- running
  *
@@ -302,12 +302,12 @@ char *megler_bundle_unpack(const char *bundle_path, const char *apk_path, const 
  */
 typedef struct megler_window_host {
     void *user;
-    bool (*attach_device)(void *user, void *d3d11_device);
-    void *(*acquire_target)(void *user, int width, int height);
-    void (*present)(void *user);
-    void (*release_target)(void *user);
-    void (*present_pixels)(void *user, const void *pixels, int width, int height, int stride);
-    void (*present_pixels_part)(void *user, const void *pixels, int width, int height, int stride, int x, int y, int part_width,
+    bool (MEGLER_CB *attach_device)(void *user, void *d3d11_device);
+    void *(MEGLER_CB *acquire_target)(void *user, int width, int height);
+    void (MEGLER_CB *present)(void *user);
+    void (MEGLER_CB *release_target)(void *user);
+    void (MEGLER_CB *present_pixels)(void *user, const void *pixels, int width, int height, int stride);
+    void (MEGLER_CB *present_pixels_part)(void *user, const void *pixels, int width, int height, int stride, int x, int y, int part_width,
                                 int part_height);
 } megler_window_host;
 
@@ -333,9 +333,9 @@ typedef struct megler_window_host {
 enum { MEGLER_AUDIO_ROUTE_DEFAULT = 0, MEGLER_AUDIO_ROUTE_EARPIECE = 1, MEGLER_AUDIO_ROUTE_SPEAKER = 2 };
 typedef struct megler_audio_host {
     void *user;
-    bool (*open)(void *user, int rate);
-    void (*write)(void *user, const int16_t *samples, int frames);
-    void (*route)(void *user, int route);
+    bool (MEGLER_CB *open)(void *user, int rate);
+    void (MEGLER_CB *write)(void *user, const int16_t *samples, int frames);
+    void (MEGLER_CB *route)(void *user, int route);
 } megler_audio_host;
 
 /*
@@ -366,11 +366,11 @@ typedef struct megler_media_info {
 
 typedef struct megler_media_host {
     void *user;
-    void *(*open)(void *user, const char *path, megler_media_info *info);
-    int (*read_video)(void *user, void *media, uint8_t *rgba, int64_t *time_us);
-    int (*read_audio)(void *user, void *media, int16_t *samples, int max_frames, int64_t *time_us);
-    bool (*seek)(void *user, void *media, int64_t time_us);
-    void (*close)(void *user, void *media);
+    void *(MEGLER_CB *open)(void *user, const char *path, megler_media_info *info);
+    int (MEGLER_CB *read_video)(void *user, void *media, uint8_t *rgba, int64_t *time_us);
+    int (MEGLER_CB *read_audio)(void *user, void *media, int16_t *samples, int max_frames, int64_t *time_us);
+    bool (MEGLER_CB *seek)(void *user, void *media, int64_t time_us);
+    void (MEGLER_CB *close)(void *user, void *media);
 } megler_media_host;
 
 /*
@@ -619,19 +619,19 @@ typedef struct megler_camera_frame {
     int64_t time_us;
 } megler_camera_frame;
 
-typedef void (*megler_camera_frame_fn)(void *core, const megler_camera_frame *frame);
-typedef void (*megler_camera_focus_fn)(void *core, bool focused);
+typedef void (MEGLER_CB *megler_camera_frame_fn)(void *core, const megler_camera_frame *frame);
+typedef void (MEGLER_CB *megler_camera_focus_fn)(void *core, bool focused);
 
 typedef struct megler_camera_host {
     void *user;
-    int (*count)(void *user);
-    bool (*info)(void *user, int index, megler_camera_info *info);
-    void *(*open)(void *user, int index, megler_camera_caps *caps, int *error);
-    bool (*start)(void *user, void *camera, int width, int height, int fps, megler_camera_frame_fn frame, void *core);
-    void (*stop)(void *user, void *camera);
-    bool (*focus)(void *user, void *camera, int mode, megler_camera_focus_fn done, void *core);
-    void (*torch)(void *user, void *camera, bool on);
-    void (*close)(void *user, void *camera);
+    int (MEGLER_CB *count)(void *user);
+    bool (MEGLER_CB *info)(void *user, int index, megler_camera_info *info);
+    void *(MEGLER_CB *open)(void *user, int index, megler_camera_caps *caps, int *error);
+    bool (MEGLER_CB *start)(void *user, void *camera, int width, int height, int fps, megler_camera_frame_fn frame, void *core);
+    void (MEGLER_CB *stop)(void *user, void *camera);
+    bool (MEGLER_CB *focus)(void *user, void *camera, int mode, megler_camera_focus_fn done, void *core);
+    void (MEGLER_CB *torch)(void *user, void *camera, bool on);
+    void (MEGLER_CB *close)(void *user, void *camera);
 } megler_camera_host;
 
 /*
@@ -728,10 +728,10 @@ typedef struct megler_storage_host {
     void *user;
     const megler_storage_link *links;
     int link_count;
-    void *(*open)(void *user, int link, const char *path, int flags, int kind, int *error);
-    bool (*make_folder)(void *user, int link, const char *path, int *error);
-    bool (*remove)(void *user, int link, const char *path, bool folder, int *error);
-    bool (*rename)(void *user, int from_link, const char *from, int to_link, const char *to, int *error);
+    void *(MEGLER_CB *open)(void *user, int link, const char *path, int flags, int kind, int *error);
+    bool (MEGLER_CB *make_folder)(void *user, int link, const char *path, int *error);
+    bool (MEGLER_CB *remove)(void *user, int link, const char *path, bool folder, int *error);
+    bool (MEGLER_CB *rename)(void *user, int from_link, const char *from, int to_link, const char *to, int *error);
 } megler_storage_host;
 
 /*
@@ -1300,69 +1300,69 @@ typedef struct megler_gfx_image {
     uint32_t version;                  /* changes whenever the pixels may have */
 } megler_gfx_image;
 
-typedef bool (*megler_gfx_write)(void *sink, const void *data, size_t size);
+typedef bool (MEGLER_CB *megler_gfx_write)(void *sink, const void *data, size_t size);
 
 typedef struct megler_gfx_host {
     void *user;
 
-    void *(*canvas_new)(void *user, void *pixels, int width, int height, int stride);
-    void (*canvas_free)(void *user, void *canvas);
-    void (*flush)(void *user, void *canvas);
-    void (*touched)(void *user, void *canvas);
+    void *(MEGLER_CB *canvas_new)(void *user, void *pixels, int width, int height, int stride);
+    void (MEGLER_CB *canvas_free)(void *user, void *canvas);
+    void (MEGLER_CB *flush)(void *user, void *canvas);
+    void (MEGLER_CB *touched)(void *user, void *canvas);
 
-    void (*save)(void *user, void *canvas);
-    void (*save_layer)(void *user, void *canvas, const float *bounds, int alpha, int blend);
-    void (*save_layer_blur)(void *user, void *canvas, const float *bounds, int alpha, float radius_x, float radius_y, bool clamp);
-    void (*restore)(void *user, void *canvas);
-    void (*set_matrix)(void *user, void *canvas, const float *matrix);
-    void (*clip_rect)(void *user, void *canvas, float left, float top, float right, float bottom, int op);
-    void (*clip_path)(void *user, void *canvas, const float *path, int count, int fill, int op);
+    void (MEGLER_CB *save)(void *user, void *canvas);
+    void (MEGLER_CB *save_layer)(void *user, void *canvas, const float *bounds, int alpha, int blend);
+    void (MEGLER_CB *save_layer_blur)(void *user, void *canvas, const float *bounds, int alpha, float radius_x, float radius_y, bool clamp);
+    void (MEGLER_CB *restore)(void *user, void *canvas);
+    void (MEGLER_CB *set_matrix)(void *user, void *canvas, const float *matrix);
+    void (MEGLER_CB *clip_rect)(void *user, void *canvas, float left, float top, float right, float bottom, int op);
+    void (MEGLER_CB *clip_path)(void *user, void *canvas, const float *path, int count, int fill, int op);
 
-    void (*draw_color)(void *user, void *canvas, uint32_t color, int blend);
-    void (*draw_rect)(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader);
-    void (*draw_round_rect)(void *user, void *canvas, float left, float top, float right, float bottom, float rx, float ry,
+    void (MEGLER_CB *draw_color)(void *user, void *canvas, uint32_t color, int blend);
+    void (MEGLER_CB *draw_rect)(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader);
+    void (MEGLER_CB *draw_round_rect)(void *user, void *canvas, float left, float top, float right, float bottom, float rx, float ry,
                             const megler_gfx_paint *paint, void *shader);
-    void (*draw_oval)(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader);
-    void (*draw_path)(void *user, void *canvas, const float *path, int count, int fill, const megler_gfx_paint *paint, void *shader);
-    void (*draw_bitmap)(void *user, void *canvas, const megler_gfx_image *image, const float *src, const float *dst, const megler_gfx_paint *paint);
-    void (*draw_text)(void *user, void *canvas, const uint16_t *text, int count, float x, float y, const megler_gfx_paint *paint,
+    void (MEGLER_CB *draw_oval)(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader);
+    void (MEGLER_CB *draw_path)(void *user, void *canvas, const float *path, int count, int fill, const megler_gfx_paint *paint, void *shader);
+    void (MEGLER_CB *draw_bitmap)(void *user, void *canvas, const megler_gfx_image *image, const float *src, const float *dst, const megler_gfx_paint *paint);
+    void (MEGLER_CB *draw_text)(void *user, void *canvas, const uint16_t *text, int count, float x, float y, const megler_gfx_paint *paint,
                       void *typeface, void *shader);
 
-    float (*text_measure)(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface);
-    float (*text_metrics)(void *user, const megler_gfx_paint *paint, void *typeface, float *out);
-    void (*text_bounds)(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface, float *out);
-    int (*text_break)(void *user, const uint16_t *text, int count, float max_width, const megler_gfx_paint *paint, void *typeface, bool words);
-    void (*text_widths)(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface, float *out);
+    float (MEGLER_CB *text_measure)(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface);
+    float (MEGLER_CB *text_metrics)(void *user, const megler_gfx_paint *paint, void *typeface, float *out);
+    void (MEGLER_CB *text_bounds)(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface, float *out);
+    int (MEGLER_CB *text_break)(void *user, const uint16_t *text, int count, float max_width, const megler_gfx_paint *paint, void *typeface, bool words);
+    void (MEGLER_CB *text_widths)(void *user, const uint16_t *text, int count, const megler_gfx_paint *paint, void *typeface, float *out);
 
-    void *(*typeface_create)(void *user, const char *family, int generic, int weight, bool italic);
-    void *(*typeface_derive)(void *user, void *typeface, int weight, bool italic);
-    void *(*typeface_from_data)(void *user, const void *data, size_t size);
+    void *(MEGLER_CB *typeface_create)(void *user, const char *family, int generic, int weight, bool italic);
+    void *(MEGLER_CB *typeface_derive)(void *user, void *typeface, int weight, bool italic);
+    void *(MEGLER_CB *typeface_from_data)(void *user, const void *data, size_t size);
 
-    void *(*shader_linear)(void *user, float x0, float y0, float x1, float y1, const uint32_t *colors, const float *positions, int count, int tile);
-    void *(*shader_radial)(void *user, float cx, float cy, float radius, const uint32_t *colors, const float *positions, int count, int tile);
-    void *(*shader_sweep)(void *user, float cx, float cy, const uint32_t *colors, const float *positions, int count);
-    void *(*shader_bitmap)(void *user, const megler_gfx_image *image, int tile);
-    void (*shader_matrix)(void *user, void *shader, const float *matrix);
-    void (*shader_free)(void *user, void *shader);
+    void *(MEGLER_CB *shader_linear)(void *user, float x0, float y0, float x1, float y1, const uint32_t *colors, const float *positions, int count, int tile);
+    void *(MEGLER_CB *shader_radial)(void *user, float cx, float cy, float radius, const uint32_t *colors, const float *positions, int count, int tile);
+    void *(MEGLER_CB *shader_sweep)(void *user, float cx, float cy, const uint32_t *colors, const float *positions, int count);
+    void *(MEGLER_CB *shader_bitmap)(void *user, const megler_gfx_image *image, int tile);
+    void (MEGLER_CB *shader_matrix)(void *user, void *shader, const float *matrix);
+    void (MEGLER_CB *shader_free)(void *user, void *shader);
 
-    bool (*image_size)(void *user, const void *data, size_t size, int *width, int *height);
-    bool (*image_decode)(void *user, const void *data, size_t size, void *pixels, int width, int height, int stride);
-    bool (*image_encode)(void *user, const void *pixels, int width, int height, int stride, int format, int quality, megler_gfx_write write, void *sink);
-    void (*bitmap_gone)(void *user, uint32_t id);
+    bool (MEGLER_CB *image_size)(void *user, const void *data, size_t size, int *width, int *height);
+    bool (MEGLER_CB *image_decode)(void *user, const void *data, size_t size, void *pixels, int width, int height, int stride);
+    bool (MEGLER_CB *image_encode)(void *user, const void *pixels, int width, int height, int stride, int format, int quality, megler_gfx_write write, void *sink);
+    void (MEGLER_CB *bitmap_gone)(void *user, uint32_t id);
 
-    bool (*present)(void *user, void *canvas, int x, int y, int width, int height);
-    bool (*gl_frame)(void *user, int layer, void *share_handle, int width, int height);
-    void (*gl_place)(void *user, int layer, int x, int y, int width, int height);
-    bool (*texture_frame)(void *user, int id, void *share_handle, int width, int height);
-    void (*draw_texture)(void *user, void *canvas, int id, float left, float top, float right, float bottom, int alpha);
+    bool (MEGLER_CB *present)(void *user, void *canvas, int x, int y, int width, int height);
+    bool (MEGLER_CB *gl_frame)(void *user, int layer, void *share_handle, int width, int height);
+    void (MEGLER_CB *gl_place)(void *user, int layer, int x, int y, int width, int height);
+    bool (MEGLER_CB *texture_frame)(void *user, int id, void *share_handle, int width, int height);
+    void (MEGLER_CB *draw_texture)(void *user, void *canvas, int id, float left, float top, float right, float bottom, int alpha);
     /* Optional bitmap-to-canvas drawing without a CPU readback. The source is
        another canvas of the source bitmap, current and with no open layers.
        False leaves the destination unchanged; the core then settles the bitmap
        and uses draw_bitmap. The source remains readable through flush. */
-    bool (*draw_canvas)(void *user, void *canvas, void *source, const float *src, const float *dst, const megler_gfx_paint *paint);
+    bool (MEGLER_CB *draw_canvas)(void *user, void *canvas, void *source, const float *src, const float *dst, const megler_gfx_paint *paint);
     /* Free a canvas whose pixels will never be read again. Like canvas_free,
        but its memory need not receive the last drawing. */
-    void (*canvas_discard)(void *user, void *canvas);
+    void (MEGLER_CB *canvas_discard)(void *user, void *canvas);
 } megler_gfx_host;
 
 /*
@@ -1421,8 +1421,8 @@ enum { MEGLER_TEXT_BACKSPACE = 1, MEGLER_TEXT_ENTER, MEGLER_TEXT_DELETE, MEGLER_
 
 typedef struct megler_keyboard_host {
     void *user;
-    void (*show)(void *user, int kind, int flags, int enter);
-    void (*hide)(void *user);
+    void (MEGLER_CB *show)(void *user, int kind, int flags, int enter);
+    void (MEGLER_CB *hide)(void *user);
 } megler_keyboard_host;
 
 /*
@@ -1446,7 +1446,7 @@ enum { MEGLER_BAR_STATUS = 1, MEGLER_BAR_NAVIGATION = 2, MEGLER_BAR_LIGHT_STATUS
 
 typedef struct megler_system_bars_host {
     void *user;
-    void (*wanted)(void *user, int bars);
+    void (MEGLER_CB *wanted)(void *user, int bars);
 } megler_system_bars_host;
 
 /*
@@ -1468,11 +1468,11 @@ typedef struct megler_system_bars_host {
  */
 typedef struct megler_system_host {
     void *user;
-    void (*open_url)(void *user, const char *uri);
-    void (*share_text)(void *user, const char *text, const char *subject);
-    bool (*install_apk)(void *user, const char *host_path, const char *name);
-    bool (*launch_app)(void *user, const char *package, const char *activity);
-    bool (*uninstall_app)(void *user, const char *package);
+    void (MEGLER_CB *open_url)(void *user, const char *uri);
+    void (MEGLER_CB *share_text)(void *user, const char *text, const char *subject);
+    bool (MEGLER_CB *install_apk)(void *user, const char *host_path, const char *name);
+    bool (MEGLER_CB *launch_app)(void *user, const char *package, const char *activity);
+    bool (MEGLER_CB *uninstall_app)(void *user, const char *package);
 } megler_system_host;
 
 /*
@@ -1490,8 +1490,8 @@ typedef struct megler_system_host {
  */
 typedef struct megler_media_session_host {
     void *user;
-    void (*state)(void *user, int state, long long actions);
-    void (*metadata)(void *user, const char *title, const char *artist, const char *album, const uint32_t *art, int art_w,
+    void (MEGLER_CB *state)(void *user, int state, long long actions);
+    void (MEGLER_CB *metadata)(void *user, const char *title, const char *artist, const char *album, const uint32_t *art, int art_w,
                      int art_h);
 } megler_media_session_host;
 
@@ -1527,10 +1527,10 @@ typedef struct megler_location {
 
 typedef struct megler_location_host {
     void *user;
-    int (*access)(void *user, bool ask);
-    bool (*start)(void *user, int interval_ms);
-    void (*stop)(void *user);
-    bool (*last)(void *user, megler_location *fix);
+    int (MEGLER_CB *access)(void *user, bool ask);
+    bool (MEGLER_CB *start)(void *user, int interval_ms);
+    void (MEGLER_CB *stop)(void *user);
+    bool (MEGLER_CB *last)(void *user, megler_location *fix);
 } megler_location_host;
 
 /*
@@ -1543,11 +1543,11 @@ typedef struct megler_location_host {
  */
 typedef struct megler_microphone_host {
     void *user;
-    bool (*start)(void *user, int rate, int channels);
-    void (*stop)(void *user);
+    bool (MEGLER_CB *start)(void *user, int rate, int channels);
+    void (MEGLER_CB *stop)(void *user);
 } megler_microphone_host;
 /* What the microphone heard: `frames` frames of the channels start was asked for, interleaved. */
-void megler_microphone_push(const int16_t *samples, int frames);
+MEGLER_API void megler_microphone_push(const int16_t *samples, int frames);
 
 /*
  * The phone's check of its user, for a Java app's BiometricPrompt, BiometricManager and FingerprintManager (Windows Hello:
@@ -1565,9 +1565,9 @@ enum { MEGLER_BIOMETRIC_READY = 0, MEGLER_BIOMETRIC_NOT_SET_UP = 1, MEGLER_BIOME
 enum { MEGLER_BIOMETRIC_VERIFIED = 0, MEGLER_BIOMETRIC_CANCELED = 1, MEGLER_BIOMETRIC_LOCKED = 2, MEGLER_BIOMETRIC_UNAVAILABLE = 3 };
 typedef struct megler_biometric_host {
     void *user;
-    int (*available)(void *user);
-    int (*verify)(void *user, const char *message);
-    void (*cancel)(void *user);
+    int (MEGLER_CB *available)(void *user);
+    int (MEGLER_CB *verify)(void *user, const char *message);
+    void (MEGLER_CB *cancel)(void *user);
 } megler_biometric_host;
 
 typedef struct megler_run_config {
@@ -1636,7 +1636,7 @@ typedef struct megler_run_config {
      */
     const char *apps_dir;
     /* The app has ended: by its own exit (status), by a crash (reason names it), or by megler_stop. Called once, from any thread. */
-    void (*on_exit)(void *user, int status, const char *reason);
+    void (MEGLER_CB *on_exit)(void *user, int status, const char *reason);
     void *user;
 } megler_run_config;
 
@@ -1644,7 +1644,7 @@ typedef struct megler_run_config {
  * Starts the app on threads of its own and returns. False, with the reason in
  * the log and in megler_last_error, when it cannot start.
  */
-bool megler_run(const megler_run_config *config);
+MEGLER_API bool megler_run(const megler_run_config *config);
 /*
  * Whether the app runs. When it ends this turns false first and on_exit is
  * called second, in that order always: inside on_exit and after it, this is
@@ -1654,62 +1654,62 @@ bool megler_run(const megler_run_config *config);
  * through yet, and the status and the reason are on_exit's alone -- wait for
  * it before reading what it stores.
  */
-bool megler_running(void);
-const char *megler_last_error(void);
+MEGLER_API bool megler_running(void);
+MEGLER_API const char *megler_last_error(void);
 /*
  * Where another thread of the process stands, in one line: its pc and lr, and the ways back into a module or into Android
  * code its stack holds, as a fault's report says them (not an unwinding: there are no tables for most of it). The thread
  * is stopped while its registers and its stack's top are copied. For the shell's watch of its UI thread: what holds it
  * when it does not answer. False when it could not be stopped (it ended, it is the caller, or the host cannot).
  */
-bool megler_thread_where(unsigned thread_id, char *out, size_t size);
+MEGLER_API bool megler_thread_where(unsigned thread_id, char *out, size_t size);
 /*
  * A module of the process's (a DLL of the system's, by file name: "CoreUIComponents.dll") as it lies in memory, into a
  * file: its image from its base, SizeOfImage long, with what is not committed or not readable as zeros. For reading a
  * fault in the system's own code, where the phone does not hand out the DLL itself. False when there is no such module
  * or the file could not be written.
  */
-bool megler_dump_module(const char *module, const char *path);
+MEGLER_API bool megler_dump_module(const char *module, const char *path);
 /*
  * Whether the system stops a thread at a hardware breakpoint set through its context (DBGBVR/DBGBCR), on another thread
  * and on this one, Thumb and ARM: a probe, said in `out` and in the log. True when one stopped.
  */
-bool megler_probe_breakpoints(char *out, size_t size);
+MEGLER_API bool megler_probe_breakpoints(char *out, size_t size);
 
 /* Touch, in surface pixels with y down (after undoing the flip). phase: 0 down, 1 move, 2 up, 3 cancel. */
-void megler_touch(int phase, int pointer_id, float x, float y);
+MEGLER_API void megler_touch(int phase, int pointer_id, float x, float y);
 /* An Android key code (AKEYCODE_BACK is 4), pressed or released. */
-void megler_key(int android_keycode, bool down);
+MEGLER_API void megler_key(int android_keycode, bool down);
 /* The touch keyboard's half of text entry, for a Java app: see megler_keyboard_host. Any thread. */
-void megler_text_commit(const char *utf8);
-void megler_text_key(int key);
-void megler_keyboard_closed(void);
-void megler_keyboard_height(int pixels);
+MEGLER_API void megler_text_commit(const char *utf8);
+MEGLER_API void megler_text_key(int key);
+MEGLER_API void megler_keyboard_closed(void);
+MEGLER_API void megler_keyboard_height(int pixels);
 /* How much of each edge of the surface the phone's bars cover, in pixels, for a Java app: see megler_system_bars_host. Any thread. */
-void megler_set_insets(int left, int top, int right, int bottom);
+MEGLER_API void megler_set_insets(int left, int top, int right, int bottom);
 /* The app went to the background or came back; lost or gained input focus. */
-void megler_set_paused(bool paused);
+MEGLER_API void megler_set_paused(bool paused);
 /*
  * Waits up to `ms` milliseconds until the app holds no lock on a database: Windows freezes a suspended app as it is, and a
  * lock it held would keep the other apps waiting on that database (Google Play services' are every app's). The shell calls
  * it as the app is suspended. True when none is held.
  */
-bool megler_settle_databases(int ms);
+MEGLER_API bool megler_settle_databases(int ms);
 /*
  * Writes what the app wrote into its shared mappings of files to the files now (they hold it, not the files, until msync,
  * munmap or the app's end): Windows ends a suspended app without notice. The shell calls it as the app is suspended.
  */
-void megler_settle_files(void);
-void megler_set_focused(bool focused);
+MEGLER_API void megler_settle_files(void);
+MEGLER_API void megler_set_focused(bool focused);
 /* Asks the app to finish. Returns at once; on_exit follows. */
-void megler_stop(void);
+MEGLER_API void megler_stop(void);
 /*
  * Another app asks this one to show one of its activities, by class name: what Android's startActivity of an intent that
  * names a component of this app does (microG's sign-in, LoginActivity, asked for by Play Store's AccountManager through
  * megler_system_host.launch_app). A Java app's main thread starts it on top of what it shows, if its manifest has the
  * activity and exports it; asked before the app runs, once its first activity is up. Any thread; the latest ask wins.
  */
-void megler_start_activity(const char *activity_class);
+MEGLER_API void megler_start_activity(const char *activity_class);
 /*
  * Clears an app's data, as Android's "Clear storage" does, when the app next starts: before anything of it is open, its
  * private folder (/data/data/<package>) and its own Android/data folder in the shared storage go; its Android/obb stays, as
@@ -1717,9 +1717,9 @@ void megler_start_activity(const char *activity_class);
  * storage_dir), which every package Megler made of an app sees: the shell's app page asks so, and the app itself, from
  * Android's app info screen. True when the ask is written. Needs megler_init.
  */
-bool megler_ask_clear_data(const char *package);
+MEGLER_API bool megler_ask_clear_data(const char *package);
 /* Frames presented since the app started. */
-uint32_t megler_frames(void);
+MEGLER_API uint32_t megler_frames(void);
 
 /* ---------------------------------------------------- the phone, for an app
  *
@@ -1738,7 +1738,7 @@ uint32_t megler_frames(void);
  * log says so when the app first asks. Native code's localtime is not
  * changed by this; it already follows the host's clock.
  */
-void megler_set_timezone(const char *id);
+MEGLER_API void megler_set_timezone(const char *id);
 
 /*
  * The language and region an app is told the phone has, as a BCP 47 tag ("ru-RU", "en-US", "zh-Hant-TW"): Java's
@@ -1746,7 +1746,7 @@ void megler_set_timezone(const char *id);
  * country TelephonyManager says the SIM and the network are in. Before megler_run: a Java app reads it as it starts. NULL, an
  * empty tag or one that is not a language's leaves "en-US", which is also what an app has until the first call.
  */
-void megler_set_locale(const char *tag);
+MEGLER_API void megler_set_locale(const char *tag);
 
 /*
  * The phone's look, for a Java app. `accent_argb` is the phone's accent colour (Windows' UISettings Accent): Android's
@@ -1756,7 +1756,7 @@ void megler_set_locale(const char *tag);
  * is Configuration.uiMode's night bit, which an app's DayNight theme follows. Before megler_run: an app reads them as it
  * starts. Until the first call there is no accent (Android's own teal; Google's blue for the system colours) and no night.
  */
-void megler_set_theme(uint32_t accent_argb, bool night);
+MEGLER_API void megler_set_theme(uint32_t accent_argb, bool night);
 
 /*
  * A colour of Material You's tonal palettes made from a seed colour, roughly as Android 12 makes its system colours of a
@@ -1771,7 +1771,7 @@ enum {
     MEGLER_PALETTE_ACCENT3 = 4,
     MEGLER_PALETTE_ERROR = 5,
 };
-uint32_t megler_palette_tone(uint32_t seed_argb, int palette, int tone);
+MEGLER_API uint32_t megler_palette_tone(uint32_t seed_argb, int palette, int tone);
 
 /*
  * The battery, in Android's own numbers. Any thread, any time, also while an
@@ -1800,7 +1800,7 @@ typedef struct megler_battery {
     int temperature;  /* tenths of a degree Celsius; INT_MIN: the phone does not say -- then 25.0 */
     bool present;
 } megler_battery;
-void megler_set_battery(const megler_battery *now);
+MEGLER_API void megler_set_battery(const megler_battery *now);
 
 /*
  * The phone's cellular side, for a Java app's TelephonyManager: whether a SIM is in it and ready, its operator's name and
@@ -1816,7 +1816,7 @@ typedef struct megler_cellular {
     int network_type;
     bool roaming;
 } megler_cellular;
-void megler_set_cellular(const megler_cellular *now);
+MEGLER_API void megler_set_cellular(const megler_cellular *now);
 
 /*
  * The phone's text messages and calls, for a Java app as Android has them (the framework's megler.Phone). Any thread.
@@ -1835,12 +1835,12 @@ void megler_set_cellular(const megler_cellular *now);
  * Only what comes while an app runs is the app's: the phone's earlier messages and calls are not given to it. Nothing of
  * either is written in the log but that there was one. Before an app runs, and with no Java app, they are dropped.
  */
-void megler_sms_received(const char *from, const char *body, int64_t time_ms);
-void megler_call_logged(const char *number, int64_t time_ms, int type, int duration_s);
+MEGLER_API void megler_sms_received(const char *from, const char *body, int64_t time_ms);
+MEGLER_API void megler_call_logged(const char *number, int64_t time_ms, int type, int duration_s);
 
 /* ------------------------------------------------------------ diagnostics */
 
-typedef void (*megler_line_fn)(const char *line, void *user);
+typedef void (MEGLER_CB *megler_line_fn)(const char *line, void *user);
 
 /*
  * The core's own tests, run in this process: the host layer, the APK reader,
@@ -1856,7 +1856,7 @@ typedef void (*megler_line_fn)(const char *line, void *user);
  * flushed before the next step, so a step that ends the process has still
  * said how far the test got.
  */
-int megler_selftest(megler_line_fn out, void *user);
+MEGLER_API int megler_selftest(megler_line_fn out, void *user);
 
 /*
  * Facts about this device that decide how Android code can run on it, one per
@@ -1867,7 +1867,7 @@ int megler_selftest(megler_line_fn out, void *user);
  * answer means. The lines also go, flushed one by one, to
  * <data_dir>/megler-probe-steps.log: some probes can end the process.
  */
-void megler_probe(megler_line_fn out, void *user);
+MEGLER_API void megler_probe(megler_line_fn out, void *user);
 
 /*
  * Whether the phone's folders do in an app's storage what an app will ask of
@@ -1890,7 +1890,7 @@ void megler_probe(megler_line_fn out, void *user);
  * megler_run is as free afterwards as it was. Takes a few seconds; call it
  * from a background thread, not the UI thread.
  */
-int megler_storage_check(const megler_storage_host *storage, megler_line_fn out, void *user, int *checks);
+MEGLER_API int megler_storage_check(const megler_storage_host *storage, megler_line_fn out, void *user, int *checks);
 
 /*
  * Whether the network does for an app what an app will ask of it, through
@@ -1911,7 +1911,7 @@ int megler_storage_check(const megler_storage_host *storage, megler_line_fn out,
  * Takes up to half a minute when the network does not answer; call it from
  * a background thread, not the UI thread.
  */
-int megler_net_check(megler_line_fn out, void *user, int *checks, int *refused);
+MEGLER_API int megler_net_check(megler_line_fn out, void *user, int *checks, int *refused);
 
 /* ------------------------------------------------------- an app's own package */
 
@@ -1924,29 +1924,29 @@ int megler_net_check(megler_line_fn out, void *user, int *checks, int *refused);
  * the first use and kept in two files (the certificate as DER: what the phone has to trust).
  */
 typedef struct mg_appx_key megler_appx_key;
-megler_appx_key *megler_appx_key_open(const char *key_path, const char *cert_path, const char *publisher, char *err, size_t errlen);
-void megler_appx_key_close(megler_appx_key *key);
+MEGLER_API megler_appx_key *megler_appx_key_open(const char *key_path, const char *cert_path, const char *publisher, char *err, size_t errlen);
+MEGLER_API void megler_appx_key_close(megler_appx_key *key);
 
 /* A package being written: files added in order (names of letters, digits, '.', '-', '_' and '/'), then finished with its
    block map, content types and signature; finish frees `a` whatever the outcome, and removes the file on a failure. */
 typedef struct mg_appx megler_appx;
-megler_appx *megler_appx_begin(const char *path, char *err, size_t errlen);
-bool megler_appx_add_file(megler_appx *a, const char *name, const char *src_path);
-bool megler_appx_add_data(megler_appx *a, const char *name, const void *data, size_t size);
-bool megler_appx_finish(megler_appx *a, const megler_appx_key *key, char *err, size_t errlen);
+MEGLER_API megler_appx *megler_appx_begin(const char *path, char *err, size_t errlen);
+MEGLER_API bool megler_appx_add_file(megler_appx *a, const char *name, const char *src_path);
+MEGLER_API bool megler_appx_add_data(megler_appx *a, const char *name, const void *data, size_t size);
+MEGLER_API bool megler_appx_finish(megler_appx *a, const megler_appx_key *key, char *err, size_t errlen);
 
 /* The identity name of the package of the Android app `android_package` ("MeglerApp." and the package), into out (at least
    51 bytes); false for a name that is not an Android package's. */
-bool megler_appx_app_identity(const char *android_package, char *out, size_t outlen);
+MEGLER_API bool megler_appx_app_identity(const char *android_package, char *out, size_t outlen);
 /* That package's manifest, made from Megler's (the text of its AppxManifest.xml): the identity name, phone product id and
    shown names changed, and the tile's and the splash screen's background colours when given ("#rrggbb" or "transparent";
    NULL keeps Megler's), all else Megler's. A string to free with megler_free, or NULL (err says why). */
-char *megler_appx_app_manifest(const char *megler_manifest, const char *android_package, const char *label, const char *tile_color,
+MEGLER_API char *megler_appx_app_manifest(const char *megler_manifest, const char *android_package, const char *label, const char *tile_color,
                              const char *splash_color, char *err, size_t errlen);
 /* That package's resources.pri, from the one Megler carries made for a placeholder name as long (appx-template\resources.pri,
    whose resources.txt says the placeholder and the two tails; tools/build-appx.sh): into `out`, as large as `pri`. False
    (err says why) when the template is not such a file. */
-bool megler_appx_pri_rename(const uint8_t *pri, size_t size, const char *placeholder, uint32_t tail1, uint32_t tail2, const char *name,
+MEGLER_API bool megler_appx_pri_rename(const uint8_t *pri, size_t size, const char *placeholder, uint32_t tail1, uint32_t tail2, const char *name,
                           uint8_t *out, char *err, size_t errlen);
 
 #if defined(_M_IX86) || (defined(__i386__) && defined(MG_CORE_ELF))

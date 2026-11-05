@@ -3,7 +3,10 @@
 # (mg_dvm_start_android): laid out like Android's /system, out of what
 # tools/android9-*.sh left in build/android9.
 #
-#   tools/dvm-android-root.sh [--no-res | --full-res] [folder]        (build/android9/root when no folder is named)
+#   tools/dvm-android-root.sh [--abi ABI] [--no-res | --full-res] [folder]
+#                       (build/android9/root when no folder is named; for another ABI than armeabi-v7a,
+#                        build/android9/root-<abi>, with that ABI's natives from build/android9/lib-<abi>:
+#                        tools/android9-natives.sh <abi> builds them -- desktop Windows, docs/DESKTOP.md)
 #
 #   framework/<name>.dex    the boot class path's bytecode, one DEX file each:
 #                           core-oj, core-libart, conscrypt, okhttp,
@@ -95,8 +98,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 A9="$ROOT/build/android9"
 RES=cut
+ABI=armeabi-v7a
+if [ "${1:-}" = --abi ]; then ABI="${2:?--abi needs an ABI}"; shift 2; fi
 if [ "${1:-}" = --no-res ]; then RES=none; shift; elif [ "${1:-}" = --full-res ]; then RES=full; shift; fi
-OUT="${1:-$A9/root}"
+case "$ABI" in
+  armeabi-v7a) NATIVES="$A9/lib"; OUT="${1:-$A9/root}" ;;
+  arm64-v8a|x86_64|x86) NATIVES="$A9/lib-$ABI"; OUT="${1:-$A9/root-$ABI}" ;;
+  *) echo "unknown ABI: $ABI (armeabi-v7a, arm64-v8a, x86_64, x86)" >&2; exit 2 ;;
+esac
 [ -f "$A9/boot/core-oj.dex" ] || { echo "no build/android9/boot/core-oj.dex: Android 9's boot class path has not been unpacked (tools/android9-*.sh)" >&2; exit 1; }
 mkdir -p "$OUT/framework" "$OUT/lib" "$OUT/usr/icu" "$OUT/usr/share/zoneinfo"
 put() { # source, destination folder
@@ -147,12 +156,12 @@ fi
 put "$A9/system/usr/icu/icudt60l.dat" "$OUT/usr/icu"
 for f in "$A9/system/usr/share/zoneinfo/"*; do put "$f" "$OUT/usr/share/zoneinfo"; done
 LIBS=0
-for f in "$A9/lib/"*.so; do
+for f in "$NATIVES/"*.so; do
   [ -f "$f" ] || continue
   cp -u "$f" "$OUT/lib/"
   LIBS=$((LIBS + 1))
 done
-[ "$LIBS" -gt 0 ] || echo "  (no native libraries in build/android9/lib: libcore will be its bytecode alone)"
+[ "$LIBS" -gt 0 ] || echo "  (no native libraries in ${NATIVES#$ROOT/}: libcore will be its bytecode alone)"
 CERTS=0
 for f in "$A9/system/etc/security/cacerts/"*; do
   [ -f "$f" ] || continue
@@ -178,7 +187,8 @@ fi
 size() { du -sk "$1" | cut -f1; }
 # Android's System WebView, where tools/webview-fetch.sh has put it, and the name of its platform support library.
 WEBVIEW="no WebView"
-if [ -f "$ROOT/build/webview/webview.apk" ]; then
+# (Its native library is 32-bit ARM's: the other ABIs' roots go without it until a WebView of theirs is fetched.)
+if [ -f "$ROOT/build/webview/webview.apk" ] && [ "$ABI" = armeabi-v7a ]; then
   mkdir -p "$OUT/app/webview"
   cmp -s "$ROOT/build/webview/webview.apk" "$OUT/app/webview/webview.apk" || cp "$ROOT/build/webview/webview.apk" "$OUT/app/webview/webview.apk"
   echo "The platform support of the WebView: its natives are answered by the core (core/src/drivers/mg_java_webview.c)." > "$OUT/lib/libwebviewchromium_plat_support.so"

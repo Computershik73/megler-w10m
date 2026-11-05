@@ -149,8 +149,9 @@ static size_t g_malloc_usable_size(const void *p) { return p ? HDR(p)->size : 0;
 static int g_mallopt(int param, int value) { (void)param; (void)value; return 1; }
 static int g_malloc_trim(size_t pad) { (void)pad; return 0; }
 
+/* bionic's struct mallinfo: ten size_t's, returned by value. */
 typedef struct g_mallinfo_t {
-    u32 arena, ordblks, smblks, hblks, hblkhd, usmblks, fsmblks, uordblks, fordblks, keepcost;
+    size_t arena, ordblks, smblks, hblks, hblkhd, usmblks, fsmblks, uordblks, fordblks, keepcost;
 } g_mallinfo_t;
 
 static g_mallinfo_t g_mallinfo(void)
@@ -158,7 +159,11 @@ static g_mallinfo_t g_mallinfo(void)
     g_mallinfo_t m;
     u64 used = mg_mem_usage();
     memset(&m, 0, sizeof(m));
-    m.uordblks = used > 0xFFFFFFFFu ? 0xFFFFFFFFu : (u32)used;
+#if MG_GUEST_LP64
+    m.uordblks = (size_t)used;
+#else
+    m.uordblks = used > 0xFFFFFFFFu ? 0xFFFFFFFFu : (size_t)used;
+#endif
     m.arena = m.uordblks;
     return m;
 }
@@ -173,7 +178,15 @@ static void *g_reallocarray(void *p, size_t n, size_t m)
     return mg_g_realloc(p, (size_t)total);
 }
 
-/* The C++ runtime's allocation functions, for apps that link the system's minimal libstdc++. */
+/*
+ * The C++ runtime's allocation functions, for apps that link the system's minimal libstdc++. Their names say size_t's
+ * type as the Itanium ABI mangles it: unsigned int (j) in 32-bit Android, unsigned long (m) in 64-bit.
+ */
+#if MG_GUEST_LP64
+#define CXX_SIZE "m"
+#else
+#define CXX_SIZE "j"
+#endif
 static void *g_new(size_t n)
 {
     void *p = mg_g_malloc(n ? n : 1);
@@ -411,7 +424,7 @@ static bool gone_back(region *r, size_t offset, size_t size)
 }
 
 /* Memory the system itself is about to write into (mg_mem_set_before_system_write): the pages of it given back, committed again. */
-static void before_system_write(void *p, size_t size)
+static MG_HOSTCB void before_system_write(void *p, size_t size)
 {
     u8 *at = (u8 *)p, *end = at + size;
     region *r;
@@ -547,7 +560,7 @@ void mg_mem_write_back_all(size_t largest)
     }
 }
 
-static void write_back_loop(void *unused)
+static MG_HOSTCB void write_back_loop(void *unused)
 {
     (void)unused;
     for (;;) {
@@ -752,9 +765,10 @@ static void *g_mmap_common(void *addr, size_t len, int prot, int flags, int fd, 
     return p;
 }
 
-static void *g_mmap(void *addr, size_t len, int prot, int flags, int fd, i32 offset)
+/* (An off_t, a long: in 32-bit Android one past 2 GB is taken as unsigned, as it always was here.) */
+static void *g_mmap(void *addr, size_t len, int prot, int flags, int fd, goff offset)
 {
-    return g_mmap_common(addr, len, prot, flags, fd, (u64)(u32)offset);
+    return g_mmap_common(addr, len, prot, flags, fd, (u64)(gulong)offset);
 }
 
 static void *g_mmap64(void *addr, size_t len, int prot, int flags, int fd, i64 offset)
@@ -1348,7 +1362,7 @@ void mg_mmap_usage(u64 *anon, u64 *files)
 /* madvise: anonymous memory given back (see the top); any other advice is taken and nothing done. */
 #define G_MADV_DONTNEED 4
 #define G_MADV_FREE 8
-static void given_back(u8 *at, size_t n, void *user)
+static MG_HOSTCB void given_back(u8 *at, size_t n, void *user)
 {
     region *r = (region *)user;
     gone_mark(r, (size_t)(at - r->base), n, true);
@@ -1428,16 +1442,16 @@ const mg_sym mg_tab_mem[] = {
     MG_WRAP("malloc_trim", g_malloc_trim),
     MG_WRAP("mallinfo", g_mallinfo),
     MG_WRAP("reallocarray", g_reallocarray),
-    MG_WRAP("_Znwj", g_new),
-    MG_WRAP("_Znaj", g_new),
-    MG_WRAP("_ZnwjRKSt9nothrow_t", g_new_nothrow),
-    MG_WRAP("_ZnajRKSt9nothrow_t", g_new_nothrow),
+    MG_WRAP("_Znw" CXX_SIZE, g_new),
+    MG_WRAP("_Zna" CXX_SIZE, g_new),
+    MG_WRAP("_Znw" CXX_SIZE "RKSt9nothrow_t", g_new_nothrow),
+    MG_WRAP("_Zna" CXX_SIZE "RKSt9nothrow_t", g_new_nothrow),
     MG_WRAP("_ZdlPv", g_delete),
     MG_WRAP("_ZdaPv", g_delete),
     MG_WRAP("_ZdlPvRKSt9nothrow_t", g_delete_nothrow),
     MG_WRAP("_ZdaPvRKSt9nothrow_t", g_delete_nothrow),
-    MG_WRAP("_ZdlPvj", g_delete_sized),
-    MG_WRAP("_ZdaPvj", g_delete_sized),
+    MG_WRAP("_ZdlPv" CXX_SIZE, g_delete_sized),
+    MG_WRAP("_ZdaPv" CXX_SIZE, g_delete_sized),
     MG_WRAP("mmap", g_mmap), MG_WRAP("__mmap2", mg_g_mmap2),
     MG_WRAP("mmap64", g_mmap64),
     MG_WRAP("munmap", g_munmap), MG_WRAP("mremap", g_mremap),

@@ -3,10 +3,10 @@
  *
  * A guest FILE is this layer's own. Its first bytes have the layout of
  * bionic's struct __sFILE, because code built against old NDK headers reaches
- * into it: stdin, stdout and stderr are &__sF[0..2], 84 bytes apart, and
- * getc/putc/feof/fileno may be macros that read _r, _w, _flags and _file. The
- * counters are kept at zero so those macros always call the functions behind
- * them (__srget, __swbuf).
+ * into it: stdin, stdout and stderr are &__sF[0..2], sizeof(FILE) apart (84
+ * bytes in 32-bit Android, 152 in 64-bit), and getc/putc/feof/fileno may be
+ * macros that read _r, _w, _flags and _file. The counters are kept at zero so
+ * those macros always call the functions behind them (__srget, __swbuf).
  *
  * Formatting is the host's vsnprintf and vsscanf: a guest va_list is a host
  * va_list (bionic/mg_bionic.h).
@@ -17,9 +17,27 @@
 
 #include "mg_fd.h"
 
+/* struct __sFILE: _p, _r and _w, then _flags and _file, shorts in 32-bit Android and ints in 64-bit. */
+#if MG_GUEST_LP64
+#define SF_SIZE 152
+#define SF_FLAGS 16
+#define SF_FILE 20
+#else
 #define SF_SIZE 84
+#define SF_FLAGS 12
+#define SF_FILE 14
+#endif
 #define SF_EOF 0x0020
 #define SF_ERR 0x0040
+
+static void sf_put(u8 *fp, int at, int v)
+{
+#if MG_GUEST_LP64
+    mg_wr32(fp + at, (u32)v);
+#else
+    mg_wr16(fp + at, (u16)v);
+#endif
+}
 
 typedef struct fstate {
     int fd;
@@ -62,7 +80,7 @@ static void std_init(void)
         g_std[i].readable = i == 0;
         g_std[i].writable = i != 0;
         g_std[i].unbuffered = i != 0;      /* the descriptor behind them assembles lines for the log */
-        mg_wr16(g_sF + i * SF_SIZE + 14, (u16)i);
+        sf_put(g_sF + i * SF_SIZE, SF_FILE, i);
     }
 }
 
@@ -76,9 +94,8 @@ static fstate *fs_of(void *fp)
 
 static void sync_head(void *fp, fstate *f)
 {
-    u16 flags = (u16)((f->eof ? SF_EOF : 0) | (f->err ? SF_ERR : 0));
-    mg_wr16((u8 *)fp + 12, flags);
-    mg_wr16((u8 *)fp + 14, (u16)f->fd);
+    sf_put((u8 *)fp, SF_FLAGS, (f->eof ? SF_EOF : 0) | (f->err ? SF_ERR : 0));
+    sf_put((u8 *)fp, SF_FILE, f->fd);
 }
 
 static void *file_new(int fd, bool readable, bool writable)
@@ -143,7 +160,7 @@ static void drop_read(fstate *f)
 {
     i32 ahead = (i32)(f->rlen - f->rpos) + (f->unget >= 0 ? 1 : 0);
     if (ahead > 0 && !f->has_cookie && !f->is_memstream) mg_fd_seek(f->fd, -(i64)ahead, 1);
-    else if (ahead > 0 && f->has_cookie && f->fn_seek) MG_GFN(i32 (*)(void *, i32, int), f->fn_seek)(f->cookie, -ahead, 1);
+    else if (ahead > 0 && f->has_cookie && f->fn_seek) MG_GFN(goff (*)(void *, goff, int), f->fn_seek)(f->cookie, -ahead, 1);
     f->rpos = f->rlen = 0;
     f->unget = -1;
 }
@@ -516,7 +533,7 @@ static int g_puts(const char *s)
     return g_fputc('\n', g_stdout_ptr) < 0 ? -1 : 0;
 }
 
-static i32 g_getdelim(char **line, size_t *cap, int delim, void *fp)
+static gssize g_getdelim(char **line, size_t *cap, int delim, void *fp)
 {
     size_t n = 0;
     int c;
@@ -538,9 +555,9 @@ static i32 g_getdelim(char **line, size_t *cap, int delim, void *fp)
     }
     if (!n) return -1;
     (*line)[n] = 0;
-    return (i32)n;
+    return (gssize)n;
 }
-static i32 g_getline(char **line, size_t *cap, void *fp) { return g_getdelim(line, cap, '\n', fp); }
+static gssize g_getline(char **line, size_t *cap, void *fp) { return g_getdelim(line, cap, '\n', fp); }
 
 /* What old headers' getc and putc macros fall into. */
 static int g_srget(void *fp) { return file_getc(fp); }
@@ -552,7 +569,8 @@ static i64 file_tell(void *fp)
 {
     fstate *f = fs_of(fp);
     i64 at;
-    if (f->has_cookie) at = f->fn_seek ? MG_GFN(i32 (*)(void *, i32, int), f->fn_seek)(f->cookie, 0, 1) : -1;
+    /* (funopen's seek is fpos_t's: an off_t, a long.) */
+    if (f->has_cookie) at = f->fn_seek ? MG_GFN(goff (*)(void *, goff, int), f->fn_seek)(f->cookie, 0, 1) : -1;
     else if (f->is_memstream) return (i64)f->mem_len;
     else at = mg_fd_seek(f->fd, 0, 1);
     if (at < 0) return -1;
@@ -570,7 +588,7 @@ static int file_seek(void *fp, i64 offset, int whence)
     }
     f->rpos = f->rlen = 0;
     f->unget = -1;
-    if (f->has_cookie) r = f->fn_seek ? MG_GFN(i32 (*)(void *, i32, int), f->fn_seek)(f->cookie, (i32)offset, whence) : -1;
+    if (f->has_cookie) r = f->fn_seek ? MG_GFN(goff (*)(void *, goff, int), f->fn_seek)(f->cookie, (goff)offset, whence) : -1;
     else if (f->is_memstream) r = -1;
     else r = mg_fd_seek(f->fd, offset, whence);
     if (r < 0) return -1;
@@ -598,15 +616,27 @@ static void g_rewind(void *fp)
     f->err = false;
     sync_head(fp, f);
 }
-/* fpos_t is a 64-bit offset in bionic. */
-static int g_fgetpos(void *fp, i64 *pos)
+/* fpos_t is an off_t in bionic, a long (32 bits in 32-bit Android); fpos64_t 64 bits. */
+static int g_fgetpos64(void *fp, i64 *pos)
 {
     i64 at = file_tell(fp);
     if (at < 0) return -1;
     *pos = at;
     return 0;
 }
-static int g_fsetpos(void *fp, const i64 *pos) { return file_seek(fp, *pos, 0); }
+static int g_fsetpos64(void *fp, const i64 *pos) { return file_seek(fp, *pos, 0); }
+static int g_fgetpos(void *fp, goff *pos)
+{
+    i64 at = file_tell(fp);
+    if (at < 0) return -1;
+    if (sizeof(goff) < sizeof(i64) && at > 0x7FFFFFFF) {
+        mg_set_errno(GE_OVERFLOW);
+        return -1;
+    }
+    *pos = (goff)at;
+    return 0;
+}
+static int g_fsetpos(void *fp, const goff *pos) { return file_seek(fp, *pos, 0); }
 
 static int g_feof(void *fp) { return fs_of(fp)->eof; }
 static int g_ferror(void *fp) { return fs_of(fp)->err; }
@@ -961,7 +991,7 @@ const mg_sym mg_tab_stdio[] = {
     ST("getline", g_getline), ST("getdelim", g_getdelim), ST("__srget", g_srget), ST("__swbuf", g_swbuf),
     ST("fseek", g_fseek), ST("fseeko", g_fseek), ST("fseeko64", g_fseeko64), ST("ftell", g_ftell), ST("ftello", g_ftell),
     ST("ftello64", g_ftello64), ST("rewind", g_rewind), ST("fgetpos", g_fgetpos), ST("fsetpos", g_fsetpos),
-    ST("fgetpos64", g_fgetpos), ST("fsetpos64", g_fsetpos),
+    ST("fgetpos64", g_fgetpos64), ST("fsetpos64", g_fsetpos64),
     ST("feof", g_feof), ST("ferror", g_ferror), ST("fileno", g_fileno), ST("clearerr", g_clearerr),
     ST("feof_unlocked", g_feof), ST("ferror_unlocked", g_ferror), ST("fileno_unlocked", g_fileno),
     ST("setvbuf", g_setvbuf), ST("setbuf", g_setbuf), ST("setbuffer", g_setbuffer), ST("setlinebuf", g_setlinebuf),
