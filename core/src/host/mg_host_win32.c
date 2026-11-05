@@ -27,6 +27,7 @@
 #define COBJMACROS
 #include <d3d11.h>
 #include <dxgi1_4.h>
+#include <intrin.h>
 
 #include "mg_host.h"
 
@@ -937,7 +938,7 @@ void mg_thread_resume(mg_thread *t)
 WINBASEAPI HANDLE WINAPI OpenThread(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwThreadId);
 #endif
 
-int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, u32 *words, int max_words)
+int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, mg_addr *words, int max_words)
 {
     mg_thread t;
     MEMORY_BASIC_INFORMATION mbi;
@@ -955,9 +956,9 @@ int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, u32 *words, int max_word
         return -1;
     }
     if (regs->sp && VirtualQuery((const void *)(DWORD_PTR)regs->sp, &mbi, sizeof(mbi)) && mbi.State == MEM_COMMIT) {
-        mg_addr end = (mg_addr)(DWORD_PTR)mbi.BaseAddress + (mg_addr)mbi.RegionSize, at = regs->sp & ~(mg_addr)3;
-        n = (int)((end - at) / 4 < (mg_addr)max_words ? (end - at) / 4 : (mg_addr)max_words);
-        memcpy(words, (const void *)(DWORD_PTR)at, (size_t)n * 4);
+        mg_addr end = (mg_addr)(DWORD_PTR)mbi.BaseAddress + (mg_addr)mbi.RegionSize, at = regs->sp & ~(mg_addr)(sizeof(mg_addr) - 1);
+        n = (int)((end - at) / sizeof(mg_addr) < (mg_addr)max_words ? (end - at) / sizeof(mg_addr) : (mg_addr)max_words);
+        memcpy(words, (const void *)(DWORD_PTR)at, (size_t)n * sizeof(mg_addr));
     }
     ResumeThread(h);
     CloseHandle(h);
@@ -1136,9 +1137,20 @@ void mg_tls_set(u32 key, void *value) { TlsSetValue(key, value); }
  * TlsGetValue before it is trusted, so a build of Windows that moved it makes
  * mg_guest_tp_where fail instead of handing guest code a wrong pointer.
  */
+/*
+ * The same on desktop Windows (docs/DESKTOP.md), where guest code reads its thread pointer through the segment or
+ * register Windows keeps its TEB in: gs on x86_64 (the 64-bit TEB's TlsSlots at 0x1480, eight bytes each), fs on x86
+ * (the 32-bit TEB's at 0xE10), x18 on ARM64 (0x1480). The patcher (x86/mg_patch_x86.c) makes `mov %fs:0, %rax` into
+ * `mov %gs:0x1480+8*slot, %rax`, the same length; and the stack guard, which that code reads at %fs:0x28 (bionic's slot
+ * 5), into a load of a second slot that holds it on every guest thread.
+ */
+#if defined(_M_ARM) || defined(_M_IX86)
 #define MG_TEB_TLS_SLOTS 0xE10u
+#else
+#define MG_TEB_TLS_SLOTS 0x1480u
+#endif
 
-static DWORD g_tp_slot = TLS_OUT_OF_INDEXES;
+static DWORD g_tp_slot = TLS_OUT_OF_INDEXES, g_guard_slot = TLS_OUT_OF_INDEXES;
 static int g_tp_slot_usable = -1;      /* -1 not checked yet */
 
 static DWORD tp_slot(void)
@@ -1147,12 +1159,38 @@ static DWORD tp_slot(void)
         /* Racing first calls would each allocate; the startup path calls this once before any guest thread exists. */
         g_tp_slot = TlsAlloc();
         if (g_tp_slot == TLS_OUT_OF_INDEXES) mg_fatal("no thread-local slot for the guest thread pointer");
+#if !defined(_M_ARM)
+        /* (And the stack guard's, at once: both have to be among the first 64, which are in the TEB itself.) */
+        g_guard_slot = TlsAlloc();
+        if (g_guard_slot == TLS_OUT_OF_INDEXES) mg_fatal("no thread-local slot for the guest stack guard");
+#endif
     }
     return g_tp_slot;
 }
 
 void mg_guest_tp_set(void *tp) { TlsSetValue(tp_slot(), tp); }
 void *mg_guest_tp_get(void) { return TlsGetValue(tp_slot()); }
+
+#if !defined(_M_ARM)
+/* Whether a slot's value is where the patched code will read it: at TlsSlots + slot in the TEB, which is what gs/fs/x18 hold. */
+static bool slot_in_teb(DWORD slot)
+{
+    void *saved = TlsGetValue(slot), *probe = (void *)(uintptr_t)0x5A17C0DEu, *seen;
+    bool ok;
+    if (slot >= 64) return false;
+    TlsSetValue(slot, probe);
+#if defined(_M_X64)
+    seen = (void *)__readgsqword(MG_TEB_TLS_SLOTS + 8u * slot);
+#elif defined(_M_IX86)
+    seen = (void *)(uintptr_t)__readfsdword(MG_TEB_TLS_SLOTS + 4u * slot);
+#else
+    seen = *(void **)((u8 *)NtCurrentTeb() + MG_TEB_TLS_SLOTS + 8u * slot);
+#endif
+    ok = seen == probe;
+    TlsSetValue(slot, saved);
+    return ok;
+}
+#endif
 
 bool mg_guest_tp_where(u32 *opc2, u32 *offset)
 {
@@ -1173,8 +1211,48 @@ bool mg_guest_tp_where(u32 *opc2, u32 *offset)
     *offset = MG_TEB_TLS_SLOTS + 4u * slot;
     return true;
 #else
+    DWORD slot = tp_slot();
+    if (g_tp_slot_usable < 0) {
+        g_tp_slot_usable = slot_in_teb(slot) && slot_in_teb(g_guard_slot) ? 1 : 0;
+        if (!g_tp_slot_usable)
+            mg_err("host: TLS slots %lu and %lu are not in the TEB at 0x%X; guest thread-pointer reads cannot be redirected", (unsigned long)slot,
+                   (unsigned long)g_guard_slot, MG_TEB_TLS_SLOTS);
+    }
+    if (!g_tp_slot_usable) return false;
+#if defined(_M_X64)
+    *opc2 = 0x65;                      /* gs */
+    *offset = MG_TEB_TLS_SLOTS + 8u * slot;
+#elif defined(_M_IX86)
+    *opc2 = 0x64;                      /* fs */
+    *offset = MG_TEB_TLS_SLOTS + 4u * slot;
+#else
+    *opc2 = 18;                        /* x18 */
+    *offset = MG_TEB_TLS_SLOTS + 8u * slot;
+#endif
+    return true;
+#endif
+}
+
+bool mg_guest_guard_where(u32 *opc2, u32 *offset)
+{
+#if defined(_M_ARM)
     (void)opc2; (void)offset;
     return false;
+#else
+    u32 tp_offset;
+    if (!mg_guest_tp_where(opc2, &tp_offset)) return false;
+    *offset = MG_TEB_TLS_SLOTS + (u32)sizeof(void *) * g_guard_slot;
+    return true;
+#endif
+}
+
+void mg_guest_guard_set(mg_addr guard)
+{
+#if defined(_M_ARM)
+    (void)guard;
+#else
+    tp_slot();
+    TlsSetValue(g_guard_slot, (void *)guard);
 #endif
 }
 
@@ -1349,7 +1427,7 @@ static __declspec(noinline) void overflow_report(void)
     memset(&f, 0, sizeof(f));
     f.kind = MG_FAULT_OTHER;
     f.code = g_overflow_record.ExceptionCode;
-    f.regs = (u32 *)&g_overflow_context.R0;
+    f.regs = (mg_addr *)&g_overflow_context.R0;
     f.cpsr = (u32 *)&g_overflow_context.Cpsr;
     /* Reports, and keeps a thread of the app's for good. */
     if (g_fault_handler) g_fault_handler(&f);
@@ -1435,7 +1513,7 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
     if (er->ExceptionCode == EXCEPTION_BREAKPOINT && bp_listed(ep->ContextRecord->Pc & ~(DWORD)1)) {
         /* Stopped at one of the process's hardware breakpoints, before the instruction: the core does it. */
         f.kind = MG_FAULT_BREAKPOINT;
-        f.regs = (u32 *)&ep->ContextRecord->R0;
+        f.regs = (mg_addr *)&ep->ContextRecord->R0;
         f.cpsr = (u32 *)&ep->ContextRecord->Cpsr;
         if (g_fault_handler && g_fault_handler(&f)) return EXCEPTION_CONTINUE_EXECUTION;
         note_exception(ep, "passed on (a hardware breakpoint the core had nothing for)");
@@ -1531,7 +1609,8 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
          * noted and passed on.
          */
         f.kind = MG_FAULT_OTHER;
-        if (!g_interrupt_in_guest || !g_interrupt_in_guest((mg_addr)(DWORD_PTR)er->ExceptionAddress & ~(mg_addr)1)) {
+        if (!g_interrupt_in_guest || !g_interrupt_in_guest(MG_ARCH_ARM32 ? (mg_addr)(DWORD_PTR)er->ExceptionAddress & ~(mg_addr)1
+                                                                             : (mg_addr)(DWORD_PTR)er->ExceptionAddress)) {
             note_exception(ep, "passed on");
             return EXCEPTION_CONTINUE_SEARCH;
         }
@@ -1539,8 +1618,32 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
     }
 #if defined(_M_ARM)
     /* R0..R12, Sp, Lr, Pc are sixteen consecutive ULONGs in the ARM CONTEXT, Cpsr the next. */
-    f.regs = (u32 *)&ep->ContextRecord->R0;
+    f.regs = (mg_addr *)&ep->ContextRecord->R0;
     f.cpsr = (u32 *)&ep->ContextRecord->Cpsr;
+#elif defined(_M_X64)
+    /* Rax, Rcx, Rdx, Rbx, Rsp, Rbp, Rsi, Rdi, R8..R15 and Rip are seventeen consecutive DWORD64s in the x64 CONTEXT. */
+    f.regs = (mg_addr *)&ep->ContextRecord->Rax;
+    f.cpsr = (u32 *)&ep->ContextRecord->EFlags;
+#elif defined(_M_ARM64)
+    /* X0..X30 (Fp and Lr the last two), Sp and Pc are consecutive DWORD64s in the ARM64 CONTEXT. */
+    f.regs = (mg_addr *)&ep->ContextRecord->X0;
+    f.cpsr = (u32 *)&ep->ContextRecord->Cpsr;
+#elif defined(_M_IX86)
+    {
+        /* The x86 CONTEXT keeps them in an order of its own: copied out in the instructions' order, and back. */
+        CONTEXT *c = ep->ContextRecord;
+        mg_addr regs[MG_REG_COUNT];
+        bool resume;
+        regs[0] = c->Eax; regs[1] = c->Ecx; regs[2] = c->Edx; regs[3] = c->Ebx; regs[4] = c->Esp; regs[5] = c->Ebp;
+        regs[6] = c->Esi; regs[7] = c->Edi; regs[8] = c->Eip;
+        f.regs = regs;
+        f.cpsr = (u32 *)&c->EFlags;
+        resume = g_fault_handler && g_fault_handler(&f);
+        if (!resume) return EXCEPTION_CONTINUE_SEARCH;
+        c->Eax = regs[0]; c->Ecx = regs[1]; c->Edx = regs[2]; c->Ebx = regs[3]; c->Esp = regs[4]; c->Ebp = regs[5];
+        c->Esi = regs[6]; c->Edi = regs[7]; c->Eip = regs[8];
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
 #endif
     if (g_fault_handler && g_fault_handler(&f)) return EXCEPTION_CONTINUE_EXECUTION;
     return EXCEPTION_CONTINUE_SEARCH;
@@ -1549,9 +1652,13 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep)
 void mg_fault_resume_at(mg_fault *f, mg_addr target)
 {
     if (!f->regs) return;
+#if defined(_M_ARM)
     /* Bit 0 stays in Pc: that, not the T bit, is what the thread's state is taken from when the context is resumed. */
     f->regs[15] = (u32)target;
     if (f->cpsr) *f->cpsr = (target & 1) ? (*f->cpsr | 0x20u) : (*f->cpsr & ~0x20u);
+#else
+    f->regs[MG_REG_PC] = target;
+#endif
 }
 
 #if MG_UWP

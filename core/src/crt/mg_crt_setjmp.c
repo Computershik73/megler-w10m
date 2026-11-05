@@ -1,14 +1,15 @@
 /*
- * setjmp and longjmp (and the emulated thread-local variables' lookup) for the core's ELF on desktop Windows (docs/DESKTOP.md): the collector spills the registers it
- * may hold references in with setjmp before it scans its own stack (dvm/mg_dvm_gc.c), and Windows' setjmp is no use to
- * code of Android's convention. Each saves the registers its processor's convention has the callee keep, the stack
- * pointer and where to return, which fits in bionic's jmp_buf of the same processor (11 words on x86_64, 32 on ARM64,
- * 10 on x86). Compiled only into the core's ELF (MG_CORE_ELF).
+ * setjmp and longjmp of the core's own, where the core is of the guest's convention: the core's ELF on desktop Windows
+ * (docs/DESKTOP.md), and Linux on x86_64, ARM64 and x86 (the tests). mg_setjmp is what a guarded call of a native method
+ * comes back to when the code faults (jni/mg_jni.c, mg_core.c); in the ELF it is setjmp as well, with which the collector
+ * spills the registers it may hold references in before it scans its own stack (dvm/mg_dvm_gc.c), since Windows' setjmp
+ * is no use to code of Android's convention. Each saves the registers its processor's convention has the callee keep, the
+ * stack pointer and where to return, which fits in bionic's jmp_buf of the same processor (11 words on x86_64, 32 on
+ * ARM64, 10 on x86). And, in the ELF alone, the emulated thread-local variables' lookup.
  */
 #include "../mg_base.h"
 
 #if defined(MG_CORE_ELF)
-
 /*
  * The core's thread-local variables are emulated (-femulated-tls): each is found through this, which the compiler calls.
  * Defined here so that compiler-rt's own (over pthread keys, which Windows has not) is not linked in; the bridge keeps
@@ -16,14 +17,21 @@
  */
 void *mg_crt_emutls_get_address(void *control);
 void *__emutls_get_address(void *control) { return mg_crt_emutls_get_address(control); }
+/* (setjmp and longjmp are these, for the collector.) */
+#define ALIASES ".globl setjmp\n.hidden setjmp\n.set setjmp, mg_setjmp\n.globl longjmp\n.hidden longjmp\n.set longjmp, mg_longjmp\n"
+#else
+#define ALIASES ""
+#endif
+
+#if !MG_ARCH_ARM32 && MG_GUEST_CODE
 
 #if MG_ARCH_X86_64
 __asm__(
     ".text\n"
-    ".globl setjmp\n"
-    ".hidden setjmp\n"
-    ".type setjmp,@function\n"
-    "setjmp:\n"
+    ".globl mg_setjmp\n"
+    ".hidden mg_setjmp\n"
+    ".type mg_setjmp,@function\n"
+    "mg_setjmp:\n"
     "    movq %rbx, 0(%rdi)\n"
     "    movq %rbp, 8(%rdi)\n"
     "    movq %r12, 16(%rdi)\n"
@@ -36,11 +44,11 @@ __asm__(
     "    movq %rax, 56(%rdi)\n"
     "    xorl %eax, %eax\n"
     "    ret\n"
-    ".size setjmp, .-setjmp\n"
-    ".globl longjmp\n"
-    ".hidden longjmp\n"
-    ".type longjmp,@function\n"
-    "longjmp:\n"
+    ".size mg_setjmp, .-mg_setjmp\n"
+    ".globl mg_longjmp\n"
+    ".hidden mg_longjmp\n"
+    ".type mg_longjmp,@function\n"
+    "mg_longjmp:\n"
     "    movl %esi, %eax\n"
     "    testl %eax, %eax\n"
     "    jnz 1f\n"
@@ -54,14 +62,15 @@ __asm__(
     "    movq 40(%rdi), %r15\n"
     "    movq 48(%rdi), %rsp\n"
     "    jmpq *56(%rdi)\n"
-    ".size longjmp, .-longjmp\n");
+    ".size mg_longjmp, .-mg_longjmp\n"
+    ALIASES);
 #elif MG_ARCH_ARM64
 __asm__(
     ".text\n"
-    ".globl setjmp\n"
-    ".hidden setjmp\n"
-    ".type setjmp,%function\n"
-    "setjmp:\n"
+    ".globl mg_setjmp\n"
+    ".hidden mg_setjmp\n"
+    ".type mg_setjmp,%function\n"
+    "mg_setjmp:\n"
     "    stp x19, x20, [x0, #0]\n"
     "    stp x21, x22, [x0, #16]\n"
     "    stp x23, x24, [x0, #32]\n"
@@ -76,11 +85,11 @@ __asm__(
     "    stp d14, d15, [x0, #152]\n"
     "    mov w0, #0\n"
     "    ret\n"
-    ".size setjmp, .-setjmp\n"
-    ".globl longjmp\n"
-    ".hidden longjmp\n"
-    ".type longjmp,%function\n"
-    "longjmp:\n"
+    ".size mg_setjmp, .-mg_setjmp\n"
+    ".globl mg_longjmp\n"
+    ".hidden mg_longjmp\n"
+    ".type mg_longjmp,%function\n"
+    "mg_longjmp:\n"
     "    ldp x19, x20, [x0, #0]\n"
     "    ldp x21, x22, [x0, #16]\n"
     "    ldp x23, x24, [x0, #32]\n"
@@ -96,14 +105,15 @@ __asm__(
     "    cmp w1, #0\n"
     "    csinc w0, w1, wzr, ne\n"
     "    ret\n"
-    ".size longjmp, .-longjmp\n");
+    ".size mg_longjmp, .-mg_longjmp\n"
+    ALIASES);
 #elif MG_ARCH_X86
 __asm__(
     ".text\n"
-    ".globl setjmp\n"
-    ".hidden setjmp\n"
-    ".type setjmp,@function\n"
-    "setjmp:\n"
+    ".globl mg_setjmp\n"
+    ".hidden mg_setjmp\n"
+    ".type mg_setjmp,@function\n"
+    "mg_setjmp:\n"
     "    movl 4(%esp), %eax\n"
     "    movl %ebx, 0(%eax)\n"
     "    movl %esi, 4(%eax)\n"
@@ -115,11 +125,11 @@ __asm__(
     "    movl %ecx, 20(%eax)\n"
     "    xorl %eax, %eax\n"
     "    ret\n"
-    ".size setjmp, .-setjmp\n"
-    ".globl longjmp\n"
-    ".hidden longjmp\n"
-    ".type longjmp,@function\n"
-    "longjmp:\n"
+    ".size mg_setjmp, .-mg_setjmp\n"
+    ".globl mg_longjmp\n"
+    ".hidden mg_longjmp\n"
+    ".type mg_longjmp,@function\n"
+    "mg_longjmp:\n"
     "    movl 4(%esp), %edx\n"
     "    movl 8(%esp), %eax\n"
     "    testl %eax, %eax\n"
@@ -132,7 +142,8 @@ __asm__(
     "    movl 12(%edx), %ebp\n"
     "    movl 16(%edx), %esp\n"
     "    jmp *20(%edx)\n"
-    ".size longjmp, .-longjmp\n");
+    ".size mg_longjmp, .-mg_longjmp\n"
+    ALIASES);
 #endif
 
-#endif /* MG_CORE_ELF */
+#endif /* !MG_ARCH_ARM32 && MG_GUEST_CODE */

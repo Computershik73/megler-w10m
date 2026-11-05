@@ -153,7 +153,7 @@ typedef struct mg_gthread {
     mg_thread *volatile sig_thread;    /* the thread itself, to interrupt it in the middle of guest code */
     /* While a guarded call of guest code runs on the thread (mg_jni_call_native_guarded): the stub setjmp's buffer it goes
        back to when that code faults beyond repair (mg_core.c), instead of the app ending. */
-    u32 *volatile fault_guard;
+    mg_addr *volatile fault_guard;
     /* How many of the host's hardware breakpoints the thread has been given (mg_gthread_take_breakpoints). */
     volatile i32 breakpoints;
     /* Its Android nice value, -20 (most urgent) to 19, as setpriority or Process.setThreadPriority set it (mg_gthread_set_nice). */

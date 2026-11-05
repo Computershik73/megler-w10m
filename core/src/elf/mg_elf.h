@@ -200,4 +200,80 @@ typedef struct {
 #define R_386_TLS_DESC 41
 #define R_386_IRELATIVE 42
 
+/*
+ * The guest's own ELF: its class, its machine, its relocation entries (the 64-bit ABIs relocate with RELA alone, the
+ * 32-bit ones with REL), and its relocation types under one name for each meaning. MG_R_* that a processor has no such
+ * relocation for is a number no relocation has.
+ */
+#if MG_GUEST_LP64
+#define ElfW(t) Elf64_##t
+#define MG_ELFCLASS ELFCLASS64
+#define ELFW_R_SYM(i) ELF64_R_SYM(i)
+#define ELFW_R_TYPE(i) ELF64_R_TYPE(i)
+typedef Elf64_Rela mg_reloc;
+#define MG_RELOC_RELA 1
+#else
+#define ElfW(t) Elf32_##t
+#define MG_ELFCLASS ELFCLASS32
+#define ELFW_R_SYM(i) ELF_R_SYM(i)
+#define ELFW_R_TYPE(i) ELF_R_TYPE(i)
+typedef Elf32_Rel mg_reloc;
+#define MG_RELOC_RELA 0
+#endif
+
+#define MG_R_UNKNOWN 0x7fffffffu
+#if MG_ARCH_ARM32
+#define MG_EM EM_ARM
+#define MG_R_NONE R_ARM_NONE
+#define MG_R_ABS R_ARM_ABS32
+#define MG_R_PCREL R_ARM_REL32
+#define MG_R_GLOB_DAT R_ARM_GLOB_DAT
+#define MG_R_JUMP_SLOT R_ARM_JUMP_SLOT
+#define MG_R_RELATIVE R_ARM_RELATIVE
+#define MG_R_IRELATIVE R_ARM_IRELATIVE
+#define MG_R_DTPMOD R_ARM_TLS_DTPMOD32
+#define MG_R_DTPOFF R_ARM_TLS_DTPOFF32
+#define MG_R_TPOFF R_ARM_TLS_TPOFF32
+#define MG_R_TLSDESC MG_R_UNKNOWN
+#elif MG_ARCH_ARM64
+#define MG_EM EM_AARCH64
+#define MG_R_NONE R_AARCH64_NONE
+#define MG_R_ABS R_AARCH64_ABS64
+#define MG_R_PCREL MG_R_UNKNOWN
+#define MG_R_GLOB_DAT R_AARCH64_GLOB_DAT
+#define MG_R_JUMP_SLOT R_AARCH64_JUMP_SLOT
+#define MG_R_RELATIVE R_AARCH64_RELATIVE
+#define MG_R_IRELATIVE R_AARCH64_IRELATIVE
+#define MG_R_DTPMOD R_AARCH64_TLS_DTPMOD64
+#define MG_R_DTPOFF R_AARCH64_TLS_DTPREL64
+#define MG_R_TPOFF R_AARCH64_TLS_TPREL64
+#define MG_R_TLSDESC R_AARCH64_TLSDESC
+#elif MG_ARCH_X86_64
+#define MG_EM EM_X86_64
+#define MG_R_NONE R_X86_64_NONE
+#define MG_R_ABS R_X86_64_64
+#define MG_R_PCREL MG_R_UNKNOWN
+#define MG_R_GLOB_DAT R_X86_64_GLOB_DAT
+#define MG_R_JUMP_SLOT R_X86_64_JUMP_SLOT
+#define MG_R_RELATIVE R_X86_64_RELATIVE
+#define MG_R_IRELATIVE R_X86_64_IRELATIVE
+#define MG_R_DTPMOD R_X86_64_DTPMOD64
+#define MG_R_DTPOFF R_X86_64_DTPOFF64
+#define MG_R_TPOFF R_X86_64_TPOFF64
+#define MG_R_TLSDESC R_X86_64_TLSDESC
+#else
+#define MG_EM EM_386
+#define MG_R_NONE R_386_NONE
+#define MG_R_ABS R_386_32
+#define MG_R_PCREL R_386_PC32
+#define MG_R_GLOB_DAT R_386_GLOB_DAT
+#define MG_R_JUMP_SLOT R_386_JMP_SLOT
+#define MG_R_RELATIVE R_386_RELATIVE
+#define MG_R_IRELATIVE R_386_IRELATIVE
+#define MG_R_DTPMOD R_386_TLS_DTPMOD32
+#define MG_R_DTPOFF R_386_TLS_DTPOFF32
+#define MG_R_TPOFF R_386_TLS_TPOFF
+#define MG_R_TLSDESC MG_R_UNKNOWN
+#endif
+
 #endif

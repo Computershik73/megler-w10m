@@ -24,28 +24,30 @@ struct mg_lib {
      */
     bool placed;
     u8 *base;                  /* load bias: where vaddr 0 is */
-    u32 vmin, vmax;            /* the PT_LOADs' span, page-aligned */
-    Elf32_Phdr *phdr;
+    mg_addr vmin, vmax;        /* the PT_LOADs' span, page-aligned */
+    ElfW(Phdr) *phdr;
     int phnum;
-    const Elf32_Dyn *dyn;
+    const ElfW(Dyn) *dyn;
 
     const char *strtab;
-    const Elf32_Sym *symtab;
+    const ElfW(Sym) *symtab;
     u32 nsyms;
-    const u32 *gnu_bloom, *gnu_buckets, *gnu_chain;
+    /* The GNU hash table's bloom filter is of words of the class's width; its buckets and chains are 32-bit words in both. */
+    const mg_addr *gnu_bloom;
+    const u32 *gnu_buckets, *gnu_chain;
     u32 gnu_nbuckets, gnu_symoffset, gnu_bloom_size, gnu_bloom_shift;
     const u32 *sysv_bucket, *sysv_chain;
     u32 sysv_nbucket, sysv_nchain;
 
-    const Elf32_Rel *rel, *jmprel;
-    u32 relsz, pltrelsz;
+    const mg_reloc *rel, *jmprel;     /* REL on the 32-bit ABIs, RELA on the 64-bit ones */
+    size_t relsz, pltrelsz;
     const u8 *android_rel;
-    u32 android_relsz;
-    const u32 *relr;
-    u32 relrsz;
+    size_t android_relsz;
+    const mg_addr *relr;
+    size_t relrsz;
 
-    u32 init_fn;               /* vaddr, 0 for none */
-    const u32 *init_array;
+    mg_addr init_fn;           /* vaddr, 0 for none */
+    const mg_addr *init_array;
     u32 init_array_count;
 
     char **needed_names;
@@ -59,8 +61,9 @@ struct mg_lib {
 
     bool has_tls;
     bool tls_ready;            /* its initial data relocated: threads' blocks are given it (mg_tls_ready) */
-    u32 tls_offset;            /* of this library's block from the guest thread pointer */
-    u32 tls_filesz, tls_memsz, tls_align, tls_module;
+    mg_addr tls_offset;        /* of this library's block from the guest thread pointer */
+    mg_addr tls_filesz, tls_memsz, tls_align;
+    u32 tls_module;
     const u8 *tls_image;
 
     /* Code the patcher adds, within a branch's reach of the text: [0] below the image, [1] above it. */
@@ -78,7 +81,7 @@ struct mg_lib {
      * layout, lld's with --no-rosegment), and a table in libmetasec_ov.so's .rodata holds the word of an ARM svc 0. None
      * known (ncode 0): the executable segments, whole.
      */
-    u32 code[8][2];
+    mg_addr code[8][2];
     int ncode;
     mg_lib *next;
 };

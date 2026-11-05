@@ -192,7 +192,8 @@ typedef struct mg_thread_regs {
     mg_addr sp, pc;
     u32 flags;                         /* CPSR on ARM: bit 5 is the Thumb state */
     int n;
-    mg_addr r[20];                     /* the general registers that may hold anything, sp and pc not among them */
+    /* The general registers that may hold anything, sp and pc not among them: on 32-bit ARM r0..r12 and lr (r[13]). */
+    mg_addr r[32];
 } mg_thread_regs;
 MG_HOSTAPI bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out);
 MG_HOSTAPI void mg_thread_resume(mg_thread *t);
@@ -202,7 +203,7 @@ MG_HOSTAPI void mg_thread_resume(mg_thread *t);
  * the memory there is committed), then let go. For the hang report. The words copied, or -1 when it could not be stopped
  * (posix: always).
  */
-MG_HOSTAPI int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, u32 *words, int max_words);
+MG_HOSTAPI int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, mg_addr *words, int max_words);
 /* Called on a thread started by mg_thread_start as it ends (its function returned, or mg_thread_exit): the collector forgets it. */
 MG_HOSTAPI void mg_thread_set_end_hook(void (MG_HOSTCB *fn)(void));
 MG_HOSTAPI void mg_thread_yield(void);
@@ -283,8 +284,22 @@ MG_HOSTAPI void mg_tls_set(u32 key, void *value);
  */
 MG_HOSTAPI void mg_guest_tp_set(void *tp);
 MG_HOSTAPI void *mg_guest_tp_get(void);
-/* False when this host cannot say (and thread-pointer reads then cannot be redirected). */
+/*
+ * False when this host cannot say (and thread-pointer reads then cannot be redirected). On the other processors `opc2` says
+ * where the host's own thread block is instead, and `offset` the slot's place in it (two's complement, below the block
+ * where that is negative): x86_64 and x86 the segment's prefix byte, 0x65 for gs (Windows' TEB on x86_64), 0x64 for fs
+ * (Windows' TEB on x86, glibc's thread pointer on x86_64); ARM64 the register, 18 for x18 (Windows' TEB), 0 for TPIDR_EL0
+ * (glibc's thread pointer).
+ */
 MG_HOSTAPI bool mg_guest_tp_where(u32 *opc2, u32 *offset);
+/*
+ * The stack guard beside it, for the processors whose code reads its canary through the thread pointer (x86_64 at
+ * %fs:0x28, x86 at %gs:0x14, ARM64 at TPIDR_EL0+0x28: bionic's slot 5): a slot of the host's thread block that holds the
+ * guard on every thread that runs guest code, where the patched reads load it from (x86/mg_patch_x86.c). Its place as
+ * mg_guest_tp_where says one; false where there is none. mg_guest_guard_set gives the calling thread its value.
+ */
+MG_HOSTAPI bool mg_guest_guard_where(u32 *opc2, u32 *offset);
+MG_HOSTAPI void mg_guest_guard_set(mg_addr guard);
 
 /* ----------------------------------------------------------------- faults
  *
@@ -295,13 +310,28 @@ MG_HOSTAPI bool mg_guest_tp_where(u32 *opc2, u32 *offset);
 /* MG_FAULT_BREAKPOINT: a thread stopped at one of the process's hardware breakpoints (mg_breakpoint_add), before the instruction. */
 enum { MG_FAULT_ILLEGAL = 1, MG_FAULT_ACCESS, MG_FAULT_OTHER, MG_FAULT_BREAKPOINT };
 
+/*
+ * A faulting thread's registers, in the order of mg_fault's regs: 32-bit ARM r0..r15; x86_64 rax, rcx, rdx, rbx, rsp,
+ * rbp, rsi, rdi, r8..r15 (the instructions' own numbering), then rip; x86 eax, ecx, edx, ebx, esp, ebp, esi, edi, then
+ * eip; ARM64 x0..x30, sp, pc. MG_REG_LR is -1 where the return address is not in a register.
+ */
+#if MG_ARCH_ARM32
+enum { MG_REG_SP = 13, MG_REG_LR = 14, MG_REG_PC = 15, MG_REG_COUNT = 16 };
+#elif MG_ARCH_X86_64
+enum { MG_REG_SP = 4, MG_REG_LR = -1, MG_REG_PC = 16, MG_REG_COUNT = 17 };
+#elif MG_ARCH_X86
+enum { MG_REG_SP = 4, MG_REG_LR = -1, MG_REG_PC = 8, MG_REG_COUNT = 9 };
+#else
+enum { MG_REG_SP = 31, MG_REG_LR = 30, MG_REG_PC = 32, MG_REG_COUNT = 33 };
+#endif
+
 typedef struct mg_fault {
     int kind;
     u32 code;              /* the OS's own number: an NTSTATUS, or a signal */
     mg_addr address;       /* for MG_FAULT_ACCESS: what was touched */
     bool write, exec;
-    u32 *regs;             /* r0..r15, writable; NULL on a host that is not ARM32 */
-    u32 *cpsr;             /* writable */
+    mg_addr *regs;         /* MG_REG_COUNT of them, writable; NULL where the host cannot say */
+    u32 *cpsr;             /* the flags (CPSR, EFLAGS, PSTATE), writable */
 } mg_fault;
 
 typedef bool (MG_HOSTCB *mg_fault_handler)(mg_fault *f);

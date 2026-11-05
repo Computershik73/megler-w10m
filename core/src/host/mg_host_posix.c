@@ -481,7 +481,7 @@ void mg_thread_exit(void)
 u32 mg_thread_self_id(void) { return (u32)syscall(SYS_gettid); }
 u32 mg_thread_id(const mg_thread *t) { (void)t; return 0; }
 
-int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, u32 *words, int max_words)
+int mg_thread_snapshot_id(u32 id, mg_thread_regs *regs, mg_addr *words, int max_words)
 {
     (void)id;
     (void)words;
@@ -585,26 +585,70 @@ void mg_tls_set(u32 key, void *value) { pthread_setspecific((pthread_key_t)key, 
 
 /* ------------------------------------------------- the guest thread pointer */
 
-/* initial-exec: a fixed offset from the thread pointer in every thread, which is what the emitted load relies on. */
+/*
+ * initial-exec: a fixed offset from the thread pointer in every thread, which is what the emitted load relies on. On
+ * x86_64, ARM64 and x86 the stack guard has one too (mg_host.h): the patched reads of the guest's canary load it from
+ * there, as they load the thread pointer from g_guest_tp.
+ */
 static __thread void *g_guest_tp __attribute__((tls_model("initial-exec")));
+static __thread mg_addr g_guest_guard __attribute__((tls_model("initial-exec")));
 
 void mg_guest_tp_set(void *tp) { g_guest_tp = tp; }
 void *mg_guest_tp_get(void) { return g_guest_tp; }
 
-bool mg_guest_tp_where(u32 *opc2, u32 *offset)
+/* glibc's own thread pointer: where TLS of the initial-exec model is found from (below it on the x86s, above on ARM). */
+static char *glibc_tp(void)
 {
-#if defined(__arm__)
-    /* glibc's thread pointer is TPIDRURO (opc2 3), the register guest code reads too. */
-    intptr_t off = (intptr_t)((char *)&g_guest_tp - (char *)__builtin_thread_pointer());
-    if (off < 0 || off > 4095) return false;
-    *opc2 = 3;
-    *offset = (u32)off;
-    return true;
+#if defined(__x86_64__)
+    char *tp;
+    __asm__ volatile("movq %%fs:0, %0" : "=r"(tp));
+    return tp;
+#elif defined(__i386__)
+    char *tp;
+    __asm__ volatile("movl %%gs:0, %0" : "=r"(tp));
+    return tp;
 #else
-    (void)opc2; (void)offset;
-    return false;
+    return (char *)__builtin_thread_pointer();
 #endif
 }
+
+/* The place of one of the two, as mg_host.h says it: glibc's segment (x86) or TPIDR_EL0 (ARM64), and the offset from it. */
+static bool slot_where(void *var, u32 *opc2, u32 *offset)
+{
+    intptr_t off = (intptr_t)((char *)var - glibc_tp());
+#if defined(__arm__)
+    if (off < 0 || off > 4095) return false;
+    *opc2 = 3;
+#elif defined(__x86_64__)
+    if (off < INT32_MIN || off > INT32_MAX) return false;
+    *opc2 = 0x64;
+#elif defined(__i386__)
+    *opc2 = 0x65;
+#elif defined(__aarch64__)
+    /* (An ldr's unsigned offset, scaled by eight: what the patched load can reach.) */
+    if (off < 0 || off > 32760 || (off & 7)) return false;
+    *opc2 = 0;
+#else
+    (void)off; (void)opc2; (void)offset;
+    return false;
+#endif
+    *offset = (u32)off;
+    return true;
+}
+
+bool mg_guest_tp_where(u32 *opc2, u32 *offset) { return slot_where(&g_guest_tp, opc2, offset); }
+
+bool mg_guest_guard_where(u32 *opc2, u32 *offset)
+{
+#if defined(__arm__)
+    (void)opc2; (void)offset;
+    return false;
+#else
+    return slot_where(&g_guest_guard, opc2, offset);
+#endif
+}
+
+void mg_guest_guard_set(mg_addr guard) { g_guest_guard = guard; }
 
 /* ----------------------------------------------------------------- faults */
 
@@ -622,16 +666,58 @@ static void on_signal(int sig, siginfo_t *si, void *ctx)
 #if defined(__arm__)
     {
         ucontext_t *uc = (ucontext_t *)ctx;
-        f.regs = (u32 *)&uc->uc_mcontext.arm_r0;
+        f.regs = (mg_addr *)&uc->uc_mcontext.arm_r0;
         f.cpsr = (u32 *)&uc->uc_mcontext.arm_cpsr;
         /* error_code is the fault status register: bit 11 says the access was a write. */
         f.write = (uc->uc_mcontext.error_code & (1u << 11)) != 0;
         f.exec = sig == SIGSEGV && f.address == (uc->uc_mcontext.arm_pc & ~1u);
     }
+    if (g_fault_handler && g_fault_handler(&f)) return;
+#elif defined(__x86_64__) || defined(__i386__)
+    {
+        /* The general registers in the instructions' order (mg_host.h), copied out of glibc's and back. */
+        ucontext_t *uc = (ucontext_t *)ctx;
+        greg_t *g = uc->uc_mcontext.gregs;
+#if defined(__x86_64__)
+        static const int which[MG_REG_COUNT] = { REG_RAX, REG_RCX, REG_RDX, REG_RBX, REG_RSP, REG_RBP, REG_RSI, REG_RDI, REG_R8, REG_R9,
+                                                 REG_R10, REG_R11, REG_R12, REG_R13, REG_R14, REG_R15, REG_RIP };
+#else
+        static const int which[MG_REG_COUNT] = { REG_EAX, REG_ECX, REG_EDX, REG_EBX, REG_ESP, REG_EBP, REG_ESI, REG_EDI, REG_EIP };
+#endif
+        mg_addr regs[MG_REG_COUNT];
+        u32 flags = (u32)g[REG_EFL];
+        int i;
+        bool resume;
+        for (i = 0; i < MG_REG_COUNT; i++) regs[i] = (mg_addr)g[which[i]];
+        f.regs = regs;
+        f.cpsr = &flags;
+        /* The page fault's error code: bit 1 a write, bit 4 an instruction's fetch. */
+        f.write = (g[REG_ERR] & 2) != 0;
+        f.exec = sig == SIGSEGV && (g[REG_ERR] & 16) != 0;
+        resume = g_fault_handler && g_fault_handler(&f);
+        if (resume) {
+            for (i = 0; i < MG_REG_COUNT; i++) g[which[i]] = (greg_t)regs[i];
+            g[REG_EFL] = (greg_t)flags;
+            return;
+        }
+    }
+#elif defined(__aarch64__)
+    {
+        /* x0..x30, sp and pc are consecutive in the kernel's sigcontext; pstate is a word of its own. */
+        ucontext_t *uc = (ucontext_t *)ctx;
+        u32 flags = (u32)uc->uc_mcontext.pstate;
+        f.regs = (mg_addr *)uc->uc_mcontext.regs;
+        f.cpsr = &flags;
+        f.exec = sig == SIGSEGV && f.address == (mg_addr)uc->uc_mcontext.pc;
+        if (g_fault_handler && g_fault_handler(&f)) {
+            uc->uc_mcontext.pstate = (uc->uc_mcontext.pstate & ~(u64)0xffffffffu) | flags;
+            return;
+        }
+    }
 #else
     (void)ctx;
-#endif
     if (g_fault_handler && g_fault_handler(&f)) return;
+#endif
     /* Not ours: die the way the signal would have. */
     signal(sig, SIG_DFL);
     raise(sig);
@@ -640,8 +726,12 @@ static void on_signal(int sig, siginfo_t *si, void *ctx)
 void mg_fault_resume_at(mg_fault *f, mg_addr target)
 {
     if (!f->regs) return;
+#if defined(__arm__)
     f->regs[15] = (u32)(target & ~(mg_addr)1);
     if (f->cpsr) *f->cpsr = (target & 1) ? (*f->cpsr | 0x20u) : (*f->cpsr & ~0x20u);
+#else
+    f->regs[MG_REG_PC] = target;
+#endif
 }
 
 void mg_fault_set_handler(mg_fault_handler h)

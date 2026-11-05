@@ -156,6 +156,12 @@ typedef int64_t i64;
 
 /* Guest addresses are host addresses: one address space, 32 bits wide on the phone. */
 typedef uintptr_t mg_addr;
+/* A code address's own bits: on 32-bit ARM bit 0 of a pointer to code says Thumb, and is not part of the address. */
+#if MG_ARCH_ARM32
+#define MG_CODE_ADDR(a) ((mg_addr)(a) & ~(mg_addr)1)
+#else
+#define MG_CODE_ADDR(a) ((mg_addr)(a))
+#endif
 
 /* ------------------------------------------------------------------- log */
 
