@@ -319,6 +319,7 @@ public class Main extends Activity {
         keystore(run);
         keystoreCertificates(run);
         keystoreForeignKey();
+        pathOps();
         base64Streams();
         pipedStreams();
         codecs();
@@ -2587,6 +2588,58 @@ public class Main extends Activity {
                     + " there-before=" + before + "," + beforeEc + "," + beforeAes + " run=" + run;
             Log.i("DataTest", "keystore " + detail);
             return rsaHeld && ecHeld && aesHeld && before == (run > 1) && beforeEc == (run > 1) && beforeAes == (run > 1);
+        });
+    }
+
+    /**
+     * Path.op as views round their corners: a frame's rectangle less its rounded rectangle, painted with DST_OUT over the
+     * content in a layer, takes away the corners alone (TikTok Lite's frames: op left the whole rectangle and the content
+     * went with it, package 624); a rectangle's intersection with an oval within it is the oval; two overlapping squares'
+     * XOR leaves out where they overlap.
+     */
+    private void pathOps() {
+        step("path-op", () -> {
+            android.graphics.Paint red = new android.graphics.Paint();
+            red.setColor(0xFFFF0000);
+            android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(bm);
+            int saved = c.saveLayer(new android.graphics.RectF(0, 0, 100, 100), null, android.graphics.Canvas.ALL_SAVE_FLAG);
+            c.drawRect(0, 0, 100, 100, red);
+            android.graphics.Path round = new android.graphics.Path();
+            round.addRoundRect(new android.graphics.RectF(0, 0, 100, 100), new float[] { 30, 30, 30, 30, 30, 30, 30, 30 }, android.graphics.Path.Direction.CW);
+            android.graphics.Path corners = new android.graphics.Path();
+            corners.addRect(0, 0, 100, 100, android.graphics.Path.Direction.CW);
+            boolean difference = corners.op(round, android.graphics.Path.Op.DIFFERENCE);
+            android.graphics.Paint away = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            away.setColor(0xFFFFFFFF);
+            away.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_OUT));
+            c.drawPath(corners, away);
+            c.restoreToCount(saved);
+            int centre = bm.getPixel(50, 50), corner = bm.getPixel(1, 1), edge = bm.getPixel(50, 1);
+
+            android.graphics.Bitmap b2 = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Path square = new android.graphics.Path();
+            square.addRect(0, 0, 100, 100, android.graphics.Path.Direction.CW);
+            android.graphics.Path oval = new android.graphics.Path();
+            oval.addOval(new android.graphics.RectF(20, 20, 80, 80), android.graphics.Path.Direction.CW);
+            boolean intersect = square.op(oval, android.graphics.Path.Op.INTERSECT);
+            new android.graphics.Canvas(b2).drawPath(square, red);
+            int inOval = b2.getPixel(50, 50), outOval = b2.getPixel(5, 5);
+
+            android.graphics.Bitmap b3 = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Path x = new android.graphics.Path(), y = new android.graphics.Path();
+            x.addRect(0, 0, 60, 60, android.graphics.Path.Direction.CW);
+            y.addRect(40, 40, 100, 100, android.graphics.Path.Direction.CW);
+            boolean xor = x.op(y, android.graphics.Path.Op.XOR);
+            new android.graphics.Canvas(b3).drawPath(x, red);
+            int overlap = b3.getPixel(50, 50), onlyX = b3.getPixel(10, 10), onlyY = b3.getPixel(90, 90);
+
+            detail = String.format("difference=%b centre=%08x corner=%08x edge=%08x intersect=%b in=%08x out=%08x xor=%b overlap=%08x x=%08x y=%08x",
+                    difference, centre, corner, edge, intersect, inOval, outOval, xor, overlap, onlyX, onlyY);
+            Log.i("DataTest", "path-op " + detail);
+            return difference && centre == 0xFFFF0000 && (corner >>> 24) == 0 && edge == 0xFFFF0000
+                    && intersect && inOval == 0xFFFF0000 && (outOval >>> 24) == 0
+                    && xor && (overlap >>> 24) == 0 && onlyX == 0xFFFF0000 && onlyY == 0xFFFF0000;
         });
     }
 

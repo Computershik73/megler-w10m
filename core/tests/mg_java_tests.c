@@ -2197,7 +2197,7 @@ static int run_data(void)
                                             stand-in that fails politely), Android's key store's key pairs and their X.509 certificates (and
                                             an attestation challenge refused, and a key no provider takes refused at once), and the list of decoders: the stand-in's
                                             H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. */
-                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https", "keystore", "keystore-certificates", "keystore-foreign-key", "base64-streams", "piped-streams", "codecs",
+                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "base64-streams", "piped-streams", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
