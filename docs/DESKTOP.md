@@ -96,14 +96,37 @@ before the code is made executable:
   are taken as the process starts (`.CRT$XIU`): later, XAML's DLLs have used
   the TEB's 64. A read at another place of the segment is left, and said:
   all of Android 9's libcrypto's are data among its code.
+- **`syscall` in x86_64 code of an app's own** (Go's runtime makes every
+  system call so, anti-tamper libraries some): a trap would put Windows'
+  exception frame over the 128 bytes below rsp that System V code may keep
+  there, so the instruction and whole instructions next to it become a jump
+  to a piece of the library's island, which jumps on to the core's
+  `mg_x86_syscall_entry` with the guest's thread pointer in r11 and the way
+  back in rcx (the two registers `syscall` itself overwrites). The entry
+  makes the call by the ABI's number with every other register, the flags
+  and the XSAVE state kept, on the thread's own stack below its red zone, or,
+  when the code runs on a stack of its own (a goroutine's), on a stack of the
+  thread's for system calls (slot 15 of its guest block) that the TEB is told
+  while it is used. A syscall with no such place around it (a jump into it,
+  an operand relative to rip) is left and said.
 - **ARM64** (`arm64/mg_patch_arm64.c`): `mrs xN, tpidr_el0` becomes
   `ldr xN, [x18, #0x1480+8*slot]` (x18 is the TEB, and Android's compiler
-  leaves it alone), the canary following through the guest's own block;
-  `svc #0` becomes a UDF the fault handler does the call for.
+  leaves it alone), the canary following through the guest's own block --
+  which every thread is given before its first call into guest code
+  (`mg_code_entry`): a Java thread's first native method found the slot empty
+  otherwise; `svc #0` becomes a UDF the fault handler does the call for. TLS
+  descriptors (`R_AARCH64_TLSDESC`, ARM64's compilers' way to dynamic TLS)
+  are given one resolver that returns the offset in the layer's static block.
 - **System calls by number**: `syscall()` and ARM64's traps take the ABI's
   own numbers, made 32-bit ARM's (`bionic/mg_syscall_abi.c`, its table made
   by `tools/syscall-numbers.py` from the NDK's headers), with the arguments
   ARM's passes otherwise (a 64-bit offset in one register, mmap's in bytes).
+- **The vDSO** that Go's runtime reads its clocks through
+  (`AT_SYSINFO_EHDR`, `bionic/mg_libc_misc.c`): an image of each processor's
+  class and machine with its kernel's names and version --
+  `__vdso_clock_gettime` and its kin of LINUX_2.6 on x86_64 and x86,
+  `__kernel_clock_gettime` of LINUX_2.6.39 on ARM64 -- each the core's libc
+  function of that name.
 
 A native method is called with the processor's convention (`jni/mg_jni.c`,
 System V's six and eight registers, AAPCS64's eight and eight, x86's stack);
@@ -139,23 +162,36 @@ not defined, and the new files compile to nothing.
 
 ## Proven
 
-On this PC (x64, Windows 11 26300), 2026-11-05:
+On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
 
 - `tools/build-desktop.sh x64 tests`, the core in `megler-core.so` loaded into
-  a Windows x64 process, with the x86_64 guest test libraries: 5313 checks, 4
-  failed -- t_vdso (no vDSO image off 32-bit ARM yet) and the three float
-  checks of the GLES stand-in (below). ELF64 with RELA, APS2 and RELR
-  relocations, IFUNC, 90 patched thread-pointer and canary reads in one
-  library, initial-exec and global-dynamic thread-local variables, PLT calls,
-  JNI with every kind of argument, threads, a thread interrupted twenty times
-  where it was, setjmp, system calls by number, an app from its APK through
-  NativeActivity.
-- `tools/build-desktop.sh x86 tests` (through WOW64): 5322 checks, 2 failed
-  (t_vdso, and a timing check of a few milliseconds).
+  a Windows x64 process, with the x86_64 guest test libraries: 5317 checks, 3
+  failed -- the three float checks of the GLES stand-in (below). ELF64 with
+  RELA, APS2 and RELR relocations, IFUNC, 90 patched thread-pointer and canary
+  reads in one library, initial-exec and global-dynamic thread-local
+  variables, PLT calls, JNI with every kind of argument, threads, a thread
+  interrupted twenty times where it was, setjmp, system calls by number, the
+  vDSO, an app from its APK through NativeActivity; and an app's own
+  `syscall` led out to the core in six places of the seven t_raw_syscall has
+  (the seventh, with a jump into it, left): every register but rax, the flags
+  with DF set, xmm0, xmm15, ymm1's upper half and the red zone as they were,
+  six arguments, a stack of the caller's own, four threads at once.
+- `tools/build-desktop.sh x86 tests` (through WOW64): 5322 checks, 0 failed
+  (now and then 1 under load: a timing check of a few milliseconds).
 - `tools/build-tests.sh win` (MSVC's x64 build of the tests): 5023 checks, 0
-  failed; `tools/abi-check.py`: 0 differences on all four ABIs; the phone's
+  failed, and 5087 on Android's libcore, 0 failed; `tools/build-tests.sh
+  linux64` (x86_64 on WSL's Linux): 5311 checks, 3 failed (the float checks
+  above), an app's own `syscall` led out there too; `tools/abi-check.py`: 0
+  differences on all four ABIs; the phone's
   core compiles for ARM32 with MSVC, 148 of 148, and its tests under qemu-arm
   (`tools/build-tests.sh arm`) give 5429 checks, 0 failed, as before.
+- `tools/build-tests.sh arm64`: ARM64's core and tests as one static program
+  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5306
+  checks, 3 failed, and 5390 checks, 3 failed on Android's libcore with
+  arm64-v8a's natives (the GLES stand-in's float checks, as on x64). ELF64,
+  the patched TPIDR_EL0 reads (through the island there, bionic's own thread
+  pointer being the host's), TLS descriptors, svc traps, AAPCS64's native
+  calls, faults.
 - The x64 and x86 packages (`tools/build-appx.sh x64 --java --auto java`),
   registered from their stage folder in developer mode and started: the core
   loads, "megler core on win32-x64"; Android 9's libcore runs its natives
@@ -164,8 +200,8 @@ On this PC (x64, Windows 11 26300), 2026-11-05:
   draws (its first picture after 3.8 s on x64, 0.8 s on x86, through Direct2D
   and Direct3D 11.1), counts presses of its button and goes through onPause,
   onStop and onDestroy on Back, status 0.
-- ARM64 builds -- the core's ELF, the tests' program, the package -- and is
-  not run: there is no ARM64 machine here.
+- ARM64 builds -- the core's ELF, the tests' program, the package; on
+  Windows it is not run: there is no ARM64 machine here.
 
 In developer mode the first start after the stage folder was registered again
 over an earlier build is refused the package's files ("core: not loaded: ...
@@ -178,14 +214,23 @@ access denied"); the next start is not.
    (Microsoft's x64 one, `__stdcall` on x86), guest code's of Android's, and
    only ARM64's are the same. Every GL and EGL entry point needs one, made from
    the NDK's GLES headers; the float adapters of `ndk/mg_egl.c` are 32-bit
-   ARM's (softfp) and pass x86_64's floats wrong (the three checks above).
-2. **The vDSO** for the other ABIs: Go's runtime reads its clock through it.
-3. **`syscall` in x86_64 code of an app's own** is counted, not rewritten: a
-   trap's fault would put Windows' exception frame over the 128 bytes below
-   rsp that the code may be using; it takes a jump to an island.
+   ARM's (softfp) and pass x86_64's and ARM64's floats wrong (the three
+   checks above).
+2. **Go on x86_64**: its runtime reads its g through `%fs:(%reg)` (the
+   initial-exec model through a register), which the patcher leaves; its
+   system calls and its clock are the core's now.
+3. **`int 0x80` in x86 code of an app's own** is counted, not rewritten (x86
+   keeps nothing below its stack pointer: a trap would do there).
 4. **WebView**: Android's System WebView for x86_64 and arm64 (the phone's is
    32-bit ARM's).
-5. **ARM64 on a device**: the patched TPIDR_EL0 reads, x18 left alone by the
-   guest's code (Android 9's prebuilt libcrypto among others), the context of
-   a stopped or interrupted thread.
-6. A ping socket (IcmpCreateFile) is refused in a desktop app container.
+5. **ARM64 on a device**: what is Windows' alone -- the TPIDR_EL0 reads
+   patched through x18, x18 left alone by the guest's code (Android 9's
+   prebuilt libcrypto among others), the context of a faulting, stopped or
+   interrupted thread. The rest runs under qemu-aarch64 (above).
+6. **Ping in a desktop app container**: Windows gives an app container no
+   ICMP echo at all -- IcmpCreateFile fails with ERROR_ACCESS_DENIED whatever
+   the package's capabilities (the NSI service turns away the echo's
+   registration, and `\\.\Nsi` any process of Low integrity) -- so the ping
+   socket is refused with EACCES, as Linux refuses one, and isReachable goes
+   on to its TCP connection. A real echo would take a helper outside the
+   container.
