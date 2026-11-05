@@ -253,50 +253,17 @@ static bool through_register(const mg_x86_insn *in)
     return true;
 }
 
-/* Note `name` of `type` among the notes in [p, p + size), each name and description padded to `align`. */
-static bool has_note(const u8 *p, size_t size, size_t align, const char *name, u32 type)
-{
-    size_t n = strlen(name) + 1;
-    while (size >= 12) {
-        u32 namesz, descsz, kind;
-        size_t whole;
-        memcpy(&namesz, p, 4);
-        memcpy(&descsz, p + 4, 4);
-        memcpy(&kind, p + 8, 4);
-        if (namesz > size || descsz > size) return false;
-        whole = 12 + MG_ALIGN_UP((size_t)namesz, align) + MG_ALIGN_UP((size_t)descsz, align);
-        if (whole > size) return false;
-        if (kind == type && namesz >= n && namesz <= MG_ALIGN_UP(n, 4) && !memcmp(p + 12, name, n)) return true;
-        p += whole;
-        size -= whole;
-    }
-    return false;
-}
-
 /*
  * Whether the library says that its code reaches the segment through registers: the linker's DF_STATIC_TLS (the
- * initial-exec model's TPOFF relocations), or Go's build ID note (owner "Go", type 4), which every library of Go's has
- * in a PT_NOTE of its first segment. Elsewhere such bytes have been data among the code.
+ * initial-exec model's TPOFF relocations), or it is one of Go's (its build ID note, which the loader looked for:
+ * mg_ld_lib_is_go). Elsewhere such bytes have been data among the code.
  */
 static bool reaches_through_registers(const mg_lib *lib)
 {
     const ElfW(Dyn) *d;
-    int i, k;
     for (d = lib->dyn; d && d->d_tag != DT_NULL; d++)
         if (d->d_tag == DT_FLAGS && (d->d_val & DF_STATIC_TLS)) return true;
-    for (i = 0; i < lib->phnum; i++) {
-        const ElfW(Phdr) *note = &lib->phdr[i];
-        if (note->p_type != PT_NOTE) continue;
-        /* (Only where a segment has the notes' bytes from the file: elsewhere the image is not committed.) */
-        for (k = 0; k < lib->phnum; k++) {
-            const ElfW(Phdr) *load = &lib->phdr[k];
-            if (load->p_type == PT_LOAD && note->p_vaddr >= load->p_vaddr && note->p_filesz <= load->p_filesz &&
-                note->p_vaddr - load->p_vaddr <= load->p_filesz - note->p_filesz &&
-                has_note(lib->base + note->p_vaddr, (size_t)note->p_filesz, note->p_align == 8 ? 8 : 4, "Go", 4))
-                return true;
-        }
-    }
-    return false;
+    return mg_ld_lib_is_go(lib);
 }
 #endif
 
@@ -418,10 +385,11 @@ void mg_patch_syscall_stack_free(void *block) { mg_mem_release((u8 *)block + SC_
  */
 long mg_x86_syscall_call(long nr, const long args[6], const mg_addr *block, long on_block)
 {
+    /* (The site: the piece of island it goes on from, which is the library's.) */
 #if defined(MG_CORE_ELF)
     void **tp = on_block ? (void **)mg_guest_tp_get() : NULL;
     bool made = tp && !tp[1];
-    long r = mg_bionic_syscall(nr, args);
+    long r = mg_bionic_syscall(nr, args, block[SC_GO_ON]);
     if (made && tp[1]) {
         mg_gthread *g = (mg_gthread *)tp[1];
         g->stack_lo = (void *)block[SC_SAVED_DEALLOC];
@@ -429,9 +397,8 @@ long mg_x86_syscall_call(long nr, const long args[6], const mg_addr *block, long
     }
     return r;
 #else
-    (void)block;
     (void)on_block;
-    return mg_bionic_syscall(nr, args);
+    return mg_bionic_syscall(nr, args, block[SC_GO_ON]);
 #endif
 }
 

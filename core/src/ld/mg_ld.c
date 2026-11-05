@@ -917,6 +917,49 @@ static void read_code_sections(mg_lib *lib, const lib_source *src, const ElfW(Eh
     lib->ncode = found > 0 ? found : 0;
 }
 
+/* Note `name` of `type` among the notes in [p, p + size), each name and description padded to `align`. */
+static bool has_note(const u8 *p, size_t size, size_t align, const char *name, u32 type)
+{
+    size_t n = strlen(name) + 1;
+    while (size >= 12) {
+        u32 namesz, descsz, kind;
+        size_t whole;
+        memcpy(&namesz, p, 4);
+        memcpy(&descsz, p + 4, 4);
+        memcpy(&kind, p + 8, 4);
+        if (namesz > size || descsz > size) return false;
+        whole = 12 + MG_ALIGN_UP((size_t)namesz, align) + MG_ALIGN_UP((size_t)descsz, align);
+        if (whole > size) return false;
+        if (kind == type && namesz >= n && namesz <= MG_ALIGN_UP(n, 4) && !memcmp(p + 12, name, n)) return true;
+        p += whole;
+        size -= whole;
+    }
+    return false;
+}
+
+/*
+ * Go's build ID note (owner "Go", type 4), which every library of Go's has in a PT_NOTE of its first segment; looked for
+ * only where a segment has the notes' bytes from the file (elsewhere the image is not committed).
+ */
+static bool go_note(const mg_lib *lib)
+{
+    int i, k;
+    for (i = 0; i < lib->phnum; i++) {
+        const ElfW(Phdr) *note = &lib->phdr[i];
+        if (note->p_type != PT_NOTE) continue;
+        for (k = 0; k < lib->phnum; k++) {
+            const ElfW(Phdr) *load = &lib->phdr[k];
+            if (load->p_type == PT_LOAD && note->p_vaddr >= load->p_vaddr && note->p_filesz <= load->p_filesz &&
+                note->p_vaddr - load->p_vaddr <= load->p_filesz - note->p_filesz &&
+                has_note(lib->base + note->p_vaddr, (size_t)note->p_filesz, note->p_align == 8 ? 8 : 4, "Go", 4))
+                return true;
+        }
+    }
+    return false;
+}
+
+bool mg_ld_lib_is_go(const mg_lib *lib) { return lib && lib->go; }
+
 static mg_lib *map_library(const char *name, const lib_source *src)
 {
     ElfW(Ehdr) ehdr;
@@ -1063,6 +1106,7 @@ static mg_lib *map_library(const char *name, const lib_source *src)
         }
         committed += hi - lo;
     }
+    lib->go = go_note(lib);
     if (lib->dyn && !in_image(lib, (mg_addr)((const u8 *)lib->dyn - lib->base), 8)) lib->dyn = NULL;
     if (!parse_dynamic(lib)) goto bad;
     /* (A placed image is in the app's own mapping, a reservation of no access to it, which mg_mmap_usage does not count.) */

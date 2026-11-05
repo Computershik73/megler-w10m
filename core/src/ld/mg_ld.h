@@ -80,6 +80,12 @@ void *mg_ld_sym(mg_lib *lib, const char *name);
 void *mg_ld_sym_deep(mg_lib *lib, const char *name, mg_lib **found_in);
 
 mg_lib *mg_ld_lib_of(const void *addr);
+/*
+ * One of Go's (its build ID note): its runtime runs goroutines on stacks it cuts from its own heap, whose free pages it
+ * gives back with madvise (bionic/mg_libc_mem.c), and reaches its g through the thread pointer's segment by a register
+ * on x86_64 (x86/mg_patch_x86.c).
+ */
+bool mg_ld_lib_is_go(const mg_lib *lib);
 void *mg_ld_lib_base(const mg_lib *lib);
 const char *mg_ld_lib_name(const mg_lib *lib);
 /* The address space a library holds: its image and the code the patcher adds beside it. */

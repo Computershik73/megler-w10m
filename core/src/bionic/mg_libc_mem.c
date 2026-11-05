@@ -234,6 +234,17 @@ static void g_delete_sized(void *p, size_t n) { (void)n; mg_g_free(p); }
  * heap; madvise did nothing before, and Play Store with Google's sign-in page had 1593 MB committed of its 2 GB when the
  * WebView ended. PartitionAlloc also counts on a page given back being zero when it is used again, as a block that has
  * to be zero is then not cleared.
+ *
+ * Save Go's (madvise by number from a library of Go's, mg_ld_lib_is_go): its runtime cuts its goroutines' stacks from its
+ * heap, whose free pages its scavenger gives back so, and soon puts a goroutine on such pages; the first touch of one is
+ * then the goroutine's own, on its stack, with the stack pointer on that page, and Windows lays a fault's records right
+ * below the stack pointer, there being no other stack for them: it cannot, and ends the process before any handler runs
+ * (a Go library's 1000 goroutines with 64 KB frames: every run that gave its heap back between two rounds of them). Go
+ * says nothing when it uses such a page again (on Linux it need not), and GODEBUG=harddecommit, which would have it map
+ * them again first, never reaches a library of Go's on Android: its _rt0_*_android_lib hands the runtime an argv of
+ * "gojni" and no environment. Its pages are given back and committed again at once: zero when next touched, their
+ * memory the system's, still counted against the commit limit. (POSIX's fault handler has a stack of its own,
+ * host/mg_host_posix.c.)
  */
 #define G_PROT_READ 1
 #define G_PROT_WRITE 2
@@ -1368,17 +1379,52 @@ static MG_HOSTCB void given_back(u8 *at, size_t n, void *user)
     gone_mark(r, (size_t)(at - r->base), n, true);
     mem_note('D', at, n);
 }
+
+/* Whether madvise is Go's runtime giving pages of its heap back (see the top): a system call by number of a library of Go's. */
+static bool go_gives_back(void)
+{
+    mg_addr site = mg_bionic_syscall_site();
+    return site && mg_ld_lib_is_go(mg_ld_lib_of((const void *)MG_CODE_ADDR(site)));
+}
+
+/*
+ * Go's pages just given back in [offset, offset + size) of a region committed again at once (see the top), zero; what
+ * could not be (the system out of memory) is added to *failed and stays given back. Under the lock.
+ */
+static u64 g_kept;
+static size_t gone_kept(region *r, size_t offset, size_t size, size_t *failed)
+{
+    size_t page = offset / MG_PAGE, end = (offset + size) / MG_PAGE, first, kept = 0;
+    if (end > r->size / MG_PAGE) end = r->size / MG_PAGE;
+    while (page < end) {
+        if (!gone_has(r, page) || noaccess_has(r, page)) {
+            page++;
+            continue;
+        }
+        for (first = page; page < end && gone_has(r, page) && !noaccess_has(r, page); page++) {}
+        if (!mg_mem_commit(r->base + first * MG_PAGE, (page - first) * MG_PAGE, MG_PROT_RW)) {
+            *failed += (page - first) * MG_PAGE;
+            continue;
+        }
+        gone_mark(r, first * MG_PAGE, (page - first) * MG_PAGE, false);
+        mem_note('K', r->base + first * MG_PAGE, (page - first) * MG_PAGE);
+        kept += (page - first) * MG_PAGE;
+    }
+    return kept;
+}
+
 static int g_madvise(void *addr, size_t len, int advice)
 {
     u8 *p = (u8 *)addr, *end;
-    size_t given = 0;
-    u64 total = 0, again = 0;
-    bool say = false;
+    size_t given = 0, kept = 0, failed = 0;
+    u64 total = 0, again = 0, go_kept = 0;
+    bool say = false, go;
     if ((mg_addr)p & (MG_PAGE - 1)) {
         mg_set_errno(GE_INVAL);
         return -1;
     }
     if ((advice != G_MADV_DONTNEED && advice != G_MADV_FREE) || !len) return 0;
+    go = go_gives_back();
     end = p + MG_ALIGN_UP(len, MG_PAGE);
     mg_lock_acquire(&g_region_lock);
     while (p < end) {
@@ -1392,19 +1438,35 @@ static int g_madvise(void *addr, size_t len, int advice)
             continue;
         }
         if (r->base + r->size < stop) stop = r->base + r->size;
-        if (r->anon && !r->view && !r->file) given += mg_mem_discard(p, (size_t)(stop - p), given_back, r);
+        if (r->anon && !r->view && !r->file) {
+            size_t discarded = mg_mem_discard(p, (size_t)(stop - p), given_back, r);
+            given += discarded;
+            if (go && discarded) kept += gone_kept(r, (size_t)(p - r->base), (size_t)(stop - p), &failed);
+        }
         p = stop;
     }
     if (given) {
-        /* (Said at each 64 MB more given back: how much has been, and how much of it was touched again.) */
+        /* (Said at each 64 MB more given back: how much has been, how much of it was touched again, how much was Go's.) */
         say = (g_given_back >> 26) != ((g_given_back + given) >> 26);
         g_given_back += given;
+        g_kept += kept;
         total = g_given_back;
         again = g_taken_again;
+        go_kept = g_kept;
     }
     mg_lock_release(&g_region_lock);
     if (given) mg_mem_set_before_system_write(before_system_write);
-    if (say) mg_info("mmap: %u MB given back to the system with madvise so far, %u MB of it touched again", (unsigned)(total >> 20), (unsigned)(again >> 20));
+    if (failed) {
+        static volatile i32 said;
+        if (mg_atomic_add(&said, 1) <= 4)
+            mg_warn("mmap: %u KB of Go's heap given back could not be committed again (out of memory): a goroutine put on them ends the process",
+                    (unsigned)(failed >> 10));
+    }
+    if (say && go_kept)
+        mg_info("mmap: %u MB given back to the system with madvise so far, %u MB of it touched again, %u MB of it Go's heap, kept committed",
+                (unsigned)(total >> 20), (unsigned)(again >> 20), (unsigned)(go_kept >> 20));
+    else if (say)
+        mg_info("mmap: %u MB given back to the system with madvise so far, %u MB of it touched again", (unsigned)(total >> 20), (unsigned)(again >> 20));
     return 0;
 }
 static int g_mlock(const void *addr, size_t len) { (void)addr; (void)len; return 0; }

@@ -73,6 +73,7 @@ struct mg_lib {
     bool relocated, sealed, inited, initing;
     int service_scope;         /* service loader namespace; zero for the client and boot */
     bool runtime;              /* one of Android's own (mg_ld_load_runtime), not the app's: the two never see each other */
+    bool go;                   /* one of Go's: its build ID note (mg_ld_lib_is_go) */
     mg_ld_stats stats;
     mg_svc_site *svc_sites;    /* immutable once executable; only our registered traps may resume */
     /*
