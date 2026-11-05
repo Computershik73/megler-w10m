@@ -1483,7 +1483,10 @@ void mg_bionic_init(void)
     mg_bionic_register(mg_tab_pthread);
     mg_bionic_register(mg_tab_dl);
     mg_bionic_register(mg_tab_log);
+#if MG_ARCH_ARM32
+    /* (ARM's run-time ABI: no other processor's code imports __aeabi_*.) */
     mg_bionic_register(mg_tab_aeabi);
+#endif
     mg_bionic_register(mg_tab_net);
     mg_bionic_register(mg_tab_netdb);
     mg_bionic_register(mg_tab_zlib);
