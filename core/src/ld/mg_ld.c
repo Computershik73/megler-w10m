@@ -484,6 +484,9 @@ static bool reloc_symbol(reloc_ctx *c, u32 index, bool want_fn, mg_addr *addr, c
         *def = NULL;
         if (ELF_ST_BIND(own->st_info) == STB_WEAK) {
             *addr = 0;
+        } else if (c->phase != 1) {
+            /* Counted, said and given its stub on the first pass: the second applies only what resolvers give, which this is not. */
+            *addr = 0;
         } else {
             g_unresolved++;
             lib->stats.unresolved++;
