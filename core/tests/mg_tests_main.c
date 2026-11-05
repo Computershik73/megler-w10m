@@ -487,7 +487,7 @@ static int natives_mode(char **argv)
     return 0;
 }
 
-static void print_line(const char *line, void *user)
+static MEGLER_CB void print_line(const char *line, void *user)
 {
     (void)user;
     printf("%s\n", line);
@@ -497,13 +497,13 @@ static void print_line(const char *line, void *user)
 
 #ifdef MG_GFX_WINDOWS
 /* mg_gfx_windows.cpp: the shell's own megler_gfx_host, and what it counted. */
-const megler_gfx_host *mg_gfx_windows_host(void (*line)(const char *text, void *user), void *user, int way);
-void mg_gfx_windows_counts(char *out, size_t size);
-int mg_gfx_windows_on_gpu(void);
-void mg_gfx_windows_lose_device(void);
-int mg_gfx_windows_check_present(const megler_gfx_host *h, void (*line)(const char *text, void *user), int *checks);
-int mg_gfx_windows_check_gl(const megler_gfx_host *h, void (*line)(const char *text, void *user), int *checks);
-int mg_gfx_windows_check_canvas(const megler_gfx_host *h, void (*line)(const char *text, void *user), int *checks);
+MG_HOSTAPI const megler_gfx_host *mg_gfx_windows_host(void (MEGLER_CB *line)(const char *text, void *user), void *user, int way);
+MG_HOSTAPI void mg_gfx_windows_counts(char *out, size_t size);
+MG_HOSTAPI int mg_gfx_windows_on_gpu(void);
+MG_HOSTAPI void mg_gfx_windows_lose_device(void);
+MG_HOSTAPI int mg_gfx_windows_check_present(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
+MG_HOSTAPI int mg_gfx_windows_check_gl(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
+MG_HOSTAPI int mg_gfx_windows_check_canvas(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
 
 /* A pixel of a 32 x 32 picture, as a check: a line when it is not what it should be. */
 static int gfx_loss_pixel(const u32 *px, int x, int y, u32 want, const char *what)
@@ -667,8 +667,8 @@ static int gfx_replay_mode(int argc, char **argv)
 
 #ifdef MG_STORAGE_WINDOWS
 /* mg_storage_windows.cpp: the shell's own megler_storage_host, with these folders as its links. */
-const megler_storage_host *mg_storage_windows_host(const char *const *names, const char *const *folders, int count);
-void mg_storage_windows_summary(char *out, size_t size);
+MG_HOSTAPI const megler_storage_host *mg_storage_windows_host(const char *const *names, const char *const *folders, int count);
+MG_HOSTAPI void mg_storage_windows_summary(char *out, size_t size);
 #endif
 
 static int storage_windows_mode(char **argv)
@@ -696,11 +696,11 @@ static int storage_windows_mode(char **argv)
 
 #ifdef MG_CODEC_WINDOWS
 /* mg_codec_windows.cpp: the shell's own megler_codec_host. */
-const megler_codec_host *mg_codec_windows_host(void);
-void mg_codec_windows_summary(char *out, size_t size);
-void mg_codec_windows_ten_bits(int prefer);
-int mg_codec_windows_call_limit(void);
-const megler_media_host *mg_media_windows_host(void);
+MG_HOSTAPI const megler_codec_host *mg_codec_windows_host(void);
+MG_HOSTAPI void mg_codec_windows_summary(char *out, size_t size);
+MG_HOSTAPI void mg_codec_windows_ten_bits(int prefer);
+MG_HOSTAPI int mg_codec_windows_call_limit(void);
+MG_HOSTAPI const megler_media_host *mg_media_windows_host(void);
 
 /*
  * A file of sound alone through the shell's reader of whole files (MediaHost), as drivers/mg_java_audio.c hands it what
@@ -787,8 +787,8 @@ static int codec_windows_mode(int argc, char **argv)
 
 #ifdef MG_CAMERA_WINDOWS
 /* mg_camera_windows.cpp: the shell's own megler_camera_host. */
-const megler_camera_host *mg_camera_windows_host(void);
-void mg_camera_windows_summary(char *out, size_t size);
+MG_HOSTAPI const megler_camera_host *mg_camera_windows_host(void);
+MG_HOSTAPI void mg_camera_windows_summary(char *out, size_t size);
 
 static int g_cam_checks, g_cam_failed;
 
@@ -911,7 +911,12 @@ static int camera_windows_mode(int argc, char **argv)
 #endif
 }
 
+#if defined(MG_CORE_ELF)
+/* On desktop Windows the tests are part of the core's ELF, and Megler's test program calls this (host/win32/mg_desktop_tests.c). */
+MEGLER_API int mg_tests_main(int argc, char **argv)
+#else
 int main(int argc, char **argv)
+#endif
 {
     if (argc >= 3 && !strcmp(argv[1], "--gfx-windows")) return gfx_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--storage-windows")) return storage_windows_mode(argv);
