@@ -1,6 +1,6 @@
 """Reads one property of one module out of an AOSP Android.bp file.
 
-  bp.py FILE MODULE PROPERTY        one value per line
+  bp.py FILE MODULE PROPERTY [ARCH]        one value per line
 
 tools/android9-natives.sh takes its source lists and compiler flags from
 AOSP's own build rules with this, so that what is compiled is what Soong
@@ -10,16 +10,21 @@ What it understands of Blueprint: modules (`type { ... }`), strings, lists,
 maps, booleans, integers, `+` between lists or strings, comments, and
 variable assignments at the top level. A module's value is its own plus,
 before it, that of every module it names in `defaults` (looked up in the same
-file), plus what Soong would add for a 32-bit ARM Android device: `target.android`,
-`target.linux` (which in Android 9 means every Linux kernel, Android included),
-`target.bionic`, `target.not_windows`, `target.android_arm`, `arch.arm` and
-`multilib.lib32`. A `filegroup` named as ":name" in a source list is not
-followed here; the script asks for it by name.
+file), plus what Soong would add for an Android device of the architecture
+ARCH, as Soong names it (arm, the default, arm64, x86 or x86_64):
+`target.android`, `target.linux` (which in Android 9 means every Linux kernel,
+Android included), `target.bionic`, `target.not_windows`, `target.android_ARCH`,
+`arch.ARCH` and `multilib.lib32` or `multilib.lib64`. A `filegroup` named as
+":name" in a source list is not followed here; the script asks for it by name.
 """
 import sys
 
-DEVICE_VARIANTS = (('target', 'android'), ('target', 'linux'), ('target', 'bionic'), ('target', 'not_windows'),
-                   ('target', 'android_arm'), ('arch', 'arm'), ('multilib', 'lib32'))
+MULTILIB = {'arm': 'lib32', 'arm64': 'lib64', 'x86': 'lib32', 'x86_64': 'lib64'}
+
+
+def device_variants(arch):
+    return (('target', 'android'), ('target', 'linux'), ('target', 'bionic'), ('target', 'not_windows'),
+            ('target', 'android_' + arch), ('arch', arch), ('multilib', MULTILIB[arch]))
 
 
 class Parser:
@@ -144,7 +149,7 @@ class Parser:
                 self.error('expected a module or an assignment after %s' % name)
 
 
-def collect(modules, name, prop, seen):
+def collect(modules, name, prop, variants, seen):
     for kind, body in modules:
         if body.get('name') != name:
             continue
@@ -152,10 +157,10 @@ def collect(modules, name, prop, seen):
             raise SystemExit('bp.py: %s names itself in defaults' % name)
         out = []
         for d in body.get('defaults', []):
-            out += collect(modules, d, prop, seen + [name])
+            out += collect(modules, d, prop, variants, seen + [name])
         v = body.get(prop, [])
         out += v if isinstance(v, list) else [v]
-        for group, variant in DEVICE_VARIANTS:
+        for group, variant in variants:
             v = body.get(group, {}).get(variant, {}).get(prop, [])
             out += v if isinstance(v, list) else [v]
         return out
@@ -163,12 +168,15 @@ def collect(modules, name, prop, seen):
 
 
 def main():
-    if len(sys.argv) != 4:
+    if len(sys.argv) not in (4, 5):
         raise SystemExit(__doc__)
-    path, module, prop = sys.argv[1:]
+    path, module, prop = sys.argv[1:4]
+    arch = sys.argv[4] if len(sys.argv) == 5 else 'arm'
+    if arch not in MULTILIB:
+        raise SystemExit('bp.py: no architecture %s (%s)' % (arch, ', '.join(MULTILIB)))
     p = Parser(open(path, encoding='utf-8').read())
     p.file()
-    for v in collect(p.modules, module, prop, []):
+    for v in collect(p.modules, module, prop, device_variants(arch), []):
         print(v if not isinstance(v, bool) else ('true' if v else 'false'))
 
 
