@@ -20,6 +20,14 @@ extern "C" {
 #endif
 
 /*
+ * x86 (desktop Windows): the structures here are laid out alike by the core's ELF, which aligns a 64-bit field at 4
+ * bytes as Android's x86 ABI does, and by the shell, which MSVC's x86 aligns at 8. Both sides take 4.
+ */
+#if defined(_M_IX86) || (defined(__i386__) && defined(MG_CORE_ELF))
+#pragma pack(push, 4)
+#endif
+
+/*
  * On desktop Windows the core is an ELF library of Android's ABI that Megler.exe loads (docs/DESKTOP.md), and the shell
  * calls it the way Windows calls: MEGLER_API on each function the core exports, MEGLER_CB on each callback of the shell's
  * the core calls. On x86_64 that is Windows' calling convention (ms_abi); on x86 a call from Windows realigns the stack
@@ -1918,6 +1926,10 @@ MEGLER_API char *megler_appx_app_manifest(const char *megler_manifest, const cha
    (err says why) when the template is not such a file. */
 MEGLER_API bool megler_appx_pri_rename(const uint8_t *pri, size_t size, const char *placeholder, uint32_t tail1, uint32_t tail2, const char *name,
                           uint8_t *out, char *err, size_t errlen);
+
+#if defined(_M_IX86) || (defined(__i386__) && defined(MG_CORE_ELF))
+#pragma pack(pop)
+#endif
 
 #ifdef __cplusplus
 }

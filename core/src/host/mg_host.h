@@ -21,6 +21,15 @@
 extern "C" {
 #endif
 
+/*
+ * x86 (desktop Windows): this header's structures are laid out alike by the core's ELF, which aligns a 64-bit field at
+ * 4 bytes as Android's x86 ABI does, and by Megler.exe's half, which MSVC's x86 aligns at 8 (mg_stat's size was read
+ * from its padding). Both sides take 4.
+ */
+#if MG_HOST_WINDOWS && MG_ARCH_X86
+#pragma pack(push, 4)
+#endif
+
 /* ---------------------------------------------------------------- memory
  *
  * Windows 10 Mobile lets a package with the codeGeneration capability turn
@@ -756,6 +765,10 @@ MG_HOSTAPI void mg_random(void *buf, size_t n);
 /* A line to the debugger / stderr; the log's last resort. */
 MG_HOSTAPI void mg_host_print(const char *line);
 MG_HOSTAPI const char *mg_host_name(void);        /* "win32-arm", "win32-x64", "linux-arm" */
+
+#if MG_HOST_WINDOWS && MG_ARCH_X86
+#pragma pack(pop)
+#endif
 
 #ifdef __cplusplus
 }
