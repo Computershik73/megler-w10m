@@ -103,7 +103,12 @@ static BOOL vprotect(void *p, size_t size, DWORD prot)
 /*
  * The probe of mg_mem_rwx: a page of `movs r0, #42; bx lr`, made writable and executable with the plain VirtualProtect, run;
  * then written `movs r0, #7` while executable, and run again. A fault in the page while it runs (refused after all) returns
- * to the caller with 0, through a handler of its own ahead of the host's.
+ * to the caller with 0, through a handler of its own ahead of the host's. The same on desktop Windows (docs/DESKTOP.md),
+ * the same rule -- the plain VirtualProtect, beside VirtualProtectFromApp -- with the processor's own two instructions:
+ * `mov eax, 42; ret` on x86_64 and x86, `mov w0, #42; ret` on ARM64. There it matters more than on the phone: a page
+ * flipped between writable and executable by a fault (bionic/mg_libc_mem.c) is a fault inside guest code, and on x86_64
+ * Windows lays its exception records on the stack right below rsp, over the 128 bytes there that Android's code keeps its
+ * locals in without moving rsp (the red zone).
  */
 static volatile mg_addr g_probe_page;
 static volatile LONG g_probe_faulted;
@@ -124,11 +129,55 @@ static LONG CALLBACK probe_fault(EXCEPTION_POINTERS *info)
     else c->Cpsr &= ~(DWORD)0x20;
     c->Cpsr &= ~(DWORD)0x0600FC00;     /* no IT block */
     return EXCEPTION_CONTINUE_EXECUTION;
+#elif defined(_M_X64)
+    CONTEXT *c = info->ContextRecord;
+    mg_addr page = g_probe_page;
+    if (!page || (c->Rip & ~(DWORD64)(MG_PAGE - 1)) != page) return EXCEPTION_CONTINUE_SEARCH;
+    InterlockedExchange(&g_probe_faulted, 1);
+    c->Rax = 0;
+    c->Rip = *(const DWORD64 *)c->Rsp;
+    c->Rsp += 8;
+    return EXCEPTION_CONTINUE_EXECUTION;
+#elif defined(_M_IX86)
+    CONTEXT *c = info->ContextRecord;
+    mg_addr page = g_probe_page;
+    if (!page || (c->Eip & ~(DWORD)(MG_PAGE - 1)) != page) return EXCEPTION_CONTINUE_SEARCH;
+    InterlockedExchange(&g_probe_faulted, 1);
+    c->Eax = 0;
+    c->Eip = *(const DWORD *)c->Esp;
+    c->Esp += 4;
+    return EXCEPTION_CONTINUE_EXECUTION;
+#elif defined(_M_ARM64)
+    CONTEXT *c = info->ContextRecord;
+    mg_addr page = g_probe_page;
+    if (!page || (c->Pc & ~(DWORD64)(MG_PAGE - 1)) != page) return EXCEPTION_CONTINUE_SEARCH;
+    InterlockedExchange(&g_probe_faulted, 1);
+    c->X0 = 0;
+    c->Pc = c->Lr;
+    return EXCEPTION_CONTINUE_EXECUTION;
 #else
     (void)info;
     return EXCEPTION_CONTINUE_SEARCH;
 #endif
 }
+
+#if defined(_M_X64) || defined(_M_IX86) || defined(_M_ARM64)
+/* The probe's code for this processor: a function that returns `value`, written at `at`. */
+static void probe_code(volatile u8 *at, u8 value)
+{
+#if defined(_M_ARM64)
+    u32 insn[2];
+    insn[0] = 0x52800000u | ((u32)value << 5);   /* mov w0, #value */
+    insn[1] = 0xd65f03c0u;                       /* ret */
+    memcpy((void *)at, insn, sizeof(insn));
+#else
+    at[0] = 0xb8;                                /* mov eax, value */
+    at[1] = value;
+    at[2] = at[3] = at[4] = 0;
+    at[5] = 0xc3;                                /* ret */
+#endif
+}
+#endif
 
 static bool page_is_rwx(void *p)
 {
@@ -161,6 +210,37 @@ static int probe_rwx(void)
             first = run();
             if (first == 42 && !g_probe_faulted && page_is_rwx(page)) {
                 code[0] = 0x2007;      /* movs r0, #7 */
+                FlushInstructionCache(GetCurrentProcess(), page, MG_PAGE);
+                second = run();
+            }
+            RemoveVectoredExceptionHandler(guard);
+        }
+        g_probe_page = 0;
+    }
+    VirtualFree(page, 0, MEM_RELEASE);
+    return first == 42 && second == 7 && !g_probe_faulted;
+#elif defined(_M_X64) || defined(_M_IX86) || defined(_M_ARM64)
+    fn_plain_protect fn = plain_protect();
+    volatile u8 *code;
+    void *page;
+    DWORD old = 0;
+    int first = 0, second = 0;
+    PVOID guard;
+    if (!fn) return 0;
+    page = valloc(NULL, MG_PAGE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (!page) return 0;
+    code = (volatile u8 *)page;
+    probe_code(code, 42);
+    if (fn(page, MG_PAGE, PAGE_EXECUTE_READWRITE, &old) && page_is_rwx(page)) {
+        int (*run)(void) = (int (*)(void))page;
+        g_probe_faulted = 0;
+        g_probe_page = (mg_addr)page;
+        guard = AddVectoredExceptionHandler(1, probe_fault);
+        if (guard) {
+            FlushInstructionCache(GetCurrentProcess(), page, MG_PAGE);
+            first = run();
+            if (first == 42 && !g_probe_faulted && page_is_rwx(page)) {
+                probe_code(code, 7);
                 FlushInstructionCache(GetCurrentProcess(), page, MG_PAGE);
                 second = run();
             }
