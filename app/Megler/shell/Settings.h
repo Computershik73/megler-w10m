@@ -63,6 +63,10 @@ constexpr const char* googlePlay = "megler.googlePlay";
 /// A separate app (ui/SharedFolders.h): the names of Megler's folders the user said "Not Now" to, "a|b".
 constexpr const char* foldersNotNow = "megler.folders.notNow";
 
+/// Whether Megler asks GitHub for a newer Megler when it starts (ui/Ota.h): "off", only when asked (Settings' Check Now);
+/// anything else, at start, at most once in six hours.
+constexpr const char* otaAtStart = "megler.ota";
+
 } // namespace megler::app::settings
 
 namespace megler::app::settings::location {

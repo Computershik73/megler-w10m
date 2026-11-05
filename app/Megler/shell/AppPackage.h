@@ -106,6 +106,14 @@ PortalResult uninstallThroughPortal(const InstalledApp& app);
 
 /// This Megler's version, "0.1.0.358": the version of every package it makes.
 std::string meglerVersion();
+/// Whether version `a` ("0.1.0.354") is older than `b` ("0.1.0.358").
+bool olderVersion(const std::string& a, const std::string& b);
+
+/// A newer package of Megler's own at `appx`, its certificate at `certificate`, installed: through Windows's deployment
+/// engine, which reads it where it lies and closes this Megler, else through the phone's own Device Portal. The try and
+/// its result are written down (LocalState\update-tried-<version>), the screen kept on meanwhile (selfUpdating), and `from`
+/// says in the log where the package came from. Off the UI thread: the Pictures folder's update and GitHub's (ui/Ota.h).
+PortalResult installOwnUpdate(const std::wstring& appx, const std::wstring& certificate, const std::string& version, const std::string& from);
 
 /// Megler's own update, copied to the phone over USB (MTP) into Pictures\Megler: the newest Megler_<version>_ARM.appx there,
 /// when it is newer than this Megler, installed with the Megler.cer beside it through the phone's own Device Portal, which
