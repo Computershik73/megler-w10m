@@ -12,6 +12,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <future>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -108,6 +109,30 @@ void copyOut(StorageFolder const& folder, const wchar_t* name) {
     }
 }
 
+/// The pictures the flag trace-views saves in an app's files (megler.ViewRoot: screen-N.png, window-I-N.png), into the folder:
+/// each new one once, a file of the same name again when its size changed. What was drawn, where no Device Portal can fetch them.
+void copyPictures(StorageFolder const& folder, const std::string& package, std::map<std::wstring, uint64_t>& copied) {
+    static std::atomic<int> failures{0};
+    if (package.empty()) return;
+    const std::wstring dir = platform::localStateDirectory() + L"\\apps\\" + widen(package) + L"\\data\\files";
+    for (const wchar_t* pattern : {L"screen-*.png", L"window-*.png"}) {
+        for (const auto& name : files::list(dir, pattern)) {
+            const uint64_t size = files::size(dir + L"\\" + name);
+            auto at = copied.find(name);
+            if (size == 0 || (at != copied.end() && at->second == size)) continue;
+            std::lock_guard<std::mutex> lock(gCopyMutex);
+            try {
+                auto file = StorageFile::GetFileFromPathAsync(dir + L"\\" + name).get();
+                file.CopyAsync(folder, name, NameCollisionOption::ReplaceExisting).get();
+                copied[name] = size;
+            } catch (...) {
+                if (failures++ < 3) shellLog::write("diag: " + narrow(name) + " could not be copied to Pictures\\Megler\\diag");
+                copied[name] = size;
+            }
+        }
+    }
+}
+
 /// The folder looked for and the flags put in place. Whatever goes wrong only costs the diagnosis: this runs at every start of
 /// every package of Megler's, and a throw out of a thread would end the app.
 StorageFolder lookAndPlace(const std::string& name) {
@@ -156,9 +181,14 @@ void start() {
         shellLog::write("diag: Pictures\\Megler\\diag\\" + name + " asks for this package's log: it is copied there every 10 s");
         shellLog::flush();
         copyOut(folder, L"megler.prev.log");
+        std::map<std::wstring, uint64_t> pictures;
         for (;;) {
             shellLog::flush();
             copyOut(folder, L"megler.log");
+            try {
+                if (appPackage::isSingleApp()) copyPictures(folder, name, pictures);
+            } catch (...) {
+            }
             std::this_thread::sleep_for(std::chrono::seconds(10));
         }
     };

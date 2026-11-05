@@ -5,7 +5,8 @@
 //     before the app runs, and taken away again once the folder no longer names them (LocalState\flags-from-pictures.txt
 //     says which were put there so; a flag set through the portal is left alone);
 //   - the package's log (LocalState\megler.log, and megler.prev.log once) is copied into the folder every 10 s and when
-//     the app is suspended, for the PC to copy off over MTP.
+//     the app is suspended, for the PC to copy off over MTP; and so are the pictures the flag trace-views saves in an app's
+//     files (screen-N.png, window-I-N.png), each new or changed one once.
 // Nothing is done where the folder is not there. A Lumia 650's owner moved the phone to a PC without the portal while its
 // TikTok Lite was being diagnosed (package 626).
 #pragma once
