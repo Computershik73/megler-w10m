@@ -3057,6 +3057,11 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_vdso")(), 0);
     CHECK_INT(FN(lib, int (*)(const char *), "t_go_calls")(buf), 0);
     CHECK_INT(FN(lib, int (*)(const char *), "t_go_net_files")(buf), 0);
+#if MG_ARCH_X86_64
+    /* System calls of the library's own (x86/mg_patch_x86.c): six of its seven led out to the core, the seventh left. */
+    CHECK_INT(st.svc_sites, 6);
+    CHECK_INT(FN(lib, int (*)(void), "t_raw_syscall")(), 0);
+#endif
     CHECK_INT(FN(lib, int (*)(void), "t_ifunc")(), 205);
     CHECK_INT(FN(lib, int (*)(void), "t_chrome_cmdline")(), 3);
     CHECK_INT(FN(lib, int (*)(const char *), "t_flock")(buf), 3);

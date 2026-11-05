@@ -2051,3 +2051,199 @@ int t_vdso(void)
     }
     return 6;
 }
+
+#if defined(__x86_64__)
+/*
+ * System calls of the library's own: `syscall` with Linux's x86_64 numbers and registers, which the loader leads out of
+ * the library to the core (x86/mg_patch_x86.c). Each function below is written instruction by instruction, for the
+ * places the loader can find around one:
+ *
+ *   t_sc_getpid     `mov $39, %eax` before it, which the jump takes the place of with it (Go's runtime's way);
+ *   t_sc_keep       the same, with every register `syscall` keeps, the flags (CF and DF set), two vector registers and
+ *                   the 128 bytes below the stack pointer (the red zone) given values, which must be there after it;
+ *   t_sc_ymm        the upper half of ymm1, which Windows' own code under the call may clear (vzeroupper);
+ *   t_sc_after      a jump to the syscall itself, so nothing before it can be taken: the instruction after it is;
+ *   t_sc6           a C function of six arguments around it, as a library's own syscall() is (mmap, munmap, close);
+ *   t_sc_on_stack   on a stack of the caller's, not the thread's (a goroutine's), where the core has to take one of its own;
+ *   t_sc_left       one with a jump before it, a return after it and a jump into it: left as it is, and never called.
+ */
+__asm__(".text\n"
+        ".globl t_sc_getpid\n.type t_sc_getpid, @function\n"
+        "t_sc_getpid:\n"
+        "  movl $39, %eax\n"
+        "  syscall\n"
+        "  ret\n"
+        ".size t_sc_getpid, .-t_sc_getpid\n"
+
+        ".globl t_sc_keep\n.type t_sc_keep, @function\n"
+        "t_sc_keep:\n"
+        "  pushq %rbx\n  pushq %rbp\n  pushq %r12\n  pushq %r13\n  pushq %r14\n  pushq %r15\n  pushq %rdi\n"
+        "  movq $0x5a5a5a5a, -24(%rsp)\n  movq $0x5a5a5a5a, -64(%rsp)\n  movq $0x5a5a5a5a, -120(%rsp)\n  movq $0x5a5a5a5a, -128(%rsp)\n"
+        "  movabsq $0x0102030405060708, %rax\n  movq %rax, %xmm0\n  movabsq $0x1112131415161718, %rax\n  movq %rax, %xmm1\n"
+        "  punpcklqdq %xmm1, %xmm0\n"
+        "  movabsq $0x2122232425262728, %rax\n  movq %rax, %xmm15\n  movabsq $0x3132333435363738, %rax\n  movq %rax, %xmm1\n"
+        "  punpcklqdq %xmm1, %xmm15\n"
+        "  movabsq $0x1111111111111111, %rbx\n  movabsq $0x2222222222222222, %rbp\n  movabsq $0x3333333333333333, %rsi\n"
+        "  movabsq $0x4444444444444444, %rdx\n  movabsq $0x5555555555555555, %r8\n  movabsq $0x6666666666666666, %r9\n"
+        "  movabsq $0x7777777777777777, %r10\n  movabsq $0x0888888888888888, %r12\n  movabsq $0x0999999999999999, %r13\n"
+        "  movabsq $0x0aaaaaaaaaaaaaaa, %r14\n  movabsq $0x0bbbbbbbbbbbbbbb, %r15\n"
+        "  stc\n  std\n"
+        "  movl $39, %eax\n"
+        "  syscall\n"
+        "  pushq %rax\n  pushfq\n  cld\n"
+        "  movq 16(%rsp), %rax\n"
+        "  movq %rbx, 0(%rax)\n  movq %rbp, 8(%rax)\n  movq %rsi, 16(%rax)\n  movq %rdx, 24(%rax)\n  movq %r8, 32(%rax)\n"
+        "  movq %r9, 40(%rax)\n  movq %r10, 48(%rax)\n  movq %r12, 56(%rax)\n  movq %r13, 64(%rax)\n  movq %r14, 72(%rax)\n"
+        "  movq %r15, 80(%rax)\n  movq %rdi, 88(%rax)\n"
+        "  movq 0(%rsp), %rcx\n  movq %rcx, 96(%rax)\n  movq 8(%rsp), %rcx\n  movq %rcx, 104(%rax)\n"
+        "  movdqu %xmm0, 112(%rax)\n  movdqu %xmm15, 128(%rax)\n"
+        "  movq -8(%rsp), %rcx\n  movq %rcx, 144(%rax)\n  movq -48(%rsp), %rcx\n  movq %rcx, 152(%rax)\n"
+        "  movq -104(%rsp), %rcx\n  movq %rcx, 160(%rax)\n  movq -112(%rsp), %rcx\n  movq %rcx, 168(%rax)\n"
+        "  addq $16, %rsp\n"
+        "  popq %rdi\n  popq %r15\n  popq %r14\n  popq %r13\n  popq %r12\n  popq %rbp\n  popq %rbx\n"
+        "  ret\n"
+        ".size t_sc_keep, .-t_sc_keep\n"
+
+        ".globl t_sc_ymm\n.type t_sc_ymm, @function\n"
+        "t_sc_ymm:\n"
+        "  movdqu (%rdi), %xmm2\n"
+        "  .byte 0xc4, 0xe3, 0x75, 0x18, 0xca, 0x01\n"           /* vinsertf128 $1, %xmm2, %ymm1, %ymm1 */
+        "  movl $39, %eax\n"
+        "  syscall\n"
+        "  .byte 0xc4, 0xe3, 0x7d, 0x19, 0xcb, 0x01\n"           /* vextractf128 $1, %ymm1, %xmm3 */
+        "  movdqu %xmm3, 16(%rdi)\n"
+        "  .byte 0xc5, 0xf8, 0x77\n"                             /* vzeroupper */
+        "  ret\n"
+        ".size t_sc_ymm, .-t_sc_ymm\n"
+
+        ".globl t_sc_after\n.type t_sc_after, @function\n"
+        "t_sc_after:\n"
+        "  movl $39, %eax\n"
+        "  jmp 1f\n"
+        "1:\n"
+        "  syscall\n"
+        "  movq %rax, %rdx\n"
+        "  movq %rdx, %rax\n"
+        "  ret\n"
+        ".size t_sc_after, .-t_sc_after\n"
+
+        ".globl t_sc6\n.type t_sc6, @function\n"
+        "t_sc6:\n"
+        "  movq %rdi, %rax\n  movq %rsi, %rdi\n  movq %rdx, %rsi\n  movq %rcx, %rdx\n  movq %r8, %r10\n  movq %r9, %r8\n"
+        "  movq 8(%rsp), %r9\n"
+        "  syscall\n"
+        "  ret\n"
+        ".size t_sc6, .-t_sc6\n"
+
+        ".globl t_sc_on_stack\n.type t_sc_on_stack, @function\n"
+        "t_sc_on_stack:\n"
+        "  pushq %rbx\n"
+        "  movq %rsp, %rbx\n"
+        "  movq %rdi, %rsp\n"
+        "  movl $39, %eax\n"
+        "  syscall\n"
+        "  movq %rbx, %rsp\n"
+        "  popq %rbx\n"
+        "  ret\n"
+        ".size t_sc_on_stack, .-t_sc_on_stack\n"
+
+        ".globl t_sc_left\n.type t_sc_left, @function\n"
+        "t_sc_left:\n"
+        "  jmp 2f\n"
+        "1:\n"
+        "  syscall\n"
+        "  ret\n"
+        "2:\n"
+        "  movl $39, %eax\n"
+        "  jmp 1b\n"
+        ".size t_sc_left, .-t_sc_left\n");
+
+long t_sc_getpid(void);
+void t_sc_keep(long *out);
+void t_sc_ymm(long *io);
+long t_sc_after(void);
+long t_sc6(long nr, long a, long b, long c, long d, long e, long f);
+long t_sc_on_stack(void *top);
+
+/* Whether the processor and the system let code use AVX: cpuid's AVX and OSXSAVE, and XCR0's SSE and AVX state. */
+static int avx_usable(void)
+{
+    unsigned a, b, c, d, lo, hi;
+    __asm__ volatile("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(1), "c"(0));
+    if (!(c & (1u << 27)) || !(c & (1u << 28))) return 0;
+    __asm__ volatile(".byte 0x0f, 0x01, 0xd0" : "=a"(lo), "=d"(hi) : "c"(0));    /* xgetbv */
+    (void)hi;
+    return (lo & 6) == 6;
+}
+
+static long g_sc_pid;
+
+/* A thread of its own: calls on its stack and on another, a few hundred times. 0, or how many came back wrong. */
+static void *sc_thread(void *arg)
+{
+    char *stack = (char *)malloc(65536);
+    long bad = 0;
+    int i;
+    (void)arg;
+    if (!stack) return (void *)-1L;
+    for (i = 0; i < 300; i++) {
+        if (t_sc_getpid() != g_sc_pid) bad++;
+        if (t_sc_on_stack(stack + 65536) != g_sc_pid) bad++;
+    }
+    free(stack);
+    return (void *)bad;
+}
+
+int t_raw_syscall(void)
+{
+    static const long kept[12] = { 0x1111111111111111L, 0x2222222222222222L, 0x3333333333333333L, 0x4444444444444444L,
+                                   0x5555555555555555L, 0x6666666666666666L, 0x7777777777777777L, 0x0888888888888888L,
+                                   0x0999999999999999L, 0x0aaaaaaaaaaaaaaaL, 0x0bbbbbbbbbbbbbbbL, 0 };
+    long out[22], io[4];
+    char *stack, *map;
+    pthread_t t[4];
+    int i;
+    g_sc_pid = getpid();
+    if (g_sc_pid <= 0 || t_sc_getpid() != g_sc_pid) return 1;
+    memset(out, 0, sizeof(out));
+    t_sc_keep(out);
+    for (i = 0; i < 11; i++)
+        if (out[i] != kept[i]) return 20 + i;
+    if (out[11] != (long)out) return 31;
+    if (!(out[12] & 1) || !(out[12] & 0x400)) return 32;               /* CF and DF */
+    if (out[13] != g_sc_pid) return 33;
+    if (out[14] != 0x0102030405060708L || out[15] != 0x1112131415161718L) return 34;
+    if (out[16] != 0x2122232425262728L || out[17] != 0x3132333435363738L) return 35;
+    for (i = 18; i < 22; i++)
+        if (out[i] != 0x5a5a5a5aL) return 36;                          /* the red zone */
+    if (avx_usable()) {
+        io[0] = 0x4142434445464748L;
+        io[1] = 0x5152535455565758L;
+        io[2] = io[3] = 0;
+        t_sc_ymm(io);
+        if (io[2] != io[0] || io[3] != io[1]) return 4;
+    }
+    if (t_sc_after() != g_sc_pid) return 5;
+    map = (char *)t_sc6(9 /* mmap */, 0, 8192, 3, 0x22, -1, 0);
+    if ((long)map < 0 && (long)map > -4096) return 6;
+    map[0] = 1;
+    map[8191] = 2;
+    if (t_sc6(11 /* munmap */, (long)map, 8192, 0, 0, 0, 0) != 0) return 7;
+    if (t_sc6(3 /* close */, -1, 0, 0, 0, 0, 0) != -9) return 8;      /* -EBADF */
+    if (t_sc6(39, 0, 0, 0, 0, 0, 0) != g_sc_pid) return 9;
+    stack = (char *)malloc(65536);
+    if (!stack) return 10;
+    for (i = 0; i < 100; i++)
+        if (t_sc_on_stack(stack + 65536) != g_sc_pid) return 11;
+    free(stack);
+    if (getpid() != g_sc_pid) return 12;
+    for (i = 0; i < 4; i++)
+        if (pthread_create(&t[i], 0, sc_thread, 0) != 0) return 13;
+    for (i = 0; i < 4; i++) {
+        void *r = (void *)-1L;
+        pthread_join(t[i], &r);
+        if (r) return 14;
+    }
+    return 0;
+}
+#endif

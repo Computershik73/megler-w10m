@@ -87,6 +87,24 @@ static mg_addr stack_guard(void)
     return guard;
 }
 
+#if MG_ARCH_X86_64 && MG_GUEST_CODE
+/* Whether every block gets a stack for system calls (MG_TCB_SYSCALL): since a library has one of its own. */
+static bool g_syscall_stacks;
+
+void mg_tls_syscall_stacks(void)
+{
+    tls_block *b;
+    mg_lock_acquire(&g_tls_lock);
+    if (!g_syscall_stacks) {
+        g_syscall_stacks = true;
+        /* (Another thread's own stack is not known here: the host's thread block says it, where the entry looks.) */
+        for (b = g_blocks; b; b = b->next)
+            if (!b->tcb[MG_TCB_SYSCALL]) b->tcb[MG_TCB_SYSCALL] = mg_patch_syscall_stack_new(NULL, NULL);
+    }
+    mg_lock_release(&g_tls_lock);
+}
+#endif
+
 void **mg_tls_thread_pointer(void)
 {
     void **tp = (void **)mg_guest_tp_get();
@@ -105,6 +123,13 @@ void **mg_tls_thread_pointer(void)
     b->next = g_blocks;
     if (g_blocks) g_blocks->prev = b;
     g_blocks = b;
+#if MG_ARCH_X86_64 && MG_GUEST_CODE
+    if (g_syscall_stacks) {
+        void *lo = NULL, *hi = NULL;
+        mg_thread_stack_bounds(&lo, &hi);
+        b->tcb[MG_TCB_SYSCALL] = mg_patch_syscall_stack_new(lo, hi);
+    }
+#endif
     mg_lock_release(&g_tls_lock);
     mg_guest_tp_set(b->tcb);
     return b->tcb;
@@ -122,6 +147,9 @@ void mg_tls_thread_exit(void)
     if (b->next) b->next->prev = b->prev;
     mg_lock_release(&g_tls_lock);
     mg_guest_tp_set(NULL);
+#if MG_ARCH_X86_64 && MG_GUEST_CODE
+    if (b->tcb[MG_TCB_SYSCALL]) mg_patch_syscall_stack_free(b->tcb[MG_TCB_SYSCALL]);
+#endif
     free(b);
 }
 
