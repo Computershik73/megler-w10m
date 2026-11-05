@@ -86,10 +86,20 @@ typedef struct t_msghdr {
     size_t controllen;
     int flags;
 } t_msghdr;
+/* (The kernel's epoll_event is packed on the x86s: its data at 4, at 8 on ARM.) */
+#if MG_ARCH_X86_64 || MG_ARCH_X86
+#pragma pack(push, 4)
+#endif
 typedef struct t_epoll_event {
     u32 events;
     u64 data;
 } t_epoll_event;
+#if MG_ARCH_X86_64 || MG_ARCH_X86
+#pragma pack(pop)
+#endif
+/* A struct timeval: a time_t and a long, 16 bytes in 64-bit Android. A struct stat's st_mode: at 24 on x86_64, at 16 elsewhere. */
+typedef glong t_timeval[2];
+enum { ST_MODE_AT = MG_ARCH_X86_64 ? 24 : 16, ST_BYTES = 160 };
 typedef struct t_addrinfo {
     int ai_flags, ai_family, ai_socktype, ai_protocol;
     u32 ai_addrlen;
@@ -137,7 +147,7 @@ static struct {
     i32 (*read)(int, void *, u32);
     i32 (*write)(int, const void *, u32);
     int (*poll)(mg_pollfd *, unsigned, int);
-    int (*select)(int, u32 *, u32 *, u32 *, i32 *);
+    int (*select)(int, u32 *, u32 *, u32 *, glong *);
     int (*epoll_create1)(int);
     int (*epoll_ctl)(int, int, int, const t_epoll_event *);
     int (*epoll_wait)(int, t_epoll_event *, int, int);
@@ -261,7 +271,7 @@ typedef struct client_job {
 } client_job;
 
 /* Connects to the port (as libcore does: an IPv6 socket, the IPv4 loopback written ::ffff:127.0.0.1), says "hello", reads the answer, closes. */
-static void client_main(void *arg)
+static MG_HOSTCB void client_main(void *arg)
 {
     client_job *j = (client_job *)arg;
     u8 sa[28];
@@ -404,7 +414,7 @@ typedef struct late_job {
     int fd;
 } late_job;
 
-static void late_connect(void *arg)
+static MG_HOSTCB void late_connect(void *arg)
 {
     late_job *j = (late_job *)arg;
     u8 sa[16];
@@ -459,7 +469,7 @@ typedef struct pump_job {
 } pump_job;
 
 /* Sends `total` bytes of a pattern in pieces of changing size; blocking, or with poll for room when the socket is non-blocking. */
-static void pump_main(void *arg)
+static MG_HOSTCB void pump_main(void *arg)
 {
     pump_job *j = (pump_job *)arg;
     u8 *buf = (u8 *)mg_alloc(70000);
@@ -641,7 +651,7 @@ static void test_udp(void)
      */
     {
         u8 sa_c[16];
-        i32 tv[2] = { 2, 0 };
+        t_timeval tv = { 2, 0 };
         int c = N.socket(AF_INET_, SOCK_DGRAM_, 0), d = N.socket(AF_INET_, SOCK_DGRAM_, 0), r, e;
         CHECK(c >= 0 && d >= 0 && N.bind(d, sa_c, sa4(sa_c, k_lo4, 0)) == 0);
         len = sizeof(sa_c);
@@ -667,12 +677,12 @@ static void test_udp(void)
 static void test_ping(void)
 {
     u8 req[14] = { 8, 0, 0, 0, 0, 0, 0, 7, 'm', 'e', 'g', 'l', 'e', 'r' }, reply[64], sa[16], from[28];
-    i32 tv[2] = { 2, 0 };
+    t_timeval tv = { 2, 0 };
     u32 len, from_len;
     int s = N.socket(AF_INET_, SOCK_DGRAM_, 1 /* IPPROTO_ICMP */), n;
     u16 id;
     say("network: a ping socket: an echo request to 127.0.0.1 and its reply");
-#if !defined(_WIN32)
+#if !MG_HOST_WINDOWS
     if (s < 0) {
         say("  (no ping socket for this user here: errno %d)", err());
         return;
@@ -680,7 +690,7 @@ static void test_ping(void)
 #endif
     CHECK(s >= 0);
     if (s < 0) return;
-    CHECK(N.setsockopt(s, SOL_SOCKET_, SO_RCVTIMEO_, tv, 8) == 0);
+    CHECK(N.setsockopt(s, SOL_SOCKET_, SO_RCVTIMEO_, tv, sizeof(tv)) == 0);
     CHECK_INT(N.sendto(s, req, sizeof(req), 0, sa, sa4(sa, k_lo4, 0)), sizeof(req));
     len = sizeof(sa);
     CHECK(N.getsockname(s, sa, &len) == 0);
@@ -699,7 +709,8 @@ static void test_ping(void)
 
 static void test_options(void)
 {
-    i32 tv[2], lg[2];
+    t_timeval tv;
+    i32 lg[2];
     u32 len;
     char buf[4];
     int a, b, v, s = N.socket(AF_INET6_, SOCK_STREAM_, 0);
@@ -765,9 +776,9 @@ static void test_options(void)
     CHECK(tcp_pair(&a, &b));
     tv[0] = 0;
     tv[1] = 150000;
-    CHECK(N.setsockopt(a, SOL_SOCKET_, SO_RCVTIMEO_, tv, 8) == 0);
+    CHECK(N.setsockopt(a, SOL_SOCKET_, SO_RCVTIMEO_, tv, sizeof(tv)) == 0);
     memset(tv, 0, sizeof(tv));
-    len = 8;
+    len = sizeof(tv);
     CHECK(N.getsockopt(a, SOL_SOCKET_, SO_RCVTIMEO_, tv, &len) == 0 && tv[0] == 0 && tv[1] == 150000);
     t0 = now_ms();
     CHECK(N.recv(a, buf, 1, 0) == -1 && err() == GE_AGAIN);
@@ -782,13 +793,13 @@ static void test_options(void)
 
 static void test_descriptor(void)
 {
-    u8 st[128];
+    u8 st[ST_BYTES];
     char buf[8];
     int a, b, n = 0, d;
     say("network: a socket is a descriptor: fstat, fcntl, ioctl, dup, read and write");
     CHECK(tcp_pair(&a, &b));
     memset(st, 0, sizeof(st));
-    CHECK(N.fstat(a, st) == 0 && (mg_rd32(st + 16) & S_IFMT_) == S_IFSOCK_);
+    CHECK(N.fstat(a, st) == 0 && (mg_rd32(st + ST_MODE_AT) & S_IFMT_) == S_IFSOCK_);
     CHECK(N.write(a, "abc", 3) == 3);
     /* FIONREAD says what is there once it is. */
     {
@@ -813,7 +824,7 @@ typedef struct poke_job {
     bool eventfd;
 } poke_job;
 
-static void poke_main(void *arg)
+static MG_HOSTCB void poke_main(void *arg)
 {
     poke_job *j = (poke_job *)arg;
     u64 one = 1;
@@ -847,7 +858,7 @@ static void test_waiting(void)
     mg_pollfd p[3];
     t_epoll_event ev, out[4];
     u32 rd[32], wr[32];
-    i32 tv[2];
+    t_timeval tv;
     char buf[8];
     u64 drained, t0;
     int a, b, fds[2], efd, ep, r, top;
@@ -948,7 +959,7 @@ static void test_waiting(void)
 static void test_unix(void)
 {
     mg_pollfd p;
-    u8 st[128], sa[112];
+    u8 st[ST_BYTES], sa[112];
     char buf[16];
     t_msghdr m;
     t_iovec iov;
@@ -959,7 +970,7 @@ static void test_unix(void)
     CHECK(N.write(sv[0], "ping", 4) == 4 && N.read(sv[1], buf, sizeof(buf)) == 4 && !memcmp(buf, "ping", 4));
     CHECK(N.send(sv[1], "pong", 4, 0) == 4 && N.recv(sv[0], buf, sizeof(buf), 0) == 4 && !memcmp(buf, "pong", 4));
     memset(st, 0, sizeof(st));
-    CHECK(N.fstat(sv[0], st) == 0 && (mg_rd32(st + 16) & S_IFMT_) == S_IFSOCK_);
+    CHECK(N.fstat(sv[0], st) == 0 && (mg_rd32(st + ST_MODE_AT) & S_IFMT_) == S_IFSOCK_);
     len = 4;
     CHECK(N.getsockopt(sv[0], SOL_SOCKET_, SO_TYPE_, &v, &len) == 0 && v == SOCK_STREAM_);
     /* Nothing to read: poll waits; written, it ends. */
@@ -1133,7 +1144,7 @@ static void test_names(void)
 static void test_interfaces(void)
 {
     t_ifaddrs *list = NULL, *f;
-    u8 rq[32];
+    u8 rq[40];                                       /* a struct ifreq: 32 bytes in 32-bit Android, 40 in 64-bit */
     char name[16];
     bool lo_link = false, lo_v4 = false;
     int s, count = 0;
@@ -1385,7 +1396,7 @@ typedef struct serve_job {
 } serve_job;
 
 /* The check's own server: one connection, one request line, one answer. */
-static void serve_main(void *arg)
+static MG_HOSTCB void serve_main(void *arg)
 {
     serve_job *j = (serve_job *)arg;
     char line[100];

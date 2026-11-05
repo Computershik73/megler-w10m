@@ -136,19 +136,27 @@ static void count_one(const mg_zip_entry *e, void *user)
     if (n > 3 && !strcmp(e->name + n - 3, ".so")) ++*(int *)user;
 }
 
-/* armeabi-v7a when any APK has it; the older armeabi (ARMv5, which every ARMv7 runs) otherwise. */
+/*
+ * The ABIs whose libraries are loaded, the best first (MG_APK_ABI_ARM): armeabi-v7a when any APK has it, the older armeabi
+ * (ARMv5, which every ARMv7 runs) otherwise; elsewhere the processor's own.
+ */
+#if MG_APK_ABI_ARM
+static const char *const g_abis[] = { "armeabi-v7a", "armeabi" };
+#else
+static const char *const g_abis[] = { MG_GUEST_ABI };
+#endif
+
 const char *mg_ld_abi(void)
 {
-    static const char *const abis[] = { "armeabi-v7a", "armeabi" };
     int a, i;
     if (g_abi) return g_abi;
-    for (a = 0; a < 2; a++) {
+    for (a = 0; a < (int)MG_COUNT(g_abis); a++) {
         char prefix[40];
         int n = 0;
-        snprintf(prefix, sizeof(prefix), "lib/%s/", abis[a]);
+        snprintf(prefix, sizeof(prefix), "lib/%s/", g_abis[a]);
         for (i = 0; i < g_napks; i++) mg_zip_each(&g_apks[i], prefix, count_one, &n);
         if (n) {
-            g_abi = abis[a];
+            g_abi = g_abis[a];
             return g_abi;
         }
     }
@@ -161,12 +169,14 @@ static const mg_zip_entry *apk_lib(const char *name, const mg_zip **in)
     char path[300];
     int i;
     if (g_service_scope) {
-        const mg_zip_entry *e;
+        const mg_zip_entry *e = NULL;
+        int a;
         if (g_service_scope >= MG_LD_MAX_SCOPES || !g_service_apk_ready[g_service_scope]) return NULL;
         *in = &g_service_apks[g_service_scope];
-        snprintf(path, sizeof(path), "lib/armeabi-v7a/%s", name);
-        e = mg_zip_find(*in, path);
-        if (!e) { snprintf(path, sizeof(path), "lib/armeabi/%s", name); e = mg_zip_find(*in, path); }
+        for (a = 0; a < (int)MG_COUNT(g_abis) && !e; a++) {
+            snprintf(path, sizeof(path), "lib/%s/%s", g_abis[a], name);
+            e = mg_zip_find(*in, path);
+        }
         return e;
     }
     if (!abi) return NULL;
@@ -348,7 +358,7 @@ static u32 sysv_hash(const char *s)
     return h;
 }
 
-static bool sym_exported(const Elf32_Sym *s)
+static bool sym_exported(const ElfW(Sym) *s)
 {
     int bind = ELF_ST_BIND(s->st_info);
     if (s->st_shndx == SHN_UNDEF) return false;
@@ -358,18 +368,19 @@ static bool sym_exported(const Elf32_Sym *s)
     return true;
 }
 
-static const Elf32_Sym *lib_lookup(const mg_lib *lib, const char *name, u32 gh, u32 sh)
+static const ElfW(Sym) *lib_lookup(const mg_lib *lib, const char *name, u32 gh, u32 sh)
 {
     if (lib->gnu_buckets) {
-        u32 word = lib->gnu_bloom[(gh / 32) % lib->gnu_bloom_size];
-        u32 mask = (1u << (gh % 32)) | (1u << ((gh >> lib->gnu_bloom_shift) % 32));
+        enum { BITS = sizeof(mg_addr) * 8 };
+        mg_addr word = lib->gnu_bloom[(gh / BITS) % lib->gnu_bloom_size];
+        mg_addr mask = ((mg_addr)1 << (gh % BITS)) | ((mg_addr)1 << ((gh >> lib->gnu_bloom_shift) % BITS));
         u32 i;
         if ((word & mask) != mask) return NULL;
         i = lib->gnu_buckets[gh % lib->gnu_nbuckets];
         if (i < lib->gnu_symoffset) return NULL;
         for (;; i++) {
             u32 hh = lib->gnu_chain[i - lib->gnu_symoffset];
-            const Elf32_Sym *s = &lib->symtab[i];
+            const ElfW(Sym) *s = &lib->symtab[i];
             if ((hh | 1) == (gh | 1) && sym_exported(s) && !strcmp(lib->strtab + s->st_name, name)) return s;
             if (hh & 1) break;
         }
@@ -378,14 +389,14 @@ static const Elf32_Sym *lib_lookup(const mg_lib *lib, const char *name, u32 gh, 
     if (lib->sysv_bucket && lib->sysv_nbucket) {
         u32 i;
         for (i = lib->sysv_bucket[sh % lib->sysv_nbucket]; i && i < lib->sysv_nchain; i = lib->sysv_chain[i]) {
-            const Elf32_Sym *s = &lib->symtab[i];
+            const ElfW(Sym) *s = &lib->symtab[i];
             if (sym_exported(s) && !strcmp(lib->strtab + s->st_name, name)) return s;
         }
     }
     return NULL;
 }
 
-static mg_addr sym_address(const mg_lib *lib, const Elf32_Sym *s)
+static mg_addr sym_address(const mg_lib *lib, const ElfW(Sym) *s)
 {
     mg_addr a = (mg_addr)lib->base + s->st_value;
     /* An IFUNC's resolver runs on the first pass only when nothing deferred it; otherwise its address is the resolver's. */
@@ -394,7 +405,7 @@ static mg_addr sym_address(const mg_lib *lib, const Elf32_Sym *s)
 }
 
 /* Who defines `name` for an import of `lib`: its own scope, then the system, then any library of its own kind. */
-static bool resolve(mg_lib *lib, const char *name, mg_addr *addr, const Elf32_Sym **sym, mg_lib **def)
+static bool resolve(mg_lib *lib, const char *name, mg_addr *addr, const ElfW(Sym) **sym, mg_lib **def)
 {
     u32 gh = gnu_hash(name), sh = sysv_hash(name);
     void *sys;
@@ -409,7 +420,7 @@ static bool resolve(mg_lib *lib, const char *name, mg_addr *addr, const Elf32_Sy
         }
     }
     for (i = 0; i < lib->nscope; i++) {
-        const Elf32_Sym *s = lib_lookup(lib->scope[i], name, gh, sh);
+        const ElfW(Sym) *s = lib_lookup(lib->scope[i], name, gh, sh);
         if (s) {
             *sym = s;
             *def = lib->scope[i];
@@ -425,7 +436,7 @@ static bool resolve(mg_lib *lib, const char *name, mg_addr *addr, const Elf32_Sy
         return true;
     }
     for (l = g_libs; l; l = l->next) {
-        const Elf32_Sym *s = l->runtime == lib->runtime && l->service_scope == lib->service_scope ? lib_lookup(l, name, gh, sh) : NULL;
+        const ElfW(Sym) *s = l->runtime == lib->runtime && l->service_scope == lib->service_scope ? lib_lookup(l, name, gh, sh) : NULL;
         if (s) {
             *sym = s;
             *def = l;
@@ -444,17 +455,17 @@ typedef struct reloc_ctx {
     u32 cached_index;
     bool cached_ok;
     mg_addr cached_addr;
-    const Elf32_Sym *cached_sym;
+    const ElfW(Sym) *cached_sym;
     mg_lib *cached_def;
     bool failed;
     /* 1: the relocations that run no guest code; 2: IFUNC and IRELATIVE, whose resolvers run on the now-executable text. */
     int phase;
 } reloc_ctx;
 
-static bool reloc_symbol(reloc_ctx *c, u32 index, bool want_fn, mg_addr *addr, const Elf32_Sym **sym, mg_lib **def)
+static bool reloc_symbol(reloc_ctx *c, u32 index, bool want_fn, mg_addr *addr, const ElfW(Sym) **sym, mg_lib **def)
 {
     mg_lib *lib = c->lib;
-    const Elf32_Sym *own;
+    const ElfW(Sym) *own;
     const char *name;
     if (c->cached_ok && c->cached_index == index) {
         *addr = c->cached_addr;
@@ -473,6 +484,9 @@ static bool reloc_symbol(reloc_ctx *c, u32 index, bool want_fn, mg_addr *addr, c
         *def = NULL;
         if (ELF_ST_BIND(own->st_info) == STB_WEAK) {
             *addr = 0;
+        } else if (c->phase != 1) {
+            /* Counted, said and given its stub on the first pass: the second applies only what resolvers give, which this is not. */
+            *addr = 0;
         } else {
             g_unresolved++;
             lib->stats.unresolved++;
@@ -490,24 +504,33 @@ static bool reloc_symbol(reloc_ctx *c, u32 index, bool want_fn, mg_addr *addr, c
     return true;
 }
 
-static void apply_reloc(reloc_ctx *c, u32 r_offset, u32 r_info)
+/* A word of the guest's at `place`: 32 bits on the 32-bit ABIs, 64 on the others. */
+static mg_addr rd_word(const u8 *place) { mg_addr v; memcpy(&v, place, sizeof(v)); return v; }
+static void wr_word(u8 *place, mg_addr v) { memcpy(place, &v, sizeof(v)); }
+
+/*
+ * One relocation. `addend` is RELA's (the 64-bit ABIs), or for REL (the 32-bit ones) what the place holds, read here when
+ * `has_addend` is false. The values are the same on every processor, but for TLS: a thread pointer offset is from the
+ * guest's thread pointer to the variable, which is this layer's own block (ld/mg_tls.c) and not x86's variant II, and
+ * code adds it to the pointer whichever way the architecture lays its static TLS out.
+ */
+static void apply_reloc(reloc_ctx *c, mg_addr r_offset, mg_addr r_info, mg_addr addend, bool has_addend)
 {
     mg_lib *lib = c->lib;
-    u32 type = ELF_R_TYPE(r_info), index = ELF_R_SYM(r_info);
+    u32 type = (u32)ELFW_R_TYPE(r_info), index = (u32)ELFW_R_SYM(r_info);
     u8 *place;
     mg_addr s = 0;
-    const Elf32_Sym *sym = NULL;
+    const ElfW(Sym) *sym = NULL;
     mg_lib *def = NULL;
-    u32 addend;
-    if (type == R_ARM_NONE) return;
-    if (r_offset < lib->vmin || r_offset > lib->vmax - 4) {
-        mg_err("ld: %s: relocation outside the image (0x%x)", lib->name, r_offset);
+    if (type == MG_R_NONE) return;
+    if (r_offset < lib->vmin || r_offset > lib->vmax - sizeof(mg_addr)) {
+        mg_err("ld: %s: relocation outside the image (0x%llx)", lib->name, (unsigned long long)r_offset);
         c->failed = true;
         return;
     }
     place = lib->base + r_offset;
-    addend = mg_rd32(place);
-    if (index && !reloc_symbol(c, index, type == R_ARM_JUMP_SLOT, &s, &sym, &def)) {
+    if (!has_addend) addend = rd_word(place);
+    if (index && !reloc_symbol(c, index, type == MG_R_JUMP_SLOT, &s, &sym, &def)) {
         c->failed = true;
         return;
     }
@@ -516,60 +539,49 @@ static void apply_reloc(reloc_ctx *c, u32 r_offset, u32 r_info)
      * pass, when the text that holds the resolver is executable; every other relocation on the first. (In the first pass,
      * sym_address returned the resolver's own address, not its result, so sym still tells an IFUNC apart.)
      */
-    if (((type == R_ARM_IRELATIVE) || (sym && ELF_ST_TYPE(sym->st_info) == STT_GNU_IFUNC)) != (c->phase == 2)) return;
-    switch (type) {
-    case R_ARM_RELATIVE:
-        mg_wr32(place, (u32)((mg_addr)lib->base + addend));
-        break;
-    case R_ARM_ABS32:
-        mg_wr32(place, (u32)(s + addend));
-        break;
-    case R_ARM_REL32:
-        mg_wr32(place, (u32)(s + addend - (mg_addr)place));
-        break;
-    case R_ARM_GLOB_DAT:
-    case R_ARM_JUMP_SLOT:
-        mg_wr32(place, (u32)s);
-        break;
-    case R_ARM_IRELATIVE:
-        mg_wr32(place, (u32)MG_GFN(mg_addr (*)(void), (mg_addr)lib->base + addend)());
-        break;
-    case R_ARM_TLS_DTPMOD32:
-        mg_wr32(place, index ? (def ? def->tls_module : 0) : lib->tls_module);
-        break;
-    case R_ARM_TLS_DTPOFF32:
-        mg_wr32(place, (u32)(s + addend));
-        break;
-    case R_ARM_TLS_TPOFF32: {
+    if (((type == MG_R_IRELATIVE) || (sym && ELF_ST_TYPE(sym->st_info) == STT_GNU_IFUNC)) != (c->phase == 2)) return;
+    if (type == MG_R_RELATIVE) {
+        wr_word(place, (mg_addr)lib->base + addend);
+    } else if (type == MG_R_ABS) {
+        wr_word(place, s + addend);
+    } else if (type == MG_R_PCREL) {
+        wr_word(place, s + addend - (mg_addr)place);
+    } else if (type == MG_R_GLOB_DAT || type == MG_R_JUMP_SLOT) {
+        /* (RELA's addend is added on ARM64, as its psABI says; x86_64's is 0.) */
+        wr_word(place, MG_RELOC_RELA ? s + addend : s);
+    } else if (type == MG_R_IRELATIVE) {
+        wr_word(place, MG_GFN(mg_addr (*)(void), (mg_addr)lib->base + addend)());
+    } else if (type == MG_R_DTPMOD) {
+        wr_word(place, index ? (def ? def->tls_module : 0) : lib->tls_module);
+    } else if (type == MG_R_DTPOFF) {
+        wr_word(place, s + addend);
+    } else if (type == MG_R_TPOFF) {
         mg_lib *owner = index ? def : lib;
         if (!owner || !owner->has_tls) {
             mg_err("ld: %s: thread-local relocation against a library with no thread-local data", lib->name);
             c->failed = true;
-            break;
+            return;
         }
-        mg_wr32(place, (u32)(owner->tls_offset + s + addend));
-        break;
-    }
-    default:
+        wr_word(place, owner->tls_offset + s + addend);
+    } else {
         mg_err("ld: %s: relocation type %u is not supported", lib->name, type);
         c->failed = true;
-        break;
     }
 }
 
-static bool sleb(const u8 **p, const u8 *end, i32 *out)
+static bool sleb(const u8 **p, const u8 *end, i64 *out)
 {
-    i32 v = 0;
+    u64 v = 0;
     u32 shift = 0;
     u8 b;
     do {
-        if (*p >= end || shift > 28) return false;
+        if (*p >= end || shift > 63) return false;
         b = *(*p)++;
-        v |= (i32)((u32)(b & 0x7f) << shift);
+        v |= (u64)(b & 0x7f) << shift;
         shift += 7;
     } while (b & 0x80);
-    if (shift < 32 && (b & 0x40)) v |= -(i32)(1u << shift);
-    *out = v;
+    if (shift < 64 && (b & 0x40)) v |= ~(u64)0 << shift;
+    *out = (i64)v;
     return true;
 }
 
@@ -577,52 +589,62 @@ static bool sleb(const u8 **p, const u8 *end, i32 *out)
 static bool apply_packed(reloc_ctx *c, const u8 *data, u32 size)
 {
     const u8 *p = data + 4, *end = data + size;
-    i32 count, offset, n = 0;
+    i64 count, offset, n = 0, addend = 0;
     if (size < 4 || memcmp(data, "APS2", 4)) {
         mg_err("ld: %s: packed relocations in an unknown format", c->lib->name);
         return false;
     }
     if (!sleb(&p, end, &count) || !sleb(&p, end, &offset)) return false;
     while (n < count) {
-        i32 group, flags, delta = 0, info = 0, i, skip;
+        i64 group, flags, delta = 0, info = 0, i, d;
         if (!sleb(&p, end, &group) || !sleb(&p, end, &flags)) return false;
         if ((flags & 2) && !sleb(&p, end, &delta)) return false;      /* grouped by offset delta */
         if ((flags & 1) && !sleb(&p, end, &info)) return false;       /* grouped by info */
-        if ((flags & 8) && (flags & 4) && !sleb(&p, end, &skip)) return false;   /* a shared addend: REL keeps none */
+        /* An addend shared by the group, or (below) one for each: deltas from the last, RELA's only (REL's are in place). */
+        if ((flags & 8) && (flags & 4)) {
+            if (!sleb(&p, end, &d)) return false;
+            addend += d;
+        } else if (!(flags & 8)) {
+            addend = 0;
+        }
         for (i = 0; i < group && n < count; i++, n++) {
             if (flags & 2) offset += delta;
             else {
-                i32 d;
                 if (!sleb(&p, end, &d)) return false;
                 offset += d;
             }
             if (!(flags & 1) && !sleb(&p, end, &info)) return false;
-            if ((flags & 8) && !(flags & 4) && !sleb(&p, end, &skip)) return false;
-            apply_reloc(c, (u32)offset, (u32)info);
+            if ((flags & 8) && !(flags & 4)) {
+                if (!sleb(&p, end, &d)) return false;
+                addend += d;
+            }
+            apply_reloc(c, (mg_addr)offset, (mg_addr)info, (mg_addr)addend, MG_RELOC_RELA != 0);
         }
     }
     return true;
 }
 
-/* RELR: an address, then bitmaps each covering the 31 words that follow the last one. */
-static void apply_relr(mg_lib *lib, const u32 *relr, u32 size)
+/* RELR: an address, then bitmaps each covering the words that follow the last one (31 on the 32-bit ABIs, 63 on the others). */
+static void apply_relr(mg_lib *lib, const mg_addr *relr, size_t size)
 {
-    u32 n = size / 4, i, where = 0;
+    enum { W = sizeof(mg_addr), BITS = sizeof(mg_addr) * 8 - 1 };
+    size_t n = size / W, i;
+    mg_addr where = 0;
     for (i = 0; i < n; i++) {
-        u32 e = relr[i];
+        mg_addr e = relr[i];
         if (!(e & 1)) {
-            if (e < lib->vmin || e > lib->vmax - 4) continue;
-            mg_wr32(lib->base + e, mg_rd32(lib->base + e) + (u32)(mg_addr)lib->base);
-            where = e + 4;
+            if (e < lib->vmin || e > lib->vmax - W) continue;
+            wr_word(lib->base + e, rd_word(lib->base + e) + (mg_addr)lib->base);
+            where = e + W;
         } else {
             u32 bit;
-            for (bit = 0; bit < 31; bit++) {
+            for (bit = 0; bit < BITS; bit++) {
                 if ((e >> (bit + 1)) & 1) {
-                    u32 at = where + bit * 4;
-                    if (at >= lib->vmin && at <= lib->vmax - 4) mg_wr32(lib->base + at, mg_rd32(lib->base + at) + (u32)(mg_addr)lib->base);
+                    mg_addr at = where + bit * W;
+                    if (at >= lib->vmin && at <= lib->vmax - W) wr_word(lib->base + at, rd_word(lib->base + at) + (mg_addr)lib->base);
                 }
             }
-            where += 31 * 4;
+            where += BITS * W;
         }
     }
 }
@@ -639,7 +661,7 @@ static void apply_relr(mg_lib *lib, const u32 *relr, u32 size)
 static bool relocate(mg_lib *lib, int phase)
 {
     reloc_ctx c;
-    u32 i;
+    size_t i;
     memset(&c, 0, sizeof(c));
     c.lib = lib;
     c.phase = phase;
@@ -650,23 +672,29 @@ static bool relocate(mg_lib *lib, int phase)
         g_defer_ifunc = false;
         return false;
     }
-    for (i = 0; i < lib->relsz / sizeof(Elf32_Rel); i++) apply_reloc(&c, lib->rel[i].r_offset, lib->rel[i].r_info);
-    for (i = 0; i < lib->pltrelsz / sizeof(Elf32_Rel); i++) apply_reloc(&c, lib->jmprel[i].r_offset, lib->jmprel[i].r_info);
+#if MG_RELOC_RELA
+    for (i = 0; i < lib->relsz / sizeof(mg_reloc); i++) apply_reloc(&c, lib->rel[i].r_offset, lib->rel[i].r_info, (mg_addr)lib->rel[i].r_addend, true);
+    for (i = 0; i < lib->pltrelsz / sizeof(mg_reloc); i++)
+        apply_reloc(&c, lib->jmprel[i].r_offset, lib->jmprel[i].r_info, (mg_addr)lib->jmprel[i].r_addend, true);
+#else
+    for (i = 0; i < lib->relsz / sizeof(mg_reloc); i++) apply_reloc(&c, lib->rel[i].r_offset, lib->rel[i].r_info, 0, false);
+    for (i = 0; i < lib->pltrelsz / sizeof(mg_reloc); i++) apply_reloc(&c, lib->jmprel[i].r_offset, lib->jmprel[i].r_info, 0, false);
+#endif
     g_defer_ifunc = false;
     return !c.failed;
 }
 
 /* ---------------------------------------------------------------- mapping */
 
-static bool in_image(const mg_lib *lib, u32 vaddr, u32 size)
+static bool in_image(const mg_lib *lib, mg_addr vaddr, mg_addr size)
 {
     return vaddr >= lib->vmin && vaddr <= lib->vmax && size <= lib->vmax - vaddr;
 }
 
 static bool parse_dynamic(mg_lib *lib)
 {
-    const Elf32_Dyn *d;
-    u32 strsz = 0, hash = 0, gnu = 0, symtab = 0, strtab = 0, rel = 0, jmprel = 0, arel = 0, relr = 0, init_array = 0, soname = 0;
+    const ElfW(Dyn) *d;
+    mg_addr strsz = 0, hash = 0, gnu = 0, symtab = 0, strtab = 0, rel = 0, jmprel = 0, arel = 0, relr = 0, init_array = 0, soname = 0;
     u32 nneeded = 0, i;
     bool have_soname = false;
     if (!lib->dyn) {
@@ -681,26 +709,36 @@ static bool parse_dynamic(mg_lib *lib)
         case DT_SYMTAB: symtab = d->d_val; break;
         case DT_HASH: hash = d->d_val; break;
         case DT_GNU_HASH: gnu = d->d_val; break;
+#if MG_RELOC_RELA
+        case DT_RELA: rel = d->d_val; break;
+        case DT_RELASZ: lib->relsz = d->d_val; break;
+        case DT_REL:
+            mg_err("ld: %s: REL relocations in a library of a 64-bit ABI, which has RELA", lib->name);
+            return false;
+        case DT_ANDROID_RELA: arel = d->d_val; break;
+        case DT_ANDROID_RELASZ: lib->android_relsz = d->d_val; break;
+#else
         case DT_REL: rel = d->d_val; break;
         case DT_RELSZ: lib->relsz = d->d_val; break;
-        case DT_JMPREL: jmprel = d->d_val; break;
-        case DT_PLTRELSZ: lib->pltrelsz = d->d_val; break;
-        case DT_PLTREL:
-            if (d->d_val != DT_REL) {
-                mg_err("ld: %s: RELA relocations in a 32-bit ARM library", lib->name);
-                return false;
-            }
-            break;
         case DT_RELA:
-            mg_err("ld: %s: RELA relocations in a 32-bit ARM library", lib->name);
+            mg_err("ld: %s: RELA relocations in a library of a 32-bit ABI, which has REL", lib->name);
             return false;
         case DT_ANDROID_REL: arel = d->d_val; break;
         case DT_ANDROID_RELSZ: lib->android_relsz = d->d_val; break;
+#endif
+        case DT_JMPREL: jmprel = d->d_val; break;
+        case DT_PLTRELSZ: lib->pltrelsz = d->d_val; break;
+        case DT_PLTREL:
+            if (d->d_val != (MG_RELOC_RELA ? DT_RELA : DT_REL)) {
+                mg_err("ld: %s: its PLT's relocations are not of its ABI's kind", lib->name);
+                return false;
+            }
+            break;
         case DT_RELR: case DT_ANDROID_RELR: relr = d->d_val; break;
         case DT_RELRSZ: case DT_ANDROID_RELRSZ: lib->relrsz = d->d_val; break;
         case DT_INIT: lib->init_fn = d->d_val; break;
         case DT_INIT_ARRAY: init_array = d->d_val; break;
-        case DT_INIT_ARRAYSZ: lib->init_array_count = d->d_val / 4; break;
+        case DT_INIT_ARRAYSZ: lib->init_array_count = (u32)(d->d_val / sizeof(mg_addr)); break;
         case DT_SONAME: soname = d->d_val; have_soname = true; break;
         default: break;
         }
@@ -710,12 +748,12 @@ static bool parse_dynamic(mg_lib *lib)
         return false;
     }
     lib->strtab = (const char *)lib->base + strtab;
-    lib->symtab = (const Elf32_Sym *)(lib->base + symtab);
-    if (rel && in_image(lib, rel, lib->relsz)) lib->rel = (const Elf32_Rel *)(lib->base + rel); else lib->relsz = 0;
-    if (jmprel && in_image(lib, jmprel, lib->pltrelsz)) lib->jmprel = (const Elf32_Rel *)(lib->base + jmprel); else lib->pltrelsz = 0;
+    lib->symtab = (const ElfW(Sym) *)(lib->base + symtab);
+    if (rel && in_image(lib, rel, lib->relsz)) lib->rel = (const mg_reloc *)(lib->base + rel); else lib->relsz = 0;
+    if (jmprel && in_image(lib, jmprel, lib->pltrelsz)) lib->jmprel = (const mg_reloc *)(lib->base + jmprel); else lib->pltrelsz = 0;
     if (arel && in_image(lib, arel, lib->android_relsz)) lib->android_rel = lib->base + arel; else lib->android_relsz = 0;
-    if (relr && in_image(lib, relr, lib->relrsz)) lib->relr = (const u32 *)(lib->base + relr); else lib->relrsz = 0;
-    if (init_array && in_image(lib, init_array, lib->init_array_count * 4)) lib->init_array = (const u32 *)(lib->base + init_array);
+    if (relr && in_image(lib, relr, lib->relrsz)) lib->relr = (const mg_addr *)(lib->base + relr); else lib->relrsz = 0;
+    if (init_array && in_image(lib, init_array, lib->init_array_count * sizeof(mg_addr))) lib->init_array = (const mg_addr *)(lib->base + init_array);
     else lib->init_array_count = 0;
 
     if (gnu && in_image(lib, gnu, 16)) {
@@ -724,10 +762,11 @@ static bool parse_dynamic(mg_lib *lib)
         lib->gnu_symoffset = g[1];
         lib->gnu_bloom_size = g[2];
         lib->gnu_bloom_shift = g[3];
-        lib->gnu_bloom = g + 4;
-        lib->gnu_buckets = lib->gnu_bloom + lib->gnu_bloom_size;
+        lib->gnu_bloom = (const mg_addr *)(g + 4);
+        lib->gnu_buckets = (const u32 *)(lib->gnu_bloom + lib->gnu_bloom_size);
         lib->gnu_chain = lib->gnu_buckets + lib->gnu_nbuckets;
-        if (!lib->gnu_nbuckets || !lib->gnu_bloom_size || !in_image(lib, gnu, 16 + 4 * (lib->gnu_bloom_size + lib->gnu_nbuckets))) {
+        if (!lib->gnu_nbuckets || !lib->gnu_bloom_size
+            || !in_image(lib, gnu, 16 + sizeof(mg_addr) * lib->gnu_bloom_size + 4 * (mg_addr)lib->gnu_nbuckets)) {
             lib->gnu_buckets = NULL;
         } else {
             /* The table does not say how many symbols there are: the last chain of the highest bucket ends them. */
@@ -785,7 +824,7 @@ static size_t count_tp_reads(const lib_source *src, u64 off, size_t size)
 }
 
 /* How much island a library may need, from its file alone: PLT entries and thread-pointer reads, plus a stub per import. */
-static size_t island_estimate(const lib_source *src, const Elf32_Phdr *ph, int phnum)
+static size_t island_estimate(const lib_source *src, const ElfW(Phdr) *ph, int phnum)
 {
     size_t need = 8192, size = src->size;
     int i;
@@ -793,13 +832,13 @@ static size_t island_estimate(const lib_source *src, const Elf32_Phdr *ph, int p
         if (ph[i].p_type == PT_LOAD && (ph[i].p_flags & PF_X) && ph[i].p_offset <= size && ph[i].p_filesz <= size - ph[i].p_offset)
             need += count_tp_reads(src, ph[i].p_offset, ph[i].p_filesz) * 16;
         if (ph[i].p_type == PT_DYNAMIC && ph[i].p_offset <= size && ph[i].p_filesz <= size - ph[i].p_offset) {
-            Elf32_Dyn *d = (Elf32_Dyn *)mg_alloc(ph[i].p_filesz + sizeof(Elf32_Dyn));
-            u32 n = ph[i].p_filesz / sizeof(Elf32_Dyn), k;
+            ElfW(Dyn) *d = (ElfW(Dyn) *)mg_alloc(ph[i].p_filesz + sizeof(ElfW(Dyn)));
+            size_t n = (size_t)(ph[i].p_filesz / sizeof(ElfW(Dyn))), k;
             if (!src_read(src, ph[i].p_offset, d, ph[i].p_filesz)) n = 0;
             for (k = 0; k < n && d[k].d_tag != DT_NULL; k++) {
                 /* 12 bytes of thunk per PLT entry, 16 of stub should its import be missing; other relocations may need stubs too. */
-                if (d[k].d_tag == DT_PLTRELSZ) need += (size_t)(d[k].d_val / 8) * 28;
-                if (d[k].d_tag == DT_RELSZ) need += (size_t)(d[k].d_val / 8) / 4;
+                if (d[k].d_tag == DT_PLTRELSZ) need += (size_t)(d[k].d_val / sizeof(mg_reloc)) * 28;
+                if (d[k].d_tag == (MG_RELOC_RELA ? DT_RELASZ : DT_RELSZ)) need += (size_t)(d[k].d_val / sizeof(mg_reloc)) / 4;
             }
             free(d);
         }
@@ -812,25 +851,25 @@ static size_t island_estimate(const lib_source *src, const Elf32_Phdr *ph, int p
  * bytes from the file, at the address that segment gives its offset; headers that do not (stripped, or made up to
  * mislead a disassembler), or more than eight such sections, and none is known: the segments are then looked at whole.
  */
-static void read_code_sections(mg_lib *lib, const lib_source *src, const Elf32_Ehdr *eh)
+static void read_code_sections(mg_lib *lib, const lib_source *src, const ElfW(Ehdr) *eh)
 {
     size_t n = eh->e_shnum, size = src->size, i;
-    Elf32_Shdr *sh;
+    ElfW(Shdr) *sh;
     int found = 0, k;
-    if (!eh->e_shoff || eh->e_shentsize != sizeof(Elf32_Shdr) || !n || n > 4096 || eh->e_shoff > size
-        || n * sizeof(Elf32_Shdr) > size - eh->e_shoff)
+    if (!eh->e_shoff || eh->e_shentsize != sizeof(ElfW(Shdr)) || !n || n > 4096 || eh->e_shoff > size
+        || n * sizeof(ElfW(Shdr)) > size - eh->e_shoff)
         return;
-    sh = (Elf32_Shdr *)mg_alloc(n * sizeof(Elf32_Shdr));
-    if (!src_read(src, eh->e_shoff, sh, n * sizeof(Elf32_Shdr))) {
+    sh = (ElfW(Shdr) *)mg_alloc(n * sizeof(ElfW(Shdr)));
+    if (!src_read(src, eh->e_shoff, sh, n * sizeof(ElfW(Shdr)))) {
         free(sh);
         return;
     }
     for (i = 0; i < n && found >= 0; i++) {
-        const Elf32_Shdr *s = &sh[i];
+        const ElfW(Shdr) *s = &sh[i];
         bool inside = false;
         if (s->sh_type != SHT_PROGBITS || (s->sh_flags & (SHF_ALLOC | SHF_EXECINSTR)) != (SHF_ALLOC | SHF_EXECINSTR) || !s->sh_size) continue;
         for (k = 0; k < lib->phnum && !inside; k++) {
-            const Elf32_Phdr *p = &lib->phdr[k];
+            const ElfW(Phdr) *p = &lib->phdr[k];
             inside = p->p_type == PT_LOAD && (p->p_flags & PF_X) && s->sh_addr >= p->p_vaddr && s->sh_size <= p->p_filesz
                 && s->sh_addr - p->p_vaddr <= p->p_filesz - s->sh_size && s->sh_offset >= p->p_offset
                 && s->sh_offset - p->p_offset == s->sh_addr - p->p_vaddr;
@@ -849,34 +888,35 @@ static void read_code_sections(mg_lib *lib, const lib_source *src, const Elf32_E
 
 static mg_lib *map_library(const char *name, const lib_source *src)
 {
-    Elf32_Ehdr ehdr;
-    const Elf32_Ehdr *eh = &ehdr;
-    Elf32_Phdr *ph;
+    ElfW(Ehdr) ehdr;
+    const ElfW(Ehdr) *eh = &ehdr;
+    ElfW(Phdr) *ph;
     mg_lib *lib;
-    u32 vmin = 0xFFFFFFFFu, vmax = 0;
+    mg_addr vmin = (mg_addr)-1, vmax = 0;
     size_t isl, image, below, size = src->size;
     u64 committed = 0;
     int i;
-    if (size < sizeof(Elf32_Ehdr) || !src_read(src, 0, &ehdr, sizeof(ehdr)) || memcmp(eh->e_ident, "\177ELF", 4)) {
+    if (size < sizeof(ElfW(Ehdr)) || !src_read(src, 0, &ehdr, sizeof(ehdr)) || memcmp(eh->e_ident, "\177ELF", 4)) {
         mg_err("ld: %s: not an ELF file", name);
         return NULL;
     }
-    if (eh->e_ident[4] != 1 || eh->e_ident[5] != 1 || eh->e_machine != EM_ARM || eh->e_type != ET_DYN) {
-        mg_err("ld: %s: not a 32-bit ARM shared object (class %u, machine %u, type %u)", name, eh->e_ident[4], eh->e_machine, eh->e_type);
+    if (eh->e_ident[4] != MG_ELFCLASS || eh->e_ident[5] != 1 || eh->e_machine != MG_EM || eh->e_type != ET_DYN) {
+        mg_err("ld: %s: not a shared object of %s (class %u, machine %u, type %u)", name, MG_GUEST_ABI, eh->e_ident[4], eh->e_machine, eh->e_type);
         return NULL;
     }
-    if (eh->e_phentsize != sizeof(Elf32_Phdr) || !eh->e_phnum || eh->e_phoff > size || (size_t)eh->e_phnum * sizeof(Elf32_Phdr) > size - eh->e_phoff) {
+    if (eh->e_phentsize != sizeof(ElfW(Phdr)) || !eh->e_phnum || eh->e_phoff > size || (size_t)eh->e_phnum * sizeof(ElfW(Phdr)) > size - eh->e_phoff) {
         mg_err("ld: %s: program headers outside the file", name);
         return NULL;
     }
-    ph = (Elf32_Phdr *)mg_alloc(sizeof(Elf32_Phdr) * eh->e_phnum);
-    if (!src_read(src, eh->e_phoff, ph, sizeof(Elf32_Phdr) * eh->e_phnum)) {
+    ph = (ElfW(Phdr) *)mg_alloc(sizeof(ElfW(Phdr)) * eh->e_phnum);
+    if (!src_read(src, eh->e_phoff, ph, sizeof(ElfW(Phdr)) * eh->e_phnum)) {
         mg_err("ld: %s: its program headers cannot be read", name);
         free(ph);
         return NULL;
     }
     for (i = 0; i < eh->e_phnum; i++) {
-        u32 lo, hi;
+        mg_addr lo, hi;
+        /* (An image's addresses within 2 GB of its start: a 32-bit process has no more, and no library is larger.) */
         if (ph[i].p_type != PT_LOAD) continue;
         if (ph[i].p_offset > size || ph[i].p_filesz > size - ph[i].p_offset || ph[i].p_filesz > ph[i].p_memsz ||
             ph[i].p_vaddr > 0x7FFFFFFFu || ph[i].p_memsz > 0x7FFFFFFFu - ph[i].p_vaddr) {
@@ -972,10 +1012,10 @@ static mg_lib *map_library(const char *name, const lib_source *src)
     }
 
     for (i = 0; i < lib->phnum; i++) {
-        const Elf32_Phdr *p = &lib->phdr[i];
-        u32 lo, hi;
-        if (p->p_type == PT_DYNAMIC) lib->dyn = (const Elf32_Dyn *)(lib->base + p->p_vaddr);
-        if (p->p_type == PT_ARM_EXIDX) {
+        const ElfW(Phdr) *p = &lib->phdr[i];
+        mg_addr lo, hi;
+        if (p->p_type == PT_DYNAMIC) lib->dyn = (const ElfW(Dyn) *)(lib->base + p->p_vaddr);
+        if (MG_ARCH_ARM32 && p->p_type == PT_ARM_EXIDX) {
             lib->exidx = lib->base + p->p_vaddr;
             lib->exidx_count = (int)(p->p_memsz / 8);
         }
@@ -983,7 +1023,7 @@ static mg_lib *map_library(const char *name, const lib_source *src)
         lo = MG_ALIGN_DOWN(p->p_vaddr, MG_PAGE);
         hi = MG_ALIGN_UP(p->p_vaddr + p->p_memsz, MG_PAGE);
         if (!mg_mem_commit(lib->base + lo, hi - lo, MG_PROT_RW) || (lib->placed && !mg_mem_protect(lib->base + lo, hi - lo, MG_PROT_RW))) {
-            mg_err("ld: %s: out of memory mapping a %u KB segment", name, (hi - lo) >> 10);
+            mg_err("ld: %s: out of memory mapping a %u KB segment", name, (unsigned)((hi - lo) >> 10));
             goto bad;
         }
         if (!src_read(src, p->p_offset, lib->base + p->p_vaddr, p->p_filesz)) {
@@ -992,7 +1032,7 @@ static mg_lib *map_library(const char *name, const lib_source *src)
         }
         committed += hi - lo;
     }
-    if (lib->dyn && !in_image(lib, (u32)((const u8 *)lib->dyn - lib->base), 8)) lib->dyn = NULL;
+    if (lib->dyn && !in_image(lib, (mg_addr)((const u8 *)lib->dyn - lib->base), 8)) lib->dyn = NULL;
     if (!parse_dynamic(lib)) goto bad;
     /* (A placed image is in the app's own mapping, a reservation of no access to it, which mg_mmap_usage does not count.) */
     mg_lock_acquire(&g_lock);
@@ -1024,12 +1064,12 @@ static bool seal_text(mg_lib *lib)
 {
     int i;
     for (i = 0; i < lib->phnum; i++) {
-        const Elf32_Phdr *p = &lib->phdr[i];
+        const ElfW(Phdr) *p = &lib->phdr[i];
         if (p->p_type == PT_LOAD && (p->p_flags & PF_X)) mg_patch_segment(lib, lib->base + p->p_vaddr, p->p_filesz);
     }
     for (i = 0; i < lib->phnum; i++) {
-        const Elf32_Phdr *p = &lib->phdr[i];
-        u32 lo, hi;
+        const ElfW(Phdr) *p = &lib->phdr[i];
+        mg_addr lo, hi;
         int prot;
         if (p->p_type != PT_LOAD) continue;
         lo = MG_ALIGN_DOWN(p->p_vaddr, MG_PAGE);
@@ -1052,10 +1092,10 @@ static bool seal_protect(mg_lib *lib)
     int i, k;
     lib->sealed = true;
     for (i = 0; i < lib->phnum; i++) {
-        const Elf32_Phdr *p = &lib->phdr[i];
+        const ElfW(Phdr) *p = &lib->phdr[i];
         if (p->p_type == PT_GNU_RELRO) {
             /* Whole pages inside the range only: the last one is shared with data that stays writable. */
-            u32 lo = MG_ALIGN_UP(p->p_vaddr, MG_PAGE), hi = MG_ALIGN_DOWN(p->p_vaddr + p->p_memsz, MG_PAGE);
+            mg_addr lo = MG_ALIGN_UP((mg_addr)p->p_vaddr, (mg_addr)MG_PAGE), hi = MG_ALIGN_DOWN((mg_addr)(p->p_vaddr + p->p_memsz), (mg_addr)MG_PAGE);
             if (hi > lo && in_image(lib, lo, hi - lo)) mg_mem_protect(lib->base + lo, hi - lo, MG_PROT_R);
         }
     }
@@ -1099,8 +1139,9 @@ static void count_functions(mg_lib *lib)
 {
     u32 i;
     for (i = 1; i < lib->nsyms; i++) {
-        const Elf32_Sym *s = &lib->symtab[i];
+        const ElfW(Sym) *s = &lib->symtab[i];
         if (s->st_shndx == SHN_UNDEF || ELF_ST_TYPE(s->st_info) != STT_FUNC) continue;
+        if (!MG_ARCH_ARM32) continue;
         if (s->st_value & 1) lib->stats.thumb_functions++;
         else lib->stats.arm_functions++;
     }
@@ -1186,7 +1227,7 @@ static mg_lib *load_lib(const char *name, bool runtime, const char *host_path)
             lib->tls_memsz = lib->phdr[i].p_memsz;
             lib->tls_align = lib->phdr[i].p_align ? lib->phdr[i].p_align : 1;
             lib->tls_image = lib->base + lib->phdr[i].p_vaddr;
-            if (!mg_tls_register(lib)) mg_err("ld: %s: no room for %u bytes of thread-local data", lib->name, lib->tls_memsz);
+            if (!mg_tls_register(lib)) mg_err("ld: %s: no room for %u bytes of thread-local data", lib->name, (unsigned)lib->tls_memsz);
         }
     }
     /*
@@ -1211,10 +1252,19 @@ static mg_lib *load_lib(const char *name, bool runtime, const char *host_path)
     if (lib->placed && lib->island[0]) note_code_range(lib->island[0], lib->island_size[0]);
     if (g_verbosity >= 1) {
         mg_info("ld: %s at %p (%u KB), %u Thumb / %u ARM functions, %u thread-pointer reads and %u PLT entries rewritten%s",
-                lib->name, (void *)(lib->base + lib->vmin), (lib->vmax - lib->vmin) >> 10, lib->stats.thumb_functions, lib->stats.arm_functions,
+                lib->name, (void *)(lib->base + lib->vmin), (unsigned)((lib->vmax - lib->vmin) >> 10), lib->stats.thumb_functions, lib->stats.arm_functions,
                 lib->stats.tp_reads, lib->stats.plt_entries, lib->stats.unresolved ? ", with unresolved imports" : "");
         if (lib->stats.unresolved) mg_warn("ld: %s: %u imports are not provided", lib->name, lib->stats.unresolved);
+#if MG_ARCH_ARM32
         if (lib->stats.tp_reads_failed) mg_err("ld: %s: %u thread-pointer reads are out of an island's reach", lib->name, lib->stats.tp_reads_failed);
+#elif MG_ARCH_X86_64 || MG_ARCH_X86
+        /* (x86/mg_patch_x86.c: libcrypto's 16 were all data among its code -- ChaCha's "expand 32-byte k", AES's tables.) */
+        if (lib->stats.tp_reads_failed)
+            mg_warn("ld: %s: %u reads of the thread pointer's segment at other places than bionic's two slots are left as they are "
+                    "(data among the code reads as such, too)", lib->name, lib->stats.tp_reads_failed);
+#else
+        if (lib->stats.tp_reads_failed) mg_err("ld: %s: %u accesses of the thread pointer are left as they are", lib->name, lib->stats.tp_reads_failed);
+#endif
     }
     load_unlock();
     return lib;
@@ -1298,8 +1348,8 @@ bool mg_ld_init(mg_lib *lib)
         if (lib->needed[k]) mg_ld_init(lib->needed[k]);
     if (lib->init_fn) MG_GFN(void (*)(int, char **, char **), (mg_addr)lib->base + lib->init_fn)(1, argv, envp);
     for (i = 0; i < lib->init_array_count; i++) {
-        u32 fn = lib->init_array[i];
-        if (!fn || fn == 0xFFFFFFFFu) continue;
+        mg_addr fn = lib->init_array[i];
+        if (!fn || fn == (mg_addr)-1) continue;
         MG_GFN(void (*)(int, char **, char **), fn)(1, argv, envp);
     }
     lib->inited = true;
@@ -1313,7 +1363,7 @@ bool mg_ld_init(mg_lib *lib)
 void *mg_ld_sym(mg_lib *lib, const char *name)
 {
     u32 gh = gnu_hash(name), sh = sysv_hash(name);
-    const Elf32_Sym *s;
+    const ElfW(Sym) *s;
     mg_lib *l;
     if (lib) {
         s = lib_lookup(lib, name, gh, sh);
@@ -1336,7 +1386,7 @@ void *mg_ld_sym_among(bool runtime, const char *name, mg_lib **found_in)
     mg_lib *l;
     if (found_in) *found_in = NULL;
     for (l = g_libs; l; l = l->next) {
-        const Elf32_Sym *s = l->runtime == runtime && l->service_scope == (runtime ? 0 : g_service_scope) ? lib_lookup(l, name, gh, sh) : NULL;
+        const ElfW(Sym) *s = l->runtime == runtime && l->service_scope == (runtime ? 0 : g_service_scope) ? lib_lookup(l, name, gh, sh) : NULL;
         if (s && ELF_ST_TYPE(s->st_info) != STT_TLS) {
             if (found_in) *found_in = l;
             return (void *)sym_address(l, s);
@@ -1350,7 +1400,7 @@ void *mg_ld_sym_deep(mg_lib *lib, const char *name, mg_lib **found_in)
     u32 gh = gnu_hash(name), sh = sysv_hash(name);
     int i;
     for (i = 0; i < lib->nscope; i++) {
-        const Elf32_Sym *s = lib_lookup(lib->scope[i], name, gh, sh);
+        const ElfW(Sym) *s = lib_lookup(lib->scope[i], name, gh, sh);
         if (s) {
             if (found_in) *found_in = lib->scope[i];
             return (void *)sym_address(lib->scope[i], s);
@@ -1426,24 +1476,25 @@ u64 mg_ld_image_bytes(void)
 const char *mg_ld_symbol_at(const void *addr, const char **lib_name, const void **sym_addr, const void **lib_base)
 {
     mg_lib *lib = mg_ld_lib_of(addr);
-    const Elf32_Sym *best = NULL;
-    u32 off, i;
+    const ElfW(Sym) *best = NULL;
+    mg_addr off;
+    u32 i;
     if (lib_name) *lib_name = lib ? lib->name : NULL;
     if (sym_addr) *sym_addr = NULL;
     if (lib_base) *lib_base = lib ? lib->base : NULL;
     if (!lib || (const u8 *)addr < lib->base + lib->vmin || (const u8 *)addr >= lib->base + lib->vmax) return NULL;
-    off = (u32)((const u8 *)addr - lib->base);
+    off = (mg_addr)((const u8 *)addr - lib->base);
     for (i = 1; i < lib->nsyms; i++) {
-        const Elf32_Sym *s = &lib->symtab[i];
-        u32 v = s->st_value & ~1u;
+        const ElfW(Sym) *s = &lib->symtab[i];
+        mg_addr v = MG_CODE_ADDR((mg_addr)s->st_value);
         int t = ELF_ST_TYPE(s->st_info);
         if (s->st_shndx == SHN_UNDEF || (t != STT_FUNC && t != STT_OBJECT)) continue;
-        if (v <= off && (!best || v > (best->st_value & ~1u))) best = s;
+        if (v <= off && (!best || v > MG_CODE_ADDR((mg_addr)best->st_value))) best = s;
     }
     if (!best) return NULL;
     /* A symbol with a size only names addresses inside it. */
-    if (best->st_size && off >= (best->st_value & ~1u) + best->st_size) return NULL;
-    if (sym_addr) *sym_addr = lib->base + (best->st_value & ~1u);
+    if (best->st_size && off >= MG_CODE_ADDR((mg_addr)best->st_value) + best->st_size) return NULL;
+    if (sym_addr) *sym_addr = lib->base + MG_CODE_ADDR((mg_addr)best->st_value);
     return lib->strtab + best->st_name;
 }
 
@@ -1480,9 +1531,9 @@ bool mg_ld_plt_target(mg_addr pc, mg_addr *target)
 {
     mg_lib *lib = mg_ld_lib_of((const void *)pc);
     int i;
-    if (!lib || (pc & 3)) return false;
+    if (!MG_ARCH_ARM32 || !lib || (pc & 3)) return false;
     for (i = 0; i < lib->phnum; i++) {
-        const Elf32_Phdr *p = &lib->phdr[i];
+        const ElfW(Phdr) *p = &lib->phdr[i];
         const u8 *lo = lib->base + p->p_vaddr;
         if (p->p_type != PT_LOAD || !(p->p_flags & PF_X)) continue;
         if ((const u8 *)pc < lo || (const u8 *)pc + 8 > lo + p->p_filesz) continue;

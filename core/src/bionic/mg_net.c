@@ -121,7 +121,7 @@
 /* Linux's default room in a socket's buffer: how much one of the app's own (AF_UNIX) holds before a writer waits. */
 #define LOCAL_ROOM 212992u
 
-/* Guest structures. Pointers and size_t are the host's own, which on the phone and under qemu are bionic's 32 bits. */
+/* Guest structures. Pointers and size_t are the core's own, which are the guest's: 32 bits on the phone, 64 in 64-bit Android. */
 typedef struct g_iovec {
     void *base;
     size_t len;
@@ -384,7 +384,7 @@ static void open_round(void)
     mg_lock_release(&g_open_lock);
 }
 
-static void open_observer(void *unused)
+static MG_HOSTCB void open_observer(void *unused)
 {
     (void)unused;
     for (;;) {
@@ -1181,35 +1181,36 @@ static i32 sock_write(void *obj, const void *buf, u32 n, bool nonblock) { return
     gsock *s = hold(fd, &held, &nonblock);              \
     if (!s) return fail_value;
 
-static i32 g_sendto(int fd, const void *buf, u32 n, int flags, const void *to, u32 tolen)
+/* (A size_t count, of which as much as a read or write moves at once is taken: mg_rw_count.) */
+static gssize g_sendto(int fd, const void *buf, size_t n, int flags, const void *to, u32 tolen)
 {
     i32 r;
     HOLD_OR_FAIL(fd, s, held, nonblock, -1)
-    r = send_any(s, buf, n, flags, to, tolen, nonblock);
+    r = send_any(s, buf, mg_rw_count(n), flags, to, tolen, nonblock);
     mg_fd_let_go(held);
     return r;
 }
 
-static i32 g_send(int fd, const void *buf, u32 n, int flags) { return g_sendto(fd, buf, n, flags, NULL, 0); }
+static gssize g_send(int fd, const void *buf, size_t n, int flags) { return g_sendto(fd, buf, n, flags, NULL, 0); }
 
-static i32 g_recvfrom(int fd, void *buf, u32 n, int flags, void *from, u32 *fromlen)
+static gssize g_recvfrom(int fd, void *buf, size_t n, int flags, void *from, u32 *fromlen)
 {
     i32 r;
     HOLD_OR_FAIL(fd, s, held, nonblock, -1)
-    r = recv_any(s, buf, n, flags, from, fromlen, NULL, nonblock);
+    r = recv_any(s, buf, mg_rw_count(n), flags, from, fromlen, NULL, nonblock);
     mg_fd_let_go(held);
     return r;
 }
 
-static i32 g_recv(int fd, void *buf, u32 n, int flags) { return g_recvfrom(fd, buf, n, flags, NULL, NULL); }
+static gssize g_recv(int fd, void *buf, size_t n, int flags) { return g_recvfrom(fd, buf, n, flags, NULL, NULL); }
 
 /* The checked forms a library built with _FORTIFY_SOURCE calls: the same, the buffer's size being the caller's business. */
-static i32 g_sendto_chk(int fd, const void *buf, u32 n, u32 buflen, int flags, const void *to, u32 tolen)
+static gssize g_sendto_chk(int fd, const void *buf, size_t n, size_t buflen, int flags, const void *to, u32 tolen)
 {
     (void)buflen;
     return g_sendto(fd, buf, n, flags, to, tolen);
 }
-static i32 g_recvfrom_chk(int fd, void *buf, u32 n, u32 buflen, int flags, void *from, u32 *fromlen)
+static gssize g_recvfrom_chk(int fd, void *buf, size_t n, size_t buflen, int flags, void *from, u32 *fromlen)
 {
     (void)buflen;
     return g_recvfrom(fd, buf, n, flags, from, fromlen);
@@ -1272,7 +1273,7 @@ static i32 recvmsg_held(gsock *s, g_msghdr *m, int flags, bool nonblock)
     return r;
 }
 
-static i32 g_sendmsg(int fd, const g_msghdr *m, int flags)
+static gssize g_sendmsg(int fd, const g_msghdr *m, int flags)
 {
     i32 r;
     HOLD_OR_FAIL(fd, s, held, nonblock, -1)
@@ -1281,7 +1282,7 @@ static i32 g_sendmsg(int fd, const g_msghdr *m, int flags)
     return r;
 }
 
-static i32 g_recvmsg(int fd, g_msghdr *m, int flags)
+static gssize g_recvmsg(int fd, g_msghdr *m, int flags)
 {
     i32 r;
     HOLD_OR_FAIL(fd, s, held, nonblock, -1)
@@ -1705,12 +1706,16 @@ static int setsockopt_held(gsock *s, int level, int name, const void *val, u32 l
         switch (name) {
         case G_SO_RCVTIMEO:
         case G_SO_SNDTIMEO: {
-            i32 sec, usec;
+            /* A struct timeval: two longs. */
+            g_timeval tv;
+            gtime sec;
+            glong usec;
             u64 ns;
             if (!p) return GE_FAULT;
-            if (len < 8) return GE_INVAL;
-            sec = (i32)mg_rd32(p);
-            usec = (i32)mg_rd32(p + 4);
+            if (len < sizeof(g_timeval)) return GE_INVAL;
+            memcpy(&tv, p, sizeof(tv));
+            sec = tv.tv_sec;
+            usec = tv.tv_usec;
             if (sec < 0 || usec < 0 || usec >= 1000000) return GE_DOM;
             ns = (u64)sec * 1000000000ull + (u64)usec * 1000ull;
             if (name == G_SO_RCVTIMEO) s->rcvtimeo = ns;
@@ -1868,7 +1873,7 @@ static int g_setsockopt(int fd, int level, int name, const void *val, u32 len)
 
 static int getsockopt_held(gsock *s, int level, int name, void *val, u32 *len)
 {
-    u8 buf[12];
+    u8 buf[16];                        /* (the largest: a struct timeval of 64-bit Android) */
     int v = 0, e = 0;
     bool local = !s->host;
     if (!val || !len) return GE_FAULT;
@@ -1892,9 +1897,11 @@ static int getsockopt_held(gsock *s, int level, int name, void *val, u32 *len)
         case G_SO_RCVTIMEO:
         case G_SO_SNDTIMEO: {
             u64 ns = name == G_SO_RCVTIMEO ? s->rcvtimeo : s->sndtimeo;
-            mg_wr32(buf, (u32)(ns / 1000000000ull));
-            mg_wr32(buf + 4, (u32)(ns % 1000000000ull / 1000ull));
-            mg_net_give(buf, 8, val, len);
+            g_timeval tv;
+            tv.tv_sec = (gtime)(ns / 1000000000ull);
+            tv.tv_usec = (glong)(ns % 1000000000ull / 1000ull);
+            memcpy(buf, &tv, sizeof(tv));
+            mg_net_give(buf, sizeof(tv), val, len);
             return 0;
         }
         case G_SO_LINGER:
@@ -2061,17 +2068,23 @@ static int sock_ioctl(void *obj, unsigned request, void *arg)
 
 /*
  * CMSG_NXTHDR, which bionic's header makes a call: the control message after `c` in the message's control data, or NULL.
- * The guest's structures are 32-bit: msghdr has msg_control at 16 and msg_controllen at 20; cmsghdr is 12 bytes, aligned
- * to 4.
+ * A struct cmsghdr is a size_t length and two ints (12 bytes in 32-bit Android, 16 in 64-bit), and each message is
+ * aligned to a long, as CMSG_ALIGN aligns it.
  */
-static u8 *g_cmsg_nxthdr(const u8 *msg, u8 *c)
+typedef struct g_cmsghdr {
+    size_t len;
+    int level, type;
+} g_cmsghdr;
+#define G_CMSG_ALIGN(n) (((n) + sizeof(gulong) - 1) & ~(sizeof(gulong) - 1))
+
+static g_cmsghdr *g_cmsg_nxthdr(const g_msghdr *msg, g_cmsghdr *c)
 {
-    u8 *control = (u8 *)(mg_addr)mg_rd32(msg + 16), *next;
-    u32 controllen = mg_rd32(msg + 20);
-    if (!c) return controllen >= 12 ? control : NULL;
-    next = c + ((mg_rd32(c) + 3u) & ~3u);
-    if ((size_t)(next + 12 - control) > controllen) return NULL;
-    return next;
+    u8 *control = (u8 *)msg->control, *next;
+    size_t controllen = msg->controllen;
+    if (!c) return controllen >= sizeof(g_cmsghdr) ? (g_cmsghdr *)control : NULL;
+    next = (u8 *)c + G_CMSG_ALIGN(c->len);
+    if ((size_t)(next + sizeof(g_cmsghdr) - control) > controllen) return NULL;
+    return (g_cmsghdr *)next;
 }
 
 /* FD_SET, FD_CLR and FD_ISSET as bionic's fortified header calls them: checked against the set's 1024 descriptors. */

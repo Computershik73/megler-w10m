@@ -6,14 +6,14 @@
 
 static volatile i32 g_starts, g_stops;
 
-static int access_fn(void *user, bool ask)
+static MEGLER_CB int access_fn(void *user, bool ask)
 {
     (void)user;
     (void)ask;
     return MEGLER_LOCATION_ON;
 }
 
-static bool start_fn(void *user, int interval_ms)
+static MEGLER_CB bool start_fn(void *user, int interval_ms)
 {
     (void)user;
     (void)interval_ms;
@@ -21,13 +21,13 @@ static bool start_fn(void *user, int interval_ms)
     return true;
 }
 
-static void stop_fn(void *user)
+static MEGLER_CB void stop_fn(void *user)
 {
     (void)user;
     mg_atomic_add(&g_stops, 1);
 }
 
-static bool last_fn(void *user, megler_location *fix)
+static MEGLER_CB bool last_fn(void *user, megler_location *fix)
 {
     long long now_ms = (long long)(mg_time_realtime_ns() / 1000000ull);
     (void)user;

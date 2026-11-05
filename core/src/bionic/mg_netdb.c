@@ -671,10 +671,12 @@ static void g_if_freenameindex(g_nameindex *v)
 }
 
 /*
- * struct ifreq: the interface's name (16 bytes), then 16 bytes that are a
+ * struct ifreq: the interface's name (16 bytes), then a union that is a
  * sockaddr, a short (flags) or an int (index, MTU) as the request has it.
+ * Its largest member, struct ifmap, holds two unsigned longs, so the union
+ * is 16 bytes in 32-bit Android and 24 in 64-bit.
  */
-#define G_IFREQ 32u
+#define G_IFREQ (16u + (MG_GUEST_LP64 ? 24u : 16u))
 
 static const mg_gif *if_named(const mg_gif *list, int n, const char *name)
 {

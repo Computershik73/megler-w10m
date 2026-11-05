@@ -851,6 +851,7 @@ static void native_tried(const char *cls, const char *name, const char *sig, cha
     snprintf(out, n, "%s%s%s", brief, full[0] ? " and " : "", full);
 }
 
+#if MG_ARCH_ARM32
 #define W8 u32, u32, u32, u32, u32, u32, u32, u32
 #define A8(b) w[b], w[(b) + 1], w[(b) + 2], w[(b) + 3], w[(b) + 4], w[(b) + 5], w[(b) + 6], w[(b) + 7]
 #define NATIVE_WORDS 120
@@ -927,6 +928,193 @@ static mg_jvalue call_native(void *fn, mg_jobj *self_or_class, const char *sig, 
     }
     return ret;
 }
+#else
+/*
+ * The other processors, where the core's own convention is the guest's (docs/DESKTOP.md): the arguments sorted as that
+ * convention sorts them, and the call made through a pointer typed so that the compiler puts each where the method looks.
+ *
+ *   x86_64 (System V): the first six integers and pointers in rdi..r9, the first eight floats and doubles in xmm0-7, the
+ *     rest on the stack in their order, eight bytes each;
+ *   ARM64 (AAPCS64, as Android has it): the same with eight integers in x0-x7 and eight in v0-v7;
+ *   x86 (cdecl): everything on the stack in order, four bytes each, a long or a double eight.
+ *
+ * On the two 64-bit ones the pointer's type is `n` integers, eight doubles and then the stack's words as variable
+ * arguments: Android's convention passes those exactly as it passes named ones once the registers are full, so they land
+ * on the stack in order. A float goes into its register as a double whose low half is its bits, which is where the
+ * method reads it. The result comes from rax / x0, or from xmm0 / d0 through a pointer typed to return a double; on x86
+ * from eax:edx, or st(0).
+ */
+#if MG_ARCH_X86_64
+#define GP_REGS 6
+#else
+#define GP_REGS 8
+#endif
+#define FP_REGS 8
+#define STACK_WORDS 120
+
+#if MG_GUEST_LP64
+static double fp_bits(u64 bits) { double d; memcpy(&d, &bits, 8); return d; }
+#endif
+
+/* `bare`: a @CriticalNative method, which is given its arguments alone: no JNIEnv, no class. */
+static mg_jvalue call_native(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args, bool bare)
+{
+    char argk[JARGS], retk;
+    int nargs, i;
+    mg_jvalue ret;
+#if MG_GUEST_LP64
+    u64 gp[GP_REGS], st[STACK_WORDS];
+    double fp[FP_REGS];
+    int ngp = 0, nfp = 0, nst = 0;
+    u64 r = 0;
+    double rd = 0;
+    ret.j = 0;
+    parse_sig(sig, argk, (int)sizeof(argk), &nargs, &retk);
+    memset(gp, 0, sizeof(gp));
+    memset(fp, 0, sizeof(fp));
+    if (!bare) {
+        gp[ngp++] = (u64)(mg_addr)mg_jni_env();
+        gp[ngp++] = (u64)(mg_addr)self_or_class;
+    }
+    for (i = 0; i < nargs; i++) {
+        u64 v;
+        bool fpc = argk[i] == 'F' || argk[i] == 'D';
+        if (argk[i] == 'F') { u32 b; memcpy(&b, &args[i].f, 4); v = b; }
+        else if (argk[i] == 'D' || argk[i] == 'J') memcpy(&v, &args[i], 8);
+        else if (argk[i] == 'L') v = (u64)(mg_addr)args[i].l;
+        else if (argk[i] == 'Z') v = (u64)(u8)args[i].z;
+        else if (argk[i] == 'B') v = (u64)(i64)args[i].b;
+        else if (argk[i] == 'C') v = (u64)args[i].c;
+        else if (argk[i] == 'S') v = (u64)(i64)args[i].s;
+        else v = (u64)(i64)args[i].i;
+        if (fpc && nfp < FP_REGS) fp[nfp++] = fp_bits(v);
+        else if (!fpc && ngp < GP_REGS) gp[ngp++] = v;
+        else if (nst < STACK_WORDS) st[nst++] = v;
+        else break;
+    }
+    if (i < nargs) {
+        mg_err("jni: a native method with more arguments than can be passed (%s)", sig);
+        return ret;
+    }
+#define S8(b) st[b], st[(b) + 1], st[(b) + 2], st[(b) + 3], st[(b) + 4], st[(b) + 5], st[(b) + 6], st[(b) + 7]
+#if MG_ARCH_X86_64
+#define GPS gp[0], gp[1], gp[2], gp[3], gp[4], gp[5]
+    typedef u64 (*int_fn)(u64, u64, u64, u64, u64, u64, double, double, double, double, double, double, double, double, ...);
+    typedef double (*fp_fn)(u64, u64, u64, u64, u64, u64, double, double, double, double, double, double, double, double, ...);
+#else
+#define GPS gp[0], gp[1], gp[2], gp[3], gp[4], gp[5], gp[6], gp[7]
+    typedef u64 (*int_fn)(u64, u64, u64, u64, u64, u64, u64, u64, double, double, double, double, double, double, double, double, ...);
+    typedef double (*fp_fn)(u64, u64, u64, u64, u64, u64, u64, u64, double, double, double, double, double, double, double, double, ...);
+#endif
+#define FPS fp[0], fp[1], fp[2], fp[3], fp[4], fp[5], fp[6], fp[7]
+    /* (The stack's words past the arguments are zero, and the method does not read them. Three sizes, as on ARM.) */
+    {
+        int pass = nst <= 8 ? 8 : nst <= 32 ? 32 : STACK_WORDS;
+        while (nst < pass) st[nst++] = 0;
+    }
+    if (retk == 'F' || retk == 'D') {
+        if (nst <= 8) rd = MG_GFN(fp_fn, fn)(GPS, FPS, S8(0));
+        else if (nst <= 32) rd = MG_GFN(fp_fn, fn)(GPS, FPS, S8(0), S8(8), S8(16), S8(24));
+        else rd = MG_GFN(fp_fn, fn)(GPS, FPS, S8(0), S8(8), S8(16), S8(24), S8(32), S8(40), S8(48), S8(56), S8(64), S8(72), S8(80), S8(88),
+                                     S8(96), S8(104), S8(112));
+        memcpy(&r, &rd, 8);
+    } else {
+        if (nst <= 8) r = MG_GFN(int_fn, fn)(GPS, FPS, S8(0));
+        else if (nst <= 32) r = MG_GFN(int_fn, fn)(GPS, FPS, S8(0), S8(8), S8(16), S8(24));
+        else r = MG_GFN(int_fn, fn)(GPS, FPS, S8(0), S8(8), S8(16), S8(24), S8(32), S8(40), S8(48), S8(56), S8(64), S8(72), S8(80), S8(88),
+                                     S8(96), S8(104), S8(112));
+    }
+#undef GPS
+#undef FPS
+#undef S8
+    switch (retk) {
+    case 'V': break;
+    case 'J': case 'D': memcpy(&ret, &r, 8); break;
+    case 'F': { u32 lo = (u32)r; memcpy(&ret.f, &lo, 4); break; }
+    case 'L': ret.l = (mg_jobj *)(mg_addr)r; break;
+    case 'Z': ret.i = (u8)r; break;
+    case 'B': ret.i = (i8)r; break;
+    case 'C': ret.i = (u16)r; break;
+    case 'S': ret.i = (i16)r; break;
+    default: ret.i = (i32)(u32)r; break;
+    }
+    return ret;
+#else
+    /* x86: words of four bytes on the stack, a 64-bit value in two of them in order, nothing aligned. */
+    u32 w[STACK_WORDS];
+    int n = 0;
+    u64 r;
+    ret.j = 0;
+    parse_sig(sig, argk, (int)sizeof(argk), &nargs, &retk);
+    if (!bare) {
+        w[n++] = (u32)(mg_addr)mg_jni_env();
+        w[n++] = (u32)(mg_addr)self_or_class;
+    }
+    for (i = 0; i < nargs; i++) {
+        if (argk[i] == 'J' || argk[i] == 'D') {
+            u64 v;
+            if (n + 2 > STACK_WORDS) break;
+            memcpy(&v, &args[i], 8);
+            w[n++] = (u32)v;
+            w[n++] = (u32)(v >> 32);
+        } else {
+            if (n + 1 > STACK_WORDS) break;
+            if (argk[i] == 'F') memcpy(&w[n++], &args[i].f, 4);
+            else if (argk[i] == 'L') w[n++] = (u32)(mg_addr)args[i].l;
+            else if (argk[i] == 'Z') w[n++] = (u32)(u8)args[i].z;
+            else if (argk[i] == 'B') w[n++] = (u32)(i32)args[i].b;
+            else if (argk[i] == 'C') w[n++] = args[i].c;
+            else if (argk[i] == 'S') w[n++] = (u32)(i32)args[i].s;
+            else w[n++] = (u32)args[i].i;
+        }
+    }
+    if (i < nargs) {
+        mg_err("jni: a native method with more arguments than can be passed (%s)", sig);
+        return ret;
+    }
+#define W8 u32, u32, u32, u32, u32, u32, u32, u32
+#define A8(b) w[b], w[(b) + 1], w[(b) + 2], w[(b) + 3], w[(b) + 4], w[(b) + 5], w[(b) + 6], w[(b) + 7]
+    {
+        int pass = n <= 24 ? 24 : n <= 56 ? 56 : STACK_WORDS;
+        while (n < pass) w[n++] = 0;
+    }
+    if (retk == 'F' || retk == 'D') {
+        typedef double (*fp24)(W8, W8, W8);
+        typedef double (*fp56)(W8, W8, W8, W8, W8, W8, W8);
+        typedef double (*fp120)(W8, W8, W8, W8, W8, W8, W8, W8, W8, W8, W8, W8, W8, W8, W8);
+        double d;
+        if (n <= 24) d = MG_GFN(fp24, fn)(A8(0), A8(8), A8(16));
+        else if (n <= 56) d = MG_GFN(fp56, fn)(A8(0), A8(8), A8(16), A8(24), A8(32), A8(40), A8(48));
+        else d = MG_GFN(fp120, fn)(A8(0), A8(8), A8(16), A8(24), A8(32), A8(40), A8(48), A8(56), A8(64), A8(72), A8(80), A8(88), A8(96), A8(104), A8(112));
+        /* (st(0) as a double: a float's value, exactly, which is then made a float again.) */
+        if (retk == 'D') ret.d = d;
+        else ret.f = (float)d;
+        return ret;
+    } else {
+        typedef u64 (*fn24)(W8, W8, W8);
+        typedef u64 (*fn56)(W8, W8, W8, W8, W8, W8, W8);
+        typedef u64 (*fn120)(W8, W8, W8, W8, W8, W8, W8, W8, W8, W8, W8, W8, W8, W8, W8);
+        if (n <= 24) r = MG_GFN(fn24, fn)(A8(0), A8(8), A8(16));
+        else if (n <= 56) r = MG_GFN(fn56, fn)(A8(0), A8(8), A8(16), A8(24), A8(32), A8(40), A8(48));
+        else r = MG_GFN(fn120, fn)(A8(0), A8(8), A8(16), A8(24), A8(32), A8(40), A8(48), A8(56), A8(64), A8(72), A8(80), A8(88), A8(96), A8(104), A8(112));
+    }
+#undef W8
+#undef A8
+    switch (retk) {
+    case 'V': break;
+    case 'J': memcpy(&ret, &r, 8); break;
+    case 'L': ret.l = (mg_jobj *)(mg_addr)(u32)r; break;
+    case 'Z': ret.i = (u8)r; break;
+    case 'B': ret.i = (i8)r; break;
+    case 'C': ret.i = (u16)r; break;
+    case 'S': ret.i = (i16)r; break;
+    default: ret.i = (i32)(u32)r; break;
+    }
+    return ret;
+#endif
+}
+#endif
+
 
 mg_jvalue mg_jni_call_native(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args)
 {
@@ -940,19 +1128,30 @@ mg_jvalue mg_jni_call_native(void *fn, mg_jobj *self_or_class, const char *sig, 
  * no stub setjmp (a host that is not ARM32), a plain call.
  */
 #if defined(__GNUC__) || defined(__clang__)
-typedef int (*setjmp_stub_fn)(u32 *jb) __attribute__((returns_twice));
+typedef int (*setjmp_stub_fn)(mg_addr *jb) __attribute__((returns_twice));
 #else
-typedef int (*setjmp_stub_fn)(u32 *jb);
+typedef int (*setjmp_stub_fn)(mg_addr *jb);
+#endif
+#if !MG_ARCH_ARM32 && MG_GUEST_CODE
+/* core/src/crt/mg_crt_setjmp.c: the core's own, of the guest's convention (docs/DESKTOP.md). */
+int mg_setjmp(mg_addr *jb) __attribute__((returns_twice));
 #endif
 
 static MG_NOINLINE int guarded(void *fn, mg_jobj *self_or_class, const char *sig, const mg_jvalue *args, mg_jvalue *out)
 {
     mg_gthread *t = mg_gthread_self();
-    u32 jb[32];
+    mg_addr jb[32];
     /* (A comparison, unless a library left as the file has it was loaded since this thread last called native code.) */
     mg_gthread_take_breakpoints(t);
-    u32 *volatile outer = t->fault_guard;
-    void *setjmp_stub = mg_stub(MG_STUB_SETJMP);
+    mg_addr *volatile outer = t->fault_guard;
+#if !MG_ARCH_ARM32 && MG_GUEST_CODE
+    /* (Called by its own name, which the compiler knows returns twice: through a pointer it would not.) */
+    if (mg_setjmp(jb) != 0) {
+        t->fault_guard = outer;
+        return 1;
+    }
+#else
+    void *setjmp_stub = MG_ARCH_ARM32 ? mg_stub(MG_STUB_SETJMP) : NULL;
     if (!setjmp_stub) {
         *out = call_native(fn, self_or_class, sig, args, false);
         return 0;
@@ -961,6 +1160,7 @@ static MG_NOINLINE int guarded(void *fn, mg_jobj *self_or_class, const char *sig
         t->fault_guard = outer;
         return 1;
     }
+#endif
     t->fault_guard = jb;
     *out = call_native(fn, self_or_class, sig, args, false);
     t->fault_guard = outer;
@@ -1395,8 +1595,8 @@ static mg_jobj *j_NewObject(JNIEnvP e, mg_jobj *cls, jmeth *m, ...)
 }
 
 /*
- * The Call<Type>Method families. Floating-point results go back as bits in
- * integer registers, like every float that crosses to the guest.
+ * The Call<Type>Method families. Floating-point results go back as the guest's convention has them (gfloat, gdouble): as
+ * bits in integer registers on 32-bit ARM, like every float that crosses to the guest there.
  */
 #define RET_L(v) return (v).l
 /* A field read hands the guest a reference of its own, which it may delete. */
@@ -1407,8 +1607,8 @@ static mg_jobj *j_NewObject(JNIEnvP e, mg_jobj *cls, jmeth *m, ...)
 #define RET_S(v) return (v).s
 #define RET_I(v) return (v).i
 #define RET_J(v) return (v).j
-#define RET_F(v) return mg_fb((v).f)
-#define RET_D(v) return mg_db((v).d)
+#define RET_F(v) return mg_gfb((v).f)
+#define RET_D(v) return mg_gdb((v).d)
 #define RET_V(v) (void)(v)
 
 #define CALL_FAMILY(Name, ctype, RET)                                                                       \
@@ -1470,8 +1670,8 @@ CALL_FAMILY(Char, u16, RET_C)
 CALL_FAMILY(Short, i16, RET_S)
 CALL_FAMILY(Int, i32, RET_I)
 CALL_FAMILY(Long, i64, RET_J)
-CALL_FAMILY(Float, u32, RET_F)
-CALL_FAMILY(Double, u64, RET_D)
+CALL_FAMILY(Float, gfloat, RET_F)
+CALL_FAMILY(Double, gdouble, RET_D)
 CALL_FAMILY(Void, void, RET_V)
 
 /* Static calls: the class stands where the object did. */
@@ -1509,8 +1709,8 @@ STATIC_FAMILY(Char, u16, RET_C)
 STATIC_FAMILY(Short, i16, RET_S)
 STATIC_FAMILY(Int, i32, RET_I)
 STATIC_FAMILY(Long, i64, RET_J)
-STATIC_FAMILY(Float, u32, RET_F)
-STATIC_FAMILY(Double, u64, RET_D)
+STATIC_FAMILY(Float, gfloat, RET_F)
+STATIC_FAMILY(Double, gdouble, RET_D)
 STATIC_FAMILY(Void, void, RET_V)
 
 /* Fields. */
@@ -1553,8 +1753,8 @@ FIELD_FAMILY(Char, u16, c, RET_C, SAME)
 FIELD_FAMILY(Short, i16, s, RET_S, SAME)
 FIELD_FAMILY(Int, i32, i, RET_I, SAME)
 FIELD_FAMILY(Long, i64, j, RET_J, SAME)
-FIELD_FAMILY(Float, u32, f, RET_F, mg_f)
-FIELD_FAMILY(Double, u64, d, RET_D, mg_d)
+FIELD_FAMILY(Float, gfloat, f, RET_F, mg_gf)
+FIELD_FAMILY(Double, gdouble, d, RET_D, mg_gd)
 
 /* Strings. */
 static mg_jobj *j_NewString(JNIEnvP e, const u16 *chars, i32 len)
@@ -1711,8 +1911,10 @@ static void j_SetArrayRegion(JNIEnvP e, mg_jobj *a, i32 start, i32 len, const vo
     memcpy((u8 *)a->u.arr.data + (size_t)start * a->u.arr.esz, buf, (size_t)len * a->u.arr.esz);
 }
 
+/* JNINativeMethod: three of the guest's pointers. */
 typedef struct g_native_method {
-    u32 name, sig, fn;
+    const char *name, *sig;
+    void *fn;
 } g_native_method;
 
 static i32 j_RegisterNatives(JNIEnvP e, mg_jobj *cls, const g_native_method *methods, i32 count)
@@ -1722,12 +1924,12 @@ static i32 j_RegisterNatives(JNIEnvP e, mg_jobj *cls, const g_native_method *met
     (void)e;
     for (i = 0; i < count; i++) {
         jnative *n = (jnative *)mg_alloc(sizeof(*n));
-        const char *sig = (const char *)(mg_addr)methods[i].sig;
+        const char *sig = methods[i].sig;
         /* An exclamation mark before the signature asked older Androids for a faster kind of call; it is not part of it. */
         if (sig[0] == '!') sig++;
-        n->name = mg_strdup((const char *)(mg_addr)methods[i].name);
+        n->name = mg_strdup(methods[i].name);
         n->sig = mg_strdup(sig);
-        n->fn = (void *)(mg_addr)methods[i].fn;
+        n->fn = methods[i].fn;
         mg_lock_acquire(&g_jni_lock);
         n->next = c->natives;
         c->natives = n;
@@ -1856,7 +2058,8 @@ enum { G_JNI_OK = 0, G_JNI_ERR = -1, G_JNI_EDETACHED = -2, G_JNI_EVERSION = -3 }
 
 typedef struct g_attach_args {
     i32 version;
-    u32 name, group;                   /* the guest's pointers */
+    const char *name;                  /* the guest's pointers */
+    mg_jobj *group;
 } g_attach_args;
 
 static MG_THREAD_LOCAL bool t_attached;
@@ -1873,7 +2076,7 @@ static i32 attach(void **env, const g_attach_args *args, bool daemon)
             mg_err("jni: bad JNI version passed to AttachCurrentThread: %d", (int)args->version);
             return G_JNI_EVERSION;
         }
-        if (!mg_dvm_thread_attach(args ? (const char *)(mg_addr)args->name : NULL, args ? (mg_jobj *)(mg_addr)args->group : NULL, daemon)) {
+        if (!mg_dvm_thread_attach(args ? args->name : NULL, args ? args->group : NULL, daemon)) {
             *env = NULL;
             return G_JNI_ERR;
         }

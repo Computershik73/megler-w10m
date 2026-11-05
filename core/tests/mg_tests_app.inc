@@ -117,14 +117,14 @@ static struct {
     int rate, frames, loud, peak, mismatched;
 } G_AUDIO;
 
-static bool audio_open(void *user, int rate)
+static MEGLER_CB bool audio_open(void *user, int rate)
 {
     (void)user;
     G_AUDIO.rate = rate;
     return true;
 }
 
-static void audio_write(void *user, const int16_t *samples, int frames)
+static MEGLER_CB void audio_write(void *user, const int16_t *samples, int frames)
 {
     int i;
     (void)user;
@@ -141,7 +141,7 @@ static void audio_write(void *user, const int16_t *samples, int frames)
 
 static volatile i32 g_app_exited;
 static int g_app_status;
-static void app_exited(void *user, int status, const char *reason)
+static MEGLER_CB void app_exited(void *user, int status, const char *reason)
 {
     (void)user; (void)reason;
     g_app_status = status;
@@ -176,7 +176,7 @@ static void test_app(const char *libdir)
         CHECK(strstr(report, "\"label\":\"Megler Native Test\""));
         CHECK(strstr(report, "\"versionName\":\"1.2\"") && strstr(report, "\"versionCode\":7"));
         CHECK(strstr(report, "\"minSdk\":16") && strstr(report, "\"targetSdk\":28"));
-        CHECK(strstr(report, "\"abi\":\"armeabi-v7a\""));
+        CHECK(strstr(report, "\"abi\":\"" MG_GUEST_ABI "\""));
         CHECK(strstr(report, "\"engine\":\"native-activity\"") && strstr(report, "\"supported\":true"));
         /* Its manifest does not say how it wants to be held. */
         CHECK(strstr(report, "\"orientation\":\"unspecified\"") != NULL);

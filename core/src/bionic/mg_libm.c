@@ -2,9 +2,15 @@
  * libm for guest code.
  *
  * Every function here takes or returns floating point, so none can be the
- * host's own: the guest passes a double in two integer registers and a float
- * in one, the host expects them in VFP registers. Each wrapper takes the bits
- * and hands the host's function real values (mg_bionic.h).
+ * host's own on 32-bit ARM: the guest passes a double in two integer
+ * registers and a float in one, the host expects them in VFP registers. Each
+ * wrapper takes them as the guest passes them -- gfloat and gdouble, the bits
+ * there and the values elsewhere (mg_bionic.h) -- and hands the host's
+ * function real values.
+ *
+ * long double is a double on 32-bit ARM and on x86, and IEEE's 128-bit quad on
+ * the 64-bit ABIs: the *l functions take and return gldouble, and compute in
+ * double.
  */
 #include "mg_bionic.h"
 
@@ -14,6 +20,8 @@
 #define D2(n) MG_SF_D_DD(g_##n, n)
 #define F1(n) MG_SF_F_F(g_##n, n)
 #define F2(n) MG_SF_F_FF(g_##n, n)
+#define L1(n) MG_SF_L_L(g_##n##l, n)
+#define L2(n) MG_SF_L_LL(g_##n##l, n)
 
 D1(sin) D1(cos) D1(tan) D1(asin) D1(acos) D1(atan) D1(sinh) D1(cosh) D1(tanh) D1(asinh) D1(acosh) D1(atanh)
 D1(exp) D1(exp2) D1(expm1) D1(log) D1(log2) D1(log10) D1(log1p) D1(sqrt) D1(cbrt) D1(fabs) D1(floor) D1(ceil)
@@ -25,82 +33,108 @@ F1(expf) F1(exp2f) F1(expm1f) F1(logf) F1(log2f) F1(log10f) F1(log1pf) F1(sqrtf)
 F1(roundf) F1(truncf) F1(rintf) F1(nearbyintf) F1(erff) F1(erfcf) F1(tgammaf) F1(lgammaf) F1(logbf)
 F2(atan2f) F2(powf) F2(hypotf) F2(fmodf) F2(remainderf) F2(fminf) F2(fmaxf) F2(fdimf) F2(copysignf) F2(nextafterf)
 
-static u64 g_exp10(u64 x) { return mg_db(pow(10.0, mg_d(x))); }
-static u32 g_exp10f(u32 x) { return mg_fb(powf(10.0f, mg_f(x))); }
-static u64 g_fma(u64 x, u64 y, u64 z) { return mg_db(fma(mg_d(x), mg_d(y), mg_d(z))); }
-static u32 g_fmaf(u32 x, u32 y, u32 z) { return mg_fb(fmaf(mg_f(x), mg_f(y), mg_f(z))); }
-static u64 g_ldexp(u64 x, int e) { return mg_db(ldexp(mg_d(x), e)); }
-static u32 g_ldexpf(u32 x, int e) { return mg_fb(ldexpf(mg_f(x), e)); }
-static u64 g_scalbln(u64 x, long e) { return mg_db(scalbln(mg_d(x), e)); }
-static u32 g_scalblnf(u32 x, long e) { return mg_fb(scalblnf(mg_f(x), e)); }
-static u64 g_frexp(u64 x, int *e) { return mg_db(frexp(mg_d(x), e)); }
-static u32 g_frexpf(u32 x, int *e) { return mg_fb(frexpf(mg_f(x), e)); }
-static u64 g_modf(u64 x, double *ip) { return mg_db(modf(mg_d(x), ip)); }
-static u32 g_modff(u32 x, float *ip) { return mg_fb(modff(mg_f(x), ip)); }
-static u64 g_remquo(u64 x, u64 y, int *q) { return mg_db(remquo(mg_d(x), mg_d(y), q)); }
-static u32 g_remquof(u32 x, u32 y, int *q) { return mg_fb(remquof(mg_f(x), mg_f(y), q)); }
-static u64 g_nan(const char *tag) { return mg_db(nan(tag)); }
-static u32 g_nanf(const char *tag) { return mg_fb(nanf(tag)); }
-static long g_lround(u64 x) { return lround(mg_d(x)); }
-static long g_lroundf(u32 x) { return lroundf(mg_f(x)); }
-static i64 g_llround(u64 x) { return llround(mg_d(x)); }
-static i64 g_llroundf(u32 x) { return llroundf(mg_f(x)); }
-static long g_lrint(u64 x) { return lrint(mg_d(x)); }
-static long g_lrintf(u32 x) { return lrintf(mg_f(x)); }
-static i64 g_llrint(u64 x) { return llrint(mg_d(x)); }
-static i64 g_llrintf(u32 x) { return llrintf(mg_f(x)); }
-static int g_ilogb(u64 x) { return ilogb(mg_d(x)); }
-static int g_ilogbf(u32 x) { return ilogbf(mg_f(x)); }
-static void g_sincos(u64 x, double *s, double *c) { *s = sin(mg_d(x)); *c = cos(mg_d(x)); }
-static void g_sincosf(u32 x, float *s, float *c) { *s = sinf(mg_f(x)); *c = cosf(mg_f(x)); }
-static u64 g_lgamma_r(u64 x, int *sign)
+L1(sin) L1(cos) L1(tan) L1(asin) L1(acos) L1(atan) L1(exp) L1(log) L1(log10) L1(log2) L1(sqrt) L1(cbrt) L1(fabs)
+L1(floor) L1(ceil) L1(round) L1(trunc) L1(rint) L1(nearbyint) L1(expm1) L1(log1p)
+L2(atan2) L2(pow) L2(fmod) L2(hypot) L2(fmin) L2(fmax) L2(copysign) L2(nextafter) L2(remainder)
+
+static gdouble g_exp10(gdouble x) { return mg_gdb(pow(10.0, mg_gd(x))); }
+static gfloat g_exp10f(gfloat x) { return mg_gfb(powf(10.0f, mg_gf(x))); }
+static gdouble g_fma(gdouble x, gdouble y, gdouble z) { return mg_gdb(fma(mg_gd(x), mg_gd(y), mg_gd(z))); }
+static gfloat g_fmaf(gfloat x, gfloat y, gfloat z) { return mg_gfb(fmaf(mg_gf(x), mg_gf(y), mg_gf(z))); }
+static gldouble g_fmal(gldouble x, gldouble y, gldouble z) { return mg_gldb(fma(mg_gld(x), mg_gld(y), mg_gld(z))); }
+static gdouble g_ldexp(gdouble x, int e) { return mg_gdb(ldexp(mg_gd(x), e)); }
+static gfloat g_ldexpf(gfloat x, int e) { return mg_gfb(ldexpf(mg_gf(x), e)); }
+static gldouble g_ldexpl(gldouble x, int e) { return mg_gldb(ldexp(mg_gld(x), e)); }
+static gdouble g_scalbln(gdouble x, glong e) { return mg_gdb(scalbln(mg_gd(x), e)); }
+static gfloat g_scalblnf(gfloat x, glong e) { return mg_gfb(scalblnf(mg_gf(x), e)); }
+static gdouble g_frexp(gdouble x, int *e) { return mg_gdb(frexp(mg_gd(x), e)); }
+static gfloat g_frexpf(gfloat x, int *e) { return mg_gfb(frexpf(mg_gf(x), e)); }
+static gldouble g_frexpl(gldouble x, int *e) { return mg_gldb(frexp(mg_gld(x), e)); }
+/* (The whole part goes where the guest says, as a double, a float or a long double of its own.) */
+static gdouble g_modf(gdouble x, double *ip) { return mg_gdb(modf(mg_gd(x), ip)); }
+static gfloat g_modff(gfloat x, float *ip) { return mg_gfb(modff(mg_gf(x), ip)); }
+static gldouble g_modfl(gldouble x, gldouble *ip)
 {
-    double v = mg_d(x), r = lgamma(v);
+    double whole, part = modf(mg_gld(x), &whole);
+    *ip = mg_gldb(whole);
+    return mg_gldb(part);
+}
+static gdouble g_remquo(gdouble x, gdouble y, int *q) { return mg_gdb(remquo(mg_gd(x), mg_gd(y), q)); }
+static gfloat g_remquof(gfloat x, gfloat y, int *q) { return mg_gfb(remquof(mg_gf(x), mg_gf(y), q)); }
+static gdouble g_nan(const char *tag) { return mg_gdb(nan(tag)); }
+static gfloat g_nanf(const char *tag) { return mg_gfb(nanf(tag)); }
+static glong g_lround(gdouble x) { return lround(mg_gd(x)); }
+static glong g_lroundf(gfloat x) { return lroundf(mg_gf(x)); }
+static glong g_lroundl(gldouble x) { return lround(mg_gld(x)); }
+static i64 g_llround(gdouble x) { return llround(mg_gd(x)); }
+static i64 g_llroundf(gfloat x) { return llroundf(mg_gf(x)); }
+static i64 g_llroundl(gldouble x) { return llround(mg_gld(x)); }
+static glong g_lrint(gdouble x) { return lrint(mg_gd(x)); }
+static glong g_lrintf(gfloat x) { return lrintf(mg_gf(x)); }
+static glong g_lrintl(gldouble x) { return lrint(mg_gld(x)); }
+static i64 g_llrint(gdouble x) { return llrint(mg_gd(x)); }
+static i64 g_llrintf(gfloat x) { return llrintf(mg_gf(x)); }
+static i64 g_llrintl(gldouble x) { return llrint(mg_gld(x)); }
+static int g_ilogb(gdouble x) { return ilogb(mg_gd(x)); }
+static int g_ilogbf(gfloat x) { return ilogbf(mg_gf(x)); }
+/* nexttoward: a double toward a long double. */
+static gdouble g_nexttoward(gdouble x, gldouble y) { return mg_gdb(nextafter(mg_gd(x), mg_gld(y))); }
+static void g_sincos(gdouble x, double *s, double *c) { *s = sin(mg_gd(x)); *c = cos(mg_gd(x)); }
+static void g_sincosf(gfloat x, float *s, float *c) { *s = sinf(mg_gf(x)); *c = cosf(mg_gf(x)); }
+static gdouble g_lgamma_r(gdouble x, int *sign)
+{
+    double v = mg_gd(x), r = lgamma(v);
     /* The gamma function is negative between -(2k+1) and -2k. */
     if (sign) *sign = (v < 0 && floor(v) != v && fmod(floor(v), 2.0) != 0) ? -1 : 1;
-    return mg_db(r);
+    return mg_gdb(r);
 }
-static u32 g_lgammaf_r(u32 x, int *sign)
+static gfloat g_lgammaf_r(gfloat x, int *sign)
 {
-    double v = mg_f(x);
+    double v = mg_gf(x);
     if (sign) *sign = (v < 0 && floor(v) != v && fmod(floor(v), 2.0) != 0) ? -1 : 1;
-    return mg_fb(lgammaf(mg_f(x)));
+    return mg_gfb(lgammaf(mg_gf(x)));
 }
-static u64 g_significand(u64 x)
+static gdouble g_significand(gdouble x)
 {
     int e;
-    return mg_db(frexp(mg_d(x), &e) * 2.0);
+    return mg_gdb(frexp(mg_gd(x), &e) * 2.0);
 }
 
 /* Classification: bionic's own names behind <math.h>'s macros. */
-static int g_isnan(u64 x) { return isnan(mg_d(x)) ? 1 : 0; }
-static int g_isnanf(u32 x) { return isnan(mg_f(x)) ? 1 : 0; }
-static int g_isinf(u64 x) { return isinf(mg_d(x)) ? 1 : 0; }
-static int g_isinff(u32 x) { return isinf(mg_f(x)) ? 1 : 0; }
-static int g_finite(u64 x) { return isfinite(mg_d(x)) ? 1 : 0; }
-static int g_finitef(u32 x) { return isfinite(mg_f(x)) ? 1 : 0; }
-static int g_isnormal(u64 x) { return isnormal(mg_d(x)) ? 1 : 0; }
-static int g_isnormalf(u32 x) { return isnormal(mg_f(x)) ? 1 : 0; }
-static int g_signbit(u64 x) { return (int)(x >> 63); }
-static int g_signbitf(u32 x) { return (int)(x >> 31); }
+static int g_isnan(gdouble x) { return isnan(mg_gd(x)) ? 1 : 0; }
+static int g_isnanf(gfloat x) { return isnan(mg_gf(x)) ? 1 : 0; }
+static int g_isnanl(gldouble x) { return isnan(mg_gld(x)) ? 1 : 0; }
+static int g_isinf(gdouble x) { return isinf(mg_gd(x)) ? 1 : 0; }
+static int g_isinff(gfloat x) { return isinf(mg_gf(x)) ? 1 : 0; }
+static int g_isinfl(gldouble x) { return isinf(mg_gld(x)) ? 1 : 0; }
+static int g_finite(gdouble x) { return isfinite(mg_gd(x)) ? 1 : 0; }
+static int g_finitef(gfloat x) { return isfinite(mg_gf(x)) ? 1 : 0; }
+static int g_finitel(gldouble x) { return isfinite(mg_gld(x)) ? 1 : 0; }
+static int g_isnormal(gdouble x) { return isnormal(mg_gd(x)) ? 1 : 0; }
+static int g_isnormalf(gfloat x) { return isnormal(mg_gf(x)) ? 1 : 0; }
+static int g_isnormall(gldouble x) { return isnormal(mg_gld(x)) ? 1 : 0; }
+static int g_signbit(gdouble x) { return signbit(mg_gd(x)) ? 1 : 0; }
+static int g_signbitf(gfloat x) { return signbit(mg_gf(x)) ? 1 : 0; }
+static int g_signbitl(gldouble x) { return signbit(mg_gld(x)) ? 1 : 0; }
 
 /* bionic's FP_* values: FP_INFINITE 1, FP_NAN 2, FP_NORMAL 4, FP_SUBNORMAL 8, FP_ZERO 16. */
-static int g_fpclassifyd(u64 x)
+static int fp_class(double v)
 {
-    double v = mg_d(x);
     if (isnan(v)) return 2;
     if (isinf(v)) return 1;
     if (v == 0) return 16;
     return isnormal(v) ? 4 : 8;
 }
-static int g_fpclassifyf(u32 x)
+static int g_fpclassifyd(gdouble x) { return fp_class(mg_gd(x)); }
+static int g_fpclassifyf(gfloat x)
 {
-    float v = mg_f(x);
+    float v = mg_gf(x);
     if (isnan(v)) return 2;
     if (isinf(v)) return 1;
     if (v == 0) return 16;
     return isnormal(v) ? 4 : 8;
 }
+static int g_fpclassifyl(gldouble x) { return fp_class(mg_gld(x)); }
 
 /* <fenv.h>: the rounding mode is the host thread's own, and these leave it alone. */
 static int g_fegetround(void) { return 0; }
@@ -145,18 +179,21 @@ static double bessel_asymptotic(int n, double x)
     return sqrt(2 / (pi * x)) * (p * cos(w) - q * sin(w));
 }
 
-static double g_j0(double x)
+static double bessel_j0(double x)
 {
     x = fabs(x);
     return x < 12 ? bessel_series(0, x) : bessel_asymptotic(0, x);
 }
-static double g_j1(double x)
+static double bessel_j1(double x)
 {
     double a = fabs(x), v = a < 12 ? bessel_series(1, a) : bessel_asymptotic(1, a);
     return x < 0 ? -v : v;
 }
-static float g_j0f(float x) { return (float)g_j0(x); }
-static float g_j1f(float x) { return (float)g_j1(x); }
+/* (As the guest passes them: on 32-bit ARM these took a double where the guest gives its bits, and answered garbage.) */
+static gdouble g_j0(gdouble x) { return mg_gdb(bessel_j0(mg_gd(x))); }
+static gdouble g_j1(gdouble x) { return mg_gdb(bessel_j1(mg_gd(x))); }
+static gfloat g_j0f(gfloat x) { return mg_gfb((float)bessel_j0(mg_gf(x))); }
+static gfloat g_j1f(gfloat x) { return mg_gfb((float)bessel_j1(mg_gf(x))); }
 
 #define DM(n) MG_WRAP(#n, g_##n)
 
@@ -172,27 +209,21 @@ const mg_sym mg_tab_math[] = {
     DM(exp10), DM(exp10f), DM(fma), DM(fmaf), DM(ldexp), DM(ldexpf), DM(scalbln), DM(scalblnf), DM(frexp), DM(frexpf),
     DM(modf), DM(modff), DM(remquo), DM(remquof), DM(nan), DM(nanf), DM(lround), DM(lroundf), DM(llround), DM(llroundf),
     DM(lrint), DM(lrintf), DM(llrint), DM(llrintf), DM(ilogb), DM(ilogbf), DM(sincos), DM(sincosf), DM(lgamma_r), DM(lgammaf_r),
-    DM(significand), DM(finite), DM(finitef), DM(j0), DM(j1), DM(j0f), DM(j1f),
+    DM(significand), DM(finite), DM(finitef), DM(j0), DM(j1), DM(j0f), DM(j1f), DM(nexttoward),
     MG_WRAP("scalbn", g_ldexp), MG_WRAP("scalbnf", g_ldexpf), MG_WRAP("drem", g_remainder), MG_WRAP("dremf", g_remainderf),
-    MG_WRAP("gamma", g_lgamma), MG_WRAP("gammaf", g_lgammaf), MG_WRAP("nexttoward", g_nextafter), MG_WRAP("pow10", g_exp10),
-    MG_WRAP("pow10f", g_exp10f),
-    /* long double is double on 32-bit ARM. */
-    MG_WRAP("sinl", g_sin), MG_WRAP("cosl", g_cos), MG_WRAP("tanl", g_tan), MG_WRAP("asinl", g_asin), MG_WRAP("acosl", g_acos),
-    MG_WRAP("atanl", g_atan), MG_WRAP("atan2l", g_atan2), MG_WRAP("expl", g_exp), MG_WRAP("logl", g_log), MG_WRAP("log10l", g_log10),
-    MG_WRAP("log2l", g_log2), MG_WRAP("powl", g_pow), MG_WRAP("sqrtl", g_sqrt), MG_WRAP("cbrtl", g_cbrt), MG_WRAP("fabsl", g_fabs),
-    MG_WRAP("floorl", g_floor), MG_WRAP("ceill", g_ceil), MG_WRAP("roundl", g_round), MG_WRAP("truncl", g_trunc),
-    MG_WRAP("rintl", g_rint), MG_WRAP("nearbyintl", g_nearbyint), MG_WRAP("fmodl", g_fmod), MG_WRAP("hypotl", g_hypot),
-    MG_WRAP("ldexpl", g_ldexp), MG_WRAP("scalbnl", g_ldexp), MG_WRAP("frexpl", g_frexp), MG_WRAP("modfl", g_modf),
-    MG_WRAP("fminl", g_fmin), MG_WRAP("fmaxl", g_fmax), MG_WRAP("copysignl", g_copysign), MG_WRAP("lroundl", g_lround),
-    MG_WRAP("llroundl", g_llround), MG_WRAP("lrintl", g_lrint), MG_WRAP("llrintl", g_llrint), MG_WRAP("fmal", g_fma),
-    MG_WRAP("nextafterl", g_nextafter), MG_WRAP("remainderl", g_remainder), MG_WRAP("expm1l", g_expm1), MG_WRAP("log1pl", g_log1p),
+    MG_WRAP("gamma", g_lgamma), MG_WRAP("gammaf", g_lgammaf), MG_WRAP("pow10", g_exp10), MG_WRAP("pow10f", g_exp10f),
+    /* long double (gldouble): a double on 32-bit ARM and x86, a quad on the 64-bit ABIs; computed in double. */
+    DM(sinl), DM(cosl), DM(tanl), DM(asinl), DM(acosl), DM(atanl), DM(atan2l), DM(expl), DM(logl), DM(log10l), DM(log2l),
+    DM(powl), DM(sqrtl), DM(cbrtl), DM(fabsl), DM(floorl), DM(ceill), DM(roundl), DM(truncl), DM(rintl), DM(nearbyintl),
+    DM(fmodl), DM(hypotl), DM(ldexpl), MG_WRAP("scalbnl", g_ldexpl), DM(frexpl), DM(modfl), DM(fminl), DM(fmaxl), DM(copysignl),
+    DM(lroundl), DM(llroundl), DM(lrintl), DM(llrintl), DM(fmal), DM(nextafterl), DM(remainderl), DM(expm1l), DM(log1pl),
     MG_WRAP("isnan", g_isnan), MG_WRAP("__isnan", g_isnan), MG_WRAP("isnanf", g_isnanf), MG_WRAP("__isnanf", g_isnanf),
-    MG_WRAP("__isnanl", g_isnan), MG_WRAP("isinf", g_isinf), MG_WRAP("__isinf", g_isinf), MG_WRAP("__isinff", g_isinff),
-    MG_WRAP("isinff", g_isinff), MG_WRAP("__isinfl", g_isinf), MG_WRAP("__isfinite", g_finite), MG_WRAP("__isfinitef", g_finitef),
-    MG_WRAP("__isfinitel", g_finite), MG_WRAP("__isnormal", g_isnormal), MG_WRAP("__isnormalf", g_isnormalf),
-    MG_WRAP("__isnormall", g_isnormal), MG_WRAP("__signbit", g_signbit), MG_WRAP("__signbitf", g_signbitf),
-    MG_WRAP("__signbitl", g_signbit), MG_WRAP("__fpclassifyd", g_fpclassifyd), MG_WRAP("__fpclassify", g_fpclassifyd),
-    MG_WRAP("__fpclassifyf", g_fpclassifyf), MG_WRAP("__fpclassifyl", g_fpclassifyd),
+    MG_WRAP("__isnanl", g_isnanl), MG_WRAP("isinf", g_isinf), MG_WRAP("__isinf", g_isinf), MG_WRAP("__isinff", g_isinff),
+    MG_WRAP("isinff", g_isinff), MG_WRAP("__isinfl", g_isinfl), MG_WRAP("__isfinite", g_finite), MG_WRAP("__isfinitef", g_finitef),
+    MG_WRAP("__isfinitel", g_finitel), MG_WRAP("__isnormal", g_isnormal), MG_WRAP("__isnormalf", g_isnormalf),
+    MG_WRAP("__isnormall", g_isnormall), MG_WRAP("__signbit", g_signbit), MG_WRAP("__signbitf", g_signbitf),
+    MG_WRAP("__signbitl", g_signbitl), MG_WRAP("__fpclassifyd", g_fpclassifyd), MG_WRAP("__fpclassify", g_fpclassifyd),
+    MG_WRAP("__fpclassifyf", g_fpclassifyf), MG_WRAP("__fpclassifyl", g_fpclassifyl),
     MG_WRAP("fegetround", g_fegetround), MG_WRAP("fesetround", g_fesetround), MG_WRAP("fegetenv", g_fenv_nop),
     MG_WRAP("fesetenv", g_fenv_nop), MG_WRAP("feholdexcept", g_fenv_nop), MG_WRAP("feupdateenv", g_fenv_nop),
     MG_WRAP("feclearexcept", g_fenv_nop_int), MG_WRAP("feraiseexcept", g_fenv_nop_int), MG_WRAP("fetestexcept", g_fenv_nop_int),

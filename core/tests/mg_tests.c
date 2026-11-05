@@ -3,13 +3,18 @@
  *
  *   mg_tests <guest library dir> <scratch dir>
  *
- * Everything that needs no ARM code runs anywhere (the x64 build on this PC).
- * The rest loads the guest test libraries (tools/build-guest.sh) and calls
- * into them, which needs a 32-bit ARM host: the same tests run under qemu-arm
- * (tools/build-tests.sh arm) and, linked into the app, on the phone itself.
+ * Everything that needs no guest code runs anywhere (MSVC's x64 build on this
+ * PC). The rest loads the guest test libraries of the build's own ABI
+ * (tools/build-guest.sh <abi>) and calls into them, which needs a build that
+ * runs guest code (MG_GUEST_CODE): the 32-bit ARM one under qemu-arm
+ * (tools/build-tests.sh arm) and, linked into the app, on the phone itself;
+ * Linux on x86_64 (tools/build-tests.sh linux64); the core's ELF on desktop
+ * Windows (tools/build-desktop.sh). What is 32-bit ARM's alone -- Thumb and ARM
+ * mode, rewritten PLT entries, svc, the kernel's helpers -- is tested on ARM.
  *
  * A guest function with floating-point parameters is called here through a
- * pointer typed with u32/u64 -- the softfp convention, spelled out.
+ * pointer typed with gfloat/gdouble (mg_base.h): their bits on 32-bit ARM, the
+ * softfp convention spelled out, and the values themselves elsewhere.
  */
 #include "mg_camera_standin.h"
 #include "mg_codec_standin.h"
@@ -91,7 +96,7 @@ static bool near(double a, double b) { return fabs(a - b) <= 1e-9 * (1.0 + fabs(
 /* ------------------------------------------------------------------- host */
 
 static volatile i32 g_futex_word;
-static void futex_waker(void *arg)
+static MG_HOSTCB void futex_waker(void *arg)
 {
     (void)arg;
     mg_sleep_ns(20000000ull);
@@ -104,7 +109,7 @@ typedef struct list_seen {
     char last[64];
 } list_seen;
 
-static void list_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void list_one(const char *name, bool is_dir, void *user)
 {
     list_seen *s = (list_seen *)user;
     s->count++;
@@ -122,7 +127,7 @@ typedef struct pread_race {
     u32 seed, bad, done;
 } pread_race;
 
-static void pread_racer(void *arg)
+static MG_HOSTCB void pread_racer(void *arg)
 {
     pread_race *r = (pread_race *)arg;
     u32 i, x = r->seed, word = 0;
@@ -471,7 +476,7 @@ static struct {
     int left_readable;
 } G_INPUT;
 
-static void input_taker(void *arg)
+static MG_HOSTCB void input_taker(void *arg)
 {
     void *(*prepare)(int) = (void *(*)(int))mg_bionic_find("ALooper_prepare");
     void (*attach)(mg_input_queue *, void *, int, mg_addr, void *) = (void (*)(mg_input_queue *, void *, int, mg_addr, void *))mg_bionic_find("AInputQueue_attachLooper");
@@ -917,7 +922,7 @@ static void test_textures(void)
 static int g_fake_video, g_fake_audio;
 static u64 g_fake_size;
 
-static void *fake_open(void *user, const char *path, megler_media_info *info)
+static MEGLER_CB void *fake_open(void *user, const char *path, megler_media_info *info)
 {
     mg_stat st;
     (void)user;
@@ -932,7 +937,7 @@ static void *fake_open(void *user, const char *path, megler_media_info *info)
     g_fake_video = g_fake_audio = 0;
     return &g_fake_size;
 }
-static int fake_video(void *user, void *media, uint8_t *rgba, int64_t *time_us)
+static MEGLER_CB int fake_video(void *user, void *media, uint8_t *rgba, int64_t *time_us)
 {
     (void)user; (void)media;
     if (g_fake_video >= 3) return 0;
@@ -941,7 +946,7 @@ static int fake_video(void *user, void *media, uint8_t *rgba, int64_t *time_us)
     g_fake_video++;
     return 1;
 }
-static int fake_audio(void *user, void *media, int16_t *samples, int max_frames, int64_t *time_us)
+static MEGLER_CB int fake_audio(void *user, void *media, int16_t *samples, int max_frames, int64_t *time_us)
 {
     int n = 4800 - g_fake_audio < max_frames ? 4800 - g_fake_audio : max_frames;
     (void)user; (void)media;
@@ -950,14 +955,14 @@ static int fake_audio(void *user, void *media, int16_t *samples, int max_frames,
     g_fake_audio += n;
     return n;
 }
-static bool fake_seek(void *user, void *media, int64_t time_us)
+static MEGLER_CB bool fake_seek(void *user, void *media, int64_t time_us)
 {
     (void)user; (void)media;
     g_fake_video = (int)(time_us * 30 / 1000000);
     g_fake_audio = (int)(time_us * 48000 / 1000000);
     return true;
 }
-static void fake_close(void *user, void *media) { (void)user; (void)media; }
+static MEGLER_CB void fake_close(void *user, void *media) { (void)user; (void)media; }
 
 static void test_media(const char *scratch)
 {
@@ -967,9 +972,10 @@ static void test_media(const char *scratch)
     int (*ex_fd)(void *, int, i64, i64) = (int (*)(void *, int, i64, i64))mg_bionic_find("AMediaExtractor_setDataSourceFd");
     u32 (*ex_count)(void *) = (u32 (*)(void *))mg_bionic_find("AMediaExtractor_getTrackCount");
     void *(*ex_format)(void *, u32) = (void *(*)(void *, u32))mg_bionic_find("AMediaExtractor_getTrackFormat");
-    int (*ex_select)(void *, u32) = (int (*)(void *, u32))mg_bionic_find("AMediaExtractor_selectTrack");
-    int (*ex_unselect)(void *, u32) = (int (*)(void *, u32))mg_bionic_find("AMediaExtractor_unselectTrack");
-    i32 (*ex_read)(void *, u8 *, u32) = (i32 (*)(void *, u8 *, u32))mg_bionic_find("AMediaExtractor_readSampleData");
+    /* (The NDK's types: indexes and sizes are size_t, counts ssize_t, an offset off_t -- 64 bits on the 64-bit ABIs.) */
+    int (*ex_select)(void *, size_t) = (int (*)(void *, size_t))mg_bionic_find("AMediaExtractor_selectTrack");
+    int (*ex_unselect)(void *, size_t) = (int (*)(void *, size_t))mg_bionic_find("AMediaExtractor_unselectTrack");
+    gssize (*ex_read)(void *, u8 *, size_t) = (gssize (*)(void *, u8 *, size_t))mg_bionic_find("AMediaExtractor_readSampleData");
     i64 (*ex_time)(void *) = (i64 (*)(void *))mg_bionic_find("AMediaExtractor_getSampleTime");
     int (*ex_track)(void *) = (int (*)(void *))mg_bionic_find("AMediaExtractor_getSampleTrackIndex");
     u8 (*ex_advance)(void *) = (u8 (*)(void *))mg_bionic_find("AMediaExtractor_advance");
@@ -981,12 +987,12 @@ static void test_media(const char *scratch)
     void *(*codec_new)(const char *) = (void *(*)(const char *))mg_bionic_find("AMediaCodec_createDecoderByType");
     int (*codec_configure)(void *, void *, void *, void *, u32) = (int (*)(void *, void *, void *, void *, u32))mg_bionic_find("AMediaCodec_configure");
     int (*codec_start)(void *) = (int (*)(void *))mg_bionic_find("AMediaCodec_start");
-    i32 (*codec_in)(void *, i64) = (i32 (*)(void *, i64))mg_bionic_find("AMediaCodec_dequeueInputBuffer");
-    u8 *(*codec_in_buffer)(void *, u32, u32 *) = (u8 *(*)(void *, u32, u32 *))mg_bionic_find("AMediaCodec_getInputBuffer");
-    int (*codec_queue)(void *, u32, i32, u32, u64, u32) = (int (*)(void *, u32, i32, u32, u64, u32))mg_bionic_find("AMediaCodec_queueInputBuffer");
-    i32 (*codec_out)(void *, buffer_info *, i64) = (i32 (*)(void *, buffer_info *, i64))mg_bionic_find("AMediaCodec_dequeueOutputBuffer");
-    u8 *(*codec_out_buffer)(void *, u32, u32 *) = (u8 *(*)(void *, u32, u32 *))mg_bionic_find("AMediaCodec_getOutputBuffer");
-    int (*codec_release)(void *, u32, u8) = (int (*)(void *, u32, u8))mg_bionic_find("AMediaCodec_releaseOutputBuffer");
+    gssize (*codec_in)(void *, i64) = (gssize (*)(void *, i64))mg_bionic_find("AMediaCodec_dequeueInputBuffer");
+    u8 *(*codec_in_buffer)(void *, size_t, size_t *) = (u8 *(*)(void *, size_t, size_t *))mg_bionic_find("AMediaCodec_getInputBuffer");
+    int (*codec_queue)(void *, size_t, goff, size_t, u64, u32) = (int (*)(void *, size_t, goff, size_t, u64, u32))mg_bionic_find("AMediaCodec_queueInputBuffer");
+    gssize (*codec_out)(void *, buffer_info *, i64) = (gssize (*)(void *, buffer_info *, i64))mg_bionic_find("AMediaCodec_dequeueOutputBuffer");
+    u8 *(*codec_out_buffer)(void *, size_t, size_t *) = (u8 *(*)(void *, size_t, size_t *))mg_bionic_find("AMediaCodec_getOutputBuffer");
+    int (*codec_release)(void *, size_t, u8) = (int (*)(void *, size_t, u8))mg_bionic_find("AMediaCodec_releaseOutputBuffer");
     int (*codec_delete)(void *) = (int (*)(void *))mg_bionic_find("AMediaCodec_delete");
     const char **key_mime = (const char **)mg_bionic_find("AMEDIAFORMAT_KEY_MIME");
     char *path = mg_sprintf("%s/film-source.bin", scratch);
@@ -1037,29 +1043,29 @@ static void test_media(const char *scratch)
     codec_start(codec);
     CHECK_INT(codec_out(codec, &info, 0), -1);              /* nothing queued yet */
     for (;;) {
-        u32 size = 0;
-        i32 slot = codec_in(codec, 0), n;
-        u8 *buffer = codec_in_buffer(codec, (u32)slot, &size);
-        n = ex_read(ex, buffer, size);
+        size_t size = 0;
+        i32 slot = (i32)codec_in(codec, 0), n;
+        u8 *buffer = codec_in_buffer(codec, (size_t)slot, &size);
+        n = (i32)ex_read(ex, buffer, size);
         if (n < 0) {
-            codec_queue(codec, (u32)slot, 0, 0, 0, 4);
+            codec_queue(codec, (size_t)slot, 0, 0, 0, 4);
             break;
         }
-        codec_queue(codec, (u32)slot, 0, (u32)n, (u64)ex_time(ex), 0);
+        codec_queue(codec, (size_t)slot, 0, (size_t)n, (u64)ex_time(ex), 0);
         ex_advance(ex);
     }
     CHECK_INT(codec_out(codec, &info, 0), -2);
     for (i = 0; i < 3; i++) {
-        u32 size = 0;
-        i32 slot = codec_out(codec, &info, 0);
-        const u8 *frame = slot >= 0 ? codec_out_buffer(codec, (u32)slot, &size) : NULL;
+        size_t size = 0;
+        i32 slot = (i32)codec_out(codec, &info, 0);
+        const u8 *frame = slot >= 0 ? codec_out_buffer(codec, (size_t)slot, &size) : NULL;
         CHECK(slot >= 0 && frame && size == 32 && frame[0] == 10 + i && info.size == 32 && info.time_us == (i64)i * 33333 && !info.flags);
-        if (slot >= 0) codec_release(codec, (u32)slot, 1);
+        if (slot >= 0) codec_release(codec, (size_t)slot, 1);
     }
     {
-        i32 slot = codec_out(codec, &info, 0);
+        i32 slot = (i32)codec_out(codec, &info, 0);
         CHECK(slot >= 0 && (info.flags & 4) && !info.size);
-        if (slot >= 0) codec_release(codec, (u32)slot, 0);
+        if (slot >= 0) codec_release(codec, (size_t)slot, 0);
     }
     CHECK_INT(codec_out(codec, &info, 0), -1);
     codec_delete(codec);
@@ -1069,9 +1075,9 @@ static void test_media(const char *scratch)
     codec_configure(codec, NULL, NULL, NULL, 0);
     codec_start(codec);
     for (i = 0; i < 64 && codec_in(codec, 0) == 0; i++) {
-        u32 size = 0;
+        size_t size = 0;
         u8 *buffer = codec_in_buffer(codec, 0, &size);
-        codec_queue(codec, 0, 0, (u32)ex_read(ex, buffer, size), 0, 0);
+        codec_queue(codec, 0, 0, (size_t)ex_read(ex, buffer, size), 0, 0);
     }
     CHECK(i >= 2 && i <= 16);
     CHECK_INT(codec_in(codec, 0), -1);
@@ -1097,45 +1103,85 @@ static void test_media(const char *scratch)
  * (MAP_FIXED) it is given back, and zero when given access again; memory mapped with access is committed at once. Where
  * the host does not say what is committed (POSIX), the behaviour alone is checked.
  */
+#if MG_GUEST_CODE && !MG_ARCH_ARM32
+/* g_abi_nr: the guest ABI's number of each call of syscall()'s and 32-bit ARM's (bionic/mg_syscall_abi.c). */
+#include "../src/bionic/mg_syscall_abi.inc"
+#endif
+
+/* The guest ABI's number of the call 32-bit ARM numbers `arm`, which the tests below are written in; -1 where it has none. */
+static long abi_nr(long arm)
+{
+#if MG_GUEST_CODE && !MG_ARCH_ARM32
+    size_t i;
+    for (i = 0; i < MG_COUNT(g_abi_nr); i++)
+        if (g_abi_nr[i][1] == arm) return g_abi_nr[i][0];
+    return -1;
+#else
+    return arm;
+#endif
+}
+
+typedef long (*syscall_fn)(long, long, long, long, long, long, long);
+static syscall_fn g_sys;
+
+/* syscall() with 32-bit ARM's number of a call, as the guest's ABI numbers it (ENOSYS for one it has not). */
+static long sys(long arm, long a, long b, long c, long d, long e, long f)
+{
+    long nr = abi_nr(arm);
+    return g_sys(nr < 0 ? 100000 : nr, a, b, c, d, e, f);
+}
+
 /*
  * syscall() by number for pipes, epoll and eventfd, as Discord's media engine made its event loop (it said "syscall(359) is
  * not supported", and 357, 356, 351): each gives a descriptor that works -- a byte through the pipe, the eventfd's count,
- * the pipe's read end ready in the epoll set.
+ * the pipe's read end ready in the epoll set. Each call by the ABI's own number (ARM64 has no eventfd, epoll_wait, open or
+ * unlink, only their newer forms, which take their place there).
  */
 static void test_syscall_fds(const char *scratch)
 {
-    typedef long (*syscall_fn)(long, long, long, long, long, long, long);
     typedef int (*close_fn)(int);
     typedef long (*io_fn)(int, void *, size_t);
-    syscall_fn sys = (syscall_fn)mg_bionic_find("syscall");
     close_fn close_ = (close_fn)mg_bionic_find("close");
     io_fn write_ = (io_fn)mg_bionic_find("write"), read_ = (io_fn)mg_bionic_find("read");
     int fds[2] = { -1, -1 }, ev, ep, ready;
     u8 b = 0;
     u64 count = 0, one = 1;
-    u64 event[2] = { 1 /* EPOLLIN */, 7 }, got[2] = { 0, 0 };   /* ARM's epoll_event: events, then data at 8 */
+    u64 event[2] = { 1 /* EPOLLIN */, 7 }, got[2] = { 0, 0 };   /* epoll_event: events, then data at 8 (at 4 on x86_64, packed) */
     /* syscall()'s arguments are longs, addresses among them, as on the guest's ARM: a long holds an address only where
        both are 32 bits (Windows' x64 build has longs of 32 bits and addresses of 64). */
     if (sizeof(long) < sizeof(void *)) {
         say("syscall() by number: left out, a long does not hold an address on this build");
         return;
     }
+    g_sys = (syscall_fn)mg_bionic_find("syscall");
     say("syscall() by number: pipe2, eventfd2, eventfd, epoll_create1, epoll_ctl, epoll_wait");
-    CHECK(sys && close_ && write_ && read_);
-    if (!sys || !close_ || !write_ || !read_) return;
+    CHECK(g_sys && close_ && write_ && read_);
+    if (!g_sys || !close_ || !write_ || !read_) return;
+#if MG_ARCH_X86_64
+    /* (x86_64's epoll_event is packed: its data at 4.) */
+    event[0] = 1 | (7ull << 32);
+    event[1] = 0;
+#endif
     CHECK(sys(359, (long)(mg_addr)fds, 0, 0, 0, 0, 0) == 0 && fds[0] >= 0 && fds[1] >= 0);
     b = 42;
     CHECK(write_(fds[1], &b, 1) == 1);
     ev = (int)sys(356, 0, 0, 0, 0, 0, 0);
     CHECK(ev >= 0 && write_(ev, &one, 8) == 8 && read_(ev, &count, 8) == 8 && count == 1);
     if (ev >= 0) close_(ev);
-    ev = (int)sys(351, 3, 0, 0, 0, 0, 0);
-    CHECK(ev >= 0 && read_(ev, &count, 8) == 8 && count == 3);
-    if (ev >= 0) close_(ev);
+    if (abi_nr(351) >= 0) {
+        ev = (int)sys(351, 3, 0, 0, 0, 0, 0);
+        CHECK(ev >= 0 && read_(ev, &count, 8) == 8 && count == 3);
+        if (ev >= 0) close_(ev);
+    }
     ep = (int)sys(357, 0, 0, 0, 0, 0, 0);
     CHECK(ep >= 0 && sys(251, ep, 1 /* EPOLL_CTL_ADD */, fds[0], (long)(mg_addr)event, 0, 0) == 0);
-    ready = (int)sys(252, ep, (long)(mg_addr)got, 1, 0, 0, 0);
+    /* (epoll_wait where the ABI has it, else epoll_pwait with no mask.) */
+    ready = abi_nr(252) >= 0 ? (int)sys(252, ep, (long)(mg_addr)got, 1, 0, 0, 0) : (int)sys(346, ep, (long)(mg_addr)got, 1, 0, 0, 0);
+#if MG_ARCH_X86_64
+    CHECK(ready == 1 && (got[0] & 1) && (got[0] >> 32) == 7);
+#else
     CHECK(ready == 1 && (got[0] & 1) && got[1] == 7);
+#endif
     b = 0;
     CHECK(read_(fds[0], &b, 1) == 1 && b == 42);
     if (ep >= 0) close_(ep);
@@ -1143,24 +1189,31 @@ static void test_syscall_fds(const char *scratch)
     close_(fds[1]);
 
     /* Files by number, as TikTok Lite's loader writes its libraries out (syscall(__NR_open)): open, write, close, open
-       again, lseek, read, fstat64 (st_size at 48 in ARM's struct stat64), syncfs (and EBADF for a descriptor not open, as
-       Google Maps asks), close, unlink; and sched_getaffinity, whose raw call says the mask's size. */
+       again, lseek, read, fstat64 (st_size at 48 in ARM's struct stat64, at 44 in x86's, whose long long is 4-aligned, and
+       at 48 in the 64-bit ABIs' struct stat, 144 bytes on x86_64), syncfs (and EBADF for a descriptor not open, as Google
+       Maps asks), close, unlink; and sched_getaffinity, whose raw call says the mask's size. (Each by the ABI's own number:
+       openat and unlinkat where it has no open or unlink, ARM64.) */
     {
+        enum { ST_SIZE_AT = MG_ARCH_X86 ? 44 : 48 };
         const char *file = "/syscall-files/written.bin";
         char back[4] = { 0 };
-        u8 st[104], mask[16];
+        u8 st[160], mask[16];
         int fd;
         mg_fs_mount("/syscall-files", scratch);
         say("syscall() by number: open, write, read, lseek, fstat64, syncfs, close, unlink, sched_getaffinity");
-        fd = (int)sys(5, (long)(mg_addr)file, 01 | 0100 | 01000, 0600, 0, 0, 0);   /* O_WRONLY | O_CREAT | O_TRUNC */
+#define OPEN_(path, flags, mode) (abi_nr(5) >= 0 ? sys(5, (long)(mg_addr)(path), flags, mode, 0, 0, 0) \
+                                                : sys(322, -100 /* AT_FDCWD */, (long)(mg_addr)(path), flags, mode, 0, 0))
+        fd = (int)OPEN_(file, 01 | 0100 | 01000, 0600);   /* O_WRONLY | O_CREAT | O_TRUNC */
         CHECK(fd >= 0 && sys(4, fd, (long)(mg_addr)"megler", 6, 0, 0, 0) == 6 && sys(6, fd, 0, 0, 0, 0, 0) == 0);
-        fd = (int)sys(5, (long)(mg_addr)file, 0, 0, 0, 0, 0);
+        fd = (int)OPEN_(file, 0, 0);
         CHECK(fd >= 0 && sys(19, fd, 2, 0, 0, 0, 0) == 2 && sys(3, fd, (long)(mg_addr)back, 4, 0, 0, 0) == 4 && !memcmp(back, "gler", 4));
         memset(st, 0, sizeof(st));
-        CHECK(fd >= 0 && sys(197, fd, (long)(mg_addr)st, 0, 0, 0, 0) == 0 && mg_rd32(st + 48) == 6);
+        CHECK(fd >= 0 && sys(197, fd, (long)(mg_addr)st, 0, 0, 0, 0) == 0 && mg_rd32(st + ST_SIZE_AT) == 6);
         CHECK(fd >= 0 && sys(373, fd, 0, 0, 0, 0, 0) == 0 && sys(373, 999, 0, 0, 0, 0, 0) == -1);
-        CHECK(fd >= 0 && sys(6, fd, 0, 0, 0, 0, 0) == 0 && sys(10, (long)(mg_addr)file, 0, 0, 0, 0, 0) == 0);
-        CHECK(sys(5, (long)(mg_addr)file, 0, 0, 0, 0, 0) == -1);
+        CHECK(fd >= 0 && sys(6, fd, 0, 0, 0, 0, 0) == 0
+              && (abi_nr(10) >= 0 ? sys(10, (long)(mg_addr)file, 0, 0, 0, 0, 0) : sys(328, -100, (long)(mg_addr)file, 0, 0, 0, 0)) == 0);
+        CHECK(OPEN_(file, 0, 0) == -1);
+#undef OPEN_
         memset(mask, 0, sizeof(mask));
         CHECK(sys(242, 0, sizeof(mask), (long)(mg_addr)mask, 0, 0, 0) == 4 && mask[0] != 0 && sys(241, 0, sizeof(mask), (long)(mg_addr)mask, 0, 0, 0) == 0);
     }
@@ -1168,7 +1221,7 @@ static void test_syscall_fds(const char *scratch)
 
 static void test_mmap_commit(void)
 {
-    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
     typedef int (*mprotect_fn)(void *, size_t, int);
     typedef int (*munmap_fn)(void *, size_t);
     enum { NONE = 0, RW = 3, PRIVATE = 0x02, ANONYMOUS = 0x20, FIXED = 0x10, MB = 1 << 20 };
@@ -1227,7 +1280,7 @@ static void test_mmap_commit(void)
  */
 static void test_mmap_file(const char *scratch)
 {
-    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
     typedef int (*munmap_fn)(void *, size_t);
     typedef int (*close_fn)(int);
     enum { READ = 1, SHARED = 0x01, CHUNK = 65536, LEN = 3 * 65536 + 100 };
@@ -1283,15 +1336,15 @@ static void test_mmap_file(const char *scratch)
 static void test_mmap_file_written(const char *scratch)
 {
     typedef int (*open_fn)(const char *, int, int);
-    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
     typedef int (*munmap_fn)(void *, size_t);
     typedef int (*msync_fn)(void *, size_t, int);
     typedef int (*close_fn)(int);
     typedef int (*unlink_fn)(const char *);
-    typedef i32 (*pwrite_fn)(int, const void *, u32, i32);
-    typedef i32 (*write_fn)(int, const void *, u32);
-    typedef i32 (*lseek_fn)(int, i32, int);
-    typedef int (*ftruncate_fn)(int, i32);
+    typedef gssize (*pwrite_fn)(int, const void *, size_t, goff);
+    typedef gssize (*write_fn)(int, const void *, size_t);
+    typedef goff (*lseek_fn)(int, goff, int);
+    typedef int (*ftruncate_fn)(int, goff);
     enum { READ = 1, RW = 3, SHARED = 0x01, PAGE = 4096 };
     open_fn open_ = (open_fn)mg_bionic_find("open");
     mmap_fn mmap_ = (mmap_fn)mg_bionic_find("mmap");
@@ -1363,8 +1416,9 @@ typedef struct t_regex {
     const char *re_endp;
     void *re_g;
 } t_regex;
+/* (regoff_t is an off_t: 32 bits in 32-bit Android, 64 in 64-bit.) */
 typedef struct t_regmatch {
-    i32 so, eo;
+    goff so, eo;
 } t_regmatch;
 
 /* regexec of `pattern` (cflags) on `subject`: its result, and the first two matches' places as "so-eo so-eo" in `out`. */
@@ -1495,7 +1549,7 @@ static void test_libc_gaps(const char *scratch)
 
     say("j0 and j1, eventfd_read and eventfd_write, fchmodat");
     {
-        typedef double (*d_fn)(double);
+        typedef gdouble (*d_fn)(gdouble);                /* (as guest code calls them: softfp's bits on 32-bit ARM) */
         typedef int (*eventfd_fn)(unsigned, int);
         typedef int (*efd_read_fn)(int, u64 *);
         typedef int (*efd_write_fn)(int, u64);
@@ -1511,9 +1565,13 @@ static void test_libc_gaps(const char *scratch)
         int fd;
         CHECK(j0_ && j1_ && eventfd_ && efd_read && efd_write && fchmodat_ && close_);
         if (j0_ && j1_) {
-            CHECK(fabs(j0_(0) - 1) < 1e-15 && fabs(j0_(1) - 0.7651976865579666) < 1e-12 && fabs(j0_(-3) - j0_(3)) < 1e-15);
-            CHECK(fabs(j0_(10) - -0.2459357644513483) < 1e-10 && fabs(j0_(20) - 0.1670246643405831) < 1e-10);
-            CHECK(fabs(j1_(1) - 0.4400505857449335) < 1e-12 && fabs(j1_(-1) + 0.4400505857449335) < 1e-12 && fabs(j1_(15) - 0.2051040386135228) < 1e-10);
+#define J0(x) mg_gd(j0_(mg_gdb(x)))
+#define J1(x) mg_gd(j1_(mg_gdb(x)))
+            CHECK(fabs(J0(0) - 1) < 1e-15 && fabs(J0(1) - 0.7651976865579666) < 1e-12 && fabs(J0(-3) - J0(3)) < 1e-15);
+            CHECK(fabs(J0(10) - -0.2459357644513483) < 1e-10 && fabs(J0(20) - 0.1670246643405831) < 1e-10);
+            CHECK(fabs(J1(1) - 0.4400505857449335) < 1e-12 && fabs(J1(-1) + 0.4400505857449335) < 1e-12 && fabs(J1(15) - 0.2051040386135228) < 1e-10);
+#undef J0
+#undef J1
         }
         if (eventfd_ && efd_read && efd_write && close_) {
             fd = eventfd_(0, 0);
@@ -1532,11 +1590,11 @@ static void test_libc_gaps(const char *scratch)
  */
 static void test_mmap_madvise(const char *scratch)
 {
-    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
     typedef int (*munmap_fn)(void *, size_t);
     typedef int (*mprotect_fn)(void *, size_t, int);
     typedef int (*madvise_fn)(void *, size_t, int);
-    typedef i32 (*read_fn)(int, void *, u32);
+    typedef gssize (*read_fn)(int, void *, size_t);
     typedef int (*close_fn)(int);
     enum { NONE = 0, RW = 3, PRIVATE = 0x02, ANONYMOUS = 0x20, DONTNEED = 4, MB = 1 << 20, FILE_BYTES = 8000 };
     mmap_fn mmap_ = (mmap_fn)mg_bionic_find("mmap");
@@ -1615,7 +1673,7 @@ done:
     free(path);
 }
 
-static void count_entry(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void count_entry(const char *name, bool is_dir, void *user)
 {
     (void)is_dir;
     if (strcmp(name, "config.fb")) say("  unexpected entry %s", name);
@@ -1755,12 +1813,12 @@ static void test_rename_dir_in_use(const char *scratch)
  */
 static void test_shm_views(void)
 {
-    typedef void *(*mmap_fn)(void *, size_t, int, int, int, i32);
+    typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
     typedef int (*munmap_fn)(void *, size_t);
     typedef int (*close_fn)(int);
-    typedef i32 (*pread_fn)(int, void *, u32, i32);
-    typedef i32 (*pwrite_fn)(int, const void *, u32, i32);
-    typedef int (*ftruncate_fn)(int, i32);
+    typedef gssize (*pread_fn)(int, void *, size_t, goff);
+    typedef gssize (*pwrite_fn)(int, const void *, size_t, goff);
+    typedef int (*ftruncate_fn)(int, goff);
     enum { MB = 1 << 20, SIZE = 24 * MB, RW = 3, SHARED = 1 };
     mmap_fn mmap_ = (mmap_fn)mg_bionic_find("mmap");
     munmap_fn munmap_ = (munmap_fn)mg_bionic_find("munmap");
@@ -2670,7 +2728,7 @@ static void test_input(void)
     say("  wakes with nothing to take: %d", (int)G_INPUT.idle_wakes);
 }
 
-#if MG_HOST_ARM32
+#if MG_GUEST_CODE
 
 /*
  * An interface proxy of Unity's (jni/mg_jni_loop.c): a call through it and its
@@ -2679,7 +2737,7 @@ static void test_input(void)
  * this one disables the proxy and then "deletes" what was behind it; no call
  * may find it deleted. On a phone a film skipped with a tap did exactly that
  * to its decoder's thread before there was a lock. (Here, where a native
- * method can be a function of this program: it is called as 32-bit ARM code.)
+ * method can be a function of this program: it is called as guest code.)
  */
 typedef struct proxied {
     volatile i32 alive, stop, calls, dead;
@@ -2738,7 +2796,7 @@ typedef struct proxy_caller {
     proxied *p;
 } proxy_caller;
 
-static void proxy_caller_thread(void *arg)
+static MG_HOSTCB void proxy_caller_thread(void *arg)
 {
     proxy_caller *c = (proxy_caller *)arg;
     while (!c->p->stop) mg_jni_unref(mg_jni_proxy_call(c->proxy, "java/lang/Runnable", "run", "()V", NULL, 0));
@@ -2747,8 +2805,8 @@ static void proxy_caller_thread(void *arg)
 static void test_proxies(void)
 {
     enum { ROUNDS = 200 };
-    /* The JNIEnv's own functions, by their places in its table, as an app's library calls them. */
-    typedef struct { u32 name, sig, fn; } native_method;
+    /* The JNIEnv's own functions, by their places in its table, as an app's library calls them; JNINativeMethod, three pointers. */
+    typedef struct { const char *name, *sig; void *fn; } native_method;
     typedef mg_jobj *(*find_class_fn)(void *, const char *);
     typedef i32 (*register_fn)(void *, mg_jobj *, const native_method *, i32);
     typedef void *(*static_id_fn)(void *, mg_jobj *, const char *, const char *);
@@ -2769,9 +2827,9 @@ static void test_proxies(void)
     env = mg_jni_env();
     table = *(void ***)env;
     cls = ((find_class_fn)table[6])(env, bridge);
-    m.name = (u32)(mg_addr)"invoke";
-    m.sig = (u32)(mg_addr)invoke_sig;
-    m.fn = (u32)(mg_addr)proxied_invoke;
+    m.name = "invoke";
+    m.sig = invoke_sig;
+    m.fn = (void *)proxied_invoke;
     ((register_fn)table[215])(env, cls, &m, 1);
     CHECK(mg_jni_native(bridge, "invoke", invoke_sig) == (void *)proxied_invoke);
     new_id = ((static_id_fn)table[113])(env, cls, "newInterfaceProxy", "(J[Ljava/lang/Class;)Ljava/lang/Object;");
@@ -2856,11 +2914,28 @@ static void test_proxies(void)
 }
 
 static int host_times_three(int v) { return v * 3; }
-/* Called by guest code with softfp arguments: bits in, bits out. */
-static u64 host_hypot(u64 a, u64 b) { return mg_db(sqrt(mg_d(a) * mg_d(a) + mg_d(b) * mg_d(b))); }
+/* Called by guest code with the guest's floats: on 32-bit ARM softfp's, bits in, bits out. */
+static gdouble host_hypot(gdouble a, gdouble b) { return mg_gdb(sqrt(mg_gd(a) * mg_gd(a) + mg_gd(b) * mg_gd(b))); }
+
+/*
+ * MG_TESTS_SKIP=name,name...: guest functions of the test libraries that are not called (a function that returns 0 is,
+ * and the check of it fails) -- to see what comes after one that ends the process, as one can on a processor whose
+ * guest code has just begun to run.
+ */
+static int skipped_call(void) { return 0; }
+
+static void *guest_fn(mg_lib *lib, const char *name)
+{
+    const char *list = getenv("MG_TESTS_SKIP"), *at = list ? strstr(list, name) : NULL;
+    size_t n = strlen(name);
+    while (at && ((at != list && at[-1] != ',') || (at[n] && at[n] != ','))) at = strstr(at + 1, name);
+    if (!at) return mg_ld_sym(lib, name);
+    say("  (%s is not called: MG_TESTS_SKIP)", name);
+    return (void *)skipped_call;
+}
 
 #define SYM(lib, name) mg_ld_sym(lib, name)
-#define FN(lib, type, name) MG_GFN(type, SYM(lib, name))
+#define FN(lib, type, name) MG_GFN(type, guest_fn(lib, name))
 
 static void test_library(mg_lib *lib, const char *what, const char *scratch)
 {
@@ -2884,16 +2959,16 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK(SYM(lib, "t_exported_value") && *(int *)SYM(lib, "t_exported_value") == 0x1234);
 
     /* Floating point across the boundary, both ways. */
-    CHECK(near(mg_d(FN(lib, u64 (*)(u64, u32), "t_fmul")(mg_db(1.5), mg_fb(4.0f))), 6.0));
-    /* (int, float, double, float, int, double): r0, r1, [r2:r3], then the stack -- float, int, pad, double. */
-    CHECK(near(mg_f(FN(lib, u32 (*)(int, u32, u64, u32, int, u64), "t_mixed")(1, mg_fb(2.0f), mg_db(3.0), mg_fb(4.0f), 5, mg_db(6.5))), 21.5));
-    CHECK(near(mg_f(FN(lib, u32 (*)(u32), "t_sqrt")(mg_fb(2.25f))), 1.5));
-    CHECK(near(mg_d(FN(lib, u64 (*)(u64), "t_sin")(mg_db(0.5))), sin(0.5)));
-    CHECK(near(mg_d(FN(lib, u64 (*)(u64, u64), "t_pow")(mg_db(2.0), mg_db(10.0))), 1024.0));
-    CHECK_INT(FN(lib, long (*)(u64), "t_lround")(mg_db(-2.5)), -3);
-    CHECK(near(mg_d(FN(lib, u64 (*)(u64, double *), "t_modf")(mg_db(3.75), &ip)), 0.75) && near(ip, 3.0));
-    CHECK(near(mg_d(FN(lib, u64 (*)(const char *), "t_strtod")("-12.5e2")), -1250.0));
-    CHECK(near(mg_d(FN(lib, u64 (*)(void *, u64, u64), "t_call_d")((void *)host_hypot, mg_db(3.0), mg_db(4.0))), 5.0));
+    CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble, gfloat), "t_fmul")(mg_gdb(1.5), mg_gfb(4.0f))), 6.0));
+    /* (int, float, double, float, int, double): on ARM r0, r1, [r2:r3], then the stack -- float, int, pad, double. */
+    CHECK(near(mg_gf(FN(lib, gfloat (*)(int, gfloat, gdouble, gfloat, int, gdouble), "t_mixed")(1, mg_gfb(2.0f), mg_gdb(3.0), mg_gfb(4.0f), 5, mg_gdb(6.5))), 21.5));
+    CHECK(near(mg_gf(FN(lib, gfloat (*)(gfloat), "t_sqrt")(mg_gfb(2.25f))), 1.5));
+    CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble), "t_sin")(mg_gdb(0.5))), sin(0.5)));
+    CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble, gdouble), "t_pow")(mg_gdb(2.0), mg_gdb(10.0))), 1024.0));
+    CHECK_INT(FN(lib, long (*)(gdouble), "t_lround")(mg_gdb(-2.5)), -3);
+    CHECK(near(mg_gd(FN(lib, gdouble (*)(gdouble, double *), "t_modf")(mg_gdb(3.75), &ip)), 0.75) && near(ip, 3.0));
+    CHECK(near(mg_gd(FN(lib, gdouble (*)(const char *), "t_strtod")("-12.5e2")), -1250.0));
+    CHECK(near(mg_gd(FN(lib, gdouble (*)(void *, gdouble, gdouble), "t_call_d")((void *)host_hypot, mg_gdb(3.0), mg_gdb(4.0))), 5.0));
 
     /* Variadics. */
     CHECK_INT(FN(lib, int (*)(char *, int), "t_format")(buf, sizeof(buf)), (int)strlen("42 str 3.142 1234567890123 z beef"));
@@ -2921,7 +2996,8 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_tls_get")(), 100);
     FN(lib, void (*)(int), "t_tls_set")(555);
     CHECK_INT(FN(lib, int (*)(void), "t_tls_get")(), 555);
-    CHECK(*FN(lib, int *(*)(void), "t_tls_addr")() == 555);
+    counter = FN(lib, int *(*)(void), "t_tls_addr")();
+    CHECK(counter && *counter == 555);
     FN(lib, void (*)(int), "t_tls_set")(100);
     CHECK_INT(FN(lib, int (*)(int, int), "t_threads")(8, 2000), 16000);
     CHECK_INT(FN(lib, int (*)(void), "t_tls_app_slot")(), 0);
@@ -2957,9 +3033,14 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_props")(), 28);
     CHECK_INT(FN(lib, int (*)(void), "t_dl")(), 4);
     CHECK_INT(FN(lib, int (*)(void), "t_loader_dl")(), 5);
+#if MG_ARCH_ARM32
+    /* (Thumb's hooks on libc's hookable entries, and a Thumb or ARM udf as an app's trap: 32-bit ARM's alone.) */
     CHECK_INT(FN(lib, int (*)(void), "t_libc_inline_hook")(), 0);
+#endif
     CHECK_INT(FN(lib, int (*)(void), "t_own_code_hook")(), 0);
+#if MG_ARCH_ARM32
     CHECK_INT(FN(lib, int (*)(void), "t_trap_hook")(), 0);
+#endif
     CHECK_INT(FN(lib, int (*)(void), "t_libc_more")(), 6);
     CHECK_INT(FN(lib, int (*)(void), "t_shm")(), 9);
     CHECK_INT(FN(lib, int (*)(void), "t_ashmem")(), 10);
@@ -3079,8 +3160,12 @@ static void test_guest(const char *libdir, const char *scratch)
     CHECK(mg_ld_init(basic));
     mg_ld_get_stats(basic, &st);
     CHECK(st.tp_reads >= 4);                        /* the initial-exec TLS accesses */
+#if MG_ARCH_ARM32
     CHECK(st.thumb_functions > 20 && st.arm_functions == 0);
     test_library(basic, "Thumb-2", scratch);
+#else
+    test_library(basic, MG_GUEST_ABI, scratch);
+#endif
 
     /* Loaded first as an app asks with android_dlopen_ext: into a range it reserved; the PLT's tests below run on it there. */
     say("guest library: loaded into a range the app reserved (android_dlopen_ext, ANDROID_DLEXT_RESERVED_ADDRESS)");
@@ -3089,25 +3174,35 @@ static void test_guest(const char *libdir, const char *scratch)
     CHECK(dep != NULL);
     if (dep) {
         u32 before = mg_core_plt_rescues();
-        say("guest library: calls through a rewritten PLT");
+        say(MG_ARCH_ARM32 ? "guest library: calls through a rewritten PLT" : "guest library: calls through a PLT");
         CHECK(mg_ld_init(dep));
         mg_ld_get_stats(dep, &st);
+#if MG_ARCH_ARM32
         CHECK_INT(st.plt_entries, 5);
+#endif
         CHECK_INT(FN(dep, int (*)(int, int), "d_add_twice")(1, 2), 5);
         CHECK_INT(FN(dep, int (*)(void), "d_bump")(), 6);
-        CHECK_INT(*FN(basic, int *(*)(void), "t_counter_ptr")(), 6);
+        {
+            int *counter = FN(basic, int *(*)(void), "t_counter_ptr")();
+            CHECK(counter && *counter == 6);
+        }
         CHECK_INT(FN(dep, int (*)(void), "d_hello_len")(), 16);
-        CHECK(near(mg_d(FN(dep, u64 (*)(u64, u32), "d_fmul")(mg_db(2.0), mg_fb(3.0f))), 7.0));
+        CHECK(near(mg_gd(FN(dep, gdouble (*)(gdouble, gfloat), "d_fmul")(mg_gdb(2.0), mg_gfb(3.0f))), 7.0));
         CHECK_INT(FN(dep, int (*)(void), "d_value")(), 0x1234);
         CHECK(FN(dep, void *(*)(void), "d_add_ptr")() == SYM(basic, "t_add"));
         CHECK_INT(FN(dep, int (*)(int), "d_spin")(2000000), 2000000);
+#if MG_ARCH_ARM32
         say("  PLT entries rescued after an interrupt: %u", mg_core_plt_rescues() - before);
+#else
+        (void)before;
+#endif
     }
 
     CHECK(mg_ld_find_lib("libt_basic.so") == basic && mg_ld_lib_of(SYM(basic, "t_add")) == basic);
     CHECK(mg_ld_load("libc.so") == NULL && mg_ld_load("libnothere.so") == NULL);
     test_guest_kinds(libdir);
 
+#if MG_ARCH_ARM32
     /* Both ISAs must return the shim pid (4242), never the host kernel's pid.
      * Literal r7 loads and a 4-byte-aligned guest sp reproduce Chromium's stub. */
     {
@@ -3173,6 +3268,7 @@ static void test_guest(const char *libdir, const char *scratch)
             CHECK(trapped && !left);
         }
     }
+#endif
 
     /*
      * AAudio as Spotify's core uses it (core/tests/guest/t_aaudio.c says what each result is): libaaudio.so opened by name and
@@ -3211,6 +3307,7 @@ static void test_guest(const char *libdir, const char *scratch)
     }
 }
 
+#if MG_ARCH_ARM32
 /*
  * The same library built in ARM mode, run as it is. Last of all: on a host
  * that does not keep a thread in ARM state this is where the process ends,
@@ -3315,10 +3412,26 @@ static void test_suspend_arm(void)
     CHECK_INT(still, 0);
     CHECK(job.done && job.result >= seen);
 }
+#else
+/*
+ * The same library with packed relocations (Android's APS2 and RELR) and GNU hash only, its thread-local variables
+ * found through __tls_get_addr (global-dynamic): the loader's paths libt_basic_arm.so takes on 32-bit ARM, on this ABI's
+ * relocations (tools/build-guest.sh). Last, as that one is.
+ */
+static void test_guest_packed(const char *scratch)
+{
+    mg_lib *packed = mg_ld_load("libt_basic_packed.so");
+    CHECK(packed != NULL);
+    if (packed) {
+        CHECK(mg_ld_init(packed));
+        test_library(packed, "packed relocations, global-dynamic TLS", scratch);
+    }
+}
+#endif
 
 #include "mg_tests_app.inc"
 
-#endif /* MG_HOST_ARM32 */
+#endif /* MG_GUEST_CODE */
 
 /*
  * The Dalvik runtime's tests (mg_dvm_tests.c). They start the runtime, which
@@ -3930,20 +4043,26 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
         g_failed += mg_gfx_tests_run(g_sink, g_sink_user, &checks);
         g_checks += checks;
     }
-#if MG_HOST_ARM32
+#if MG_GUEST_CODE
     test_proxies();
     if (can_run) {
-#if !defined(_WIN32)
+#if MG_ARCH_ARM32
+#if !MG_HOST_WINDOWS
         /* (First, while this process has few threads of its own: the test forks.) */
         test_chromium_oom_end();
 #endif
         test_mechanisms();
         test_suspend_arm();
+#endif
         if (libdir) {
             test_guest(libdir, scratch);
             test_app(libdir);
             test_dvm(libdir, scratch, true);
+#if MG_ARCH_ARM32
             test_guest_arm(scratch);
+#else
+            test_guest_packed(scratch);
+#endif
         } else {
             test_dvm(NULL, scratch, false);
         }
@@ -3954,7 +4073,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     }
 #else
     (void)can_run;
-    say("(not a 32-bit ARM host: the guest-code tests are skipped)");
+    say("(this build runs no guest code -- MSVC's x64 build, Windows' convention: the guest-code tests are skipped)");
     test_dvm(libdir, scratch, false);
 #endif
     say("%d checks, %d failed", g_checks, g_failed);

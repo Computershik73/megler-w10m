@@ -116,7 +116,7 @@ static void record_id(u32 kind, const void *id)
 
 #define INNER (R.inner)
 
-static void *r_canvas_new(void *user, void *pixels, int w, int h, int stride)
+static MEGLER_CB void *r_canvas_new(void *user, void *pixels, int w, int h, int stride)
 {
     void *cv = INNER->canvas_new(INNER->user, pixels, w, h, stride);
     (void)user;
@@ -141,7 +141,7 @@ static void *r_canvas_new(void *user, void *pixels, int w, int h, int stride)
     return cv;
 }
 
-static void r_canvas_free(void *user, void *cv)
+static MEGLER_CB void r_canvas_free(void *user, void *cv)
 {
     int i;
     (void)user;
@@ -156,7 +156,7 @@ static void r_canvas_free(void *user, void *cv)
     INNER->canvas_free(INNER->user, cv);
 }
 
-static void r_flush(void *user, void *cv)
+static MEGLER_CB void r_flush(void *user, void *cv)
 {
     (void)user;
     INNER->flush(INNER->user, cv);
@@ -164,7 +164,7 @@ static void r_flush(void *user, void *cv)
 }
 
 /* The memory was written by someone else: what it holds now goes into the record, for a host that will not have seen the writing. */
-static void r_touched(void *user, void *cv)
+static MEGLER_CB void r_touched(void *user, void *cv)
 {
     int i;
     (void)user;
@@ -179,14 +179,14 @@ static void r_touched(void *user, void *cv)
     INNER->touched(INNER->user, cv);
 }
 
-static void r_save(void *user, void *cv)
+static MEGLER_CB void r_save(void *user, void *cv)
 {
     (void)user;
     record_id(R_SAVE, cv);
     INNER->save(INNER->user, cv);
 }
 
-static void r_save_layer(void *user, void *cv, const float *bounds, int alpha, int blend)
+static MEGLER_CB void r_save_layer(void *user, void *cv, const float *bounds, int alpha, int blend)
 {
     (void)user;
     record_open();
@@ -199,14 +199,14 @@ static void r_save_layer(void *user, void *cv, const float *bounds, int alpha, i
     INNER->save_layer(INNER->user, cv, bounds, alpha, blend);
 }
 
-static void r_restore(void *user, void *cv)
+static MEGLER_CB void r_restore(void *user, void *cv)
 {
     (void)user;
     record_id(R_RESTORE, cv);
     INNER->restore(INNER->user, cv);
 }
 
-static void r_set_matrix(void *user, void *cv, const float *m)
+static MEGLER_CB void r_set_matrix(void *user, void *cv, const float *m)
 {
     (void)user;
     record_open();
@@ -216,7 +216,7 @@ static void r_set_matrix(void *user, void *cv, const float *m)
     INNER->set_matrix(INNER->user, cv, m);
 }
 
-static void r_clip_rect(void *user, void *cv, float l, float t, float r, float b, int op)
+static MEGLER_CB void r_clip_rect(void *user, void *cv, float l, float t, float r, float b, int op)
 {
     (void)user;
     record_open();
@@ -230,7 +230,7 @@ static void r_clip_rect(void *user, void *cv, float l, float t, float r, float b
     INNER->clip_rect(INNER->user, cv, l, t, r, b, op);
 }
 
-static void r_clip_path(void *user, void *cv, const float *path, int count, int fill, int op)
+static MEGLER_CB void r_clip_path(void *user, void *cv, const float *path, int count, int fill, int op)
 {
     (void)user;
     record_open();
@@ -243,7 +243,7 @@ static void r_clip_path(void *user, void *cv, const float *path, int count, int 
     INNER->clip_path(INNER->user, cv, path, count, fill, op);
 }
 
-static void r_draw_color(void *user, void *cv, uint32_t color, int blend)
+static MEGLER_CB void r_draw_color(void *user, void *cv, uint32_t color, int blend)
 {
     (void)user;
     record_open();
@@ -266,7 +266,7 @@ static void put_shape(void *cv, float l, float t, float r, float b, const megler
     put_id(shader);
 }
 
-static void r_draw_rect(void *user, void *cv, float l, float t, float r, float b, const megler_gfx_paint *paint, void *shader)
+static MEGLER_CB void r_draw_rect(void *user, void *cv, float l, float t, float r, float b, const megler_gfx_paint *paint, void *shader)
 {
     (void)user;
     record_open();
@@ -275,7 +275,7 @@ static void r_draw_rect(void *user, void *cv, float l, float t, float r, float b
     INNER->draw_rect(INNER->user, cv, l, t, r, b, paint, shader);
 }
 
-static void r_draw_round_rect(void *user, void *cv, float l, float t, float r, float b, float rx, float ry, const megler_gfx_paint *paint, void *shader)
+static MEGLER_CB void r_draw_round_rect(void *user, void *cv, float l, float t, float r, float b, float rx, float ry, const megler_gfx_paint *paint, void *shader)
 {
     (void)user;
     record_open();
@@ -286,7 +286,7 @@ static void r_draw_round_rect(void *user, void *cv, float l, float t, float r, f
     INNER->draw_round_rect(INNER->user, cv, l, t, r, b, rx, ry, paint, shader);
 }
 
-static void r_draw_oval(void *user, void *cv, float l, float t, float r, float b, const megler_gfx_paint *paint, void *shader)
+static MEGLER_CB void r_draw_oval(void *user, void *cv, float l, float t, float r, float b, const megler_gfx_paint *paint, void *shader)
 {
     (void)user;
     record_open();
@@ -295,7 +295,7 @@ static void r_draw_oval(void *user, void *cv, float l, float t, float r, float b
     INNER->draw_oval(INNER->user, cv, l, t, r, b, paint, shader);
 }
 
-static void r_draw_path(void *user, void *cv, const float *path, int count, int fill, const megler_gfx_paint *paint, void *shader)
+static MEGLER_CB void r_draw_path(void *user, void *cv, const float *path, int count, int fill, const megler_gfx_paint *paint, void *shader)
 {
     (void)user;
     record_open();
@@ -309,7 +309,7 @@ static void r_draw_path(void *user, void *cv, const float *path, int count, int 
     INNER->draw_path(INNER->user, cv, path, count, fill, paint, shader);
 }
 
-static void r_draw_bitmap(void *user, void *cv, const megler_gfx_image *image, const float *src, const float *dst, const megler_gfx_paint *paint)
+static MEGLER_CB void r_draw_bitmap(void *user, void *cv, const megler_gfx_image *image, const float *src, const float *dst, const megler_gfx_paint *paint)
 {
     (void)user;
     record_open();
@@ -322,7 +322,7 @@ static void r_draw_bitmap(void *user, void *cv, const megler_gfx_image *image, c
     INNER->draw_bitmap(INNER->user, cv, image, src, dst, paint);
 }
 
-static void r_draw_text(void *user, void *cv, const uint16_t *text, int count, float x, float y, const megler_gfx_paint *paint, void *typeface, void *shader)
+static MEGLER_CB void r_draw_text(void *user, void *cv, const uint16_t *text, int count, float x, float y, const megler_gfx_paint *paint, void *typeface, void *shader)
 {
     (void)user;
     record_open();
@@ -338,7 +338,7 @@ static void r_draw_text(void *user, void *cv, const uint16_t *text, int count, f
     INNER->draw_text(INNER->user, cv, text, count, x, y, paint, typeface, shader);
 }
 
-static void *r_typeface_create(void *user, const char *family, int generic, int weight, bool italic)
+static MEGLER_CB void *r_typeface_create(void *user, const char *family, int generic, int weight, bool italic)
 {
     void *face = INNER->typeface_create(INNER->user, family, generic, weight, italic);
     u32 length = (u32)strlen(family ? family : "");
@@ -354,7 +354,7 @@ static void *r_typeface_create(void *user, const char *family, int generic, int 
     return face;
 }
 
-static void *r_typeface_derive(void *user, void *typeface, int weight, bool italic)
+static MEGLER_CB void *r_typeface_derive(void *user, void *typeface, int weight, bool italic)
 {
     void *face = INNER->typeface_derive(INNER->user, typeface, weight, italic);
     (void)user;
@@ -367,7 +367,7 @@ static void *r_typeface_derive(void *user, void *typeface, int weight, bool ital
     return face;
 }
 
-static void *r_typeface_from_data(void *user, const void *data, size_t size)
+static MEGLER_CB void *r_typeface_from_data(void *user, const void *data, size_t size)
 {
     void *face = INNER->typeface_from_data(INNER->user, data, size);
     (void)user;
@@ -388,7 +388,7 @@ static void put_stops(const uint32_t *colors, const float *positions, int count,
     if (positions) put_floats(positions, count);
 }
 
-static void *r_shader_linear(void *user, float x0, float y0, float x1, float y1, const uint32_t *colors, const float *positions, int count, int tile)
+static MEGLER_CB void *r_shader_linear(void *user, float x0, float y0, float x1, float y1, const uint32_t *colors, const float *positions, int count, int tile)
 {
     void *shader = INNER->shader_linear(INNER->user, x0, y0, x1, y1, colors, positions, count, tile);
     (void)user;
@@ -403,7 +403,7 @@ static void *r_shader_linear(void *user, float x0, float y0, float x1, float y1,
     return shader;
 }
 
-static void *r_shader_radial(void *user, float cx, float cy, float radius, const uint32_t *colors, const float *positions, int count, int tile)
+static MEGLER_CB void *r_shader_radial(void *user, float cx, float cy, float radius, const uint32_t *colors, const float *positions, int count, int tile)
 {
     void *shader = INNER->shader_radial(INNER->user, cx, cy, radius, colors, positions, count, tile);
     (void)user;
@@ -417,7 +417,7 @@ static void *r_shader_radial(void *user, float cx, float cy, float radius, const
     return shader;
 }
 
-static void *r_shader_sweep(void *user, float cx, float cy, const uint32_t *colors, const float *positions, int count)
+static MEGLER_CB void *r_shader_sweep(void *user, float cx, float cy, const uint32_t *colors, const float *positions, int count)
 {
     void *shader = INNER->shader_sweep(INNER->user, cx, cy, colors, positions, count);
     (void)user;
@@ -430,7 +430,7 @@ static void *r_shader_sweep(void *user, float cx, float cy, const uint32_t *colo
     return shader;
 }
 
-static void *r_shader_bitmap(void *user, const megler_gfx_image *image, int tile)
+static MEGLER_CB void *r_shader_bitmap(void *user, const megler_gfx_image *image, int tile)
 {
     void *shader = INNER->shader_bitmap(INNER->user, image, tile);
     (void)user;
@@ -442,7 +442,7 @@ static void *r_shader_bitmap(void *user, const megler_gfx_image *image, int tile
     return shader;
 }
 
-static void r_shader_matrix(void *user, void *shader, const float *m)
+static MEGLER_CB void r_shader_matrix(void *user, void *shader, const float *m)
 {
     (void)user;
     record_open();
@@ -453,7 +453,7 @@ static void r_shader_matrix(void *user, void *shader, const float *m)
     INNER->shader_matrix(INNER->user, shader, m);
 }
 
-static void r_shader_free(void *user, void *shader)
+static MEGLER_CB void r_shader_free(void *user, void *shader)
 {
     (void)user;
     record_id(R_SHADER_FREE, shader);
@@ -461,7 +461,7 @@ static void r_shader_free(void *user, void *shader)
 }
 
 /* An image file the app decoded: its bytes, and what the recording host made of them, for another host's decoder to be held against. */
-static bool r_image_decode(void *user, const void *data, size_t size, void *pixels, int w, int h, int stride)
+static MEGLER_CB bool r_image_decode(void *user, const void *data, size_t size, void *pixels, int w, int h, int stride)
 {
     bool ok = INNER->image_decode(INNER->user, data, size, pixels, w, h, stride);
     (void)user;
@@ -483,7 +483,7 @@ static int g_button[4];
 static volatile i32 g_have_button;
 static char g_reason[400];
 
-void mg_gfx_record_log(int level, const char *line, void *user)
+MEGLER_CB void mg_gfx_record_log(int level, const char *line, void *user)
 {
     const char *at = strstr(line, "layout focus=true");
     (void)level;
@@ -493,7 +493,7 @@ void mg_gfx_record_log(int level, const char *line, void *user)
     if (strstr(line, "HelloTest") || strstr(line, "DemosTest") || level >= MEGLER_LOG_WARN) printf("    %s\n", line);
 }
 
-static void rec_present(void *user, const void *pixels, int w, int h, int stride)
+static MEGLER_CB void rec_present(void *user, const void *pixels, int w, int h, int stride)
 {
     (void)user;
     record_open();
@@ -505,7 +505,7 @@ static void rec_present(void *user, const void *pixels, int w, int h, int stride
     mg_atomic_add(&g_pictures, 1);
 }
 
-static void rec_exit(void *user, int status, const char *reason)
+static MEGLER_CB void rec_exit(void *user, int status, const char *reason)
 {
     (void)user;
     (void)status;
@@ -773,7 +773,7 @@ typedef struct pbytes {
     size_t size;
 } pbytes;
 
-static bool p_bytes_write(void *sink, const void *data, size_t size)
+static MEGLER_CB bool p_bytes_write(void *sink, const void *data, size_t size)
 {
     pbytes *o = (pbytes *)sink;
     o->data = (u8 *)mg_realloc(o->data, o->size + size + 1);

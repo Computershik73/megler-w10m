@@ -561,7 +561,7 @@ static int starting_scope(void)
 }
 
 /* A thread Java started: run(), what Java does with an exception nothing caught, and the word to whoever waits in join(). */
-static void thread_main(void *arg)
+static MG_HOSTCB void thread_main(void *arg)
 {
     started_thread *s = (started_thread *)arg;
     mg_jobj *peer = s->peer, *e;

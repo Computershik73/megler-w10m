@@ -408,7 +408,7 @@ typedef struct bytes {
     size_t size, cap;
 } bytes;
 
-static bool bytes_write(void *sink, const void *data, size_t size)
+static MEGLER_CB bool bytes_write(void *sink, const void *data, size_t size)
 {
     bytes *o = (bytes *)sink;
     if (o->size + size > o->cap) {
@@ -2835,7 +2835,7 @@ static void worker_draw(pic *p, int round)
     settle(p);
 }
 
-static void worker_main(void *arg)
+static MG_HOSTCB void worker_main(void *arg)
 {
     worker *w = (worker *)arg;
     int round;

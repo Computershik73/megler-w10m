@@ -1,4 +1,5 @@
 /* Start-up of the core, and the one fault handler everything else hangs off. */
+#include "../include/megler.h"
 #include "mg_core.h"
 #include "ndk/mg_egl.h"
 
@@ -70,12 +71,67 @@ mg_addr mg_chromium_oom_global(mg_addr pc)
 
 const char *megler_data_dir(void);
 
-static bool on_fault(mg_fault *f)
+#if !MG_ARCH_ARM32 && MG_GUEST_CODE
+/* core/src/crt/mg_crt_setjmp.c: the core's own, of the processor's convention (docs/DESKTOP.md). */
+int mg_setjmp(mg_addr *jb) __attribute__((returns_twice));
+MG_NORETURN void mg_longjmp(mg_addr *jb, int value);
+#if MG_ARCH_X86
+/* compiler-rt's, which the core is linked with: x86's 64-bit division, which its libc gives guest code (libgcc's names). */
+long long __divdi3(long long a, long long b);
+long long __moddi3(long long a, long long b);
+unsigned long long __udivdi3(unsigned long long a, unsigned long long b);
+unsigned long long __umoddi3(unsigned long long a, unsigned long long b);
+#endif
+
+/*
+ * What bionic gives guest code that is the processor's own code here, as 32-bit ARM's assembly stubs give it there
+ * (arm/mg_stubs.c): setjmp and longjmp, which save and restore the registers the convention has the callee keep (the
+ * core's own, which fit in bionic's jmp_buf of each processor; sigsetjmp's mask is not kept, as on ARM); and on x86 the
+ * 64-bit division libgcc gave Android's libc. Without setjmp a guest's call of it went to the stub of a missing import,
+ * which returned, and its function's frame was then torn ("stack corruption detected").
+ */
+static const mg_sym g_own_code[] = {
+    MG_WRAP("setjmp", mg_setjmp), MG_WRAP("_setjmp", mg_setjmp), MG_WRAP("sigsetjmp", mg_setjmp),
+    MG_WRAP("longjmp", mg_longjmp), MG_WRAP("_longjmp", mg_longjmp), MG_WRAP("siglongjmp", mg_longjmp),
+#if MG_ARCH_X86
+    MG_WRAP("__divdi3", __divdi3), MG_WRAP("__moddi3", __moddi3), MG_WRAP("__udivdi3", __udivdi3), MG_WRAP("__umoddi3", __umoddi3),
+#endif
+    MG_END
+};
+#endif
+
+/* The fault's registers as a report says them, in the processor's own names. */
+static void registers_line(const mg_fault *f, char *out, size_t cap)
+{
+    static const char *const names[MG_REG_COUNT] = {
+#if MG_ARCH_ARM32
+        "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc"
+#elif MG_ARCH_X86_64
+        "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "rip"
+#elif MG_ARCH_X86
+        "eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi", "eip"
+#else
+        "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x18",
+        "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "fp", "lr", "sp", "pc"
+#endif
+    };
+    size_t n = 0;
+    int i;
+    out[0] = 0;
+    for (i = 0; i < MG_REG_COUNT && n + 32 < cap; i++) {
+        if (i == MG_REG_PC) continue;
+        n += (size_t)snprintf(out + n, cap - n, "%s%s %0*llx", i % 8 ? " " : "\n  ", names[i], (int)(sizeof(mg_addr) * 2),
+                              (unsigned long long)f->regs[i]);
+    }
+    if (n + 24 < cap) snprintf(out + n, cap - n, " %s %08x", MG_ARCH_ARM32 ? "cpsr" : MG_ARCH_ARM64 ? "pstate" : "flags", f->cpsr ? *f->cpsr : 0);
+}
+
+static MG_HOSTCB bool on_fault(mg_fault *f)
 {
     const char *lib = NULL, *sym;
     const void *sym_addr = NULL, *base = NULL;
     char report[4000];
-    mg_addr pc = f->regs ? (f->regs[15] & ~1u) : 0;
+    mg_addr pc = f->regs ? MG_CODE_ADDR(f->regs[MG_REG_PC]) : 0;
 #if MG_HOST_ARM32
     /* The kernel's user helpers, which Windows has no page of (arm/mg_kuser.h): a call of one, or a read of their version. */
     if (f->kind == MG_FAULT_ACCESS && f->regs && (f->address & 0xfffff000u) == 0xffff0000u) {
@@ -94,6 +150,7 @@ static bool on_fault(mg_fault *f)
 #endif
     if ((f->kind == MG_FAULT_ILLEGAL || f->kind == MG_FAULT_BREAKPOINT) && f->regs) {
         mg_addr target = 0;
+#if MG_ARCH_ARM32
         int reg;
         /* A patched svc's UDF, or an svc left as the file has it, stopped at its hardware breakpoint. */
         if (mg_patch_svc_target(pc, &target)) {
@@ -119,6 +176,17 @@ static bool on_fault(mg_fault *f)
             mg_fault_resume_at(f, target);
             return true;
         }
+#elif MG_ARCH_ARM64
+        /* A patched svc's UDF (arm64/mg_patch_arm64.c): the call's number in x8, its arguments in x0..x5, what it gives in x0. */
+        if (mg_patch_svc_target(pc, &target)) {
+            long args[6];
+            int i;
+            for (i = 0; i < 6; i++) args[i] = (long)f->regs[i];
+            f->regs[0] = (mg_addr)mg_bionic_syscall((long)f->regs[8], args);
+            mg_fault_resume_at(f, target);
+            return true;
+        }
+#endif
         if (f->kind == MG_FAULT_BREAKPOINT) return false;
         if (mg_ld_plt_target(pc, &target) || mg_stubs_once_target(pc, &target)) {
             mg_fault_resume_at(f, target);
@@ -142,14 +210,12 @@ static bool on_fault(mg_fault *f)
     sym = pc ? mg_ld_symbol_at((const void *)pc, &lib, &sym_addr, &base) : NULL;
     /* (A pc of zero is a fault like any other: a call through a null pointer, and lr says whose.) */
     if (f->regs) {
-        snprintf(report, sizeof(report),
-                 "fault: %s (code 0x%x)%s%s at pc %08x%s%s%s%s, address %08x\n"
-                 "  r0 %08x r1 %08x r2 %08x r3 %08x r4 %08x r5 %08x r6 %08x r7 %08x\n"
-                 "  r8 %08x r9 %08x r10 %08x r11 %08x r12 %08x sp %08x lr %08x cpsr %08x",
+        char regs[900];
+        registers_line(f, regs, sizeof(regs));
+        snprintf(report, sizeof(report), "fault: %s (code 0x%x)%s%s at pc %0*llx%s%s%s%s, address %0*llx%s",
                  f->kind == MG_FAULT_ILLEGAL ? "illegal instruction" : f->kind == MG_FAULT_ACCESS ? "access violation" : fault_name(f->code), f->code,
-                 f->write ? " writing" : "", f->exec ? " executing" : "", (unsigned)pc, lib ? " in " : "", lib ? lib : "", sym ? " " : "",
-                 sym ? sym : "", (unsigned)f->address, f->regs[0], f->regs[1], f->regs[2], f->regs[3], f->regs[4], f->regs[5], f->regs[6],
-                 f->regs[7], f->regs[8], f->regs[9], f->regs[10], f->regs[11], f->regs[12], f->regs[13], f->regs[14], f->cpsr ? *f->cpsr : 0);
+                 f->write ? " writing" : "", f->exec ? " executing" : "", (int)(sizeof(mg_addr) * 2), (unsigned long long)pc, lib ? " in " : "",
+                 lib ? lib : "", sym ? " " : "", sym ? sym : "", (int)(sizeof(mg_addr) * 2), (unsigned long long)f->address, regs);
         if (lib && base) {
             size_t n = strlen(report);
             snprintf(report + n, sizeof(report) - n, "\n  %s+0x%x", lib, (unsigned)(pc - (mg_addr)base));
@@ -180,13 +246,17 @@ static bool on_fault(mg_fault *f)
         }
         if (f->kind == MG_FAULT_ACCESS && pc < 0x10000) {
             size_t n = strlen(report);
-            snprintf(report + n, sizeof(report) - n, "\n  a call through a null pointer: the caller (lr) had asked for a function and was given none");
+            snprintf(report + n, sizeof(report) - n, "\n  a call through a null pointer: the caller (%s) had asked for a function and was given none",
+                     MG_REG_LR >= 0 ? "lr" : "the return address on the stack");
         }
         {
-            /* Who called: a fault inside this layer (a shim handed a bad pointer) is the caller's doing, and the caller is what can be looked up. */
+            /*
+             * Who called: a fault inside this layer (a shim handed a bad pointer) is the caller's doing, and the caller is what can be
+             * looked up. In lr on ARM; on x86 the return address is in a register only at a call's first instruction, and at sp then.
+             */
             const char *caller_lib = NULL;
             const void *caller_sym_addr = NULL, *caller_base = NULL;
-            mg_addr lr = f->regs[14] & ~(mg_addr)1;
+            mg_addr lr = MG_REG_LR >= 0 ? MG_CODE_ADDR(f->regs[MG_REG_LR >= 0 ? MG_REG_LR : 0]) : (pc < 0x10000 ? *(const mg_addr *)f->regs[MG_REG_SP] : 0);
             const char *caller = mg_ld_symbol_at((const void *)lr, &caller_lib, &caller_sym_addr, &caller_base);
             if (caller_lib && caller_base) {
                 size_t n = strlen(report);
@@ -202,8 +272,9 @@ static bool on_fault(mg_fault *f)
             if (mg_host_module_at(pc, module, sizeof(module), &module_base))
                 snprintf(report + n, sizeof(report) - n, "\n  in %s+0x%x", module, (unsigned)(pc - module_base));
             n = strlen(report);
-            if (mg_host_module_at(f->regs[14] & ~(mg_addr)1, module, sizeof(module), &module_base))
-                snprintf(report + n, sizeof(report) - n, ", called from %s+0x%x", module, (unsigned)((f->regs[14] & ~(mg_addr)1) - module_base));
+            if (MG_REG_LR >= 0 && mg_host_module_at(MG_CODE_ADDR(f->regs[MG_REG_LR >= 0 ? MG_REG_LR : 0]), module, sizeof(module), &module_base))
+                snprintf(report + n, sizeof(report) - n, ", called from %s+0x%x", module,
+                         (unsigned)(MG_CODE_ADDR(f->regs[MG_REG_LR >= 0 ? MG_REG_LR : 0]) - module_base));
         }
         {
             /*
@@ -212,14 +283,14 @@ static bool on_fault(mg_fault *f)
              * tables for most of it), but it usually names who asked.
              */
             void *lo = NULL, *hi = NULL;
-            mg_addr sp = f->regs[13] & ~(mg_addr)3, last = 0;
+            mg_addr sp = f->regs[MG_REG_SP] & ~(mg_addr)(sizeof(mg_addr) - 1), last = 0;
             int found = 0;
             mg_thread_stack_bounds(&lo, &hi);
             if (sp >= (mg_addr)lo && sp < (mg_addr)hi) {
                 size_t n = strlen(report);
                 mg_addr at;
-                for (at = sp; at + 4 <= (mg_addr)hi && at < sp + 65536 && found < 40 && n + 80 < sizeof(report); at += 4) {
-                    mg_addr word = *(const u32 *)at & ~(mg_addr)1, where_base = 0;
+                for (at = sp; at + sizeof(mg_addr) <= (mg_addr)hi && at < sp + 65536 && found < 40 && n + 80 < sizeof(report); at += sizeof(mg_addr)) {
+                    mg_addr word = MG_CODE_ADDR(*(const mg_addr *)at), where_base = 0;
                     const char *where_lib = NULL;
                     const void *where_sym = NULL, *where_lib_base = NULL;
                     char module[96];
@@ -287,13 +358,35 @@ static bool on_fault(mg_fault *f)
             mg_gthread *gt = mg_guest_tp_get() ? mg_gthread_self() : NULL;
             char module[96];
             mg_addr module_base = 0;
+#if MG_ARCH_ARM32
             void *longjmp_stub = mg_stub(MG_STUB_LONGJMP);
+#elif MG_GUEST_CODE
+            void *longjmp_stub = (void *)mg_longjmp;
+#else
+            void *longjmp_stub = NULL;
+#endif
             if (gt && gt->fault_guard && longjmp_stub && !mg_host_module_at(pc, module, sizeof(module), &module_base)) {
-                u32 *jb = gt->fault_guard;
+                mg_addr *jb = gt->fault_guard;
                 gt->fault_guard = NULL;
                 mg_warn("fault: contained: the thread goes back to the native method's call, which ends with an exception; the app runs on");
-                f->regs[0] = (u32)(mg_addr)jb;
+                /* longjmp(jb, 1), as the processor's convention passes them: in registers, or on x86 on the stack. */
+#if MG_ARCH_X86_64
+                f->regs[7] = (mg_addr)jb;                /* rdi */
+                f->regs[6] = 1;                          /* rsi */
+                f->regs[MG_REG_SP] = (f->regs[MG_REG_SP] - 256) & ~(mg_addr)15;
+                f->regs[MG_REG_SP] -= 8;                 /* as if called */
+#elif MG_ARCH_X86
+                {
+                    mg_addr *at = (mg_addr *)((f->regs[MG_REG_SP] - 256) & ~(mg_addr)15);
+                    at[-3] = 0;                          /* the return address it never uses */
+                    at[-2] = (mg_addr)jb;
+                    at[-1] = 1;
+                    f->regs[MG_REG_SP] = (mg_addr)(at - 3);
+                }
+#else
+                f->regs[0] = (mg_addr)jb;
                 f->regs[1] = 1;
+#endif
                 mg_fault_resume_at(f, (mg_addr)longjmp_stub);
                 return true;
             }
@@ -352,8 +445,8 @@ bool megler_probe_breakpoints(char *out, size_t size)
 
 bool megler_thread_where(unsigned thread_id, char *out, size_t size)
 {
-    enum { WORDS = 16384 };                       /* 64 KB of its stack from sp up, as a fault's report looks */
-    static u32 words[WORDS];
+    enum { WORDS = 65536 / sizeof(mg_addr) };     /* 64 KB of its stack from sp up, as a fault's report looks */
+    static mg_addr words[WORDS];
     static mg_lock lock = MG_LOCK_INIT;
     mg_thread_regs regs;
     char name[128];
@@ -376,7 +469,7 @@ bool megler_thread_where(unsigned thread_id, char *out, size_t size)
     snprintf(out + n, size - n, ", lr %s", name);
 #endif
     for (i = 0; i < got && found < 40; i++) {
-        mg_addr word = words[i] & ~(mg_addr)1, base = 0;
+        mg_addr word = MG_CODE_ADDR(words[i]), base = 0;
         char module[96];
         const char *lib = NULL;
         const void *sym = NULL, *lib_base = NULL;
@@ -407,9 +500,20 @@ bool mg_core_init(void)
     mg_time_init();
     mg_misc_init();
     mg_env_init();
+#if MG_ARCH_ARM32
     g_can_run = mg_stubs_init();
+#elif MG_GUEST_CODE
+    {
+        /* Where the core is of the guest's own convention (docs/DESKTOP.md): whether memory can be made executable at all. */
+        u8 *page = (u8 *)mg_mem_alloc(MG_PAGE);
+        g_can_run = page && mg_mem_protect(page, MG_PAGE, MG_PROT_RX);
+        if (page) mg_mem_release(page, MG_PAGE);
+        if (!g_can_run) mg_err("core: executable memory was refused -- is the codeGeneration capability granted?");
+        mg_bionic_register(g_own_code);
+    }
+#endif
     mg_fault_set_handler(on_fault);
-#if MG_HOST_ARM32
+#if MG_GUEST_CODE
     {
         /* Asked for now, while few thread-local slots are taken: on Windows the slot has to be one of the first 64, which live in the TEB itself. */
         u32 opc2 = 0, offset = 0;

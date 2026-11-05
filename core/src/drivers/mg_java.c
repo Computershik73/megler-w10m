@@ -1661,7 +1661,7 @@ static bool main_waits(const mg_dvm_thread *t, const mg_dvm_method *m)
     return m && (m->flags & DVM_ACC_NATIVE) && !strcmp(m->name, "wait") && !strcmp(m->cls->name, "java/lang/Object");
 }
 
-static void hot_main(void *arg)
+static MG_HOSTCB void hot_main(void *arg)
 {
     u32 samples = 0, outside = 0, collecting = 0, stuck_said = 0;
     u64 since = mg_time_monotonic_ns(), wait_since = 0, wait_last = 0;
@@ -2010,7 +2010,7 @@ static void stubs_load(void)
     free(path);
 }
 
-static void main_thread(void *arg)
+static MG_HOSTCB void main_thread(void *arg)
 {
     char *framework = mg_sprintf("%s/framework/megler-framework.dex", J.root), *res = mg_sprintf("%s/framework/framework-res.apk", J.root);
     char why[1600], stack[1200];

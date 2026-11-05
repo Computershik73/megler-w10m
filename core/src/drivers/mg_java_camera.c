@@ -183,7 +183,7 @@ mg_jcamera *mg_jcamera_open(int index, int *error)
 const megler_camera_caps *mg_jcamera_caps(mg_jcamera *c) { return c ? &c->caps : NULL; }
 
 /* A picture from the shell, on its thread: NV12 into the spare buffer as NV21, which then becomes the latest. */
-static void on_frame(void *core, const megler_camera_frame *f)
+static MEGLER_CB void on_frame(void *core, const megler_camera_frame *f)
 {
     mg_jcamera *c = (mg_jcamera *)core;
     picture *s = &c->spare, t;
@@ -247,7 +247,7 @@ static void on_frame(void *core, const megler_camera_frame *f)
     mg_lock_release(&c->lock);
 }
 
-static void on_focus(void *core, bool focused)
+static MEGLER_CB void on_focus(void *core, bool focused)
 {
     mg_jcamera *c = (mg_jcamera *)core;
     mg_lock_acquire(&c->lock);

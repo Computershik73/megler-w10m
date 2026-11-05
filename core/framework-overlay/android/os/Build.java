@@ -1,6 +1,7 @@
 // Overlay of core/framework/src/android/os/Build.java (tools/build-framework.sh).
-// It differs in the processor it names: CPU_ABI, CPU_ABI2 and the SUPPORTED_*_ABIS are 32-bit ARM's, armeabi-v7a and
-// armeabi, as the phone's are and as the layer runs an app's native code.
+// It differs in the processor it names: CPU_ABI, CPU_ABI2 and the SUPPORTED_*_ABIS are the ones the layer runs an app's
+// native code for (megler/Abis.java): 32-bit ARM's on the phone, armeabi-v7a and armeabi, and on desktop Windows the
+// processor's own alone.
 //
 // Why. The original is written for a 64-bit device and named arm64-v8a only. Here the Java driver places an app's
 // armeabi-v7a libraries, the C library says armeabi-v7a (ro.product.cpu.abi), and an app that checks the processor against
@@ -28,8 +29,8 @@ public class Build {
     public static boolean isBuildConsistent() { return true; }
     public static final String FINGERPRINT = "google/sailfish/sailfish:14/AP1A/1:user/release-keys", HOST = "megler", USER = "megler";
     public static final String SERIAL = "unknown", BOOTLOADER = "unknown", RADIO = "unknown";
-    public static final String CPU_ABI = "armeabi-v7a", CPU_ABI2 = "armeabi";
-    public static final String[] SUPPORTED_ABIS = { "armeabi-v7a", "armeabi" }, SUPPORTED_64_BIT_ABIS = {}, SUPPORTED_32_BIT_ABIS = { "armeabi-v7a", "armeabi" };
+    public static final String CPU_ABI = megler.Abis.PRIMARY, CPU_ABI2 = megler.Abis.SECOND;
+    public static final String[] SUPPORTED_ABIS = megler.Abis.ALL, SUPPORTED_64_BIT_ABIS = megler.Abis.ALL_64, SUPPORTED_32_BIT_ABIS = megler.Abis.ALL_32;
     public static final long TIME = 0;
     public static String getSerial() { return SERIAL; }
     public static class VERSION {

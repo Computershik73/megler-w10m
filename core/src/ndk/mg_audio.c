@@ -139,7 +139,7 @@ static void record(const i16 *out, u32 frames)
     }
 }
 
-static void mixer_thread(void *arg)
+static MG_HOSTCB void mixer_thread(void *arg)
 {
     static float mix[MG_AUDIO_CHUNK * 2];
     static i16 out[MG_AUDIO_CHUNK * 2];
@@ -199,7 +199,7 @@ static void mixer_thread(void *arg)
  * (another run in the same process: the tests) is opened when the next voice is made; the one tried is not tried again.
  */
 static bool g_open_asked;
-static bool (*g_open_tried)(void *user, int rate);
+static bool (MEGLER_CB *g_open_tried)(void *user, int rate);
 
 static void ensure_mixer(void)
 {

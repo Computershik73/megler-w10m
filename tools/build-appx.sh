@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # Builds, packs and signs the Megler app package.
 #
-#   tools/build-appx.sh [arm|x64] [--auto MODES] [--libcore] [--java] [--bitgapps ZIP] [--gms APK] [--play-store APK] [--clean] [--no-pack]
+#   tools/build-appx.sh [arm|x64|arm64|x86] [--auto MODES] [--libcore] [--java] [--bitgapps ZIP] [--gms APK] [--play-store APK] [--clean] [--no-pack]
 #
 #   arm        (default) the shipping package for Windows 10 Mobile, ARM32
-#   x64        the same shell for this PC, to compile and look at; it carries
-#              no ANGLE (there is none to take) and runs no Android code
+#   x64, arm64, x86
+#              the package for desktop Windows 10 and 11 on that processor
+#              (docs/DESKTOP.md), which runs Android code of that processor:
+#              x86_64, arm64-v8a, x86. The core is an ELF of Android's ABI
+#              beside Megler.exe (tools/build-desktop.sh <arch> app makes it
+#              and Megler.exe's half of it); the Android root is that ABI's
+#              (tools/dvm-android-root.sh --abi). No ANGLE yet.
 #   --auto MODES  an unattended on-device run at start-up (app/Megler/auto,
 #              tools/phone.py auto): `probe` runs megler_probe, `selftest` runs
 #              megler_selftest, or `probe,selftest`; `gfx` draws the scenes of
@@ -127,7 +132,7 @@ MICROG_APK=""
 while [ $# -gt 0 ]; do
   arg="$1"; shift
   case "$arg" in
-    arm|x64) ARCH="$arg" ;;
+    arm|x64|arm64|x86) ARCH="$arg" ;;
     --auto|--auto=*)
       if [ "$arg" = --auto ]; then
         [ $# -gt 0 ] || { echo "--auto needs probe, selftest or probe,selftest" >&2; exit 2; }
@@ -205,12 +210,18 @@ if [ -z "$VC" ] || [ ! -f "$VC/bin/Hostx64/arm/cl.exe" ]; then
 fi
 SDK="${MEGLER_SDK:-/c/Program Files (x86)/Windows Kits/10}"
 SDKV="${MEGLER_SDK_VERSION:-10.0.22621.0}"
-SDKV_LIB="${MEGLER_SDK_LIB:-10.0.15063.0}"
+# (Desktop Windows: the SDK's own libraries, which every Windows 10 the package says it runs on has.)
+if [ "$ARCH" = arm ]; then SDKV_LIB="${MEGLER_SDK_LIB:-10.0.15063.0}"; else SDKV_LIB="${MEGLER_SDK_LIB:-$SDKV}"; fi
 SDKBIN="$SDK/bin/$SDKV/x64"
 CL="$VC/bin/Hostx64/$ARCH/cl.exe"
 LINK="$VC/bin/Hostx64/$ARCH/link.exe"
-MACHINE=$([ "$ARCH" = arm ] && echo ARM || echo X64)
-PKGARCH=$([ "$ARCH" = arm ] && echo arm || echo x64)
+case "$ARCH" in
+  arm) MACHINE=ARM; PKGARCH=arm; ABI=armeabi-v7a ;;
+  x64) MACHINE=X64; PKGARCH=x64; ABI=x86_64 ;;
+  arm64) MACHINE=ARM64; PKGARCH=arm64; ABI=arm64-v8a ;;
+  x86) MACHINE=X86; PKGARCH=x86; ABI=x86 ;;
+esac
+DESKTOP=$([ "$ARCH" = arm ] && echo 0 || echo 1)
 for tool in "$CL" "$LINK" "$SDKBIN/makeappx.exe" "$SDKBIN/makepri.exe"; do
   [ -f "$tool" ] || { echo "missing: $tool" >&2; exit 1; }
 done
@@ -234,7 +245,7 @@ OUT="$APP/AppPackages"
 mkdir -p "$OBJ" "$OUT"
 JOBS="${MEGLER_JOBS:-$(nproc 2>/dev/null || echo 4)}"
 
-echo "=== Megler for Windows 10 Mobile: $ARCH${AUTO_MODES:+, auto run: $AUTO_MODES} ==="
+echo "=== Megler for $([ "$DESKTOP" = 1 ] && echo "desktop Windows" || echo "Windows 10 Mobile"): $ARCH${AUTO_MODES:+, auto run: $AUTO_MODES} ==="
 echo "    MSVC $(basename "$VC"), headers SDK $SDKV, libraries SDK $SDKV_LIB"
 
 # MARK: Compile
@@ -288,6 +299,13 @@ compile_group() {
   echo "    $(basename "$objdir"): ${#stale[@]} compiled"
 }
 
+if [ "$DESKTOP" = 1 ]; then
+  # The core as an ELF of the processor's Android ABI, and Megler.exe's half of it (docs/DESKTOP.md).
+  echo "=== core (an ELF of Android's $ABI ABI) ==="
+  bash "$ROOT/tools/build-dvm-fixtures.sh"
+  bash "$ROOT/tools/build-desktop.sh" "$ARCH" app | sed 's/^/    /'
+  [ -f "$ROOT/build/desktop-$ARCH/app/megler-core.so" ] || { echo "the core's ELF was not built" >&2; exit 1; }
+else
 echo "=== zlib ==="
 ZLIB="$ROOT/core/third_party/zlib"
 mapfile -t ZSRC < <(find "$ZLIB" -maxdepth 1 -name '*.c' ! -name 'gz*.c' | sort)
@@ -335,6 +353,7 @@ done
 # main, and core/tests/guest is Android code (tools/build-guest.sh).
 mapfile -t TEST_SRC < <(find "$TESTS" -maxdepth 1 -name '*.c' ! -name 'mg_tests_main.c' | sort)
 compile_group "$OBJ/tests" "$CORE_HEADERS" "${CORE_FLAGS[@]}" -- "${TEST_SRC[@]}"
+fi
 
 echo "=== shell (C++/WinRT, C++20) ==="
 # What the unattended run does (auto/AutoRun.cpp), as a header of its own: a
@@ -348,6 +367,8 @@ if [ "$(cat "$AUTO_CONFIG/AutoConfig.h" 2>/dev/null)" != "$AUTO_HEADER" ]; then
 fi
 SHELL_FLAGS=("${CXX[@]}" /std:c++20 /W3 /bigobj "/I$(w "$APP")" "/I$(w "$ROOT/core/include")" "/I$(w "$AUTO_CONFIG")"
              "/Fp$(w "$OBJ/shell/pch.pch")")
+# (Desktop: the shell loads the core's ELF before it calls it, shell/Platform.cpp.)
+[ "$DESKTOP" = 1 ] && SHELL_FLAGS+=(/DMG_ELF_HOST=1)
 mkdir -p "$OBJ/shell"
 SHELL_HEADERS="$(newest_mtime "$APP" '*.h')"
 MEGLER_H="$(stat -c %Y "$ROOT/core/include/megler.h")"
@@ -371,7 +392,11 @@ compile_group "$OBJ/gfx" "$SHELL_HEADERS" "${CXX[@]}" /std:c++20 /W3 "/I$(w "$AP
 # MARK: Link
 
 echo "=== link Megler.exe ==="
-mapfile -t OBJS < <(find "$OBJ/zlib" "$OBJ/core" "$OBJ/tests" "$OBJ/shell" "$OBJ/gfx" -name '*.obj' | sort)
+if [ "$DESKTOP" = 1 ]; then
+  mapfile -t OBJS < <(find "$OBJ/shell" "$OBJ/gfx" "$ROOT/build/desktop-$ARCH/app/coff" -name '*.obj' | sort)
+else
+  mapfile -t OBJS < <(find "$OBJ/zlib" "$OBJ/core" "$OBJ/tests" "$OBJ/shell" "$OBJ/gfx" -name '*.obj' | sort)
+fi
 OBJS_W=()
 for o in "${OBJS[@]}"; do OBJS_W+=("$(w "$o")"); done
 rm -rf "$BUILD/link" && mkdir -p "$BUILD/link"
@@ -395,8 +420,11 @@ rm -rf "$BUILD/link" && mkdir -p "$BUILD/link"
 # shifts the loop's head across a fetch window (docs/JAVA.md, the interpreter's speed). Pinned, a change elsewhere in the
 # program cannot make Java apps slower or faster on the phone.
 echo mg_dvm_interpret > "$BUILD/link/order.txt"
+# (On the desktop the interpreter is in the core's ELF, which this link does not see.)
+ORDER=("/ORDER:@$(w "$BUILD/link/order.txt")")
+[ "$DESKTOP" = 1 ] && ORDER=()
 "$LINK" /nologo "${OBJS_W[@]}" "/OUT:$(w "$BUILD/link/Megler.exe")" "/PDB:$(w "$BUILD/link/Megler.pdb")" \
-  "/MAP:$(w "$BUILD/link/Megler.map")" "/ORDER:@$(w "$BUILD/link/order.txt")" /DEBUG /OPT:REF /OPT:ICF /INCREMENTAL:NO \
+  "/MAP:$(w "$BUILD/link/Megler.map")" ${ORDER[@]+"${ORDER[@]}"} /DEBUG /OPT:REF /OPT:ICF /INCREMENTAL:NO \
   /APPCONTAINER /SUBSYSTEM:WINDOWS "/MACHINE:$MACHINE" /DYNAMICBASE /NXCOMPAT /MANIFEST:NO \
   WindowsApp.lib OneCoreUAP.lib d3d11.lib dxgi.lib mfplat.lib mfreadwrite.lib mfuuid.lib d2d1.lib dwrite.lib \
   /DELAYLOAD:oleaut32.dll /DELAYLOAD:xaudio2_9.dll /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll \
@@ -473,24 +501,36 @@ echo "arch=$PKGARCH auto=${AUTO_MODES:-none} java=$JAVA libcore=$LIBCORE" > "$RO
 echo "    map: build/maps/Megler_$VERSION.map"
 
 cp "$BUILD/link/Megler.exe" "$STAGE/"
+if [ "$DESKTOP" = 1 ]; then
+  cp "$ROOT/build/desktop-$ARCH/app/megler-core.so" "$STAGE/"
+  echo "    megler-core.so: $(stat -c %s "$STAGE/megler-core.so") bytes, the core of Android's $ABI ABI"
+fi
+# The Android root of the package's ABI (tools/dvm-android-root.sh --abi).
+ANDROID_ROOT="$ROOT/build/android9/root"
+[ "$DESKTOP" = 1 ] && ANDROID_ROOT="$ROOT/build/android9/root-$ABI"
 cp "$APP/Assets/"*.png "$STAGE/Assets/"
 # Megler's own text is Roboto, Android's face, and its monospace Droid Sans Mono (ui/Theme.h): the Android root's fonts
 # (tools/android9-unpack.sh fonts), where they are. Without them the shell's text is Segoe UI.
 mkdir -p "$STAGE/fonts"
 for f in Roboto-Regular.ttf Roboto-Medium.ttf Roboto-Bold.ttf DroidSansMono.ttf; do
-  if [ -f "$ROOT/build/android9/root/fonts/$f" ]; then cp "$ROOT/build/android9/root/fonts/$f" "$STAGE/fonts/"; fi
+  # (Or from the system image's fonts, which every ABI's root has: a desktop ABI's root may not be made yet.)
+  if [ -f "$ANDROID_ROOT/fonts/$f" ]; then cp "$ANDROID_ROOT/fonts/$f" "$STAGE/fonts/"
+  elif [ -f "$ROOT/build/android9/system/fonts/$f" ]; then cp "$ROOT/build/android9/system/fonts/$f" "$STAGE/fonts/"; fi
 done
 echo "    fonts: $(ls "$STAGE/fonts" | tr '\n' ' ')"
 
 # The self-test's guest libraries: megler_selftest loads them from
 # <package>/selftest (core/src/mg_diag.c).
-GUEST="$ROOT/build/guest/armeabi-v7a"
+GUEST="$ROOT/build/guest/$ABI"
+# (The demo is 32-bit ARM code: a desktop package has none, and its library offers the Java test apps instead.)
 DEMO="$ROOT/build/guest/demo/megler-demo.apk"
-if ! ls "$GUEST"/*.so > /dev/null 2>&1 || [ ! -f "$DEMO" ] || [ "$ROOT/core/tests/guest/t_demo.c" -nt "$DEMO" ] \
+[ "$DESKTOP" = 1 ] && DEMO=""
+# (Made here for the phone; a desktop package takes what tools/build-guest.sh made for its ABI, if anything.)
+if [ "$DESKTOP" = 0 ] && { ! ls "$GUEST"/*.so > /dev/null 2>&1 || [ ! -f "$DEMO" ] || [ "$ROOT/core/tests/guest/t_demo.c" -nt "$DEMO" ] \
    || [ ! -f "$GUEST/libt_jni.so" ] || [ "$ROOT/core/tests/guest/t_jni.c" -nt "$GUEST/libt_jni.so" ] \
    || [ ! -f "$GUEST/runtime/libt_ruser.so" ] \
    || [ ! -f "$GUEST/libt_svc_arm.so" ] || [ ! -f "$GUEST/libt_svc_diag.so" ] \
-   || [ "$ROOT/core/tests/guest/t_svc.c" -nt "$GUEST/libt_svc.so" ]; then
+   || [ "$ROOT/core/tests/guest/t_svc.c" -nt "$GUEST/libt_svc.so" ]; }; then
   echo "    building the guest test libraries (tools/build-guest.sh)"
   bash "$ROOT/tools/build-guest.sh" > "$BUILD/build-guest.log" 2>&1 || echo "    WARNING: tools/build-guest.sh failed (build/appx-$ARCH/build-guest.log)" >&2
 fi
@@ -506,20 +546,28 @@ if ls "$GUEST"/*.so > /dev/null 2>&1; then
   # The Dalvik runtime's tests read their DEX files from selftest/dvm (tools/build-dvm-fixtures.sh made them).
   if [ -d "$GUEST/dvm" ]; then mkdir -p "$STAGE/selftest/dvm" && cp "$GUEST"/dvm/* "$STAGE/selftest/dvm/"; fi
   ls "$GUEST"/*.apk > /dev/null 2>&1 && cp "$GUEST"/*.apk "$STAGE/selftest/"
-  if [ "$JAVA" = 1 ]; then
-    # The Java framework and the test apps, built where their sources are newer (a JDK and the Android SDK's build tools).
-    { bash "$ROOT/tools/build-framework.sh" && bash "$ROOT/tools/build-test-app.sh"; } > "$BUILD/build-java.log" 2>&1 ||
-      { echo "--java: the Java framework or the test apps could not be built (build/appx-$ARCH/build-java.log)" >&2; exit 1; }
-  fi
-  if [ "$LIBCORE" = 1 ]; then
-    # The Android root, where megler_run looks for it (core/src/drivers/mg_java.c) and the runtime's tests do (core/tests/mg_tests.c).
-    bash "$ROOT/tools/dvm-android-root.sh" > /dev/null
-    cp -r "$ROOT/build/android9/root" "$STAGE/android"
-    echo "    android: Android 9's libcore$([ -f "$STAGE/android/framework/megler-framework.dex" ] && echo " and the Java framework"), $(find "$STAGE/android" -type f | wc -l) files, $(du -sk "$STAGE/android" | cut -f1) KB"
-  fi
   echo "    selftest: $(ls "$STAGE/selftest" | tr '\n' ' ')"
 else
-  echo "    WARNING: no guest test libraries in build/guest/armeabi-v7a; the self-test will fail the tests that load them" >&2
+  echo "    WARNING: no guest test libraries in build/guest/$ABI; the self-test will fail the tests that load them" >&2
+fi
+# (The DEX files are every ABI's, and tools/build-dvm-fixtures.sh keeps them beside 32-bit ARM's libraries: a desktop
+# package without guest libraries of its own takes them from there, or the runtime's tests fail for want of them.)
+if [ ! -d "$STAGE/selftest/dvm" ] && [ -d "$ROOT/build/guest/armeabi-v7a/dvm" ]; then
+  mkdir -p "$STAGE/selftest/dvm" && cp "$ROOT/build/guest/armeabi-v7a/dvm/"* "$STAGE/selftest/dvm/"
+  echo "    selftest: the Dalvik runtime's DEX files, $(ls "$STAGE/selftest/dvm" | wc -l) files"
+fi
+if [ "$JAVA" = 1 ]; then
+  # The Java framework and the test apps, built where their sources are newer (a JDK and the Android SDK's build tools).
+  # (With msys's conversion of paths, which this script turns off for its own tools: build-framework.sh hands Python
+  # /c/... paths, and in a fresh checkout, where the framework is not built yet, Python was given C:\c\Users\....)
+  { env -u MSYS2_ARG_CONV_EXCL bash "$ROOT/tools/build-framework.sh" && env -u MSYS2_ARG_CONV_EXCL bash "$ROOT/tools/build-test-app.sh"; } > "$BUILD/build-java.log" 2>&1 ||
+    { echo "--java: the Java framework or the test apps could not be built (build/appx-$ARCH/build-java.log)" >&2; exit 1; }
+fi
+if [ "$LIBCORE" = 1 ]; then
+  # The Android root, where megler_run looks for it (core/src/drivers/mg_java.c) and the runtime's tests do (core/tests/mg_tests.c).
+  bash "$ROOT/tools/dvm-android-root.sh" --abi "$ABI" > /dev/null
+  cp -r "$ANDROID_ROOT" "$STAGE/android"
+  echo "    android: Android 9's libcore$([ -f "$STAGE/android/framework/megler-framework.dex" ] && echo " and the Java framework"), $(find "$STAGE/android" -type f | wc -l) files, $(du -sk "$STAGE/android" | cut -f1) KB"
 fi
 # What the auto run `codec` decodes (app/Megler/auto/AutoRun.cpp): the data app's streams, and streams to time the
 # decoders by, made here with ffmpeg (they are not in the repository: 4 MB) -- without Python or ffmpeg, only the first.
@@ -532,7 +580,7 @@ if [ "$AUTO_CODEC" = 1 ]; then
   echo "    codec: $(ls "$STAGE/codec" | tr '\n' ' ')"
 fi
 # The demo the library offers when it is empty (app/Megler/library/Library.cpp).
-if [ -f "$DEMO" ]; then
+if [ -n "$DEMO" ] && [ -f "$DEMO" ]; then
   mkdir -p "$STAGE/demo"
   cp "$DEMO" "$STAGE/demo/"
   echo "    demo: megler-demo.apk"
@@ -731,7 +779,7 @@ echo "    appx-template: resources.pri for app packages, the name's tails $PRI_T
 echo "    staged $(find "$STAGE" -type f | wc -l) files, $(du -sk "$STAGE" | cut -f1) KB"
 
 if [ "$PACK" = 1 ]; then
-  ARCHNAME=$([ "$ARCH" = arm ] && echo ARM || echo x64)
+  case "$ARCH" in arm) ARCHNAME=ARM ;; arm64) ARCHNAME=ARM64 ;; *) ARCHNAME="$ARCH" ;; esac
   PKG="$OUT/Megler_${VERSION}_${ARCHNAME}.appx"
   echo "=== pack ==="
   rm -f "$PKG"

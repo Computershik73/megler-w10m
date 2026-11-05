@@ -52,13 +52,13 @@ int mg_codec_standin_luma(int64_t time_us)
     return 16 + 8 * (int)((n % 28 + 28) % 28);
 }
 
-static bool supports(void *user, int kind)
+static MEGLER_CB bool supports(void *user, int kind)
 {
     (void)user;
     return kind == MEGLER_CODEC_H264 || kind == MEGLER_CODEC_AAC || kind == MEGLER_CODEC_MP3;
 }
 
-static void *open_decoder(void *user, int kind, const megler_codec_format *f)
+static MEGLER_CB void *open_decoder(void *user, int kind, const megler_codec_format *f)
 {
     decoder *d;
     (void)user;
@@ -115,7 +115,7 @@ static void add_sound(decoder *d, int frames, int64_t time_us)
     d->blocks_tail = &b->next;
 }
 
-static bool push(void *user, void *codec, const uint8_t *data, size_t size, int64_t time_us)
+static MEGLER_CB bool push(void *user, void *codec, const uint8_t *data, size_t size, int64_t time_us)
 {
     decoder *d = (decoder *)codec;
     (void)user;
@@ -155,14 +155,14 @@ static bool push(void *user, void *codec, const uint8_t *data, size_t size, int6
     return true;
 }
 
-static void drain(void *user, void *codec)
+static MEGLER_CB void drain(void *user, void *codec)
 {
     (void)user;
     (void)codec;
     count(&g_counts.drained);
 }
 
-static void *pull_picture(void *user, void *codec, megler_codec_picture *out)
+static MEGLER_CB void *pull_picture(void *user, void *codec, megler_codec_picture *out)
 {
     decoder *d = (decoder *)codec;
     picture *pic = d->pictures;
@@ -175,14 +175,14 @@ static void *pull_picture(void *user, void *codec, megler_codec_picture *out)
     return pic;
 }
 
-static void release_picture(void *user, void *pic)
+static MEGLER_CB void release_picture(void *user, void *pic)
 {
     (void)user;
     free(pic);
     count(&g_counts.pictures_released);
 }
 
-static bool pull_sound(void *user, void *codec, megler_codec_sound *out)
+static MEGLER_CB bool pull_sound(void *user, void *codec, megler_codec_sound *out)
 {
     decoder *d = (decoder *)codec;
     block *b = d->blocks;
@@ -219,7 +219,7 @@ static void drop(decoder *d)
     d->handed = NULL;
 }
 
-static void flush(void *user, void *codec)
+static MEGLER_CB void flush(void *user, void *codec)
 {
     decoder *d = (decoder *)codec;
     (void)user;
@@ -228,7 +228,7 @@ static void flush(void *user, void *codec)
     count(&g_counts.flushed);
 }
 
-static void close_decoder(void *user, void *codec)
+static MEGLER_CB void close_decoder(void *user, void *codec)
 {
     (void)user;
     drop((decoder *)codec);

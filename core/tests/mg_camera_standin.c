@@ -41,13 +41,13 @@ void mg_camera_standin_counts_get(mg_camera_standin_counts *out)
     mg_lock_release(&g_lock);
 }
 
-static int count(void *user)
+static MEGLER_CB int count(void *user)
 {
     (void)user;
     return 2;
 }
 
-static bool info(void *user, int index, megler_camera_info *out)
+static MEGLER_CB bool info(void *user, int index, megler_camera_info *out)
 {
     (void)user;
     if (index < 0 || index > 1) return false;
@@ -60,7 +60,7 @@ static bool info(void *user, int index, megler_camera_info *out)
     return true;
 }
 
-static void *open_camera(void *user, int index, megler_camera_caps *caps, int *error)
+static MEGLER_CB void *open_camera(void *user, int index, megler_camera_caps *caps, int *error)
 {
     static const megler_camera_size back[] = { { 1280, 720, 15, 30 }, { 640, 480, 15, 30 }, { 320, 240, 15, 30 } };
     static const megler_camera_size front[] = { { 640, 480, 15, 30 }, { 320, 240, 15, 30 } };
@@ -129,7 +129,7 @@ static void make(u8 *y, u8 *uv, int w, int h, int ys, int cs, i32 number)
 }
 
 /* The camera's thread: a picture every 1/fps of a second, and what focusing has come to. */
-static void stream(void *arg)
+static MG_HOSTCB void stream(void *arg)
 {
     camera *c = (camera *)arg;
     int ys = c->width + 16, cs = c->width + 32;
@@ -173,7 +173,7 @@ static void stream(void *arg)
     free(uv);
 }
 
-static bool start(void *user, void *cam, int width, int height, int fps, megler_camera_frame_fn frame, void *core)
+static MEGLER_CB bool start(void *user, void *cam, int width, int height, int fps, megler_camera_frame_fn frame, void *core)
 {
     camera *c = (camera *)cam;
     (void)user;
@@ -195,9 +195,9 @@ static bool start(void *user, void *cam, int width, int height, int fps, megler_
     return c->thread != NULL;
 }
 
-static bool focus(void *user, void *cam, int mode, megler_camera_focus_fn done, void *core);
+static MEGLER_CB bool focus(void *user, void *cam, int mode, megler_camera_focus_fn done, void *core);
 
-static void stop(void *user, void *cam)
+static MEGLER_CB void stop(void *user, void *cam)
 {
     camera *c = (camera *)cam;
     (void)user;
@@ -213,7 +213,7 @@ static void stop(void *user, void *cam)
     mg_lock_release(&g_lock);
 }
 
-static bool focus(void *user, void *cam, int mode, megler_camera_focus_fn done, void *core)
+static MEGLER_CB bool focus(void *user, void *cam, int mode, megler_camera_focus_fn done, void *core)
 {
     camera *c = (camera *)cam;
     (void)user;
@@ -238,7 +238,7 @@ static bool focus(void *user, void *cam, int mode, megler_camera_focus_fn done, 
     return true;
 }
 
-static void torch(void *user, void *cam, bool on)
+static MEGLER_CB void torch(void *user, void *cam, bool on)
 {
     camera *c = (camera *)cam;
     (void)user;
@@ -249,7 +249,7 @@ static void torch(void *user, void *cam, bool on)
     mg_info("camera stand-in: the torch is %s", on ? "on" : "off");
 }
 
-static void close_camera(void *user, void *cam)
+static MEGLER_CB void close_camera(void *user, void *cam)
 {
     camera *c = (camera *)cam;
     stop(user, cam);

@@ -34,7 +34,7 @@ typedef struct selftest_out {
     char *steps;
 } selftest_out;
 
-static void selftest_line(const char *text, void *user)
+static MG_HOSTCB void selftest_line(const char *text, void *user)
 {
     selftest_out *s = (selftest_out *)user;
     append_line(s->steps, text);

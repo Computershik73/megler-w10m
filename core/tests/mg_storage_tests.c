@@ -24,19 +24,6 @@
 #include "../src/host/mg_host.h"
 #include "../src/run/mg_run.h"
 
-#if defined(_WIN32)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#else
-#include <errno.h>
-#include <fcntl.h>
-#include <unistd.h>
-#endif
 
 static int t_checks, t_failed;
 static mg_test_sink t_sink;
@@ -95,97 +82,10 @@ static char *fake_path(int root, const char *rel)
     return rel[0] ? mg_sprintf("%s/%s", g_roots[root], rel) : mg_strdup(g_roots[root]);
 }
 
-#if defined(_WIN32)
-static int fake_error(DWORD e)
-{
-    switch (e) {
-    case ERROR_FILE_NOT_FOUND: case ERROR_PATH_NOT_FOUND: return MG_E_NOENT;
-    case ERROR_ACCESS_DENIED: return MG_E_ACCESS;
-    case ERROR_FILE_EXISTS: case ERROR_ALREADY_EXISTS: return MG_E_EXIST;
-    case ERROR_DIRECTORY: return MG_E_NOTDIR;
-    default: return MG_E_IO;
-    }
-}
+/* The operating system's own handle for a file or folder of the scratch folder, as the shell's storage hands one out. */
+static void *fake_handle(const char *path, int flags, int kind, int *err) { return mg_host_open_handle(path, flags, kind, err); }
 
-static void *fake_handle(const char *path, int flags, int kind, int *err)
-{
-    int n = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
-    wchar_t *w = (wchar_t *)mg_alloc(sizeof(wchar_t) * (size_t)(n > 0 ? n : 1)), *p;
-    CREATEFILE2_EXTENDED_PARAMETERS ex;
-    DWORD access = 0, disposition = OPEN_EXISTING;
-    HANDLE h;
-    void *out = NULL;
-    MultiByteToWideChar(CP_UTF8, 0, path, -1, w, n);
-    for (p = w; *p; p++)
-        if (*p == L'/') *p = L'\\';
-    memset(&ex, 0, sizeof(ex));
-    ex.dwSize = sizeof(ex);
-    ex.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
-    if (kind == MG_FOREIGN_FILE) {
-        if (flags & MG_O_READ) access |= GENERIC_READ;
-        if (flags & MG_O_WRITE) access |= GENERIC_WRITE;
-        if (!access) access = GENERIC_READ;
-        if ((flags & MG_O_CREATE) && (flags & MG_O_EXCL)) disposition = CREATE_NEW;
-        else if ((flags & MG_O_CREATE) && (flags & MG_O_TRUNC)) disposition = CREATE_ALWAYS;
-        else if (flags & MG_O_CREATE) disposition = OPEN_ALWAYS;
-        else if (flags & MG_O_TRUNC) disposition = TRUNCATE_EXISTING;
-    } else {
-        /* The one way Windows opens a directory; a file opens this way too. */
-        ex.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
-        access = kind == MG_FOREIGN_DIR ? GENERIC_READ : FILE_READ_ATTRIBUTES;
-    }
-    h = CreateFile2(w, access, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, disposition, &ex);
-    free(w);
-    if (h == INVALID_HANDLE_VALUE) {
-        DWORD e = GetLastError();
-        mg_stat st;
-        *err = fake_error(e);
-        if (e == ERROR_ACCESS_DENIED && kind == MG_FOREIGN_FILE && mg_path_stat(path, &st, NULL) && st.is_dir) *err = MG_E_ISDIR;
-    } else if (kind == MG_FOREIGN_DIR) {
-        FILE_STANDARD_INFO si;
-        if (GetFileInformationByHandleEx(h, FileStandardInfo, &si, sizeof(si)) && si.Directory) {
-            out = h;
-        } else {
-            CloseHandle(h);
-            *err = MG_E_NOTDIR;
-        }
-    } else {
-        out = h;
-    }
-    return out;
-}
-#else
-static void *fake_handle(const char *path, int flags, int kind, int *err)
-{
-    int o = O_RDONLY, fd;
-    if (kind == MG_FOREIGN_DIR) {
-        o = O_RDONLY | O_DIRECTORY;
-    } else if (kind == MG_FOREIGN_FILE) {
-        if ((flags & MG_O_READ) && (flags & MG_O_WRITE)) o = O_RDWR;
-        else if (flags & MG_O_WRITE) o = O_WRONLY;
-        if (flags & MG_O_CREATE) o |= O_CREAT;
-        if (flags & MG_O_TRUNC) o |= O_TRUNC;
-        if (flags & MG_O_APPEND) o |= O_APPEND;
-        if (flags & MG_O_EXCL) o |= O_EXCL;
-    }
-    fd = open(path, o | O_CLOEXEC, 0666);
-    if (fd < 0) {
-        switch (errno) {
-        case ENOENT: *err = MG_E_NOENT; break;
-        case EACCES: case EPERM: *err = MG_E_ACCESS; break;
-        case EEXIST: *err = MG_E_EXIST; break;
-        case ENOTDIR: *err = MG_E_NOTDIR; break;
-        case EISDIR: *err = MG_E_ISDIR; break;
-        default: *err = MG_E_IO; break;
-        }
-        return NULL;
-    }
-    /* The descriptor plus one, so that no descriptor is NULL. */
-    return (void *)(intptr_t)(fd + 1);
-}
-#endif
-
-static void *fake_open(void *user, int root, const char *rel, int flags, int kind, int *err)
+static MEGLER_CB void *fake_open(void *user, int root, const char *rel, int flags, int kind, int *err)
 {
     char *path = fake_path(root, rel);
     void *h;
@@ -199,7 +99,7 @@ static void *fake_open(void *user, int root, const char *rel, int flags, int kin
     return h;
 }
 
-static bool fake_mkdir(void *user, int root, const char *rel, int *err)
+static MEGLER_CB bool fake_mkdir(void *user, int root, const char *rel, int *err)
 {
     char *path = fake_path(root, rel);
     bool ok;
@@ -213,7 +113,7 @@ static bool fake_mkdir(void *user, int root, const char *rel, int *err)
     return ok;
 }
 
-static bool fake_remove(void *user, int root, const char *rel, bool dir, int *err)
+static MEGLER_CB bool fake_remove(void *user, int root, const char *rel, bool dir, int *err)
 {
     char *path = fake_path(root, rel);
     bool ok;
@@ -230,7 +130,7 @@ static bool fake_remove(void *user, int root, const char *rel, bool dir, int *er
 /* Set, the stand-in moves no folder into another folder: what a phone's shell is expected to say of that, tried here. */
 static bool g_fake_moves_no_folder;
 
-static bool fake_rename(void *user, int from_root, const char *from, int to_root, const char *to, int *err)
+static MEGLER_CB bool fake_rename(void *user, int from_root, const char *from, int to_root, const char *to, int *err)
 {
     char *a = fake_path(from_root, from), *b = fake_path(to_root, to);
     const char *from_name = strrchr(from, '/'), *to_name = strrchr(to, '/');
@@ -254,28 +154,28 @@ static bool fake_rename(void *user, int from_root, const char *from, int to_root
 static megler_storage_host g_inner;
 static volatile i32 g_calls;
 
-static void *counted_open(void *user, int link, const char *path, int flags, int kind, int *err)
+static MEGLER_CB MG_HOSTCB void *counted_open(void *user, int link, const char *path, int flags, int kind, int *err)
 {
     (void)user;
     mg_atomic_add(&g_calls, 1);
     return g_inner.open(g_inner.user, link, path, flags, kind, err);
 }
 
-static bool counted_mkdir(void *user, int link, const char *path, int *err)
+static MEGLER_CB MG_HOSTCB bool counted_mkdir(void *user, int link, const char *path, int *err)
 {
     (void)user;
     mg_atomic_add(&g_calls, 1);
     return g_inner.make_folder(g_inner.user, link, path, err);
 }
 
-static bool counted_remove(void *user, int link, const char *path, bool dir, int *err)
+static MEGLER_CB MG_HOSTCB bool counted_remove(void *user, int link, const char *path, bool dir, int *err)
 {
     (void)user;
     mg_atomic_add(&g_calls, 1);
     return g_inner.remove(g_inner.user, link, path, dir, err);
 }
 
-static bool counted_rename(void *user, int from_link, const char *from, int to_link, const char *to, int *err)
+static MEGLER_CB MG_HOSTCB bool counted_rename(void *user, int from_link, const char *from, int to_link, const char *to, int *err)
 {
     (void)user;
     mg_atomic_add(&g_calls, 1);
@@ -291,7 +191,7 @@ typedef struct listing {
     char names[16][64];
 } listing;
 
-static void list_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void list_one(const char *name, bool is_dir, void *user)
 {
     listing *l = (listing *)user;
     if (l->count < 16) mg_strlcpy(l->names[l->count], name, sizeof(l->names[0]));
@@ -314,7 +214,7 @@ typedef struct wipe_list {
     int count;
 } wipe_list;
 
-static void wipe_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void wipe_one(const char *name, bool is_dir, void *user)
 {
     wipe_list *w = (wipe_list *)user;
     if (w->count >= 64) return;
@@ -548,8 +448,37 @@ static void test_foreign_paths(const char *scratch)
 /* ------------------------------------------------- the storage an app sees
  *
  * The C library as an app's code has it. The structures are bionic's, as
- * mg_libc_io.c fills them in.
+ * mg_libc_io.c fills them in: of the build's processor (struct stat is laid
+ * out three ways, x86_64's, ARM64's and the 32-bit ABIs'), in the guest's
+ * widths (glong: 64 bits in 64-bit Android). The 64-bit ABIs' are written in
+ * u64 and i64, as mg_libc_io.c's g_stat is: MSVC's x64 build of the tests has
+ * 32-bit longs, and with glong this one came out 104 bytes against the core's
+ * 144, and the storage test's stack was overwritten (0xC0000409).
  */
+#if MG_ARCH_X86_64
+typedef struct t_stat {
+    u64 st_dev, st_ino;
+    u64 st_nlink;
+    u32 st_mode, st_uid, st_gid, pad0;
+    u64 st_rdev;
+    i64 st_size;
+    i64 st_blksize, st_blocks;
+    i64 at_sec, at_nsec, mt_sec, mt_nsec, ct_sec, ct_nsec;
+    i64 unused[3];
+} t_stat;
+#elif MG_ARCH_ARM64
+typedef struct t_stat {
+    u64 st_dev, st_ino;
+    u32 st_mode, st_nlink, st_uid, st_gid;
+    u64 st_rdev;
+    u64 pad1;
+    i64 st_size;
+    i32 st_blksize, pad2;
+    i64 st_blocks;
+    i64 at_sec, at_nsec, mt_sec, mt_nsec, ct_sec, ct_nsec;
+    u32 unused4, unused5;
+} t_stat;
+#else
 typedef struct t_stat {
     u64 st_dev;
     u8 pad0[4];
@@ -560,9 +489,15 @@ typedef struct t_stat {
     i64 st_size;
     u32 st_blksize;
     u64 st_blocks;
-    i32 at_sec, at_nsec, mt_sec, mt_nsec, ct_sec, ct_nsec;
+    gtime at_sec;
+    glong at_nsec;
+    gtime mt_sec;
+    glong mt_nsec;
+    gtime ct_sec;
+    glong ct_nsec;
     u64 st_ino;
 } t_stat;
+#endif
 
 typedef struct t_dirent {
     u64 d_ino;
@@ -572,19 +507,25 @@ typedef struct t_dirent {
     char d_name[256];
 } t_dirent;
 
+/* (statfs's words but the counts and the id are 64 bits in 64-bit Android; statvfs's are all longs there, and 24 bytes more.) */
 typedef struct t_statfs {
-    u32 f_type, f_bsize;
+    gulong f_type, f_bsize;
     u64 f_blocks, f_bfree, f_bavail, f_files, f_ffree;
     i32 f_fsid[2];
-    u32 f_namelen, f_frsize, f_flags, f_spare[4];
+    gulong f_namelen, f_frsize, f_flags, f_spare[4];
 } t_statfs;
 
 typedef struct t_statvfs {
-    u32 f_bsize, f_frsize;
-    u32 f_blocks, f_bfree, f_bavail, f_files, f_ffree, f_favail, f_fsid, f_flag, f_namemax;
+    gulong f_bsize, f_frsize;
+    gulong f_blocks, f_bfree, f_bavail, f_files, f_ffree, f_favail, f_fsid, f_flag, f_namemax;
+#if MG_GUEST_LP64
+    u32 reserved[6];
+#endif
 } t_statvfs;
 
-enum { T_RDONLY = 0, T_WRONLY = 1, T_RDWR = 2, T_CREAT = 0100, T_EXCL = 0200, T_TRUNC = 01000, T_APPEND = 02000, T_DIRECTORY = 040000 };
+/* (O_DIRECTORY is the x86s' own number there, ARM's 040000 being their O_DIRECT.) */
+enum { T_RDONLY = 0, T_WRONLY = 1, T_RDWR = 2, T_CREAT = 0100, T_EXCL = 0200, T_TRUNC = 01000, T_APPEND = 02000,
+       T_DIRECTORY = MG_ARCH_X86_64 || MG_ARCH_X86 ? 0200000 : 040000 };
 #define T_IFDIR 0040000u
 #define T_IFREG 0100000u
 #define T_DT_DIR 4
@@ -593,8 +534,8 @@ enum { T_RDONLY = 0, T_WRONLY = 1, T_RDWR = 2, T_CREAT = 0100, T_EXCL = 0200, T_
 static struct {
     int (*open)(const char *, int, int);
     int (*close)(int);
-    i32 (*read)(int, void *, u32);
-    i32 (*write)(int, const void *, u32);
+    gssize (*read)(int, void *, size_t);
+    gssize (*write)(int, const void *, size_t);
     int (*stat)(const char *, t_stat *);
     int (*fstat)(int, t_stat *);
     int (*access)(const char *, int);
@@ -1277,7 +1218,7 @@ static void test_shared_mapping_shortened(void)
     CHECK(C.unlink(path) == 0);
 }
 
-static void worker_run(void *arg)
+static MG_HOSTCB void worker_run(void *arg)
 {
     worker *w = (worker *)arg;
     char dir[96], file[128], buf[64], want[32];

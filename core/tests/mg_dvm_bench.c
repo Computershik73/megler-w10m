@@ -64,7 +64,7 @@ typedef struct sampler {
     u32 n, cap;
 } sampler;
 
-static void sampler_main(void *arg)
+static MG_HOSTCB void sampler_main(void *arg)
 {
     sampler *s = (sampler *)arg;
     while (!s->stop && s->n < s->cap) {

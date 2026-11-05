@@ -1,4 +1,4 @@
-/* ELF32 for ARM, as much of it as an Android shared object uses. */
+/* ELF for the four processors Android has (32-bit ARM, ARM64, x86, x86_64), as much of it as an Android shared object uses. */
 #ifndef MG_ELF_H
 #define MG_ELF_H
 
@@ -34,8 +34,53 @@ typedef struct {
     u32 r_offset, r_info;
 } Elf32_Rel;
 
+/* The 64-bit forms (arm64-v8a, x86_64), which have RELA, never REL. */
+typedef struct {
+    u8 e_ident[16];
+    u16 e_type, e_machine;
+    u32 e_version;
+    u64 e_entry, e_phoff, e_shoff;
+    u32 e_flags;
+    u16 e_ehsize, e_phentsize, e_phnum, e_shentsize, e_shnum, e_shstrndx;
+} Elf64_Ehdr;
+
+typedef struct {
+    u32 p_type, p_flags;
+    u64 p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_align;
+} Elf64_Phdr;
+
+typedef struct {
+    u32 sh_name, sh_type;
+    u64 sh_flags, sh_addr, sh_offset, sh_size;
+    u32 sh_link, sh_info;
+    u64 sh_addralign, sh_entsize;
+} Elf64_Shdr;
+
+typedef struct {
+    i64 d_tag;
+    u64 d_val;
+} Elf64_Dyn;
+
+typedef struct {
+    u32 st_name;
+    u8 st_info, st_other;
+    u16 st_shndx;
+    u64 st_value, st_size;
+} Elf64_Sym;
+
+typedef struct {
+    u64 r_offset, r_info;
+    i64 r_addend;
+} Elf64_Rela;
+
+#define ELFCLASS32 1
+#define ELFCLASS64 2
+
 #define ET_DYN 3
+#define EM_386 3
 #define EM_ARM 40
+#define EM_X86_64 62
+#define EM_AARCH64 183
 
 #define PT_LOAD 1
 #define PT_DYNAMIC 2
@@ -59,7 +104,10 @@ typedef struct {
 #define DT_STRTAB 5
 #define DT_SYMTAB 6
 #define DT_RELA 7
+#define DT_RELASZ 8
+#define DT_RELAENT 9
 #define DT_STRSZ 10
+#define DT_SYMENT 11
 #define DT_INIT 12
 #define DT_FINI 13
 #define DT_SONAME 14
@@ -78,6 +126,8 @@ typedef struct {
 #define DT_GNU_HASH 0x6ffffef5
 #define DT_ANDROID_REL 0x6000000f
 #define DT_ANDROID_RELSZ 0x60000010
+#define DT_ANDROID_RELA 0x60000011
+#define DT_ANDROID_RELASZ 0x60000012
 #define DT_ANDROID_RELR 0x6fffe000
 #define DT_ANDROID_RELRSZ 0x6fffe001
 
@@ -96,6 +146,8 @@ typedef struct {
 #define ELF_ST_TYPE(i) ((i) & 15)
 #define ELF_R_SYM(i) ((i) >> 8)
 #define ELF_R_TYPE(i) ((i) & 255)
+#define ELF64_R_SYM(i) ((u32)((i) >> 32))
+#define ELF64_R_TYPE(i) ((u32)(i))
 
 #define R_ARM_NONE 0
 #define R_ARM_ABS32 2
@@ -109,5 +161,119 @@ typedef struct {
 #define R_ARM_JUMP_SLOT 22
 #define R_ARM_RELATIVE 23
 #define R_ARM_IRELATIVE 160
+
+#define R_AARCH64_NONE 0
+#define R_AARCH64_ABS64 257
+#define R_AARCH64_COPY 1024
+#define R_AARCH64_GLOB_DAT 1025
+#define R_AARCH64_JUMP_SLOT 1026
+#define R_AARCH64_RELATIVE 1027
+#define R_AARCH64_TLS_DTPMOD64 1028
+#define R_AARCH64_TLS_DTPREL64 1029
+#define R_AARCH64_TLS_TPREL64 1030
+#define R_AARCH64_TLSDESC 1031
+#define R_AARCH64_IRELATIVE 1032
+
+#define R_X86_64_NONE 0
+#define R_X86_64_64 1
+#define R_X86_64_PC32 2
+#define R_X86_64_COPY 5
+#define R_X86_64_GLOB_DAT 6
+#define R_X86_64_JUMP_SLOT 7
+#define R_X86_64_RELATIVE 8
+#define R_X86_64_DTPMOD64 16
+#define R_X86_64_DTPOFF64 17
+#define R_X86_64_TPOFF64 18
+#define R_X86_64_TLSDESC 36
+#define R_X86_64_IRELATIVE 37
+
+#define R_386_NONE 0
+#define R_386_32 1
+#define R_386_PC32 2
+#define R_386_COPY 5
+#define R_386_GLOB_DAT 6
+#define R_386_JMP_SLOT 7
+#define R_386_RELATIVE 8
+#define R_386_TLS_TPOFF 14
+#define R_386_TLS_DTPMOD32 35
+#define R_386_TLS_DTPOFF32 36
+#define R_386_TLS_DESC 41
+#define R_386_IRELATIVE 42
+
+/*
+ * The guest's own ELF: its class, its machine, its relocation entries (the 64-bit ABIs relocate with RELA alone, the
+ * 32-bit ones with REL), and its relocation types under one name for each meaning. MG_R_* that a processor has no such
+ * relocation for is a number no relocation has.
+ */
+#if MG_GUEST_LP64
+#define ElfW(t) Elf64_##t
+#define MG_ELFCLASS ELFCLASS64
+#define ELFW_R_SYM(i) ELF64_R_SYM(i)
+#define ELFW_R_TYPE(i) ELF64_R_TYPE(i)
+typedef Elf64_Rela mg_reloc;
+#define MG_RELOC_RELA 1
+#else
+#define ElfW(t) Elf32_##t
+#define MG_ELFCLASS ELFCLASS32
+#define ELFW_R_SYM(i) ELF_R_SYM(i)
+#define ELFW_R_TYPE(i) ELF_R_TYPE(i)
+typedef Elf32_Rel mg_reloc;
+#define MG_RELOC_RELA 0
+#endif
+
+#define MG_R_UNKNOWN 0x7fffffffu
+#if MG_ARCH_ARM32
+#define MG_EM EM_ARM
+#define MG_R_NONE R_ARM_NONE
+#define MG_R_ABS R_ARM_ABS32
+#define MG_R_PCREL R_ARM_REL32
+#define MG_R_GLOB_DAT R_ARM_GLOB_DAT
+#define MG_R_JUMP_SLOT R_ARM_JUMP_SLOT
+#define MG_R_RELATIVE R_ARM_RELATIVE
+#define MG_R_IRELATIVE R_ARM_IRELATIVE
+#define MG_R_DTPMOD R_ARM_TLS_DTPMOD32
+#define MG_R_DTPOFF R_ARM_TLS_DTPOFF32
+#define MG_R_TPOFF R_ARM_TLS_TPOFF32
+#define MG_R_TLSDESC MG_R_UNKNOWN
+#elif MG_ARCH_ARM64
+#define MG_EM EM_AARCH64
+#define MG_R_NONE R_AARCH64_NONE
+#define MG_R_ABS R_AARCH64_ABS64
+#define MG_R_PCREL MG_R_UNKNOWN
+#define MG_R_GLOB_DAT R_AARCH64_GLOB_DAT
+#define MG_R_JUMP_SLOT R_AARCH64_JUMP_SLOT
+#define MG_R_RELATIVE R_AARCH64_RELATIVE
+#define MG_R_IRELATIVE R_AARCH64_IRELATIVE
+#define MG_R_DTPMOD R_AARCH64_TLS_DTPMOD64
+#define MG_R_DTPOFF R_AARCH64_TLS_DTPREL64
+#define MG_R_TPOFF R_AARCH64_TLS_TPREL64
+#define MG_R_TLSDESC R_AARCH64_TLSDESC
+#elif MG_ARCH_X86_64
+#define MG_EM EM_X86_64
+#define MG_R_NONE R_X86_64_NONE
+#define MG_R_ABS R_X86_64_64
+#define MG_R_PCREL MG_R_UNKNOWN
+#define MG_R_GLOB_DAT R_X86_64_GLOB_DAT
+#define MG_R_JUMP_SLOT R_X86_64_JUMP_SLOT
+#define MG_R_RELATIVE R_X86_64_RELATIVE
+#define MG_R_IRELATIVE R_X86_64_IRELATIVE
+#define MG_R_DTPMOD R_X86_64_DTPMOD64
+#define MG_R_DTPOFF R_X86_64_DTPOFF64
+#define MG_R_TPOFF R_X86_64_TPOFF64
+#define MG_R_TLSDESC R_X86_64_TLSDESC
+#else
+#define MG_EM EM_386
+#define MG_R_NONE R_386_NONE
+#define MG_R_ABS R_386_32
+#define MG_R_PCREL R_386_PC32
+#define MG_R_GLOB_DAT R_386_GLOB_DAT
+#define MG_R_JUMP_SLOT R_386_JMP_SLOT
+#define MG_R_RELATIVE R_386_RELATIVE
+#define MG_R_IRELATIVE R_386_IRELATIVE
+#define MG_R_DTPMOD R_386_TLS_DTPMOD32
+#define MG_R_DTPOFF R_386_TLS_DTPOFF32
+#define MG_R_TPOFF R_386_TLS_TPOFF
+#define MG_R_TLSDESC MG_R_UNKNOWN
+#endif
 
 #endif

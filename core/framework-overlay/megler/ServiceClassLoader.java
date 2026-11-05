@@ -37,7 +37,7 @@ public final class ServiceClassLoader extends ClassLoader {
     @Override protected String findLibrary(String name) {
         String file = System.mapLibraryName(name);
         if (libraries != null && new java.io.File(libraries, file).isFile()) return libraries + "/" + file;
-        return apk + "!/lib/armeabi-v7a/" + file;
+        return apk + "!/lib/" + Abis.PRIMARY + "/" + file;
     }
     @Override protected Class<?> findClass(String name) throws ClassNotFoundException { return findClassNative(name); }
 }
