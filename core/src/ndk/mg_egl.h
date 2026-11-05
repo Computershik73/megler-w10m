@@ -14,8 +14,12 @@
  *     surface is the window's own, composed under the app's views
  *     (drivers/mg_java_ndk.c, mg_java_gl.c), and the app's EGLSurface stands
  *     for whichever pbuffer the window has at the time;
- *   - every GLES function that takes a float gets an adapter: the guest passes
- *     floats in integer registers, ANGLE expects them in VFP registers.
+ *   - on 32-bit ARM every GLES function that takes a float gets an adapter: the
+ *     guest passes floats in integer registers, ANGLE expects them in VFP
+ *     registers;
+ *   - on x86_64 and x86 (desktop Windows) every function of EGL's and GLES's
+ *     does: ANGLE's are of Windows' calling convention, the guest's and the
+ *     core's of Android's (mg_gl_adapters.c).
  */
 #ifndef MG_EGL_H
 #define MG_EGL_H
@@ -50,9 +54,10 @@ void *mg_egl_resolve(const char *name);
 bool mg_egl_is_gl_name(const char *name);
 /*
  * The same EGL and OpenGL ES for the core's own callers (an app's Java, drivers/mg_java_gl.c): what a guest is bound to,
- * except that a GLES function with floats among its parameters is ANGLE's own, not its adapter. A caller compiled for
- * this host passes floats where the host's convention puts them, which is what ANGLE takes; the adapters are for guest
- * code, which passes them in integer registers. The texture policy (mg_gltex.c) is the same for both. No tracing thunk
+ * except that on 32-bit ARM a GLES function with floats among its parameters is ANGLE's own, not its adapter. A caller
+ * compiled for that host passes floats where the host's convention puts them, which is what ANGLE takes; the adapters are
+ * for guest code, which passes them in integer registers. On x86_64 and x86 the core's convention is the guest's, and it
+ * gets the adapters guests get (mg_gl_adapters.c). The texture policy (mg_gltex.c) is the same for both. No tracing thunk
  * ("trace-gl"): those are for guest calls. NULL when there is no such function.
  */
 void *mg_egl_host(const char *name);
