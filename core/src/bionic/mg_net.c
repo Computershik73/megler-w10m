@@ -384,7 +384,7 @@ static void open_round(void)
     mg_lock_release(&g_open_lock);
 }
 
-static void open_observer(void *unused)
+static MG_HOSTCB void open_observer(void *unused)
 {
     (void)unused;
     for (;;) {

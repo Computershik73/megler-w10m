@@ -42,7 +42,7 @@ typedef struct mg_gfx_scenes_config {
  * files written and read back. Returns the number of failed checks and adds
  * the number made to *checks.
  */
-int mg_gfx_scenes_run(const mg_gfx_scenes_config *config, mg_test_sink sink, void *user, int *checks);
+MEGLER_API int mg_gfx_scenes_run(const mg_gfx_scenes_config *config, mg_test_sink sink, void *user, int *checks);
 
 #ifdef __cplusplus
 }

@@ -95,7 +95,7 @@ void *mg_fd_ext(int fd, const mg_fd_ops *ops);
  */
 void *mg_fd_ext_hold(int fd, const mg_fd_ops *ops, void **held, int *flags);
 /* Wake every wait that looks at an object whose ops announce (a socket): something such an object reports has changed. */
-void mg_fd_notify(void);
+MG_HOSTCB void mg_fd_notify(void);
 
 /*
  * Waiting as the layer's own descriptors wait: under the descriptor table's lock, each thread on a condition of its own, woken by an

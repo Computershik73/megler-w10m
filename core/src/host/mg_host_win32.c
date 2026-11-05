@@ -1696,6 +1696,66 @@ static HANDLE foreign_handle(const char *path, int flags, int kind, int *err)
     return h;
 }
 
+/* A path's own handle, as a foreign path's owner hands one out (mg_host.h): the tests' stand-in of the shell's storage. */
+static int handle_err(DWORD e)
+{
+    switch (e) {
+    case ERROR_FILE_NOT_FOUND: case ERROR_PATH_NOT_FOUND: return MG_E_NOENT;
+    case ERROR_ACCESS_DENIED: return MG_E_ACCESS;
+    case ERROR_FILE_EXISTS: case ERROR_ALREADY_EXISTS: return MG_E_EXIST;
+    case ERROR_DIRECTORY: return MG_E_NOTDIR;
+    default: return MG_E_IO;
+    }
+}
+
+void *mg_host_open_handle(const char *path, int flags, int kind, int *err)
+{
+    int n = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
+    wchar_t *w = (wchar_t *)mg_alloc(sizeof(wchar_t) * (size_t)(n > 0 ? n : 1)), *p;
+    CREATEFILE2_EXTENDED_PARAMETERS ex;
+    DWORD access = 0, disposition = OPEN_EXISTING;
+    HANDLE h;
+    void *out = NULL;
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, w, n);
+    for (p = w; *p; p++)
+        if (*p == L'/') *p = L'\\';
+    memset(&ex, 0, sizeof(ex));
+    ex.dwSize = sizeof(ex);
+    ex.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
+    if (kind == MG_FOREIGN_FILE) {
+        if (flags & MG_O_READ) access |= GENERIC_READ;
+        if (flags & MG_O_WRITE) access |= GENERIC_WRITE;
+        if (!access) access = GENERIC_READ;
+        if ((flags & MG_O_CREATE) && (flags & MG_O_EXCL)) disposition = CREATE_NEW;
+        else if ((flags & MG_O_CREATE) && (flags & MG_O_TRUNC)) disposition = CREATE_ALWAYS;
+        else if (flags & MG_O_CREATE) disposition = OPEN_ALWAYS;
+        else if (flags & MG_O_TRUNC) disposition = TRUNCATE_EXISTING;
+    } else {
+        /* The one way Windows opens a directory; a file opens this way too. */
+        ex.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
+        access = kind == MG_FOREIGN_DIR ? GENERIC_READ : FILE_READ_ATTRIBUTES;
+    }
+    h = CreateFile2(w, access, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, disposition, &ex);
+    free(w);
+    if (h == INVALID_HANDLE_VALUE) {
+        DWORD e = GetLastError();
+        mg_stat st;
+        *err = handle_err(e);
+        if (e == ERROR_ACCESS_DENIED && kind == MG_FOREIGN_FILE && mg_path_stat(path, &st, NULL) && st.is_dir) *err = MG_E_ISDIR;
+    } else if (kind == MG_FOREIGN_DIR) {
+        FILE_STANDARD_INFO si;
+        if (GetFileInformationByHandleEx(h, FileStandardInfo, &si, sizeof(si)) && si.Directory) {
+            out = h;
+        } else {
+            CloseHandle(h);
+            *err = MG_E_NOTDIR;
+        }
+    } else {
+        out = h;
+    }
+    return out;
+}
+
 /* ------------------------------------------------ files by handle (mg_host.h) */
 
 #define HANDLE_FILES 8

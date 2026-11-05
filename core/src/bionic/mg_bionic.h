@@ -189,7 +189,7 @@ static inline void mg_gthread_take_breakpoints(mg_gthread *t)
 int mg_signal_send(mg_gthread *t, int sig);            /* pthread_kill: 0 or an errno; signals 1 to 64 */
 int mg_signal_mask(int how, const u32 *set, u32 *old); /* pthread_sigmask */
 /* Runs the handlers of the signals waiting for the calling thread. Only where no lock of this layer is held. */
-void mg_signals_check(void);
+MG_HOSTCB void mg_signals_check(void);
 /* A fault's signal for the app's own handler (an inline hook's trap, mg_mmap_app_trap): true if one ran and f says where to go on. */
 bool mg_signal_fault(int sig, mg_fault *f);
 static inline bool mg_signals_ready(const mg_gthread *t)

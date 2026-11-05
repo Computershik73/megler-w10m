@@ -734,7 +734,7 @@ static const mg_jhle k_java[] = {
 };
 
 /* The copies of films a run that was ended in the middle of one left behind. */
-static void remove_left_over(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void remove_left_over(const char *name, bool is_dir, void *user)
 {
     int err = 0;
     if (!is_dir && !strncmp(name, "film-", 5)) {

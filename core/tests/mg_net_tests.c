@@ -261,7 +261,7 @@ typedef struct client_job {
 } client_job;
 
 /* Connects to the port (as libcore does: an IPv6 socket, the IPv4 loopback written ::ffff:127.0.0.1), says "hello", reads the answer, closes. */
-static void client_main(void *arg)
+static MG_HOSTCB void client_main(void *arg)
 {
     client_job *j = (client_job *)arg;
     u8 sa[28];
@@ -404,7 +404,7 @@ typedef struct late_job {
     int fd;
 } late_job;
 
-static void late_connect(void *arg)
+static MG_HOSTCB void late_connect(void *arg)
 {
     late_job *j = (late_job *)arg;
     u8 sa[16];
@@ -459,7 +459,7 @@ typedef struct pump_job {
 } pump_job;
 
 /* Sends `total` bytes of a pattern in pieces of changing size; blocking, or with poll for room when the socket is non-blocking. */
-static void pump_main(void *arg)
+static MG_HOSTCB void pump_main(void *arg)
 {
     pump_job *j = (pump_job *)arg;
     u8 *buf = (u8 *)mg_alloc(70000);
@@ -672,7 +672,7 @@ static void test_ping(void)
     int s = N.socket(AF_INET_, SOCK_DGRAM_, 1 /* IPPROTO_ICMP */), n;
     u16 id;
     say("network: a ping socket: an echo request to 127.0.0.1 and its reply");
-#if !defined(_WIN32)
+#if !MG_HOST_WINDOWS
     if (s < 0) {
         say("  (no ping socket for this user here: errno %d)", err());
         return;
@@ -813,7 +813,7 @@ typedef struct poke_job {
     bool eventfd;
 } poke_job;
 
-static void poke_main(void *arg)
+static MG_HOSTCB void poke_main(void *arg)
 {
     poke_job *j = (poke_job *)arg;
     u64 one = 1;
@@ -1385,7 +1385,7 @@ typedef struct serve_job {
 } serve_job;
 
 /* The check's own server: one connection, one request line, one answer. */
-static void serve_main(void *arg)
+static MG_HOSTCB void serve_main(void *arg)
 {
     serve_job *j = (serve_job *)arg;
     char line[100];

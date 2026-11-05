@@ -821,7 +821,7 @@ void *mg_fd_ext_hold(int fd, const mg_fd_ops *ops, void **held, int *flags)
     return o->ext;
 }
 
-void mg_fd_notify(void)
+MG_HOSTCB void mg_fd_notify(void)
 {
     mg_lock_acquire(&g_io_lock);
     wake_announced();
@@ -2206,7 +2206,7 @@ typedef struct g_dir {
     g_dirent ent;
 } g_dir;
 
-static void dir_add(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void dir_add(const char *name, bool is_dir, void *user)
 {
     g_dir *d = (g_dir *)user;
     if (d->count == d->cap) {

@@ -66,7 +66,7 @@ static void request(int what)
     mg_lock_release(&N.lock);
 }
 
-static void main_thread(void *arg)
+static MG_HOSTCB void main_thread(void *arg)
 {
     mg_lib *lib;
     void *entry;

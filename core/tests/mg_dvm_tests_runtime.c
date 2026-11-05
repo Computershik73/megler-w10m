@@ -212,7 +212,7 @@ static const char *const k_race_classes[] = {
     "java/lang/Float", "[Ljava/lang/Runnable;", "[[Ljava/lang/Short;", "[Z", "[[[B", "java/lang/NumberFormatException", "t/Deep", "t/Misc", "u/Sub",
 };
 
-static void work(void *arg)
+static MG_HOSTCB void work(void *arg)
 {
     worker *w = (worker *)arg;
     mg_jvalue v, r;
@@ -308,7 +308,7 @@ typedef struct attached_run {
     i32 after;
 } attached_run;
 
-static void attached_work(void *arg)
+static MG_HOSTCB void attached_work(void *arg)
 {
     attached_run *r = (attached_run *)arg;
     r->words = mg_dvm_self_attached()->stack_max;

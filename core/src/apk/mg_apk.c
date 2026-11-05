@@ -1046,7 +1046,7 @@ typedef struct split_list {
     int n, cap;
 } split_list;
 
-static void split_seen(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void split_seen(const char *name, bool is_dir, void *user)
 {
     split_list *l = (split_list *)user;
     size_t n = strlen(name);

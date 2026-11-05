@@ -330,7 +330,7 @@ static MG_THREAD_LOCAL looper *t_looper;
 static looper *g_main, *g_loopers;
 static mg_lock g_loop_lock = MG_LOCK_INIT;
 
-static void looper_thread(void *arg);
+static MG_HOSTCB void looper_thread(void *arg);
 
 static looper *looper_new(const char *name)
 {
@@ -426,7 +426,7 @@ static void dispatch(looper *l, ev *e)
     }
 }
 
-static void looper_thread(void *arg)
+static MG_HOSTCB void looper_thread(void *arg)
 {
     looper *l = (looper *)arg;
     t_looper = l;

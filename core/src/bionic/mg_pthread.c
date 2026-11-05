@@ -478,7 +478,7 @@ static void thread_finish(mg_gthread *t)
     }
 }
 
-static void thread_main(void *p)
+static MG_HOSTCB void thread_main(void *p)
 {
     mg_gthread *t = (mg_gthread *)p;
     void **tp = mg_tls_thread_pointer();

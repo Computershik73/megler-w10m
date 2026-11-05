@@ -91,7 +91,7 @@ static bool near(double a, double b) { return fabs(a - b) <= 1e-9 * (1.0 + fabs(
 /* ------------------------------------------------------------------- host */
 
 static volatile i32 g_futex_word;
-static void futex_waker(void *arg)
+static MG_HOSTCB void futex_waker(void *arg)
 {
     (void)arg;
     mg_sleep_ns(20000000ull);
@@ -104,7 +104,7 @@ typedef struct list_seen {
     char last[64];
 } list_seen;
 
-static void list_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void list_one(const char *name, bool is_dir, void *user)
 {
     list_seen *s = (list_seen *)user;
     s->count++;
@@ -122,7 +122,7 @@ typedef struct pread_race {
     u32 seed, bad, done;
 } pread_race;
 
-static void pread_racer(void *arg)
+static MG_HOSTCB void pread_racer(void *arg)
 {
     pread_race *r = (pread_race *)arg;
     u32 i, x = r->seed, word = 0;
@@ -471,7 +471,7 @@ static struct {
     int left_readable;
 } G_INPUT;
 
-static void input_taker(void *arg)
+static MG_HOSTCB void input_taker(void *arg)
 {
     void *(*prepare)(int) = (void *(*)(int))mg_bionic_find("ALooper_prepare");
     void (*attach)(mg_input_queue *, void *, int, mg_addr, void *) = (void (*)(mg_input_queue *, void *, int, mg_addr, void *))mg_bionic_find("AInputQueue_attachLooper");
@@ -917,7 +917,7 @@ static void test_textures(void)
 static int g_fake_video, g_fake_audio;
 static u64 g_fake_size;
 
-static void *fake_open(void *user, const char *path, megler_media_info *info)
+static MEGLER_CB void *fake_open(void *user, const char *path, megler_media_info *info)
 {
     mg_stat st;
     (void)user;
@@ -932,7 +932,7 @@ static void *fake_open(void *user, const char *path, megler_media_info *info)
     g_fake_video = g_fake_audio = 0;
     return &g_fake_size;
 }
-static int fake_video(void *user, void *media, uint8_t *rgba, int64_t *time_us)
+static MEGLER_CB int fake_video(void *user, void *media, uint8_t *rgba, int64_t *time_us)
 {
     (void)user; (void)media;
     if (g_fake_video >= 3) return 0;
@@ -941,7 +941,7 @@ static int fake_video(void *user, void *media, uint8_t *rgba, int64_t *time_us)
     g_fake_video++;
     return 1;
 }
-static int fake_audio(void *user, void *media, int16_t *samples, int max_frames, int64_t *time_us)
+static MEGLER_CB int fake_audio(void *user, void *media, int16_t *samples, int max_frames, int64_t *time_us)
 {
     int n = 4800 - g_fake_audio < max_frames ? 4800 - g_fake_audio : max_frames;
     (void)user; (void)media;
@@ -950,14 +950,14 @@ static int fake_audio(void *user, void *media, int16_t *samples, int max_frames,
     g_fake_audio += n;
     return n;
 }
-static bool fake_seek(void *user, void *media, int64_t time_us)
+static MEGLER_CB bool fake_seek(void *user, void *media, int64_t time_us)
 {
     (void)user; (void)media;
     g_fake_video = (int)(time_us * 30 / 1000000);
     g_fake_audio = (int)(time_us * 48000 / 1000000);
     return true;
 }
-static void fake_close(void *user, void *media) { (void)user; (void)media; }
+static MEGLER_CB void fake_close(void *user, void *media) { (void)user; (void)media; }
 
 static void test_media(const char *scratch)
 {
@@ -1615,7 +1615,7 @@ done:
     free(path);
 }
 
-static void count_entry(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void count_entry(const char *name, bool is_dir, void *user)
 {
     (void)is_dir;
     if (strcmp(name, "config.fb")) say("  unexpected entry %s", name);
@@ -3933,7 +3933,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
 #if MG_HOST_ARM32
     test_proxies();
     if (can_run) {
-#if !defined(_WIN32)
+#if !MG_HOST_WINDOWS
         /* (First, while this process has few threads of its own: the test forks.) */
         test_chromium_oom_end();
 #endif

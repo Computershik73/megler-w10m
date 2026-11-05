@@ -1012,7 +1012,7 @@ static void *g_seen_shader;
 static int g_seen_calls;
 
 /* A shell that only notes the paint it is handed. */
-static void spy_rect(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader)
+static MEGLER_CB void spy_rect(void *user, void *canvas, float left, float top, float right, float bottom, const megler_gfx_paint *paint, void *shader)
 {
     (void)user;
     (void)canvas;
@@ -1265,7 +1265,7 @@ static float g_positions[8];
 static int g_stops, g_tile;
 
 /* A shell that only notes the stops it is handed. */
-static void *spy_linear(void *user, float x0, float y0, float x1, float y1, const uint32_t *colors, const float *positions, int count, int tile)
+static MEGLER_CB void *spy_linear(void *user, float x0, float y0, float x1, float y1, const uint32_t *colors, const float *positions, int count, int tile)
 {
     int i;
     (void)user;
@@ -1413,21 +1413,21 @@ static void test_paths(void)
 static int g_flushes, g_touches, g_gone;
 static void *g_flushed, *g_touched;
 
-static void count_flush(void *user, void *canvas)
+static MEGLER_CB void count_flush(void *user, void *canvas)
 {
     (void)user;
     g_flushes++;
     g_flushed = canvas;
 }
 
-static void count_touched(void *user, void *canvas)
+static MEGLER_CB void count_touched(void *user, void *canvas)
 {
     (void)user;
     g_touches++;
     g_touched = canvas;
 }
 
-static void count_gone(void *user, uint32_t id)
+static MEGLER_CB void count_gone(void *user, uint32_t id)
 {
     (void)user;
     g_gone += id != 0;
@@ -1923,13 +1923,13 @@ static int player_button_differ(i64 face, int *ink)
 
 static int g_shader_matrices, g_shader_frees;
 static bool g_shader_had_matrix;
-static void spy_shader_matrix(void *user, void *shader, const float *matrix)
+static MEGLER_CB void spy_shader_matrix(void *user, void *shader, const float *matrix)
 {
     g_shader_matrices++;
     g_shader_had_matrix = matrix != NULL;
     mg_gfx_standin()->shader_matrix(user, shader, matrix);
 }
-static void spy_shader_free(void *user, void *shader)
+static MEGLER_CB void spy_shader_free(void *user, void *shader)
 {
     g_shader_frees++;
     mg_gfx_standin()->shader_free(user, shader);
@@ -2392,7 +2392,7 @@ static void test_inverse(const char *on)
 
 #ifdef MG_GFX_WINDOWS
 /* mg_gfx_windows.cpp: the shell's own megler_gfx_host (app/Megler/player/GfxHost.cpp), in the Windows build of the tests. */
-const megler_gfx_host *mg_gfx_windows_host(void (*line)(const char *text, void *user), void *user, int way);
+MG_HOSTAPI const megler_gfx_host *mg_gfx_windows_host(void (MEGLER_CB *line)(const char *text, void *user), void *user, int way);
 
 static void shell_line(const char *text, void *user)
 {

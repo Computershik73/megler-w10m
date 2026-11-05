@@ -937,7 +937,7 @@ static struct {
     volatile i32 frames, done;
 } G;
 
-static void swapping(void *arg)
+static MG_HOSTCB void swapping(void *arg)
 {
     int i;
     (void)arg;
@@ -1348,7 +1348,7 @@ static void fn_destroyed(i32 id, void *data)
     FT.gone++;
 }
 
-static bool fn_texture_frame(void *user, int id, void *share, int width, int height)
+static MEGLER_CB bool fn_texture_frame(void *user, int id, void *share, int width, int height)
 {
     const u8 *rgba;
     int w, h;
@@ -1373,7 +1373,7 @@ static bool fn_texture_frame(void *user, int id, void *share, int width, int hei
     return true;
 }
 
-static void fn_draw_texture(void *user, void *canvas, int id, float l, float t, float r, float b, int alpha)
+static MEGLER_CB void fn_draw_texture(void *user, void *canvas, int id, float l, float t, float r, float b, int alpha)
 {
     (void)user, (void)canvas, (void)id, (void)l, (void)t, (void)r, (void)b, (void)alpha;
 }

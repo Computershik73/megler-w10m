@@ -492,7 +492,7 @@ typedef struct together {
     int good, runs;
 } together;
 
-static void together_run(void *arg)
+static MG_HOSTCB void together_run(void *arg)
 {
     together *t = (together *)arg;
     int run;

@@ -56,7 +56,7 @@ typedef struct ctx {
     char *mjson;
     size_t mjson_size;
     /* progress */
-    void (*progress)(void *user, uint64_t done, uint64_t total);
+    void (MEGLER_CB *progress)(void *user, uint64_t done, uint64_t total);
     void *user;
     u64 done, total, piece_from;
     /* what was written, to take away again if it does not come to a whole */
@@ -242,7 +242,7 @@ static bool move_into_place(ctx *c, const char *from, const char *to)
 }
 
 /* What a folder of splits held before: removed, so that a split of an older version is not read with a newer base. */
-static void clear_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void clear_one(const char *name, bool is_dir, void *user)
 {
     const char *dir = (const char *)user;
     char *path;
@@ -651,7 +651,7 @@ static char *answer(ctx *c, const char *bundle_path, const item *base, const cha
 }
 
 char *megler_bundle_unpack(const char *bundle_path, const char *apk_path, const char *splits_dir, int density_dpi, const char *languages,
-                         void (*progress)(void *user, uint64_t done, uint64_t total), void *user)
+                         void (MEGLER_CB *progress)(void *user, uint64_t done, uint64_t total), void *user)
 {
     ctx *c = (ctx *)mg_alloc(sizeof(ctx));
     expansions *obbs = (expansions *)mg_alloc(sizeof(expansions));

@@ -248,7 +248,7 @@ static service G_SERVICE = { MG_LOCK_INIT, MG_COND_INIT, MG_COND_INIT, 0, 0, 0, 
 static service G_BUFFERS = { MG_LOCK_INIT, MG_COND_INIT, MG_COND_INIT, 0, 0, 0, 0, 0, "graphics-buffers" };
 static service G_BUFFERS_WEBVIEW = { MG_LOCK_INIT, MG_COND_INIT, MG_COND_INIT, 0, 0, 0, 0, 0, "graphics-buffers-webview" };
 
-static void service_main(void *p)
+static MG_HOSTCB void service_main(void *p)
 {
     service *s = (service *)p;
     mg_lock_acquire(&s->lock);
@@ -391,7 +391,7 @@ static void blob_path(char *out, size_t size, const void *key, blob_size key_siz
     snprintf(out, size, "%s/%016llx.blob", g_blob_dir, (unsigned long long)blob_hash(key, key_size));
 }
 
-static void blob_count_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void blob_count_one(const char *name, bool is_dir, void *user)
 {
     char path[700];
     mg_stat st;
@@ -401,7 +401,7 @@ static void blob_count_one(const char *name, bool is_dir, void *user)
     if (mg_path_stat(path, &st, NULL)) g_blob_bytes += st.size;
 }
 
-static void blob_remove_one(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void blob_remove_one(const char *name, bool is_dir, void *user)
 {
     char path[700];
     (void)user;

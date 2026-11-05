@@ -1980,7 +1980,7 @@ typedef struct gbytes {
     size_t size, cap;
 } gbytes;
 
-static bool bytes_write(void *sink, const void *data, size_t size)
+static MEGLER_CB bool bytes_write(void *sink, const void *data, size_t size)
 {
     gbytes *o = (gbytes *)sink;
     u8 *grown;
@@ -3810,7 +3810,7 @@ static void frame_show(gcanvas *v, gbitmap *b, gdlist *l, const i32 part[4])
     mg_lock_release(&g_rt_lock);
 }
 
-static void rt_main(void *arg)
+static MG_HOSTCB void rt_main(void *arg)
 {
     (void)arg;
     mg_lock_acquire(&g_rt_lock);

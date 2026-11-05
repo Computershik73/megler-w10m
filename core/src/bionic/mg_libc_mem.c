@@ -411,7 +411,7 @@ static bool gone_back(region *r, size_t offset, size_t size)
 }
 
 /* Memory the system itself is about to write into (mg_mem_set_before_system_write): the pages of it given back, committed again. */
-static void before_system_write(void *p, size_t size)
+static MG_HOSTCB void before_system_write(void *p, size_t size)
 {
     u8 *at = (u8 *)p, *end = at + size;
     region *r;
@@ -547,7 +547,7 @@ void mg_mem_write_back_all(size_t largest)
     }
 }
 
-static void write_back_loop(void *unused)
+static MG_HOSTCB void write_back_loop(void *unused)
 {
     (void)unused;
     for (;;) {
@@ -1348,7 +1348,7 @@ void mg_mmap_usage(u64 *anon, u64 *files)
 /* madvise: anonymous memory given back (see the top); any other advice is taken and nothing done. */
 #define G_MADV_DONTNEED 4
 #define G_MADV_FREE 8
-static void given_back(u8 *at, size_t n, void *user)
+static MG_HOSTCB void given_back(u8 *at, size_t n, void *user)
 {
     region *r = (region *)user;
     gone_mark(r, (size_t)(at - r->base), n, true);

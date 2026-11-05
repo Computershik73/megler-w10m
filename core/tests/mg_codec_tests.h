@@ -20,7 +20,7 @@ extern "C" {
  * checks and adds the number made to *checks.
  */
 struct megler_codec_host;
-int mg_codec_tests_run(const char *streams, const struct megler_codec_host *host, mg_test_sink sink, void *user, int *checks);
+MEGLER_API int mg_codec_tests_run(const char *streams, const struct megler_codec_host *host, mg_test_sink sink, void *user, int *checks);
 /* Only the tests of H.265, Main and Main 10 (`how` says in their names what is different about the host this time). */
 int mg_codec_tests_h265_run(const char *streams, const struct megler_codec_host *host, const char *how, mg_test_sink sink, void *user, int *checks);
 
@@ -33,7 +33,7 @@ int mg_codec_tests_h265_run(const char *streams, const struct megler_codec_host 
  * every picture came out, in order, at the stream's size. Returns the number of failed checks and adds the number made
  * to *checks.
  */
-int mg_codec_speed_run(const char *streams, const struct megler_codec_host *host, mg_test_sink sink, void *user, int *checks);
+MEGLER_API int mg_codec_speed_run(const char *streams, const struct megler_codec_host *host, mg_test_sink sink, void *user, int *checks);
 
 #ifdef __cplusplus
 }

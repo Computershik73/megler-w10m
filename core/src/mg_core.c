@@ -70,7 +70,7 @@ mg_addr mg_chromium_oom_global(mg_addr pc)
 
 const char *megler_data_dir(void);
 
-static bool on_fault(mg_fault *f)
+static MG_HOSTCB bool on_fault(mg_fault *f)
 {
     const char *lib = NULL, *sym;
     const void *sym_addr = NULL, *base = NULL;

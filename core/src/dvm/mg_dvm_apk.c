@@ -103,7 +103,7 @@ typedef struct older_files {
     const char *dir, *apk, *entry, *keep;
 } older_files;
 
-static void remove_older(const char *name, bool is_dir, void *user)
+static MG_HOSTCB void remove_older(const char *name, bool is_dir, void *user)
 {
     const older_files *o = (const older_files *)user;
     size_t n = strlen(o->apk);

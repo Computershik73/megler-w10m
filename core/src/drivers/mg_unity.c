@@ -109,7 +109,7 @@ static bool load_engine(void)
     return true;
 }
 
-static void unity_main(void *arg)
+static MG_HOSTCB void unity_main(void *arg)
 {
     mg_jvalue a[2];
     void *render;
@@ -513,7 +513,7 @@ static struct {
     mg_jobj *self;
 } FM;
 
-static void fmod_main(void *arg)
+static MG_HOSTCB void fmod_main(void *arg)
 {
     void *info = mg_jni_native("org/fmod/FMODAudioDevice", "fmodGetInfo", "(I)I");
     void *process = mg_jni_native("org/fmod/FMODAudioDevice", "fmodProcess", "(Ljava/nio/ByteBuffer;)I");

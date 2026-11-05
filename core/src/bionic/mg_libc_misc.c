@@ -1122,7 +1122,7 @@ static int g_raise(int sig)
     return 0;
 }
 
-void mg_signals_check(void)
+MG_HOSTCB void mg_signals_check(void)
 {
     mg_gthread *t = mg_gthread_self();
     for (;;) {
@@ -1192,7 +1192,7 @@ static struct {
     volatile i32 busy;
 } G_SIGPUMP;
 
-static void sigpump_main(void *arg)
+static MG_HOSTCB void sigpump_main(void *arg)
 {
     (void)arg;
     for (;;) {
@@ -1214,7 +1214,7 @@ static void sigpump_main(void *arg)
     }
 }
 
-static bool sig_in_guest_code(mg_addr pc) { return mg_ld_is_guest_code(pc); }
+static MG_HOSTCB bool sig_in_guest_code(mg_addr pc) { return mg_ld_is_guest_code(pc); }
 
 static void sigpump_add(mg_gthread *t)
 {

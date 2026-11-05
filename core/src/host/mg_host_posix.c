@@ -2,7 +2,7 @@
  * The host layer over POSIX: Linux, where the ARM32 build of the core runs
  * under qemu-arm so that the tests can execute guest code.
  */
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(MG_CORE_ELF)
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -1769,6 +1769,36 @@ const char *mg_host_name(void)
 #else
     return "linux";
 #endif
+}
+
+/* A path's own descriptor plus one, as a foreign path's owner hands one out (mg_host.h): the tests' stand-in of the shell's storage. */
+void *mg_host_open_handle(const char *path, int flags, int kind, int *err)
+{
+    int o = O_RDONLY, fd;
+    if (kind == MG_FOREIGN_DIR) {
+        o = O_RDONLY | O_DIRECTORY;
+    } else if (kind == MG_FOREIGN_FILE) {
+        if ((flags & MG_O_READ) && (flags & MG_O_WRITE)) o = O_RDWR;
+        else if (flags & MG_O_WRITE) o = O_WRONLY;
+        if (flags & MG_O_CREATE) o |= O_CREAT;
+        if (flags & MG_O_TRUNC) o |= O_TRUNC;
+        if (flags & MG_O_APPEND) o |= O_APPEND;
+        if (flags & MG_O_EXCL) o |= O_EXCL;
+    }
+    fd = open(path, o | O_CLOEXEC, 0666);
+    if (fd < 0) {
+        switch (errno) {
+        case ENOENT: *err = MG_E_NOENT; break;
+        case EACCES: case EPERM: *err = MG_E_ACCESS; break;
+        case EEXIST: *err = MG_E_EXIST; break;
+        case ENOTDIR: *err = MG_E_NOTDIR; break;
+        case EISDIR: *err = MG_E_ISDIR; break;
+        default: *err = MG_E_IO; break;
+        }
+        return NULL;
+    }
+    /* The descriptor plus one, so that no descriptor is NULL. */
+    return (void *)(intptr_t)(fd + 1);
 }
 
 #endif /* !_WIN32 */

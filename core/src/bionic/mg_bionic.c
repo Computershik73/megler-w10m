@@ -176,7 +176,7 @@ typedef struct bp_retry {
     int n;
 } bp_retry;
 
-static void bp_retry_main(void *arg)
+static MG_HOSTCB void bp_retry_main(void *arg)
 {
     bp_retry *r = (bp_retry *)arg;
     int i, k, left = r->n;
@@ -355,7 +355,7 @@ static int cpu_round(u64 *before, mg_thread **host, cpu_use *top, int *threads)
     return n;
 }
 
-static void cpu_observer(void *unused)
+static MG_HOSTCB void cpu_observer(void *unused)
 {
     u64 *before = (u64 *)mg_alloc(sizeof(u64) * MG_COUNT(g_tid_thread));
     mg_thread **host = (mg_thread **)mg_alloc(sizeof(mg_thread *) * MG_COUNT(g_tid_thread));
@@ -447,7 +447,7 @@ static bool code_at(mg_addr a, char *out, size_t size)
 static void stacks_round(native_stack *stacks, int *lines)
 {
     int n = 0, i, k;
-#if !defined(_WIN32)
+#if !MG_HOST_WINDOWS
     if (!*lines) mg_info("stacks: native threads are not looked at on this host (a thread is stopped by a signal here, which it may hold back)");
     ++*lines;
     return;
@@ -496,7 +496,7 @@ static void stacks_round(native_stack *stacks, int *lines)
     }
 }
 
-static void stacks_observer(void *unused)
+static MG_HOSTCB void stacks_observer(void *unused)
 {
     native_stack *stacks = (native_stack *)mg_alloc(sizeof(native_stack) * 60);
     int lines = 0;
@@ -514,7 +514,7 @@ void mg_bionic_native_stacks_start(void)
     static volatile i32 started;
     mg_thread *t;
     if (mg_atomic_xchg(&started, 1)) return;
-#if !defined(_WIN32)
+#if !MG_HOST_WINDOWS
     /* (Said at once, not at the first round ten seconds on: a run may be over before it.) */
     mg_info("stacks: native threads are not looked at on this host (a thread is stopped by a signal here, which it may hold back)");
     return;
@@ -947,7 +947,7 @@ static void prof_choose(prof_slot *slots, u64 *before, mg_thread **host, u64 spa
     }
 }
 
-static void prof_observer(void *unused)
+static MG_HOSTCB void prof_observer(void *unused)
 {
     prof_slot *slots = (prof_slot *)mg_alloc(sizeof(prof_slot) * PROF_THREADS);
     u64 *before = (u64 *)mg_alloc(sizeof(u64) * MG_COUNT(g_tid_thread));
@@ -982,7 +982,7 @@ void mg_bionic_profile_start(void)
     static volatile i32 started;
     mg_thread *t;
     if (mg_atomic_xchg(&started, 1)) return;
-#if !defined(_WIN32)
+#if !MG_HOST_WINDOWS
     if (prof_line_left()) mg_info("profile: threads are not sampled on this host (a thread is stopped by a signal here, which it may hold back)");
     return;
 #endif
@@ -1169,7 +1169,7 @@ static void hang_report(hang_thread *threads, hang_holder *holders, const u32 *h
     }
 }
 
-static void hang_observer(void *unused)
+static MG_HOSTCB void hang_observer(void *unused)
 {
     hang_thread *threads = (hang_thread *)mg_alloc(sizeof(hang_thread) * HANG_THREADS);
     hang_holder *holders = (hang_holder *)mg_alloc(sizeof(hang_holder) * 2);
@@ -1230,7 +1230,7 @@ void mg_bionic_hang_watch_start(void)
     static volatile i32 started;
     mg_thread *t;
     if (mg_atomic_xchg(&started, 1)) return;
-#if !defined(_WIN32)
+#if !MG_HOST_WINDOWS
     return;
 #endif
     t = mg_thread_start(hang_observer, NULL, 64u * 1024u, "hang-observer");
