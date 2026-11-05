@@ -2,6 +2,7 @@
 #include "mg_bionic.h"
 
 #include "../mg_core.h"
+#include "../elf/mg_elf.h"
 #include "../ld/mg_ld.h"
 
 #include <stdio.h>
@@ -329,80 +330,162 @@ static u8 g_at_random[16];
 
 /*
  * A vDSO of the kind the kernel maps into a process, for Go's runtime: its clocks read without a call by number. Go takes
- * the image from the vector's AT_SYSINFO_EHDR as it starts, finds __vdso_clock_gettime of the version LINUX_2.6 in it,
- * and calls that for every reading of its clocks (nanotime, walltime), thousands a second in a busy program. Without it
- * each reading is a call by number, which here is a fault: the svc is an undefined instruction now (arm/mg_patch.c),
- * answered from the fault handler. The image is ELF, as Linux's is, with what Go reads of one and no more: a program
- * header table with a PT_LOAD at 0 and a PT_DYNAMIC; the dynamic table (DT_HASH, DT_SYMTAB, DT_STRTAB, DT_VERSYM and
- * DT_VERDEF: Go reads the definitions without looking whether there are any); one hash bucket; the symbol, whose
- * value is the distance from the image to libc's clock_gettime here; its version; the names. getauxval does not say
- * where it is: libraries that read a vDSO's unwind tables or sections through getauxval find none, as before.
+ * the image from the vector's AT_SYSINFO_EHDR as it starts, finds its clock function of its kernel's version in it, and
+ * calls that for every reading of its clocks (nanotime, walltime), thousands a second in a busy program. Without it
+ * each reading is a call by number: on 32-bit ARM a fault, the svc being an undefined instruction now (arm/mg_patch.c),
+ * answered from the fault handler.
+ *
+ * The image is each processor's as its kernel's is, of its own class and machine, with the names and the version Go's
+ * runtime looks for there (runtime/vdso_linux_*.go): __vdso_clock_gettime of LINUX_2.6 on 32-bit ARM, x86 and x86_64,
+ * the x86s' with __vdso_gettimeofday, __vdso_time and __vdso_clock_getres beside it, as their kernels' have (Go takes
+ * __vdso_gettimeofday there too); __kernel_clock_gettime, __kernel_gettimeofday and __kernel_clock_getres of
+ * LINUX_2.6.39 on ARM64. A symbol's value is the distance from the image to libc's function of that name here, which
+ * takes its arguments as the kernel's function does, in the processor's own convention.
+ *
+ * It is ELF with what Go reads of one and no more: a program header table with a PT_LOAD at 0 and a PT_DYNAMIC; the
+ * dynamic table (DT_HASH, DT_SYMTAB, DT_STRTAB, DT_VERSYM and DT_VERDEF: Go reads the definitions without looking
+ * whether there are any); one hash bucket, every symbol in its chain; the symbols; their version; the names. getauxval
+ * does not say where it is: libraries that read a vDSO's unwind tables or sections through getauxval find none, as
+ * before.
  */
-static u32 g_vdso[96];
+typedef struct vdso_verdef {
+    u16 version, flags, ndx, cnt;
+    u32 hash, aux, next;
+    u32 name, aux_next;                /* its one Verdaux, right behind it */
+} vdso_verdef;
 
-static void put16(u8 *p, u16 v) { memcpy(p, &v, 2); }
-static void put32(u8 *p, u32 v) { memcpy(p, &v, 4); }
+/* The ELF hash (System V's), which a version's definition carries of its name. */
+static u32 elf_hash(const char *s)
+{
+    u32 h = 0, g;
+    for (; *s; s++) {
+        h = (h << 4) + (u8)*s;
+        g = h & 0xf0000000u;
+        if (g) h ^= g >> 24;
+        h &= ~g;
+    }
+    return h;
+}
 
 static mg_addr vdso_image(void)
 {
-    enum { PH = 52, DYN = PH + 2 * 32, NDYN = 9, HASH = DYN + NDYN * 8, SYM = HASH + 5 * 4, VERSYM = SYM + 2 * 16,
-           VERDEF = VERSYM + 4, STR = VERDEF + 2 * 28, S_FN = 1, S_VER = 22, S_BASE = 32, STRSZ = 48, SIZE = STR + STRSZ };
-    static const char names[STRSZ] = "\0__vdso_clock_gettime\0LINUX_2.6\0linux-vdso.so.1";
-    static const u32 dyn[NDYN * 2] = { 4 /* DT_HASH */, HASH, 5 /* DT_STRTAB */, STR, 6 /* DT_SYMTAB */, SYM, 10 /* DT_STRSZ */, STRSZ,
-                                      11 /* DT_SYMENT */, 16, 0x6ffffff0u /* DT_VERSYM */, VERSYM, 0x6ffffffcu /* DT_VERDEF */, VERDEF,
-                                      0x6ffffffdu /* DT_VERDEFNUM */, 2, 0, 0 };
-    u8 *b = (u8 *)g_vdso;
-    mg_addr fn = (mg_addr)mg_bionic_find("clock_gettime");
-    /* (32-bit ARM's image: Go's runtime on the others looks for one of their own and reads its clocks by number without.) */
-    if (!MG_ARCH_ARM32 || !fn || SIZE > sizeof(g_vdso)) return 0;
-    memset(b, 0, sizeof(g_vdso));
-    memcpy(b, "\177ELF\1\1\1", 7);                    /* 32-bit, little-endian */
-    put16(b + 16, 3);                                   /* ET_DYN */
-    put16(b + 18, 40);                                  /* EM_ARM */
-    put32(b + 20, 1);
-    put32(b + 28, PH);
-    put32(b + 36, 0x05000400u);                         /* EABI 5, hard float */
-    put16(b + 40, 52);
-    put16(b + 42, 32);
-    put16(b + 44, 2);
-    put16(b + 46, 40);
-    put32(b + PH, 1);                                   /* PT_LOAD: the image, at 0 */
-    put32(b + PH + 16, SIZE);
-    put32(b + PH + 20, SIZE);
-    put32(b + PH + 24, 5);
-    put32(b + PH + 28, MG_PAGE);
-    put32(b + PH + 32, 2);                              /* PT_DYNAMIC */
-    put32(b + PH + 36, DYN);
-    put32(b + PH + 40, DYN);
-    put32(b + PH + 44, DYN);
-    put32(b + PH + 48, NDYN * 8);
-    put32(b + PH + 52, NDYN * 8);
-    put32(b + PH + 56, 4);
-    put32(b + PH + 60, 4);
-    memcpy(b + DYN, dyn, sizeof(dyn));
-    put32(b + HASH, 1);                                 /* one bucket; two in the chain, the second the symbol */
-    put32(b + HASH + 4, 2);
-    put32(b + HASH + 8, 1);
-    put32(b + SYM + 16, S_FN);                          /* the symbol: global, a function, defined */
-    put32(b + SYM + 20, (u32)(fn - (mg_addr)b));
-    b[SYM + 28] = 0x12;
-    put16(b + SYM + 30, 1);
-    put16(b + VERSYM + 2, 2);                           /* its version: LINUX_2.6 */
-    put16(b + VERDEF, 1);                               /* the image's own version, the base ... */
-    put16(b + VERDEF + 2, 1);
-    put16(b + VERDEF + 4, 1);
-    put16(b + VERDEF + 6, 1);
-    put32(b + VERDEF + 8, 0x0deebfa1u);                 /* (the ELF hash of its name) */
-    put32(b + VERDEF + 12, 20);
-    put32(b + VERDEF + 16, 28);
-    put32(b + VERDEF + 20, S_BASE);
-    put16(b + VERDEF + 28, 1);                          /* ... then LINUX_2.6, the second */
-    put16(b + VERDEF + 32, 2);
-    put16(b + VERDEF + 34, 1);
-    put32(b + VERDEF + 36, 0x03ae75f6u);
-    put32(b + VERDEF + 40, 20);
-    put32(b + VERDEF + 48, S_VER);
-    memcpy(b + STR, names, STRSZ);
+    /* Each symbol's name in the image, and libc's function it is. */
+#if MG_ARCH_ARM64
+    static const char *const names[][2] = { { "__kernel_clock_gettime", "clock_gettime" }, { "__kernel_gettimeofday", "gettimeofday" },
+                                            { "__kernel_clock_getres", "clock_getres" } };
+    static const char version[] = "LINUX_2.6.39";
+#elif MG_ARCH_ARM32
+    static const char *const names[][2] = { { "__vdso_clock_gettime", "clock_gettime" } };
+    static const char version[] = "LINUX_2.6";
+#else
+    static const char *const names[][2] = { { "__vdso_clock_gettime", "clock_gettime" }, { "__vdso_gettimeofday", "gettimeofday" },
+                                            { "__vdso_time", "time" }, { "__vdso_clock_getres", "clock_getres" } };
+    static const char version[] = "LINUX_2.6";
+#endif
+    static const char soname[] = "linux-vdso.so.1";
+    enum { NSYM = (int)MG_COUNT(names) + 1, NDYN = 9 };
+    static u64 image[256];             /* 2 KB, aligned for ELF64: the largest of the images takes some 650 bytes */
+    u8 *b = (u8 *)image;
+    ElfW(Ehdr) *eh = (ElfW(Ehdr) *)b;
+    ElfW(Phdr) *ph;
+    ElfW(Dyn) *dyn;
+    ElfW(Sym) *sym;
+    u32 *hash, name_at[NSYM];
+    u16 *versym;
+    vdso_verdef *vd;
+    size_t ph_at = sizeof(ElfW(Ehdr)), dyn_at = ph_at + 2 * sizeof(ElfW(Phdr)), hash_at = dyn_at + NDYN * sizeof(ElfW(Dyn));
+    size_t sym_at = MG_ALIGN_UP(hash_at + (3 + NSYM) * 4, 8), versym_at = sym_at + NSYM * sizeof(ElfW(Sym));
+    size_t verdef_at = MG_ALIGN_UP(versym_at + NSYM * 2, 4), str_at = verdef_at + 2 * sizeof(vdso_verdef), at, version_at, soname_at;
+    int i;
+    /* (No guest code runs in MSVC's x64 build of the tests, whose libc is of Windows' convention.) */
+    if (!MG_GUEST_CODE) return 0;
+    memset(image, 0, sizeof(image));
+    at = str_at + 1;                   /* the names, after the empty one */
+    for (i = 1; i < NSYM; i++) {
+        size_t n = strlen(names[i - 1][0]) + 1;
+        if (at + n > sizeof(image)) return 0;
+        name_at[i] = (u32)(at - str_at);
+        memcpy(b + at, names[i - 1][0], n);
+        at += n;
+    }
+    version_at = at - str_at;
+    soname_at = version_at + sizeof(version);
+    at += sizeof(version) + sizeof(soname);
+    if (at > sizeof(image)) return 0;
+    memcpy(b + str_at + version_at, version, sizeof(version));
+    memcpy(b + str_at + soname_at, soname, sizeof(soname));
+
+    memcpy(eh->e_ident, "\177ELF", 4);
+    eh->e_ident[4] = MG_ELFCLASS;
+    eh->e_ident[5] = 1;                /* little-endian */
+    eh->e_ident[6] = 1;
+    eh->e_type = ET_DYN;
+    eh->e_machine = MG_EM;
+    eh->e_version = 1;
+    eh->e_phoff = ph_at;
+    eh->e_flags = MG_ARCH_ARM32 ? 0x05000400u : 0;     /* EABI 5, hard float */
+    eh->e_ehsize = (u16)sizeof(ElfW(Ehdr));
+    eh->e_phentsize = (u16)sizeof(ElfW(Phdr));
+    eh->e_phnum = 2;
+    eh->e_shentsize = (u16)sizeof(ElfW(Shdr));
+    ph = (ElfW(Phdr) *)(b + ph_at);
+    ph[0].p_type = PT_LOAD;            /* the image, at 0 */
+    ph[0].p_filesz = ph[0].p_memsz = at;
+    ph[0].p_flags = PF_R | PF_X;
+    ph[0].p_align = MG_PAGE;
+    ph[1].p_type = PT_DYNAMIC;
+    ph[1].p_offset = ph[1].p_vaddr = ph[1].p_paddr = dyn_at;
+    ph[1].p_filesz = ph[1].p_memsz = NDYN * sizeof(ElfW(Dyn));
+    ph[1].p_flags = PF_R;
+    ph[1].p_align = sizeof(mg_addr);
+    dyn = (ElfW(Dyn) *)(b + dyn_at);
+    dyn[0].d_tag = DT_HASH;
+    dyn[0].d_val = hash_at;
+    dyn[1].d_tag = DT_STRTAB;
+    dyn[1].d_val = str_at;
+    dyn[2].d_tag = DT_SYMTAB;
+    dyn[2].d_val = sym_at;
+    dyn[3].d_tag = DT_STRSZ;
+    dyn[3].d_val = at - str_at;
+    dyn[4].d_tag = DT_SYMENT;
+    dyn[4].d_val = sizeof(ElfW(Sym));
+    dyn[5].d_tag = 0x6ffffff0;         /* DT_VERSYM */
+    dyn[5].d_val = versym_at;
+    dyn[6].d_tag = 0x6ffffffc;         /* DT_VERDEF */
+    dyn[6].d_val = verdef_at;
+    dyn[7].d_tag = 0x6ffffffd;         /* DT_VERDEFNUM */
+    dyn[7].d_val = 2;                  /* (dyn[8], DT_NULL, the end) */
+    hash = (u32 *)(b + hash_at);       /* one bucket, every symbol in its chain */
+    hash[0] = 1;
+    hash[1] = NSYM;
+    hash[2] = 1;
+    sym = (ElfW(Sym) *)(b + sym_at);
+    versym = (u16 *)(b + versym_at);
+    for (i = 1; i < NSYM; i++) {
+        mg_addr fn = (mg_addr)mg_bionic_find(names[i - 1][1]);
+        if (!fn) return 0;
+        hash[3 + i] = i + 1 < NSYM ? (u32)(i + 1) : 0;
+        sym[i].st_name = name_at[i];
+        sym[i].st_info = (u8)((STB_GLOBAL << 4) | STT_FUNC);
+        sym[i].st_shndx = 1;           /* defined */
+        sym[i].st_value = fn - (mg_addr)b;
+        versym[i] = 2;                 /* the version below */
+    }
+    vd = (vdso_verdef *)(b + verdef_at);
+    vd[0].version = 1;                 /* the image's own name, the base ... */
+    vd[0].flags = 1;
+    vd[0].ndx = 1;
+    vd[0].cnt = 1;
+    vd[0].hash = elf_hash(soname);
+    vd[0].aux = 20;
+    vd[0].next = (u32)sizeof(vdso_verdef);
+    vd[0].name = (u32)soname_at;
+    vd[1].version = 1;                 /* ... then the kernel's version, the second */
+    vd[1].ndx = 2;
+    vd[1].cnt = 1;
+    vd[1].hash = elf_hash(version);
+    vd[1].aux = 20;
+    vd[1].name = (u32)version_at;
     return (mg_addr)b;
 }
 
