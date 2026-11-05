@@ -182,7 +182,7 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
             long args[6];
             int i;
             for (i = 0; i < 6; i++) args[i] = (long)f->regs[i];
-            f->regs[0] = (mg_addr)mg_bionic_syscall((long)f->regs[8], args);
+            f->regs[0] = (mg_addr)mg_bionic_syscall((long)f->regs[8], args, pc);
             mg_fault_resume_at(f, target);
             return true;
         }

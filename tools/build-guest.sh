@@ -27,6 +27,8 @@
 #   libt_svc.so, libt_svc_diag.so, libt_svc_arm.so
 #                      armeabi-v7a only: direct ARM EABI system calls (t_svc.c), Thumb and ARM
 #   libt_aaudio.so     AAudio looked up by name
+#   libt_go.so         every ABI but x86: one of Go's by its build ID note, a goroutine's stack in its heap given back
+#                      with madvise by number (t_go.c); x86's own system calls (int 0x80) are not led out to the core
 #   libt_same.so, libt_user.so, and in runtime/ another libt_same.so and libt_ruser.so:
 #                      two libraries of one name, the app's and the runtime's, and one
 #                      of each kind that needs "libt_same.so" (t_same.c, t_user.c)
@@ -108,6 +110,10 @@ if [ "$ABI" = armeabi-v7a ]; then
 fi
 # AAudio looked up by name, as an app that decodes its own sound does (core/src/ndk/mg_aaudio.c).
 "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both   -Wl,-soname,libt_aaudio.so -o "$(w "$OUT/libt_aaudio.so")" "$(w "$SRC/t_aaudio.c")" "${SYS[@]}"
+# One of Go's, by its build ID note: a goroutine's stack in its heap given back by number (bionic/mg_libc_mem.c, madvise).
+if [ "$ABI" != x86 ]; then
+  "$CLANG" "${COMMON[@]}" ${THUMB[@]+"${THUMB[@]}"} -Wl,--hash-style=both -Wl,-soname,libt_go.so -o "$(w "$OUT/libt_go.so")" "$(w "$SRC/t_go.c")" "${SYS[@]}"
+fi
 
 # One file name twice: the app's, and the one that stands for a library of the Android root's.
 mkdir -p "$OUT/runtime"

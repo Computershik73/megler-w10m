@@ -2478,4 +2478,267 @@ int t_raw_syscall(void)
     }
     return 0;
 }
+
+/*
+ * Accesses of the thread pointer's segment through a register, which the loader leads out to pieces of the library's
+ * island that make them on the guest's thread pointer (x86/mg_patch_x86.c). Go's runtime reaches its g so, at the offset
+ * its runtime.tls_g holds (TLS_SLOT_APP's, 16: t_fs_tls_g here); C of the initial-exec model its variables, through
+ * their GOT entries (t_fs_var, t_fs_arr: the TPOFF relocations these bring mark the library DF_STATIC_TLS, as the loader
+ * wants of one whose accesses it leads out, the packed one built for global-dynamic too). Instruction by instruction:
+ *
+ *   t_fs_go_get     Go's reload of g after a call, `mov tls_g(%rip), %r14; mov %fs:(%r14), %r14`: the base its own
+ *                   destination, and the instruction before it relative to rip, moved with it
+ *   t_fs_go_set     Go's setg_gcc, `mov %rdi, %fs:(%rax)`: a store
+ *   t_fs_store_imm  Go's rt0_go's check of its TLS, `movq $0x123, %fs:(%rbx)`: eight bytes, its own place for the jump
+ *   t_fs_self       Go's rt0_go's TLS base, `mov %fs:-16(%rcx), %rcx` with tls_g's 16: slot 0, the thread pointer itself
+ *   t_fs_ie_get     C's `mov t_fs_var@gottpoff(%rip), %rax; mov %fs:(%rax), %rax`
+ *   t_fs_ie_add     `add %rdi, %fs:(%rax)`: a read and a write, whose flags (ZF) are the add's
+ *   t_fs_index      `movl %fs:(%rax,%rcx,4), %eax`: a base and an index
+ *   t_fs_keep       a load, a store and a load whose base is its destination, between flags (CF, SF and DF set) and
+ *                   registers given values, and the red zone's lowest word: all as they were after them but the
+ *                   destinations
+ *   t_fs_spin       loads of g one after another until told to stop, counting the times rcx, rbx, rsi and rdi came back
+ *                   changed: a thread interrupted in the middle of a piece, by a handler that makes one too
+ *                   (t_fs_clobber, with rcx 0)
+ *   t_fs_left       one with a jump before it, a return after it and a jump to it: left as it is, and never called.
+ */
+static __attribute__((used)) __thread long t_fs_var = 7;
+static __attribute__((used)) __thread int t_fs_arr[4] = { 10, 11, 12, 13 };
+
+__asm__(".data\n"
+        ".p2align 3\n"
+        "t_fs_tls_g: .quad 16\n"
+        ".text\n"
+
+        ".globl t_fs_go_get\n.type t_fs_go_get, @function\n"
+        "t_fs_go_get:\n"
+        "  pushq %r14\n"
+        "  movq t_fs_tls_g(%rip), %r14\n"
+        "  movq %fs:(%r14), %r14\n"
+        "  movq %r14, %rax\n"
+        "  popq %r14\n"
+        "  ret\n"
+        ".size t_fs_go_get, .-t_fs_go_get\n"
+
+        ".globl t_fs_go_set\n.type t_fs_go_set, @function\n"
+        "t_fs_go_set:\n"
+        "  movq t_fs_tls_g(%rip), %rax\n"
+        "  movq %rdi, %fs:(%rax)\n"
+        "  ret\n"
+        ".size t_fs_go_set, .-t_fs_go_set\n"
+
+        ".globl t_fs_store_imm\n.type t_fs_store_imm, @function\n"
+        "t_fs_store_imm:\n"
+        "  pushq %rbx\n"
+        "  movq t_fs_tls_g(%rip), %rbx\n"
+        "  movq $0x123, %fs:(%rbx)\n"
+        "  popq %rbx\n"
+        "  ret\n"
+        ".size t_fs_store_imm, .-t_fs_store_imm\n"
+
+        ".globl t_fs_self\n.type t_fs_self, @function\n"
+        "t_fs_self:\n"
+        "  movq t_fs_tls_g(%rip), %rcx\n"
+        "  movq %fs:-16(%rcx), %rcx\n"
+        "  movq %rcx, %rax\n"
+        "  ret\n"
+        ".size t_fs_self, .-t_fs_self\n"
+
+        ".globl t_fs_ie_get\n.type t_fs_ie_get, @function\n"
+        "t_fs_ie_get:\n"
+        "  movq t_fs_var@gottpoff(%rip), %rax\n"
+        "  movq %fs:(%rax), %rax\n"
+        "  ret\n"
+        ".size t_fs_ie_get, .-t_fs_ie_get\n"
+
+        ".globl t_fs_ie_add\n.type t_fs_ie_add, @function\n"
+        "t_fs_ie_add:\n"
+        "  movq t_fs_var@gottpoff(%rip), %rax\n"
+        "  addq %rdi, %fs:(%rax)\n"
+        "  setz %dl\n"
+        "  movzbl %dl, %eax\n"
+        "  ret\n"
+        ".size t_fs_ie_add, .-t_fs_ie_add\n"
+
+        ".globl t_fs_index\n.type t_fs_index, @function\n"
+        "t_fs_index:\n"
+        "  movq t_fs_arr@gottpoff(%rip), %rax\n"
+        "  movslq %edi, %rcx\n"
+        "  movl %fs:(%rax,%rcx,4), %eax\n"
+        "  ret\n"
+        ".size t_fs_index, .-t_fs_index\n"
+
+        ".globl t_fs_keep\n.type t_fs_keep, @function\n"
+        "t_fs_keep:\n"
+        "  pushq %rbx\n  pushq %rbp\n  pushq %r12\n  pushq %r13\n  pushq %r14\n  pushq %r15\n  pushq %rdi\n"
+        "  movq $0x5a5a5a5a, -8(%rsp)\n"
+        "  movabsq $0x1111111111111111, %rbx\n  movabsq $0x2222222222222222, %rbp\n  movabsq $0x3333333333333333, %rsi\n"
+        "  movabsq $0x4444444444444444, %rdx\n  movabsq $0x5555555555555555, %r8\n  movabsq $0x6666666666666666, %r9\n"
+        "  movabsq $0x7777777777777777, %r10\n  movabsq $0x0888888888888888, %r11\n  movabsq $0x0999999999999999, %r12\n"
+        "  movabsq $0x0aaaaaaaaaaaaaaa, %r13\n  movabsq $0x0bbbbbbbbbbbbbbb, %r15\n  movabsq $0x0ccccccccccccccc, %rdi\n"
+        "  movq t_fs_tls_g(%rip), %rcx\n"
+        "  movq %rcx, %rax\n"
+        "  cmpq $17, %rcx\n"
+        "  std\n"
+        "  movq %fs:(%rcx), %r14\n"
+        "  nop\n"
+        "  movq %r14, %fs:(%rcx)\n"
+        "  nop\n"
+        "  movq %fs:(%rax), %rax\n"
+        "  movq -8(%rsp), %r14\n"
+        "  pushfq\n  cld\n"
+        "  pushq %rax\n"
+        "  movq 16(%rsp), %rax\n"
+        "  movq %rbx, 0(%rax)\n  movq %rbp, 8(%rax)\n  movq %rsi, 16(%rax)\n  movq %rdx, 24(%rax)\n  movq %r8, 32(%rax)\n"
+        "  movq %r9, 40(%rax)\n  movq %r10, 48(%rax)\n  movq %r11, 56(%rax)\n  movq %r12, 64(%rax)\n  movq %r13, 72(%rax)\n"
+        "  movq %r15, 80(%rax)\n  movq %rdi, 88(%rax)\n  movq %rcx, 96(%rax)\n  movq %r14, 104(%rax)\n"
+        "  movq 0(%rsp), %rcx\n  movq %rcx, 112(%rax)\n  movq 8(%rsp), %rcx\n  movq %rcx, 120(%rax)\n"
+        "  addq $16, %rsp\n"
+        "  popq %rdi\n  popq %r15\n  popq %r14\n  popq %r13\n  popq %r12\n  popq %rbp\n  popq %rbx\n"
+        "  ret\n"
+        ".size t_fs_keep, .-t_fs_keep\n"
+
+        ".globl t_fs_spin\n.type t_fs_spin, @function\n"
+        "t_fs_spin:\n"
+        "  pushq %rbx\n  pushq %r12\n  pushq %r13\n  pushq %r14\n  pushq %r15\n"
+        "  xorl %r12d, %r12d\n"
+        "  movq %rdi, %r13\n"
+        "  movabsq $0x0123456789abcdef, %r15\n"
+        "1:\n"
+        "  movq %r15, %rcx\n  movq %r15, %rbx\n  movq %r15, %rsi\n  movq %r15, %rdi\n"
+        "  movq t_fs_tls_g(%rip), %r14\n  movq %fs:(%r14), %r14\n"
+        "  movq t_fs_tls_g(%rip), %r14\n  movq %fs:(%r14), %r14\n"
+        "  movq t_fs_tls_g(%rip), %r14\n  movq %fs:(%r14), %r14\n"
+        "  movq t_fs_tls_g(%rip), %r14\n  movq %fs:(%r14), %r14\n"
+        "  movq t_fs_tls_g(%rip), %r14\n  movq %fs:(%r14), %r14\n"
+        "  movq t_fs_tls_g(%rip), %r14\n  movq %fs:(%r14), %r14\n"
+        "  movq t_fs_tls_g(%rip), %r14\n  movq %fs:(%r14), %r14\n"
+        "  movq t_fs_tls_g(%rip), %r14\n  movq %fs:(%r14), %r14\n"
+        "  cmpq %r15, %rcx\n  jne 2f\n"
+        "  cmpq %r15, %rbx\n  jne 2f\n"
+        "  cmpq %r15, %rsi\n  jne 2f\n"
+        "  cmpq %r15, %rdi\n  je 3f\n"
+        "2:\n"
+        "  incq %r12\n"
+        "3:\n"
+        "  cmpl $0, (%r13)\n"
+        "  je 1b\n"
+        "  movq %r12, %rax\n"
+        "  popq %r15\n  popq %r14\n  popq %r13\n  popq %r12\n  popq %rbx\n"
+        "  ret\n"
+        ".size t_fs_spin, .-t_fs_spin\n"
+
+        ".globl t_fs_clobber\n.type t_fs_clobber, @function\n"
+        "t_fs_clobber:\n"
+        "  pushq %r14\n"
+        "  xorl %ecx, %ecx\n"
+        "  movq t_fs_tls_g(%rip), %r14\n"
+        "  movq %fs:(%r14), %r14\n"
+        "  popq %r14\n"
+        "  ret\n"
+        ".size t_fs_clobber, .-t_fs_clobber\n"
+
+        ".globl t_fs_left\n.type t_fs_left, @function\n"
+        "t_fs_left:\n"
+        "  jmp 2f\n"
+        "1:\n"
+        "  movq %fs:(%rax), %rax\n"
+        "  ret\n"
+        "2:\n"
+        "  movq t_fs_tls_g(%rip), %rax\n"
+        "  jmp 1b\n"
+        ".size t_fs_left, .-t_fs_left\n");
+
+long t_fs_go_get(void);
+void t_fs_go_set(long g);
+void t_fs_store_imm(void);
+void *t_fs_self(void);
+long t_fs_ie_get(void);
+int t_fs_ie_add(long v);
+int t_fs_index(int i);
+void t_fs_keep(long *out);
+long t_fs_spin(volatile int *stop);
+void t_fs_clobber(void);
+
+/* The accesses on this thread, against what the thread pointer's slots and C's own accesses hold: 0, or the step that failed. */
+static int fs_steps(long first)
+{
+    void **tp = tp_get();
+    if (t_fs_ie_get() != first || t_fs_var != first) return 1;
+    if (tp[2] != 0) return 2;
+    t_fs_go_set(0x61626364);
+    if (tp[2] != (void *)0x61626364L || t_fs_go_get() != 0x61626364) return 3;
+    t_fs_store_imm();
+    if (tp[2] != (void *)0x123L) return 4;
+    tp[2] = 0;
+    if (t_fs_self() != (void *)tp) return 5;
+    t_fs_var = 40;
+    if (t_fs_ie_get() != 40) return 6;
+    if (t_fs_ie_add(-40) != 1 || t_fs_var != 0) return 7;
+    if (t_fs_ie_add(5) != 0 || t_fs_var != 5) return 8;
+    t_fs_arr[2] = 77;
+    if (t_fs_index(2) != 77 || t_fs_index(3) != t_fs_arr[3] || t_fs_index(0) != t_fs_arr[0]) return 9;
+    return 0;
+}
+
+static void *fs_thread(void *arg) { (void)arg; return (void *)(long)fs_steps(7); }
+
+static volatile int g_fs_stop, g_fs_handled;
+static void on_fs_signal(int sig, void *info, void *context)
+{
+    (void)sig; (void)info; (void)context;
+    t_fs_clobber();
+    g_fs_handled++;
+}
+static void *fs_spinner(void *arg) { (void)arg; return (void *)t_fs_spin(&g_fs_stop); }
+
+/*
+ * 0, or where it went wrong: 1-9 the steps on this thread, 11-19 on a new one (fs_steps), 2x t_fs_keep's registers, 3x
+ * the interruptions: 31 a signal not handled within two seconds, 32 registers that came back changed.
+ */
+int t_fs_access(void)
+{
+    static const long kept[12] = { 0x1111111111111111L, 0x2222222222222222L, 0x3333333333333333L, 0x4444444444444444L,
+                                   0x5555555555555555L, 0x6666666666666666L, 0x7777777777777777L, 0x0888888888888888L,
+                                   0x0999999999999999L, 0x0aaaaaaaaaaaaaaaL, 0x0bbbbbbbbbbbbbbbL, 0x0cccccccccccccccL };
+    t_sigaction act = T_SIGACTION(on_fs_signal, 0, 4 | 0x10000000), old;
+    void **tp = tp_get();
+    void *ret = (void *)-1L;
+    long out[16];
+    pthread_t t;
+    int r = fs_steps(t_fs_var), i;
+    if (r) return r;
+    if (pthread_create(&t, 0, fs_thread, 0) != 0) return 10;
+    pthread_join(t, &ret);
+    if (ret) return 10 + (int)(long)ret;
+
+    tp[2] = (void *)0x71727374L;
+    memset(out, 0, sizeof(out));
+    t_fs_keep(out);
+    tp[2] = 0;
+    for (i = 0; i < 12; i++)
+        if (out[i] != kept[i]) return 20;
+    if (out[12] != 16) return 21;
+    if (out[13] != 0x5a5a5a5aL) return 22;                            /* the red zone */
+    if (out[14] != 0x71727374L) return 23;
+    if (!(out[15] & 1) || !(out[15] & 0x80) || (out[15] & 0x40) || !(out[15] & 0x400)) return 24;   /* CF, SF, not ZF, DF */
+
+    if (sigaction(12, &act, &old)) return 30;
+    g_fs_stop = 0;
+    g_fs_handled = 0;
+    if (pthread_create(&t, 0, fs_spinner, 0) != 0) return 30;
+    for (i = 0; i < 200 && !r; i++) {
+        long until = now_ms() + 2000;
+        if (pthread_kill(t, 12)) r = 30;
+        while (!r && g_fs_handled <= i) {
+            if (now_ms() > until) r = 31;
+            usleep(200);
+        }
+    }
+    g_fs_stop = 1;
+    pthread_join(t, &ret);
+    sigaction(12, &old, 0);
+    if (r) return r;
+    return ret ? 32 : 0;
+}
 #endif

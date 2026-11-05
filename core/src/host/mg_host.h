@@ -312,6 +312,14 @@ MG_HOSTAPI bool mg_guest_tp_where(u32 *opc2, u32 *offset);
  */
 MG_HOSTAPI bool mg_guest_guard_where(u32 *opc2, u32 *offset);
 MG_HOSTAPI void mg_guest_guard_set(mg_addr guard);
+/*
+ * A word of the host's thread block that holds nothing of its own, for x86_64's pieces of island that do an access of the
+ * thread pointer's segment through a register (x86/mg_patch_x86.c): such a piece keeps a register of the guest's there
+ * while it computes the address in that register. Its place as mg_guest_tp_where says one; false where there is none.
+ * A thread interrupted in the middle of a piece (mg_thread_interrupt) finds it as it was when it goes back: what it was
+ * made to run meanwhile may have used it too.
+ */
+MG_HOSTAPI bool mg_guest_scratch_where(u32 *opc2, u32 *offset);
 
 /* ----------------------------------------------------------------- faults
  *

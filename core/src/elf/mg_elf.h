@@ -84,6 +84,7 @@ typedef struct {
 
 #define PT_LOAD 1
 #define PT_DYNAMIC 2
+#define PT_NOTE 4
 #define PT_TLS 7
 #define PT_GNU_RELRO 0x6474e552u
 #define PT_ARM_EXIDX 0x70000001u
@@ -132,6 +133,7 @@ typedef struct {
 #define DT_ANDROID_RELRSZ 0x6fffe001
 
 #define DF_TEXTREL 4
+#define DF_STATIC_TLS 0x10             /* the library's code uses the initial-exec model (a TPOFF relocation) */
 
 #define STB_LOCAL 0
 #define STB_GLOBAL 1

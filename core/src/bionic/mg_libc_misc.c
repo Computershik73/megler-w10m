@@ -955,13 +955,22 @@ static long g_syscall(long nr, long a, long b, long c, long d, long e, long f)
     }
 }
 
+/* (madvise asks whose call it is: Go's runtime gives its heap's pages back by number, bionic/mg_libc_mem.c.) */
+static MG_THREAD_LOCAL mg_addr t_syscall_site;
+
+mg_addr mg_bionic_syscall_site(void) { return t_syscall_site; }
+
 #if MG_GUEST_CODE && !MG_ARCH_ARM32
 /* A system call by the guest's own number, as an svc of its code makes it (ARM64's traps, mg_core.c): -errno on failure. */
-long mg_bionic_syscall(long nr, const long args[6])
+long mg_bionic_syscall(long nr, const long args[6], mg_addr site)
 {
     int *err = mg_errno_ptr();
     int saved = *err;
-    long result = g_syscall(nr, args[0], args[1], args[2], args[3], args[4], args[5]);
+    mg_addr was = t_syscall_site;
+    long result;
+    t_syscall_site = site;
+    result = g_syscall(nr, args[0], args[1], args[2], args[3], args[4], args[5]);
+    t_syscall_site = was;
     if (result == -1) result = -*err;
     *err = saved;
     return result;
@@ -972,7 +981,11 @@ u32 mg_bionic_syscall_raw(const u32 *r)
 {
     int *err = mg_errno_ptr();
     int saved = *err;
-    long result = g_syscall(r[7], r[0], r[1], r[2], r[3], r[4], r[5]);
+    mg_addr was = t_syscall_site;
+    long result;
+    t_syscall_site = r[15];
+    result = g_syscall(r[7], r[0], r[1], r[2], r[3], r[4], r[5]);
+    t_syscall_site = was;
     if (result == -1) result = -*err;
     *err = saved;
     return (u32)result;

@@ -145,14 +145,17 @@ int *mg_errno_ptr(void);
 char **mg_bionic_initial_argv(void);
 /* Its auxiliary vector as /proc/self/auxv has it: tags and values as longs, AT_NULL's pair the last; the number of words. */
 size_t mg_bionic_auxv_words(gulong *out, size_t max);
-/* ARM EABI kernel convention: negative errno in r0, guest errno unchanged. */
+/* ARM EABI kernel convention: negative errno in r0, guest errno unchanged. The svc's place is regs[15]. */
 u32 mg_bionic_syscall_raw(const u32 *regs);
 #if MG_GUEST_CODE && !MG_ARCH_ARM32
 /* bionic/mg_syscall_abi.c: the guest's call `nr` and its arguments as 32-bit ARM's, -1 for one not handled, -2 for arguments
-   ARM's cannot take. mg_bionic_syscall: a system call by the guest's own number, -errno on failure (ARM64's svc traps). */
+   ARM's cannot take. mg_bionic_syscall: a system call by the guest's own number, -errno on failure (ARM64's svc traps,
+   x86_64's syscalls led out); `site` the guest's code that made it (the svc, the piece of island). */
 long mg_syscall_abi_to_arm(long nr, long a[6]);
-long mg_bionic_syscall(long nr, const long args[6]);
+long mg_bionic_syscall(long nr, const long args[6], mg_addr site);
 #endif
+/* Where in the guest's code the system call this thread is making by number was made (the two above), 0 when none is. */
+mg_addr mg_bionic_syscall_site(void);
 void mg_set_errno(int guest_errno);
 /* A host file-layer error (MG_E_*) as a Linux errno. */
 int mg_errno_of(int host_err);
