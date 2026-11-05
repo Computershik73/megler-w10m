@@ -1,17 +1,12 @@
 /*
  * A guest library for the loader's tests: Android code, built with clang for
- * armv7a-linux-androideabi (tools/build-guest.sh) once as Thumb and once as
- * ARM. No NDK is needed -- everything it uses from Android is declared here
- * and bound by name when the library is loaded.
+ * each ABI (tools/build-guest.sh): for armv7a-linux-androideabi once as Thumb
+ * and once as ARM, for the others once as it is and once with packed
+ * relocations. No NDK is needed -- everything it uses from Android is declared
+ * here (and in t_abi.h, what differs between the ABIs) and bound by name when
+ * the library is loaded.
  */
-typedef unsigned int size_t;
-typedef int pthread_mutex_t;
-typedef int pthread_cond_t;
-typedef int pthread_key_t;
-typedef int pthread_once_t;
-typedef long pthread_t;
-typedef struct { int flags; void *stack_base; size_t stack_size, guard_size; int sched_policy, sched_priority; } pthread_attr_t;
-typedef long jmp_buf[64];
+#include "t_abi.h"
 
 int printf(const char *, ...);
 int snprintf(char *, size_t, const char *, ...);
@@ -51,8 +46,8 @@ int pthread_once(pthread_once_t *, void (*)(void));
 int gettid(void);
 int open(const char *, int, ...);
 int close(int);
-int read(int, void *, size_t);
-int write(int, const void *, size_t);
+ssize_t read(int, void *, size_t);
+ssize_t write(int, const void *, size_t);
 int pipe(int[2]);
 void *fopen(const char *, const char *);
 int fclose(void *);
@@ -138,7 +133,7 @@ int t_heap(void)
     a = realloc(a, 5000);
     if (!a || a[99] != 0x5A) ok = 0;
     b = memalign(64, 300);
-    if (!b || ((unsigned)b & 63)) ok = 0;
+    if (!b || ((size_t)b & 63)) ok = 0;
     c = calloc(10, 10);
     if (!c || c[50]) ok = 0;
     free(a);
@@ -196,7 +191,7 @@ int t_errno(void)
 /* --------------------------------------------------------------- threads */
 
 static pthread_mutex_t g_lock;                 /* PTHREAD_MUTEX_INITIALIZER is all zeros */
-static pthread_mutex_t g_rlock = 0x4000;       /* PTHREAD_RECURSIVE_MUTEX_INITIALIZER */
+static pthread_mutex_t g_rlock = T_RECURSIVE_MUTEX_INITIALIZER;
 static pthread_cond_t g_cond;
 static int g_shared, g_go;
 static pthread_key_t g_key;
@@ -256,12 +251,21 @@ int t_threads(int threads, int n)
  * TLS_SLOT_APP, slot 2 of the thread pointer's block: the app's own from Android 10 on. Go's runtime keeps its g there,
  * through `mrc p15, 0, rX, c13, c0, 3` as below, when the device says API 29 or later (WhatsApp's libgojni.so). Empty on
  * a thread that has not set it, this one and a new one alike, kept as set, and left alone by what sets errno. 0 when so;
- * otherwise which step found it otherwise.
+ * otherwise which step found it otherwise. (The thread pointer as each processor's bionic reads it: slot 0 of the block
+ * is the block's own address on the x86s, where the segment's base is not to be read otherwise.)
  */
 static void **tp_get(void)
 {
     void **tp;
+#if defined(__arm__)
     __asm__ volatile("mrc p15, 0, %0, c13, c0, 3" : "=r"(tp));
+#elif defined(__aarch64__)
+    __asm__ volatile("mrs %0, tpidr_el0" : "=r"(tp));
+#elif defined(__x86_64__)
+    __asm__ volatile("mov %%fs:0, %0" : "=r"(tp));
+#else
+    __asm__ volatile("mov %%gs:0, %0" : "=r"(tp));
+#endif
     return tp;
 }
 
@@ -298,18 +302,18 @@ int t_tls_app_slot(void)
  * 16 random bytes in it.
  */
 static int g_init_argc = -1, g_init_env_after_argv, g_init_pagesz, g_init_random;
-static unsigned g_init_vdso;
+static t_word g_init_vdso;
 
 __attribute__((constructor)) static void auxv_probe(int argc, char **argv, char **envp)
 {
-    const unsigned *auxv;
+    const t_word *auxv;
     int n = argc + 1, i;
     g_init_argc = argc;
     g_init_env_after_argv = envp == argv + argc + 1;
     if (!g_init_env_after_argv) return;
     while (argv[n] && n < 16) n++;
     n++;
-    auxv = (const unsigned *)&argv[n];
+    auxv = (const t_word *)&argv[n];
     for (i = 0; auxv[i] && i < 64; i += 2) {
         if (auxv[i] == 6) g_init_pagesz = (int)auxv[i + 1];
         if (auxv[i] == 33) g_init_vdso = auxv[i + 1];
@@ -335,16 +339,30 @@ int *t_tls_addr(void) { return &tls_counter; }
  * thread, whose handler says "stopped" and waits in sigsuspend for the signal
  * that lets it go on. One thread is in a loop that never calls anything, one
  * waits on a semaphore, one sleeps: the three places a thread can be found.
+ * (bionic's struct sigaction: the kernel's on the 32-bit ABIs, the flags first
+ * on the 64-bit ones; its sem_t, 16 bytes there.)
  */
+#if defined(__LP64__)
+typedef struct {
+    int flags;
+    void (*handler)(int, void *, void *);
+    t_word mask;
+    void (*restorer)(void);
+} t_sigaction;
+#define T_SIGACTION(handler, mask, flags) { flags, handler, mask, 0 }
+typedef struct { unsigned count; int reserved[3]; } t_sem;
+#else
 typedef struct {
     void (*handler)(int, void *, void *);
     unsigned mask;
     int flags;
     void (*restorer)(void);
 } t_sigaction;
+#define T_SIGACTION(handler, mask, flags) { handler, mask, flags, 0 }
 typedef struct { unsigned count; } t_sem;
+#endif
 int sigaction(int, const t_sigaction *, t_sigaction *);
-int sigsuspend(const unsigned *);
+int sigsuspend(const t_word *);
 int pthread_kill(pthread_t, int);
 int sem_init(t_sem *, int, unsigned);
 int sem_post(t_sem *);
@@ -370,7 +388,7 @@ static __thread int tls_stops, tls_index;
 
 static void on_stop(int sig, void *info, void *context)
 {
-    unsigned all_but_go = ~(1u << (SIG_GO - 1));
+    t_word all_but_go = ~((t_word)1 << (SIG_GO - 1));
     int seen = g_released;
     (void)sig; (void)info; (void)context;
     tls_stops++;
@@ -423,7 +441,7 @@ static int laggards(volatile int *what, int value)
  */
 int t_signals(int rounds)
 {
-    t_sigaction stop = { on_stop, ~(1u << (SIG_GO - 1)), 4 | 0x10000000, 0 }, go = { on_go, ~0u, 4 | 0x10000000, 0 };
+    t_sigaction stop = T_SIGACTION(on_stop, ~((t_word)1 << (SIG_GO - 1)), 4 | 0x10000000), go = T_SIGACTION(on_go, ~(t_word)0, 4 | 0x10000000);
     pthread_t t[3];
     void *result;
     int round, i, spins, late;
@@ -494,6 +512,16 @@ int t_files(const char *dir)
     return ok;
 }
 
+/* /proc/cpuinfo says what the processor has that the ABI's code looks for: NEON on ARM, ASIMD on ARM64, SSE4.2 and SSSE3
+   on x86_64 and x86 (what their ABIs promise). 1 when it does. */
+#if defined(__aarch64__)
+#define CPU_FEATURE "asimd"
+#elif defined(__x86_64__)
+#define CPU_FEATURE "sse4_2"
+#elif defined(__i386__)
+#define CPU_FEATURE "ssse3"
+#endif
+
 int t_proc(void)
 {
     char line[256];
@@ -502,8 +530,15 @@ int t_proc(void)
     if (!f) return -1;
     while (fgets(line, sizeof(line), f)) {
         int i;
-        for (i = 0; line[i]; i++)
+        for (i = 0; line[i]; i++) {
+#if defined(__arm__)
             if (line[i] == 'n' && line[i + 1] == 'e' && line[i + 2] == 'o' && line[i + 3] == 'n') found = 1;
+#else
+            int k;
+            for (k = 0; CPU_FEATURE[k] && line[i + k] == CPU_FEATURE[k]; k++) {}
+            if (!CPU_FEATURE[k]) found = 1;
+#endif
+        }
     }
     fclose(f);
     return found;
@@ -735,26 +770,43 @@ int t_dlext(void)
 /*
  * What Chromium's and Firefox's libraries take of bionic besides functions, and the small functions its headers make
  * calls of: a time past 2038 through time64.h, the IPv6 constants, CPU_COUNT, CMSG_NXTHDR, sysinfo, getopt's globals.
- * 6, or the negated step that failed.
+ * 6, or the negated step that failed. (time64.h is the 32-bit ABIs' alone: on the 64-bit ones time_t is 64 bits, and
+ * the time is gmtime_r's and timegm's. A cmsghdr's length is a size_t: 12 bytes of header on the 32-bit ABIs, 16 on the
+ * 64-bit ones.)
  */
 typedef struct { int sec, min, hour, mday, mon, year, wday, yday, isdst; long gmtoff; const char *zone; } t_tm;
 typedef struct { void *name; unsigned namelen; void *iov; size_t iovlen; void *control; size_t controllen; int flags; } t_msghdr;
+#if defined(__LP64__)
+t_tm *gmtime_r(const long *, t_tm *);
+long timegm(t_tm *);
+#define gmtime64_r gmtime_r
+#define timegm64 timegm
+#else
 t_tm *gmtime64_r(const long long *, t_tm *);
 long long timegm64(t_tm *);
+#endif
 int __sched_cpucount(size_t, const void *);
 unsigned char *__cmsg_nxthdr(t_msghdr *, unsigned char *);
-int sysinfo(unsigned *);
+int sysinfo(t_word *);
 extern const unsigned char in6addr_any[16], in6addr_loopback[16];
 extern int optind;
 
 int t_libc_more(void)
 {
+#if defined(__LP64__)
+    long t = 4102444800L;                            /* 2100-01-01 00:00:00 UTC */
+#else
     long long t = 4102444800LL;                      /* 2100-01-01 00:00:00 UTC */
+#endif
     t_tm tm;
     unsigned char set[8] = { 0xB1, 0, 0, 0, 0, 0, 0, 0x80 };
+#if defined(__LP64__)
+    unsigned control[8] = { 16, 0, 1, 1, 16, 0, 1, 1 };
+#else
     unsigned control[8] = { 16, 1, 1, 0, 16, 1, 1, 0 };
+#endif
     t_msghdr m;
-    unsigned info[16];
+    t_word info[16];
     int i;
     memset(&tm, 0, sizeof(tm));
     if (!gmtime64_r(&t, &tm) || tm.year != 200 || tm.mon != 0 || tm.mday != 1 || tm.hour != 0 || timegm64(&tm) != t) return -1;
@@ -767,7 +819,7 @@ int t_libc_more(void)
     m.controllen = sizeof(control);
     if (__cmsg_nxthdr(&m, (unsigned char *)control) != (unsigned char *)&control[4] || __cmsg_nxthdr(&m, (unsigned char *)&control[4]) != 0) return -4;
     memset(info, 0xFF, sizeof(info));
-    if (sysinfo(info) != 0 || info[4] == 0 || info[5] > info[4] || info[13] != 1) return -5;
+    if (sysinfo(info) != 0 || info[4] == 0 || info[5] > info[4] || (unsigned)info[13] != 1) return -5;   /* totalram, freeram, mem_unit */
     if (optind != 1) return -6;
     return 6;
 }
@@ -813,8 +865,8 @@ int t_shm(void)
  * what pwrite() writes both views see; a view outlives the other's munmap and the descriptor's close. The same for a
  * memfd sized by ftruncate. 6, or the negated step that failed.
  */
-long pwrite(int, const void *, unsigned, long);
-long pread(int, void *, unsigned, long);
+long pwrite(int, const void *, size_t, long);
+long pread(int, void *, size_t, long);
 
 int t_shm_views(void)
 {
@@ -849,36 +901,47 @@ int t_shm_views(void)
  * ashmem as libcutils drives it (Chromium has a copy): /dev/ashmem opened, named and sized by ioctl, mapped; a region is
  * ashmem's character device, with /dev/ashmem's device number, which is how that code knows one -- a region from
  * ASharedMemory_create too; its protection mask through ioctl, narrowed and then binding mmap. And memfd's seals: one
- * against writing takes PROT_WRITE away. 10, or the negated step that failed.
+ * against writing takes PROT_WRITE away. 10, or the negated step that failed. (ASHMEM_SET_SIZE and ASHMEM_SET_PROT_MASK
+ * carry the size of a size_t and a long in their numbers: 4 on the 32-bit ABIs, 8 on the 64-bit ones.)
  */
 int ioctl(int, unsigned, ...);
 int fcntl(int, int, ...);
 int fstat(int, void *);
 int stat(const char *, void *);
 
+/* struct stat as words of an array, laid out as bionic's of each processor: its st_mode, st_rdev's low word and st_size's. */
+#if defined(__x86_64__)
+enum { ST_WORDS = 36, ST_MODE = 6, ST_RDEV = 10, ST_SIZE = 12 };
+#elif defined(__i386__)
+enum { ST_WORDS = 32, ST_MODE = 4, ST_RDEV = 8, ST_SIZE = 11 };   /* (a long long is 4-aligned there) */
+#else
+enum { ST_WORDS = 32, ST_MODE = 4, ST_RDEV = 8, ST_SIZE = 12 };
+#endif
+enum { ASHMEM_SET_SIZE = 0x40007703 | (int)sizeof(size_t) << 16, ASHMEM_SET_PROT_MASK = 0x40007705 | (int)sizeof(long) << 16 };
+
 int t_ashmem(void)
 {
-    unsigned st[32], dev_rdev;
+    unsigned st[ST_WORDS], dev_rdev;
     int fd = open("/dev/ashmem", 2), shm, m;           /* O_RDWR */
     unsigned char *p;
     char name[256];
     if (fd < 0) return -1;
-    if (ioctl(fd, 0x41007701, "t_ashmem") != 0 || ioctl(fd, 0x40047703, 4096) != 0 || ioctl(fd, 0x7704) != 4096) return -2;
+    if (ioctl(fd, 0x41007701, "t_ashmem") != 0 || ioctl(fd, ASHMEM_SET_SIZE, 4096) != 0 || ioctl(fd, 0x7704) != 4096) return -2;
     if (ioctl(fd, 0x81007702, name) != 0 || strcmp(name, "t_ashmem") != 0) return -3;
-    if (stat("/dev/ashmem", st) != 0 || (st[4] & 0170000) != 0020000 || !st[8]) return -4;     /* S_IFCHR, st_rdev */
-    dev_rdev = st[8];
-    if (fstat(fd, st) != 0 || (st[4] & 0170000) != 0020000 || st[8] != dev_rdev) return -5;
+    if (stat("/dev/ashmem", st) != 0 || (st[ST_MODE] & 0170000) != 0020000 || !st[ST_RDEV]) return -4;     /* S_IFCHR, st_rdev */
+    dev_rdev = st[ST_RDEV];
+    if (fstat(fd, st) != 0 || (st[ST_MODE] & 0170000) != 0020000 || st[ST_RDEV] != dev_rdev) return -5;
     p = mmap(0, 4096, 3, 1, fd, 0);
     if (p == (unsigned char *)-1) return -6;
     p[7] = 9;
     munmap(p, 4096);
-    if (ioctl(fd, 0x7706) != 7 || ioctl(fd, 0x40047705, 1) != 0 || ioctl(fd, 0x7706) != 1 || ioctl(fd, 0x40047705, 3) == 0) return -7;
+    if (ioctl(fd, 0x7706) != 7 || ioctl(fd, ASHMEM_SET_PROT_MASK, 1) != 0 || ioctl(fd, 0x7706) != 1 || ioctl(fd, ASHMEM_SET_PROT_MASK, 3) == 0) return -7;
     p = mmap(0, 4096, 1, 1, fd, 0);
     if (p == (unsigned char *)-1 || p[7] != 9 || mmap(0, 4096, 3, 1, fd, 0) != (void *)-1) return -8;
     munmap(p, 4096);
     close(fd);
     shm = ASharedMemory_create("t_ashmem2", 4096);
-    if (shm < 0 || fstat(shm, st) != 0 || st[8] != dev_rdev || ioctl(shm, 0x7704) != 4096) return -9;
+    if (shm < 0 || fstat(shm, st) != 0 || st[ST_RDEV] != dev_rdev || ioctl(shm, 0x7704) != 4096) return -9;
     close(shm);
     m = memfd_create("t_seals", 2);                           /* MFD_ALLOW_SEALING */
     if (m < 0 || ftruncate(m, 4096) != 0 || fcntl(m, 1034) != 0 || fcntl(m, 1033, 0x10) != 0 || fcntl(m, 1034) != 0x10 ||
@@ -937,16 +1000,16 @@ int t_surface_control(void)
 int t_hardware_buffer(void)
 {
     struct desc { unsigned width, height, layers, format; unsigned long long usage; unsigned stride, rfu0; unsigned long long rfu1; };
-    struct anwb {   /* Android's ANativeWindowBuffer, as ANGLE declares it */
+    struct anwb {   /* Android's ANativeWindowBuffer, as ANGLE declares it: 96 bytes on the 32-bit ABIs, 168 on the 64-bit ones */
         int magic, version;
         void *reserved[4];
         void (*inc_ref)(void *), (*dec_ref)(void *);
         int width, height, stride, format, usage_deprecated;
-        unsigned layer_count;
+        __UINTPTR_TYPE__ layer_count;
         void *reserved1;
         const void *handle;
         unsigned long long usage;
-        void *reserved_proc[6];
+        void *reserved_proc[8 - sizeof(unsigned long long) / sizeof(void *)];
     };
     struct desc want = { 64, 64, 1, 1, 0x333, 0, 0, 0 }, fp16 = { 64, 64, 1, 0x16, 0x300, 0, 0, 0 }, got;
     void *android = dlopen("libandroid.so", 0), *buffer = 0, *none = (void *)1;
@@ -966,7 +1029,8 @@ int t_hardware_buffer(void)
     if (supported(&want) != 1 || supported(&fp16) != 0 || allocate(&fp16, &none) != -22 || none) return -2;
     if (allocate(&want, &buffer) != 0 || !buffer) return -3;
     w = (const struct anwb *)((const char *)buffer + 2 * sizeof(void *));
-    if (sizeof(struct anwb) != 96 || w->magic != 0x5f626672 || w->version != 96 || w->width != 64 || w->height != 64 || w->stride != 64 ||
+    if (sizeof(struct anwb) != (sizeof(void *) == 8 ? 168 : 96) || w->magic != 0x5f626672 || w->version != (int)sizeof(struct anwb) ||
+        w->width != 64 || w->height != 64 || w->stride != 64 ||
         w->format != 1 || w->layer_count != 1 || w->usage != 0x333)
         return -4;
     describe(buffer, &got);
@@ -1075,7 +1139,8 @@ int t_cpuclock(void)
 /*
  * What Firefox's libraries import of libc that was not there: sigaction by its old system call, as mozglue installs its
  * handlers, and rt_sigaction (a handler for a fault's signal refused that way); syslog; fputwc, fgetwc and ungetwc in UTF-8; posix_fadvise and posix_fallocate; and
- * process_vm_readv on the process's own memory. 7, or the negated step that failed.
+ * process_vm_readv on the process's own memory. 7, or the negated step that failed. (The old sigaction is the 32-bit
+ * ABIs' alone; the kernel's rt_sigaction struct is a handler, flags, a restorer and the mask everywhere, in words.)
  */
 long syscall(long, ...);
 void openlog(const char *, int, int);
@@ -1086,37 +1151,83 @@ unsigned fgetwc(void *);
 unsigned ungetwc(unsigned, void *);
 int posix_fadvise(int, long, long, int);
 int posix_fallocate(int, long, long);
-int process_vm_readv(int, const void *, unsigned long, const void *, unsigned long, unsigned long);
+ssize_t process_vm_readv(int, const void *, unsigned long, const void *, unsigned long, unsigned long);
 int getpid(void);
+
+/* The system calls these tests make by number, in each processor's numbering (the kernel's unistd.h of each). */
+#if defined(__arm__)
+enum { NR_sigaction = 67, NR_rt_sigaction = 174, NR_munmap = 91, NR_timerfd_create = 350, NR_timerfd_settime = 353, NR_timerfd_gettime = 354,
+       NR_nanosleep = 162, NR_rt_sigprocmask = 175, NR_madvise = 220, NR_mincore = 219, NR_epoll_pwait = 346, NR_fcntl = 55, NR_fallocate = 352,
+       NR_socket = 281, NR_setsockopt = 294, NR_bind = 282, NR_listen = 284, NR_getsockname = 286, NR_connect = 283, NR_poll = 168,
+       NR_accept4 = 366, NR_sendto = 290, NR_recvfrom = 292, NR_send = 289, NR_recv = 291, NR_getpeername = 287, NR_getsockopt = 295,
+       NR_shutdown = 293, NR_socketpair = 288, NR_sendmsg = 296, NR_recvmsg = 297, NR_splice = 340, NR_flock = 143, NR_ftruncate = 194,
+       NR_pwrite64 = 181, NR_pread64 = 180, NR_fdatasync = 148, NR_getdents64 = 217, NR_prlimit64 = 369, NR_uname = 122, NR_getuid = 199,
+       NR_getppid = 64 };
+#elif defined(__i386__)
+enum { NR_sigaction = 67, NR_rt_sigaction = 174, NR_munmap = 91, NR_timerfd_create = 322, NR_timerfd_settime = 325, NR_timerfd_gettime = 326,
+       NR_nanosleep = 162, NR_rt_sigprocmask = 175, NR_madvise = 219, NR_mincore = 218, NR_epoll_pwait = 319, NR_fcntl = 55, NR_fallocate = 324,
+       NR_socket = 359, NR_setsockopt = 366, NR_bind = 361, NR_listen = 363, NR_getsockname = 367, NR_connect = 362, NR_poll = 168,
+       NR_accept4 = 364, NR_sendto = 369, NR_recvfrom = 371, NR_getpeername = 368, NR_getsockopt = 365, NR_shutdown = 373, NR_socketpair = 360,
+       NR_sendmsg = 370, NR_recvmsg = 372, NR_splice = 313, NR_flock = 143, NR_ftruncate = 194, NR_pwrite64 = 181, NR_pread64 = 180,
+       NR_fdatasync = 148, NR_getdents64 = 220, NR_prlimit64 = 340, NR_uname = 122, NR_getuid = 199, NR_getppid = 64 };
+#elif defined(__x86_64__)
+enum { NR_rt_sigaction = 13, NR_munmap = 11, NR_timerfd_create = 283, NR_timerfd_settime = 286, NR_timerfd_gettime = 287, NR_nanosleep = 35,
+       NR_rt_sigprocmask = 14, NR_madvise = 28, NR_mincore = 27, NR_epoll_pwait = 281, NR_fcntl = 72, NR_fallocate = 285, NR_socket = 41,
+       NR_setsockopt = 54, NR_bind = 49, NR_listen = 50, NR_getsockname = 51, NR_connect = 42, NR_poll = 7, NR_accept4 = 288, NR_sendto = 44,
+       NR_recvfrom = 45, NR_getpeername = 52, NR_getsockopt = 55, NR_shutdown = 48, NR_socketpair = 53, NR_sendmsg = 46, NR_recvmsg = 47,
+       NR_splice = 275, NR_flock = 73, NR_ftruncate = 77, NR_pwrite64 = 18, NR_pread64 = 17, NR_fdatasync = 75, NR_getdents64 = 217,
+       NR_prlimit64 = 302, NR_uname = 63, NR_getuid = 102, NR_getppid = 110 };
+#else
+enum { NR_rt_sigaction = 134, NR_munmap = 215, NR_timerfd_create = 85, NR_timerfd_settime = 86, NR_timerfd_gettime = 87, NR_nanosleep = 101,
+       NR_rt_sigprocmask = 135, NR_madvise = 233, NR_mincore = 232, NR_epoll_pwait = 22, NR_fcntl = 25, NR_fallocate = 47, NR_socket = 198,
+       NR_setsockopt = 208, NR_bind = 200, NR_listen = 201, NR_getsockname = 204, NR_connect = 203, NR_ppoll = 73, NR_accept4 = 242,
+       NR_sendto = 206, NR_recvfrom = 207, NR_getpeername = 205, NR_getsockopt = 209, NR_shutdown = 210, NR_socketpair = 199, NR_sendmsg = 211,
+       NR_recvmsg = 212, NR_splice = 76, NR_flock = 32, NR_ftruncate = 46, NR_pwrite64 = 68, NR_pread64 = 67, NR_fdatasync = 83,
+       NR_getdents64 = 61, NR_prlimit64 = 261, NR_uname = 160, NR_getuid = 174, NR_getppid = 173 };
+#endif
 
 static void ff_handler(int sig) { (void)sig; }
 
 int t_ffcalls(const char *dir)
 {
+#if !defined(__LP64__)
     struct { void (*handler)(int); unsigned mask; int flags; void *restorer; } act, old;    /* bionic's, and the old call's */
-    unsigned rt[5], st[32];
+#endif
+    t_word rt[5];
+    unsigned st[ST_WORDS];
     char path[256], src[8] = "copied", dst[8] = { 0 };
     struct { void *base; size_t len; } local = { dst, 7 }, remote = { src, 7 };
     void *f;
     int fd;
     unsigned w;
+#if !defined(__LP64__)
     memset(&act, 0, sizeof(act));
     act.handler = ff_handler;
     memset(&old, 0, sizeof(old));
-    if (syscall(67, 10, &act, 0) != 0 || syscall(67, 10, 0, &old) != 0 || old.handler != ff_handler) return -1;     /* SIGUSR1 */
+    if (syscall(NR_sigaction, 10, &act, 0) != 0 || syscall(NR_sigaction, 10, 0, &old) != 0 || old.handler != ff_handler) return -1;     /* SIGUSR1 */
     memset(rt, 0xEE, sizeof(rt));
-    if (syscall(174, 10, 0, rt, 8) != 0 || rt[0] != (unsigned)(size_t)ff_handler) return -2;
+    if (syscall(NR_rt_sigaction, 10, 0, rt, 8) != 0 || rt[0] != (t_word)(size_t)ff_handler) return -2;
     act.handler = 0;
-    syscall(67, 10, &act, 0);
+    syscall(NR_sigaction, 10, &act, 0);
     act.handler = ff_handler;
-    if (syscall(67, 11, &act, 0) != -1 || syscall(67, 11, 0, &old) != 0) return -2;     /* SIGSEGV: refused, asking allowed */
+    if (syscall(NR_sigaction, 11, &act, 0) != -1 || syscall(NR_sigaction, 11, 0, &old) != 0) return -2;     /* SIGSEGV: refused, asking allowed */
+#else
+    {
+        /* SIGUSR1 by rt_sigaction alone, set and asked for. */
+        t_word rta[5] = { (t_word)(size_t)ff_handler, 0, 0, 0, 0 };
+        memset(rt, 0xEE, sizeof(rt));
+        if (syscall(NR_rt_sigaction, 10, rta, 0, 8) != 0 || syscall(NR_rt_sigaction, 10, 0, rt, 8) != 0 || rt[0] != (t_word)(size_t)ff_handler) return -1;
+        rta[0] = 0;
+        syscall(NR_rt_sigaction, 10, rta, 0, 8);
+    }
+#endif
     {
         /* rt_sigaction takes one, as Go's runtime installs its SIGBUS handler (and ends when it is refused). */
-        unsigned rta[5] = { (unsigned)(size_t)ff_handler, 0, 0, 0, 0 };
+        t_word rta[5] = { (t_word)(size_t)ff_handler, 0, 0, 0, 0 };
         memset(rt, 0, sizeof(rt));
-        if (syscall(174, 7, rta, 0, 8) != 0 || syscall(174, 7, 0, rt, 8) != 0 || rt[0] != (unsigned)(size_t)ff_handler) return -2;
+        if (syscall(NR_rt_sigaction, 7, rta, 0, 8) != 0 || syscall(NR_rt_sigaction, 7, 0, rt, 8) != 0 || rt[0] != (t_word)(size_t)ff_handler) return -2;
         rta[0] = 0;
-        syscall(174, 7, rta, 0, 8);
+        syscall(NR_rt_sigaction, 7, rta, 0, 8);
     }
     openlog("t_basic", 0, 0);
     syslog(4, "syslog at %s, %d: %m", "warning", 7);
@@ -1130,14 +1241,14 @@ int t_ffcalls(const char *dir)
     if (w != 0x416 || ungetwc(w, f) != w || fgetwc(f) != 0x416 || fgetwc(f) != 'a' || fgetwc(f) != 0xFFFFFFFFu) return -5;
     fclose(f);
     fd = open(path, 2);
-    if (fd < 0 || posix_fadvise(fd, 0, 0, 2) != 0 || posix_fallocate(fd, 0, 4096) != 0 || fstat(fd, st) != 0 || st[12] != 4096) return -6;
+    if (fd < 0 || posix_fadvise(fd, 0, 0, 2) != 0 || posix_fallocate(fd, 0, 4096) != 0 || fstat(fd, st) != 0 || st[ST_SIZE] != 4096) return -6;
     close(fd);
     unlink(path);
     if (process_vm_readv(getpid(), &local, 1, &remote, 1, 0) != 7 || strcmp(dst, "copied") != 0) return -7;
-    /* munmap by number (91), as Gecko's allocator calls it */
+    /* munmap by number (91 on ARM), as Gecko's allocator calls it */
     {
         void *p = mmap(0, 4096, 3, 0x22, -1, 0);
-        if (p == (void *)-1 || syscall(91, p, 4096) != 0) return -7;
+        if (p == (void *)-1 || syscall(NR_munmap, p, 4096) != 0) return -7;
     }
     return 7;
 }
@@ -1181,10 +1292,10 @@ int t_fonts(void)
 int t_chrome_cmdline(void)
 {
     static const char want[] = "chrome --single-process --in-process-gpu\n";
-    unsigned st[32];
+    unsigned st[ST_WORDS];
     char text[128];
     int fd, n;
-    if (stat("/data/local/chrome-command-line", st) != 0 || st[12] != sizeof(want) - 1) return -1;
+    if (stat("/data/local/chrome-command-line", st) != 0 || st[ST_SIZE] != sizeof(want) - 1) return -1;
     fd = open("/data/local/chrome-command-line", 0);
     if (fd < 0) return -2;
     n = read(fd, text, sizeof(text) - 1);
@@ -1215,11 +1326,18 @@ int t_ifunc(void)
 /*
  * Byte-range locks as SQLite's WAL takes them on its -shm file: a write lock set (F_SETLK), then F_GETLK on the same
  * range, which a process's own locks never block: F_UNLCK, in the 32-bit struct and in flock64. 3, or the negated step.
+ * (On the 64-bit ABIs struct flock is flock64 already, and F_GETLK64 is F_GETLK; x86's long long is 4-aligned.)
  */
+enum { F_GETLK64_ = sizeof(long) == 8 ? 5 : 12 };
+
 int t_flock(const char *dir)
 {
     struct { short type, whence; long start, len; int pid; } lk;
+#if defined(__i386__)
+    struct { short type, whence; long long start, len; int pid; } lk64;
+#else
     struct { short type, whence; int pad; long long start, len; int pid; } lk64;
+#endif
     char path[256];
     int fd;
     snprintf(path, sizeof(path), "%s/lock.db-shm", dir);
@@ -1236,7 +1354,7 @@ int t_flock(const char *dir)
     lk64.type = 1;
     lk64.start = 120;
     lk64.len = 8;
-    if (fcntl(fd, 12, &lk64) != 0 || lk64.type != 2) return -3;           /* F_GETLK64 */
+    if (fcntl(fd, F_GETLK64_, &lk64) != 0 || lk64.type != 2) return -3;   /* F_GETLK64 */
     close(fd);
     unlink(path);
     return 3;
@@ -1268,10 +1386,16 @@ int t_fnmatch(void)
 /*
  * timerfd, as Chromium's message pump keeps its delayed work: nothing to read before its time, readable when it comes
  * (poll and epoll both wake for it, though nothing writes to it), the count of expirations read, a repeating one counting
- * each, an absolute time on CLOCK_MONOTONIC, and disarmed by a zero time. 8, or the negated step that failed.
+ * each, an absolute time on CLOCK_MONOTONIC, and disarmed by a zero time. 8, or the negated step that failed. (A struct
+ * epoll_event has its data at 8 on ARM and at 4 on the x86s, where the kernel's is packed.)
  */
-typedef struct { int interval_sec, interval_nsec, value_sec, value_nsec; } t_itimerspec;
+typedef struct { long interval_sec, interval_nsec, value_sec, value_nsec; } t_itimerspec;
 typedef struct { int fd; short events, revents; } t_pollfd;
+#if defined(__x86_64__) || defined(__i386__)
+typedef struct __attribute__((packed)) { unsigned events; unsigned long long data; } t_epoll_event;
+#else
+typedef struct { unsigned events; unsigned long long data; } t_epoll_event;
+#endif
 int timerfd_create(int, int);
 int timerfd_settime(int, int, const t_itimerspec *, t_itimerspec *);
 int timerfd_gettime(int, t_itimerspec *);
@@ -1287,7 +1411,7 @@ int t_timerfd(void)
     t_itimerspec it, cur;
     t_pollfd p;
     struct t_timespec now;
-    struct { unsigned events; unsigned long long data; } ev[2];   /* ARM's epoll_event: the data at 8 */
+    t_epoll_event ev[2];
     if (fd < 0) return -1;
     if (read(fd, &n, 8) != -1 || *__errno() != 11) return -2;            /* EAGAIN */
     memset(&it, 0, sizeof(it));
@@ -1324,17 +1448,17 @@ int t_timerfd(void)
 /* Chromium calls timerfd through syscall() rather than libc's timerfd functions. */
 int t_timerfd_syscall(void)
 {
-    int fd = (int)syscall(350, 1, 0x800 | 0x80000);  /* CLOCK_MONOTONIC, NONBLOCK, CLOEXEC */
+    int fd = (int)syscall(NR_timerfd_create, 1, 0x800 | 0x80000);  /* CLOCK_MONOTONIC, NONBLOCK, CLOEXEC */
     t_itimerspec it, cur;
     unsigned long long n = 0;
     t_pollfd p;
     if (fd < 0) return -1;
     memset(&it, 0, sizeof(it));
     it.value_nsec = 20 * 1000000;
-    if (syscall(353, fd, 0, &it, 0) != 0) { close(fd); return -2; }
+    if (syscall(NR_timerfd_settime, fd, 0, &it, 0) != 0) { close(fd); return -2; }
     p.fd = fd; p.events = 1; p.revents = 0;
     if (poll(&p, 1, 2000) != 1 || !(p.revents & 1) || read(fd, &n, 8) != 8 || n != 1) { close(fd); return -3; }
-    if (syscall(354, fd, &cur) != 0 || cur.value_sec || cur.value_nsec) { close(fd); return -4; }
+    if (syscall(NR_timerfd_gettime, fd, &cur) != 0 || cur.value_sec || cur.value_nsec) { close(fd); return -4; }
     close(fd);
     return 4;
 }
@@ -1349,8 +1473,10 @@ int t_stack(const char *s)
 
 
 /* libc inline hooks must modify guest entries, never the host's text. Copy the
- * overwritten instructions and jump back, as Android hook installers do. */
+ * overwritten instructions and jump back, as Android hook installers do.
+ * (32-bit ARM's: the hookable entries are made for Thumb's hooks, arm/mg_stubs.) */
 int mprotect(void *, size_t, int);
+#if defined(__arm__)
 void *sysv_signal(int, void *);
 static void *(*hook_original)(int, void *);
 static int hook_calls;
@@ -1416,19 +1542,86 @@ int t_libc_inline_hook(void)
     if (mprotect(abort_page, 4096, 5)) return -13;
     return result;
 }
+#endif
 
 /* An inline hook on a function of the app's own library, as Instagram's
  * libdistract puts one on its libc++_shared.so: the page, asked to be writable
  * and executable at once, is written to and run, asked again, written to and
  * run. The function has a page of its own, as the hooked code is in another
  * library than the hook's: code that writes to its own page needs a write fault
- * told from an execute fault, which qemu does not tell. */
+ * told from an execute fault, which qemu does not tell. The jump is each
+ * processor's own: ldr pc on ARM, `jmp *0(%rip)` and its address on x86_64,
+ * jmp rel32 on x86, ldr x16 and br x16 on ARM64 (the function long enough to
+ * take it). */
 int own_hook(int a) { return a + 100; }
 __attribute__((noinline, aligned(4096))) int own_hooked(int a)
 {
+#if defined(__x86_64__) || defined(__aarch64__)
+    __asm__ volatile("nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop");
+#else
     __asm__ volatile("nop\n nop\n nop\n nop\n nop\n nop");
+#endif
     return a + 1;
 }
+#if !defined(__arm__)
+/* What makes written code runnable: nothing on the x86s, whose caches keep up with a write; ARM64's cache maintenance. */
+static void flush_code(unsigned char *start, unsigned char *end)
+{
+#if defined(__aarch64__)
+    unsigned char *p;
+    for (p = (unsigned char *)((size_t)start & ~(size_t)63); p < end; p += 64) __asm__ volatile("dc cvau, %0" : : "r"(p) : "memory");
+    __asm__ volatile("dsb ish" : : : "memory");
+    for (p = (unsigned char *)((size_t)start & ~(size_t)63); p < end; p += 64) __asm__ volatile("ic ivau, %0" : : "r"(p) : "memory");
+    __asm__ volatile("dsb ish\n isb" : : : "memory");
+#else
+    (void)start;
+    (void)end;
+#endif
+}
+
+__attribute__((aligned(4096))) int t_own_code_hook(void)
+{
+    int (*volatile fn)(int) = own_hooked;
+    unsigned char *code = (unsigned char *)(size_t)fn, saved[16], jump[16];
+    void *page = (void *)((size_t)code & ~(size_t)4095);
+    size_t to = (size_t)own_hook, n;
+    int result = 0;
+    if (((size_t)code & 4095) || ((size_t)t_own_code_hook & ~(size_t)4095) == (size_t)page) return -1;
+#if defined(__x86_64__)
+    jump[0] = 0xff;                                   /* jmp *0(%rip), the address after it */
+    jump[1] = 0x25;
+    memset(jump + 2, 0, 4);
+    memcpy(jump + 6, &to, 8);
+    n = 14;
+#elif defined(__i386__)
+    {
+        int rel = (int)(to - ((size_t)code + 5));    /* jmp rel32 */
+        jump[0] = 0xe9;
+        memcpy(jump + 1, &rel, 4);
+        n = 5;
+    }
+#else
+    {
+        static const unsigned op[2] = { 0x58000050u, 0xd61f0200u };   /* ldr x16, #8; br x16; the address after them */
+        memcpy(jump, op, 8);
+        memcpy(jump + 8, &to, 8);
+        n = 16;
+    }
+#endif
+    memcpy(saved, code, n);
+    if (mprotect(page, 4096, 7)) return -2;
+    memcpy(code, jump, n);
+    flush_code(code, code + n);
+    if (fn(1) != 101) result = -3;
+    if (mprotect(page, 4096, 7)) return -4;
+    memcpy(code, saved, n);
+    flush_code(code, code + n);
+    if (fn(1) != 2) result = -5;
+    if (mprotect(page, 4096, 5)) return -6;
+    if (fn(2) != 3) result = -7;
+    return result;
+}
+#else
 __attribute__((aligned(4096))) int t_own_code_hook(void)
 {
     int (*volatile fn)(int) = own_hooked;
@@ -1464,7 +1657,8 @@ __attribute__((aligned(4096))) int t_own_code_hook(void)
 
 /* The way libdistract hooks a function: its first instruction made a trap
  * (Thumb's udf #0xfa, which the phone's system keeps for itself; an ARM udf in
- * ARM state), and a SIGILL handler that moves the ucontext's pc to the hook. */
+ * ARM state), and a SIGILL handler that moves the ucontext's pc to the hook.
+ * (32-bit ARM's: the layer delivers such a trap to the app's handler there.) */
 static int trap_calls;
 static void trap_handler(int sig, void *info, void *context)
 {
@@ -1501,6 +1695,7 @@ int t_trap_hook(void)
     sigaction(4, &old, 0);
     return result;
 }
+#endif
 
 /*
  * A wait is woken by what it waits on, whatever else other threads wait for: two threads pass a byte back and forth over
@@ -1514,7 +1709,7 @@ static volatile int g_idle_in;
 static void *idle_waiter(void *arg)
 {
     int i = (int)(long)arg, ep = epoll_create1(0);
-    struct { unsigned events; unsigned long long data; } ev[2];
+    t_epoll_event ev[2];
     memset(ev, 0, sizeof(ev));
     ev[0].events = 1;                                /* EPOLLIN */
     if (ep < 0 || epoll_ctl(ep, 1, g_idle_fd[i], ev) != 0) return (void *)-1L;
@@ -1572,31 +1767,45 @@ long long t_wait_herd(int idle, int rounds)
  * What Go's runtime calls by number, past libc: nanosleep, rt_sigprocmask (a 64-bit set; another size refused), madvise
  * and mincore on a page of its own, epoll_pwait, fcntl, and fallocate with its offset and length in register pairs (a
  * mode other than 0 refused). 0, or the step that failed.
+ *
+ * A 64-bit offset or length is two words on the 32-bit ABIs, after a pad where ARM's pair has to begin at an even
+ * register; one word on the 64-bit ones.
  */
+#if defined(__arm__)
+#define ARG64(v) v, 0
+#define PAIR_PAD 0,
+#elif defined(__i386__)
+#define ARG64(v) v, 0
+#define PAIR_PAD
+#else
+#define ARG64(v) (long)(v)
+#define PAIR_PAD
+#endif
+
 int t_go_calls(const char *dir)
 {
     struct { long sec, nsec; } nap = { 0, 2000000 };
-    unsigned set[2] = { 1u << 9, 0 }, old[2] = { 0, 0 }, st[32];
+    unsigned set[2] = { 1u << 9, 0 }, old[2] = { 0, 0 }, st[ST_WORDS];
     unsigned char vec[1];
     char path[256];
     void *page;
     int ep, fd;
-    if (syscall(162, &nap, 0) != 0) return 1;
-    if (syscall(175, 0 /* SIG_BLOCK */, set, 0, 8) != 0 || syscall(175, 0, 0, old, 8) != 0 || !(old[0] & (1u << 9))) return 2;
-    if (syscall(175, 1 /* SIG_UNBLOCK */, set, 0, 8) != 0 || syscall(175, 0, 0, old, 4) != -1 || *__errno() != 22) return 3;
+    if (syscall(NR_nanosleep, &nap, 0) != 0) return 1;
+    if (syscall(NR_rt_sigprocmask, 0 /* SIG_BLOCK */, set, 0, 8) != 0 || syscall(NR_rt_sigprocmask, 0, 0, old, 8) != 0 || !(old[0] & (1u << 9))) return 2;
+    if (syscall(NR_rt_sigprocmask, 1 /* SIG_UNBLOCK */, set, 0, 8) != 0 || syscall(NR_rt_sigprocmask, 0, 0, old, 4) != -1 || *__errno() != 22) return 3;
     page = mmap(0, 4096, 3, 0x22, -1, 0);
     if (page == (void *)-1) return 4;
     ((char *)page)[0] = 1;
-    if (syscall(220, page, 4096, 4 /* MADV_DONTNEED */) != 0 || syscall(219, page, 4096, vec) != 0) return 5;
+    if (syscall(NR_madvise, page, 4096, 4 /* MADV_DONTNEED */) != 0 || syscall(NR_mincore, page, 4096, vec) != 0) return 5;
     munmap(page, 4096);
     ep = epoll_create1(0);
-    if (ep < 0 || syscall(346, ep, st, 4, 0, 0, 8) != 0 || syscall(55, ep, 1 /* F_GETFD */, 0) < 0) return 6;
+    if (ep < 0 || syscall(NR_epoll_pwait, ep, st, 4, 0, 0, 8) != 0 || syscall(NR_fcntl, ep, 1 /* F_GETFD */, 0) < 0) return 6;
     close(ep);
     snprintf(path, sizeof(path), "%s/fallocated.bin", dir);
     fd = open(path, 0102, 0600);                       /* O_RDWR | O_CREAT */
     if (fd < 0) return 7;
-    if (syscall(352, fd, 0, 0, 0, 8192, 0) != 0 || fstat(fd, st) != 0 || st[12] != 8192) return 8;
-    if (syscall(352, fd, 1 /* FALLOC_FL_KEEP_SIZE */, 0, 0, 4096, 0) != -1 || *__errno() != 95) return 9;
+    if (syscall(NR_fallocate, fd, 0, ARG64(0), ARG64(8192)) != 0 || fstat(fd, st) != 0 || st[ST_SIZE] != 8192) return 8;
+    if (syscall(NR_fallocate, fd, 1 /* FALLOC_FL_KEEP_SIZE */, ARG64(0), ARG64(4096)) != -1 || *__errno() != 95) return 9;
     close(fd);
     unlink(path);
     return 0;
@@ -1608,85 +1817,105 @@ int t_go_calls(const char *dir)
  * ends' names, its error and its end; a socket pair with a message each way; splice refused as for sockets (EINVAL); a
  * file locked, grown, written and read at offsets (each in a register pair after a pad) and synced; mapped read-only and
  * shared, showing what is written to it afterwards, as Bolt reads its database; a directory's entries, twice; the limit on
- * descriptors, the system's name and the ids. 0, or the step that failed.
+ * descriptors, the system's name and the ids. 0, or the step that failed. (Only 32-bit ARM has send and recv by number,
+ * the others sendto and recvfrom; ARM64 has ppoll and no poll; O_DIRECTORY is x86's own number on the x86s.)
  */
+#if defined(__arm__)
+#define SYS_SEND(fd, buf, n) syscall(NR_send, fd, buf, n, 0)
+#define SYS_RECV(fd, buf, n) syscall(NR_recv, fd, buf, n, 0)
+#else
+#define SYS_SEND(fd, buf, n) syscall(NR_sendto, fd, buf, n, 0, 0, 0)
+#define SYS_RECV(fd, buf, n) syscall(NR_recvfrom, fd, buf, n, 0, 0, 0)
+#endif
+#if defined(__aarch64__)
+static const struct t_timespec five_s = { 5, 0 };
+#define SYS_POLL(pf, n) syscall(NR_ppoll, pf, n, &five_s, 0, 8)
+#else
+#define SYS_POLL(pf, n) syscall(NR_poll, pf, n, 5000)
+#endif
+#if defined(__x86_64__) || defined(__i386__)
+#define O_DIRECTORY_ 0200000
+#else
+#define O_DIRECTORY_ 040000
+#endif
+
 int t_go_net_files(const char *dir)
 {
     struct { unsigned short family, port; unsigned addr; unsigned char zero[8]; } sa, peer;
-    struct { void *base; unsigned len; } io;
-    struct { void *name; unsigned namelen; void *iov; unsigned iovlen; void *control; unsigned controllen; int flags; } m;
+    struct { void *base; size_t len; } io;
+    struct { void *name; unsigned namelen; void *iov; size_t iovlen; void *control; size_t controllen; int flags; } m;
     struct { unsigned long long cur, max; } lim;
     t_pollfd pf;
-    unsigned len, one = 1, st[32];
+    unsigned len, one = 1, st[ST_WORDS];
     int ls, cs, as, sv[2], fd, fd2, dfd, n, off, found = 0, err = -1;
     char buf[64], path[256], ents[2048];
     unsigned char *map;
-    ls = syscall(281, 2 /* AF_INET */, 1 /* SOCK_STREAM */ | 04000 /* SOCK_NONBLOCK */ | 02000000 /* SOCK_CLOEXEC */, 0);
+    ls = syscall(NR_socket, 2 /* AF_INET */, 1 /* SOCK_STREAM */ | 04000 /* SOCK_NONBLOCK */ | 02000000 /* SOCK_CLOEXEC */, 0);
     if (ls < 0) return 1;
-    if (syscall(294, ls, 1 /* SOL_SOCKET */, 2 /* SO_REUSEADDR */, &one, 4) != 0) return 2;
+    if (syscall(NR_setsockopt, ls, 1 /* SOL_SOCKET */, 2 /* SO_REUSEADDR */, &one, 4) != 0) return 2;
     memset(&sa, 0, sizeof(sa));
     sa.family = 2;
     sa.addr = 0x0100007F;                              /* 127.0.0.1 */
-    if (syscall(282, ls, &sa, sizeof(sa)) != 0 || syscall(284, ls, 8) != 0) return 3;
+    if (syscall(NR_bind, ls, &sa, sizeof(sa)) != 0 || syscall(NR_listen, ls, 8) != 0) return 3;
     len = sizeof(sa);
-    if (syscall(286, ls, &sa, &len) != 0 || !sa.port) return 4;
-    cs = syscall(281, 2, 1, 0);
-    if (cs < 0 || syscall(283, cs, &sa, sizeof(sa)) != 0) return 5;
+    if (syscall(NR_getsockname, ls, &sa, &len) != 0 || !sa.port) return 4;
+    cs = syscall(NR_socket, 2, 1, 0);
+    if (cs < 0 || syscall(NR_connect, cs, &sa, sizeof(sa)) != 0) return 5;
     pf.fd = ls;
     pf.events = 1;                                     /* POLLIN */
     pf.revents = 0;
-    if (syscall(168, &pf, 1, 5000) != 1) return 6;
+    if (SYS_POLL(&pf, 1) != 1) return 6;
     len = sizeof(peer);
-    as = syscall(366, ls, &peer, &len, 02000000);
+    as = syscall(NR_accept4, ls, &peer, &len, 02000000);
     if (as < 0) return 7;
-    if (syscall(290, cs, "ping", 4, 0, 0, 0) != 4) return 8;
+    if (syscall(NR_sendto, cs, "ping", 4, 0, 0, 0) != 4) return 8;
     pf.fd = as;
-    if (syscall(168, &pf, 1, 5000) != 1 || syscall(292, as, buf, sizeof(buf), 0, 0, 0) != 4 || memcmp(buf, "ping", 4)) return 9;
-    if (syscall(289, as, "pong", 4, 0) != 4 || syscall(291, cs, buf, sizeof(buf), 0) != 4 || memcmp(buf, "pong", 4)) return 10;
+    if (SYS_POLL(&pf, 1) != 1 || syscall(NR_recvfrom, as, buf, sizeof(buf), 0, 0, 0) != 4 || memcmp(buf, "ping", 4)) return 9;
+    if (SYS_SEND(as, "pong", 4) != 4 || SYS_RECV(cs, buf, sizeof(buf)) != 4 || memcmp(buf, "pong", 4)) return 10;
     len = sizeof(peer);
-    if (syscall(287, cs, &peer, &len) != 0 || peer.port != sa.port) return 11;
+    if (syscall(NR_getpeername, cs, &peer, &len) != 0 || peer.port != sa.port) return 11;
     len = 4;
-    if (syscall(295, cs, 1, 4 /* SO_ERROR */, &err, &len) != 0 || err != 0) return 12;
-    if (syscall(293, cs, 1 /* SHUT_WR */) != 0 || syscall(168, &pf, 1, 5000) != 1 || syscall(292, as, buf, sizeof(buf), 0, 0, 0) != 0) return 13;
+    if (syscall(NR_getsockopt, cs, 1, 4 /* SO_ERROR */, &err, &len) != 0 || err != 0) return 12;
+    if (syscall(NR_shutdown, cs, 1 /* SHUT_WR */) != 0 || SYS_POLL(&pf, 1) != 1 || syscall(NR_recvfrom, as, buf, sizeof(buf), 0, 0, 0) != 0) return 13;
     close(as);
     close(cs);
     close(ls);
-    if (syscall(288, 1 /* AF_UNIX */, 1, 0, sv) != 0) return 14;
+    if (syscall(NR_socketpair, 1 /* AF_UNIX */, 1, 0, sv) != 0) return 14;
     memset(&m, 0, sizeof(m));
     io.base = "hello";
     io.len = 5;
     m.iov = &io;
     m.iovlen = 1;
-    if (syscall(296, sv[0], &m, 0) != 5) return 15;
+    if (syscall(NR_sendmsg, sv[0], &m, 0) != 5) return 15;
     io.base = buf;
     io.len = sizeof(buf);
-    if (syscall(297, sv[1], &m, 0) != 5 || memcmp(buf, "hello", 5)) return 16;
+    if (syscall(NR_recvmsg, sv[1], &m, 0) != 5 || memcmp(buf, "hello", 5)) return 16;
     close(sv[0]);
     close(sv[1]);
-    if (syscall(340, 0, 0, 0, 0, 0, 0) != -1 || *__errno() != 22) return 17;
+    if (syscall(NR_splice, 0, 0, 0, 0, 0, 0) != -1 || *__errno() != 22) return 17;
     snprintf(path, sizeof(path), "%s/bolt.db", dir);
     fd = open(path, 01102, 0600);                      /* O_RDWR | O_CREAT | O_TRUNC */
     if (fd < 0) return 18;
-    if (syscall(143, fd, 2 | 4 /* LOCK_EX | LOCK_NB */) != 0) return 19;
-    if (syscall(194, fd, 0, 3 * 4096, 0) != 0 || fstat(fd, st) != 0 || st[12] != 3 * 4096) return 20;
-    if (syscall(181, fd, "meta", 4, 0, 4096, 0) != 4) return 21;
-    if (syscall(180, fd, buf, 4, 0, 4096, 0) != 4 || memcmp(buf, "meta", 4)) return 22;
-    if (syscall(148, fd) != 0) return 23;
+    if (syscall(NR_flock, fd, 2 | 4 /* LOCK_EX | LOCK_NB */) != 0) return 19;
+    if (syscall(NR_ftruncate, fd, PAIR_PAD ARG64(3 * 4096)) != 0 || fstat(fd, st) != 0 || st[ST_SIZE] != 3 * 4096) return 20;
+    if (syscall(NR_pwrite64, fd, "meta", 4, PAIR_PAD ARG64(4096)) != 4) return 21;
+    if (syscall(NR_pread64, fd, buf, 4, PAIR_PAD ARG64(4096)) != 4 || memcmp(buf, "meta", 4)) return 22;
+    if (syscall(NR_fdatasync, fd) != 0) return 23;
     map = mmap(0, 4 * 4096, 1 /* PROT_READ */, 1 /* MAP_SHARED */, fd, 0);
     if (map == (void *)-1) return 24;
     if (memcmp(map + 4096, "meta", 4)) return 25;
-    if (syscall(181, fd, "page", 4, 0, 2 * 4096 + 8, 0) != 4 || memcmp(map + 2 * 4096 + 8, "page", 4)) return 26;
+    if (syscall(NR_pwrite64, fd, "page", 4, PAIR_PAD ARG64(2 * 4096 + 8)) != 4 || memcmp(map + 2 * 4096 + 8, "page", 4)) return 26;
     fd2 = open(path, 02);
     if (fd2 < 0) return 27;
-    if (syscall(194, fd2, 0, 4 * 4096, 0) != 0 || pwrite(fd2, "grow", 4, 3 * 4096) != 4) return 28;
+    if (syscall(NR_ftruncate, fd2, PAIR_PAD ARG64(4 * 4096)) != 0 || pwrite(fd2, "grow", 4, 3 * 4096) != 4) return 28;
     close(fd2);
     if (memcmp(map + 3 * 4096, "grow", 4)) return 29;
     if (lseek(fd, 100, 0) != 100 || write(fd, "seq", 3) != 3 || memcmp(map + 100, "seq", 3)) return 30;
     munmap(map, 4 * 4096);
     close(fd);
-    dfd = open(dir, 040000 /* O_DIRECTORY */ | 02000000);
+    dfd = open(dir, O_DIRECTORY_ | 02000000);
     if (dfd < 0) return 31;
-    while ((n = syscall(217, dfd, ents, sizeof(ents))) > 0) {
+    while ((n = syscall(NR_getdents64, dfd, ents, sizeof(ents))) > 0) {
         for (off = 0; off < n;) {
             unsigned short reclen;
             memcpy(&reclen, ents + off + 16, 2);
@@ -1696,12 +1925,12 @@ int t_go_net_files(const char *dir)
         }
     }
     if (n < 0 || found != 1) return 33;
-    if (lseek(dfd, 0, 0) != 0 || syscall(217, dfd, ents, sizeof(ents)) <= 0) return 34;
+    if (lseek(dfd, 0, 0) != 0 || syscall(NR_getdents64, dfd, ents, sizeof(ents)) <= 0) return 34;
     close(dfd);
     unlink(path);
-    if (syscall(369, 0, 7 /* RLIMIT_NOFILE */, 0, &lim) != 0 || !lim.cur || lim.cur > lim.max) return 35;
-    if (syscall(122, ents) != 0 || strcmp(ents, "Linux")) return 36;
-    if (syscall(199) < 0 || syscall(64) < 0) return 37;
+    if (syscall(NR_prlimit64, 0, 7 /* RLIMIT_NOFILE */, 0, &lim) != 0 || !lim.cur || lim.cur > lim.max) return 35;
+    if (syscall(NR_uname, ents) != 0 || strcmp(ents, "Linux")) return 36;
+    if (syscall(NR_getuid) < 0 || syscall(NR_getppid) < 0) return 37;
     return 0;
 }
 
@@ -1711,26 +1940,55 @@ int t_go_net_files(const char *dir)
  * runtime/vdso_linux.go reads one: the load offset from the first PT_LOAD, the dynamic table, the version LINUX_2.6
  * among the definitions, __vdso_clock_gettime of that version through the hash table's chain. Called, it says the
  * monotonic clock, between two readings of clock_gettime. 0, or the step that failed.
+ *
+ * Each processor's as its kernel's is: the vector in words of its own width, the image an ELF of its own class and
+ * machine; ARM64's clock is __kernel_clock_gettime of LINUX_2.6.39 (vdso_linux_arm64.go), the others' as above.
  */
+#if defined(__arm__)
+enum { VDSO_MACHINE = 40, VDSO_VER_HASH = 0x3ae75f6, VDSO_FN_HASH = 0xd35ec75 };
+#define VDSO_VER "LINUX_2.6"
+#define VDSO_FN "__vdso_clock_gettime"
+#elif defined(__aarch64__)
+enum { VDSO_MACHINE = 183, VDSO_VER_HASH = 0x75fcb89, VDSO_FN_HASH = 0xb0cd725 };
+#define VDSO_VER "LINUX_2.6.39"
+#define VDSO_FN "__kernel_clock_gettime"
+#elif defined(__x86_64__)
+enum { VDSO_MACHINE = 62, VDSO_VER_HASH = 0x3ae75f6, VDSO_FN_HASH = 0xd35ec75 };
+#define VDSO_VER "LINUX_2.6"
+#define VDSO_FN "__vdso_clock_gettime"
+#else
+enum { VDSO_MACHINE = 3, VDSO_VER_HASH = 0x3ae75f6, VDSO_FN_HASH = 0xd35ec75 };
+#define VDSO_VER "LINUX_2.6"
+#define VDSO_FN "__vdso_clock_gettime"
+#endif
+
 int t_vdso(void)
 {
-    unsigned file[128], ehdr = 0, pagesz = 0, random = 0;
+    t_word file[128], ehdr = 0, pagesz = 0, random = 0;
     int fd = open("/proc/self/auxv", 0), got, k;
     if (fd < 0) return 10;
     got = read(fd, file, sizeof(file));
     close(fd);
-    if (got <= 0 || got % 8) return 11;
-    for (k = 0; k + 1 < got / 4 && file[k]; k += 2) {
+    if (got <= 0 || got % (int)(2 * sizeof(t_word))) return 11;
+    for (k = 0; k + 1 < got / (int)sizeof(t_word) && file[k]; k += 2) {
         if (file[k] == 33) ehdr = file[k + 1];
         if (file[k] == 6) pagesz = file[k + 1];
         if (file[k] == 25) random = file[k + 1];
     }
     if (file[k] != 0 || !ehdr || ehdr != g_init_vdso || pagesz != 4096 || !random) return 12;
+#if defined(__LP64__)
+    typedef struct { unsigned char ident[16]; unsigned short type, machine; unsigned version; unsigned long entry, phoff, shoff; unsigned flags;
+                     unsigned short ehsize, phentsize, phnum, shentsize, shnum, shstrndx; } t_ehdr;
+    typedef struct { unsigned type, flags; unsigned long offset, vaddr, paddr, filesz, memsz, align; } t_phdr;
+    typedef struct { long tag; unsigned long val; } t_dyn;
+    typedef struct { unsigned name; unsigned char info, other; unsigned short shndx; unsigned long value, size; } t_sym;
+#else
     typedef struct { unsigned char ident[16]; unsigned short type, machine; unsigned version, entry, phoff, shoff, flags;
                      unsigned short ehsize, phentsize, phnum, shentsize, shnum, shstrndx; } t_ehdr;
     typedef struct { unsigned type, offset, vaddr, paddr, filesz, memsz, flags, align; } t_phdr;
     typedef struct { int tag; unsigned val; } t_dyn;
     typedef struct { unsigned name, value, size; unsigned char info, other; unsigned short shndx; } t_sym;
+#endif
     typedef struct { unsigned short version, flags, ndx, cnt; unsigned hash, aux, next; } t_verdef;
     typedef int (*gettime_fn)(int, struct t_timespec *);
     const t_ehdr *h = (const t_ehdr *)(size_t)g_init_vdso;
@@ -1741,12 +1999,15 @@ int t_vdso(void)
     const char *strs = 0;
     const unsigned short *versym = 0;
     const t_verdef *vd = 0;
-    unsigned base, load = 0, i, ver = 0, chain;
+    t_word base, load = 0;
+    unsigned i, ver = 0, chain;
     int loaded = 0;
     struct t_timespec a, b, c;
     if (!h) return 1;
-    if (h->ident[0] != 0x7f || h->ident[1] != 'E' || h->ident[2] != 'L' || h->ident[3] != 'F' || h->ident[4] != 1 || h->machine != 40) return 2;
-    base = (unsigned)(size_t)h;
+    if (h->ident[0] != 0x7f || h->ident[1] != 'E' || h->ident[2] != 'L' || h->ident[3] != 'F' || h->ident[4] != (int)(sizeof(void *) / 4) ||
+        h->machine != VDSO_MACHINE)
+        return 2;
+    base = (t_word)(size_t)h;
     ph = (const t_phdr *)(size_t)(base + h->phoff);
     for (i = 0; i < h->phnum; i++) {
         if (ph[i].type == 1 && !loaded) {
@@ -1757,7 +2018,7 @@ int t_vdso(void)
     }
     if (!loaded || !d) return 3;
     for (; d->tag; d++) {
-        unsigned p = load + d->val;
+        t_word p = load + d->val;
         if (d->tag == 4) hash = (const unsigned *)(size_t)p;
         if (d->tag == 5) strs = (const char *)(size_t)p;
         if (d->tag == 6) syms = (const t_sym *)(size_t)p;
@@ -1768,7 +2029,7 @@ int t_vdso(void)
     for (;;) {
         if (!(vd->flags & 1)) {
             const unsigned *aux = (const unsigned *)((const char *)vd + vd->aux);
-            if (vd->hash == 0x3ae75f6 && !strcmp(strs + aux[0], "LINUX_2.6")) {
+            if (vd->hash == VDSO_VER_HASH && !strcmp(strs + aux[0], VDSO_VER)) {
                 ver = vd->ndx & 0x7fff;
                 break;
             }
@@ -1777,10 +2038,10 @@ int t_vdso(void)
         vd = (const t_verdef *)((const char *)vd + vd->next);
     }
     if (!ver) return 5;
-    for (chain = hash[2 + 0xd35ec75 % hash[0]]; chain; chain = hash[2 + hash[0] + chain]) {
+    for (chain = hash[2 + VDSO_FN_HASH % hash[0]]; chain; chain = hash[2 + hash[0] + chain]) {
         const t_sym *s = &syms[chain];
         gettime_fn fn;
-        if ((s->info & 15) != 2 || (s->info >> 4) != 1 || !s->shndx || strcmp(strs + s->name, "__vdso_clock_gettime")) continue;
+        if ((s->info & 15) != 2 || (s->info >> 4) != 1 || !s->shndx || strcmp(strs + s->name, VDSO_FN)) continue;
         if ((versym[chain] & 0x7fff) != ver) continue;
         fn = (gettime_fn)(size_t)(load + s->value);
         if (clock_gettime(1, &a) != 0 || fn(1, &b) != 0 || clock_gettime(1, &c) != 0) return 7;

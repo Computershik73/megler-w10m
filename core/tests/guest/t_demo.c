@@ -16,10 +16,7 @@
  * Back ends it. It logs what it was given and its frame rate once a second.
  * Written against the NDK directly, like t_native.c.
  */
-typedef unsigned int size_t;
-typedef int pthread_mutex_t;
-typedef int pthread_cond_t;
-typedef long pthread_t;
+#include "t_abi.h"
 
 typedef struct ANativeActivity ANativeActivity;
 typedef struct ANativeActivityCallbacks {
@@ -59,8 +56,8 @@ int pthread_mutex_unlock(pthread_mutex_t *);
 int pthread_cond_wait(pthread_cond_t *, pthread_mutex_t *);
 int pthread_cond_broadcast(pthread_cond_t *);
 int pipe(int[2]);
-int read(int, void *, size_t);
-int write(int, const void *, size_t);
+ssize_t read(int, void *, size_t);
+ssize_t write(int, const void *, size_t);
 void *memset(void *, int, size_t);
 int clock_gettime(int, struct timespec *);
 float sinf(float);
@@ -423,19 +420,33 @@ static void start_audio(void)
     SLEngineItf engine = 0;
     SLPlayItf play = 0;
     SLBufferQueueItf queue = 0;
-    /* SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE with two buffers; PCM, mono, 44100 Hz (in millihertz), 16 bits, front centre, little-endian */
+    /* SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE with two buffers; PCM, mono, 44100 Hz (in millihertz), 16 bits, front centre, little-endian;
+       SL_DATALOCATOR_OUTPUTMIX and the mix, a pointer after a 32-bit type: at 8 on the 64-bit ABIs */
+#if defined(__LP64__)
+    unsigned locator[2] = { 0x800007BDu, 2 }, format[7] = { 2, 1, RATE * 1000u, 16, 16, 4, 2 };
+    struct { unsigned type; SLObjectItf mix; } out_locator = { 4, 0 };
+#else
     unsigned locator[2] = { 0x800007BDu, 2 }, format[7] = { 2, 1, RATE * 1000u, 16, 16, 4, 2 }, out_locator[2] = { 4, 0 };
+#endif
     void *source[2], *sink[2];
     source[0] = locator;
     source[1] = format;
+#if defined(__LP64__)
+    sink[0] = &out_locator;
+#else
     sink[0] = out_locator;
+#endif
     sink[1] = 0;
     if (slCreateEngine(&engine_object, 0, 0, 0, 0, 0) != 0) { LOG("slCreateEngine failed"); return; }
     (*engine_object)->Realize(engine_object, 0);
     (*engine_object)->GetInterface(engine_object, SL_IID_ENGINE, &engine);
     (*engine)->CreateOutputMix(engine, &mix, 0, 0, 0);
     (*mix)->Realize(mix, 0);
+#if defined(__LP64__)
+    out_locator.mix = mix;
+#else
     out_locator[1] = (unsigned)mix;
+#endif
     if ((*engine)->CreateAudioPlayer(engine, &player, source, sink, 1, &SL_IID_BUFFERQUEUE, 0) != 0) { LOG("CreateAudioPlayer failed"); return; }
     (*player)->Realize(player, 0);
     (*player)->GetInterface(player, SL_IID_PLAY, &play);

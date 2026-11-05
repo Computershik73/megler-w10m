@@ -3,9 +3,10 @@
  * t.Guest (core/tests/dvm/fixtures/a/Guest.smali) declares them, bytecode and
  * the tests call them, and they call back into bytecode through the JNIEnv.
  *
- * Built like any app's library: softfp, so a double arrives in two integer
- * registers and a float in one. jni.h is not used; the environment is a
- * pointer to a table of functions, and each is called by its place in it.
+ * Built like any app's library: on armeabi-v7a softfp, so a double arrives in
+ * two integer registers and a float in one; elsewhere in the ABI's own way.
+ * jni.h is not used; the environment is a pointer to a table of functions, and
+ * each is called by its place in it.
  */
 typedef void *jobject;
 typedef void **JNIEnv;                 /* JNIEnv *env; (*env)[n] is the n-th function */
