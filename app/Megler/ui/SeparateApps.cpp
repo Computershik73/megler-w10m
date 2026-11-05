@@ -121,6 +121,29 @@ ApkEntry readPicked(const Job& job) {
     return entry;
 }
 
+/// Megler's copies of apps whose installed package's APK it could not read right after the install: a large package installed
+/// as the Store installs an app refuses it for a while (Google Play services' and Google Maps' on a Lumia 650, 643: error 5
+/// for 20 s after their install; Play services' was read 20 minutes after another of its installs). Once the APK can be read,
+/// and is the copy's (a package this Megler made: the same size and the same last megabyte), it is taken for the copy, which
+/// goes, as after an install. Not for an app in several APKs (its splits are in a folder such a package does not show
+/// Megler), and only while no job is queued or running. Off the UI thread.
+void adoptLater(const std::vector<appPackage::InstalledApp>& installed) {
+    if (appPackage::isSingleApp()) return;
+    const std::string version = appPackage::meglerVersion();
+    for (const ApkEntry& entry : Library::instance().entries()) {
+        if (!entry.installedPackage.empty() || !entry.splitsDir.empty() || entry.report.package.empty()) continue;
+        const std::string identity = identityOf(entry.report.package);
+        const auto app = std::find_if(installed.begin(), installed.end(), [&](const appPackage::InstalledApp& a) { return a.identity == identity; });
+        if (app == installed.end() || app->version != version) continue;
+        const std::wstring apk = appPackage::installedApk(app->fullName);
+        if (!appPackage::canRead(apk) || files::size(apk) != files::size(entry.path) || !files::sameEnd(entry.path, apk, 1u << 20)) continue;
+        std::lock_guard<std::mutex> lock(gMutex);
+        if (gWorking || !gJobs.empty()) return;
+        shellLog::write("separate apps: " + narrow(apk) + " can be read now");
+        Library::instance().adopt(entry.id, app->fullName);
+    }
+}
+
 /// The portal's list, asked again. Off the UI thread.
 void list() {
     std::vector<appPackage::InstalledApp> apps;
@@ -150,6 +173,7 @@ void list() {
     // the copies of Google Play services' APK but the one registered, and the APKs apps handed over that were left. Then what
     // the shared folder holds, once a run.
     if (ok) appPackage::removeUnusedAndroidRoots(apps);
+    if (ok) adoptLater(apps);
     appPackage::removeUnusedServiceCopies();
     appPackage::removeOldHandedApks();
     appPackage::logSharedSpace();
