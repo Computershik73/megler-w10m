@@ -113,8 +113,9 @@ static int load_mode(int argc, char **argv)
         mg_ld_init(lib);
         last = lib;
         mg_ld_get_stats(lib, &st);
-        printf("%s: %u Thumb, %u ARM functions; %u unresolved; %u thread-pointer reads (%u failed), %u PLT entries, %u direct system calls\n", argv[i],
-               st.thumb_functions, st.arm_functions, st.unresolved, st.tp_reads, st.tp_reads_failed, st.plt_entries, st.svc_sites);
+        printf("%s: %u Thumb, %u ARM functions; %u unresolved; %u thread-pointer reads (%u failed), %u accesses through a register "
+               "led out, %u PLT entries, %u direct system calls\n", argv[i], st.thumb_functions, st.arm_functions, st.unresolved, st.tp_reads,
+               st.tp_reads_failed, st.tp_led_out, st.plt_entries, st.svc_sites);
         fn = mg_ld_sym(lib, "OpenSSL_version");
         if (fn) printf("  OpenSSL_version(0): %s\n", MG_GFN(const char *(*)(int), fn)(0));
         fn = mg_ld_sym(lib, "SHA256");
@@ -149,6 +150,30 @@ static int load_mode(int argc, char **argv)
     /* MG_TESTS_LOAD_WAIT_MS: a while longer for what the libraries' init functions started on threads of their own. Go's
        runtime, loaded as a library, starts itself on one (_rt0_arm_lib), and the process ended before it ran. */
     if (getenv("MG_TESTS_LOAD_WAIT_MS")) mg_sleep_ns((u64)atoi(getenv("MG_TESTS_LOAD_WAIT_MS")) * 1000000u);
+    /* MG_TESTS_LOAD_CALL=NAME[:ARG][,NAME[:ARG]...]: functions of the last library loaded, as `long NAME(long ARG)`, called on
+       this thread after the wait, and what each returned -- a Go library's exports, which come into its runtime from a
+       thread it did not make (cgocallback, needm). */
+    if (getenv("MG_TESTS_LOAD_CALL") && last) {
+        const char *at = getenv("MG_TESTS_LOAD_CALL");
+        while (*at) {
+            char name[128], *end;
+            size_t n = strcspn(at, ":,");
+            long arg = 0;
+            void *fn;
+            if (!n || n >= sizeof(name)) break;
+            memcpy(name, at, n);
+            name[n] = 0;
+            at += n;
+            if (*at == ':') {
+                arg = strtol(at + 1, &end, 0);
+                at = end;
+            }
+            fn = mg_ld_sym(last, name);
+            if (fn) printf("%s(%ld): %ld\n", name, arg, MG_GFN(long (*)(long), fn)(arg));
+            else printf("%s: not in the library\n", name);
+            if (*at == ',') at++;
+        }
+    }
     /* MG_TESTS_LOAD_PEEK=OFFSET[,OFFSET...] (hex): the 32-bit words at those offsets of the last library loaded, as they are
        after its init functions and the wait -- variables of its, such as Go's runtime.vdsoClockgettimeSym, which says whether
        Go took the vDSO. */
