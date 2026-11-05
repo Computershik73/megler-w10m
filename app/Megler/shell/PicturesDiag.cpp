@@ -93,13 +93,30 @@ void placeFlags(StorageFolder const& folder) {
     if (!said.empty()) shellLog::write("diag: flags from Pictures\\Megler\\diag: " + said);
 }
 
-/// A file of LocalState copied into the folder, replacing the one there.
+/// A file of LocalState copied into the folder: the first time as a new file, then written over in place. A file replaced every
+/// 10 s is a new object on the phone each time, and a PC's MTP view of the folder lost the log so: its owner saw the pictures,
+/// written once, and no log (package 632).
 void copyOut(StorageFolder const& folder, const wchar_t* name) {
     static std::atomic<int> failures{0};
     std::lock_guard<std::mutex> lock(gCopyMutex);
     try {
         const std::wstring path = platform::localStateDirectory() + L"\\" + name;
         if (!files::exists(path)) return;
+        auto there = folder.TryGetItemAsync(name).get();
+        if (auto dest = there ? there.try_as<StorageFile>() : nullptr) {
+            std::string bytes;
+            if (!files::read(path, bytes)) return;
+            auto stream = dest.OpenAsync(FileAccessMode::ReadWrite).get();
+            stream.Size(0);
+            winrt::Windows::Storage::Streams::DataWriter writer(stream);
+            writer.WriteBytes(winrt::array_view<const uint8_t>(reinterpret_cast<const uint8_t*>(bytes.data()),
+                                                               reinterpret_cast<const uint8_t*>(bytes.data()) + bytes.size()));
+            writer.StoreAsync().get();
+            writer.FlushAsync().get();
+            writer.DetachStream();
+            stream.Close();
+            return;
+        }
         auto file = StorageFile::GetFileFromPathAsync(path).get();
         file.CopyAsync(folder, name, NameCollisionOption::ReplaceExisting).get();
     } catch (hresult_error const& e) {

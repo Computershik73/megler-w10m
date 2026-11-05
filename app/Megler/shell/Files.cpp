@@ -133,6 +133,56 @@ bool sameEnd(const std::wstring& a, const std::wstring& b, uint32_t bytes) {
     return readEnd(a, bytes, sizeA, endA) && readEnd(b, bytes, sizeB, endB) && sizeA == sizeB && endA == endB;
 }
 
+namespace {
+
+bool readAt(HANDLE h, uint64_t at, char* out, DWORD n) {
+    LARGE_INTEGER pos = {};
+    pos.QuadPart = LONGLONG(at);
+    DWORD got = 0;
+    return SetFilePointerEx(h, pos, nullptr, FILE_BEGIN) && ReadFile(h, out, n, &got, nullptr) && got == n;
+}
+
+bool writeAt(HANDLE h, uint64_t at, const char* data, DWORD n) {
+    LARGE_INTEGER pos = {};
+    pos.QuadPart = LONGLONG(at);
+    DWORD written = 0;
+    return SetFilePointerEx(h, pos, nullptr, FILE_BEGIN) && WriteFile(h, data, n, &written, nullptr) && written == n;
+}
+
+} // namespace
+
+bool mend(const std::wstring& source, const std::wstring& copy, uint64_t& mended) {
+    const DWORD chunk = 1u << 20;
+    mended = 0;
+    HANDLE from = open(source, GENERIC_READ, OPEN_EXISTING);
+    if (from == INVALID_HANDLE_VALUE) return false;
+    HANDLE to = open(copy, GENERIC_READ | GENERIC_WRITE, OPEN_EXISTING);
+    if (to == INVALID_HANDLE_VALUE) {
+        CloseHandle(from);
+        return false;
+    }
+    LARGE_INTEGER sizeFrom = {}, sizeTo = {};
+    bool ok = GetFileSizeEx(from, &sizeFrom) && GetFileSizeEx(to, &sizeTo) && sizeFrom.QuadPart == sizeTo.QuadPart;
+    std::vector<char> a(chunk), b(chunk), again(chunk);
+    for (uint64_t at = 0; ok && at < uint64_t(sizeFrom.QuadPart); at += chunk) {
+        const DWORD n = DWORD(std::min<uint64_t>(chunk, uint64_t(sizeFrom.QuadPart) - at));
+        ok = readAt(from, at, a.data(), n) && readAt(to, at, b.data(), n);
+        if (!ok || !memcmp(a.data(), b.data(), n)) continue;
+        // The source read twice alike first, so that what is written is the file's and not a reading's mistake; then the
+        // chunk written, put on the disk and read back.
+        bool fixed = false;
+        for (int tries = 0; tries < 3 && !fixed; tries++) {
+            if (!readAt(from, at, a.data(), n) || !readAt(from, at, again.data(), n) || memcmp(a.data(), again.data(), n)) continue;
+            fixed = writeAt(to, at, a.data(), n) && FlushFileBuffers(to) && readAt(to, at, b.data(), n) && !memcmp(a.data(), b.data(), n);
+        }
+        ok = fixed;
+        if (fixed) mended += n;
+    }
+    CloseHandle(from);
+    CloseHandle(to);
+    return ok;
+}
+
 std::vector<std::wstring> list(const std::wstring& directory, const std::wstring& pattern) {
     std::vector<std::wstring> names;
     WIN32_FIND_DATAW found = {};
