@@ -103,6 +103,9 @@
 #                          gecko-w10m's build)
 #   MEGLER_ANGLE_MAPS   ANGLE's linker maps (build/angle/maps for Megler's own;
 #                          else <ANGLE>/../../third_party/angle)
+#   MEGLER_ANGLE_DESKTOP  desktop Windows: where libEGL.dll and libGLESv2.dll of the
+#                          processor are (build/angle/<arch>/dist: python
+#                          tools/build-angle.py --arch <arch>)
 #   MEGLER_GECKO        gecko-w10m's checkout, for its packaging scripts
 #                          (../gecko-w10m)
 #   MEGLER_LLVM         LLVM bin, for lld-link (C:/Program Files/LLVM/bin)
@@ -740,6 +743,37 @@ if [ "$ARCH" = arm ]; then
       echo "--bitgapps: refusing to pack an unusable app without ANGLE" >&2
       exit 1
     fi
+  fi
+fi
+
+# On desktop Windows: Megler's own build of the same ANGLE for the processor (python tools/build-angle.py --arch <arch>), its
+# C runtime linked in and no mozglue, so the two DLLs are all of it; d3dcompiler_47.dll is the system's. What they import
+# must be the system's or each other: anything else would fail LoadPackagedLibrary.
+stage_angle_desktop() {
+  local angle="${MEGLER_ANGLE_DESKTOP:-$ROOT/build/angle/$ARCH/dist}" dll need missing=""
+  for dll in libEGL.dll libGLESv2.dll; do
+    [ -f "$angle/$dll" ] || { ANGLE_WHY="no $dll in $angle (python tools/build-angle.py --arch $ARCH, or MEGLER_ANGLE_DESKTOP)"; return 1; }
+  done
+  cp "$angle/libEGL.dll" "$angle/libGLESv2.dll" "$STAGE/"
+  for dll in libEGL.dll libGLESv2.dll; do
+    while IFS= read -r need; do
+      [ -n "$need" ] || continue
+      case "${need,,}" in
+        libglesv2.dll|kernel32.dll|ole32.dll|d3d11.dll|dxgi.dll|d3dcompiler_47.dll|api-ms-win-*) ;;
+        *) missing="$missing $dll->$need" ;;
+      esac
+    done < <(dependents "$STAGE/$dll")
+  done
+  [ -z "$missing" ] || { ANGLE_WHY="imports that are not the system's:$missing"; return 1; }
+  echo "    ANGLE from $angle: libEGL.dll, libGLESv2.dll ($(stat -c %s "$STAGE/libGLESv2.dll") bytes), importing the system's DLLs alone"
+}
+if [ "$DESKTOP" = 1 ]; then
+  echo "=== ANGLE ==="
+  ANGLE_WHY=""
+  if ! stage_angle_desktop; then
+    rm -f "$STAGE"/libEGL.dll "$STAGE"/libGLESv2.dll
+    echo "    WARNING: ANGLE is NOT in this package: $ANGLE_WHY" >&2
+    echo "    WARNING: the app will say \"ANGLE missing\" and no Android app can draw with OpenGL ES" >&2
   fi
 fi
 
