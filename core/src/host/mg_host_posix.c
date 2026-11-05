@@ -583,8 +583,52 @@ void mg_futex_wake(volatile i32 *addr, bool all)
     syscall(SYS_futex, addr, 1 /* FUTEX_WAKE */, all ? 0x7FFFFFFF : 1, NULL, NULL, 0);
 }
 
-/* A thread's stack is all there from the start here (and the first thread's grows wherever it is touched). */
-void mg_thread_whole_stack(void) { }
+/*
+ * A stack for the thread's faults, of their own (sigaltstack), which the fault handler is taken on (SA_ONSTACK,
+ * mg_fault_set_handler). On the thread's own stack the kernel lays the handler's frame below the stack pointer: a fault
+ * at the first touch of a page of that stack which is not there -- a goroutine's stack is a piece of Go's heap, whose free
+ * pages Go's runtime gives back with madvise (bionic/mg_libc_mem.c) -- has the frame due on that same page, which the
+ * kernel cannot write, and the process ended at once, with no word of the core's (exit 139: a Go library's 1000
+ * goroutines with 64 KB frames, in 3 of 10 runs). Its lowest page is a guard; it goes with the thread (the key's
+ * destructor), or stays with the first one.
+ */
+enum { FAULT_STACK = 128 * 1024, FAULT_STACK_GUARD = 4096 };
+static pthread_key_t g_fault_stack_key;
+static pthread_once_t g_fault_stack_once = PTHREAD_ONCE_INIT;
+static __thread bool t_fault_stack;
+
+static void fault_stack_gone(void *base)
+{
+    stack_t ss;
+    memset(&ss, 0, sizeof(ss));
+    ss.ss_flags = SS_DISABLE;
+    sigaltstack(&ss, NULL);
+    munmap(base, FAULT_STACK_GUARD + FAULT_STACK);
+}
+
+static void fault_stack_key(void) { pthread_key_create(&g_fault_stack_key, fault_stack_gone); }
+
+static void fault_stack_take(void)
+{
+    stack_t ss;
+    u8 *base;
+    if (t_fault_stack) return;
+    t_fault_stack = true;
+    pthread_once(&g_fault_stack_once, fault_stack_key);
+    base = (u8 *)mmap(NULL, FAULT_STACK_GUARD + FAULT_STACK, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    if (base == (u8 *)MAP_FAILED) return;
+    memset(&ss, 0, sizeof(ss));
+    ss.ss_sp = base + FAULT_STACK_GUARD;
+    ss.ss_size = FAULT_STACK;
+    if (mprotect(ss.ss_sp, FAULT_STACK, PROT_READ | PROT_WRITE) != 0 || sigaltstack(&ss, NULL) != 0) {
+        munmap(base, FAULT_STACK_GUARD + FAULT_STACK);
+        return;
+    }
+    pthread_setspecific(g_fault_stack_key, base);
+}
+
+/* A thread's stack is all there from the start here (and the first thread's grows wherever it is touched); its faults get a stack of their own. */
+void mg_thread_whole_stack(void) { fault_stack_take(); }
 
 void mg_thread_stack_bounds(void **lo, void **hi)
 {
@@ -768,8 +812,10 @@ void mg_fault_set_handler(mg_fault_handler h)
     g_fault_handler = h;
     memset(&sa, 0, sizeof(sa));
     sa.sa_sigaction = on_signal;
-    sa.sa_flags = SA_SIGINFO | SA_NODEFER;
+    /* ONSTACK: on the thread's stack for faults where it has one (mg_thread_whole_stack), this thread's from now on. */
+    sa.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;
     sigemptyset(&sa.sa_mask);
+    fault_stack_take();
     sigaction(SIGILL, &sa, NULL);
     sigaction(SIGSEGV, &sa, NULL);
     sigaction(SIGBUS, &sa, NULL);
