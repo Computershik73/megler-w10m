@@ -298,6 +298,7 @@ struct State {
     Ref<ID2D1DeviceContext> gpuResource; // makes what several canvases share: a shader's brush, kept bitmaps
     UINT32 gpuMaxSize = 4096;            // the largest bitmap the device takes, each way
     std::string gpuName;                 // the adapter's, for the log
+    bool videoSupport = false;           // made with D3D11_CREATE_DEVICE_VIDEO_SUPPORT (decoders and the video processor on it)
     // Contexts and target bitmaps of canvases that are gone, for the next ones (gpuMutex).
     std::mutex gpuMutex;
     std::vector<GpuContext*> freeContexts;
@@ -3780,6 +3781,7 @@ struct KeptTextures {
         Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
         Ref<ID2D1Bitmap1> frame;     // the copy as Direct2D draws it: rows bottom first
         bool have = false;           // a frame has been copied
+        bool topFirst = false;       // the frames are a decoder's (GfxHost::showVideoFrame): rows top first, no shared handle
     };
     std::mutex mutex;
     std::unordered_map<int, Texture> byId;
@@ -3808,7 +3810,7 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
     guarded("texture_frame", [&] {
         std::lock_guard<std::mutex> lock(k.mutex);
         KeptTextures::Texture& t = k.byId[id];
-        if (t.handle != handle || !t.shared || !t.frame) {
+        if (t.handle != handle || !t.shared || !t.frame || t.topFirst) {
             t = KeptTextures::Texture{};
             HRESULT hr = s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(t.shared.put()));
             if (FAILED(hr)) {
@@ -3888,11 +3890,15 @@ void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b
     if (!cv || id <= 0 || !sane(l, t, r, b) || !(r > l) || !(b > t)) return;
     guarded("draw_texture", [&] {
         Ref<ID2D1Bitmap1> frame;
+        bool topFirst = false;
         {
             KeptTextures& k = keptTextures();
             std::lock_guard<std::mutex> lock(k.mutex);
             const auto found = k.byId.find(id);
-            if (found != k.byId.end() && found->second.have) frame = found->second.frame;
+            if (found != k.byId.end() && found->second.have) {
+                frame = found->second.frame;
+                topFirst = found->second.topFirst;
+            }
         }
         if (!frame) return;
         Surface* target = cv->target();
@@ -3903,7 +3909,7 @@ void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b
         }
         if (!target->begin()) return;
         target->useClip(cv->clip());
-        const Matrix3x2F turned = Matrix3x2F::Scale(1.0f, -1.0f, D2D1::Point2F(0.0f, (t + b) / 2.0f)) * cv->matrix;
+        const Matrix3x2F turned = topFirst ? cv->matrix : Matrix3x2F::Scale(1.0f, -1.0f, D2D1::Point2F(0.0f, (t + b) / 2.0f)) * cv->matrix;
         target->setMatrix(turned);
         target->rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         const D2D1_RECT_F onto = D2D1::RectF(l, t, r, b);
@@ -6559,12 +6565,19 @@ bool startGpu() {
                                                D3D_FEATURE_LEVEL_9_3,  D3D_FEATURE_LEVEL_9_2,  D3D_FEATURE_LEVEL_9_1};
     D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_9_1;
     const D3D_DRIVER_TYPE type = warp ? D3D_DRIVER_TYPE_WARP : D3D_DRIVER_TYPE_HARDWARE;
-    HRESULT hr = D3D11CreateDevice(nullptr, type, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, UINT(sizeof(levels) / sizeof(levels[0])),
-                                   D3D11_SDK_VERSION, s.d3d.put(), &level, nullptr);
-    // (A Direct3D that does not know 11_1 refuses a list with it in.)
-    if (hr == E_INVALIDARG)
-        hr = D3D11CreateDevice(nullptr, type, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels + 1, UINT(sizeof(levels) / sizeof(levels[0]) - 1),
-                               D3D11_SDK_VERSION, s.d3d.put(), &level, nullptr);
+    // With the video interfaces where the driver has them: an app's MediaCodec decodes on this device (CodecHost, DXVA), and
+    // its pictures are drawn from here as they are, as venetium-w10m's Chromium decodes on ANGLE's. Without, where it refuses.
+    HRESULT hr = E_FAIL;
+    for (const UINT flags : {UINT(D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT), UINT(D3D11_CREATE_DEVICE_BGRA_SUPPORT)}) {
+        if (warp && (flags & D3D11_CREATE_DEVICE_VIDEO_SUPPORT)) continue;
+        hr = D3D11CreateDevice(nullptr, type, nullptr, flags, levels, UINT(sizeof(levels) / sizeof(levels[0])), D3D11_SDK_VERSION, s.d3d.put(), &level, nullptr);
+        // (A Direct3D that does not know 11_1 refuses a list with it in.)
+        if (hr == E_INVALIDARG)
+            hr = D3D11CreateDevice(nullptr, type, nullptr, flags, levels + 1, UINT(sizeof(levels) / sizeof(levels[0]) - 1), D3D11_SDK_VERSION, s.d3d.put(),
+                                   &level, nullptr);
+        s.videoSupport = SUCCEEDED(hr) && (flags & D3D11_CREATE_DEVICE_VIDEO_SUPPORT);
+        if (SUCCEEDED(hr)) break;
+    }
     if (FAILED(hr)) {
         s.d3d.reset();
         say("no Direct3D device of the graphics processor's that Direct2D can draw with (0x%08lX): canvases are drawn in memory", static_cast<unsigned long>(hr));
@@ -6577,7 +6590,8 @@ bool startGpu() {
     if (dxgi && SUCCEEDED(dxgi->GetAdapter(adapter.put())) && SUCCEEDED(adapter->GetDesc(&desc)))
         WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, name, sizeof(name), nullptr, nullptr);
     char described[160];
-    snprintf(described, sizeof(described), "%s, Direct3D feature level %s%s", name, levelName(level), warp ? " (WARP, Direct3D's software device)" : "");
+    snprintf(described, sizeof(described), "%s, Direct3D feature level %s%s%s", name, levelName(level), warp ? " (WARP, Direct3D's software device)" : "",
+             warp || s.videoSupport ? "" : ", no video interfaces");
     s.gpuName = described;
     hr = dxgi ? s.d2d1->CreateDevice(dxgi.get(), s.d2dDevice.put()) : E_NOINTERFACE;
     if (SUCCEEDED(hr)) hr = s.d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, s.gpuResource.put());
@@ -6719,6 +6733,59 @@ void GfxHost::unlockDevice() {
     State& s = G();
     if (s.started.load(std::memory_order_acquire) <= 0 || !s.gpu) return;
     if (Ref<ID2D1Multithread> lock = s.d2d.as<ID2D1Multithread>()) lock->Leave();
+}
+
+bool GfxHost::videoSupport() {
+    State& s = G();
+    return device() && s.videoSupport;
+}
+
+bool GfxHost::showVideoFrame(int id, ID3D11Texture2D* picture, int width, int height) {
+    State& s = G();
+    if (id <= 0 || !picture || width <= 0 || height <= 0 || !device()) return false;
+    KeptTextures& k = keptTextures();
+    bool taken = false;
+    guarded("show_video_frame", [&] {
+        std::lock_guard<std::mutex> lock(k.mutex);
+        KeptTextures::Texture& t = k.byId[id];
+        D3D11_TEXTURE2D_DESC have = {};
+        if (t.copy) t.copy->GetDesc(&have);
+        if (!t.topFirst || !t.copy || !t.frame || int(have.Width) != width || int(have.Height) != height) {
+            t = KeptTextures::Texture{};
+            D3D11_TEXTURE2D_DESC desc = {};
+            desc.Width = UINT(width);
+            desc.Height = UINT(height);
+            desc.MipLevels = 1;
+            desc.ArraySize = 1;
+            desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            desc.SampleDesc.Count = 1;
+            desc.Usage = D3D11_USAGE_DEFAULT;
+            desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            HRESULT hr = s.d3d->CreateTexture2D(&desc, nullptr, t.copy.put());
+            Ref<IDXGISurface> surface;
+            if (SUCCEEDED(hr)) hr = t.copy->QueryInterface(__uuidof(IDXGISurface), reinterpret_cast<void**>(surface.put()));
+            if (SUCCEEDED(hr))
+                hr = s.gpuResource->CreateBitmapFromDxgiSurface(
+                    surface.get(), D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(desc.Format, D2D1_ALPHA_MODE_IGNORE), 96.0f, 96.0f),
+                    t.frame.put());
+            if (FAILED(hr)) {
+                note("video-frame", "a video's picture of %dx%d on the graphics processor cannot be drawn here (0x%08lX): it is read back instead", width, height,
+                     static_cast<unsigned long>(hr));
+                k.byId.erase(id);
+                return;
+            }
+            t.topFirst = true;
+        }
+        Ref<ID3D11DeviceContext> context;
+        s.d3d->GetImmediateContext(context.put());
+        const D3D11_BOX box = {0, 0, 0, UINT(width), UINT(height), 1};
+        lockDevice();
+        context->CopySubresourceRegion(t.copy.get(), 0, 0, 0, 0, picture, 0, &box);
+        unlockDevice();
+        t.have = true;
+        taken = true;
+    });
+    return taken;
 }
 
 void GfxHost::setFontFolder(const wchar_t* folder) {

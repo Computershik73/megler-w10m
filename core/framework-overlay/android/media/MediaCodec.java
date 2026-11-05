@@ -10,9 +10,9 @@
 // everything loaded in one turn of its loop -- seconds of decoding in a call that is meant to take milliseconds, and every
 // picture kept until its time to be shown (at 720p, 1.4 MB each). The NDK's decoder in this layer (core/src/ndk/mg_media.c)
 // learned the same from Unity, which played a film's whole sound in its first seconds. It differs too in where a video
-// frame goes for a SurfaceTexture's Surface (drawSurfaceTexture: the texture's front buffer at the picture's own size),
-// and in saying INFO_OUTPUT_BUFFERS_CHANGED when its output slots grow (mBuffersChanged). Everything else is the
-// original's, unchanged.
+// frame goes for a SurfaceTexture's Surface (drawSurfaceTexture: the texture's front buffer at the picture's own size, or,
+// for a picture decoded on the graphics processor, the texture's frame there, MediaCodecNative.showFrame), and in saying
+// INFO_OUTPUT_BUFFERS_CHANGED when its output slots grow (mBuffersChanged). Everything else is the original's, unchanged.
 package android.media;
 
 import android.graphics.Bitmap;
@@ -367,6 +367,10 @@ public final class MediaCodec {
      * 15 MB each way a frame, which left TikTok Lite's videos at four pictures a second.
      */
     private boolean drawSurfaceTexture(Out o, android.graphics.SurfaceTexture t) {
+        // A picture decoded on the graphics processor stays there: the texture's newest frame, which its TextureView draws
+        // from there (as an OpenGL ES frame), nothing read back into a bitmap and sent up again.
+        int id = t.meglerGpuId();
+        if (id != 0 && megler.MediaCodecNative.showFrame(o.frame, id)) { t.meglerGpuFrame(id, mOutW, mOutH); return true; }
         int i = mTextureNext;
         Bitmap b = mTextureFrames[i];
         if (b == null || b.getWidth() != mOutW || b.getHeight() != mOutH) mTextureFrames[i] = b = Bitmap.createBitmap(mOutW, mOutH, Bitmap.Config.ARGB_8888);
