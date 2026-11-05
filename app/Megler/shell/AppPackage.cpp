@@ -263,6 +263,22 @@ void takeHandover() {
 
 namespace {
 
+/// The name of this build's folder of Android's files in the shared folder (android\<name>): its version, and on any Windows
+/// but a phone's the ABI of its native code too. The shared folder is the publisher's, which an x86 and an x64 Megler of one
+/// version both have on one PC: an x64 645's apps found the x86 one's files there ("libnativehelper.so: not a shared object
+/// of x86_64"). A phone's (32-bit ARM) keeps the name it always had.
+std::string androidRootName() {
+#if defined(_M_ARM64)
+    return versionString() + "-arm64-v8a";
+#elif defined(_M_X64)
+    return versionString() + "-x86_64";
+#elif defined(_M_IX86)
+    return versionString() + "-x86";
+#else
+    return versionString();
+#endif
+}
+
 /// The folder of the shared folder `entry`'s files are kept in for its package (make), in `folder`: the entry's own when it is
 /// there already (an app whose package was made before: nothing is copied), else a new one, apks\<identity>\<token>, its APK
 /// and splits copied into it (`picked`: read where it was picked), byte for byte (files::mend), and put in place whole; then
@@ -347,7 +363,7 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     const std::string version = versionString();
 
     // Android's libcore and framework, once for each build: every app's package of this build reads them there.
-    const std::wstring root = shared + L"\\android\\" + widen(version);
+    const std::wstring root = shared + L"\\android\\" + widen(androidRootName());
     if (!files::exists(root + L"\\complete")) {
         if (!files::exists(install + L"\\android")) return fail("This Megler carries no Android libcore and framework (built without --libcore).");
         progress("Copying Android's files to the shared folder (once for this build of Megler)…");
@@ -503,7 +519,7 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     megler_appx_add_data(a, "AppxManifest.xml", manifestText.data(), manifestText.size());
     megler_appx_add_data(a, "resources.pri", pri.data(), pri.size());
     const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=shared:" + narrow(made.apkFolder) + "\r\nroot=android\\" +
-                            version + "\r\n";
+                            androidRootName() + "\r\n";
     megler_appx_add_data(a, "MeglerApp.ini", ini.data(), ini.size());
     progress("Signing the package…");
     if (!megler_appx_finish(a, key, err, sizeof(err))) return fail(std::string("The package could not be made: ") + err);
@@ -979,7 +995,8 @@ void removeUnusedAndroidRoots(const std::vector<InstalledApp>& installed) {
     if (shared.empty()) return;
     const std::string current = versionString();
     for (const auto& name : files::listFolders(shared + L"\\android", L"*")) {
-        const std::string version = narrow(name);
+        // <version>, or on desktop Windows <version>-<ABI> (androidRootName): every ABI's of a version is kept alike.
+        const std::string version = narrow(name).substr(0, narrow(name).find('-'));
         // This build's, a newer one's (a Megler put back to an older build), and those packages are still of, stay.
         if (!olderVersion(version, current) ||
             std::any_of(installed.begin(), installed.end(), [&](const InstalledApp& a) { return a.version == version; }))

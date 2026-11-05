@@ -134,7 +134,8 @@ void installCopiedUpdate();
 bool selfUpdating();
 /// The version installCopiedUpdate is installing ("0.1.0.610"), empty when it is not: the Library says so.
 std::string selfUpdateVersion();
-/// Megler: the Android files of older builds in the shared folder (<shared>\android\<version>, some 170 MB each) that no
+/// Megler: the Android files of older builds in the shared folder (<shared>\android\<version>, on desktop Windows
+/// <version>-<ABI>, some 170 MB each) that no
 /// package in `installed` (the Device Portal's whole list) is of any more -- after Update All, every older build's. Slow:
 /// off the UI thread.
 void removeUnusedAndroidRoots(const std::vector<InstalledApp>& installed);
