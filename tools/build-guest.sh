@@ -63,7 +63,9 @@ case "$ABI" in
     ;;
   arm64-v8a|x86_64|x86)
     case "$ABI" in
-      arm64-v8a) TARGET=(--target=aarch64-linux-android29); TLS_IE=(-ftls-model=initial-exec) ;;
+      # (Atomics inline, as an NDK build has them: clang's default calls __aarch64_ldadd4_acq_rel and its kin, which an
+      # NDK build links in from compiler-rt and which -nostdlib leaves an import that no library provides.)
+      arm64-v8a) TARGET=(--target=aarch64-linux-android29 -mno-outline-atomics); TLS_IE=(-ftls-model=initial-exec) ;;
       x86_64) TARGET=(--target=x86_64-linux-android29); TLS_IE=(-ftls-model=initial-exec -mno-tls-direct-seg-refs) ;;
       x86) TARGET=(--target=i686-linux-android29); TLS_IE=(-ftls-model=initial-exec -mno-tls-direct-seg-refs) ;;
     esac
