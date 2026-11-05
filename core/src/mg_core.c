@@ -75,6 +75,29 @@ const char *megler_data_dir(void);
 /* core/src/crt/mg_crt_setjmp.c: the core's own, of the processor's convention (docs/DESKTOP.md). */
 int mg_setjmp(mg_addr *jb) __attribute__((returns_twice));
 MG_NORETURN void mg_longjmp(mg_addr *jb, int value);
+#if MG_ARCH_X86
+/* compiler-rt's, which the core is linked with: x86's 64-bit division, which its libc gives guest code (libgcc's names). */
+long long __divdi3(long long a, long long b);
+long long __moddi3(long long a, long long b);
+unsigned long long __udivdi3(unsigned long long a, unsigned long long b);
+unsigned long long __umoddi3(unsigned long long a, unsigned long long b);
+#endif
+
+/*
+ * What bionic gives guest code that is the processor's own code here, as 32-bit ARM's assembly stubs give it there
+ * (arm/mg_stubs.c): setjmp and longjmp, which save and restore the registers the convention has the callee keep (the
+ * core's own, which fit in bionic's jmp_buf of each processor; sigsetjmp's mask is not kept, as on ARM); and on x86 the
+ * 64-bit division libgcc gave Android's libc. Without setjmp a guest's call of it went to the stub of a missing import,
+ * which returned, and its function's frame was then torn ("stack corruption detected").
+ */
+static const mg_sym g_own_code[] = {
+    MG_WRAP("setjmp", mg_setjmp), MG_WRAP("_setjmp", mg_setjmp), MG_WRAP("sigsetjmp", mg_setjmp),
+    MG_WRAP("longjmp", mg_longjmp), MG_WRAP("_longjmp", mg_longjmp), MG_WRAP("siglongjmp", mg_longjmp),
+#if MG_ARCH_X86
+    MG_WRAP("__divdi3", __divdi3), MG_WRAP("__moddi3", __moddi3), MG_WRAP("__udivdi3", __udivdi3), MG_WRAP("__umoddi3", __umoddi3),
+#endif
+    MG_END
+};
 #endif
 
 /* The fault's registers as a report says them, in the processor's own names. */
@@ -476,6 +499,7 @@ bool mg_core_init(void)
         g_can_run = page && mg_mem_protect(page, MG_PAGE, MG_PROT_RX);
         if (page) mg_mem_release(page, MG_PAGE);
         if (!g_can_run) mg_err("core: executable memory was refused -- is the codeGeneration capability granted?");
+        mg_bionic_register(g_own_code);
     }
 #endif
     mg_fault_set_handler(on_fault);

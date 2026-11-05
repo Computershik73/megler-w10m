@@ -272,6 +272,14 @@ typedef struct g_tls_index {
 } g_tls_index;
 
 static void *g_tls_get_addr(const g_tls_index *ti) { return mg_tls_get_addr((u32)ti->module, (mg_addr)ti->offset); }
+#if MG_ARCH_X86
+/*
+ * x86's global-dynamic thread-local variables go through ___tls_get_addr (three underscores), which takes its tls_index in
+ * %eax (regparm(1)), not on the stack: GNU's i386 TLS ABI, which Android's x86 follows. Without it such a variable read
+ * as NULL (the guest tests' t_user_tls_len).
+ */
+static __attribute__((regparm(1))) void *g_tls_get_addr_x86(const g_tls_index *ti) { return g_tls_get_addr(ti); }
+#endif
 
 static int g_target_sdk(void) { return 28; }
 static void g_set_target_sdk(int v) { (void)v; }
@@ -310,6 +318,9 @@ const mg_sym mg_tab_dl[] = {
     MG_WRAP("dl_unwind_find_exidx", g_find_exidx),
     MG_WRAP("__gnu_Unwind_Find_exidx", g_find_exidx),
     MG_WRAP("__tls_get_addr", g_tls_get_addr),
+#if MG_ARCH_X86
+    MG_WRAP("___tls_get_addr", g_tls_get_addr_x86),
+#endif
     MG_WRAP("android_get_application_target_sdk_version", g_target_sdk),
     MG_WRAP("android_set_application_target_sdk_version", g_set_target_sdk),
     MG_WRAP("android_get_device_api_level", mg_sdk_level),
