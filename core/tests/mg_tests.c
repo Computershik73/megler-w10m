@@ -2951,7 +2951,8 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(void), "t_tls_get")(), 100);
     FN(lib, void (*)(int), "t_tls_set")(555);
     CHECK_INT(FN(lib, int (*)(void), "t_tls_get")(), 555);
-    CHECK(*FN(lib, int *(*)(void), "t_tls_addr")() == 555);
+    counter = FN(lib, int *(*)(void), "t_tls_addr")();
+    CHECK(counter && *counter == 555);
     FN(lib, void (*)(int), "t_tls_set")(100);
     CHECK_INT(FN(lib, int (*)(int, int), "t_threads")(8, 2000), 16000);
     CHECK_INT(FN(lib, int (*)(void), "t_tls_app_slot")(), 0);
@@ -3136,7 +3137,10 @@ static void test_guest(const char *libdir, const char *scratch)
 #endif
         CHECK_INT(FN(dep, int (*)(int, int), "d_add_twice")(1, 2), 5);
         CHECK_INT(FN(dep, int (*)(void), "d_bump")(), 6);
-        CHECK_INT(*FN(basic, int *(*)(void), "t_counter_ptr")(), 6);
+        {
+            int *counter = FN(basic, int *(*)(void), "t_counter_ptr")();
+            CHECK(counter && *counter == 6);
+        }
         CHECK_INT(FN(dep, int (*)(void), "d_hello_len")(), 16);
         CHECK(near(mg_gd(FN(dep, gdouble (*)(gdouble, gfloat), "d_fmul")(mg_gdb(2.0), mg_gfb(3.0f))), 7.0));
         CHECK_INT(FN(dep, int (*)(void), "d_value")(), 0x1234);
