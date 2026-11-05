@@ -794,6 +794,30 @@ static void monitor_count_wait(mg_jobj *o, u32 owner, u64 ns, mg_dvm_thread *sel
     if (ns > s->max_ns) s->max_ns = ns;
 }
 
+void mg_dvm_thread_label(const mg_dvm_thread *t, char *out, size_t n)
+{
+    const mg_dvm_class *cls;
+    snprintf(out, n, "thread %u", (unsigned)t->id);
+    for (cls = t->peer ? mg_dvm_class_of(t->peer) : NULL; cls; cls = cls->super) {
+        int i;
+        for (i = 0; i < cls->nifields; ++i) {
+            const mg_dvm_field *field = &cls->ifields[i];
+            if (!strcmp(field->name, "name") && !strcmp(field->type, "Ljava/lang/String;")) {
+                const mg_jobj *name = mg_dvm_slots(t->peer)[field->slot].l;
+                if (name && name->kind == MG_J_STRING && n > 3) {
+                    size_t j, len = (size_t)name->u.str.len16;
+                    if (len > n - 3) len = n - 3;
+                    out[0] = '"';
+                    for (j = 0; j < len; ++j) out[1 + j] = name->u.str.u16[j] >= 32 && name->u.str.u16[j] < 127 ? (char)name->u.str.u16[j] : '?';
+                    out[1 + len] = '"';
+                    out[2 + len] = 0;
+                }
+                return;
+            }
+        }
+    }
+}
+
 typedef struct monitor_sample {
     u32 thread, owner, object;
     u64 waiting_ns;

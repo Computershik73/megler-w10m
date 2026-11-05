@@ -957,31 +957,6 @@ static void note_maker(mg_dvm_thread *t, void *user)
     k->bytes[i] = made;
 }
 
-/* A thread's name, its java.lang.Thread's (ASCII; another character a ?), or its number. */
-static void maker_name(const mg_dvm_thread *t, char *out, size_t n)
-{
-    const mg_dvm_class *cls;
-    snprintf(out, n, "thread %u", (unsigned)t->id);
-    for (cls = t->peer ? mg_dvm_class_of(t->peer) : NULL; cls; cls = cls->super) {
-        int i;
-        for (i = 0; i < cls->nifields; ++i) {
-            const mg_dvm_field *field = &cls->ifields[i];
-            if (!strcmp(field->name, "name") && !strcmp(field->type, "Ljava/lang/String;")) {
-                const mg_jobj *name = mg_dvm_slots(t->peer)[field->slot].l;
-                if (name && name->kind == MG_J_STRING && n > 3) {
-                    size_t j, len = (size_t)name->u.str.len16;
-                    if (len > n - 3) len = n - 3;
-                    out[0] = '"';
-                    for (j = 0; j < len; ++j) out[1 + j] = name->u.str.u16[j] >= 32 && name->u.str.u16[j] < 127 ? (char)name->u.str.u16[j] : '?';
-                    out[1 + len] = '"';
-                    out[2 + len] = 0;
-                }
-                return;
-            }
-        }
-    }
-}
-
 static void say_makers(char *out, size_t n)
 {
     makers k;
@@ -992,7 +967,7 @@ static void say_makers(char *out, size_t n)
     mg_dvm_threads_each(note_maker, &k);
     for (i = 0; i < MAKERS && k.t[i] && at + 60 < n; i++) {
         char name[48];
-        maker_name(k.t[i], name, sizeof(name));
+        mg_dvm_thread_label(k.t[i], name, sizeof(name));
         at += (size_t)snprintf(out + at, n - at, "%s%s %.1f MB", i ? ", " : "", name, (double)k.bytes[i] / 1048576.0);
     }
     if (at && at + 30 < n) snprintf(out + at, n - at, " (of %.1f MB)", (double)k.all / 1048576.0);

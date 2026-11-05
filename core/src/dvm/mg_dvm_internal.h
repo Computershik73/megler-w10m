@@ -628,6 +628,8 @@ void mg_dvm_stacks_trace_start(void);
    to enter a monitor (mg_dvm_object.c); true when said. False when the wait is its looper's, for its next message: then
    `idle_on` is the queue it waits on. From the main thread's sampler (mg_java.c, hot_main), never from the main thread. */
 bool mg_dvm_stuck_say(mg_dvm_thread *main_thread, double seconds, const void **idle_on);
+/* A thread as a report names it: its java.lang.Thread's name in quotes (ASCII; another character a ?), or "thread N". */
+void mg_dvm_thread_label(const mg_dvm_thread *t, char *out, size_t n);
 void mg_dvm_call_trace_add(const char *prefix);
 void mg_dvm_call_trace_within_add(const char *prefix);
 /* mg_dvm_class.c: whether a framework method is one of the signatures alone of megler-stubs.txt (mg_dvm_stubs_load). */
