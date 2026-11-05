@@ -116,6 +116,6 @@ void mg_tls_ready(mg_lib *lib);
 void **mg_tls_thread_pointer(void);
 void mg_tls_thread_exit(void);
 /* The address of a thread-local variable: the module number R_ARM_TLS_DTPMOD32 gave, and an offset in its block. */
-void *mg_tls_get_addr(u32 module, u32 offset);
+void *mg_tls_get_addr(u32 module, mg_addr offset);
 
 #endif

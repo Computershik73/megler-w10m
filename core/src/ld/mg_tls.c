@@ -36,17 +36,17 @@ static void init_lib_data(tls_block *b, const mg_lib *lib)
 
 bool mg_tls_register(mg_lib *lib)
 {
-    u32 align = lib->tls_align < 4 ? 4 : lib->tls_align, start;
+    mg_addr align = lib->tls_align < 4 ? 4 : lib->tls_align, start;
     mg_lock_acquire(&g_tls_lock);
     /* Offsets are from the thread pointer, so that is what has to be aligned. */
-    start = MG_ALIGN_UP(MG_TCB_SLOTS * (u32)sizeof(void *) + g_static_used, align);
+    start = MG_ALIGN_UP((mg_addr)(MG_TCB_SLOTS * sizeof(void *) + g_static_used), align);
     if (start + lib->tls_memsz > MG_TCB_SLOTS * sizeof(void *) + MG_TLS_STATIC_MAX || g_ntls_libs >= MG_COUNT(g_tls_libs) || align > 64) {
         mg_lock_release(&g_tls_lock);
         lib->has_tls = false;
         return false;
     }
     lib->tls_offset = start;
-    g_static_used = start + lib->tls_memsz - MG_TCB_SLOTS * (u32)sizeof(void *);
+    g_static_used = (u32)(start + lib->tls_memsz - MG_TCB_SLOTS * sizeof(void *));
     g_tls_libs[g_ntls_libs++] = lib;
     lib->tls_module = g_ntls_libs;
     mg_lock_release(&g_tls_lock);
@@ -69,6 +69,24 @@ void mg_tls_ready(mg_lib *lib)
     mg_lock_release(&g_tls_lock);
 }
 
+/*
+ * The stack guard, bionic's slot 5, which code of x86_64, x86 and ARM64 reads at every function with an array on its
+ * stack, from the thread pointer (32-bit ARM's code reads the global __stack_chk_guard instead). One value for the
+ * process, as bionic's, given to every thread as it first runs guest code: in its block, and in the host's own slot where
+ * the patched reads find it (mg_guest_guard_set, x86/mg_patch_x86.c).
+ */
+static mg_addr stack_guard(void)
+{
+    static volatile mg_addr guard;
+    if (!guard) {
+        mg_addr g = 0;
+        mg_random(&g, sizeof(g));
+        /* (A zero byte at the bottom, as bionic's has, which ends a string overrun before it reaches the rest.) */
+        guard = (g & ~(mg_addr)0xff) | 0x100;
+    }
+    return guard;
+}
+
 void **mg_tls_thread_pointer(void)
 {
     void **tp = (void **)mg_guest_tp_get();
@@ -80,6 +98,8 @@ void **mg_tls_thread_pointer(void)
     b = (tls_block *)mg_alloc(sizeof(*b));
     /* bionic's slot 0 is the thread pointer itself; the others are filled in by the pthread shim as it needs them. */
     b->tcb[0] = b->tcb;
+    b->tcb[5] = (void *)stack_guard();
+    mg_guest_guard_set(stack_guard());
     mg_lock_acquire(&g_tls_lock);
     for (i = 0; i < g_ntls_libs; i++) init_lib_data(b, g_tls_libs[i]);
     b->next = g_blocks;
@@ -106,7 +126,7 @@ void mg_tls_thread_exit(void)
 }
 
 /* The address of a thread-local variable: module as R_ARM_TLS_DTPMOD32 gave it, offset within that module's block. */
-void *mg_tls_get_addr(u32 module, u32 offset)
+void *mg_tls_get_addr(u32 module, mg_addr offset)
 {
     void **tp = mg_tls_thread_pointer();
     if (!module || module > g_ntls_libs) return NULL;

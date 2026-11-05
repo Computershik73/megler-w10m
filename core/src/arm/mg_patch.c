@@ -39,6 +39,9 @@
 #include "../host/mg_host.h"
 #include "../ld/mg_ld_internal.h"
 
+/* (32-bit ARM's alone: x86/mg_patch_x86.c is the x86 processors'.) */
+#if MG_ARCH_ARM32
+
 /* ---------------------------------------------------------------- encoders */
 
 /* Thumb-2 B.W (encoding T4): 16 MB either way. `from` is where the instruction is, `to` a Thumb address without its low bit. */
@@ -508,3 +511,5 @@ mg_addr mg_patch_unresolved_stub(mg_lib *lib, const char *name)
     return 0;
 #endif
 }
+
+#endif /* MG_ARCH_ARM32 */
