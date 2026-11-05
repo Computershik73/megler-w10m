@@ -153,6 +153,22 @@ a fault's and a stopped thread's registers are each processor's; a guest
 thread is interrupted where it runs (what a signal does) by its context, the
 x64 one below the 128 bytes System V code may keep under its stack pointer.
 
+Memory an app gives back with madvise is decommitted, to be committed again
+at its first touch (`bionic/mg_libc_mem.c`). A goroutine's stack is a piece
+of Go's heap, whose free pages Go's scavenger gives back so and soon hands
+out again as a stack: the goroutine then touches such a page first itself,
+its stack pointer on it, and Windows lays a fault's records right below the
+stack pointer -- on that page, which it cannot write; the process ended before
+any handler ran. Go says nothing when it uses a page again, and
+`GODEBUG=harddecommit`, which would have it map them first, never reaches a
+library of Go's on Android: its runtime starts with an argv of "gojni" and no
+environment. So madvise made by number from a library of Go's (its build ID
+note, `mg_ld_lib_is_go`; the call's place, `mg_bionic_syscall_site`) commits
+the pages again at once -- zero, their memory the system's, their commit kept
+-- while everyone else's (Chromium's PartitionAlloc, V8) are decommitted as
+before. The tests' POSIX host takes its faults on a stack of their own
+(sigaltstack), which Windows has no counterpart of.
+
 ### Where the two sides meet on x86
 
 Android's x86 ABI aligns a 64-bit field at 4 bytes, MSVC's x86 at 8:
@@ -184,7 +200,7 @@ not defined, and the new files compile to nothing.
 On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
 
 - `tools/build-desktop.sh x64 tests`, the core in `megler-core.so` loaded into
-  a Windows x64 process, with the x86_64 guest test libraries: 5321 checks, 3
+  a Windows x64 process, with the x86_64 guest test libraries: 5331 checks, 3
   failed -- the three float checks of the GLES stand-in (below); now and then
   one or two more under load, the herd test's timing check. ELF64 with
   RELA, APS2 and RELR relocations, IFUNC, 90 patched thread-pointer and canary
@@ -203,7 +219,11 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   the access does not write and the red zone as they were; and a thread
   interrupted two hundred times in the middle of them by a handler that makes
   them too (with the patcher's word not kept across an interruption, its
-  registers came back changed: t_fs_access 32, on Linux as well).
+  registers came back changed: t_fs_access 32, on Linux as well). And a
+  goroutine's stack in a heap of a library of Go's (libt_go.so), given back
+  by number as Go's runtime gives it back and run on again with a 64 KB frame
+  written bottom first: committed still, zero, not a page taken back (without
+  that, the process ended there).
 - `tools/build-desktop.sh x86 tests` (through WOW64): 5322 checks, 0 failed
   (now and then 1 under load: a timing check of a few milliseconds).
 - A library of Go's: a c-shared one for android/amd64 that Go 1.27.1 made
@@ -213,19 +233,24 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   on a thread of its own (runtime.main ran, tls_g 16, the vDSO taken), and its
   exports called from the loading thread (`MG_TESTS_LOAD_CALL`: cgocallback,
   needm) -- 1000 goroutines allocating and sending, the collector run, the
-  sums right. Some runs end in a goroutine's first write to a page of its
-  stack that madvise gave back (What is left).
+  sums right: 20 of 20 runs on both, and 20 of 20 of five such rounds with
+  `debug.FreeOSMemory()` between them, which put each round's goroutines on
+  pages given back. Before, none of 10 of those ended well on either: the
+  process ended at a goroutine's first write, `movb $0,0x17(%rsp)` after
+  `sub $0x10038,%rsp` (a second-chance access violation on Windows, exit 139
+  on Linux).
 - `tools/build-tests.sh win` (MSVC's x64 build of the tests): 5023 checks, 0
   failed, and 5087 on Android's libcore, 0 failed; `tools/build-tests.sh
-  linux64` (x86_64 on WSL's Linux): 5315 checks, 3 failed (the float checks
+  linux64` (x86_64 on WSL's Linux): 5329 checks, 3 failed (the float checks
   above), an app's own `syscall` and accesses of `%fs` through a register led
-  out there too; `tools/abi-check.py`: 0
-  differences on all four ABIs; the phone's
+  out there too, and a goroutine's first touch of its own stack's page that
+  libc's madvise gave back repaired on the handler's stack of its own;
+  `tools/abi-check.py`: 0 differences on all four ABIs; the phone's
   core compiles for ARM32 with MSVC, 148 of 148, and its tests under qemu-arm
-  (`tools/build-tests.sh arm`) give 5429 checks, 0 failed, as before.
+  (`tools/build-tests.sh arm`) give 5443 checks, 0 failed.
 - `tools/build-tests.sh arm64`: ARM64's core and tests as one static program
-  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5306
-  checks, 3 failed, and 5390 checks, 3 failed on Android's libcore with
+  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5320
+  checks, 3 failed, and 5404 checks, 3 failed on Android's libcore with
   arm64-v8a's natives (the GLES stand-in's float checks, as on x64). ELF64,
   the patched TPIDR_EL0 reads (through the island there, bionic's own thread
   pointer being the host's), TLS descriptors, svc traps, AAPCS64's native
@@ -254,17 +279,12 @@ access denied"); the next start is not.
    the NDK's GLES headers; the float adapters of `ndk/mg_egl.c` are 32-bit
    ARM's (softfp) and pass x86_64's and ARM64's floats wrong (the three
    checks above).
-2. **Go on x86_64**: its g, its system calls and its clock are the core's
-   now, and a library's exports run (above). But a goroutine's stack is part
-   of Go's heap, whose pages its scavenger gives back with madvise, which the
-   core decommits (`bionic/mg_libc_mem.c`) to commit them again at the first
-   touch: when the goroutine whose stack it is touches such a page first, the
-   fault's own frame -- the kernel's signal frame on Linux, Windows' exception
-   dispatch -- is due on that same page, the core's handler never runs, and
-   the process ends (some runs of 1000 goroutines with 64 KB frames). And a
-   fault in Go's code is not given to its handler off 32-bit ARM
-   (`mg_signal_fault`): a nil dereference ends the process instead of
-   panicking.
+2. **Go on x86_64**: its g, its system calls, its clock and its goroutines'
+   stacks on pages its scavenger gave back are the core's now, and a
+   library's exports run (above). A fault in Go's code is not given to its
+   handler off 32-bit ARM (`mg_signal_fault`): a nil dereference ends the
+   process instead of panicking. What Go's heap gives back stays committed:
+   the commit limit counts that heap at its largest.
 3. **`int 0x80` in x86 code of an app's own** is counted, not rewritten (x86
    keeps nothing below its stack pointer: a trap would do there).
 4. **WebView**: Android's System WebView for x86_64 and arm64 (the phone's is
