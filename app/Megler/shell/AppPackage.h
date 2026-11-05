@@ -9,8 +9,10 @@
 // it) in that folder too, where every such package finds it; the app's private files stay in its own LocalState.
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace megler::app {
@@ -136,6 +138,12 @@ void removeUnusedAndroidRoots(const std::vector<InstalledApp>& installed);
 /// update is made from the installed one (Library, ui/SeparateApps.cpp).
 std::wstring installedApk(const std::string& fullName);
 bool canRead(const std::wstring& apk);
+/// An installed app's split APKs (app\app.apk.splits beside installedApk), by name, with their sizes, as its package's block
+/// map (AppxBlockMap.xml, in its install folder) lists them; none for an app in one APK. A package installed as the Store
+/// installs an app (installWithPackageManager) lets another package open its files by their paths, but shows it none of its
+/// folders: their attributes and lists are refused (a Lumia 650, 640: TikTok Lite's splits were not seen, though its own
+/// package started with them).
+std::vector<std::pair<std::wstring, uint64_t>> installedSplits(const std::string& fullName);
 
 /// Megler's own storage (/sdcard, and each app's part of it) is the shared folder's, as the apps' own packages' is: true
 /// once shareMeglersStorage has copied Megler's of before there (LocalState\storage-in-shared.txt). From the start after.

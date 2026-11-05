@@ -254,14 +254,19 @@ void run(Job& job, int number, int total) {
             gInstalled.push_back({made.identity, appPackage::meglerVersion(), made.fullName});
             gGeneration++;
         }
-        // Megler keeps no copy of the APK when it can read the installed one in its place; else it keeps (or makes) one.
+        // Megler keeps no copy of the APK when it can read the installed one in its place, with its splits; else it keeps (or
+        // makes) one. A package installed as the Store installs an app shows Megler its files but none of its folders
+        // (appPackage::installedSplits), and the core reads an app's splits as a folder: an app in several APKs keeps its copy.
         const std::wstring installed = appPackage::installedApk(made.fullName);
-        if (appPackage::canRead(installed) && files::size(installed) == apkSize) {
+        const bool splitsSeen = entry.splitsDir.empty() || files::exists(Library::splitsDirFor(installed));
+        if (appPackage::canRead(installed) && files::size(installed) == apkSize && splitsSeen) {
             Library::instance().adopt(job.id, made.fullName);
             setStep(package, "Installed. Megler reads its APK in the installed app and keeps no copy.");
         } else {
-            shellLog::write("separate apps: " + narrow(installed) + " can't be read by Megler (or is not as large as " + narrow(apkPath) +
-                            "): Megler keeps a copy of the APK");
+            shellLog::write("separate apps: " + narrow(installed) +
+                            (splitsSeen ? " can't be read by Megler (or is not as large as " + narrow(apkPath) + ")"
+                                        : "'s splits are in a folder its package does not show Megler") +
+                            ": Megler keeps a copy of the APK");
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
             setStep(package, "Installed." + (kept.empty() ? std::string() : " Megler could not keep a copy of the APK for updates: " + kept));
         }
