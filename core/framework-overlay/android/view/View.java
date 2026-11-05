@@ -365,6 +365,16 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public Object getTag() { return mTag; }
     public void setTag(Object t) { mTag = t; }
     public Object getTag(int key) { return mKeyedTags == null ? null : mKeyedTags.get(key); }
+    /** trace-views (megler.DecorView): the classes of the view's tags, " tags=" and each, or nothing; a fragment's view carries its fragment. */
+    public String meglerTagsText() {
+        StringBuilder b = new StringBuilder();
+        if (mTag != null) b.append(' ').append(mTag.getClass().getName());
+        for (int i = 0; mKeyedTags != null && i < mKeyedTags.size(); i++) {
+            Object t = mKeyedTags.valueAt(i);
+            b.append(' ').append(Integer.toHexString(mKeyedTags.keyAt(i))).append('=').append(t != null ? t.getClass().getName() : "null");
+        }
+        return b.length() == 0 ? "" : " tags=" + b.toString().trim();
+    }
     public void setTag(int key, Object t) { if (mKeyedTags == null) mKeyedTags = new SparseArray<>(); mKeyedTags.put(key, t); }
     public final <T extends View> T findViewById(int id) { return id == NO_ID ? null : findViewTraversal(id); }
     public final <T extends View> T requireViewById(int id) { T v = findViewById(id); if (v == null) throw new IllegalArgumentException("ID does not reference a View inside this View"); return v; }
