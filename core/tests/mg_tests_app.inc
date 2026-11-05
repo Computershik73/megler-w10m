@@ -4,25 +4,26 @@
  * native-test.apk through megler_run: its manifest read, its library loaded,
  * the NativeActivity driver playing Android's part, the app's own thread
  * running a looper, bringing up EGL and drawing. OpenGL ES is a stand-in here
- * that records what it was called with -- with real floats, as ANGLE would
- * be, so the adapters that carry floats over from the guest are checked too.
+ * that records what it was called with -- with real floats and ANGLE's calling
+ * convention (MG_GLAPI: Windows' on x86_64 and x86), as ANGLE would be, so the
+ * adapters that carry the guest's calls over to it are checked too.
  */
 static struct {
     float clear[4], color[4], time, line_width;
     int viewport[4], clears, draws, draw_count, shaders, surface_type, pbuffer[2], current;
 } M;
 
-static void *m_GetPlatformDisplay(unsigned platform, void *native, const int *attribs) { (void)platform; (void)native; (void)attribs; return (void *)(mg_addr)0xD15; }
-static unsigned m_Initialize(void *d, int *major, int *minor)
+static MG_GLAPI void *m_GetPlatformDisplay(unsigned platform, void *native, const int *attribs) { (void)platform; (void)native; (void)attribs; return (void *)(mg_addr)0xD15; }
+static MG_GLAPI unsigned m_Initialize(void *d, int *major, int *minor)
 {
     (void)d;
     if (major) *major = 1;
     if (minor) *minor = 5;
     return 1;
 }
-static int m_GetError(void) { return 0x3000; }
-static const char *m_QueryString(void *d, int name) { (void)d; (void)name; return "stand-in"; }
-static unsigned m_ChooseConfig(void *d, const int *attribs, void **configs, int size, int *num)
+static MG_GLAPI int m_GetError(void) { return 0x3000; }
+static MG_GLAPI const char *m_QueryString(void *d, int name) { (void)d; (void)name; return "stand-in"; }
+static MG_GLAPI unsigned m_ChooseConfig(void *d, const int *attribs, void **configs, int size, int *num)
 {
     int i;
     (void)d;
@@ -32,13 +33,13 @@ static unsigned m_ChooseConfig(void *d, const int *attribs, void **configs, int 
     *num = 1;
     return 1;
 }
-static unsigned m_GetConfigAttrib(void *d, void *c, int attrib, int *value)
+static MG_GLAPI unsigned m_GetConfigAttrib(void *d, void *c, int attrib, int *value)
 {
     (void)d; (void)c;
     *value = attrib == 0x3033 ? 1 : 8;
     return 1;
 }
-static void *m_CreatePbufferSurface(void *d, void *c, const int *attribs)
+static MG_GLAPI void *m_CreatePbufferSurface(void *d, void *c, const int *attribs)
 {
     int i;
     (void)d; (void)c;
@@ -48,34 +49,34 @@ static void *m_CreatePbufferSurface(void *d, void *c, const int *attribs)
     }
     return (void *)(mg_addr)0x5F;
 }
-static void *m_CreateContext(void *d, void *c, void *share, const int *attribs) { (void)d; (void)c; (void)share; (void)attribs; return (void *)(mg_addr)0xC7; }
-static unsigned m_MakeCurrent(void *d, void *draw, void *read, void *ctx) { (void)d; (void)draw; (void)read; M.current = ctx != NULL; return 1; }
-static unsigned m_Destroy(void *d, void *what) { (void)d; (void)what; return 1; }
-static void m_Viewport(int x, int y, int w, int h) { M.viewport[0] = x; M.viewport[1] = y; M.viewport[2] = w; M.viewport[3] = h; }
-static void m_ClearColor(float r, float g, float b, float a) { M.clear[0] = r; M.clear[1] = g; M.clear[2] = b; M.clear[3] = a; }
-static void m_Clear(unsigned mask) { (void)mask; M.clears++; }
-static unsigned m_CreateShader(unsigned type) { (void)type; return (unsigned)++M.shaders; }
-static void m_ShaderSource(unsigned s, int n, const char *const *text, const int *len) { (void)s; (void)n; (void)text; (void)len; }
-static void m_OneUnsigned(unsigned v) { (void)v; }
-static unsigned m_CreateProgram(void) { return 77; }
-static void m_AttachShader(unsigned p, unsigned s) { (void)p; (void)s; }
-static int m_GetUniformLocation(unsigned p, const char *name) { (void)p; return name[2] == 'c' ? 1 : 2; }
-static int m_GetAttribLocation(unsigned p, const char *name) { (void)p; (void)name; return 0; }
-static void m_Uniform1f(int loc, float v) { if (loc == 2) M.time = v; }
-static void m_Uniform4f(int loc, float a, float b, float c, float d)
+static MG_GLAPI void *m_CreateContext(void *d, void *c, void *share, const int *attribs) { (void)d; (void)c; (void)share; (void)attribs; return (void *)(mg_addr)0xC7; }
+static MG_GLAPI unsigned m_MakeCurrent(void *d, void *draw, void *read, void *ctx) { (void)d; (void)draw; (void)read; M.current = ctx != NULL; return 1; }
+static MG_GLAPI unsigned m_Destroy(void *d, void *what) { (void)d; (void)what; return 1; }
+static MG_GLAPI void m_Viewport(int x, int y, int w, int h) { M.viewport[0] = x; M.viewport[1] = y; M.viewport[2] = w; M.viewport[3] = h; }
+static MG_GLAPI void m_ClearColor(float r, float g, float b, float a) { M.clear[0] = r; M.clear[1] = g; M.clear[2] = b; M.clear[3] = a; }
+static MG_GLAPI void m_Clear(unsigned mask) { (void)mask; M.clears++; }
+static MG_GLAPI unsigned m_CreateShader(unsigned type) { (void)type; return (unsigned)++M.shaders; }
+static MG_GLAPI void m_ShaderSource(unsigned s, int n, const char *const *text, const int *len) { (void)s; (void)n; (void)text; (void)len; }
+static MG_GLAPI void m_OneUnsigned(unsigned v) { (void)v; }
+static MG_GLAPI unsigned m_CreateProgram(void) { return 77; }
+static MG_GLAPI void m_AttachShader(unsigned p, unsigned s) { (void)p; (void)s; }
+static MG_GLAPI int m_GetUniformLocation(unsigned p, const char *name) { (void)p; return name[2] == 'c' ? 1 : 2; }
+static MG_GLAPI int m_GetAttribLocation(unsigned p, const char *name) { (void)p; (void)name; return 0; }
+static MG_GLAPI void m_Uniform1f(int loc, float v) { if (loc == 2) M.time = v; }
+static MG_GLAPI void m_Uniform4f(int loc, float a, float b, float c, float d)
 {
     if (loc == 1) { M.color[0] = a; M.color[1] = b; M.color[2] = c; M.color[3] = d; }
 }
-static void m_LineWidth(float w) { M.line_width = w; }
-static void m_VertexAttribPointer(unsigned i, int size, unsigned type, unsigned char norm, int stride, const void *p) { (void)i; (void)size; (void)type; (void)norm; (void)stride; (void)p; }
-static void m_DrawArrays(unsigned mode, int first, int count) { (void)mode; (void)first; M.draws++; M.draw_count = count; }
-static const unsigned char *m_GetString(unsigned name) { (void)name; return (const unsigned char *)"OpenGL ES 2.0 (stand-in)"; }
-static void m_Flush(void) { }
+static MG_GLAPI void m_LineWidth(float w) { M.line_width = w; }
+static MG_GLAPI void m_VertexAttribPointer(unsigned i, int size, unsigned type, unsigned char norm, int stride, const void *p) { (void)i; (void)size; (void)type; (void)norm; (void)stride; (void)p; }
+static MG_GLAPI void m_DrawArrays(unsigned mode, int first, int count) { (void)mode; (void)first; M.draws++; M.draw_count = count; }
+static MG_GLAPI const unsigned char *m_GetString(unsigned name) { (void)name; return (const unsigned char *)"OpenGL ES 2.0 (stand-in)"; }
+static MG_GLAPI void m_Flush(void) { }
 /* What only --run needs: an app that asks whether its shaders compiled is told that they did. */
-static void m_GetStatus(unsigned object, unsigned name, int *value) { (void)object; (void)name; if (value) *value = 1; }
-static void m_GetInfoLog(unsigned object, int size, int *length, char *text) { (void)object; if (length) *length = 0; if (text && size > 0) text[0] = 0; }
-static void m_BindAttribLocation(unsigned p, unsigned index, const char *name) { (void)p; (void)index; (void)name; }
-static unsigned m_GetGLError(void) { return 0; }
+static MG_GLAPI void m_GetStatus(unsigned object, unsigned name, int *value) { (void)object; (void)name; if (value) *value = 1; }
+static MG_GLAPI void m_GetInfoLog(unsigned object, int size, int *length, char *text) { (void)object; if (length) *length = 0; if (text && size > 0) text[0] = 0; }
+static MG_GLAPI void m_BindAttribLocation(unsigned p, unsigned index, const char *name) { (void)p; (void)index; (void)name; }
+static MG_GLAPI unsigned m_GetGLError(void) { return 0; }
 
 static void *stand_in(const char *name)
 {
