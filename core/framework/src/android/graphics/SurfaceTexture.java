@@ -116,6 +116,10 @@ public class SurfaceTexture {
             if (!mLocked) releaseCanvases();
             mLock.notifyAll();
         }
+        // The shell's copy of its frames on the graphics processor let go too (a video's picture is a few MB): an app that
+        // releases its texture itself, its TextureView still there, made a new one for each video, and kept them all.
+        int gpu = meglerGpuIdGiven();
+        if (gpu != 0) megler.Gfx.textureGone(gpu);
     }
     private void releaseCanvases() {
         if (mFrontCanvas != null) mFrontCanvas.meglerRelease();
