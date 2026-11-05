@@ -71,7 +71,7 @@ public class ApplicationInfo extends PackageItemInfo implements android.os.Parce
             a.nativeLibraryDir = a.dataDir + "/lib";
             /* the processor its native libraries are for, as the package manager records it at install; none without any */
             String[] libs = new java.io.File(a.nativeLibraryDir).list();
-            a.primaryCpuAbi = libs != null && libs.length > 0 ? "armeabi-v7a" : null;
+            a.primaryCpuAbi = libs != null && libs.length > 0 ? megler.Abis.PRIMARY : null;
             a.className = megler.Manifest.applicationClass;
             a.name = megler.Manifest.applicationClass;
             a.theme = megler.Manifest.appTheme; a.labelRes = megler.Manifest.appLabel; a.icon = megler.Manifest.appIcon;

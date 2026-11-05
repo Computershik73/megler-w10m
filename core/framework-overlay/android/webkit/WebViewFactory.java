@@ -75,7 +75,7 @@ public final class WebViewFactory {
     /** Megler: the WebView package, where Android's own image has it: the Android root is mounted at /system. */
     static final String WEBVIEW_APK = "/system/app/webview/webview.apk";
     /** Megler: the processor's library folder in an APK whose native libraries are used from it, not extracted. */
-    static final String WEBVIEW_ABI = "armeabi-v7a";
+    static final String WEBVIEW_ABI = megler.Abis.PRIMARY;
 
     // Cache the factory both for efficiency, and ensure any one process gets all webviews from the
     // same provider.

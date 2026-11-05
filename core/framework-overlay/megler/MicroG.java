@@ -177,7 +177,7 @@ public final class MicroG {
         // its executor's thread ended on a NullPointerException.
         a.credentialProtectedDataDir = a.dataDir;
         a.deviceProtectedDataDir = new File(a.dataDir, "device_protected").getPath();
-        a.nativeLibraryDir = APK + "!/lib/armeabi-v7a";
+        a.nativeLibraryDir = APK + "!/lib/" + Abis.PRIMARY;
         a.enabled = true; a.uid = GooglePackages.sharedUid();
         a.flags = ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_INSTALLED | ApplicationInfo.FLAG_HAS_CODE;
         a.metaData = new Bundle(); info.applicationInfo = a;

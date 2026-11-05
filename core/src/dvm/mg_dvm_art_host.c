@@ -89,7 +89,7 @@ N(Linux_uname)
     a[1].l = mg_dvm_new_string("localhost");
     a[2].l = mg_dvm_new_string("4.4.0");
     a[3].l = mg_dvm_new_string("#1");
-    a[4].l = mg_dvm_new_string("armv7l");
+    a[4].l = mg_dvm_new_string(MG_GUEST_MACHINE);
     c->ret.l = mg_dvm_new("android/system/StructUtsname", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", a);
 }
 

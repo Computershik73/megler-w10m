@@ -251,7 +251,7 @@ static void system_getProperty(mg_jcall *c)
 {
     const char *key = mg_jni_string(c->args[0].l);
     c->ret.l = NULL;
-    if (key && !strcmp(key, "os.arch")) c->ret.l = mg_jni_new_string("armv7l");
+    if (key && !strcmp(key, "os.arch")) c->ret.l = mg_jni_new_string(MG_GUEST_MACHINE);
     else if (key && !strcmp(key, "java.io.tmpdir")) c->ret.l = mg_jni_new_string("/data/local/tmp");
     else if (key && !strcmp(key, "line.separator")) c->ret.l = mg_jni_new_string("\n");
 }
@@ -521,7 +521,7 @@ static void android_constants(void)
         { "android/os/Build", "HOST", "megler" },
         { "android/os/Build", "USER", "megler" },
         { "android/os/Build", "SERIAL", "unknown" },
-        { "android/os/Build", "CPU_ABI2", "armeabi" },
+        { "android/os/Build", "CPU_ABI2", MG_APK_ABI2 },
         { "android/os/Build", "FINGERPRINT", "megler/megler/megler:9/PQ3A.190801.002/5670241:user/release-keys" },
         { "android/os/Build$VERSION", "INCREMENTAL", "5670241" },
         { "android/os/Build$VERSION", "CODENAME", "REL" },
@@ -722,7 +722,7 @@ mg_jobj *mg_jni_android_setup(const char *activity_class, const char *package, c
     v.l = permanent(mg_jni_new_string(mg_sysprop("ro.product.device"))); mg_jni_set_static("android/os/Build", "DEVICE", 'L', v);
     v.l = permanent(mg_jni_new_string(mg_sysprop("ro.product.name"))); mg_jni_set_static("android/os/Build", "PRODUCT", 'L', v);
     v.l = permanent(mg_jni_new_string(mg_sysprop("ro.hardware"))); mg_jni_set_static("android/os/Build", "HARDWARE", 'L', v);
-    v.l = permanent(mg_jni_new_string("armeabi-v7a")); mg_jni_set_static("android/os/Build", "CPU_ABI", 'L', v);
+    v.l = permanent(mg_jni_new_string(MG_APK_ABI)); mg_jni_set_static("android/os/Build", "CPU_ABI", 'L', v);
     android_constants();
     return g_activity;
 }

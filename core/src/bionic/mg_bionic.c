@@ -1438,11 +1438,20 @@ static void default_props(void)
         { "ro.product.device", "sailfish" },
         { "ro.product.board", "sailfish" },
         { "ro.product.manufacturer", "Google" },
+        /* The processor's: 32-bit ARM's on the phone, the desktop's own elsewhere, which alone it runs (MG_APK_ABI_ARM). */
+#if MG_APK_ABI_ARM
         { "ro.product.cpu.abi", "armeabi-v7a" },
         { "ro.product.cpu.abi2", "armeabi" },
         { "ro.product.cpu.abilist", "armeabi-v7a,armeabi" },
         { "ro.product.cpu.abilist32", "armeabi-v7a,armeabi" },
         { "ro.product.cpu.abilist64", "" },
+#else
+        { "ro.product.cpu.abi", MG_GUEST_ABI },
+        { "ro.product.cpu.abi2", "" },
+        { "ro.product.cpu.abilist", MG_GUEST_ABI },
+        { "ro.product.cpu.abilist32", MG_GUEST_LP64 ? "" : MG_GUEST_ABI },
+        { "ro.product.cpu.abilist64", MG_GUEST_LP64 ? MG_GUEST_ABI : "" },
+#endif
         { "ro.hardware", "sailfish" },
         { "ro.board.platform", "msm8996" },
         { "ro.debuggable", "0" },
