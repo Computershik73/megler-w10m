@@ -1550,7 +1550,20 @@ const void *mg_ld_find_exidx(mg_addr pc, int *count)
 
 /* ------------------------------------------------------------- guest code */
 
-mg_addr mg_code_entry(mg_addr fn) { return fn; }
+/*
+ * Off 32-bit ARM, guest code reads its thread pointer straight from the slot the patched reads load it from (x86/, arm64/)
+ * -- ARM64's code its stack guard too, at TPIDR_EL0 + 0x28 in every function with an array on its stack -- and the slot is
+ * empty on a thread that has not been given its guest block: a Java thread calling its first native method, a host
+ * thread with a callback. So the block is made here, before such a thread's first call into guest code. (32-bit ARM's
+ * code reads its guard from a global; its threads are as they were.)
+ */
+mg_addr mg_code_entry(mg_addr fn)
+{
+#if !MG_ARCH_ARM32 && MG_GUEST_CODE
+    if (!mg_guest_tp_get()) mg_tls_thread_pointer();
+#endif
+    return fn;
+}
 
 /*
  * A rewritten PLT entry is one ARM instruction, `ldr pc, [pc, #-4]`, and the
