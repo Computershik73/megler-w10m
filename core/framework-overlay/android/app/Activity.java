@@ -453,6 +453,22 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public boolean shouldShowRequestPermissionRationale(String p) { return false; }
     public SharedPreferences getPreferences(int mode) { return getSharedPreferences(getLocalClassName(), mode); }
     public void runOnUiThread(Runnable r) { if (Looper.myLooper() == Looper.getMainLooper()) r.run(); else mHandler.post(r); }
+    /*
+     * A query through the activity, as Android's managedQuery (deprecated since Android 3.0, still there): the content
+     * resolver's query. Android also deactivated and requeried such a cursor with the activity's stops and starts; here it is
+     * the app's to close, which code that still uses managedQuery reads as a plain cursor. It was a stub giving null: ColorNote
+     * 1.6.6 counts its notes from it as its list opens, and ended there (a NullPointerException on Cursor.getCount).
+     */
+    public final android.database.Cursor managedQuery(android.net.Uri uri, String[] projection, String selection, String sortOrder) {
+        return managedQuery(uri, projection, selection, null, sortOrder);
+    }
+    public final android.database.Cursor managedQuery(android.net.Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
+        android.database.Cursor c = getContentResolver().query(uri, projection, selection, selectionArgs, sortOrder);
+        if (c != null) startManagingCursor(c);
+        return c;
+    }
+    public void startManagingCursor(android.database.Cursor c) {}
+    public void stopManagingCursor(android.database.Cursor c) {}
     public final Cursor_ managedQueryMegler() { return null; }
     interface Cursor_ {}
     public FragmentManager getFragmentManager() { if (mFragments == null) mFragments = new FragmentManager(this); return mFragments; }
@@ -642,8 +658,6 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public boolean isHandoffFullTaskRecreationAllowed() { return false; }
             public boolean isOverlayWithDecorCaptionEnabled() { return (megler.Fill.get(meglerFill, "OverlayWithDecorCaptionEnabled") instanceof Boolean ? (Boolean) megler.Fill.get(meglerFill, "OverlayWithDecorCaptionEnabled") : false); }
             public boolean isVisibleForAutofill() { return false; }
-            public android.database.Cursor managedQuery(android.net.Uri p0, java.lang.String[] p1, java.lang.String p2, java.lang.String p3) { return null; }
-            public android.database.Cursor managedQuery(android.net.Uri p0, java.lang.String[] p1, java.lang.String p2, java.lang.String[] p3, java.lang.String p4) { return null; }
             public void onActivityResult(int p0, int p1, android.content.Intent p2, android.app.ComponentCaller p3) {}
             public void onBackgroundVisibleBehindChanged(boolean p0) {}
             public void onCreateNavigateUpTaskStack(android.app.TaskStackBuilder p0) {}
@@ -709,10 +723,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public void startIntentSenderFromChild(android.app.Activity p0, android.content.IntentSender p1, int p2, android.content.Intent p3, int p4, int p5, int p6) {}
             public void startIntentSenderFromChild(android.app.Activity p0, android.content.IntentSender p1, int p2, android.content.Intent p3, int p4, int p5, int p6, android.os.Bundle p7) {}
             public void startLocalVoiceInteraction(android.os.Bundle p0) {}
-            public void startManagingCursor(android.database.Cursor p0) {}
             public boolean startNextMatchingActivity(android.content.Intent p0, android.os.Bundle p1) { return false; }
             public void stopLocalVoiceInteraction() {}
-            public void stopManagingCursor(android.database.Cursor p0) {}
             public void unregisterRemoteAnimations() {}
             public void updateUiTranslationState(int p0, android.view.translation.TranslationSpec p1, android.view.translation.TranslationSpec p2, java.util.List p3, android.view.translation.UiTranslationSpec p4) {}
             // ---- end of generated members
