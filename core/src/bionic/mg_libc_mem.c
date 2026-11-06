@@ -56,6 +56,15 @@ u64 mg_g_malloc_bytes(void) { return (u32)mg_atomic_add(&g_malloced, 0); }
  * (c0000374 in a calloc of the core's), and the guard found its libqrcode.so writing a byte into a block of malloc(0),
  * which had no byte to write then (USABLE above).
  */
+/* Where the function this is written in returns to: called by a guest, an address in the guest's code (as mg_egl.c's). */
+#if defined(_MSC_VER)
+#include <intrin.h>
+#pragma intrinsic(_ReturnAddress)
+#define CALLER() _ReturnAddress()
+#else
+#define CALLER() __builtin_return_address(0)
+#endif
+
 #define GUARD 64
 static volatile i32 g_guard = -1;
 static void guard_check(void *p, const char *at);
@@ -311,7 +320,7 @@ void *mg_g_malloc(size_t n)
         mg_set_errno(GE_NOMEM);
         return NULL;
     }
-    return plain_block(n, false, (mg_addr)__builtin_return_address(0));
+    return plain_block(n, false, (mg_addr)CALLER());
 }
 
 void *mg_g_calloc(size_t n, size_t m)
@@ -321,7 +330,7 @@ void *mg_g_calloc(size_t n, size_t m)
         mg_set_errno(GE_NOMEM);
         return NULL;
     }
-    return plain_block((size_t)total, true, (mg_addr)__builtin_return_address(0));
+    return plain_block((size_t)total, true, (mg_addr)CALLER());
 }
 
 void mg_g_free(void *p)
@@ -330,7 +339,7 @@ void mg_g_free(void *p)
     if (!p) return;
     size = HDR(p)->size;
     if (guarding()) {
-        if (guarded_free(p, (mg_addr)__builtin_return_address(0))) mg_atomic_add(&g_malloced, -(i32)size);
+        if (guarded_free(p, (mg_addr)CALLER())) mg_atomic_add(&g_malloced, -(i32)size);
         return;
     }
     mg_atomic_add(&g_malloced, -(i32)size);
@@ -340,7 +349,7 @@ void mg_g_free(void *p)
 static void *g_memalign(size_t align, size_t n)
 {
     if (align <= G_ALIGN) return mg_g_malloc(n);
-    return aligned_block(align, n, (mg_addr)__builtin_return_address(0));
+    return aligned_block(align, n, (mg_addr)CALLER());
 }
 
 void *mg_g_realloc(void *p, size_t n)
@@ -369,11 +378,11 @@ void *mg_g_realloc(void *p, size_t n)
     }
     /* An aligned block: the host cannot grow it in place and keep the alignment (nor a block's guard). */
     old = HDR(p)->size;
-    q = plain_block(n, false, (mg_addr)__builtin_return_address(0));
+    q = plain_block(n, false, (mg_addr)CALLER());
     if (!q) return NULL;
     memcpy(q, p, USABLE(old) < USABLE(n) ? USABLE(old) : USABLE(n));
     if (guarding()) {
-        if (guarded_free(p, (mg_addr)__builtin_return_address(0))) mg_atomic_add(&g_malloced, -(i32)old);
+        if (guarded_free(p, (mg_addr)CALLER())) mg_atomic_add(&g_malloced, -(i32)old);
     } else {
         mg_g_free(p);
     }
