@@ -194,8 +194,22 @@ public:
         ID3D11Texture2D* (*target)(void* user, int width, int height) = nullptr;
         /// What was drawn into it is to be shown now.
         void (*show)(void* user) = nullptr;
+        /// The swap chain's back buffer itself, width x height and the same
+        /// way up as the target, for the picture to be drawn straight into
+        /// with no copy of the whole of it at every frame. Null: not now (the
+        /// first picture, another size, the flag gfx-window-copy), and the
+        /// target is used. `age`: how many pictures in a row went straight
+        /// into the buffers before this one, at most 3; at 3 the buffer has
+        /// the picture three back, which the parts changed since bring up to
+        /// date, and below 3 it gets the whole picture.
+        ID3D11Texture2D* (*back)(void* user, int width, int height, int* age) = nullptr;
+        /// What was drawn into the back buffer is to be shown now.
+        void (*showBack)(void* user) = nullptr;
     };
     void setWindow(const Window& window);
+    /// Any thread: the back buffer is let go of (nothing of it kept, for the
+    /// window host to resize the swap chain's buffers, which wants that).
+    void releaseWindowBack();
 
     /// The Direct3D device canvases are drawn on: null while they are drawn
     /// in memory, before the first drawing, and once the device is lost. A

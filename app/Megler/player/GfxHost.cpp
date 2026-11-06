@@ -343,6 +343,11 @@ struct State {
     ID3D11Texture2D* windowTexture = nullptr;
     Ref<ID2D1Bitmap1> windowBitmap;
     uint64_t windowCanvas = 0; // the serial of the canvas whose picture was shown last
+    // ... and the one over the swap chain's back buffer, where the picture is drawn straight in (GfxHost::Window::back).
+    ID3D11Texture2D* backTexture = nullptr;
+    Ref<ID2D1Bitmap1> backBitmap;
+    /// The last picture went straight into the back buffer: the target texture does not have it (any thread).
+    std::atomic<bool> windowDirect{false};
     std::atomic<uint64_t> canvasSerial{1};
     std::atomic<uint64_t> glFrames{0}, glWaitTicks{0}; // OpenGL ES frames taken (gl_frame), and the waits for their copies
     Ref<ID2D1Factory> d2d;
@@ -3522,18 +3527,19 @@ void touched(void*, void* canvas) {
     cv->base.memAhead = cv->base.bounds();
 }
 
-/// A target bitmap over the window host's texture, made again when it gives
-/// another texture (`fresh`: it did, and what that holds is not known).
-/// (The bitmap holds the texture, so a new one is never at the address of
-/// the old while the old is kept.)
-Ref<ID2D1Bitmap1> windowBitmapFor(ID3D11Texture2D* texture, bool* fresh) {
+/// A target bitmap over a texture of the window host's, kept in `bitmap` for
+/// the texture it was made for (`kept`), under windowMutex, and made again
+/// when it gives another texture (`fresh`: it did, and what that holds is
+/// not known). (The bitmap holds the texture, so a new one is never at the
+/// address of the old while the old is kept.)
+Ref<ID2D1Bitmap1> targetBitmapFor(ID3D11Texture2D* texture, bool* fresh, Ref<ID2D1Bitmap1>& bitmap, ID3D11Texture2D*& kept) {
     State& s = G();
     std::lock_guard<std::mutex> lock(s.windowMutex);
     *fresh = false;
-    if (texture == s.windowTexture && s.windowBitmap) return s.windowBitmap;
+    if (texture == kept && bitmap) return bitmap;
     *fresh = true;
-    s.windowBitmap.reset();
-    s.windowTexture = nullptr;
+    bitmap.reset();
+    kept = nullptr;
     Ref<IDXGISurface> surface;
     HRESULT hr = texture->QueryInterface(__uuidof(IDXGISurface), reinterpret_cast<void**>(surface.put()));
     if (SUCCEEDED(hr))
@@ -3541,14 +3547,32 @@ Ref<ID2D1Bitmap1> windowBitmapFor(ID3D11Texture2D* texture, bool* fresh) {
             surface.get(),
             D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS(D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW),
                                     D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f),
-            s.windowBitmap.put());
+            bitmap.put());
     if (FAILED(hr)) {
         gpuFailed("ID2D1DeviceContext::CreateBitmapFromDxgiSurface", hr);
-        s.windowBitmap.reset();
-        return s.windowBitmap;
+        bitmap.reset();
+        return bitmap;
     }
-    s.windowTexture = texture;
-    return s.windowBitmap;
+    kept = texture;
+    return bitmap;
+}
+
+/// The one over the window host's target texture.
+Ref<ID2D1Bitmap1> windowBitmapFor(ID3D11Texture2D* texture, bool* fresh) {
+    State& s = G();
+    return targetBitmapFor(texture, fresh, s.windowBitmap, s.windowTexture);
+}
+
+/// The parts the last two pictures that went straight into the swap chain's buffers changed, newest first (present's).
+Box gDirectParts[2];
+
+/// The bitmap over the swap chain's back buffer let go of (no context keeps it as its target between pictures, present):
+/// resizing the buffers wants every reference to them gone.
+void releaseBack() {
+    State& s = G();
+    std::lock_guard<std::mutex> lock(s.windowMutex);
+    s.backBitmap.reset();
+    s.backTexture = nullptr;
 }
 
 // MARK: The window composed of OpenGL ES frames and the views (megler_gfx_host.gl_frame, gl_place)
@@ -3733,6 +3757,8 @@ bool showComposed(Box part, bool fresh) {
     bool newTexture = false;
     Ref<ID2D1Bitmap1> onto = windowBitmapFor(texture, &newTexture);
     if (!onto) return false;
+    // (Pictures that went straight into the swap chain's buffers are not in the target: it is composed whole.)
+    if (s.windowDirect.exchange(false)) newTexture = true;
     if (fresh || newTexture) {
         part.l = part.t = 0;
         part.r = c.width;
@@ -4161,10 +4187,25 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
                 return;
             }
         }
-        ID3D11Texture2D* texture = window.target(window.user, cv->memoryW, cv->memoryH);
-        if (!texture) return;
+        // Straight into the swap chain's back buffer, where the window host has one of this size (WindowHost::backTarget): no
+        // copy of the whole picture from the target into it at every frame. On the Lumia 650 a frame of Spotify's spent
+        // 22 to 28 ms ending its drawing, with the screen off too (657).
+        int age = 0;
+        ID3D11Texture2D* back = window.back && window.showBack ? window.back(window.user, cv->memoryW, cv->memoryH, &age) : nullptr;
+        // (None now: nothing of the buffers is kept, for the swap chain's buffers may be resized next.)
+        if (!back) releaseBack();
+        const bool direct = back != nullptr;
         bool fresh = false;
-        Ref<ID2D1Bitmap1> onto = windowBitmapFor(texture, &fresh);
+        Ref<ID2D1Bitmap1> onto;
+        if (direct) {
+            onto = targetBitmapFor(back, &fresh, s.backBitmap, s.backTexture);
+        } else {
+            ID3D11Texture2D* texture = window.target(window.user, cv->memoryW, cv->memoryH);
+            if (!texture) return;
+            onto = windowBitmapFor(texture, &fresh);
+            // (Pictures that went straight into the swap chain's buffers are not in the target: it gets the whole picture.)
+            if (s.windowDirect.exchange(false)) fresh = true;
+        }
         if (!onto || gpuGone()) return;
         // A texture not drawn into before (the first picture, another size, a window made again), or another canvas than the
         // one shown last (a new bitmap for the screen), gets the whole picture.
@@ -4174,6 +4215,20 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
             s.windowCanvas = cv->serial;
         }
         if (fresh) part = base.bounds();
+        Box draw = part;
+        if (direct) {
+            // What the buffer lacks. The swap chain's three buffers take turns, so this one has the picture three back once
+            // three in a row have gone straight in (age): the parts the two since changed are drawn with this one's. Before
+            // that, or after anything else was shown, the whole picture.
+            if (age < 3 || fresh || !s.windowDirect.load()) {
+                draw = base.bounds();
+            } else {
+                draw.include(gDirectParts[0]);
+                draw.include(gDirectParts[1]);
+            }
+            gDirectParts[1] = gDirectParts[0];
+            gDirectParts[0] = part;
+        }
         GpuContext& g = *cv->gc;
         // The copy joins the frame's own drawing (a context's target can change while it draws), which is ended once, here.
         if (g.owner) g.owner->detach();
@@ -4183,11 +4238,11 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
             g.dc->BeginDraw();
             g.inDraw = true;
         }
-        if (!part.empty()) {
+        if (!draw.empty()) {
             // Row y of the picture is row height - 1 - y of the texture; with nearest sampling every pixel lands whole.
             g.dc->SetTransform(Matrix3x2F(1, 0, 0, -1, 0, float(cv->memoryH)));
             g.dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
-            const D2D1_RECT_F rect = D2D1::RectF(float(part.l), float(part.t), float(part.r), float(part.b));
+            const D2D1_RECT_F rect = D2D1::RectF(float(draw.l), float(draw.t), float(draw.r), float(draw.b));
             g.dc->DrawBitmap(base.gpu.get(), &rect, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, &rect, nullptr);
             g.dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
         }
@@ -4198,11 +4253,22 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
         s.endTicks += took;
         s.endsBy[State::endPresent]++;
         s.endTicksBy[State::endPresent] += took;
+        if (direct) {
+            // No context keeps the buffer as its target between pictures: resizing the swap chain's buffers wants every
+            // reference to them gone.
+            g.dc->SetTarget(nullptr);
+            g.target = nullptr;
+        }
         if (FAILED(hr)) {
             gpuFailed("ID2D1DeviceContext::EndDraw", hr);
             return;
         }
-        window.show(window.user);
+        if (direct) {
+            s.windowDirect = true;
+            window.showBack(window.user);
+        } else {
+            window.show(window.user);
+        }
         base.window = true;
         ++s.shown;
         s.showTicks += ticksNow() - from;
@@ -6852,7 +6918,11 @@ void GfxHost::setWindow(const Window& window) {
     s.window = window;
     s.windowBitmap.reset();
     s.windowTexture = nullptr;
+    s.backBitmap.reset();
+    s.backTexture = nullptr;
 }
+
+void GfxHost::releaseWindowBack() { releaseBack(); }
 
 ID3D11Device* GfxHost::device() {
     State& s = G();
