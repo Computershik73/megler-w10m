@@ -153,7 +153,30 @@ A native method is called with the processor's convention (`jni/mg_jni.c`,
 System V's six and eight registers, AAPCS64's eight and eight, x86's stack);
 a fault's and a stopped thread's registers are each processor's; a guest
 thread is interrupted where it runs (what a signal does) by its context, the
-x64 one below the 128 bytes System V code may keep under its stack pointer.
+x64 one below the 128 bytes System V code may keep under its stack pointer --
+but not when Windows says it stopped the thread in the kernel
+(`CONTEXT_SERVICE_ACTIVE`): inside NtContinue, on its way back from the
+interruption before, its pc is guest code's already and the registers kept
+for a caller are not yet its own. Sent on from there, an x64 thread went back
+with rbx, rsi and rdi of the code that called NtContinue (x86 code had its
+own); it is told again a millisecond later instead. The collector stops a
+thread with SuspendThread too (`mg_thread_suspend`) and takes its registers,
+and its stack from the stack pointer up, for all it holds -- a JNI reference
+that native code keeps in a register is the object's address. Found inside
+NtContinue, an x64 thread was given to it with the pc and stack pointer it
+goes back to and rbx, rsi and rdi of NtContinue's caller, its own lying in
+the context NtContinue was given, below that stack pointer. So a stop that
+finds `CONTEXT_SERVICE_ACTIVE` at a pc that is not just past a `syscall` (or
+`int 0x2e`) -- where a thread in an ordinary system call is found, with its
+own registers -- lets the thread go and stops it again 10 us later; x86's
+registers there are WOW64's copy, its own, and are taken as they are. While
+the guest's handler runs, the registers of the code it interrupted are kept
+in the thread's record alone (`mg_thread.was`, on the host's heap), and the
+landing and the handler use those their callers do not keep -- rax, rcx,
+rdx and r8-r11 on x64, eax, ecx and edx on x86 -- so a stop of a thread in
+an interruption gives them too (`mg_thread_regs.was`), and the collector
+takes them as it takes the thread's own. On Linux the kernel's frame of the
+signal holds them, on the thread's stack above the handler's.
 
 Memory an app gives back with madvise is decommitted, to be committed again
 at its first touch (`bionic/mg_libc_mem.c`). A goroutine's stack is a piece
@@ -259,7 +282,7 @@ app's like any other since `MG_ALIGN_UP` keeps a 64-bit size's upper half.
 On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
 
 - `tools/build-desktop.sh x64 tests`, the core in `megler-core.so` loaded into
-  a Windows x64 process, with the x86_64 guest test libraries: 5337 checks, 0
+  a Windows x64 process, with the x86_64 guest test libraries: 5371 checks, 0
   failed (now and then one under load: the herd test's timing check of a few
   milliseconds). The GL tests go through the adapters to stand-ins of ANGLE's
   convention, floats and all. ELF64 with RELA, APS2 and RELR relocations,
@@ -279,13 +302,41 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   were; and a thread interrupted two hundred times in the middle of them by a
   handler that makes them too (with the patcher's word not kept across an
   interruption, its registers came back changed: t_fs_access 32, on Linux as
-  well). And a goroutine's stack in a heap of a library of Go's (libt_go.so),
-  given back by number as Go's runtime gives it back and run on again with a
-  64 KB frame written bottom first: committed still, zero, not a page taken
-  back (without that, the process ended there).
-- `tools/build-desktop.sh x86 tests` (through WOW64): 5328 checks, 0 failed
+  well; with a thread sent on from inside NtContinue, on Windows alone: 37 of
+  7200 calls of `mg_tests --load` with 8 processes at once, and 0 of 7200
+  since it is not). And a goroutine's stack in a heap of a library of Go's
+  (libt_go.so), given back by number as Go's runtime gives it back and run on
+  again with a 64 KB frame written bottom first: committed still, zero, not a
+  page taken back (without that, the process ended there). And a thread that
+  some 10,000 signals a run keep sending back through NtContinue, stopped
+  20000 times as the collector stops one (test_stop_signalled): its own
+  registers at every stop in its loop -- 0 of 190,544 in twelve runs, where
+  the same build with the look at its context switched off gave 980 of
+  189,534 rbx, rsi and rdi of NtContinue's caller. And a thread stopped 200
+  times as the collector stops one while the handler of a signal sent to it
+  waits, spinning in guest code or in sigsuspend (test_stop_in_handler):
+  every register the signal found it with among what the collector takes,
+  at every stop -- 0 of 3200 stops short in four runs, where the same build
+  with the interrupted code's registers left out of the stop gave 3200 of
+  3200 without rax, rcx, rdx and r8-r11 (rbx, rbp, rsi, rdi and r12-r15 were
+  on the stack, saved by the functions the handler runs in).
+- `tools/build-desktop.sh x86 tests` (through WOW64): 5362 checks, 0 failed
   (now and then 1 under load: the same timing check), the GL tests through
-  `__stdcall` stand-ins.
+  `__stdcall` stand-ins; the signalled thread stopped as the collector stops
+  one had its own registers with no look at its context (0 of some 26,000
+  stops in its loop); a thread stopped while its signal's handler waits, 0
+  of 3200 stops short, where 3200 of 3200 lacked eax, ecx and edx with the
+  interrupted code's registers left out.
+- The registers a function keeps for its caller, kept across signals on
+  every ABI (t_signal_regs: a thread spinning with a mark in each, Android's
+  and Windows' both, sent 300 signals, each some microseconds after its
+  handler ran for the one before, so that the next finds it on its way back
+  from the landing): none came back changed on x64, x86, Linux x86_64, ARM
+  (Thumb-2 and ARM mode, qemu-arm) and ARM64 (qemu-aarch64) -- 5339, 5330,
+  5337, 5451 and 5328 checks with it. With x64's check of a thread stopped in
+  the kernel skipped, 344 of 2000 `mg_tests --load` calls with 8 processes at
+  once had rbx 0 and rsi and rdi addresses on the thread's stack, from 442
+  threads sent on from inside NtContinue; 0 of 2000 with it, 492 left there.
 - A library of Go's: a c-shared one for android/amd64 that Go 1.27.1 made
   here (with the NDK's clang for cgo; not in the repository), loaded by
   `mg_tests --load` on x64 and on WSL's Linux: its 468 accesses of `%fs`
@@ -301,17 +352,19 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   second-chance access violation on Windows, exit 139 on Linux).
 - `tools/build-tests.sh win` (MSVC's x64 build of the tests): 5023 checks, 0
   failed, and 5087 on Android's libcore, 0 failed; `tools/build-tests.sh
-  linux64` (x86_64 on WSL's Linux; before the GL adapters were merged): 5329
-  checks, 3 failed (the GLES stand-in's float checks the adapters mend), an
-  app's own `syscall` and accesses of `%fs` through a register led out there
-  too, and a goroutine's first touch of its own stack's page that libc's
-  madvise gave back repaired on the handler's stack of its own;
-  `tools/abi-check.py`: 0 differences on all four ABIs; the phone's core
-  compiles for ARM32 with MSVC, and its tests under qemu-arm
-  (`tools/build-tests.sh arm`) give 5449 checks, 0 failed.
+  linux64` (x86_64 on WSL's Linux): 5369 checks, 0 failed, and 5453 on
+  Android's libcore, 0 failed, the registers a signal found a thread with on
+  its stack while the handler waits, an app's own `syscall` and accesses of
+  `%fs` through a register led out there too, and a goroutine's first touch
+  of its own stack's page that libc's madvise gave back repaired on the
+  handler's stack of its own (its bundle tests, which expect 32-bit ARM's
+  split kept, fail there where the test app's bundles are built: an x86_64
+  build keeps the processor's own); `tools/abi-check.py`: 0 differences on all
+  four ABIs; the phone's core compiles for ARM32 with MSVC, and its tests
+  under qemu-arm (`tools/build-tests.sh arm`) give 5451 checks, 0 failed.
 - `tools/build-tests.sh arm64`: ARM64's core and tests as one static program
-  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5326
-  checks, 0 failed, and 5410 checks, 0 failed on Android's libcore with
+  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5328
+  checks, 0 failed, and 5412 checks, 0 failed on Android's libcore with
   arm64-v8a's natives. ELF64, the patched TPIDR_EL0 reads (through the island
   there, bionic's own thread pointer being the host's), TLS descriptors, svc
   traps, AAPCS64's native calls, faults. (A run of the tests once hung in

@@ -237,7 +237,14 @@ void run(Job& job, int number, int total) {
         }
         if (!result.ok) {
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
-            setStep(package, result.said + " The package is made: Windows's installer can install it (below)." +
+            // CERT_E_UNTRUSTEDROOT: Windows trusts no certificate of Megler's making unless it is installed for the machine, which
+            // an app may not do. On a phone the Device Portal installs it with the first package; desktop Windows has no portal.
+            const bool untrusted = result.said.find("0x800b0109") != std::string::npos;
+            setStep(package, result.said +
+                                 (untrusted ? " Windows does not trust the certificate Megler signs apps' packages with: open the certificate "
+                                              "(below), choose Install Certificate, Local Machine, Place all certificates in the following "
+                                              "store, Trusted People, and install the app again."
+                                            : " The package is made: Windows's installer can install it (below).") +
                                  (kept.empty() ? std::string() : " (" + kept + ")"));
             return;
         }
