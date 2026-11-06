@@ -670,11 +670,15 @@ int t_loader_dl(void)
 /*
  * A frame far bigger than a page, written at its far end first. Nothing in
  * Android code feels its way down a stack, and a host that hands a stack out
- * page by page (Windows) must have handed all of it out beforehand.
+ * page by page (Windows) must have handed all of it out beforehand. (The
+ * array's address is given to an empty asm, which makes the array the frame's,
+ * whole: without it clang -O2 splits it into the three bytes written, a frame
+ * of a few bytes -- none on x86_64, where they sit below the stack pointer.)
  */
 __attribute__((noinline)) static int big_frame(int seed)
 {
     volatile unsigned char buf[300 * 1024];
+    __asm__ volatile("" : : "r"((const void *)buf) : "memory");
     buf[0] = (unsigned char)seed;
     buf[sizeof(buf) - 1] = (unsigned char)(seed + 1);
     buf[150000] = 7;
