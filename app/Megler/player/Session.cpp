@@ -316,7 +316,19 @@ void touch(int phase, int pointer, float x, float y) {
     megler_touch(phase, pointer, x, y);
 }
 
+/*
+ * A Back within a second of the window's coming back is taken for the one that brought it back, and not given to the app. On a
+ * phone, Back on the Start screen returns to the app last shown, and the press reached that app too: Spotify on a Lumia 650
+ * was given Back 0.7 s after it was resumed so, finished its main activity, and Megler said it had ended (653).
+ */
+static std::atomic<unsigned long long> gShownAt{0};
+
 void backKey() {
+    const unsigned long long shown = gShownAt.load();
+    if (shown && GetTickCount64() - shown < 1000) {
+        shellLog::write("session: a Back as the window came back, the one that brought it back: not the app's");
+        return;
+    }
     megler_key(androidKeyBack, true);
     megler_key(androidKeyBack, false);
 }
@@ -345,6 +357,7 @@ void setSuspended(bool suspended) {
 void setVisible(bool visible) {
     {
         std::lock_guard<std::mutex> lock(gMutex);
+        if (visible && !gVisible) gShownAt.store(GetTickCount64());
         gVisible = visible;
     }
     tell();
