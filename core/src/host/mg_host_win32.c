@@ -662,6 +662,18 @@ static volatile LONG g_int_no_handle, g_int_busy, g_int_suspend_failed, g_int_ge
    and whether Windows would not be asked to say: "0 in the kernel at guest code" means something only with them. */
 static volatile LONG g_ctx_read, g_ctx_said, g_ctx_no_request;
 
+/*
+ * Whether an interruption asks Windows where it stopped the thread, and leaves one it stopped in the kernel
+ * (stopped_in_kernel, below): on x64 and x86, where that was proven (t_fs_access, t_signal_regs). Not on ARM32 or ARM64,
+ * where it was never tried on a device before the phone's first package with it (0.1.0.647), on which a Lumia 650 had
+ * most apps hang at their start: there an interruption reads a thread's registers as 0.1.0.645 did, and takes them.
+ */
+#if defined(_M_X64) || defined(_M_IX86)
+#define ASK_WHERE_STOPPED 1
+#else
+#define ASK_WHERE_STOPPED 0
+#endif
+
 void mg_thread_interrupt_report(char *out, size_t size)
 {
     snprintf(out, size,
@@ -670,7 +682,7 @@ void mg_thread_interrupt_report(char *out, size_t size)
              "was in the kernel%s",
              (long)g_int_redirected, (long)g_int_landed, (long)g_int_resumed, (long)g_int_elsewhere, (long)g_int_in_kernel, (long)g_int_busy,
              (long)g_int_no_handle, (long)g_int_suspend_failed, (long)g_int_get_failed, (long)g_int_set_failed, (long)g_int_error, (long)g_ctx_said,
-             (long)g_ctx_read, g_ctx_no_request ? " (GetThreadContext would not be asked to)" : "");
+             (long)g_ctx_read, !ASK_WHERE_STOPPED ? " (not asked on this processor)" : g_ctx_no_request ? " (GetThreadContext would not be asked to)" : "");
 }
 
 static void *scratch_word(void);
@@ -710,17 +722,17 @@ static mg_addr context_pc(const CONTEXT *c)
 
 /*
  * A stopped thread's registers (`what`: CONTEXT_FULL, or less), with what Windows says of where it stopped
- * (CONTEXT_EXCEPTION_REQUEST, below). A Windows that would not take the request is asked without it from then on.
+ * (CONTEXT_EXCEPTION_REQUEST, below) where it is asked (ASK_WHERE_STOPPED). A Windows that would not take the request is
+ * asked without it from then on.
  */
-static volatile LONG g_ctx_reports;
-
 static BOOL stopped_context(HANDLE h, CONTEXT *ctx, DWORD what)
 {
     BOOL ok;
+    bool ask = ASK_WHERE_STOPPED && !g_ctx_no_request;
     memset(ctx, 0, sizeof(*ctx));
-    ctx->ContextFlags = what | (g_ctx_no_request ? 0 : CONTEXT_EXCEPTION_REQUEST);
+    ctx->ContextFlags = what | (ask ? CONTEXT_EXCEPTION_REQUEST : 0);
     ok = GetThreadContext(h, ctx);
-    if (!ok && !g_ctx_no_request) {
+    if (!ok && ask) {
         memset(ctx, 0, sizeof(*ctx));
         ctx->ContextFlags = what;
         ok = GetThreadContext(h, ctx);
@@ -739,13 +751,22 @@ static BOOL stopped_context(HANDLE h, CONTEXT *ctx, DWORD what)
  * with them, a thread of t_fs_access spinning in guest code (core/tests/guest/t_basic.c) found rbx 0 and rsi and rdi two
  * addresses on its stack, once in some hundred calls -- each time an interruption had found it between the one before's
  * NtContinue and its return, and only then. Such a thread is left: the signals' pump tells it again a millisecond later
- * (bionic/mg_libc_misc.c).
+ * (bionic/mg_libc_misc.c). Never so where Windows is not asked (ASK_WHERE_STOPPED).
  */
+#if ASK_WHERE_STOPPED
+static volatile LONG g_ctx_reports;
+#endif
+
 static bool stopped_in_kernel(const CONTEXT *ctx)
 {
+#if !ASK_WHERE_STOPPED
+    (void)ctx;
+    return false;
+#else
     if (!(ctx->ContextFlags & CONTEXT_EXCEPTION_REPORTING)) return g_ctx_reports != 0;
     if (!g_ctx_reports) InterlockedExchange(&g_ctx_reports, 1);
     return (ctx->ContextFlags & (CONTEXT_SERVICE_ACTIVE | CONTEXT_EXCEPTION_ACTIVE)) != 0;
+#endif
 }
 
 bool mg_thread_interrupt(mg_thread *t)
