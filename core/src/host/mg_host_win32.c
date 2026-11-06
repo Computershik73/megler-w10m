@@ -655,16 +655,16 @@ WINBASEAPI BOOL WINAPI SetThreadContext(HANDLE hThread, const CONTEXT *lpContext
  * back; nothing here returns.
  */
 /* What became of each request, counted: nothing may be logged while another thread is stopped (it may hold the log's lock). */
-static volatile LONG g_int_no_handle, g_int_busy, g_int_suspend_failed, g_int_get_failed, g_int_elsewhere, g_int_set_failed, g_int_redirected,
-    g_int_landed, g_int_resumed, g_int_error;
+static volatile LONG g_int_no_handle, g_int_busy, g_int_suspend_failed, g_int_get_failed, g_int_elsewhere, g_int_in_kernel, g_int_set_failed,
+    g_int_redirected, g_int_landed, g_int_resumed, g_int_error;
 
 void mg_thread_interrupt_report(char *out, size_t size)
 {
     snprintf(out, size,
-             "%ld redirected, %ld landed, %ld resumed; %ld found the thread elsewhere, %ld while it was still in one; failures: %ld no handle, "
-             "%ld SuspendThread, %ld GetThreadContext, %ld SetThreadContext (last error %ld)",
-             (long)g_int_redirected, (long)g_int_landed, (long)g_int_resumed, (long)g_int_elsewhere, (long)g_int_busy, (long)g_int_no_handle,
-             (long)g_int_suspend_failed, (long)g_int_get_failed, (long)g_int_set_failed, (long)g_int_error);
+             "%ld redirected, %ld landed, %ld resumed; %ld found the thread elsewhere, %ld in the kernel at guest code, %ld while it was still in one; failures: "
+             "%ld no handle, %ld SuspendThread, %ld GetThreadContext, %ld SetThreadContext (last error %ld)",
+             (long)g_int_redirected, (long)g_int_landed, (long)g_int_resumed, (long)g_int_elsewhere, (long)g_int_in_kernel, (long)g_int_busy,
+             (long)g_int_no_handle, (long)g_int_suspend_failed, (long)g_int_get_failed, (long)g_int_set_failed, (long)g_int_error);
 }
 
 static void *scratch_word(void);
@@ -702,6 +702,44 @@ static mg_addr context_pc(const CONTEXT *c)
 #endif
 }
 
+/*
+ * A stopped thread's registers, with what Windows says of where it stopped (CONTEXT_EXCEPTION_REQUEST, below). A Windows
+ * that would not take the request is asked without it from then on.
+ */
+static volatile LONG g_ctx_no_request, g_ctx_reports;
+
+static BOOL stopped_context(HANDLE h, CONTEXT *ctx)
+{
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->ContextFlags = CONTEXT_FULL | (g_ctx_no_request ? 0 : CONTEXT_EXCEPTION_REQUEST);
+    if (GetThreadContext(h, ctx)) return TRUE;
+    if (g_ctx_no_request) return FALSE;
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->ContextFlags = CONTEXT_FULL;
+    if (!GetThreadContext(h, ctx)) return FALSE;
+    InterlockedExchange(&g_ctx_no_request, 1);
+    return TRUE;
+}
+
+/*
+ * Whether the thread stopped in the kernel, in the middle of a system call or of an exception's dispatch: Windows says so
+ * by CONTEXT_SERVICE_ACTIVE or CONTEXT_EXCEPTION_ACTIVE -- or, as .NET's runtime finds of x86 code on a 64-bit Windows and
+ * ARM32 code on ARM64's, by leaving out CONTEXT_EXCEPTION_REPORTING, which is taken so once another context has had it.
+ * Its pc may be one in guest code there: NtContinue, which puts a thread back after an interruption (the landing's
+ * exception) or a fault, writes it before it returns. Not so the registers a function keeps for its caller: what Windows
+ * gives of those on x64 is what the code that called NtContinue had in them. Sent to the landing from there, and put back
+ * with them, a thread of t_fs_access spinning in guest code (core/tests/guest/t_basic.c) found rbx 0 and rsi and rdi two
+ * addresses on its stack, once in some hundred calls -- each time an interruption had found it between the one before's
+ * NtContinue and its return, and only then. Such a thread is left: the signals' pump tells it again a millisecond later
+ * (bionic/mg_libc_misc.c).
+ */
+static bool stopped_in_kernel(const CONTEXT *ctx)
+{
+    if (!(ctx->ContextFlags & CONTEXT_EXCEPTION_REPORTING)) return g_ctx_reports != 0;
+    if (!g_ctx_reports) InterlockedExchange(&g_ctx_reports, 1);
+    return (ctx->ContextFlags & (CONTEXT_SERVICE_ACTIVE | CONTEXT_EXCEPTION_ACTIVE)) != 0;
+}
+
 bool mg_thread_interrupt(mg_thread *t)
 {
     CONTEXT ctx;
@@ -726,14 +764,15 @@ bool mg_thread_interrupt(mg_thread *t)
         self_give(t);
         return false;
     }
-    memset(&ctx, 0, sizeof(ctx));
-    ctx.ContextFlags = CONTEXT_FULL;
-    if (!GetThreadContext(h, &ctx)) {
+    if (!stopped_context(h, &ctx)) {
         InterlockedExchange(&g_int_error, (LONG)GetLastError());
         InterlockedIncrement(&g_int_get_failed);
     } else if (!g_interrupt_in_guest(context_pc(&ctx))) {
         InterlockedIncrement(&g_int_elsewhere);
+    } else if (stopped_in_kernel(&ctx)) {
+        InterlockedIncrement(&g_int_in_kernel);
     } else {
+        ctx.ContextFlags = CONTEXT_FULL;
         t->was = ctx;
         /*
          * Nothing is written to the thread's stack from here: what lies below its stack pointer may be its guard page, which
