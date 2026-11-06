@@ -439,6 +439,9 @@ static void test_init(void)
     /* constructors: the superclass's first */
     CHECK(call("t/Init", "makeB", "()Ljava/lang/Object;").l != NULL);
     CHECK_STR(taken(), "ab");
+    /* a constructor the class does not declare is its superclass's, as ART finds it (R8 takes out ones that only pass on) */
+    CHECK_INT(call("t/Init", "makeF", "()Z").z, 1);
+    CHECK_STR(taken(), "a");
     /* two classes that need each other: the second sees the first half-made */
     CHECK_INT(call("t/InitC", "c", "()I").i, 6);
     CHECK_STR(taken(), "C1D1D2C2");

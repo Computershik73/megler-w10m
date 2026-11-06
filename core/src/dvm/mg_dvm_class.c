@@ -1254,6 +1254,24 @@ static mg_dvm_method *boot_member(mg_dvm_class *c, const char *name, const char 
     return NULL;
 }
 
+/*
+ * A constructor a class does not declare, from its superclasses, as ART resolves an invoke-direct of one: R8 takes out a
+ * constructor that only hands its arguments on to its superclass's (an app of minSdk 21 or more), and its callers then
+ * call the class's <init> for the superclass's. Spotify's RxJava (FlowableOnBackpressureLatest) stopped at its start with
+ * NoSuchMethodError. Only for the code's own calls: reflection, JNI and the runtime's look for a class's own (find_method_interned).
+ */
+static mg_dvm_method *inherited_constructor(mg_dvm_class *c, const char *name, const char *sig)
+{
+    mg_dvm_class *k;
+    int i;
+    for (k = c->super; k; k = k->super)
+        for (i = 0; i < k->ndirect; i++) {
+            mg_dvm_method *m = &k->direct[i];
+            if (m->name == name && m->sig == sig && !(m->flags & DVM_ACC_STATIC)) return m;
+        }
+    return NULL;
+}
+
 mg_dvm_method *mg_dvm_resolve_method(mg_dvm_dex *d, u32 idx, int kind)
 {
     bool want_static = kind == DVM_INVOKE_STATIC;
@@ -1274,6 +1292,7 @@ mg_dvm_method *mg_dvm_resolve_method(mg_dvm_dex *d, u32 idx, int kind)
         sig = mg_dvm_dex_proto_sig(d, mg_dvm_rd16(mi + 2));
         m = find_method_interned(c, name, sig, want_static);
         if (!m && !want_static) m = nio_covariant(c, name, sig);
+        if (!m && kind == DVM_INVOKE_DIRECT && strcmp(name, "<init>") == 0) m = inherited_constructor(c, name, sig);
         if (!m && !find_method_interned(c, name, sig, !want_static)) {
             m = boot_member(c, name, sig, want_static);
             if (!m && mg_dvm_pending()) return NULL;
