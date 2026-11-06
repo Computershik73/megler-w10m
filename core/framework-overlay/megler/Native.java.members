@@ -35,6 +35,11 @@
      */
     public static native void frameMark(int phase, int redrawn);
     /**
+     * The app's main thread begins to run the app (megler.AppRunner.run, first): the Java driver's sampler watches it from now
+     * on, where its time goes and what it waits on (core/src/drivers/mg_java.c, hot_main), not only from its first frame.
+     */
+    public static native void mainStarted();
+    /**
      * The rectangle of the screen's bitmap that the next Gfx.present on this thread has changed, [left, right) x [top, bottom):
      * the rest is as it was in the picture presented before. Told to the shell where it can take it
      * (megler_window_host.present_pixels_part). Called by megler.ViewRoot.drawAll before it presents part of the screen.

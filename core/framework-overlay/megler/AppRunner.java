@@ -100,6 +100,8 @@ public final class AppRunner {
     }
 
     public static void run(String activityClass, String applicationClass) throws Exception {
+        // Watched from here, Application.onCreate and all: an app that stays on "starting" says in the log where its main thread is.
+        Native.mainStarted();
         android.webkit.MimeTypeMap.meglerInstallDefault();
         KeyStoreProvider.install();
         Looper.prepareMainLooper();

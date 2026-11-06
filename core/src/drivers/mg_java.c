@@ -533,6 +533,7 @@ N(Native_flag) { c->ret.z = mg_flag(text_of(c->args[0].l)); }
 /* askClearData(): this app's data cleared when it next starts (megler_ask_clear_data), for Android's app info screen. */
 N(Native_askClearData) { c->ret.z = megler_ask_clear_data(J.package); }
 static void Native_frameMark(mg_jcall *c);
+static void Native_mainStarted(mg_jcall *c);
 static void Native_presentRect(mg_jcall *c);
 static void Native_checkPartial(mg_jcall *c);
 
@@ -1199,6 +1200,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "threadNice", NULL, Native_threadNice },
     { "megler/Native", "uptimeNanos", NULL, Native_uptimeNanos },
     { "megler/Native", "frameMark", NULL, Native_frameMark },
+    { "megler/Native", "mainStarted", NULL, Native_mainStarted },
     { "megler/Native", "presentRect", NULL, Native_presentRect },
     { "megler/Native", "checkPartial", NULL, Native_checkPartial },
     { "megler/Native", "flag", NULL, Native_flag },
@@ -1661,6 +1663,9 @@ static bool main_waits(const mg_dvm_thread *t, const mg_dvm_method *m)
     return m && (m->flags & DVM_ACC_NATIVE) && !strcmp(m->name, "wait") && !strcmp(m->cls->name, "java/lang/Object");
 }
 
+/* The thread hot_main samples: the app's main thread, from hot_watch on. */
+static const mg_dvm_thread *volatile g_hot_main;
+
 static MG_HOSTCB void hot_main(void *arg)
 {
     u32 samples = 0, outside = 0, collecting = 0, stuck_said = 0;
@@ -1673,7 +1678,7 @@ static MG_HOSTCB void hot_main(void *arg)
         const mg_dvm_method *m, *from = NULL;
         u64 now;
         mg_sleep_ns(5000000ull);
-        t = M.thread;
+        t = g_hot_main;
         m = t ? t->running : NULL;
         if (m && (m->flags & DVM_ACC_NATIVE)) from = t->running_from;
         samples++;
@@ -1735,6 +1740,22 @@ static void hot_start(void)
     if (t) mg_thread_detach(t);
 }
 
+/*
+ * The sampler (hot_main) watches the app's main thread from now on, once: from the moment the app starts on it
+ * (megler.Native.mainStarted, which megler.AppRunner.run calls first), or else from its first frame. It began at the first
+ * frame alone, and an app whose main thread never got to one said nothing of where its time went, nor of a wait it stood
+ * in: Apktool M on a Lumia 650 stayed on Megler's "starting" for minutes in its Application.onCreate, its log silent for 90 s.
+ */
+static void hot_watch(const mg_dvm_thread *t)
+{
+    if (g_hot_main || !t) return;
+    g_hot_main = t;
+    hot_start();
+}
+
+/* megler.Native.mainStarted(), from megler.AppRunner.run on the app's main thread, before anything of the app runs. */
+N(Native_mainStarted) { hot_watch(mg_dvm_self()); }
+
 /* megler.Native.frameMark(phase, redrawn), from megler.ViewRoot.doFrame on the main thread. */
 N(Native_frameMark)
 {
@@ -1745,7 +1766,7 @@ N(Native_frameMark)
     meter_read(&now);
     if (!M.thread) {
         M.thread = self;
-        hot_start();
+        hot_watch(self);
         M.last = now;
         M.part = PART_BETWEEN;
         meter_start(&M.window, now.wall);
