@@ -93,6 +93,22 @@ struct App : ApplicationT<App, Markup::IXamlMetadataProvider> {
             });
         } catch (const hresult_error&) {
         }
+        /*
+         * The app's place in the background, and the memory Windows allows it there, said: Spotify's music stopped when the
+         * phone's screen went off, as a rule, and when it was minimized, now and then (a Lumia 650, 652), and nothing in the
+         * log said whether Windows suspended it for its memory, as it does with an app over its background limit.
+         */
+        try {
+            EnteredBackground([](auto&&, auto&&) { shellLog::write("app: in the background; memory: " + platform::memorySummary()); });
+            LeavingBackground([](auto&&, auto&&) { shellLog::write("app: leaving the background; memory: " + platform::memorySummary()); });
+            winrt::Windows::System::MemoryManager::AppMemoryUsageLimitChanging(
+                [](auto&&, winrt::Windows::System::AppMemoryUsageLimitChangingEventArgs const& e) {
+                    shellLog::write("memory: Windows changes the app's limit from " + formattedByteCount(e.OldLimit()) + " to " +
+                                    formattedByteCount(e.NewLimit()) + "; " + platform::memorySummary());
+                });
+        } catch (const hresult_error& e) {
+            shellLog::write("app: the background's events are not there: " + narrow(e.message()));
+        }
     }
 
     void OnLaunched(LaunchActivatedEventArgs const& args) {
