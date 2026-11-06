@@ -292,7 +292,10 @@ public final class AppRunner {
         final Manifest.Component hosted = MicroG.activity(i);
         if (hosted != null) {
             final Activity caller = from instanceof Activity ? (Activity) from : top();
-            final Intent intent = new Intent(i);
+            // Its extras in GmsCore's class scope, as a Parcel between two processes makes them (megler.Processes.forLoader):
+            // Spotify's SignInHubActivity (play-services-auth, the app's classes) handed GmsCore's sign-in its own
+            // SignInConfiguration, which GmsCore cast to its class of that name: ClassCastException, and the sign-in never came.
+            final Intent intent = Processes.forLoader(new Intent(i), MicroG.gmsLoader());
             if (intent.getComponent() == null) intent.setComponent(new ComponentName(GooglePackages.GMS, hosted.name));
             final String cls = "activity-alias".equals(hosted.kind) && hosted.parentActivity != null ? hosted.parentActivity : hosted.name;
             android.util.Log.d("Megler", "startActivity " + i + " -> Google Play services' " + cls + ", here");
@@ -409,7 +412,14 @@ public final class AppRunner {
         if (back) {
             a.meglerHideFinished();
             Activity caller = a.meglerCaller();
-            if (caller != null && a.meglerRequestCode() >= 0 && caller == below) below.meglerActivityResult(a.meglerRequestCode(), a.meglerResultCode(), a.meglerResultData());
+            // The result in the caller's class scope where the activity was of another's (Google Play services' hosted here),
+            // as a Parcel between two processes makes it: GmsCore's sign-in hands its own GoogleSignInAccount back to the app's
+            // SignInHubActivity, which has a class of that name of its own (megler.Processes.forLoader).
+            if (caller != null && a.meglerRequestCode() >= 0 && caller == below) {
+                Intent data = a.meglerResultData();
+                if (a.getClass().getClassLoader() != below.getClass().getClassLoader()) data = Processes.forLoader(data, below.getClass().getClassLoader());
+                below.meglerActivityResult(a.meglerRequestCode(), a.meglerResultCode(), data);
+            }
             if (!below.isResumedMegler()) {
                 if (!below.meglerVisible()) { below.meglerRestart(); below.meglerStart(); }
                 below.meglerResume();
