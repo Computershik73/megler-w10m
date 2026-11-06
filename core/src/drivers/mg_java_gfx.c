@@ -137,6 +137,7 @@ typedef struct gbitmap {
     i32 rgba_locks;                    /* above zero: the memory is in Android's order (mg_java_gfx_lock_rgba) */
     i32 refs;                          /* display lists that draw it: it outlives the Java's bmFree until the last goes */
     bool released;                     /* the Java has freed it (bmFree), and only lists keep it */
+    i32 presenting;                    /* its canvas is being shown, outside g_lock (present_bitmap): g_presented */
 } gbitmap;
 
 typedef struct gstate {
@@ -190,6 +191,12 @@ static struct {
 } g_present;
 /* The bitmaps' counts, each bitmap's list of canvases and their two flags, and the typefaces made. */
 static mg_lock g_lock = MG_LOCK_INIT;
+/* A bitmap's canvas shown without g_lock (present_bitmap) is shown whole before anything flushes or frees that canvas. */
+static mg_cond g_presented = MG_COND_INIT;
+static void bm_wait_presented(gbitmap *b)
+{
+    while (b->presenting) mg_cond_wait(&g_presented, &g_lock);
+}
 static u64 g_bytes;
 static u32 g_count, g_next_id;
 static gface g_default_face = { TF_MAGIC, NULL, 400, false };
@@ -425,6 +432,7 @@ static void bm_settle(gbitmap *b)
 {
     gcanvas *v;
     mg_lock_acquire(&g_lock);
+    bm_wait_presented(b);
     for (v = b->canvases; v; v = v->next)
         if (v->dirty) {
             if (v->host && G.flush) GFX(G.flush(G.user, v->host));
@@ -464,6 +472,7 @@ static void bm_free(gbitmap *b)
     i32 i;
     bool kept;
     mg_lock_acquire(&g_lock);
+    bm_wait_presented(b);
     /*
      * A Canvas can outlive its Bitmap (recycle() while a Canvas still holds
      * it). Its shell half goes now, as the shell is promised it: every save
@@ -1640,6 +1649,7 @@ static void cv_changes(gcanvas *v, bool replaces)
 {
     gcanvas *o;
     mg_lock_acquire(&g_lock);
+    bm_wait_presented(v->bm);
     for (o = v->bm->canvases; o; o = o->next) {
         if (o == v) continue;
         if (o->dirty) {
@@ -1733,6 +1743,7 @@ static void cv_free(gcanvas *v)
     v->rec = NULL;
     while (v->depth > 0) cv_restore(v);
     mg_lock_acquire(&g_lock);
+    if (v->bm) bm_wait_presented(v->bm);
     if (v->bm) {
         for (link = &v->bm->canvases; *link; link = &(*link)->next)
             if (*link == v) {
@@ -3771,11 +3782,29 @@ static void present_bitmap(gbitmap *b)
      */
     if (g_present.canvas_fn) {
         gcanvas *only;
+        void *host = NULL;
         bool shown = false;
+        /*
+         * The shell's present (its drawing ended, the window's copy, the swap chain's Present) runs without g_lock: it waits for
+         * the swap chain 10 to 26 ms a frame on a Lumia 650, and the main thread's recording (cvRecord, rnEnd, cvDrawNode) takes
+         * g_lock for every list it makes -- it waited there, 24 to 28 ms a frame, and nothing above 30 frames a second was
+         * drawn. Only the render thread draws the screen's canvas, and the main thread lets it go or reads it only after
+         * Gfx.frameWait; anything else that would flush or free it waits for the present (bm_wait_presented). The shell keeps
+         * its own state under its own locks, and Direct2D's factory is a multithreaded one.
+         */
         mg_lock_acquire(&g_lock);
         only = b->canvases;
-        if (only && !only->next && only->host && !only->stale && !b->rgba_locks) shown = g_present.canvas_fn(g_present.canvas_user, only->host, b->w, b->h);
+        if (only && !only->next && only->host && !only->stale && !b->rgba_locks) {
+            host = only->host;
+            b->presenting++;
+        }
         mg_lock_release(&g_lock);
+        if (host) {
+            shown = g_present.canvas_fn(g_present.canvas_user, host, b->w, b->h);
+            mg_lock_acquire(&g_lock);
+            if (--b->presenting == 0) mg_cond_broadcast(&g_presented);
+            mg_lock_release(&g_lock);
+        }
         if (shown) {
             /* (A look at what was shown, for a diagnosis, when one is asked for: the memory brought up to date for it.) */
             if (g_present.probe && g_present.probe_due && g_present.probe_due()) {
