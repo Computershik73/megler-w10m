@@ -528,8 +528,11 @@ GUEST="$ROOT/build/guest/$ABI"
 # (The demo is 32-bit ARM code: a desktop package has none, and its library offers the Java test apps instead.)
 DEMO="$ROOT/build/guest/demo/megler-demo.apk"
 [ "$DESKTOP" = 1 ] && DEMO=""
-# (Made here for the phone; a desktop package takes what tools/build-guest.sh made for its ABI, if anything.)
+# (Made here for the phone, again when any of their sources is newer than the first of them, as tools/build-tests.sh
+# does: the Self-test calls what the sources have; a desktop package takes what tools/build-guest.sh made for its ABI, if
+# anything.)
 if [ "$DESKTOP" = 0 ] && { ! ls "$GUEST"/*.so > /dev/null 2>&1 || [ ! -f "$DEMO" ] || [ "$ROOT/core/tests/guest/t_demo.c" -nt "$DEMO" ] \
+   || [ ! -f "$GUEST/libt_basic.so" ] || [ -n "$(find "$ROOT/core/tests/guest" -type f -newer "$GUEST/libt_basic.so" -print -quit)" ] \
    || [ ! -f "$GUEST/libt_jni.so" ] || [ "$ROOT/core/tests/guest/t_jni.c" -nt "$GUEST/libt_jni.so" ] \
    || [ ! -f "$GUEST/runtime/libt_ruser.so" ] \
    || [ ! -f "$GUEST/libt_svc_arm.so" ] || [ ! -f "$GUEST/libt_svc_diag.so" ] \

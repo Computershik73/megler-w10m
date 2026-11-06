@@ -2747,17 +2747,21 @@ int t_fs_access(void)
 }
 #endif
 
-#if defined(__x86_64__) || defined(__i386__)
 /*
  * A thread to be stopped as the collector stops one while it keeps coming back from signals (mg_tests.c,
  * test_stop_signalled): t_gcr_spin holds mark + k in each general register but the stack pointer, k its place in the
- * core's mg_thread_regs (rax, rcx, rdx, rbx, rbp, rsi, rdi, r8..r15; eax..edi on x86), in a loop that changes none of
- * them (t_gcr_loop up to t_gcr_loop_end) and reads its stop word on its own stack, until that word is set; then it writes
- * them to `out`. The mark is given as its bits above the low 16, which are the places': on x86 the argument stays on the
- * stack, where a mark must not be. t_gcr_start starts it with T_GCR_MARK, and a thread that sends it signal 12 as soon
- * as the one before was handled, and gives its id; t_gcr_finish ends both: how many signals were handled, or what went
- * wrong (-1 a signal not sent, -2 one not handled within two seconds, -10 - k register k came back from them other than
- * its mark).
+ * core's mg_thread_regs (rax, rcx, rdx, rbx, rbp, rsi, rdi, r8..r15; eax..edi on x86; r0..r12 and lr on ARM; x0..x28,
+ * fp and lr on ARM64, all but x18), in a loop that changes none of them (t_gcr_loop up to t_gcr_loop_end) and reads its
+ * stop word on its own stack, until that word is set; then it writes them to `out`. The mark is given as its bits above
+ * the low 16, which are the places': on x86 the argument stays on the stack, where a mark must not be. t_gcr_start
+ * starts it with T_GCR_MARK, and a thread that sends it signal 12 as soon as the one before was handled, and gives its
+ * id; t_gcr_finish ends both: how many signals were handled, or what went wrong (-1 a signal not sent, -2 one not handled
+ * within two seconds, -10 - k register k came back from them other than its mark).
+ *
+ * The ARMs compare nothing with memory but through a register: their loop reads the word into a floating-point one (s0,
+ * d0), which mg_thread_regs does not report, and compares that with zero. x18 on ARM64 is the platform's register -- on
+ * Windows the TEB, read through it by Windows' code and the host's on the thread's way through an interruption, and by
+ * the patched thread-pointer reads -- and is left as it is, by the spinner and by the checks (T_GCR_SKIP).
  */
 #if defined(__x86_64__)
 #define T_GCR_REGS 15
@@ -2791,7 +2795,7 @@ __asm__(".text\n"
         "  popq %r15\n  popq %r14\n  popq %r13\n  popq %r12\n  popq %rbp\n  popq %rbx\n"
         "  ret\n"
         ".size t_gcr_spin, .-t_gcr_spin\n");
-#else
+#elif defined(__i386__)
 #define T_GCR_REGS 7
 #define T_GCR_MARK 0x47430000L
 __asm__(".text\n"
@@ -2823,6 +2827,103 @@ __asm__(".text\n"
         "  popl %edi\n  popl %esi\n  popl %ebp\n  popl %ebx\n"
         "  ret\n"
         ".size t_gcr_spin, .-t_gcr_spin\n");
+#elif defined(__arm__)
+#define T_GCR_REGS 14
+#define T_GCR_MARK 0x47430000L
+/* (In the library's own state: Thumb-2 in one, ARM in the other.) */
+#if defined(__thumb__)
+#define T_GCR_STATE ".thumb\n"
+#define T_GCR_THUMB_FUNC ".thumb_func\n"
+#else
+#define T_GCR_STATE ".arm\n"
+#define T_GCR_THUMB_FUNC ""
+#endif
+__asm__(".text\n"
+        ".syntax unified\n" T_GCR_STATE
+        ".globl t_gcr_spin\n.type t_gcr_spin, %function\n" T_GCR_THUMB_FUNC
+        "t_gcr_spin:\n"
+        "  push {r4-r11, lr}\n"
+        "  sub sp, sp, #12\n"
+        "  mov r3, #0\n"
+        "  str r3, [sp]\n"
+        "  str r0, [sp, #4]\n"
+        "  mov r3, sp\n"
+        "  str r3, [r1]\n"
+        "  lsl r0, r2, #16\n"
+        "  add r1, r0, #1\n  add r2, r0, #2\n  add r3, r0, #3\n  add r4, r0, #4\n  add r5, r0, #5\n  add r6, r0, #6\n"
+        "  add r7, r0, #7\n  add r8, r0, #8\n  add r9, r0, #9\n  add r10, r0, #10\n  add r11, r0, #11\n  add r12, r0, #12\n"
+        "  add lr, r0, #13\n"
+        ".globl t_gcr_loop\n"
+        "t_gcr_loop:\n"
+        "1:\n"
+        "  vldr s0, [sp]\n"
+        "  vcmp.f32 s0, #0\n"
+        "  vmrs APSR_nzcv, fpscr\n"
+        "  beq 1b\n"
+        ".globl t_gcr_loop_end\n"
+        "t_gcr_loop_end:\n"
+        "  str r0, [sp, #8]\n"
+        "  ldr r0, [sp, #4]\n"
+        "  str r1, [r0, #4]\n  str r2, [r0, #8]\n  str r3, [r0, #12]\n  str r4, [r0, #16]\n  str r5, [r0, #20]\n"
+        "  str r6, [r0, #24]\n  str r7, [r0, #28]\n  str r8, [r0, #32]\n  str r9, [r0, #36]\n  str r10, [r0, #40]\n"
+        "  str r11, [r0, #44]\n  str r12, [r0, #48]\n  str lr, [r0, #52]\n"
+        "  ldr r1, [sp, #8]\n"
+        "  str r1, [r0]\n"
+        "  add sp, sp, #12\n"
+        "  pop {r4-r11, pc}\n"
+        ".size t_gcr_spin, .-t_gcr_spin\n");
+#else
+#define T_GCR_REGS 31
+#define T_GCR_MARK 0x6d67000047430000L
+#define T_GCR_SKIP (1L << 18)
+__asm__(".text\n"
+        ".globl t_gcr_spin\n.type t_gcr_spin, %function\n"
+        "t_gcr_spin:\n"
+        "  stp x29, x30, [sp, #-96]!\n"
+        "  stp x19, x20, [sp, #16]\n"
+        "  stp x21, x22, [sp, #32]\n"
+        "  stp x23, x24, [sp, #48]\n"
+        "  stp x25, x26, [sp, #64]\n"
+        "  stp x27, x28, [sp, #80]\n"
+        "  sub sp, sp, #32\n"
+        "  str xzr, [sp]\n"
+        "  str x0, [sp, #8]\n"
+        "  mov x3, sp\n"
+        "  str x3, [x1]\n"
+        "  lsl x0, x2, #16\n"
+        "  add x1, x0, #1\n  add x2, x0, #2\n  add x3, x0, #3\n  add x4, x0, #4\n  add x5, x0, #5\n  add x6, x0, #6\n"
+        "  add x7, x0, #7\n  add x8, x0, #8\n  add x9, x0, #9\n  add x10, x0, #10\n  add x11, x0, #11\n  add x12, x0, #12\n"
+        "  add x13, x0, #13\n  add x14, x0, #14\n  add x15, x0, #15\n  add x16, x0, #16\n  add x17, x0, #17\n"
+        "  add x19, x0, #19\n  add x20, x0, #20\n  add x21, x0, #21\n  add x22, x0, #22\n  add x23, x0, #23\n  add x24, x0, #24\n"
+        "  add x25, x0, #25\n  add x26, x0, #26\n  add x27, x0, #27\n  add x28, x0, #28\n  add x29, x0, #29\n  add x30, x0, #30\n"
+        ".globl t_gcr_loop\n"
+        "t_gcr_loop:\n"
+        "1:\n"
+        "  ldr d0, [sp]\n"
+        "  fcmp d0, #0.0\n"
+        "  b.eq 1b\n"
+        ".globl t_gcr_loop_end\n"
+        "t_gcr_loop_end:\n"
+        "  str x0, [sp, #16]\n"
+        "  ldr x0, [sp, #8]\n"
+        "  stp x1, x2, [x0, #8]\n  stp x3, x4, [x0, #24]\n  stp x5, x6, [x0, #40]\n  stp x7, x8, [x0, #56]\n"
+        "  stp x9, x10, [x0, #72]\n  stp x11, x12, [x0, #88]\n  stp x13, x14, [x0, #104]\n  stp x15, x16, [x0, #120]\n"
+        "  stp x17, x18, [x0, #136]\n  stp x19, x20, [x0, #152]\n  stp x21, x22, [x0, #168]\n  stp x23, x24, [x0, #184]\n"
+        "  stp x25, x26, [x0, #200]\n  stp x27, x28, [x0, #216]\n  stp x29, x30, [x0, #232]\n"
+        "  ldr x1, [sp, #16]\n"
+        "  str x1, [x0]\n"
+        "  add sp, sp, #32\n"
+        "  ldp x27, x28, [sp, #80]\n"
+        "  ldp x25, x26, [sp, #64]\n"
+        "  ldp x23, x24, [sp, #48]\n"
+        "  ldp x21, x22, [sp, #32]\n"
+        "  ldp x19, x20, [sp, #16]\n"
+        "  ldp x29, x30, [sp], #96\n"
+        "  ret\n"
+        ".size t_gcr_spin, .-t_gcr_spin\n");
+#endif
+#ifndef T_GCR_SKIP
+#define T_GCR_SKIP 0L
 #endif
 
 int sched_yield(void);
@@ -2895,15 +2996,17 @@ long t_gcr_finish(void)
     int k;
     g_gcr_quit = 1;
     pthread_join(g_gcr_sender, &sent);
-    *g_gcr_stop = 1;
+    /* (Every bit: not zero read as a float or a double either -- a NaN, which no flushing of tiny values makes zero.) */
+    *g_gcr_stop = -1;
     pthread_join(g_gcr_spinner, 0);
     sigaction(12, &g_gcr_old, 0);
     if (sent) return (long)sent;
     for (k = 0; k < T_GCR_REGS; k++)
-        if (g_gcr_out[k] != T_GCR_MARK + k) return -10 - k;
+        if (!(T_GCR_SKIP >> k & 1) && g_gcr_out[k] != T_GCR_MARK + k) return -10 - k;
     return g_gcr_handled;
 }
 
+#if defined(__x86_64__) || defined(__i386__)
 /*
  * A thread stopped as the collector stops one while the handler of a signal it was sent waits (mg_tests.c,
  * test_stop_in_handler): what the code the signal interrupted held in a register alone is held by nothing else meanwhile,
@@ -2914,7 +3017,8 @@ long t_gcr_finish(void)
  * in stack[0] and stack[1]; or -1 a handler not set, -2 no thread, -3 the spinner not running or its stack not known
  * after two seconds, -4 the signal not sent, -5 the handler not begun within two seconds. t_gcw_finish lets the handler
  * go and ends the spinner: 0, or -1 the signal to go on not sent, -2 the handler not done within two seconds, -3 no
- * spinner to end, -10 - k register k came back from the handler other than its mark.
+ * spinner to end, -10 - k register k came back from the handler other than its mark. (x86_64 and x86 alone, where
+ * test_stop_in_handler runs.)
  */
 #if defined(__x86_64__)
 #define T_GCW_MARK 0x6d67000057410000L

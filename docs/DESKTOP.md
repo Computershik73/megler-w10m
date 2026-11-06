@@ -169,7 +169,12 @@ the context NtContinue was given, below that stack pointer. So a stop that
 finds `CONTEXT_SERVICE_ACTIVE` at a pc that is not just past a `syscall` (or
 `int 0x2e`) -- where a thread in an ordinary system call is found, with its
 own registers -- lets the thread go and stops it again 10 us later; x86's
-registers there are WOW64's copy, its own, and are taken as they are. While
+registers there are WOW64's copy, its own, and are taken as they are. So are
+ARM64's and the phone's ARM32's, not looked at: no device has said yet what
+Windows gives there. The test that says it (`test_stop_signalled`) runs on
+every ABI -- the phone's Self-test with it, on the Thumb-2 and the ARM
+library -- each spinner with a mark in every register `mg_thread_regs` has
+but ARM64's x18, which holds the TEB and is left alone. While
 the guest's handler runs, the registers of the code it interrupted are kept
 in the thread's record alone (`mg_thread.was`, on the host's heap), and the
 landing and the handler use those their callers do not keep -- rax, rcx,
@@ -341,13 +346,21 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   split kept, fail there where the test app's bundles are built: an x86_64
   build keeps the processor's own); `tools/abi-check.py`: 0 differences on all
   four ABIs; the phone's core compiles for ARM32 with MSVC, and its tests
-  under qemu-arm (`tools/build-tests.sh arm`) give 5451 checks, 0 failed.
+  under qemu-arm (`tools/build-tests.sh arm`) give 5463 checks, 0 failed: the
+  signalled thread stopped as the collector stops one had its own r0-r12 and
+  lr at every stop in its loop, Thumb-2 and ARM (0 of 65,659 in the four
+  libraries' runs on libcore and without), where a host that reported r4 and
+  lr changed at every 97th stop failed it (165 of 16,273 stops in the loop,
+  and 165 of 16,202).
 - `tools/build-tests.sh arm64`: ARM64's core and tests as one static program
-  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5328
-  checks, 0 failed, and 5412 checks, 0 failed on Android's libcore with
+  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5340
+  checks, 0 failed, and 5424 checks, 0 failed on Android's libcore with
   arm64-v8a's natives. ELF64, the patched TPIDR_EL0 reads (through the island
   there, bionic's own thread pointer being the host's), TLS descriptors, svc
-  traps, AAPCS64's native calls, faults. (A run of the tests once hung in
+  traps, AAPCS64's native calls, faults; the signalled thread's own x0-x28
+  (but x18), fp and lr at every stop in its loop (0 of 63,814), and a failure
+  where the host reported x19 and lr changed at every 97th stop (160 of
+  16,044). (A run of the tests once hung in
   t_threads, every thread asleep on a futex: a lost wakeup in `mg_pthread.c`'s
   mutex_acquire, shared code; fixed since, and t_mutex_stress checks it.)
 - The x64 and x86 packages (`tools/build-appx.sh x64 --java --auto java`),
