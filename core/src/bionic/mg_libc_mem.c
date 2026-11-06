@@ -301,6 +301,32 @@ static void region_mark(region *r, size_t offset, size_t size, bool on)
 
 static region *g_regions;
 static mg_lock g_region_lock = MG_LOCK_INIT;
+/*
+ * Who holds g_region_lock, since when and where it was taken: the hang observer says it when the lock stands still
+ * (mg_bionic.c). Aurora Store's sign-in page stood still on a Lumia 650 (650) with the lock held by a thread the log did
+ * not name -- every mmap, munmap, mprotect and madvise waited, and Chromium's threads with them -- and the UI thread waited
+ * for it as the app was suspended. A thread that takes it again while it holds it is said at once: that is a thread
+ * stuck for good (a fault met under the lock, whose handling maps).
+ */
+volatile u32 g_region_lock_owner;
+volatile u64 g_region_lock_at;
+const char *volatile g_region_lock_site;
+static void region_taken(const char *site)
+{
+    g_region_lock_at = mg_time_monotonic_ns();
+    g_region_lock_site = site;
+    g_region_lock_owner = mg_thread_self_id();
+}
+static void region_wanted(const char *site)
+{
+    static volatile i32 said;
+    if (g_region_lock_owner == mg_thread_self_id() && !mg_atomic_xchg(&said, 1))
+        mg_log(MG_LOG_ERROR, "mem: the mappings' lock is taken again in %s by the thread that holds it since %s: this thread stops for good",
+               site, g_region_lock_site ? g_region_lock_site : "?");
+}
+#define mg_lock_acquire(l) ((l) == &g_region_lock ? (region_wanted(__func__), mg_lock_acquire(l), region_taken(__func__)) : mg_lock_acquire(l))
+#define mg_lock_try(l) ((l) == &g_region_lock ? (mg_lock_try(l) ? (region_taken(__func__), true) : false) : mg_lock_try(l))
+#define mg_lock_release(l) ((l) == &g_region_lock ? (void)(g_region_lock_owner = 0) : (void)0, mg_lock_release(l))
 
 void mg_g_mapped_addresses(u64 *spanned, u64 *reserved)
 {
@@ -558,6 +584,35 @@ void mg_mem_write_back_all(size_t largest)
         mg_lock_release(&g_region_lock);
         if (!r) break;
     }
+}
+
+/*
+ * mg_mem_write_back_all(0), waiting for the lock no later than `deadline` (mg_time_monotonic_ns): as the app is suspended,
+ * on the shell's UI thread, which is not to stand still behind a lock that stands still -- Aurora Store's was "not answered
+ * for 5031 ms" as Windows suspended it, waiting in mg_mem_write_back_all (650). False, said with the holder, when it gave up.
+ */
+bool mg_mem_write_back_all_until(u64 deadline)
+{
+    u32 index;
+    for (index = 0;; index++) {
+        region *r;
+        u32 i = 0;
+        while (!mg_lock_try(&g_region_lock)) {
+            if (mg_time_monotonic_ns() >= deadline) {
+                const char *site = g_region_lock_site;
+                mg_log(MG_LOG_WARN, "mem: the files' shared mappings were not all written back as the app was suspended: the mappings' lock is "
+                       "held by host thread %u, taken in %s %.1f s ago", (unsigned)g_region_lock_owner, site ? site : "?",
+                       g_region_lock_at ? (double)(mg_time_monotonic_ns() - g_region_lock_at) / 1e9 : 0.0);
+                return false;
+            }
+            mg_sleep_ns(2000000ull);
+        }
+        for (r = g_regions; r && i < index; r = r->next) i++;
+        if (r) write_back(r, 0, r->file_bytes);
+        mg_lock_release(&g_region_lock);
+        if (!r) break;
+    }
+    return true;
 }
 
 static MG_HOSTCB void write_back_loop(void *unused)

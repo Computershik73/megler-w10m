@@ -320,8 +320,10 @@ const char *mg_fs_package(void);
 
 /* Writes what an app wrote into shared file mappings back to their files (mg_libc_mem.c); at the app's end. */
 void mg_mem_write_back(void);
-/* The same, waiting for each mapping's turn, for the mappings of up to `largest` bytes (0: all): as the app is suspended. */
+/* The same, waiting for each mapping's turn, for the mappings of up to `largest` bytes (0: all): every few seconds. */
 void mg_mem_write_back_all(size_t largest);
+/* All of them, waiting for the lock no later than `deadline` (monotonic ns), false when it gave up: as the app is suspended. */
+bool mg_mem_write_back_all_until(u64 deadline);
 /*
  * Whether any copy of a file is mapped shared; and what was written to a file (a held one, mg_fd_hold) through a descriptor,
  * `n` bytes at `at`, copied into every such mapping of it, as the kernel's mappings of a file show what is written to it.
