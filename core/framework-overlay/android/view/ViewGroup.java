@@ -418,7 +418,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      */
     @Override public void onDescendantInvalidated(View child, View target) {
         View v = target != null ? target : child;
-        if (v != null) v.invalidate();
+        if (v == null) return;
+        v.meglerInvalidateQuietly();
+        // (And on up, as Android's: a parent above with one of its own -- Compose's AndroidViewHolder -- is told; View.meglerDirty.)
+        View.meglerTellParents(this, v);
     }
     public boolean getClipChildren() { return mClipChildren; }
     public void setClipToPadding(boolean c) { mClipToPadding = c; invalidate(); }
