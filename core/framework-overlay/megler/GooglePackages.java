@@ -59,7 +59,7 @@ public final class GooglePackages {
     public static int versionCode(String pkg) { return VENDING.equals(pkg) ? 84651730 : WEBVIEW.equals(pkg) ? 733920700 : 270000000; }
     public static String versionName(String pkg) { return VENDING.equals(pkg) ? "46.5.17-31 [0] [PR] 750000000" : WEBVIEW.equals(pkg) ? "140.0.7339.207" : "27.00.00 (190400-750000000)"; }
     public static android.content.pm.ApplicationInfo applicationInfo(String pkg) {
-        android.content.pm.PackageInfo microg = MicroG.packageInfo(pkg);
+        android.content.pm.PackageInfo microg = MicroG.packageInfoBasic(pkg);
         if (microg != null) return microg.applicationInfo;
         android.content.pm.PackageInfo gsf = Gsf.packageInfo(pkg);
         if (gsf != null) return gsf.applicationInfo;
@@ -73,8 +73,13 @@ public final class GooglePackages {
         a.dataDir = "/data/user/0/" + pkg;
         return a;
     }
-    public static android.content.pm.PackageInfo packageInfo(String pkg) {
-        android.content.pm.PackageInfo microg = MicroG.packageInfo(pkg);
+    public static android.content.pm.PackageInfo packageInfo(String pkg) { return packageInfo(pkg, ~0); }
+    /** As PackageManager.getPackageInfo(pkg, flags) gives it: Google Play services' read whole only where `flags` ask for its
+        components (megler.MicroG.packageInfoBasic). */
+    public static android.content.pm.PackageInfo packageInfo(String pkg, int flags) {
+        final int components = android.content.pm.PackageManager.GET_ACTIVITIES | android.content.pm.PackageManager.GET_RECEIVERS
+                             | android.content.pm.PackageManager.GET_SERVICES | android.content.pm.PackageManager.GET_PROVIDERS;
+        android.content.pm.PackageInfo microg = (flags & components) != 0 ? MicroG.packageInfo(pkg) : MicroG.packageInfoBasic(pkg);
         if (microg != null) return microg;
         android.content.pm.PackageInfo gsf = Gsf.packageInfo(pkg);
         if (gsf != null) return gsf;

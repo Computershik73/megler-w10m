@@ -92,7 +92,7 @@ public class PackageManager {
             p.signatures = new Signature[] { new Signature("") };
             return p;
         }
-        if (!mine(pkg) && megler.GooglePackages.is(pkg)) return megler.GooglePackages.packageInfo(pkg);
+        if (!mine(pkg) && megler.GooglePackages.is(pkg)) return megler.GooglePackages.packageInfo(pkg, flags);
         if (!mine(pkg)) {
             // Another app the phone has (megler.PhoneApps), or none.
             megler.PhoneApps.App other = megler.PhoneApps.find(pkg);
@@ -155,6 +155,10 @@ public class PackageManager {
     public ServiceInfo getServiceInfo(ComponentName c, ComponentInfoFlags flags) throws NameNotFoundException { return getServiceInfo(c, 0); }
     public ProviderInfo getProviderInfo(ComponentName c, int flags) throws NameNotFoundException { for (megler.Manifest.Component p : megler.Manifest.providers) if (p.name.equals(c.getClassName())) return provider(p); throw new NameNotFoundException(c.toString()); }
     public ProviderInfo resolveContentProvider(String authority, int flags) {
+        // The app's own first: asked for one of its providers, Google Play services were read whole for theirs (2.7 s and more
+        // on a Lumia 650), which no app's authority is.
+        for (megler.Manifest.Component p : megler.Manifest.providers)
+            if (p.authorities != null && java.util.Arrays.asList(p.authorities.split(";")).contains(authority)) return provider(p);
         // (microG's own first when it is the Google Play services here, as megler.GmsProviders answers: its GServices.)
         android.content.pm.PackageInfo gms = megler.MicroG.packageInfo(megler.GooglePackages.GMS);
         boolean microg = megler.MicroG.isMicroG();
@@ -165,8 +169,6 @@ public class PackageManager {
             if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
         if (!microg && gms != null && gms.providers != null) for (ProviderInfo p : gms.providers)
             if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
-        for (megler.Manifest.Component p : megler.Manifest.providers)
-            if (p.authorities != null && java.util.Arrays.asList(p.authorities.split(";")).contains(authority)) return provider(p);
         return null;
     }
     public List<ProviderInfo> queryContentProviders(String process, int uid, int flags) { ArrayList<ProviderInfo> l = new ArrayList<>(); for (megler.Manifest.Component p : megler.Manifest.providers) l.add(provider(p)); return l; }
@@ -341,7 +343,7 @@ public class PackageManager {
         // Google Play services' and Google Services Framework's own uid (megler.GooglePackages.sharedUid): theirs alone.
         if (uid == megler.GooglePackages.SHARED_UID && uid != android.os.Process.myUid()) {
             java.util.ArrayList<String> google = new java.util.ArrayList<>();
-            if (megler.MicroG.packageInfo(megler.GooglePackages.GMS) != null) google.add(megler.GooglePackages.GMS);
+            if (megler.MicroG.installed()) google.add(megler.GooglePackages.GMS);
             if (megler.Gsf.packageInfo(megler.GooglePackages.GSF) != null) google.add(megler.GooglePackages.GSF);
             return google.isEmpty() ? null : google.toArray(new String[0]);
         }
@@ -350,7 +352,7 @@ public class PackageManager {
         java.util.ArrayList<String> out = new java.util.ArrayList<>();
         out.add(megler.Native.packageName());
         if (uid == android.os.Process.myUid()) {
-            if (megler.MicroG.packageInfo(megler.GooglePackages.GMS) != null && !out.contains(megler.GooglePackages.GMS)) out.add(megler.GooglePackages.GMS);
+            if (megler.MicroG.installed() && !out.contains(megler.GooglePackages.GMS)) out.add(megler.GooglePackages.GMS);
             if (megler.Gsf.packageInfo(megler.GooglePackages.GSF) != null && !out.contains(megler.GooglePackages.GSF)) out.add(megler.GooglePackages.GSF);
         }
         return out.toArray(new String[0]);
