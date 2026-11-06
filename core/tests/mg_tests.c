@@ -2937,6 +2937,67 @@ static void *guest_fn(mg_lib *lib, const char *name)
 #define SYM(lib, name) mg_ld_sym(lib, name)
 #define FN(lib, type, name) MG_GFN(type, guest_fn(lib, name))
 
+#if MG_ARCH_X86_64 || (MG_ARCH_X86 && MG_HOST_WINDOWS)
+/*
+ * A thread stopped as the collector stops one (mg_thread_suspend: dvm/mg_dvm_gc.c takes the registers it reads for the
+ * thread's own, and keeps what they point at) while it keeps coming back from signals: t_gcr_spin (guest/t_basic.c) holds
+ * a mark in each register in a loop that changes none of them, and another thread of the library's sends it a signal as
+ * soon as the one before was handled -- on Windows each goes back to the loop through NtContinue. Stopped twenty thousand
+ * times, a little apart, wherever it is found in the loop its registers must be the marks.
+ */
+#if MG_ARCH_X86_64
+#define GCR_MARK 0x6d67000047430000ull
+#else
+#define GCR_MARK 0x47430000ull
+#endif
+
+static void test_stop_signalled(mg_lib *lib)
+{
+    mg_addr loop = (mg_addr)SYM(lib, "t_gcr_loop"), end = (mg_addr)SYM(lib, "t_gcr_loop_end");
+    mg_thread_regs regs;
+    mg_thread *h;
+    int tid, i, k, stopped = 0, in_loop = 0, wrong = 0;
+    u32 wrong_regs = 0;
+    long handled;
+    char first[240] = "none";
+    u64 began = mg_time_monotonic_ns();
+    tid = FN(lib, int (*)(void), "t_gcr_start")();
+    CHECK(tid > 0 && loop && end > loop);
+    if (tid <= 0) return;
+    h = mg_gthread_host_of_tid(tid);
+    CHECK(h != NULL);
+    for (i = 0; h && i < 20000; i++) {
+        u64 until;
+        if (!mg_thread_suspend(h, &regs)) continue;
+        stopped++;
+        if (regs.pc >= loop && regs.pc < end) {
+            u32 bad = 0;
+            in_loop++;
+            for (k = 0; k < regs.n; k++)
+                if ((u64)regs.r[k] != GCR_MARK + (u64)k) bad |= 1u << k;
+            if (bad && !wrong) {
+                size_t n = (size_t)snprintf(first, sizeof(first), "the first at stop %d:", i);
+                for (k = 0; k < regs.n && n + 24 < sizeof(first); k++)
+                    if (bad & (1u << k)) n += (size_t)snprintf(first + n, sizeof(first) - n, " r[%d] %llx", k, (unsigned long long)regs.r[k]);
+            }
+            if (bad) wrong++;
+            wrong_regs |= bad;
+        }
+        mg_thread_resume(h);
+        /* (Let go for 0 to 60 us: stops at every point of a signal's way back.) */
+        until = mg_time_monotonic_ns() + (u64)(i % 7) * 10000ull;
+        while (mg_time_monotonic_ns() < until) {}
+    }
+    handled = FN(lib, long (*)(void), "t_gcr_finish")();
+    say("  stopped %d times while signalled, %d in the loop, %d of them with registers not its own (mask %x; %s); %ld signals handled, %u ms",
+        stopped, in_loop, wrong, (unsigned)wrong_regs, first, handled, (unsigned)((mg_time_monotonic_ns() - began) / 1000000u));
+    CHECK_INT(stopped, 20000);
+    CHECK(in_loop > 100);
+    CHECK_INT(wrong, 0);
+    CHECK(handled > 100);
+}
+#endif
+
 static void test_library(mg_lib *lib, const char *what, const char *scratch)
 {
     char buf[128], word[16];
@@ -3017,6 +3078,9 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(int), "t_big_frame")(10), 56);
     /* Signals between threads: a thread stopped and let go twenty times, wherever it was found. */
     CHECK_INT(FN(lib, int (*)(int), "t_signals")(20), 0);
+#if MG_ARCH_X86_64 || (MG_ARCH_X86 && MG_HOST_WINDOWS)
+    test_stop_signalled(lib);
+#endif
     {
         char report[320];
         mg_thread_interrupt_report(report, sizeof(report));

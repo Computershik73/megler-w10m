@@ -2510,3 +2510,157 @@ int t_fs_access(void)
     return ret ? 32 : 0;
 }
 #endif
+
+#if defined(__x86_64__) || defined(__i386__)
+/*
+ * A thread to be stopped as the collector stops one while it keeps coming back from signals (mg_tests.c,
+ * test_stop_signalled): t_gcr_spin holds T_GCR_MARK + k in each general register but the stack pointer, k its place in
+ * the core's mg_thread_regs (rax, rcx, rdx, rbx, rbp, rsi, rdi, r8..r15; eax..edi on x86), in a loop that changes none of
+ * them (t_gcr_loop up to t_gcr_loop_end) and reads its stop word on its own stack, until that word is set; then it writes
+ * them to `out`. t_gcr_start starts it, and a thread that sends it signal 12 as soon as the one before was handled, and
+ * gives its id; t_gcr_finish ends both: how many signals were handled, or what went wrong (-1 a signal not sent, -2 one
+ * not handled within two seconds, -10 - k register k came back from them other than its mark).
+ */
+#if defined(__x86_64__)
+#define T_GCR_REGS 15
+#define T_GCR_MARK 0x6d67000047430000L
+__asm__(".text\n"
+        ".globl t_gcr_spin\n.type t_gcr_spin, @function\n"
+        "t_gcr_spin:\n"
+        "  pushq %rbx\n  pushq %rbp\n  pushq %r12\n  pushq %r13\n  pushq %r14\n  pushq %r15\n"
+        "  pushq %rdi\n"
+        "  pushq $0\n"
+        "  movq %rsp, (%rsi)\n"
+        "  movabsq $0x6d67000047430000, %rax\n"
+        "  leaq 1(%rax), %rcx\n  leaq 2(%rax), %rdx\n  leaq 3(%rax), %rbx\n  leaq 4(%rax), %rbp\n  leaq 5(%rax), %rsi\n"
+        "  leaq 6(%rax), %rdi\n  leaq 7(%rax), %r8\n  leaq 8(%rax), %r9\n  leaq 9(%rax), %r10\n  leaq 10(%rax), %r11\n"
+        "  leaq 11(%rax), %r12\n  leaq 12(%rax), %r13\n  leaq 13(%rax), %r14\n  leaq 14(%rax), %r15\n"
+        ".globl t_gcr_loop\n"
+        "t_gcr_loop:\n"
+        "1:\n"
+        "  cmpq $0, (%rsp)\n"
+        "  je 1b\n"
+        ".globl t_gcr_loop_end\n"
+        "t_gcr_loop_end:\n"
+        "  pushq %rax\n"
+        "  movq 16(%rsp), %rax\n"
+        "  movq %rcx, 8(%rax)\n  movq %rdx, 16(%rax)\n  movq %rbx, 24(%rax)\n  movq %rbp, 32(%rax)\n  movq %rsi, 40(%rax)\n"
+        "  movq %rdi, 48(%rax)\n  movq %r8, 56(%rax)\n  movq %r9, 64(%rax)\n  movq %r10, 72(%rax)\n  movq %r11, 80(%rax)\n"
+        "  movq %r12, 88(%rax)\n  movq %r13, 96(%rax)\n  movq %r14, 104(%rax)\n  movq %r15, 112(%rax)\n"
+        "  popq 0(%rax)\n"
+        "  addq $16, %rsp\n"
+        "  popq %r15\n  popq %r14\n  popq %r13\n  popq %r12\n  popq %rbp\n  popq %rbx\n"
+        "  ret\n"
+        ".size t_gcr_spin, .-t_gcr_spin\n");
+#else
+#define T_GCR_REGS 7
+#define T_GCR_MARK 0x47430000L
+__asm__(".text\n"
+        ".globl t_gcr_spin\n.type t_gcr_spin, @function\n"
+        "t_gcr_spin:\n"
+        "  pushl %ebx\n  pushl %ebp\n  pushl %esi\n  pushl %edi\n"
+        "  movl 20(%esp), %eax\n"
+        "  movl 24(%esp), %ecx\n"
+        "  pushl %eax\n"
+        "  pushl $0\n"
+        "  movl %esp, (%ecx)\n"
+        "  movl $0x47430000, %eax\n"
+        "  leal 1(%eax), %ecx\n  leal 2(%eax), %edx\n  leal 3(%eax), %ebx\n  leal 4(%eax), %ebp\n  leal 5(%eax), %esi\n"
+        "  leal 6(%eax), %edi\n"
+        ".globl t_gcr_loop\n"
+        "t_gcr_loop:\n"
+        "1:\n"
+        "  cmpl $0, (%esp)\n"
+        "  je 1b\n"
+        ".globl t_gcr_loop_end\n"
+        "t_gcr_loop_end:\n"
+        "  pushl %eax\n"
+        "  movl 8(%esp), %eax\n"
+        "  movl %ecx, 4(%eax)\n  movl %edx, 8(%eax)\n  movl %ebx, 12(%eax)\n  movl %ebp, 16(%eax)\n  movl %esi, 20(%eax)\n"
+        "  movl %edi, 24(%eax)\n"
+        "  popl 0(%eax)\n"
+        "  addl $8, %esp\n"
+        "  popl %edi\n  popl %esi\n  popl %ebp\n  popl %ebx\n"
+        "  ret\n"
+        ".size t_gcr_spin, .-t_gcr_spin\n");
+#endif
+
+int sched_yield(void);
+void t_gcr_spin(long *out, volatile long **stop_at);
+
+static long g_gcr_out[T_GCR_REGS];
+static volatile long *volatile g_gcr_stop;
+static volatile int g_gcr_tid, g_gcr_quit, g_gcr_handled;
+static pthread_t g_gcr_spinner, g_gcr_sender;
+static t_sigaction g_gcr_old;
+
+static void on_gcr_signal(int sig, void *info, void *context)
+{
+    (void)sig; (void)info; (void)context;
+    g_gcr_handled++;
+}
+
+static void *gcr_spinner(void *arg)
+{
+    (void)arg;
+    g_gcr_tid = gettid();
+    t_gcr_spin(g_gcr_out, &g_gcr_stop);
+    return 0;
+}
+
+static long now_us(void)
+{
+    struct t_timespec ts;
+    clock_gettime(1, &ts);
+    return ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
+static void *gcr_sender(void *arg)
+{
+    (void)arg;
+    while (!g_gcr_quit) {
+        int seen = g_gcr_handled;
+        long until = now_ms() + 2000, next;
+        if (pthread_kill(g_gcr_spinner, 12)) return (void *)-1L;
+        while (g_gcr_handled == seen) {
+            if (now_ms() > until) return (void *)-2L;
+            sched_yield();
+        }
+        /* (And on the way back from it before the next: one that comes while the thread is still in an interruption waits
+           for the signals' next round, a millisecond later.) */
+        for (next = now_us() + 50; now_us() < next;) {}
+    }
+    return 0;
+}
+
+/* The spinning thread's id, or -1 to -4: the handler not set, a thread not started, the spinner not running after two seconds. */
+int t_gcr_start(void)
+{
+    t_sigaction act = T_SIGACTION(on_gcr_signal, 0, 4 | 0x10000000);
+    long until;
+    g_gcr_stop = 0;
+    g_gcr_tid = g_gcr_quit = g_gcr_handled = 0;
+    memset(g_gcr_out, 0, sizeof(g_gcr_out));
+    if (sigaction(12, &act, &g_gcr_old)) return -1;
+    if (pthread_create(&g_gcr_spinner, 0, gcr_spinner, 0)) return -2;
+    for (until = now_ms() + 2000; (!g_gcr_stop || !g_gcr_tid) && now_ms() < until;) usleep(1000);
+    if (!g_gcr_stop || !g_gcr_tid) return -3;
+    if (pthread_create(&g_gcr_sender, 0, gcr_sender, 0)) return -4;
+    return g_gcr_tid;
+}
+
+long t_gcr_finish(void)
+{
+    void *sent = (void *)-9L;
+    int k;
+    g_gcr_quit = 1;
+    pthread_join(g_gcr_sender, &sent);
+    *g_gcr_stop = 1;
+    pthread_join(g_gcr_spinner, 0);
+    sigaction(12, &g_gcr_old, 0);
+    if (sent) return (long)sent;
+    for (k = 0; k < T_GCR_REGS; k++)
+        if (g_gcr_out[k] != T_GCR_MARK + k) return -10 - k;
+    return g_gcr_handled;
+}
+#endif
