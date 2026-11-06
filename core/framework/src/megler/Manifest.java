@@ -206,6 +206,10 @@ public final class Manifest {
     /** The activity an explicit or implicit intent would open in this app, or null. */
     public static Component resolve(android.content.Intent i) {
         read();
+        // (An implicit intent for another package is not for this app, though a filter of its own matches it: a Trusted Web
+        // Activity's launcher asks the browser it found, com.android.browser, for its site by package, and MangaDex, whose
+        // launcher has a filter for that site, was started again and again by its own request, its screen left blank.)
+        if (i.getComponent() == null && i.getPackage() != null && !i.getPackage().equals(megler.Native.packageName())) return null;
         return resolveIn(activities, i);
     }
     /** The activity of these an explicit or implicit intent would open, or null. */
