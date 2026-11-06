@@ -167,7 +167,12 @@ the context NtContinue was given, below that stack pointer. So a stop that
 finds `CONTEXT_SERVICE_ACTIVE` at a pc that is not just past a `syscall` (or
 `int 0x2e`) -- where a thread in an ordinary system call is found, with its
 own registers -- lets the thread go and stops it again 10 us later; x86's
-registers there are WOW64's copy, its own, and are taken as they are.
+registers there are WOW64's copy, its own, and are taken as they are. So are
+ARM64's and the phone's ARM32's, not looked at: no device has said yet what
+Windows gives there. The test that says it (`test_stop_signalled`) runs on
+every ABI -- the phone's Self-test with it, on the Thumb-2 and the ARM
+library -- each spinner with a mark in every register `mg_thread_regs` has
+but ARM64's x18, which holds the TEB and is left alone.
 
 Memory an app gives back with madvise is decommitted, to be committed again
 at its first touch (`bionic/mg_libc_mem.c`). A goroutine's stack is a piece
@@ -272,14 +277,21 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   libc's madvise gave back repaired on the handler's stack of its own;
   `tools/abi-check.py`: 0 differences on all four ABIs; the phone's
   core compiles for ARM32 with MSVC, 148 of 148, and its tests under qemu-arm
-  (`tools/build-tests.sh arm`) give 5443 checks, 0 failed.
+  (`tools/build-tests.sh arm`) give 5455 checks, 0 failed, and 5539 on
+  Android's libcore, 0 failed: the signalled thread stopped as the collector
+  stops one had its own r0-r12 and lr at every stop in its loop, Thumb-2 and
+  ARM (0 of 65,659 in the four libraries' runs), where a host that reported
+  r4 and lr changed at every 97th stop failed it (165 of 16,273 stops in the
+  loop, and 165 of 16,202).
 - `tools/build-tests.sh arm64`: ARM64's core and tests as one static program
-  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5320
-  checks, 3 failed, and 5404 checks, 3 failed on Android's libcore with
+  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5332
+  checks, 3 failed, and 5416 checks, 3 failed on Android's libcore with
   arm64-v8a's natives (the GLES stand-in's float checks, as on x64). ELF64,
   the patched TPIDR_EL0 reads (through the island there, bionic's own thread
   pointer being the host's), TLS descriptors, svc traps, AAPCS64's native
-  calls, faults.
+  calls, faults; the signalled thread's own x0-x28 (but x18), fp and lr at
+  every stop in its loop (0 of 63,814), and a failure where the host
+  reported x19 and lr changed at every 97th stop (160 of 16,044).
 - The x64 and x86 packages (`tools/build-appx.sh x64 --java --auto java`),
   registered from their stage folder in developer mode and started: the core
   loads, "megler core on win32-x64"; Android 9's libcore runs its natives
