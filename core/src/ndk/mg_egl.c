@@ -1548,7 +1548,7 @@ typedef struct turn_thread {
     EGLDisplay dpy;                    /* what this thread has current, as ANGLE was given it */
     EGLSurface draw, read;
     EGLContext ctx;
-    u32 lr[TURN_DEPTH];                /* the return addresses of the thunks' callers */
+    mg_addr lr[TURN_DEPTH];            /* the return addresses of the thunks' callers */
 } turn_thread;
 static MG_THREAD_LOCAL turn_thread t_turn;
 
@@ -1678,26 +1678,44 @@ static void turn_back(void)
     if (t->held && t->ctx && t->held->last != t->ctx) turn_refresh(t, t->held);
 }
 
-#if MG_HOST_ARM32
+#if MG_GUEST_CODE
 /*
- * The thunks: one block, written once, of two bodies and a short entry for each slot -- movw r12, #slot and a jump to its
- * body. A body keeps the arguments as they came (r0-r3; the fifth on are the caller's stack, which is left as it was),
- * takes the turn (turn_enter: it keeps the caller's return address and gives the slot's function), calls the function,
- * gives the turn back (turn_leave: it gives the return address back) and returns the function's result (r0, r1). The
- * guests' body is for Android's soft-float calls; the layer's own (mg_egl_host, Windows' and Linux's hard-float calls)
- * keeps d0-d7 for the function too, and d0 of its result.
+ * The thunks: one block, written once, of the bodies and a short entry for each slot, which puts the slot's number where
+ * the body looks for it and jumps there. A body keeps the arguments as they came (the registers that carry them; those on
+ * the stack are left as the caller put them, the function finding them where it would), takes the turn (turn_enter: it
+ * keeps the caller's return address and gives the slot's function), calls the function, gives the turn back (turn_leave:
+ * it gives the return address back) and returns the function's result as the function left it.
+ *
+ * On 32-bit ARM the entry is movw r12, #slot and a jump; the guests' body is for Android's soft-float calls, the layer's own
+ * (mg_egl_host, Windows' and Linux's hard-float calls) keeps d0-d7 for the function too, and d0 of its result.
+ *
+ * On the desktop's processors (docs/DESKTOP.md) the core's convention is Android's, the guests' and the layer's alike, and
+ * one body serves both. The function is called with the caller's stack as it was, its return address the body's own: on x86
+ * and x86-64 the body puts that in the place of the caller's (turn_enter has kept it) and jumps to the function; on ARM64 it
+ * calls it with the caller's stack pointer, as 32-bit ARM's does. x86-64 keeps rdi, rsi, rdx, rcx, r8, r9, rax (the vector
+ * count of a variadic call) and xmm0-xmm7 around turn_enter, and rax, rdx, xmm0 and xmm1 of the result around turn_leave,
+ * the slot coming in r11 (scratch, no argument's); x86 keeps ecx and edx (the arguments are on the stack), and eax and edx
+ * of the result, the slot coming in eax; ARM64 keeps x0-x8 and q0-q7, and x0, x1, q0 and q1 of the result, the slot coming
+ * in x16. These turns were ARM's alone before: on the desktop two threads of Chromium's drew in ANGLE's one state manager at
+ * once, and the WebView ended in its first page's glDrawArrays, ANGLE marking a framebuffer's attachments through a pointer
+ * that was not one (Framebuffer11::markAttachmentsDirty) -- what packages 501-503 did on the phone before the turns.
  */
 #define TURN_GUEST 2048
 #define TURN_HOST 512
+#if MG_HOST_ARM32
 #define TURN_ENTRY 12
 #define TURN_ENTRIES_AT 128
+#else
+#define TURN_ENTRY 24
+#define TURN_ENTRIES_AT 256
+#endif
 static void *g_turn_target[TURN_GUEST + TURN_HOST];
 static int g_turn_used[2];
 static u8 *g_turn_code;
 static bool g_turn_tried;
 static mg_lock g_turn_slots_lock = MG_LOCK_INIT;
 
-static void *turn_enter(u32 lr, u32 slot)
+static void *turn_enter(mg_addr lr, u32 slot)
 {
     turn_thread *t = &t_turn;
     if (t->depth < TURN_DEPTH) t->lr[t->depth] = lr;
@@ -1706,13 +1724,14 @@ static void *turn_enter(u32 lr, u32 slot)
     return g_turn_target[slot];
 }
 
-static u32 turn_leave(void)
+static mg_addr turn_leave(void)
 {
     turn_thread *t = &t_turn;
     turn_end();
     return t->depth < TURN_DEPTH ? t->lr[t->depth] : 0;
 }
 
+#if MG_HOST_ARM32
 static bool turn_code(void)
 {
     static const u16 guest[] = {
@@ -1778,6 +1797,161 @@ static bool turn_code(void)
     g_turn_code = p;
     return true;
 }
+#define TURN_THUMB 1
+#else
+#define TURN_THUMB 0
+/* The body, as clang assembles it (the addresses of turn_enter and turn_leave, and on x86 of `after`, written in after). */
+#if MG_ARCH_X86_64
+static const u8 k_turn_body[] = {
+    0x57, 0x56, 0x52, 0x51, 0x41, 0x50, 0x41, 0x51, 0x50,           /* push rdi, rsi, rdx, rcx, r8, r9, rax */
+    0x48, 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00,                       /* sub rsp, 128 */
+    0xF3, 0x0F, 0x7F, 0x04, 0x24,                                   /* movdqu [rsp], xmm0 */
+    0xF3, 0x0F, 0x7F, 0x4C, 0x24, 0x10,                             /* movdqu [rsp + 16], xmm1 ... */
+    0xF3, 0x0F, 0x7F, 0x54, 0x24, 0x20,
+    0xF3, 0x0F, 0x7F, 0x5C, 0x24, 0x30,
+    0xF3, 0x0F, 0x7F, 0x64, 0x24, 0x40,
+    0xF3, 0x0F, 0x7F, 0x6C, 0x24, 0x50,
+    0xF3, 0x0F, 0x7F, 0x74, 0x24, 0x60,
+    0xF3, 0x0F, 0x7F, 0x7C, 0x24, 0x70,                             /* ... movdqu [rsp + 112], xmm7 */
+    0x48, 0x8B, 0xBC, 0x24, 0xB8, 0x00, 0x00, 0x00,                 /* mov rdi, [rsp + 184]: the caller's return address */
+    0x44, 0x89, 0xDE,                                               /* mov esi, r11d: the slot */
+    0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,                             /* movabs rax, turn_enter (at 0x4c) */
+    0xFF, 0xD0,                                                     /* call rax */
+    0x49, 0x89, 0xC3,                                               /* mov r11, rax: the function */
+    0xF3, 0x0F, 0x6F, 0x04, 0x24,                                   /* movdqu xmm0, [rsp] ... */
+    0xF3, 0x0F, 0x6F, 0x4C, 0x24, 0x10,
+    0xF3, 0x0F, 0x6F, 0x54, 0x24, 0x20,
+    0xF3, 0x0F, 0x6F, 0x5C, 0x24, 0x30,
+    0xF3, 0x0F, 0x6F, 0x64, 0x24, 0x40,
+    0xF3, 0x0F, 0x6F, 0x6C, 0x24, 0x50,
+    0xF3, 0x0F, 0x6F, 0x74, 0x24, 0x60,
+    0xF3, 0x0F, 0x6F, 0x7C, 0x24, 0x70,                             /* ... movdqu xmm7, [rsp + 112] */
+    0x48, 0x81, 0xC4, 0x80, 0x00, 0x00, 0x00,                       /* add rsp, 128 */
+    0x58, 0x41, 0x59, 0x41, 0x58, 0x59, 0x5A, 0x5E, 0x5F,           /* pop rax, r9, r8, rcx, rdx, rsi, rdi */
+    0x4C, 0x8D, 0x15, 0x07, 0x00, 0x00, 0x00,                       /* lea r10, [rip + 7]: after */
+    0x4C, 0x89, 0x14, 0x24,                                         /* mov [rsp], r10: the function returns there */
+    0x41, 0xFF, 0xE3,                                               /* jmp r11 */
+    /* after (0xa6): */
+    0x50, 0x52,                                                     /* push rax, rdx */
+    0x48, 0x83, 0xEC, 0x20,                                         /* sub rsp, 32 */
+    0xF3, 0x0F, 0x7F, 0x04, 0x24,                                   /* movdqu [rsp], xmm0 */
+    0xF3, 0x0F, 0x7F, 0x4C, 0x24, 0x10,                             /* movdqu [rsp + 16], xmm1 */
+    0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,                             /* movabs rax, turn_leave (at 0xb9) */
+    0xFF, 0xD0,                                                     /* call rax */
+    0x49, 0x89, 0xC3,                                               /* mov r11, rax: the caller's return address */
+    0xF3, 0x0F, 0x6F, 0x04, 0x24,                                   /* movdqu xmm0, [rsp] */
+    0xF3, 0x0F, 0x6F, 0x4C, 0x24, 0x10,                             /* movdqu xmm1, [rsp + 16] */
+    0x48, 0x83, 0xC4, 0x20,                                         /* add rsp, 32 */
+    0x5A, 0x58,                                                     /* pop rdx, rax */
+    0x41, 0xFF, 0xE3,                                               /* jmp r11 */
+};
+enum { TURN_AT_ENTER = 0x4c, TURN_AT_LEAVE = 0xb9, TURN_AT_AFTER = 0, TURN_AFTER = 0 };
+#elif MG_ARCH_X86
+static const u8 k_turn_body[] = {
+    0x51, 0x52,                                                     /* push ecx, edx */
+    0x83, 0xEC, 0x0C,                                               /* sub esp, 12: the stack as it was, a multiple of 16 at the call */
+    0x50,                                                           /* push eax: the slot */
+    0xFF, 0x74, 0x24, 0x18,                                         /* push [esp + 24]: the caller's return address */
+    0xB8, 0, 0, 0, 0,                                               /* mov eax, turn_enter (at 0x0b) */
+    0xFF, 0xD0,                                                     /* call eax */
+    0x83, 0xC4, 0x14,                                               /* add esp, 20 */
+    0x5A, 0x59,                                                     /* pop edx, ecx */
+    0xC7, 0x04, 0x24, 0, 0, 0, 0,                                   /* mov [esp], after (at 0x19): the function returns there */
+    0xFF, 0xE0,                                                     /* jmp eax: the function */
+    /* after (0x1f): */
+    0x50, 0x52,                                                     /* push eax, edx */
+    0x83, 0xEC, 0x08,                                               /* sub esp, 8 */
+    0xB9, 0, 0, 0, 0,                                               /* mov ecx, turn_leave (at 0x25) */
+    0xFF, 0xD1,                                                     /* call ecx */
+    0x83, 0xC4, 0x08,                                               /* add esp, 8 */
+    0x89, 0xC1,                                                     /* mov ecx, eax: the caller's return address */
+    0x5A, 0x58,                                                     /* pop edx, eax */
+    0xFF, 0xE1,                                                     /* jmp ecx */
+};
+enum { TURN_AT_ENTER = 0x0b, TURN_AT_LEAVE = 0x25, TURN_AT_AFTER = 0x19, TURN_AFTER = 0x1f };
+#else
+static const u32 k_turn_body[] = {
+    0xA9BF7BFD, 0xA9BF07E0, 0xA9BF0FE2, 0xA9BF17E4, 0xA9BF1FE6,     /* stp x29, x30; x0, x1; x2, x3; x4, x5; x6, x7, [sp, #-16]! */
+    0xA9BF43E8,                                                     /* stp x8, x16, [sp, #-16]! */
+    0xADBF07E0, 0xADBF0FE2, 0xADBF17E4, 0xADBF1FE6,                 /* stp q0, q1; q2, q3; q4, q5; q6, q7, [sp, #-32]! */
+    0xAA1E03E0,                                                     /* mov x0, x30: the caller's return address */
+    0x2A1003E1,                                                     /* mov w1, w16: the slot */
+    0x580002D1,                                                     /* ldr x17, turn_enter (at 0x88) */
+    0xD63F0220,                                                     /* blr x17 */
+    0xAA0003F1,                                                     /* mov x17, x0: the function */
+    0xACC11FE6, 0xACC117E4, 0xACC10FE2, 0xACC107E0,                 /* ldp q6, q7; q4, q5; q2, q3; q0, q1, [sp], #32 */
+    0xA8C143E8, 0xA8C11FE6, 0xA8C117E4, 0xA8C10FE2, 0xA8C107E0,     /* ldp x8, x16; x6, x7; x4, x5; x2, x3; x0, x1, [sp], #16 */
+    0xA8C17BFD,                                                     /* ldp x29, x30, [sp], #16 */
+    0xD63F0220,                                                     /* blr x17: the function, with the caller's stack */
+    0xA9BF07E0,                                                     /* stp x0, x1, [sp, #-16]! */
+    0xADBF07E0,                                                     /* stp q0, q1, [sp, #-32]! */
+    0x58000111,                                                     /* ldr x17, turn_leave (at 0x90) */
+    0xD63F0220,                                                     /* blr x17 */
+    0xAA0003FE,                                                     /* mov x30, x0: the caller's return address */
+    0xACC107E0,                                                     /* ldp q0, q1, [sp], #32 */
+    0xA8C107E0,                                                     /* ldp x0, x1, [sp], #16 */
+    0xD65F03C0,                                                     /* ret */
+    0, 0, 0, 0,                                                     /* (0x88) turn_enter, (0x90) turn_leave */
+};
+enum { TURN_AT_ENTER = 0x88, TURN_AT_LEAVE = 0x90, TURN_AT_AFTER = 0, TURN_AFTER = 0 };
+#endif
+_Static_assert(sizeof(k_turn_body) <= TURN_ENTRIES_AT, "the thunks' body fits before their entries");
+
+static bool turn_code(void)
+{
+    const size_t size = (TURN_ENTRIES_AT + (TURN_GUEST + TURN_HOST) * TURN_ENTRY + MG_PAGE - 1) & ~(size_t)(MG_PAGE - 1);
+    u8 *p = (u8 *)mg_mem_alloc(size);
+    mg_addr enter = (mg_addr)turn_enter, leave = (mg_addr)turn_leave;
+    int i;
+    if (!p) return false;
+    memcpy(p, k_turn_body, sizeof(k_turn_body));
+    memcpy(p + TURN_AT_ENTER, &enter, sizeof(enter));
+    memcpy(p + TURN_AT_LEAVE, &leave, sizeof(leave));
+    if (TURN_AT_AFTER) {
+        mg_addr after = (mg_addr)(p + TURN_AFTER);
+        memcpy(p + TURN_AT_AFTER, &after, sizeof(after));
+    }
+    for (i = 0; i < TURN_GUEST + TURN_HOST; i++) {
+        u8 *e = p + TURN_ENTRIES_AT + (size_t)i * TURN_ENTRY;
+        memset(e, 0, TURN_ENTRY);
+#if MG_ARCH_X86_64
+        {
+            u64 body = (u64)(mg_addr)p;
+            e[0] = 0x41, e[1] = 0xBB;                               /* mov r11d, i */
+            memcpy(e + 2, &i, 4);
+            e[6] = 0x49, e[7] = 0xBA;                               /* movabs r10, body */
+            memcpy(e + 8, &body, 8);
+            e[16] = 0x41, e[17] = 0xFF, e[18] = 0xE2;               /* jmp r10 */
+            memset(e + 19, 0xCC, TURN_ENTRY - 19);
+        }
+#elif MG_ARCH_X86
+        {
+            i32 rel = (i32)((mg_addr)p - (mg_addr)(e + 10));
+            e[0] = 0xB8;                                            /* mov eax, i */
+            memcpy(e + 1, &i, 4);
+            e[5] = 0xE9;                                            /* jmp body */
+            memcpy(e + 6, &rel, 4);
+            memset(e + 10, 0xCC, TURN_ENTRY - 10);
+        }
+#else
+        {
+            u32 code[4];
+            u64 body = (u64)(mg_addr)p;
+            code[0] = 0xD2800010u | ((u32)i << 5);                  /* movz x16, #i */
+            code[1] = 0x58000071u;                                  /* ldr x17, [pc + 12]: the body's address, below */
+            code[2] = 0xD61F0220u;                                  /* br x17 */
+            code[3] = 0xD503201Fu;                                  /* nop */
+            memcpy(e, code, sizeof(code));
+            memcpy(e + 16, &body, 8);
+        }
+#endif
+    }
+    if (!mg_mem_protect(p, size, MG_PROT_RX)) return false;
+    mg_icache_flush(p, size);
+    g_turn_code = p;
+    return true;
+}
+#endif
 
 /* The thunk that calls `target` in its display's turn: for a guest's calls, or the layer's own (`host`). */
 static void *turn_thunk(void *target, bool host)
@@ -1798,7 +1972,7 @@ static void *turn_thunk(void *target, bool host)
             g_turn_target[base + i] = target;
             g_turn_used[host]++;
         }
-        if (i < n) out = (void *)((mg_addr)(g_turn_code + TURN_ENTRIES_AT + (size_t)(base + i) * TURN_ENTRY) | 1);
+        if (i < n) out = (void *)((mg_addr)(g_turn_code + TURN_ENTRIES_AT + (size_t)(base + i) * TURN_ENTRY) | TURN_THUMB);
         else mg_note_once("egl: more functions of EGL and OpenGL ES than the thunks that have them take turns; the next ones do not");
     }
     mg_lock_release(&g_turn_slots_lock);

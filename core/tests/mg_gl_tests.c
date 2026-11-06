@@ -1049,7 +1049,7 @@ static void test_cost(void)
  * are given (mg_egl_resolve) and one through what the layer's Java natives are (mg_egl_host). The stand-in counts a clear
  * that came while another was still in it, and one of a context other than the one made current last (what ANGLE's
  * renderer draws wrong with, or through a null pointer): none of either, and the threads' contexts made current again in
- * between. The thunks are ARM's; elsewhere nothing is checked.
+ * between. The thunks are those of every build whose convention is Android's (MG_GUEST_CODE); elsewhere nothing is checked.
  */
 typedef struct turn_side {
     void *d, *ctx;
@@ -1060,7 +1060,7 @@ typedef struct turn_side {
 } turn_side;
 static volatile i32 g_turn_go;
 
-static void turn_clearing(void *p)
+static MG_HOSTCB void turn_clearing(void *p)
 {
     typedef unsigned (*make_fn)(void *, void *, void *, void *);
     typedef void (*clear_fn)(u32);
@@ -1136,7 +1136,7 @@ static void test_doomed(void)
  * glDrawArrays read ANGLE's state manager through a null pointer (package 569). The stand-in's destroy does what ANGLE's
  * does; none of the drawing thread's clears is of a context ANGLE did not have current.
  */
-static void turn_probing(void *p)
+static MG_HOSTCB void turn_probing(void *p)
 {
     typedef void *(*create_fn)(void *, void *, void *, const int *);
     typedef unsigned (*destroy_fn)(void *, void *);
@@ -1167,7 +1167,7 @@ static void turn_probing(void *p)
 
 static void test_turns_destroy(void)
 {
-#if MG_HOST_ARM32
+#if MG_GUEST_CODE
     typedef void *(*display_fn)(void *);
     typedef unsigned (*init_fn)(void *, int *, int *);
     typedef void *(*create_fn)(void *, void *, void *, const int *);
@@ -1214,13 +1214,13 @@ static void test_turns_destroy(void)
     destroy(d, a.ctx);
     destroy(d, b.ctx);
 #else
-    say("(Turns: the thunks are ARM's, nothing is checked here)");
+    say("(Turns: no thunks in a build whose convention is not Android's, nothing is checked here)");
 #endif
 }
 
 static void test_turns(void)
 {
-#if MG_HOST_ARM32
+#if MG_GUEST_CODE
     typedef void *(*display_fn)(void *);
     typedef unsigned (*init_fn)(void *, int *, int *);
     typedef void *(*create_fn)(void *, void *, void *, const int *);
@@ -1271,7 +1271,7 @@ static void test_turns(void)
     destroy(d, a.ctx);
     destroy(d, b.ctx);
 #else
-    say("(Turns: the thunks are ARM's, nothing is checked here)");
+    say("(Turns: no thunks in a build whose convention is not Android's, nothing is checked here)");
 #endif
 }
 
