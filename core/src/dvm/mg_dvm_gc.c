@@ -1388,6 +1388,11 @@ static bool cycle_ask(void)
 
 static bool cycle_busy(void) { return g_cycle_running || g_cycle_asked; }
 
+/* The app's main thread, which waits for a collection alongside the app a budget later than the others (mg_dvm_gc). */
+static MG_THREAD_LOCAL bool t_main;
+
+void mg_dvm_gc_main_thread(void) { t_main = true; }
+
 void mg_dvm_gc_alongside_wait(void)
 {
     /* (A thread holding the runtime's lock does not wait: the collection's stops take that lock.) */
@@ -1463,9 +1468,18 @@ bool mg_dvm_gc(const char *reason, mg_dvm_gc_result *out)
     if (!out && !strcmp(reason, "allocation") && alongside_on() && cycle_ask()) {
         /*
          * Asked for, and the app goes on. One that makes three budgets' worth before the collection ends waits for it, so
-         * that the heap does not grow without end while it marks.
+         * that the heap does not grow without end while it marks; where memory is pressed, one budget's worth, which is what
+         * the collection was asked at: a thread that makes anything more waits.
+         *
+         * The app's main thread one budget's worth later than the others. It waited with them: Spotify on a Lumia 650 was
+         * pressed at every collection, one each 3 to 5 s while its lists moved, and its main thread stood in each until the
+         * collection ended -- the marking alongside, the second stop and the sweep, 0.5 to 0.7 s -- a fifth of its time in
+         * all, the frames and the touches waiting meanwhile (package 664). It makes 1 to 2 MB in such a time; the other
+         * threads, Google Play services' among them (a third of what was made), still wait.
          */
-        if ((u64)(u32)g_since > (memory_pressed() ? 1 : 3) * g_budget) mg_dvm_gc_alongside_wait();
+        u64 times = memory_pressed() ? 1 : 3;
+        if (t_main) times++;
+        if ((u64)(u32)g_since > times * g_budget) mg_dvm_gc_alongside_wait();
         return true;
     }
     mg_dvm_gc_alongside_wait();

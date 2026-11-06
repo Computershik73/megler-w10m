@@ -1786,6 +1786,8 @@ static void hot_watch(const mg_dvm_thread *t)
 {
     if (g_hot_main || !t) return;
     g_hot_main = t;
+    /* (On the main thread itself: the collector lets it make more before it waits for a collection alongside it.) */
+    mg_dvm_gc_main_thread();
     hot_start();
 }
 
