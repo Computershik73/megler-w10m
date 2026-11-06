@@ -2156,8 +2156,13 @@ bool mg_java_ended(int *status, const char **reason)
  */
 static bool apache_http_wanted(const mg_apk_info *info)
 {
+    /*
+     * (A manifest that names no target targets its minimum, and one that names neither Android 1: YouTube 2.4.4, of 2011,
+     * names neither, and ended at its start on NoClassDefFoundError: org/apache/http/params/BasicHttpParams.)
+     */
+    int target = info->target_sdk > 0 ? info->target_sdk : info->min_sdk > 0 ? info->min_sdk : 1;
     int i;
-    if (info->target_sdk > 0 && info->target_sdk < 28) return true;
+    if (target < 28) return true;
     for (i = 0; i < info->nuses_libraries; i++)
         if (!strcmp(info->uses_libraries[i], "org.apache.http.legacy")) return true;
     return false;
