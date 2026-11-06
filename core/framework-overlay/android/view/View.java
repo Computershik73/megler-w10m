@@ -820,9 +820,38 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void getDrawingRect(Rect out) { out.set(mScrollX, mScrollY, mScrollX + getWidth(), mScrollY + getHeight()); }
     public final boolean getLocalVisibleRect(Rect r) { Point o = new Point(); if (getGlobalVisibleRect(r, o)) { r.offset(-o.x, -o.y); return true; } return false; }
     public final boolean getGlobalVisibleRect(Rect r) { return getGlobalVisibleRect(r, null); }
+    /*
+     * Megler: where no view on the way up is transformed, one walk: each ancestor's place in the window is this view's less
+     * the offsets below it. The original walked up again from every ancestor, a walk for each, and through a transformed
+     * view it still does (meglerGlobalVisibleRectWalks). Spotify asks for every view it shows, to log what is seen, all the
+     * time: once its main thread spent 34 s on input and messages and drew one frame, a fifth of it the collector's
+     * (package 663); getLocationInWindow likewise makes nothing now where nothing is transformed.
+     */
     public boolean getGlobalVisibleRect(Rect r, Point globalOffset) {
         int w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0) return false;
+        int x = 0, y = 0;
+        for (View v = this; v != null; v = v.mParent) {
+            if (!v.hasIdentityMatrix()) return meglerGlobalVisibleRectWalks(r, globalOffset);
+            x += v.mLeft;
+            y += v.mTop;
+            if (v.mParent != null) {
+                x -= v.mParent.mScrollX;
+                y -= v.mParent.mScrollY;
+            }
+        }
+        r.set(x, y, x + w, y + h);
+        if (globalOffset != null) globalOffset.set(x - mScrollX, y - mScrollY);
+        for (View v = this; v.mParent != null; v = v.mParent) {
+            View p = v.mParent;
+            x -= v.mLeft - p.mScrollX;
+            y -= v.mTop - p.mScrollY;
+            if (!r.intersect(x, y, x + p.getWidth(), y + p.getHeight())) return false;
+        }
+        return mRoot == null || r.intersect(0, 0, mRoot.width(), mRoot.height());
+    }
+    private boolean meglerGlobalVisibleRectWalks(Rect r, Point globalOffset) {
+        int w = getWidth(), h = getHeight();
         int[] loc = new int[2];
         getLocationInWindow(loc);
         r.set(loc[0], loc[1], loc[0] + w, loc[1] + h);
@@ -837,16 +866,26 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     }
     public void getLocationOnScreen(int[] out) { getLocationInWindow(out); if (mRoot != null) { out[0] += mRoot.windowX(); out[1] += mRoot.windowY(); } }
     public void getLocationInWindow(int[] out) {
-        float[] p = { 0, 0 };
-        View v = this;
-        while (v != null) {
-            if (!v.hasIdentityMatrix()) v.getMatrix().mapPoints(p);
-            p[0] += v.mLeft; p[1] += v.mTop;
-            View parent = v.mParent;
-            if (parent != null) { p[0] -= parent.mScrollX; p[1] -= parent.mScrollY; }
-            v = parent;
+        float x = 0, y = 0;
+        float[] p = null;
+        for (View v = this; v != null; v = v.mParent) {
+            if (!v.hasIdentityMatrix()) {
+                if (p == null) p = new float[2];
+                p[0] = x;
+                p[1] = y;
+                v.getMatrix().mapPoints(p);
+                x = p[0];
+                y = p[1];
+            }
+            x += v.mLeft;
+            y += v.mTop;
+            if (v.mParent != null) {
+                x -= v.mParent.mScrollX;
+                y -= v.mParent.mScrollY;
+            }
         }
-        out[0] = Math.round(p[0]); out[1] = Math.round(p[1]);
+        out[0] = Math.round(x);
+        out[1] = Math.round(y);
     }
     public void getLocationInSurface(int[] out) { getLocationInWindow(out); }
     public void getWindowVisibleDisplayFrame(Rect r) { if (mRoot != null) mRoot.visibleDisplayFrame(r); else r.set(0, 0, megler.Native.screenWidth(), megler.Native.screenHeight()); }
