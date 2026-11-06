@@ -2137,7 +2137,9 @@ static void test_libc_odds(void)
     }
     /*
      * malloc's blocks at bionic's alignment, 16 bytes but on 32-bit ARM 8 (x86-64's SSE stores fault on less: exteraGram's
-     * libtmessages), through calloc and realloc too, the contents kept; memalign's at theirs.
+     * libtmessages), through calloc and realloc too, the contents kept; memalign's at theirs. And of jemalloc's sizes, a
+     * multiple of that and at least one, all of it the block's to write: malloc(0) too (MaxVibe's libqrcode.so writes a byte
+     * into one, and Windows' heap was corrupted on x64 when that byte was past the host's block).
      */
     {
         typedef void *(*malloc_fn)(size_t);
@@ -2161,9 +2163,9 @@ static void test_libc_odds(void)
                 u8 *m = (u8 *)gmalloc(sizes[i]), *c = (u8 *)gcalloc(sizes[i], 1), *a = (u8 *)gmemalign(64, sizes[i]);
                 odd |= ((mg_addr)m | (mg_addr)c) & (align - 1);
                 odd |= (mg_addr)a & 63;
-                CHECK(m && c && a && gusable(m) == sizes[i] && c[sizes[i] - 1] == 0);
+                CHECK(m && c && a && gusable(m) == MG_ALIGN_UP(sizes[i], (size_t)align) && c[sizes[i] - 1] == 0);
                 if (m) {
-                    memset(m, 0x5A, sizes[i]);
+                    memset(m, 0x5A, gusable(m));
                     m = (u8 *)grealloc(m, sizes[i] * 3);
                     CHECK(m && m[0] == 0x5A && m[sizes[i] - 1] == 0x5A);
                     odd |= (mg_addr)m & (align - 1);
@@ -2179,6 +2181,12 @@ static void test_libc_odds(void)
                 gfree(a);
             }
             CHECK(odd == 0);
+            for (i = 0; i < 64; i++) {
+                u8 *z = (u8 *)gmalloc(0);
+                CHECK(z && gusable(z) == (size_t)align);
+                if (z) memset(z, 0, gusable(z));
+                gfree(z);
+            }
         }
     }
 }

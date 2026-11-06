@@ -37,6 +37,15 @@ u64 mg_g_malloc_bytes(void) { return (u32)mg_atomic_add(&g_malloced, 0); }
  */
 #define G_ALIGN ((size_t)(MG_ARCH_ARM32 ? 8 : 16))
 #define H_ALIGN (2 * sizeof(void *))
+/*
+ * And the size of every block is jemalloc's too, a multiple of that quantum and at least one: malloc(0) gives 16 bytes
+ * (8 on 32-bit ARM), malloc(17) 32, and malloc_usable_size says so. Code that writes a little past what it asked for --
+ * a terminating NUL into malloc(strlen(s)), a byte into malloc(0) -- writes into its own block on Android, and did here
+ * into the next host block's header: MaxVibe's libqrcode.so writes a 0 into a block of malloc(0), which ended at the host
+ * block's last byte once the header took G_ALIGN, and Windows found its heap corrupt a moment later, at another block
+ * (c0000374, MaxVibe ending at its start one run in two on x64).
+ */
+#define USABLE(n) ((size_t)MG_ALIGN_UP((size_t)(n) ? (size_t)(n) : 1, G_ALIGN))
 
 /* A block of n bytes at a multiple of align, its header right before it, from a host block made bigger to hold both. */
 static void *aligned_block(size_t align, size_t n)
@@ -46,7 +55,7 @@ static void *aligned_block(size_t align, size_t n)
         mg_set_errno(GE_INVAL);
         return NULL;
     }
-    raw = (u8 *)malloc(n + align + sizeof(ghdr));
+    raw = (u8 *)malloc(USABLE(n) + align + sizeof(ghdr));
     if (!raw) {
         mg_set_errno(GE_NOMEM);
         return NULL;
@@ -66,7 +75,7 @@ void *mg_g_malloc(size_t n)
         return NULL;
     }
     if (H_ALIGN < G_ALIGN) return aligned_block(G_ALIGN, n);
-    raw = (u8 *)malloc(n + G_ALIGN);
+    raw = (u8 *)malloc(USABLE(n) + G_ALIGN);
     if (!raw) {
         mg_set_errno(GE_NOMEM);
         return NULL;
@@ -87,10 +96,10 @@ void *mg_g_calloc(size_t n, size_t m)
     }
     if (H_ALIGN < G_ALIGN) {
         u8 *p = (u8 *)aligned_block(G_ALIGN, (size_t)total);
-        if (p) memset(p, 0, (size_t)total);
+        if (p) memset(p, 0, USABLE(total));
         return p;
     }
-    raw = (u8 *)calloc(1, (size_t)total + G_ALIGN);
+    raw = (u8 *)calloc(1, USABLE(total) + G_ALIGN);
     if (!raw) {
         mg_set_errno(GE_NOMEM);
         return NULL;
@@ -129,7 +138,7 @@ void *mg_g_realloc(void *p, size_t n)
     }
     if (H_ALIGN >= G_ALIGN && HDR(p)->offset == G_ALIGN) {
         u32 was = HDR(p)->size;
-        u8 *raw = (u8 *)realloc((u8 *)p - G_ALIGN, n + G_ALIGN);
+        u8 *raw = (u8 *)realloc((u8 *)p - G_ALIGN, USABLE(n) + G_ALIGN);
         if (!raw) {
             mg_set_errno(GE_NOMEM);
             return NULL;
@@ -142,7 +151,7 @@ void *mg_g_realloc(void *p, size_t n)
     old = HDR(p)->size;
     q = mg_g_malloc(n);
     if (!q) return NULL;
-    memcpy(q, p, old < n ? old : n);
+    memcpy(q, p, USABLE(old) < USABLE(n) ? USABLE(old) : USABLE(n));
     mg_g_free(p);
     return q;
 }
@@ -168,7 +177,7 @@ static int g_posix_memalign(void **out, size_t align, size_t n)
 static void *g_aligned_alloc(size_t align, size_t n) { return g_memalign(align, n); }
 static void *g_valloc(size_t n) { return g_memalign(MG_PAGE, n); }
 static void *g_pvalloc(size_t n) { return g_memalign(MG_PAGE, MG_ALIGN_UP(n, MG_PAGE)); }
-static size_t g_malloc_usable_size(const void *p) { return p ? HDR(p)->size : 0; }
+static size_t g_malloc_usable_size(const void *p) { return p ? USABLE(HDR(p)->size) : 0; }
 static int g_mallopt(int param, int value) { (void)param; (void)value; return 1; }
 static int g_malloc_trim(size_t pad) { (void)pad; return 0; }
 
