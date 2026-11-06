@@ -889,8 +889,20 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
          */
         info->runnable = true;
     } else if (!info->nabis) {
+        /*
+         * Nothing the Java driver can start, and no native code: no activity a launcher starts (a widget, a keyboard, a
+         * service, a plug-in of another app), or no DEX file in this APK. (This said "written in Java only, which this layer
+         * does not run yet" from before there was a Java driver: Sticky Note's widget and a framework-res.apk got it.)
+         */
         info->runnable = false;
-        mg_strlcpy(info->reason, "This app has no native code: it is written in Java only, which this layer does not run yet.", sizeof(info->reason));
+        if (!info->activity[0] && mg_zip_find(zips[0], "classes.dex"))
+            mg_strlcpy(info->reason, "This app has no activity to start: it is a widget, a keyboard, a service or a part of another app, which is not run on its own.",
+                       sizeof(info->reason));
+        else if (!mg_zip_find(zips[0], "classes.dex"))
+            mg_strlcpy(info->reason, "This APK has no code to run: no Java code (classes.dex) and no native code. It may hold resources for other apps, or be a part of a bundle.",
+                       sizeof(info->reason));
+        else
+            mg_strlcpy(info->reason, "This app has no activity it can be started with.", sizeof(info->reason));
     } else if (!info->abi[0]) {
         info->runnable = false;
 #if !MG_APK_ABI_ARM
