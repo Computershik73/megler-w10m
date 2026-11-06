@@ -27,54 +27,21 @@ static volatile i32 g_malloced;
 
 u64 mg_g_malloc_bytes(void) { return (u32)mg_atomic_add(&g_malloced, 0); }
 
-void *mg_g_malloc(size_t n)
-{
-    u8 *raw;
-    if (n > 0x7FFFFF00u) {
-        mg_set_errno(GE_NOMEM);
-        return NULL;
-    }
-    raw = (u8 *)malloc(n + sizeof(ghdr));
-    if (!raw) {
-        mg_set_errno(GE_NOMEM);
-        return NULL;
-    }
-    ((ghdr *)raw)->offset = sizeof(ghdr);
-    ((ghdr *)raw)->size = (u32)n;
-    mg_atomic_add(&g_malloced, (i32)n);
-    return raw + sizeof(ghdr);
-}
+/*
+ * The alignment of every block malloc gives, bionic's: Android 9's jemalloc hands out multiples of its quantum, 16 bytes,
+ * but 8 on 32-bit ARM. Code built for the ABI counts on it -- x86-64's SSE stores (movaps) fault on a block of 8, and
+ * exteraGram's libtmessages stopped so at its start when the header made every block 8 bytes off the host's 16.
+ * The header is the last bytes of G_ALIGN before the guest's pointer, so a host block of G_ALIGN gives one of G_ALIGN.
+ * The host's malloc gives two pointers' worth (Windows' MEMORY_ALLOCATION_ALIGNMENT, glibc's): less than G_ALIGN on 32-bit
+ * x86, where every block is made as memalign's.
+ */
+#define G_ALIGN ((size_t)(MG_ARCH_ARM32 ? 8 : 16))
+#define H_ALIGN (2 * sizeof(void *))
 
-void *mg_g_calloc(size_t n, size_t m)
-{
-    u64 total = (u64)n * (u64)m;
-    u8 *raw;
-    if (total > 0x7FFFFF00u) {
-        mg_set_errno(GE_NOMEM);
-        return NULL;
-    }
-    raw = (u8 *)calloc(1, (size_t)total + sizeof(ghdr));
-    if (!raw) {
-        mg_set_errno(GE_NOMEM);
-        return NULL;
-    }
-    ((ghdr *)raw)->offset = sizeof(ghdr);
-    ((ghdr *)raw)->size = (u32)total;
-    mg_atomic_add(&g_malloced, (i32)total);
-    return raw + sizeof(ghdr);
-}
-
-void mg_g_free(void *p)
-{
-    if (!p) return;
-    mg_atomic_add(&g_malloced, -(i32)HDR(p)->size);
-    free((u8 *)p - HDR(p)->offset);
-}
-
-static void *g_memalign(size_t align, size_t n)
+/* A block of n bytes at a multiple of align, its header right before it, from a host block made bigger to hold both. */
+static void *aligned_block(size_t align, size_t n)
 {
     u8 *raw, *p;
-    if (align <= 8) return mg_g_malloc(n);
     if ((align & (align - 1)) || n > 0x7FFFFF00u - align) {
         mg_set_errno(GE_INVAL);
         return NULL;
@@ -91,6 +58,62 @@ static void *g_memalign(size_t align, size_t n)
     return p;
 }
 
+void *mg_g_malloc(size_t n)
+{
+    u8 *raw;
+    if (n > 0x7FFFFF00u) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    if (H_ALIGN < G_ALIGN) return aligned_block(G_ALIGN, n);
+    raw = (u8 *)malloc(n + G_ALIGN);
+    if (!raw) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    HDR(raw + G_ALIGN)->offset = (u32)G_ALIGN;
+    HDR(raw + G_ALIGN)->size = (u32)n;
+    mg_atomic_add(&g_malloced, (i32)n);
+    return raw + G_ALIGN;
+}
+
+void *mg_g_calloc(size_t n, size_t m)
+{
+    u64 total = (u64)n * (u64)m;
+    u8 *raw;
+    if (total > 0x7FFFFF00u) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    if (H_ALIGN < G_ALIGN) {
+        u8 *p = (u8 *)aligned_block(G_ALIGN, (size_t)total);
+        if (p) memset(p, 0, (size_t)total);
+        return p;
+    }
+    raw = (u8 *)calloc(1, (size_t)total + G_ALIGN);
+    if (!raw) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    HDR(raw + G_ALIGN)->offset = (u32)G_ALIGN;
+    HDR(raw + G_ALIGN)->size = (u32)total;
+    mg_atomic_add(&g_malloced, (i32)total);
+    return raw + G_ALIGN;
+}
+
+void mg_g_free(void *p)
+{
+    if (!p) return;
+    mg_atomic_add(&g_malloced, -(i32)HDR(p)->size);
+    free((u8 *)p - HDR(p)->offset);
+}
+
+static void *g_memalign(size_t align, size_t n)
+{
+    if (align <= G_ALIGN) return mg_g_malloc(n);
+    return aligned_block(align, n);
+}
+
 void *mg_g_realloc(void *p, size_t n)
 {
     void *q;
@@ -104,16 +127,16 @@ void *mg_g_realloc(void *p, size_t n)
         mg_set_errno(GE_NOMEM);
         return NULL;
     }
-    if (HDR(p)->offset == sizeof(ghdr)) {
+    if (H_ALIGN >= G_ALIGN && HDR(p)->offset == G_ALIGN) {
         u32 was = HDR(p)->size;
-        u8 *raw = (u8 *)realloc((u8 *)p - sizeof(ghdr), n + sizeof(ghdr));
+        u8 *raw = (u8 *)realloc((u8 *)p - G_ALIGN, n + G_ALIGN);
         if (!raw) {
             mg_set_errno(GE_NOMEM);
             return NULL;
         }
-        ((ghdr *)raw)->size = (u32)n;
+        HDR(raw + G_ALIGN)->size = (u32)n;
         mg_atomic_add(&g_malloced, (i32)((u32)n - was));
-        return raw + sizeof(ghdr);
+        return raw + G_ALIGN;
     }
     /* An aligned block: the host cannot grow it in place and keep the alignment. */
     old = HDR(p)->size;
