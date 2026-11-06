@@ -1172,8 +1172,9 @@ bool mg_dvm_gc_census(mg_dvm_gc_result *out)
  *    mg_dvm_heap_alloc_black), and every root pushed -- the classes' statics, the interned strings, the threads', the JNI
  *    layer's, C's, the frames and C stacks scanned conservatively -- nothing followed yet.
  *  - Alongside: everything they reach marked, by the helpers too, while the app's threads run and make objects.
- *  - The second stop: every root pushed again, and every marked object on a page of the heap written since the first stop
- *    followed again -- an app's thread that stored a reference into an object already followed wrote that page -- with every
+ *  - The second stop: every root pushed again (the interned strings excepted: roots_pushed), and every marked object on a
+ *    page of the heap written since the first stop followed again -- an app's thread that stored a reference into an object
+ *    already followed wrote that page -- with every
  *    marked large object and object with fields by name (memory nothing watches), then everything that reaches marked; the
  *    references decided about, as in a stopped collection. Then the sweep, the heap locked, as before.
  *
@@ -1205,16 +1206,16 @@ static bool alongside_on(void)
  * The classes' statics and the interned strings pushed by the collecting thread and the helpers at once, nothing followed,
  * into the collecting thread's stack. One thread pushing them took some 40 ms of each stop of Yandex Maps' (package 539).
  */
-static void class_roots_pushed(void)
+static void class_roots_pushed(bool strings)
 {
     if (!g_nhelpers) {
         mg_dvm_each_linked_locked(class_roots, NULL);
-        mg_dvm_interned_each(string_root, NULL);
+        if (strings) mg_dvm_interned_each(string_root, NULL);
         return;
     }
     g_root_next = 0;
     g_root_class_parts = (mg_dvm_class_buckets() + ROOT_BUCKETS - 1) / ROOT_BUCKETS;
-    g_root_string_parts = (mg_dvm_interned_slots() + ROOT_SLOTS - 1) / ROOT_SLOTS;
+    g_root_string_parts = strings ? (mg_dvm_interned_slots() + ROOT_SLOTS - 1) / ROOT_SLOTS : 0;
     g_roots_only = true;
     shared(roots_round);
     g_roots_only = false;
@@ -1226,11 +1227,16 @@ typedef struct roots_took {
     u64 classes_ns, exact_ns, jni_ns, stacks_ns;
 } roots_took;
 
-static void roots_pushed(roots_took *took)
+/*
+ * Every root pushed, nothing followed. `strings`: the interned strings too -- at the first stop; at the second every string
+ * the table holds is marked already (one put in meanwhile is marked as it is put, mg_dvm_intern_string), and reading the
+ * table again went over Spotify's 60,000 strings and the slots between them for nothing (package 664).
+ */
+static void roots_pushed(roots_took *took, bool strings)
 {
     u64 t0 = mg_time_monotonic_ns(), t1, t2;
     u32 i;
-    class_roots_pushed();
+    class_roots_pushed(strings);
     t1 = mg_time_monotonic_ns();
     mg_dvm_threads_each(exact_thread_roots, NULL);
     mg_dvm_proxy_roots(reach_ref, NULL);
@@ -1333,7 +1339,7 @@ static void collect_alongside(void)
             mg_dvm_heap_clear_marks();
             tm = mg_time_monotonic_ns() - tm;
             mg_dvm_heap_alloc_black(true);
-            roots_pushed(&first);
+            roots_pushed(&first, true);
         }
         resume_threads();
         g_busy = 0;
@@ -1368,7 +1374,7 @@ static void collect_alongside(void)
     t5 = mg_time_monotonic_ns();
     ok = !g_stop_failed;
     if (ok) {
-        roots_pushed(&second);
+        roots_pushed(&second, false);
         tp = mg_time_monotonic_ns();
         written = mg_dvm_heap_each_written(follow_main);
         follow_with_fields();

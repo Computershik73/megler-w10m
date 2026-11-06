@@ -443,6 +443,7 @@ bool mg_dvm_heap_is_marked(const void *o)
 }
 
 void mg_dvm_heap_alloc_black(bool on) { mg_atomic_xchg(&g_black, on ? 1 : 0); }
+bool mg_dvm_heap_black(void) { return g_black != 0; }
 bool mg_dvm_heap_watched(void) { return g_watch; }
 
 /*

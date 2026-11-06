@@ -625,6 +625,11 @@ mg_jobj *mg_dvm_intern_string(mg_jobj *s)
         g_interned[k].s = s;
         g_intern_n++;
         mg_atomic_add(&g_dvm.n_interned, 1);
+        /*
+         * Put in while a collection marks alongside the app (its stops take this lock): marked now, as what is made then is,
+         * since its second stop does not read the table again (roots_pushed in mg_dvm_gc.c). A string holds no references.
+         */
+        if (mg_dvm_heap_black()) mg_dvm_heap_set_mark_shared(s);
     }
     mg_dvm_unlock();
     return kept;

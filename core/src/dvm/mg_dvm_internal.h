@@ -846,6 +846,7 @@ void mg_dvm_heap_each_marked(void (*fn)(void *o));
  * many pages that was.
  */
 void mg_dvm_heap_alloc_black(bool on);
+bool mg_dvm_heap_black(void);
 /* Whether this thread holds the runtime's lock (mg_dvm_lock). */
 bool mg_dvm_lock_mine(void);
 /*
