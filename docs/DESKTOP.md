@@ -157,7 +157,17 @@ but not when Windows says it stopped the thread in the kernel
 interruption before, its pc is guest code's already and the registers kept
 for a caller are not yet its own. Sent on from there, an x64 thread went back
 with rbx, rsi and rdi of the code that called NtContinue (x86 code had its
-own); it is told again a millisecond later instead.
+own); it is told again a millisecond later instead. The collector stops a
+thread with SuspendThread too (`mg_thread_suspend`) and takes its registers,
+and its stack from the stack pointer up, for all it holds -- a JNI reference
+that native code keeps in a register is the object's address. Found inside
+NtContinue, an x64 thread was given to it with the pc and stack pointer it
+goes back to and rbx, rsi and rdi of NtContinue's caller, its own lying in
+the context NtContinue was given, below that stack pointer. So a stop that
+finds `CONTEXT_SERVICE_ACTIVE` at a pc that is not just past a `syscall` (or
+`int 0x2e`) -- where a thread in an ordinary system call is found, with its
+own registers -- lets the thread go and stops it again 10 us later; x86's
+registers there are WOW64's copy, its own, and are taken as they are.
 
 Memory an app gives back with madvise is decommitted, to be committed again
 at its first touch (`bionic/mg_libc_mem.c`). A goroutine's stack is a piece
@@ -206,7 +216,7 @@ not defined, and the new files compile to nothing.
 On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
 
 - `tools/build-desktop.sh x64 tests`, the core in `megler-core.so` loaded into
-  a Windows x64 process, with the x86_64 guest test libraries: 5331 checks, 3
+  a Windows x64 process, with the x86_64 guest test libraries: 5343 checks, 3
   failed -- the three float checks of the GLES stand-in (below); now and then
   one or two more under load, the herd test's timing check. ELF64 with
   RELA, APS2 and RELR relocations, IFUNC, 90 patched thread-pointer and canary
@@ -231,9 +241,16 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   not). And a goroutine's stack in a heap of a library of Go's (libt_go.so),
   given back by number as Go's runtime gives it back and run on again with a
   64 KB frame written bottom first: committed still, zero, not a page taken
-  back (without that, the process ended there).
-- `tools/build-desktop.sh x86 tests` (through WOW64): 5322 checks, 0 failed
-  (now and then 1 under load: a timing check of a few milliseconds).
+  back (without that, the process ended there). And a thread that some
+  10,000 signals a run keep sending back through NtContinue, stopped 20000
+  times as the collector stops one (test_stop_signalled): its own registers
+  at every stop in its loop -- 0 of 190,544 in twelve runs, where the same
+  build with the look at its context switched off gave 980 of 189,534 rbx,
+  rsi and rdi of NtContinue's caller.
+- `tools/build-desktop.sh x86 tests` (through WOW64): 5334 checks, 0 failed
+  (now and then 1 under load: a timing check of a few milliseconds); the
+  signalled thread stopped as the collector stops one had its own registers
+  with no look at its context (0 of some 26,000 stops in its loop).
 - A library of Go's: a c-shared one for android/amd64 that Go 1.27.1 made
   here (with the NDK's clang for cgo; not in the repository), loaded by
   `mg_tests --load` on x64 and on WSL's Linux: its 468 accesses of `%fs`
@@ -249,7 +266,7 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   on Linux).
 - `tools/build-tests.sh win` (MSVC's x64 build of the tests): 5023 checks, 0
   failed, and 5087 on Android's libcore, 0 failed; `tools/build-tests.sh
-  linux64` (x86_64 on WSL's Linux): 5329 checks, 3 failed (the float checks
+  linux64` (x86_64 on WSL's Linux): 5341 checks, 3 failed (the float checks
   above), an app's own `syscall` and accesses of `%fs` through a register led
   out there too, and a goroutine's first touch of its own stack's page that
   libc's madvise gave back repaired on the handler's stack of its own;
