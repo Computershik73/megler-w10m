@@ -113,6 +113,12 @@ megler_gfx_host gfxCallbacks() {
         shellLog::write("flag: gfx-software is on: canvases are drawn in memory, not on the graphics processor");
         gfx.setDrawing(GfxHost::Drawing::memory);
     }
+    // The flag "gfx-video-drawn": a TextureView's video drawn among the views, the window drawn again for each picture, as
+    // before 636, instead of laid under them (GfxHost::setVideoUnder) -- to compare.
+    if (files::exists(platform::localStateDirectory() + L"\\flags\\gfx-video-drawn")) {
+        shellLog::write("flag: gfx-video-drawn is on: a TextureView's video is drawn among the views, not laid under them");
+        gfx.setVideoUnder(false);
+    }
     return gfx.callbacks();
 }
 

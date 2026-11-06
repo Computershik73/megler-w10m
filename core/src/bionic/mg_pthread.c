@@ -47,15 +47,23 @@ static u64 until(const g_timespec *abs, bool monotonic)
 #define M_ERRORCHECK 0x8000
 #define M_OWNER(v) ((i32)((u32)(v) >> 16))
 
-/* Take the lock, with the owner field set to `owner` (0 for a normal mutex). timeout_ns: 0 forever, 1 do not wait. */
+/*
+ * Take the lock, with the owner field set to `owner` (0 for a normal mutex). timeout_ns: 0 forever, 1 do not wait.
+ *
+ * The state bits are 1 while the lock is held, 2 while it is held and may be waited for: mutex_release wakes a sleeper
+ * only for 2, and leaves the lock free with no record of the sleepers it did not wake. The one it wakes has to put that
+ * record back, so a thread that has waited once takes the lock as contended from then on, as the mutexes of Drepper's
+ * "Futexes Are Tricky" do. Taken with 1 -- by a woken waiter that lost the lock to another thread and came round to find
+ * it free -- the lock's release woke nobody, and the other sleepers slept on a free lock for ever.
+ */
 static int mutex_acquire(volatile i32 *m, i32 owner, u64 timeout_ns)
 {
     u64 deadline = timeout_ns > 1 ? mg_time_monotonic_ns() + timeout_ns : 0;
+    i32 taken = 1;
     for (;;) {
         i32 v = *m, flags = v & (M_TYPE | M_SHARED);
         if (!(v & M_STATE)) {
-            /* Free. A thread that had to wait marks the lock contended, since it cannot know it was the only waiter. */
-            if (mg_atomic_cas(m, v, flags | (owner << 16) | 1) == v) return 0;
+            if (mg_atomic_cas(m, v, flags | (owner << 16) | taken) == v) return 0;
             continue;
         }
         if (timeout_ns == 1) return G_EBUSY;
@@ -70,12 +78,7 @@ static int mutex_acquire(volatile i32 *m, i32 owner, u64 timeout_ns)
         } else {
             mg_gwait(m, v, 0);
         }
-        /* Woken or changed: try for it, and leave it marked contended. */
-        for (;;) {
-            v = *m;
-            if (v & M_STATE) break;
-            if (mg_atomic_cas(m, v, (v & (M_TYPE | M_SHARED)) | (owner << 16) | 2) == v) return 0;
-        }
+        taken = 2;
     }
 }
 
@@ -299,10 +302,30 @@ typedef struct g_rwlock {
     i32 unused[5];
 } g_rwlock;
 
+/*
+ * One wait on the rwlock's condition, the inner lock held, for no longer than is left until `deadline` on the monotonic
+ * clock (0: no deadline); G_ETIMEDOUT, without waiting, once nothing is left. A wait that times out comes back for one
+ * more look at the lock, as mutex_acquire and sem_take do.
+ */
+static int rw_wait(g_rwlock *rw, u64 deadline)
+{
+    u64 now;
+    if (!deadline) return cond_wait(&rw->cond, &rw->lock, 0, false);
+    now = mg_time_monotonic_ns();
+    if (now >= deadline) return G_ETIMEDOUT;
+    cond_wait(&rw->cond, &rw->lock, deadline - now, true);
+    return 0;
+}
+
 static int rw_lock(g_rwlock *rw, bool write, u64 timeout_ns, bool timed)
 {
     i32 tid = mg_gthread_self()->tid;
+    /* The deadline is fixed once, and each wait is given what is left of it: every unlock wakes the waiters, and a
+       wait given the whole timeout again after each wake ran on far past the deadline, or for ever while unlocks kept
+       coming. */
+    u64 deadline = timed && timeout_ns > 1 ? mg_time_monotonic_ns() + timeout_ns : 0;
     int r = 0;
+    bool waited = false, let_in = false;
     g_mutex_lock(&rw->lock);
     if (write) {
         if (rw->writer == tid) {
@@ -312,19 +335,24 @@ static int rw_lock(g_rwlock *rw, bool write, u64 timeout_ns, bool timed)
         rw->pending_writers++;
         while (rw->readers || rw->writer) {
             if (timed && timeout_ns <= 1) { r = timeout_ns ? G_EBUSY : G_ETIMEDOUT; break; }
-            if (cond_wait(&rw->cond, &rw->lock, timeout_ns, timed)) { r = G_ETIMEDOUT; break; }
+            waited = true;
+            if (rw_wait(rw, deadline)) { r = G_ETIMEDOUT; break; }
         }
         rw->pending_writers--;
         if (!r) rw->writer = tid;
+        /* Readers that came while it waited wait behind it; when it gives up with no other writer about, nothing else
+           would tell them they may go in now. */
+        else let_in = waited && !rw->pending_writers && !rw->writer;
     } else {
         /* Writers first, or a steady stream of readers starves them. */
         while (rw->writer || rw->pending_writers) {
             if (timed && timeout_ns <= 1) { r = timeout_ns ? G_EBUSY : G_ETIMEDOUT; break; }
-            if (cond_wait(&rw->cond, &rw->lock, timeout_ns, timed)) { r = G_ETIMEDOUT; break; }
+            if (rw_wait(rw, deadline)) { r = G_ETIMEDOUT; break; }
         }
         if (!r) rw->readers++;
     }
     g_mutex_unlock(&rw->lock);
+    if (let_in) g_cond_broadcast(&rw->cond);
     return r;
 }
 

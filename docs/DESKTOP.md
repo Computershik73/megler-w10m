@@ -74,6 +74,8 @@ would be called with the wrong convention without a word from the compiler
 | `host/win32/mg_host_base.c` | what the host layer calls of `mg_base.c` (`mg_alloc`, `mg_log`), on Megler.exe's side; its log lines go to the core's log once the core is loaded |
 | `tools/desktop-stubs.py` | from the ELF's own symbols: a stub in Megler.exe for each function the core exports, jumping through a slot the loader fills, and the table of Megler.exe's functions the core imports |
 | `tools/abi-check.py` | what the core gives guest code -- every binding of bionic's and the NDK's names, 54 structures -- against the NDK's headers, for each of the four ABIs (0 differences) |
+| `tools/build-angle.py --arch x64\|x86\|arm64` | ANGLE for the processor, from gecko-w10m's sources and object directory (below, "OpenGL ES") |
+| `tools/gl-adapters.py` | `ndk/mg_gl_adapters.inc` from the NDK's EGL and GLES headers: an adapter from the guest's convention to ANGLE's for each entry point |
 
 ## Guest code of the processor's own
 
@@ -211,46 +213,94 @@ The phone's build, MSVC's x64 build of the tests and the Linux builds see
 none of this: the macros are empty there, `MG_CORE_ELF` and `MG_ELF_HOST` are
 not defined, and the new files compile to nothing.
 
+## OpenGL ES
+
+**ANGLE** is the phone's, gecko-w10m's (with Megler's patches, `angle/`),
+built for the processor from the sources and the object directory of
+gecko-w10m on this PC: `python tools/build-angle.py --arch x64|x86|arm64`
+compiles every object its build linked `libGLESv2.dll` and `libEGL.dll` from,
+with the flags it used, for that processor and without Gecko -- no
+`mozilla-config.h`, no mozglue allocator, the C runtime linked in, Megler's
+zlib -- into `build/angle/<arch>/dist`. Still for an app container
+(`ANGLE_ENABLE_WINDOWS_UWP`). The two DLLs import the system's alone
+(`d3d11`, `dxgi`, `d3dcompiler_47`); `tools/build-appx.sh` stages them beside
+Megler.exe, and the shell looks for those two (`shell/Platform.cpp`).
+
+**Its functions are of Windows' convention**: the Khronos headers'
+`KHRONOS_APIENTRY` is `__stdcall` on Windows, so on x86 an ANGLE function takes
+its arguments off the stack itself, where Android's cdecl leaves them to the
+caller; on x86_64 it is Microsoft's x64 convention. Guest code and the core
+call with Android's. So on those two every function of ANGLE's is given as an
+**adapter** (`ndk/mg_gl_adapters.c`): a function of the guest's convention
+that calls ANGLE's, typed `MG_GLAPI`. `tools/gl-adapters.py` writes one for
+each of the 1177 entry points of the NDK's headers (`mg_gl_adapters.inc`);
+`mg_egl.c`'s `angle()`, where every ANGLE function is found -- for guest
+imports and `dlsym`, `eglGetProcAddress`, the core's own calls and the Java
+natives -- gives the adapter, so nothing gets ANGLE's own. The seven functions
+that take a function of the caller's (debug callbacks, `EGL_ANDROID_blob_cache`)
+are written by hand: ANGLE is given a function of the adapters' own, of
+Windows' convention (`MG_GLCB`, `MG_HOSTCB`), which calls the caller's.
+`eglGetProcAddress` is the core's; a name in no header has no adapter and is
+"no such function". ARM64's conventions are one for calls that are not
+variadic, and none of these is: ANGLE's functions are given as they are. The
+float adapters of 32-bit ARM's softfp are that processor's alone.
+
+The tests' stand-ins for ANGLE are of its convention too (`MG_GLAPI`), so the
+adapters are what the GL tests go through on x86_64 and x86; on x86 the
+stand-in's functions that do nothing come in one size of arguments each, as
+`__stdcall` functions must.
+
 ## Proven
 
 On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
 
 - `tools/build-desktop.sh x64 tests`, the core in `megler-core.so` loaded into
-  a Windows x64 process, with the x86_64 guest test libraries: 5343 checks, 3
-  failed -- the three float checks of the GLES stand-in (below); now and then
-  one or two more under load, the herd test's timing check. ELF64 with
-  RELA, APS2 and RELR relocations, IFUNC, 90 patched thread-pointer and canary
-  reads in one library, initial-exec and global-dynamic thread-local
-  variables, PLT calls, JNI with every kind of argument, threads, a thread
-  interrupted twenty times where it was, setjmp, system calls by number, the
-  vDSO, an app from its APK through NativeActivity; and an app's own
-  `syscall` led out to the core in six places of the seven t_raw_syscall has
-  (the seventh, with a jump into it, left): every register but rax, the flags
-  with DF set, xmm0, xmm15, ymm1's upper half and the red zone as they were,
-  six arguments, a stack of the caller's own, four threads at once. And its
-  accesses of `%fs` through a register, 19 of t_fs_access's 20 led out to
-  pieces (the 20th, a jump to it and nothing to move around it, left): Go's
-  forms -- its reload of g, its stores, rt0_go's -- and C's initial-exec ones
-  through the GOT, an index too, on two threads; the flags, every register
-  the access does not write and the red zone as they were; and a thread
-  interrupted two hundred times in the middle of them by a handler that makes
-  them too (with the patcher's word not kept across an interruption, its
-  registers came back changed: t_fs_access 32, on Linux as well; with a
-  thread sent on from inside NtContinue, on Windows alone: 37 of 7200 calls
-  of `mg_tests --load` with 8 processes at once, and 0 of 7200 since it is
-  not). And a goroutine's stack in a heap of a library of Go's (libt_go.so),
-  given back by number as Go's runtime gives it back and run on again with a
-  64 KB frame written bottom first: committed still, zero, not a page taken
-  back (without that, the process ended there). And a thread that some
-  10,000 signals a run keep sending back through NtContinue, stopped 20000
-  times as the collector stops one (test_stop_signalled): its own registers
-  at every stop in its loop -- 0 of 190,544 in twelve runs, where the same
-  build with the look at its context switched off gave 980 of 189,534 rbx,
-  rsi and rdi of NtContinue's caller.
-- `tools/build-desktop.sh x86 tests` (through WOW64): 5334 checks, 0 failed
-  (now and then 1 under load: a timing check of a few milliseconds); the
-  signalled thread stopped as the collector stops one had its own registers
-  with no look at its context (0 of some 26,000 stops in its loop).
+  a Windows x64 process, with the x86_64 guest test libraries: 5351 checks, 0
+  failed (now and then one under load: the herd test's timing check of a few
+  milliseconds). The GL tests go through the adapters to stand-ins of ANGLE's
+  convention, floats and all. ELF64 with RELA, APS2 and RELR relocations,
+  IFUNC, 90 patched thread-pointer and canary reads in one library,
+  initial-exec and global-dynamic thread-local variables, PLT calls, JNI with
+  every kind of argument, threads, a thread interrupted twenty times where it
+  was, setjmp, system calls by number, the vDSO, an app from its APK through
+  NativeActivity; and an app's own `syscall` led out to the core in six places
+  of the seven t_raw_syscall has (the seventh, with a jump into it, left):
+  every register but rax, the flags with DF set, xmm0, xmm15, ymm1's upper
+  half and the red zone as they were, six arguments, a stack of the caller's
+  own, four threads at once. And its accesses of `%fs` through a register, 19
+  of t_fs_access's 20 led out to pieces (the 20th, a jump to it and nothing to
+  move around it, left): Go's forms -- its reload of g, its stores, rt0_go's --
+  and C's initial-exec ones through the GOT, an index too, on two threads; the
+  flags, every register the access does not write and the red zone as they
+  were; and a thread interrupted two hundred times in the middle of them by a
+  handler that makes them too (with the patcher's word not kept across an
+  interruption, its registers came back changed: t_fs_access 32, on Linux as
+  well; with a thread sent on from inside NtContinue, on Windows alone: 37 of
+  7200 calls of `mg_tests --load` with 8 processes at once, and 0 of 7200
+  since it is not). And a goroutine's stack in a heap of a library of Go's
+  (libt_go.so), given back by number as Go's runtime gives it back and run on
+  again with a 64 KB frame written bottom first: committed still, zero, not a
+  page taken back (without that, the process ended there). And a thread that
+  some 10,000 signals a run keep sending back through NtContinue, stopped
+  20000 times as the collector stops one (test_stop_signalled): its own
+  registers at every stop in its loop -- 0 of 190,544 in twelve runs, where
+  the same build with the look at its context switched off gave 980 of
+  189,534 rbx, rsi and rdi of NtContinue's caller.
+- `tools/build-desktop.sh x86 tests` (through WOW64): 5342 checks, 0 failed
+  (now and then 1 under load: the same timing check), the GL tests through
+  `__stdcall` stand-ins; the signalled thread stopped as the collector stops
+  one had its own registers with no look at its context (0 of some 26,000
+  stops in its loop).
+- The registers a function keeps for its caller, kept across signals on
+  every ABI (t_signal_regs: a thread spinning with a mark in each, Android's
+  and Windows' both, sent 300 signals, each some microseconds after its
+  handler ran for the one before, so that the next finds it on its way back
+  from the landing): none came back changed on x64, x86, Linux x86_64, ARM
+  (Thumb-2 and ARM mode, qemu-arm) and ARM64 (qemu-aarch64) -- 5339, 5330,
+  5337, 5451 and 5328 checks with it. With x64's check of a thread stopped in
+  the kernel skipped, 344 of 2000 `mg_tests --load` calls with 8 processes at
+  once had rbx 0 and rsi and rdi addresses on the thread's stack, from 442
+  threads sent on from inside NtContinue; 0 of 2000 with it, 492 left there.
 - A library of Go's: a c-shared one for android/amd64 that Go 1.27.1 made
   here (with the NDK's clang for cgo; not in the repository), loaded by
   `mg_tests --load` on x64 and on WSL's Linux: its 468 accesses of `%fs`
@@ -260,26 +310,29 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   needm) -- 1000 goroutines allocating and sending, the collector run, the
   sums right: 20 of 20 runs on both, and 20 of 20 of five such rounds with
   `debug.FreeOSMemory()` between them, which put each round's goroutines on
-  pages given back. Before, none of 10 of those ended well on either: the
-  process ended at a goroutine's first write, `movb $0,0x17(%rsp)` after
-  `sub $0x10038,%rsp` (a second-chance access violation on Windows, exit 139
-  on Linux).
+  pages given back (and 3 of 3 runs again on x64 with everything merged).
+  Before, none of 10 of those ended well on either: the process ended at a
+  goroutine's first write, `movb $0,0x17(%rsp)` after `sub $0x10038,%rsp` (a
+  second-chance access violation on Windows, exit 139 on Linux).
 - `tools/build-tests.sh win` (MSVC's x64 build of the tests): 5023 checks, 0
   failed, and 5087 on Android's libcore, 0 failed; `tools/build-tests.sh
-  linux64` (x86_64 on WSL's Linux): 5341 checks, 3 failed (the float checks
-  above), an app's own `syscall` and accesses of `%fs` through a register led
-  out there too, and a goroutine's first touch of its own stack's page that
-  libc's madvise gave back repaired on the handler's stack of its own;
-  `tools/abi-check.py`: 0 differences on all four ABIs; the phone's
-  core compiles for ARM32 with MSVC, 148 of 148, and its tests under qemu-arm
-  (`tools/build-tests.sh arm`) give 5443 checks, 0 failed.
+  linux64` (x86_64 on WSL's Linux): 5349 checks, 0 failed, and 5433 on
+  Android's libcore, 0 failed, an app's own `syscall` and accesses of `%fs`
+  through a register led out there too, and a goroutine's first touch of its
+  own stack's page that libc's madvise gave back repaired on the handler's
+  stack of its own (its bundle tests, which expect 32-bit ARM's split kept,
+  fail there where the test app's bundles are built: an x86_64 build keeps
+  the processor's own); `tools/abi-check.py`: 0 differences on all four ABIs;
+  the phone's core compiles for ARM32 with MSVC, and its tests under qemu-arm
+  (`tools/build-tests.sh arm`) give 5451 checks, 0 failed.
 - `tools/build-tests.sh arm64`: ARM64's core and tests as one static program
-  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5320
-  checks, 3 failed, and 5404 checks, 3 failed on Android's libcore with
-  arm64-v8a's natives (the GLES stand-in's float checks, as on x64). ELF64,
-  the patched TPIDR_EL0 reads (through the island there, bionic's own thread
-  pointer being the host's), TLS descriptors, svc traps, AAPCS64's native
-  calls, faults.
+  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5328
+  checks, 0 failed, and 5412 checks, 0 failed on Android's libcore with
+  arm64-v8a's natives. ELF64, the patched TPIDR_EL0 reads (through the island
+  there, bionic's own thread pointer being the host's), TLS descriptors, svc
+  traps, AAPCS64's native calls, faults. (A run of the tests once hung in
+  t_threads, every thread asleep on a futex: a lost wakeup in `mg_pthread.c`'s
+  mutex_acquire, shared code; fixed since, and t_mutex_stress checks it.)
 - The x64 and x86 packages (`tools/build-appx.sh x64 --java --auto java`),
   registered from their stage folder in developer mode and started: the core
   loads, "megler core on win32-x64"; Android 9's libcore runs its natives
@@ -288,7 +341,15 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   draws (its first picture after 3.8 s on x64, 0.8 s on x86, through Direct2D
   and Direct3D 11.1), counts presses of its button and goes through onPause,
   onStop and onDestroy on Back, status 0.
-- ARM64 builds -- the core's ELF, the tests' program, the package; on
+- OpenGL ES, in the x64 and x86 packages with ANGLE in them
+  (`--java --auto probe,play` and the flag `app-gl`): ANGLE's display made
+  through the adapters -- Direct3D 11, EGL 1.5, feature level 12_1, OpenGL ES
+  3.0 on the PC's GeForce -- and the Java test app gl.apk drawing as on the
+  phone: a GLSurfaceView's shader triangle with a view over it, a SurfaceView
+  cleared with EGL10 and GL10 in a 565 configuration, an EGL14 pbuffer read
+  back, 30 frames in about half a second, when-dirty rendering, a queued
+  event, a fixed size; ANGLE's program cache on.
+- ARM64 builds -- the core's ELF, the tests' program, ANGLE, the package; on
   Windows it is not run: there is no ARM64 machine here.
 
 In developer mode the first start after the stage folder was registered again
@@ -297,13 +358,10 @@ access denied"); the next start is not.
 
 ## What is left
 
-1. **OpenGL ES.** ANGLE for desktop Windows on each processor, and a layer of
-   adapters in front of it: ANGLE's functions are of Windows' convention
-   (Microsoft's x64 one, `__stdcall` on x86), guest code's of Android's, and
-   only ARM64's are the same. Every GL and EGL entry point needs one, made from
-   the NDK's GLES headers; the float adapters of `ndk/mg_egl.c` are 32-bit
-   ARM's (softfp) and pass x86_64's and ARM64's floats wrong (the three
-   checks above).
+1. **OpenGL ES**: ARM64's ANGLE is built and not run. On x86_64 and x86 a
+   function of ANGLE's that none of the NDK's headers declares (an extension
+   of ANGLE's own) has no adapter and is "no such function", where the phone
+   gives it.
 2. **Go on x86_64**: its g, its system calls, its clock and its goroutines'
    stacks on pages its scavenger gave back are the core's now, and a
    library's exports run (above). A fault in Go's code is not given to its

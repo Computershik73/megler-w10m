@@ -73,7 +73,13 @@ bool mg_mcodec_configure(mg_mcodec *c, i32 width, i32 height, i32 rate, i32 chan
 void mg_mcodec_decode(mg_mcodec *c, const u8 *data, size_t size, i64 time_us, i32 flags);
 mg_mframe *mg_mcodec_next_frame(mg_mcodec *c, i64 info[3]);
 u8 *mg_mcodec_next_pcm(mg_mcodec *c, i64 info[3], size_t *bytes);
-const megler_codec_picture *mg_mcodec_frame_picture(const mg_mframe *f);
+/* The frame's picture in memory: one on the graphics processor is read into it the first time (NULL where it cannot be). */
+const megler_codec_picture *mg_mcodec_frame_picture(mg_mframe *f);
+/* Whether the frame's picture is on the graphics processor (MEGLER_CODEC_GPU), until it is read into memory. */
+bool mg_mcodec_frame_on_gpu(const mg_mframe *f);
+/* The frame's picture shown as the newest of the gfx host's texture `texture_id`, where it is on the graphics processor:
+   megler_codec_host.show_picture's 0 (not), 1 (for the view to draw) or 2 (shown already, under the views). */
+int mg_mcodec_frame_show(mg_mframe *f, i32 texture_id);
 /* A picture into memory of the core's bitmaps (B, G, R, A, top row first), as much of it as fits. */
 bool mg_mcodec_render(const megler_codec_picture *p, void *bgra, i32 width, i32 height, i32 stride);
 void mg_mcodec_free_frame(mg_mframe *f);

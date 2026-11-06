@@ -657,14 +657,20 @@ WINBASEAPI BOOL WINAPI SetThreadContext(HANDLE hThread, const CONTEXT *lpContext
 /* What became of each request, counted: nothing may be logged while another thread is stopped (it may hold the log's lock). */
 static volatile LONG g_int_no_handle, g_int_busy, g_int_suspend_failed, g_int_get_failed, g_int_elsewhere, g_int_in_kernel, g_int_set_failed,
     g_int_redirected, g_int_landed, g_int_resumed, g_int_error;
+/* The stopped threads' registers an interruption read (stopped_context, below; the collector's stops read them so too, and
+   have a report of their own: mg_thread_suspend_report), the ones of them that said whether the thread was in the kernel,
+   and whether Windows would not be asked to say: "0 in the kernel at guest code" means something only with them. */
+static volatile LONG g_ctx_read, g_ctx_said, g_ctx_no_request;
 
 void mg_thread_interrupt_report(char *out, size_t size)
 {
     snprintf(out, size,
              "%ld redirected, %ld landed, %ld resumed; %ld found the thread elsewhere, %ld in the kernel at guest code, %ld while it was still in one; failures: "
-             "%ld no handle, %ld SuspendThread, %ld GetThreadContext, %ld SetThreadContext (last error %ld)",
+             "%ld no handle, %ld SuspendThread, %ld GetThreadContext, %ld SetThreadContext (last error %ld); %ld of %ld stops said whether the thread "
+             "was in the kernel%s",
              (long)g_int_redirected, (long)g_int_landed, (long)g_int_resumed, (long)g_int_elsewhere, (long)g_int_in_kernel, (long)g_int_busy,
-             (long)g_int_no_handle, (long)g_int_suspend_failed, (long)g_int_get_failed, (long)g_int_set_failed, (long)g_int_error);
+             (long)g_int_no_handle, (long)g_int_suspend_failed, (long)g_int_get_failed, (long)g_int_set_failed, (long)g_int_error, (long)g_ctx_said,
+             (long)g_ctx_read, g_ctx_no_request ? " (GetThreadContext would not be asked to)" : "");
 }
 
 static void *scratch_word(void);
@@ -706,19 +712,21 @@ static mg_addr context_pc(const CONTEXT *c)
  * A stopped thread's registers (`what`: CONTEXT_FULL, or less), with what Windows says of where it stopped
  * (CONTEXT_EXCEPTION_REQUEST, below). A Windows that would not take the request is asked without it from then on.
  */
-static volatile LONG g_ctx_no_request, g_ctx_reports;
+static volatile LONG g_ctx_reports;
 
 static BOOL stopped_context(HANDLE h, CONTEXT *ctx, DWORD what)
 {
+    BOOL ok;
     memset(ctx, 0, sizeof(*ctx));
     ctx->ContextFlags = what | (g_ctx_no_request ? 0 : CONTEXT_EXCEPTION_REQUEST);
-    if (GetThreadContext(h, ctx)) return TRUE;
-    if (g_ctx_no_request) return FALSE;
-    memset(ctx, 0, sizeof(*ctx));
-    ctx->ContextFlags = what;
-    if (!GetThreadContext(h, ctx)) return FALSE;
-    InterlockedExchange(&g_ctx_no_request, 1);
-    return TRUE;
+    ok = GetThreadContext(h, ctx);
+    if (!ok && !g_ctx_no_request) {
+        memset(ctx, 0, sizeof(*ctx));
+        ctx->ContextFlags = what;
+        ok = GetThreadContext(h, ctx);
+        if (ok) InterlockedExchange(&g_ctx_no_request, 1);
+    }
+    return ok;
 }
 
 /*
@@ -744,6 +752,7 @@ bool mg_thread_interrupt(mg_thread *t)
 {
     CONTEXT ctx;
     bool done = false;
+    BOOL read;
     HANDLE h;
     if (!t || !g_interrupt_fn || !g_interrupt_in_guest || t->id == GetCurrentThreadId()) return false;
     h = self_take(t);
@@ -764,7 +773,12 @@ bool mg_thread_interrupt(mg_thread *t)
         self_give(t);
         return false;
     }
-    if (!stopped_context(h, &ctx, CONTEXT_FULL)) {
+    read = stopped_context(h, &ctx, CONTEXT_FULL);
+    if (read) {
+        InterlockedIncrement(&g_ctx_read);
+        if (ctx.ContextFlags & CONTEXT_EXCEPTION_REPORTING) InterlockedIncrement(&g_ctx_said);
+    }
+    if (!read) {
         InterlockedExchange(&g_int_error, (LONG)GetLastError());
         InterlockedIncrement(&g_int_get_failed);
     } else if (!g_interrupt_in_guest(context_pc(&ctx))) {

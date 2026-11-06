@@ -17,12 +17,13 @@
 // The core is given both, for the report (megler_apk_report_splits) and to run
 // the app (megler_run_config.splits_dir), and they go together.
 //
-// An app installed as an app of the phone's own (ui/SeparateApps.h) whose
-// package Megler can read has no copy here: its APK is the installed package's
-// (app\app.apk in its install folder, its splits beside it), and a file says
-// which package that is --
+// An app installed as an app of the phone's own (ui/SeparateApps.h) has no
+// copy here: its APK is the one its package's app reads, in the shared folder
+// since 645 (apks\<identity>\<token>, its splits beside it: appPackage::make),
+// before that in the package (app\app.apk in its install folder), and a file
+// says which package and folder that is --
 //
-//   apks\Game.apk.installed   the package's full name
+//   apks\Game.apk.installed   the package's full name; then shared=<folder>
 //
 // -- with the report and the icon cached here as for a copy.
 //
@@ -152,11 +153,13 @@ public:
     void remove(const std::string& id);
 
     /// The app `id`, just installed as the package `fullName`, whose APK Megler
-    /// can read there: Megler's copy (if any) and its splits go, and the entry is
-    /// the installed APK's. The report and icon are to be in the cache already
+    /// can read in the shared folder's `sharedApk` (apks\<identity>\<token>,
+    /// relative to it; appPackage::make), or, without it, in the package (made
+    /// before 645): Megler's copy (if any) and its splits go, and the entry is
+    /// that APK's. The report and icon are to be in the cache already
     /// (directory()\id.json, .icon). Other entries of its package go.
-    void adopt(const std::string& id, const std::string& fullName);
-    /// The other way: the installed package's APK and splits copied back here
+    void adopt(const std::string& id, const std::string& fullName, const std::wstring& sharedApk = std::wstring());
+    /// The other way: the installed app's APK and splits copied back here
     /// (before the package is uninstalled). Empty, or why not.
     std::string restore(const std::string& id);
 
@@ -166,8 +169,9 @@ private:
     void eraseLocked(std::vector<ApkEntry>::iterator it);
     void work();
     void analyse(const std::string& id);
-    /// Under mutex_: an entry whose APK is the installed package `fullName`'s, from the cache.
-    ApkEntry installedEntry(const std::string& id, const std::string& fullName) const;
+    /// Under mutex_: an entry whose APK is an installed package's, from the cache: `marker` is its id.apk.installed, the
+    /// package's full name, and, for a package made since 645, the folder of the shared folder its APK is in (adopt).
+    ApkEntry installedEntry(const std::string& id, const std::string& marker) const;
 
     mutable std::mutex mutex_;
     std::wstring directory_;

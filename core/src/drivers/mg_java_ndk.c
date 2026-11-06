@@ -101,7 +101,7 @@ static int g_bitmap_unlock(void *env, mg_jobj *bitmap)
  * its place scaled to it. Posts are paced at sixty a second, as a swap is.
  *
  * A SurfaceTexture's Surface (a TextureView's, or one an app made) has a window of the texture: its size the texture's default
- * buffer size, its format RGBA_8888, valid until the texture is released. Its frames go to the texture through the framework's
+ * buffer size, its format RGBA_8888 (or YV12 where native code asks for that: yv12_size), valid until the texture is released. Its frames go to the texture through the framework's
  * way in for a native producer's frame (SurfaceTexture.meglerPostRgba): an EGL surface on it is a pbuffer on no view whose frame
  * is read back at each swap, R, G, B, A, and handed over the right way up; a software buffer is handed over as R, G, B, A.
  */
@@ -110,7 +110,16 @@ static int g_bitmap_unlock(void *env, mg_jobj *bitmap)
 #define NW_GONE (-19)                  /* status_t NO_INIT */
 #define NW_BAD_VALUE (-22)
 #define NW_INVALID_OPERATION (-38)
-enum { FORMAT_RGBA_8888 = 1, FORMAT_RGBX_8888 = 2, FORMAT_RGB_565 = 4 };
+enum { FORMAT_RGBA_8888 = 1, FORMAT_RGBX_8888 = 2, FORMAT_RGB_565 = 4, FORMAT_YV12 = 0x32315659 };
+
+/*
+ * HAL_PIXEL_FORMAT_YV12, which a software decoder may ask a window for (ANativeWindow_setBuffersGeometry) and write its
+ * pictures into as they come out of it, as Android's gralloc lays them out: the luma, `stride` bytes a row (the width
+ * rounded up to 16), then V and U at half the size both ways, their rows the half stride rounded up to 16. TikTok Lite's
+ * own decoder's first videos asked for RGBA here, were given it, and its pictures never came: the window said RGBA_8888.
+ */
+static i32 yv12_chroma_stride(i32 stride) { return ((stride / 2) + 15) & ~15; }
+static size_t yv12_size(i32 stride, i32 height) { return (size_t)stride * (size_t)height + 2 * (size_t)yv12_chroma_stride(stride) * (size_t)((height + 1) / 2); }
 
 typedef struct view_window {
     mg_nwindow base;                   /* first: what native code holds */
@@ -122,7 +131,7 @@ typedef struct view_window {
     bool drawn_said;
     u8 *pixels;                        /* the software buffer, rows top first */
     size_t pixels_size;
-    i32 bw, bh, bformat;               /* as it was last locked */
+    i32 bw, bh, bformat, bstride;      /* as it was last locked (bstride: YV12's luma rows) */
     mg_jobj *bitmaps[2];               /* roots: the posted buffer goes to the view in these, in turn */
     int next;
     u8 *rgba;                          /* a texture's buffer turned to R, G, B, A for it, when it is not that already */
@@ -321,7 +330,7 @@ static int vw_lock(mg_nwindow *b, void *buffer, i32 *dirty)
 {
     view_window *w = (view_window *)b;
     anw_buffer *out = (anw_buffer *)buffer;
-    int width, height, format, bpp;
+    int width, height, format, bpp, stride;
     size_t need;
     bool kept;
     if (!out) return NW_BAD_VALUE;
@@ -332,9 +341,11 @@ static int vw_lock(mg_nwindow *b, void *buffer, i32 *dirty)
     }
     if (mg_atomic_xchg(&w->locked, 1)) return NW_INVALID_OPERATION;
     mg_nwindow_buffer_size(b, &width, &height);
-    format = b->format == FORMAT_RGB_565 ? FORMAT_RGB_565 : b->format == FORMAT_RGBX_8888 ? FORMAT_RGBX_8888 : FORMAT_RGBA_8888;
+    format = b->format == FORMAT_RGB_565 ? FORMAT_RGB_565 : b->format == FORMAT_RGBX_8888 ? FORMAT_RGBX_8888 : b->format == FORMAT_YV12 ? FORMAT_YV12
+                                                                                                                                    : FORMAT_RGBA_8888;
     bpp = format == FORMAT_RGB_565 ? 2 : 4;
-    need = (size_t)width * (size_t)height * (size_t)bpp;
+    stride = format == FORMAT_YV12 ? (width + 15) & ~15 : width;
+    need = format == FORMAT_YV12 ? yv12_size(stride, height) : (size_t)width * (size_t)height * (size_t)bpp;
     kept = w->pixels && w->bw == width && w->bh == height && w->bformat == format;
     if (!kept) {
         if (w->pixels_size < need) {
@@ -342,14 +353,21 @@ static int vw_lock(mg_nwindow *b, void *buffer, i32 *dirty)
             w->pixels = (u8 *)mg_alloc(need);
             w->pixels_size = need;
         }
-        memset(w->pixels, 0, need);
+        /* (A new YV12 buffer is black: luma 16, chroma 128; any other is zeros.) */
+        if (format == FORMAT_YV12) {
+            memset(w->pixels, 16, (size_t)stride * (size_t)height);
+            memset(w->pixels + (size_t)stride * (size_t)height, 128, need - (size_t)stride * (size_t)height);
+        } else {
+            memset(w->pixels, 0, need);
+        }
         w->bw = width;
         w->bh = height;
         w->bformat = format;
+        w->bstride = stride;
     }
     out->width = width;
     out->height = height;
-    out->stride = width;
+    out->stride = stride;
     out->format = format;
     out->bits = w->pixels;
     memset(out->reserved, 0, sizeof(out->reserved));
@@ -361,9 +379,43 @@ static int vw_lock(mg_nwindow *b, void *buffer, i32 *dirty)
     }
     if (!w->drawn_said) {
         w->drawn_said = true;
-        mg_info("java: native code draws a window of %s in software (ANativeWindow_lock): %dx%d, format %d", mg_dvm_class_name(owner_of(w)), width, height, format);
+        mg_info("java: native code draws a window of %s in software (ANativeWindow_lock): %dx%d, format %d (0x%x asked for), rows of %d", mg_dvm_class_name(owner_of(w)),
+                width, height, format, (unsigned)b->format, stride);
     }
     return 0;
+}
+
+/*
+ * A YV12 buffer's pictures into colour, R, G, B, A (or B, G, R, A for a bitmap), opaque: BT.601 at video range, which is
+ * what Android's graphics processors take a YV12 buffer for (its dataspace not said), the factors in 256ths from tables as
+ * in drivers/mg_java_media.c, a block of 2 x 2 pixels sharing its chroma.
+ */
+static void yv12_to_rgba(const u8 *src, i32 width, i32 height, i32 stride, u8 *dst, i32 dst_stride, bool bgra)
+{
+    const i32 cstride = yv12_chroma_stride(stride);
+    const u8 *py = src, *pv = src + (size_t)stride * (size_t)height, *pu = pv + (size_t)cstride * (size_t)((height + 1) / 2);
+    i32 lt[256], rt[256], gut[256], gvt[256], bt[256], i, x, y;
+    u8 clip[1024];
+    const int r_at = bgra ? 2 : 0, b_at = bgra ? 0 : 2;
+    for (i = 0; i < 256; i++) {
+        lt[i] = 298 * (i - 16) + 128 + (384 << 8);
+        rt[i] = 409 * (i - 128);
+        gut[i] = 100 * (i - 128);
+        gvt[i] = 208 * (i - 128);
+        bt[i] = 516 * (i - 128);
+    }
+    for (i = 0; i < 1024; i++) clip[i] = (u8)(i < 384 ? 0 : i > 384 + 255 ? 255 : i - 384);
+    for (y = 0; y < height; y++) {
+        const u8 *yr = py + (size_t)y * (size_t)stride, *ur = pu + (size_t)(y / 2) * (size_t)cstride, *vr = pv + (size_t)(y / 2) * (size_t)cstride;
+        u8 *d = dst + (size_t)y * (size_t)dst_stride;
+        for (x = 0; x < width; x++, d += 4) {
+            const i32 l = lt[yr[x]], u = ur[x / 2], v = vr[x / 2];
+            d[r_at] = clip[(l + rt[v]) >> 8];
+            d[1] = clip[(l - gut[u] - gvt[v]) >> 8];
+            d[b_at] = clip[(l + bt[u]) >> 8];
+            d[3] = 255;
+        }
+    }
 }
 
 /* A Bitmap of the framework's, ARGB_8888; NULL when none could be made. */
@@ -412,6 +464,10 @@ static void post_texture(view_window *w)
             w->rgba = (u8 *)mg_alloc(n * 4);
             w->rgba_size = n * 4;
         }
+        if (w->bformat == FORMAT_YV12) {
+            yv12_to_rgba(w->pixels, w->bw, w->bh, w->bstride, w->rgba, w->bw * 4, false);
+            n = 0;
+        }
         for (i = 0; i < n; i++) {
             u8 *d = w->rgba + i * 4;
             if (w->bformat == FORMAT_RGB_565) {
@@ -455,8 +511,8 @@ static void texture_said(view_window *w)
         mg_info("java: a SurfaceTexture drawn in software: %u frames of %dx%d posted, their alpha %d to %d, shown by %s", (unsigned)w->posts, (int)w->bw,
                 (int)w->bh, lo, hi, view.l ? mg_dvm_class_name(view.l) : "no view");
     else
-        mg_info("java: a SurfaceTexture drawn in software: %u frames of %dx%d posted (format %d), shown by %s", (unsigned)w->posts, (int)w->bw,
-                (int)w->bh, (int)w->bformat, view.l ? mg_dvm_class_name(view.l) : "no view");
+        mg_info("java: a SurfaceTexture drawn in software: %u frames of %dx%d posted (format 0x%x), shown by %s", (unsigned)w->posts, (int)w->bw,
+                (int)w->bh, (unsigned)w->bformat, view.l ? mg_dvm_class_name(view.l) : "no view");
     w->posts = 0;
 }
 
@@ -471,7 +527,8 @@ static void post(view_window *w)
         mg_note_once("java: no Bitmap for a window's software buffer: its frames are not shown");
         return;
     }
-    for (y = 0; y < w->bh; y++) {
+    if (w->bformat == FORMAT_YV12) yv12_to_rgba(w->pixels, w->bw, w->bh, w->bstride, (u8 *)b.pixels, b.stride, true);
+    for (y = 0; w->bformat != FORMAT_YV12 && y < w->bh; y++) {
         u8 *d = (u8 *)b.pixels + (size_t)y * (size_t)b.stride;
         if (w->bformat == FORMAT_RGB_565) {
             const u16 *s = (const u16 *)(const void *)(w->pixels + (size_t)y * (size_t)w->bw * 2);
