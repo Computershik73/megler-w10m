@@ -637,6 +637,16 @@ void mg_dvm_intrinsics_start(void)
     mark_intrinsic("java/lang/Class", "isInstance", "(Ljava/lang/Object;)Z", false, INTR_CLASS_ISINSTANCE);
     mark_intrinsic("java/lang/Class", "isAssignableFrom", "(Ljava/lang/Class;)Z", false, INTR_CLASS_ASSIGNABLE);
     /*
+     * Object.hashCode, Object.identityHashCode and System.identityHashCode: libcore's bytecode is two calls for a hash,
+     * hashCode calling identityHashCode, which reads the 28 bits from shadow$_monitor_ (DVM_HASH_WORD). Compose's maps and
+     * sets (androidx.collection's ScatterMap) hash their state objects at every frame, and the two were 7 to 9% of Spotify's
+     * main thread (package 657). The same 28 bits, in place. Object.hashCode only where a call lands on Object's own: the
+     * intrinsic is the target's, so a class's hashCode of its own is called as it always was.
+     */
+    mark_intrinsic("java/lang/Object", "hashCode", "()I", false, INTR_OBJECT_HASHCODE);
+    mark_intrinsic("java/lang/Object", "identityHashCode", "(Ljava/lang/Object;)I", true, INTR_IDENTITY_HASHCODE);
+    mark_intrinsic("java/lang/System", "identityHashCode", "(Ljava/lang/Object;)I", true, INTR_IDENTITY_HASHCODE);
+    /*
      * Reference.getReferent, what WeakReference.get and SoftReference.get call: a native method that found the field by its
      * name at every call, 5% of Yandex Maps' main thread (package 530). Its slot read in place.
      */
@@ -758,6 +768,12 @@ static bool intrinsic(mg_dvm_thread *t, u8 id, const mg_dvm_reg *a, mg_jvalue *r
         r->i = mg_dvm_assignable(from, c);
         return true;
     }
+    case INTR_OBJECT_HASHCODE:
+    case INTR_IDENTITY_HASHCODE:
+        /* (null: the bytecode's own answer, System's 0 or Object's exception) */
+        if (!s) return false;
+        r->i = (i32)(mg_dvm_identity_hash(s) & 0x0FFFFFFFu);
+        return true;
     default: return false;
     }
 }

@@ -890,12 +890,24 @@ public class Lib {
         return sb.toString();
     }
 
+    /** A class with a hashCode of its own, and Object's under it (super.hashCode). */
+    static final class OwnHash {
+        @Override public int hashCode() { return 7; }
+        int objects() { return super.hashCode(); }
+    }
+
     public static String lib_system() {
         StringBuilder sb = new StringBuilder();
         long now = System.currentTimeMillis(), nano = System.nanoTime();
         sb.append(now > 1500000000000L).append(now < 4000000000000L).append(System.nanoTime() >= nano);
         sb.append(' ').append(System.getProperty("line.separator").length() > 0).append(System.getProperty("java.io.tmpdir") != null);
         sb.append(' ').append(System.getProperty("no.such.property", "default")).append(System.identityHashCode(null)).append(Runtime.getRuntime().availableProcessors() > 0);
+        // An object's identity hash, however it is asked for: the runtime answers some of these calls in place.
+        Object o = new Object();
+        OwnHash h = new OwnHash();
+        sb.append(' ').append(o.hashCode() == System.identityHashCode(o)).append(o.hashCode() == o.hashCode())
+            .append(o.toString().endsWith("@" + Integer.toHexString(o.hashCode()))).append(h.hashCode())
+            .append(h.objects() == System.identityHashCode(h)).append("abc".hashCode());
         int[] a = { 1, 2, 3, 4, 5 };
         System.arraycopy(a, 0, a, 1, 4);
         sb.append(' ').append(Arrays.toString(a));
