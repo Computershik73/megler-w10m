@@ -1404,6 +1404,30 @@ static size_t append_dotted(char *buf, size_t n, size_t k, const char *name)
     return k;
 }
 
+/*
+ * What getCause() would say: Throwable's cause, or where that is null the field of its own that one of the few keeps its
+ * cause in -- InvocationTargetException's target (an exception out of a constructor or method called by reflection) and
+ * ExceptionInInitializerError's exception (a static initializer's). Read without running Java or loading a class: it is
+ * said while an exception is pending. (XDurak's stack stopped at the InvocationTargetException, before the Xposed
+ * class's initialiser that had thrown.)
+ */
+static mg_jobj *cause_of(mg_jobj *e)
+{
+    static const char *const kept[][2] = { { "java/lang/reflect/InvocationTargetException", "target" },
+                                           { "java/lang/ExceptionInInitializerError", "exception" } };
+    mg_jobj *c = g_dvm.f_cause ? mg_dvm_slots(e)[g_dvm.f_cause->slot].l : NULL;
+    mg_dvm_class *k;
+    size_t i;
+    if (c) return c == e ? NULL : c;
+    for (k = mg_dvm_class_of(e); k; k = k->super)
+        for (i = 0; i < MG_COUNT(kept); i++)
+            if (!strcmp(k->name, kept[i][0])) {
+                mg_dvm_field *f = mg_dvm_find_field(k, kept[i][1], false);
+                return f ? mg_dvm_slots(e)[f->slot].l : NULL;
+            }
+    return NULL;
+}
+
 const char *mg_dvm_describe_pending(char *buf, size_t n)
 {
     mg_jobj *e = mg_dvm_self()->pending;
@@ -1415,9 +1439,9 @@ const char *mg_dvm_describe_pending(char *buf, size_t n)
     k = append_dotted(buf, n, k, mg_dvm_class_of(e)->name);
     msg = message_of(e);
     if (msg) k = append(buf, n, k, ": %s", msg);
-    for (depth = 0; depth < 4 && g_dvm.f_cause && mg_dvm_is_instance(e, g_dvm.c_throwable); depth++) {
-        mg_jobj *cause = mg_dvm_slots(e)[g_dvm.f_cause->slot].l;
-        if (!cause || cause == e) break;
+    for (depth = 0; depth < 4 && mg_dvm_is_instance(e, g_dvm.c_throwable); depth++) {
+        mg_jobj *cause = cause_of(e);
+        if (!cause || cause == e || !mg_dvm_is_instance(cause, g_dvm.c_throwable)) break;
         k = append(buf, n, k, " | caused by ");
         k = append_dotted(buf, n, k, mg_dvm_class_of(cause)->name);
         msg = message_of(cause);
@@ -1452,18 +1476,21 @@ mg_jobj *mg_dvm_capture_stack(void)
     return a;
 }
 
-int mg_dvm_pending_stack(char *buf, size_t n)
+/* A throwable's frames (its backtrace: method and pc in pairs), and how many; NULL for none. */
+static const i64 *backtrace_of(mg_jobj *e, i32 *frames)
 {
-    mg_jobj *e = mg_dvm_self()->pending, *trace;
-    const i64 *v;
-    size_t k = 0;
-    i32 frames, i;
-    if (n) buf[0] = 0;
-    if (!e || !n || !g_dvm.f_backtrace || !mg_dvm_is_instance(e, g_dvm.c_throwable)) return 0;
+    mg_jobj *trace;
+    *frames = 0;
+    if (!e || !g_dvm.f_backtrace || !mg_dvm_is_instance(e, g_dvm.c_throwable)) return NULL;
     trace = mg_dvm_slots(e)[g_dvm.f_backtrace->slot].l;
-    if (!trace || trace->kind != MG_J_PRIM_ARRAY || trace->u.arr.etype != 'J') return 0;
-    v = (const i64 *)trace->u.arr.data;
-    frames = (i32)(trace->u.arr.len / 2);
+    if (!trace || trace->kind != MG_J_PRIM_ARRAY || trace->u.arr.etype != 'J') return NULL;
+    *frames = (i32)(trace->u.arr.len / 2);
+    return (const i64 *)trace->u.arr.data;
+}
+
+static size_t append_frames(char *buf, size_t n, size_t k, const i64 *v, i32 frames)
+{
+    i32 i;
     for (i = 0; i < frames; i++) {
         const mg_dvm_method *m = (const mg_dvm_method *)(mg_addr)v[2 * i];
         const char *source = mg_dvm_dex_source(m->cls);
@@ -1474,5 +1501,48 @@ int mg_dvm_pending_stack(char *buf, size_t n)
         else if (line >= 0) k = append(buf, n, k, ".%s(%s:%d)\n", m->name, source ? source : "?", line);
         else k = append(buf, n, k, ".%s(pc %d)\n", m->name, (int)v[2 * i + 1]);
     }
+    return k;
+}
+
+int mg_dvm_pending_stack(char *buf, size_t n)
+{
+    const i64 *v;
+    i32 frames;
+    if (n) buf[0] = 0;
+    if (!n || !(v = backtrace_of(mg_dvm_self()->pending, &frames))) return 0;
+    append_frames(buf, n, 0, v, frames);
     return (int)frames;
+}
+
+size_t mg_dvm_pending_stacks(char *buf, size_t n)
+{
+    mg_jobj *e = mg_dvm_self()->pending;
+    const i64 *v;
+    i32 frames, depth;
+    size_t k = 0;
+    if (n) buf[0] = 0;
+    if (!n || !(v = backtrace_of(e, &frames))) return 0;
+    k = append_frames(buf, n, k, v, frames);
+    for (depth = 0; depth < 4; depth++) {
+        mg_jobj *cause = cause_of(e);
+        const i64 *outer = v;
+        i32 outer_frames = frames, common = 0;
+        const char *msg;
+        if (!cause || cause == e || !mg_dvm_is_instance(cause, g_dvm.c_throwable)) break;
+        k = append(buf, n, k, "Caused by: ");
+        k = append_dotted(buf, n, k, mg_dvm_class_of(cause)->name);
+        msg = message_of(cause);
+        if (msg) k = append(buf, n, k, ": %s", msg);
+        k = append(buf, n, k, "\n");
+        e = cause;
+        v = backtrace_of(cause, &frames);
+        if (!v) continue;
+        /* The frames at its bottom that the one it caused has too are said as Java says them: "... 12 more". */
+        while (common < frames && common < outer_frames && v[2 * (frames - 1 - common)] == outer[2 * (outer_frames - 1 - common)] &&
+               v[2 * (frames - 1 - common) + 1] == outer[2 * (outer_frames - 1 - common) + 1])
+            common++;
+        k = append_frames(buf, n, k, v, frames - common);
+        if (common) k = append(buf, n, k, "  ... %d more\n", (int)common);
+    }
+    return k;
 }

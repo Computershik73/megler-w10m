@@ -188,6 +188,13 @@ static void test_exceptions(void)
     CHECK_STR(stack, "  at t.Exc.level3(Exc.java:30)\n  at t.Exc.level2(Exc.java:40)\n  at t.Exc.uncaught(Exc.java:70)\n");
     CHECK_STR(thrown(), "t.MyExc: deep");
     CHECK_STR(text_of(call("t/Exc", "logged", "()Ljava/lang/String;").l), "23f");
+    /* One that another caused: after its own frames "Caused by" and the cause's, the frames both have said as Java says them. */
+    A[0].i = 9;
+    CHECK(!mg_dvm_call_static("t/Exc", "outer", "(I)V", A, NULL));
+    CHECK_INT((int)mg_dvm_pending_stacks(stack, sizeof(stack)), (int)strlen(stack));
+    CHECK_STR(stack, "  at t.Exc.wrapped(Exc.java:82)\n  at t.Exc.outer(Exc.java:90)\nCaused by: t.MyExc: deep\n  at t.Exc.level3(Exc.java:30)\n"
+                     "  at t.Exc.level2(Exc.java:40)\n  at t.Exc.wrapped(Exc.java:80)\n  ... 1 more\n");
+    CHECK_STR(thrown(), "java.lang.Throwable: wrapped | caused by t.MyExc: deep");
 
     A[0].i = 4;
     CHECK_INT(call("t/Exc", "nested", "(I)I").i, 26);

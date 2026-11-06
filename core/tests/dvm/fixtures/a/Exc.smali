@@ -313,3 +313,32 @@
     move-result v0
     return v0
 .end method
+
+# level2's exception caught and made the cause of a Throwable of its own, which reaches C from outer: the wrapper's frames,
+# then "Caused by" and the cause's, the frame both have at the bottom (outer's call, line 90) said as "... 1 more".
+.method public static wrapped(I)V
+    .registers 4
+    new-instance v0, Ljava/lang/StringBuilder;
+    invoke-direct {v0}, Ljava/lang/StringBuilder;-><init>()V
+    sput-object v0, Lt/Exc;->log:Ljava/lang/StringBuilder;
+    :try_start
+    .line 80
+    invoke-static {p0}, Lt/Exc;->level2(I)V
+    :try_end
+    .catch Lt/MyExc; {:try_start .. :try_end} :caught
+    return-void
+    :caught
+    move-exception v0
+    new-instance v1, Ljava/lang/Throwable;
+    const-string v2, "wrapped"
+    .line 82
+    invoke-direct {v1, v2, v0}, Ljava/lang/Throwable;-><init>(Ljava/lang/String;Ljava/lang/Throwable;)V
+    throw v1
+.end method
+
+.method public static outer(I)V
+    .registers 1
+    .line 90
+    invoke-static {p0}, Lt/Exc;->wrapped(I)V
+    return-void
+.end method
