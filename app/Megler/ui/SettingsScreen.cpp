@@ -19,6 +19,7 @@
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 #include "ui/GooglePlay.h"
+#include "ui/Ota.h"
 #include "ui/SharedFolders.h"
 #include "ui/Theme.h"
 
@@ -191,6 +192,26 @@ private:
                               set && (chosen == "microg" || !google), [this] { put(settings::googleServices, std::string("microg")); }));
         return listSection("Google Services", rows,
                            "The Google Play services a heavy app runs with. microG takes far less memory where an app needs little of Google's." + applies());
+    }
+
+    /// Megler's own updates from GitHub (ui/Ota.h): asked for at start or only when asked, and Check Now with where it stands.
+    UIElement updatesSection() {
+        std::vector<UIElement> rows;
+        const bool atStart = ota::atStart();
+        rows.push_back(choice("At Start", "Megler asks GitHub for a newer Megler when it starts, at most every six hours, and offers it", atStart,
+                              [] { ota::setAtStart(true); }));
+        rows.push_back(choice("Only When Asked", "Only Check Now asks", !atStart, [] { ota::setAtStart(false); }));
+        rows.push_back(button(listItem("Check Now", ota::summary(), glyphs::refresh), [this] {
+            ota::checkNow();
+            rebuild();
+        }, ButtonKind::plain, "Check Now"));
+        const std::string suffix = ota::packageSuffix();
+        return listSection("Updates", rows,
+                           "Megler's new versions come from its releases on GitHub (Computershik73/megler-w10m), each package for one Windows "
+                           "and processor" +
+                               (suffix.empty() ? std::string(": none is for this one.") : ": this Megler takes Megler_<version>_" + suffix + ".appx.") +
+                               " What is downloaded is checked against the SHA-256 GitHub gives, and installed as an update copied to "
+                               "Pictures\\Megler is.");
     }
 
     /// The language and region apps are told (player/PhoneState.h): the phone's, English (United States), or another tag.
@@ -537,6 +558,7 @@ private:
         add(column, localeSection());
         add(column, locationSection());
         if (!forApp()) add(column, themeSection());
+        if (!forApp() && !appPackage::isSingleApp()) add(column, updatesSection());
 
         if (showsPhone()) {
             add(column, storageSection());

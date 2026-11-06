@@ -570,11 +570,18 @@ i32 mg_atomic_xchg(volatile i32 *p, i32 value) { return __atomic_exchange_n(p, v
 void *mg_atomic_cas_ptr(void *volatile *p, void *expect, void *value) { return __sync_val_compare_and_swap(p, expect, value); }
 i64 mg_atomic_cas64(volatile i64 *p, i64 expect, i64 value) { return __sync_val_compare_and_swap(p, expect, value); }
 
+/*
+ * SYS_futex takes the kernel's timespec of two longs (on 32-bit ARM its old one, seconds in 32 bits), not the C library's
+ * struct timespec: where that has 64-bit seconds on 32-bit ARM (_TIME_BITS=64, which Ubuntu's armhf compiler defines by
+ * default), the kernel read the low half of the seconds as the seconds and the high half as the nanoseconds, and every
+ * wait shorter than a second ended at once. The seconds are kept to 31 bits.
+ */
 bool mg_futex_wait(volatile i32 *addr, i32 expect, u64 timeout_ns)
 {
-    struct timespec ts;
+    struct { long tv_sec, tv_nsec; } ts;
+    u64 sec = timeout_ns / 1000000000ull;
     long r;
-    ts.tv_sec = (time_t)(timeout_ns / 1000000000ull);
+    ts.tv_sec = (long)(sec > 0x7FFFFFFFull ? 0x7FFFFFFFull : sec);
     ts.tv_nsec = (long)(timeout_ns % 1000000000ull);
     r = syscall(SYS_futex, addr, 0 /* FUTEX_WAIT */, expect, timeout_ns ? &ts : NULL, NULL, 0);
     return !(r < 0 && errno == ETIMEDOUT);

@@ -3155,14 +3155,45 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     /* Signals between threads: a thread stopped and let go twenty times, wherever it was found. */
     CHECK_INT(FN(lib, int (*)(int), "t_signals")(20), 0);
 #if MG_ARCH_X86_64 || (MG_ARCH_X86 && MG_HOST_WINDOWS)
+    /* A thread stopped as the collector stops one, 20000 times while signals keep sending it back: its registers its own. */
     test_stop_signalled(lib);
     test_stop_in_handler(lib, 0);
     test_stop_in_handler(lib, 1);
 #endif
+    /* The registers a function keeps for its caller, as they were after each of 300 signals to a thread spinning with marks
+       in them, each sent some microseconds after its handler ran for the one before: on Windows, on its way back from
+       that interruption (host/mg_host_win32.c, mg_thread_interrupt). */
     {
-        char report[320];
+        long changed = FN(lib, long (*)(int), "t_signal_regs")(300);
+        if (changed > 0) say("  registers that came back changed, the first time: %s", FN(lib, const char *(*)(long), "t_signal_regs_seen")(0));
+        CHECK_INT(changed, 0);
+    }
+    {
+        char report[448];
         mg_thread_interrupt_report(report, sizeof(report));
         say("  threads interrupted in guest code: %s", report);
+    }
+    /* Sixteen threads in rounds for a second, short turns on a normal and a recursive mutex: no round stalls. (When a
+       woken waiter that lost the race took the lock as uncontended, a thread was left asleep on a free mutex: on this
+       PC's x64 build one round in about a thousand, and t_threads hung now and then.) After the checks that time
+       waits: just before t_wait_herd it pushed that one's ratio past its bound in a third of the runs. */
+    {
+        u64 t0 = mg_time_monotonic_ns();
+        int rounds = FN(lib, int (*)(int, int, int), "t_mutex_stress")(16, 20, 1000);
+        say("  %d rounds of 16 threads taking two mutexes 20 times each, in %d ms (-2: a round stalled)", rounds,
+            (int)((mg_time_monotonic_ns() - t0) / 1000000));
+        CHECK(rounds >= 100);
+    }
+    /* A reader kept out by a waiting writer goes in when the writer gives up (pthread_rwlock_timedwrlock): it slept on
+       until the next unlock. */
+    CHECK_INT(FN(lib, int (*)(void), "t_rwlock_writer_gives_up")(), 0);
+    /* A timed rwlock wait ends at its deadline however often it is woken: a writer waits 250 ms for the lock while ten
+       readers let go of it one by one every 100 ms. (Each wait was given the whole timeout again: woken by every
+       unlock, the writer waited on until the last reader had gone, a second on, and took the lock.) */
+    {
+        int ms = -1, e = FN(lib, int (*)(int *), "t_rwlock_deadline")(&ms);
+        say("  a writer's 250 ms pthread_rwlock_timedwrlock, readers leaving every 100 ms: %d after %d ms", e, ms);
+        CHECK(e == GE_TIMEDOUT && ms >= 240 && ms < 600);
     }
 
     /* Files, the made-up /proc, properties, dlopen. */
