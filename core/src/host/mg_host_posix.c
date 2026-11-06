@@ -446,6 +446,8 @@ void mg_thread_resume(mg_thread *t)
     while (mg_atomic_cas(&t->stopped, 0, 0) != 0) sched_yield();
 }
 
+void mg_thread_suspend_report(char *out, size_t size) { snprintf(out, size, "registers as the signal's handler found them"); }
+
 /* No hardware breakpoints here (ptrace's, another process's, are no use from inside): see mg_host.h. */
 bool mg_breakpoints_available(void) { return false; }
 bool mg_breakpoint_add(mg_addr at)
