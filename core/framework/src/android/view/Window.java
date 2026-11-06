@@ -164,8 +164,11 @@ public class Window {
         // (A title bar of the themes before Holo where the window has no action bar and its theme or the app did not take the
         // title away, as Android's screen_title; the app's own with FEATURE_CUSTOM_TITLE. Not on a floating window: a
         // dialog's title is the dialog's.)
-        boolean titleBar = !mFloating && !hasFeature(FEATURE_NO_TITLE) && !hasFeature(FEATURE_ACTION_BAR);
-        mContentParent = mDecor.makeContent(hasFeature(FEATURE_ACTION_BAR) && !mFloating, titleBar, titleBar && hasFeature(FEATURE_CUSTOM_TITLE),
+        // (An activity run inside another, a tab of a TabActivity, has neither: its group's window has them, as Android's
+        // child window has only the features its container has not.)
+        boolean child = mContext instanceof android.app.Activity && ((android.app.Activity) mContext).isChild();
+        boolean titleBar = !child && !mFloating && !hasFeature(FEATURE_NO_TITLE) && !hasFeature(FEATURE_ACTION_BAR);
+        mContentParent = mDecor.makeContent(!child && hasFeature(FEATURE_ACTION_BAR) && !mFloating, titleBar, titleBar && hasFeature(FEATURE_CUSTOM_TITLE),
             mTitle != null ? mTitle : mContext instanceof android.app.Activity ? ((android.app.Activity) mContext).getTitle() : null);
     }
     public <T extends View> T findViewById(int id) { return getDecorView().findViewById(id); }

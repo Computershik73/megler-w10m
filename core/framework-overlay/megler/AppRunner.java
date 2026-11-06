@@ -233,6 +233,25 @@ public final class AppRunner {
         }
         return a;
     }
+    /**
+     * An activity run inside another, as android.app.LocalActivityManager runs one (a TabActivity's tab, an ActivityGroup's
+     * child): made by the app's factory and attached as AppRunner.launch does, its group its parent, and not on the stack --
+     * its group is. Null when the app has no such activity. Its lifecycle is the manager's to move.
+     */
+    public static Activity makeChild(Activity parent, Intent intent) throws Exception {
+        Manifest.Component info = Manifest.resolve(intent);
+        if (info == null) {
+            android.util.Log.w("Megler", "no activity for the child " + intent);
+            return null;
+        }
+        // (An <activity-alias> runs the activity it names, as launch does.)
+        String cls = "activity-alias".equals(info.kind) && info.parentActivity != null ? info.parentActivity : info.name;
+        android.util.Log.d("Megler", "child " + cls + " of " + parent.getClass().getName());
+        Activity a = sFactory.instantiateActivity(classLoader(), cls, intent);
+        a.meglerSetParent(parent);
+        a.meglerAttach(ContextImpl.forActivity(), sApp, intent, info, null, -1);
+        return a;
+    }
     /** The component an activity was started as: its class, or the alias it was reached through. */
     private static String startedAs(Activity a) {
         Intent i = a.getIntent();

@@ -152,7 +152,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         fragmentHost(FragmentManager.HOST_RESUMED);
         onPostResume();
         each(c -> c.onActivityPostResumed(this));
-        if (mVisibleFromClient && !mStartedActivity) makeVisible();
+        // (A child's decor is no window of its own: its group's TabHost shows it, android.app.LocalActivityManager.)
+        if (mParent == null && mVisibleFromClient && !mStartedActivity) makeVisible();
         mStartedActivity = false;
     }
     public final void meglerPause() {
@@ -170,7 +171,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             if (mLoaders != null) mLoaders.doStop();
             each(c -> c.onActivityPostStopped(this));
         }
-        if (mWindow != null && mWindow.peekDecorView() != null) { megler.ViewRoot r = megler.ViewRoot.of(mWindow.peekDecorView()); if (r != null) r.remove(); }
+        if (mParent == null && mWindow != null && mWindow.peekDecorView() != null) { megler.ViewRoot r = megler.ViewRoot.of(mWindow.peekDecorView()); if (r != null) r.remove(); }
         /* its dialogs and popups hidden with it, as Android hides the windows of a token not visible (makeVisible shows them) */
         if (!mWindowsHidden) { mWindowsHidden = true; megler.ViewRoot.ownerStopped(this, true); }
     }
@@ -279,6 +280,10 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public boolean isChangingConfigurations() { return mChangingConfigurations; }
     public boolean isTaskRoot() { return megler.AppRunner.isRoot(this); }
     public boolean isChild() { return mParent != null; }
+    /** An activity run inside another (android.app.LocalActivityManager): its group, set before it is created. */
+    public final void meglerSetParent(Activity parent) { mParent = parent; }
+    /** A child its group's manager finishes (destroyActivity, the group's own end): isFinishing from then on. */
+    public final void meglerMarkFinished() { mFinished = true; }
     public final Activity getParent() { return mParent; }
     public boolean isInMultiWindowMode() { return false; }
     public boolean isInPictureInPictureMode() { return false; }
@@ -337,7 +342,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public MenuInflater getMenuInflater() { return new MenuInflater(this); }
     public ActionBar getActionBar() { initWindowDecorActionBar(); return mActionBar; }
     public void setActionBar(android.widget.Toolbar t) { if (t != null) t.setTitle(getTitle()); }
-    public void setTitle(CharSequence t) { mTitle = t; onTitleChanged(t, mTitleColor); }
+    public void setTitle(CharSequence t) { mTitle = t; onTitleChanged(t, mTitleColor); if (mParent != null) mParent.onChildTitleChanged(this, t); }
     public void setTitle(int id) { setTitle(getText(id)); }
     public void setTitleColor(int c) { mTitleColor = c; }
     public final CharSequence getTitle() { return mTitle; }
@@ -429,6 +434,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         startActivityForResult(i, request, o);
     }
     public void finish() {
+        // (A child activity's finish is its group's to do, as Android's: finishFromChild, which finishes the group.)
+        if (mParent != null) { mParent.finishFromChild(this); return; }
         if (mFinished) return;
         mFinished = true;
         // the app's last activity going ends the app: say where from, which is often all a log has to explain it
