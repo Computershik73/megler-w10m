@@ -454,8 +454,17 @@ static MG_HOSTCB void before_system_write(void *p, size_t size)
 {
     u8 *at = (u8 *)p, *end = at + size;
     region *r;
+    bool held;
     if (!g_gone || !size) return;
-    mg_lock_acquire(&g_region_lock);
+    /*
+     * A thread that holds the lock already goes on under it. write_back reads the file into g_file_chunk under the lock, and
+     * the host's read asks here first: once the app had given pages back (madvise -- Chromium's PartitionAlloc and V8 do it
+     * all the time), the 5-second write-back took the lock again, its thread stopped for good, and every mmap, munmap,
+     * mprotect and madvise of the app's with it -- Aurora Store's and Gmail's Google sign-in pages stood still on a Lumia 650
+     * (650; 651's hang report: "the mappings' lock is taken again in before_system_write ... since mg_mem_write_back_all").
+     */
+    held = g_region_lock_owner == mg_thread_self_id();
+    if (!held) mg_lock_acquire(&g_region_lock);
     for (r = g_regions; r; r = r->next) {
         u8 *lo, *hi;
         if (!r->gone_pages || r->base >= end || r->base + r->size <= at) continue;
@@ -463,7 +472,7 @@ static MG_HOSTCB void before_system_write(void *p, size_t size)
         hi = end < r->base + r->size ? end : r->base + r->size;
         gone_back(r, (size_t)(lo - r->base), (size_t)(hi - lo));
     }
-    mg_lock_release(&g_region_lock);
+    if (!held) mg_lock_release(&g_region_lock);
 }
 
 static volatile i32 g_file_copies;   /* regions holding a file: while there are none, a write to a file looks for none */
