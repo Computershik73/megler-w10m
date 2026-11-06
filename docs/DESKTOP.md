@@ -234,6 +234,26 @@ adapters are what the GL tests go through on x86_64 and x86; on x86 the
 stand-in's functions that do nothing come in one size of arguments each, as
 `__stdcall` functions must.
 
+**Calls take turns** on the desktop as on the phone (`mg_egl.c`,
+"turns"): ANGLE serves all the contexts of a display with one state manager,
+so once two threads have contexts of one display current, every EGL and GLES
+call holds that display's lock and makes its thread's context current again
+when another thread's was last. The thunks that take the turn are machine code
+made at run time, one body for each processor and an entry per function: the
+function is called with the caller's stack as it was (on x86 and x86_64 the
+body takes the caller's return address and puts its own in its place; on
+ARM64 it calls with the caller's stack pointer, as 32-bit ARM's does), the
+argument and result registers kept around `turn_enter` and `turn_leave`.
+Without them, Chromium's threads drew in the WebView's display at once and
+ANGLE ended in `glDrawArrays`, marking a freed framebuffer's attachments.
+
+**The WebView** is Android's System WebView of the processor
+(`tools/webview-fetch.sh x86_64|x86|arm64-v8a`: the phone's release, Chromium
+128, built for that processor, from the same AOSP commit), drawn through the
+draw functor on the graphics processor as on the phone. Its PartitionAlloc
+reserves pools of 16 GB with no access; mappings of 4 GB and more are the
+app's like any other since `MG_ALIGN_UP` keeps a 64-bit size's upper half.
+
 ## Proven
 
 On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
@@ -334,8 +354,8 @@ access denied"); the next start is not.
    the commit limit counts that heap at its largest.
 3. **`int 0x80` in x86 code of an app's own** is counted, not rewritten (x86
    keeps nothing below its stack pointer: a trap would do there).
-4. **WebView**: Android's System WebView for x86_64 and arm64 (the phone's is
-   32-bit ARM's).
+4. **WebView on ARM64**: fetched and packed as x86_64's and x86's are, and not
+   run on an ARM64 device.
 5. **ARM64 on a device**: what is Windows' alone -- the TPIDR_EL0 reads
    patched through x18, x18 left alone by the guest's code (Android 9's
    prebuilt libcrypto among others), the context of a faulting, stopped or
