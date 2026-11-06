@@ -351,6 +351,9 @@ struct State {
     /// The flag gfx-profile (GfxHost::setProfiling, "The calls profiled"), and the thread that shows the window's pictures.
     std::atomic<bool> profiling{false};
     std::atomic<DWORD> presentThread{0};
+    /// Clips found to be one rounded rectangle (clipPath), and the drawings under such clips: with the box alone, filled
+    /// through the rectangle (fillThroughRound), with a layer.
+    std::atomic<uint64_t> roundClips{0}, roundUses[3] = {};
     std::atomic<uint64_t> canvasSerial{1};
     std::atomic<uint64_t> glFrames{0}, glWaitTicks{0}; // OpenGL ES frames taken (gl_frame), and the waits for their copies
     Ref<ID2D1Factory> d2d;
@@ -751,6 +754,8 @@ Box coverOf(const Matrix3x2F& m, float l, float t, float r, float b, int margin)
 
 /// Whether a matrix takes upright rectangles to upright rectangles.
 inline bool keepsUpright(const Matrix3x2F& m) { return (m._12 == 0 && m._21 == 0) || (m._11 == 0 && m._22 == 0); }
+/// Whether a matrix only scales (perhaps flipping) and moves: an axis-aligned rectangle stays one, its sides where they were.
+inline bool scalesOnly(const Matrix3x2F& m) { return m._12 == 0 && m._21 == 0 && m._11 != 0 && m._22 != 0; }
 
 /// How much longer a matrix makes a length, about: 1 for one that only moves and turns.
 inline float meanScale(const Matrix3x2F& m) {
@@ -1127,6 +1132,32 @@ struct Clip {
     Ref<ID2D1Geometry> g;  // in the canvas's pixels: what of the box is the clip. Null: all of it
     bool smooth = false;   // g's edge is smoothed
     uint64_t serial = 0;   // another number whenever the clip is another
+    /*
+     * When g is one rounded rectangle with the same radii at its corners, under no rotation (clipPath, roundRectOf: a
+     * view's outline, Compose's clip to a RoundedCornerShape): that rectangle, in the canvas's pixels. A drawing that keeps
+     * off its corners is clipped by the box alone (offCorners), and a rectangle of a colour or a bitmap is filled through it
+     * (fillThroughRound): no layer, which costs Direct2D a flush at each end -- about 1 ms each on a Lumia 650, where
+     * Spotify's frames had seventeen such clips (gfx-profile, 660).
+     */
+    bool round = false;
+    D2D1_ROUNDED_RECT rr = {};
+
+    /// Whether `drawn` (the canvas's pixels) keeps off the rounded rectangle's corners and its edges' part pixels, as far
+    /// as the box lets it be drawn at all: there the box alone is the clip.
+    bool offCorners(const Box& drawn) const {
+        if (!round) return false;
+        Box d = drawn;
+        d.intersect(box);
+        if (d.empty()) return true;
+        // The pixels wholly inside the rounded rectangle's box, and the corners' squares, a pixel more for the smoothing.
+        const int il = int(std::ceil(rr.rect.left)), it = int(std::ceil(rr.rect.top));
+        const int ir = int(std::floor(rr.rect.right)), ib = int(std::floor(rr.rect.bottom));
+        const int cx = int(std::ceil(rr.radiusX)) + 1, cy = int(std::ceil(rr.radiusY)) + 1;
+        if (d.l < il || d.t < it || d.r > ir || d.b > ib) return false;
+        auto hits = [&d](int x0, int y0, int x1, int y1) { return d.l < x1 && d.r > x0 && d.t < y1 && d.b > y0; };
+        return !hits(il, it, il + cx, it + cy) && !hits(ir - cx, it, ir, it + cy) && !hits(il, ib - cy, il + cx, ib) &&
+               !hits(ir - cx, ib - cy, ir, ib);
+    }
 };
 
 struct Surface {
@@ -1141,6 +1172,7 @@ struct Surface {
     int pushed = 0;         // on the render target now: 0 nothing, 1 a rectangle clip, 2 that and a layer with a mask
     uint64_t pushedSerial = 0;
     bool clipApplied = false;
+    bool pushedLayer = false; // the clip pushed for pushedSerial has its layer (useClip: a rounded one may go without)
     // On the graphics processor (GfxHost.h) the picture is `gpu`, drawn through the canvas's context, and rt is that
     // context. The memory above -- the core's for a canvas's picture, this file's for a layer, made when first needed
     // -- is kept one picture with it by two boxes of the canvas's pixels, of which one at most is ever not empty:
@@ -1504,19 +1536,28 @@ struct Surface {
         }
     }
 
-    /// The clip for what is drawn next (the surface is drawing).
-    void useClip(const Clip& clip) {
-        if (clipApplied && pushedSerial == clip.serial) return;
+    /// The clip for what is drawn next (the surface is drawing). `drawn`, when the caller knows it: where the drawing
+    /// lands, in the canvas's pixels; off a rounded rectangle's corners the box alone is the clip, no layer
+    /// (Clip::offCorners). `inside`: the drawing is within the clip's geometry anyway, which then needs no layer either.
+    void useClip(const Clip& clip, const Box* drawn = nullptr, bool inside = false) {
+        const bool layer = clip.g && !inside && !(drawn && clip.offCorners(*drawn));
+        // (A layer pushed for this clip already serves every drawing under it: kept, not taken off and pushed again.)
+        if (clipApplied && pushedSerial == clip.serial && (pushedLayer || !layer)) {
+            if (clip.round && !pushedLayer) ++G().roundUses[0];
+            return;
+        }
+        if (clip.round) ++G().roundUses[layer ? 2 : 0];
         popClip();
         pushedSerial = clip.serial;
+        pushedLayer = layer;
         clipApplied = true;
         const Box mine = bounds();
-        if (!clip.g && clip.box.l <= mine.l && clip.box.t <= mine.t && clip.box.r >= mine.r && clip.box.b >= mine.b) return;
+        if (!layer && clip.box.l <= mine.l && clip.box.t <= mine.t && clip.box.r >= mine.r && clip.box.b >= mine.b) return;
         const D2D1_RECT_F rect = D2D1::RectF(float(clip.box.l - ox), float(clip.box.t - oy), float(clip.box.r - ox), float(clip.box.b - oy));
         rt->SetTransform(Matrix3x2F::Identity());
         rt->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_ALIASED);
         pushed = 1;
-        if (clip.g) {
+        if (layer) {
             // (No layer object: Direct2D keeps its own since Windows 8.)
             rt->PushLayer(D2D1::LayerParameters(rect, clip.g.get(), clip.smooth ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED,
                                                 Matrix3x2F::Translation(float(-ox), float(-oy))),
@@ -2022,6 +2063,8 @@ Ref<ID2D1Geometry> combined(ID2D1Geometry* a, ID2D1Geometry* b, D2D1_COMBINE_MOD
 /// stays (INTERSECT), or the shape is cut out (DIFFERENCE). `cover` is the
 /// pixels the shape can touch.
 void clipByGeometry(Clip& clip, ID2D1Geometry* shape, const Box& cover, int op, bool smooth) {
+    // (Whatever the geometry becomes, it is not known to be one rounded rectangle: clipPath says so when it is.)
+    clip.round = false;
     if (clip.box.empty()) return;
     if (op == MEGLER_GFX_CLIP_INTERSECT) {
         if (!shape) {
@@ -3151,6 +3194,58 @@ bool gpuShadow(Canvas& cv, Surface& target, const Ink& ink, const megler_gfx_pai
     return gpuPut(cv, target, lands, a.get(), keepsUncovered(paint.blend) ? nullptr : c->gpu.get(), paint.blend);
 }
 
+/*
+ * A rectangle (`onto`, in the coordinates `m` takes to the canvas's pixels) filled with one brush, under a clip that is one
+ * rounded rectangle (Clip::round) whose corners it reaches: the rounded rectangle filled with the brush, with the box of the
+ * clip and of the rectangle as the clip. That is what the rectangle shows under the clip, and no layer is pushed for it
+ * (Clip). False, nothing done, where it is not so: no such clip, a matrix that turns, a rectangle whose sides are not on whole
+ * pixels (its own edge would be smoothed there, which the box does not do).
+ */
+bool fillThroughRound(Surface& s, const Clip& clip, const Matrix3x2F& m, const D2D1_RECT_F& onto, ID2D1Brush* brush) {
+    if (!clip.round || !scalesOnly(m) || !brush) return false;
+    // (A layer already pushed for this clip, by a drawing before under it: the rectangle drawn under it as it is.)
+    if (s.clipApplied && s.pushedSerial == clip.serial && s.pushedLayer) return false;
+    const D2D1_POINT_2F a = m.TransformPoint(D2D1::Point2F(onto.left, onto.top)), b = m.TransformPoint(D2D1::Point2F(onto.right, onto.bottom));
+    const float l = std::min(a.x, b.x), t = std::min(a.y, b.y), r = std::max(a.x, b.x), bottom = std::max(a.y, b.y);
+    auto whole = [](float v) { return std::fabs(v - std::round(v)) < 0.01f; };
+    if (!whole(l) || !whole(t) || !whole(r) || !whole(bottom)) return false;
+    Matrix3x2F back = m;
+    if (!back.Invert()) return false;
+    Box area;
+    area.l = int(std::lround(l));
+    area.t = int(std::lround(t));
+    area.r = int(std::lround(r));
+    area.b = int(std::lround(bottom));
+    area.intersect(clip.box);
+    area.intersect(s.bounds());
+    ++G().roundUses[1];
+    if (area.empty()) return true;                               /* (nothing of it is within the clip's box) */
+    // The rounded rectangle in the drawing's coordinates, which the matrix only scales and moves.
+    const D2D1_POINT_2F p = back.TransformPoint(D2D1::Point2F(clip.rr.rect.left, clip.rr.rect.top));
+    const D2D1_POINT_2F q = back.TransformPoint(D2D1::Point2F(clip.rr.rect.right, clip.rr.rect.bottom));
+    D2D1_ROUNDED_RECT local;
+    local.rect = D2D1::RectF(std::min(p.x, q.x), std::min(p.y, q.y), std::max(p.x, q.x), std::max(p.y, q.y));
+    local.radiusX = clip.rr.radiusX / std::fabs(m._11);
+    local.radiusY = clip.rr.radiusY / std::fabs(m._22);
+    s.useBoxClip(area);
+    s.setMatrix(m);
+    s.rt->SetAntialiasMode(clip.smooth ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED);
+    s.rt->FillRoundedRectangle(local, brush);
+    return true;
+}
+
+/// Whether a filled rounded rectangle (`ink`, under `m`) lies within the clip's rounded rectangle: the same box, its corners
+/// as round or rounder. It then needs no clip but the box.
+bool roundWithin(const Ink& ink, const Matrix3x2F& m, const Clip& clip) {
+    if (!clip.round || ink.kind != Ink::rounded || ink.style != MEGLER_GFX_FILL || !scalesOnly(m)) return false;
+    const D2D1_POINT_2F a = m.TransformPoint(D2D1::Point2F(ink.box.left, ink.box.top)), b = m.TransformPoint(D2D1::Point2F(ink.box.right, ink.box.bottom));
+    const D2D1_RECT_F& c = clip.rr.rect;
+    if (std::fabs(std::min(a.x, b.x) - c.left) > 0.5f || std::fabs(std::min(a.y, b.y) - c.top) > 0.5f || std::fabs(std::max(a.x, b.x) - c.right) > 0.5f ||
+        std::fabs(std::max(a.y, b.y) - c.bottom) > 0.5f)
+        return false;
+    return ink.rx * std::fabs(m._11) >= clip.rr.radiusX - 0.5f && ink.ry * std::fabs(m._22) >= clip.rr.radiusY - 0.5f;
+}
+
 /// Whether Direct2D can put this onto the picture itself: laid over what is
 /// there, in a colour or through a brush, each pixel of the shape once.
 bool drawsDirect(const megler_gfx_paint& paint, const Shader* shader, int style) {
@@ -3169,7 +3264,23 @@ void paintInk(Canvas& cv, const Ink& ink, const megler_gfx_paint& paint, Shader*
     const bool filterBitmap = (paint.flags & MEGLER_GFX_FILTER_BITMAP) != 0;
     if (drawsDirect(paint, shader, ink.style)) {
         if (!target->begin()) return;
-        target->useClip(cv.clip());
+        const Clip& clip = cv.clip();
+        const Box lands = inkCover(ink, cv.matrix);
+        // Under a rounded rectangle's clip: a rectangle of a colour that reaches its corners filled through it, a rounded
+        // rectangle that is the clip's own, or anything off its corners, with the box alone -- no layer (Clip::round).
+        if (clip.round && !shader && ink.kind == Ink::rectangle && ink.style == MEGLER_GFX_FILL && !clip.offCorners(lands)) {
+            target->brush->SetColor(colorOf(paint.color));
+            if (fillThroughRound(*target, clip, cv.matrix, ink.box, target->brush.get())) {
+                if (target->gc) {
+                    Box drawn = lands;
+                    drawn.intersect(clip.box);
+                    target->drew(drawn);
+                }
+                ++G().direct;
+                return;
+            }
+        }
+        target->useClip(clip, &lands, roundWithin(ink, cv.matrix, clip));
         if (shader) {
             std::lock_guard<std::mutex> lock(shader->mutex);
             ID2D1Brush* brush = shader->brushFor(target->gc != nullptr);
@@ -3585,6 +3696,10 @@ void noteDrawing() {
             say("shadows, in all: %llu made and kept, %llu laid from those kept; %zu kept in %.1f MB", ull(s.shadowsMade.load()),
                 ull(s.shadowsReused.load()), s.shadows.size(), double(s.shadowBytes) / 1048576.0);
         }
+        if (s.roundClips.load())
+            say("clips that are one rounded rectangle, in all: %llu; the drawings under them: %llu with the box alone, %llu filled through the "
+                "rectangle; %llu layers pushed for them",
+                ull(s.roundClips.load()), ull(s.roundUses[0].load()), ull(s.roundUses[1].load()), ull(s.roundUses[2].load()));
         if (s.profiling.load()) sayProfile(seconds);
     } else if (s.statsAt && t.sessions != l.sessions) {
         const double seconds = ticksToMs(now - s.statsAt) / 1000.0;
@@ -4623,6 +4738,114 @@ void clipRect(void*, void* canvas, float left, float top, float right, float bot
     });
 }
 
+/*
+ * Whether a path (megler.h's stream) is one rounded rectangle -- straight edges along its box and one curve in each corner,
+ * as the core's path_round_rect makes a view's outline -- with the same radii at its four corners: its box and radii in the
+ * path's own coordinates. Each corner's radii are how far its curve reaches from the corner along each side.
+ */
+bool roundRectOf(const float* path, int count, D2D1_ROUNDED_RECT* out) {
+    struct Curve {
+        float l, t, r, b;
+    } curves[4];
+    float px[256], py[256];
+    int npts = 0, ncurves = 0, i = 0, moves = 0;
+    float cx = 0, cy = 0, sx = 0, sy = 0;
+    // The straight edges, to be checked against the box once it is known: from (x0, y0) to (x1, y1).
+    float lines[8][4];
+    int nlines = 0;
+    auto point = [&](float x, float y) {
+        if (npts < 256) {
+            px[npts] = x;
+            py[npts] = y;
+            npts++;
+        }
+    };
+    if (!path || count < 3) return false;
+    while (i < count) {
+        if (!(path[i] >= 0 && path[i] <= 4)) return false;
+        const int verb = int(path[i++]);
+        const int need = verb == MEGLER_GFX_PATH_QUAD ? 4 : verb == MEGLER_GFX_PATH_CUBIC ? 6 : verb == MEGLER_GFX_PATH_CLOSE ? 0 : 2;
+        if (i + need > count) return false;
+        for (int k = 0; k < need; k++)
+            if (!sane(path[i + k])) return false;
+        if (verb == MEGLER_GFX_PATH_MOVE) {
+            // One figure: a move only at the start.
+            if (moves++ || npts) return false;
+            cx = sx = path[i];
+            cy = sy = path[i + 1];
+            point(cx, cy);
+        } else if (verb == MEGLER_GFX_PATH_LINE || verb == MEGLER_GFX_PATH_CLOSE) {
+            const float x = verb == MEGLER_GFX_PATH_CLOSE ? sx : path[i], y = verb == MEGLER_GFX_PATH_CLOSE ? sy : path[i + 1];
+            if (!moves || nlines == 8) return false;
+            lines[nlines][0] = cx;
+            lines[nlines][1] = cy;
+            lines[nlines][2] = x;
+            lines[nlines][3] = y;
+            nlines++;
+            cx = x;
+            cy = y;
+            point(cx, cy);
+            if (verb == MEGLER_GFX_PATH_CLOSE && i < count) return false;  /* (nothing after the close) */
+        } else {
+            if (!moves || ncurves == 4) return false;
+            Curve& c = curves[ncurves++];
+            c.l = c.r = cx;
+            c.t = c.b = cy;
+            for (int k = 0; k < need; k += 2) {
+                c.l = std::min(c.l, path[i + k]);
+                c.r = std::max(c.r, path[i + k]);
+                c.t = std::min(c.t, path[i + k + 1]);
+                c.b = std::max(c.b, path[i + k + 1]);
+                point(path[i + k], path[i + k + 1]);
+            }
+            cx = path[i + need - 2];
+            cy = path[i + need - 1];
+        }
+        i += need;
+    }
+    if (ncurves != 4 || npts < 4) return false;
+    float L = px[0], T = py[0], R = px[0], B = py[0];
+    for (int k = 1; k < npts; k++) {
+        L = std::min(L, px[k]);
+        R = std::max(R, px[k]);
+        T = std::min(T, py[k]);
+        B = std::max(B, py[k]);
+    }
+    const float w = R - L, h = B - T, eps = 0.01f + 0.0005f * std::max(w, h);
+    if (!(w > 0 && h > 0)) return false;
+    auto alike = [eps](float a, float b) { return std::fabs(a - b) <= eps; };
+    // The straight edges on the box's sides.
+    for (int k = 0; k < nlines; k++) {
+        const float x0 = lines[k][0], y0 = lines[k][1], x1 = lines[k][2], y1 = lines[k][3];
+        const bool flat = alike(y0, y1) && (alike(y0, T) || alike(y0, B)), upright = alike(x0, x1) && (alike(x0, L) || alike(x0, R));
+        if (!flat && !upright && !(alike(x0, x1) && alike(y0, y1))) return false;
+    }
+    // A curve in each corner, reaching the same distances from it.
+    bool seen[4] = {};
+    float rx = -1, ry = -1;
+    for (int k = 0; k < 4; k++) {
+        const Curve& c = curves[k];
+        const bool right = c.l + c.r > L + R, bottom = c.t + c.b > T + B;
+        const int corner = (bottom ? 2 : 0) + (right ? 1 : 0);
+        if (seen[corner]) return false;
+        seen[corner] = true;
+        // (It touches both sides of its corner.)
+        if (!alike(right ? c.r : c.l, right ? R : L) || !alike(bottom ? c.b : c.t, bottom ? B : T)) return false;
+        const float cw = c.r - c.l, ch = c.b - c.t;
+        if (rx < 0) {
+            rx = cw;
+            ry = ch;
+        } else if (!alike(cw, rx) || !alike(ch, ry)) {
+            return false;
+        }
+    }
+    if (!(rx > 0 && ry > 0) || rx > w / 2 + eps || ry > h / 2 + eps) return false;
+    out->rect = D2D1::RectF(L, T, R, B);
+    out->radiusX = rx;
+    out->radiusY = ry;
+    return true;
+}
+
 void clipPath(void*, void* canvas, const float* path, int count, int fill, int op) {
     Canvas* cv = canvasOf(canvas);
     if (!cv) return;
@@ -4645,7 +4868,20 @@ void clipPath(void*, void* canvas, const float* path, int count, int fill, int o
             cover.r = ceilPixel(bounds.right);
             cover.b = ceilPixel(bounds.bottom);
         }
+        const bool first = !clip.g;
         clipByGeometry(clip, cover.empty() ? nullptr : placed.get(), cover, op, true);
+        // The first geometry of the clip, one rounded rectangle under no rotation: known as that (Clip::round).
+        D2D1_ROUNDED_RECT local;
+        if (first && clip.g && op == MEGLER_GFX_CLIP_INTERSECT && scalesOnly(cv->matrix) && roundRectOf(path, count, &local)) {
+            const Matrix3x2F& m = cv->matrix;
+            const D2D1_POINT_2F a = m.TransformPoint(D2D1::Point2F(local.rect.left, local.rect.top));
+            const D2D1_POINT_2F b = m.TransformPoint(D2D1::Point2F(local.rect.right, local.rect.bottom));
+            clip.rr.rect = D2D1::RectF(std::min(a.x, b.x), std::min(a.y, b.y), std::max(a.x, b.x), std::max(a.y, b.y));
+            clip.rr.radiusX = local.radiusX * std::fabs(m._11);
+            clip.rr.radiusY = local.radiusY * std::fabs(m._22);
+            clip.round = true;
+            ++G().roundClips;
+        }
     });
 }
 
@@ -4677,8 +4913,16 @@ void drawColor(void*, void* canvas, uint32_t color, int blend) {
                 return;
             }
             if (blend == MEGLER_GFX_BLEND_SRC_OVER) {
-                // Over what is there, as far as the clip lets it: a rectangle filled through the clip.
+                // Over what is there, as far as the clip lets it: a rectangle filled through the clip -- through a rounded
+                // rectangle's with no layer (fillThroughRound: a card's background).
                 if (!target->begin()) return;
+                target->brush->SetColor(colorOf(color));
+                if (clip.round && fillThroughRound(*target, clip, Matrix3x2F::Identity(), D2D1::RectF(float(box.l), float(box.t), float(box.r), float(box.b)),
+                                                   target->brush.get())) {
+                    target->drew(box);
+                    ++G().direct;
+                    return;
+                }
                 target->useClip(clip);
                 target->rt->SetTransform(Matrix3x2F::Identity());
                 target->rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
@@ -4990,17 +5234,57 @@ Ref<ID2D1Bitmap1> bitmapForDrawing(Canvas& cv, const megler_gfx_image& image) {
 /// pixels going on beyond it, so that nothing outside the part shows; with a
 /// colour filter, a copy of the part made what the paint's alpha and the
 /// filter make it, as in memory.
+/// The context's image brush over the kept bitmap's part `part`, placed so that `src` of the image lands on `dst` (the
+/// drawing's coordinates), its edge pixels going on beyond the part. Null when it cannot be made.
+ID2D1ImageBrush* keptBrush(GpuContext& gc, ID2D1Bitmap1* kept, const Box& part, const float* src, const float* dst, float opacity,
+                           D2D1_INTERPOLATION_MODE interpolation) {
+    const D2D1_RECT_F within = D2D1::RectF(float(part.l), float(part.t), float(part.r), float(part.b));
+    // (An image brush's own coordinates have the source rectangle's corner at their origin, as a brush over a copy of the
+    // part would.)
+    const float sx = (dst[2] - dst[0]) / (src[2] - src[0]), sy = (dst[3] - dst[1]) / (src[3] - src[1]);
+    const Matrix3x2F placed =
+        Matrix3x2F::Translation(float(part.l) - src[0], float(part.t) - src[1]) * Matrix3x2F::Scale(sx, sy) * Matrix3x2F::Translation(dst[0], dst[1]);
+    if (!gc.imageBrush) {
+        const HRESULT hr = gc.dc->CreateImageBrush(kept, D2D1::ImageBrushProperties(within, D2D1_EXTEND_MODE_CLAMP, D2D1_EXTEND_MODE_CLAMP, interpolation),
+                                                   D2D1::BrushProperties(opacity, placed), gc.imageBrush.put());
+        if (FAILED(hr)) {
+            gpuFailed("ID2D1DeviceContext::CreateImageBrush", hr);
+            gc.imageBrush.reset();
+            return nullptr;
+        }
+    } else {
+        gc.imageBrush->SetImage(kept);
+        gc.imageBrush->SetSourceRectangle(&within);
+        gc.imageBrush->SetInterpolationMode(interpolation);
+        gc.imageBrush->SetTransform(placed);
+        gc.imageBrush->SetOpacity(opacity);
+    }
+    return gc.imageBrush.get();
+}
+
 bool gpuBitmapOn(Surface& s, Canvas& cv, const megler_gfx_image& image, const Box& part, const float* src, const float* dst, const megler_gfx_paint& paint) {
     const bool filtered = paint.filter_mode >= 0, filterBitmap = (paint.flags & MEGLER_GFX_FILTER_BITMAP) != 0;
     const D2D1_RECT_F from = D2D1::RectF(src[0] - float(part.l), src[1] - float(part.t), src[2] - float(part.l), src[3] - float(part.t));
     const D2D1_RECT_F onto = D2D1::RectF(dst[0], dst[1], dst[2], dst[3]);
     const D2D1_BITMAP_INTERPOLATION_MODE sampling = filterBitmap ? D2D1_BITMAP_INTERPOLATION_MODE_LINEAR : D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
-    s.useClip(cv.clip());
-    s.setMatrix(cv.matrix);
-    s.rt->SetAntialiasMode((paint.flags & MEGLER_GFX_ANTI_ALIAS) ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED);
+    const D2D1_INTERPOLATION_MODE interpolation = filterBitmap ? D2D1_INTERPOLATION_MODE_LINEAR : D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
     // (Through a filter the kept copy is the tinted one, the paint's alpha in it already.)
     const float opacity = filtered ? 1.0f : float(paint.color >> 24) / 255.0f;
     Ref<ID2D1Bitmap1> kept = filtered ? keptTinted(image, paint) : bitmapForDrawing(cv, image);
+    const Clip& clip = cv.clip();
+    const Box lands = coverOf(cv.matrix, dst[0], dst[1], dst[2], dst[3], 1);
+    // Under a rounded rectangle's clip, a kept bitmap that reaches its corners (an album's cover in a rounded tile) is filled
+    // through it with the image brush: no layer (Clip::round, fillThroughRound). Off its corners the box alone clips it.
+    if (kept && s.gc && clip.round && !clip.offCorners(lands)) {
+        if (ID2D1ImageBrush* brush = keptBrush(*s.gc, kept.get(), part, src, dst, opacity, interpolation)) {
+            const bool done = fillThroughRound(s, clip, cv.matrix, onto, brush);
+            brush->SetImage(nullptr);
+            if (done) return true;
+        }
+    }
+    s.useClip(clip, &lands);
+    s.setMatrix(cv.matrix);
+    s.rt->SetAntialiasMode((paint.flags & MEGLER_GFX_ANTI_ALIAS) ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED);
     const bool whole = part.l == 0 && part.t == 0 && part.r == image.width && part.b == image.height;
     if (kept && whole) {
         s.rt->DrawBitmap(kept.get(), &onto, opacity, sampling, &from);
@@ -5017,32 +5301,11 @@ bool gpuBitmapOn(Surface& s, Canvas& cv, const megler_gfx_image& image, const Bo
         s.rt->DrawBitmap(copy.get(), &onto, opacity, sampling, &from);
         return true;
     }
-    GpuContext& gc = *s.gc;
-    const D2D1_RECT_F within = D2D1::RectF(float(part.l), float(part.t), float(part.r), float(part.b));
-    const D2D1_INTERPOLATION_MODE interpolation = filterBitmap ? D2D1_INTERPOLATION_MODE_LINEAR : D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
-    // (An image brush's own coordinates have the source rectangle's corner at their origin, as a brush over a copy of the
-    // part would.)
-    const float sx = (dst[2] - dst[0]) / (src[2] - src[0]), sy = (dst[3] - dst[1]) / (src[3] - src[1]);
-    const Matrix3x2F placed =
-        Matrix3x2F::Translation(float(part.l) - src[0], float(part.t) - src[1]) * Matrix3x2F::Scale(sx, sy) * Matrix3x2F::Translation(dst[0], dst[1]);
-    if (!gc.imageBrush) {
-        const HRESULT hr = gc.dc->CreateImageBrush(kept.get(), D2D1::ImageBrushProperties(within, D2D1_EXTEND_MODE_CLAMP, D2D1_EXTEND_MODE_CLAMP, interpolation),
-                                                   D2D1::BrushProperties(opacity, placed), gc.imageBrush.put());
-        if (FAILED(hr)) {
-            gpuFailed("ID2D1DeviceContext::CreateImageBrush", hr);
-            gc.imageBrush.reset();
-            return false;
-        }
-    } else {
-        gc.imageBrush->SetImage(kept.get());
-        gc.imageBrush->SetSourceRectangle(&within);
-        gc.imageBrush->SetInterpolationMode(interpolation);
-        gc.imageBrush->SetTransform(placed);
-        gc.imageBrush->SetOpacity(opacity);
-    }
-    s.rt->FillRectangle(onto, gc.imageBrush.get());
+    ID2D1ImageBrush* brush = keptBrush(*s.gc, kept.get(), part, src, dst, opacity, interpolation);
+    if (!brush) return false;
+    s.rt->FillRectangle(onto, brush);
     // (The brush lets go of the bitmap, which may be dropped from the kept ones: Direct2D holds what it still has to draw.)
-    gc.imageBrush->SetImage(nullptr);
+    brush->SetImage(nullptr);
     return true;
 }
 
