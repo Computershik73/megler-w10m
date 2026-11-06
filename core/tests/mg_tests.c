@@ -3018,7 +3018,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     /* Signals between threads: a thread stopped and let go twenty times, wherever it was found. */
     CHECK_INT(FN(lib, int (*)(int), "t_signals")(20), 0);
     {
-        char report[200];
+        char report[320];
         mg_thread_interrupt_report(report, sizeof(report));
         say("  threads interrupted in guest code: %s", report);
     }
