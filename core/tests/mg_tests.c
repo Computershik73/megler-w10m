@@ -3001,6 +3001,77 @@ static void test_stop_signalled(mg_lib *lib)
     CHECK_INT(wrong, 0);
     CHECK(handled > 100);
 }
+
+/*
+ * A thread stopped as the collector stops one while the handler of a signal sent to it waits -- spinning in guest code
+ * (how 0), or in sigsuspend (how 1), as Boehm's and Mono's collectors park a thread for a whole collection of theirs:
+ * t_gcw_start (guest/t_basic.c) sends the signal to a spinner holding a mark in each register. Every one of them must be
+ * among what the collector looks at -- the registers mg_thread_suspend gives, those it gives of the code the thread was
+ * interrupted in, and the thread's stack from sp up -- at every stop, or an object the interrupted code held in that
+ * register alone could be freed under it meanwhile.
+ */
+#if MG_ARCH_X86_64
+#define GCW_MARK 0x6d67000057410000ull
+#define GCW_REGS 15
+#else
+#define GCW_MARK 0x57410000ull
+#define GCW_REGS 7
+#endif
+
+/* Which mark a word is, as a bit (k for register k's), or 0. */
+static u32 gcw_mark_bit(mg_addr w)
+{
+    u64 k = (u64)w - GCW_MARK;
+    return k < GCW_REGS ? 1u << k : 0;
+}
+
+static void test_stop_in_handler(mg_lib *lib, int how)
+{
+    void *stack[2] = { NULL, NULL };
+    mg_thread_regs regs;
+    mg_thread *h = NULL;
+    const u32 all = (1u << GCW_REGS) - 1;
+    u32 missing = 0, first_regs = 0, first_was = 0, first_stack = 0;
+    int tid, i, k, stopped = 0, short_of = 0;
+    long done;
+    tid = FN(lib, int (*)(int, void **), "t_gcw_start")(how, stack);
+    CHECK(tid > 0);
+    if (tid > 0) h = mg_gthread_host_of_tid(tid);
+    CHECK(h != NULL);
+    for (i = 0; h && i < 200; i++) {
+        u32 in_regs = 0, in_was = 0, on_stack = 0;
+        u64 until;
+        if (!mg_thread_suspend(h, &regs)) continue;
+        stopped++;
+        /* (The words the collector takes, as it takes them: dvm/mg_dvm_gc.c, conservative_roots and scan_words.) */
+        for (k = 0; k < regs.n; k++) in_regs |= gcw_mark_bit(regs.r[k]);
+        for (k = 0; k < regs.n_was; k++) in_was |= gcw_mark_bit(regs.was[k]);
+        if (regs.sp >= (mg_addr)stack[0] && regs.sp < (mg_addr)stack[1]) {
+            const mg_addr *w = (const mg_addr *)MG_ALIGN_UP(regs.sp, sizeof(mg_addr));
+            for (; w + 1 <= (const mg_addr *)stack[1]; w++) on_stack |= gcw_mark_bit(*w);
+        }
+        mg_thread_resume(h);
+        if (stopped == 1) {
+            first_regs = in_regs;
+            first_was = in_was;
+            first_stack = on_stack;
+        }
+        if ((in_regs | in_was | on_stack) != all) {
+            short_of++;
+            missing |= all & ~(in_regs | in_was | on_stack);
+        }
+        until = mg_time_monotonic_ns() + (u64)(i % 5) * 10000ull;
+        while (mg_time_monotonic_ns() < until) {}
+    }
+    done = FN(lib, long (*)(void), "t_gcw_finish")();
+    say("  stopped %d times while its handler waited %s: %d with registers it was interrupted with nowhere the collector looks (mask %x); "
+        "at the first, marks in its registers %x, in those given of the code it interrupted %x, on its stack %x; the handler's end %ld",
+        stopped, how ? "in sigsuspend" : "in guest code", short_of, (unsigned)missing, (unsigned)first_regs, (unsigned)first_was,
+        (unsigned)first_stack, done);
+    CHECK_INT(stopped, 200);
+    CHECK_INT(short_of, 0);
+    CHECK_INT(done, 0);
+}
 #endif
 
 static void test_library(mg_lib *lib, const char *what, const char *scratch)
@@ -3086,6 +3157,8 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
 #if MG_ARCH_X86_64 || (MG_ARCH_X86 && MG_HOST_WINDOWS)
     /* A thread stopped as the collector stops one, 20000 times while signals keep sending it back: its registers its own. */
     test_stop_signalled(lib);
+    test_stop_in_handler(lib, 0);
+    test_stop_in_handler(lib, 1);
 #endif
     /* The registers a function keeps for its caller, as they were after each of 300 signals to a thread spinning with marks
        in them, each sent some microseconds after its handler ran for the one before: on Windows, on its way back from

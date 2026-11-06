@@ -169,7 +169,14 @@ the context NtContinue was given, below that stack pointer. So a stop that
 finds `CONTEXT_SERVICE_ACTIVE` at a pc that is not just past a `syscall` (or
 `int 0x2e`) -- where a thread in an ordinary system call is found, with its
 own registers -- lets the thread go and stops it again 10 us later; x86's
-registers there are WOW64's copy, its own, and are taken as they are.
+registers there are WOW64's copy, its own, and are taken as they are. While
+the guest's handler runs, the registers of the code it interrupted are kept
+in the thread's record alone (`mg_thread.was`, on the host's heap), and the
+landing and the handler use those their callers do not keep -- rax, rcx,
+rdx and r8-r11 on x64, eax, ecx and edx on x86 -- so a stop of a thread in
+an interruption gives them too (`mg_thread_regs.was`), and the collector
+takes them as it takes the thread's own. On Linux the kernel's frame of the
+signal holds them, on the thread's stack above the handler's.
 
 Memory an app gives back with madvise is decommitted, to be committed again
 at its first touch (`bionic/mg_libc_mem.c`). A goroutine's stack is a piece
@@ -255,7 +262,7 @@ stand-in's functions that do nothing come in one size of arguments each, as
 On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
 
 - `tools/build-desktop.sh x64 tests`, the core in `megler-core.so` loaded into
-  a Windows x64 process, with the x86_64 guest test libraries: 5351 checks, 0
+  a Windows x64 process, with the x86_64 guest test libraries: 5371 checks, 0
   failed (now and then one under load: the herd test's timing check of a few
   milliseconds). The GL tests go through the adapters to stand-ins of ANGLE's
   convention, floats and all. ELF64 with RELA, APS2 and RELR relocations,
@@ -285,12 +292,21 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   20000 times as the collector stops one (test_stop_signalled): its own
   registers at every stop in its loop -- 0 of 190,544 in twelve runs, where
   the same build with the look at its context switched off gave 980 of
-  189,534 rbx, rsi and rdi of NtContinue's caller.
-- `tools/build-desktop.sh x86 tests` (through WOW64): 5342 checks, 0 failed
+  189,534 rbx, rsi and rdi of NtContinue's caller. And a thread stopped 200
+  times as the collector stops one while the handler of a signal sent to it
+  waits, spinning in guest code or in sigsuspend (test_stop_in_handler):
+  every register the signal found it with among what the collector takes,
+  at every stop -- 0 of 3200 stops short in four runs, where the same build
+  with the interrupted code's registers left out of the stop gave 3200 of
+  3200 without rax, rcx, rdx and r8-r11 (rbx, rbp, rsi, rdi and r12-r15 were
+  on the stack, saved by the functions the handler runs in).
+- `tools/build-desktop.sh x86 tests` (through WOW64): 5362 checks, 0 failed
   (now and then 1 under load: the same timing check), the GL tests through
   `__stdcall` stand-ins; the signalled thread stopped as the collector stops
   one had its own registers with no look at its context (0 of some 26,000
-  stops in its loop).
+  stops in its loop); a thread stopped while its signal's handler waits, 0
+  of 3200 stops short, where 3200 of 3200 lacked eax, ecx and edx with the
+  interrupted code's registers left out.
 - The registers a function keeps for its caller, kept across signals on
   every ABI (t_signal_regs: a thread spinning with a mark in each, Android's
   and Windows' both, sent 300 signals, each some microseconds after its
@@ -316,15 +332,16 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   second-chance access violation on Windows, exit 139 on Linux).
 - `tools/build-tests.sh win` (MSVC's x64 build of the tests): 5023 checks, 0
   failed, and 5087 on Android's libcore, 0 failed; `tools/build-tests.sh
-  linux64` (x86_64 on WSL's Linux): 5349 checks, 0 failed, and 5433 on
-  Android's libcore, 0 failed, an app's own `syscall` and accesses of `%fs`
-  through a register led out there too, and a goroutine's first touch of its
-  own stack's page that libc's madvise gave back repaired on the handler's
-  stack of its own (its bundle tests, which expect 32-bit ARM's split kept,
-  fail there where the test app's bundles are built: an x86_64 build keeps
-  the processor's own); `tools/abi-check.py`: 0 differences on all four ABIs;
-  the phone's core compiles for ARM32 with MSVC, and its tests under qemu-arm
-  (`tools/build-tests.sh arm`) give 5451 checks, 0 failed.
+  linux64` (x86_64 on WSL's Linux): 5369 checks, 0 failed, and 5453 on
+  Android's libcore, 0 failed, the registers a signal found a thread with on
+  its stack while the handler waits, an app's own `syscall` and accesses of
+  `%fs` through a register led out there too, and a goroutine's first touch
+  of its own stack's page that libc's madvise gave back repaired on the
+  handler's stack of its own (its bundle tests, which expect 32-bit ARM's
+  split kept, fail there where the test app's bundles are built: an x86_64
+  build keeps the processor's own); `tools/abi-check.py`: 0 differences on all
+  four ABIs; the phone's core compiles for ARM32 with MSVC, and its tests
+  under qemu-arm (`tools/build-tests.sh arm`) give 5451 checks, 0 failed.
 - `tools/build-tests.sh arm64`: ARM64's core and tests as one static program
   of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5328
   checks, 0 failed, and 5412 checks, 0 failed on Android's libcore with

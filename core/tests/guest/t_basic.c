@@ -2750,12 +2750,14 @@ int t_fs_access(void)
 #if defined(__x86_64__) || defined(__i386__)
 /*
  * A thread to be stopped as the collector stops one while it keeps coming back from signals (mg_tests.c,
- * test_stop_signalled): t_gcr_spin holds T_GCR_MARK + k in each general register but the stack pointer, k its place in
- * the core's mg_thread_regs (rax, rcx, rdx, rbx, rbp, rsi, rdi, r8..r15; eax..edi on x86), in a loop that changes none of
+ * test_stop_signalled): t_gcr_spin holds mark + k in each general register but the stack pointer, k its place in the
+ * core's mg_thread_regs (rax, rcx, rdx, rbx, rbp, rsi, rdi, r8..r15; eax..edi on x86), in a loop that changes none of
  * them (t_gcr_loop up to t_gcr_loop_end) and reads its stop word on its own stack, until that word is set; then it writes
- * them to `out`. t_gcr_start starts it, and a thread that sends it signal 12 as soon as the one before was handled, and
- * gives its id; t_gcr_finish ends both: how many signals were handled, or what went wrong (-1 a signal not sent, -2 one
- * not handled within two seconds, -10 - k register k came back from them other than its mark).
+ * them to `out`. The mark is given as its bits above the low 16, which are the places': on x86 the argument stays on the
+ * stack, where a mark must not be. t_gcr_start starts it with T_GCR_MARK, and a thread that sends it signal 12 as soon
+ * as the one before was handled, and gives its id; t_gcr_finish ends both: how many signals were handled, or what went
+ * wrong (-1 a signal not sent, -2 one not handled within two seconds, -10 - k register k came back from them other than
+ * its mark).
  */
 #if defined(__x86_64__)
 #define T_GCR_REGS 15
@@ -2767,7 +2769,8 @@ __asm__(".text\n"
         "  pushq %rdi\n"
         "  pushq $0\n"
         "  movq %rsp, (%rsi)\n"
-        "  movabsq $0x6d67000047430000, %rax\n"
+        "  movq %rdx, %rax\n"
+        "  shlq $16, %rax\n"
         "  leaq 1(%rax), %rcx\n  leaq 2(%rax), %rdx\n  leaq 3(%rax), %rbx\n  leaq 4(%rax), %rbp\n  leaq 5(%rax), %rsi\n"
         "  leaq 6(%rax), %rdi\n  leaq 7(%rax), %r8\n  leaq 8(%rax), %r9\n  leaq 9(%rax), %r10\n  leaq 10(%rax), %r11\n"
         "  leaq 11(%rax), %r12\n  leaq 12(%rax), %r13\n  leaq 13(%rax), %r14\n  leaq 14(%rax), %r15\n"
@@ -2800,7 +2803,8 @@ __asm__(".text\n"
         "  pushl %eax\n"
         "  pushl $0\n"
         "  movl %esp, (%ecx)\n"
-        "  movl $0x47430000, %eax\n"
+        "  movl 36(%esp), %eax\n"
+        "  shll $16, %eax\n"
         "  leal 1(%eax), %ecx\n  leal 2(%eax), %edx\n  leal 3(%eax), %ebx\n  leal 4(%eax), %ebp\n  leal 5(%eax), %esi\n"
         "  leal 6(%eax), %edi\n"
         ".globl t_gcr_loop\n"
@@ -2822,7 +2826,7 @@ __asm__(".text\n"
 #endif
 
 int sched_yield(void);
-void t_gcr_spin(long *out, volatile long **stop_at);
+void t_gcr_spin(long *out, volatile long *volatile *stop_at, long mark_high);
 
 static long g_gcr_out[T_GCR_REGS];
 static volatile long *volatile g_gcr_stop;
@@ -2840,7 +2844,7 @@ static void *gcr_spinner(void *arg)
 {
     (void)arg;
     g_gcr_tid = gettid();
-    t_gcr_spin(g_gcr_out, &g_gcr_stop);
+    t_gcr_spin(g_gcr_out, &g_gcr_stop, T_GCR_MARK >> 16);
     return 0;
 }
 
@@ -2898,6 +2902,104 @@ long t_gcr_finish(void)
     for (k = 0; k < T_GCR_REGS; k++)
         if (g_gcr_out[k] != T_GCR_MARK + k) return -10 - k;
     return g_gcr_handled;
+}
+
+/*
+ * A thread stopped as the collector stops one while the handler of a signal it was sent waits (mg_tests.c,
+ * test_stop_in_handler): what the code the signal interrupted held in a register alone is held by nothing else meanwhile,
+ * and the collector must find it all the same. t_gcw_start(how, stack) starts a spinner (t_gcr_spin, its marks
+ * T_GCW_MARK + k) and sends it signal 12, whose handler says it has begun and waits until t_gcw_finish lets it go:
+ * spinning in guest code (how 0), or in sigsuspend until signal 10 (how 1), as Boehm's and Mono's collectors park a
+ * thread for a whole collection of theirs. It gives the spinner's id once the handler waits, and the bounds of its stack
+ * in stack[0] and stack[1]; or -1 a handler not set, -2 no thread, -3 the spinner not running or its stack not known
+ * after two seconds, -4 the signal not sent, -5 the handler not begun within two seconds. t_gcw_finish lets the handler
+ * go and ends the spinner: 0, or -1 the signal to go on not sent, -2 the handler not done within two seconds, -3 no
+ * spinner to end, -10 - k register k came back from the handler other than its mark.
+ */
+#if defined(__x86_64__)
+#define T_GCW_MARK 0x6d67000057410000L
+#else
+#define T_GCW_MARK 0x57410000L
+#endif
+int pthread_getattr_np(pthread_t, pthread_attr_t *);
+int pthread_attr_getstack(const pthread_attr_t *, void **, size_t *);
+
+static long g_gcw_out[T_GCR_REGS];
+static volatile long *volatile g_gcw_stop;
+static void *volatile g_gcw_stack[2];
+/* g_gcw_state: 1 once the handler has begun, 2 once it is done. */
+static volatile int g_gcw_tid, g_gcw_how, g_gcw_state, g_gcw_go;
+static pthread_t g_gcw_spinner;
+static t_sigaction g_gcw_old_wait, g_gcw_old_go;
+
+static void on_gcw_wait(int sig, void *info, void *context)
+{
+    t_word all_but_go = ~((t_word)1 << (10 - 1));
+    (void)sig; (void)info; (void)context;
+    g_gcw_state = 1;
+    if (g_gcw_how)
+        while (!g_gcw_go) sigsuspend(&all_but_go);
+    else
+        while (!g_gcw_go) {}
+    g_gcw_state = 2;
+}
+
+static void on_gcw_go(int sig, void *info, void *context) { (void)sig; (void)info; (void)context; }
+
+static void *gcw_spinner(void *arg)
+{
+    pthread_attr_t a;
+    void *base = 0;
+    size_t size = 0;
+    (void)arg;
+    if (!pthread_getattr_np(pthread_self(), &a) && !pthread_attr_getstack(&a, &base, &size) && base && size) {
+        g_gcw_stack[0] = base;
+        g_gcw_stack[1] = (char *)base + size;
+    }
+    g_gcw_tid = gettid();
+    t_gcr_spin(g_gcw_out, &g_gcw_stop, T_GCW_MARK >> 16);
+    return 0;
+}
+
+int t_gcw_start(int how, void **stack)
+{
+    t_sigaction wait = T_SIGACTION(on_gcw_wait, 0, 4 | 0x10000000), go = T_SIGACTION(on_gcw_go, 0, 4 | 0x10000000);
+    long until;
+    g_gcw_stop = 0;
+    g_gcw_stack[0] = g_gcw_stack[1] = 0;
+    g_gcw_tid = g_gcw_state = g_gcw_go = 0;
+    g_gcw_how = how;
+    memset(g_gcw_out, 0, sizeof(g_gcw_out));
+    if (sigaction(12, &wait, &g_gcw_old_wait) || sigaction(10, &go, &g_gcw_old_go)) return -1;
+    if (pthread_create(&g_gcw_spinner, 0, gcw_spinner, 0)) return -2;
+    for (until = now_ms() + 2000; (!g_gcw_stop || !g_gcw_tid) && now_ms() < until;) usleep(1000);
+    if (!g_gcw_stop || !g_gcw_tid || !g_gcw_stack[1]) return -3;
+    if (pthread_kill(g_gcw_spinner, 12)) return -4;
+    for (until = now_ms() + 2000; !g_gcw_state && now_ms() < until;) usleep(200);
+    if (!g_gcw_state) return -5;
+    stack[0] = g_gcw_stack[0];
+    stack[1] = g_gcw_stack[1];
+    return g_gcw_tid;
+}
+
+long t_gcw_finish(void)
+{
+    long until, r = 0;
+    int k;
+    /* (A spinner that never said where its stop word is cannot be ended: left as it is.) */
+    if (!g_gcw_stop) return -3;
+    g_gcw_go = 1;
+    if (g_gcw_how && g_gcw_state == 1 && pthread_kill(g_gcw_spinner, 10)) r = -1;
+    for (until = now_ms() + 2000; g_gcw_state == 1 && now_ms() < until;) usleep(200);
+    if (!r && g_gcw_state != 2) r = -2;
+    *g_gcw_stop = 1;
+    pthread_join(g_gcw_spinner, 0);
+    sigaction(12, &g_gcw_old_wait, 0);
+    sigaction(10, &g_gcw_old_go, 0);
+    if (r) return r;
+    for (k = 0; k < T_GCR_REGS; k++)
+        if (g_gcw_out[k] != T_GCW_MARK + k) return -10 - k;
+    return 0;
 }
 #endif
 

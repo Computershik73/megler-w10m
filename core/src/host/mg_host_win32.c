@@ -1043,6 +1043,31 @@ static bool regs_not_its_own(const CONTEXT *c)
  */
 #define STOP_TRIES 24
 
+/* A context's general registers in mg_thread_regs' order (mg_host.h): how many. */
+static int context_regs(const CONTEXT *c, mg_addr *r)
+{
+#if defined(_M_ARM)
+    r[0] = c->R0; r[1] = c->R1; r[2] = c->R2; r[3] = c->R3; r[4] = c->R4; r[5] = c->R5; r[6] = c->R6; r[7] = c->R7;
+    r[8] = c->R8; r[9] = c->R9; r[10] = c->R10; r[11] = c->R11; r[12] = c->R12; r[13] = c->Lr;
+    return 14;
+#elif defined(_M_X64)
+    r[0] = c->Rax; r[1] = c->Rcx; r[2] = c->Rdx; r[3] = c->Rbx; r[4] = c->Rbp; r[5] = c->Rsi; r[6] = c->Rdi; r[7] = c->R8;
+    r[8] = c->R9; r[9] = c->R10; r[10] = c->R11; r[11] = c->R12; r[12] = c->R13; r[13] = c->R14; r[14] = c->R15;
+    return 15;
+#elif defined(_M_ARM64)
+    int i;
+    for (i = 0; i < 31; i++) r[i] = (mg_addr)c->X[i];     /* x0..x28, fp, lr */
+    return 31;
+#elif defined(_M_IX86)
+    r[0] = c->Eax; r[1] = c->Ecx; r[2] = c->Edx; r[3] = c->Ebx; r[4] = c->Ebp; r[5] = c->Esi; r[6] = c->Edi;
+    return 7;
+#else
+    (void)c;
+    (void)r;
+    return 0;
+#endif
+}
+
 bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out)
 {
     CONTEXT ctx;
@@ -1099,38 +1124,34 @@ bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out)
     out->sp = ctx.Sp;
     out->pc = ctx.Pc;
     out->flags = ctx.Cpsr;
-    out->r[0] = ctx.R0; out->r[1] = ctx.R1; out->r[2] = ctx.R2; out->r[3] = ctx.R3; out->r[4] = ctx.R4; out->r[5] = ctx.R5;
-    out->r[6] = ctx.R6; out->r[7] = ctx.R7; out->r[8] = ctx.R8; out->r[9] = ctx.R9; out->r[10] = ctx.R10; out->r[11] = ctx.R11;
-    out->r[12] = ctx.R12; out->r[13] = ctx.Lr;
-    out->n = 14;
 #elif defined(_M_X64)
     out->sp = (mg_addr)ctx.Rsp;
     out->pc = (mg_addr)ctx.Rip;
     out->flags = ctx.EFlags;
-    out->r[0] = ctx.Rax; out->r[1] = ctx.Rcx; out->r[2] = ctx.Rdx; out->r[3] = ctx.Rbx; out->r[4] = ctx.Rbp; out->r[5] = ctx.Rsi;
-    out->r[6] = ctx.Rdi; out->r[7] = ctx.R8; out->r[8] = ctx.R9; out->r[9] = ctx.R10; out->r[10] = ctx.R11; out->r[11] = ctx.R12;
-    out->r[12] = ctx.R13; out->r[13] = ctx.R14; out->r[14] = ctx.R15;
-    out->n = 15;
 #elif defined(_M_ARM64)
     out->sp = (mg_addr)ctx.Sp;
     out->pc = (mg_addr)ctx.Pc;
     out->flags = ctx.Cpsr;
-    {
-        int i;
-        for (i = 0; i < 31; i++) out->r[i] = (mg_addr)ctx.X[i];     /* x0..x28, fp, lr */
-    }
-    out->n = 31;
 #elif defined(_M_IX86)
     out->sp = (mg_addr)ctx.Esp;
     out->pc = (mg_addr)ctx.Eip;
     out->flags = ctx.EFlags;
-    out->r[0] = ctx.Eax; out->r[1] = ctx.Ecx; out->r[2] = ctx.Edx; out->r[3] = ctx.Ebx; out->r[4] = ctx.Ebp; out->r[5] = ctx.Esi;
-    out->r[6] = ctx.Edi;
-    out->n = 7;
 #else
     ResumeThread(h);
     return false;
 #endif
+    out->n = context_regs(&ctx, out->r);
+    /*
+     * A thread in an interruption: from the redirect (mg_thread_interrupt) until the landing's exception has put them into
+     * the context NtContinue takes back, on its stack (on_exception, which clears `interrupted` after), the registers of
+     * the code it was interrupted in are in t->was alone. The landing and the guest's handler meanwhile use those their
+     * callers do not keep -- on x64 rax, rcx (the redirect's mg_thread), rdx and r8-r11, on x86 eax, ecx and edx: at each
+     * of 200 stops while a handler waited, test_stop_in_handler (mg_tests.c) found a mark in none of them, and the others
+     * on the stack, saved by the functions it ran in. Taken whenever `interrupted` is set, which is from before the
+     * redirect: t->was may then be an earlier interruption's, or half written, which only keeps what its words point at
+     * for a collection more (a word the collector finds can keep an object, never free one).
+     */
+    if (InterlockedCompareExchange(&t->interrupted, 0, 0)) out->n_was = context_regs(&t->was, out->was);
     return true;
 }
 
