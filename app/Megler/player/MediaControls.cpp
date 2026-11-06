@@ -2,6 +2,7 @@
 
 #include "player/MediaControls.h"
 
+#include "player/Session.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
@@ -94,6 +95,9 @@ void onButton(SystemMediaTransportControls const&, SystemMediaTransportControlsB
 // MARK: The app's media session
 
 void stateThunk(void*, int state, long long actions) {
+    // A media app's sound goes through Windows.Media's player once its session plays (player/AudioHost.h).
+    if (state != STATE_NONE && state != STATE_ERROR && state != STATE_STOPPED && state != STATE_PAUSED)
+        if (const auto audio = session::audio()) audio->mediaSessionPlays();
     onUi([state, actions] {
         gSessionSaid = state != STATE_NONE;
         gControls.IsStopEnabled((actions & ACTION_STOP) != 0);

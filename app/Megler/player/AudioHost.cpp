@@ -2,12 +2,18 @@
 
 #include "player/AudioHost.h"
 
+#include "shell/Files.h"
+#include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 
 #include <xaudio2.h>
 #include <eventtoken.h>
 #include <roapi.h>
+
+#include <winrt/Windows.Media.Core.h>
+#include <winrt/Windows.Media.MediaProperties.h>
+#include <winrt/Windows.Media.Playback.h>
 
 #include <algorithm>
 #include <cmath>
@@ -199,6 +205,75 @@ struct AudioHost::Engine final : public IXAudio2VoiceCallback, public IXAudio2En
     void __stdcall OnCriticalError(HRESULT error) override { lost(error); }
 };
 
+/*
+ * Windows.Media's player, playing what the mixer writes: a MediaStreamSource of 16-bit stereo PCM at the mixer's rate, whose
+ * samples are the blocks queued here, 20 ms at the most each. The player asks for a sample on a thread of its own
+ * (SampleRequested): one is made of what is queued, or the request waits (a deferral) for write() to bring the next block.
+ * write() holds the mixer back while more than about 50 ms waits to be taken, as it does for XAudio2; a player that has
+ * taken nothing for a second (Windows paused it: a call, another app's sound) has the blocks dropped at their own pace
+ * until it takes again. Made and let go of by the owner thread; the player's own controls are off, the system media
+ * controls being the app's (MediaControls).
+ */
+struct AudioHost::MediaOut {
+    int rate = 0;
+    winrt::Windows::Media::Core::MediaStreamSource source{nullptr};
+    winrt::Windows::Media::Playback::MediaPlayer player{nullptr};
+    winrt::event_token requested{}, starting{}, failed{}, stateChanged{};
+    std::mutex m; // all below
+    std::condition_variable taken; // a sample went to the player, or it is closing or broken
+    std::vector<int16_t> queue;    // interleaved stereo, from `head` on
+    size_t head = 0;
+    winrt::Windows::Media::Core::MediaStreamSourceSampleRequest pending{nullptr};
+    winrt::Windows::Media::Core::MediaStreamSourceSampleRequestDeferral deferral{nullptr};
+    int64_t nextTime = 0; // the next sample's time in the stream, in 100 ns
+    bool closing = false;
+    bool stalled = false; // nothing taken for a second: write() does not wait for it
+    unsigned stalls = 0;
+    std::atomic<bool> broken{false};
+    std::atomic<uint64_t> framesTaken{0};
+    std::atomic<unsigned> stateLines{0};
+
+    size_t queuedFrames() const { return (queue.size() - head) / 2; }
+
+    /// Under m, with something queued: the next sample.
+    winrt::Windows::Media::Core::MediaStreamSample take() {
+        const size_t frames = std::min(queuedFrames(), size_t(rate / 50));
+        winrt::Windows::Storage::Streams::Buffer buffer(uint32_t(frames * 4));
+        buffer.Length(uint32_t(frames * 4));
+        memcpy(buffer.data(), queue.data() + head, frames * 4);
+        head += frames * 2;
+        if (head * 2 > queue.size()) {
+            queue.erase(queue.begin(), queue.begin() + ptrdiff_t(head));
+            head = 0;
+        }
+        auto sample = winrt::Windows::Media::Core::MediaStreamSample::CreateFromBuffer(buffer, winrt::Windows::Foundation::TimeSpan{nextTime});
+        const int64_t duration = int64_t(frames) * 10000000 / rate;
+        sample.Duration(winrt::Windows::Foundation::TimeSpan{duration});
+        nextTime += duration;
+        framesTaken += frames;
+        if (stalled) {
+            stalled = false;
+            shellLog::write("audio: Windows.Media's player takes the app's sound again");
+        }
+        return sample;
+    }
+};
+
+namespace {
+
+const char* playbackStateName(winrt::Windows::Media::Playback::MediaPlaybackState state) {
+    using winrt::Windows::Media::Playback::MediaPlaybackState;
+    switch (state) {
+    case MediaPlaybackState::Opening: return "opening";
+    case MediaPlaybackState::Buffering: return "buffering";
+    case MediaPlaybackState::Playing: return "playing";
+    case MediaPlaybackState::Paused: return "paused";
+    default: return "none";
+    }
+}
+
+} // namespace
+
 AudioHost::AudioHost() = default;
 
 AudioHost::~AudioHost() {
@@ -273,24 +348,193 @@ void AudioHost::retire(std::shared_ptr<Engine>& engine) {
     engine.reset();
 }
 
+std::shared_ptr<AudioHost::MediaOut> AudioHost::makeMedia(int rate, std::string& why) {
+    using namespace winrt::Windows::Media;
+    using winrt::Windows::Foundation::TimeSpan;
+    try {
+        auto out = std::make_shared<MediaOut>();
+        out->rate = rate;
+        Core::AudioStreamDescriptor descriptor(MediaProperties::AudioEncodingProperties::CreatePcm(uint32_t(rate), 2, 16));
+        out->source = Core::MediaStreamSource(descriptor);
+        out->source.CanSeek(false);
+        // No time buffered ahead: the mixer's blocks are the app's clock (a video's pictures go by them).
+        out->source.BufferTime(TimeSpan{0});
+        std::weak_ptr<MediaOut> weak = out;
+        out->starting = out->source.Starting([weak](auto&&, Core::MediaStreamSourceStartingEventArgs const& e) {
+            // The stream cannot seek: asked to start somewhere (the first time, or after Windows paused it), it starts
+            // where its next sample is.
+            auto request = e.Request();
+            if (!request.StartPosition()) return;
+            int64_t at = 0;
+            if (auto self = weak.lock()) {
+                std::lock_guard<std::mutex> lock(self->m);
+                at = self->nextTime;
+            }
+            request.SetActualStartPosition(TimeSpan{at});
+        });
+        out->requested = out->source.SampleRequested([weak](auto&&, Core::MediaStreamSourceSampleRequestedEventArgs const& e) {
+            auto self = weak.lock();
+            if (!self) return;
+            auto request = e.Request();
+            std::unique_lock<std::mutex> lock(self->m);
+            if (self->closing) return; // (no sample: the stream's end)
+            if (self->queuedFrames()) {
+                request.Sample(self->take());
+                lock.unlock();
+                self->taken.notify_all();
+                return;
+            }
+            self->pending = request;
+            self->deferral = request.GetDeferral();
+        });
+        out->player = Playback::MediaPlayer();
+        // The system media controls are the app's (MediaControls): a pause from the lock screen goes to the app, not to the
+        // player, which would stop taking the app's sound while the app went on playing.
+        out->player.CommandManager().IsEnabled(false);
+        out->player.AudioCategory(Playback::MediaPlayerAudioCategory::Media);
+        out->player.RealTimePlayback(true);
+        AudioHost* host = this;
+        out->failed = out->player.MediaFailed([weak, host](auto&&, Playback::MediaPlayerFailedEventArgs const& e) {
+            shellLog::write(format("audio: Windows.Media's player failed: error %d (0x%08X) ", int(e.Error()), unsigned(e.ExtendedErrorCode().value)) +
+                            narrow(std::wstring(e.ErrorMessage())));
+            if (auto self = weak.lock()) {
+                self->broken.store(true);
+                self->taken.notify_all();
+            }
+            host->wake_.notify_all();
+        });
+        out->stateChanged = out->player.PlaybackSession().PlaybackStateChanged([weak](Playback::MediaPlaybackSession const& session, auto&&) {
+            auto self = weak.lock();
+            // (The first forty: a player that pauses and plays all the time is said by then.)
+            if (!self || self->stateLines++ >= 40) return;
+            shellLog::write(std::string("audio: Windows.Media's player is ") + playbackStateName(session.PlaybackState()));
+        });
+        out->player.Source(Core::MediaSource::CreateFromMediaStreamSource(out->source));
+        out->player.Play();
+        return out;
+    } catch (winrt::hresult_error const& e) {
+        why = format("0x%08X ", unsigned(e.code().value)) + narrow(std::wstring(e.message()));
+        return nullptr;
+    }
+}
+
+void AudioHost::retireMedia(std::shared_ptr<MediaOut>& out) {
+    if (!out) return;
+    winrt::Windows::Media::Core::MediaStreamSourceSampleRequestDeferral deferral{nullptr};
+    {
+        std::lock_guard<std::mutex> lock(out->m);
+        out->closing = true;
+        // A request still waiting gets no sample: the stream's end.
+        if (out->pending) deferral = out->deferral;
+        out->pending = nullptr;
+        out->deferral = nullptr;
+    }
+    out->taken.notify_all();
+    try {
+        if (deferral) deferral.Complete();
+        out->player.PlaybackSession().PlaybackStateChanged(out->stateChanged);
+        out->player.MediaFailed(out->failed);
+        out->source.SampleRequested(out->requested);
+        out->source.Starting(out->starting);
+        out->player.Pause();
+        out->player.Source(nullptr);
+        out->player.Close();
+    } catch (winrt::hresult_error const&) {
+    }
+    // (write() may hold it a moment longer: it goes on this thread.)
+    for (int i = 0; i < 300 && out.use_count() > 1; ++i) Sleep(5);
+    out.reset();
+}
+
+void AudioHost::mediaSessionPlays() {
+    if (sessionPlayed_.exchange(true) || !media_.load()) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    wake_.notify_all();
+}
+
 void AudioHost::ownerLoop() {
     const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const std::wstring flags = platform::localStateDirectory() + L"\\flags\\";
+    const bool playerAlways = files::exists(flags + L"audio-player"), xaudioAlways = files::exists(flags + L"audio-xaudio2");
+    if (playerAlways) shellLog::write("flag: audio-player is on");
+    if (xaudioAlways) shellLog::write("flag: audio-xaudio2 is on");
+    // A media app's sound goes through Windows.Media's player (MediaOut), every other through XAudio2 (Engine).
+    const auto playerWanted = [&] {
+        return media_.load() && route_.load() == MEGLER_AUDIO_ROUTE_DEFAULT && !mediaFailed_.load() && !xaudioAlways &&
+               (playerAlways || sessionPlayed_.load());
+    };
     unsigned long long retryAt = 0;
     unsigned failures = 0;
     for (;;) {
         std::shared_ptr<Engine> old;
-        bool have = false, wasLost = false;
+        std::shared_ptr<MediaOut> oldMedia;
+        bool have = false, haveMedia = false, wasLost = false, wantMedia = false;
         int rate = 0, route = 0;
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            const bool settled = engine_ ? engine_->rate == rate_.load() && engine_->route == route_.load() : GetTickCount64() < retryAt;
+            const bool settled = playerWanted() ? mediaOut_ && mediaOut_->rate == rate_.load() && !mediaOut_->broken.load() && !engine_
+                                                : !mediaOut_ && (engine_ ? engine_->rate == rate_.load() && engine_->route == route_.load()
+                                                                         : GetTickCount64() < retryAt);
             if (!quit_ && !lost_.load() && settled) wake_.wait_for(lock, std::chrono::milliseconds(500));
             if (quit_) break;
             rate = rate_.load();
             route = route_.load();
+            wantMedia = playerWanted();
             wasLost = lost_.exchange(false);
-            if (engine_ && (wasLost || engine_->rate != rate || engine_->route != route)) old = std::move(engine_);
+            if (mediaOut_ && (!wantMedia || mediaOut_->broken.load() || mediaOut_->rate != rate)) oldMedia = std::move(mediaOut_);
+            haveMedia = mediaOut_ != nullptr;
+            // (An engine still good plays on until the player is there.)
+            if (engine_ && (wasLost || engine_->rate != rate || engine_->route != route || (wantMedia && haveMedia))) old = std::move(engine_);
             have = engine_ != nullptr;
+        }
+        if (oldMedia) {
+            if (oldMedia->broken.load()) {
+                mediaFailed_.store(true);
+                wantMedia = false;
+                shellLog::write("audio: the app's sound goes through XAudio2 from now on");
+            }
+            retireMedia(oldMedia);
+        }
+        if (wantMedia && !haveMedia) {
+            std::string why;
+            const unsigned long long began = GetTickCount64();
+            std::shared_ptr<MediaOut> made = makeMedia(rate, why);
+            if (made) {
+                shellLog::write(format("audio: Windows.Media's player playing the mixer's 16-bit stereo at %d Hz, %s; built in %llu ms", rate,
+                                       playerAlways ? "as the flag audio-player has it" : "the app's media session playing (it goes on in the background)",
+                                       GetTickCount64() - began));
+                setStatus(format("%d Hz", rate));
+                failures = 0;
+                std::lock_guard<std::mutex> lock(mutex_);
+                mediaOut_ = std::move(made);
+                if (engine_) old = std::move(engine_);
+                have = false;
+            } else {
+                mediaFailed_.store(true);
+                wantMedia = false;
+                shellLog::write("audio: Windows.Media's player could not be made (" + why + "): the app's sound goes through XAudio2");
+            }
+        }
+        if (wantMedia) {
+            if (old) {
+                if (wasLost) shellLog::write(format("audio: XAudio2 critical error 0x%08X (the output changed?)", unsigned(lostCode_.load())));
+                // What it still holds (50 ms or so) plays out first.
+                for (int i = 0; i < 20; ++i) {
+                    XAUDIO2_VOICE_STATE state = {};
+                    old->source->GetState(&state, XAUDIO2_VOICE_NOSAMPLESPLAYED);
+                    if (!state.BuffersQueued) break;
+                    Sleep(10);
+                }
+                retire(old);
+            }
+            // The phone's endpoint as before a call the app made.
+            if (routedOnce_) {
+                const std::string failed = setPhoneEndpoint(endpointDefault);
+                shellLog::write(failed.empty() ? std::string("audio: routed as before the call") : "audio: the call's sound could not be routed: " + failed);
+                routedOnce_ = false;
+            }
+            logCounts();
+            continue;
         }
         if (old) {
             shellLog::write(wasLost ? format("audio: XAudio2 critical error 0x%08X (the output changed?); building a new engine",
@@ -334,10 +578,13 @@ void AudioHost::ownerLoop() {
         logCounts();
     }
     std::shared_ptr<Engine> last;
+    std::shared_ptr<MediaOut> lastMedia;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         last = std::move(engine_);
+        lastMedia = std::move(mediaOut_);
     }
+    retireMedia(lastMedia);
     retire(last);
     if (SUCCEEDED(com)) CoUninitialize();
 }
@@ -357,22 +604,38 @@ void AudioHost::logCounts() {
     countsLoggedIn_ = in;
 
     std::shared_ptr<Engine> engine;
+    std::shared_ptr<MediaOut> media;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         engine = engine_;
+        media = mediaOut_;
     }
-    XAUDIO2_VOICE_STATE state = {};
-    if (engine) engine->source->GetState(&state, 0);
+    std::string output = "there is no engine";
+    if (media) {
+        // How far behind what it has taken the player plays: the delay the app's sound has on its way to the speaker,
+        // beyond the 50 ms queued here.
+        const double taken = double(media->framesTaken.load()) / double(media->rate);
+        try {
+            const auto session = media->player.PlaybackSession();
+            const double at = double(session.Position().count()) / 1e7;
+            output = format("Windows.Media's player has taken %.2f s of sound and is %s at %.2f s of it, %.0f ms behind", taken,
+                            playbackStateName(session.PlaybackState()), at, (taken - at) * 1000.0);
+        } catch (winrt::hresult_error const& e) {
+            output = format("Windows.Media's player has taken %.2f s of sound (its session: 0x%08X)", taken, unsigned(e.code().value));
+        }
+    } else if (engine) {
+        XAUDIO2_VOICE_STATE state = {};
+        engine->source->GetState(&state, 0);
+        output = format("XAudio2 has played %llu frames and holds %u blocks", (unsigned long long)state.SamplesPlayed, unsigned(state.BuffersQueued));
+    }
     const int peak = peak_.exchange(0);
     shellLog::write(format("audio: %llu blocks from the mixer in %.1f s, %llu of them silence, peak %d of 32767 since the last line; "
-                           "%llu given to XAudio2, %llu dropped at their own pace, %llu refused; %s",
+                           "%llu given to %s, %llu dropped at their own pace, %llu refused; %s",
                            (unsigned long long)in, double(now - countsFirstAt_) / 1000.0, (unsigned long long)blocksSilent_.load(), peak,
-                           (unsigned long long)blocksQueued_.load(), (unsigned long long)blocksDropped_.load(),
-                           (unsigned long long)blocksRefused_.load(),
-                           engine ? format("XAudio2 has played %llu frames and holds %u blocks", (unsigned long long)state.SamplesPlayed,
-                                           unsigned(state.BuffersQueued)).c_str()
-                                  : "there is no engine"));
+                           (unsigned long long)blocksQueued_.load(), media ? "the output" : "XAudio2", (unsigned long long)blocksDropped_.load(),
+                           (unsigned long long)blocksRefused_.load(), output.c_str()));
     engine.reset();
+    media.reset();
 }
 
 // MARK: The mixer's thread
@@ -398,9 +661,20 @@ void AudioHost::write(const int16_t* samples, int frames) {
     for (int seen = peak_.load(); peak > seen && !peak_.compare_exchange_weak(seen, peak);) {}
 
     std::shared_ptr<Engine> held;
+    std::shared_ptr<MediaOut> media;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         held = engine_;
+        media = mediaOut_;
+    }
+    if (media) {
+        if (!paused_.load() && writeMedia(*media, samples, frames)) {
+            paceDeadline_ = 0;
+            ++blocksQueued_;
+        } else {
+            dropAtItsOwnPace(frames);
+        }
+        return;
     }
     // Nothing to play through, or nothing to be played.
     if (!held || paused_.load() || lost_.load()) {
@@ -442,6 +716,38 @@ void AudioHost::write(const int16_t* samples, int frames) {
     engine.ringFrames[engine.next] = frames;
     engine.next = (engine.next + 1) % ringSize;
     ++blocksQueued_;
+}
+
+bool AudioHost::writeMedia(MediaOut& out, const int16_t* samples, int frames) {
+    const size_t limit = size_t(out.rate) * queuedMilliseconds / 1000;
+    winrt::Windows::Media::Core::MediaStreamSourceSampleRequestDeferral deferral{nullptr};
+    {
+        std::unique_lock<std::mutex> lock(out.m);
+        // Hold the mixer back while more than about 50 ms waits to be taken; a player that takes nothing for a second has
+        // stopped taking (the blocks are then dropped at their own pace, without that wait, until it takes again).
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+        while (out.queuedFrames() > limit) {
+            if (out.closing || out.broken.load() || out.stalled || paused_.load()) return false;
+            if (out.taken.wait_until(lock, until) == std::cv_status::timeout && out.queuedFrames() > limit) {
+                out.stalled = true;
+                if (out.stalls++ < 20)
+                    shellLog::write("audio: Windows.Media's player has taken nothing for a second; the app's sound is dropped at its own pace "
+                                    "until it takes again");
+                return false;
+            }
+        }
+        if (out.closing || out.broken.load()) return false;
+        out.queue.insert(out.queue.end(), samples, samples + size_t(frames) * 2);
+        // A request waiting for this block has it now.
+        if (out.pending) {
+            out.pending.Sample(out.take());
+            out.pending = nullptr;
+            deferral = out.deferral;
+            out.deferral = nullptr;
+        }
+    }
+    if (deferral) deferral.Complete();
+    return true;
 }
 
 // MARK: The Device page's check
