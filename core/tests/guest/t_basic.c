@@ -2590,7 +2590,7 @@ __asm__(".text\n"
 #endif
 
 int sched_yield(void);
-void t_gcr_spin(long *out, volatile long **stop_at, long mark_high);
+void t_gcr_spin(long *out, volatile long *volatile *stop_at, long mark_high);
 
 static long g_gcr_out[T_GCR_REGS];
 static volatile long *volatile g_gcr_stop;
