@@ -178,6 +178,9 @@ public:
     /// For a test: the graphics processor's device is taken as lost from
     /// now on, as if Direct3D had said DXGI_ERROR_DEVICE_REMOVED.
     void loseDevice();
+    /// The flag gfx-profile: every call timed, the drawing flushed after each one, and the calls by their time in the log
+    /// every five seconds (GfxHost.cpp, "The calls profiled"). The drawing is slower meanwhile.
+    void setProfiling(bool on);
 
     /// Where the window's picture goes when the core has it shown from a
     /// canvas without the memory (megler_gfx_host.present): the window

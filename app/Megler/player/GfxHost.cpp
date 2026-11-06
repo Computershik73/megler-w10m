@@ -348,6 +348,9 @@ struct State {
     Ref<ID2D1Bitmap1> backBitmap;
     /// The last picture went straight into the back buffer: the target texture does not have it (any thread).
     std::atomic<bool> windowDirect{false};
+    /// The flag gfx-profile (GfxHost::setProfiling, "The calls profiled"), and the thread that shows the window's pictures.
+    std::atomic<bool> profiling{false};
+    std::atomic<DWORD> presentThread{0};
     std::atomic<uint64_t> canvasSerial{1};
     std::atomic<uint64_t> glFrames{0}, glWaitTicks{0}; // OpenGL ES frames taken (gl_frame), and the waits for their copies
     Ref<ID2D1Factory> d2d;
@@ -499,7 +502,8 @@ void emit(const char* text) {
 
 /// A line in the log.
 void say(const char* fmt, ...) {
-    char text[600] = "gfx: ";
+    // (The line of the graphics processor's numbers every five seconds, noteDrawing's, is longer than 600.)
+    char text[1800] = "gfx: ";
     va_list args;
     va_start(args, fmt);
     vsnprintf(text + 5, sizeof(text) - 5, fmt, args);
@@ -1041,6 +1045,11 @@ struct GpuContext {
     void finish(int why);
 };
 
+/// With the flag gfx-profile ("The calls profiled"): the context the call on this thread drew with (Surface::beginGpu), to be
+/// flushed after it, and how much it drew in its own unit.
+thread_local GpuContext* tlProfileContext = nullptr;
+thread_local uint64_t tlProfileAmount = 0;
+
 ID2D1Effect* GpuContext::effect(Role role) {
     Ref<ID2D1Effect>& e = effects[role];
     if (e) return e.get();
@@ -1332,6 +1341,7 @@ struct Surface {
     }
 
     bool beginGpu() {
+        if (gc && G().profiling.load(std::memory_order_relaxed)) tlProfileContext = gc;
         if (drawing) return true;
         if (!gpu || gpuGone()) return false;
         if (gc->owner && gc->owner != this) gc->owner->detach();
@@ -3231,7 +3241,71 @@ void inkStroke(Ink& ink, const megler_gfx_paint& paint) {
 
 /// What an entry point does, kept from ending the app: this file's own code
 /// can run out of memory, and a C caller cannot be thrown through.
+// MARK: The calls profiled (the flag gfx-profile)
+
+/*
+ * With the flag gfx-profile (a file of that name in the app's LocalState\flags, GfxHost::setProfiling) every call through
+ * guarded is timed, and the context it drew with is flushed after it and that is timed too. Otherwise Direct2D does a frame's
+ * work in its EndDraw, all of it at once (Spotify's window on the Lumia 650 spent 33 ms of the 58 a frame took there, 659),
+ * and no call can be told from another. Flushed call by call the drawing is slower, and each call's share of it shows.
+ * Every five seconds the log says the calls by the time they took, those on the thread that shows the window apart from the
+ * others', with how many path numbers, characters and bitmap pixels they drew.
+ */
+struct ProfiledCall {
+    const char* name = nullptr;
+    bool shows = false; // on the thread that shows the window's pictures
+    std::atomic<uint64_t> calls{0}, ticks{0}, flushTicks{0}, amount{0};
+    uint64_t lastCalls = 0, lastTicks = 0, lastFlushTicks = 0, lastAmount = 0; // the log's (statsMutex)
+};
+constexpr int profiledMost = 96;
+ProfiledCall gProfiled[profiledMost];
+std::atomic<int> gProfiledCount{0};
+std::mutex gProfiledMutex;
+
+ProfiledCall* profiledCall(const char* name, bool shows) {
+    const int n = gProfiledCount.load(std::memory_order_acquire);
+    for (int i = 0; i < n; i++)
+        if (gProfiled[i].name == name && gProfiled[i].shows == shows) return &gProfiled[i];
+    std::lock_guard<std::mutex> lock(gProfiledMutex);
+    const int m = gProfiledCount.load(std::memory_order_relaxed);
+    for (int i = n; i < m; i++)
+        if (gProfiled[i].name == name && gProfiled[i].shows == shows) return &gProfiled[i];
+    if (m >= profiledMost) return nullptr;
+    gProfiled[m].name = name;
+    gProfiled[m].shows = shows;
+    gProfiledCount.store(m + 1, std::memory_order_release);
+    return &gProfiled[m];
+}
+
+/// After a call, with the flag: its time, and its drawing flushed and timed.
+void profiled(const char* what, uint64_t from) {
+    const uint64_t worked = ticksNow() - from;
+    uint64_t flushed = 0;
+    GpuContext* gc = tlProfileContext;
+    tlProfileContext = nullptr;
+    if (gc && gc->inDraw && !gpuGone()) {
+        const uint64_t flushing = ticksNow();
+        gc->dc->Flush();
+        flushed = ticksNow() - flushing;
+    }
+    ProfiledCall* p = profiledCall(what, GetCurrentThreadId() == G().presentThread.load(std::memory_order_relaxed));
+    const uint64_t amount = tlProfileAmount;
+    tlProfileAmount = 0;
+    if (!p) return;
+    p->calls++;
+    p->ticks += worked;
+    p->flushTicks += flushed;
+    p->amount += amount;
+}
+
 template <class Work> void guarded(const char* what, Work&& work) {
+    const bool profiling = G().profiling.load(std::memory_order_relaxed);
+    uint64_t from = 0;
+    if (profiling) {
+        tlProfileContext = nullptr;
+        tlProfileAmount = 0;
+        from = ticksNow();
+    }
     try {
         work();
     } catch (const std::bad_alloc&) {
@@ -3239,6 +3313,7 @@ template <class Work> void guarded(const char* what, Work&& work) {
     } catch (...) {
         note("exception", "an exception in %s: the call draws or answers nothing (said once)", what);
     }
+    if (profiling) profiled(what, from);
 }
 
 /// A coordinate Direct2D can be given: a number, and not so large that arithmetic on it stops being one.
@@ -3349,6 +3424,48 @@ void releaseCanvas(void* canvas, bool preserveMemory) {
 
 void canvasFree(void*, void* canvas) { releaseCanvas(canvas, true); }
 void canvasDiscard(void*, void* canvas) { releaseCanvas(canvas, false); }
+
+/// With the flag gfx-profile, in noteDrawing's line (statsMutex): the calls since the last line by the time they took, on the
+/// thread that shows the window and on the others.
+void sayProfile(double seconds) {
+    typedef unsigned long long ull;
+    struct Row {
+        const ProfiledCall* call;
+        uint64_t calls, ticks, flushTicks, amount;
+    };
+    std::vector<Row> rows;
+    const int n = gProfiledCount.load(std::memory_order_acquire);
+    for (int i = 0; i < n; i++) {
+        ProfiledCall& p = gProfiled[i];
+        const uint64_t calls = p.calls.load(), ticks = p.ticks.load(), flushTicks = p.flushTicks.load(), amount = p.amount.load();
+        Row r = {&p, calls - p.lastCalls, ticks - p.lastTicks, flushTicks - p.lastFlushTicks, amount - p.lastAmount};
+        p.lastCalls = calls;
+        p.lastTicks = ticks;
+        p.lastFlushTicks = flushTicks;
+        p.lastAmount = amount;
+        if (r.calls) rows.push_back(r);
+    }
+    std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) { return a.ticks + a.flushTicks > b.ticks + b.flushTicks; });
+    for (int shows = 1; shows >= 0; shows--) {
+        char text[1500];
+        size_t used = 0;
+        int listed = 0;
+        for (const Row& r : rows) {
+            if (r.call->shows != bool(shows) || listed >= 10 || used + 160 > sizeof(text)) continue;
+            const char* name = r.call->name;
+            const char* unit = !strcmp(name, "draw_path") || !strcmp(name, "clip_path") ? " path numbers"
+                               : !strcmp(name, "draw_text")                            ? " characters"
+                               : !strcmp(name, "draw_bitmap")                          ? " pixels"
+                                                                                       : "";
+            used += size_t(snprintf(text + used, sizeof(text) - used, "%s%s %llu (%.1f ms in them, %.1f ms flushing what they drew", used ? "; " : "", name,
+                                    ull(r.calls), ticksToMs(r.ticks), ticksToMs(r.flushTicks)));
+            if (*unit) used += size_t(snprintf(text + used, sizeof(text) - used, ", %llu%s", ull(r.amount), unit));
+            used += size_t(snprintf(text + used, sizeof(text) - used, ")"));
+            listed++;
+        }
+        if (used) say("gfx-profile, %.1f s, the calls %s by their time: %s", seconds, shows ? "on the thread that shows the window" : "on other threads", text);
+    }
+}
 
 /// Every 5 s while canvases are flushed: where the drawing's time went since the last line. Direct2D's own drawing
 /// is what remains of the core's "the shell's drawing" after these.
@@ -3468,6 +3585,7 @@ void noteDrawing() {
             say("shadows, in all: %llu made and kept, %llu laid from those kept; %zu kept in %.1f MB", ull(s.shadowsMade.load()),
                 ull(s.shadowsReused.load()), s.shadows.size(), double(s.shadowBytes) / 1048576.0);
         }
+        if (s.profiling.load()) sayProfile(seconds);
     } else if (s.statsAt && t.sessions != l.sessions) {
         const double seconds = ticksToMs(now - s.statsAt) / 1000.0;
         const uint64_t sessions = t.sessions - l.sessions;
@@ -4118,6 +4236,7 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
     bool shown = false;
     guarded("present", [&] {
         State& s = G();
+        s.presentThread.store(GetCurrentThreadId(), std::memory_order_relaxed);
         GfxHost::Window window;
         {
             std::lock_guard<std::mutex> lock(s.windowMutex);
@@ -4508,6 +4627,7 @@ void clipPath(void*, void* canvas, const float* path, int count, int fill, int o
     Canvas* cv = canvasOf(canvas);
     if (!cv) return;
     guarded("clip_path", [&] {
+        tlProfileAmount += uint64_t(std::max(count, 0)); // (gfx-profile's: the path's numbers)
         Clip& clip = cv->clip();
         if (clip.box.empty()) return;
         Ref<ID2D1PathGeometry> shape = pathGeometry(path, count, fill);
@@ -4642,6 +4762,7 @@ void drawPath(void*, void* canvas, const float* path, int count, int fill, const
     Canvas* cv = canvasOf(canvas);
     if (!cv || !given) return;
     guarded("draw_path", [&] {
+        tlProfileAmount += uint64_t(std::max(count, 0)); // (gfx-profile's: the path's numbers)
         const megler_gfx_paint fixed = checked(*given);
         const megler_gfx_paint* paint = &fixed;
         Ref<ID2D1PathGeometry> shape = pathGeometry(path, count, fill);
@@ -4932,6 +5053,8 @@ void drawBitmap(void*, void* canvas, const megler_gfx_image* image, const float*
         const megler_gfx_paint fixed = checked(*given);
         const megler_gfx_paint* paint = &fixed;
         if (!sane(src[0], src[1], src[2], src[3]) || !sane(dst[0], dst[1], dst[2], dst[3])) return;
+        // (gfx-profile's: the pixels it covers, before the canvas's matrix)
+        tlProfileAmount += uint64_t(std::fabs((dst[2] - dst[0]) * (dst[3] - dst[1])));
         Surface* target = cv->target();
         if (!target || cv->clip().box.empty()) return;
         if (!(src[2] > src[0]) || !(src[3] > src[1]) || !(dst[2] > dst[0]) || !(dst[3] > dst[1])) return;
@@ -6086,6 +6209,7 @@ void drawText(void*, void* canvas, const uint16_t* text, int count, float x, flo
     Canvas* cv = canvasOf(canvas);
     if (!cv || !given) return;
     guarded("draw_text", [&] {
+        tlProfileAmount += uint64_t(std::max(count, 0)); // (gfx-profile's: the characters)
         const megler_gfx_paint fixed = checked(*given);
         const megler_gfx_paint* paint = &fixed;
         if (!sane(x) || !sane(y)) return;
@@ -6923,6 +7047,11 @@ void GfxHost::setWindow(const Window& window) {
 }
 
 void GfxHost::releaseWindowBack() { releaseBack(); }
+
+void GfxHost::setProfiling(bool on) {
+    G().profiling.store(on);
+    if (on) say("the flag gfx-profile: every call is timed and what it drew flushed after it, so the drawing is slower; the calls by their time every 5 s");
+}
 
 ID3D11Device* GfxHost::device() {
     State& s = G();

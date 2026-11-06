@@ -119,6 +119,11 @@ megler_gfx_host gfxCallbacks() {
         shellLog::write("flag: gfx-video-drawn is on: a TextureView's video is drawn among the views, not laid under them");
         gfx.setVideoUnder(false);
     }
+    // The flag "gfx-profile": where the drawing's time goes, call by call (GfxHost.cpp, "The calls profiled").
+    if (files::exists(platform::localStateDirectory() + L"\\flags\\gfx-profile")) {
+        shellLog::write("flag: gfx-profile is on");
+        gfx.setProfiling(true);
+    }
     return gfx.callbacks();
 }
 
