@@ -554,15 +554,44 @@ public final class AppRunner {
         h |= ViewRoot.dispatchKey(new KeyEvent(t, t, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0));
         if (!h && a != null) a.meglerBack();
     }
+    /** The activities the host's hidden window stopped (hostPause), in the stack's order: started again as it comes back. */
+    private static final ArrayList<Activity> sStoppedByHost = new ArrayList<>();
     private static void hostPause(boolean pause) {
         if (pause == sPausedByHost) return;
         sPausedByHost = pause;
+        // Nothing laid out or drawn while the host's window is hidden, as Android draws no stopped app's windows.
+        ViewRoot.hostHidden(pause);
         // a result another app's activity left for this one comes first, as onActivityResult comes before onResume
         if (!pause) AppResults.resumed();
         Activity a = top();
-        if (a == null) return;
-        if (pause) { if (a.isResumedMegler()) a.meglerPause(); }
-        else if (!a.isResumedMegler()) a.meglerResume();
+        if (pause) {
+            if (a != null && a.isResumedMegler()) a.meglerPause();
+            /*
+             * The host pauses the app only when its window is hidden whole (minimized, the screen off, the app suspended), and
+             * the activities still started stop then, as Android stops those no one sees; Compose's recomposer stops its frame
+             * clock at ON_STOP. Minimized and playing, Spotify drew 15 to 25 frames a second for no one, its main thread 80 to
+             * 97% busy (package 657).
+             */
+            for (int i = sStack.size() - 1; i >= 0; i--) {
+                Activity s = sStack.get(i);
+                if (!s.meglerStarted() || s.isFinishing()) continue;
+                s.meglerStop(true);
+                sStoppedByHost.add(0, s);
+            }
+            return;
+        }
+        // Those it stopped start again, the lowest first, unless they went meanwhile or another covered them (a stop of the
+        // stack's own, which hides their windows); then the top one resumes.
+        ArrayList<Activity> stopped = new ArrayList<>(sStoppedByHost);
+        sStoppedByHost.clear();
+        for (Activity s : stopped) {
+            if (!sStack.contains(s) || s.isFinishing() || s.meglerStarted() || s.meglerWindowsHidden()) continue;
+            s.meglerRestart();
+            s.meglerStart();
+        }
+        if (a == null || a.isFinishing()) return;
+        if (!a.meglerStarted()) { a.meglerRestart(); a.meglerStart(); }
+        if (!a.isResumedMegler()) a.meglerResume();
     }
     private static void touch(int phase, int id, float x, float y, long now) {
         int idx = -1;

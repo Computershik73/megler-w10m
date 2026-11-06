@@ -451,9 +451,20 @@ public final class ViewRoot implements ViewParent {
         sScheduled = true;
         Choreographer.getMainThreadInstance().postCallback(Choreographer.CALLBACK_TRAVERSAL, ViewRoot::doFrame, null);
     }
+    /* The host's window is hidden whole (AppRunner.hostPause: minimized, the screen off): nothing is laid out or drawn until
+       it comes back, as Android neither lays out nor draws a stopped app's windows; the whole screen is drawn again then. */
+    private static boolean sHostHidden;
+    public static void hostHidden(boolean hidden) {
+        if (sHostHidden == hidden) return;
+        sHostHidden = hidden;
+        if (hidden) return;
+        fullRedraw("the app's window is on the screen again");
+        scheduleFrame();
+    }
     private static void doFrame() {
-        Native.frameMark(1, 0);
         sScheduled = false;
+        if (sHostHidden) return;      /* (what asked for the frame waits: hostHidden asks for one as the window comes back) */
+        Native.frameMark(1, 0);
         ArrayList<ViewRoot> roots = new ArrayList<>(sRoots);
         for (ViewRoot r : roots) if (!r.mRemoved) r.performLayout();
         updateBars(roots);

@@ -162,7 +162,11 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         each(c -> c.onActivityPostPaused(this));
         android.content.MeglerSharedPreferences.flushAll();      /* as QueuedWork after onPause */
     }
-    public final void meglerStop() {
+    public final void meglerStop() { meglerStop(false); }
+    /* keepWindows: stopped because the host's window is hidden whole (the app in the background, the screen off), as Android
+       stops an activity no one sees; its windows stay attached and laid out, and nothing is drawn while the host's window is
+       hidden (megler.ViewRoot.hostHidden). It starts again as the window comes back (AppRunner.hostPause). */
+    public final void meglerStop(boolean keepWindows) {
         if (mStarted) {                                  /* one that finished in onCreate never started, and does not stop */
             each(c -> c.onActivityPreStopped(this));
             fragmentHost(FragmentManager.HOST_ACTIVITY_CREATED);
@@ -170,6 +174,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             if (mLoaders != null) mLoaders.doStop();
             each(c -> c.onActivityPostStopped(this));
         }
+        if (keepWindows) return;
         if (mWindow != null && mWindow.peekDecorView() != null) { megler.ViewRoot r = megler.ViewRoot.of(mWindow.peekDecorView()); if (r != null) r.remove(); }
         /* its dialogs and popups hidden with it, as Android hides the windows of a token not visible (makeVisible shows them) */
         if (!mWindowsHidden) { mWindowsHidden = true; megler.ViewRoot.ownerStopped(this, true); }
@@ -274,6 +279,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public void unregisterActivityLifecycleCallbacks(Application.ActivityLifecycleCallbacks c) { mLifecycleCallbacks.remove(c); }
     public boolean isResumed() { return mResumed; }
     public final boolean isResumedMegler() { return mResumed; }
+    public final boolean meglerStarted() { return mStarted; }
     public boolean isFinishing() { return mFinished; }
     public boolean isDestroyed() { return mDestroyed; }
     public boolean isChangingConfigurations() { return mChangingConfigurations; }
