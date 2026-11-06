@@ -38,6 +38,9 @@ public final class DecorView extends FrameLayout {
     private LinearLayout mStack;
     private FrameLayout mContent;
     private android.widget.Toolbar mTitle;
+    // (The title bar of the themes before Holo: its frame, and its text unless the title is the app's own.)
+    private FrameLayout mTitleFrame;
+    private TextView mPlainTitle;
     private View mActionBar;
     private boolean mCloseOnTouchOutside;
     private int mInsetTop, mInsetBottom, mInsetLeft, mInsetRight;
@@ -128,10 +131,41 @@ public final class DecorView extends FrameLayout {
     }
 
     /** The views between the decor and the content: an action bar when asked for, then the content frame. */
-    public FrameLayout makeContent(boolean actionBar, CharSequence title) {
+    public FrameLayout makeContent(boolean actionBar, CharSequence title) { return makeContent(actionBar, false, false, title); }
+
+    /**
+     * The same, or with the title bar of the themes before Holo (titleBar: a window with neither windowNoTitle nor
+     * windowActionBar), as Android's screen_title layout: the title (android:id/title) in a frame of the theme's
+     * windowTitleSize and windowTitleBackgroundStyle. With FEATURE_CUSTOM_TITLE (customTitle) the frame is empty, as
+     * screen_custom_title's (android:id/title_container), for the app's layout (Window.setFeatureInt). App Inventor's apps
+     * hide the title by the title's parent, and without one they stopped at their start (NullPointerException in
+     * Form.TitleVisible).
+     */
+    public FrameLayout makeContent(boolean actionBar, boolean titleBar, boolean customTitle, CharSequence title) {
         Context c = getContext();
         mStack = new LinearLayout(c);
         mStack.setOrientation(LinearLayout.VERTICAL);
+        if (!actionBar && (titleBar || customTitle)) {
+            TypedValue v = new TypedValue();
+            int h = c.getTheme().resolveAttribute(android.R.attr.windowTitleSize, v, true) && v.type == TypedValue.TYPE_DIMENSION
+                ? TypedValue.complexToDimensionPixelSize(v.data, getResources().getDisplayMetrics()) : (int) (25 * Native.density());
+            int frameStyle = c.getTheme().resolveAttribute(android.R.attr.windowTitleBackgroundStyle, v, true) ? v.resourceId : 0;
+            mTitleFrame = new FrameLayout(c, null, 0, frameStyle);
+            if (customTitle) {
+                mTitleFrame.setId(megler.IR.id.title_container);
+            } else {
+                int textStyle = c.getTheme().resolveAttribute(android.R.attr.windowTitleStyle, v, true) ? v.resourceId : 0;
+                mPlainTitle = new TextView(c, null, 0, textStyle);
+                mPlainTitle.setId(android.R.id.title);
+                mPlainTitle.setBackground(null);
+                mPlainTitle.setGravity(Gravity.CENTER_VERTICAL);
+                mPlainTitle.setSingleLine(true);
+                mPlainTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                mPlainTitle.setText(title != null ? title : "");
+                mTitleFrame.addView(mPlainTitle, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+            }
+            mStack.addView(mTitleFrame, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, h));
+        }
         if (actionBar) {
             TypedValue v = new TypedValue();
             int h = c.getTheme().resolveAttribute(android.R.attr.actionBarSize, v, true) ? TypedValue.complexToDimensionPixelSize(v.data, getResources().getDisplayMetrics()) : (int) (56 * Native.density());
@@ -169,7 +203,10 @@ public final class DecorView extends FrameLayout {
         b.append(child.meglerTagsText());
         android.util.Log.d("ViewDump", b.toString(), new Throwable("by"));
     }
-    public void setTitle(CharSequence t) { if (mTitle != null) mTitle.setTitle(t); }
+    public void setTitle(CharSequence t) { if (mTitle != null) mTitle.setTitle(t); if (mPlainTitle != null) mPlainTitle.setText(t); }
+    public void setTitleColor(int color) { if (mPlainTitle != null) mPlainTitle.setTextColor(color); }
+    /** The custom title's frame (FEATURE_CUSTOM_TITLE), for the app's layout; null without one. */
+    public FrameLayout customTitleFrame() { return mTitleFrame != null && mPlainTitle == null ? mTitleFrame : null; }
     public View actionBarView() { return mActionBar; }
     private View mTabStrip;
     /** The action bar's navigation tabs, in a row under it (null takes the row away). */
