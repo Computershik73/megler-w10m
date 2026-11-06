@@ -1532,9 +1532,14 @@ bool mg_fd_held_same(const void *a, const void *b)
 }
 void mg_fd_let_go(void *held)
 {
-    if (!held) return;
-    if (((gobj *)held)->type == OBJ_EXT) mg_atomic_add(&((gobj *)held)->io_seq, 1);
-    fd_put((gobj *)held);
+    if (held) fd_put((gobj *)held);
+}
+/* Data went through a held socket (send, recv, accept, and their kin in mg_net.c): epoll_check's EPOLLET reports it anew. Not
+   for the calls that move none (getsockopt, setsockopt, names): an app that made one for each report would be told again
+   and again. */
+void mg_fd_moved(void *held)
+{
+    if (held && ((gobj *)held)->type == OBJ_EXT) mg_atomic_add(&((gobj *)held)->io_seq, 1);
 }
 
 /* (An off_t is a long: 32 bits in 32-bit Android, where pread's is taken as unsigned, as it always was here.) */
