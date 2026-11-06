@@ -665,8 +665,10 @@ static volatile LONG g_ctx_read, g_ctx_said, g_ctx_no_request;
 /*
  * Whether an interruption asks Windows where it stopped the thread, and leaves one it stopped in the kernel
  * (stopped_in_kernel, below): on x64 and x86, where that was proven (t_fs_access, t_signal_regs). Not on ARM32 or ARM64,
- * where it was never tried on a device before the phone's first package with it (0.1.0.647), on which a Lumia 650 had
- * most apps hang at their start: there an interruption reads a thread's registers as 0.1.0.645 did, and takes them.
+ * which no device has run it on: what their Windows answers CONTEXT_EXCEPTION_REQUEST is not known, and were it to say
+ * CONTEXT_SERVICE_ACTIVE of a thread stopped in user mode, every interruption of guest code would be left, for ever. There
+ * an interruption reads a thread's registers as 0.1.0.645 did, and takes them; whether ARM32's come back from NtContinue
+ * not their own is what t_signal_regs of the phone's Self-test says.
  */
 #if defined(_M_X64) || defined(_M_IX86)
 #define ASK_WHERE_STOPPED 1
