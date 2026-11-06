@@ -353,6 +353,39 @@ N(Native_listAssets)
 N(Native_readApkFile) { c->ret.l = apk_file(c->args[0].i, text_of(c->args[1].l)); }
 
 /*
+ * A file of an APK that is stored, not deflated, viewed where it lies in the APK -- read only, never copied -- as a direct
+ * java.nio.ByteBuffer; NULL for one that is deflated, empty, or cannot be viewed (the caller reads it then). An app built
+ * for Android 11 or later stores its resources.arsc, and Spotify's is 49.8 MB: read into a byte[], it was a fifth of the
+ * heap on a Lumia 650, memory the phone did not have to spare, and the collector ran every second or two to keep the rest
+ * within what was free (package 664). The view is kept for the process's life: Resources keeps its tables.
+ */
+static mg_jobj *apk_view(int apk, const char *path)
+{
+    const mg_zip_entry *e;
+    u64 offset = 0;
+    mg_file *f;
+    void *base = NULL;
+    size_t mapped = 0;
+    const u8 *b = NULL;
+    int err = 0;
+    if (apk < 0 || apk >= MAX_APKS || !J.apk_open[apk]) return NULL;
+    e = mg_zip_find(&J.apk[apk], path);
+    if (!e || !e->usize || e->usize > 0x7FFFFFFFu || !mg_zip_stored_at(&J.apk[apk], e, &offset)) return NULL;
+    f = mg_file_open(J.apk_path[apk], MG_O_READ, &err);
+    if (!f) return NULL;
+    b = (const u8 *)mg_file_map(f, offset, (size_t)e->usize, &base, &mapped);
+    mg_file_close(f);
+    if (!b) {
+        mg_warn("java: %s of %s could not be viewed where it is (error %d): it is read instead", path, J.apk_path[apk], err);
+        return NULL;
+    }
+    mg_info("java: %s of %s viewed where it is in the APK, %.1f MB, not read into the heap", path, J.apk_path[apk], (double)e->usize / 1048576.0);
+    return mg_jni_new_direct_buffer((void *)b, (i64)e->usize);
+}
+
+N(Native_mapApkFile) { c->ret.l = apk_view(c->args[0].i, text_of(c->args[1].l)); }
+
+/*
  * readApkResourceTable(apk, languages): the APK's resources.arsc, cut down to the resources of no language and of
  * `languages` (mg_arsc_keep_languages), or whole where nothing goes or it cannot be cut; null when there is none. For
  * another package's resources in the app (Google Play services' 84 MB table, of which the phone's language and English
@@ -1141,6 +1174,7 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "assetDeflated", NULL, Native_assetDeflated },
     { "megler/Native", "assetLength", NULL, Native_assetLength },
     { "megler/Native", "readApkFile", NULL, Native_readApkFile },
+    { "megler/Native", "mapApkFile", NULL, Native_mapApkFile },
     { "megler/Native", "readApkResourceTable", NULL, Native_readApkResourceTable },
     { "megler/Native", "addApk", NULL, Native_addApk },
     { "megler/Native", "listApkFiles", NULL, Native_listApkFiles },

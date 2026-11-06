@@ -53,6 +53,11 @@
 // app's own table, which its themes give as colorAccent when the app names no colour of its own. An app's own colours are
 // left as they are. The colour is given wherever one of those resources is met while a reference is followed
 // (meglerValue): a theme's attribute, getColor, a colour state list's item.
+//
+// And the tables (tableOf): a resources.arsc that its APK stores rather than deflates -- as an app built for Android 11 or
+// later must -- is read where it lies in the APK, through a buffer over the file (megler.Native.mapApkFile), not copied into
+// the heap. Spotify's is 49.8 MB: read, it was a fifth of the heap on a Lumia 650, and the collector, keeping within what the
+// phone had free, ran every second or two (package 664).
 package android.content.res;
 
 import android.graphics.Typeface;
@@ -146,20 +151,33 @@ public class Resources {
     private static void loadTables() {
         synchronized (sLock) {
             if (sApp == null) {
-                byte[] d = megler.Native.readApkFile(0, "resources.arsc");
-                sApp = d != null ? new ResTable(d) : new ResTable(emptyTable());
+                ResTable t = tableOf(0, 0);
+                sApp = t != null ? t : new ResTable(emptyTable());
                 // a Play install's split APKs (config.xxhdpi, config.en, feature splits) carry their own tables for the same package
                 for (int k = 2; k < 12; k++) {
-                    byte[] sd = megler.Native.readApkFile(k, "resources.arsc");
-                    if (sd == null) continue;
-                    try { sApp.merge(new ResTable(sd)); } catch (RuntimeException e) { android.util.Log.w("Resources", "split " + k + "'s resources.arsc: " + e); }
+                    try {
+                        ResTable st = tableOf(k, 0);
+                        if (st != null) sApp.merge(st);
+                    } catch (RuntimeException e) { android.util.Log.w("Resources", "split " + k + "'s resources.arsc: " + e); }
                 }
             }
             if (sFramework == null) {
-                byte[] d = megler.Native.readApkFile(1, "resources.arsc");
-                sFramework = d != null ? new ResTable(d) : new ResTable(emptyTable());
+                ResTable t = tableOf(1, 0);
+                sFramework = t != null ? t : new ResTable(emptyTable());
             }
         }
+    }
+    /*
+     * Megler: the resources.arsc of the core's APK number `apk` (0 the app's, 1 the platform's, 2-11 the app's splits, then
+     * shared libraries), or null when it has none: read where it lies in the APK when the APK stores it (megler.Native.mapApkFile),
+     * as an app built for Android 11 or later must, else into the heap. Spotify's is 49.8 MB, a fifth of its heap on a Lumia
+     * 650 when it was read: memory the phone did not have, and a collection every second or two (package 664).
+     */
+    private static ResTable tableOf(int apk, int dynamicId) {
+        java.nio.ByteBuffer v = megler.Native.mapApkFile(apk, "resources.arsc");
+        if (v != null) return new ResTable(v.asReadOnlyBuffer(), dynamicId);
+        byte[] d = megler.Native.readApkFile(apk, "resources.arsc");
+        return d != null ? new ResTable(d, dynamicId) : null;
     }
     private static byte[] emptyTable() { return new byte[] { 2, 0, 12, 0, 12, 0, 0, 0, 0, 0, 0, 0 }; }
     private ResTable appTable() { return mPackageTable != null ? mPackageTable : sApp; }
@@ -178,10 +196,9 @@ public class Resources {
     static void meglerAddLibrary(int apk, int[] id, String[] name) {
         synchronized (sLock) {
             loadTables();
-            byte[] d = megler.Native.readApkFile(apk, "resources.arsc");
-            if (d == null || sNextLibraryId >= 0x7f) return;
-            ResTable t = new ResTable(d, sNextLibraryId);
-            if (t.packages.isEmpty()) return;
+            if (sNextLibraryId >= 0x7f) return;
+            ResTable t = tableOf(apk, sNextLibraryId);
+            if (t == null || t.packages.isEmpty()) return;
             sLibs[sNextLibraryId] = t;
             sLibApks[sNextLibraryId] = apk;
             id[0] = sNextLibraryId++;

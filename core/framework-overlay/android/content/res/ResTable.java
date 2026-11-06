@@ -12,6 +12,10 @@
 // Here the names are indexed for one type at a time, when a name of that type is first asked for, and each entry is read
 // once, in the first configuration that has it. The answers are the same.
 //
+// And a table may be read from a buffer over the file where it lies in its APK (ResTable(ByteBuffer, dynamicId);
+// megler.Native.mapApkFile), never copied into the heap: Spotify's resources.arsc is 49.8 MB, a fifth of its heap on a Lumia
+// 650 when it was read into a byte[].
+//
 // And a table that is a shared library's (ResTable(data, dynamicId); Android's WebView APK, added to the app's resources by
 // AssetManager.addAssetPathAsSharedLibrary): its package has id 0 in the file, a dynamic package, and is given dynamicId here,
 // and the ids in its values, its bags' keys and parents that name package 0 -- its own resources, as such a table refers to
@@ -111,9 +115,11 @@ public final class ResTable {
     /** Megler: the package id a shared library's package (id 0 in the file) is given; 0 for any other table. */
     final int dynamicId;
     /** A shared library's table: its package, id 0 in the file, is given dynamicId (see the top of the file). */
-    public ResTable(byte[] data, int dynamicId) {
+    public ResTable(byte[] data, int dynamicId) { this(ByteBuffer.wrap(data), dynamicId); }
+    /** Megler: a table read where its bytes are, a buffer over the APK's file (megler.Native.mapApkFile) as well as an array. */
+    public ResTable(ByteBuffer data, int dynamicId) {
         this.dynamicId = dynamicId;
-        b = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+        b = data.order(ByteOrder.LITTLE_ENDIAN);
         int size = b.getInt(4), off = b.getShort(2) & 0xffff;
         StringPool sp = null;
         while (off + 8 <= size) {

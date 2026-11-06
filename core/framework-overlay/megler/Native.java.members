@@ -53,6 +53,12 @@
      * among them, the same number for the same path again; -1 when it cannot be read (core/src/drivers/mg_java.c).
      */
     public static native int addApk(String path);
+    /**
+     * A file of APK number `apk` that the APK stores rather than deflates, as a direct buffer over the file where it lies in
+     * the APK, read only and never copied; null for one that is deflated or cannot be viewed (readApkFile reads it then).
+     * android.content.res.Resources keeps an app's resources.arsc so, 49.8 MB of Spotify's that sat in its heap.
+     */
+    public static native java.nio.ByteBuffer mapApkFile(int apk, String path);
     /** The names of the entries of APK number `apk` that lie under `prefix` ("assets/x/"): a file's own name, a folder's name once. */
     public static native String[] listApkFiles(int apk, String prefix);
     /** The phone's name servers now, as text, the network's in use first (core: mg_net_dns_servers): android.net.LinkProperties.getDnsServers. */

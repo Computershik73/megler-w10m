@@ -1426,6 +1426,19 @@ cut the file to English and Russian and to the densities round a phone's
 and an app holds 27 MB less from its first moment. (The last row also has the
 two test apps' later selves, which link a few more classes.)
 
+**Resources read where they lie.** Since package 665 `Resources` does not read
+a `resources.arsc` that its APK stores (rather than deflates) into a `byte[]`
+at all: `megler.Native.mapApkFile` maps the file's bytes where they lie in the
+APK, read only, and gives them as a direct `ByteBuffer`, which `ResTable` reads
+as it read the array (`ResTable(ByteBuffer, dynamicId)`; the buffer's reads are
+intrinsics, "Calls done in place: intrinsics"). An app built for Android 11 or
+later must store the file, and most do; one that deflates it is read into the
+heap as before. Spotify's is 49.8 MB: in a `byte[]` it was a fifth of its heap
+on a Lumia 650, memory the phone did not have, and the collector ran every
+second or two to keep the rest within what was free (package 664). The log
+says `java: resources.arsc of <apk> viewed where it is in the APK, <size> MB,
+not read into the heap` for each table so read.
+
 Linking is lazy and has to stay so: a class is linked when something first
 needs it, and a start links 256 of 7617. Linking them all costs 12.5 MB more on
 the phone's word size (21.8 MB on a 64-bit PC) and buys nothing. The 2 MB at the
