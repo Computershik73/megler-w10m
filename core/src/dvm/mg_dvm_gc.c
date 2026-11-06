@@ -705,6 +705,8 @@ static void conservative_roots(void)
         const mg_thread_regs *r = &g_stopped[i].regs;
         mg_dvm_thread *t = g_stopped[i].t;
         for (k = 0; k < r->n; k++) reach_word(r->r[k]);
+        /* (And, of a thread running a signal's handler, the registers of the code the signal interrupted: mg_host.h.) */
+        for (k = 0; k < r->n_was; k++) reach_word(r->was[k]);
         if (r->sp >= t->stack_lo && r->sp < t->stack_hi) scan_words(r->sp, t->stack_hi);
     }
     mg_dvm_threads_each(scan_frames, NULL);

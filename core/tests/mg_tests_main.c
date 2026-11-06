@@ -529,6 +529,7 @@ MG_HOSTAPI void mg_gfx_windows_lose_device(void);
 MG_HOSTAPI int mg_gfx_windows_check_present(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
 MG_HOSTAPI int mg_gfx_windows_check_gl(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
 MG_HOSTAPI int mg_gfx_windows_check_canvas(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
+MG_HOSTAPI int mg_gfx_windows_check_video(const megler_gfx_host *h, void (MEGLER_CB *line)(const char *text, void *user), int *checks);
 
 /* A pixel of a 32 x 32 picture, as a check: a line when it is not what it should be. */
 static int gfx_loss_pixel(const u32 *px, int x, int y, u32 want, const char *what)
@@ -636,6 +637,7 @@ static int gfx_windows_mode(int argc, char **argv)
         failed += mg_gfx_windows_check_present(config.host, print_line, &checks);
         failed += mg_gfx_windows_check_canvas(config.host, print_line, &checks);
         failed += mg_gfx_windows_check_gl(config.host, print_line, &checks);
+        failed += mg_gfx_windows_check_video(config.host, print_line, &checks);
         failed += gfx_windows_loss(config.host, &checks);
     } else if (config.host->present) {
         /* Drawn in memory there is no picture of the shell's own to show: the layer is told no, and flushes as before. */
@@ -786,6 +788,23 @@ static int codec_windows_mode(int argc, char **argv)
     failed += mg_codec_tests_h265_run(argv[2], mg_codec_windows_host(), "P010 taken where the decoder offers it", NULL, NULL, &checks);
     mg_codec_windows_ten_bits(0);
     if (argc >= 5) failed += mg_codec_speed_run(argv[4], mg_codec_windows_host(), NULL, NULL, &checks);
+#ifdef MG_GFX_WINDOWS
+    {
+        /* And on the graphics processor: the shell's drawing started there first, as an app's first drawing starts it, its
+           device then the decoders' too (CodecHost decodes on GfxHost's device, DXVA), the pictures shown from there. */
+        const megler_gfx_host *gfx = mg_gfx_windows_host(print_line, NULL, 0);
+        u32 px[16];
+        void *cv = gfx->canvas_new(gfx->user, px, 4, 4, 16);
+        if (cv) {
+            gfx->draw_color(gfx->user, cv, 0xFF000000u, MEGLER_GFX_BLEND_SRC);
+            gfx->flush(gfx->user, cv);
+            gfx->canvas_free(gfx->user, cv);
+        }
+        if (mg_gfx_windows_on_gpu()) failed += mg_codec_gpu_run(argv[2], mg_codec_windows_host(), gfx, NULL, NULL, &checks);
+        else printf("  (no graphics processor to draw on here: pictures decoded on it are not tried)\n");
+        if (argc >= 5 && mg_gfx_windows_on_gpu()) failed += mg_codec_speed_run(argv[4], mg_codec_windows_host(), NULL, NULL, &checks);
+    }
+#endif
     /* A decoder that does not come back from a call (the phone's HEVCVideoExtension did not, from its first sample): the
        call is given up on after its limit, and the next one answers at once, so that the app's thread is not held. */
     /* Files of sound alone, which the reader of films refused ("no picture in the file") until it took them for their sound. */

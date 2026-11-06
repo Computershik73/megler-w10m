@@ -1,12 +1,14 @@
 /*
  * A stand-in for EGL and OpenGL ES that draws: mg_gl_standin.h says what it does and does not. Its functions are the
- * host's own, as ANGLE's are: floats are floats.
+ * host's own, as ANGLE's are: floats are floats, and the calling convention is ANGLE's (MG_GLAPI: Windows' on x86_64 and
+ * x86, where the core reaches them through its adapters, ndk/mg_gl_adapters.c).
  */
 #include "mg_gl_standin.h"
 
 #include <stdio.h>
 
 #include "../src/host/mg_host.h"
+#include "../src/ndk/mg_egl.h"
 
 #define MAX_OBJECTS 256
 #define MAX_VARS 16
@@ -99,15 +101,15 @@ static bool complete_integer(u32 name, i32 *v);
 /* ------------------------------------------------------------------- EGL */
 
 /* Another display for another native display, as ANGLE makes one (the core asks for the WebView's with EGL_D3D11_ONLY_DISPLAY_ANGLE, -3). */
-static void *e_GetPlatformDisplay(unsigned platform, void *native, const int *attribs)
+static MG_GLAPI void *e_GetPlatformDisplay(unsigned platform, void *native, const int *attribs)
 {
     (void)platform; (void)attribs;
     return (void *)(mg_addr)(native == (void *)(mg_addr)-3 ? 0xD16 : 0xD15);
 }
-static void *e_GetDisplay(void *native) { (void)native; return (void *)(mg_addr)0xD15; }
+static MG_GLAPI void *e_GetDisplay(void *native) { (void)native; return (void *)(mg_addr)0xD15; }
 /* EGL 1.5's: as above, and the features asked to be turned off for the app's display (EGL_FEATURE_OVERRIDES_DISABLED_ANGLE) kept. */
 static char g_app_features_off[200];
-static void *e_GetPlatformDisplayAttrib(unsigned platform, void *native, const intptr_t *attribs)
+static MG_GLAPI void *e_GetPlatformDisplayAttrib(unsigned platform, void *native, const intptr_t *attribs)
 {
     size_t i;
     if (native != (void *)(mg_addr)-3) {
@@ -124,18 +126,18 @@ static void *e_GetPlatformDisplayAttrib(unsigned platform, void *native, const i
     return e_GetPlatformDisplay(platform, native, NULL);
 }
 const char *mg_gl_standin_app_features_off(void) { return g_app_features_off; }
-static unsigned e_Initialize(void *d, int *major, int *minor)
+static MG_GLAPI unsigned e_Initialize(void *d, int *major, int *minor)
 {
     (void)d;
     if (major) *major = 1;
     if (minor) *minor = 5;
     return 1;
 }
-static unsigned e_True(void) { return 1; }
-static unsigned e_Terminate(void *d) { (void)d; return 1; }
-static unsigned e_BindAPI(unsigned api) { (void)api; return 1; }
-static int e_GetError(void) { return 0x3000; }
-static const char *e_QueryString(void *d, int name)
+static MG_GLAPI unsigned e_True(void) { return 1; }
+static MG_GLAPI unsigned e_Terminate(void *d) { (void)d; return 1; }
+static MG_GLAPI unsigned e_BindAPI(unsigned api) { (void)api; return 1; }
+static MG_GLAPI int e_GetError(void) { return 0x3000; }
+static MG_GLAPI const char *e_QueryString(void *d, int name)
 {
     (void)d;
     return name == 0x3055 ? "EGL_KHR_no_config_context EGL_KHR_surfaceless_context EGL_KHR_create_context EGL_ANGLE_query_surface_pointer "
@@ -147,7 +149,7 @@ static const char *e_QueryString(void *d, int name)
  * EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE: the surface itself stands for its texture's shared handle (mg_gl_standin_shared).
  * EGL_DXGI_KEYED_MUTEX_ANGLE: its keyed mutex, which every surface has, as every pbuffer of gecko-w10m's ANGLE has.
  */
-static unsigned e_QuerySurfacePointer(void *d, void *surface, int attribute, void **value)
+static MG_GLAPI unsigned e_QuerySurfacePointer(void *d, void *surface, int attribute, void **value)
 {
     (void)d;
     if (!surface || (attribute != 0x3200 && attribute != 0x33A2) || !value) return 0;
@@ -167,14 +169,14 @@ static unsigned e_KeyedMutex(void *mutex, int acquire)
     mg_lock_release(&g_lock);
     return ok;
 }
-static unsigned e_ChooseConfig(void *d, const int *attribs, void **configs, int size, int *num)
+static MG_GLAPI unsigned e_ChooseConfig(void *d, const int *attribs, void **configs, int size, int *num)
 {
     (void)d; (void)attribs;
     if (configs && size > 0) configs[0] = (void *)(mg_addr)0xC0F;
     if (num) *num = 1;
     return 1;
 }
-static unsigned e_GetConfigAttrib(void *d, void *c, int attrib, int *value)
+static MG_GLAPI unsigned e_GetConfigAttrib(void *d, void *c, int attrib, int *value)
 {
     (void)d; (void)c;
     switch (attrib) {
@@ -197,7 +199,7 @@ static unsigned e_GetConfigAttrib(void *d, void *c, int attrib, int *value)
     }
     return 1;
 }
-static void *e_CreateContext(void *d, void *c, void *share, const int *attribs)
+static MG_GLAPI void *e_CreateContext(void *d, void *c, void *share, const int *attribs)
 {
     sb_context *x;
     int version = 1, i;
@@ -224,7 +226,7 @@ static void *e_CreateContext(void *d, void *c, void *share, const int *attribs)
     mg_lock_release(&g_lock);
     return x;
 }
-static unsigned e_DestroyContext(void *d, void *ctx)
+static MG_GLAPI unsigned e_DestroyContext(void *d, void *ctx)
 {
     (void)d;
     if (!ctx) return 0;
@@ -238,7 +240,7 @@ static unsigned e_DestroyContext(void *d, void *ctx)
     free(ctx);
     return 1;
 }
-static void *e_CreatePbuffer(void *d, void *c, const int *attribs)
+static MG_GLAPI void *e_CreatePbuffer(void *d, void *c, const int *attribs)
 {
     sb_surface *s = (sb_surface *)calloc(1, sizeof(*s));
     int i;
@@ -255,7 +257,7 @@ static void *e_CreatePbuffer(void *d, void *c, const int *attribs)
     mg_lock_release(&g_lock);
     return s;
 }
-static unsigned e_DestroySurface(void *d, void *surface)
+static MG_GLAPI unsigned e_DestroySurface(void *d, void *surface)
 {
     sb_surface *s = (sb_surface *)surface;
     (void)d;
@@ -268,7 +270,7 @@ static unsigned e_DestroySurface(void *d, void *surface)
     free(s);
     return 1;
 }
-static unsigned e_MakeCurrent(void *d, void *draw, void *read, void *ctx)
+static MG_GLAPI unsigned e_MakeCurrent(void *d, void *draw, void *read, void *ctx)
 {
     (void)d; (void)read;
     t_ctx = (sb_context *)ctx;
@@ -284,8 +286,8 @@ static unsigned e_MakeCurrent(void *d, void *draw, void *read, void *ctx)
     }
     return 1;
 }
-static void *e_GetCurrentContext(void) { return t_ctx; }
-static unsigned e_SwapBuffers(void *d, void *s)
+static MG_GLAPI void *e_GetCurrentContext(void) { return t_ctx; }
+static MG_GLAPI unsigned e_SwapBuffers(void *d, void *s)
 {
     (void)d; (void)s;
     mg_lock_acquire(&g_lock);
@@ -293,13 +295,16 @@ static unsigned e_SwapBuffers(void *d, void *s)
     mg_lock_release(&g_lock);
     return 1;
 }
-static unsigned e_SwapInterval(void *d, int interval) { (void)d; (void)interval; return 1; }
-/* EGL_ANDROID_blob_cache: the functions the layer gives (mg_egl.c, ANGLE's programs kept on disk), kept for mg_gl_standin_blob_check. */
-typedef void (*standin_set_blob)(const void *key, intptr_t key_size, const void *value, intptr_t value_size);
-typedef intptr_t (*standin_get_blob)(const void *key, intptr_t key_size, void *value, intptr_t value_size);
+static MG_GLAPI unsigned e_SwapInterval(void *d, int interval) { (void)d; (void)interval; return 1; }
+/*
+ * EGL_ANDROID_blob_cache: the functions the layer gives (mg_egl.c, ANGLE's programs kept on disk), kept for
+ * mg_gl_standin_blob_check, which calls them as ANGLE would: as Windows' code (MG_HOSTCB), the headers giving them no other.
+ */
+typedef void (MG_HOSTCB *standin_set_blob)(const void *key, intptr_t key_size, const void *value, intptr_t value_size);
+typedef intptr_t (MG_HOSTCB *standin_get_blob)(const void *key, intptr_t key_size, void *value, intptr_t value_size);
 static standin_set_blob g_blob_set;
 static standin_get_blob g_blob_get;
-static void e_SetBlobCacheFuncs(void *d, standin_set_blob set, standin_get_blob get)
+static MG_GLAPI void e_SetBlobCacheFuncs(void *d, standin_set_blob set, standin_get_blob get)
 {
     (void)d;
     g_blob_set = set;
@@ -330,7 +335,7 @@ int mg_gl_standin_blob_check(void)
     if (g_blob_get(key, sizeof(key), back, sizeof(back)) != 10 || back[0] != 'X') return 6;
     return 0;
 }
-static unsigned e_QuerySurface(void *d, void *surface, int attrib, int *value)
+static MG_GLAPI unsigned e_QuerySurface(void *d, void *surface, int attrib, int *value)
 {
     sb_surface *s = (sb_surface *)surface;
     (void)d;
@@ -345,7 +350,7 @@ static void g_error(u32 e)
     if (t_ctx && !t_ctx->error) t_ctx->error = e;
 }
 
-static u32 g_CreateShader(u32 type)
+static MG_GLAPI u32 g_CreateShader(u32 type)
 {
     u32 i;
     mg_lock_acquire(&g_lock);
@@ -358,7 +363,7 @@ static u32 g_CreateShader(u32 type)
     mg_lock_release(&g_lock);
     return i < MAX_OBJECTS ? i : 0;
 }
-static void g_ShaderSource(u32 shader, i32 count, const char *const *text, const i32 *lengths)
+static MG_GLAPI void g_ShaderSource(u32 shader, i32 count, const char *const *text, const i32 *lengths)
 {
     size_t n = 0;
     i32 i;
@@ -379,8 +384,8 @@ static void g_ShaderSource(u32 shader, i32 count, const char *const *text, const
     free(S.shaders[shader].source);
     S.shaders[shader].source = s;
 }
-static void g_CompileShader(u32 shader) { (void)shader; }
-static void g_DeleteShader(u32 shader)
+static MG_GLAPI void g_CompileShader(u32 shader) { (void)shader; }
+static MG_GLAPI void g_DeleteShader(u32 shader)
 {
     if (shader < MAX_OBJECTS && S.shaders[shader].alive) {
         free(S.shaders[shader].source);
@@ -393,7 +398,7 @@ static const char *shader_log(u32 shader)
     snprintf(log, sizeof(log), "stand-in: shader %u compiled", (unsigned)shader);
     return log;
 }
-static void g_GetShaderiv(u32 shader, u32 name, i32 *v)
+static MG_GLAPI void g_GetShaderiv(u32 shader, u32 name, i32 *v)
 {
     if (shader >= MAX_OBJECTS || !S.shaders[shader].alive) {
         g_error(GL_INVALID_VALUE);
@@ -419,15 +424,15 @@ static void copy_text(const char *text, i32 size, i32 *length, char *out)
     out[n] = 0;
     if (length) *length = n;
 }
-static void g_GetShaderInfoLog(u32 shader, i32 size, i32 *length, char *out) { copy_text(shader_log(shader), size, length, out); }
-static void g_GetShaderSource(u32 shader, i32 size, i32 *length, char *out)
+static MG_GLAPI void g_GetShaderInfoLog(u32 shader, i32 size, i32 *length, char *out) { copy_text(shader_log(shader), size, length, out); }
+static MG_GLAPI void g_GetShaderSource(u32 shader, i32 size, i32 *length, char *out)
 {
     copy_text(shader < MAX_OBJECTS && S.shaders[shader].source ? S.shaders[shader].source : "", size, length, out);
 }
 
 /* ---------------------------------------------------------------- programs */
 
-static u32 g_CreateProgram(void)
+static MG_GLAPI u32 g_CreateProgram(void)
 {
     u32 i;
     mg_lock_acquire(&g_lock);
@@ -445,16 +450,16 @@ static bool program_ok(u32 p)
     g_error(GL_INVALID_VALUE);
     return false;
 }
-static void g_AttachShader(u32 p, u32 shader)
+static MG_GLAPI void g_AttachShader(u32 p, u32 shader)
 {
     if (program_ok(p) && S.programs[p].nshaders < 4) S.programs[p].shaders[S.programs[p].nshaders++] = shader;
 }
-static void g_DetachShader(u32 p, u32 shader) { (void)p; (void)shader; }
-static void g_DeleteProgram(u32 p)
+static MG_GLAPI void g_DetachShader(u32 p, u32 shader) { (void)p; (void)shader; }
+static MG_GLAPI void g_DeleteProgram(u32 p)
 {
     if (p < MAX_OBJECTS) S.programs[p].alive = false;
 }
-static void g_BindAttribLocation(u32 p, u32 index, const char *name)
+static MG_GLAPI void g_BindAttribLocation(u32 p, u32 index, const char *name)
 {
     if (!program_ok(p) || S.programs[p].nbound >= MAX_VARS) return;
     S.programs[p].bound[S.programs[p].nbound] = (i32)index;
@@ -512,7 +517,7 @@ static void declarations(sb_var *attrs, int *nattrs, sb_var *uniforms, int *nuni
     }
 }
 
-static void g_LinkProgram(u32 p)
+static MG_GLAPI void g_LinkProgram(u32 p)
 {
     int i, j, next = 0;
     if (!program_ok(p)) return;
@@ -551,7 +556,7 @@ static int max_len(int n, const char *s)
     return k > n ? k : n;
 }
 
-static void g_GetProgramiv(u32 p, u32 name, i32 *v)
+static MG_GLAPI void g_GetProgramiv(u32 p, u32 name, i32 *v)
 {
     int i, longest = 0;
     if (!program_ok(p)) return;
@@ -572,13 +577,13 @@ static void g_GetProgramiv(u32 p, u32 name, i32 *v)
     default: g_error(GL_INVALID_ENUM);
     }
 }
-static void g_GetProgramInfoLog(u32 p, i32 size, i32 *length, char *out) { copy_text(program_log(p), size, length, out); }
-static void g_UseProgram(u32 p)
+static MG_GLAPI void g_GetProgramInfoLog(u32 p, i32 size, i32 *length, char *out) { copy_text(program_log(p), size, length, out); }
+static MG_GLAPI void g_UseProgram(u32 p)
 {
     if (t_ctx) t_ctx->program = p;
 }
-static void g_ValidateProgram(u32 p) { (void)p; }
-static i32 g_GetAttribLocation(u32 p, const char *name)
+static MG_GLAPI void g_ValidateProgram(u32 p) { (void)p; }
+static MG_GLAPI i32 g_GetAttribLocation(u32 p, const char *name)
 {
     int i;
     if (!program_ok(p)) return -1;
@@ -586,7 +591,7 @@ static i32 g_GetAttribLocation(u32 p, const char *name)
         if (!strcmp(S.programs[p].attrs[i].name, name)) return S.programs[p].attrs[i].location;
     return -1;
 }
-static i32 g_GetUniformLocation(u32 p, const char *name)
+static MG_GLAPI i32 g_GetUniformLocation(u32 p, const char *name)
 {
     int i;
     if (!program_ok(p)) return -1;
@@ -604,11 +609,11 @@ static void active(const sb_var *v, int n, u32 index, i32 size, i32 *length, i32
     if (count) *count = 1;
     if (type) *type = v[index].type;
 }
-static void g_GetActiveAttrib(u32 p, u32 index, i32 size, i32 *length, i32 *count, u32 *type, char *name)
+static MG_GLAPI void g_GetActiveAttrib(u32 p, u32 index, i32 size, i32 *length, i32 *count, u32 *type, char *name)
 {
     if (program_ok(p)) active(S.programs[p].attrs, S.programs[p].nattrs, index, size, length, count, type, name);
 }
-static void g_GetActiveUniform(u32 p, u32 index, i32 size, i32 *length, i32 *count, u32 *type, char *name)
+static MG_GLAPI void g_GetActiveUniform(u32 p, u32 index, i32 size, i32 *length, i32 *count, u32 *type, char *name)
 {
     if (program_ok(p)) active(S.programs[p].uniforms, S.programs[p].nuniforms, index, size, length, count, type, name);
 }
@@ -618,17 +623,17 @@ static float *uniform(i32 location)
     if (!p || p >= MAX_OBJECTS || location < 0 || location >= MAX_VARS) return NULL;
     return S.programs[p].values[location];
 }
-static void g_Uniform1f(i32 l, float a)
+static MG_GLAPI void g_Uniform1f(i32 l, float a)
 {
     float *u = uniform(l);
     if (u) u[0] = a;
 }
-static void g_Uniform1i(i32 l, i32 a)
+static MG_GLAPI void g_Uniform1i(i32 l, i32 a)
 {
     float *u = uniform(l);
     if (u) u[0] = (float)a;
 }
-static void g_Uniform4f(i32 l, float a, float b, float c, float d)
+static MG_GLAPI void g_Uniform4f(i32 l, float a, float b, float c, float d)
 {
     float *u = uniform(l);
     if (!u) return;
@@ -637,12 +642,12 @@ static void g_Uniform4f(i32 l, float a, float b, float c, float d)
     u[2] = c;
     u[3] = d;
 }
-static void g_Uniform4fv(i32 l, i32 count, const float *v)
+static MG_GLAPI void g_Uniform4fv(i32 l, i32 count, const float *v)
 {
     float *u = uniform(l);
     if (u && count > 0) memcpy(u, v, 4 * sizeof(float));
 }
-static void g_UniformMatrix4fv(i32 l, i32 count, u8 transpose, const float *v)
+static MG_GLAPI void g_UniformMatrix4fv(i32 l, i32 count, u8 transpose, const float *v)
 {
     float *u = uniform(l);
     (void)transpose;
@@ -669,12 +674,12 @@ static u32 new_name(int kind)
     mg_lock_release(&g_lock);
     return i < MAX_OBJECTS ? i : 0;
 }
-static void g_GenBuffers(i32 n, u32 *names)
+static MG_GLAPI void g_GenBuffers(i32 n, u32 *names)
 {
     i32 i;
     for (i = 0; i < n; i++) names[i] = new_name(0);
 }
-static void g_DeleteBuffers(i32 n, const u32 *names)
+static MG_GLAPI void g_DeleteBuffers(i32 n, const u32 *names)
 {
     i32 i;
     for (i = 0; i < n; i++)
@@ -683,14 +688,14 @@ static void g_DeleteBuffers(i32 n, const u32 *names)
             memset(&S.buffers[names[i]], 0, sizeof(S.buffers[names[i]]));
         }
 }
-static void g_BindBuffer(u32 target, u32 name)
+static MG_GLAPI void g_BindBuffer(u32 target, u32 name)
 {
     if (!t_ctx) return;
     if (target == GL_ARRAY_BUFFER) t_ctx->array_buffer = name;
     else if (target == GL_PIXEL_PACK_BUFFER) t_ctx->pack_buffer = name;
     else if (target != GL_ELEMENT_ARRAY_BUFFER) g_error(GL_INVALID_ENUM);
 }
-static void g_BufferData(u32 target, intptr_t size, const void *data, u32 usage)
+static MG_GLAPI void g_BufferData(u32 target, intptr_t size, const void *data, u32 usage)
 {
     u32 b = !t_ctx ? 0 : target == GL_ARRAY_BUFFER ? t_ctx->array_buffer : target == GL_PIXEL_PACK_BUFFER ? t_ctx->pack_buffer : 0;
     (void)usage;
@@ -703,7 +708,7 @@ static void g_BufferData(u32 target, intptr_t size, const void *data, u32 usage)
     S.buffers[b].size = (size_t)size;
     if (data && size > 0) memcpy(S.buffers[b].data, data, (size_t)size);
 }
-static void g_GenTextures(i32 n, u32 *names)
+static MG_GLAPI void g_GenTextures(i32 n, u32 *names)
 {
     i32 i;
     for (i = 0; i < n; i++) names[i] = new_name(1);
@@ -715,7 +720,7 @@ static void store_release(sb_store *s)
         free(s);
     }
 }
-static void g_DeleteTextures(i32 n, const u32 *names)
+static MG_GLAPI void g_DeleteTextures(i32 n, const u32 *names)
 {
     i32 i;
     mg_lock_acquire(&g_lock);
@@ -727,7 +732,7 @@ static void g_DeleteTextures(i32 n, const u32 *names)
         }
     mg_lock_release(&g_lock);
 }
-static void g_BindTexture(u32 target, u32 name)
+static MG_GLAPI void g_BindTexture(u32 target, u32 name)
 {
     (void)target;
     if (t_ctx) t_ctx->texture = name;
@@ -758,7 +763,7 @@ static void store_put(sb_store *s, i32 x, i32 y, i32 w, i32 h, u32 format, u32 t
             }
         }
 }
-static void g_TexImage2D(u32 target, i32 level, i32 internal, i32 w, i32 h, i32 border, u32 format, u32 type, const void *pixels)
+static MG_GLAPI void g_TexImage2D(u32 target, i32 level, i32 internal, i32 w, i32 h, i32 border, u32 format, u32 type, const void *pixels)
 {
     u32 t = t_ctx ? t_ctx->texture : 0;
     sb_store *s;
@@ -777,7 +782,7 @@ static void g_TexImage2D(u32 target, i32 level, i32 internal, i32 w, i32 h, i32 
     S.textures[t].h = h;
     mg_lock_release(&g_lock);
 }
-static void g_TexSubImage2D(u32 target, i32 level, i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, const void *pixels)
+static MG_GLAPI void g_TexSubImage2D(u32 target, i32 level, i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, const void *pixels)
 {
     u32 t = t_ctx ? t_ctx->texture : 0;
     (void)target; (void)level;
@@ -791,7 +796,7 @@ static void g_TexSubImage2D(u32 target, i32 level, i32 x, i32 y, i32 w, i32 h, u
 /* EGL images of textures (EGL_KHR_gl_texture_2D_image): the texture's pixels, which a texture made of the image shares. */
 static void *g_image_display;
 void *mg_gl_standin_image_display(void) { return g_image_display; }
-static void *e_CreateImage(void *d, void *ctx, unsigned target, void *buffer, const int *attribs)
+static MG_GLAPI void *e_CreateImage(void *d, void *ctx, unsigned target, void *buffer, const int *attribs)
 {
     u32 t = (u32)(mg_addr)buffer;
     sb_image *im = NULL;
@@ -806,7 +811,7 @@ static void *e_CreateImage(void *d, void *ctx, unsigned target, void *buffer, co
     mg_lock_release(&g_lock);
     return im;
 }
-static unsigned e_DestroyImage(void *d, void *image)
+static MG_GLAPI unsigned e_DestroyImage(void *d, void *image)
 {
     sb_image *im = (sb_image *)image;
     (void)d;
@@ -817,7 +822,7 @@ static unsigned e_DestroyImage(void *d, void *image)
     free(im);
     return 1;
 }
-static void g_EGLImageTargetTexture2DOES(u32 target, void *image)
+static MG_GLAPI void g_EGLImageTargetTexture2DOES(u32 target, void *image)
 {
     sb_image *im = (sb_image *)image;
     u32 t = t_ctx ? t_ctx->texture : 0;
@@ -837,20 +842,20 @@ static void g_EGLImageTargetTexture2DOES(u32 target, void *image)
 
 /* Framebuffer objects with a texture for their colour: drawn into by glClear and read by glReadPixels. */
 static volatile i32 g_next_name = 1000;   /* the complete mode's names (below) */
-static void g_GenFramebuffers(i32 n, u32 *names)
+static MG_GLAPI void g_GenFramebuffers(i32 n, u32 *names)
 {
     i32 i;
     /* Past the table's room (a WebView's GL makes many), names that draw nothing, as the complete mode's are. */
     for (i = 0; i < n; i++)
         if (!(names[i] = new_name(2))) names[i] = (u32)mg_atomic_add(&g_next_name, 1);
 }
-static void g_FramebufferTexture2D(u32 target, u32 attachment, u32 textarget, u32 texture, i32 level)
+static MG_GLAPI void g_FramebufferTexture2D(u32 target, u32 attachment, u32 textarget, u32 texture, i32 level)
 {
     i32 fb = t_ctx ? (target == GL_READ_FRAMEBUFFER ? t_ctx->read_fb : t_ctx->fb) : 0;
     (void)attachment; (void)textarget; (void)level;
     if (fb > 0 && fb < MAX_OBJECTS) S.framebuffers[fb].texture = texture;
 }
-static u32 g_CheckFramebufferStatus(u32 target) { (void)target; return 0x8CD5; }   /* GL_FRAMEBUFFER_COMPLETE */
+static MG_GLAPI u32 g_CheckFramebufferStatus(u32 target) { (void)target; return 0x8CD5; }   /* GL_FRAMEBUFFER_COMPLETE */
 /* The store of the colour texture of a framebuffer object, or NULL (none, or the window's). */
 static sb_store *fb_store(i32 fb)
 {
@@ -859,26 +864,26 @@ static sb_store *fb_store(i32 fb)
     t = S.framebuffers[fb].texture;
     return t && t < MAX_OBJECTS && S.textures[t].alive ? S.textures[t].store : NULL;
 }
-static u8 g_IsTexture(u32 name) { return name && name < MAX_OBJECTS && S.textures[name].alive; }
-static void g_TexParameteri(u32 target, u32 name, i32 v) { (void)target; (void)name; (void)v; }
-static void g_PixelStorei(u32 name, i32 v)
+static MG_GLAPI u8 g_IsTexture(u32 name) { return name && name < MAX_OBJECTS && S.textures[name].alive; }
+static MG_GLAPI void g_TexParameteri(u32 target, u32 name, i32 v) { (void)target; (void)name; (void)v; }
+static MG_GLAPI void g_PixelStorei(u32 name, i32 v)
 {
     if (!t_ctx) return;
     if (name == GL_PACK_ALIGNMENT) t_ctx->pack_align = v;
     else if (name == GL_UNPACK_ALIGNMENT) t_ctx->unpack_align = v;
 }
-static void g_BindFramebuffer(u32 target, u32 fb)
+static MG_GLAPI void g_BindFramebuffer(u32 target, u32 fb)
 {
     if (!t_ctx) return;
     if (target == GL_FRAMEBUFFER || target == GL_DRAW_FRAMEBUFFER) t_ctx->fb = (i32)fb;
     if (target == GL_FRAMEBUFFER || target == GL_READ_FRAMEBUFFER) t_ctx->read_fb = (i32)fb;
 }
-static void g_OneEnum(u32 v) { (void)v; }
-static void g_TwoEnums(u32 a, u32 b) { (void)a; (void)b; }
-static void g_Nothing(void) { }
-static void g_LineWidth(float w) { (void)w; }
-static void g_DepthMask(u8 on) { (void)on; }
-static void g_Viewport(i32 x, i32 y, i32 w, i32 h)
+static MG_GLAPI void g_OneEnum(u32 v) { (void)v; }
+static MG_GLAPI void g_TwoEnums(u32 a, u32 b) { (void)a; (void)b; }
+static MG_GLAPI void g_Nothing(void) { }
+static MG_GLAPI void g_LineWidth(float w) { (void)w; }
+static MG_GLAPI void g_DepthMask(u8 on) { (void)on; }
+static MG_GLAPI void g_Viewport(i32 x, i32 y, i32 w, i32 h)
 {
     if (!t_ctx) return;
     t_ctx->viewport[0] = x;
@@ -886,9 +891,9 @@ static void g_Viewport(i32 x, i32 y, i32 w, i32 h)
     t_ctx->viewport[2] = w;
     t_ctx->viewport[3] = h;
 }
-static void g_Scissor(i32 x, i32 y, i32 w, i32 h) { (void)x; (void)y; (void)w; (void)h; }
-static void g_ColorMask(u8 r, u8 g, u8 b, u8 a) { (void)r; (void)g; (void)b; (void)a; }
-static void g_ClearColor(float r, float g, float b, float a)
+static MG_GLAPI void g_Scissor(i32 x, i32 y, i32 w, i32 h) { (void)x; (void)y; (void)w; (void)h; }
+static MG_GLAPI void g_ColorMask(u8 r, u8 g, u8 b, u8 a) { (void)r; (void)g; (void)b; (void)a; }
+static MG_GLAPI void g_ClearColor(float r, float g, float b, float a)
 {
     if (!t_ctx) return;
     t_ctx->clear[0] = r;
@@ -897,7 +902,7 @@ static void g_ClearColor(float r, float g, float b, float a)
     t_ctx->clear[3] = a;
 }
 static u8 byte_of(float v) { return (u8)(v <= 0 ? 0 : v >= 1 ? 255 : (int)(v * 255.0f + 0.5f)); }
-static void g_Clear(u32 mask)
+static MG_GLAPI void g_Clear(u32 mask)
 {
     static volatile i32 inside;
     size_t i, n;
@@ -932,7 +937,7 @@ static void g_Clear(u32 mask)
     memcpy(S.stats.clear, t_ctx->clear, sizeof(S.stats.clear));
     mg_lock_release(&g_lock);
 }
-static void g_VertexAttribPointer(u32 index, i32 size, u32 type, u8 normalized, i32 stride, const void *ptr)
+static MG_GLAPI void g_VertexAttribPointer(u32 index, i32 size, u32 type, u8 normalized, i32 stride, const void *ptr)
 {
     (void)normalized;
     if (!t_ctx || index >= MAX_VARS) {
@@ -945,11 +950,11 @@ static void g_VertexAttribPointer(u32 index, i32 size, u32 type, u8 normalized, 
     t_ctx->attr[index].ptr = ptr;
     t_ctx->attr[index].buffer = t_ctx->array_buffer;
 }
-static void g_EnableVertexAttribArray(u32 index)
+static MG_GLAPI void g_EnableVertexAttribArray(u32 index)
 {
     if (t_ctx && index < MAX_VARS) t_ctx->attr[index].on = true;
 }
-static void g_DisableVertexAttribArray(u32 index)
+static MG_GLAPI void g_DisableVertexAttribArray(u32 index)
 {
     if (t_ctx && index < MAX_VARS) t_ctx->attr[index].on = false;
 }
@@ -985,7 +990,7 @@ static void triangle(const float v[3][4], const u8 rgba[4])
         }
 }
 
-static void g_DrawArrays(u32 mode, i32 first, i32 count)
+static MG_GLAPI void g_DrawArrays(u32 mode, i32 first, i32 count)
 {
     u32 p;
     int i, position = 0, colour = -1;
@@ -1036,7 +1041,7 @@ static void g_DrawArrays(u32 mode, i32 first, i32 count)
 }
 
 /* Reads into a pixel pack buffer when one is bound, and garbage from a framebuffer object: the core must leave neither for its own reads. */
-static void g_ReadPixels(i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, void *data)
+static MG_GLAPI void g_ReadPixels(i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, void *data)
 {
     u8 *out = (u8 *)data;
     i32 r, c;
@@ -1094,7 +1099,7 @@ static void g_ReadPixels(i32 x, i32 y, i32 w, i32 h, u32 format, u32 type, void 
     mg_lock_release(&g_lock);
 }
 
-static u32 g_GetError(void)
+static MG_GLAPI u32 g_GetError(void)
 {
     u32 e = t_ctx ? t_ctx->error : 0;
     if (t_ctx) t_ctx->error = 0;
@@ -1111,7 +1116,7 @@ static const char *extensions(void)
     return S.bgra ? "GL_EXT_read_format_bgra GL_OES_rgb8_rgba8 GL_OES_depth24 GL_OES_EGL_image" : "GL_OES_rgb8_rgba8 GL_OES_depth24 GL_OES_EGL_image";
 }
 
-static const u8 *g_GetString(u32 name)
+static MG_GLAPI const u8 *g_GetString(u32 name)
 {
     if (!t_ctx) return NULL;
     switch (name) {
@@ -1124,7 +1129,7 @@ static const u8 *g_GetString(u32 name)
     }
 }
 
-static void g_GetIntegerv(u32 name, i32 *v)
+static MG_GLAPI void g_GetIntegerv(u32 name, i32 *v)
 {
     if (!t_ctx) return;
     switch (name) {
@@ -1144,7 +1149,7 @@ static void g_GetIntegerv(u32 name, i32 *v)
     }
 }
 
-static void g_GetFloatv(u32 name, float *v)
+static MG_GLAPI void g_GetFloatv(u32 name, float *v)
 {
     if (t_ctx && name == 0x0C22) memcpy(v, t_ctx->clear, sizeof(t_ctx->clear));   /* GL_COLOR_CLEAR_VALUE */
     else if (v) v[0] = 0;
@@ -1161,50 +1166,90 @@ static void g_GetFloatv(u32 name, float *v)
  * functions that were missing are there in either mode: they are EGL 1.4's.
  */
 
-static unsigned e_GetConfigs(void *d, void **configs, int size, int *num)
+static MG_GLAPI unsigned e_GetConfigs(void *d, void **configs, int size, int *num)
 {
     (void)d;
     if (configs && size > 0) configs[0] = (void *)(mg_addr)0xC0F;
     if (num) *num = 1;
     return 1;
 }
-static void *e_GetCurrentSurface(int which) { (void)which; return t_surf; }
-static void *e_GetCurrentDisplay(void) { return t_ctx ? (void *)(mg_addr)0xD15 : NULL; }
+static MG_GLAPI void *e_GetCurrentSurface(int which) { (void)which; return t_surf; }
+static MG_GLAPI void *e_GetCurrentDisplay(void) { return t_ctx ? (void *)(mg_addr)0xD15 : NULL; }
 /* A window surface is a surface of the window's size where the window says one, 1 x 1 otherwise: nothing shows it. */
-static void *e_CreateWindowSurface(void *d, void *c, void *window, const int *attribs)
+static MG_GLAPI void *e_CreateWindowSurface(void *d, void *c, void *window, const int *attribs)
 {
     (void)window;
     return e_CreatePbuffer(d, c, attribs);
 }
-static unsigned e_SurfaceThing(void *d, void *s, int a) { (void)d; (void)s; (void)a; return 1; }
-static unsigned e_SurfaceAttrib(void *d, void *s, int a, int v) { (void)d; (void)s; (void)a; (void)v; return 1; }
-static unsigned e_QueryContext(void *d, void *ctx, int attrib, int *value)
+static MG_GLAPI unsigned e_SurfaceThing(void *d, void *s, int a) { (void)d; (void)s; (void)a; return 1; }
+static MG_GLAPI unsigned e_SurfaceAttrib(void *d, void *s, int a, int v) { (void)d; (void)s; (void)a; (void)v; return 1; }
+static MG_GLAPI unsigned e_QueryContext(void *d, void *ctx, int attrib, int *value)
 {
     (void)d;
     if (!ctx || !value) return 0;
     *value = attrib == 0x3098 ? ((sb_context *)ctx)->version : attrib == 0x3028 ? 0xC0F : attrib == 0x3086 ? 0x3084 : 0;
     return 1;
 }
-static unsigned e_QueryAPI(void) { return 0x30A0; }   /* EGL_OPENGL_ES_API */
-static unsigned e_WaitNative(int engine) { (void)engine; return 1; }
+static MG_GLAPI unsigned e_QueryAPI(void) { return 0x30A0; }   /* EGL_OPENGL_ES_API */
+static MG_GLAPI unsigned e_WaitNative(int engine) { (void)engine; return 1; }
 
-static u32 g_Inert(void) { return 0; }
-static void g_Gen(i32 n, u32 *out)
+/*
+ * A function that does nothing, for every name not above. On x86 one of ANGLE's convention takes its arguments off the
+ * stack itself (__stdcall): there it is one for each size they can come to, by what the core's adapter for the name puts
+ * there (mg_gl_adapter_arg_bytes). Elsewhere the caller takes them, and one does for every name.
+ */
+#if MG_GL_ADAPTERS && MG_ARCH_X86
+#define INERT(n, ...) static MG_GLAPI u32 g_Inert##n(__VA_ARGS__) { return 0; }
+INERT(0, void)
+INERT(4, u32 a0)
+INERT(8, u32 a0, u32 a1)
+INERT(12, u32 a0, u32 a1, u32 a2)
+INERT(16, u32 a0, u32 a1, u32 a2, u32 a3)
+INERT(20, u32 a0, u32 a1, u32 a2, u32 a3, u32 a4)
+INERT(24, u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5)
+INERT(28, u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5, u32 a6)
+INERT(32, u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5, u32 a6, u32 a7)
+INERT(36, u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5, u32 a6, u32 a7, u32 a8)
+INERT(40, u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5, u32 a6, u32 a7, u32 a8, u32 a9)
+INERT(44, u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5, u32 a6, u32 a7, u32 a8, u32 a9, u32 a10)
+INERT(48, u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5, u32 a6, u32 a7, u32 a8, u32 a9, u32 a10, u32 a11)
+INERT(52, u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5, u32 a6, u32 a7, u32 a8, u32 a9, u32 a10, u32 a11, u32 a12)
+INERT(56, u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5, u32 a6, u32 a7, u32 a8, u32 a9, u32 a10, u32 a11, u32 a12, u32 a13)
+INERT(60, u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5, u32 a6, u32 a7, u32 a8, u32 a9, u32 a10, u32 a11, u32 a12, u32 a13, u32 a14)
+static void *const k_inert[] = {
+    (void *)g_Inert0, (void *)g_Inert4, (void *)g_Inert8, (void *)g_Inert12, (void *)g_Inert16, (void *)g_Inert20, (void *)g_Inert24,
+    (void *)g_Inert28, (void *)g_Inert32, (void *)g_Inert36, (void *)g_Inert40, (void *)g_Inert44, (void *)g_Inert48, (void *)g_Inert52,
+    (void *)g_Inert56, (void *)g_Inert60,
+};
+static void *inert_for(const char *name)
+{
+    int bytes = mg_gl_adapter_arg_bytes(name);
+    return bytes >= 0 && bytes / 4 < (int)MG_COUNT(k_inert) ? k_inert[bytes / 4] : NULL;
+}
+#else
+static MG_GLAPI u32 g_Inert(void) { return 0; }
+static void *inert_for(const char *name)
+{
+    (void)name;
+    return (void *)g_Inert;
+}
+#endif
+static MG_GLAPI void g_Gen(i32 n, u32 *out)
 {
     i32 i;
     for (i = 0; out && i < n; i++) out[i] = (u32)mg_atomic_add(&g_next_name, 1);
 }
-static void g_GetBooleanv(u32 name, u8 *v) { (void)name; if (v) v[0] = 0; }
-static void g_GetParamiv3(u32 a, u32 b, i32 *v) { (void)a; (void)b; if (v) v[0] = 0; }
-static void g_GetParamiv4(u32 a, u32 b, u32 c, i32 *v) { (void)a; (void)b; (void)c; if (v) v[0] = 0; }
-static void g_GetShaderPrecisionFormat(u32 shader, u32 precision, i32 *range, i32 *bits)
+static MG_GLAPI void g_GetBooleanv(u32 name, u8 *v) { (void)name; if (v) v[0] = 0; }
+static MG_GLAPI void g_GetParamiv3(u32 a, u32 b, i32 *v) { (void)a; (void)b; if (v) v[0] = 0; }
+static MG_GLAPI void g_GetParamiv4(u32 a, u32 b, u32 c, i32 *v) { (void)a; (void)b; (void)c; if (v) v[0] = 0; }
+static MG_GLAPI void g_GetShaderPrecisionFormat(u32 shader, u32 precision, i32 *range, i32 *bits)
 {
     (void)shader;
     /* The low, medium and high float and int precisions of a device that has highp everywhere. */
     if (range) range[0] = range[1] = precision >= 0x8DF3 ? 31 : 127;
     if (bits) *bits = precision >= 0x8DF3 ? 0 : 23;
 }
-static u32 g_IsSomething(u32 name) { return name != 0; }
+static MG_GLAPI u32 g_IsSomething(u32 name) { return name != 0; }
 
 /* The complete mode's answers to glGetIntegerv beyond the drawing stand-in's own. */
 static bool complete_integer(u32 name, i32 *v)
@@ -1246,7 +1291,7 @@ static void *complete_fn(const char *name)
     for (i = 0; i < MG_COUNT(k); i++)
         if (!strcmp(k[i].name, name)) return k[i].fn;
     /* Everything else of OpenGL ES 2.0 and its extensions: done, and nothing comes of it. */
-    return name[0] == 'g' && name[1] == 'l' ? (void *)g_Inert : NULL;
+    return name[0] == 'g' && name[1] == 'l' ? inert_for(name) : NULL;
 }
 
 void mg_gl_standin_set_complete(bool on) { g_complete = on; }

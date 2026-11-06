@@ -101,7 +101,9 @@ public class TextureView extends View {
         SurfaceTexture t = mTexture;
         if (t != null && t.meglerGpuNewest()) {
             // A frame on the graphics processor: drawn by the shell from its copy, scaled to the view and transformed as a bitmap's.
-            if (mShownGpu != t.getTimestamp() + 1) { mShownGpu = t.getTimestamp() + 1; if (mListener != null) mListener.onSurfaceTextureUpdated(t); }
+            // The listener hears of each new one, as of each bitmap (a video decoded on the graphics processor is a frame each
+            // time; the bitmap's stamp, which this went by, stays as it was).
+            if (mShownGpu != t.meglerGpuAt()) { mShownGpu = t.meglerGpuAt(); if (mListener != null) mListener.onSurfaceTextureUpdated(t); }
             int save = c.save();
             c.concat(mMatrix);
             Paint p = mLayerPaint != null ? mLayerPaint : mPaint;
@@ -119,6 +121,24 @@ public class TextureView extends View {
             c.restoreToCount(save);
         }
     }
+    /**
+     * A frame the shell has shown already, under the views (SurfaceTexture.meglerGpuFrame, shown): the view is not drawn
+     * again, and its listener is told on the main thread as draw() would tell it, once for the newest of the frames that
+     * came meanwhile.
+     */
+    public void meglerFrameShown() {
+        if (mUpdatePosted) return;
+        mUpdatePosted = true;
+        post(mUpdated);
+    }
+    private volatile boolean mUpdatePosted;
+    private final Runnable mUpdated = () -> {
+        mUpdatePosted = false;
+        SurfaceTexture t = mTexture;
+        if (t == null || mShownGpu == t.meglerGpuAt()) return;
+        mShownGpu = t.meglerGpuAt();
+        if (mListener != null) mListener.onSurfaceTextureUpdated(t);
+    };
     public Bitmap getBitmap() { return getWidth() > 0 && getHeight() > 0 ? getBitmap(getWidth(), getHeight()) : null; }
     public Bitmap getBitmap(int w, int h) { return isAvailable() && w > 0 && h > 0 ? getBitmap(Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)) : null; }
     public Bitmap getBitmap(Bitmap b) {

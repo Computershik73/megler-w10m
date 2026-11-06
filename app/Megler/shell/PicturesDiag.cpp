@@ -150,6 +150,19 @@ void copyPictures(StorageFolder const& folder, const std::string& package, std::
     }
 }
 
+/// The logs of Megler's own checks (shell/Checks.cpp: the Self-test's, the probe's, and the core's steps of the Self-test, each
+/// line on disk before the next) into the folder, each again when it has grown: megler.log has only their first and last lines,
+/// and LocalState is out of reach where no Device Portal is.
+void copyChecks(StorageFolder const& folder, std::map<std::wstring, uint64_t>& copied) {
+    for (const wchar_t* name : {L"megler-selftest.log", L"megler-selftest-steps.log", L"megler-probe.log"}) {
+        const uint64_t size = files::size(platform::localStateDirectory() + L"\\" + name);
+        auto at = copied.find(name);
+        if (size == 0 || (at != copied.end() && at->second == size)) continue;
+        copyOut(folder, name);
+        copied[name] = size;
+    }
+}
+
 /// The folder looked for and the flags put in place. Whatever goes wrong only costs the diagnosis: this runs at every start of
 /// every package of Megler's, and a throw out of a thread would end the app.
 StorageFolder lookAndPlace(const std::string& name) {
@@ -198,12 +211,13 @@ void start() {
         shellLog::write("diag: Pictures\\Megler\\diag\\" + name + " asks for this package's log: it is copied there every 10 s");
         shellLog::flush();
         copyOut(folder, L"megler.prev.log");
-        std::map<std::wstring, uint64_t> pictures;
+        std::map<std::wstring, uint64_t> pictures, checks;
         for (;;) {
             shellLog::flush();
             copyOut(folder, L"megler.log");
             try {
                 if (appPackage::isSingleApp()) copyPictures(folder, name, pictures);
+                else copyChecks(folder, checks);
             } catch (...) {
             }
             std::this_thread::sleep_for(std::chrono::seconds(10));

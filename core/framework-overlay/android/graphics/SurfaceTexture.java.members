@@ -41,15 +41,24 @@
     /** The id, whether or not it has been given out; 0 for none. */
     public int meglerGpuIdGiven() { return mMeglerGpuId; }
     /** A frame of `id`, w x h, is the shell's now (core/src/drivers/mg_java_ndk.c, on the thread that swapped): shown, and told. */
-    public void meglerGpuFrame(int id, int w, int h) {
+    public void meglerGpuFrame(int id, int w, int h) { meglerGpuFrame(id, w, h, false); }
+    /**
+     * The same; `shown`: the shell has shown the window with it already, the texture's video lying under the views of the
+     * window it composes (MediaCodec's pictures decoded on the graphics processor): the view is not drawn again for it, its
+     * listener only told, as Android tells it of each frame.
+     */
+    public void meglerGpuFrame(int id, int w, int h, boolean shown) {
         mMeglerGpuWidth = w;
         mMeglerGpuHeight = h;
         mMeglerGpuAt = System.nanoTime();
         android.view.View v = meglerView;
-        if (v != null) v.postInvalidate();
+        if (v != null && !shown) v.postInvalidate();
+        else if (v instanceof android.view.TextureView) ((android.view.TextureView) v).meglerFrameShown();
         OnFrameAvailableListener l = mListener;
         android.os.Handler hd = mHandler;
         if (l != null && hd != null) hd.post(() -> l.onFrameAvailable(this));
     }
     /** Whether the newest frame is the shell's, on the graphics processor, rather than a bitmap of this texture's (meglerFront). */
     public boolean meglerGpuNewest() { return mMeglerGpuId != 0 && mMeglerGpuAt != 0 && mMeglerGpuAt >= getTimestamp(); }
+    /** When the newest frame on the graphics processor came (System.nanoTime): a new one for every frame, 0 before the first. */
+    public long meglerGpuAt() { return mMeglerGpuAt; }

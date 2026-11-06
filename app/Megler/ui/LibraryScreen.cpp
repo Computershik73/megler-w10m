@@ -10,6 +10,7 @@
 #include "ui/AppShell.h"
 #include "ui/Components.h"
 #include "ui/GooglePlay.h"
+#include "ui/Ota.h"
 #include "ui/SeparateApps.h"
 
 namespace megler::app::ui {
@@ -84,9 +85,9 @@ public:
         column_.Padding(ThicknessHelper::FromLengths(16, 8, 16, 96));
         if (auto warnings = platformWarnings()) add(column_, warnings);
 
-        // Megler's own update from Pictures\Megler, while it is sent to the portal: Megler closes once Windows takes it,
-        // and it went with nothing said, the phone's screen then going off as Windows installed it for minutes (a Lumia 650's,
-        // from 574 to 610).
+        // Megler's own update (from Pictures\Megler, or downloaded from GitHub: ui/Ota.h), while it is installed: Megler closes
+        // once Windows takes it, and it went with nothing said, the phone's screen then going off as Windows installed it for
+        // minutes (a Lumia 650's, from 574 to 610).
         updateText_ = text("", font::bodyMedium, weightNormal(), p.onSurface);
         updateText_.TextWrapping(TextWrapping::Wrap);
         ProgressBar updateBar;
@@ -101,6 +102,24 @@ public:
         updateCard_.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
         setVisible(updateCard_, false);
         add(column_, updateCard_);
+
+        // A newer Megler downloaded from GitHub (ui/Ota.h), while it comes.
+        otaTitle_ = text("", font::titleMedium, weightMedium(), p.onSurface);
+        otaBar_ = ProgressBar();
+        otaBar_.Minimum(0);
+        otaBar_.Maximum(1);
+        otaBar_.Foreground(brush(p.primary));
+        otaBar_.Background(brush(p.secondaryContainer));
+        otaBar_.Margin(ThicknessHelper::FromLengths(0, 12, 0, 8));
+        otaDetail_ = text("", font::bodyMedium, weightNormal(), p.onSurfaceVariant);
+        auto otaColumn = vstack(0);
+        add(otaColumn, otaTitle_);
+        add(otaColumn, otaBar_);
+        add(otaColumn, otaDetail_);
+        otaCard_ = card(otaColumn, 12, 16);
+        otaCard_.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
+        setVisible(otaCard_, false);
+        add(column_, otaCard_);
 
         // The copy of a picked APK, while it runs.
         importTitle_ = text("", font::titleMedium, weightMedium(), p.onSurface);
@@ -168,9 +187,17 @@ public:
         setVisible(updateCard_, !updating.empty());
         if (!updating.empty() && updating != updateShown_) {
             updateShown_ = updating;
-            updateText_.Text(hs("Megler " + updating + ", copied to Pictures\\Megler, is being installed. Megler closes when Windows takes "
-                                "it, and Windows installs it, which takes a few minutes (more on a phone of 1 GB): leave the phone "
-                                "on, then open Megler again."));
+            updateText_.Text(hs("Megler " + updating + " is being installed. Megler closes when Windows takes it, and Windows installs it, "
+                                "which takes a few minutes (more on a phone of 1 GB): leave the phone on, then open Megler again."));
+        }
+        std::string otaVersion;
+        uint64_t otaGot = 0, otaTotal = 0;
+        const bool otaComing = ota::downloading(otaVersion, otaGot, otaTotal);
+        setVisible(otaCard_, otaComing);
+        if (otaComing) {
+            otaTitle_.Text(hs("Downloading Megler " + otaVersion));
+            otaBar_.Value(otaTotal ? double(otaGot) / double(otaTotal) : 0);
+            otaDetail_.Text(hs(formattedByteCount(otaGot) + " of " + formattedByteCount(otaTotal) + " from GitHub; then it is checked and installed"));
         }
         const std::string working = separateApps::working();
         setVisible(workCard_, !working.empty());
@@ -305,6 +332,10 @@ private:
 
     UIElement view_{nullptr};
     StackPanel column_{nullptr};
+    Border otaCard_{nullptr};
+    TextBlock otaTitle_{nullptr};
+    ProgressBar otaBar_{nullptr};
+    TextBlock otaDetail_{nullptr};
     Border importCard_{nullptr};
     TextBlock importTitle_{nullptr};
     ProgressBar importBar_{nullptr};

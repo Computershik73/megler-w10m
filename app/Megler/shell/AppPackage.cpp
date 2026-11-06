@@ -6,6 +6,7 @@
 #include "library/Library.h"
 #include "player/Session.h"
 #include "shell/Files.h"
+#include "shell/PickedFile.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
@@ -218,8 +219,10 @@ const SingleApp& single() {
         if (!files::read(install + L"\\MeglerApp.ini", text)) return s;
         s.package = iniValue(text, "package");
         s.label = iniValue(text, "label");
-        s.apkFolder = install + L"\\" + widen(iniValue(text, "apk"));
+        const std::string apk = iniValue(text, "apk");
         const std::wstring shared = sharedFolder();
+        // Since 645 the app's APK is in the shared folder (make: apk=shared:apks\<identity>\<token>); before, in the package.
+        s.apkFolder = apk.rfind("shared:", 0) == 0 ? shared + L"\\" + widen(apk.substr(7)) : install + L"\\" + widen(apk);
         if (!shared.empty()) s.androidRoot = shared + L"\\" + widen(iniValue(text, "root"));
         shellLog::write("app package: this is " + s.package + "'s own package; Android's files in " + narrow(s.androidRoot));
         return s;
@@ -258,7 +261,85 @@ void takeHandover() {
                     (hadOwn ? "; the app's own are in " + narrow(aside) : std::string()));
 }
 
-Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress) {
+namespace {
+
+/// The name of this build's folder of Android's files in the shared folder (android\<name>): its version, and on any Windows
+/// but a phone's the ABI of its native code too. The shared folder is the publisher's, which an x86 and an x64 Megler of one
+/// version both have on one PC: an x64 645's apps found the x86 one's files there ("libnativehelper.so: not a shared object
+/// of x86_64"). A phone's (32-bit ARM) keeps the name it always had.
+std::string androidRootName() {
+#if defined(_M_ARM64)
+    return versionString() + "-arm64-v8a";
+#elif defined(_M_X64)
+    return versionString() + "-x86_64";
+#elif defined(_M_IX86)
+    return versionString() + "-x86";
+#else
+    return versionString();
+#endif
+}
+
+/// The folder of the shared folder `entry`'s files are kept in for its package (make), in `folder`: the entry's own when it is
+/// there already (an app whose package was made before: nothing is copied), else a new one, apks\<identity>\<token>, its APK
+/// and splits copied into it (`picked`: read where it was picked), byte for byte (files::mend), and put in place whole; then
+/// its report, its icon and the build its report is of, as the library has them now. Empty, or why not.
+std::string keepInShared(const ApkEntry& entry, const std::string& identity, const std::vector<std::wstring>& splits,
+                         const PickedFile* picked, const std::function<void(const std::string&)>& progress, std::wstring& folder) {
+    const std::wstring apks = sharedFolder() + L"\\apks\\" + widen(identity);
+    if (entry.path.size() > apks.size() + 1 && _wcsnicmp(entry.path.c_str(), (apks + L"\\").c_str(), apks.size() + 1) == 0 &&
+        files::exists(entry.path)) {
+        folder = entry.path.substr(0, entry.path.find_last_of(L'\\'));
+    } else {
+        progress("Copying the APK to the shared folder…");
+        FILETIME time;
+        GetSystemTimeAsFileTime(&time);
+        folder = apks + L"\\" + widen(format("%08lx%08lx-%08lx", time.dwHighDateTime, time.dwLowDateTime, GetCurrentProcessId()));
+        const std::wstring part = folder + L".part";
+        files::removeTree(part);
+        if (!files::makeDirectories(part)) return format("The APK's folder in the shared folder could not be made (error %lu).", GetLastError());
+        uint64_t mended = 0;
+        const auto put = [&mended](const std::wstring& from, const std::wstring& to) {
+            return files::copy(from, to) && files::flush(to) && files::sameEnd(from, to, 1u << 20) && files::mend(from, to, mended);
+        };
+        std::string error;
+        if (picked)
+            error = picked->copyTo(part + L"\\app.apk");
+        else if (!put(entry.path, part + L"\\app.apk"))
+            error = format("The APK could not be copied to the shared folder (error %lu).", GetLastError());
+        if (error.empty() && !splits.empty() && !files::makeDirectory(part + L"\\app.apk.splits"))
+            error = format("The folder of the split APKs in the shared folder could not be made (error %lu).", GetLastError());
+        for (size_t i = 0; error.empty() && i < splits.size(); i++)
+            if (!put(entry.splitsDir + L"\\" + splits[i], part + L"\\app.apk.splits\\" + splits[i]))
+                error = format("The split APK %s could not be copied to the shared folder (error %lu).", narrow(splits[i]).c_str(), GetLastError());
+        if (error.empty() && !files::move(part, folder))
+            error = format("The APK's folder in the shared folder could not be put in place (error %lu).", GetLastError());
+        if (!error.empty()) {
+            files::removeTree(part);
+            return error;
+        }
+        if (mended)
+            shellLog::write(format("app package: %llu bytes of the APK's copy in the shared folder differed after the copy, and were written again",
+                                   (unsigned long long)mended));
+        shellLog::write("app package: the APK copied to " + narrow(folder) + ", " + formattedByteCount(entry.size));
+    }
+    // Small: each written beside and moved into place.
+    const std::wstring cached = Library::instance().directory() + L"\\" + widen(entry.id);
+    const std::wstring icon = !entry.iconPath.empty() && files::exists(entry.iconPath) ? entry.iconPath : entry.path + L".icon";
+    const std::pair<std::wstring, const wchar_t*> besides[] = {{files::exists(cached + L".json") ? cached + L".json" : entry.path + L".json", L"app.apk.json"},
+                                                             {icon, L"app.apk.icon"},
+                                                             {Library::instance().directory() + L"\\reports.version", L"reports.version"}};
+    for (const auto& [from, name] : besides) {
+        const std::wstring to = folder + L"\\" + name;
+        if (_wcsicmp(from.c_str(), to.c_str()) == 0 || !files::exists(from)) continue;
+        if (!files::copy(from, to + L".part") || !files::move(to + L".part", to))
+            shellLog::write(format("app package: %s could not be put beside the APK in the shared folder (error %lu)", narrow(name).c_str(), GetLastError()));
+    }
+    return std::string();
+}
+
+}  // namespace
+
+Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& progress, const PickedFile* picked) {
     Made made;
     auto fail = [&made](std::string why) {
         made.error = std::move(why);
@@ -282,7 +363,7 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     const std::string version = versionString();
 
     // Android's libcore and framework, once for each build: every app's package of this build reads them there.
-    const std::wstring root = shared + L"\\android\\" + widen(version);
+    const std::wstring root = shared + L"\\android\\" + widen(androidRootName());
     if (!files::exists(root + L"\\complete")) {
         if (!files::exists(install + L"\\android")) return fail("This Megler carries no Android libcore and framework (built without --libcore).");
         progress("Copying Android's files to the shared folder (once for this build of Megler)…");
@@ -416,7 +497,16 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     collect(install, L"", parts, skipped);
     for (const auto& s : skipped) shellLog::write("app package: left out, its name would need escaping: " + s);
 
-    progress(format("Packing %u files of Megler and the APK (%s)…", unsigned(parts.size()), formattedByteCount(entry.size).c_str()));
+    // The app's APK, its splits, its report and its icon in the shared folder, where the package's app reads them
+    // (MeglerApp.ini: apk=shared:...) and Megler does too. In the package itself, as before 645, Megler could not read them
+    // once Windows installed it as the Store installs an app: such a package shows another package none of its folders and
+    // refuses it its files (error 5 on a Lumia 650, 644), and Megler kept a second copy of each such app's APK. One copy
+    // now, which the app's next packages take as it is: Update All packs Megler's own files alone.
+    std::wstring folder;
+    if (const std::string error = keepInShared(entry, identity, splits, picked, progress, folder); !error.empty()) return fail(error);
+    made.apkFolder = folder.substr(shared.size() + 1);
+
+    progress(format("Packing %u files of Megler…", unsigned(parts.size())));
     megler_appx* a = megler_appx_begin(narrow(made.appx).c_str(), err, sizeof(err));
     if (!a) return fail(std::string("The package could not be begun: ") + err);
     // (A failure on the way makes the rest fail at once; finish says what it was.)
@@ -428,17 +518,9 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     for (const auto& [name, png] : logos) megler_appx_add_data(a, name.c_str(), png.data(), png.size());
     megler_appx_add_data(a, "AppxManifest.xml", manifestText.data(), manifestText.size());
     megler_appx_add_data(a, "resources.pri", pri.data(), pri.size());
-    const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=app\r\nroot=android\\" + version + "\r\n";
+    const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=shared:" + narrow(made.apkFolder) + "\r\nroot=android\\" +
+                            androidRootName() + "\r\n";
     megler_appx_add_data(a, "MeglerApp.ini", ini.data(), ini.size());
-    megler_appx_add_file(a, "app/app.apk", narrow(entry.path).c_str());
-    for (const auto& name : splits)
-        megler_appx_add_file(a, ("app/app.apk.splits/" + narrow(name)).c_str(), narrow(entry.splitsDir + L"\\" + name).c_str());
-    if (files::exists(entry.path + L".json")) megler_appx_add_file(a, "app/app.apk.json", narrow(entry.path + L".json").c_str());
-    // The icon as the library keeps it (beside Megler's copy, or in the library for an APK installed where it was picked).
-    const std::wstring iconFile = !entry.iconPath.empty() && files::exists(entry.iconPath) ? entry.iconPath : entry.path + L".icon";
-    if (files::exists(iconFile)) megler_appx_add_file(a, "app/app.apk.icon", narrow(iconFile).c_str());
-    const std::wstring stamp = Library::instance().directory() + L"\\reports.version";
-    if (files::exists(stamp)) megler_appx_add_file(a, "app/reports.version", narrow(stamp).c_str());
     progress("Signing the package…");
     if (!megler_appx_finish(a, key, err, sizeof(err))) return fail(std::string("The package could not be made: ") + err);
     shellLog::write("app package: " + narrow(made.appx) + " made, " + formattedByteCount(files::size(made.appx)) + ", for " + r.package);
@@ -574,19 +656,24 @@ PortalResult installThroughPortal(const Made& made, const std::function<void(con
 }
 
 /*
- * Windows 10 Mobile's deployment engine takes a packaged developer deployment with the option 0x8000 (its MinDeploy's; the
- * public DevelopmentMode, 2, is for a loose manifest and refused for a package), and ForceApplicationShutdown closes the app
- * the package updates -- Megler itself, for its own update. Each set of options is tried while the one before was refused
- * at once; a deployment that has begun is waited for.
+ * Windows's deployment engine installs a package as the Store installs an app (ForceApplicationShutdown, which closes the
+ * app the package updates -- Megler itself, for its own update -- or None), or, on Windows 10 Mobile, as a developer's
+ * package (the option 0x8000, its MinDeploy's packaged developer deployment; the public DevelopmentMode, 2, is for a loose
+ * manifest and refused for a package). A phone takes only so many developer's packages and refuses one more (0x80073d11,
+ * ERROR_DEV_SIDELOAD_LIMIT_EXCEEDED: a Megler 575 could not install Aurora Store through the Device Portal, which installs
+ * only so; a Lumia 650 had 20 of them, Megler's and its four apps' among them, each installed so by 612 to 639). The
+ * Store's way is not a developer's deployment: it goes first, as WinArchive's developer, whose way of installing this is,
+ * advised, and a developer's deployment only where it is refused. Each set of options is tried while the one before was
+ * refused at once; a deployment that has begun is waited for.
  */
 PortalResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress) {
     using namespace winrt::Windows::Management::Deployment;
     const DeploymentOptions mobileDevelopment = static_cast<DeploymentOptions>(0x8000);
-    const DeploymentOptions tries[] = {mobileDevelopment | DeploymentOptions::ForceApplicationShutdown, DeploymentOptions::ForceApplicationShutdown,
-                                       mobileDevelopment, DeploymentOptions::None};
+    const DeploymentOptions tries[] = {DeploymentOptions::ForceApplicationShutdown, DeploymentOptions::None,
+                                       mobileDevelopment | DeploymentOptions::ForceApplicationShutdown, mobileDevelopment};
     std::wstring uri = L"file:///" + path;
     std::replace(uri.begin(), uri.end(), L'\\', L'/');
-    std::string said;
+    std::string said, asTheStore;
     for (const DeploymentOptions options : tries) {
         try {
             PackageManager manager;
@@ -605,8 +692,10 @@ PortalResult installWithPackageManager(const std::wstring& path, const std::func
             said = format("0x%08x ", unsigned(e.code())) + narrow(e.message());
             shellLog::write(format("app package: the deployment engine could not be asked (options 0x%x): ", unsigned(options)) + said);
         }
+        if (!(unsigned(options) & 0x8000) && asTheStore.empty()) asTheStore = said;
     }
-    return {false, "Windows's deployment engine did not install it: " + said};
+    // What the Store's way was refused for first: a developer's deployment is refused for their number alone.
+    return {false, "Windows's deployment engine did not install it: as the Store installs, " + asTheStore + "; as a developer's package, " + said};
 }
 
 bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullName, bool replace) {
@@ -735,6 +824,18 @@ std::wstring gsfApk() {
 
 namespace {
 std::atomic<int> gPackageManager{0}; // 1 Windows's package manager answered (packageQuery), -1 it would not, 0 not asked
+
+/// Whether Windows counts `package` with the developer's packages, of which a phone takes only so many (0x80073d11:
+/// installWithPackageManager), and what signed it: "developer's, signed Developer", for the log.
+std::string howInstalled(const Package& package) {
+    static const char* const kinds[] = {"none", "Developer", "Enterprise", "Store", "System"};
+    try {
+        const unsigned kind = unsigned(package.SignatureKind());
+        return std::string(package.IsDevelopmentMode() ? "developer's" : "not a developer's") + ", signed " + (kind < 5 ? kinds[kind] : "?");
+    } catch (hresult_error const&) {
+        return "?";
+    }
+}
 }
 
 bool packageManagerWorks() { return gPackageManager.load() > 0; }
@@ -751,14 +852,29 @@ bool installedApps(std::vector<InstalledApp>& out, std::string& error, const std
         try {
             const std::wstring publisherId(Package::Current().Id().PublisherId());
             std::vector<InstalledApp> found;
+            // Once a run, for the log: how many of the phone's packages Windows counts as a developer's, and how Megler's are.
+            const bool tell = gPackageManager.load() != 1;
+            unsigned all = 0, developers = 0;
+            std::string own;
             for (auto const& package : winrt::Windows::Management::Deployment::PackageManager().FindPackagesForUser(L"")) {
                 const auto id = package.Id();
                 const std::wstring name(id.Name());
+                if (tell) {
+                    all++;
+                    try {
+                        if (package.IsDevelopmentMode()) developers++;
+                    } catch (hresult_error const&) {
+                    }
+                    if ((name == L"Megler" || name.compare(0, 10, L"MeglerApp.") == 0) && std::wstring(id.PublisherId()) == publisherId)
+                        own += "; " + narrow(name) + " " + howInstalled(package);
+                }
                 if (name.compare(0, 10, L"MeglerApp.") != 0 || std::wstring(id.PublisherId()) != publisherId) continue;
                 const auto v = id.Version();
                 found.push_back({narrow(name), format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision), narrow(std::wstring(id.FullName()))});
             }
-            if (gPackageManager.exchange(1) != 1) shellLog::write("app package: Windows's package manager lists the apps' packages");
+            if (gPackageManager.exchange(1) != 1)
+                shellLog::write(format("app package: Windows's package manager lists the apps' packages; %u of the %u packages are developer's",
+                                       developers, all) + own);
             if (reachable) reachable();
             out = std::move(found);
             return true;
@@ -853,9 +969,6 @@ PortalResult uninstallThroughPortal(const InstalledApp& app) {
 
 std::string meglerVersion() { return versionString(); }
 
-namespace {
-
-/// "0.1.0.354" before "0.1.0.358".
 bool olderVersion(const std::string& a, const std::string& b) {
     unsigned x[4] = {}, y[4] = {};
     sscanf_s(a.c_str(), "%u.%u.%u.%u", &x[0], &x[1], &x[2], &x[3]);
@@ -864,6 +977,8 @@ bool olderVersion(const std::string& a, const std::string& b) {
         if (x[i] != y[i]) return x[i] < y[i];
     return false;
 }
+
+namespace {
 
 uint64_t treeSize(const std::wstring& dir) {
     uint64_t total = 0;
@@ -880,7 +995,8 @@ void removeUnusedAndroidRoots(const std::vector<InstalledApp>& installed) {
     if (shared.empty()) return;
     const std::string current = versionString();
     for (const auto& name : files::listFolders(shared + L"\\android", L"*")) {
-        const std::string version = narrow(name);
+        // <version>, or on desktop Windows <version>-<ABI> (androidRootName): every ABI's of a version is kept alike.
+        const std::string version = narrow(name).substr(0, narrow(name).find('-'));
         // This build's, a newer one's (a Megler put back to an older build), and those packages are still of, stay.
         if (!olderVersion(version, current) ||
             std::any_of(installed.begin(), installed.end(), [&](const InstalledApp& a) { return a.version == version; }))
@@ -993,6 +1109,81 @@ bool canRead(const std::wstring& apk) {
     return h && ReadFile(h.get(), head, sizeof(head), &got, nullptr) && got == 4 && !memcmp(head, "PK\3\4", 4);
 }
 
+std::vector<std::wstring> reportedSplits(const std::wstring& apk) {
+    using namespace winrt::Windows::Data::Json;
+    std::vector<std::wstring> splits;
+    // The app's report, beside its APK (make: app.apk.json), names the splits it was read with; a bundle's are unpacked as
+    // split_<name>.apk (core/src/apk/mg_bundle.c). (A package's block map would list them, but Windows refuses another package
+    // the package's own files: AppxBlockMap.xml gave error 5 on a Lumia 650.)
+    std::string json;
+    if (!files::read(apk + L".json", json)) {
+        shellLog::write(format("app package: the report beside %s could not be read (error %lu)", narrow(apk).c_str(), GetLastError()));
+        return splits;
+    }
+    JsonObject o{nullptr};
+    if (!JsonObject::TryParse(widen(json), o) || !o.HasKey(L"splits") || o.GetNamedValue(L"splits").ValueType() != JsonValueType::Array)
+        return splits;
+    for (IJsonValue const& value : o.GetNamedArray(L"splits")) {
+        if (value.ValueType() != JsonValueType::String) continue;
+        const std::string name = "split_" + narrow(value.GetString()) + ".apk";
+        if (plainName(name) && name.find('/') == std::string::npos) splits.push_back(widen(name));
+    }
+    return splits;
+}
+
+bool inSharedApks(const std::wstring& path) {
+    const std::wstring shared = sharedFolder();
+    if (shared.empty()) return false;
+    const std::wstring apks = shared + L"\\apks\\";
+    return path.size() > apks.size() && _wcsnicmp(path.c_str(), apks.c_str(), apks.size()) == 0;
+}
+
+void sharedApkInstalled(const Made& made) {
+    const size_t slash = made.apkFolder.find_last_of(L'\\');
+    if (made.apkFolder.empty() || slash == std::wstring::npos) return;
+    const std::wstring dir = sharedFolder() + L"\\" + made.apkFolder.substr(0, slash), record = dir + L"\\installed.txt";
+    if (!files::write(record + L".part", narrow(made.apkFolder.substr(slash + 1))) || !files::move(record + L".part", record))
+        shellLog::write(format("app package: %s could not be written (error %lu): the APK's folder stays while Megler's library reads it",
+                               narrow(record).c_str(), GetLastError()));
+}
+
+void removeUnusedSharedApks(const std::vector<InstalledApp>& installed, const std::vector<std::wstring>& used) {
+    const std::wstring shared = sharedFolder();
+    if (shared.empty()) return;
+    const std::wstring apks = shared + L"\\apks";
+    FILETIME time;
+    GetSystemTimeAsFileTime(&time);
+    const uint64_t now = (uint64_t(time.dwHighDateTime) << 32) | time.dwLowDateTime, hour = 36000000000ull;
+    uint64_t freed = 0;
+    unsigned open = 0;
+    for (const auto& identity : files::listFolders(apks, L"*")) {
+        const std::wstring dir = apks + L"\\" + identity;
+        const bool isInstalled = std::any_of(installed.begin(), installed.end(), [&](const InstalledApp& a) { return widen(a.identity) == identity; });
+        std::string current;
+        if (!isInstalled) files::remove(dir + L"\\installed.txt");
+        else if (!files::read(dir + L"\\installed.txt", current)) current.clear();
+        for (const auto& token : files::listFolders(dir, L"*")) {
+            const std::wstring folder = dir + L"\\" + token;
+            if ((!current.empty() && narrow(token) == current) ||
+                std::any_of(used.begin(), used.end(), [&](const std::wstring& u) { return _wcsicmp(u.c_str(), folder.c_str()) == 0; }))
+                continue;
+            // A folder of the last hour may be a package's being made, which nothing names yet: its name begins with the time
+            // it was begun at (keepInShared).
+            const uint64_t begun = token.size() >= 16 ? std::wcstoull(token.substr(0, 16).c_str(), nullptr, 16) : 0;
+            if (begun && (begun > now || now - begun < hour)) continue;
+            const uint64_t size = files::size(folder + L"\\app.apk") + files::folderSize(folder + L"\\app.apk.splits");
+            if (files::removeTree(folder))
+                freed += size;
+            else
+                open++;
+        }
+        RemoveDirectoryW(dir.c_str()); // (only when nothing is left in it)
+    }
+    if (freed || open)
+        shellLog::write("app package: apps' APKs no package and no library entry uses removed from the shared folder, " + formattedByteCount(freed) +
+                        (open ? format("; %u still open in an app, left for the next time", open) : std::string()));
+}
+
 bool meglersStorageShared() {
     static const bool shared = !sharedFolder().empty() && files::exists(platform::localStateDirectory() + L"\\storage-in-shared.txt");
     return shared;
@@ -1043,6 +1234,43 @@ std::string selfUpdateVersion() {
     return gSelfUpdating ? gSelfUpdateTo : std::string();
 }
 
+PortalResult installOwnUpdate(const std::wstring& appx, const std::wstring& certificate, const std::string& version, const std::string& from) {
+    const std::wstring tried = platform::localStateDirectory() + L"\\update-tried-" + widen(version);
+    files::append(tried, "Megler " + versionString() + " installs " + version + "\r\n");
+    Made made;
+    made.appx = appx;
+    made.certificate = certificate;
+    made.identity = "Megler " + version;
+    shellLog::write("update: Megler " + version + " " + from + " (this is " + versionString() +
+                    "): installed by Windows's deployment engine, which closes this Megler");
+    // The screen stays on while the package goes: a phone that locks suspends Megler, and the try has no result.
+    {
+        std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
+        gSelfUpdateTo = version;
+    }
+    struct Updating {
+        Updating() { gSelfUpdating = true; }
+        ~Updating() { gSelfUpdating = false; }
+    } updating;
+    /*
+     * Windows's deployment engine reads the package where it lies (installWithPackageManager). The Device Portal is
+     * sent it from Megler's memory: a phone of 1 GB lets an app have 390 MB, and a Lumia 650's Megler 574 sending
+     * 610's 356 MB was ended by Windows with nothing said, three times. The portal only where the engine refuses.
+     */
+    const auto step = [](const std::string& said) { shellLog::write("update: " + said); };
+    PortalResult result = installWithPackageManager(made.appx, step);
+    if (!result.ok) {
+        shellLog::write("update: " + result.said + ": through the Device Portal instead");
+        result = installThroughPortal(made, step);
+    }
+    shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
+    // A portal that could not be reached, or dropped the connection while the package went (0x80072eff, 512), said nothing
+    // of the package: that try is one without a result, made again.
+    const bool unreached = !result.ok && result.said.rfind("The Device Portal could not be reached", 0) == 0;
+    files::append(tried, std::string(unreached ? "no result: " : "result: ") + (result.ok ? "installed: " : "not installed: ") + result.said + "\r\n");
+    return result;
+}
+
 void installCopiedUpdate() {
     if (isSingleApp()) return;
     std::thread([] {
@@ -1090,38 +1318,7 @@ void installCopiedUpdate() {
                 shellLog::write("update: Megler " + best + " is in Pictures\\Megler without Megler.cer beside it: not installed");
                 return;
             }
-            files::append(tried, "Megler " + versionString() + " installs " + best + "\r\n");
-            Made made;
-            made.appx = std::wstring(bestFile.Path());
-            made.certificate = std::wstring(certificate.Path());
-            made.identity = "Megler " + best;
-            shellLog::write("update: Megler " + best + " found in Pictures\\Megler (this is " + versionString() +
-                            "): installed by Windows's deployment engine, which closes this Megler");
-            // The screen stays on while the package goes: a phone that locks suspends Megler, and the try has no result.
-            {
-                std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
-                gSelfUpdateTo = best;
-            }
-            struct Updating {
-                Updating() { gSelfUpdating = true; }
-                ~Updating() { gSelfUpdating = false; }
-            } updating;
-            /*
-             * Windows's deployment engine reads the package where it lies (installWithPackageManager). The Device Portal is
-             * sent it from Megler's memory: a phone of 1 GB lets an app have 390 MB, and a Lumia 650's Megler 574 sending
-             * 610's 356 MB was ended by Windows with nothing said, three times. The portal only where the engine refuses.
-             */
-            const auto step = [](const std::string& said) { shellLog::write("update: " + said); };
-            PortalResult result = installWithPackageManager(made.appx, step);
-            if (!result.ok) {
-                shellLog::write("update: " + result.said + ": through the Device Portal instead");
-                result = installThroughPortal(made, step);
-            }
-            shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
-            // A portal that could not be reached, or dropped the connection while the package went (0x80072eff, 512), said nothing
-            // of the package: that try is one without a result, made again.
-            const bool unreached = !result.ok && result.said.rfind("The Device Portal could not be reached", 0) == 0;
-            files::append(tried, std::string(unreached ? "no result: " : "result: ") + (result.ok ? "installed: " : "not installed: ") + result.said + "\r\n");
+            installOwnUpdate(std::wstring(bestFile.Path()), std::wstring(certificate.Path()), best, "found in Pictures\\Megler");
         } catch (hresult_error const& e) {
             shellLog::write(format("update: Pictures\\Megler could not be read: 0x%08x ", unsigned(e.code())) + narrow(e.message()));
         }

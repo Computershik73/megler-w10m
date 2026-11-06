@@ -3007,6 +3007,79 @@ static void test_stop_signalled(mg_lib *lib)
     CHECK(handled > 100);
 }
 
+#if MG_ARCH_X86_64 || (MG_ARCH_X86 && MG_HOST_WINDOWS)
+/*
+ * A thread stopped as the collector stops one while the handler of a signal sent to it waits -- spinning in guest code
+ * (how 0), or in sigsuspend (how 1), as Boehm's and Mono's collectors park a thread for a whole collection of theirs:
+ * t_gcw_start (guest/t_basic.c) sends the signal to a spinner holding a mark in each register. Every one of them must be
+ * among what the collector looks at -- the registers mg_thread_suspend gives, those it gives of the code the thread was
+ * interrupted in, and the thread's stack from sp up -- at every stop, or an object the interrupted code held in that
+ * register alone could be freed under it meanwhile.
+ */
+#if MG_ARCH_X86_64
+#define GCW_MARK 0x6d67000057410000ull
+#define GCW_REGS 15
+#else
+#define GCW_MARK 0x57410000ull
+#define GCW_REGS 7
+#endif
+
+/* Which mark a word is, as a bit (k for register k's), or 0. */
+static u32 gcw_mark_bit(mg_addr w)
+{
+    u64 k = (u64)w - GCW_MARK;
+    return k < GCW_REGS ? 1u << k : 0;
+}
+
+static void test_stop_in_handler(mg_lib *lib, int how)
+{
+    void *stack[2] = { NULL, NULL };
+    mg_thread_regs regs;
+    mg_thread *h = NULL;
+    const u32 all = (1u << GCW_REGS) - 1;
+    u32 missing = 0, first_regs = 0, first_was = 0, first_stack = 0;
+    int tid, i, k, stopped = 0, short_of = 0;
+    long done;
+    tid = FN(lib, int (*)(int, void **), "t_gcw_start")(how, stack);
+    CHECK(tid > 0);
+    if (tid > 0) h = mg_gthread_host_of_tid(tid);
+    CHECK(h != NULL);
+    for (i = 0; h && i < 200; i++) {
+        u32 in_regs = 0, in_was = 0, on_stack = 0;
+        u64 until;
+        if (!mg_thread_suspend(h, &regs)) continue;
+        stopped++;
+        /* (The words the collector takes, as it takes them: dvm/mg_dvm_gc.c, conservative_roots and scan_words.) */
+        for (k = 0; k < regs.n; k++) in_regs |= gcw_mark_bit(regs.r[k]);
+        for (k = 0; k < regs.n_was; k++) in_was |= gcw_mark_bit(regs.was[k]);
+        if (regs.sp >= (mg_addr)stack[0] && regs.sp < (mg_addr)stack[1]) {
+            const mg_addr *w = (const mg_addr *)MG_ALIGN_UP(regs.sp, sizeof(mg_addr));
+            for (; w + 1 <= (const mg_addr *)stack[1]; w++) on_stack |= gcw_mark_bit(*w);
+        }
+        mg_thread_resume(h);
+        if (stopped == 1) {
+            first_regs = in_regs;
+            first_was = in_was;
+            first_stack = on_stack;
+        }
+        if ((in_regs | in_was | on_stack) != all) {
+            short_of++;
+            missing |= all & ~(in_regs | in_was | on_stack);
+        }
+        until = mg_time_monotonic_ns() + (u64)(i % 5) * 10000ull;
+        while (mg_time_monotonic_ns() < until) {}
+    }
+    done = FN(lib, long (*)(void), "t_gcw_finish")();
+    say("  stopped %d times while its handler waited %s: %d with registers it was interrupted with nowhere the collector looks (mask %x); "
+        "at the first, marks in its registers %x, in those given of the code it interrupted %x, on its stack %x; the handler's end %ld",
+        stopped, how ? "in sigsuspend" : "in guest code", short_of, (unsigned)missing, (unsigned)first_regs, (unsigned)first_was,
+        (unsigned)first_stack, done);
+    CHECK_INT(stopped, 200);
+    CHECK_INT(short_of, 0);
+    CHECK_INT(done, 0);
+}
+#endif
+
 static void test_library(mg_lib *lib, const char *what, const char *scratch)
 {
     char buf[128], word[16];
@@ -3087,11 +3160,47 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(int), "t_big_frame")(10), 56);
     /* Signals between threads: a thread stopped and let go twenty times, wherever it was found. */
     CHECK_INT(FN(lib, int (*)(int), "t_signals")(20), 0);
+    /* A thread stopped as the collector stops one, 20000 times while signals keep sending it back: its registers its own. */
     test_stop_signalled(lib);
+#if MG_ARCH_X86_64 || (MG_ARCH_X86 && MG_HOST_WINDOWS)
+    /* And one stopped while a signal's handler waits on it, spinning and in sigsuspend: the interrupted code's registers too. */
+    test_stop_in_handler(lib, 0);
+    test_stop_in_handler(lib, 1);
+#endif
+    /* The registers a function keeps for its caller, as they were after each of 300 signals to a thread spinning with marks
+       in them, each sent some microseconds after its handler ran for the one before: on Windows, on its way back from
+       that interruption (host/mg_host_win32.c, mg_thread_interrupt). */
     {
-        char report[320];
+        long changed = FN(lib, long (*)(int), "t_signal_regs")(300);
+        if (changed > 0) say("  registers that came back changed, the first time: %s", FN(lib, const char *(*)(long), "t_signal_regs_seen")(0));
+        CHECK_INT(changed, 0);
+    }
+    {
+        char report[448];
         mg_thread_interrupt_report(report, sizeof(report));
         say("  threads interrupted in guest code: %s", report);
+    }
+    /* Sixteen threads in rounds for a second, short turns on a normal and a recursive mutex: no round stalls. (When a
+       woken waiter that lost the race took the lock as uncontended, a thread was left asleep on a free mutex: on this
+       PC's x64 build one round in about a thousand, and t_threads hung now and then.) After the checks that time
+       waits: just before t_wait_herd it pushed that one's ratio past its bound in a third of the runs. */
+    {
+        u64 t0 = mg_time_monotonic_ns();
+        int rounds = FN(lib, int (*)(int, int, int), "t_mutex_stress")(16, 20, 1000);
+        say("  %d rounds of 16 threads taking two mutexes 20 times each, in %d ms (-2: a round stalled)", rounds,
+            (int)((mg_time_monotonic_ns() - t0) / 1000000));
+        CHECK(rounds >= 100);
+    }
+    /* A reader kept out by a waiting writer goes in when the writer gives up (pthread_rwlock_timedwrlock): it slept on
+       until the next unlock. */
+    CHECK_INT(FN(lib, int (*)(void), "t_rwlock_writer_gives_up")(), 0);
+    /* A timed rwlock wait ends at its deadline however often it is woken: a writer waits 250 ms for the lock while ten
+       readers let go of it one by one every 100 ms. (Each wait was given the whole timeout again: woken by every
+       unlock, the writer waited on until the last reader had gone, a second on, and took the lock.) */
+    {
+        int ms = -1, e = FN(lib, int (*)(int *), "t_rwlock_deadline")(&ms);
+        say("  a writer's 250 ms pthread_rwlock_timedwrlock, readers leaving every 100 ms: %d after %d ms", e, ms);
+        CHECK(e == GE_TIMEDOUT && ms >= 240 && ms < 600);
     }
 
     /* Files, the made-up /proc, properties, dlopen. */

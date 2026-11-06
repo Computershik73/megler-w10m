@@ -14,6 +14,7 @@
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/GooglePlay.h"
+#include "ui/Ota.h"
 #include "ui/SeparateApps.h"
 #include "ui/SharedFolders.h"
 #include "ui/Theme.h"
@@ -457,6 +458,8 @@ void AppShell::poll() {
         tellAskedInstalls();
         // Google Play or not, asked at the first start; once wanted, Megler's own installed (ui/GooglePlay.h).
         googlePlay::tick(*this);
+        // A newer Megler on GitHub, for this Windows and processor: offered, downloaded and installed (ui/Ota.h).
+        ota::tick(*this);
         // An app's own package opens its app as soon as the library has it read: straight into the player when it can
         // run here, else its page, which says why not. Before the player, Megler's folders the app has not got are offered
         // (ui/SharedFolders.h), once the phone's folders are known.
@@ -505,9 +508,10 @@ void AppShell::updateDisplayRequest() {
     // suspends us.
     const session::State state = session::snapshot().state;
     // And while packages are installed: an app's own package made and installed (or updated, or uninstalled) through the
-    // portal, each of Update All's, and Megler's own update from Pictures\Megler. A phone that locks meanwhile suspends
-    // Megler, and the portal's upload ends with no result (the owner asked for it, 2026-11-02).
-    const bool installing = !separateApps::working().empty() || appPackage::selfUpdating();
+    // portal, each of Update All's, and Megler's own update from Pictures\Megler or GitHub, its download too (ui/Ota.h). A
+    // phone that locks meanwhile suspends Megler, and the portal's upload ends with no result (the owner asked for it,
+    // 2026-11-02), and the download stops.
+    const bool installing = !separateApps::working().empty() || appPackage::selfUpdating() || ota::busy();
     // And always, while Megler is in front, under the flag keep-screen-on (LocalState\flags): a phone left waiting for the
     // next package, which is copied to it and installed from it, or for a test, is not to lock meanwhile.
     const bool wanted = state == session::State::starting || state == session::State::running || checks::running() || installing ||

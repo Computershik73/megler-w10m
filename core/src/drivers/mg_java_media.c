@@ -20,6 +20,13 @@
  *
  * A frame handed to Java (nextFrame) is the shell's picture, kept until freeFrame; renderFrame turns it into the
  * Bitmap that MediaCodec then draws into the app's Surface. Sound is 16-bit, one or two channels.
+ *
+ * A shell's decoder on the graphics processor (Media Foundation's with a Direct3D 11 device: DXVA) gives pictures that
+ * stay there, already turned into colour (MEGLER_CODEC_GPU). For a TextureView's texture, showFrame makes such a picture
+ * the texture's newest frame on the graphics processor, as an OpenGL ES frame is (SurfaceTexture.meglerGpuFrame), and the
+ * view draws it from there: nothing is copied through the memory, no colour is worked out by the processor, nothing is
+ * uploaded again. Where the picture is wanted in memory (a SurfaceView's software buffer, a texture an app samples with
+ * OpenGL itself) renderFrame reads it there first, once.
  */
 #include "mg_java.h"
 
@@ -169,8 +176,9 @@ static void pull_pictures(mg_mcodec *c, bool all)
         memset(&pic, 0, sizeof(pic));
         h = g_host.pull_picture(g_host.user, c->dec, &pic);
         if (!h) break;
-        if (pic.width <= 0 || pic.height <= 0 || !pic.data || (pic.format == MEGLER_CODEC_NV12 && !pic.chroma) ||
-            (pic.format != MEGLER_CODEC_NV12 && pic.format != MEGLER_CODEC_RGBA)) {
+        if (pic.width <= 0 || pic.height <= 0 || (pic.format != MEGLER_CODEC_GPU && !pic.data) || (pic.format == MEGLER_CODEC_NV12 && !pic.chroma) ||
+            (pic.format != MEGLER_CODEC_NV12 && pic.format != MEGLER_CODEC_RGBA && pic.format != MEGLER_CODEC_BGRA && pic.format != MEGLER_CODEC_GPU) ||
+            (pic.format == MEGLER_CODEC_GPU && (!g_host.read_picture || !g_host.show_picture))) {
             if (g_host.release_picture) g_host.release_picture(g_host.user, h);
             c->failed++;
             mg_warn("media codec: the shell's %s decoder gave a picture that cannot be shown (format %d, %dx%d)", kind_name(c->kind), pic.format, pic.width,
@@ -192,7 +200,9 @@ static void pull_pictures(mg_mcodec *c, bool all)
         *p = f;
         c->nsorted++;
         if (!c->pictures++) mg_info("media codec: the first %s picture, %dx%d %s, at %lld ms", kind_name(c->kind), pic.width, pic.height,
-                                   pic.format == MEGLER_CODEC_NV12 ? "NV12" : "RGBA", (long long)(pic.time_us / 1000));
+                                   pic.format == MEGLER_CODEC_NV12 ? "NV12" : pic.format == MEGLER_CODEC_RGBA ? "RGBA" : pic.format == MEGLER_CODEC_BGRA ? "BGRA"
+                                                                                                                    : "on the graphics processor",
+                                   (long long)(pic.time_us / 1000));
     }
     keep = all ? 0 : g_host.reorder + c->learnt;
     while (c->nsorted > keep) {
@@ -666,7 +676,35 @@ u8 *mg_mcodec_next_pcm(mg_mcodec *c, i64 info[3], size_t *bytes)
     return out;
 }
 
-const megler_codec_picture *mg_mcodec_frame_picture(const mg_mframe *f) { return f ? &f->p : NULL; }
+/*
+ * A picture on the graphics processor is read into memory only where something reads it there: a SurfaceView's software
+ * buffer, a texture an app samples with OpenGL itself. A TextureView shows it where it is (mg_mcodec_frame_show).
+ */
+const megler_codec_picture *mg_mcodec_frame_picture(mg_mframe *f)
+{
+    megler_codec_picture mem;
+    if (!f) return NULL;
+    if (f->p.format != MEGLER_CODEC_GPU) return &f->p;
+    memset(&mem, 0, sizeof(mem));
+    if (!g_host.read_picture || !g_host.read_picture(g_host.user, f->picture, &mem) || !mem.data || mem.width != f->p.width || mem.height != f->p.height ||
+        (mem.format != MEGLER_CODEC_NV12 && mem.format != MEGLER_CODEC_RGBA && mem.format != MEGLER_CODEC_BGRA) || (mem.format == MEGLER_CODEC_NV12 && !mem.chroma)) {
+        mg_note_once("media codec: a picture on the graphics processor could not be read into memory: it is not shown");
+        return NULL;
+    }
+    mem.time_us = f->p.time_us;
+    f->p = mem;
+    return &f->p;
+}
+
+bool mg_mcodec_frame_on_gpu(const mg_mframe *f) { return f && f->p.format == MEGLER_CODEC_GPU; }
+
+int mg_mcodec_frame_show(mg_mframe *f, i32 texture_id)
+{
+    int shown;
+    if (!f || texture_id <= 0 || f->p.format != MEGLER_CODEC_GPU || !g_host.show_picture) return 0;
+    shown = g_host.show_picture(g_host.user, f->picture, (int)texture_id);
+    return shown >= 0 && shown <= 2 ? shown : 0;
+}
 
 void mg_mcodec_free_frame(mg_mframe *f) { frame_free(f); }
 
@@ -770,14 +808,16 @@ bool mg_mcodec_render(const megler_codec_picture *p, void *bgra, i32 width, i32 
     if (!p || !bgra || width <= 0 || height <= 0) return false;
     w = width < p->width ? width : p->width;
     h = height < p->height ? height : p->height;
-    if (p->format == MEGLER_CODEC_RGBA) {
+    if (p->format == MEGLER_CODEC_GPU) return false;
+    if (p->format == MEGLER_CODEC_RGBA || p->format == MEGLER_CODEC_BGRA) {
+        const int red = p->format == MEGLER_CODEC_RGBA ? 0 : 2;
         for (y = 0; y < h; y++) {
             const u8 *s = p->data + (size_t)y * (size_t)p->stride;
             u8 *d = (u8 *)bgra + (size_t)y * (size_t)stride;
             for (x = 0; x < w; x++, s += 4, d += 4) {
-                d[0] = s[2];
+                d[0] = s[2 - red];
                 d[1] = s[1];
-                d[2] = s[0];
+                d[2] = s[red];
                 d[3] = 255;
             }
         }
@@ -857,10 +897,15 @@ N(Media_renderFrame)
     i64 bm = bitmap_of(c->args[1].l);
     c->ret.j = 0;
     if (!bm || !mg_java_gfx_bitmap_info(bm, &b)) return;
-    if (!mg_mcodec_render(mg_mcodec_frame_picture((const mg_mframe *)(mg_addr)c->args[0].j), b.pixels, b.width, b.height, b.stride)) return;
+    if (!mg_mcodec_render(mg_mcodec_frame_picture((mg_mframe *)(mg_addr)c->args[0].j), b.pixels, b.width, b.height, b.stride)) return;
     mg_java_gfx_bitmap_changed(bm);
     c->ret.j = 1;
 }
+
+/* showFrame(long frame, int texture): a picture on the graphics processor made the newest frame of a TextureView's texture
+   (SurfaceTexture.meglerGpuId), drawn from there: 1, for the view to draw; 2, shown already under the views, the view not to
+   be drawn again; 0 where it is not on it or cannot be shown so (renderFrame then). */
+N(Media_showFrame) { c->ret.i = mg_mcodec_frame_show((mg_mframe *)(mg_addr)c->args[0].j, c->args[1].i); }
 
 N(Media_freeFrame) { mg_mcodec_free_frame((mg_mframe *)(mg_addr)c->args[0].j); }
 N(Media_flush) { mg_mcodec_flush(CODEC); }
@@ -875,6 +920,7 @@ static const mg_jhle k_media[] = {
     { "megler/MediaCodecNative", "nextFrame", NULL, Media_nextFrame },
     { "megler/MediaCodecNative", "nextPcm", NULL, Media_nextPcm },
     { "megler/MediaCodecNative", "renderFrame", NULL, Media_renderFrame },
+    { "megler/MediaCodecNative", "showFrame", NULL, Media_showFrame },
     { "megler/MediaCodecNative", "freeFrame", NULL, Media_freeFrame },
     { "megler/MediaCodecNative", "flush", NULL, Media_flush },
     { "megler/MediaCodecNative", "destroy", NULL, Media_destroy },
