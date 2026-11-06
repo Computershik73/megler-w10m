@@ -253,10 +253,16 @@ public final class MicroG {
         for (ProviderInfo p : providers) if (p.name != null && p.name.startsWith("org.microg.")) return true;
         return false;
     }
+    /**
+     * Whether a provider's authority may be Google Play services': theirs are com.google's -- all 49 of Google's own 26.41, all
+     * but microG's subscribedfeeds of its -- so another is not worth reading GmsCore for (until it was read for something else).
+     */
+    public static boolean mayBeGmsAuthority(String authority) {
+        return authority != null && (loaded() != null || authority.startsWith("com.google.") || "subscribedfeeds".equals(authority));
+    }
     public static ContentProvider provider(String authority) {
-        // Every authority but the app's own and Android's few asks here (ContentResolver): Google Play services' are com.google's
-        // -- all 49 of Google's own 26.41, all but microG's subscribedfeeds of its -- so another is not worth reading GmsCore for.
-        if (authority == null || (loaded() == null && !authority.startsWith("com.google.") && !"subscribedfeeds".equals(authority))) return null;
+        // (Every authority but the app's own and Android's few asks here: ContentResolver.)
+        if (!mayBeGmsAuthority(authority)) return null;
         MicroG g = get();
         if (g == null) return null;
         g.attachOnMain();
@@ -774,7 +780,9 @@ public final class MicroG {
         try { return (String) Intent.class.getMethod("getIdentifier").invoke(i); } catch (Throwable t) { return null; }
     }
     public static boolean unbind(ServiceConnection conn) {
-        MicroG g = get(); if (g == null) return false;
+        // (Nothing is bound to GmsCore before it was read: Android System WebView's unbinding of its own service had Aurora
+        // Store read it whole, 4.5 s on a Lumia 650.)
+        MicroG g = loaded(); if (g == null) return false;
         Binding b;
         synchronized (g.bindings) { b = g.bindings.remove(conn); }
         if (b == null) return false;

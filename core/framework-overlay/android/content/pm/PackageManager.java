@@ -159,8 +159,9 @@ public class PackageManager {
         // on a Lumia 650), which no app's authority is.
         for (megler.Manifest.Component p : megler.Manifest.providers)
             if (p.authorities != null && java.util.Arrays.asList(p.authorities.split(";")).contains(authority)) return provider(p);
-        // (microG's own first when it is the Google Play services here, as megler.GmsProviders answers: its GServices.)
-        android.content.pm.PackageInfo gms = megler.MicroG.packageInfo(megler.GooglePackages.GMS);
+        // (microG's own first when it is the Google Play services here, as megler.GmsProviders answers: its GServices. Only for
+        // an authority that may be theirs: Spotify's question for another had GmsCore read whole, 3.8 s on a Lumia 650.)
+        android.content.pm.PackageInfo gms = megler.MicroG.mayBeGmsAuthority(authority) ? megler.MicroG.packageInfo(megler.GooglePackages.GMS) : null;
         boolean microg = megler.MicroG.isMicroG();
         if (microg && gms != null && gms.providers != null) for (ProviderInfo p : gms.providers)
             if (p.authority != null && java.util.Arrays.asList(p.authority.split(";")).contains(authority)) return p;
