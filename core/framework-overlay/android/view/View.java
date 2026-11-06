@@ -1064,13 +1064,16 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     void invalidateParent() { meglerDirty(0, 0, getWidth(), getHeight(), false); }
     /*
      * Megler: and the parent that looks at it is told, as Android's hardware-accelerated invalidation goes up through
-     * ViewParent.onDescendantInvalidated: the nearest ViewGroup above whose class has one of its own (looked up once a
-     * class) -- Compose's AndroidViewHolder, which records again the Compose layer that draws its views
-     * (layoutNode.invalidateLayer); Compose's AndroidViewsHandler, which stops there. One that calls super goes on up from
-     * itself (ViewGroup.onDescendantInvalidated), as Android's does; what that invalidates of the view's own is quiet
-     * (meglerInvalidateQuietly: its lists and its place on the screen, its parents not told again). Without it a view in an
-     * AndroidView was drawn once, as Compose recorded its layer, and never again: RUTUBE's player, a SurfaceView in one, got
-     * its film's frames and stayed black.
+     * ViewParent.onDescendantInvalidated: the nearest ViewGroup above whose class has one of its own -- Compose's
+     * AndroidViewHolder, which records again the Compose layer that draws its views (layoutNode.invalidateLayer); Compose's
+     * AndroidViewsHandler, which stops there. One that calls super goes on up from itself (ViewGroup.onDescendantInvalidated),
+     * as Android's does; what that invalidates of the view's own is quiet (meglerInvalidateQuietly: its lists and its place
+     * on the screen, its parents not told again). Without it a view in an AndroidView was drawn once, as Compose recorded its
+     * layer, and never again: RUTUBE's player, a SurfaceView in one, got its film's frames and stayed black.
+     *
+     * Whether a group's class has one is looked up as the group is made, once a class (ViewGroup.mMeglerToldOfDescendants),
+     * not as a view is invalidated: an app with no such group anywhere -- most -- pays one static read an invalidation
+     * (ViewGroup.sMeglerAnyToldOfDescendants), and one with them a field read for each parent above.
      */
     private static boolean sQuiet;
     /** invalidate() without telling the parents (ViewGroup.onDescendantInvalidated tells them itself). */
@@ -1080,7 +1083,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         try { invalidate(); } finally { sQuiet = was; }
     }
     private static final java.util.concurrent.ConcurrentHashMap<Class<?>, Boolean> sOwnsDescendantInvalidated = new java.util.concurrent.ConcurrentHashMap<>();
-    private static boolean ownsDescendantInvalidated(Class<?> c) {
+    static boolean ownsDescendantInvalidated(Class<?> c) {
         Boolean own = sOwnsDescendantInvalidated.get(c);
         if (own == null) {
             own = false;
@@ -1099,11 +1102,11 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     }
     /** The nearest parent above `from` with an onDescendantInvalidated of its own told that `target` changed. */
     static void meglerTellParents(View from, View target) {
-        if (Looper.myLooper() != Looper.getMainLooper()) return;
+        if (!ViewGroup.sMeglerAnyToldOfDescendants) return;
         View child = from;
         for (ViewGroup p = from.mParent; p != null; child = p, p = p.mParent) {
-            if (!ownsDescendantInvalidated(p.getClass())) continue;
-            p.onDescendantInvalidated(child, target);
+            if (!p.mMeglerToldOfDescendants) continue;
+            if (Looper.myLooper() == Looper.getMainLooper()) p.onDescendantInvalidated(child, target);
             return;
         }
     }

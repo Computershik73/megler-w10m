@@ -141,8 +141,15 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         if (t.getBoolean(megler.S.ViewGroup_animateLayoutChanges, false)) mTransition = new android.animation.LayoutTransition();
         t.recycle();
     }
+    /** Megler: this group's class has an onDescendantInvalidated of its own, which its descendants' invalidations call
+     *  (View.meglerTellParents); and whether any group made so far has one. */
+    boolean mMeglerToldOfDescendants;
+    static boolean sMeglerAnyToldOfDescendants;
     /* (Android's ViewGroup sets the flag itself: setWillNotDraw is a subclass's to override, and its fields are not there yet.) */
-    private void init() { meglerWillNotDraw(true); }
+    private void init() {
+        meglerWillNotDraw(true);
+        if (View.ownsDescendantInvalidated(getClass())) mMeglerToldOfDescendants = sMeglerAnyToldOfDescendants = true;
+    }
 
     // ---- children
     public int getChildCount() { return mChildrenCount; }
