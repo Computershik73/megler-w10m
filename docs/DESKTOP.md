@@ -234,6 +234,16 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   back (without that, the process ended there).
 - `tools/build-desktop.sh x86 tests` (through WOW64): 5322 checks, 0 failed
   (now and then 1 under load: a timing check of a few milliseconds).
+- The registers a function keeps for its caller, kept across signals on
+  every ABI (t_signal_regs: a thread spinning with a mark in each, Android's
+  and Windows' both, sent 300 signals, each some microseconds after its
+  handler ran for the one before, so that the next finds it on its way back
+  from the landing): none came back changed on x64, x86, Linux x86_64, ARM
+  (Thumb-2 and ARM mode, qemu-arm) and ARM64 (qemu-aarch64) -- 5333, 5324,
+  5331, 5445 and 5322 checks with it. With x64's check of a thread stopped in
+  the kernel skipped, 344 of 2000 `mg_tests --load` calls with 8 processes at
+  once had rbx 0 and rsi and rdi addresses on the thread's stack, from 442
+  threads sent on from inside NtContinue; 0 of 2000 with it, 492 left there.
 - A library of Go's: a c-shared one for android/amd64 that Go 1.27.1 made
   here (with the NDK's clang for cgo; not in the repository), loaded by
   `mg_tests --load` on x64 and on WSL's Linux: its 468 accesses of `%fs`
