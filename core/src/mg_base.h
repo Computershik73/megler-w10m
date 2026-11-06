@@ -188,8 +188,15 @@ typedef int64_t i64;
 #endif
 
 #define MG_COUNT(a) (sizeof(a) / sizeof((a)[0]))
-#define MG_ALIGN_UP(x, a) (((x) + ((a) - 1)) & ~((a) - 1))
-#define MG_ALIGN_DOWN(x, a) ((x) & ~((a) - 1))
+/*
+ * x rounded up or down to a multiple of a, a power of two. The mask is as wide as x and a together (0 * (x) brings x's type
+ * in; x has no side effects where these are used): with a of 32 bits, as MG_PAGE is (4096u), and a 64-bit x, a mask of a's
+ * width alone cleared x's upper 32 bits. On a 64-bit processor a mapping of 4 GB or more was made a size of 0 so, and the
+ * pages of Chromium's 16 GB PartitionAlloc pool were none of the app's: a page madvise gave back was never committed again
+ * when written (the WebView's first page, on x64).
+ */
+#define MG_ALIGN_UP(x, a) (((x) + ((a) - 1)) & ~((a) - 1 + 0 * (x)))
+#define MG_ALIGN_DOWN(x, a) ((x) & ~((a) - 1 + 0 * (x)))
 
 /* Guest addresses are host addresses: one address space, 32 bits wide on the phone. */
 typedef uintptr_t mg_addr;

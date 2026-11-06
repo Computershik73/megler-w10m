@@ -1668,6 +1668,28 @@ static void test_mmap_madvise(const char *scratch)
     CHECK(munmap_(p, 4 * MB) == 0);
     mg_mmap_usage(&anon3, NULL);
     CHECK(anon3 == anon0);
+#if MG_GUEST_LP64
+    /*
+     * A mapping of 4 GB or more, with no access, as Chromium's PartitionAlloc reserves its 16 GB pools on a 64-bit
+     * processor: a page given access far into it is written, given back, and written again -- committed again, zero.
+     * Its size was once taken as its lower 32 bits (MG_ALIGN_UP), 0, and the page given back was none of the app's.
+     */
+    {
+        size_t pool = (size_t)16 << 30, at = ((size_t)8 << 30) + 0x358000;
+        u8 *q = (u8 *)mmap_(NULL, pool, NONE, PRIVATE | ANONYMOUS, -1, 0);
+        CHECK(q && q != (u8 *)(mg_addr)-1);
+        if (q && q != (u8 *)(mg_addr)-1) {
+            CHECK(mprotect_(q + at, 16384, RW) == 0);
+            q[at + 0x800] = 7;
+            CHECK(madvise_(q + at, 16384, DONTNEED) == 0);
+            q[at + 0x800] = 9;
+            CHECK(q[at + 0x800] == 9 && q[at + 0x801] == 0);
+            CHECK(munmap_(q, pool) == 0);
+        }
+        say("  16 GB with no access, a page 8 GB in given access, given back and written again: %s",
+            q && q != (u8 *)(mg_addr)-1 ? "done" : "NOT MAPPED");
+    }
+#endif
 done:
     free(data);
     free(path);
