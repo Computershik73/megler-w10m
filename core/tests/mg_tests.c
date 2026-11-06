@@ -3017,6 +3017,14 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(FN(lib, int (*)(int), "t_big_frame")(10), 56);
     /* Signals between threads: a thread stopped and let go twenty times, wherever it was found. */
     CHECK_INT(FN(lib, int (*)(int), "t_signals")(20), 0);
+    /* The registers a function keeps for its caller, as they were after each of 300 signals to a thread spinning with marks
+       in them, each sent some microseconds after its handler ran for the one before: on Windows, on its way back from
+       that interruption (host/mg_host_win32.c, mg_thread_interrupt). */
+    {
+        long changed = FN(lib, long (*)(int), "t_signal_regs")(300);
+        if (changed > 0) say("  registers that came back changed, the first time: %s", FN(lib, const char *(*)(long), "t_signal_regs_seen")(0));
+        CHECK_INT(changed, 0);
+    }
     {
         char report[320];
         mg_thread_interrupt_report(report, sizeof(report));
