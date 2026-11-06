@@ -16,7 +16,8 @@ public final class MicroG {
     /** The folder of the services every app shares (core/src/run/mg_run.c). */
     public static final String SHARED = "/data/megler-services";
     private static final String NS = "http://schemas.android.com/apk/res/android";
-    private static MicroG instance;
+    /* Read without the class's lock (loaded): get() holds it while GmsCore is read, for seconds. */
+    private static volatile MicroG instance;
     private static boolean checked;
     private final PackageInfo info = new PackageInfo();
     private final ArrayList<Entry> services = new ArrayList<>();
@@ -76,8 +77,12 @@ public final class MicroG {
         }
         return instance;
     }
-    /** GmsCore as read already (get), or nothing: what is asked of it then is not worth reading it for. */
-    private static synchronized MicroG loaded() { return instance; }
+    /**
+     * GmsCore as read already (get), or nothing: what is asked of it then is not worth reading it for. Not under the class's
+     * lock, which get() holds while it reads GmsCore: Spotify's and Gmail's main threads spent 28 to 31% of ten seconds of
+     * their start waiting here (hosts, for each activity) while another thread read it.
+     */
+    private static MicroG loaded() { return instance; }
     /** Whether Google Play services are here: their APK is (not read for it). */
     public static boolean installed() { return !GooglePackages.GMS.equals(Native.packageName()) && new File(APK).isFile(); }
 
@@ -145,9 +150,13 @@ public final class MicroG {
     }
     private static PackageInfo sBasic;
     private static boolean sBasicRead, sBasicMicroG;
+    private static final Object sBasicLock = new Object();
     /* GmsCore's PackageInfo from its manifest's tags up to <application>, read from its APK alone (not its resources), and
-       whether it is microG's (its manifest names org.microg's classes). */
-    private static synchronized PackageInfo basic() {
+       whether it is microG's (its manifest names org.microg's classes). Under a lock of its own: the class's is get()'s. */
+    private static PackageInfo basic() {
+        synchronized (sBasicLock) { return basicLocked(); }
+    }
+    private static PackageInfo basicLocked() {
         if (sBasicRead) return sBasic;
         sBasicRead = true;
         if (!installed()) return null;
@@ -236,7 +245,8 @@ public final class MicroG {
     public static boolean isMicroG() {
         MicroG g = loaded();
         if (g != null) return g.microg();
-        return basic() != null && sBasicMicroG;
+        if (basic() == null) return false;
+        synchronized (sBasicLock) { return sBasicMicroG; }
     }
     private boolean microg() {
         for (Receiver r : receivers) if (r.info.name.startsWith("org.microg.")) return true;
