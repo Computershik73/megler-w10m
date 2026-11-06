@@ -5,7 +5,10 @@
 //    the drawable's bounds, or this view's box as its parent draws it. On the way up the rectangle goes through each view's
 //    transform, its position and its parent's scrolling, and is clipped where a parent clips its children; a rectangle that
 //    is clipped away, or a view that is not visible (Android's skipInvalidate), asks for nothing. A view with an Animation on
-//    the way asks for the whole window, since its transformation is known only while it is drawn.
+//    the way asks for the whole window, since its transformation is known only while it is drawn. But a view that draws
+//    through a list of its own and is invalidated whole -- invalidate(), a rectangle round all of it, invalidateDrawable --
+//    asks for no rectangle: what changed in it is left to the frame walk (meglerDefer, megler.Gfx.damage), as Android's
+//    renderer finds it node by node.
 //  - drawFromParent skips a child whose box lies outside the canvas's clip while the window draws only part of itself.
 //  - drawFromParent has the screen's canvas (megler.ViewRoot.ScreenCanvas) say the child's size while the child draws: on
 //    Android a view draws into a display list of its own size (its RenderNode's RecordingCanvas, hardware acceleration
@@ -707,7 +710,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void invalidateDrawable(Drawable d) {
         if (!verifyDrawable(d)) return;
         mPrivateFlags |= PFLAG_DIRTY;
-        // Megler: the view's box, and the drawable's own bounds where they reach out of it
+        // Megler: what changed left to the frame walk (meglerDefer), or the view's box with the drawable's own bounds where they reach out of it
+        if (meglerDefer()) return;
         Rect b = d.getDirtyBounds();
         if (b == null) meglerDirty(0, 0, getWidth(), getHeight(), true);
         else meglerDirty(Math.min(0, b.left), Math.min(0, b.top), Math.max(getWidth(), b.right), Math.max(getHeight(), b.bottom), true);
@@ -1051,15 +1055,42 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
        override to invalidate their drawables (whose invalidateSelf comes back through invalidateDrawable) */
     private void invalidateMegler() {
         mPrivateFlags |= PFLAG_DIRTY;
-        meglerDirty(0, 0, getWidth(), getHeight(), true);
+        if (!meglerDefer()) meglerDirty(0, 0, getWidth(), getHeight(), true);
     }
     public void invalidate() { invalidateMegler(); }
     public void invalidate(Rect dirty) {
-        mPrivateFlags |= PFLAG_DIRTY;
-        if (dirty == null) meglerDirty(0, 0, getWidth(), getHeight(), true);
-        else meglerDirty(dirty.left - mScrollX, dirty.top - mScrollY, dirty.right - mScrollX, dirty.bottom - mScrollY, true);
+        if (dirty == null) invalidateMegler();
+        else meglerInvalidate(dirty.left, dirty.top, dirty.right, dirty.bottom);
     }
-    public void invalidate(int l, int t, int r, int b) { mPrivateFlags |= PFLAG_DIRTY; meglerDirty(l - mScrollX, t - mScrollY, r - mScrollX, b - mScrollY, true); }
+    public void invalidate(int l, int t, int r, int b) { meglerInvalidate(l, t, r, b); }
+    /** Megler: a rectangle of the view's content invalidated; one round all of the view's box as invalidate(). */
+    private void meglerInvalidate(int l, int t, int r, int b) {
+        mPrivateFlags |= PFLAG_DIRTY;
+        l -= mScrollX;
+        t -= mScrollY;
+        r -= mScrollX;
+        b -= mScrollY;
+        if (l <= 0 && t <= 0 && r >= getWidth() && b >= getHeight() && meglerDefer()) return;
+        meglerDirty(l, t, r, b, true);
+    }
+    /*
+     * Megler: the view's whole box invalidated, where it draws through a list of its own that was recorded before: what of it
+     * changed is left to the frame walk (megler.Gfx.damage), which, once the list is recorded again, compares it with the one
+     * the last frame drew call by call, and the nodes it draws with theirs, and has only what changed drawn again -- not the
+     * whole box. Compose's view (AndroidComposeView) invalidates itself whole for a change of any of its layers, and Spotify
+     * drew a third of the screen again in every frame for its progress bar (package 662); a view that invalidates itself
+     * whole to move a caret or a highlight did as much. False, and the box asked for as before, for a view with no list yet,
+     * one that is not visible (which asks for nothing), and everywhere with the flag no-node-damage.
+     */
+    private boolean meglerDefer() {
+        android.graphics.RenderNode n = mMeglerNode;
+        if (n == null || mRoot == null || !n.hasDisplayList() || (mVisibility != VISIBLE && mAnimation == null) || !megler.ViewRoot.meglerNodeDamage())
+            return false;
+        meglerListInvalid();
+        n.meglerDefer();
+        megler.ViewRoot.scheduleFrame();
+        return true;
+    }
     /** This view's box as its parent draws it: what changes when it moves, is transformed, shows or hides. */
     void invalidateParent() { meglerDirty(0, 0, getWidth(), getHeight(), false); }
     /**
@@ -1265,6 +1296,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (sMeglerLists < 0) sMeglerLists = megler.Native.flag("no-view-lists") ? 0 : 1;
         return sMeglerLists > 0;
     }
+    /** Megler: whether views draw through lists of their own, for megler.ViewRoot. */
+    public static boolean meglerViewLists() { return meglerListsOn(); }
 
     /** Whether this view draws through a list of its own: not a surface's, a texture's or a WebView's. */
     boolean meglerListable() {
@@ -1288,6 +1321,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         if (n == null) {
             n = new android.graphics.RenderNode(getClass().getName());
             n.setClipToBounds(false);
+            n.meglerSetView();
             mMeglerNode = n;
         }
         if (!mMeglerListValid || !n.hasDisplayList() || n.getWidth() != w || n.getHeight() != h) meglerRecord(n, w, h);

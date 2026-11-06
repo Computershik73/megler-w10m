@@ -1638,7 +1638,7 @@ static void test_protocol(void)
 /* -------------------------------------------------------------- display lists */
 
 /* gnode's flags as android.graphics.RenderNode packs them for rnSet (mg_java_gfx.c). */
-enum { RN_IDENTITY = 1, RN_CLIP_BOUNDS = 2, RN_CLIP_RECT = 4, RN_CLIP_OUTLINE = 8, RN_LAYER = 16, RN_LAYER_PAINT = 32 };
+enum { RN_IDENTITY = 1, RN_CLIP_BOUNDS = 2, RN_CLIP_RECT = 4, RN_CLIP_OUTLINE = 8, RN_LAYER = 16, RN_LAYER_PAINT = 32, RN_VIEW = 64 };
 
 /* How many pixels differ between two bitmaps of one size. */
 static int differ(i64 a, i64 b)
@@ -1933,6 +1933,150 @@ static MEGLER_CB void spy_shader_free(void *user, void *shader)
 {
     g_shader_frees++;
     mg_gfx_standin()->shader_free(user, shader);
+}
+
+/*
+ * The frame walk (Gfx.damage), and frames drawn in part by what it finds (Gfx.frame): a View's node at (10, 20) that draws a
+ * field of its own and two layers of Compose's, a bar of two rectangles at (5, 5) and a square far to the right. What changes
+ * damages where it was drawn and where it is drawn, and nothing else -- the bar's list recorded with its yellow part longer,
+ * the bar moved by its matrix, made translucent, the View's own field changed with its whole box left to the walk (rnDefer);
+ * not the field changed without that, which is the View's own rectangles' to say. And every frame drawn in part, the nodes
+ * that draw nowhere in the part left out by the walk's boxes, is the frame drawn whole, pixel for pixel.
+ */
+static i64 g_walk_view, g_walk_bar, g_walk_far;
+
+static void walk_bar(int yellow)
+{
+    i64 rc = call("cvRecord", 2, I(100), I(10)).j;
+    call("cvDrawRect", 7, J(rc), F(0), F(0), F(100), F(10), L(paint(0xFF2050A0u)), J(0));
+    call("cvDrawRect", 7, J(rc), F(0), F(0), F((float)yellow), F(10), L(paint(0xFFE0A000u)), J(0));
+    call("rnEnd", 2, J(g_walk_bar), J(rc));
+    call("cvFree", 1, J(rc));
+}
+
+/* The View's list: its field, the bar, and the far square unless `alone`. */
+static void walk_view(u32 field, bool alone)
+{
+    i64 rc = call("cvRecord", 2, I(200), I(100)).j;
+    call("cvDrawRect", 7, J(rc), F(0), F(50), F(200), F(100), L(paint(field)), J(0));
+    call("cvDrawNode", 2, J(rc), J(g_walk_bar));
+    if (!alone) call("cvDrawNode", 2, J(rc), J(g_walk_far));
+    call("rnEnd", 2, J(g_walk_view), J(rc));
+    call("cvFree", 1, J(rc));
+}
+
+/*
+ * A frame as megler.ViewRoot records one: a grey window with the view at (10, 20), cleared first when it is drawn whole. The
+ * walk over it, comparing or not, and the rectangle it found (out); then the frame drawn onto `screen`, in part by that
+ * rectangle when comparing, and nothing when it found nothing. And the same frame drawn whole on `whole`. Whether the walk
+ * found anything.
+ */
+static bool walk_frame(i64 screen_cv, i64 screen, i64 whole, bool compare, i32 *out)
+{
+    static const i32 none[4] = { 0, 0, 0, 0 };
+    mg_jobj *box = ints(none, 4);
+    i64 rc = call("cvRecord", 2, I(240), I(160)).j, wc = call("cvNew", 1, J(whole)).j;
+    bool any;
+    if (!compare) call("cvDrawColor", 3, J(rc), I(0), I(0));
+    call("cvDrawColor", 3, J(rc), I((i32)0xFF404040u), I(3));
+    move_by(rc, 1, 1, 10, 20);
+    call("cvDrawNode", 2, J(rc), J(g_walk_view));
+    any = call("damage", 5, J(rc), I(240), I(160), L(box), Z(compare)).z;
+    memcpy(out, ints_of(box), sizeof(i32) * 4);
+    if (!compare || any) {
+        call("frame", 7, J(screen_cv), J(screen), J(rc), I(compare ? out[0] : 0), I(compare ? out[1] : 0), I(compare ? out[2] : 0), I(compare ? out[3] : 0));
+        call("frameWait", 0);
+    }
+    call("cvFree", 1, J(rc));
+    call("cvDrawColor", 3, J(wc), I(0), I(0));
+    call("cvDrawColor", 3, J(wc), I((i32)0xFF404040u), I(3));
+    move_by(wc, 1, 1, 10, 20);
+    call("cvDrawNode", 2, J(wc), J(g_walk_view));
+    call("cvFree", 1, J(wc));
+    if (compare) say("    damaged: %s %d,%d-%d,%d", any ? "yes" : "nothing", out[0], out[1], out[2], out[3]);
+    return any;
+}
+
+static bool box_is(const i32 *out, int l, int t, int r, int b) { return out[0] == l && out[1] == t && out[2] == r && out[3] == b; }
+
+static void test_walk(void)
+{
+    static const float right30[6] = { 1, 0, 30, 0, 1, 0 };
+    i64 screen = call("bmNew", 2, I(240), I(160)).j, whole = call("bmNew", 2, I(240), I(160)).j, sc = call("cvNew", 1, J(screen)).j;
+    i32 out[4];
+    say("  the frame walk: what a frame's nodes changed, and frames drawn in part by it");
+    g_walk_view = call("rnNew", 0).j;
+    g_walk_bar = call("rnNew", 0).j;
+    g_walk_far = call("rnNew", 0).j;
+    /* A View's node clips nothing (its parent's list does); Compose's layers clip nothing unless asked. */
+    node_set(g_walk_view, 0, 0, 200, 100, NULL, 1, RN_VIEW, 255, NULL, 0, NULL, 0);
+    node_place(g_walk_bar, 5, 5, 105, 15, 0);
+    node_place(g_walk_far, 150, 5, 190, 45, 0);
+    node_rect(g_walk_far, 40, 40, 0, 0, 40, 40, 0xFF00A0A0u);
+    walk_bar(20);
+    walk_view(0xFF40A040u, false);
+    /* The first frame, drawn whole: the walk only notes where everything is. */
+    walk_frame(sc, screen, whole, false, out);
+    CHECK_INT(differ(screen, whole), 0);
+    /* The bar's yellow part 40 long, not 20: that rectangle alone, at (15, 25), where it was and where it is, a pixel round. */
+    walk_bar(40);
+    CHECK(walk_frame(sc, screen, whole, true, out) && box_is(out, 14, 24, 56, 36));
+    CHECK_INT(differ(screen, whole), 0);
+    /* Nothing changed: nothing found, nothing drawn. The same list recorded again is no change either. */
+    CHECK(!walk_frame(sc, screen, whole, true, out));
+    walk_bar(40);
+    CHECK(!walk_frame(sc, screen, whole, true, out));
+    /* The bar moved 30 along by its matrix: all of it where it was and where it is. */
+    node_set(g_walk_bar, 5, 5, 105, 15, right30, 1, 0, 255, NULL, 0, NULL, 0);
+    CHECK(walk_frame(sc, screen, whole, true, out) && box_is(out, 14, 24, 146, 36));
+    CHECK_INT(differ(screen, whole), 0);
+    /* The same properties handed over again change nothing. */
+    node_set(g_walk_bar, 5, 5, 105, 15, right30, 1, 0, 255, NULL, 0, NULL, 0);
+    CHECK(!walk_frame(sc, screen, whole, true, out));
+    /* Translucent, in a layer of its own bounded by its box: where it was, a pixel round, and its box. */
+    node_set(g_walk_bar, 5, 5, 105, 15, right30, 0.5f, RN_LAYER, 128, NULL, 0, NULL, 0);
+    CHECK(walk_frame(sc, screen, whole, true, out) && box_is(out, 44, 24, 146, 36));
+    CHECK_INT(differ(screen, whole), 0);
+    /* The View's own field changed, its whole box left to the walk: the field alone, at (10, 70), a pixel round. */
+    call("rnDefer", 2, J(g_walk_view), Z(false));
+    walk_view(0xFF60C060u, false);
+    CHECK(walk_frame(sc, screen, whole, true, out) && box_is(out, 9, 69, 211, 121));
+    CHECK_INT(differ(screen, whole), 0);
+    /* Changed back without that: the View's own rectangles say what changed in it, not the walk. */
+    walk_view(0xFF40A040u, false);
+    CHECK(!walk_frame(sc, screen, whole, true, out));
+    walk_frame(sc, screen, whole, false, out);
+    CHECK_INT(differ(screen, whole), 0);
+    /* The far square taken out of the View's list, its whole box left to the walk: a list of another shape, the whole View, where it drew with the square. */
+    call("rnDefer", 2, J(g_walk_view), Z(false));
+    walk_view(0xFF40A040u, true);
+    CHECK(walk_frame(sc, screen, whole, true, out) && box_is(out, 9, 24, 211, 121));
+    CHECK_INT(differ(screen, whole), 0);
+    /*
+     * Invalidated while its list was being recorded, as a ListView's overscroll glow invalidates it from its draw: not for
+     * the list being recorded, which the View's own rectangles say, but for the next -- the field changed there is found.
+     */
+    {
+        i64 rc = call("cvRecord", 2, I(200), I(100)).j;
+        call("cvDrawRect", 7, J(rc), F(0), F(50), F(200), F(100), L(paint(0xFF40A040u)), J(0));
+        call("cvDrawRect", 7, J(rc), F(0), F(0), F(10), F(10), L(paint(0xFF000000u)), J(0));
+        call("cvDrawNode", 2, J(rc), J(g_walk_bar));
+        call("rnDefer", 2, J(g_walk_view), Z(true));
+        call("rnEnd", 2, J(g_walk_view), J(rc));
+        call("cvFree", 1, J(rc));
+    }
+    CHECK(!walk_frame(sc, screen, whole, true, out));
+    walk_frame(sc, screen, whole, false, out);
+    walk_view(0xFF60C060u, true);
+    CHECK(walk_frame(sc, screen, whole, true, out) && box_is(out, 9, 19, 211, 121));
+    CHECK_INT(differ(screen, whole), 0);
+    call("rnFree", 1, J(g_walk_view));
+    call("rnFree", 1, J(g_walk_bar));
+    call("rnFree", 1, J(g_walk_far));
+    call("cvFree", 1, J(sc));
+    call("bmFree", 1, J(screen));
+    call("bmFree", 1, J(whole));
+    CHECK(thrown()[0] == 0);
 }
 
 static void test_lists(void)
@@ -2449,7 +2593,7 @@ int mg_gfx_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     say("megler.Gfx's native methods, over the stand-in");
     /* One entry for each native method megler/Gfx.java declares. */
     for (e = mg_java_gfx_natives(); e->cls; e++) n += strcmp(e->cls, "megler/Gfx") == 0 && e->sig && e->fn;
-    CHECK_INT(n, 73);
+    CHECK_INT(n, 75);
     mg_java_gfx_set_host(mg_gfx_standin());
     mg_java_gfx_stats(&bytes0, &count0);
     test_bitmaps();
@@ -2462,6 +2606,7 @@ int mg_gfx_natives_tests_run(mg_test_sink sink, void *user, int *checks)
     test_shaders();
     test_paths();
     test_lists();
+    test_walk();
     test_inverse("over the stand-in");
 #ifdef MG_GFX_WINDOWS
     test_lists_on_shell();

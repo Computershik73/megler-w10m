@@ -21,6 +21,8 @@
 //     setLayerType other than none); its paint's mode and alpha are the layer's. The original put every node on with its
 //     layer paint, layer or not.
 //   - The generated create(String, AnimationHost), which returned null, makes a node.
+//   - A View's own node says so to the core (meglerSetView), and a View may leave what changed in it to the frame walk
+//     (meglerDefer, megler.Gfx.damage), which finds what changed in every other node itself.
 // Everything else is the original's.
 package android.graphics;
 
@@ -51,6 +53,8 @@ public final class RenderNode {
     private long mMeglerNode;
     /** Megler: a property changed since the core was last told (meglerChanged). */
     private boolean mMeglerDirty;
+    /** Megler: a View's own node (meglerSetView), what changes in whose list the View's invalidations say. */
+    private boolean mMeglerView;
     private final float[] mMeglerF = new float[20];
     private final int[] mMeglerI = new int[5];
     private Matrix mMeglerMatrix;
@@ -117,6 +121,23 @@ public final class RenderNode {
         c.meglerDrawn();
     }
 
+    /**
+     * Megler: this is a View's own node, its list the view's drawing (android.view.View, overlaid): what changes in its list
+     * is the View's to say by its invalidations, and the frame walk (megler.Gfx.damage) leaves that to them but where the View
+     * defers to the walk (meglerDefer). Where it is drawn, and every other node's changes, the walk finds itself.
+     */
+    public void meglerSetView() {
+        if (mMeglerView) return;
+        mMeglerView = true;
+        meglerChanged();
+    }
+
+    /**
+     * Megler: the View's whole box was invalidated, and the frame walk is to find what of it changed (megler.Gfx.rnDefer): in
+     * the list recorded next, or, invalidated while its list is being recorded (from its draw), in the one after that.
+     */
+    public void meglerDefer() { megler.Gfx.rnDefer(mMeglerNode, mCanvas != null); }
+
     /** Megler: a property that drawing uses changed; the core is told before the next drawing that is not a recording. */
     private void meglerChanged() {
         if (mMeglerDirty) return;
@@ -176,6 +197,7 @@ public final class RenderNode {
         boolean layer = mCompositing || mLayerType != 0 || mAlpha < 1f;
         int[] paint = null;
         if (layer) flags |= 16;
+        if (mMeglerView) flags |= 64;
         if (layer && mLayerPaint != null) { flags |= 32; paint = mLayerPaint.mP; }
         k[0] = flags;
         k[1] = kind;

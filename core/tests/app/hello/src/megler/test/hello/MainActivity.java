@@ -12,7 +12,8 @@ import android.widget.TextView;
 /** The launcher activity: a layout from resources, a button whose listener changes a text, and a line in the log at every step of its life. */
 public class MainActivity extends Activity {
     static int draws;
-    private int presses;
+    private int presses, resumes;
+    private Layers layers;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -87,6 +88,9 @@ public class MainActivity extends Activity {
             public void surfaceDestroyed(android.view.SurfaceHolder holder) {}
         });
         addContentView(corner, new android.widget.FrameLayout.LayoutParams(80, 40, android.view.Gravity.BOTTOM | android.view.Gravity.END));
+        /* A view that draws as Compose's does, in the bottom left corner: its nodes change once the app is shown again (Layers). */
+        layers = new Layers(this);
+        addContentView(layers, new android.widget.FrameLayout.LayoutParams(200, 120, android.view.Gravity.BOTTOM | android.view.Gravity.START));
         /* A launcher's questions: the platform's padding around a widget's frame, and the activities there are to list -- this app's own, by its label. */
         android.graphics.Rect padding = android.appwidget.AppWidgetHostView.getDefaultPaddingForWidget(this, getComponentName(), null);
         android.content.pm.LauncherApps apps = (android.content.pm.LauncherApps) getSystemService(LAUNCHER_APPS_SERVICE);
@@ -116,6 +120,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         Log.i("HelloTest", "onResume");
+        if (++resumes == 2 && layers != null) layers.start();
     }
 
     @Override

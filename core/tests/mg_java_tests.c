@@ -1172,6 +1172,30 @@ static int run_hello(void)
     expect_line("I/HelloTest: onPause draws=true", &at, 30);
     megler_set_paused(false);
     expect_line("I/HelloTest: onResume", &at, 30);
+    {
+        /*
+         * A view that draws as Compose's does (Layers, in the bottom left corner): its nodes changed thirty times once the app
+         * is shown again, the view invalidated whole each time. No frame drawn in part may miss anything (the count of misses
+         * at the end), none may reach the view's own green field below its nodes (what changed is found node by node, call by
+         * call: megler.Gfx.damage), and the last picture shows the bar's yellow part 120 long and the square, opaque, moved
+         * 120 along.
+         */
+        int from, line, parts = 0, low = 0, l, t, r, b;
+        expect_line("I/HelloTest: layers started", &at, 30);
+        from = at;
+        expect_line("I/HelloTest: layers steps=30", &at, 60);
+        for (line = find_line("D/ViewRoot: drawn in part ", from); line >= 0 && line < at; line = find_line("D/ViewRoot: drawn in part ", line + 1)) {
+            if (sscanf(strstr(line_at(line), "drawn in part ") + 14, "%d,%d-%d,%d", &l, &t, &r, &b) != 4) continue;
+            parts++;
+            if (b > g_screen_h - 60) low++;
+        }
+        settle();
+        write_picture("hello-4-layers");
+        say("  a view drawn as Compose's: %d frames drawn in part while its nodes changed, %d of them reaching its own field", parts, low);
+        CHECK(parts > 0 && low == 0);
+        CHECK(pixel(10, g_screen_h - 115) == 0xE0A000 && pixel(150, g_screen_h - 115) == 0x2050A0);
+        CHECK(pixel(130, g_screen_h - 90) == 0x00A0A0 && pixel(10, g_screen_h - 90) != 0x00A0A0 && pixel(100, g_screen_h - 20) == 0x40A040);
+    }
 
     /* Back: down in order, and out. */
     megler_key(4, true);

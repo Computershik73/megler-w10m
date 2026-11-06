@@ -1286,6 +1286,12 @@ struct gdlist {
     u8 *ops;
     size_t n, cap;
     i32 width, height;                 /* the size it was recorded at */
+    /* What the frame walk (Gfx.damage) worked out once, the list being written no more: the box its own calls draw in, in
+       the coordinates it starts in (own_kind 0 not yet, 1 nothing, 2 own, 3 all of the clip), and whether it draws nodes or
+       other lists (kids). Read and written by the main thread only. */
+    float own[4];
+    i32 own_kind;
+    bool kids;
 };
 
 /* A RenderNode: the list it draws and what it draws it with, as the Java last handed it over (rnSet). */
@@ -1303,10 +1309,27 @@ typedef struct gnode {
     i32 flags;                         /* RN_* */
     i32 layer_alpha;                   /* 0..255: the alpha a layer of the node is put on with */
     i32 layer_paint[P_COUNT];          /* the layer's paint, as Paint.mP (RN_LAYER_PAINT) */
+    u32 ver;                           /* one more each time rnSet changes a property, and at rnDiscard */
+    /*
+     * Where the frame walk (Gfx.damage) last found the node drawn: its list then (held), its properties' ver, the matrix
+     * and the clip it was drawn with, the box on the screen it drew in, and the walk's number then (seen_multi: found twice
+     * in that walk). All of it the main thread's; the render thread reads the seen box while no walk runs (node_play).
+     *
+     * `defer`: a View's own node whose whole box was invalidated, what changed in it left to the walk (rnDefer). Once a
+     * list is recorded for it after the invalidation -- `ends`, the lists recorded for it, kept or not, beyond defer_min --
+     * the walk compares that list with the one it saw. An invalidation made while its list was being recorded (an
+     * animation's, from its draw) is for the list recorded after that one: defer_max, the last of them.
+     */
+    gdlist *seen_list;
+    u32 seen_ver, seen_no;
+    float seen_m[6], seen_clip[4], seen_box[4];
+    bool seen, seen_any, seen_whole, seen_multi, defer;
+    u32 ends, defer_min, defer_max;
 } gnode;
 
-/* gnode.flags, as the Java packs them (android.graphics.RenderNode, Megler's overlay). */
-enum { RN_IDENTITY = 1, RN_CLIP_BOUNDS = 2, RN_CLIP_RECT = 4, RN_CLIP_OUTLINE = 8, RN_LAYER = 16, RN_LAYER_PAINT = 32 };
+/* gnode.flags, as the Java packs them (android.graphics.RenderNode, Megler's overlay). RN_VIEW: a View's own node (its list
+   the view's drawing), whose changes the View's invalidations say. */
+enum { RN_IDENTITY = 1, RN_CLIP_BOUNDS = 2, RN_CLIP_RECT = 4, RN_CLIP_OUTLINE = 8, RN_LAYER = 16, RN_LAYER_PAINT = 32, RN_VIEW = 64 };
 
 typedef struct dl_head {
     u16 kind;
@@ -1370,6 +1393,7 @@ typedef struct dl_texture {            /* DL_TEXTURE: a picture the shell keeps 
 typedef struct dl_bitmap {             /* DL_BITMAP (src, dst), DL_BITMAP_M (m) */
     dl_head h;
     gbitmap *b;
+    u32 version;                       /* the bitmap's when recorded: a list recorded again over new pixels is not the same list */
     float src[4], dst[4], m[6];
     gpaint p;
 } dl_bitmap;
@@ -1490,6 +1514,7 @@ static void rn_unref(gnode *n)
     mg_lock_release(&g_lock);
     if (!last) return;
     dl_unref(n->list);
+    dl_unref(n->seen_list);
     free(n->outline_path);
     n->magic = 0;
     free(n);
@@ -2739,6 +2764,7 @@ static dl_bitmap *rec_bitmap(gdlist *l, int kind, gbitmap *b, const gpaint *p)
     dl_bitmap *o = (dl_bitmap *)dl_put(l, kind, sizeof(*o), 0);
     bm_ref(b);
     o->b = b;
+    o->version = b->version;
     o->p = *p;
     return o;
 }
@@ -2928,6 +2954,14 @@ N(G_cvDrawText)
 /* ------------------------------------------------- Gfx: display lists drawn */
 
 static void node_play(gcanvas *v, gnode *n, int depth);
+
+/* While the render thread draws a frame the frame walk went through (G_damage): the screen's canvas and the walk's number, by
+   whose boxes node_play leaves out a node that draws nowhere in the part drawn; and how many it left out, for its log. */
+static MG_THREAD_LOCAL gcanvas *t_cull_v;
+static MG_THREAD_LOCAL u32 t_cull_no;
+static u32 g_culled;
+
+static bool rects_meet(const float *a, const float *b) { return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]; }
 
 /* A recorded path as the functions that take a built one take it. */
 static void path_view(gpath *p, const float *f, i32 n)
@@ -3138,9 +3172,12 @@ static void node_play(gcanvas *v, gnode *live, int depth)
     }
     /*
      * Nothing of it can show where the clip is empty: a view's list under a parent that clips it away while part of the screen
-     * is drawn (the views' lists: android.view.View, overlaid), every call of it skipped.
+     * is drawn (the views' lists: android.view.View, overlaid), every call of it skipped. Nor where the frame walk found it
+     * drawing nowhere in the part of the screen the frame draws (G_damage): a node drawn once in the frame, by its box then.
      */
-    if (cv_state(v)->empty) {
+    if (cv_state(v)->empty ||
+        (t_cull_v == v && copy.seen_no == t_cull_no && !copy.seen_multi && (!copy.seen_any || !rects_meet(copy.seen_box, cv_state(v)->clip)))) {
+        if (!cv_state(v)->empty) g_culled++;
         dl_unref(l);
         free(outline_made);
         return;
@@ -3185,6 +3222,789 @@ static void node_play(gcanvas *v, gnode *live, int depth)
     while (v->depth > d0) cv_restore(v);
     dl_unref(l);
     free(outline_made);
+}
+
+/* --------------------------------------- Gfx: what a frame changes, node by node */
+
+/*
+ * The frame walk (Gfx.damage). Before a frame is handed to the render thread the main thread goes through what the frame
+ * draws -- the window's calls and every node and list they draw, with the matrix and clip each is drawn with -- and finds
+ * what changed since the frame before, node by node, as Android's renderer does (HWUI's DamageAccumulator), so that only
+ * that part of the screen is drawn again. The views' invalidations said rectangles of their boxes, and Compose invalidates
+ * its whole view (AndroidComposeView) for a change of any of its layers -- a progress bar's, a scroll -- so that Spotify
+ * drew a third of the screen again in every frame (package 662).
+ *
+ * Each node keeps where the walk last found it (gnode.seen_*), and is compared with that:
+ *  - drawn with another matrix or clip, or with properties changed (ver), or not found before: where it was and where it
+ *    is now are damaged;
+ *  - its list another one, where the walk answers for what is in it -- any node but a View's own, and a View's own whose
+ *    whole box was invalidated (rnDefer): the two compared call by call (diff_pass), each with its own matrices and clips.
+ *    A call that differs, or is drawn with another matrix or clip, damages where it drew and where it draws; a node in it
+ *    is compared as a node. Lists of another shape, or with more than WALK_CHANGED calls changed, damage the whole node;
+ *  - otherwise nothing of its own; the nodes it draws are compared.
+ * What changed in a View's own list otherwise is the View's to say (the rectangles of View.meglerDamage). The nodes the
+ * window's own calls draw are compared likewise. Where a node draws is the box of its own calls (list_own: worked out once
+ * for each list, which never changes once recorded) and of its nodes', each as clipped.
+ *
+ * The render thread then leaves out a node that draws nowhere in the part of the screen being drawn (node_play), by the
+ * box this walk found for it.
+ */
+
+#define WALK_STATES 4096               /* the matrices and clips saved inside each other, over all the lists being walked */
+#define WALK_CHANGED 24                /* the calls of a list compared one by one at most; beyond, the whole node changed */
+#define WALK_FAR 1e30f                 /* no clip yet: a list's own calls measured where it starts (list_own) */
+
+enum { W_UPDATE, W_COMPARE };
+
+typedef struct wstate {
+    float m[6];
+    float clip[4];                     /* the clip's box, in the coordinates the walk started in */
+    bool whole;                        /* inside a blurred layer, which spreads what is drawn: all of the clip changes */
+} wstate;
+
+static struct {
+    wstate *st;                        /* WALK_STATES of them: each list walked uses those above the ones its caller uses */
+    i32 used;
+    u32 no;                            /* this walk's number; never 0 */
+    gbox damage;
+    /* For the log: the walks since `since`, the nodes found, those moved or changed, the lists compared call by call and
+       those of them taken whole, the share of the screen damaged, the time. */
+    u32 walks, nodes, moved, diffed, whole_diffs;
+    double area, screen;
+    u64 ns, since;
+} W;
+
+/* The walk done for the frame about to be handed over (G_damage to G_frame). */
+static u32 g_walk_ready;
+
+/* r cut down to clip; whether anything is left. */
+static bool rect_and(float *r, const float *clip)
+{
+    if (clip[0] > r[0]) r[0] = clip[0];
+    if (clip[1] > r[1]) r[1] = clip[1];
+    if (clip[2] < r[2]) r[2] = clip[2];
+    if (clip[3] < r[3]) r[3] = clip[3];
+    return r[2] > r[0] && r[3] > r[1];
+}
+
+static void box_add(gbox *o, const float *r)
+{
+    if (!(r[2] > r[0]) || !(r[3] > r[1])) return;
+    if (!o->any) {
+        o->l = r[0];
+        o->t = r[1];
+        o->r = r[2];
+        o->b = r[3];
+        o->any = true;
+        return;
+    }
+    if (r[0] < o->l) o->l = r[0];
+    if (r[1] < o->t) o->t = r[1];
+    if (r[2] > o->r) o->r = r[2];
+    if (r[3] > o->b) o->b = r[3];
+}
+
+static void box_add_box(gbox *o, const gbox *b)
+{
+    float r[4];
+    if (!b->any) return;
+    r[0] = b->l;
+    r[1] = b->t;
+    r[2] = b->r;
+    r[3] = b->b;
+    box_add(o, r);
+}
+
+static void walk_damage(const float *r) { box_add(&W.damage, r); }
+
+/* The box round a built path's points, its curves' control points with them, so no smaller than the path. False: no point. */
+static bool path_hull(const float *v, i32 n, float *out)
+{
+    gbox o;
+    i32 i = 0;
+    int k, count;
+    memset(&o, 0, sizeof(o));
+    while (i < n) {
+        count = verb_floats((int)v[i++]);
+        for (k = 0; k + 1 < count && i + k + 1 < n; k += 2) box_point(&o, v[i + k], v[i + k + 1]);
+        i += count;
+    }
+    out[0] = o.l;
+    out[1] = o.t;
+    out[2] = o.r;
+    out[3] = o.b;
+    return o.any;
+}
+
+/* A box grown by how far a stroke reaches past the line it follows -- half its width, more at a mitred corner or a square
+   cap -- when `stroked`, and by the paint's shadow where it has one. */
+static void paint_reach(const gpaint *p, bool stroked, float *r)
+{
+    float s, sh[4];
+    if (stroked) {
+        s = p->p.stroke_width > 0 ? p->p.stroke_width : 1;
+        s *= 0.5f * (p->p.join == MEGLER_GFX_JOIN_MITER && p->p.miter_limit > 1.5f ? p->p.miter_limit : 1.5f);
+        r[0] -= s;
+        r[1] -= s;
+        r[2] += s;
+        r[3] += s;
+    }
+    if (!(p->p.shadow_radius > 0) || !(p->p.shadow_color >> 24)) return;
+    s = p->p.shadow_radius * 2 + 1;
+    sh[0] = r[0] + p->p.shadow_dx - s;
+    sh[1] = r[1] + p->p.shadow_dy - s;
+    sh[2] = r[2] + p->p.shadow_dx + s;
+    sh[3] = r[3] + p->p.shadow_dy + s;
+    if (sh[0] < r[0]) r[0] = sh[0];
+    if (sh[1] < r[1]) r[1] = sh[1];
+    if (sh[2] > r[2]) r[2] = sh[2];
+    if (sh[3] > r[3]) r[3] = sh[3];
+}
+
+/* A rectangle as given, its sides in order. */
+static void rect_sorted(const float *r, float *out)
+{
+    out[0] = r[0] < r[2] ? r[0] : r[2];
+    out[1] = r[1] < r[3] ? r[1] : r[3];
+    out[2] = r[0] < r[2] ? r[2] : r[0];
+    out[3] = r[1] < r[3] ? r[3] : r[1];
+}
+
+/* A run of text's box: the ink the shell says it has (text_bounds), where the paint's alignment puts it, with the bars of an
+   underline and a strike-through (draw_text) and the shadow. */
+static int text_local(const dl_text *o, float *out)
+{
+    const u16 *text = (const u16 *)(const void *)(o + 1);
+    const megler_gfx_paint *p = &o->p.p;
+    float ink[4] = { 0, 0, 0, 0 }, r[4], x = o->x, width = 0, size = p->text_size, thick;
+    gbox b;
+    if (o->count <= 0) return 0;
+    memset(&b, 0, sizeof(b));
+    if (p->text_align != MEGLER_GFX_ALIGN_LEFT || o->p.underline || o->p.strike) width = text_width(text, o->count, &o->p, o->face);
+    if (p->text_align == MEGLER_GFX_ALIGN_CENTER) x -= width / 2;
+    else if (p->text_align == MEGLER_GFX_ALIGN_RIGHT) x -= width;
+    if (HAS(text_bounds)) {
+        GFX(G.text_bounds(G.user, text, o->count, p, o->face, ink));
+    } else {
+        /* (A shell that cannot say: a box no run is likely to leave, two ems a code unit either way and two ems up.) */
+        ink[0] = -size * 2 * (float)o->count;
+        ink[1] = -size * 2;
+        ink[2] = size * 2 * (float)o->count;
+        ink[3] = size;
+    }
+    r[0] = x + ink[0];
+    r[1] = o->y + ink[1];
+    r[2] = x + ink[2];
+    r[3] = o->y + ink[3];
+    box_add(&b, r);
+    if (o->p.underline || o->p.strike) {
+        thick = size / 18 > 1 ? size / 18 : 1;
+        r[0] = x;
+        r[1] = o->y - size * 0.3f;
+        r[2] = x + width;
+        r[3] = o->y + size / 9 + thick;
+        box_add(&b, r);
+    }
+    if (!b.any) return 0;
+    out[0] = b.l;
+    out[1] = b.t;
+    out[2] = b.r;
+    out[3] = b.b;
+    paint_reach(&o->p, false, out);
+    return 1;
+}
+
+/* A drawing call's box in the coordinates it is drawn in: 0 it draws nothing, 1 the box in out, 2 all of the clip. */
+static int op_local(const dl_head *h, float *out)
+{
+    switch (h->kind) {
+    case DL_COLOR:
+        return ((const dl_color *)(const void *)h)->blend == MEGLER_GFX_BLEND_DST ? 0 : 2;
+    case DL_RECT:
+    case DL_RRECT:
+    case DL_OVAL: {
+        const dl_rect *o = (const dl_rect *)(const void *)h;
+        rect_sorted(o->r, out);
+        paint_reach(&o->p, o->p.p.style != MEGLER_GFX_FILL, out);
+        return 1;
+    }
+    case DL_PATH: {
+        const dl_path *o = (const dl_path *)(const void *)h;
+        if ((o->fill & FILL_INVERSE) && o->p.p.style != MEGLER_GFX_STROKE) return 2;
+        if (!path_hull((const float *)(const void *)(o + 1), o->n, out)) return 0;
+        paint_reach(&o->p, o->p.p.style != MEGLER_GFX_FILL, out);
+        return 1;
+    }
+    case DL_LINES: {
+        const dl_path *o = (const dl_path *)(const void *)h;
+        const float *f = (const float *)(const void *)(o + 1);
+        gbox b;
+        i32 i;
+        memset(&b, 0, sizeof(b));
+        for (i = 0; i + 1 < o->n; i += 2) box_point(&b, f[i], f[i + 1]);
+        if (!b.any) return 0;
+        out[0] = b.l;
+        out[1] = b.t;
+        out[2] = b.r;
+        out[3] = b.b;
+        paint_reach(&o->p, true, out);
+        return 1;
+    }
+    case DL_BITMAP:
+        rect_sorted(((const dl_bitmap *)(const void *)h)->dst, out);
+        return 1;
+    case DL_BITMAP_M: {
+        const dl_bitmap *o = (const dl_bitmap *)(const void *)h;
+        if (!o->b) return 0;
+        matrix_box(o->m, 0, 0, (float)o->b->w, (float)o->b->h, out);
+        return 1;
+    }
+    case DL_TEXT:
+        return text_local((const dl_text *)(const void *)h, out);
+    case DL_TEXTURE:
+        rect_sorted(((const dl_texture *)(const void *)h)->dst, out);
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/* A drawing call's box in the walk's coordinates, drawn from state s, a pixel wider all round for antialiasing; false when nothing of it is inside the clip. */
+static bool op_box(const dl_head *h, const wstate *s, float *out)
+{
+    float r[4];
+    int k = op_local(h, r);
+    if (!k) return false;
+    if (k == 2 || s->whole) {
+        memcpy(out, s->clip, sizeof(s->clip));
+    } else {
+        matrix_box(s->m, r[0], r[1], r[2], r[3], out);
+        out[0] -= 1;
+        out[1] -= 1;
+        out[2] += 1;
+        out[3] += 1;
+    }
+    return rect_and(out, s->clip);
+}
+
+/*
+ * A call that changes the matrix or the clip applied to a walk's state, as list_play applies it to a canvas: `base` the
+ * matrix the list began with, which a recorded setMatrix is relative to. A layer's bounds are a clip, and a blurred layer
+ * spreads what is drawn into it over all of it. A save is the caller's to make. False: the call is none of these.
+ */
+static bool walk_state_op(wstate *s, const dl_head *h, const float *base)
+{
+    float r[4];
+    switch (h->kind) {
+    case DL_SAVE_LAYER: {
+        const dl_layer *o = (const dl_layer *)(const void *)h;
+        if (o->bounded) {
+            matrix_box(s->m, o->bounds[0], o->bounds[1], o->bounds[2], o->bounds[3], r);
+            rect_and(s->clip, r);
+        }
+        if (o->blurred) s->whole = true;
+        return true;
+    }
+    case DL_MATRIX: {
+        const dl_matrix *o = (const dl_matrix *)(const void *)h;
+        if (o->set) matrix_concat(base, o->m, s->m);
+        else matrix_concat(s->m, o->m, s->m);
+        return true;
+    }
+    case DL_CLIP_RECT: {
+        const dl_rect *o = (const dl_rect *)(const void *)h;
+        if (o->op == MEGLER_GFX_CLIP_INTERSECT) {
+            matrix_box(s->m, o->r[0], o->r[1], o->r[2], o->r[3], r);
+            rect_and(s->clip, r);
+        }
+        return true;
+    }
+    case DL_CLIP_PATH: {
+        const dl_path *o = (const dl_path *)(const void *)h;
+        if (o->op != MEGLER_GFX_CLIP_INTERSECT) return true;
+        if (path_hull((const float *)(const void *)(o + 1), o->n, r)) {
+            matrix_box(s->m, r[0], r[1], r[2], r[3], r);
+            rect_and(s->clip, r);
+        } else {
+            /* (Nothing is inside a path with nothing in it.) */
+            s->clip[2] = s->clip[0];
+            s->clip[3] = s->clip[1];
+        }
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+/* Whether what a layer's call draws changes all of its clip: a layer put on by another mode than SRC_OVER, or blurred. */
+static bool layer_all(const dl_head *h)
+{
+    const dl_layer *o = (const dl_layer *)(const void *)h;
+    return o->blurred || o->blend != MEGLER_GFX_BLEND_SRC_OVER;
+}
+
+static bool far_box(const float *r) { return r[0] <= -WALK_FAR / 2 || r[1] <= -WALK_FAR / 2 || r[2] >= WALK_FAR / 2 || r[3] >= WALK_FAR / 2; }
+
+/*
+ * The box a list's own calls draw in -- not its nodes', which the walk goes into, but the pictures' it draws -- in the
+ * coordinates the list starts in, and whether it draws nodes or pictures at all (gdlist.own_kind, own, kids). Worked out
+ * the first time the walk needs it: a list is not written to again once recorded.
+ */
+static void list_own(gdlist *l)
+{
+    wstate st[64];
+    i32 d = 0;
+    size_t at;
+    gbox own;
+    float r[4];
+    bool all = false;
+    int k;
+    l->own_kind = 3;                   /* (meanwhile: a list that drew itself would draw everything) */
+    l->kids = false;
+    memset(&own, 0, sizeof(own));
+    matrix_identity(st[0].m);
+    st[0].clip[0] = st[0].clip[1] = -WALK_FAR;
+    st[0].clip[2] = st[0].clip[3] = WALK_FAR;
+    st[0].whole = false;
+    for (at = 0; at < l->n; at += ((const dl_head *)(const void *)(l->ops + at))->size) {
+        const dl_head *h = (const dl_head *)(const void *)(l->ops + at);
+        if (h->kind == DL_NODE || h->kind == DL_LIST) l->kids = true;
+        if (all) continue;
+        if (h->kind == DL_SAVE || h->kind == DL_SAVE_LAYER) {
+            if (d + 1 >= (i32)MG_COUNT(st)) {
+                all = true;
+                continue;
+            }
+            st[d + 1] = st[d];
+            d++;
+            if (h->kind == DL_SAVE) continue;
+            walk_state_op(&st[d], h, st[0].m);
+            /* (A layer put on by another mode changes what is under all of it, whatever is drawn into it.) */
+            if (layer_all(h)) {
+                if (far_box(st[d].clip)) all = true;
+                else box_add(&own, st[d].clip);
+            }
+            continue;
+        }
+        if (h->kind == DL_RESTORE) {
+            if (d > 0) d--;
+            continue;
+        }
+        if (walk_state_op(&st[d], h, st[0].m) || h->kind == DL_NODE) continue;
+        if (h->kind == DL_LIST) {
+            gdlist *sub = ((const dl_list *)(const void *)h)->list;
+            if (!sub) continue;
+            if (!sub->own_kind) list_own(sub);
+            if (sub->own_kind == 3 || (sub->own_kind == 2 && st[d].whole)) {
+                memcpy(r, st[d].clip, sizeof(r));
+            } else if (sub->own_kind == 2) {
+                matrix_box(st[d].m, sub->own[0], sub->own[1], sub->own[2], sub->own[3], r);
+                if (!rect_and(r, st[d].clip)) continue;
+            } else {
+                continue;
+            }
+        } else {
+            k = op_local(h, r);
+            if (!k) continue;
+            if (k == 2 || st[d].whole) {
+                memcpy(r, st[d].clip, sizeof(r));
+            } else {
+                matrix_box(st[d].m, r[0], r[1], r[2], r[3], r);
+                if (!rect_and(r, st[d].clip)) continue;
+            }
+        }
+        if (far_box(r)) all = true;
+        else box_add(&own, r);
+    }
+    l->own[0] = own.l;
+    l->own[1] = own.t;
+    l->own[2] = own.r;
+    l->own[3] = own.b;
+    l->own_kind = all ? 3 : own.any ? 2 : 1;
+}
+
+/* A list's own box (list_own) drawn from state s into out, a pixel wider all round. */
+static void own_box(gdlist *l, const wstate *s, gbox *out)
+{
+    float r[4];
+    if (!l->own_kind) list_own(l);
+    if (l->own_kind == 3 || (l->own_kind == 2 && s->whole)) {
+        box_add(out, s->clip);
+    } else if (l->own_kind == 2) {
+        matrix_box(s->m, l->own[0], l->own[1], l->own[2], l->own[3], r);
+        r[0] -= 1;
+        r[1] -= 1;
+        r[2] += 1;
+        r[3] += 1;
+        if (rect_and(r, s->clip)) box_add(out, r);
+    }
+}
+
+static void walk_node(gnode *live, const wstate *at, int mode, int depth, gbox *out);
+
+/* A list drawn from state `at`: its own box and its nodes' into out, the nodes compared (W_COMPARE) or only noted (W_UPDATE). */
+static void walk_list(gdlist *l, const wstate *at, int mode, int depth, gbox *out)
+{
+    i32 base = W.used, d;
+    size_t pos;
+    if (!l || depth > DL_DEPTH) return;
+    own_box(l, at, out);
+    if (!l->kids) return;
+    if (base >= WALK_STATES) {
+        /* (Saved too deep to follow: all it may draw is damaged.) */
+        walk_damage(at->clip);
+        return;
+    }
+    W.st[base] = *at;
+    d = base;
+    for (pos = 0; pos < l->n; pos += ((const dl_head *)(const void *)(l->ops + pos))->size) {
+        const dl_head *h = (const dl_head *)(const void *)(l->ops + pos);
+        if (h->kind == DL_SAVE || h->kind == DL_SAVE_LAYER) {
+            if (d + 1 >= WALK_STATES) {
+                walk_damage(W.st[d].clip);
+                break;
+            }
+            W.st[d + 1] = W.st[d];
+            d++;
+            if (h->kind == DL_SAVE_LAYER) walk_state_op(&W.st[d], h, at->m);
+            continue;
+        }
+        if (h->kind == DL_RESTORE) {
+            if (d > base) d--;
+            continue;
+        }
+        if (walk_state_op(&W.st[d], h, at->m)) continue;
+        if (h->kind != DL_NODE && h->kind != DL_LIST) continue;
+        W.used = d + 1;
+        if (h->kind == DL_NODE) walk_node(((const dl_node *)(const void *)h)->node, &W.st[d], mode, depth + 1, out);
+        else walk_list(((const dl_list *)(const void *)h)->list, &W.st[d], mode, depth + 1, out);
+    }
+    W.used = base;
+}
+
+static bool same_state(const wstate *a, const wstate *b)
+{
+    return a->whole == b->whole && memcmp(a->m, b->m, sizeof(a->m)) == 0 && memcmp(a->clip, b->clip, sizeof(a->clip)) == 0;
+}
+
+/*
+ * A node's list against the one the walk last saw it draw (`was`), both from the node's state: call by call, each keeping
+ * its own matrices and clips. Without `act` it only counts: -1 when the lists are of another shape -- calls added or taken
+ * away, of other kinds, another picture drawn, saved too deep -- else how many drawing calls differ or are drawn
+ * with another matrix or clip. With `act`, those damage where they drew and where they draw, a layer whose call or state
+ * differs damages all of it, the nodes are compared as nodes (another node in an old one's place damages where the old one
+ * was), and the nodes' boxes go into the node's box.
+ */
+static int diff_pass(const gdlist *was, const gdlist *now, const wstate *ns, int depth, gbox *box, bool act)
+{
+    i32 base = W.used, half, da, db;
+    size_t pa, pb;
+    int changed = 0;
+    float r[4];
+    if (WALK_STATES - base < 4) return -1;
+    half = (WALK_STATES - base) / 2;
+    da = base;
+    db = base + half;
+    W.st[da] = *ns;
+    W.st[db] = *ns;
+    for (pa = pb = 0; pa < was->n && pb < now->n;) {
+        const dl_head *ha = (const dl_head *)(const void *)(was->ops + pa), *hb = (const dl_head *)(const void *)(now->ops + pb);
+        /* (Calls of one kind may differ in size: a run of text, a path. Only a call of another kind is another shape.) */
+        bool same = ha->size == hb->size && memcmp(ha, hb, ha->size) == 0;
+        if (ha->kind != hb->kind) return -1;
+        pa += ha->size;
+        pb += hb->size;
+        switch (ha->kind) {
+        case DL_SAVE:
+        case DL_SAVE_LAYER:
+            if (da + 1 >= base + half || db + 1 >= base + 2 * half) {
+                W.used = base;
+                return -1;
+            }
+            W.st[da + 1] = W.st[da];
+            W.st[db + 1] = W.st[db];
+            da++;
+            db++;
+            if (ha->kind == DL_SAVE) break;
+            walk_state_op(&W.st[da], ha, ns->m);
+            walk_state_op(&W.st[db], hb, ns->m);
+            if (same && same_state(&W.st[da], &W.st[db])) break;
+            changed++;
+            if (act) {
+                walk_damage(W.st[da].clip);
+                walk_damage(W.st[db].clip);
+            }
+            break;
+        case DL_RESTORE:
+            if (da > base) da--;
+            if (db > base + half) db--;
+            break;
+        case DL_MATRIX:
+        case DL_CLIP_RECT:
+        case DL_CLIP_PATH:
+            walk_state_op(&W.st[da], ha, ns->m);
+            walk_state_op(&W.st[db], hb, ns->m);
+            break;
+        case DL_NODE:
+            if (act) {
+                gnode *na = ((const dl_node *)(const void *)ha)->node, *nb = ((const dl_node *)(const void *)hb)->node;
+                bool any = false;
+                if (na != nb && na) {
+                    mg_lock_acquire(&g_lock);
+                    any = na->seen && na->seen_any;
+                    memcpy(r, na->seen_box, sizeof(r));
+                    mg_lock_release(&g_lock);
+                }
+                if (any) walk_damage(r);
+                W.used = db + 1;
+                walk_node(nb, &W.st[db], W_COMPARE, depth + 1, box);
+                W.used = base;
+            }
+            break;
+        case DL_LIST: {
+            gdlist *la = ((const dl_list *)(const void *)ha)->list, *lb = ((const dl_list *)(const void *)hb)->list;
+            bool moved;
+            if (la != lb) {
+                W.used = base;
+                return -1;
+            }
+            moved = !same_state(&W.st[da], &W.st[db]);
+            if (moved) changed++;
+            if (act && lb) {
+                if (moved) {
+                    gbox ob;
+                    memset(&ob, 0, sizeof(ob));
+                    own_box(la, &W.st[da], &ob);
+                    own_box(lb, &W.st[db], &ob);
+                    box_add_box(&W.damage, &ob);
+                }
+                W.used = db + 1;
+                walk_list(lb, &W.st[db], W_COMPARE, depth + 1, box);
+                W.used = base;
+            }
+            break;
+        }
+        default:
+            if (same && same_state(&W.st[da], &W.st[db])) break;
+            changed++;
+            if (act) {
+                if (op_box(ha, &W.st[da], r)) walk_damage(r);
+                if (op_box(hb, &W.st[db], r)) walk_damage(r);
+            }
+            break;
+        }
+    }
+    W.used = base;
+    return pa < was->n || pb < now->n ? -1 : changed;
+}
+
+/* A node whose list is another than the walk last saw (walk_node): compared call by call, or damaged whole where they differ too much. */
+static void walk_diff(const gnode *n, gdlist *was, gdlist *now, const wstate *ns, int depth, gbox *box)
+{
+    int changed = was && now ? diff_pass(was, now, ns, depth, box, false) : -1;
+    W.diffed++;
+    if (changed < 0 || changed > WALK_CHANGED) {
+        W.whole_diffs++;
+        walk_list(now, ns, W_UPDATE, depth + 1, box);
+        if (n->seen_any) walk_damage(n->seen_box);
+        box_add_box(&W.damage, box);
+        return;
+    }
+    diff_pass(was, now, ns, depth, box, true);
+    own_box(now, ns, box);
+}
+
+/*
+ * A node drawn from state `at` (walk_list): where it draws worked out -- its place, matrix and clips as node_play draws it
+ * -- compared with where the walk last found it, when the walk answers for it (see above), and noted for the next walk and
+ * for the render thread (node_play). Its box goes into out.
+ */
+static void walk_node(gnode *live, const wstate *at, int mode, int depth, gbox *out)
+{
+    gnode n;
+    gdlist *l, *was;
+    wstate ns;
+    gbox box;
+    float lc[4], ob[4], r[4], to[6] = { 1, 0, 0, 0, 1, 0 };
+    i32 blend = MEGLER_GFX_BLEND_SRC_OVER, filter = -1;
+    bool clips = false, draws, own, all, ob_any = false;
+    if (!live || depth > DL_DEPTH) return;
+    /* The node as it is now, as node_play reads it; its outline path's box worked out under the lock rnSet frees it under. */
+    mg_lock_acquire(&g_lock);
+    l = live->list;
+    if (l) l->refs++;
+    n = *live;
+    if (n.outline_kind == 2 && n.outline_path && n.outline_n > 0) ob_any = path_hull(n.outline_path, n.outline_n, ob);
+    mg_lock_release(&g_lock);
+    W.nodes++;
+    if (n.flags & RN_LAYER_PAINT) {
+        blend = blend_number(n.layer_paint[P_XFER]);
+        filter = n.layer_paint[P_CFMODE];
+    }
+    draws = l && n.alpha > 0 && !((n.flags & RN_CLIP_OUTLINE) && !n.outline_kind) && !((n.flags & RN_LAYER) && blend == MEGLER_GFX_BLEND_DST);
+    /* (A layer put on by another mode than SRC_OVER, or through a colour filter, changes all of it whatever is drawn into it.) */
+    all = (n.flags & RN_LAYER) && (blend != MEGLER_GFX_BLEND_SRC_OVER || filter >= 0);
+    to[2] = n.left;
+    to[5] = n.top;
+    matrix_concat(at->m, to, ns.m);
+    if (!(n.flags & RN_IDENTITY)) matrix_concat(ns.m, n.m, ns.m);
+    lc[0] = lc[1] = -WALK_FAR;
+    lc[2] = lc[3] = WALK_FAR;
+    if (n.flags & (RN_LAYER | RN_CLIP_BOUNDS)) {
+        r[0] = r[1] = 0;
+        r[2] = n.right - n.left;
+        r[3] = n.bottom - n.top;
+        rect_and(lc, r);
+        clips = true;
+    }
+    if (n.flags & RN_CLIP_RECT) {
+        rect_and(lc, n.clip);
+        clips = true;
+    }
+    if ((n.flags & RN_CLIP_OUTLINE) && n.outline_kind == 1) {
+        rect_and(lc, n.outline);
+        clips = true;
+    }
+    if ((n.flags & RN_CLIP_OUTLINE) && n.outline_kind == 2) {
+        if (ob_any) rect_and(lc, ob);
+        else lc[2] = lc[0];
+        clips = true;
+    }
+    memcpy(ns.clip, at->clip, sizeof(ns.clip));
+    if (clips) {
+        if (lc[2] > lc[0] && lc[3] > lc[1]) {
+            matrix_box(ns.m, lc[0], lc[1], lc[2], lc[3], r);
+            if (!rect_and(ns.clip, r)) draws = false;
+        } else {
+            draws = false;
+        }
+    }
+    if (!(ns.clip[2] > ns.clip[0]) || !(ns.clip[3] > ns.clip[1])) draws = false;
+    ns.whole = at->whole;
+    /*
+     * Any node moved, changed in its properties or new is damaged, a View's too: a View moved by offsetTopAndBottom, as a
+     * ListView scrolls its rows, says only where it now is, and the place it left was the list's whole invalidation's
+     * before the walk. What changed in a View's list is the View's to say unless it left that to the walk (own).
+     */
+    own = !(n.flags & RN_VIEW) || (n.defer && n.ends > n.defer_min);
+    memset(&box, 0, sizeof(box));
+    if (mode == W_COMPARE && n.seen) {
+        bool moved = n.seen_ver != n.ver || n.seen_whole != ns.whole || memcmp(n.seen_m, ns.m, sizeof(ns.m)) != 0 ||
+                     memcmp(n.seen_clip, ns.clip, sizeof(ns.clip)) != 0;
+        if (moved) {
+            if (draws) walk_list(l, &ns, W_UPDATE, depth + 1, &box);
+            if (draws && all) box_add(&box, ns.clip);
+            if (n.seen_any) walk_damage(n.seen_box);
+            box_add_box(&W.damage, &box);
+            W.moved++;
+        } else if (own && l != n.seen_list) {
+            if (draws) walk_diff(&n, n.seen_list, l, &ns, depth, &box);
+            if (draws && all) box_add(&box, ns.clip);
+        } else if (draws) {
+            walk_list(l, &ns, W_COMPARE, depth + 1, &box);
+            if (all) box_add(&box, ns.clip);
+        }
+    } else if (mode == W_COMPARE) {
+        /* (Not found before: all it draws is new.) */
+        if (draws) walk_list(l, &ns, W_UPDATE, depth + 1, &box);
+        if (draws && all) box_add(&box, ns.clip);
+        box_add_box(&W.damage, &box);
+    } else if (draws) {
+        walk_list(l, &ns, mode, depth + 1, &box);
+        if (all) box_add(&box, ns.clip);
+    }
+    mg_lock_acquire(&g_lock);
+    was = live->seen_list;
+    live->seen_list = l;
+    live->seen_ver = n.ver;
+    memcpy(live->seen_m, ns.m, sizeof(ns.m));
+    memcpy(live->seen_clip, ns.clip, sizeof(ns.clip));
+    live->seen_whole = ns.whole;
+    if (live->seen_no == W.no) {
+        /* Drawn twice in one frame: the box round both, and the render thread does not leave it out by it. */
+        live->seen_multi = true;
+        if (box.any && live->seen_any) {
+            gbox both = box;
+            box_add(&both, live->seen_box);
+            box = both;
+        }
+    } else {
+        live->seen_multi = false;
+    }
+    if (box.any) {
+        live->seen_box[0] = box.l;
+        live->seen_box[1] = box.t;
+        live->seen_box[2] = box.r;
+        live->seen_box[3] = box.b;
+    }
+    live->seen_any = box.any || (live->seen_multi && live->seen_any);
+    live->seen_no = W.no;
+    live->seen = true;
+    /* (A View's own node: an invalidation answered, unless one made while the list was being recorded waits for the next.) */
+    if ((n.flags & RN_VIEW) && own) {
+        if (n.ends > n.defer_max) live->defer = false;
+        else live->defer_min = n.defer_max;
+    }
+    mg_lock_release(&g_lock);
+    dl_unref(was);
+    box_add_box(out, &box);
+}
+
+/*
+ * (long rec, int width, int height, int[4] out, boolean compare) -> boolean: Gfx.damage. The frame the recording canvas has
+ * recorded so far walked (above), from the screen's corner with the screen as the clip, before it is handed over; `compare`
+ * false (a frame drawn whole) only notes where every node is. True with the rectangle of the screen that changed in out[0..3],
+ * false when nothing did.
+ */
+N(G_damage)
+{
+    gcanvas *v = cv_of(c->args[0].j);
+    i32 *out = (i32 *)elements(c->args[3].l, 'I', 4), w = c->args[1].i, h = c->args[2].i;
+    wstate at;
+    gbox box;
+    u64 t0 = mg_time_monotonic_ns(), now;
+    double area = 0;
+    if (!v || !v->rec || !out || w <= 0 || h <= 0) return;
+    if (!W.st) W.st = (wstate *)mg_alloc(sizeof(wstate) * WALK_STATES);
+    if (++W.no == 0) W.no = 1;
+    W.used = 0;
+    memset(&W.damage, 0, sizeof(W.damage));
+    memset(&box, 0, sizeof(box));
+    matrix_identity(at.m);
+    at.clip[0] = at.clip[1] = 0;
+    at.clip[2] = (float)w;
+    at.clip[3] = (float)h;
+    at.whole = false;
+    walk_list(v->rec, &at, c->args[4].z ? W_COMPARE : W_UPDATE, 0, &box);
+    g_walk_ready = W.no;
+    out[0] = out[1] = out[2] = out[3] = 0;
+    if (W.damage.any) {
+        out[0] = whole(floor(W.damage.l > 0 ? W.damage.l : 0));
+        out[1] = whole(floor(W.damage.t > 0 ? W.damage.t : 0));
+        out[2] = whole(ceil(W.damage.r < (float)w ? W.damage.r : (float)w));
+        out[3] = whole(ceil(W.damage.b < (float)h ? W.damage.b : (float)h));
+        if (out[2] > out[0] && out[3] > out[1]) {
+            c->ret.z = 1;
+            area = (double)(out[2] - out[0]) * (out[3] - out[1]);
+        }
+    }
+    now = mg_time_monotonic_ns();
+    W.walks++;
+    W.area += area;
+    W.screen += (double)w * h;
+    W.ns += now - t0;
+    if (!W.since) W.since = now;
+    if (now - W.since >= 5000000000ull && W.walks) {
+        mg_info("gfx: the frame walk, %.1f s: %u frames, %.0f nodes and %.2f ms each; a frame %.1f nodes moved or changed, %.1f lists compared "
+                "call by call (%.1f of them taken whole); what the nodes changed, %.1f%% of the screen a frame",
+                (double)(now - W.since) / 1e9, (unsigned)W.walks, (double)W.nodes / W.walks, (double)W.ns / 1e6 / W.walks,
+                (double)W.moved / W.walks, (double)W.diffed / W.walks, (double)W.whole_diffs / W.walks, W.screen > 0 ? 100 * W.area / W.screen : 0);
+        W.walks = W.nodes = W.moved = W.diffed = W.whole_diffs = 0;
+        W.area = W.screen = 0;
+        W.ns = 0;
+        W.since = now;
+    }
 }
 
 /* ---------------------------------------------- Gfx: display lists natives */
@@ -3245,7 +4065,18 @@ N(G_rnFree)
     if (n) rn_unref(n);
 }
 
-/* (long node, long cv): endRecording. What the canvas recorded is the node's list from now on; the one it had goes. */
+/* Whether two lists are the same calls with the same arguments: the nodes, bitmaps (at the same version) and faces they name the same ones. */
+static bool dl_same(const gdlist *a, const gdlist *b)
+{
+    return a->n == b->n && a->width == b->width && a->height == b->height && (a->n == 0 || memcmp(a->ops, b->ops, a->n) == 0);
+}
+
+/*
+ * (long node, long cv): endRecording. What the canvas recorded is the node's list from now on; the one it had goes. A list
+ * the same as the one the node has is let go of instead, and the node keeps its own: Compose records a layer again
+ * whenever its view is drawn, and a View is recorded again whenever it is invalidated, the same calls as often as not; the
+ * frame walk (Gfx.damage) then sees at once that nothing in it changed.
+ */
 N(G_rnEnd)
 {
     gnode *n = rn_of(c->args[0].j);
@@ -3256,22 +4087,55 @@ N(G_rnEnd)
     }
     mg_lock_acquire(&g_lock);
     old = n->list;
+    n->ends++;
+    if (old && l && dl_same(old, l)) {
+        mg_lock_release(&g_lock);
+        dl_unref(l);
+        return;
+    }
     n->list = l;
     mg_lock_release(&g_lock);
     dl_unref(old);
 }
 
-/* (long node): discardDisplayList. */
+/* (long node): discardDisplayList. The list the frame walk last saw goes with it, and the walk takes the node as changed. */
 N(G_rnDiscard)
 {
     gnode *n = rn_of(c->args[0].j);
-    gdlist *old;
+    gdlist *old, *seen;
     if (!n) return;
     mg_lock_acquire(&g_lock);
     old = n->list;
     n->list = NULL;
+    seen = n->seen_list;
+    n->seen_list = NULL;
+    n->ver++;
     mg_lock_release(&g_lock);
     dl_unref(old);
+    dl_unref(seen);
+}
+
+/*
+ * (long node, boolean recording): a View's own node whose whole box was invalidated (android.view.View, overlaid,
+ * meglerDefer): what of it changed -- calls of its list, nodes it draws -- is left to the frame walk (Gfx.damage), not the
+ * whole box drawn again; `recording`, said while the node's list is being recorded, is for the list recorded after it. A
+ * ListView whose overscroll glow invalidates it from its draw had the frame walk compare the list being recorded then, and
+ * the glow's next steps went undrawn (gnode.defer).
+ */
+N(G_rnDefer)
+{
+    gnode *n = rn_of(c->args[0].j);
+    u32 after;
+    if (!n) return;
+    mg_lock_acquire(&g_lock);
+    after = n->ends + (c->args[1].z ? 1u : 0u);
+    if (!n->defer) {
+        n->defer = true;
+        n->defer_min = n->defer_max = after;
+    } else if (after > n->defer_max) {
+        n->defer_max = after;
+    }
+    mg_lock_release(&g_lock);
 }
 
 /*
@@ -3284,7 +4148,8 @@ N(G_rnDiscard)
  *      on with, 0..255; 3 the path's fill rule (1 even-odd); 4 how many floats of the path count
  *
  * The path is the framework's operations (android.graphics.Path.ops), built here. The layer paint is Paint.mP, read for
- * its mode and colour filter (RN_LAYER_PAINT).
+ * its mode and colour filter (RN_LAYER_PAINT). A property that changes counts in the node's ver, for the frame walk; the
+ * same properties handed over again do not.
  */
 N(G_rnSet)
 {
@@ -3292,8 +4157,9 @@ N(G_rnSet)
     const float *f = (const float *)elements(c->args[1].l, 'F', 20);
     const i32 *k = (const i32 *)elements(c->args[2].l, 'I', 5), *paint = (const i32 *)elements(c->args[4].l, 'I', P_COUNT);
     gpath p;
-    float *path = NULL, *old_path;
-    i32 path_n = 0, path_fill = 0, kind;
+    float *path = NULL, *old_path, m[6], alpha, radius;
+    i32 path_n = 0, path_fill = 0, kind, flags, layer_alpha;
+    bool changed;
     int i;
     if (!n || !f || !k) return;
     /* The outline's path built first; then everything set at once, under the lock node_play reads it under. */
@@ -3309,27 +4175,40 @@ N(G_rnSet)
             path_free(&p);
         }
     }
+    for (i = 0; i < 6; i++) m[i] = number(f[4 + i], i == 0 || i == 4 ? 1.0f : 0.0f);
+    alpha = number(f[10], 1);
+    radius = number(f[19], 0);
+    flags = paint ? k[0] : k[0] & ~RN_LAYER_PAINT;
+    layer_alpha = k[2] < 0 ? 0 : k[2] > 255 ? 255 : k[2];
     mg_lock_acquire(&g_lock);
+    /* (What a flag leaves unused is not compared: the Java leaves the matrix's places as they were when the node has none.) */
+    changed = n->left != f[0] || n->top != f[1] || n->right != f[2] || n->bottom != f[3] || n->alpha != alpha || n->flags != flags ||
+              n->outline_kind != kind || n->layer_alpha != layer_alpha || (!(flags & RN_IDENTITY) && memcmp(n->m, m, sizeof(m)) != 0) ||
+              ((flags & RN_CLIP_RECT) && memcmp(n->clip, f + 11, sizeof(n->clip)) != 0) ||
+              (kind == 1 && (memcmp(n->outline, f + 15, sizeof(n->outline)) != 0 || n->radius != radius)) ||
+              (kind == 2 && (n->outline_n != path_n || n->outline_fill != path_fill ||
+                             (path_n > 0 && memcmp(n->outline_path, path, sizeof(float) * (size_t)path_n) != 0))) ||
+              ((flags & RN_LAYER_PAINT) && memcmp(n->layer_paint, paint, sizeof(n->layer_paint)) != 0);
+    if (changed) n->ver++;
     n->left = f[0];
     n->top = f[1];
     n->right = f[2];
     n->bottom = f[3];
-    for (i = 0; i < 6; i++) n->m[i] = number(f[4 + i], i == 0 || i == 4 ? 1.0f : 0.0f);
-    n->alpha = number(f[10], 1);
+    memcpy(n->m, m, sizeof(m));
+    n->alpha = alpha;
     for (i = 0; i < 4; i++) {
         n->clip[i] = f[11 + i];
         n->outline[i] = f[15 + i];
     }
-    n->radius = number(f[19], 0);
-    n->flags = k[0];
+    n->radius = radius;
+    n->flags = flags;
     n->outline_kind = kind;
-    n->layer_alpha = k[2] < 0 ? 0 : k[2] > 255 ? 255 : k[2];
+    n->layer_alpha = layer_alpha;
     old_path = n->outline_path;
     n->outline_path = path;
     n->outline_n = path_n;
     if (kind == 2) n->outline_fill = path_fill;
     if (paint) memcpy(n->layer_paint, paint, sizeof(n->layer_paint));
-    else n->flags &= ~RN_LAYER_PAINT;
     mg_lock_release(&g_lock);
     free(old_path);
 }
@@ -3765,6 +4644,7 @@ static struct {
     gbitmap *bm;
     gdlist *list;
     i32 part[4];
+    u32 cull;                          /* the frame walk that went through it (frame_show), or 0 */
     u32 frames;                        /* for the log, since `since` */
     u64 play_ns, show_ns, wait_ns, since;
 } R;
@@ -3830,13 +4710,24 @@ static void present_bitmap(gbitmap *b)
     g_present.fn(g_present.user, b->px, b->w, b->h, b->stride);
 }
 
-/* A frame drawn onto the screen's canvas and shown (not when part[2] is -1), on the calling thread; the list is let go. */
-static void frame_show(gcanvas *v, gbitmap *b, gdlist *l, const i32 part[4])
+/*
+ * A frame drawn onto the screen's canvas and shown (not when part[2] is -1), on the calling thread; the list is let go. A
+ * frame of part of the screen (part[2] above 0) is drawn clipped to the part, cleared first; with `cull` the number of the
+ * frame walk that went through it (G_damage), whose boxes leave out the nodes that draw nowhere in the part (node_play).
+ */
+static void frame_show(gcanvas *v, gbitmap *b, gdlist *l, const i32 part[4], u32 cull)
 {
     u64 t0 = mg_time_monotonic_ns(), t1;
     i32 d0 = v->depth;
     cv_save(v, NULL, false, 255, MEGLER_GFX_BLEND_SRC_OVER, NULL);
+    if (part[2] > 0) {
+        cv_clip_rect(v, (float)part[0], (float)part[1], (float)part[2], (float)part[3], MEGLER_GFX_CLIP_INTERSECT);
+        draw_color(v, 0, MEGLER_GFX_BLEND_CLEAR);
+    }
+    t_cull_v = cull ? v : NULL;
+    t_cull_no = cull;
     list_play(v, l, 0);
+    t_cull_v = NULL;
     while (v->depth > d0) cv_restore(v);
     dl_unref(l);
     t1 = mg_time_monotonic_ns();
@@ -3860,15 +4751,17 @@ static MG_HOSTCB void rt_main(void *arg)
         gbitmap *b;
         gdlist *l;
         i32 part[4];
+        u32 cull;
         u64 now;
         while (!R.busy || !R.list) mg_cond_wait(&g_rt_wake, &g_rt_lock);
         v = R.cv;
         b = R.bm;
         l = R.list;
         memcpy(part, R.part, sizeof(part));
+        cull = R.cull;
         R.list = NULL;
         mg_lock_release(&g_rt_lock);
-        frame_show(v, b, l, part);
+        frame_show(v, b, l, part, cull);
         mg_lock_acquire(&g_rt_lock);
         R.busy = false;
         R.cv = NULL;
@@ -3878,9 +4771,10 @@ static MG_HOSTCB void rt_main(void *arg)
         if (!R.since) R.since = now;
         if (now - R.since >= 5000000000ull && R.frames) {
             mg_info("gfx: the render thread, %.1f s: %u frames drawn and shown off the main thread, %.1f ms drawing the lists and %.1f ms showing each; "
-                    "the main thread waited %.1f ms in all for the frame before to be shown",
+                    "the main thread waited %.1f ms in all for the frame before to be shown; %.1f nodes a frame left out, drawing nowhere in the part drawn",
                     (double)(now - R.since) / 1e9, (unsigned)R.frames, (double)R.play_ns / 1e6 / R.frames, (double)R.show_ns / 1e6 / R.frames,
-                    (double)R.wait_ns / 1e6);
+                    (double)R.wait_ns / 1e6, (double)g_culled / R.frames);
+            g_culled = 0;
             R.frames = 0;
             R.play_ns = R.show_ns = R.wait_ns = 0;
             R.since = now;
@@ -3929,15 +4823,18 @@ N(G_frame)
     gbitmap *b = bm_of(c->args[1].j);
     gdlist *l = cv_end_record(rec);
     i32 part[4];
+    u32 cull = g_walk_ready;
     u64 t0;
     int i;
+    /* (The frame walk's boxes are this frame's: the walk ran on what was recorded, and no other runs until it is shown.) */
+    g_walk_ready = 0;
     for (i = 0; i < 4; i++) part[i] = c->args[3 + i].i;
     if (!v || !b || !l) {
         dl_unref(l);
         return;
     }
     if (!rt_on()) {
-        frame_show(v, b, l, part);
+        frame_show(v, b, l, part, cull);
         return;
     }
     t0 = mg_time_monotonic_ns();
@@ -3948,6 +4845,7 @@ N(G_frame)
     R.bm = b;
     R.list = l;
     memcpy(R.part, part, sizeof(part));
+    R.cull = cull;
     R.busy = true;
     mg_cond_signal(&g_rt_wake);
     mg_lock_release(&g_rt_lock);
@@ -4047,6 +4945,8 @@ static const mg_jhle k_gfx[] = {
     { "megler/Gfx", "rnEnd", "(JJ)V", G_rnEnd },
     { "megler/Gfx", "rnDiscard", "(J)V", G_rnDiscard },
     { "megler/Gfx", "rnSet", "(J[F[I[F[I)V", G_rnSet },
+    { "megler/Gfx", "rnDefer", "(JZ)V", G_rnDefer },
+    { "megler/Gfx", "damage", "(JII[IZ)Z", G_damage },
     { "megler/Gfx", "rnBytes", "(J)J", G_rnBytes },
     { NULL, NULL, NULL, NULL },
 };

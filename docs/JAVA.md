@@ -1617,6 +1617,43 @@ That was a running `AnimationDrawable` in its closed drawer, off the screen.
 After: 8 frames every 5.6 s at 16 ms each, idle 97%, redrawn 3% of the
 screen a frame.
 
+### What the nodes changed (package 663)
+
+The views' rectangles are not enough for Compose. Its view
+(`AndroidComposeView`) invalidates itself whole for a change of any of its
+graphics layers, and Spotify drew a third of the screen again in every frame
+for its progress bar. Android's renderer finds its damage node by node
+(HWUI's `DamageAccumulator`). The frame walk does the same
+(`core/src/drivers/mg_java_gfx.c`, `G_damage`; `megler.Gfx.damage`):
+- `drawAll` records every window whole, by reference to the views' lists.
+  Once the nodes have the frame's properties, it walks what the frame draws,
+  with the matrix and clip each node is drawn with.
+- Each node keeps where the walk last found it. A node moved, changed in its
+  properties (`rnSet` counts real changes in `ver`) or new damages where it
+  was and where it is. A View's node does too: a ListView's rows are moved
+  by `offsetTopAndBottom`, which says only where a row now is.
+- A node whose list is another is compared call by call. Each side keeps its
+  own matrices and clips. A call that differs, or is drawn elsewhere, damages
+  where it drew and where it draws. A list of another shape, or with more
+  than 24 calls changed, damages the whole node. `rnEnd` keeps the old list
+  when the new one is the same, bytes and all (a bitmap's call carries the
+  bitmap's version).
+- What changed in a View's own list is the View's to say, by its rectangles.
+  But a View invalidated whole (`invalidate()`, a rectangle round all of it,
+  `invalidateDrawable`) leaves that to the walk (`View.meglerDefer`,
+  `Gfx.rnDefer`).
+- The render thread clips the frame to the part and clears it there. It
+  leaves out a node drawn once in the frame whose box, as the walk found it,
+  is nowhere in the part.
+
+The flag `no-node-damage` draws the views' rectangles alone, as before. The
+log says every 5 s what the walk found (`gfx: the frame walk`) and how many
+nodes the render thread left out. The natives' test `test_walk` checks the
+rectangles of each kind of change, and that every frame drawn in part by
+them equals the frame drawn whole. The hello app's `Layers` is a view drawn
+as Compose's is: its frames drawn in part must miss nothing and must not
+reach its own unchanged drawing.
+
 ### Measured, not tests
 
 - **`invoke-polymorphic` is not needed yet.** `python tools/dexasm.py dump

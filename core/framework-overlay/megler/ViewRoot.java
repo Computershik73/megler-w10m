@@ -12,6 +12,11 @@
 // and at the first frame. The original drew the whole screen in every frame: Android's software rendering draws the dirty
 // region only (ViewRootImpl.mDirty), and so a blinking cursor cost a whole screen here. For the tests (Native.checkPartial),
 // checkPart draws each partial frame again whole into a second bitmap and says what differs outside the part.
+// Since package 663 the rectangles the views asked for are joined by what the frame walk finds the nodes changed
+// (megler.Gfx.damage, after the windows are recorded and the nodes have the frame's properties): a view invalidated whole
+// leaves that to the walk (View.meglerDefer), as Android's renderer finds its damage node by node, and the render thread
+// clips the frame to the part, clears it there, and leaves out the nodes that draw nowhere in it. The flag no-node-damage
+// draws the views' rectangles alone, as before.
 //
 // And in the frame the window's insets give (computeInsets; WindowInsets.getFrame, overlaid): the screen's size for an
 // activity's window, a dialog's or popup's own size once laid out.
@@ -755,25 +760,45 @@ public final class ViewRoot implements ViewParent {
         if (sFullRedraw) noteDirtier(sFullWhy != null ? sFullWhy : "windows added, removed, moved or resized", Float.MAX_VALUE);
         sFullWhy = null;
         sFullRedraw = false;
-        countDirtier(whole ? sw * sh : (part.isEmpty() ? 0 : Math.min(part.width(), sw) * Math.min(part.height(), sh)), sw * sh);
         // The frame is recorded (sFrame), and the render thread draws it onto the screen and shows it (Gfx.frame) while this
         // thread goes on: the views' lists are drawn there by reference, as Android's RenderThread draws them.
         if (!whole) {
             sRedrawn = 0;
-            if (!sPresentedAny || !part.intersect(0, 0, sw, sh)) return;      /* nothing visible changed: the screen is as it was */
+            boolean nodes = meglerNodeDamage();
+            if (!sPresentedAny || (!nodes && !part.intersect(0, 0, sw, sh))) {
+                countDirtier(0, sw * sh);
+                return;      /* nothing visible changed: the screen is as it was */
+            }
             sFrame.meglerFrame(sw, sh);
-            int save = sFrame.save();
-            sFrame.clipRect(part);
-            sFrame.drawColor(0, PorterDuff.Mode.CLEAR);
-            sDrawingPart = true;
-            try { drawWindows(sFrame, roots, sw, sh); } finally { sDrawingPart = false; sFrame.restoreToCount(save); }
+            if (nodes) {
+                // Every window recorded whole, by reference to its views' lists, and walked node by node once the nodes have
+                // this frame's properties (Gfx.damage): what changed in them is drawn again with what the views asked for.
+                drawWindows(sFrame, roots, sw, sh);
+                handOver();
+                if (Gfx.damage(sFrame.meglerNative(), sw, sh, sDamage, true)) part.union(sDamage[0], sDamage[1], sDamage[2], sDamage[3]);
+            } else {
+                // (As before the walk: drawn through the part, so that View.drawFromParent skips what lies outside it.)
+                int save = sFrame.save();
+                sFrame.clipRect(part);
+                sDrawingPart = true;
+                try { drawWindows(sFrame, roots, sw, sh); } finally { sDrawingPart = false; sFrame.restoreToCount(save); }
+                handOver();
+            }
+            if (!part.intersect(0, 0, sw, sh)) {
+                countDirtier(0, sw * sh);
+                Gfx.dlFree(Gfx.cvEndRecord(sFrame.meglerNative()));      /* nothing visible changed after all: the frame is let go */
+                return;
+            }
+            countDirtier(part.width() * part.height(), sw * sh);
+            // (The render thread clips the frame to the part and clears it there before drawing it: Gfx.frame.)
             sRedrawn = part.width() * part.height();
             if (sCheck == 0) sCheck = Native.checkPartial() ? 1 : -1;
-            handOver();
+            if (sCheck > 0) android.util.Log.d("ViewRoot", "drawn in part " + part.left + "," + part.top + "-" + part.right + "," + part.bottom);
             Gfx.frame(sCanvas.meglerNative(), sScreen.meglerNative(), sFrame.meglerNative(), part.left, part.top, part.right, part.bottom);
             if (sCheck > 0) { Gfx.frameWait(); checkPart(roots, sw, sh, part); }
             return;
         }
+        countDirtier(sw * sh, sw * sh);
         sFrame.meglerFrame(sw, sh);
         sFrame.drawColor(0, PorterDuff.Mode.CLEAR);
         // a window drawn counts even when it drew nothing (the screen must lose a closed dialog)
@@ -781,12 +806,24 @@ public final class ViewRoot implements ViewParent {
         sRedrawn = any ? sw * sh : 0;
         // With no window drawn the screen is cleared all the same (drawn, not shown): a frame drawn in part later keeps the rest.
         handOver();
+        // (Where every node is, noted for the frames drawn in part after this one.)
+        if (meglerNodeDamage()) Gfx.damage(sFrame.meglerNative(), sw, sh, sDamage, false);
         Gfx.frame(sCanvas.meglerNative(), sScreen.meglerNative(), sFrame.meglerNative(), 0, 0, any ? 0 : -1, 0);
         if (!any && sPresentedAny) Gfx.present(0);
         sPresentedAny = any;
     }
     /* The canvas each frame is recorded on, for the render thread. */
     private static ScreenCanvas sFrame;
+    private static final int[] sDamage = new int[4];
+    private static int sNodeDamage = -1;
+    /**
+     * Whether the frame walk finds what the views' nodes changed (megler.Gfx.damage; View.meglerDefer): with the views' lists
+     * (no-view-lists turns them off), unless the flag no-node-damage turns it off.
+     */
+    public static boolean meglerNodeDamage() {
+        if (sNodeDamage < 0) sNodeDamage = View.meglerViewLists() && !Native.flag("no-node-damage") ? 1 : 0;
+        return sNodeDamage > 0;
+    }
     /*
      * Before a frame is handed over: the frame before shown, then the nodes' properties that changed handed to the core, which
      * drawing on the screen did before (RenderNode.meglerSync) and recording does not, so that the render thread draws each
