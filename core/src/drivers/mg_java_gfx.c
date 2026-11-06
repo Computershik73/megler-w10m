@@ -3780,6 +3780,8 @@ static void present_bitmap(gbitmap *b)
      * and nothing was written into the memory behind it. The canvas is then not flushed, and stays dirty: whatever reads
      * the memory later flushes it first (bm_settle), as it always has.
      */
+    static i32 said;
+    const char *why = NULL;
     if (g_present.canvas_fn) {
         gcanvas *only;
         void *host = NULL;
@@ -3797,6 +3799,9 @@ static void present_bitmap(gbitmap *b)
         if (only && !only->next && only->host && !only->stale && !b->rgba_locks) {
             host = only->host;
             b->presenting++;
+        } else {
+            why = !only ? "no canvas draws it" : only->next ? "more than one canvas draws it" : !only->host ? "its canvas is not the shell's"
+                : only->stale ? "its memory was written behind its canvas" : "its memory is locked in Android's order";
         }
         mg_lock_release(&g_lock);
         if (host) {
@@ -3804,6 +3809,7 @@ static void present_bitmap(gbitmap *b)
             mg_lock_acquire(&g_lock);
             if (--b->presenting == 0) mg_cond_broadcast(&g_presented);
             mg_lock_release(&g_lock);
+            if (!shown) why = "the shell would not show its canvas";
         }
         if (shown) {
             /* (A look at what was shown, for a diagnosis, when one is asked for: the memory brought up to date for it.) */
@@ -3813,6 +3819,12 @@ static void present_bitmap(gbitmap *b)
             }
             return;
         }
+    }
+    /* (Why, the first times: AIDA64's every frame went through memory on a Lumia 650, 14 ms of read-back each, and the
+       log did not say which of the conditions above failed.) */
+    if (why && said < 3) {
+        said++;
+        mg_info("gfx: the window's picture went through memory, %ux%u: %s", (unsigned)b->w, (unsigned)b->h, why);
     }
     bm_settle(b);
     g_present.fn(g_present.user, b->px, b->w, b->h, b->stride);
