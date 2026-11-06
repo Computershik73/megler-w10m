@@ -80,7 +80,16 @@ public class PackageManager {
         return a;
     }
     private static ServiceInfo service(megler.Manifest.Component c) { ServiceInfo s = new ServiceInfo(); s.name = c.name; s.packageName = megler.Native.packageName(); s.exported = c.exported; s.enabled = c.enabled; s.metaData = c.metaData; s.permission = c.permission; s.processName = process(c); return s; }
-    private static ProviderInfo provider(megler.Manifest.Component c) { ProviderInfo p = new ProviderInfo(); p.name = c.name; p.packageName = megler.Native.packageName(); p.authority = c.authorities; p.exported = c.exported; p.metaData = c.metaData; p.processName = process(c); return p; }
+    private static ProviderInfo provider(megler.Manifest.Component c) {
+        ProviderInfo p = new ProviderInfo(); p.name = c.name; p.packageName = megler.Native.packageName(); p.authority = c.authorities; p.exported = c.exported; p.enabled = c.enabled; p.metaData = c.metaData; p.processName = process(c);
+        // (Its permissions, as Android's: permission stands for whichever of the two is not given. Yandex's account library
+        // finds its own provider by its read permission, and stopped Yandex Music at its start without it.)
+        p.readPermission = c.readPermission != null ? c.readPermission : c.permission;
+        p.writePermission = c.writePermission != null ? c.writePermission : c.permission;
+        p.grantUriPermissions = c.grantUriPermissions;
+        p.initOrder = c.initOrder;
+        return p;
+    }
     public PackageInfo getPackageInfo(String pkg, int flags) throws NameNotFoundException {
         if ("android".equals(pkg)) {
             // the platform itself (okhttp, Play libraries and WebView checks read its version)
