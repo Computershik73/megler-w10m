@@ -1474,11 +1474,11 @@ static void say_unrepaired(mg_addr address, bool write, bool exec)
             write ? "written" : exec ? "run" : "read", state, host, events[0] ? events : " none kept");
 }
 
-static bool fix_fault(mg_addr address, bool write, bool exec);
+static bool fix_fault(mg_addr address, bool write, bool exec, mg_addr pc);
 
-bool mg_mmap_fix_fault(mg_addr address, bool write, bool exec)
+bool mg_mmap_fix_fault(mg_addr address, bool write, bool exec, mg_addr pc)
 {
-    if (fix_fault(address, write, exec)) return true;
+    if (fix_fault(address, write, exec, pc)) return true;
     say_unrepaired(address, write, exec);
     return false;
 }
@@ -1520,7 +1520,7 @@ static bool rwx_on(void)
 
 static bool rwx_known(void) { return g_rwx > 0; }
 
-static bool fix_fault(mg_addr address, bool write, bool exec)
+static bool fix_fault(mg_addr address, bool write, bool exec, mg_addr pc)
 {
     region *r;
     bool wx, rwx, back = false;
@@ -1584,6 +1584,19 @@ static bool fix_fault(mg_addr address, bool write, bool exec)
     rwx = rwx && r && !r->view;
     mg_lock_release(&g_region_lock);
     if (!wx) return false;
+    /*
+     * A page of a library's that writes itself: the instruction that writes is on the page it writes, which flipped to
+     * writable for the write and back to executable for the instruction would go round and round -- Titanium Backup's
+     * libtitanium.so decrypts its code so, from the page it decrypts (xor byte ptr [edx], al, both at its start), and the
+     * app stood still at its first screen. Writable and executable at once where the host allows it (as the app asked by
+     * mprotect); its traps are still looked for when the app makes the page executable alone again (wx_code_written).
+     */
+    if (write && !r && rwx_known() && pc && MG_ALIGN_DOWN(pc, (mg_addr)MG_PAGE) == (mg_addr)page && mg_mem_protect(page, MG_PAGE, MG_PROT_RWX)) {
+        static volatile i32 said;
+        mg_icache_flush(page, MG_PAGE);
+        if (!mg_atomic_xchg(&said, 1)) mg_info("mmap: library code at %p writes its own page: writable and executable at once", (void *)pc);
+        return true;
+    }
     /* A page of a region that is writable and executable at once where the phone allows it, committed again (madvise) or
        made otherwise since: so again, no flip from then on. */
     if (rwx && mg_mem_protect(page, MG_PAGE, MG_PROT_RWX)) {

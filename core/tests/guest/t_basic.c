@@ -1701,6 +1701,35 @@ int t_trap_hook(void)
 }
 #endif
 
+#if defined(__x86_64__) || defined(__i386__)
+/*
+ * Code that writes the page it runs from, as Titanium Backup's libtitanium.so decrypts its code: a function on a page of
+ * its own, asked to be writable and executable at once, xors a byte of that page twice and returns. Flipped writable for
+ * the write and executable for the instruction, it would never get past the write. 0 when it returned with the byte as it
+ * was. (The x86s alone: qemu, which runs the ARM tests, does not tell a write fault from an execute fault.)
+ */
+__attribute__((noinline, aligned(4096))) int self_writer(volatile unsigned char *b)
+{
+    *b ^= 0x5a;
+    *b ^= 0x5a;
+    return 7;
+}
+__attribute__((aligned(4096))) int t_self_writing_page(void)
+{
+    int (*volatile fn)(volatile unsigned char *) = self_writer;
+    unsigned char *code = (unsigned char *)(size_t)fn;
+    void *page = (void *)((size_t)code & ~(size_t)4095);
+    volatile unsigned char *target = code + 2048;
+    unsigned char before;
+    if (((size_t)code & 4095) || ((size_t)t_self_writing_page & ~(size_t)4095) == (size_t)page) return -1;
+    if (mprotect(page, 4096, 7)) return -2;
+    before = *target;
+    if (fn(target) != 7 || *target != before) return -3;
+    if (mprotect(page, 4096, 5)) return -4;
+    return 0;
+}
+#endif
+
 /*
  * A wait is woken by what it waits on, whatever else other threads wait for: two threads pass a byte back and forth over
  * two pipes `rounds` times while `idle` other threads wait in epoll_wait, each on an eventfd of its own, as an app's

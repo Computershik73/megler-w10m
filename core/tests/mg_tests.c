@@ -3140,6 +3140,9 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
 #if MG_ARCH_ARM32
     CHECK_INT(FN(lib, int (*)(void), "t_trap_hook")(), 0);
 #endif
+#if MG_ARCH_X86_64 || MG_ARCH_X86
+    CHECK_INT(FN(lib, int (*)(void), "t_self_writing_page")(), 0);
+#endif
     CHECK_INT(FN(lib, int (*)(void), "t_libc_more")(), 6);
     CHECK_INT(FN(lib, int (*)(void), "t_shm")(), 9);
     CHECK_INT(FN(lib, int (*)(void), "t_ashmem")(), 10);

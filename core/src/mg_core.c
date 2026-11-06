@@ -13,7 +13,7 @@ void mg_ctype_init(void);
 void mg_time_init(void);
 void mg_misc_init(void);
 void mg_env_init(void);
-bool mg_mmap_fix_fault(mg_addr address, bool write, bool exec);
+bool mg_mmap_fix_fault(mg_addr address, bool write, bool exec, mg_addr pc);
 bool mg_mmap_app_trap(mg_addr pc);
 #if MG_HOST_ARM32
 bool mg_probe_fix_fault(mg_fault *f);
@@ -223,7 +223,7 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
         return true;
     }
 #endif
-    if (f->kind == MG_FAULT_ACCESS && mg_mmap_fix_fault(f->address, f->write, f->exec)) {
+    if (f->kind == MG_FAULT_ACCESS && mg_mmap_fix_fault(f->address, f->write, f->exec, pc)) {
         mg_atomic_add(&g_wx_flips, 1);
         return true;
     }
