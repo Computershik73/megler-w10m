@@ -3026,7 +3026,7 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
         CHECK_INT(changed, 0);
     }
     {
-        char report[320];
+        char report[448];
         mg_thread_interrupt_report(report, sizeof(report));
         say("  threads interrupted in guest code: %s", report);
     }
