@@ -176,6 +176,12 @@ const char *mg_dvm_describe_pending(char *buf, size_t n);
  * line numbers, "(native)" for a native method). Returns the number of frames.
  */
 int mg_dvm_pending_stack(char *buf, size_t n);
+/*
+ * The same, and then its causes' as Java's printStackTrace has them: "Caused by: some.Exception: its message" and that
+ * one's frames, those at its bottom that the one it caused has too said as "  ... 12 more". Four causes at most. Returns
+ * the length written.
+ */
+size_t mg_dvm_pending_stacks(char *buf, size_t n);
 
 /* ----------------------------------------------------------- the collector */
 

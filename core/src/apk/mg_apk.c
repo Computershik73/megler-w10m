@@ -847,6 +847,13 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
     else if (!strcmp(info->activity, "android.app.NativeActivity") || (!info->has_code && w.count) ||
              (info->native_library[0] && !(info->has_code && info->activity[0] && mg_zip_find(zips[0], "classes.dex") && native_entry(zips, nzips, info) == 0)))
         strcpy(info->engine, "native-activity");
+    /*
+     * And an SDL app: SDLActivity (or the app's own on top of it) is an activity that loads libSDL2.so and the app's
+     * libmain.so with System.loadLibrary, makes an SDLSurface (a SurfaceView), runs the game's SDL_main on a thread of its
+     * own through JNI and gives it its input; the game draws with EGL on the surface's ANativeWindow and plays its sound
+     * through SDLAudioManager's AudioTrack. ("Minecraft: Story Mode" was refused as an engine with no driver.)
+     */
+    else if (w.has[L_SDL] && info->activity[0] && mg_zip_find(zips[0], "classes.dex")) strcpy(info->engine, "java");
     else if (w.has[L_SDL]) strcpy(info->engine, "sdl");
     /*
      * libGDX is a Java app as well: its AndroidApplication is an activity that draws with OpenGL ES on a GLSurfaceView, and
@@ -889,8 +896,20 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
          */
         info->runnable = true;
     } else if (!info->nabis) {
+        /*
+         * Nothing the Java driver can start, and no native code: no activity a launcher starts (a widget, a keyboard, a
+         * service, a plug-in of another app), or no DEX file in this APK. (This said "written in Java only, which this layer
+         * does not run yet" from before there was a Java driver: Sticky Note's widget and a framework-res.apk got it.)
+         */
         info->runnable = false;
-        mg_strlcpy(info->reason, "This app has no native code: it is written in Java only, which this layer does not run yet.", sizeof(info->reason));
+        if (!info->activity[0] && mg_zip_find(zips[0], "classes.dex"))
+            mg_strlcpy(info->reason, "This app has no activity to start: it is a widget, a keyboard, a service or a part of another app, which is not run on its own.",
+                       sizeof(info->reason));
+        else if (!mg_zip_find(zips[0], "classes.dex"))
+            mg_strlcpy(info->reason, "This APK has no code to run: no Java code (classes.dex) and no native code. It may hold resources for other apps, or be a part of a bundle.",
+                       sizeof(info->reason));
+        else
+            mg_strlcpy(info->reason, "This app has no activity it can be started with.", sizeof(info->reason));
     } else if (!info->abi[0]) {
         info->runnable = false;
 #if !MG_APK_ABI_ARM
@@ -929,6 +948,8 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
         note(info, "Built with libGDX: the game runs as a Java app and draws with OpenGL ES.");
     if (w.has[L_COCOS] && !strcmp(info->engine, "java"))
         note(info, "With cocos2d-x: the engine runs inside the Java app, started by its activity, and draws with OpenGL ES.");
+    if (w.has[L_SDL] && !strcmp(info->engine, "java"))
+        note(info, "Built with SDL: its SDLActivity runs as a Java app, and the game draws with OpenGL ES on the activity's surface.");
     if (w.has[L_DEXPROTECTOR])
         note(info, "Protected by DexProtector: most of the app's code is encrypted in the APK and decrypted while it starts by a packed native library made for Android's own runtime. Such an app may stop before its first screen.");
     if (!strcmp(info->engine, "native-activity") && info->has_code && strcmp(info->activity, "android.app.NativeActivity"))

@@ -1668,6 +1668,28 @@ static void test_mmap_madvise(const char *scratch)
     CHECK(munmap_(p, 4 * MB) == 0);
     mg_mmap_usage(&anon3, NULL);
     CHECK(anon3 == anon0);
+#if MG_GUEST_LP64
+    /*
+     * A mapping of 4 GB or more, with no access, as Chromium's PartitionAlloc reserves its 16 GB pools on a 64-bit
+     * processor: a page given access far into it is written, given back, and written again -- committed again, zero.
+     * Its size was once taken as its lower 32 bits (MG_ALIGN_UP), 0, and the page given back was none of the app's.
+     */
+    {
+        size_t pool = (size_t)16 << 30, at = ((size_t)8 << 30) + 0x358000;
+        u8 *q = (u8 *)mmap_(NULL, pool, NONE, PRIVATE | ANONYMOUS, -1, 0);
+        CHECK(q && q != (u8 *)(mg_addr)-1);
+        if (q && q != (u8 *)(mg_addr)-1) {
+            CHECK(mprotect_(q + at, 16384, RW) == 0);
+            q[at + 0x800] = 7;
+            CHECK(madvise_(q + at, 16384, DONTNEED) == 0);
+            q[at + 0x800] = 9;
+            CHECK(q[at + 0x800] == 9 && q[at + 0x801] == 0);
+            CHECK(munmap_(q, pool) == 0);
+        }
+        say("  16 GB with no access, a page 8 GB in given access, given back and written again: %s",
+            q && q != (u8 *)(mg_addr)-1 ? "done" : "NOT MAPPED");
+    }
+#endif
 done:
     free(data);
     free(path);
@@ -2096,7 +2118,7 @@ static void test_appx_pri(void)
 static void test_libc_odds(void)
 {
     const u32 *size = (const u32 *)mg_bionic_find("__page_size"), *shift = (const u32 *)mg_bionic_find("__page_shift");
-    say("libc's page size as data, setpgrp, ptrace, the ids' setters and res_search");
+    say("libc's page size as data, setpgrp, ptrace, the ids' setters, res_search, and malloc's alignment");
     CHECK(size && *size == 4096 && shift && *shift == 12);
     CHECK(mg_bionic_find("setpgrp") != NULL && mg_bionic_find("ptrace") != NULL);
     /* What Go's syscall and net packages link (WhatsApp's libgojni.so): there, and a DNS query by res_search refused. */
@@ -2112,6 +2134,60 @@ static void test_libc_odds(void)
         u64 lim[2] = { 7, 7 };
         CHECK(get64 && get64(7, lim) == 0 && lim[0] == 1024 && lim[1] == 1024);
         CHECK(get64 && get64(9, lim) == 0 && lim[0] == ~(u64)0 && lim[1] == ~(u64)0);
+    }
+    /*
+     * malloc's blocks at bionic's alignment, 16 bytes but on 32-bit ARM 8 (x86-64's SSE stores fault on less: exteraGram's
+     * libtmessages), through calloc and realloc too, the contents kept; memalign's at theirs. And of jemalloc's sizes, a
+     * multiple of that and at least one, all of it the block's to write: malloc(0) too (MaxVibe's libqrcode.so writes a byte
+     * into one, and Windows' heap was corrupted on x64 when that byte was past the host's block).
+     */
+    {
+        typedef void *(*malloc_fn)(size_t);
+        typedef void *(*calloc_fn)(size_t, size_t);
+        typedef void *(*realloc_fn)(void *, size_t);
+        typedef void *(*memalign_fn)(size_t, size_t);
+        typedef void (*free_fn)(void *);
+        typedef size_t (*usable_fn)(const void *);
+        malloc_fn gmalloc = (malloc_fn)mg_bionic_find("malloc");
+        calloc_fn gcalloc = (calloc_fn)mg_bionic_find("calloc");
+        realloc_fn grealloc = (realloc_fn)mg_bionic_find("realloc");
+        memalign_fn gmemalign = (memalign_fn)mg_bionic_find("memalign");
+        free_fn gfree = (free_fn)mg_bionic_find("free");
+        usable_fn gusable = (usable_fn)mg_bionic_find("malloc_usable_size");
+        mg_addr align = MG_ARCH_ARM32 ? 8 : 16, odd = 0;
+        size_t sizes[6] = { 1, 8, 24, 40, 4000, 100000 };
+        int i;
+        CHECK(gmalloc && gcalloc && grealloc && gmemalign && gfree && gusable);
+        if (gmalloc && gcalloc && grealloc && gmemalign && gfree && gusable) {
+            for (i = 0; i < 6; i++) {
+                u8 *m = (u8 *)gmalloc(sizes[i]), *c = (u8 *)gcalloc(sizes[i], 1), *a = (u8 *)gmemalign(64, sizes[i]);
+                odd |= ((mg_addr)m | (mg_addr)c) & (align - 1);
+                odd |= (mg_addr)a & 63;
+                CHECK(m && c && a && gusable(m) == MG_ALIGN_UP(sizes[i], (size_t)align) && c[sizes[i] - 1] == 0);
+                if (m) {
+                    memset(m, 0x5A, gusable(m));
+                    m = (u8 *)grealloc(m, sizes[i] * 3);
+                    CHECK(m && m[0] == 0x5A && m[sizes[i] - 1] == 0x5A);
+                    odd |= (mg_addr)m & (align - 1);
+                }
+                if (a) {
+                    a[0] = 7;
+                    a = (u8 *)grealloc(a, sizes[i] + 100);
+                    CHECK(a && a[0] == 7);
+                    odd |= (mg_addr)a & (align - 1);
+                }
+                gfree(m);
+                gfree(c);
+                gfree(a);
+            }
+            CHECK(odd == 0);
+            for (i = 0; i < 64; i++) {
+                u8 *z = (u8 *)gmalloc(0);
+                CHECK(z && gusable(z) == (size_t)align);
+                if (z) memset(z, 0, gusable(z));
+                gfree(z);
+            }
+        }
     }
 }
 
@@ -3222,6 +3298,9 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
 #if MG_ARCH_ARM32
     CHECK_INT(FN(lib, int (*)(void), "t_trap_hook")(), 0);
 #endif
+#if MG_ARCH_X86_64 || MG_ARCH_X86
+    CHECK_INT(FN(lib, int (*)(void), "t_self_writing_page")(), 0);
+#endif
     CHECK_INT(FN(lib, int (*)(void), "t_libc_more")(), 6);
     CHECK_INT(FN(lib, int (*)(void), "t_shm")(), 9);
     CHECK_INT(FN(lib, int (*)(void), "t_ashmem")(), 10);
@@ -3247,6 +3326,10 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
        thread interrupted two hundred times in the middle of them. */
     CHECK_INT(st.tp_led_out, 19);
     CHECK_INT(FN(lib, int (*)(void), "t_fs_access")(), 0);
+#endif
+#if MG_ARCH_X86
+    /* x86's `int 0x80` of the library's own, made a system call where Windows faults at it (mg_core.c). */
+    CHECK_INT(FN(lib, int (*)(void), "t_x86_int80")(), 0);
 #endif
     CHECK_INT(FN(lib, int (*)(void), "t_ifunc")(), 205);
     CHECK_INT(FN(lib, int (*)(void), "t_chrome_cmdline")(), 3);

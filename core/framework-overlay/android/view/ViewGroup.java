@@ -141,8 +141,15 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         if (t.getBoolean(megler.S.ViewGroup_animateLayoutChanges, false)) mTransition = new android.animation.LayoutTransition();
         t.recycle();
     }
+    /** Megler: this group's class has an onDescendantInvalidated of its own, which its descendants' invalidations call
+     *  (View.meglerTellParents); and whether any group made so far has one. */
+    boolean mMeglerToldOfDescendants;
+    static boolean sMeglerAnyToldOfDescendants;
     /* (Android's ViewGroup sets the flag itself: setWillNotDraw is a subclass's to override, and its fields are not there yet.) */
-    private void init() { meglerWillNotDraw(true); }
+    private void init() {
+        meglerWillNotDraw(true);
+        if (View.ownsDescendantInvalidated(getClass())) mMeglerToldOfDescendants = sMeglerAnyToldOfDescendants = true;
+    }
 
     // ---- children
     public int getChildCount() { return mChildrenCount; }
@@ -418,7 +425,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      */
     @Override public void onDescendantInvalidated(View child, View target) {
         View v = target != null ? target : child;
-        if (v != null) v.invalidate();
+        if (v == null) return;
+        v.meglerInvalidateQuietly();
+        // (And on up, as Android's: a parent above with one of its own -- Compose's AndroidViewHolder -- is told; View.meglerDirty.)
+        View.meglerTellParents(this, v);
     }
     public boolean getClipChildren() { return mClipChildren; }
     public void setClipToPadding(boolean c) { mClipToPadding = c; invalidate(); }

@@ -137,7 +137,13 @@ public class Window {
     public final int getLocalFeatures() { return mFeatures; }
     public void setFeatureDrawableResource(int f, int id) {}
     public void setFeatureDrawable(int f, Drawable d) {}
-    public void setFeatureInt(int f, int v) {}
+    public void setFeatureInt(int f, int v) {
+        // (FEATURE_CUSTOM_TITLE's layout into the title's frame, as Android's; the other features' values are not drawn here.)
+        if (f == FEATURE_CUSTOM_TITLE && mDecor != null && hasFeature(FEATURE_CUSTOM_TITLE)) {
+            android.widget.FrameLayout frame = mDecor.customTitleFrame();
+            if (frame != null) LayoutInflater.from(mContext).inflate(v, frame);
+        }
+    }
     public boolean isFloating() { ensureStyle(); return mFloating; }
     /** Whether its theme lets what is below show through (windowIsTranslucent): the activity below stays visible, as on Android. */
     public boolean meglerIsTranslucent() { ensureStyle(); return mTranslucent; }
@@ -155,7 +161,15 @@ public class Window {
         mDecor = new megler.DecorView(mContext, this);
         mDecor.setId(View.NO_ID);
         if (mBackground != null) mDecor.setWindowBackground(mBackground);
-        mContentParent = mDecor.makeContent(hasFeature(FEATURE_ACTION_BAR) && !mFloating, mTitle != null ? mTitle : mContext instanceof android.app.Activity ? ((android.app.Activity) mContext).getTitle() : null);
+        // (A title bar of the themes before Holo where the window has no action bar and its theme or the app did not take the
+        // title away, as Android's screen_title; the app's own with FEATURE_CUSTOM_TITLE. Not on a floating window: a
+        // dialog's title is the dialog's.)
+        // (An activity run inside another, a tab of a TabActivity, has neither: its group's window has them, as Android's
+        // child window has only the features its container has not.)
+        boolean child = mContext instanceof android.app.Activity && ((android.app.Activity) mContext).isChild();
+        boolean titleBar = !child && !mFloating && !hasFeature(FEATURE_NO_TITLE) && !hasFeature(FEATURE_ACTION_BAR);
+        mContentParent = mDecor.makeContent(!child && hasFeature(FEATURE_ACTION_BAR) && !mFloating, titleBar, titleBar && hasFeature(FEATURE_CUSTOM_TITLE),
+            mTitle != null ? mTitle : mContext instanceof android.app.Activity ? ((android.app.Activity) mContext).getTitle() : null);
     }
     public <T extends View> T findViewById(int id) { return getDecorView().findViewById(id); }
     public final <T extends View> T requireViewById(int id) { T v = getDecorView().findViewById(id); if (v == null) throw new IllegalArgumentException("ID does not reference a View inside this Window"); return v; }
@@ -179,7 +193,7 @@ public class Window {
     public View getCurrentFocus() { return mDecor != null ? mDecor.findFocus() : null; }
     public LayoutInflater getLayoutInflater() { return LayoutInflater.from(mContext); }
     public void setTitle(CharSequence t) { mTitle = t; if (mDecor != null) mDecor.setTitle(t); }
-    public void setTitleColor(int c) {}
+    public void setTitleColor(int c) { if (mDecor != null) mDecor.setTitleColor(c); }
     public void setBackgroundDrawable(Drawable d) { mBackgroundSet = true; mBackground = d; if (mDecor != null) mDecor.setWindowBackground(d); }
     public void setBackgroundDrawableResource(int id) { setBackgroundDrawable(mContext.getDrawable(id)); }
     /*

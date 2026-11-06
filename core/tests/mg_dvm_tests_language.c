@@ -188,6 +188,13 @@ static void test_exceptions(void)
     CHECK_STR(stack, "  at t.Exc.level3(Exc.java:30)\n  at t.Exc.level2(Exc.java:40)\n  at t.Exc.uncaught(Exc.java:70)\n");
     CHECK_STR(thrown(), "t.MyExc: deep");
     CHECK_STR(text_of(call("t/Exc", "logged", "()Ljava/lang/String;").l), "23f");
+    /* One that another caused: after its own frames "Caused by" and the cause's, the frames both have said as Java says them. */
+    A[0].i = 9;
+    CHECK(!mg_dvm_call_static("t/Exc", "outer", "(I)V", A, NULL));
+    CHECK_INT((int)mg_dvm_pending_stacks(stack, sizeof(stack)), (int)strlen(stack));
+    CHECK_STR(stack, "  at t.Exc.wrapped(Exc.java:82)\n  at t.Exc.outer(Exc.java:90)\nCaused by: t.MyExc: deep\n  at t.Exc.level3(Exc.java:30)\n"
+                     "  at t.Exc.level2(Exc.java:40)\n  at t.Exc.wrapped(Exc.java:80)\n  ... 1 more\n");
+    CHECK_STR(thrown(), "java.lang.Throwable: wrapped | caused by t.MyExc: deep");
 
     A[0].i = 4;
     CHECK_INT(call("t/Exc", "nested", "(I)I").i, 26);
@@ -237,12 +244,14 @@ static void test_exceptions(void)
 
     /* A static initialiser that throws: wrapped the first time, the class unusable ever after. */
     call("t/Exc", "boom", "()I");
-    /* (libcore's ExceptionInInitializerError has no message and keeps what was thrown in a field of its own, which is not the cause the description follows.) */
-    CHECK_STR(thrown(), g_libcore ? "java.lang.ExceptionInInitializerError"
+    /* (libcore's ExceptionInInitializerError has no message and keeps what was thrown in a field of its own, exception, which
+       the description follows as getCause() does.) */
+    CHECK_STR(thrown(), g_libcore ? "java.lang.ExceptionInInitializerError | caused by java.lang.ArithmeticException: divide by zero"
                                   : "java.lang.ExceptionInInitializerError: java.lang.ArithmeticException: divide by zero | caused by java.lang.ArithmeticException: divide by zero");
     /* ... and every later use is NoClassDefFoundError, whose cause is what went wrong the first time (as in Java 17 and ART). */
     call("t/Exc", "boom", "()I");
-    CHECK_STR(thrown(), g_libcore ? "java.lang.NoClassDefFoundError: Could not initialize class t/Boom | caused by java.lang.ExceptionInInitializerError"
+    CHECK_STR(thrown(), g_libcore ? "java.lang.NoClassDefFoundError: Could not initialize class t/Boom | caused by java.lang.ExceptionInInitializerError | "
+                                    "caused by java.lang.ArithmeticException: divide by zero"
                                   : "java.lang.NoClassDefFoundError: Could not initialize class t/Boom | caused by java.lang.ExceptionInInitializerError: "
                                     "java.lang.ArithmeticException: divide by zero | caused by java.lang.ArithmeticException: divide by zero");
 
@@ -439,6 +448,9 @@ static void test_init(void)
     /* constructors: the superclass's first */
     CHECK(call("t/Init", "makeB", "()Ljava/lang/Object;").l != NULL);
     CHECK_STR(taken(), "ab");
+    /* a constructor the class does not declare is its superclass's, as ART finds it (R8 takes out ones that only pass on) */
+    CHECK_INT(call("t/Init", "makeF", "()Z").z, 1);
+    CHECK_STR(taken(), "a");
     /* two classes that need each other: the second sees the first half-made */
     CHECK_INT(call("t/InitC", "c", "()I").i, 6);
     CHECK_STR(taken(), "C1D1D2C2");

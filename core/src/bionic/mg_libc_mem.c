@@ -27,59 +27,251 @@ static volatile i32 g_malloced;
 
 u64 mg_g_malloc_bytes(void) { return (u32)mg_atomic_add(&g_malloced, 0); }
 
-void *mg_g_malloc(size_t n)
+/*
+ * The alignment of every block malloc gives, bionic's: Android 9's jemalloc hands out multiples of its quantum, 16 bytes,
+ * but 8 on 32-bit ARM. Code built for the ABI counts on it -- x86-64's SSE stores (movaps) fault on a block of 8, and
+ * exteraGram's libtmessages stopped so at its start when the header made every block 8 bytes off the host's 16.
+ * The header is the last bytes of G_ALIGN before the guest's pointer, so a host block of G_ALIGN gives one of G_ALIGN.
+ * The host's malloc gives two pointers' worth (Windows' MEMORY_ALLOCATION_ALIGNMENT, glibc's): less than G_ALIGN on 32-bit
+ * x86, where every block is made as memalign's.
+ */
+#define G_ALIGN ((size_t)(MG_ARCH_ARM32 ? 8 : 16))
+#define H_ALIGN (2 * sizeof(void *))
+/*
+ * And the size of every block is jemalloc's too, a multiple of that quantum and at least one: malloc(0) gives 16 bytes
+ * (8 on 32-bit ARM), malloc(17) 32, and malloc_usable_size says so. Code that writes a little past what it asked for --
+ * a terminating NUL into malloc(strlen(s)), a byte into malloc(0) -- writes into its own block on Android, and did here
+ * into the next host block's header: MaxVibe's libqrcode.so writes a 0 into a block of malloc(0), which ended at the host
+ * block's last byte once the header took G_ALIGN, and Windows found its heap corrupt a moment later, at another block
+ * (c0000374, MaxVibe ending at its start one run in two on x64).
+ */
+#define USABLE(n) ((size_t)MG_ALIGN_UP((size_t)(n) ? (size_t)(n) : 1, G_ALIGN))
+
+/*
+ * The flag malloc-guard, a diagnosis (64-bit processors; off by default): every block is followed by GUARD bytes of 0xFD
+ * after its usable size, which free and realloc look at first, and the code that asked for the block (its caller's return
+ * address) is kept in the spare bytes before the header. A block written past its end is said -- its size, how far past
+ * and with what, and which library asked for it, usually the one that wrote -- and its guard is made whole again. Windows'
+ * heap finds such damage only later, at another block, with nothing to say whose it was: MaxVibe ended so one run in two
+ * (c0000374 in a calloc of the core's), and the guard found its libqrcode.so writing a byte into a block of malloc(0),
+ * which had no byte to write then (USABLE above).
+ */
+/* Where the function this is written in returns to: called by a guest, an address in the guest's code (as mg_egl.c's). */
+#if defined(_MSC_VER)
+#include <intrin.h>
+#pragma intrinsic(_ReturnAddress)
+#define CALLER() _ReturnAddress()
+#else
+#define CALLER() __builtin_return_address(0)
+#endif
+
+#define GUARD 64
+static volatile i32 g_guard = -1;
+static void guard_check(void *p, const char *at);
+static MG_HOSTCB void guard_watch(void *unused);
+
+static bool guarding(void)
 {
-    u8 *raw;
-    if (n > 0x7FFFFF00u) {
-        mg_set_errno(GE_NOMEM);
-        return NULL;
+    /* (Decided once, before the first block: a block made without a guard is never looked at for one.) */
+    if (g_guard < 0) {
+        bool on = H_ALIGN >= G_ALIGN && mg_flag("malloc-guard");
+        if (mg_atomic_cas(&g_guard, -1, on ? 1 : 0) == -1 && on) {
+            mg_thread *t = mg_thread_start(guard_watch, NULL, 64u * 1024u, "malloc-guard");
+            if (t) mg_thread_detach(t);
+        }
     }
-    raw = (u8 *)malloc(n + sizeof(ghdr));
-    if (!raw) {
-        mg_set_errno(GE_NOMEM);
-        return NULL;
-    }
-    ((ghdr *)raw)->offset = sizeof(ghdr);
-    ((ghdr *)raw)->size = (u32)n;
-    mg_atomic_add(&g_malloced, (i32)n);
-    return raw + sizeof(ghdr);
+    return g_guard > 0;
 }
 
-void *mg_g_calloc(size_t n, size_t m)
+/*
+ * The living guarded blocks, in a set (open addressing, removed ones marked): a thread looks at every one's guard each
+ * second, for a block written past its end that is not freed while the app runs.
+ */
+#define LIVE_GONE ((void *)1)
+static void **g_live;
+static size_t g_live_cap, g_live_used;
+static mg_lock g_live_lock = MG_LOCK_INIT;
+
+static size_t live_slot(void *p, size_t cap) { return (size_t)(((u64)(mg_addr)p >> 4) * 0x9E3779B97F4A7C15ull >> 20) & (cap - 1); }
+
+static void live_add(void *p)
 {
-    u64 total = (u64)n * (u64)m;
-    u8 *raw;
-    if (total > 0x7FFFFF00u) {
-        mg_set_errno(GE_NOMEM);
-        return NULL;
+    size_t i;
+    mg_lock_acquire(&g_live_lock);
+    if ((g_live_used + 1) * 2 > g_live_cap) {
+        size_t cap = g_live_cap ? g_live_cap * 2 : 65536, k;
+        void **was = g_live, **now = (void **)calloc(cap, sizeof(void *));
+        if (!now) {
+            mg_lock_release(&g_live_lock);
+            return;
+        }
+        g_live_used = 0;
+        for (k = 0; k < g_live_cap; k++)
+            if (was[k] && was[k] != LIVE_GONE) {
+                for (i = live_slot(was[k], cap); now[i]; i = (i + 1) & (cap - 1)) {}
+                now[i] = was[k];
+                g_live_used++;
+            }
+        free(was);
+        g_live = now;
+        g_live_cap = cap;
     }
-    raw = (u8 *)calloc(1, (size_t)total + sizeof(ghdr));
-    if (!raw) {
-        mg_set_errno(GE_NOMEM);
-        return NULL;
-    }
-    ((ghdr *)raw)->offset = sizeof(ghdr);
-    ((ghdr *)raw)->size = (u32)total;
-    mg_atomic_add(&g_malloced, (i32)total);
-    return raw + sizeof(ghdr);
+    for (i = live_slot(p, g_live_cap); g_live[i] && g_live[i] != LIVE_GONE; i = (i + 1) & (g_live_cap - 1)) {}
+    if (!g_live[i]) g_live_used++;
+    g_live[i] = p;
+    mg_lock_release(&g_live_lock);
 }
 
-void mg_g_free(void *p)
+static void live_remove(void *p)
 {
-    if (!p) return;
-    mg_atomic_add(&g_malloced, -(i32)HDR(p)->size);
-    free((u8 *)p - HDR(p)->offset);
+    size_t i;
+    mg_lock_acquire(&g_live_lock);
+    if (g_live_cap)
+        for (i = live_slot(p, g_live_cap); g_live[i]; i = (i + 1) & (g_live_cap - 1))
+            if (g_live[i] == p) {
+                g_live[i] = LIVE_GONE;
+                break;
+            }
+    mg_lock_release(&g_live_lock);
 }
 
-static void *g_memalign(size_t align, size_t n)
+static MG_HOSTCB void guard_watch(void *unused)
 {
+    (void)unused;
+    mg_info("malloc-guard: every block malloc gives has a guard of %d bytes after it, looked at when it is freed and each "
+            "second while it lives; freed blocks are kept poisoned, %d of them, before they are given back",
+            GUARD, 8192);
+    for (;;) {
+        size_t k;
+        mg_sleep_ns(1000000000ull);
+        mg_lock_acquire(&g_live_lock);
+        for (k = 0; k < g_live_cap; k++)
+            if (g_live[k] && g_live[k] != LIVE_GONE) guard_check(g_live[k], "a look at the living");
+        mg_lock_release(&g_live_lock);
+    }
+}
+
+/* Where code is, said for the guard: library+offset and symbol. */
+static void say_code(char *out, size_t n, mg_addr pc)
+{
+    const char *lib = NULL, *sym = NULL;
+    const void *sym_addr = NULL, *base = NULL;
+    if (pc) sym = mg_ld_symbol_at((const void *)pc, &lib, &sym_addr, &base);
+    snprintf(out, n, "%p (%s+0x%lx, %s)", (void *)pc, lib ? lib : "?", (unsigned long)(base ? pc - (mg_addr)base : 0), sym ? sym : "?");
+}
+
+static void guard_check(void *p, const char *at)
+{
+    u8 *g;
+    u32 first = GUARD, last = 0, i, off = HDR(p)->offset;
+    char bytes[3 * 16 + 1], asked[200];
+    if (off < sizeof(ghdr) || off > 2 * MG_PAGE) {
+        /* (Not a header malloc wrote: the block's size cannot be taken from it, nor its guard looked at.) */
+        static volatile i32 said;
+        if (mg_atomic_add(&said, 1) < 20) mg_err("malloc-guard: at %s, the header before the block at %p was overwritten (%08x %08x)", at, p, off, HDR(p)->size);
+        return;
+    }
+    g = (u8 *)p + USABLE(HDR(p)->size);
+    for (i = 0; i < GUARD; i++)
+        if (g[i] != 0xFD) {
+            if (first == GUARD) first = i;
+            last = i;
+        }
+    if (first == GUARD) return;
+    for (i = 0; i < 16 && first + i <= last; i++) snprintf(bytes + 3 * i, 4, "%02x ", g[first + i]);
+    bytes[3 * i ? 3 * i - 1 : 0] = 0;
+    say_code(asked, sizeof(asked), off >= 16 ? *(mg_addr *)((u8 *)p - off) : 0);
+    mg_err("malloc-guard: at %s, a block of %u bytes at %p (%u usable) was written past its end, %u to %u bytes after it (%s); "
+           "asked for at %s",
+           at, (unsigned)HDR(p)->size, p, (unsigned)USABLE(HDR(p)->size), (unsigned)first, (unsigned)last, bytes, asked);
+    memset(g, 0xFD, GUARD);
+}
+
+
+/*
+ * And the freed: a guarded block is not given back at once but kept in a ring of QUARANTINE, its first POISONED bytes set
+ * to 0xDD and its header marked FREED (its own offset and who freed it kept in its guard); a second free of it is said
+ * and not done, and when it leaves the ring its bytes are looked at -- a block written after it was freed is said, with
+ * who asked for it and who freed it. Blocks of a megabyte and more are given back at once.
+ */
+#define QUARANTINE 8192
+#define POISONED 4096
+#define FREED 0xF4EEF4EEu
+static void *g_quarantine[QUARANTINE];
+static u32 g_quarantine_next;
+static mg_lock g_quarantine_lock = MG_LOCK_INIT;
+
+static void release(void *p)
+{
+    u8 *g;
+    u32 off, size = HDR(p)->size, n = size < POISONED ? size : POISONED, i;
+    mg_addr freer, caller;
+    if (HDR(p)->offset != FREED) {
+        mg_err("malloc-guard: the header of the freed block at %p was overwritten after it was freed (%08x %08x); the block is kept",
+               p, HDR(p)->offset, size);
+        return;
+    }
+    g = (u8 *)p + USABLE(size);
+    memcpy(&off, g, 4);
+    memcpy(&freer, g + 8, sizeof(freer));
+    for (i = 0; i < n && ((u8 *)p)[i] == 0xDD; i++) {}
+    if (i < n) {
+        char asked[200], freed[200];
+        caller = off >= 16 ? *(mg_addr *)((u8 *)p - off) : 0;
+        say_code(asked, sizeof(asked), caller);
+        say_code(freed, sizeof(freed), freer);
+        mg_err("malloc-guard: a block of %u bytes at %p was written after it was freed, first at +%u (%02x); asked for at %s, "
+               "freed at %s", (unsigned)size, p, (unsigned)i, ((u8 *)p)[i], asked, freed);
+    }
+    free((u8 *)p - off);
+}
+
+/* free of a guarded block: false when it was freed already (said). */
+static bool guarded_free(void *p, mg_addr freer)
+{
+    u8 *g;
+    u32 off = HDR(p)->offset;
+    void *out = NULL;
+    if (off == FREED) {
+        char freed[200], again[200];
+        mg_addr first;
+        memcpy(&first, (u8 *)p + USABLE(HDR(p)->size) + 8, sizeof(first));
+        say_code(freed, sizeof(freed), first);
+        say_code(again, sizeof(again), freer);
+        mg_err("malloc-guard: a block of %u bytes at %p was freed twice: first at %s, again at %s", (unsigned)HDR(p)->size, p, freed,
+               again);
+        return false;
+    }
+    live_remove(p);
+    guard_check(p, "free");
+    if (HDR(p)->size >= (1u << 20)) {
+        free((u8 *)p - off);
+        return true;
+    }
+    g = (u8 *)p + USABLE(HDR(p)->size);
+    memcpy(g, &off, 4);
+    memcpy(g + 8, &freer, sizeof(freer));
+    HDR(p)->offset = FREED;
+    memset(p, 0xDD, HDR(p)->size < POISONED ? HDR(p)->size : POISONED);
+    mg_lock_acquire(&g_quarantine_lock);
+    out = g_quarantine[g_quarantine_next];
+    g_quarantine[g_quarantine_next] = p;
+    g_quarantine_next = (g_quarantine_next + 1) % QUARANTINE;
+    mg_lock_release(&g_quarantine_lock);
+    if (out) release(out);
+    return true;
+}
+
+/* A block of n bytes at a multiple of align, its header right before it, from a host block made bigger to hold both. */
+static void *aligned_block(size_t align, size_t n, mg_addr caller)
+{
+    size_t extra = guarding() ? GUARD : 0;
     u8 *raw, *p;
-    if (align <= 8) return mg_g_malloc(n);
     if ((align & (align - 1)) || n > 0x7FFFFF00u - align) {
         mg_set_errno(GE_INVAL);
         return NULL;
     }
-    raw = (u8 *)malloc(n + align + sizeof(ghdr));
+    raw = (u8 *)malloc(USABLE(n) + align + sizeof(ghdr) + extra);
     if (!raw) {
         mg_set_errno(GE_NOMEM);
         return NULL;
@@ -87,8 +279,77 @@ static void *g_memalign(size_t align, size_t n)
     p = (u8 *)MG_ALIGN_UP((mg_addr)raw + sizeof(ghdr), (mg_addr)align);
     HDR(p)->offset = (u32)(p - raw);
     HDR(p)->size = (u32)n;
+    if (extra) {
+        if (p - raw >= 16) *(mg_addr *)raw = caller;
+        memset(p + USABLE(n), 0xFD, GUARD);
+        live_add(p);
+    }
     mg_atomic_add(&g_malloced, (i32)n);
     return p;
+}
+
+/* malloc's block (zeroed for calloc's): at G_ALIGN after the host's, or made as memalign's where the host gives less. */
+static void *plain_block(size_t n, bool zero, mg_addr caller)
+{
+    size_t extra = guarding() ? GUARD : 0;
+    u8 *raw;
+    if (H_ALIGN < G_ALIGN) {
+        u8 *p = (u8 *)aligned_block(G_ALIGN, n, caller);
+        if (p && zero) memset(p, 0, USABLE(n));
+        return p;
+    }
+    raw = (u8 *)(zero ? calloc(1, USABLE(n) + G_ALIGN + extra) : malloc(USABLE(n) + G_ALIGN + extra));
+    if (!raw) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    HDR(raw + G_ALIGN)->offset = (u32)G_ALIGN;
+    HDR(raw + G_ALIGN)->size = (u32)n;
+    if (extra) {
+        *(mg_addr *)raw = caller;
+        memset(raw + G_ALIGN + USABLE(n), 0xFD, GUARD);
+        live_add(raw + G_ALIGN);
+    }
+    mg_atomic_add(&g_malloced, (i32)n);
+    return raw + G_ALIGN;
+}
+
+void *mg_g_malloc(size_t n)
+{
+    if (n > 0x7FFFFF00u) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    return plain_block(n, false, (mg_addr)CALLER());
+}
+
+void *mg_g_calloc(size_t n, size_t m)
+{
+    u64 total = (u64)n * (u64)m;
+    if (total > 0x7FFFFF00u) {
+        mg_set_errno(GE_NOMEM);
+        return NULL;
+    }
+    return plain_block((size_t)total, true, (mg_addr)CALLER());
+}
+
+void mg_g_free(void *p)
+{
+    u32 size;
+    if (!p) return;
+    size = HDR(p)->size;
+    if (guarding()) {
+        if (guarded_free(p, (mg_addr)CALLER())) mg_atomic_add(&g_malloced, -(i32)size);
+        return;
+    }
+    mg_atomic_add(&g_malloced, -(i32)size);
+    free((u8 *)p - HDR(p)->offset);
+}
+
+static void *g_memalign(size_t align, size_t n)
+{
+    if (align <= G_ALIGN) return mg_g_malloc(n);
+    return aligned_block(align, n, (mg_addr)CALLER());
 }
 
 void *mg_g_realloc(void *p, size_t n)
@@ -104,23 +365,27 @@ void *mg_g_realloc(void *p, size_t n)
         mg_set_errno(GE_NOMEM);
         return NULL;
     }
-    if (HDR(p)->offset == sizeof(ghdr)) {
+    if (!guarding() && H_ALIGN >= G_ALIGN && HDR(p)->offset == G_ALIGN) {
         u32 was = HDR(p)->size;
-        u8 *raw = (u8 *)realloc((u8 *)p - sizeof(ghdr), n + sizeof(ghdr));
+        u8 *raw = (u8 *)realloc((u8 *)p - G_ALIGN, USABLE(n) + G_ALIGN);
         if (!raw) {
             mg_set_errno(GE_NOMEM);
             return NULL;
         }
-        ((ghdr *)raw)->size = (u32)n;
+        HDR(raw + G_ALIGN)->size = (u32)n;
         mg_atomic_add(&g_malloced, (i32)((u32)n - was));
-        return raw + sizeof(ghdr);
+        return raw + G_ALIGN;
     }
-    /* An aligned block: the host cannot grow it in place and keep the alignment. */
+    /* An aligned block: the host cannot grow it in place and keep the alignment (nor a block's guard). */
     old = HDR(p)->size;
-    q = mg_g_malloc(n);
+    q = plain_block(n, false, (mg_addr)CALLER());
     if (!q) return NULL;
-    memcpy(q, p, old < n ? old : n);
-    mg_g_free(p);
+    memcpy(q, p, USABLE(old) < USABLE(n) ? USABLE(old) : USABLE(n));
+    if (guarding()) {
+        if (guarded_free(p, (mg_addr)CALLER())) mg_atomic_add(&g_malloced, -(i32)old);
+    } else {
+        mg_g_free(p);
+    }
     return q;
 }
 
@@ -145,7 +410,7 @@ static int g_posix_memalign(void **out, size_t align, size_t n)
 static void *g_aligned_alloc(size_t align, size_t n) { return g_memalign(align, n); }
 static void *g_valloc(size_t n) { return g_memalign(MG_PAGE, n); }
 static void *g_pvalloc(size_t n) { return g_memalign(MG_PAGE, MG_ALIGN_UP(n, MG_PAGE)); }
-static size_t g_malloc_usable_size(const void *p) { return p ? HDR(p)->size : 0; }
+static size_t g_malloc_usable_size(const void *p) { return p ? USABLE(HDR(p)->size) : 0; }
 static int g_mallopt(int param, int value) { (void)param; (void)value; return 1; }
 static int g_malloc_trim(size_t pad) { (void)pad; return 0; }
 
@@ -1218,11 +1483,11 @@ static void say_unrepaired(mg_addr address, bool write, bool exec)
             write ? "written" : exec ? "run" : "read", state, host, events[0] ? events : " none kept");
 }
 
-static bool fix_fault(mg_addr address, bool write, bool exec);
+static bool fix_fault(mg_addr address, bool write, bool exec, mg_addr pc);
 
-bool mg_mmap_fix_fault(mg_addr address, bool write, bool exec)
+bool mg_mmap_fix_fault(mg_addr address, bool write, bool exec, mg_addr pc)
 {
-    if (fix_fault(address, write, exec)) return true;
+    if (fix_fault(address, write, exec, pc)) return true;
     say_unrepaired(address, write, exec);
     return false;
 }
@@ -1264,7 +1529,7 @@ static bool rwx_on(void)
 
 static bool rwx_known(void) { return g_rwx > 0; }
 
-static bool fix_fault(mg_addr address, bool write, bool exec)
+static bool fix_fault(mg_addr address, bool write, bool exec, mg_addr pc)
 {
     region *r;
     bool wx, rwx, back = false;
@@ -1328,6 +1593,19 @@ static bool fix_fault(mg_addr address, bool write, bool exec)
     rwx = rwx && r && !r->view;
     mg_lock_release(&g_region_lock);
     if (!wx) return false;
+    /*
+     * A page of a library's that writes itself: the instruction that writes is on the page it writes, which flipped to
+     * writable for the write and back to executable for the instruction would go round and round -- Titanium Backup's
+     * libtitanium.so decrypts its code so, from the page it decrypts (xor byte ptr [edx], al, both at its start), and the
+     * app stood still at its first screen. Writable and executable at once where the host allows it (as the app asked by
+     * mprotect); its traps are still looked for when the app makes the page executable alone again (wx_code_written).
+     */
+    if (write && !r && rwx_known() && pc && MG_ALIGN_DOWN(pc, (mg_addr)MG_PAGE) == (mg_addr)page && mg_mem_protect(page, MG_PAGE, MG_PROT_RWX)) {
+        static volatile i32 said;
+        mg_icache_flush(page, MG_PAGE);
+        if (!mg_atomic_xchg(&said, 1)) mg_info("mmap: library code at %p writes its own page: writable and executable at once", (void *)pc);
+        return true;
+    }
     /* A page of a region that is writable and executable at once where the phone allows it, committed again (madvise) or
        made otherwise since: so again, no flip from then on. */
     if (rwx && mg_mem_protect(page, MG_PAGE, MG_PROT_RWX)) {

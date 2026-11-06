@@ -167,10 +167,16 @@ public class FragmentManager {
     }
     /** A <fragment class=... android:id=...> in a layout. */
     public View meglerInflateFragment(View parent, Context c, android.util.AttributeSet attrs) {
+        // (The android: attributes through the theme, as Android's FragmentManager reads them: a tag or a name may be a reference
+        // to a string, which the attribute's raw value is not -- Gmail's drawer is <fragment android:tag="@string/...">, and it
+        // looked for the fragment's view by the string and found none.)
+        int[] names = { android.R.attr.name, android.R.attr.id, android.R.attr.tag };
+        android.content.res.TypedArray a = c.obtainStyledAttributes(attrs, names);
         String cls = attrs.getAttributeValue(null, "class");
-        if (cls == null) cls = attrs.getAttributeValue("http://schemas.android.com/apk/res/android", "name");
-        int id = attrs.getAttributeResourceValue("http://schemas.android.com/apk/res/android", "id", 0);
-        String tag = attrs.getAttributeValue("http://schemas.android.com/apk/res/android", "tag");
+        if (cls == null) cls = a.getString(0);
+        int id = a.getResourceId(1, 0);
+        String tag = a.getString(2);
+        a.recycle();
         Fragment f = Fragment.instantiate(c, cls);
         f.mInLayout = true; f.mFragmentId = id;
         f.onInflate(mActivity, attrs, null);
@@ -181,7 +187,7 @@ public class FragmentManager {
         View v = f.onCreateView(mActivity.getLayoutInflater(), parent instanceof ViewGroup ? (ViewGroup) parent : null, null);
         if (v == null) throw new IllegalStateException("Fragment " + cls + " did not create a view.");
         if (id != 0) v.setId(id);
-        if (tag != null) v.setTag(tag);
+        if (tag != null && v.getTag() == null) v.setTag(tag);
         f.mView = v;
         f.onViewCreated(v, null);
         final Fragment ff = f;

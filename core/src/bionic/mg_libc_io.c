@@ -2331,6 +2331,26 @@ static int g_posix_fallocate64(int fd, i64 offset, i64 len)
 }
 /* (The form of off_t's width, which bionic has beside it.) */
 static int g_posix_fallocate(int fd, goff offset, goff len) { return g_posix_fallocate64(fd, offset, len); }
+/*
+ * fallocate, Linux's (bionic's since API 21): its plain kind, mode 0, is posix_fallocate's, answered through errno; any
+ * other is refused with EOPNOTSUPP, as the system call is (mg_libc_misc.c, 352). MAX's libtracernative.so (VK's crash
+ * reporter) imports it, and nothing provided it: its call would have said "done" and left the file as it was.
+ */
+static int g_fallocate64(int fd, int mode, i64 offset, i64 len)
+{
+    int err;
+    if (mode != 0) {
+        mg_set_errno(GE_OPNOTSUPP);
+        return -1;
+    }
+    err = g_posix_fallocate64(fd, offset, len);
+    if (err) {
+        mg_set_errno(err);
+        return -1;
+    }
+    return 0;
+}
+static int g_fallocate(int fd, int mode, goff offset, goff len) { return g_fallocate64(fd, mode, offset, len); }
 
 /*
  * What this file system does not have: pipes spliced in the kernel, FIFOs and device files, extended attributes, watches.
@@ -3470,7 +3490,7 @@ const mg_sym mg_tab_io[] = {
     IO("tcgetattr", g_io_notty), IO("tcsetattr", g_io_notty), IO("tcdrain", g_io_notty), IO("tcsendbreak", g_io_notty),
     IO("readv", g_readv), IO("writev", g_writev), IO("lseek", g_lseek), IO("lseek64", g_lseek64),
     IO("ftruncate", g_ftruncate), IO("ftruncate64", g_ftruncate64), IO("truncate", g_truncate),
-    IO("posix_fadvise", g_posix_fadvise), IO("posix_fadvise64", g_posix_fadvise64), IO("posix_fallocate", g_posix_fallocate),
+    IO("posix_fadvise", g_posix_fadvise), IO("posix_fadvise64", g_posix_fadvise64), IO("posix_fallocate", g_posix_fallocate), IO("fallocate", g_fallocate), IO("fallocate64", g_fallocate64),
     IO("fsync", g_fsync), IO("fdatasync", g_fsync), IO("sync", g_sync),
     IO("stat", g_stat_path), IO("stat64", g_stat_path), IO("lstat", g_stat_path), IO("lstat64", g_stat_path),
     IO("fstat", g_fstat), IO("fstat64", g_fstat), IO("fstatat", g_fstatat), IO("fstatat64", g_fstatat),

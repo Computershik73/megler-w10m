@@ -91,8 +91,9 @@
  * makes), a hint (prefetch, a long nop) and a jump or call through memory are left too, and an access of 32-bit
  * addresses.
  *
- * x86's `int 0x80` is counted and said, not rewritten; and its accesses of %gs through a register are left (Go's
- * android/386 makes them so).
+ * x86's `int 0x80` is counted and said, not rewritten: Windows answers it with an access violation, which the core makes the
+ * system call of in its place (mg_core.c); and its accesses of %gs through a register are left (Go's android/386 makes
+ * them so).
  */
 #include "../mg_core.h"
 #include "../bionic/mg_bionic.h"
@@ -901,8 +902,10 @@ void mg_patch_segment(mg_lib *lib, u8 *seg, size_t size)
 #else
     if (w.calls) {
         lib->stats.svc_sites += w.calls;
-        mg_warn("ld: %s: %u system calls of its own (%s); they are not intercepted on this processor yet", lib->name, (unsigned)w.calls,
-                IS64 ? "syscall" : "int 0x80");
+        if (IS64)
+            mg_warn("ld: %s: %u system calls of its own (syscall); they are not intercepted on this processor yet", lib->name, (unsigned)w.calls);
+        else
+            mg_info("ld: %s: %u system calls of its own (int 0x80), each made by the core at the fault it gives", lib->name, (unsigned)w.calls);
     }
 #endif
 }

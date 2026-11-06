@@ -2013,7 +2013,7 @@ static void stubs_load(void)
 static MG_HOSTCB void main_thread(void *arg)
 {
     char *framework = mg_sprintf("%s/framework/megler-framework.dex", J.root), *res = mg_sprintf("%s/framework/framework-res.apk", J.root);
-    char why[1600], stack[1200];
+    char why[1600], stack[8000];
     mg_jvalue args[2];
     int i;
     (void)arg;
@@ -2115,10 +2115,29 @@ static MG_HOSTCB void main_thread(void *arg)
             char what[2400], where[300];
             mg_jobj *thrown = mg_dvm_pending();
             stack[0] = 0;
-            mg_dvm_pending_stack(stack, sizeof(stack));
+            mg_dvm_pending_stacks(stack, sizeof(stack));
             if (!mg_dvm_describe_pending(what, sizeof(what))) mg_strlcpy(what, "an exception", sizeof(what));
             mg_dvm_clear_pending();
-            mg_err("java: the main thread ended with %s%s%s", what, stack[0] ? "\n" : "", stack);
+            mg_err("java: the main thread ended with %s", what);
+            {
+                /*
+                 * Its stack and its causes', whole, a few frames to a line of the log (which holds 1024 bytes): one thrown
+                 * from a layout's view has twenty of the inflater's frames above the app's own, and in one line with the
+                 * exception it stopped at "at android.view." (Niagara Launcher's); and what went wrong is the cause's, where
+                 * the cause was thrown (XDurak's InstantiationException is an Xposed class's static initializer's).
+                 */
+                const char *p = stack;
+                while (*p) {
+                    const char *end = p, *cut = NULL;
+                    while (*end && end - p < 900) {
+                        if (*end == '\n') cut = end;
+                        end++;
+                    }
+                    if (!*end || !cut) cut = end;
+                    mg_err("java:\n%.*s", (int)(cut - p), p);
+                    p = *cut == '\n' ? cut + 1 : cut;
+                }
+            }
             thrown_in(thrown, where, sizeof(where));
             shorten(what);
             snprintf(why, sizeof(why), "the app stopped because nothing caught %s%s%s%s, which ends an app on Android too", what, where[0] ? " (in " : "", where, where[0] ? ")" : "");
@@ -2156,8 +2175,13 @@ bool mg_java_ended(int *status, const char **reason)
  */
 static bool apache_http_wanted(const mg_apk_info *info)
 {
+    /*
+     * (A manifest that names no target targets its minimum, and one that names neither Android 1: YouTube 2.4.4, of 2011,
+     * names neither, and ended at its start on NoClassDefFoundError: org/apache/http/params/BasicHttpParams.)
+     */
+    int target = info->target_sdk > 0 ? info->target_sdk : info->min_sdk > 0 ? info->min_sdk : 1;
     int i;
-    if (info->target_sdk > 0 && info->target_sdk < 28) return true;
+    if (target < 28) return true;
     for (i = 0; i < info->nuses_libraries; i++)
         if (!strcmp(info->uses_libraries[i], "org.apache.http.legacy")) return true;
     return false;

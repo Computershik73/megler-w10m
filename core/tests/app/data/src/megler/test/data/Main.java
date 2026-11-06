@@ -643,6 +643,36 @@ public class Main extends Activity {
                 + " bitmap=" + bc.isHardwareAccelerated();
             return !detached && attached == window && seen[0] && seen[1] && !surfaceAttached && !seen[2] && !bc.isHardwareAccelerated() && rc.isHardwareAccelerated();
         });
+        // A view's invalidation reaches the nearest parent with an onDescendantInvalidated of its own, as Android's
+        // hardware-accelerated invalidation goes up through it, with the child that leads to the view: Compose's
+        // AndroidViewHolder records its layer again so, and a SurfaceView in an AndroidView (RUTUBE's player) was drawn once
+        // and never again. A parent of the framework's own in between is passed; told once, as the holder's super does not
+        // tell it again.
+        step("descendant-invalidated", () -> {
+            final android.view.View[] told = new android.view.View[2];
+            final int[] calls = new int[1];
+            android.widget.FrameLayout holder = new android.widget.FrameLayout(this) {
+                @Override public void onDescendantInvalidated(android.view.View child, android.view.View target) {
+                    calls[0]++;
+                    told[0] = child;
+                    told[1] = target;
+                    super.onDescendantInvalidated(child, target);
+                }
+            };
+            android.widget.FrameLayout middle = new android.widget.FrameLayout(this);
+            android.view.View leaf = new android.view.View(this);
+            middle.addView(leaf, new android.widget.FrameLayout.LayoutParams(10, 10));
+            holder.addView(middle, new android.widget.FrameLayout.LayoutParams(20, 20));
+            ((android.view.ViewGroup) text.getParent()).addView(holder, new android.view.ViewGroup.LayoutParams(20, 20));
+            calls[0] = 0;
+            told[0] = told[1] = null;
+            leaf.invalidate();
+            int afterLeaf = calls[0];
+            boolean child = told[0] == middle, target = told[1] == leaf;
+            ((android.view.ViewGroup) holder.getParent()).removeView(holder);
+            detail = "calls=" + afterLeaf + " child=" + child + " target=" + target;
+            return afterLeaf == 1 && child && target;
+        });
         // An image matrix set before the view is laid out, then the scale type made MATRIX, as Material's FloatingActionButton
         // does as it is made: once laid out, the view draws by that matrix.
         step("image-matrix-before-layout", () -> {

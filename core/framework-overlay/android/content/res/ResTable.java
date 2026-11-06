@@ -234,6 +234,9 @@ public final class ResTable {
         for (TypeChunk tc : t.configs) b.append(' ').append(tc.sparse ? "S" : "").append(tc.offset16 ? "16" : "").append('[').append(tc.entryCount).append(']').append(entryOffset(tc, id & 0xffff) >= 0 ? "has" : "-");
         return b.toString();
     }
+    /** The types of an app's resources that are chosen from a newer API level where none is of Android 9's (find). */
+    private static final java.util.Set<String> NEWER_TYPES = new java.util.HashSet<>(java.util.Arrays.asList("font", "style", "color"));
+
     /** The entry for id best matching the device configuration, or null. */
     public Entry find(int id, Config cfg) {
         Package p = byId[(id >>> 24) & 255];
@@ -241,15 +244,27 @@ public final class ResTable {
         Type t = p.types[(id >>> 16) & 255];
         if (t == null) return null;
         int e = id & 0xffff;
-        TypeChunk best = null; int bestOff = -1;
-        for (int i = 0, n = t.configs.size(); i < n; i++) {
-            TypeChunk tc = t.configs.get(i);
-            if (!cfg.matches(tc.cfg)) continue;
-            int o = entryOffset(tc, e);
-            if (o < 0) continue;
-            if (best == null || cfg.isBetter(tc.cfg, best.cfg)) { best = tc; bestOff = o; }
+        TypeChunk best = pick(t, e, cfg);
+        if ((id >>> 24) != 1 && cfg.d[Config.SDK] < Config.FONT_SDK && NEWER_TYPES.contains(t.name)
+                && (best == null || "style".equals(t.name) && emptyBag(best, e))) {
+            /*
+             * A font, style or colour of the app's that it has only for API levels above the platform resources' (font-v29,
+             * values-v31 alone), or a style it has there and leaves empty for the older levels (no parent, no items): the
+             * app sees SDK_INT 34 and asks for it, and Android 9's choice has none, so the newest that suits the levels the
+             * app was told of is taken. What such a resource names of Android 12's system colours is those colours
+             * (android.content.res.Resources, meglerValue and meglerBag), not what Android 9 has under their numbers. Where
+             * a resource has a choice of Android 9's level with something in it, that one is still taken (the head of
+             * Resources). Apple Music's toolbar text asks for its SF Pro font, which it has in font-v29 alone, and ended at
+             * its start on "Resource ID #0x7f090009". Niagara Launcher applies its style MaterialYou to its theme once
+             * SDK_INT is 31 or more, which has its 65 colours (accent1_0400, of which colorPrimary is made, and the rest) in
+             * values-v31 and is empty in values, and ended at its start without them: "The style on this component requires
+             * your app theme to be Theme.AppCompat (or a descendant)".
+             */
+            TypeChunk newer = pick(t, e, cfg.withSdk(Config.FONT_SDK));
+            if (newer != null && (best == null || !emptyBag(newer, e))) best = newer;
         }
         if (best == null) return null;
+        int bestOff = entryOffset(best, e);
         Entry r = new Entry();
         r.off = bestOff;
         r.src = best.src;
@@ -260,6 +275,22 @@ public final class ResTable {
         r.density = best.density;
         r.specFlags = t.specFlagsOff >= 0 && e < t.specCount ? t.specSrc.b.getInt(t.specFlagsOff + 4 * e) : 0;
         return r;
+    }
+    /** The configuration of type t that has entry e and suits cfg best, or null. */
+    private TypeChunk pick(Type t, int e, Config cfg) {
+        TypeChunk best = null;
+        for (int i = 0, n = t.configs.size(); i < n; i++) {
+            TypeChunk tc = t.configs.get(i);
+            if (!cfg.matches(tc.cfg) || entryOffset(tc, e) < 0) continue;
+            if (best == null || cfg.isBetter(tc.cfg, best.cfg)) best = tc;
+        }
+        return best;
+    }
+    /** Whether entry e of tc is a bag with nothing in it: no parent and no items. */
+    private boolean emptyBag(TypeChunk tc, int e) {
+        int o = entryOffset(tc, e);
+        ByteBuffer b = tc.src.b;
+        return (b.getShort(o + 2) & 1) != 0 && b.getInt(o + 8) == 0 && b.getInt(o + 12) == 0;
     }
 
     /** A simple entry's value into v (type, data, string); false for a bag. */
@@ -405,6 +436,11 @@ public final class ResTable {
             d[LAYOUT2] = 0x1;   /* not round */
         }
         private static int pack(String s) { return s == null || s.length() < 2 ? 0 : (s.charAt(0) & 0xff) | (s.charAt(1) & 0xff) << 8; }
+        /** The API level Build.VERSION.SDK_INT says, up to which an app's fonts, styles and colours are chosen when none suits Android 9's (find). */
+        static final int FONT_SDK = 34;
+        private Config() {}
+        /** This configuration at another API level. */
+        Config withSdk(int sdk) { Config c = new Config(); System.arraycopy(d, 0, c.d, 0, N); c.d[SDK] = sdk; return c; }
         public int density() { return d[DENSITY]; }
         /** Whether a resource configuration can be used on this device at all. */
         boolean matches(int[] c) {

@@ -1142,7 +1142,8 @@ int t_cpuclock(void)
 
 /*
  * What Firefox's libraries import of libc that was not there: sigaction by its old system call, as mozglue installs its
- * handlers, and rt_sigaction (a handler for a fault's signal refused that way); syslog; fputwc, fgetwc and ungetwc in UTF-8; posix_fadvise and posix_fallocate; and
+ * handlers, and rt_sigaction (a handler for a fault's signal refused that way); syslog; fputwc, fgetwc and ungetwc in UTF-8; posix_fadvise and posix_fallocate,
+ * and fallocate's plain kind (MAX's libtracernative.so imports it; any other kind is EOPNOTSUPP, as the system call's); and
  * process_vm_readv on the process's own memory. 7, or the negated step that failed. (The old sigaction is the 32-bit
  * ABIs' alone; the kernel's rt_sigaction struct is a handler, flags, a restorer and the mask everywhere, in words.)
  */
@@ -1155,6 +1156,7 @@ unsigned fgetwc(void *);
 unsigned ungetwc(unsigned, void *);
 int posix_fadvise(int, long, long, int);
 int posix_fallocate(int, long, long);
+int fallocate(int, int, long, long);
 ssize_t process_vm_readv(int, const void *, unsigned long, const void *, unsigned long, unsigned long);
 int getpid(void);
 
@@ -1246,6 +1248,8 @@ int t_ffcalls(const char *dir)
     fclose(f);
     fd = open(path, 2);
     if (fd < 0 || posix_fadvise(fd, 0, 0, 2) != 0 || posix_fallocate(fd, 0, 4096) != 0 || fstat(fd, st) != 0 || st[ST_SIZE] != 4096) return -6;
+    if (fallocate(fd, 0, 0, 8192) != 0 || fstat(fd, st) != 0 || st[ST_SIZE] != 8192) return -6;
+    if (fallocate(fd, 3 /* PUNCH_HOLE | KEEP_SIZE */, 0, 100) != -1 || *__errno() != 95) return -6;
     close(fd);
     unlink(path);
     if (process_vm_readv(getpid(), &local, 1, &remote, 1, 0) != 7 || strcmp(dst, "copied") != 0) return -7;
@@ -1698,6 +1702,35 @@ int t_trap_hook(void)
     if (fn(1) != 2 || trap_calls != 2) result = -8;
     sigaction(4, &old, 0);
     return result;
+}
+#endif
+
+#if defined(__x86_64__) || defined(__i386__)
+/*
+ * Code that writes the page it runs from, as Titanium Backup's libtitanium.so decrypts its code: a function on a page of
+ * its own, asked to be writable and executable at once, xors a byte of that page twice and returns. Flipped writable for
+ * the write and executable for the instruction, it would never get past the write. 0 when it returned with the byte as it
+ * was. (The x86s alone: qemu, which runs the ARM tests, does not tell a write fault from an execute fault.)
+ */
+__attribute__((noinline, aligned(4096))) int self_writer(volatile unsigned char *b)
+{
+    *b ^= 0x5a;
+    *b ^= 0x5a;
+    return 7;
+}
+__attribute__((aligned(4096))) int t_self_writing_page(void)
+{
+    int (*volatile fn)(volatile unsigned char *) = self_writer;
+    unsigned char *code = (unsigned char *)(size_t)fn;
+    void *page = (void *)((size_t)code & ~(size_t)4095);
+    volatile unsigned char *target = code + 2048;
+    unsigned char before;
+    if (((size_t)code & 4095) || ((size_t)t_self_writing_page & ~(size_t)4095) == (size_t)page) return -1;
+    if (mprotect(page, 4096, 7)) return -2;
+    before = *target;
+    if (fn(target) != 7 || *target != before) return -3;
+    if (mprotect(page, 4096, 5)) return -4;
+    return 0;
 }
 #endif
 
@@ -2744,6 +2777,52 @@ int t_fs_access(void)
     sigaction(12, &old, 0);
     if (r) return r;
     return ret ? 32 : 0;
+}
+#endif
+
+#if defined(__i386__)
+/*
+ * x86's `int 0x80` of a library's own, which Windows answers with an access violation at it and the core makes a system
+ * call of in its place (mg_core.c): getpid by Linux's i386 number, a close of -1 (-EBADF), and every register but eax as
+ * it was after it.
+ */
+long t_int80(long nr, long a0);
+__asm__(".text\n.globl t_int80\n.type t_int80, @function\n"
+        "t_int80:\n"
+        "  pushl %ebx\n"
+        "  movl 8(%esp), %eax\n"
+        "  movl 12(%esp), %ebx\n"
+        "  int $0x80\n"
+        "  popl %ebx\n"
+        "  ret\n"
+        ".size t_int80, .-t_int80\n");
+int t_int80_keeps(void);
+__asm__(".globl t_int80_keeps\n.type t_int80_keeps, @function\n"
+        "t_int80_keeps:\n"
+        "  pushl %ebx\n  pushl %esi\n  pushl %edi\n  pushl %ebp\n"
+        "  movl $0x11111111, %ebx\n  movl $0x22222222, %ecx\n  movl $0x33333333, %edx\n"
+        "  movl $0x44444444, %esi\n  movl $0x55555555, %edi\n  movl $0x66666666, %ebp\n"
+        "  movl $20, %eax\n"
+        "  int $0x80\n"
+        "  xorl %eax, %eax\n"
+        "  cmpl $0x11111111, %ebx\n  jne 1f\n"
+        "  cmpl $0x22222222, %ecx\n  jne 1f\n"
+        "  cmpl $0x33333333, %edx\n  jne 1f\n"
+        "  cmpl $0x44444444, %esi\n  jne 1f\n"
+        "  cmpl $0x55555555, %edi\n  jne 1f\n"
+        "  cmpl $0x66666666, %ebp\n  jne 1f\n"
+        "  jmp 2f\n"
+        "1:\n  movl $1, %eax\n"
+        "2:\n  popl %ebp\n  popl %edi\n  popl %esi\n  popl %ebx\n"
+        "  ret\n"
+        ".size t_int80_keeps, .-t_int80_keeps\n");
+
+int t_x86_int80(void)
+{
+    if (t_int80(20 /* getpid */, 0) != getpid()) return 1;
+    if (t_int80(6 /* close */, -1) != -9) return 2;
+    if (t_int80_keeps() != 0) return 3;
+    return 0;
 }
 #endif
 

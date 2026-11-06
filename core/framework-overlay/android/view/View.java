@@ -1062,6 +1062,54 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
     public void invalidate(int l, int t, int r, int b) { mPrivateFlags |= PFLAG_DIRTY; meglerDirty(l - mScrollX, t - mScrollY, r - mScrollX, b - mScrollY, true); }
     /** This view's box as its parent draws it: what changes when it moves, is transformed, shows or hides. */
     void invalidateParent() { meglerDirty(0, 0, getWidth(), getHeight(), false); }
+    /*
+     * Megler: and the parent that looks at it is told, as Android's hardware-accelerated invalidation goes up through
+     * ViewParent.onDescendantInvalidated: the nearest ViewGroup above whose class has one of its own -- Compose's
+     * AndroidViewHolder, which records again the Compose layer that draws its views (layoutNode.invalidateLayer); Compose's
+     * AndroidViewsHandler, which stops there. One that calls super goes on up from itself (ViewGroup.onDescendantInvalidated),
+     * as Android's does; what that invalidates of the view's own is quiet (meglerInvalidateQuietly: its lists and its place
+     * on the screen, its parents not told again). Without it a view in an AndroidView was drawn once, as Compose recorded its
+     * layer, and never again: RUTUBE's player, a SurfaceView in one, got its film's frames and stayed black.
+     *
+     * Whether a group's class has one is looked up as the group is made, once a class (ViewGroup.mMeglerToldOfDescendants),
+     * not as a view is invalidated: an app with no such group anywhere -- most -- pays one static read an invalidation
+     * (ViewGroup.sMeglerAnyToldOfDescendants), and one with them a field read for each parent above.
+     */
+    private static boolean sQuiet;
+    /** invalidate() without telling the parents (ViewGroup.onDescendantInvalidated tells them itself). */
+    final void meglerInvalidateQuietly() {
+        boolean was = sQuiet;
+        sQuiet = true;
+        try { invalidate(); } finally { sQuiet = was; }
+    }
+    private static final java.util.concurrent.ConcurrentHashMap<Class<?>, Boolean> sOwnsDescendantInvalidated = new java.util.concurrent.ConcurrentHashMap<>();
+    static boolean ownsDescendantInvalidated(Class<?> c) {
+        Boolean own = sOwnsDescendantInvalidated.get(c);
+        if (own == null) {
+            own = false;
+            for (Class<?> k = c; k != null && k != ViewGroup.class && k != View.class; k = k.getSuperclass()) {
+                try {
+                    k.getDeclaredMethod("onDescendantInvalidated", View.class, View.class);
+                    own = true;
+                    break;
+                } catch (NoSuchMethodException | RuntimeException | LinkageError e) {
+                    // (not this class's: its superclass is looked at)
+                }
+            }
+            sOwnsDescendantInvalidated.put(c, own);
+        }
+        return own;
+    }
+    /** The nearest parent above `from` with an onDescendantInvalidated of its own told that `target` changed. */
+    static void meglerTellParents(View from, View target) {
+        if (!ViewGroup.sMeglerAnyToldOfDescendants) return;
+        View child = from;
+        for (ViewGroup p = from.mParent; p != null; child = p, p = p.mParent) {
+            if (!p.mMeglerToldOfDescendants) continue;
+            if (Looper.myLooper() == Looper.getMainLooper()) p.onDescendantInvalidated(child, target);
+            return;
+        }
+    }
     /**
      * Megler: a rectangle of this view's box (its own coordinates, its scrolling not applied) is to be drawn again, as far as
      * it can be seen: through each transform, position and parent's scrolling up to the window, clipped where a parent clips
@@ -1071,6 +1119,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback {
         // Megler: the list that draws what changed is to be recorded again -- this view's own, or its parent's for its place
         if (self) meglerListInvalid();
         else if (mParent != null) mParent.meglerListInvalid();
+        if (!sQuiet && (!self || mVisibility == VISIBLE || mAnimation != null)) meglerTellParents(this, this);
         meglerDamage(l, t, r, b, self);
     }
     /** Megler: that rectangle of the view's box drawn again on the screen, every list as it is (meglerDirty without the lists). */

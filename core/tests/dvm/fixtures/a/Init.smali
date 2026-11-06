@@ -30,3 +30,12 @@
     invoke-direct {v0}, Lt/InitB;-><init>()V
     return-object v0
 .end method
+
+# A constructor InitF does not declare is InitA's, as ART resolves it: true when the object made is an InitF.
+.method public static makeF()Z
+    .registers 1
+    new-instance v0, Lt/InitF;
+    invoke-direct {v0}, Lt/InitF;-><init>()V
+    instance-of v0, v0, Lt/InitF;
+    return v0
+.end method

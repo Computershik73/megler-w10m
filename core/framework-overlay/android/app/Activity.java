@@ -152,7 +152,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         fragmentHost(FragmentManager.HOST_RESUMED);
         onPostResume();
         each(c -> c.onActivityPostResumed(this));
-        if (mVisibleFromClient && !mStartedActivity) makeVisible();
+        // (A child's decor is no window of its own: its group's TabHost shows it, android.app.LocalActivityManager.)
+        if (mParent == null && mVisibleFromClient && !mStartedActivity) makeVisible();
         mStartedActivity = false;
     }
     public final void meglerPause() {
@@ -170,7 +171,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             if (mLoaders != null) mLoaders.doStop();
             each(c -> c.onActivityPostStopped(this));
         }
-        if (mWindow != null && mWindow.peekDecorView() != null) { megler.ViewRoot r = megler.ViewRoot.of(mWindow.peekDecorView()); if (r != null) r.remove(); }
+        if (mParent == null && mWindow != null && mWindow.peekDecorView() != null) { megler.ViewRoot r = megler.ViewRoot.of(mWindow.peekDecorView()); if (r != null) r.remove(); }
         /* its dialogs and popups hidden with it, as Android hides the windows of a token not visible (makeVisible shows them) */
         if (!mWindowsHidden) { mWindowsHidden = true; megler.ViewRoot.ownerStopped(this, true); }
     }
@@ -279,6 +280,10 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public boolean isChangingConfigurations() { return mChangingConfigurations; }
     public boolean isTaskRoot() { return megler.AppRunner.isRoot(this); }
     public boolean isChild() { return mParent != null; }
+    /** An activity run inside another (android.app.LocalActivityManager): its group, set before it is created. */
+    public final void meglerSetParent(Activity parent) { mParent = parent; }
+    /** A child its group's manager finishes (destroyActivity, the group's own end): isFinishing from then on. */
+    public final void meglerMarkFinished() { mFinished = true; }
     public final Activity getParent() { return mParent; }
     public boolean isInMultiWindowMode() { return false; }
     public boolean isInPictureInPictureMode() { return false; }
@@ -337,7 +342,7 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public MenuInflater getMenuInflater() { return new MenuInflater(this); }
     public ActionBar getActionBar() { initWindowDecorActionBar(); return mActionBar; }
     public void setActionBar(android.widget.Toolbar t) { if (t != null) t.setTitle(getTitle()); }
-    public void setTitle(CharSequence t) { mTitle = t; onTitleChanged(t, mTitleColor); }
+    public void setTitle(CharSequence t) { mTitle = t; onTitleChanged(t, mTitleColor); if (mParent != null) mParent.onChildTitleChanged(this, t); }
     public void setTitle(int id) { setTitle(getText(id)); }
     public void setTitleColor(int c) { mTitleColor = c; }
     public final CharSequence getTitle() { return mTitle; }
@@ -429,6 +434,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
         startActivityForResult(i, request, o);
     }
     public void finish() {
+        // (A child activity's finish is its group's to do, as Android's: finishFromChild, which finishes the group.)
+        if (mParent != null) { mParent.finishFromChild(this); return; }
         if (mFinished) return;
         mFinished = true;
         // the app's last activity going ends the app: say where from, which is often all a log has to explain it
@@ -453,6 +460,22 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public boolean shouldShowRequestPermissionRationale(String p) { return false; }
     public SharedPreferences getPreferences(int mode) { return getSharedPreferences(getLocalClassName(), mode); }
     public void runOnUiThread(Runnable r) { if (Looper.myLooper() == Looper.getMainLooper()) r.run(); else mHandler.post(r); }
+    /*
+     * A query through the activity, as Android's managedQuery (deprecated since Android 3.0, still there): the content
+     * resolver's query. Android also deactivated and requeried such a cursor with the activity's stops and starts; here it is
+     * the app's to close, which code that still uses managedQuery reads as a plain cursor. It was a stub giving null: ColorNote
+     * 1.6.6 counts its notes from it as its list opens, and ended there (a NullPointerException on Cursor.getCount).
+     */
+    public final android.database.Cursor managedQuery(android.net.Uri uri, String[] projection, String selection, String sortOrder) {
+        return managedQuery(uri, projection, selection, null, sortOrder);
+    }
+    public final android.database.Cursor managedQuery(android.net.Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
+        android.database.Cursor c = getContentResolver().query(uri, projection, selection, selectionArgs, sortOrder);
+        if (c != null) startManagingCursor(c);
+        return c;
+    }
+    public void startManagingCursor(android.database.Cursor c) {}
+    public void stopManagingCursor(android.database.Cursor c) {}
     public final Cursor_ managedQueryMegler() { return null; }
     interface Cursor_ {}
     public FragmentManager getFragmentManager() { if (mFragments == null) mFragments = new FragmentManager(this); return mFragments; }
@@ -642,8 +665,6 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public boolean isHandoffFullTaskRecreationAllowed() { return false; }
             public boolean isOverlayWithDecorCaptionEnabled() { return (megler.Fill.get(meglerFill, "OverlayWithDecorCaptionEnabled") instanceof Boolean ? (Boolean) megler.Fill.get(meglerFill, "OverlayWithDecorCaptionEnabled") : false); }
             public boolean isVisibleForAutofill() { return false; }
-            public android.database.Cursor managedQuery(android.net.Uri p0, java.lang.String[] p1, java.lang.String p2, java.lang.String p3) { return null; }
-            public android.database.Cursor managedQuery(android.net.Uri p0, java.lang.String[] p1, java.lang.String p2, java.lang.String[] p3, java.lang.String p4) { return null; }
             public void onActivityResult(int p0, int p1, android.content.Intent p2, android.app.ComponentCaller p3) {}
             public void onBackgroundVisibleBehindChanged(boolean p0) {}
             public void onCreateNavigateUpTaskStack(android.app.TaskStackBuilder p0) {}
@@ -709,10 +730,8 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public void startIntentSenderFromChild(android.app.Activity p0, android.content.IntentSender p1, int p2, android.content.Intent p3, int p4, int p5, int p6) {}
             public void startIntentSenderFromChild(android.app.Activity p0, android.content.IntentSender p1, int p2, android.content.Intent p3, int p4, int p5, int p6, android.os.Bundle p7) {}
             public void startLocalVoiceInteraction(android.os.Bundle p0) {}
-            public void startManagingCursor(android.database.Cursor p0) {}
             public boolean startNextMatchingActivity(android.content.Intent p0, android.os.Bundle p1) { return false; }
             public void stopLocalVoiceInteraction() {}
-            public void stopManagingCursor(android.database.Cursor p0) {}
             public void unregisterRemoteAnimations() {}
             public void updateUiTranslationState(int p0, android.view.translation.TranslationSpec p1, android.view.translation.TranslationSpec p2, java.util.List p3, android.view.translation.UiTranslationSpec p4) {}
             // ---- end of generated members
