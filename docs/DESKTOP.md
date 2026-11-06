@@ -401,10 +401,48 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   event, a fixed size; ANGLE's program cache on.
 - ARM64 builds -- the core's ELF, the tests' program, ANGLE, the package; on
   Windows it is not run: there is no ARM64 machine here.
+- The APKs of a Downloads folder, 2026-11-06: each started for 30 seconds in
+  a test package of its own (one Megler process an app, its first pictures
+  taken), on x64 the 144 that have x86-64 code or none, on x86 the 153
+  that have x86 code or none. On the last builds (x64 923, x86 924, made from
+  apk-fixes 0415d152; what came after it changes tests and documents alone):
+  on x64 135 started, of which 124 still ran after their 30 seconds, 5 ended
+  themselves with status 0 as they do on a phone (a sound recorder,
+  ACBridge's System.exit, Accuweather's widget app, the two test videos), 4
+  were closed by a Back from outside the test, and 2 ended on their own
+  errors (below); on x86 145 started, 134 still running, the same 5 ended
+  themselves, 4 closed by a Back, 2 on their own errors; no fault on either.
+  RUTUBE plays its films on both. What did not start does not on a phone
+  either: VirtualHere's server archives (not APKs), a widget with no
+  activity, Android's framework-res, Google Play Store without Google Play
+  services, and on x64 a WhatsApp bundle whose x86-64 split is damaged in the
+  bundle itself (95% of it zeros; its x86 split runs). What the runs found
+  is mended in the branch apk-fixes, a commit each: an app's own `int 0x80`
+  on x86 (Asphalt 9, WhatsApp, Discord, MAX ended at their start), the
+  guest's malloc at bionic's alignment and of jemalloc's sizes (x86-64's
+  16-byte SSE stores faulted in exteraGram, Spotify, Google Maps and others;
+  MaxVibe wrote into a malloc(0) and corrupted Windows' heap), a library page
+  that writes itself (Titanium Backup stood still), SDL apps run as Java
+  (Minecraft: Story Mode), fonts, styles and colours of newer API levels
+  (Apple Music, Niagara), a view in Compose's AndroidView drawn again when it
+  changes (RUTUBE's films were black), BluetoothManager's adapter
+  (VectorWatch), and the log written out when an app ends itself. What is the
+  apps' own: XDurakLite (LSPlant hooks ART, which is not here), Tekken Mobile
+  (INCA AppGuard ends it), Fake Device Test (reads /proc/cpuinfo into a
+  buffer of 10000 characters until it is told -1, which sixteen cores'
+  cpuinfo never tells), com.example.app (Flutter for arm64 alone), Titanium
+  Backup (asks for root, and Megler starts no programs), Minecraft: Story
+  Mode (wants its OBB), Aurora Store (restarts itself: below). The suites
+  with desktop-release merged into apk-fixes (26b772a0): x64 5484 checks, x86
+  5472, Linux x86_64 5482 and 5566 on libcore, ARM under qemu 5553, ARM64
+  under qemu 5451 and 5535 on libcore, 0 failed each; the MSVC build 5118 and
+  5182 on libcore, 0 failed (0415d152, the same but for tests of guest code).
 
 In developer mode the first start after the stage folder was registered again
 over an earlier build is refused the package's files ("core: not loaded: ...
-access denied"); the next start is not.
+access denied"); the next start is not. Registering it a second time before
+the first start mends it too: the second registration gives the rebuilt
+folder the package's access.
 
 ## What is left
 
@@ -434,3 +472,10 @@ access denied"); the next start is not.
    socket is refused with EACCES, as Linux refuses one, and isReachable goes
    on to its TCP connection. A real echo would take a helper outside the
    container.
+7. **An app that restarts itself** -- the library ProcessPhoenix, which
+   Aurora Store calls after its first-start pages: its activity in a process
+   of its own starts the app's first activity again and ends its process with
+   Runtime.exit. A Megler process runs one app, once, so the app ends there,
+   on the phone as here, and is started again by hand. Windows 10 1803 and
+   later can restart a packaged app (CoreApplication.RequestRestartAsync);
+   Windows 10 Mobile cannot.
