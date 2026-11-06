@@ -1465,6 +1465,7 @@ int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
     mg_dvm_frame *nf;
     bool ok;
     res->j = 0;
+    g_dvm_calls_general++;
     if (g_dvm.slow || t->c_depth >= DVM_MAX_C_DEPTH - 8 || (t->c_stack_low && (mg_addr)&five < t->c_stack_low + 32u * 1024u)) return 2;
     if (op >= 0x6e && op <= 0x72) {
         u16 list = insns[pc + 2];
@@ -1600,6 +1601,101 @@ int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
     ok = interpret(t, nf, res);
     t->c_depth--;
     return ok ? 0 : 1;
+}
+
+/*
+ * A call compiled code makes the quick way (mg_dvm_jit.c, fast_invoke; mg_dvm_internal.h): what mg_dvm_jit_invoke does for
+ * a call into compiled code, less what the call site and the callee's publishing settled once for all -- the instruction
+ * decoded and its method resolved (`m`, `desc`), the method's start entry looked up and whether a call of it needs anything
+ * else (its code's `fast`: no handlers, not synchronized, no intrinsic). A call cost some 120 ns under qemu-arm, 25 turns of
+ * an arithmetic loop, and Compose's code is mostly calls (Spotify's main thread, package 660). Whatever is not plain goes
+ * the general way, nothing having happened: a null object (which throws there), a method not compiled at its start or of
+ * another shape, instructions watched, the profile or the call trace on, too little left of the host's stack or of the
+ * frame stack's segment.
+ */
+volatile u64 g_dvm_calls_fast, g_dvm_calls_declined, g_dvm_calls_general;
+
+#define FAST_DECLINE                                                                 \
+    {                                                                                \
+        g_dvm_calls_declined++;                                                      \
+        return 3;                                                                    \
+    }
+
+int mg_dvm_jit_fast(mg_dvm_jit_ctx *ctx, mg_dvm_method *m, u32 desc, u32 pc)
+{
+    mg_dvm_thread *t = ctx->t;
+    mg_dvm_frame *f = ctx->f, *nf;
+    const mg_dvm_reg *regs = ctx->regs;
+    const bool range = (desc & DVM_FAST_RANGE) != 0;
+    const u32 count = range ? (desc >> 16) & 0xFFu : (desc >> 20) & 0xFu, kind = (desc >> 28) & 3u;
+    mg_dvm_method *target = m;
+    mg_dvm_jit_code *c;
+    mg_dvm_jit_ctx callee;
+    mg_dvm_reg *to;
+    u32 k, words;
+    int r;
+    if (kind != DVM_FAST_STATIC) {
+        mg_jobj *self = (mg_jobj *)regs[range ? (desc & 0xFFFFu) : (desc & 0xFu)];
+        if (!self) FAST_DECLINE
+        if (kind == DVM_FAST_VIRTUAL) {
+            mg_dvm_class *rc = mg_dvm_class_of(self);
+            if ((u32)m->vidx >= (u32)rc->nvtab) FAST_DECLINE
+            target = rc->vtab[m->vidx];
+        } else if (kind == DVM_FAST_INTERFACE) {
+            mg_dvm_class *rc = mg_dvm_class_of(self);
+            target = rc->icache[(u32)(((mg_addr)m->name >> 3) ^ ((mg_addr)m->sig >> 5)) % DVM_ICACHE];
+            if (!target || target->name != m->name || target->sig != m->sig) FAST_DECLINE
+        }
+    }
+    c = target->jit;
+    if (!c || !c->fast || target->stub || target->shape != SHAPE_REGULAR || count != target->ins) FAST_DECLINE
+    if (g_dvm.slow || g_dvm.profiling || g_call_trace || t->c_depth >= DVM_MAX_C_DEPTH - 8) FAST_DECLINE
+    words = target->regs;
+    if ((t->c_stack_low && (mg_addr)&callee < t->c_stack_low + 32u * 1024u) || words + FRAME_WORDS > (size_t)(t->stack_end - t->sp)) FAST_DECLINE
+    g_dvm_calls_fast++;
+    f->pc = pc;
+    nf = (mg_dvm_frame *)(void *)t->sp;
+    nf->prev = t->top;
+    nf->m = target;
+    nf->regs = t->sp + FRAME_WORDS;
+    nf->pc = 0;
+    nf->prof_start = t->prof_total;
+    nf->entry = true;
+    nf->sync = NULL;
+    /* (The locals as the stack has them, as mg_dvm_jit_invoke leaves them: DVM_LOCALS_AS_THEY_ARE.) */
+    to = nf->regs + (words - count);
+    if (range) {
+        const mg_dvm_reg *from = regs + (desc & 0xFFFFu);
+        for (k = 0; k < count; k++) to[k] = from[k];
+    } else {
+        for (k = 0; k < count; k++) to[k] = regs[(desc >> (4 * k)) & 0xFu];
+    }
+    t->sp += FRAME_WORDS + words;
+    t->top = nf;
+    t->depth++;
+    t->c_depth++;
+    t->running = target;
+    callee.regs = nf->regs;
+    callee.slow = ctx->slow;
+    callee.pc = 0;
+    callee.t = t;
+    callee.f = nf;
+    callee.unused = 0;
+    r = c->run(&callee, c->fast);
+    if (r == 0) {
+        /* Handed back inside it: the interpreter goes on with it to its return (an entry frame, which it pops then). */
+        bool ok;
+        nf->pc = callee.pc;
+        ok = interpret(t, nf, &ctx->result);
+        t->c_depth--;
+        t->running = f->m;
+        return ok ? 0 : 1;
+    }
+    if (r == 2) ctx->result = callee.result;
+    pop_frame(t);
+    t->c_depth--;
+    t->running = f->m;
+    return r == 2 ? 0 : 1;
 }
 
 /* A type an instruction names, resolved as RESOLVE_TYPE does; NULL with an exception pending. */

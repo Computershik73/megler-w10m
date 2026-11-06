@@ -1533,8 +1533,10 @@ static void meter_census(void)
         mg_dvm_jit_census(&j);
         if (j.methods || j.refused)
             mg_info("java: the JIT: %u methods compiled (%u of them waiting for their page to be made executable), %u not worth it; "
-                    "%u KB of code on %u KB of pages",
-                    (unsigned)j.methods, (unsigned)j.waiting, (unsigned)j.refused, (unsigned)(j.code_bytes >> 10), (unsigned)(j.page_bytes >> 10));
+                    "%u KB of code on %u KB of pages; calls compiled code made: %.2f M the quick way, %.2f M left by it to the general way, "
+                    "%.2f M the general way in all",
+                    (unsigned)j.methods, (unsigned)j.waiting, (unsigned)j.refused, (unsigned)(j.code_bytes >> 10), (unsigned)(j.page_bytes >> 10),
+                    (double)j.calls_fast / 1e6, (double)j.calls_declined / 1e6, (double)j.calls_general / 1e6);
     }
 }
 

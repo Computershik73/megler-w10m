@@ -663,6 +663,12 @@ struct mg_dvm_jit_code {
     /* 0: handed back at ctx->pc; 1: an exception is pending, thrown at ctx->pc; 2: returned, its value in ctx->result */
     int (*run)(mg_dvm_jit_ctx *ctx, const void *entry);
     /*
+     * The method's start, entered as `run`'s entry, for the calls compiled code makes the quick way (mg_dvm_jit_fast): set
+     * when the code has an entry there and a call of the method needs nothing of the general way's (mg_dvm_jit_invoke) --
+     * no handlers, not synchronized, no intrinsic. NULL: calls of it go the general way.
+     */
+    const void *fast;
+    /*
      * Where the code is entered, in the order of their pcs: the heads of the loops compiled whole and the method's start,
      * each with its halfword in the code +1. (A table by pc took four bytes for every instruction of the method, for the
      * one to three entries most have.)
@@ -691,10 +697,28 @@ void mg_dvm_jit_start(bool on, u32 threshold, bool trace);
 typedef struct mg_dvm_jit_stats {
     u32 methods, waiting, refused;
     u64 code_bytes, page_bytes;
+    u64 calls_fast, calls_declined, calls_general; /* calls compiled code made: g_dvm_calls_* */
 } mg_dvm_jit_stats;
+/* Calls compiled code made (mg_dvm_interp.c): the quick way, those the quick way left to the general way, and the general
+   way's own; counted without a lock, near enough for the log. */
+extern volatile u64 g_dvm_calls_fast, g_dvm_calls_declined, g_dvm_calls_general;
 void mg_dvm_jit_census(mg_dvm_jit_stats *out);
 /* mg_dvm_interp.c: an invoke done for compiled code; 0 done, 1 thrown, 2 the interpreter's to do (nothing done). */
 int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res);
+/*
+ * What a call site of compiled code tells mg_dvm_jit_fast of its call (mg_dvm_jit.c, fast_invoke): the kind of call in bits
+ * 28-29 (DVM_FAST_*); then, for a range, its first register in bits 0-15 and its count in 16-23, with DVM_FAST_RANGE; else up
+ * to five registers' numbers a nibble each in bits 0-19, the first first, and their count in bits 20-23.
+ */
+#define DVM_FAST_RANGE 0x80000000u
+enum { DVM_FAST_STATIC, DVM_FAST_DIRECT, DVM_FAST_VIRTUAL, DVM_FAST_INTERFACE };
+/*
+ * mg_dvm_interp.c: a call compiled code makes the quick way -- into a method with compiled code at its start (its code's
+ * `fast`), a frame pushed and the code run with no more than that -- `m` the method itself (static, direct, final) or the
+ * one the invoke names (virtual, interface: the object's class says which). 0 done, the value in ctx->result; 1 thrown
+ * (pending); 3 not done, nothing having happened: the call goes the general way (mg_dvm_jit_invoke).
+ */
+int mg_dvm_jit_fast(mg_dvm_jit_ctx *ctx, mg_dvm_method *m, u32 desc, u32 pc);
 /* mg_dvm_interp.c: const-class, the monitors, check-cast, instance-of, new-instance, new-array, aput-object for compiled code; the same answers. */
 int mg_dvm_jit_op(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc);
 int mg_dvm_jit_enter(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_method *m, mg_dvm_reg *regs, u32 pc, u32 *next, mg_jvalue *res);
