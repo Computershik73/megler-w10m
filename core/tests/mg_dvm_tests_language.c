@@ -244,12 +244,14 @@ static void test_exceptions(void)
 
     /* A static initialiser that throws: wrapped the first time, the class unusable ever after. */
     call("t/Exc", "boom", "()I");
-    /* (libcore's ExceptionInInitializerError has no message and keeps what was thrown in a field of its own, which is not the cause the description follows.) */
-    CHECK_STR(thrown(), g_libcore ? "java.lang.ExceptionInInitializerError"
+    /* (libcore's ExceptionInInitializerError has no message and keeps what was thrown in a field of its own, exception, which
+       the description follows as getCause() does.) */
+    CHECK_STR(thrown(), g_libcore ? "java.lang.ExceptionInInitializerError | caused by java.lang.ArithmeticException: divide by zero"
                                   : "java.lang.ExceptionInInitializerError: java.lang.ArithmeticException: divide by zero | caused by java.lang.ArithmeticException: divide by zero");
     /* ... and every later use is NoClassDefFoundError, whose cause is what went wrong the first time (as in Java 17 and ART). */
     call("t/Exc", "boom", "()I");
-    CHECK_STR(thrown(), g_libcore ? "java.lang.NoClassDefFoundError: Could not initialize class t/Boom | caused by java.lang.ExceptionInInitializerError"
+    CHECK_STR(thrown(), g_libcore ? "java.lang.NoClassDefFoundError: Could not initialize class t/Boom | caused by java.lang.ExceptionInInitializerError | "
+                                    "caused by java.lang.ArithmeticException: divide by zero"
                                   : "java.lang.NoClassDefFoundError: Could not initialize class t/Boom | caused by java.lang.ExceptionInInitializerError: "
                                     "java.lang.ArithmeticException: divide by zero | caused by java.lang.ArithmeticException: divide by zero");
 
