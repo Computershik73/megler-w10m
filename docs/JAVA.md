@@ -1912,7 +1912,16 @@ classes are there:
 - `System.arraycopy`;
 - `Math.min`, `max` and `abs` of `int` and `long`, and `Math.sqrt`;
 - `Object.getClass`;
-- `Thread.currentThread`.
+- `Thread.currentThread`;
+- `libcore.io.Memory`'s reads and writes of memory by its address (`peekByte`,
+  `peekShortNative`, `peekIntNative`, `peekLongNative`, `peekByteArray` and the
+  `poke` methods that match them): native calls of libjavacore's, each through
+  the JNI layer, and what a direct `ByteBuffer`'s `get` and `put` come down to.
+  `Resources` reads an app's `resources.arsc` through one ("Resources read
+  where they lie", in "What a run costs");
+- `Float.floatToRawIntBits` and `intBitsToFloat`, `Double.doubleToRawLongBits`
+  and `longBitsToDouble`: native calls too, and `Math.round` calls the first
+  for every float it rounds.
 
 **An intrinsic only does the ordinary case.** For anything else it declines,
 and the method is called as before:

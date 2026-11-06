@@ -659,6 +659,42 @@ void mg_dvm_intrinsics_start(void)
             mark_intrinsic("java/lang/ref/Reference", "getReferent", "()Ljava/lang/Object;", false, INTR_REFERENT);
         }
     }
+    /*
+     * libcore.io.Memory's reads and writes of memory by its address, what a direct ByteBuffer's get and put come down to:
+     * native methods of libjavacore, each a call into the guest library through the JNI layer. Resources reads an app's
+     * resources.arsc where it lies in the APK, through such a buffer (megler.Native.mapApkFile), a few of them a value.
+     * Done in place, in the byte order of the machine as the natives do it (the Java around them swaps); the arrays' forms
+     * only where the array and its bounds are right, else the native's own exception.
+     */
+    if (mg_dvm_class_exists("libcore/io/Memory")) {
+        mark_intrinsic("libcore/io/Memory", "peekByte", "(J)B", true, INTR_PEEK_BYTE);
+        mark_intrinsic("libcore/io/Memory", "peekShortNative", "(J)S", true, INTR_PEEK_SHORT);
+        mark_intrinsic("libcore/io/Memory", "peekIntNative", "(J)I", true, INTR_PEEK_INT);
+        mark_intrinsic("libcore/io/Memory", "peekLongNative", "(J)J", true, INTR_PEEK_LONG);
+        mark_intrinsic("libcore/io/Memory", "peekByteArray", "(J[BII)V", true, INTR_PEEK_BYTES);
+        mark_intrinsic("libcore/io/Memory", "pokeByte", "(JB)V", true, INTR_POKE_BYTE);
+        mark_intrinsic("libcore/io/Memory", "pokeShortNative", "(JS)V", true, INTR_POKE_SHORT);
+        mark_intrinsic("libcore/io/Memory", "pokeIntNative", "(JI)V", true, INTR_POKE_INT);
+        mark_intrinsic("libcore/io/Memory", "pokeLongNative", "(JJ)V", true, INTR_POKE_LONG);
+        mark_intrinsic("libcore/io/Memory", "pokeByteArray", "(J[BII)V", true, INTR_POKE_BYTES);
+    }
+    /*
+     * A float's or a double's bits as they are, and back: native methods too, and Math.round calls floatToRawIntBits for
+     * every float it rounds -- a native call each, in Spotify's main thread at every frame (View.getLocationInWindow rounds
+     * two). The register holds the bits whatever their type: the value is the argument.
+     */
+    mark_intrinsic("java/lang/Float", "floatToRawIntBits", "(F)I", true, INTR_RAW_BITS32);
+    mark_intrinsic("java/lang/Float", "intBitsToFloat", "(I)F", true, INTR_RAW_BITS32);
+    mark_intrinsic("java/lang/Double", "doubleToRawLongBits", "(D)J", true, INTR_RAW_BITS64);
+    mark_intrinsic("java/lang/Double", "longBitsToDouble", "(J)D", true, INTR_RAW_BITS64);
+}
+
+/* A byte array's elements [off, off + n) where the array is one and they are in it; NULL otherwise (the native then throws). */
+static u8 *bytes_in(mg_jobj *a, i32 off, i32 n)
+{
+    if (!a || a->kind != MG_J_PRIM_ARRAY || a->u.arr.esz != 1 || off < 0 || n < 0 || (u32)off > a->u.arr.len || (u32)n > a->u.arr.len - (u32)off)
+        return NULL;
+    return (u8 *)a->u.arr.data + off;
 }
 
 /* System.arraycopy's work when nothing about it can throw: false to have the method called instead. */
@@ -774,6 +810,55 @@ static bool intrinsic(mg_dvm_thread *t, u8 id, const mg_dvm_reg *a, mg_jvalue *r
         if (!s) return false;
         r->i = (i32)(mg_dvm_identity_hash(s) & 0x0FFFFFFFu);
         return true;
+    case INTR_PEEK_BYTE: r->i = *(const i8 *)(mg_addr)mg_dvm_get_wide(a, 0); return true;
+    case INTR_PEEK_SHORT: {
+        i16 v;
+        memcpy(&v, (const void *)(mg_addr)mg_dvm_get_wide(a, 0), sizeof(v));
+        r->i = v;
+        return true;
+    }
+    case INTR_PEEK_INT: {
+        i32 v;
+        memcpy(&v, (const void *)(mg_addr)mg_dvm_get_wide(a, 0), sizeof(v));
+        r->i = v;
+        return true;
+    }
+    case INTR_PEEK_LONG: {
+        i64 v;
+        memcpy(&v, (const void *)(mg_addr)mg_dvm_get_wide(a, 0), sizeof(v));
+        r->j = v;
+        return true;
+    }
+    case INTR_PEEK_BYTES: {
+        u8 *to = bytes_in((mg_jobj *)a[2], (i32)(u32)a[3], (i32)(u32)a[4]);
+        if (!to) return false;
+        memmove(to, (const void *)(mg_addr)mg_dvm_get_wide(a, 0), (size_t)(u32)a[4]);
+        return true;
+    }
+    case INTR_POKE_BYTE: *(i8 *)(mg_addr)mg_dvm_get_wide(a, 0) = (i8)(u32)a[2]; return true;
+    case INTR_POKE_SHORT: {
+        i16 v = (i16)(u32)a[2];
+        memcpy((void *)(mg_addr)mg_dvm_get_wide(a, 0), &v, sizeof(v));
+        return true;
+    }
+    case INTR_POKE_INT: {
+        i32 v = (i32)(u32)a[2];
+        memcpy((void *)(mg_addr)mg_dvm_get_wide(a, 0), &v, sizeof(v));
+        return true;
+    }
+    case INTR_POKE_LONG: {
+        i64 v = mg_dvm_get_wide(a, 2);
+        memcpy((void *)(mg_addr)mg_dvm_get_wide(a, 0), &v, sizeof(v));
+        return true;
+    }
+    case INTR_POKE_BYTES: {
+        const u8 *from = bytes_in((mg_jobj *)a[2], (i32)(u32)a[3], (i32)(u32)a[4]);
+        if (!from) return false;
+        memmove((void *)(mg_addr)mg_dvm_get_wide(a, 0), from, (size_t)(u32)a[4]);
+        return true;
+    }
+    case INTR_RAW_BITS32: r->i = (i32)(u32)a[0]; return true;
+    case INTR_RAW_BITS64: r->j = mg_dvm_get_wide(a, 0); return true;
     default: return false;
     }
 }
