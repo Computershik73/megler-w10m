@@ -89,11 +89,11 @@ MG_HOSTAPI void *mg_mem_alloc(size_t size);
  */
 MG_HOSTAPI void *mg_mem_alloc_watched(size_t size);
 /*
- * The pages of watched [p, p + size) written since the memory was made or this was last asked, as page numbers from `p`
- * into `out` (at most `max`), the watch started again for them: how many; -1 where the host cannot say (and every page is
- * to be taken for written). Pages of MG_PAGE bytes.
+ * The pages of watched [p, p + size) written since the memory was made or the watch was last started again, as page numbers
+ * from `p` into `out` (at most `max`): how many; -1 where the host cannot say (and every page is to be taken for written).
+ * `reset`: the watch started again for them. Pages of MG_PAGE bytes.
  */
-MG_HOSTAPI int mg_mem_written_pages(void *p, size_t size, u32 *out, int max);
+MG_HOSTAPI int mg_mem_written_pages(void *p, size_t size, u32 *out, int max, bool reset);
 
 /*
  * Memory that several mappings show at once: a section (a pagefile-backed file mapping on Windows, a memfd on Linux), the

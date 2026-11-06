@@ -841,8 +841,9 @@ void mg_dvm_heap_clear_marks(void);
 void mg_dvm_heap_each_marked(void (*fn)(void *o));
 /*
  * Marking alongside the app (mg_dvm_gc.c): objects made while `on` are made marked; whether the arenas' pages are watched
- * for writes; the watch started again (the world stopped); and, the world stopped, `fn` for every marked object on a page
- * written since then -- every marked one where not watched -- and every marked large object: how many pages that was.
+ * for writes; the watch started again (before the first stop, the app running); and, the world stopped, `fn` for every
+ * marked object on a page written since then -- every marked one where not watched -- and every marked large object: how
+ * many pages that was.
  */
 void mg_dvm_heap_alloc_black(bool on);
 /* Whether this thread holds the runtime's lock (mg_dvm_lock). */

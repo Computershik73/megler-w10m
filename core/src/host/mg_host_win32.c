@@ -460,7 +460,7 @@ void mg_icache_flush(void *p, size_t size) { FlushInstructionCache(GetCurrentPro
 void *mg_mem_alloc(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); }
 void *mg_mem_alloc_watched(size_t size) { return valloc(NULL, size, MEM_RESERVE | MEM_COMMIT | MEM_WRITE_WATCH, PAGE_READWRITE); }
 
-int mg_mem_written_pages(void *p, size_t size, u32 *out, int max)
+int mg_mem_written_pages(void *p, size_t size, u32 *out, int max, bool reset)
 {
     enum { CHUNK = 256 };
     PVOID pages[CHUNK];
@@ -472,7 +472,7 @@ int mg_mem_written_pages(void *p, size_t size, u32 *out, int max)
         ULONG_PTR count = CHUNK;
         ULONG granularity = 0;
         ULONG_PTR i;
-        if (GetWriteWatch(WRITE_WATCH_FLAG_RESET, (u8 *)p + at, span, pages, &count, &granularity) != 0) return -1;
+        if (GetWriteWatch(reset ? WRITE_WATCH_FLAG_RESET : 0, (u8 *)p + at, span, pages, &count, &granularity) != 0) return -1;
         /* (Pages of the host's granularity, each that many of MG_PAGE.) */
         for (i = 0; i < count; i++) {
             u32 first = (u32)(((u8 *)pages[i] - (u8 *)p) / MG_PAGE), k, each = granularity > MG_PAGE ? granularity / MG_PAGE : 1;

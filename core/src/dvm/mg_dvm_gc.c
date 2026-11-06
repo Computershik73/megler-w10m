@@ -1116,9 +1116,10 @@ bool mg_dvm_gc_census(mg_dvm_gc_result *out)
  * the collector's own thread and its helpers while the app runs. Yandex Maps' collections stopped it for 150 to 250 ms
  * every few seconds while its map was moved, most of it marking 700,000 objects (package 537).
  *
- *  - The first stop: the marks cleared, the arenas' write watch started again, new objects made marked from now on (they
- *    live: mg_dvm_heap_alloc_black), and every root pushed -- the classes' statics, the interned strings, the threads', the
- *    JNI layer's, C's, the frames and C stacks scanned conservatively -- nothing followed yet.
+ *  - Just before it, the app running: the arenas' write watch started again (mg_dvm_heap_watch_restart).
+ *  - The first stop: the marks cleared (unless a sweep left them so), new objects made marked from now on (they live:
+ *    mg_dvm_heap_alloc_black), and every root pushed -- the classes' statics, the interned strings, the threads', the JNI
+ *    layer's, C's, the frames and C stacks scanned conservatively -- nothing followed yet.
  *  - Alongside: everything they reach marked, by the helpers too, while the app's threads run and make objects.
  *  - The second stop: every root pushed again, and every marked object on a page of the heap written since the first stop
  *    followed again -- an app's thread that stored a reference into an object already followed wrote that page -- with every
@@ -1169,21 +1170,34 @@ static void class_roots_pushed(void)
     G.main.n = g_npool;
 }
 
-static void roots_pushed(void)
+/* What a stop's roots took, for the line of a collection alongside the app. */
+typedef struct roots_took {
+    u64 classes_ns, exact_ns, jni_ns, stacks_ns;
+} roots_took;
+
+static void roots_pushed(roots_took *took)
 {
+    u64 t0 = mg_time_monotonic_ns(), t1, t2;
     u32 i;
     class_roots_pushed();
+    t1 = mg_time_monotonic_ns();
     mg_dvm_threads_each(exact_thread_roots, NULL);
     mg_dvm_proxy_roots(reach_ref, NULL);
     mg_dvm_object_roots(reach_ref, NULL);
+    t2 = mg_time_monotonic_ns();
     mg_jni_gc_roots(reach_counted, &G.jni_roots);
+    took->jni_ns = mg_time_monotonic_ns() - t2;
     for (i = 0; i < (u32)g_nroots && i < MAX_ROOTS; i++)
         if (g_roots[i]) reach_ref(*g_roots[i], NULL);
     for (i = 0; i < g_nto_finalize; i++) reach_ref(g_to_finalize[i], NULL);
     reach_ref(g_pending_refs, NULL);
+    t2 = mg_time_monotonic_ns();
+    took->classes_ns = t1 - t0;
+    took->exact_ns = t2 - t1;
     G.main.counting_conservative = true;
     conservative_roots();
     G.main.counting_conservative = false;
+    took->stacks_ns = mg_time_monotonic_ns() - t2;
 }
 
 /* The runtime's locks the collection holds while the world is stopped, so that no stopped thread holds one. */
@@ -1214,7 +1228,8 @@ static void follow_with_fields(void)
 
 static void collect_alongside(void)
 {
-    u64 t0, t1, t2, t3, t4, t5, t6, t7;
+    /* (tw the write watch started again, tm the marks cleared, tp the written pages' objects followed, td what they reach, tq the references.) */
+    u64 t0, t1, t2, t3, t4, t5, t7, tw, tm = 0, tp = 0, td = 0, tq = 0;
     u32 objects, written = 0;
     u64 live = 0;
     void **stack;
@@ -1222,14 +1237,21 @@ static void collect_alongside(void)
     char makers[200], large[600];
     bool ok;
     mg_dvm_gc_result r;
+    roots_took first, second;
     memset(&r, 0, sizeof(r));
+    memset(&first, 0, sizeof(first));
+    memset(&second, 0, sizeof(second));
     makers[0] = large[0] = 0;
     mg_lock_acquire(&g_gc_lock);
     helpers_start();
     t_collecting = true;
     g_collector = NULL;
+    /* The arenas' write watch started again before the first stop, the app running (mg_dvm_heap_watch_restart). */
+    tw = mg_time_monotonic_ns();
+    mg_dvm_heap_watch_restart();
     /* The first stop. */
     t0 = mg_time_monotonic_ns();
+    tw = t0 - tw;
     locks_take();
     objects = mg_dvm_heap_objects();
     stack = (void **)malloc(sizeof(void *) * ((size_t)objects + 64));
@@ -1256,10 +1278,11 @@ static void collect_alongside(void)
         ok = !g_stop_failed;
         if (ok) {
             say_makers(makers, sizeof(makers));
+            tm = mg_time_monotonic_ns();
             mg_dvm_heap_clear_marks();
-            mg_dvm_heap_watch_restart();
+            tm = mg_time_monotonic_ns() - tm;
             mg_dvm_heap_alloc_black(true);
-            roots_pushed();
+            roots_pushed(&first);
         }
         resume_threads();
         g_busy = 0;
@@ -1294,17 +1317,22 @@ static void collect_alongside(void)
     t5 = mg_time_monotonic_ns();
     ok = !g_stop_failed;
     if (ok) {
-        roots_pushed();
+        roots_pushed(&second);
+        tp = mg_time_monotonic_ns();
         written = mg_dvm_heap_each_written(follow_main);
         follow_with_fields();
+        td = mg_time_monotonic_ns();
+        tp = td - tp;
         drain();
         while (G.overflow) {
             G.overflow = false;
             heap_rescan_marked();
         }
+        tq = mg_time_monotonic_ns();
+        td = tq - td;
         if (g_referent >= 0) process_references(false);
+        tq = mg_time_monotonic_ns() - tq;
     }
-    t6 = mg_time_monotonic_ns();
     resume_threads();
     t7 = mg_time_monotonic_ns();
     locks_give(false);
@@ -1331,13 +1359,19 @@ static void collect_alongside(void)
     if (ok) {
         mg_atomic_add(&g_collections, 1);
         g_pause_ns += (t2 - t0) + (t7 - t4) + r.sweep_ns;
-        mg_info("gc: alongside the app: stopped %.1f ms and %.1f ms (to stop %.1f and %.1f; the roots, then %u written pages' objects and what "
-                "they reach, %.1f); marked alongside in %.1f ms by %u threads; sweep %.1f by %u; freed %.1f MB (%u objects), live %.1f MB "
-                "(%u objects in all); %u threads stopped%s%s",
-                (double)(t2 - t0) / 1e6, (double)(t7 - t4) / 1e6, (double)(t1 - t0) / 1e6, (double)(t5 - t4) / 1e6, (unsigned)written,
-                (double)(t6 - t5) / 1e6, (double)(t3 - t2) / 1e6, (unsigned)G.markers, (double)r.sweep_ns / 1e6, (unsigned)r.sweepers,
-                (double)r.freed_bytes / 1048576.0, (unsigned)r.freed_objects, (double)live / 1048576.0, (unsigned)mg_dvm_heap_objects(),
-                (unsigned)g_nstopped, makers[0] ? "; made since the last by " : "", makers);
+        /* (What each stop's time went to, part by part: the stops of Spotify's on a Lumia 650 were 85 to 180 ms, package 664.) */
+        mg_info("gc: alongside the app: stopped %.1f ms and %.1f ms (to stop %.1f and %.1f; at the first the marks %.1f, the classes and "
+                "strings %.1f, the other exact roots %.1f -- the JNI layer's %.1f --, the stacks %.1f; at the second the classes and strings "
+                "%.1f, the other exact roots %.1f -- the JNI layer's %.1f --, the stacks %.1f, %u written pages' objects %.1f, what they reach "
+                "%.1f, the references %.1f); the write watch started again before in %.1f; marked alongside in %.1f ms by %u threads; sweep "
+                "%.1f by %u; freed %.1f MB (%u objects), live %.1f MB (%u objects in all); %u threads stopped%s%s",
+                (double)(t2 - t0) / 1e6, (double)(t7 - t4) / 1e6, (double)(t1 - t0) / 1e6, (double)(t5 - t4) / 1e6, (double)tm / 1e6,
+                (double)first.classes_ns / 1e6, (double)first.exact_ns / 1e6, (double)first.jni_ns / 1e6, (double)first.stacks_ns / 1e6,
+                (double)second.classes_ns / 1e6, (double)second.exact_ns / 1e6, (double)second.jni_ns / 1e6, (double)second.stacks_ns / 1e6,
+                (unsigned)written, (double)tp / 1e6, (double)td / 1e6, (double)tq / 1e6, (double)tw / 1e6, (double)(t3 - t2) / 1e6,
+                (unsigned)G.markers, (double)r.sweep_ns / 1e6, (unsigned)r.sweepers, (double)r.freed_bytes / 1048576.0,
+                (unsigned)r.freed_objects, (double)live / 1048576.0, (unsigned)mg_dvm_heap_objects(), (unsigned)g_nstopped,
+                makers[0] ? "; made since the last by " : "", makers);
     }
     t_collecting = false;
     free(stack);

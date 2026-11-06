@@ -205,12 +205,13 @@ void *mg_mem_alloc_watched(size_t size)
     return NULL;
 }
 
-int mg_mem_written_pages(void *p, size_t size, u32 *out, int max)
+int mg_mem_written_pages(void *p, size_t size, u32 *out, int max, bool reset)
 {
     (void)p;
     (void)size;
     (void)out;
     (void)max;
+    (void)reset;
     return -1;
 }
 
