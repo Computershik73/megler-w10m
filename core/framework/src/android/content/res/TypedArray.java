@@ -86,9 +86,14 @@ public class TypedArray implements AutoCloseable {
         if (t.type == TypedValue.TYPE_STRING) { try { return Float.parseFloat(String.valueOf(t.string)); } catch (NumberFormatException e) { return def; } }
         return def;
     }
+    /*
+     * An attribute the theme did not give is kept as such (TYPE_ATTRIBUTE, Resources.Theme.obtainStyledAttributes): it has an
+     * index and a value, as on Android, and the getters answer their default for it, where Android's throw "Failed to resolve
+     * attribute". (Before such values were kept, they were not there at all, and an app read the defaults so.)
+     */
     public int getColor(int i, int def) {
         TypedValue t = v(i);
-        if (t == null || t.type == TypedValue.TYPE_NULL) return def;
+        if (t == null || t.type == TypedValue.TYPE_NULL || t.type == TypedValue.TYPE_ATTRIBUTE) return def;
         if (isInt(t)) return t.data;
         if (t.type == TypedValue.TYPE_STRING) { ColorStateList c = mRes.loadColorStateList(t, t.resourceId, mTheme); return c.getDefaultColor(); }
         if (t.type == TypedValue.TYPE_REFERENCE) { int id = ref(t); if (id == 0) return def; try { return mRes.getColor(id, mTheme); } catch (Resources.NotFoundException e) { return def; } }
@@ -106,7 +111,7 @@ public class TypedArray implements AutoCloseable {
     private static int ref(TypedValue t) { return t.data != 0 ? t.data : t.resourceId; }
     public float getDimension(int i, float def) {
         TypedValue t = v(i);
-        if (t == null || t.type == TypedValue.TYPE_NULL) return def;
+        if (t == null || t.type == TypedValue.TYPE_NULL || t.type == TypedValue.TYPE_ATTRIBUTE) return def;
         if (t.type == TypedValue.TYPE_DIMENSION) return TypedValue.complexToDimension(t.data, mRes.getDisplayMetrics());
         if (isInt(t)) return t.data;
         if (t.type == TypedValue.TYPE_REFERENCE && ref(t) != 0) { try { return mRes.getDimension(ref(t)); } catch (Resources.NotFoundException e) { return def; } }
@@ -114,7 +119,7 @@ public class TypedArray implements AutoCloseable {
     }
     public int getDimensionPixelOffset(int i, int def) {
         TypedValue t = v(i);
-        if (t == null || t.type == TypedValue.TYPE_NULL) return def;
+        if (t == null || t.type == TypedValue.TYPE_NULL || t.type == TypedValue.TYPE_ATTRIBUTE) return def;
         if (t.type == TypedValue.TYPE_DIMENSION) return TypedValue.complexToDimensionPixelOffset(t.data, mRes.getDisplayMetrics());
         if (isInt(t)) return t.data;
         if (t.type == TypedValue.TYPE_REFERENCE && ref(t) != 0) { try { return mRes.getDimensionPixelOffset(ref(t)); } catch (Resources.NotFoundException e) { return def; } }
@@ -122,7 +127,7 @@ public class TypedArray implements AutoCloseable {
     }
     public int getDimensionPixelSize(int i, int def) {
         TypedValue t = v(i);
-        if (t == null || t.type == TypedValue.TYPE_NULL) return def;
+        if (t == null || t.type == TypedValue.TYPE_NULL || t.type == TypedValue.TYPE_ATTRIBUTE) return def;
         if (t.type == TypedValue.TYPE_DIMENSION) return TypedValue.complexToDimensionPixelSize(t.data, mRes.getDisplayMetrics());
         if (isInt(t)) return t.data;
         if (t.type == TypedValue.TYPE_REFERENCE && ref(t) != 0) { try { return mRes.getDimensionPixelSize(ref(t)); } catch (Resources.NotFoundException e) { return def; } }
@@ -159,7 +164,7 @@ public class TypedArray implements AutoCloseable {
     public int getThemeAttributeId(int i, int def) { TypedValue t = v(i); return t != null && t.type == TypedValue.TYPE_ATTRIBUTE ? t.data : def; }
     public Drawable getDrawable(int i) {
         TypedValue t = v(i);
-        if (t == null || t.type == TypedValue.TYPE_NULL) return null;
+        if (t == null || t.type == TypedValue.TYPE_NULL || t.type == TypedValue.TYPE_ATTRIBUTE) return null;
         if (t.type == TypedValue.TYPE_REFERENCE && t.resourceId != 0) {
             TypedValue r = new TypedValue();
             if (mRes.meglerValue(t.resourceId, r, true) && r.type != TypedValue.TYPE_NULL) return mRes.loadDrawable(r, t.resourceId, mTheme);

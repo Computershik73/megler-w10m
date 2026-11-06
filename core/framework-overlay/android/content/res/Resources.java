@@ -2,11 +2,14 @@
 // It differs in these things. The class Bag (a style's items): put and indexOf find a key by hashing. And updateCfg: resources
 // are chosen for the API level of the platform's own resources (PLATFORM_RESOURCES_SDK), not for Build.VERSION.SDK_INT.
 // And a theme attribute whose value names an attribute that names another, with no end -- a style's item that names
-// itself, as Android's TextAppearance does with textColorHighlight -- is not there: obtainStyledAttributes leaves it out and
-// resolveAttribute says false, as AssetManager2's Theme::GetAttribute gives up after twenty steps. The original kept it as an
-// unresolved attribute, and TypedArray.getColor threw on it: GeckoView's getSystemColors (Firefox 152) applies
-// android.R.style.TextAppearance to a theme and asks its colours, and Gecko ended on the Java exception (MOZ_CRASH(JNI
-// exception)). Everything else is the original's, unchanged, and so are a bag's contents and their order.
+// itself, as Android's TextAppearance does with textColorHighlight -- is not there: resolveAttribute says false, as
+// AssetManager2's Theme::GetAttribute gives up after twenty steps, and obtainStyledAttributes leaves out such a value of the
+// theme's own. One that the XML or a style gives and the theme does not resolve stays the attribute it names
+// (TYPE_ATTRIBUTE), as AttributeResolution leaves it -- BiP reads its colours so from a style in its activity's theme and
+// resolves them in the style's own -- and TypedArray's getters give their default for it where Android's throw: GeckoView's
+// getSystemColors (Firefox 152) applies android.R.style.TextAppearance to a theme and asks its colours, and Gecko ended on the
+// Java exception when getColor threw (MOZ_CRASH(JNI exception)). Everything else is the original's, unchanged, and so are a
+// bag's contents and their order.
 //
 // Why the second. The framework says it is Android 14 (SDK_INT 34); the platform's resources here are Android 9's
 // framework-res.apk, because libcore is Android 9's (tools/dvm-android-root.sh). An app's resources qualified -v29 to -v34 are
@@ -694,16 +697,36 @@ public class Resources {
                 }
                 if (!found && xmlStyle != null) { int i = xmlStyle.indexOf(attr); if (i >= 0) { fromBag(xmlStyle, i, v); found = true; } }
                 if (!found && defStyle != null) { int i = defStyle.indexOf(attr); if (i >= 0) { fromBag(defStyle, i, v); found = true; } }
-                if (!found && useTheme) { TypedValue tv = mAttrs.get(attr); if (tv != null) { v.setTo(tv); found = true; } }
+                boolean fromTheme = false;
+                if (!found && useTheme) { TypedValue tv = mAttrs.get(attr); if (tv != null) { v.setTo(tv); found = true; fromTheme = true; } }
                 if (!found) continue;
-                // ?attr: from this theme
-                for (int depth = 0; v.type == TypedValue.TYPE_ATTRIBUTE && depth < 20; depth++) {
-                    TypedValue tv = useTheme ? mAttrs.get(v.data) : null;
-                    if (tv == null) { v.type = TypedValue.TYPE_NULL; break; }
-                    v.setTo(tv);
+                // ?attr: from this theme, through attributes that name others up to twenty deep, as Theme::GetAttribute.
+                if (v.type == TypedValue.TYPE_ATTRIBUTE) {
+                    int named = v.data, at = named;
+                    TypedValue tv = null;
+                    for (int depth = 0; useTheme && depth <= 20; depth++) {
+                        tv = mAttrs.get(at);
+                        if (tv == null || tv.type != TypedValue.TYPE_ATTRIBUTE) break;
+                        at = tv.data;
+                        tv = null;
+                    }
+                    if (tv != null && (tv.type != TypedValue.TYPE_NULL || tv.data == TypedValue.DATA_NULL_EMPTY)) {
+                        v.setTo(tv);
+                    } else if (fromTheme) {
+                        continue;
+                    } else {
+                        // One the theme does not give stays the attribute it names, as Android's AttributeResolution leaves it:
+                        // there (an index, hasValue), of TYPE_ATTRIBUTE, for the app to resolve in a theme of its own choosing.
+                        // BiP reads its theme colours so from a style in its activity's theme, resolves them in the style's,
+                        // and stopped at its first activity when they were not there.
+                        v.type = TypedValue.TYPE_ATTRIBUTE;
+                        v.data = named;
+                        v.string = null;
+                        v.resourceId = 0;
+                        a.set(k, v);
+                        continue;
+                    }
                 }
-                // one that still names an attribute after twenty (one that names itself) is not there, as AttributeResolution has it
-                if (v.type == TypedValue.TYPE_ATTRIBUTE) continue;
                 // @null: a reference to nothing, set explicitly (it hides whatever a style or the theme says)
                 if (v.type == TypedValue.TYPE_REFERENCE && v.data == 0) { v.type = TypedValue.TYPE_NULL; v.data = TypedValue.DATA_NULL_UNDEFINED; }
                 if (v.type == TypedValue.TYPE_NULL && v.data != TypedValue.DATA_NULL_EMPTY) continue;
