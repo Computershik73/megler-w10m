@@ -187,14 +187,20 @@ fi
 size() { du -sk "$1" | cut -f1; }
 # Android's System WebView, where tools/webview-fetch.sh has put it, and the name of its platform support library.
 WEBVIEW="no WebView"
-# (Its native library is 32-bit ARM's: the other ABIs' roots go without it until a WebView of theirs is fetched.)
-if [ -f "$ROOT/build/webview/webview.apk" ] && [ "$ABI" = armeabi-v7a ]; then
+# (32-bit ARM's is build/webview/webview.apk; the desktop's processors' build/webview/<abi>/webview.apk, the same release
+# built for them: tools/webview-fetch.sh <abi>. x86_64's has x86's library too, and serves x86 where x86's own is not there.)
+WEBVIEW_APK="$ROOT/build/webview/webview.apk"
+if [ "$ABI" != armeabi-v7a ]; then
+  WEBVIEW_APK="$ROOT/build/webview/$ABI/webview.apk"
+  [ "$ABI" = x86 ] && [ ! -f "$WEBVIEW_APK" ] && WEBVIEW_APK="$ROOT/build/webview/x86_64/webview.apk"
+fi
+if [ -f "$WEBVIEW_APK" ]; then
   mkdir -p "$OUT/app/webview"
-  cmp -s "$ROOT/build/webview/webview.apk" "$OUT/app/webview/webview.apk" || cp "$ROOT/build/webview/webview.apk" "$OUT/app/webview/webview.apk"
+  cmp -s "$WEBVIEW_APK" "$OUT/app/webview/webview.apk" || cp "$WEBVIEW_APK" "$OUT/app/webview/webview.apk"
   echo "The platform support of the WebView: its natives are answered by the core (core/src/drivers/mg_java_webview.c)." > "$OUT/lib/libwebviewchromium_plat_support.so"
   WEBVIEW="the WebView $(size "$OUT/app/webview") KB"
 else
-  echo "  (not there: build/webview/webview.apk: tools/webview-fetch.sh fetches Android's System WebView)"
+  echo "  (not there: ${WEBVIEW_APK#$ROOT/}: tools/webview-fetch.sh $([ "$ABI" = armeabi-v7a ] || echo "$ABI ")fetches Android's System WebView)"
   rm -rf "$OUT/app/webview" "$OUT/lib/libwebviewchromium_plat_support.so"
 fi
 # The system's libraries whose functions the core answers itself, each named in lib by a file that says so, as Android has

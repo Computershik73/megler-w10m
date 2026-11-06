@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Android's System WebView for the Android root, from AOSP's own server, into build/webview (not part of the repository):
 #
-#   tools/webview-fetch.sh            (from Git Bash or WSL; needs curl, tar and sha1sum)
+#   tools/webview-fetch.sh [abi]      (from Git Bash or WSL; needs curl, tar, sha1sum and git)
+#
+#   abi: armeabi-v7a (the default, as below); arm64-v8a, x86 or x86_64 for desktop Windows' packages (docs/DESKTOP.md):
+#   the same Chromium release's prebuilt for that processor, from the same commit's folder of its name, into
+#   build/webview/<abi>/webview.apk.
 #
 #   build/webview/webview.apk         AOSP's prebuilt WebView for 32-bit ARM, Chromium 128.0.6613.88: the APK Android 15
 #                                     (android-15.0.0_r36, 25Q1) builds into its image as /system/app/webview/webview.apk.
@@ -38,6 +42,33 @@ fetch() { # url, file
   echo "cannot fetch $1" >&2
   exit 1
 }
+
+ABI="${1:-armeabi-v7a}"
+if [ "$ABI" != armeabi-v7a ]; then
+  # The same release built for the desktop's processors (docs/DESKTOP.md), each the one file of its folder there, into
+  # build/webview/<abi>/webview.apk: checked against its git blob in that commit.
+  case "$ABI" in
+    arm64-v8a) FOLDER=arm64; BLOB=258dc814a9dc02ce953889440255d6787fca7b57 ;;
+    x86) FOLDER=x86; BLOB=dd8fd435da6dcfd3964db8761155958a478a0de1 ;;
+    x86_64) FOLDER=x86_64; BLOB=fcd919744aaba4ff5f9d30701e0f1e135cbf0ad6 ;;
+    *) echo "usage: tools/webview-fetch.sh [armeabi-v7a|arm64-v8a|x86|x86_64]" >&2; exit 2 ;;
+  esac
+  DEST="$OUT/$ABI/webview.apk"
+  mkdir -p "$OUT/$ABI"
+  if [ -f "$DEST" ] && [ "$(git hash-object "$DEST")" = "$BLOB" ]; then
+    echo "    have build/webview/$ABI/webview.apk (Chromium $VERSION)"
+  else
+    fetch "$BASE/external/chromium-webview/+archive/$COMMIT/$VERSION/$FOLDER.tar.gz" "$OUT/.fetch.tar.gz"
+    rm -rf "$OUT/.unpack"
+    mkdir -p "$OUT/.unpack"
+    tar -xzf "$OUT/.fetch.tar.gz" -C "$OUT/.unpack"
+    [ "$(git hash-object "$OUT/.unpack/webview.apk")" = "$BLOB" ] || { echo "the WebView APK fetched for $ABI is not the one expected" >&2; exit 1; }
+    mv "$OUT/.unpack/webview.apk" "$DEST"
+    rm -rf "$OUT/.unpack" "$OUT/.fetch.tar.gz"
+    echo "    build/webview/$ABI/webview.apk: Chromium $VERSION, $(stat -c%s "$DEST") bytes"
+  fi
+  exit 0
+fi
 
 if [ -f "$OUT/webview.apk" ] && echo "$SHA1  $OUT/webview.apk" | sha1sum -c --quiet 2> /dev/null; then
   echo "    have build/webview/webview.apk (Chromium $VERSION)"
