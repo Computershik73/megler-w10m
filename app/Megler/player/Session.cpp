@@ -126,6 +126,10 @@ megler_gfx_host gfxCallbacks() {
 void onExit(void*, int status, const char* reason) {
     const std::string why = reason ? reason : "";
     shellLog::write(format("session: the app has ended, status %d%s%s", status, why.empty() ? "" : ": ", why.c_str()));
+    // Out to the file now: an app that ends itself with exit() (System.exit) ends the process right after this, sooner
+    // than the log's 200 ms, and its last lines were lost -- ACBridge's log stopped at "EXPORT ICONS START", and its
+    // icons, its toast, its "Runtime.exit(0)" and this line were never in the file, so that it looked hung.
+    shellLog::flush();
     std::lock_guard<std::mutex> lock(gMutex);
     gSnapshot.state = State::exited;
     gSnapshot.exitStatus = status;
