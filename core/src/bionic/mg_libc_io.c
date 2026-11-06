@@ -674,6 +674,7 @@ typedef struct epoll_item {
     u32 events;
     u64 data;
     int last;                      /* what was last reported and still holds (EPOLLET) */
+    i32 seq;                       /* the object's io_seq when it was last reported */
     bool disarmed;                 /* reported once with EPOLLONESHOT */
 } epoll_item;
 
@@ -698,6 +699,7 @@ typedef struct gobj {
     int nitems, epoll_next;
     const mg_fd_ops *ops;          /* OBJ_EXT: another module's object (a socket) */
     void *ext;
+    volatile i32 io_seq;           /* OBJ_EXT: the app's calls on it that have ended (epoll_check, EPOLLET) */
     /* OBJ_MEM made as shared memory (mg_fd_shm_create): writable, resized by ftruncate, and the protection mmap allows. */
     bool shm;
     int shm_prot;
@@ -1328,7 +1330,11 @@ static i32 obj_read(gobj *o, void *buf, u32 n, bool positioned, u64 offset)
         return 8;
     }
     case OBJ_EXT:
-        if (o->ops->read) return o->ops->read(o->ext, buf, n, (o->flags & G_O_NONBLOCK) != 0);
+        if (o->ops->read) {
+            i32 got = o->ops->read(o->ext, buf, n, (o->flags & G_O_NONBLOCK) != 0);
+            mg_atomic_add(&o->io_seq, 1);
+            return got;
+        }
         break;
     default:
         break;
@@ -1433,7 +1439,11 @@ static i32 obj_write(gobj *o, const void *buf, u32 n, bool positioned, u64 offse
         return 8;
     }
     case OBJ_EXT:
-        if (o->ops->write) return o->ops->write(o->ext, buf, n, (o->flags & G_O_NONBLOCK) != 0);
+        if (o->ops->write) {
+            i32 put = o->ops->write(o->ext, buf, n, (o->flags & G_O_NONBLOCK) != 0);
+            mg_atomic_add(&o->io_seq, 1);
+            return put;
+        }
         break;
     default:
         break;
@@ -1522,7 +1532,9 @@ bool mg_fd_held_same(const void *a, const void *b)
 }
 void mg_fd_let_go(void *held)
 {
-    if (held) fd_put((gobj *)held);
+    if (!held) return;
+    if (((gobj *)held)->type == OBJ_EXT) mg_atomic_add(&((gobj *)held)->io_seq, 1);
+    fd_put((gobj *)held);
 }
 
 /* (An off_t is a long: 32 bits in 32-bit Android, where pread's is taken as unsigned, as it always was here.) */
@@ -3400,10 +3412,14 @@ static int epoll_check(void *ctx, bool *looks_itself)
         if (it->disarmed) continue;
         if (o->type == OBJ_EXT && !o->ops->announces) *looks_itself = true;
         now = ready_locked(o, (int)(it->events & G_EPOLL_EVENTS));
+        /* Read or written since its report: it may have been emptied and filled again between two looks, a new edge on
+           Linux. Reported again -- an edge-triggered app takes one report too many, never one too few. */
+        if (it->seq != o->io_seq) it->last = 0;
         fresh = (it->events & G_EPOLLET) ? now & ~it->last : now;
         it->last &= now;
         if (!fresh) continue;
         it->last = now;
+        it->seq = o->io_seq;
         c->out[got].events = (u32)now;
         c->out[got].data = it->data;
         got++;
