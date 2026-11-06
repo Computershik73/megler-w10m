@@ -206,6 +206,15 @@ typedef struct mg_thread_regs {
      * x86_64 rax, rcx, rdx, rbx, rbp, rsi, rdi, r8..r15; on x86 eax, ecx, edx, ebx, ebp, esi, edi; on ARM64 x0..x28, fp, lr.
      */
     mg_addr r[32];
+    /*
+     * Of a thread stopped in an interruption (mg_thread_interrupt: running the function it was sent to, a guest signal's
+     * handler, on the thread itself), the general registers of the code it interrupted, `n_was` of them in r's order. On
+     * Windows they are kept on the host's heap until the thread goes back: nothing else of the thread holds them meanwhile,
+     * neither its registers nor its stack, and a collector takes them as it takes r. 0 for a thread in no interruption,
+     * and on the POSIX host, whose interruption is a signal: the kernel's frame holds them, on the stack the thread was on.
+     */
+    int n_was;
+    mg_addr was[32];
 } mg_thread_regs;
 MG_HOSTAPI bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out);
 MG_HOSTAPI void mg_thread_resume(mg_thread *t);
