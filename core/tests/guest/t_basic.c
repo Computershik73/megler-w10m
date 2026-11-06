@@ -2742,3 +2742,337 @@ int t_fs_access(void)
     return ret ? 32 : 0;
 }
 #endif
+
+/* --------------------------------------------------- registers kept across signals */
+
+/*
+ * A thread interrupted where it runs guest code is given back every register as it was once its handler has returned.
+ * Checked here for the registers a function keeps for its caller, Android's and Windows' both: r4-r11 and d8-d15 on
+ * 32-bit ARM (Thumb-2 in libt_basic.so, ARM mode in libt_basic_arm.so), x19-x29 and d8-d15 on ARM64, rbx, rbp, rsi, rdi,
+ * r12-r15 and xmm6-xmm15's low halves on x86_64, ebx, esi, edi and ebp on x86. Windows' host once gave some of them back
+ * wrong on x64: a thread found in the kernel inside NtContinue, on its way back from the interruption before, had the
+ * ones of the code that called NtContinue (host/mg_host_win32.c, mg_thread_interrupt).
+ *
+ *   t_sr_spin(block)           puts each register's mark in it (block->marks), spins a while, and counts the times one
+ *                              is not its mark any more, keeping the registers of the first such time; until block->stop.
+ *                              Returns the count.
+ *   t_signal_regs(signals)     a thread in t_sr_spin sent that many signals, each once its handler has run for the one
+ *                              before, after a wait that grows from none to some tens of microseconds and starts again:
+ *                              the next one finds the thread anywhere on its way back from the handler -- on Windows, out
+ *                              of the landing through an exception, the vectored handler and NtContinue. The times
+ *                              registers came back changed, or -1 the handler not set, -2 the thread not started, -3
+ *                              pthread_kill refused, -4 a signal not handled within two seconds.
+ *   t_signal_regs_seen(print)  the registers that were not their marks the first such time and what they held, or
+ *                              "none"; printed too when asked.
+ */
+#if defined(__arm__)
+enum { T_SR_WORDS = 24 };       /* r4-r11, then d8-d15 a word at a time */
+#elif defined(__aarch64__)
+enum { T_SR_WORDS = 19 };       /* x19-x28, x29, d8-d15 */
+#elif defined(__x86_64__)
+enum { T_SR_WORDS = 18 };       /* rbx, rbp, rsi, rdi, r12-r15, xmm6-xmm15 */
+#else
+enum { T_SR_WORDS = 4 };        /* ebx, esi, edi, ebp */
+#endif
+
+typedef struct {
+    volatile long stop, changed, rounds;
+    const long *marks;
+    long first[T_SR_WORDS];
+} t_sr_block;
+
+static const char *const g_sr_names[T_SR_WORDS] = {
+#if defined(__arm__)
+    "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "d8 (low)", "d8 (high)", "d9 (low)", "d9 (high)", "d10 (low)",
+    "d10 (high)", "d11 (low)", "d11 (high)", "d12 (low)", "d12 (high)", "d13 (low)", "d13 (high)", "d14 (low)", "d14 (high)",
+    "d15 (low)", "d15 (high)",
+#elif defined(__aarch64__)
+    "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "d8", "d9", "d10", "d11", "d12", "d13", "d14",
+    "d15",
+#elif defined(__x86_64__)
+    "rbx", "rbp", "rsi", "rdi", "r12", "r13", "r14", "r15", "xmm6", "xmm7", "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13",
+    "xmm14", "xmm15",
+#else
+    "ebx", "esi", "edi", "ebp",
+#endif
+};
+
+#if defined(__arm__)
+/* (In the library's own state: Thumb-2 in one, ARM in the other.) */
+#if defined(__thumb__)
+#define T_SR_STATE ".thumb\n"
+#define T_SR_THUMB_FUNC ".thumb_func\n"
+#else
+#define T_SR_STATE ".arm\n"
+#define T_SR_THUMB_FUNC ""
+#endif
+/* d against its two words of marks, through r2 and r3. */
+#define T_SR_D(d, at) "  vmov r2, r3, d" #d "\n  ldr r12, [r1, #" #at "]\n  cmp r2, r12\n  bne 2f\n" \
+                      "  ldr r12, [r1, #" #at "+4]\n  cmp r3, r12\n  bne 2f\n"
+__asm__(".text\n"
+        ".syntax unified\n" T_SR_STATE
+        ".globl t_sr_spin\n.type t_sr_spin, %function\n" T_SR_THUMB_FUNC
+        "t_sr_spin:\n"
+        "  push {r4-r11, lr}\n"
+        "  vpush {d8-d15}\n"
+        "1:\n"
+        "  ldr r1, [r0, #12]\n"
+        "  ldm r1, {r4-r11}\n"
+        "  add r2, r1, #32\n"
+        "  vldm r2, {d8-d15}\n"
+        "  movw r2, #200\n"
+        "5:\n"
+        "  subs r2, r2, #1\n"
+        "  bne 5b\n"
+        "  ldr r3, [r1, #0]\n  cmp r4, r3\n  bne 2f\n"
+        "  ldr r3, [r1, #4]\n  cmp r5, r3\n  bne 2f\n"
+        "  ldr r3, [r1, #8]\n  cmp r6, r3\n  bne 2f\n"
+        "  ldr r3, [r1, #12]\n  cmp r7, r3\n  bne 2f\n"
+        "  ldr r3, [r1, #16]\n  cmp r8, r3\n  bne 2f\n"
+        "  ldr r3, [r1, #20]\n  cmp r9, r3\n  bne 2f\n"
+        "  ldr r3, [r1, #24]\n  cmp r10, r3\n  bne 2f\n"
+        "  ldr r3, [r1, #28]\n  cmp r11, r3\n  bne 2f\n"
+        T_SR_D(8, 32) T_SR_D(9, 40) T_SR_D(10, 48) T_SR_D(11, 56) T_SR_D(12, 64) T_SR_D(13, 72) T_SR_D(14, 80) T_SR_D(15, 88)
+        "  b 3f\n"
+        "2:\n"
+        "  ldr r2, [r0, #4]\n"
+        "  cmp r2, #0\n"
+        "  bne 4f\n"
+        "  add r3, r0, #16\n"
+        "  stm r3, {r4-r11}\n"
+        "  add r3, r0, #48\n"
+        "  vstm r3, {d8-d15}\n"
+        "4:\n"
+        "  adds r2, r2, #1\n"
+        "  str r2, [r0, #4]\n"
+        "3:\n"
+        "  ldr r2, [r0, #8]\n"
+        "  adds r2, r2, #1\n"
+        "  str r2, [r0, #8]\n"
+        "  ldr r2, [r0]\n"
+        "  cmp r2, #0\n"
+        "  beq 1b\n"
+        "  ldr r0, [r0, #4]\n"
+        "  vpop {d8-d15}\n"
+        "  pop {r4-r11, pc}\n"
+        ".size t_sr_spin, .-t_sr_spin\n");
+#elif defined(__aarch64__)
+/* x against its mark, through x2. */
+#define T_SR_X(x, at) "  ldr x2, [x1, #" #at "]\n  cmp x" #x ", x2\n  b.ne 2f\n"
+#define T_SR_D(d, at) "  fmov x3, d" #d "\n  ldr x2, [x1, #" #at "]\n  cmp x3, x2\n  b.ne 2f\n"
+__asm__(".text\n"
+        ".globl t_sr_spin\n.type t_sr_spin, %function\n"
+        "t_sr_spin:\n"
+        "  stp x29, x30, [sp, #-96]!\n"
+        "  stp x19, x20, [sp, #16]\n"
+        "  stp x21, x22, [sp, #32]\n"
+        "  stp x23, x24, [sp, #48]\n"
+        "  stp x25, x26, [sp, #64]\n"
+        "  stp x27, x28, [sp, #80]\n"
+        "  stp d8, d9, [sp, #-64]!\n"
+        "  stp d10, d11, [sp, #16]\n"
+        "  stp d12, d13, [sp, #32]\n"
+        "  stp d14, d15, [sp, #48]\n"
+        "1:\n"
+        "  ldr x1, [x0, #24]\n"
+        "  ldp x19, x20, [x1, #0]\n"
+        "  ldp x21, x22, [x1, #16]\n"
+        "  ldp x23, x24, [x1, #32]\n"
+        "  ldp x25, x26, [x1, #48]\n"
+        "  ldp x27, x28, [x1, #64]\n"
+        "  ldr x29, [x1, #80]\n"
+        "  ldp d8, d9, [x1, #88]\n"
+        "  ldp d10, d11, [x1, #104]\n"
+        "  ldp d12, d13, [x1, #120]\n"
+        "  ldp d14, d15, [x1, #136]\n"
+        "  mov w2, #200\n"
+        "5:\n"
+        "  subs w2, w2, #1\n"
+        "  b.ne 5b\n"
+        T_SR_X(19, 0) T_SR_X(20, 8) T_SR_X(21, 16) T_SR_X(22, 24) T_SR_X(23, 32) T_SR_X(24, 40) T_SR_X(25, 48) T_SR_X(26, 56)
+        T_SR_X(27, 64) T_SR_X(28, 72) T_SR_X(29, 80)
+        T_SR_D(8, 88) T_SR_D(9, 96) T_SR_D(10, 104) T_SR_D(11, 112) T_SR_D(12, 120) T_SR_D(13, 128) T_SR_D(14, 136) T_SR_D(15, 144)
+        "  b 3f\n"
+        "2:\n"
+        "  ldr x2, [x0, #8]\n"
+        "  cbnz x2, 4f\n"
+        "  stp x19, x20, [x0, #32]\n"
+        "  stp x21, x22, [x0, #48]\n"
+        "  stp x23, x24, [x0, #64]\n"
+        "  stp x25, x26, [x0, #80]\n"
+        "  stp x27, x28, [x0, #96]\n"
+        "  str x29, [x0, #112]\n"
+        "  stp d8, d9, [x0, #120]\n"
+        "  stp d10, d11, [x0, #136]\n"
+        "  stp d12, d13, [x0, #152]\n"
+        "  stp d14, d15, [x0, #168]\n"
+        "4:\n"
+        "  add x2, x2, #1\n"
+        "  str x2, [x0, #8]\n"
+        "3:\n"
+        "  ldr x2, [x0, #16]\n"
+        "  add x2, x2, #1\n"
+        "  str x2, [x0, #16]\n"
+        "  ldr x2, [x0]\n"
+        "  cbz x2, 1b\n"
+        "  ldr x0, [x0, #8]\n"
+        "  ldp d14, d15, [sp, #48]\n"
+        "  ldp d12, d13, [sp, #32]\n"
+        "  ldp d10, d11, [sp, #16]\n"
+        "  ldp d8, d9, [sp], #64\n"
+        "  ldp x27, x28, [sp, #80]\n"
+        "  ldp x25, x26, [sp, #64]\n"
+        "  ldp x23, x24, [sp, #48]\n"
+        "  ldp x21, x22, [sp, #32]\n"
+        "  ldp x19, x20, [sp, #16]\n"
+        "  ldp x29, x30, [sp], #96\n"
+        "  ret\n"
+        ".size t_sr_spin, .-t_sr_spin\n");
+#elif defined(__x86_64__)
+/* (The block in rdx; rdi is one of the marked.) */
+#define T_SR_XMM(n, at) "  movq %xmm" #n ", %rax\n  cmpq " #at "(%rcx), %rax\n  jne 2f\n"
+__asm__(".text\n"
+        ".globl t_sr_spin\n.type t_sr_spin, @function\n"
+        "t_sr_spin:\n"
+        "  pushq %rbx\n  pushq %rbp\n  pushq %r12\n  pushq %r13\n  pushq %r14\n  pushq %r15\n"
+        "  movq %rdi, %rdx\n"
+        "1:\n"
+        "  movq 24(%rdx), %rcx\n"
+        "  movq 0(%rcx), %rbx\n  movq 8(%rcx), %rbp\n  movq 16(%rcx), %rsi\n  movq 24(%rcx), %rdi\n"
+        "  movq 32(%rcx), %r12\n  movq 40(%rcx), %r13\n  movq 48(%rcx), %r14\n  movq 56(%rcx), %r15\n"
+        "  movq 64(%rcx), %xmm6\n  movq 72(%rcx), %xmm7\n  movq 80(%rcx), %xmm8\n  movq 88(%rcx), %xmm9\n  movq 96(%rcx), %xmm10\n"
+        "  movq 104(%rcx), %xmm11\n  movq 112(%rcx), %xmm12\n  movq 120(%rcx), %xmm13\n  movq 128(%rcx), %xmm14\n  movq 136(%rcx), %xmm15\n"
+        "  movl $200, %eax\n"
+        "5:\n"
+        "  decl %eax\n"
+        "  jnz 5b\n"
+        "  cmpq 0(%rcx), %rbx\n  jne 2f\n"
+        "  cmpq 8(%rcx), %rbp\n  jne 2f\n"
+        "  cmpq 16(%rcx), %rsi\n  jne 2f\n"
+        "  cmpq 24(%rcx), %rdi\n  jne 2f\n"
+        "  cmpq 32(%rcx), %r12\n  jne 2f\n"
+        "  cmpq 40(%rcx), %r13\n  jne 2f\n"
+        "  cmpq 48(%rcx), %r14\n  jne 2f\n"
+        "  cmpq 56(%rcx), %r15\n  jne 2f\n"
+        T_SR_XMM(6, 64) T_SR_XMM(7, 72) T_SR_XMM(8, 80) T_SR_XMM(9, 88) T_SR_XMM(10, 96) T_SR_XMM(11, 104) T_SR_XMM(12, 112)
+        T_SR_XMM(13, 120) T_SR_XMM(14, 128) T_SR_XMM(15, 136)
+        "  jmp 3f\n"
+        "2:\n"
+        "  movq 8(%rdx), %rax\n"
+        "  testq %rax, %rax\n"
+        "  jnz 4f\n"
+        "  movq %rbx, 32(%rdx)\n  movq %rbp, 40(%rdx)\n  movq %rsi, 48(%rdx)\n  movq %rdi, 56(%rdx)\n"
+        "  movq %r12, 64(%rdx)\n  movq %r13, 72(%rdx)\n  movq %r14, 80(%rdx)\n  movq %r15, 88(%rdx)\n"
+        "  movq %xmm6, 96(%rdx)\n  movq %xmm7, 104(%rdx)\n  movq %xmm8, 112(%rdx)\n  movq %xmm9, 120(%rdx)\n  movq %xmm10, 128(%rdx)\n"
+        "  movq %xmm11, 136(%rdx)\n  movq %xmm12, 144(%rdx)\n  movq %xmm13, 152(%rdx)\n  movq %xmm14, 160(%rdx)\n  movq %xmm15, 168(%rdx)\n"
+        "4:\n"
+        "  incq %rax\n"
+        "  movq %rax, 8(%rdx)\n"
+        "3:\n"
+        "  incq 16(%rdx)\n"
+        "  cmpq $0, 0(%rdx)\n"
+        "  je 1b\n"
+        "  movq 8(%rdx), %rax\n"
+        "  popq %r15\n  popq %r14\n  popq %r13\n  popq %r12\n  popq %rbp\n  popq %rbx\n"
+        "  ret\n"
+        ".size t_sr_spin, .-t_sr_spin\n");
+#else
+/* (The block in edx, from the stack above the four kept.) */
+__asm__(".text\n"
+        ".globl t_sr_spin\n.type t_sr_spin, @function\n"
+        "t_sr_spin:\n"
+        "  pushl %ebx\n  pushl %esi\n  pushl %edi\n  pushl %ebp\n"
+        "  movl 20(%esp), %edx\n"
+        "1:\n"
+        "  movl 12(%edx), %ecx\n"
+        "  movl 0(%ecx), %ebx\n  movl 4(%ecx), %esi\n  movl 8(%ecx), %edi\n  movl 12(%ecx), %ebp\n"
+        "  movl $200, %eax\n"
+        "5:\n"
+        "  decl %eax\n"
+        "  jnz 5b\n"
+        "  cmpl 0(%ecx), %ebx\n  jne 2f\n"
+        "  cmpl 4(%ecx), %esi\n  jne 2f\n"
+        "  cmpl 8(%ecx), %edi\n  jne 2f\n"
+        "  cmpl 12(%ecx), %ebp\n  je 3f\n"
+        "2:\n"
+        "  movl 4(%edx), %eax\n"
+        "  testl %eax, %eax\n"
+        "  jnz 4f\n"
+        "  movl %ebx, 16(%edx)\n  movl %esi, 20(%edx)\n  movl %edi, 24(%edx)\n  movl %ebp, 28(%edx)\n"
+        "4:\n"
+        "  incl %eax\n"
+        "  movl %eax, 4(%edx)\n"
+        "3:\n"
+        "  incl 8(%edx)\n"
+        "  cmpl $0, 0(%edx)\n"
+        "  je 1b\n"
+        "  movl 4(%edx), %eax\n"
+        "  popl %ebp\n  popl %edi\n  popl %esi\n  popl %ebx\n"
+        "  ret\n"
+        ".size t_sr_spin, .-t_sr_spin\n");
+#endif
+
+long t_sr_spin(t_sr_block *b);
+
+static t_sr_block g_sr_block;
+static long g_sr_marks[T_SR_WORDS];
+static volatile int g_sr_handled;
+static volatile long g_sr_wait;
+
+static void on_sr_signal(int sig, void *info, void *context)
+{
+    (void)sig; (void)info; (void)context;
+    g_sr_handled++;
+}
+static void *sr_spinner(void *arg) { return (void *)t_sr_spin((t_sr_block *)arg); }
+
+long t_signal_regs(int signals)
+{
+    t_sigaction act = T_SIGACTION(on_sr_signal, 0, 4 | 0x10000000), old;
+    pthread_t t;
+    void *ret = (void *)-1L;
+    long until, spin;
+    int i, r = 0;
+    for (i = 0; i < T_SR_WORDS; i++)
+#if defined(__LP64__)
+        g_sr_marks[i] = 0x6d675a5a6d675a00L + i;
+#else
+        g_sr_marks[i] = 0x6d675a00L + i;
+#endif
+    memset(&g_sr_block, 0, sizeof(g_sr_block));
+    g_sr_block.marks = g_sr_marks;
+    g_sr_handled = 0;
+    if (sigaction(12, &act, &old)) return -1;
+    if (pthread_create(&t, 0, sr_spinner, &g_sr_block) != 0) {
+        sigaction(12, &old, 0);
+        return -2;
+    }
+    /* (Signalled once in its loop, not before it is there.) */
+    for (until = now_ms() + 2000; !g_sr_block.rounds && now_ms() < until;) usleep(200);
+    if (!g_sr_block.rounds) r = -2;
+    for (i = 0; i < signals && !r; i++) {
+        until = now_ms() + 2000;
+        if (pthread_kill(t, 12)) r = -3;
+        while (!r && g_sr_handled <= i)
+            if (now_ms() > until) r = -4;
+        for (spin = (long)(i % 32) * 600; spin > 0; spin--) g_sr_wait++;
+    }
+    g_sr_block.stop = 1;
+    pthread_join(t, &ret);
+    sigaction(12, &old, 0);
+    return r ? r : (long)ret;
+}
+
+const char *t_signal_regs_seen(long print)
+{
+    static char text[1024];
+    int i, n = 0;
+    text[0] = 0;
+    for (i = 0; i < T_SR_WORDS && g_sr_block.changed; i++)
+        if (g_sr_block.first[i] != g_sr_marks[i] && n < (int)sizeof(text) - 64)
+            n += snprintf(text + n, sizeof(text) - (size_t)n, "%s%s 0x%lx (its mark 0x%lx)", n ? ", " : "", g_sr_names[i],
+                          (unsigned long)g_sr_block.first[i], (unsigned long)g_sr_marks[i]);
+    if (!n) snprintf(text, sizeof(text), "none");
+    if (print) printf("t_signal_regs_seen: %s\n", text);
+    return text;
+}

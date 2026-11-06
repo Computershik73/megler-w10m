@@ -245,7 +245,7 @@ stand-in's functions that do nothing come in one size of arguments each, as
 On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
 
 - `tools/build-desktop.sh x64 tests`, the core in `megler-core.so` loaded into
-  a Windows x64 process, with the x86_64 guest test libraries: 5337 checks, 0
+  a Windows x64 process, with the x86_64 guest test libraries: 5339 checks, 0
   failed (now and then one under load: the herd test's timing check of a few
   milliseconds). The GL tests go through the adapters to stand-ins of ANGLE's
   convention, floats and all. ELF64 with RELA, APS2 and RELR relocations,
@@ -271,9 +271,19 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   (libt_go.so), given back by number as Go's runtime gives it back and run on
   again with a 64 KB frame written bottom first: committed still, zero, not a
   page taken back (without that, the process ended there).
-- `tools/build-desktop.sh x86 tests` (through WOW64): 5328 checks, 0 failed
+- `tools/build-desktop.sh x86 tests` (through WOW64): 5330 checks, 0 failed
   (now and then 1 under load: the same timing check), the GL tests through
   `__stdcall` stand-ins.
+- The registers a function keeps for its caller, kept across signals on
+  every ABI (t_signal_regs: a thread spinning with a mark in each, Android's
+  and Windows' both, sent 300 signals, each some microseconds after its
+  handler ran for the one before, so that the next finds it on its way back
+  from the landing): none came back changed on x64, x86, Linux x86_64, ARM
+  (Thumb-2 and ARM mode, qemu-arm) and ARM64 (qemu-aarch64) -- 5339, 5330,
+  5337, 5451 and 5328 checks with it. With x64's check of a thread stopped in
+  the kernel skipped, 344 of 2000 `mg_tests --load` calls with 8 processes at
+  once had rbx 0 and rsi and rdi addresses on the thread's stack, from 442
+  threads sent on from inside NtContinue; 0 of 2000 with it, 492 left there.
 - A library of Go's: a c-shared one for android/amd64 that Go 1.27.1 made
   here (with the NDK's clang for cgo; not in the repository), loaded by
   `mg_tests --load` on x64 and on WSL's Linux: its 468 accesses of `%fs`
@@ -289,17 +299,18 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   second-chance access violation on Windows, exit 139 on Linux).
 - `tools/build-tests.sh win` (MSVC's x64 build of the tests): 5023 checks, 0
   failed, and 5087 on Android's libcore, 0 failed; `tools/build-tests.sh
-  linux64` (x86_64 on WSL's Linux; before the GL adapters were merged): 5329
-  checks, 3 failed (the GLES stand-in's float checks the adapters mend), an
-  app's own `syscall` and accesses of `%fs` through a register led out there
-  too, and a goroutine's first touch of its own stack's page that libc's
-  madvise gave back repaired on the handler's stack of its own;
-  `tools/abi-check.py`: 0 differences on all four ABIs; the phone's core
-  compiles for ARM32 with MSVC, and its tests under qemu-arm
-  (`tools/build-tests.sh arm`) give 5449 checks, 0 failed.
+  linux64` (x86_64 on WSL's Linux): 5337 checks, 0 failed, and 5421 on
+  Android's libcore, 0 failed, an app's own `syscall` and accesses of `%fs`
+  through a register led out there too, and a goroutine's first touch of its
+  own stack's page that libc's madvise gave back repaired on the handler's
+  stack of its own (its bundle tests, which expect 32-bit ARM's split kept,
+  fail there where the test app's bundles are built: an x86_64 build keeps
+  the processor's own); `tools/abi-check.py`: 0 differences on all four ABIs;
+  the phone's core compiles for ARM32 with MSVC, and its tests under qemu-arm
+  (`tools/build-tests.sh arm`) give 5451 checks, 0 failed.
 - `tools/build-tests.sh arm64`: ARM64's core and tests as one static program
-  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5326
-  checks, 0 failed, and 5410 checks, 0 failed on Android's libcore with
+  of the NDK's bionic, under qemu-aarch64 in WSL with the POSIX host: 5328
+  checks, 0 failed, and 5412 checks, 0 failed on Android's libcore with
   arm64-v8a's natives. ELF64, the patched TPIDR_EL0 reads (through the island
   there, bionic's own thread pointer being the host's), TLS descriptors, svc
   traps, AAPCS64's native calls, faults. (A run of the tests once hung in
