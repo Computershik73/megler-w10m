@@ -219,7 +219,7 @@ static void reach_ref(mg_jobj *o, void *user)
 }
 
 /* A word that may point into an object. */
-static void reach_word(mg_addr w) { reach(&G.main, mg_dvm_heap_find(w)); }
+static void reach_word(marker *k, mg_addr w) { reach(k, mg_dvm_heap_find(w)); }
 
 /* A reference object whose referent is decided about after marking, kept in the list; false when it has no room left. */
 static bool found_add(mg_jobj *r)
@@ -233,11 +233,11 @@ static bool found_add(mg_jobj *r)
     return false;
 }
 
-static void scan_words(mg_addr from, mg_addr to)
+static void scan_words(marker *k, mg_addr from, mg_addr to)
 {
     mg_addr p;
     from = MG_ALIGN_UP(from, sizeof(mg_addr));
-    for (p = from; p + sizeof(mg_addr) <= to; p += sizeof(mg_addr)) reach_word(*(const mg_addr *)p);
+    for (p = from; p + sizeof(mg_addr) <= to; p += sizeof(mg_addr)) reach_word(k, *(const mg_addr *)p);
 }
 
 static void follow(marker *k, void *p)
@@ -491,6 +491,20 @@ static void string_root(mg_jobj *s, void *user);
 /* The round pushes the roots and follows nothing (class_roots_pushed): each thread's stack goes to the pool. */
 static bool g_roots_only;
 
+/* What a thread pushed, nothing followed, to the pool (the rounds that push roots alone). */
+static void pool_put(marker *k)
+{
+    mg_lock_acquire(&g_mark_lock);
+    if (g_npool + k->n <= g_pool_cap) {
+        memcpy(g_pool + g_npool, k->stack, sizeof(void *) * k->n);
+        g_npool += k->n;
+    } else {
+        G.overflow = true;
+    }
+    k->n = 0;
+    mg_lock_release(&g_mark_lock);
+}
+
 static void roots_round(void *arg, int worker)
 {
     marker *k = &g_markers[worker];
@@ -507,15 +521,7 @@ static void roots_round(void *arg, int worker)
         }
     }
     if (g_roots_only) {
-        mg_lock_acquire(&g_mark_lock);
-        if (g_npool + k->n <= g_pool_cap) {
-            memcpy(g_pool + g_npool, k->stack, sizeof(void *) * k->n);
-            g_npool += k->n;
-        } else {
-            G.overflow = true;
-        }
-        k->n = 0;
-        mg_lock_release(&g_mark_lock);
+        pool_put(k);
         return;
     }
     mark_shared(k);
@@ -592,7 +598,7 @@ static void exact_thread_roots(mg_dvm_thread *t, void *user)
     reach_ref(t->pending, NULL);
     reach_ref(t->peer, NULL);
     reach_ref(t->waiting_monitor, NULL);
-    reach_word((mg_addr)t->scratch.l);
+    reach_word(&G.main, (mg_addr)t->scratch.l);
 }
 
 /*
@@ -676,37 +682,82 @@ static void resume_threads(void)
  */
 static void scan_frames(mg_dvm_thread *t, void *user)
 {
+    marker *k = user ? (marker *)user : &G.main;
     mg_dvm_reg *top;
     int i;
-    (void)user;
     if (!t->stack) return;
     for (i = 0; i < t->nsegs && i < DVM_STACK_SEGS; i++) {
         mg_dvm_reg *base = t->segs[i].base, *end = t->segs[i].sp;
-        if (base && end > base && end <= base + t->segs[i].committed) scan_words((mg_addr)base, (mg_addr)end);
+        if (base && end > base && end <= base + t->segs[i].committed) scan_words(k, (mg_addr)base, (mg_addr)end);
     }
     top = t->sp + 64 < t->stack + t->stack_committed ? t->sp + 64 : t->stack + t->stack_committed;
-    if (top > t->stack) scan_words((mg_addr)t->stack, (mg_addr)top);
+    if (top > t->stack) scan_words(k, (mg_addr)t->stack, (mg_addr)top);
 }
 
 static MG_NOINLINE void scan_own_stack(void)
 {
     volatile mg_addr here = 0;
     mg_dvm_thread *t = g_collector;
-    if (t && t->stack_hi) scan_words((mg_addr)&here, t->stack_hi);
+    if (t && t->stack_hi) scan_words(&G.main, (mg_addr)&here, t->stack_hi);
+}
+
+/* A stopped thread's registers, and its C stack from where it was stopped to its base. */
+static void stopped_scanned(marker *k, int i)
+{
+    const mg_thread_regs *r = &g_stopped[i].regs;
+    mg_dvm_thread *t = g_stopped[i].t;
+    int j;
+    for (j = 0; j < r->n; j++) reach_word(k, r->r[j]);
+    if (r->sp >= t->stack_lo && r->sp < t->stack_hi) scan_words(k, r->sp, t->stack_hi);
+}
+
+/*
+ * The scans shared, where there are helpers: each thread takes the next stopped thread's registers and C stack, or the next
+ * thread's frame stack, and pushes what the words point to, nothing followed (as class_roots_pushed). On the collecting
+ * thread alone, the 162 threads of Spotify's process (Google Play services' among them) took 18.8 ms of a collection that
+ * stopped it; one alongside the app scans them at both its stops, and the threads were 220 (package 664).
+ */
+static mg_dvm_thread *g_frames[MAX_STOPPED + 1];
+static int g_nframes;
+static volatile i32 g_scan_next;
+
+static void frames_listed(mg_dvm_thread *t, void *user)
+{
+    if (g_nframes < (int)MG_COUNT(g_frames)) g_frames[g_nframes++] = t;
+    else *(bool *)user = true;
+}
+
+static void stacks_round(void *arg, int worker)
+{
+    marker *k = &g_markers[worker];
+    (void)arg;
+    for (;;) {
+        i32 p = mg_atomic_add(&g_scan_next, 1) - 1;
+        if (p < g_nstopped) stopped_scanned(k, p);
+        else if (p < g_nstopped + g_nframes) scan_frames(g_frames[p - g_nstopped], k);
+        else break;
+    }
+    pool_put(k);
 }
 
 static void conservative_roots(void)
 {
-    int i, k;
+    int i;
     jmp_buf registers;
+    bool over = false;
     /* The collector's own registers, onto its stack, and its stack from here to its base. */
     if (setjmp(registers) == 0) scan_own_stack();
-    for (i = 0; i < g_nstopped; i++) {
-        const mg_thread_regs *r = &g_stopped[i].regs;
-        mg_dvm_thread *t = g_stopped[i].t;
-        for (k = 0; k < r->n; k++) reach_word(r->r[k]);
-        if (r->sp >= t->stack_lo && r->sp < t->stack_hi) scan_words(r->sp, t->stack_hi);
+    if (g_nhelpers) {
+        g_nframes = 0;
+        mg_dvm_threads_each(frames_listed, &over);
+        if (!over) {
+            g_scan_next = 0;
+            shared(stacks_round);
+            G.main.n = g_npool;
+            return;
+        }
     }
+    for (i = 0; i < g_nstopped; i++) stopped_scanned(&G.main, i);
     mg_dvm_threads_each(scan_frames, NULL);
 }
 
