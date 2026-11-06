@@ -15,7 +15,8 @@ public class MenuInflater {
     }
     private void parse(XmlPullParser p, Menu menu) throws Exception {
         int[] itemAttrs = sorted(android.R.attr.id, android.R.attr.title, android.R.attr.icon, android.R.attr.orderInCategory, android.R.attr.checkable, android.R.attr.checked,
-                                 android.R.attr.visible, android.R.attr.enabled, android.R.attr.showAsAction, android.R.attr.titleCondensed, android.R.attr.menuCategory);
+                                 android.R.attr.visible, android.R.attr.enabled, android.R.attr.showAsAction, android.R.attr.titleCondensed, android.R.attr.menuCategory,
+                                 android.R.attr.actionLayout, android.R.attr.actionViewClass);
         int[] groupAttrs = sorted(android.R.attr.id, android.R.attr.checkableBehavior, android.R.attr.visible, android.R.attr.enabled, android.R.attr.orderInCategory);
         java.util.ArrayDeque<Menu> menus = new java.util.ArrayDeque<>();
         menus.push(menu);
@@ -48,6 +49,20 @@ public class MenuInflater {
                     int show = a.getInt(idx(itemAttrs, android.R.attr.showAsAction), -1);
                     if (show < 0) { String v = set.getAttributeValue("http://schemas.android.com/apk/res-auto", "showAsAction"); if (v != null) try { show = Integer.decode(v); } catch (NumberFormatException e) {} }
                     if (show >= 0) item.setShowAsAction(show);
+                    // (An item's own view, as Android's: its class made with the context, else its layout inflated. An app that
+                    // asks getActionView() for it finds it, where it found null before: Accuweather's city list, at its menu.)
+                    String viewClass = a.getString(idx(itemAttrs, android.R.attr.actionViewClass));
+                    int viewLayout = a.getResourceId(idx(itemAttrs, android.R.attr.actionLayout), 0);
+                    boolean viewMade = false;
+                    if (viewClass != null) {
+                        try {
+                            item.setActionView((View) mContext.getClassLoader().loadClass(viewClass).getConstructor(Context.class).newInstance(mContext));
+                            viewMade = true;
+                        } catch (ReflectiveOperationException | ClassCastException e) {
+                            android.util.Log.w("MenuInflater", "Cannot instantiate class: " + viewClass, e);
+                        }
+                    }
+                    if (!viewMade && viewLayout != 0) item.setActionView(viewLayout);
                     a.recycle();
                     last = item;
                 } else if ("menu".equals(n) && last != null) {
