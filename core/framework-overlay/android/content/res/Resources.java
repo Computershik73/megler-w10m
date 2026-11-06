@@ -19,7 +19,10 @@
 // control_checkable_material in Android 9, which asks the theme for a colour, which a -v31 theme answers with a colour that
 // refers to 0x01060064. Device Info's first layout with a MaterialCardView recursed 6095 frames deep through that circle
 // and ended the app. On a phone that really has Android 9, -v31 resources are never chosen; choosing as that phone does is
-// the only choice that fits the resources that are here. (The app's Java still sees SDK_INT 34.)
+// the only choice that fits the resources that are here. (The app's Java still sees SDK_INT 34.) An app's font, style or
+// colour that has no choice of that level at all (font-v29, values-v31 alone) is taken from the newest up to 34 instead
+// (ResTable.find), the app having asked for it because SDK_INT said so; and what an app's resource names of Android 12's
+// system colours is those colours (meglerValue, meglerBag), which Android 9 has private resources of its own under.
 //
 // Why. The original's Bag.put walks the whole bag for the key before adding it, and a style's bag is built by putting the
 // parent's items in one by one and then its own; indexOf walks it again for every attribute a view asks of its style. A
@@ -231,6 +234,9 @@ public class Resources {
             out.resourceId = id;
             if (isAccent(id)) { out.type = TypedValue.TYPE_INT_COLOR_ARGB8; out.data = sAccent; out.string = null; return true; }
             if (!resolveRefs || out.type != TypedValue.TYPE_REFERENCE || out.data == 0) return true;
+            // (An app's resource that names one of Android 12's system colours means that colour: Android 9 has private
+            // resources of its own under those numbers, which no app can name. ResTable.find, NEWER_TYPES.)
+            if (t != sFramework && megler.SystemColors.has(out.data)) { systemColor(out.data, out); return true; }
             id = out.data;
         }
         return false;
@@ -307,6 +313,12 @@ public class Resources {
         TypedValue v = new TypedValue();
         for (int i = 0; i < n; i++) {
             int name = t.bagItem(e, i, v);
+            // (An app's style item that names one of Android 12's system colours is that colour, as in meglerValue.)
+            if (t != sFramework && v.type == TypedValue.TYPE_REFERENCE && megler.SystemColors.has(v.data)) {
+                v.data = megler.SystemColors.color(v.data);
+                v.type = TypedValue.TYPE_INT_COLOR_ARGB8;
+                v.string = null;
+            }
             b.put(name, v.type, v.data, v.string, v.density);
         }
         cache.put(id, b);
