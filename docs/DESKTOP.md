@@ -352,8 +352,9 @@ access denied"); the next start is not.
    handler off 32-bit ARM (`mg_signal_fault`): a nil dereference ends the
    process instead of panicking. What Go's heap gives back stays committed:
    the commit limit counts that heap at its largest.
-3. **`int 0x80` in x86 code of an app's own** is counted, not rewritten (x86
-   keeps nothing below its stack pointer: a trap would do there).
+3. **`int 0x80` in x86 code of an app's own** is made a system call at the
+   access violation Windows gives at it (`mg_core.c`): every one is a fault,
+   slow for code that makes many (none of the apps seen does).
 4. **WebView on ARM64**: fetched and packed as x86_64's and x86's are, and not
    run on an ARM64 device.
 5. **ARM64 on a device**: what is Windows' alone -- the TPIDR_EL0 reads

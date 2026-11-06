@@ -2742,3 +2742,49 @@ int t_fs_access(void)
     return ret ? 32 : 0;
 }
 #endif
+
+#if defined(__i386__)
+/*
+ * x86's `int 0x80` of a library's own, which Windows answers with an access violation at it and the core makes a system
+ * call of in its place (mg_core.c): getpid by Linux's i386 number, a close of -1 (-EBADF), and every register but eax as
+ * it was after it.
+ */
+long t_int80(long nr, long a0);
+__asm__(".text\n.globl t_int80\n.type t_int80, @function\n"
+        "t_int80:\n"
+        "  pushl %ebx\n"
+        "  movl 8(%esp), %eax\n"
+        "  movl 12(%esp), %ebx\n"
+        "  int $0x80\n"
+        "  popl %ebx\n"
+        "  ret\n"
+        ".size t_int80, .-t_int80\n");
+int t_int80_keeps(void);
+__asm__(".globl t_int80_keeps\n.type t_int80_keeps, @function\n"
+        "t_int80_keeps:\n"
+        "  pushl %ebx\n  pushl %esi\n  pushl %edi\n  pushl %ebp\n"
+        "  movl $0x11111111, %ebx\n  movl $0x22222222, %ecx\n  movl $0x33333333, %edx\n"
+        "  movl $0x44444444, %esi\n  movl $0x55555555, %edi\n  movl $0x66666666, %ebp\n"
+        "  movl $20, %eax\n"
+        "  int $0x80\n"
+        "  xorl %eax, %eax\n"
+        "  cmpl $0x11111111, %ebx\n  jne 1f\n"
+        "  cmpl $0x22222222, %ecx\n  jne 1f\n"
+        "  cmpl $0x33333333, %edx\n  jne 1f\n"
+        "  cmpl $0x44444444, %esi\n  jne 1f\n"
+        "  cmpl $0x55555555, %edi\n  jne 1f\n"
+        "  cmpl $0x66666666, %ebp\n  jne 1f\n"
+        "  jmp 2f\n"
+        "1:\n  movl $1, %eax\n"
+        "2:\n  popl %ebp\n  popl %edi\n  popl %esi\n  popl %ebx\n"
+        "  ret\n"
+        ".size t_int80_keeps, .-t_int80_keeps\n");
+
+int t_x86_int80(void)
+{
+    if (t_int80(20 /* getpid */, 0) != getpid()) return 1;
+    if (t_int80(6 /* close */, -1) != -9) return 2;
+    if (t_int80_keeps() != 0) return 3;
+    return 0;
+}
+#endif

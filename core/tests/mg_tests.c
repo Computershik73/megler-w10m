@@ -3158,6 +3158,10 @@ static void test_library(mg_lib *lib, const char *what, const char *scratch)
     CHECK_INT(st.tp_led_out, 19);
     CHECK_INT(FN(lib, int (*)(void), "t_fs_access")(), 0);
 #endif
+#if MG_ARCH_X86
+    /* x86's `int 0x80` of the library's own, made a system call where Windows faults at it (mg_core.c). */
+    CHECK_INT(FN(lib, int (*)(void), "t_x86_int80")(), 0);
+#endif
     CHECK_INT(FN(lib, int (*)(void), "t_ifunc")(), 205);
     CHECK_INT(FN(lib, int (*)(void), "t_chrome_cmdline")(), 3);
     CHECK_INT(FN(lib, int (*)(const char *), "t_flock")(buf), 3);

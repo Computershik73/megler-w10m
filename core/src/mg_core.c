@@ -200,6 +200,29 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
     /* A device probe that went wrong on purpose (mg_diag.c). */
     if (mg_probe_fix_fault(f)) return true;
 #endif
+#if MG_ARCH_X86
+    /*
+     * x86's `int 0x80` in an app's own code (its patcher counts them and leaves them, x86/mg_patch_x86.c), which Windows
+     * answers with an access violation at it: the system call made here with Linux's i386 number and arguments -- eax;
+     * ebx, ecx, edx, esi, edi, ebp -- its result (-errno on failure) in eax, and the thread on after the two bytes, as the
+     * kernel goes on. Asphalt 9's breakpad (libcrashlytics) asks so for its sigaltstack, and the game ended at its start.
+     */
+    if (f->kind == MG_FAULT_ACCESS && f->regs && pc && mg_ld_is_guest_code(pc) && ((const u8 *)pc)[0] == 0xCD && ((const u8 *)pc)[1] == 0x80) {
+        static volatile i32 said;
+        long args[6];
+        u32 nr = (u32)f->regs[0];
+        args[0] = (long)f->regs[3];
+        args[1] = (long)f->regs[1];
+        args[2] = (long)f->regs[2];
+        args[3] = (long)f->regs[6];
+        args[4] = (long)f->regs[7];
+        args[5] = (long)f->regs[5];
+        f->regs[0] = (mg_addr)mg_bionic_syscall((long)nr, args, pc);
+        if (!mg_atomic_xchg(&said, 1)) mg_info("int 0x80 in an app's code: each one is a fault, made a system call in its place (the first, %u)", (unsigned)nr);
+        mg_fault_resume_at(f, pc + 2);
+        return true;
+    }
+#endif
     if (f->kind == MG_FAULT_ACCESS && mg_mmap_fix_fault(f->address, f->write, f->exec)) {
         mg_atomic_add(&g_wx_flips, 1);
         return true;
