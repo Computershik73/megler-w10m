@@ -187,8 +187,10 @@ public:
         setVisible(updateCard_, !updating.empty());
         if (!updating.empty() && updating != updateShown_) {
             updateShown_ = updating;
-            updateText_.Text(hs("Megler " + updating + " is being installed. Megler closes when Windows takes it, and Windows installs it, "
-                                "which takes a few minutes (more on a phone of 1 GB): leave the phone on, then open Megler again."));
+            // (Windows's deployment engine closed a Lumia 650's Megler 646 nine seconds after it was given 648. A few minutes,
+            // as this said, were the Device Portal's, which installs only where the engine refuses.)
+            updateText_.Text(hs("Megler " + updating + " is being installed. Windows closes Megler when it takes it, as a rule within a minute: "
+                                "leave the phone on, then open Megler again."));
         }
         std::string otaVersion;
         uint64_t otaGot = 0, otaTotal = 0;
@@ -241,10 +243,11 @@ private:
             listHost_.Content(empty);
             return;
         }
-        // The apps made by another Megler, to update, while nothing is being done; and whether the portal could be asked.
+        // The apps made by another Megler, to update, while nothing is being done; and whether the list could be had.
         auto top = vstack(0);
-        // Which apps carry another Megler is known once the portal has listed the phone's apps, seconds after the start (more
-        // on a Lumia 650): said meanwhile, so that Update All's coming is expected (the owner's wish, 2026-11-04).
+        // Which apps carry another Megler is known once Windows has listed the apps' packages, two seconds after the start on
+        // a Lumia 650 (the Device Portal, where Windows will not, takes more than a minute there): said meanwhile, so that
+        // Update All's coming is expected (the owner's wish, 2026-11-04).
         if (separateApps::checking()) {
             auto column = vstack(0);
             auto line = text("Please wait: checking whether the apps installed on the phone carry this Megler…", font::bodyMedium,

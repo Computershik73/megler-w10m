@@ -29,8 +29,8 @@ struct Job {
 
 std::mutex gMutex;
 unsigned gGeneration = 1;
-bool gListing = false;               // the portal is being asked
-bool gListed = false;                // it answered at least once
+bool gListing = false;               // the list of the apps' packages is being asked for
+bool gListed = false;                // it came at least once
 bool gPortalReachable = false;       // info answered, independently of its package list
 std::string gProblem;                // why it could not be asked last
 std::vector<appPackage::InstalledApp> gInstalled;
@@ -38,7 +38,7 @@ std::map<std::string, Status> gStatus; // the actions' part (queued, step, made)
 std::deque<Job> gJobs;
 bool gWorking = false;
 std::string gWorkingLine;
-std::vector<std::function<void()>> gPortalWaiters; // what waits for the portal's answer (askPortal)
+std::vector<std::function<void()>> gPortalWaiters; // what waits for the list (askPortal)
 int gDone = 0, gTotal = 0;           // of the jobs since the worker started
 
 std::string identityOf(const std::string& package) {
@@ -137,7 +137,8 @@ void removeUnusedApks(const std::vector<appPackage::InstalledApp>& installed) {
     appPackage::removeUnusedSharedApks(installed, used);
 }
 
-/// The portal's list, asked again. Off the UI thread.
+/// The list of the apps' packages, asked for again: Windows's package manager's, the Device Portal's where Windows will not
+/// answer (appPackage::installedApps). Off the UI thread.
 void list() {
     std::vector<appPackage::InstalledApp> apps;
     std::string error;
@@ -255,7 +256,7 @@ void run(Job& job, int number, int total) {
         const bool servicePublished = appPackage::registerServiceApk(inShared, made.fullName, true);
         if (!servicePublished) shellLog::write("microG: installed, but its shared service APK could not be published; launch microG to retry");
         // Installed: the package made is the installed one now, and goes (Windows's installer is not wanted for it). The
-        // app is listed as installed at once; the portal's list is asked again once the queue is done.
+        // app is listed as installed at once; the list is asked for again once the queue is done.
         files::remove(made.appx);
         {
             std::lock_guard<std::mutex> lock(gMutex);
@@ -305,7 +306,7 @@ void run(Job& job, int number, int total) {
     }
 }
 
-/// A listing of the portal's ended: what waited for its answer goes on. UI thread.
+/// A listing ended: what waited for it goes on. UI thread.
 void portalAnswered() {
     std::vector<std::function<void()>> waiters;
     {
@@ -315,7 +316,7 @@ void portalAnswered() {
     for (auto& then : waiters) then();
 }
 
-/// The worker: the jobs one after another, then the portal's list again. UI thread.
+/// The worker: the jobs one after another, then the list again. UI thread.
 void startWorker(AppShell& shell) {
     {
         std::lock_guard<std::mutex> lock(gMutex);
@@ -431,18 +432,21 @@ bool requirePortal(AppShell& shell) {
     const Portal state = portal();
     if (state == Portal::on) return true;
     refresh(shell);  // asked again, for the next try
+    // (The list of the apps' packages comes from Windows's package manager, which installs them too; the phone's Device Portal
+    // is asked only where Windows will not answer. Said so: the user saw "Asking the Device Portal" long after Megler had
+    // stopped installing through it.)
     if (state == Portal::unknown) {
-        shell.alert("Asking the Device Portal", "Megler installs apps through the phone's Device Portal and is asking it whether it is on. "
-                                                "Try again in a moment.");
+        shell.alert("Looking at the Installed Apps", "Megler is asking Windows which of its apps are installed, which it needs to know before it "
+                                                     "installs one. Try again in a moment.");
         return false;
     }
     const std::string why = portalProblem();
-    shellLog::write("separate apps: nothing installed while the Device Portal is off: " + why);
+    shellLog::write("separate apps: nothing installed while no list of the installed apps can be had: " + why);
     shell.confirm("Turn On the Device Portal",
-                  "Megler installs apps through the phone's Device Portal, which did not answer (" + why +
-                      "). In Settings › Update & security › For developers, turn on Developer mode, then Device Portal, and turn the "
-                      "portal's Authentication off: Megler asks the portal on this phone itself, without a user name and password. "
-                      "Then try again.",
+                  "Windows did not tell Megler which of its apps are installed, nor did the phone's Device Portal, which Megler asks where "
+                  "Windows will not (" + why + "). In Settings › Update & security › For developers, turn on Developer mode, then Device "
+                  "Portal, and turn the portal's Authentication off: Megler asks the portal on this phone itself, without a user name and "
+                  "password. Then try again.",
                   "Open Settings", false,
                   [] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(L"ms-settings:developers")); });
     return false;

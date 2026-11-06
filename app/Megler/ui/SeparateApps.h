@@ -62,16 +62,17 @@ void updateAll(AppShell& shell);
 /// What is going on, "Updating Instagram (2 of 3): Packing…"; empty when nothing is.
 std::string working();
 
-/// The phone's Device Portal, through which Megler installs: on once it answered, off when it could not be asked, unknown
-/// before it has been.
+/// The list of the apps' packages, which Windows's package manager gives (the phone's Device Portal where Windows will not
+/// answer; named for it, which once gave it and installed the packages): on once it came, off when it could not be had,
+/// unknown before it has been asked for.
 enum class Portal { unknown, on, off };
 Portal portal();
-/// The portal asked again (or the asking under way waited for), and `then` called on the UI thread once it has answered or
+/// The list asked for again (or the asking under way waited for), and `then` called on the UI thread once it has come or
 /// failed to: portal() says which. UI thread.
 void askPortal(AppShell& shell, std::function<void()> then);
-/// Whether an install may begin: only with the Device Portal on (the owner's wish, 2026-11-02 -- without it an install went
-/// as far as making the package and then failed). Otherwise the shell says how to turn it on, the portal is asked again for
-/// the next try, and false. UI thread.
+/// Whether an install may begin: only once Megler knows which of its apps are installed (the owner's wish, 2026-11-02 --
+/// without the list an install went as far as making the package and then failed). Otherwise the shell says why, the list
+/// is asked for again for the next try, and false. UI thread.
 bool requirePortal(AppShell& shell);
 
 } // namespace megler::app::ui::separateApps

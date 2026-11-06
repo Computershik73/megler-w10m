@@ -179,7 +179,7 @@ private:
 
     /// The app as an app of the phone's own (ui/SeparateApps.h): whether it is installed and from which Megler; Install or
     /// Update (Material's filled button), its own settings (tonal), Uninstall (a text button in the error colour); and, when
-    /// the portal could not install a package made, Windows's installer.
+    /// neither Windows's deployment engine nor the Device Portal installed a package made, Windows's installer.
     UIElement phoneSection(const ApkEntry& entry) {
         const auto& p = palette();
         const ApkReport& r = entry.report;
@@ -193,7 +193,7 @@ private:
         else if (s.installed == separateApps::Installed::no)
             state = "Not installed on this phone.";
         else
-            state = separateApps::portalProblem().empty() ? "Asking the Device Portal whether it is installed…"
+            state = separateApps::portalProblem().empty() ? "Asking Windows whether it is installed…"
                                                           : "Megler can't tell whether it is installed: " + separateApps::portalProblem();
 
         const std::string id = id_, package = r.package, title = entry.title();
@@ -245,7 +245,8 @@ private:
                                "Uninstall", true, [this, package] { separateApps::uninstall(shell_, package); });
             }, p.error));
         }
-        // The package made, when the portal did not install it: Windows's own installer, as a file manager opens a package.
+        // The package made, when neither the deployment engine nor the portal installed it: Windows's own installer, as a file
+        // manager opens a package.
         if (!s.made.appx.empty() && !installed) {
             const std::wstring appx = s.made.appx, certificate = s.made.certificate;
             add(more, textButton("Open the Package", [this, appx] { openFile(appx); }));
@@ -254,8 +255,8 @@ private:
         if (more.Children().Size()) add(column, more);
 
         std::string footer = r.ready() ? std::string("An app of the phone's own: Megler and this ") + (entry.splitsDir.empty() ? "APK" : "app's APKs") +
-                                             " in a package with the app's name and icon, made here and installed through the phone's Device "
-                                             "Portal. It starts straight into the app, in a process of its own with its own memory; its /sdcard is "
+                                             " in a package with the app's name and icon, made here and installed by Windows as the Store installs "
+                                             "an app. It starts straight into the app, in a process of its own with its own memory; its /sdcard is "
                                              "shared with the other apps. The first time, the app's data in Megler goes along with it."
                                        : "This app can't run here: " + r.status();
         footer += " App Settings are this app's own: render size, language and region, location.";
