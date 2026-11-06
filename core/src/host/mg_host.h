@@ -209,6 +209,8 @@ typedef struct mg_thread_regs {
 } mg_thread_regs;
 MG_HOSTAPI bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out);
 MG_HOSTAPI void mg_thread_resume(mg_thread *t);
+/* For the tests' log: how many stops found a thread whose registers Windows would not give right and stopped it again. */
+MG_HOSTAPI void mg_thread_suspend_report(char *out, size_t size);
 /*
  * Another thread of the process by its id (as mg_thread_self_id says it on that thread), one the layer may not have
  * started: stopped while its registers and up to `max_words` words of its stack from sp up are copied (no further than

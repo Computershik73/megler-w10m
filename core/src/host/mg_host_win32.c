@@ -703,19 +703,19 @@ static mg_addr context_pc(const CONTEXT *c)
 }
 
 /*
- * A stopped thread's registers, with what Windows says of where it stopped (CONTEXT_EXCEPTION_REQUEST, below). A Windows
- * that would not take the request is asked without it from then on.
+ * A stopped thread's registers (`what`: CONTEXT_FULL, or less), with what Windows says of where it stopped
+ * (CONTEXT_EXCEPTION_REQUEST, below). A Windows that would not take the request is asked without it from then on.
  */
 static volatile LONG g_ctx_no_request, g_ctx_reports;
 
-static BOOL stopped_context(HANDLE h, CONTEXT *ctx)
+static BOOL stopped_context(HANDLE h, CONTEXT *ctx, DWORD what)
 {
     memset(ctx, 0, sizeof(*ctx));
-    ctx->ContextFlags = CONTEXT_FULL | (g_ctx_no_request ? 0 : CONTEXT_EXCEPTION_REQUEST);
+    ctx->ContextFlags = what | (g_ctx_no_request ? 0 : CONTEXT_EXCEPTION_REQUEST);
     if (GetThreadContext(h, ctx)) return TRUE;
     if (g_ctx_no_request) return FALSE;
     memset(ctx, 0, sizeof(*ctx));
-    ctx->ContextFlags = CONTEXT_FULL;
+    ctx->ContextFlags = what;
     if (!GetThreadContext(h, ctx)) return FALSE;
     InterlockedExchange(&g_ctx_no_request, 1);
     return TRUE;
@@ -764,7 +764,7 @@ bool mg_thread_interrupt(mg_thread *t)
         self_give(t);
         return false;
     }
-    if (!stopped_context(h, &ctx)) {
+    if (!stopped_context(h, &ctx, CONTEXT_FULL)) {
         InterlockedExchange(&g_int_error, (LONG)GetLastError());
         InterlockedIncrement(&g_int_get_failed);
     } else if (!g_interrupt_in_guest(context_pc(&ctx))) {
@@ -965,27 +965,120 @@ const char *mg_breakpoints_why(void) { return ""; }
 WINBASEAPI DWORD WINAPI SuspendThread(HANDLE hThread);
 WINBASEAPI BOOL WINAPI GetThreadContext(HANDLE hThread, LPCONTEXT lpContext);
 #endif
+#if WINAPI_FAMILY == WINAPI_FAMILY_APP && defined(_M_X64)
+/* (Left out of the app partition by the SDK's headers too; WindowsApp.lib has it, from the memory api-set.) */
+WINBASEAPI BOOL WINAPI ReadProcessMemory(HANDLE hProcess, LPCVOID lpBaseAddress, LPVOID lpBuffer, SIZE_T nSize, SIZE_T *lpNumberOfBytesRead);
+#endif
+
+/*
+ * What became of the stops that found a thread with registers not its own (below): how many, how many more stops they
+ * took in all and at most, and how many were given up on. Counted, not said: nothing may be logged while a thread is stopped.
+ */
+static volatile LONG g_stop_again, g_stop_retries, g_stop_most, g_stop_gave_up;
+/*
+ * Whether this is a 64-bit Windows on an x64 processor, where the registers were seen not to be the thread's own
+ * (mg_fault_set_handler). Not x86's: on a 64-bit Windows a 32-bit thread's registers are WOW64's copy of them, its own
+ * there too -- the tests' thread had them all 513 times it was stopped at its loop's pc with CONTEXT_SERVICE_ACTIVE or
+ * CONTEXT_EXCEPTION_ACTIVE. Nor ARM64's or the phone's ARM32: not seen.
+ */
+static volatile LONG g_stop_look;
+
+void mg_thread_suspend_report(char *out, size_t size)
+{
+    if (!g_stop_look) {
+        snprintf(out, size, "registers taken as Windows gives them (not looked at on this processor)");
+        return;
+    }
+    snprintf(out, size, "%ld found the thread on its way back through NtContinue and stopped it again (%ld stops more, at most %ld for one), %ld gave up",
+             (long)g_stop_again, (long)g_stop_retries, (long)g_stop_most, (long)g_stop_gave_up);
+}
+
+#if defined(_M_X64)
+/*
+ * Whether a thread stopped on x64 has registers Windows does not give right. Stopped inside NtContinue -- on its way back
+ * to guest code from an interruption's landing (mg_thread_interrupt, EXCEPTION_MEGLER_RESUME) or from a fault the
+ * vectored handler repaired -- a thread is reported with the pc and stack pointer it goes back to, but with rbx, rsi and
+ * rdi of the code that called NtContinue: its own are in the context NtContinue was given, which lies below that stack
+ * pointer, where the collector does not look (it takes a stopped thread's registers, and its stack from sp up, for all
+ * the thread holds: dvm/mg_dvm_gc.c, conservative_roots). The tests' thread (mg_tests.c test_stop_signalled: t_gcr_spin,
+ * a mark in each register, sent signals as fast as it handles them) was found so in some 60 of 16,000 stops in its loop:
+ * rbx 0, rsi and rdi addresses 0x3a8 and 0x11a8 below its stack pointer -- each time with CONTEXT_SERVICE_ACTIVE at the
+ * loop's pc, and no other stop of the 40,000 of all the tests was so. Windows says CONTEXT_SERVICE_ACTIVE also of a thread
+ * stopped in an ordinary system call, whose registers are right (those the call keeps for its caller, which is all the
+ * caller keeps in registers across it): its pc is then just past the call's instruction in its stub, ntdll's or
+ * win32u's -- `syscall` (0f 05), or the stubs' other way in, `int 0x2e` (cd 2e) -- as in all 625 such stops of the
+ * tests. (The bytes are read with ReadProcessMemory: a pc whose bytes cannot be read is no stub's, and does not fault.)
+ */
+static bool regs_not_its_own(const CONTEXT *c)
+{
+    BYTE before[2] = { 0, 0 };
+    SIZE_T got = 0;
+    if (!(c->ContextFlags & CONTEXT_EXCEPTION_REPORTING) || !(c->ContextFlags & CONTEXT_SERVICE_ACTIVE)) return false;
+    if (!ReadProcessMemory(GetCurrentProcess(), (LPCVOID)(DWORD_PTR)(c->Rip - 2), before, sizeof(before), &got) || got != sizeof(before)) return true;
+    return !((before[0] == 0x0f && before[1] == 0x05) || (before[0] == 0xcd && before[1] == 0x2e));
+}
+#endif
+
+/*
+ * A stop that found a thread so lets it go and stops it again: NtContinue does not wait, and the thread is out of the
+ * kernel once it has run a little. Not at once: a stop asked for while it has not yet run is taken at the same point of
+ * its way out, and finds it as it was (with only SwitchToThread between, four stops in a row did, nearly every time). So
+ * it is given 10 us, then twice as long each time up to 320 us, the processor given up meanwhile to whatever is ready on
+ * it; then a millisecond each time, for a thread a busy machine does not run at once; after STOP_TRIES the registers are
+ * taken as they are (counted: g_stop_gave_up).
+ */
+#define STOP_TRIES 24
 
 bool mg_thread_suspend(mg_thread *t, mg_thread_regs *out)
 {
     CONTEXT ctx;
     HANDLE h;
+    int tries = 0;
     memset(out, 0, sizeof(*out));
     if (!t || t->id == GetCurrentThreadId()) return false;
     /* Given back once it has stopped (or not): stopped, it cannot end, and its handle stays until mg_thread_resume. */
     h = self_take(t);
     if (!h) return false;
-    if (SuspendThread(h) == (DWORD)-1) {
-        self_give(t);
-        return false;
-    }
-    /* SuspendThread only asks; GetThreadContext returns once the thread has stopped, with its registers. */
-    memset(&ctx, 0, sizeof(ctx));
-    ctx.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL;
-    if (!GetThreadContext(h, &ctx)) {
+    for (;;) {
+        if (SuspendThread(h) == (DWORD)-1) {
+            self_give(t);
+            return false;
+        }
+        /* SuspendThread only asks; GetThreadContext returns once the thread has stopped, with its registers. */
+#if defined(_M_X64)
+        if (!stopped_context(h, &ctx, CONTEXT_INTEGER | CONTEXT_CONTROL)) {
+#else
+        memset(&ctx, 0, sizeof(ctx));
+        ctx.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL;
+        if (!GetThreadContext(h, &ctx)) {
+#endif
+            ResumeThread(h);
+            self_give(t);
+            return false;
+        }
+#if defined(_M_X64)
+        if (!g_stop_look || !regs_not_its_own(&ctx)) break;
+        if (tries == STOP_TRIES) {
+            InterlockedIncrement(&g_stop_gave_up);
+            break;
+        }
         ResumeThread(h);
-        self_give(t);
-        return false;
+        if (++tries <= 6) {
+            u64 until = mg_time_monotonic_ns() + (10000ull << (tries - 1));
+            do SwitchToThread();
+            while (mg_time_monotonic_ns() < until);
+        } else {
+            Sleep(1);
+        }
+#else
+        break;
+#endif
+    }
+    if (tries) {
+        LONG most = g_stop_most;
+        InterlockedIncrement(&g_stop_again);
+        InterlockedExchangeAdd(&g_stop_retries, tries);
+        while (tries > most && InterlockedCompareExchange(&g_stop_most, tries, most) != most) most = g_stop_most;
     }
     self_give(t);
 #if defined(_M_ARM)
@@ -1859,6 +1952,20 @@ void mg_fault_set_handler(mg_fault_handler h)
         {
             HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
             g_nt_continue = ntdll ? (nt_continue_fn)(void *)GetProcAddress(ntdll, "NtContinue") : NULL;
+        }
+#endif
+#if defined(_M_X64)
+        {
+            /*
+             * Whether the collector's stops look at the registers they are given (regs_not_its_own): on an x64 processor's
+             * Windows, not an ARM64 one's, which runs an x64 process emulated and makes its contexts up. Asked here, before
+             * any thread is stopped: nothing that may take the loader's lock is called while one is.
+             */
+            typedef BOOL(WINAPI * wow64_process2_fn)(HANDLE, USHORT *, USHORT *);
+            HMODULE kernel = GetModuleHandleW(L"kernel32.dll");
+            wow64_process2_fn fn = kernel ? (wow64_process2_fn)(void *)GetProcAddress(kernel, "IsWow64Process2") : NULL;
+            USHORT process = 0, native = 0;
+            if (!fn || (fn(GetCurrentProcess(), &process, &native) && native == IMAGE_FILE_MACHINE_AMD64)) InterlockedExchange(&g_stop_look, 1);
         }
 #endif
         SetUnhandledExceptionFilter(on_unhandled);

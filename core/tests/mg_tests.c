@@ -2991,6 +2991,11 @@ static void test_stop_signalled(mg_lib *lib)
     handled = FN(lib, long (*)(void), "t_gcr_finish")();
     say("  stopped %d times while signalled, %d in the loop, %d of them with registers not its own (mask %x; %s); %ld signals handled, %u ms",
         stopped, in_loop, wrong, (unsigned)wrong_regs, first, handled, (unsigned)((mg_time_monotonic_ns() - began) / 1000000u));
+    {
+        char report[320];
+        mg_thread_suspend_report(report, sizeof(report));
+        say("  stops of threads so far: %s", report);
+    }
     CHECK_INT(stopped, 20000);
     CHECK(in_loop > 100);
     CHECK_INT(wrong, 0);
