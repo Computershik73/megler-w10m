@@ -142,17 +142,42 @@ fire_and_forget showArt(std::vector<uint32_t> argb, int width, int height) {
     updater.Update();
 }
 
+// What the controls were told last, on the UI thread: the same again is not told, and the same picture is not made a PNG again.
+// Spotify's metadata came many times a second as it played, each with its picture, and each was encoded and shown anew (652).
+std::string gToldTitle, gToldArtist, gToldAlbum;
+uint64_t gToldArt = 0; // FNV-1a of the picture's pixels and size, 0 for none
+bool gTold = false;
+
 void metadataThunk(void*, const char* title, const char* artist, const char* album, const uint32_t* art, int width, int height) {
     std::string t = title ? title : "", a = artist ? artist : "", al = album ? album : "";
     std::vector<uint32_t> pixels;
     if (art && width > 0 && height > 0 && width <= 1024 && height <= 1024) pixels.assign(art, art + size_t(width) * size_t(height));
     onUi([t, a, al, pixels = std::move(pixels), width, height]() mutable {
+        uint64_t key = 0;
+        if (!pixels.empty()) {
+            key = 1469598103934665603ull;
+            const auto mix = [&key](uint32_t v) {
+                for (int i = 0; i < 4; i++, v >>= 8) key = (key ^ (v & 0xFF)) * 1099511628211ull;
+            };
+            mix(uint32_t(width));
+            mix(uint32_t(height));
+            for (uint32_t p : pixels) mix(p);
+            if (!key) key = 1;
+        }
+        if (gTold && key == gToldArt && t == gToldTitle && a == gToldArtist && al == gToldAlbum) return;
+        const bool newArt = !gTold || key != gToldArt;
+        gTold = true;
+        gToldTitle = t;
+        gToldArtist = a;
+        gToldAlbum = al;
+        gToldArt = key;
+        if (!newArt) pixels.clear(); // (the picture shown stays)
         auto updater = gControls.DisplayUpdater();
         updater.Type(MediaPlaybackType::Music);
         updater.MusicProperties().Title(hs(t));
         updater.MusicProperties().Artist(hs(a));
         updater.MusicProperties().AlbumTitle(hs(al));
-        if (pixels.empty()) updater.Thumbnail(nullptr);
+        if (newArt && pixels.empty()) updater.Thumbnail(nullptr);
         updater.Update();
         shellLog::write("media controls: now \"" + t + "\"" + (a.empty() ? std::string() : " by " + a) +
                         (pixels.empty() ? std::string() : format(", with a picture of %dx%d", width, height)));
@@ -175,6 +200,7 @@ void start() {
         gDispatcher = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread().Dispatcher();
         ++gGeneration;
     }
+    gTold = false; // (a session's controls start with nothing told)
     gControls.IsEnabled(true);
     gControls.IsPlayEnabled(true);
     gControls.IsPauseEnabled(true);
@@ -198,6 +224,7 @@ void stop() {
         gDispatcher = nullptr;
         ++gGeneration;
     }
+    gTold = false;
     gControls.ButtonPressed(gPressed);
     gControls.PlaybackStatus(MediaPlaybackStatus::Closed);
     gControls.DisplayUpdater().ClearAll();
