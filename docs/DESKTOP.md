@@ -151,7 +151,13 @@ A native method is called with the processor's convention (`jni/mg_jni.c`,
 System V's six and eight registers, AAPCS64's eight and eight, x86's stack);
 a fault's and a stopped thread's registers are each processor's; a guest
 thread is interrupted where it runs (what a signal does) by its context, the
-x64 one below the 128 bytes System V code may keep under its stack pointer.
+x64 one below the 128 bytes System V code may keep under its stack pointer --
+but not when Windows says it stopped the thread in the kernel
+(`CONTEXT_SERVICE_ACTIVE`): inside NtContinue, on its way back from the
+interruption before, its pc is guest code's already and the registers kept
+for a caller are not yet its own. Sent on from there, an x64 thread went back
+with rbx, rsi and rdi of the code that called NtContinue (x86 code had its
+own); it is told again a millisecond later instead.
 
 Memory an app gives back with madvise is decommitted, to be committed again
 at its first touch (`bionic/mg_libc_mem.c`). A goroutine's stack is a piece
@@ -219,11 +225,13 @@ On this PC (x64, Windows 11 26300), 2026-11-05 and 06:
   the access does not write and the red zone as they were; and a thread
   interrupted two hundred times in the middle of them by a handler that makes
   them too (with the patcher's word not kept across an interruption, its
-  registers came back changed: t_fs_access 32, on Linux as well). And a
-  goroutine's stack in a heap of a library of Go's (libt_go.so), given back
-  by number as Go's runtime gives it back and run on again with a 64 KB frame
-  written bottom first: committed still, zero, not a page taken back (without
-  that, the process ended there).
+  registers came back changed: t_fs_access 32, on Linux as well; with a
+  thread sent on from inside NtContinue, on Windows alone: 37 of 7200 calls
+  of `mg_tests --load` with 8 processes at once, and 0 of 7200 since it is
+  not). And a goroutine's stack in a heap of a library of Go's (libt_go.so),
+  given back by number as Go's runtime gives it back and run on again with a
+  64 KB frame written bottom first: committed still, zero, not a page taken
+  back (without that, the process ended there).
 - `tools/build-desktop.sh x86 tests` (through WOW64): 5322 checks, 0 failed
   (now and then 1 under load: a timing check of a few milliseconds).
 - A library of Go's: a c-shared one for android/amd64 that Go 1.27.1 made
