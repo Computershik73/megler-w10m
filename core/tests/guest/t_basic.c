@@ -1138,7 +1138,8 @@ int t_cpuclock(void)
 
 /*
  * What Firefox's libraries import of libc that was not there: sigaction by its old system call, as mozglue installs its
- * handlers, and rt_sigaction (a handler for a fault's signal refused that way); syslog; fputwc, fgetwc and ungetwc in UTF-8; posix_fadvise and posix_fallocate; and
+ * handlers, and rt_sigaction (a handler for a fault's signal refused that way); syslog; fputwc, fgetwc and ungetwc in UTF-8; posix_fadvise and posix_fallocate,
+ * and fallocate's plain kind (MAX's libtracernative.so imports it; any other kind is EOPNOTSUPP, as the system call's); and
  * process_vm_readv on the process's own memory. 7, or the negated step that failed. (The old sigaction is the 32-bit
  * ABIs' alone; the kernel's rt_sigaction struct is a handler, flags, a restorer and the mask everywhere, in words.)
  */
@@ -1151,6 +1152,7 @@ unsigned fgetwc(void *);
 unsigned ungetwc(unsigned, void *);
 int posix_fadvise(int, long, long, int);
 int posix_fallocate(int, long, long);
+int fallocate(int, int, long, long);
 ssize_t process_vm_readv(int, const void *, unsigned long, const void *, unsigned long, unsigned long);
 int getpid(void);
 
@@ -1242,6 +1244,8 @@ int t_ffcalls(const char *dir)
     fclose(f);
     fd = open(path, 2);
     if (fd < 0 || posix_fadvise(fd, 0, 0, 2) != 0 || posix_fallocate(fd, 0, 4096) != 0 || fstat(fd, st) != 0 || st[ST_SIZE] != 4096) return -6;
+    if (fallocate(fd, 0, 0, 8192) != 0 || fstat(fd, st) != 0 || st[ST_SIZE] != 8192) return -6;
+    if (fallocate(fd, 3 /* PUNCH_HOLE | KEEP_SIZE */, 0, 100) != -1 || *__errno() != 95) return -6;
     close(fd);
     unlink(path);
     if (process_vm_readv(getpid(), &local, 1, &remote, 1, 0) != 7 || strcmp(dst, "copied") != 0) return -7;
