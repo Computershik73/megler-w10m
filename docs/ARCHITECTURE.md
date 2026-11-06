@@ -1244,10 +1244,13 @@ loads the library, calls `ANativeActivity_onCreate`, and makes the activity's
 callbacks in the framework's order on a thread that stands for Android's main
 thread. Apps built on `android_native_app_glue` run on top of that.
 
-Engines whose Java shell does more (SDL, Unity, Unreal, Godot) each need
+Engines whose Java shell does more (Unity, Unreal, Godot) each need
 their own driver; cocos2d-x's Cocos2dxActivity, like libGDX's activity, is an
 Activity with a GLSurfaceView that loads the engine through JNI, and an app with
-it runs as the Java app it is (Zalo carries it for its mini-games). Apps written in Java need a Java
+it runs as the Java app it is (Zalo carries it for its mini-games). So does an
+SDL app: SDLActivity loads libSDL2.so and the game's libmain.so, runs its
+SDL_main through JNI on a thread of its own and draws with EGL on its
+SurfaceView (Minecraft: Story Mode was refused as an engine with no driver). Apps written in Java need a Java
 runtime: `core/src/dvm`, a Dalvik interpreter. Until it is started nothing above
 changes -- the classes are C, and an app with a native engine pays nothing for
 it. Once started there is one Java world: every class the JNI layer knows has a

@@ -604,11 +604,13 @@ int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *r
     test_odd_bundles(java_dir, scratch);
     {
         static const char *const flutter[] = { "libflutter.so", "libapp.so" }, *const gdx[] = { "libgdx.so", "libgdx-freetype.so", "libdexprotector.so" };
-        static const char *const cocos[] = { "libcocos2dcpp.so" };
+        static const char *const cocos[] = { "libcocos2dcpp.so" }, *const sdl[] = { "libSDL2.so", "libmain.so" };
         test_engine_app(java_dir, scratch, "Flutter", flutter, (int)MG_COUNT(flutter), "Built with Flutter", NULL);
         test_engine_app(java_dir, scratch, "libGDX", gdx, (int)MG_COUNT(gdx), "Built with libGDX", "Protected by DexProtector");
         /* (Zalo's, a messenger's, as its mini-games' engine: it was refused as an app built on cocos2d-x.) */
         test_engine_app(java_dir, scratch, "cocos2d-x", cocos, (int)MG_COUNT(cocos), "With cocos2d-x", NULL);
+        /* (Minecraft: Story Mode's: it was refused as an app built on sdl.) */
+        test_engine_app(java_dir, scratch, "SDL", sdl, (int)MG_COUNT(sdl), "Built with SDL", NULL);
     }
     if (real_dir)
         for (i = 0; i < (int)MG_COUNT(real); i++) test_real(real_dir, scratch, &real[i]);

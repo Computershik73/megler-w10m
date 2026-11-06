@@ -432,8 +432,8 @@ something Windows decodes (WebM/VP8, Ogg), and the listeners the engine register
 
 ## Not there yet
 
-- **Drivers** other than NativeActivity: SDL, Unity, Unreal, Godot (cocos2d-x's
-  activity is a Java one, and runs as the app's Java code). This
+- **Drivers** other than NativeActivity: Unity, Unreal, Godot (cocos2d-x's and
+  SDL's activities are Java ones, and run as the app's Java code). This
   is what stands between the layer and most games.
 - **Java.** Apps with no native engine cannot run yet. What there is
   ([JAVA.md](JAVA.md) has all of it, with the commands): a Dalvik interpreter
