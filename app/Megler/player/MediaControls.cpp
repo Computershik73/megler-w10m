@@ -65,56 +65,11 @@ const char* statusName(MediaPlaybackStatus s) {
     }
 }
 
-/*
- * While the app plays, an extended execution session of its own: on a phone it may keep the app running when the screen goes
- * off, where the background's rules suspended it. Spotify on a Lumia 650 (653), playing, went into the background with 592 MB
- * in use against a 390 MB limit and was suspended 3 s later; its music stopped as a rule when the screen went off. What
- * Windows answers, and when it takes the session back, is said. Asked for on the UI thread; one at a time.
- */
-winrt::Windows::ApplicationModel::ExtendedExecution::ExtendedExecutionSession gPlaying{nullptr};
-bool gPlayingAsked = false;
-
-fire_and_forget keepPlaying(bool on) {
-    using namespace winrt::Windows::ApplicationModel::ExtendedExecution;
-    if (!on) {
-        if (gPlaying) {
-            gPlaying.Close();
-            gPlaying = nullptr;
-            shellLog::write("media controls: the extended execution for the sound is let go");
-        }
-        co_return;
-    }
-    if (gPlaying || gPlayingAsked) co_return;
-    gPlayingAsked = true;
-    try {
-        ExtendedExecutionSession session;
-        session.Reason(ExtendedExecutionReason::Unspecified);
-        session.Description(L"Playing the app's sound");
-        session.Revoked([](auto&&, ExtendedExecutionRevokedEventArgs const& e) {
-            shellLog::write(std::string("media controls: Windows took the extended execution for the sound back (") +
-                            (e.Reason() == ExtendedExecutionRevokedReason::Resumed ? "resumed" : "system policy") + ")");
-        });
-        const ExtendedExecutionResult result = co_await session.RequestExtensionAsync();
-        gPlayingAsked = false;
-        if (result == ExtendedExecutionResult::Allowed) {
-            gPlaying = session;
-            shellLog::write("media controls: extended execution for the sound allowed");
-        } else {
-            session.Close();
-            shellLog::write("media controls: extended execution for the sound denied");
-        }
-    } catch (hresult_error const& e) {
-        gPlayingAsked = false;
-        shellLog::write(format("media controls: no extended execution for the sound (0x%08X)", unsigned(e.code().value)));
-    }
-}
-
 void show(MediaPlaybackStatus status, const char* why) {
     if (!gControls || status == gShown) return;
     gControls.PlaybackStatus(status);
     gShown = status;
     shellLog::write(format("media controls: %s (%s)", statusName(status), why));
-    keepPlaying(status == MediaPlaybackStatus::Playing);
 }
 
 void onButton(SystemMediaTransportControls const&, SystemMediaTransportControlsButtonPressedEventArgs const& args) {
@@ -270,7 +225,6 @@ void stop() {
         ++gGeneration;
     }
     gTold = false;
-    keepPlaying(false);
     gControls.ButtonPressed(gPressed);
     gControls.PlaybackStatus(MediaPlaybackStatus::Closed);
     gControls.DisplayUpdater().ClearAll();
