@@ -1,7 +1,8 @@
 // Overlay of core/framework/src/megler/GooglePackages.java (tools/build-framework.sh).
 // It differs in one more package it answers for, the System WebView of the Android root, com.android.webview: installed,
 // with the version and the files its APK has (android.webkit.WebView.getCurrentWebViewPackage, which reads them from the
-// APK's manifest). The rest is the original's, the made-up com.google.android.webview included.
+// APK's manifest). And in Play Store's own meta-data, its derived APK id the newest there is (ownMetaData, which says why).
+// The rest is the original's, the made-up com.google.android.webview included.
 //
 // Why. The package manager knows the app and, through this class, the packages it pretends are installed; every other name
 // is NameNotFoundException. The WebView is a package of its own whose code runs in the app, and its code asks the package
@@ -46,6 +47,27 @@ public final class GooglePackages {
         return p != null && pkg.equals(p.packageName) ? p : null;
     }
     public static android.content.pm.Signature signature() { return new android.content.pm.Signature(CERT); }
+    /*
+     * Megler: the meta-data of the app's own package (ApplicationInfo.self): Play Store's with its derived APK id
+     * (com.android.vending.derived.apk.id, the variant of a bundle Google's bundletool writes into each APK it makes) the newest
+     * there is; any other package's, and the rest of Play Store's, as its manifest has them.
+     *
+     * Why. Play Store asks Google's server for its own binary and, at the same version, compares the variants. Megler brings the
+     * standalone APK (derived id 1) and the server names the split APKs for this phone (derived id 5 on a Lumia 650), so Play
+     * Store downloaded them, about 70 MB, to install itself again. It installs such an update only once none of its activities
+     * has been resumed for ten seconds while its process runs ("waiting for market to close"); an app of the phone's own is
+     * suspended within a second of being left and ends on Back. The update never went in, every start downloaded it again, and
+     * the tries left 291 MB on a Lumia 650 (package 662). Told this, it skips the variant ("Local Derived Apk Id ... > Server
+     * Derived Apk Id"). A newer version on the server is still downloaded and waits the same way (docs/JAVA.md, "Installing,
+     * and the phone's other apps").
+     */
+    public static android.os.Bundle ownMetaData(String pkg, android.os.Bundle meta) {
+        final String derived = "com.android.vending.derived.apk.id";
+        if (!VENDING.equals(pkg) || meta == null || !meta.containsKey(derived)) return meta;
+        android.os.Bundle b = new android.os.Bundle(meta);
+        b.putInt(derived, Integer.MAX_VALUE);
+        return b;
+    }
     /*
      * The uid Google Play services and Google Services Framework share, as on Android (com.google.uid.shared): not the app's.
      * Google Play services finds the service a consent screen goes through (DefaultAuthDelegateService), takes the first

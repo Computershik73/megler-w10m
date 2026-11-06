@@ -3379,6 +3379,24 @@ What a Java app asks of the phone beyond its window goes to the shell through
     an app built as a bundle) is handed over as one `.apks` of them, a ZIP of
     the APKs stored as they are, which Megler's installer unpacks as it does a
     bundle from the file manager.
+- **Play Store's own updates.** Play Store asks Google's server for its own
+  binary, downloads it, and installs it through a session of its own package,
+  but only once none of its activities has been resumed for ten seconds while
+  its process runs ("Self-update ready to be installed, waiting for market to
+  close"; it checks every ten seconds). An app of the phone's own is suspended
+  within a second of being left, and ends on Back, so such an update never
+  goes in, and Play Store starts over at its next start. At the same version
+  it compares the variants by their derived APK id
+  (`com.android.vending.derived.apk.id`, which Google's bundletool writes into
+  each APK it makes of a bundle): Megler brings the standalone APK (id 1), and
+  the server named the split APKs for a Lumia 650 (id 5). So every start
+  downloaded them again, about 70 MB, and the tries left 291 MB of files
+  there (package 662). Play Store's own `ApplicationInfo.metaData` now has its
+  derived APK id as the newest there is (`megler.GooglePackages.ownMetaData`),
+  and it skips the variant ("Local Derived Apk Id ... > Server Derived Apk
+  Id"). Not done: an update to a newer version, which the server will offer
+  in time, is still downloaded at each start and waits the same way; Play
+  Store gets newer through Megler's package or an APK added to the library.
 - **Other apps: launchers.** The shell lists the apps of Megler's library that
   can run in the shared folder (`library/PhoneAppsList.cpp`):
   `phone-apps\apps.txt` has each app's package, launcher activity, label and
