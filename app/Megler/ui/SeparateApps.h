@@ -71,8 +71,9 @@ Portal portal();
 /// failed to: portal() says which. UI thread.
 void askPortal(AppShell& shell, std::function<void()> then);
 /// Whether an install may begin: only once Megler knows which of its apps are installed (the owner's wish, 2026-11-02 --
-/// without the list an install went as far as making the package and then failed). Otherwise the shell says why, the list
-/// is asked for again for the next try, and false. UI thread.
-bool requirePortal(AppShell& shell);
+/// without the list an install went as far as making the package and then failed). Otherwise false: asked for before the
+/// first list came, `retry` is called once it has (with none, the shell says to try again in a moment); when no list can
+/// be had, the shell says why, and the list is asked for again for the next try. UI thread.
+bool requirePortal(AppShell& shell, std::function<void()> retry = {});
 
 } // namespace megler::app::ui::separateApps

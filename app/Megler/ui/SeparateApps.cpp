@@ -428,9 +428,28 @@ Portal portal() {
     return gListed ? Portal::on : Portal::unknown;
 }
 
-bool requirePortal(AppShell& shell) {
+bool requirePortal(AppShell& shell, std::function<void()> retry) {
     const Portal state = portal();
     if (state == Portal::on) return true;
+    /*
+     * Asked for before the first list came: done once it has. The flag ui-update-all is acted on a second after the start,
+     * and a Lumia 650's Megler 648 acted on it 156 ms before Windows listed the apps' packages: it said "Asking the Device
+     * Portal", and Update All waited for the owner's tap, 18 s later.
+     */
+    if (state == Portal::unknown && retry) {
+        shellLog::write("separate apps: waiting for the list of the installed apps");
+        std::weak_ptr<AppShell> weak = shell.weak_from_this();
+        askPortal(shell, [weak, retry = std::move(retry)] {
+            auto self = weak.lock();
+            if (!self) return;
+            // (Once: a list still not known has the shell say so.)
+            if (portal() == Portal::unknown)
+                requirePortal(*self);
+            else
+                retry();
+        });
+        return false;
+    }
     refresh(shell);  // asked again, for the next try
     // (The list of the apps' packages comes from Windows's package manager, which installs them too; the phone's Device Portal
     // is asked only where Windows will not answer. Said so: the user saw "Asking the Device Portal" long after Megler had
@@ -453,7 +472,7 @@ bool requirePortal(AppShell& shell) {
 }
 
 void install(AppShell& shell, const std::string& apkId, bool whenRead) {
-    if (!requirePortal(shell)) return;
+    if (!requirePortal(shell, [&shell, apkId, whenRead] { install(shell, apkId, whenRead); })) return;
     const auto entry = Library::instance().find(apkId);
     if (!entry || (!whenRead && entry->report.package.empty())) return;
     shellLog::write("separate apps: install " + apkId);
@@ -466,7 +485,7 @@ void install(AppShell& shell, const std::string& apkId, bool whenRead) {
 }
 
 void installPicked(AppShell& shell, std::shared_ptr<PickedFile> picked, const std::string& apkId) {
-    if (!requirePortal(shell)) return;
+    if (!requirePortal(shell, [&shell, picked, apkId] { installPicked(shell, picked, apkId); })) return;
     shellLog::write("separate apps: install " + picked->name() + " where it is, as " + apkId);
     Job job;
     job.id = apkId;
@@ -500,7 +519,8 @@ std::vector<std::string> outdatedIds() {
 }
 
 void updateAll(AppShell& shell) {
-    if (!requirePortal(shell)) return;
+    // (Which apps are outdated is known from the list: asked for before it came, as the flag ui-update-all is, it waits.)
+    if (!requirePortal(shell, [&shell] { updateAll(shell); })) return;
     const auto ids = outdatedIds();
     shellLog::write(format("separate apps: update all, %u", unsigned(ids.size())));
     for (const auto& id : ids) install(shell, id);
