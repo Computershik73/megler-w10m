@@ -1242,6 +1242,31 @@ public class Main extends Activity {
             child.startAnimation(fade);
             return true;
         });
+        // A circular reveal played with another animator in an AnimatorSet, as Jamfish plays one as each song begins (the
+        // reveal was null, and the set ended the app with a NullPointerException): it is an animator of the radius, and it
+        // and the set run to their ends.
+        step("circular-reveal", () -> {
+            android.view.View v = new android.view.View(this);
+            v.layout(0, 0, 100, 50);
+            android.animation.Animator reveal = android.view.ViewAnimationUtils.createCircularReveal(v, 50, 25, 0, 112);
+            final int[] ended = new int[2];
+            final float[] radius = new float[1];
+            if (reveal == null) return false;
+            ((android.animation.ValueAnimator) reveal).addUpdateListener(a -> radius[0] = (Float) a.getAnimatedValue());
+            reveal.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator a) { ended[0]++; }
+            });
+            android.animation.AnimatorSet set = new android.animation.AnimatorSet();
+            set.play(reveal).with(android.animation.ValueAnimator.ofFloat(0, 1));
+            set.setDuration(50);
+            set.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator a) { ended[1]++; }
+            });
+            set.start();
+            set.end();
+            detail = "reveal ended " + ended[0] + " at radius " + radius[0] + ", the set ended " + ended[1];
+            return ended[0] == 1 && ended[1] == 1 && radius[0] == 112f;
+        });
         // A typeface built from a font file open on a descriptor (Typeface.Builder(FileDescriptor), as Google Play services
         // loads its downloaded fonts): made, and the descriptor still open after.
         step("typeface-descriptor", () -> {
