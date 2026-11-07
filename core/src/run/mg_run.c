@@ -17,6 +17,7 @@
 #include "../mg_core.h"
 #include "../host/mg_host.h"
 #include "../ld/mg_ld.h"
+#include "../ndk/mg_sensors.h"
 
 static megler_run_config g_config;
 static char *g_apk_path;
@@ -55,6 +56,8 @@ void mg_run_ended(int status, const char *reason)
     /* What the app wrote into shared file mappings reaches the files (bionic/mg_libc_mem.c). */
     mg_mem_write_back();
     mg_atomic_xchg(&g_active, 0);
+    /* The phone's sensors no longer read for it (ndk/mg_sensors.c). */
+    mg_sensors_end();
     mg_info("run: the app has ended (status %d%s%s)", status, reason ? ", " : "", reason ? reason : "");
     if (g_config.on_exit) g_config.on_exit(g_config.user, status, reason);
 }
@@ -515,6 +518,8 @@ bool mg_run_start(const megler_run_config *config)
         mg_info("run: the app is in %d APKs, its base and the split%s %s", g_config.split_count + 1, g_config.split_count == 1 ? "" : "s", names);
     }
 
+    /* The phone's sensors, for its SensorManager and its native code's ASensorManager (ndk/mg_sensors.c). */
+    mg_sensors_set_host(&g_config.sensors);
     /* Each app gets its own Android data directories under ours, and all of them one shared storage. */
     mg_run_files(megler_data_dir(), megler_storage_dir(), info.package, &g_config.storage);
 
@@ -557,6 +562,8 @@ int mg_run_back(unsigned quiet_ms, unsigned max_ms)
 
 void mg_run_set_paused(bool paused)
 {
+    /* Android hands an app in the background no sensor events: the phone's are stopped meanwhile. */
+    mg_sensors_set_paused(paused);
     if (g_active && g_driver && g_driver->set_paused) g_driver->set_paused(paused);
 }
 

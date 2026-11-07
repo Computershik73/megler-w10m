@@ -61,6 +61,13 @@ public class Lib {
         }
     }
 
+    /** What the library's sensor queue heard (watchSensors), told from its callback on the main thread's looper. */
+    public static class SensorReport {
+        public void onSensors(boolean ok, String detail) {
+            Main.say("sensors-events", ok && Looper.myLooper() == Looper.getMainLooper(), detail);
+        }
+    }
+
     public static class Failure extends RuntimeException {
         final int code;
 
@@ -183,6 +190,7 @@ public class Lib {
     static native int sharedAt(int i);
     static native String configuration(AssetManager assets);
     static native int watchLooper(LooperReport report);
+    static native int watchSensors(SensorReport report);
     /** The system's ICU opened by name and a function of each of its two libraries found by its versioned name: the version, or below 1. */
     static native int icuVersion();
     /** A system property as native code reads it: "" when there is none. */

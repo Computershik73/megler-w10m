@@ -312,6 +312,7 @@ public class Main extends Activity {
         apacheHttpLegacy();
         preloadedDrawables();
         location();
+        sensors();
         timezone();
         locale();
         phoneNumber();
@@ -2197,6 +2198,123 @@ public class Main extends Activity {
                     && last != null && android.location.LocationManager.NETWORK_PROVIDER.equals(last.getProvider()) && back
                     && Math.abs(d[0] - 636215f) < 1f && d[1] < -35 && d[1] > -45;
         });
+    }
+
+    /*
+     * The phone's sensors (the tests' stand-in has one of each kind Windows has, each reading a known value in Windows' units
+     * and signs): the list as Android describes it, the proximity the default that wakes the device, and each sensor's first
+     * event in Android's units and signs -- the accelerometer's z +7.35 m/s^2 where Windows reads -0.75 g -- on the main
+     * thread, with onAccuracyChanged before it, its time on elapsedRealtimeNanos's clock (read after the listener was
+     * registered, and before it is handed over: the main thread runs the other steps first, which under qemu takes long
+     * enough for a hundred of a sensor's events to wait, the most a listener's thread is sent); the accelerometer's next ones at
+     * about the rate asked for (SENSOR_DELAY_GAME, 20 ms, while the stand-in reads every 5 ms); then a flush of all eleven,
+     * after which the listener is removed. What came is one line, "sensors-events".
+     */
+    private void sensors() {
+        step("sensors", () -> {
+            final android.hardware.SensorManager sm = (android.hardware.SensorManager) getSystemService(Context.SENSOR_SERVICE);
+            java.util.List<android.hardware.Sensor> all = sm.getSensorList(android.hardware.Sensor.TYPE_ALL);
+            android.hardware.Sensor accel = sm.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER);
+            android.hardware.Sensor prox = sm.getDefaultSensor(android.hardware.Sensor.TYPE_PROXIMITY);
+            StringBuilder types = new StringBuilder();
+            for (android.hardware.Sensor s : all) types.append(s.getType()).append(',');
+            boolean listed = all.size() == 11 && "1,2,3,4,5,6,8,9,10,11,15,".equals(types.toString()) && accel != null
+                    && "Test Accelerometer".equals(accel.getName()) && "Megler Tests".equals(accel.getVendor()) && accel.getMinDelay() == 10000
+                    && Math.abs(accel.getMaximumRange() - 39.2266f) < 0.001f && accel.getReportingMode() == android.hardware.Sensor.REPORTING_MODE_CONTINUOUS
+                    && !accel.isWakeUpSensor() && "android.sensor.accelerometer".equals(accel.getStringType()) && prox != null && prox.isWakeUpSensor()
+                    && prox.getMinDelay() == 0 && prox.getMaximumRange() == 5f
+                    && sm.getDefaultSensor(android.hardware.Sensor.TYPE_PROXIMITY, false) == null
+                    && sm.getSensorList(android.hardware.Sensor.TYPE_GYROSCOPE).size() == 1
+                    && sm.getDefaultSensor(android.hardware.Sensor.TYPE_HEART_RATE) == null
+                    && "Rotation Vector Sensor".equals(sm.getDefaultSensor(android.hardware.Sensor.TYPE_ROTATION_VECTOR).getName());
+            final SensorCheck check = new SensorCheck(sm, android.os.SystemClock.elapsedRealtimeNanos());
+            boolean registered = true;
+            for (android.hardware.Sensor s : all)
+                registered &= sm.registerListener(check, s, s == accel ? android.hardware.SensorManager.SENSOR_DELAY_GAME : android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
+            // (The same sensor again for the same listener is refused, as on Android.)
+            boolean again = sm.registerListener(check, accel, android.hardware.SensorManager.SENSOR_DELAY_FASTEST);
+            detail = "types=" + types + " accel=" + accel + " prox=" + prox + " registered=" + registered + " again=" + again;
+            return listed && registered && !again;
+        });
+    }
+
+    /** What sensors() hears: each sensor's first event against the stand-in's reading, the accelerometer's for their rate. */
+    private static final class SensorCheck implements android.hardware.SensorEventListener2 {
+        private final android.hardware.SensorManager sm;
+        private final long registered;
+        private final java.util.TreeMap<Integer, String> first = new java.util.TreeMap<>();
+        private int accelEvents, accuracyCalls, flushed;
+        private long lastAccel, minGap = Long.MAX_VALUE;
+        private boolean ordered = true, flushing, done;
+
+        SensorCheck(android.hardware.SensorManager sm, long registered) {
+            this.sm = sm;
+            this.registered = registered;
+        }
+
+        /** Android's values for each sensor of the stand-in's (core/tests/mg_sensor_standin.c), and their accuracy. */
+        private static float[] expected(int type) {
+            switch (type) {
+            case android.hardware.Sensor.TYPE_ACCELEROMETER: return new float[] { -2.4516625f, 4.903325f, 7.3549875f, 3 };
+            case android.hardware.Sensor.TYPE_MAGNETIC_FIELD: return new float[] { 20f, -30f, -40f, 2 };
+            case android.hardware.Sensor.TYPE_ORIENTATION: return new float[] { 70.3141f, -31.5667f, 17.2294f, 3 };
+            case android.hardware.Sensor.TYPE_GYROSCOPE: return new float[] { 1.5707963f, -0.7853982f, 3.1415927f, 3 };
+            case android.hardware.Sensor.TYPE_LIGHT: return new float[] { 321.5f, 3 };
+            case android.hardware.Sensor.TYPE_PRESSURE: return new float[] { 1013.25f, 3 };
+            case android.hardware.Sensor.TYPE_PROXIMITY: return new float[] { 3f, 3 };
+            case android.hardware.Sensor.TYPE_GRAVITY: return new float[] { 0f, 5.88399f, 7.84532f, 3 };
+            case android.hardware.Sensor.TYPE_LINEAR_ACCELERATION: return new float[] { -0.980665f, -1.96133f, 2.941995f, 3 };
+            case android.hardware.Sensor.TYPE_ROTATION_VECTOR: return new float[] { -0.1f, -0.2f, -0.3f, 0.92736185f, -1f, 3 };
+            case android.hardware.Sensor.TYPE_GAME_ROTATION_VECTOR: return new float[] { 0f, 0f, 0.6f, 0.8f, 3 };
+            default: return null;
+            }
+        }
+
+        @Override
+        public void onAccuracyChanged(android.hardware.Sensor s, int accuracy) {
+            accuracyCalls++;
+        }
+
+        @Override
+        public void onSensorChanged(android.hardware.SensorEvent e) {
+            if (done) return;
+            long now = android.os.SystemClock.elapsedRealtimeNanos();
+            int type = e.sensor.getType();
+            if (type == android.hardware.Sensor.TYPE_ACCELEROMETER) {
+                if (accelEvents > 0) {
+                    if (e.timestamp <= lastAccel) ordered = false;
+                    minGap = Math.min(minGap, e.timestamp - lastAccel);
+                }
+                lastAccel = e.timestamp;
+                accelEvents++;
+            }
+            if (!first.containsKey(type)) {
+                float[] want = expected(type);
+                boolean good = want != null && e.values.length == want.length - 1 && e.accuracy == (int) want[want.length - 1]
+                        && e.timestamp <= now && e.timestamp >= registered - 50_000_000L && android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+                for (int i = 0; good && i < e.values.length; i++) good = Math.abs(e.values[i] - want[i]) < 0.001f;
+                first.put(type, good ? "ok" : Arrays.toString(e.values) + "/" + e.accuracy + "@" + (e.timestamp - registered));
+            }
+            if (!flushing && first.size() == 11 && accelEvents >= 6) {
+                flushing = true;
+                if (!sm.flush(this)) finish("flush=false");
+            }
+        }
+
+        @Override
+        public void onFlushCompleted(android.hardware.Sensor s) {
+            if (++flushed == 11) finish("");
+        }
+
+        private void finish(String why) {
+            done = true;
+            sm.unregisterListener(this);
+            boolean all = true;
+            for (String v : first.values()) all &= "ok".equals(v);
+            boolean good = why.isEmpty() && all && ordered && minGap >= 16_000_000L && accuracyCalls == 11 && flushed == 11;
+            Log.i("DataTest", "sensors-events " + (good ? "ok" : "FAILED " + why) + " first=" + first + " accel=" + accelEvents + " gap=" + minGap / 1000
+                    + "us ordered=" + ordered + " accuracy-calls=" + accuracyCalls + " flushed=" + flushed);
+        }
     }
 
     /*

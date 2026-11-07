@@ -77,6 +77,7 @@
 #include "../src/zip/mg_zip.h"
 #include "mg_camera_standin.h"
 #include "mg_location_standin.h"
+#include "mg_sensor_standin.h"
 #include "mg_codec_standin.h"
 #include "mg_gfx_standin.h"
 #include "mg_gl_standin.h"
@@ -918,6 +919,8 @@ static bool start(const char *apk, const char *android_root)
     if (g_camera_app) cfg.camera = *mg_camera_standin();
     /* The phone in Moscow, the location on (mg_location_standin.c). */
     cfg.location = *mg_location_standin();
+    /* A device with one of each sensor, each reading a known value in Windows' units and signs (mg_sensor_standin.c). */
+    cfg.sensors = *mg_sensor_standin();
     /*
      * A microphone that hears a ramp (mic_start), and a SIM of the country the run's language and region are in, as a
      * phone's is -- the US in the first run (en-US), Russia in the second (ru-RU): the data app's steps microphone,
@@ -2030,7 +2033,7 @@ static int run_natives(void)
     static const char *const steps[] = { "load", "registered", "primitives", "stack-mix", "overloads", "arrays", "bounds", "strings", "callback", "throw-native",
                                          "throw-java", "find-class", "references", "reflection", "monitor", "thread", "thread-daemon", "needed-library", "asset",
                                          "bitmap", "direct-buffer", "configuration", "library-folder", "loaded-once", "own-file", "missing-library",
-                                         "missing-method", "looper-watched", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args", "deep-callbacks" };
+                                         "missing-method", "looper-watched", "sensors", "gc-held", "system-icu", "abi", "device", "string-alloc", "many-args", "deep-callbacks" };
     int at = -1, layout, pic[4], i;
     char want[120];
     memset(pic, 0, sizeof(pic));
@@ -2048,6 +2051,9 @@ static int run_natives(void)
     expect_line(want, &at, 60);
     /* The descriptor the library watches on the main thread's looper: its callback comes with a later turn of the message loop. */
     expect_line("I/NativesTest: looper ok", &at, 30);
+    /* The library's sensor queue on that looper (the stand-in's sensors, mg_sensor_standin.c): its events in Android's units and
+       signs, at the rate it asked for, then the queue ended. */
+    CHECK(wait_line("I/NativesTest: sensors-events ok", 0, 60) >= 0);
     /* Loaded three times over by the app, loaded once. */
     CHECK(find_line("JNI_OnLoad call 2", 0) < 0);
     layout = wait_line("I/NativesTest: layout focus=true", 0, 30);
@@ -2384,8 +2390,9 @@ static int run_data(void)
                                             stand-in that fails politely), the app's network security configuration (an authority of its own
                                             trusted for the names it gives it, the rest refused, pins), Android's key store's key pairs and their
                                             X.509 certificates (and an attestation challenge refused, and a key no provider takes refused at once),
-                                            and the list of decoders: the stand-in's H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. */
-                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
+                                            and the list of decoders: the stand-in's H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. And
+                                            the phone's sensors, the stand-in's (mg_sensor_standin.c), listed and listened to. */
+                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "sensors", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
                                          "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "base64-streams", "piped-streams", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
@@ -2496,6 +2503,30 @@ static int run_data(void)
         CHECK(starts >= 1 && stops == starts);
         CHECK(find_line("location: on: the app may have it", 0) >= 0 && find_line("location: the phone's location is followed, every 1000 ms", 0) >= 0
               && find_line("location: no longer followed", 0) >= 0);
+    }
+    /*
+     * The phone's sensors, asked for in the step "sensors": every sensor's first event in Android's units and signs, the
+     * accelerometer's at the rate asked for, a flush of all, then the listener removed -- each of the stand-in's sensors
+     * started (the accelerometer every 20 ms, SENSOR_DELAY_GAME) and none left running.
+     */
+    CHECK(wait_line("I/DataTest: sensors-events ok", 0, 60) >= 0);
+    {
+        int kind, tries, starts = 0, ms = 0;
+        bool running = true;
+        for (tries = 0; tries < 40 && running; tries++) {
+            running = false;
+            for (kind = MEGLER_SENSOR_ACCELEROMETER; kind <= MEGLER_SENSOR_BAROMETER; kind++) running |= mg_sensor_standin_running(kind);
+            if (running) mg_sleep_ns(100000000ull);
+        }
+        CHECK(!running);
+        mg_sensor_standin_counts(MEGLER_SENSOR_ACCELEROMETER, &starts, NULL, &ms);
+        CHECK(starts >= 1 && ms == 20);
+        for (kind = MEGLER_SENSOR_ACCELEROMETER; kind <= MEGLER_SENSOR_BAROMETER; kind++) {
+            mg_sensor_standin_counts(kind, &starts, NULL, NULL);
+            CHECK(starts >= 1);
+        }
+        CHECK(find_line("sensors: the device has 11: accelerometer, magnetic_field, orientation, gyroscope, light, pressure, proximity, gravity, ", 0) >= 0
+              && find_line("sensors: accelerometer: Test Accelerometer by Megler Tests, of the accelerometer; 39.23 at most, in steps of 0.002394, 10000 us apart", 0) >= 0);
     }
     /* The broadcasts of the step "broadcast-explicit", once delivered: the relayed one, which names Target, reached Target alone. */
     CHECK(wait_line("I/DataTest: broadcast-relay ok relay=1 target=1 off=0 remote=0 here=1 registered=1", 0, 30) >= 0);

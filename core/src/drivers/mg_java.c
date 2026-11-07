@@ -1336,11 +1336,11 @@ static const mg_jhle k_native[] = {
 /* ------------------------------------------- what is not answered yet */
 
 /*
- * The framework's other native classes: web views and sensors. Neither is
- * written here yet. Each of their methods answers zero, false or null, said
- * once in the log for the class, and the framework's own Java makes of that
- * what an app can live with: a sensor is not available, a web view an empty
- * rectangle. (Databases, megler.Sqlite, are mg_java_sqlite.c; sound, megler.Audio,
+ * The framework's other native classes: web views. Not written here yet. Each
+ * of their methods answers zero, false or null, said once in the log for the
+ * class, and the framework's own Java makes of that what an app can live with:
+ * a web view an empty rectangle. (Databases, megler.Sqlite, are mg_java_sqlite.c;
+ * sensors, megler.Sensors, mg_java_sensors.c; sound, megler.Audio,
  * mg_java_audio.c; the decoders behind MediaCodec, megler.MediaCodecNative,
  * mg_java_media.c; OpenGL ES and EGL, mg_java_gl.c and mg_java_gles.c, whose
  * tables are registered after this one: the entries here for their classes are
@@ -1367,17 +1367,8 @@ N(Absent)
         k += (size_t)snprintf(who + k, sizeof(who) - k, "%s%s.%s", n ? " < " : "", up->m->cls->name, up->m->name);
     mg_warn("java: %s is not there yet: its native methods answer nothing (first asked by %s)", cls ? cls->name : "a class of the framework", who[0] ? who : "the layer");
 }
-/*
- * Sensors.available(type): no, and that is no gap to report. The framework's SensorManager asks it for every kind of sensor
- * when the class is first used, which is at every app's start (ContextImpl's table of system services names the class).
- * "There is no such sensor" is the true answer until there are sensors; an app that registers a listener still meets the
- * line above.
- */
-N(Sensors_available) { c->ret.j = 0; }
 static const mg_jhle k_absent[] = {
-    { "megler/Sensors", "available", NULL, Sensors_available },
     { "megler/Web", NULL, NULL, Absent },
-    { "megler/Sensors", NULL, NULL, Absent },
     { "megler/EGLNative", NULL, NULL, Absent },
     { "android/opengl/GLES10", NULL, NULL, Absent },
     { "android/opengl/GLES10Ext", NULL, NULL, Absent },
@@ -2237,6 +2228,7 @@ static MG_HOSTCB void main_thread(void *arg)
         mg_dvm_register(mg_java_camera_natives());
         mg_java_location_set_host(&J.config->location);
         mg_dvm_register(mg_java_location_natives());
+        mg_dvm_register(mg_java_sensors_natives());
         mg_java_gfx_set_host(&J.config->gfx);
         mg_java_gfx_set_present(present, NULL);
         mg_java_gfx_set_present_canvas(present_canvas, NULL);

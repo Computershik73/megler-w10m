@@ -1597,6 +1597,73 @@ typedef struct megler_biometric_host {
     void (MEGLER_CB *cancel)(void *user);
 } megler_biometric_host;
 
+/*
+ * The phone's sensors (Windows.Devices.Sensors), for an app's android.hardware.SensorManager and the NDK's ASensorManager.
+ * The shell says what the device has and hands over what each sensor reads as Windows reads it; the core makes Android's
+ * sensors of them -- Android's types, units, axes and times (core/src/ndk/mg_sensors.c) -- and keeps them stopped while the
+ * app is paused, as Android sends no events to an app in the background.
+ *
+ * A sensor is one of Windows', MEGLER_SENSOR_*, its values as its reading has them:
+ *   ACCELEROMETER     Accelerometer, AccelerometerReadingType Standard: AccelerationX, Y, Z in g, gravity in them, which
+ *                     points the way Windows has it: -1 on Z lying face up, -1 on Y standing upright.
+ *   GRAVITY           Accelerometer of AccelerometerReadingType Gravity: the gravity alone, the same way.
+ *   LINEAR_ACCELERATION  Accelerometer of AccelerometerReadingType Linear: without the gravity, the same way.
+ *   GYROMETER         Gyrometer: AngularVelocityX, Y, Z in degrees a second, positive counterclockwise seen from the axis's end.
+ *   MAGNETOMETER      Magnetometer: MagneticFieldX, Y, Z in microteslas.
+ *   ORIENTATION       OrientationSensor (absolute: north by the magnetometer): its Quaternion's X, Y, Z, W.
+ *   RELATIVE_ORIENTATION  OrientationSensor for relative readings (no magnetometer, its heading arbitrary): the same.
+ *   INCLINOMETER      Inclinometer: PitchDegrees, RollDegrees, YawDegrees.
+ *   LIGHT             LightSensor: IlluminanceInLux.
+ *   PROXIMITY         ProximitySensor: 1 when something is near (IsDetected) and 0 when not, then the distance to it in
+ *                     millimetres (DistanceInMillimeters), or -1 when the sensor does not say one.
+ *   BAROMETER         Barometer: StationPressureInHectopascals.
+ * The axes are the device's own, as its native orientation has them (x to the right, y up, z out of the screen), never
+ * turned with the display. `accuracy` is MEGLER_SENSOR_ACCURACY_*, Windows' MagnetometerAccuracy, where the reading has
+ * one (the magnetometer's DirectionalAccuracy, the orientation's and the inclinometer's YawAccuracy); UNKNOWN elsewhere.
+ * `time_ns` is when it was read, the reading's Timestamp, in nanoseconds since 1970 (UTC); 0 for now.
+ *
+ * The host is asked, on any of the app's threads, and must not wait on the app:
+ *   list(info, max)   what the device has: up to max sensors described into info, their count returned. Asked once, when
+ *                     the app first wants to know; it may wait until the shell has looked.
+ *   start(kind, interval_ms)  that sensor reported every interval_ms, or as often as it can when that is shorter than it
+ *                     can (0: as often as it can), until stop. Asked again with another interval when the app wants
+ *                     another. Returns at once: what it reads comes through megler_sensor_push, from any thread, the first
+ *                     reading as soon as there is one (a sensor that reports only changes: the reading it has now).
+ *   stop(kind)
+ * May be left zero: the app is told the device has no sensors.
+ */
+enum {
+    MEGLER_SENSOR_ACCELEROMETER = 1, MEGLER_SENSOR_GRAVITY = 2, MEGLER_SENSOR_LINEAR_ACCELERATION = 3, MEGLER_SENSOR_GYROMETER = 4,
+    MEGLER_SENSOR_MAGNETOMETER = 5, MEGLER_SENSOR_ORIENTATION = 6, MEGLER_SENSOR_RELATIVE_ORIENTATION = 7, MEGLER_SENSOR_INCLINOMETER = 8,
+    MEGLER_SENSOR_LIGHT = 9, MEGLER_SENSOR_PROXIMITY = 10, MEGLER_SENSOR_BAROMETER = 11
+};
+enum { MEGLER_SENSOR_ACCURACY_UNKNOWN = 0, MEGLER_SENSOR_ACCURACY_UNRELIABLE = 1, MEGLER_SENSOR_ACCURACY_APPROXIMATE = 2, MEGLER_SENSOR_ACCURACY_HIGH = 3 };
+
+typedef struct megler_sensor_info {
+    int kind;                /* MEGLER_SENSOR_* */
+    char name[64];           /* UTF-8: its device's name as Windows has it */
+    char vendor[64];         /* UTF-8: who made it, where Windows says; else empty */
+    int min_interval_ms;     /* the shortest interval it reports at (MinimumReportInterval); 0 for one that reports changes only */
+    double max_range;        /* the most it reads, in its reading's unit (the proximity's MaxDistanceInMillimeters); 0: not said */
+    double resolution;       /* the least step it reads, likewise; 0: not said */
+} megler_sensor_info;
+
+typedef struct megler_sensor_sample {
+    int kind;
+    int accuracy;
+    double values[4];
+    long long time_ns;
+} megler_sensor_sample;
+
+typedef struct megler_sensor_host {
+    void *user;
+    int (MEGLER_CB *list)(void *user, megler_sensor_info *info, int max);
+    void (MEGLER_CB *start)(void *user, int kind, int interval_ms);
+    void (MEGLER_CB *stop)(void *user, int kind);
+} megler_sensor_host;
+/* What a sensor read, from any thread. Nothing happens when no app runs or none wants that sensor. */
+MEGLER_API void megler_sensor_push(const megler_sensor_sample *sample);
+
 typedef struct megler_run_config {
     const char *apk_path;
     /* Optional installed microG APK. Opened as the service package; no copy in each client. */
@@ -1630,6 +1697,8 @@ typedef struct megler_run_config {
     megler_microphone_host microphone;
     /* The phone's check of its user for a Java app's BiometricPrompt (see megler_biometric_host). May be left zero: none. */
     megler_biometric_host biometric;
+    /* The phone's sensors for an app's SensorManager and ASensorManager (see megler_sensor_host). May be left zero: none. */
+    megler_sensor_host sensors;
     /*
      * Drawing for an app whose user interface is Java (see megler_gfx_host). All of it may be left NULL: such an app still starts,
      * lays its views out and takes input, but nothing is drawn (its bitmaps hold only what the layer does itself: erasing, single

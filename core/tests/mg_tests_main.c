@@ -61,6 +61,11 @@
  *       core's camera for android.hardware.Camera: the PC's first camera opened, a few pictures taken at its smallest size and
  *       checked, focus and the light where it has them, stop and close. A PC without a camera says so and has nothing to
  *       check. Only in the build tools/build-tests.sh win makes; any other says so and does nothing
+ *   mg_tests --sensors-windows <scratch dir>
+ *       the shell's sensors (app/Megler/player/SensorHost.cpp: Windows.Devices.Sensors) through megler_sensor_host, under the
+ *       core's sensors for SensorManager and ASensorManager: what this PC has, each read for a moment, its first event said as
+ *       Android's. A PC without sensors says so and has nothing to check. Only in the build tools/build-tests.sh win makes;
+ *       any other says so and does nothing
  *   mg_tests --portal-windows <address> <user> <password> <scratch dir> <received dir> <mock's log>
  *       the Xbox build's client of the console's Device Portal (app/Megler/shell/DevicePortal.cpp) against a portal of the
  *       tests' own at that address (tools/device-portal-mock.py, which tools/build-tests.sh win starts): its handshake, user
@@ -92,6 +97,7 @@
 #include "../src/mg_core.h"
 #include "../src/jni/mg_jni.h"
 #include "../src/ld/mg_ld.h"
+#include "../src/ndk/mg_sensors.h"
 #include "mg_codec_tests.h"
 #include "mg_gfx_record.h"
 #include "mg_gfx_scenes.h"
@@ -966,6 +972,73 @@ static int camera_windows_mode(int argc, char **argv)
 #endif
 }
 
+/* ------------------------------------------------------ --sensors-windows */
+
+#ifdef MG_SENSORS_WINDOWS
+/* mg_sensors_windows.cpp: the shell's own megler_sensor_host. */
+MG_HOSTAPI const megler_sensor_host *mg_sensors_windows_host(void);
+MG_HOSTAPI void mg_sensors_windows_summary(char *out, size_t size);
+#endif
+
+/*
+ * This PC's sensors through the shell's host and the core's, as an app's SensorManager uses them: listed, each started at
+ * 100 ms and read for up to two seconds -- its first event said as Android's, the events' times going forward -- and
+ * stopped. A PC without sensors says so and has nothing to check.
+ */
+static int sensors_windows_mode(int argc, char **argv)
+{
+#ifdef MG_SENSORS_WINDOWS
+    megler_config config;
+    char summary[1500];
+    mg_sensor_queue *q;
+    int checks = 0, failed = 0, i, n;
+    (void)argc;
+    memset(&config, 0, sizeof(config));
+    config.data_dir = argv[2];
+    config.package_dir = argv[2];
+    megler_init(&config);
+    mg_sensors_set_host(mg_sensors_windows_host());
+    mg_sensors_windows_summary(summary, sizeof(summary));
+    printf("  Windows' sensors: %s\n", summary);
+    n = mg_sensors_count();
+    if (n == 0) {
+        printf("(no sensors on this PC: --sensors-windows has nothing to read, and nothing is checked)\n0 checks, 0 failed\n");
+        return 0;
+    }
+    q = mg_sensor_queue_create("the tests", false);
+    for (i = 0; i < n; i++) {
+        const mg_sensor *s = mg_sensors_at(i);
+        mg_sensor_event e;
+        u64 until = mg_time_monotonic_ns() + 2000000000ull;
+        i64 last = 0;
+        int events = 0;
+        bool forward = true;
+        mg_sensor_queue_enable(q, s->handle, 100000);
+        while (mg_time_monotonic_ns() < until) {
+            if (mg_sensor_queue_read(q, &e, 1, 100) != 1) continue;
+            if (e.handle != s->handle) continue;
+            if (events++ == 0)
+                printf("  %s (%s by %s): %.4g %.4g %.4g %.4g %.4g, accuracy %d\n", s->string_type, s->name, s->vendor, e.values[0], e.values[1], e.values[2],
+                       e.values[3], e.values[4], e.accuracy);
+            if (e.timestamp <= last) forward = false;
+            last = e.timestamp;
+        }
+        mg_sensor_queue_disable(q, s->handle);
+        printf("  %s %s: %d events in two seconds%s\n", events ? "ok" : "FAIL", s->string_type, events, forward ? "" : ", NOT in order");
+        checks++;
+        if (!events || !forward) failed++;
+    }
+    mg_sensor_queue_destroy(q);
+    printf("%d checks, %d failed\n", checks, failed);
+    return failed ? 1 : 0;
+#else
+    (void)argc;
+    (void)argv;
+    printf("(the shell's sensors -- Windows.Devices.Sensors -- are not in this build of the tests: --sensors-windows does nothing here; tools/build-tests.sh win runs it)\n");
+    return 0;
+#endif
+}
+
 /* ------------------------------------------------------- --portal-windows */
 
 #ifdef MG_PORTAL_WINDOWS
@@ -999,6 +1072,7 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[1], "--storage-windows")) return storage_windows_mode(argv);
     if (argc >= 4 && !strcmp(argv[1], "--codec-windows")) return codec_windows_mode(argc, argv);
     if (argc >= 3 && !strcmp(argv[1], "--camera-windows")) return camera_windows_mode(argc, argv);
+    if (argc >= 3 && !strcmp(argv[1], "--sensors-windows")) return sensors_windows_mode(argc, argv);
     if (argc >= 8 && !strcmp(argv[1], "--portal-windows")) return portal_windows_mode(argv);
     if (argc >= 5 && !strcmp(argv[1], "--gfx-replay")) return gfx_replay_mode(argc, argv);
     if (argc >= 7 && !strcmp(argv[1], "--gfx-record")) {

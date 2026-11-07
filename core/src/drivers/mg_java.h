@@ -106,6 +106,8 @@ int mg_jlocation_access(bool ask);
 bool mg_jlocation_start(int interval_ms);
 void mg_jlocation_stop(void);
 bool mg_jlocation_last(megler_location *fix);
+/* megler.Sensors: the phone's sensors behind android.hardware.SensorManager, over ndk/mg_sensors.c (mg_java_sensors.c). */
+const mg_jhle *mg_java_sensors_natives(void);
 void mg_java_camera_close_all(void);
 /*
  * The same without Java, as the natives use them, for the tests. A camera is opened by its number and started at one of its
