@@ -1032,6 +1032,27 @@ void mg_java_gl_views_shown(void)
     mg_lock_release(&g_window_lock);
 }
 
+/*
+ * With the lock held: the window is another size (megler_set_surface: the views' picture now comes at it). The views' picture and
+ * the composed one are made again at that size where the window is composed here, every layer's rows are looked at again, and
+ * the next picture is shown whole. The layers' places are their views' to say again, which they do as they are laid out.
+ */
+static void window_resized(i32 width, i32 height)
+{
+    int i;
+    mg_info("java: the window of views and OpenGL frames is %dx%d from now on (it was %dx%d)", (int)width, (int)height, (int)C.width, (int)C.height);
+    C.width = width;
+    C.height = height;
+    for (i = 0; i < MAX_LAYERS; i++) C.layers[i].rows_valid = false;
+    C.have_views = C.shown_whole = false;
+    if (C.views) {
+        free(C.views);
+        free(C.out);
+        C.views = C.out = NULL;
+        compose_here();
+    }
+}
+
 bool mg_java_gl_views(const void *pixels, int width, int height, int stride, const i32 part[4])
 {
     i32 x0 = 0, y0 = 0, x1 = width, y1 = height, r, sx0, sy0, sx1, sy1;
@@ -1040,10 +1061,11 @@ bool mg_java_gl_views(const void *pixels, int width, int height, int stride, con
     char probe[600];
     probe[0] = 0;
     mg_lock_acquire(&g_window_lock);
-    if (!C.used || width != C.width || height != C.height || !pixels) {
+    if (!C.used || !pixels || width <= 0 || height <= 0) {
         mg_lock_release(&g_window_lock);
         return false;
     }
+    if (width != C.width || height != C.height) window_resized(width, height);
     /* The views come here while the shell composes the window only when it could not show them: it is composed here from now on. */
     if (C.shell > 0) stop_shell();
     if (C.have_views && part && part[2] > part[0] && part[3] > part[1]) {

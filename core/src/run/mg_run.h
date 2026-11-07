@@ -87,6 +87,23 @@ void mg_cellular_set(const mg_cellular *now);
 
 /* The running app's configuration and window host, for the layers below (EGL presents through the host). */
 const megler_run_config *mg_run_config(void);
+
+/*
+ * The app's surface now: megler_run_config's size, density and rotation as the run starts, and what megler_set_surface says
+ * after that. Every driver reads them here, not in the config, which keeps the start's; any thread. `seq` goes up at each
+ * change, so that a driver can tell one it has not acted on yet.
+ */
+typedef struct mg_surface {
+    int width, height, density_dpi, rotation;
+    u32 seq;
+} mg_surface;
+void mg_run_surface(mg_surface *out);
+/* As the run starts (mg_run_start; a test that starts a driver without megler_run, before it does): the config's. */
+void mg_run_surface_start(int width, int height, int density_dpi, int rotation);
+/* megler_set_surface: kept, and the running driver told (mg_driver.resize). */
+void mg_run_set_surface(int width, int height, int density_dpi, int rotation);
+/* How a game wants its screen held, from setRequestedOrientation through its JNI (megler_display_host.orientation): told when it changes. */
+void mg_run_orientation_requested(int requested);
 void mg_run_count_frame(void);
 /* The app has ended; tells the shell once. */
 void mg_run_ended(int status, const char *reason);

@@ -26,6 +26,11 @@ typedef struct mg_driver {
     void (*stop)(void);
     /* megler_back: Back, and what the app did with it (MEGLER_BACK_*); NULL where only megler_key has it. */
     int (*back)(unsigned quiet_ms, unsigned max_ms);
+    /*
+     * megler_set_surface: the surface is another size or turned (mg_run_surface has it now). Any thread; returns at once. NULL
+     * where the driver looks for it itself (the Java driver's main loop, at its next poll).
+     */
+    void (*resize)(void);
 } mg_driver;
 
 const mg_driver *mg_driver_find(const char *engine);

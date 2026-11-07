@@ -273,7 +273,9 @@ MEGLER_API char *megler_bundle_unpack(const char *bundle_path, const char *apk_p
  *                    bytes, in memory B, G, R, A, colour already multiplied by
  *                    alpha, the top row first, `stride` bytes from one row to
  *                    the next (DXGI_FORMAT_B8G8R8A8_UNORM, row 0 the top: no
- *                    flip). Width and height are megler_run_config's.
+ *                    flip). Width and height are the surface's: megler_run_config's,
+ *                    and after megler_set_surface its (a picture drawn before it may
+ *                    still come at the old size).
  *                    COPY IT BEFORE RETURNING: the memory is the app's own
  *                    bitmap and is drawn into again as soon as this returns.
  *                    Then show the copy, on the shell's own thread or this
@@ -1460,6 +1462,48 @@ typedef struct megler_system_bars_host {
 } megler_system_bars_host;
 
 /*
+ * The app's screen -- its size, its density and which way up it is -- for every app, as Android has them in its
+ * configuration (Configuration.orientation, screenWidthDp, screenHeightDp, smallestScreenWidthDp, screenLayout,
+ * densityDpi), in DisplayMetrics, WindowMetrics and Display.getRotation, and as a game's AConfiguration and ANativeWindow.
+ *
+ * The app asks, through megler_display_host in megler_run_config:
+ *   orientation(requested)  how the activity in front wants the screen held, as Android's
+ *                 ActivityInfo.SCREEN_ORIENTATION_* says it (MEGLER_ORIENTATION_*): from its manifest's
+ *                 android:screenOrientation as it comes to the front and from Activity.setRequestedOrientation -- a Java
+ *                 app's, or a game's through JNI (Unity's). "behind" is never said: what the activity under it wants is
+ *                 said instead. Called when it changes, on one of the app's threads, and must return at once; the shell
+ *                 turns the screen on its own thread (Windows' DisplayInformation.AutoRotationPreferences) or, where the
+ *                 window does not turn (a PC's), gives the app a surface of the shape it asked for, letterboxed, as
+ *                 Android does on a large screen. Left NULL, the app runs and the screen is as the shell keeps it.
+ * The shell tells:
+ *   megler_set_surface(width, height, density_dpi, rotation)  the app's surface is now `width` x `height` pixels at
+ *                 `density_dpi`, drawn `rotation` quarter turns from the screen's natural way up (Android's
+ *                 Surface.ROTATION_0 to _270: 1 is a phone upright by nature turned a quarter anticlockwise, Windows'
+ *                 DisplayOrientations.Landscape on it): the window was resized, or the phone turned. Any thread; it
+ *                 returns at once. A Java app's windows are laid out again at the new size, and its activities have
+ *                 Android's configuration change: one whose android:configChanges takes all that changed hears
+ *                 onConfigurationChanged, the others are made again with the state they saved, as ActivityThread
+ *                 relaunches them -- an activity that is not on the screen when it comes back -- and a change of size
+ *                 that crosses none of the sizes the app's resources are made for (w600dp, sw720dp...) relaunches
+ *                 nothing, as on Android. A game's window is made again at the new size and the game hears
+ *                 onConfigurationChanged. The pictures after it are of the new size; one already on its way may still be
+ *                 of the old. Call it when a resize has settled, not at every step of a drag: each call is a configuration
+ *                 change, which may relaunch the activity. Until it is called the surface is megler_run_config's.
+ */
+enum {
+    MEGLER_ORIENTATION_UNSPECIFIED = -1, MEGLER_ORIENTATION_LANDSCAPE = 0, MEGLER_ORIENTATION_PORTRAIT = 1, MEGLER_ORIENTATION_USER = 2,
+    MEGLER_ORIENTATION_BEHIND = 3, MEGLER_ORIENTATION_SENSOR = 4, MEGLER_ORIENTATION_NOSENSOR = 5, MEGLER_ORIENTATION_SENSOR_LANDSCAPE = 6,
+    MEGLER_ORIENTATION_SENSOR_PORTRAIT = 7, MEGLER_ORIENTATION_REVERSE_LANDSCAPE = 8, MEGLER_ORIENTATION_REVERSE_PORTRAIT = 9,
+    MEGLER_ORIENTATION_FULL_SENSOR = 10, MEGLER_ORIENTATION_USER_LANDSCAPE = 11, MEGLER_ORIENTATION_USER_PORTRAIT = 12,
+    MEGLER_ORIENTATION_FULL_USER = 13, MEGLER_ORIENTATION_LOCKED = 14
+};
+
+typedef struct megler_display_host {
+    void *user;
+    void (MEGLER_CB *orientation)(void *user, int requested);
+} megler_display_host;
+
+/*
  * What a Java app asks of the phone beyond its own window. Each call comes on the app's thread and must return at once; the
  * shell does it on its own thread. Any call left NULL: the app runs, and the log says what it asked.
  *   open_url     A link to open, UTF-8: what the app starts with Intent.ACTION_VIEW (or SENDTO, DIAL) when none of its own
@@ -1612,9 +1656,13 @@ typedef struct megler_run_config {
     const char *splits_dir;
     const char *const *split_apks;
     int split_count;
-    /* The surface the app draws to, in pixels, and the density Android should report (160 is 1:1; a phone is 320-480). */
+    /* The surface the app draws to, in pixels, and the density Android should report (160 is 1:1; a phone is 320-480), as it
+       starts: megler_set_surface changes them while it runs. */
     int width, height;
     int density_dpi;
+    /* Which way up the surface is drawn as the app starts, in quarter turns from the screen's natural way up (Android's
+       Surface.ROTATION_*; see megler_display_host). */
+    int rotation;
     megler_window_host window;
     megler_audio_host audio;
     megler_media_host media;
@@ -1648,6 +1696,8 @@ typedef struct megler_run_config {
     megler_keyboard_host keyboard;
     /* The bars a Java app wants hidden (see megler_system_bars_host). May be left NULL. */
     megler_system_bars_host bars;
+    /* Which way up the app wants its screen (see megler_display_host). May be left NULL. */
+    megler_display_host display;
     /* What a Java app's media session says it plays (see megler_media_session_host). May be left NULL. */
     megler_media_session_host media_session;
     /* What a Java app asks of the phone beyond its window: links, sharing, installing, other apps (see megler_system_host). May be left NULL. */
@@ -1731,6 +1781,8 @@ MEGLER_API void megler_keyboard_closed(void);
 MEGLER_API void megler_keyboard_height(int pixels);
 /* How much of each edge of the surface the phone's bars cover, in pixels, for a Java app: see megler_system_bars_host. Any thread. */
 MEGLER_API void megler_set_insets(int left, int top, int right, int bottom);
+/* The app's surface resized or turned, for any app: see megler_display_host. Any thread. */
+MEGLER_API void megler_set_surface(int width, int height, int density_dpi, int rotation);
 /* The app went to the background or came back; lost or gained input focus. */
 MEGLER_API void megler_set_paused(bool paused);
 /*
