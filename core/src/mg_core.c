@@ -225,7 +225,11 @@ static MG_HOSTCB bool on_fault(mg_fault *f)
             return true;
         }
 #elif MG_ARCH_ARM64
-        /* A patched svc's UDF (arm64/mg_patch_arm64.c): the call's number in x8, its arguments in x0..x5, what it gives in x0. */
+        /*
+         * A patched svc's UDF (arm64/mg_patch_arm64.c): one with no piece of island in reach, or a piece's own trap, where
+         * a thread with no stack for system calls is sent; mg_arm64_syscall_call makes the call as this does. The call's
+         * number in x8, its arguments in x0..x5, what it gives in x0.
+         */
         if (mg_patch_svc_target(pc, &target)) {
             long args[6];
             int i;
@@ -637,6 +641,12 @@ void mg_core_svc_calls(u32 *made, u32 *on_block)
 {
     *made = (u32)g_svc_calls;
     *on_block = (u32)g_svc_on_block;
+}
+
+void mg_core_count_svc(bool on_block)
+{
+    mg_atomic_add(&g_svc_calls, 1);
+    if (on_block) mg_atomic_add(&g_svc_on_block, 1);
 }
 
 void mg_core_set_crash_hook(void (*hook)(const char *report)) { g_crash_hook = hook; }
