@@ -21,33 +21,51 @@ public final class ViewTreeObserver {
     private final CopyOnWriteArrayList<OnScrollChangedListener> mScroll = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<OnTouchModeChangeListener> mTouchMode = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Runnable> mFrameCommit = new CopyOnWriteArrayList<>();
+    /*
+     * A view's own observer, made while it was in no window, is merged into its window's when it is attached, and is dead
+     * from then on (isAlive false), as on Android, where AndroidX's OneShotPreDrawListener and its kind then take the view's
+     * observer anew to remove themselves. isAlive was always true, so such listeners removed themselves from the dead one
+     * and stayed in the window's, run at every layout or frame (likely what YouTube's warnings "TraceableOnGlobalLayoutListener
+     * .onGlobalLayout[ogn] is called 2" to "274" while an ad played say, package 606). What is still added to or removed from
+     * a dead one goes to the one it was merged into, as Android's would only throw IllegalStateException.
+     */
+    private volatile boolean mAlive = true;
+    private ViewTreeObserver mMergedInto;
     public ViewTreeObserver() {}
     void merge(ViewTreeObserver o) {
         mLayout.addAll(o.mLayout); mPreDraw.addAll(o.mPreDraw); mDraw.addAll(o.mDraw); mFocus.addAll(o.mFocus); mAttach.addAll(o.mAttach);
-        mGlobalFocus.addAll(o.mGlobalFocus); mScroll.addAll(o.mScroll); mTouchMode.addAll(o.mTouchMode);
+        mGlobalFocus.addAll(o.mGlobalFocus); mScroll.addAll(o.mScroll); mTouchMode.addAll(o.mTouchMode); mFrameCommit.addAll(o.mFrameCommit);
+        o.mMergedInto = this;
+        o.mAlive = false;
     }
-    public boolean isAlive() { return true; }
-    public void addOnGlobalLayoutListener(OnGlobalLayoutListener l) { mLayout.add(l); }
-    public void removeOnGlobalLayoutListener(OnGlobalLayoutListener l) { mLayout.remove(l); }
-    @Deprecated public void removeGlobalOnLayoutListener(OnGlobalLayoutListener l) { mLayout.remove(l); }
-    public void addOnPreDrawListener(OnPreDrawListener l) { mPreDraw.add(l); }
-    public void removeOnPreDrawListener(OnPreDrawListener l) { mPreDraw.remove(l); }
-    public void addOnDrawListener(OnDrawListener l) { mDraw.add(l); }
-    public void removeOnDrawListener(OnDrawListener l) { mDraw.remove(l); }
-    public void addOnWindowFocusChangeListener(OnWindowFocusChangeListener l) { mFocus.add(l); }
-    public void removeOnWindowFocusChangeListener(OnWindowFocusChangeListener l) { mFocus.remove(l); }
-    public void addOnWindowAttachListener(OnWindowAttachListener l) { mAttach.add(l); }
-    public void removeOnWindowAttachListener(OnWindowAttachListener l) { mAttach.remove(l); }
-    public void addOnGlobalFocusChangeListener(OnGlobalFocusChangeListener l) { mGlobalFocus.add(l); }
-    public void removeOnGlobalFocusChangeListener(OnGlobalFocusChangeListener l) { mGlobalFocus.remove(l); }
-    public void addOnScrollChangedListener(OnScrollChangedListener l) { mScroll.add(l); }
-    public void removeOnScrollChangedListener(OnScrollChangedListener l) { mScroll.remove(l); }
-    public void addOnTouchModeChangeListener(OnTouchModeChangeListener l) { mTouchMode.add(l); }
-    public void removeOnTouchModeChangeListener(OnTouchModeChangeListener l) { mTouchMode.remove(l); }
+    public boolean isAlive() { return mAlive; }
+    /** The observer listeners are added to and removed from: this one, or the one this dead one was merged into. */
+    private ViewTreeObserver live() {
+        ViewTreeObserver o = this;
+        while (!o.mAlive && o.mMergedInto != null) o = o.mMergedInto;
+        return o;
+    }
+    public void addOnGlobalLayoutListener(OnGlobalLayoutListener l) { live().mLayout.add(l); }
+    public void removeOnGlobalLayoutListener(OnGlobalLayoutListener l) { live().mLayout.remove(l); }
+    @Deprecated public void removeGlobalOnLayoutListener(OnGlobalLayoutListener l) { live().mLayout.remove(l); }
+    public void addOnPreDrawListener(OnPreDrawListener l) { live().mPreDraw.add(l); }
+    public void removeOnPreDrawListener(OnPreDrawListener l) { live().mPreDraw.remove(l); }
+    public void addOnDrawListener(OnDrawListener l) { live().mDraw.add(l); }
+    public void removeOnDrawListener(OnDrawListener l) { live().mDraw.remove(l); }
+    public void addOnWindowFocusChangeListener(OnWindowFocusChangeListener l) { live().mFocus.add(l); }
+    public void removeOnWindowFocusChangeListener(OnWindowFocusChangeListener l) { live().mFocus.remove(l); }
+    public void addOnWindowAttachListener(OnWindowAttachListener l) { live().mAttach.add(l); }
+    public void removeOnWindowAttachListener(OnWindowAttachListener l) { live().mAttach.remove(l); }
+    public void addOnGlobalFocusChangeListener(OnGlobalFocusChangeListener l) { live().mGlobalFocus.add(l); }
+    public void removeOnGlobalFocusChangeListener(OnGlobalFocusChangeListener l) { live().mGlobalFocus.remove(l); }
+    public void addOnScrollChangedListener(OnScrollChangedListener l) { live().mScroll.add(l); }
+    public void removeOnScrollChangedListener(OnScrollChangedListener l) { live().mScroll.remove(l); }
+    public void addOnTouchModeChangeListener(OnTouchModeChangeListener l) { live().mTouchMode.add(l); }
+    public void removeOnTouchModeChangeListener(OnTouchModeChangeListener l) { live().mTouchMode.remove(l); }
     public void addOnWindowVisibilityChangeListener(OnWindowVisibilityChangeListener l) {}
     public void removeOnWindowVisibilityChangeListener(OnWindowVisibilityChangeListener l) {}
-    public void registerFrameCommitCallback(Runnable r) { mFrameCommit.add(r); }
-    public boolean unregisterFrameCommitCallback(Runnable r) { return mFrameCommit.remove(r); }
+    public void registerFrameCommitCallback(Runnable r) { live().mFrameCommit.add(r); }
+    public boolean unregisterFrameCommitCallback(Runnable r) { return live().mFrameCommit.remove(r); }
     public final void dispatchOnGlobalLayout() { for (OnGlobalLayoutListener l : mLayout) l.onGlobalLayout(); }
     void dispatchGlobalLayout() { dispatchOnGlobalLayout(); }
     public final boolean dispatchOnPreDraw() { boolean cancel = false; for (OnPreDrawListener l : mPreDraw) cancel |= !l.onPreDraw(); return cancel; }

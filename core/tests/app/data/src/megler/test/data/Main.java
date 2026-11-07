@@ -1289,6 +1289,36 @@ public class Main extends Activity {
             detail = "before " + before + ", at the second start " + atStart[0] + ", at its end " + a.getAnimatedValue();
             return Float.valueOf(0f).equals(before) && atStart[0] instanceof Float && Float.valueOf(10f).equals(a.getAnimatedValue());
         });
+        // A view's observer taken before the view is in a window is dead once it is (merged into the window's): a one-shot
+        // listener added to it removes itself through the view's observer then, as AndroidX's OneShotPreDrawListener and
+        // YouTube's TraceableOnGlobalLayoutListener do, and is run once (it stayed in the window's, run at every layout), while
+        // one left in place hears several layouts. Said after them.
+        step("observer-merged", () -> {
+            final android.view.View v = new android.view.View(this);
+            final android.view.ViewTreeObserver before = v.getViewTreeObserver();
+            final int[] runs = new int[2];
+            final boolean[] deadWhenRun = new boolean[1];
+            final android.view.ViewTreeObserver.OnGlobalLayoutListener layouts = () -> runs[1]++;
+            before.addOnGlobalLayoutListener(layouts);
+            before.addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+                @Override public void onGlobalLayout() {
+                    runs[0]++;
+                    deadWhenRun[0] = !before.isAlive();
+                    if (before.isAlive()) before.removeOnGlobalLayoutListener(this);
+                    else v.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                }
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(v, new android.view.ViewGroup.LayoutParams(10, 10));
+            v.postDelayed(() -> {
+                // (Three more global layouts told by hand, as a view's code may: dispatchOnGlobalLayout is public.)
+                android.view.ViewTreeObserver now = v.getViewTreeObserver();
+                for (int k = 0; k < 3; k++) now.dispatchOnGlobalLayout();
+                now.removeOnGlobalLayoutListener(layouts);
+                Log.i("DataTest", "observer-merged runs=" + runs[0] + " dead=" + deadWhenRun[0] + " layouts=" + (runs[1] >= 3 ? "several" : String.valueOf(runs[1])));
+                ((android.view.ViewGroup) v.getParent()).removeView(v);
+            }, 500);
+            return true;
+        });
         // A typeface built from a font file open on a descriptor (Typeface.Builder(FileDescriptor), as Google Play services
         // loads its downloaded fonts): made, and the descriptor still open after.
         step("typeface-descriptor", () -> {
