@@ -363,8 +363,8 @@ static i32 jit_switches(i32 n)
  * The JIT (mg_dvm_jit.c, docs/JIT.md) with its threshold at 1: each of t.Jit's loops compiled at its first jump back,
  * and what they return as Java says. Exits too: a divisor of zero, an index out of bounds and a null array inside a
  * compiled loop throw as interpreted; calls made from compiled code, their exceptions and deep recursion through them; long
- * arithmetic and switches. Where the host runs no Thumb-2
- * (x64) nothing is compiled and the same answers are the interpreter's.
+ * arithmetic and switches. Where the JIT has no back end (MG_DVM_JIT) nothing is compiled and the same answers are the
+ * interpreter's.
  */
 static void test_jit(void)
 {
@@ -499,16 +499,16 @@ static void test_jit(void)
         A[0].i = 120;
         CHECK_INT(call("t/Jit", "inlined", "(I)I").i, jit_inlined(120));
         CHECK_STR(thrown(), "");
-#if defined(__arm__) || defined(_M_ARM)
+#if MG_DVM_JIT
         /* setI, getI, seven, total, setC, getC, touch, getJ, getO */
         CHECK_INT((i32)(g_dvm_jit_in_place - in_place), 9);
 #else
         (void)in_place;
 #endif
     }
-    /* Compiled, where the host runs Thumb-2. */
+    /* Compiled, where the JIT has a back end. */
     c = mg_dvm_find_class("t/Jit");
-#if defined(__arm__) || defined(_M_ARM)
+#if MG_DVM_JIT
     {
         static const struct { const char *name, *sig; } compiled[] = {
             { "sum", "([I)I" }, { "fill", "([I[B[C[SI)I" }, { "mix", "(II)I" }, { "conditions", "(I)I" }, { "divideAll", "(I[I)I" },

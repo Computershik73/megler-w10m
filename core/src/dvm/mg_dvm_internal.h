@@ -667,7 +667,7 @@ void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m);
  * goes on at; false when there is no code to run there (nothing done). Only where the JIT has a back end (MG_DVM_JIT):
  * elsewhere always false.
  */
-#define MG_DVM_JIT MG_ARCH_ARM32
+#define MG_DVM_JIT (MG_ARCH_ARM32 || MG_ARCH_ARM64)
 typedef struct mg_dvm_jit_code mg_dvm_jit_code;
 /*
  * What compiled code is run with (a register holds it): the frame's registers, the flag that says instructions are
