@@ -17,6 +17,7 @@
 #include "player/PermissionHost.h"
 #include "player/PhoneEvents.h"
 #include "player/PhoneState.h"
+#include "player/SensorHost.h"
 #include "player/StorageHost.h"
 
 #include "shell/AppPackage.h"
@@ -285,6 +286,9 @@ bool start(const ApkEntry& apk, winrt::Windows::UI::Xaml::Controls::SwapChainPan
         config.microphone = MicrophoneHost::shared().callbacks();
         // A Java app's BiometricPrompt and FingerprintManager: Windows Hello (player/BiometricHost.h).
         config.biometric = biometricHost::callbacks();
+        // A Java app's SensorManager and native code's ASensorManager: Windows.Devices.Sensors (player/SensorHost.h); what
+        // the device has is looked for from here on, while the app starts.
+        config.sensors = SensorHost::shared().callbacks();
         // For an app that is Java: its drawing, and where Android's libcore and the framework are -- NULL is the folder
         // `android` of the installed package, which is where tools/build-appx.sh --libcore (or --java) puts them. An app
         // with a native engine uses neither.
