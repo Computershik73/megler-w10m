@@ -45,6 +45,13 @@ static void test_gc_census(void)
     int i, unmarked = 0;
     say("the collector: a census (marks only)");
     if (!garbage) return;
+    /*
+     * (No collection of the tests' own budget among these, as in test_gc_collect: one alongside the app, asked by the
+     * allocations below, swept the garbage before the census counted it, which then found every object reachable, 20320
+     * of 20320, in a Windows run of 2026-11-07.)
+     */
+    mg_dvm_gc_alongside_wait();
+    mg_dvm_gc_set_min_budget(64u << 20);
     for (i = 0; i < 100; i++) garbage[i] = (mg_addr)mg_dvm_new_array("[B", 40 + i);
     global = mg_dvm_new_string("held by a global reference");
     mg_dvm_add_root(&global);
@@ -75,6 +82,7 @@ static void test_gc_census(void)
     for (i = 0; i < 100; i++) unmarked += !mg_dvm_gc_marked((mg_jobj *)garbage[i]);
     say("  %d of the 100 arrays nothing holds were found unreachable", unmarked);
     CHECK(unmarked >= 95);
+    mg_dvm_gc_set_min_budget(1u << 20);
     free(garbage);
     mg_atomic_xchg(&h.stage, 2);
     if (t) mg_thread_join(t);
