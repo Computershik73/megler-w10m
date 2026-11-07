@@ -1162,7 +1162,10 @@ std::wstring installedApk(const std::string& fullName) {
 }
 
 bool canRead(const std::wstring& apk) {
-    winrt::file_handle h{CreateFile2(apk.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING, nullptr)};
+    // (Another's writing allowed: the once-a-build check of the bundled APKs holds each copy open for writing while it compares
+    // it (bundledApks::checkLater, files::mend), and Google Play services' registration after Update All's install of it,
+    // asking here at that moment, failed: no app had it until GMS's own package was opened.)
+    winrt::file_handle h{CreateFile2(apk.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, nullptr)};
     char head[4] = {};
     DWORD got = 0;
     return h && ReadFile(h.get(), head, sizeof(head), &got, nullptr) && got == 4 && !memcmp(head, "PK\3\4", 4);

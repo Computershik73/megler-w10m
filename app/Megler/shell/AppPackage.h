@@ -30,7 +30,7 @@ struct SingleApp {
     std::string label;
     std::wstring apkFolder;    // the folder with app.apk and its report (in the shared folder; in the install folder before 645)
     std::wstring androidRoot;  // Android's libcore and framework, in the shared folder
-    std::wstring megler;       // the package family name of the Megler that made it; empty in a package made before 0.1.0.940
+    std::wstring megler;       // the package family name of the Megler that made it; empty in a package made before Megler wrote it
 };
 const SingleApp& single();
 inline bool isSingleApp() { return !single().package.empty(); }

@@ -139,6 +139,22 @@ void removeUnusedApks(const std::vector<appPackage::InstalledApp>& installed) {
     appPackage::removeUnusedSharedApks(installed, used);
 }
 
+/// Google Play services installed as an app of its own (Google's or microG's) and not the apps' registered service: its
+/// registration after the install failed -- one tried while the once-a-build check of the bundled APKs held its APK open
+/// failed so after an Update All, and the record of the package it replaced was then forgotten -- and the apps ran with
+/// microG, Play Store refusing to start, until Google Play services' own package was opened. Registered from the library's
+/// entry, which costs nothing where it is registered already (appPackage::registerServiceApk). Off the UI thread.
+void registerInstalledServices(const std::vector<appPackage::InstalledApp>& installed) {
+    if (appPackage::isSingleApp()) return;
+    for (const ApkEntry& e : Library::instance().entries()) {
+        if (e.report.package != "com.google.android.gms" || e.installedPackage.empty()) continue;
+        if (std::none_of(installed.begin(), installed.end(), [&](const appPackage::InstalledApp& a) { return a.fullName == e.installedPackage; }))
+            continue;
+        if (!appPackage::registerServiceApk(e, e.installedPackage, false))
+            shellLog::write("separate apps: " + e.installedPackage + " is installed and still not the apps' Google Play services");
+    }
+}
+
 /// The list of the apps' packages, asked for again: Windows's package manager's, the Device Portal's where Windows will not
 /// answer (appPackage::installedApps). Off the UI thread.
 void list() {
@@ -169,6 +185,7 @@ void list() {
     // the copies of Google Play services' APK but the one registered, and the APKs apps handed over that were left. Then what
     // the shared folder holds, once a run.
     if (ok) appPackage::removeUnusedAndroidRoots(apps);
+    if (ok) registerInstalledServices(apps);
     if (ok) removeUnusedApks(apps);
     appPackage::removeUnusedServiceCopies();
     appPackage::removeOldHandedApks();
