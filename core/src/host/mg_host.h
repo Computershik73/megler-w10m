@@ -137,6 +137,20 @@ MG_HOSTAPI u64 mg_mem_page_faults(void);
 typedef struct mg_thread mg_thread;
 typedef void (MG_HOSTCB *mg_thread_fn)(void *arg);
 
+/*
+ * What a thread of the app's (a guest pthread, a Java thread) gets beyond the stack it asks for: 64 KB on Windows ARM64,
+ * nothing elsewhere. There a fault, or a system call of an app's own left a trap (arm64/mg_patch_arm64.c), is an exception
+ * dispatched on the thread's own stack below its sp -- KiUserExceptionDispatcher's CONTEXT and record (0x3b0 bytes),
+ * RtlDispatchException's 0x2a0, the vectored handlers' frames and the core's fault handler's 5.6 KB -- where Android's
+ * kernel takes nothing of the thread's stack: an app that sizes a stack for what its own code needs leaves none of that
+ * at the bottom of it, and the process ended in RtlDispatchException's first store into its frame (GitHub issue 4).
+ */
+#if MG_ARCH_ARM64 && MG_HOST_WINDOWS
+#define MG_STACK_FAULT_ROOM ((size_t)64 << 10)
+#else
+#define MG_STACK_FAULT_ROOM ((size_t)0)
+#endif
+
 MG_HOSTAPI mg_thread *mg_thread_start(mg_thread_fn fn, void *arg, size_t stack_size, const char *name);
 MG_HOSTAPI void mg_thread_join(mg_thread *t);     /* frees t */
 MG_HOSTAPI void mg_thread_detach(mg_thread *t);   /* frees t */
