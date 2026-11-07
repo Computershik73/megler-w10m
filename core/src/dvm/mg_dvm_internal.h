@@ -662,15 +662,17 @@ bool mg_dvm_stub_listed(const char *cls, const char *name, const char *sig);
 void mg_dvm_stub_called(const mg_dvm_method *caller, mg_dvm_method *m);
 
 /*
- * mg_dvm_jit.c (docs/JIT.md): the method compiled to Thumb-2 once its jumps back pass the threshold, and run from `pc`, a
- * branch target, on the frame's registers until it hands the frame back: true with *next the pc the interpreter goes on
- * at; false when there is no code to run there (nothing done). Where there is no JIT (x64), always false.
+ * mg_dvm_jit.c (docs/JIT.md): the method compiled to machine code once its jumps back pass the threshold, and run from
+ * `pc`, a branch target, on the frame's registers until it hands the frame back: true with *next the pc the interpreter
+ * goes on at; false when there is no code to run there (nothing done). Only where the JIT has a back end (MG_DVM_JIT):
+ * elsewhere always false.
  */
+#define MG_DVM_JIT MG_ARCH_ARM32
 typedef struct mg_dvm_jit_code mg_dvm_jit_code;
 /*
- * What compiled code is run with (r5 holds it): the frame's registers, the flag that says instructions are watched, the pc
- * it hands the frame back at, the thread and the frame for the calls it makes (mg_dvm_jit_invoke), and the result of the
- * last call, which move-result reads. Its layout is the code's (mg_dvm_jit.c, JIT_CTX_*).
+ * What compiled code is run with (a register holds it): the frame's registers, the flag that says instructions are
+ * watched, the pc it hands the frame back at, the thread and the frame for the calls it makes (mg_dvm_jit_invoke), and the
+ * result of the last call, which move-result reads. Its layout is the code's (each back end's JIT_CTX_*).
  */
 typedef struct mg_dvm_jit_ctx {
     mg_dvm_reg *regs;
@@ -696,7 +698,7 @@ struct mg_dvm_jit_code {
     u32 in_place;
     /*
      * Where the code is entered, in the order of their pcs: the heads of the loops compiled whole and the method's start,
-     * each with its halfword in the code +1. (A table by pc took four bytes for every instruction of the method, for the
+     * each with its unit in the code +1. (A table by pc took four bytes for every instruction of the method, for the
      * one to three entries most have.)
      */
     u32 nentries;
@@ -704,7 +706,18 @@ struct mg_dvm_jit_code {
         u32 pc, at;
     } entries[];
 };
-/* The code's entry at `pc`, as its halfword +1; 0 for none. */
+/*
+ * Where the code of an entry is (`at`: its unit in the code +1, mg_dvm_jit_entry): a Thumb-2 halfword's address, with bit 0
+ * set (Thumb); an A64 word's; an x86 byte's.
+ */
+#if MG_ARCH_ARM32
+#define MG_DVM_JIT_AT(c, at) ((const void *)((c)->pages + (size_t)((at) - 1) * 2 + 1))
+#elif MG_ARCH_ARM64
+#define MG_DVM_JIT_AT(c, at) ((const void *)((c)->pages + (size_t)((at) - 1) * 4))
+#else
+#define MG_DVM_JIT_AT(c, at) ((const void *)((c)->pages + (size_t)((at) - 1)))
+#endif
+/* The code's entry at `pc`, as its unit +1; 0 for none. */
 static inline u32 mg_dvm_jit_entry(const mg_dvm_jit_code *c, u32 pc)
 {
     u32 lo = 0, hi = c->nentries;
@@ -769,7 +782,7 @@ static inline int mg_dvm_jit_run(mg_dvm_thread *t, mg_dvm_frame *f, mg_dvm_jit_c
     ctx.pc = 0;
     ctx.t = t;
     ctx.f = f;
-    r = c->run(&ctx, c->pages + (size_t)(at - 1) * 2 + 1);
+    r = c->run(&ctx, MG_DVM_JIT_AT(c, at));
     *next = ctx.pc;
     if (r == 2) {
         *res = ctx.result;
