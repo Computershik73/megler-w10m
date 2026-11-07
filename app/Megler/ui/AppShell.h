@@ -11,6 +11,7 @@
 // and hardware Back goes to the running app.
 #pragma once
 
+#include <deque>
 #include <functional>
 #include <memory>
 #include <string>
@@ -99,6 +100,9 @@ public:
     };
     /// `done` gets the index of the button pressed (-1: dismissed, by Back or a tap beside it) and the field's text.
     void dialog(DialogSpec spec, std::function<void(int button, std::string text)> done);
+    /// The same, shown once no other is up (dialog drops a second): a question an app asked for that must be answered, as a
+    /// permission's (player/PermissionHost.h), waits its turn.
+    void dialogWhenFree(DialogSpec spec, std::function<void(int button, std::string text)> done);
     void alert(std::string title, std::string message);
     /// Whether a dialog is up (dialog() shows one at a time).
     bool dialogShown() const { return dialogOpen_; }
@@ -178,6 +182,7 @@ private:
     winrt::Windows::UI::Xaml::Controls::Grid dialogLayer_{nullptr};
     winrt::Windows::UI::Xaml::Controls::TextBox dialogField_{nullptr};
     std::function<void(int, std::string)> dialogDone_;
+    std::deque<std::pair<DialogSpec, std::function<void(int, std::string)>>> waitingDialogs_; // dialogWhenFree's, in turn
     winrt::Windows::UI::Xaml::DispatcherTimer timer_{nullptr};
     winrt::Windows::UI::Core::CoreDispatcher dispatcher_{nullptr};
     winrt::Windows::System::Display::DisplayRequest displayRequest_{nullptr};

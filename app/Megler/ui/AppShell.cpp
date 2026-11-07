@@ -169,6 +169,19 @@ UIElement AppShell::root() {
         hooks.cannotLaunch = [weak](const std::string& why) {
             if (auto self = weak.lock()) self->alert("Couldn't Start the App", why);
         };
+        // A permission the app requests that Megler asks the user for itself (player/PermissionHost.h), in its turn.
+        hooks.ask = [weak](const std::string& title, const std::string& message, const std::vector<std::string>& buttons, std::function<void(int)> done) {
+            auto self = weak.lock();
+            if (!self) {
+                done(-1);
+                return;
+            }
+            DialogSpec spec;
+            spec.title = title;
+            spec.message = message;
+            spec.buttons = buttons;
+            self->dialogWhenFree(std::move(spec), [done](int button, std::string) { done(button); });
+        };
         systemHost::attach(std::move(hooks));
     }
 
@@ -638,6 +651,18 @@ void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> don
     }
 }
 
+void AppShell::dialogWhenFree(DialogSpec spec, std::function<void(int, std::string)> done) {
+    if (!root_) {
+        if (done) done(-1, std::string());
+        return;
+    }
+    if (dialogOpen_) {
+        waitingDialogs_.emplace_back(std::move(spec), std::move(done));
+        return;
+    }
+    dialog(std::move(spec), std::move(done));
+}
+
 void AppShell::closeDialog(int button) {
     if (!dialogOpen_) return;
     const std::string typed = dialogField_ ? narrow(std::wstring(dialogField_.Text())) : std::string();
@@ -649,6 +674,12 @@ void AppShell::closeDialog(int button) {
     auto done = std::move(dialogDone_);
     dialogDone_ = nullptr;
     if (done) done(button, typed);
+    // The next that waited its turn (dialogWhenFree), unless the answer opened another.
+    if (!dialogOpen_ && !waitingDialogs_.empty()) {
+        auto next = std::move(waitingDialogs_.front());
+        waitingDialogs_.pop_front();
+        dialog(std::move(next.first), std::move(next.second));
+    }
 }
 
 void AppShell::alert(std::string title, std::string message) {

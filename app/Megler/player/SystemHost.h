@@ -9,12 +9,15 @@
 //                megler:run, which plays it when nothing has run yet in its process.
 //   uninstall_app  Megler's uninstaller (ui/AppShell.h, uninstallApp), which asks the user; an app's own package opens
 //                Megler with megler:uninstall?package=.
+//   permission   player/PermissionHost.h: what Windows' privacy settings or the user said of a permission group, and its
+//                question (Windows' own, or Megler's dialog through `ask`) when the app requests one.
 #pragma once
 
 #include "megler.h"
 
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace megler::app::systemHost {
 
@@ -25,6 +28,9 @@ struct Hooks {
     std::function<void(const std::string& package, const std::string& from)> uninstall;
     /// UI thread: another app could not be started; `why` says so in a sentence.
     std::function<void(const std::string& why)> cannotLaunch;
+    /// UI thread: a question for the user, Material's dialog with these buttons (the confirming one last), shown once no
+    /// other is up; `done` gets the button pressed, -1 when it was put away unanswered (Back).
+    std::function<void(const std::string& title, const std::string& message, const std::vector<std::string>& buttons, std::function<void(int)> done)> ask;
 };
 
 /// UI thread, once: where the app's requests go from now on.
@@ -33,6 +39,12 @@ void attach(Hooks hooks);
 megler_system_host callbacks();
 /// The app that runs, for saying who asks (session::start).
 void setRunningApp(const std::string& label, const std::string& package);
+/// Its label ("The app" before one runs) and its Android package (empty before one runs).
+std::string runningLabel();
+std::string runningPackage();
+/// The question of hooks' `ask`, from a thread that may wait (never the UI thread): the button pressed, -1 when it was put
+/// away unanswered, or when there is no one to ask (no shell attached, or no answer within ten minutes).
+int askUser(const std::string& title, const std::string& message, const std::vector<std::string>& buttons);
 /// UI thread: another app the phone has started -- its own package if it has one, else Megler with it (megler:run). With an
 /// activity's class, that activity of it (megler:run's activity; its own package starts it, ui/AppShell.cpp).
 void launch(const std::string& package, const std::string& activity = std::string());
