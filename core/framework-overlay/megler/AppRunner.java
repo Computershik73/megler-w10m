@@ -29,6 +29,10 @@
 // And the screens of Android's Settings an app opens -- the accounts, the app's info -- are Megler's own (megler.SystemScreens),
 // shown on top of the app as Android shows the Settings app's: they had opened nothing.
 //
+// And the app's network security configuration is put in place before its Application is made, where Android 9's
+// handleBindApplication does it (android.security.net.config.NetworkSecurityConfigProvider says why): the authorities its
+// XML names, Ozon's Russian Trusted Root CA among them, are trusted by TLS.
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -118,6 +122,8 @@ public final class AppRunner {
         installClassLoader();
         installComponentFactory();
         ContextImpl base = ContextImpl.app();
+        // As Android's handleBindApplication, before the app's code can make anything of TLS: its network security configuration.
+        android.security.net.config.NetworkSecurityConfigProvider.install(base);
         String appCls = applicationClass != null ? applicationClass : Manifest.applicationClass;
         Application app;
         try { app = sFactory.instantiateApplication(classLoader(), appCls != null ? appCls : Application.class.getName()); }

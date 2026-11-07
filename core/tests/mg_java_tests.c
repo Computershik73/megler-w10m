@@ -2370,10 +2370,12 @@ static int run_data(void)
                                          "environment", "own-folders", "volumes", "space", "permissions", "download", "list-root",
                                          /* And the battery, the time zone, TLS (conscrypt's: a TLS server and client of the app's own on loopback,
                                             and an https URL through Android's HTTP client; or, where its library is not in the Android root, the
-                                            stand-in that fails politely), Android's key store's key pairs and their X.509 certificates (and
-                                            an attestation challenge refused, and a key no provider takes refused at once), and the list of decoders: the stand-in's
-                                            H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. */
-                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "base64-streams", "piped-streams", "codecs",
+                                            stand-in that fails politely), the app's network security configuration (an authority of its own
+                                            trusted for the names it gives it, the rest refused, pins), Android's key store's key pairs and their
+                                            X.509 certificates (and an attestation challenge refused, and a key no provider takes refused at once),
+                                            and the list of decoders: the stand-in's H.264, AAC and MP3 (mg_codec_standin.c), and no H.265. */
+                                         "battery", "connectivity", "dns-servers", "system-libs", "apache-http-legacy", "apache-http-client", "preloaded-drawables", "location", "timezone", "locale", "phone-number", "tls", "tls-loopback", "tls-https",
+                                         "network-trust", "network-trust-domains", "network-trust-pins", "keystore", "keystore-certificates", "keystore-foreign-key", "path-op", "base64-streams", "piped-streams", "codecs",
                                          /* And what Android's WebView asks of the platform before it shows a page, each answered as Android
                                             answers it: the app's id within its user (UserHandle.getAppId), whether cleartext HTTP is
                                             permitted (NetworkSecurityPolicy), a compatibility change's state for the app's target
@@ -2442,6 +2444,11 @@ static int run_data(void)
         say("  TLS: %s", with ? "conscrypt's (its library is in the Android root)" : "the runtime's stand-in, which has none");
         CHECK(find_line(with ? "I/DataTest: tls-is conscrypt provider=com.android.org.conscrypt.OpenSSLProvider" : "I/DataTest: tls-is none provider=megler.security.RuntimeProvider", 0) >= 0);
     }
+    /* The app's network security configuration, said in the log once as it was read (android.security.net.config.XmlConfigSource):
+       the base configuration with Android's authorities alone (its debug-overrides not counted), and a <domain-config> inside
+       another, taking cleartext and the anchors from it. */
+    CHECK(find_line("I/NetworkSecurityConfig: the app's network security configuration xml/network_security_config: base-config: cleartext refused, anchors system;", 0) >= 0);
+    CHECK(find_line("; domain-config of nested.sub.megler.test: cleartext permitted, anchors @raw/trust_test_ca;", 0) >= 0);
     /*
      * What requestPermissions asked comes back by a message of its own, after the method that asked has returned. In the first
      * run the user is asked about the storage, the messages, the phone, the calls and the camera, one after another, and the

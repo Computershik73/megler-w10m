@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The data app's network security configuration (its manifest names it), what Main's steps "network-trust",
+     "network-trust-domains", "network-trust-pins" and "cleartext" check. The test authority, "Megler Test Root CA", which
+     issued the certificate of the app's own TLS server (Main.TRUST_CERT), is in res/raw/trust_test_cas.pem after an authority
+     that issued nothing here, and alone, as DER, in res/raw/trust_test_ca.der. Its pin below is the SHA-256 of its
+     SubjectPublicKeyInfo; the other authority's stands for a key not in the chain; the last is the server's own key's. -->
+<network-security-config>
+    <!-- Any other host: Android's authorities alone, cleartext as the target SDK has it (refused). And an element Android does
+         not know, which it skips (VTB's configuration has this one). -->
+    <base-config>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+        <tls-configuration>
+            <protocols>
+                <protocol>TLSv1.2</protocol>
+            </protocols>
+        </tls-configuration>
+    </base-config>
+    <!-- localhost: the test authority from the PEM file, beside Android's. -->
+    <domain-config>
+        <domain includeSubdomains="false">localhost</domain>
+        <trust-anchors>
+            <certificates src="@raw/trust_test_cas" />
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+    <!-- sub.megler.test and its subdomains: the test authority from the DER file alone, and cleartext permitted. Inside it,
+         nested.sub.megler.test takes both from it, and pinned.sub.megler.test pins the authority's key. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">sub.megler.test</domain>
+        <trust-anchors>
+            <certificates src="@raw/trust_test_ca" />
+        </trust-anchors>
+        <domain-config>
+            <domain>nested.sub.megler.test</domain>
+        </domain-config>
+        <domain-config>
+            <domain>pinned.sub.megler.test</domain>
+            <pin-set>
+                <pin digest="SHA-256">G9nQB5LTbJRfSVtGoDvXDIyOuz+1zV2+MA1oVqH69x4=</pin>
+            </pin-set>
+        </domain-config>
+    </domain-config>
+    <!-- The test authority with a pin of a key the chain does not have: refused; the same pin expired: trusted; the authority
+         overriding pins: trusted; and the pin of the server's own key: trusted. -->
+    <domain-config>
+        <domain>badpin.megler.test</domain>
+        <trust-anchors>
+            <certificates src="@raw/trust_test_ca" />
+        </trust-anchors>
+        <pin-set>
+            <pin digest="SHA-256">t+bBt5pXRAAmBoyD7VQMBQe1ElSmt3KI2ez2bhFxmJI=</pin>
+        </pin-set>
+    </domain-config>
+    <domain-config>
+        <domain>expired.megler.test</domain>
+        <trust-anchors>
+            <certificates src="@raw/trust_test_ca" />
+        </trust-anchors>
+        <pin-set expiration="2020-01-01">
+            <pin digest="SHA-256">t+bBt5pXRAAmBoyD7VQMBQe1ElSmt3KI2ez2bhFxmJI=</pin>
+        </pin-set>
+    </domain-config>
+    <domain-config>
+        <domain>override.megler.test</domain>
+        <trust-anchors>
+            <certificates src="@raw/trust_test_ca" overridePins="true" />
+        </trust-anchors>
+        <pin-set>
+            <pin digest="SHA-256">t+bBt5pXRAAmBoyD7VQMBQe1ElSmt3KI2ez2bhFxmJI=</pin>
+        </pin-set>
+    </domain-config>
+    <domain-config>
+        <domain>leafpin.megler.test</domain>
+        <trust-anchors>
+            <certificates src="@raw/trust_test_ca" />
+        </trust-anchors>
+        <pin-set>
+            <pin digest="SHA-256">pD+Xkmb+lEmEARDnDSbkudmFur1HtxEQkveu4njf1NQ=</pin>
+        </pin-set>
+    </domain-config>
+    <!-- For a debuggable app alone, which this is not: had it counted, every configuration with anchors would have the test
+         authority, and 127.0.0.1 would be trusted. -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="@raw/trust_test_ca" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>
