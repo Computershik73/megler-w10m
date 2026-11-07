@@ -428,6 +428,70 @@ separate app has to be given each such folder by the user once:
 Flags (`LocalState\flags`) are each package's own: `tools/phone-flags.py --app
 <Android package>` sets those of an app's own package.
 
+**The Google APKs Megler brings** (`shell/BundledApks.cpp`). Megler's package
+carries Google Play services, Google Play Store, Google Services Framework and
+microG's Google Play services in its `bitgapps` folder, and Megler copies them:
+into the library (`LocalState\apks\bitgapps-*.apk`), from there into an app's
+folder of the shared folder (`apks\<identity>\<token>\app.apk`), and into
+`<shared>\services` (`gsf`, `microg`, and Google Play services' copy for each
+install of it, `registerServiceApk`). The apps run from those copies, and a byte
+wrong in one stays wrong. On a Lumia 650, Google Play Store hashed its own APK
+as `8xSmBxCuqpRxccCNeBfkQfAGRjU` (SHA-1, as it prints it) where the package's
+`Phonesky.apk` is `DMRUOLPpLf0DK7_5xdCCavX_PrE`, so it refused every patch of
+itself ("SU: Cannot patch com.android.vending:85372300, bad base file hash");
+its APK in the shared folder had come byte for byte (0.1.0.645) from the
+library's copy, which a plain copy had made before copies were compared with
+anything. The same phone's copies of Google Play services had come out twice
+with a bit wrong in a DEX file (0.1.0.625 and 632).
+
+- Every copy of a bundled APK is made byte for byte: copied, put on the disk,
+  and compared chunk by chunk with the package's as the disk holds it
+  (`FILE_FLAG_NO_BUFFERING`, past Windows's cache, which just after a copy
+  still has the pages it wrote), a chunk that differs written again
+  (`files::copyWhole`, `files::mend`). An app's APK, and the services' copy of
+  Google Play services, are copied from the package's own APK, not from the
+  library's, where the library's is a copy of one (`bundledApks::originalOf`).
+- Once for each build of Megler (`LocalState\bundled-apks-checked.txt`), a
+  thread of its own at background priority compares every APK Megler keeps
+  (the library's, each folder of `<shared>\apks`, `<shared>\services`) that is
+  a copy of one of the package's -- of its size, and with its last 64 KB, the
+  ZIP's central directory, differing in 64 bytes at most (another APK's differs
+  in thousands) -- with that one, and mends it where it differs. The log says
+  each copy mended and where, and at the end `bundled apks: N copies of the
+  package's M Google APKs compared with them in S s`. A copy that differs and
+  cannot be mended has it done again at the next start.
+- The flag `check-bundled-apks` (Megler's) has the check done at every start,
+  and the log say each file's SHA-1 and SHA-256, each byte of a copy that
+  differs (a copy's first 16 one by one; then how many bytes, bits and zeros,
+  in how many pages, and whether each chunk that differed read alike three
+  times), and the copy's differing pages are kept in
+  `LocalState\bundled-apks\<n>.pages` (an 8-byte offset, then the page). In an
+  app's own package (`phone-flags.py --app`), the same flag has the log say the
+  size and digests of the app's own APK as that app reads it. The flag
+  `test-copies` copies the package's largest Google APK three times as copies
+  were made before (CopyFile2 and a flush), compares each with it so, and
+  removes it: whether a phone gets copies wrong.
+
+On the Lumia 650 (0.1.0.668, 2026-11-07) the first check found Google Play
+Store's APK in the shared folder 2 bits off the package's: SHA-1
+`8xSmBxCuqpRxccCNeBfkQfAGRjU` before, as Play Store had said, and
+`DMRUOLPpLf0DK7_5xdCCavX_PrE` once mended. Google Play services' (made the same
+way, by 645 from the library's copy of 2026-11-01) was 3 bits off, all in its
+`resources.arsc`. Play Store's two were in stored libraries for x86 and x86-64
+(`lib/x86/libcronet.156.0.8078.39.so`, `lib/x86_64/libtensorflowlite_jni.so`),
+which nothing here loads, which is why only its patching noticed. All five were
+the same bit at the same place of a 4 KB page: bit 3 (the value 8) of the byte
+at 0x80D, a 1 become 0; the DEX file of 632's damaged copy summed 8 short as
+well. That is this phone's memory -- one cell that loses a 1, in a page of
+memory that whatever the phone copies passes through in turn -- not Megler's
+copying, and nothing but comparing a copy with its source as the disk holds it
+finds it. It does not lose it every time: the same start's `test-copies` made
+three copies of the 279 MB Google Play services, each the same byte for byte
+(7 to 12 s to copy and 10 to 11 s to compare each, at background priority).
+The check took 279 s there, Update All's twelve packages going on beside it;
+Play Store, started after, read its own APK as `DMRUOL...` (the flag in its
+package).
+
 ## What follows (not done yet)
 
 - What is left of Megler in each package, some 12 MB (`Megler.exe`, ANGLE, the

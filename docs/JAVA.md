@@ -3431,6 +3431,9 @@ What a Java app asks of the phone beyond its window goes to the shell through
   Id"). Not done: an update to a newer version, which the server will offer
   in time, is still downloaded at each start and waits the same way; Play
   Store gets newer through Megler's package or an APK added to the library.
+  On the Lumia 650 every patch was refused besides ("bad base file hash"):
+  Play Store's own APK there had two bits of its own, which Megler mends since
+  0.1.0.668 (docs/PER-APP-PACKAGES.md, "The Google APKs Megler brings").
 - **Other apps: launchers.** The shell lists the apps of Megler's library that
   can run in the shared folder (`library/PhoneAppsList.cpp`):
   `phone-apps\apps.txt` has each app's package, launcher activity, label and
