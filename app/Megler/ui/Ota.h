@@ -7,9 +7,10 @@
 //   Megler_<version>_ARM.appx     Windows 10 Mobile, 32-bit ARM (every release so far)
 //   Megler_<version>_ARM64.appx   desktop Windows 10 and 11 on 64-bit ARM, and on x64 and x86 likewise:
 //   Megler_<version>_x64.appx, Megler_<version>_x86.appx
-// A 32-bit ARM package of another Windows (Windows RT's, should there be one) is named otherwise (_RT_ARM), so a phone
-// never takes it, nor a PC the phone's; a 32-bit ARM Megler on desktop Windows takes the ARM64 one, there being no
-// 32-bit ARM package for the desktop. A newer one is offered in a dialog, with its size and what the release says is
+//   Megler_<version>_RT_ARM.appx  desktop Windows 10 on 32-bit ARM: build 15035 on Windows RT's tablets and on Lumias
+// A 32-bit ARM package of a Windows but the phone's is named otherwise (_RT_ARM), so a phone never takes it, nor a PC
+// the phone's; a 32-bit ARM Megler on desktop Windows takes the ARM64 one on an ARM64 computer, which runs it, and the
+// RT_ARM one on a 32-bit ARM Windows. A newer one is offered in a dialog, with its size and what the release says is
 // new; taken, it is downloaded into LocalState\update, its size and its SHA-256 checked against what GitHub says of the
 // asset, and installed as Megler's own update from Pictures\Megler is (shell/AppPackage.h, installOwnUpdate): Windows's
 // deployment engine closes this Megler, and Megler is opened again once Windows has installed it. Not in an app's own
@@ -26,7 +27,8 @@ class AppShell;
 namespace megler::app::ui::ota {
 
 /// The part of a package's name that says which Windows and processor it is for, as this Megler needs: "ARM" on a phone,
-/// "ARM64", "x64" or "x86" on desktop Windows; empty where GitHub has none for it (and nothing is asked).
+/// "ARM64", "x64" or "x86" on desktop Windows, "RT_ARM" on desktop Windows on 32-bit ARM; empty where GitHub has none for
+/// it (and nothing is asked).
 std::string packageSuffix();
 /// At every poll (UI thread): GitHub asked when it is time, and a newer Megler offered; once taken, downloaded, checked
 /// and installed.

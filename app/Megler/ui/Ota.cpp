@@ -17,6 +17,10 @@
 #include <ctime>
 #include <optional>
 
+// Left out of the app partition by the SDK's headers, in every Windows's kernelbase all the same (the core declares it so
+// too: core/src/host/mg_host_win32.c).
+extern "C" __declspec(dllimport) HMODULE WINAPI GetModuleHandleW(LPCWSTR moduleName);
+
 namespace megler::app::ui::ota {
 
 using namespace winrt;
@@ -348,6 +352,18 @@ void tidy() {
     }
 }
 
+/// Whether this (32-bit ARM) Megler runs on a 64-bit ARM Windows rather than a 32-bit ARM one. IsWow64Process2 says
+/// which; it came with Windows 10 1709, the first Windows on 64-bit ARM, so a Windows without it -- build 15035 of
+/// Windows RT's tablets -- is a 32-bit ARM one. Looked up by name, as a static import of it would keep Megler from
+/// starting there at all.
+bool windowsOnArm64() {
+    using Wow64Process2 = BOOL(WINAPI*)(HANDLE, USHORT*, USHORT*);
+    const HMODULE kernel = GetModuleHandleW(L"kernel32.dll");
+    const auto fn = kernel ? reinterpret_cast<Wow64Process2>(reinterpret_cast<void*>(GetProcAddress(kernel, "IsWow64Process2"))) : nullptr;
+    USHORT process = 0, native = 0;
+    return fn && fn(GetCurrentProcess(), &process, &native) && native == IMAGE_FILE_MACHINE_ARM64;
+}
+
 /// Whether the phone's connection is one that is paid for by the byte.
 bool metered() {
     try {
@@ -403,8 +419,10 @@ std::string packageSuffix() {
         }
         switch (arch) {
         case ProcessorArchitecture::Arm:
-            // The phone's own; a 32-bit ARM Megler on desktop Windows (an ARM64 computer runs it) takes the desktop's, ARM64.
-            return std::string(family == "Windows.Mobile" ? "ARM" : family == "Windows.Desktop" ? "ARM64" : "");
+            // The phone's own; a 32-bit ARM Megler on desktop Windows takes that Windows's: an ARM64 computer's, which runs
+            // it, or Windows RT's tablets', build 15035 on 32-bit ARM (tools/build-appx.sh --rt).
+            if (family == "Windows.Mobile") return std::string("ARM");
+            return std::string(family != "Windows.Desktop" ? "" : windowsOnArm64() ? "ARM64" : "RT_ARM");
         case ProcessorArchitecture::Arm64: return std::string("ARM64");
         case ProcessorArchitecture::X64: return std::string("x64");
         case ProcessorArchitecture::X86: return std::string("x86");

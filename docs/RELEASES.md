@@ -29,8 +29,9 @@ Megler takes neither. Its assets:
   options, on the release's number like every package of it -- app/Megler/build-number.txt at N-1 before the build --
   [RT.md](RT.md)). Any further Windows likewise: `Megler_X.Y.Z.N_<Windows>_<processor>.<ext>`. A phone takes
   `_ARM.appx` only, and never one of those.
-- Which one a Megler takes: on a phone, `_ARM`; on desktop Windows, its own processor's, `_ARM64`, `_x64` or `_x86` --
-  and a 32-bit ARM Megler running on an ARM64 computer takes `_ARM64`, there being no 32-bit ARM package for the desktop.
+- Which one a Megler takes: on a phone, `_ARM`; on desktop Windows, its own processor's, `_ARM64`, `_x64` or `_x86`; and
+  a 32-bit ARM Megler on desktop Windows `_RT_ARM` where that Windows is a 32-bit ARM one (15035), `_ARM64` where it is
+  an ARM64 one, which runs it (IsWow64Process2 says which; a Windows without it is older than 1709, the first on ARM64).
 - `.msix` in place of `.appx` is taken too, for the day the desktop's packages are MSIX.
 - A release need not have every package: a phone's Megler skips a release without `_ARM.appx` and takes the newest
   release that has one. Packages of one version for several Windows go into the one release of that version.

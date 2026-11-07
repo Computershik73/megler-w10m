@@ -137,6 +137,14 @@ none, "approximately 80 cycles" more per division on a Cortex-A9
   processor; with the JIT made to write SDIV again the same run stops at the first compiled loop on an illegal
   instruction.
 
+## Updates
+
+A Megler of the RT package asks GitHub for `_RT_ARM` (ui/Ota.cpp): a 32-bit ARM Megler on desktop Windows takes
+`_RT_ARM` where that Windows is a 32-bit ARM one and `_ARM64` where it is an ARM64 one, which runs it --
+IsWow64Process2's native machine says which (looked up by name: a static import of it would keep Megler from starting
+on 15035), and a Windows without IsWow64Process2 is older than 1709, the first on 64-bit ARM. A phone's Megler takes
+`_ARM` as before.
+
 ## Installing
 
 On the device (from the guides above and [Open-RT's](https://open-rt.gitbook.io/open-surfacert/common/windows-10/software.md)):
