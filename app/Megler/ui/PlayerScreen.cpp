@@ -506,9 +506,10 @@ private:
     /// the television; where Windows will not, the app's surface is a strip of its shape in the window (areaFor).
     void turnWindow() {
         if (platform::isMobile() || platform::isXbox() || !host_ || turnedFor_ == wish_) return;
-        turnedFor_ = wish_;
         const double width = host_.ActualWidth(), height = host_.ActualHeight();
-        if (width <= 0 || height <= 0 || shapeFits(width, height)) return;
+        if (width <= 0 || height <= 0) return; // (not laid out yet: asked again at the next poll)
+        turnedFor_ = wish_;
+        if (shapeFits(width, height)) return;
         try {
             auto view = winrt::Windows::UI::ViewManagement::ApplicationView::GetForCurrentView();
             if (view.IsFullScreenMode()) return;
