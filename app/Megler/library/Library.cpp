@@ -3,6 +3,7 @@
 #include "library/Library.h"
 
 #include "shell/AppPackage.h"
+#include "shell/BundledApks.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
@@ -248,7 +249,7 @@ void Library::load() {
                 const std::wstring gsfFolder = shared + L"\\services\\gsf";
                 const std::wstring gsfTarget = gsfFolder + L"\\GoogleServicesFramework.apk";
                 if (!files::exists(gsfTarget) && files::makeDirectories(gsfFolder)) {
-                    if (files::copy(gsfSource, gsfTarget + L".part") && files::move(gsfTarget + L".part", gsfTarget))
+                    if (bundledApks::copy(gsfSource, gsfTarget))
                         shellLog::write("library: published Google Services Framework in the shared service cache");
                     else shellLog::write("library: could not publish Google Services Framework");
                 }
@@ -260,7 +261,7 @@ void Library::load() {
                 const std::wstring microgFolder = shared + L"\\services\\microg";
                 const std::wstring microgTarget = microgFolder + L"\\GmsCore.apk";
                 if ((!files::exists(microgTarget) || files::size(microgTarget) != files::size(microgSource)) && files::makeDirectories(microgFolder)) {
-                    if (files::copy(microgSource, microgTarget + L".part") && files::move(microgTarget + L".part", microgTarget))
+                    if (bundledApks::copy(microgSource, microgTarget))
                         shellLog::write("library: published microG's Google Play services in the shared service cache");
                     else shellLog::write("library: could not publish microG's Google Play services");
                 }
@@ -282,9 +283,7 @@ void Library::load() {
                     const std::wstring destination = directory_ + L"\\bitgapps-" + name;
                     // (Through a .part, as every other copy here: one that does not finish -- Megler ended or suspended under
                     // it, the phone full -- is not taken for the APK.)
-                    if (!files::exists(destination) &&
-                        !(files::copy(bitgapps + L"\\" + name, destination + L".part") && files::move(destination + L".part", destination))) {
-                        files::remove(destination + L".part");
+                    if (!files::exists(destination) && !bundledApks::copy(bitgapps + L"\\" + name, destination)) {
                         copied = false;
                         shellLog::write("library: could not offer BiTGApps " + narrow(name));
                     }
@@ -306,12 +305,11 @@ void Library::load() {
                 if (!files::exists(own) || files::exists(own + L".installed") || !files::exists(source) ||
                     files::sameEnd(own, source, 65536))
                     continue;
-                if (files::copy(source, own + L".part") && files::move(own + L".part", own)) {
+                if (bundledApks::copy(source, own)) {
                     files::remove(own + L".json");
                     files::remove(own + L".icon");
                     shellLog::write("library: bitgapps-" + narrow(name) + " was not this Megler's bundle's (a copy that never finished, or an older one): copied again");
                 } else {
-                    files::remove(own + L".part");
                     shellLog::write("library: bitgapps-" + narrow(name) + " is not the bundle's and could not be copied again");
                 }
             }
@@ -325,13 +323,12 @@ void Library::load() {
                 if (!files::read(marker, text) || appPackage::canRead(installedOf(text).apk)) continue;
                 const std::wstring source = bitgapps + L"\\" + name;
                 if (!files::exists(source)) continue;
-                if (files::copy(source, own + L".part") && files::move(own + L".part", own)) {
+                if (bundledApks::copy(source, own)) {
                     files::remove(marker);
                     files::remove(own + L".json");
                     files::remove(own + L".icon");
                     shellLog::write("library: recovered " + narrow(name) + " from this Megler's BiTGApps bundle");
                 } else {
-                    files::remove(own + L".part");
                     shellLog::write("library: could not recover " + narrow(name) + " from the BiTGApps bundle");
                 }
             }
@@ -403,6 +400,8 @@ void Library::load() {
                                unsigned(toRead.size()), stale ? " (the reports are another build's)" : ""));
     }
     for (const auto& id : toRead) queue(id);
+    // Megler's copies of the Google APKs its package brings, each compared with the package's (once for each build).
+    bundledApks::checkLater();
 }
 
 std::vector<ApkEntry> Library::entries() const {
