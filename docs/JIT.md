@@ -54,15 +54,17 @@ next. Calls stay exits at first: the interpreter does the call, and the code is 
 
 The libcore and DVM tests run under qemu-arm, which executes the Thumb-2 the JIT writes. They are run with the
 threshold at 0, so that every method with a loop is compiled at its first jump back, and must pass as they do
-interpreted. The benchmark (`tools/dvm-bench.sh arm`) gives the speed under qemu, interpreted and compiled; the
-phone's Self-test gives the phone's.
+interpreted. With `QEMU_CPU=cortex-a9` (and `WSLENV=QEMU_CPU`, which hands it to WSL) qemu plays a Surface RT's
+processor, which has no SDIV: the tests then take the JIT's division by a call. The benchmark (`tools/dvm-bench.sh
+arm`) gives the speed under qemu, interpreted and compiled; the phone's Self-test gives the phone's.
 
 ## Where it stands
 
 `core/src/dvm/mg_dvm_jit.c` compiles: moves and constants (`const-wide` and `const-string` of a string already made
-included); int arithmetic and logic in every form (division and remainder with the divisor checked, the shifts' counts
-masked); long arithmetic (add, sub, mul, and, or, xor, the three shifts by any count, neg, not, `int-to-long`,
-`long-to-int`, `cmp-long`); float and double arithmetic in VFP (add, sub, mul, div, neg, `cmpl` and `cmpg`, the
+included); int arithmetic and logic in every form (division and remainder with the divisor checked, by SDIV, or by a
+call of the runtime's on a processor without it, a Surface RT's Cortex-A9; the shifts' counts masked); long arithmetic
+(add, sub, mul, and, or, xor, the three shifts by any count, neg, not, `int-to-long`, `long-to-int`, `cmp-long`);
+float and double arithmetic in VFP (add, sub, mul, div, neg, `cmpl` and `cmpg`, the
 conversions between int, float and double, toward zero and saturated as Java says); and by calls of small functions of
 the runtime's, a long's division and remainder (the divisor checked), a float's and a double's remainder, a long's
 conversions to and from them; `if-*`, `if-*z`, `goto`, `packed-switch` and `sparse-switch` of up to 64

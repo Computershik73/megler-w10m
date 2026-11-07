@@ -234,6 +234,16 @@ MG_HOSTAPI void mg_thread_set_end_hook(void (MG_HOSTCB *fn)(void));
 MG_HOSTAPI void mg_thread_yield(void);
 MG_HOSTAPI void mg_sleep_ns(u64 ns);
 MG_HOSTAPI int mg_cpu_count(void);
+#if MG_ARCH_ARM32
+/*
+ * Whether the processor divides in hardware in Thumb state (SDIV, UDIV). The ARMv7 cores of Windows's phones and a
+ * Surface 2's Cortex-A15 do; a Surface RT's Cortex-A9 (Tegra 3, under desktop Windows 10 build 15035: docs/RT.md) does
+ * not: Windows traps either there and emulates it, some 80 cycles a time (Microsoft's ARM32 ABI conventions), and Linux
+ * -- qemu-arm playing a Cortex-A9 -- takes it for an undefined instruction. The JIT's int division and what /proc/cpuinfo
+ * and AT_HWCAP tell an app follow it.
+ */
+MG_HOSTAPI bool mg_cpu_arm_divide(void);
+#endif
 
 #if MG_HOST_WINDOWS
 typedef struct mg_lock { void *srw; } mg_lock;        /* SRWLOCK */
