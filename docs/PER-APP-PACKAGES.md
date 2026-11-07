@@ -164,6 +164,13 @@ package for its certificate now, the user installs the certificate once from
 the app's page. A package Windows refuses stays made, for Windows's installer
 (below).
 
+An Xbox is the exception: there the Xbox's build (`tools/build-appx.sh x64
+--xbox`) installs, lists and
+uninstalls the apps' packages and its own update through the console's own
+Device Portal, `https://localhost:11443`, as DesktopMode_uwp's installer does
+([XBOX.md](XBOX.md)). Only that build has the portal's client
+(`shell/DevicePortal.cpp`).
+
 ## Megler as the place the apps are managed from
 
 Since 0.1.0.359 Megler does not run the library's apps itself (the player is left
@@ -395,7 +402,8 @@ Commander's and for names with capitals, digits, `.` and `-`).
   Portal, `https://127.0.0.1/api/app/packagemanager/package`, with Windows's own
   HTTP client, after a GET of `/api/os/info` for the portal's CSRF cookie, and
   `/api/app/packagemanager/state` was asked until it said how it went; the
-  phone's build has none of that now (above, "Installing").
+  phone's build has none of that now (above, "Installing"). The Xbox's build
+  installs so still, through the console's portal ([XBOX.md](XBOX.md)).
 - **Open the Package (Windows Installer)** and **Open the Certificate**, when
   Windows's deployment engine did not install it, hand the file to Windows
   (`Launcher.LaunchFileAsync`), as a file manager would: the package to its

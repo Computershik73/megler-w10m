@@ -165,7 +165,7 @@ core/             the layer, portable C11
   tests/          the tests, and guest/ and app/: Android libraries and apps for them
 app/Megler/       the C++/WinRT shell: library, player, Direct2D drawing, sound, codecs
 tools/            build-appx.sh, build-tests.sh, build-framework.sh, phone.py
-docs/             ARCHITECTURE.md, STATUS.md, JAVA.md, JIT.md, MICROG.md, PER-APP-PACKAGES.md
+docs/             ARCHITECTURE.md, STATUS.md, JAVA.md, JIT.md, MICROG.md, PER-APP-PACKAGES.md, DESKTOP.md, XBOX.md
 ```
 
 ## Build
@@ -208,6 +208,14 @@ the portal need not be on for it, nor its authentication off. Then, in Megler:
 
 **Device › Probe** and **Device › Self-test** check what this phone allows and run the
 core's tests on it; the **Log** says what each app does.
+
+## On an Xbox
+
+An Xbox in Developer Mode takes `Megler_<version>_Xbox_x64.appx` (`bash tools/build-appx.sh
+x64 --xbox --java`), installed from a PC through the console's Device Portal. There Megler
+installs the apps' packages and its own updates through that portal, as DesktopMode_uwp's
+installer does on a console, and has to be let reach it after every start of the console:
+[docs/XBOX.md](docs/XBOX.md) says how, and what is not checked on a console yet.
 
 ## Author
 
