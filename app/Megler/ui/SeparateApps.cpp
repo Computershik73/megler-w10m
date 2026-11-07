@@ -4,6 +4,7 @@
 
 #include "megler.h"
 #include "library/Library.h"
+#include "shell/BundledApks.h"
 #include "shell/Files.h"
 #include "shell/PickedFile.h"
 #include "shell/ShellLog.h"
@@ -215,12 +216,31 @@ void run(Job& job, int number, int total) {
         // The APK is not packed: make keeps it in the shared folder, where the package's app reads it. An update takes it
         // from there as it is, or, from a package made before 645, copies it there while that package is still installed.
         setStep(package, stepOf("Making the package…"));
+        // Google Play services or Google Play Store, installed from an older APK than Megler's package brings now: its next
+        // package (Update All, after an update of Megler) is made from Megler's (bundledApks::replacementFor), whose report is
+        // the library's once it is installed. (An APK of the library's not installed yet is the user's choice, and installed
+        // as it is.)
+        bundledApks::Replacement replacement;
+        if (!job.picked && !entry.installedPackage.empty()) replacement = bundledApks::replacementFor(entry);
+        if (!replacement.path.empty()) {
+            shellLog::write("separate apps: " + entry.id + ": " + replacement.why + ": its package is made from Megler's " +
+                            narrow(replacement.path.substr(replacement.path.find_last_of(L'\\') + 1)));
+            entry.path = replacement.path;
+            entry.splitsDir.clear();
+            entry.size = files::size(replacement.path);
+            entry.report = ApkReport::parse(replacement.report);
+            entry.analysed = true;
+        }
         const appPackage::Made made = appPackage::make(entry, [&](const std::string& step) { setStep(package, stepOf(step)); }, job.picked.get());
         if (!made.error.empty()) {
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
             setStep(package, made.error + (kept.empty() ? std::string() : " (" + kept + ")"));
             return;
         }
+        // (make put the library's report of the APK before beside it, which the package's app reads as its own.)
+        if (!replacement.path.empty() &&
+            !files::write(appPackage::sharedFolder() + L"\\" + made.apkFolder + L"\\app.apk.json", replacement.report))
+            shellLog::write("separate apps: the report of " + entry.id + " could not be put beside its APK in the shared folder");
         {
             std::lock_guard<std::mutex> lock(gMutex);
             gStatus[package].made = made;
@@ -269,6 +289,7 @@ void run(Job& job, int number, int total) {
         }
         // The library's entry is that APK now, and Megler's own copy, if it had one, goes: one copy of it on the phone. (In the
         // package, as before 645, Megler could not read it once Windows installed it as the Store installs an app.)
+        if (!replacement.path.empty()) files::write(Library::instance().directory() + L"\\" + widen(job.id) + L".json", replacement.report);
         appPackage::sharedApkInstalled(made);
         Library::instance().adopt(job.id, made.fullName, made.apkFolder);
         setStep(package, "Installed. Its APK is kept once, in the shared folder, where the app and Megler read it.");
