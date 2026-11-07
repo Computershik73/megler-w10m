@@ -3720,6 +3720,14 @@ static void test_guest(const char *libdir, const char *scratch)
             mg_ld_get_stats(svc, &st);
             CHECK_INT(st.svc_sites, 3);
             CHECK_INT(st.svc_led_out, 3);
+            /* The writes of x18 the loader counts and says (Windows' TEB): t_svc64_x18_writer's ten, never run; none in
+               the code clang makes for Android, which keeps x18 (libt_basic.so). */
+            CHECK_INT(st.x18_writes, 10);
+            {
+                mg_ld_stats b;
+                mg_ld_get_stats(basic, &b);
+                CHECK_INT(b.x18_writes, 0);
+            }
             *mg_errno_ptr() = 123;
             mg_core_svc_calls(&made0, &on0);
             CHECK_INT(FN(svc, long (*)(void), "t_svc64_results")(), 0);
@@ -3749,6 +3757,7 @@ static void test_guest(const char *libdir, const char *scratch)
             mg_ld_get_stats(svc, &st);
             CHECK_INT(st.svc_sites, 3);
             CHECK_INT(st.svc_led_out, 0);
+            CHECK_INT(st.x18_writes, 10);
             CHECK(fn != NULL);
             for (k = 0; fn && k < 36; k += 4) {
                 trapped |= mg_rd32(fn + k) == 0x000000A5u;

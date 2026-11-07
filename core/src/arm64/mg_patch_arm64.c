@@ -11,8 +11,9 @@
  * own block, as on the phone:
  *
  *   - on Windows the slot is in the TEB, which x18 points to in user mode: `ldr xN, [x18, #0x1480+8*slot]`, one
- *     instruction for one, in its place. Android's compiler leaves x18 alone (it is the platform register there, kept
- *     for the shadow call stack), and code that wrote it would break Windows' own functions, patched or not;
+ *     instruction for one, in its place. Android's compilers leave x18 alone since Android 10 (it is the platform
+ *     register there, kept for the shadow call stack), and code that wrote it would break Windows' own functions,
+ *     patched or not: Android 9's did not, and the loader counts and says what writes it (writes_x18, below);
  *   - on Linux (the tests) the slot is glibc's initial-exec variable, at an offset from TPIDR_EL0, which needs two
  *     instructions: a branch to the library's island, `mrs xN, tpidr_el0; ldr xN, [xN, #offset]`, and back.
  *
@@ -459,12 +460,62 @@ static bool lead_out(mg_lib *lib, u8 *at, u32 where, u32 offset)
 }
 #endif /* MG_GUEST_CODE */
 
+/*
+ * Whether the instruction `w` writes x18 (or w18), by the classes compiled code writes a general register with: the
+ * data-processing ones (immediate and register: Rd), loads (Rt, a pair's Rt2, a written-back base), the status of a
+ * store-exclusive, MRS and SYSL, and moves from FP and vector registers (FMOV, FCVT*, UMOV, SMOV). On Windows x18 is
+ * the thread's TEB: every function of Windows' reads it, and so does the dispatch of an exception before any handler of
+ * the core's runs -- a thread that has written it ends at the next of either (GitHub issue 4). Android's compilers keep
+ * it since Android 10 (the shadow call stack's register); Android 9's did not: its prebuilt libcrypto.so for arm64,
+ * which the Android root carries (tools/android9-natives.sh copies it), writes x18 in 772 instructions of ordinary C --
+ * X25519, AES, DES, MD5, BN, poly1305 -- that every TLS connection of a Java app's runs through Conscrypt. Not exact
+ * (a word of data among the code may read as one); it is for the log.
+ */
+static bool writes_x18(u32 w)
+{
+    u32 rd = w & 31, rn = (w >> 5) & 31, rt2 = (w >> 10) & 31, rs = (w >> 16) & 31;
+    if ((w & 0x1C000000u) == 0x10000000u || (w & 0x0E000000u) == 0x0A000000u) return rd == 18;      /* data processing */
+    if ((w & 0xFFF00000u) == 0xD5300000u || (w & 0xFFF80000u) == 0xD5280000u) return rd == 18;      /* MRS, SYSL */
+    if ((w & 0x5F20FC00u) == 0x1E200000u) {                                                         /* FP <-> integer */
+        u32 op = (w >> 16) & 7;
+        return rd == 18 && op != 2 && op != 3 && op != 7;
+    }
+    if ((w & 0x9FE0EC00u) == 0x0E002C00u) return rd == 18;                                          /* UMOV, SMOV */
+    if ((w & 0x0A000000u) != 0x08000000u) return false;
+    /* Loads and stores. */
+    if ((w & 0x3F000000u) == 0x08000000u) {                                                         /* exclusive, ordered */
+        bool load = (w >> 22) & 1, o1 = (w >> 21) & 1, o2 = (w >> 23) & 1;
+        if (load) return rd == 18 || (o1 && !o2 && rt2 == 18);
+        return (o1 || !o2) && rs == 18;
+    }
+    if ((w & 0x3B000000u) == 0x18000000u) return (w >> 30) != 3 && rd == 18;                        /* literal */
+    if ((w & 0x38000000u) == 0x28000000u) {                                                         /* pair */
+        u32 form = (w >> 23) & 3;
+        if ((form == 1 || form == 3) && rn == 18) return true;
+        return !((w >> 26) & 1) && ((w >> 22) & 1) && (rd == 18 || rt2 == 18);
+    }
+    if ((w & 0x38000000u) == 0x38000000u) {                                                         /* register */
+        u32 opc = (w >> 22) & 3, size = w >> 30, op4 = (w >> 10) & 3;
+        bool unscaled = !((w >> 24) & 1), wide = (w >> 21) & 1;
+        if (unscaled && !wide && (op4 == 1 || op4 == 3) && rn == 18) return true;
+        if ((w >> 26) & 1) return false;
+        if (unscaled && wide && op4 == 0) return rd == 18;                                          /* atomics */
+        return opc != 0 && !(size == 3 && opc == 2) && rd == 18;
+    }
+    if ((w & 0xBF800000u) == 0x0C800000u || (w & 0xBF800000u) == 0x0D800000u) return rn == 18;      /* vectors, post-index */
+    return false;
+}
+
 /* Walks [lo, hi) of the library's code, a word at a time. */
-static void patch_range(mg_lib *lib, u8 *lo, u8 *hi, bool have, u32 where, u32 offset, bool trap, u32 *svc, u32 *failed)
+static void patch_range(mg_lib *lib, u8 *lo, u8 *hi, bool have, u32 where, u32 offset, bool trap, u32 *svc, u32 *failed, mg_addr *x18_first)
 {
     u8 *p = lib->base + MG_ALIGN_UP((mg_addr)(lo - lib->base), 4);
     for (; p + 4 <= hi; p += 4) {
         u32 w = mg_rd32(p);
+        if (writes_x18(w)) {
+            if (!*x18_first) *x18_first = (mg_addr)(p - lib->base);
+            lib->stats.x18_writes++;
+        }
         if ((w & ~31u) == MRS_TPIDR_EL0 || (w & ~31u) == MSR_TPIDR_EL0) {
             if (!have || !patch_tp_access(lib, p, (w & ~31u) == MSR_TPIDR_EL0, (int)(w & 31u), where, offset)) {
                 lib->stats.tp_reads_failed++;
@@ -487,7 +538,8 @@ static void patch_range(mg_lib *lib, u8 *lo, u8 *hi, bool have, u32 where, u32 o
 
 void mg_patch_segment(mg_lib *lib, u8 *seg, size_t size)
 {
-    u32 where = 0, offset = 0, svc = 0, failed = 0, led = lib->stats.svc_led_out;
+    u32 where = 0, offset = 0, svc = 0, failed = 0, led = lib->stats.svc_led_out, x18 = lib->stats.x18_writes;
+    mg_addr x18_first = 0;
     bool have = mg_guest_tp_where(&where, &offset) && (where == 18 || where == 0) && offset % 8 == 0 && offset < 32768;
     bool trap;
     int k;
@@ -495,15 +547,21 @@ void mg_patch_segment(mg_lib *lib, u8 *seg, size_t size)
     trap = g_trap_svc > 0;
     if (!have) mg_err("ld: %s: the host has no place for the guest's thread pointer; its reads are left as they are", lib->name);
     if (!lib->ncode) {
-        patch_range(lib, seg, seg + size, have, where, offset, trap, &svc, &failed);
+        patch_range(lib, seg, seg + size, have, where, offset, trap, &svc, &failed, &x18_first);
     } else {
         for (k = 0; k < lib->ncode; k++) {
             u8 *lo = lib->base + lib->code[k][0], *hi = lib->base + lib->code[k][1];
             if (lo < seg) lo = seg;
             if (hi > seg + size) hi = seg + size;
-            if (lo < hi) patch_range(lib, lo, hi, have, where, offset, trap, &svc, &failed);
+            if (lo < hi) patch_range(lib, lo, hi, have, where, offset, trap, &svc, &failed, &x18_first);
         }
     }
+    x18 = lib->stats.x18_writes - x18;
+    if (x18)
+        mg_log(MG_HOST_WINDOWS ? MG_LOG_WARN : MG_LOG_INFO,
+               "ld: %s: %u instructions write x18, the first at +0x%x: on Windows the thread's TEB, which Windows' functions and the "
+               "dispatch of an exception read -- a thread that has run one ends at the next of them", lib->name, (unsigned)x18,
+               (unsigned)x18_first);
     led = lib->stats.svc_led_out - led;
 #if MG_GUEST_CODE
     /* Every thread a stack for them from now on: those there already, and each one made later (ld/mg_tls.c). */

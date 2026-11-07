@@ -69,6 +69,9 @@ __attribute__((naked)) int t_svc_cacheflush(void *start, unsigned length)
  *   t_svc64_fallback  the thread's stack for system calls taken away (the guest thread pointer's slot 15,
  *                     MG_TCB_SYSCALL): the entry sends the thread to the piece's trap, and the fault handler makes the
  *                     call as it made every one before, the registers kept all the same
+ *
+ * And t_svc64_x18_writer, never called: ten writes of x18 of different kinds, which the loader counts (mg_ld_stats'
+ * x18_writes) and says, as it says them of any library -- on Windows x18 is the thread's TEB.
  */
 #include "t_abi.h"
 
@@ -172,7 +175,19 @@ __asm__(".text\n"
         "  ldp x27, x28, [sp, #80]\n"
         "  ldp x29, x30, [sp], #176\n"
         "  ret\n"
-        ".size t_svc64_keep, .-t_svc64_keep\n");
+        ".size t_svc64_keep, .-t_svc64_keep\n"
+
+        /* Never called (on Windows x18 is the TEB): what the loader counts as writing x18 (arm64/mg_patch_arm64.c,
+           writes_x18), one of each kind, ten -- and four that only read it, which it must not count. */
+        ".globl t_svc64_x18_writer\n.type t_svc64_x18_writer, %function\n"
+        "t_svc64_x18_writer:\n"
+        "  mov x18, x0\n  add x18, x18, #1\n  ldr x18, [x0]\n  ldp x18, x19, [x0]\n  ldr x0, [x18], #8\n"
+        "  mrs x18, nzcv\n  fmov x18, d0\n  umov w18, v0.s[0]\n  ldxr x18, [x0]\n  ldr x18, 1f\n"
+        "  str x18, [x0]\n  ldr x0, [x18, #8]\n  stp x18, x19, [sp, #-16]\n  cmp x18, x0\n"
+        "  ret\n"
+        "  .p2align 3\n"
+        "1: .quad 0\n"
+        ".size t_svc64_x18_writer, .-t_svc64_x18_writer\n");
 
 static t_u64 mark(int n) { return (t_u64)(0xA500 + n) << 48 | (t_u64)(0x0101 * n); }
 static t_u64 qmark(int n, int high) { return (t_u64)(high ? 0x5200 : 0x5100) << 48 | (t_u64)(0x0101 * n); }
