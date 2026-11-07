@@ -101,6 +101,7 @@ public:
     struct DialogSpec {
         std::string title, message;
         bool field = false;                  // a text field under the text
+        bool secret = false;                 // ... a password's, its characters not shown (fieldText is not put in it)
         std::string fieldText, fieldPlaceholder;
         std::vector<std::string> fieldSuggestions; // chips under the field, each putting itself in it
         std::vector<std::string> buttons;    // at the dialog's end, the confirming one last
@@ -189,6 +190,7 @@ private:
     std::vector<winrt::Windows::UI::Xaml::Controls::TextBlock> tabLabels_;
     winrt::Windows::UI::Xaml::Controls::Grid dialogLayer_{nullptr};
     winrt::Windows::UI::Xaml::Controls::TextBox dialogField_{nullptr};
+    winrt::Windows::UI::Xaml::Controls::PasswordBox dialogSecret_{nullptr};
     std::function<void(int, std::string)> dialogDone_;
     std::deque<std::pair<DialogSpec, std::function<void(int, std::string)>>> waitingDialogs_; // dialogWhenFree's, in turn
     winrt::Windows::UI::Xaml::DispatcherTimer timer_{nullptr};

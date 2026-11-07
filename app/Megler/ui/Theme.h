@@ -142,6 +142,8 @@ winrt::Windows::UI::Xaml::Controls::StackPanel label(std::string_view title, wch
 /// colour's, thicker, while it has the focus), and the placeholder while it is empty. `box` is set to its TextBox.
 winrt::Windows::UI::Xaml::Controls::Grid textField(winrt::Windows::UI::Xaml::Controls::TextBox& box, std::string_view text,
                                                    std::string_view placeholder);
+/// The same for a password: its characters not shown. `box` is set to its PasswordBox.
+winrt::Windows::UI::Xaml::Controls::Grid passwordField(winrt::Windows::UI::Xaml::Controls::PasswordBox& box, std::string_view placeholder);
 
 /// A list's subheader: the primary colour, Material's title small.
 winrt::Windows::UI::Xaml::Controls::TextBlock sectionHeader(std::string_view title);

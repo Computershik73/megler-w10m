@@ -612,7 +612,12 @@ void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> don
     }
     if (!spec.message.empty()) add(column, text(spec.message, font::bodyMedium, weightNormal(), p.onSurfaceVariant));
     dialogField_ = nullptr;
-    if (spec.field) {
+    dialogSecret_ = nullptr;
+    if (spec.field && spec.secret) {
+        auto field = passwordField(dialogSecret_, spec.fieldPlaceholder);
+        field.Margin(ThicknessHelper::FromLengths(0, 16, 0, 0));
+        add(column, field);
+    } else if (spec.field) {
         auto field = textField(dialogField_, spec.fieldText, spec.fieldPlaceholder);
         field.Margin(ThicknessHelper::FromLengths(0, 16, 0, 0));
         add(column, field);
@@ -660,6 +665,7 @@ void AppShell::dialog(DialogSpec spec, std::function<void(int, std::string)> don
         dialogField_.SelectAll();
         dialogField_.Focus(FocusState::Programmatic);
     }
+    if (dialogSecret_) dialogSecret_.Focus(FocusState::Programmatic);
 }
 
 void AppShell::dialogWhenFree(DialogSpec spec, std::function<void(int, std::string)> done) {
@@ -676,11 +682,14 @@ void AppShell::dialogWhenFree(DialogSpec spec, std::function<void(int, std::stri
 
 void AppShell::closeDialog(int button) {
     if (!dialogOpen_) return;
-    const std::string typed = dialogField_ ? narrow(std::wstring(dialogField_.Text())) : std::string();
+    const std::string typed = dialogField_    ? narrow(std::wstring(dialogField_.Text()))
+                              : dialogSecret_ ? narrow(std::wstring(dialogSecret_.Password()))
+                                              : std::string();
     uint32_t at = 0;
     if (dialogLayer_ && root_.Children().IndexOf(dialogLayer_, at)) root_.Children().RemoveAt(at);
     dialogLayer_ = nullptr;
     dialogField_ = nullptr;
+    dialogSecret_ = nullptr;
     dialogOpen_ = false;
     auto done = std::move(dialogDone_);
     dialogDone_ = nullptr;
