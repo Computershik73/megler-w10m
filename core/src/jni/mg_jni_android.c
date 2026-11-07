@@ -11,9 +11,13 @@
 #include "../bionic/mg_fd.h"
 #include "../ld/mg_ld_internal.h"
 #include "../ndk/mg_ndk.h"
+#include "../run/mg_run.h"
 
 static char g_package[160], g_apk_guest[300], g_lib_dir[300];
-static int g_width, g_height, g_density;
+/* The screen as the app is told it: the surface's size, density and rotation (Surface.ROTATION_*); mg_jni_android_set_screen after a resize. */
+static int g_width, g_height, g_density, g_rotation;
+/* What the activity last asked for with setRequestedOrientation (-1: nothing, unspecified). */
+static int g_requested = -1;
 static mg_jobj *g_activity, *g_assets, *g_app_info, *g_window, *g_display, *g_locale;
 
 static mg_jobj *permanent(mg_jobj *o)
@@ -222,7 +226,7 @@ static void window_getDecorView(mg_jcall *c) { c->ret.l = permanent(mg_jni_new_o
 static void wm_getDefaultDisplay(mg_jcall *c) { c->ret.l = g_display; }
 static void display_getWidth(mg_jcall *c) { c->ret.i = g_width; }
 static void display_getHeight(mg_jcall *c) { c->ret.i = g_height; }
-static void display_getRotation(mg_jcall *c) { c->ret.i = 0; }
+static void display_getRotation(mg_jcall *c) { c->ret.i = g_rotation; }
 static void display_getRefreshRate(mg_jcall *c) { c->ret.f = 60.0f; }
 void mg_jni_android_fill_metrics(mg_jobj *dm)
 {
@@ -245,6 +249,16 @@ void mg_jni_android_fill_metrics(mg_jobj *dm)
     }
 }
 static void display_getMetrics(mg_jcall *c) { mg_jni_android_fill_metrics(c->args[0].l); }
+/*
+ * Activity.setRequestedOrientation, as a game's Java side calls it (Unity's, for the orientations its Screen allows): told to
+ * the shell (megler_display_host.orientation), which turns the screen; the surface's new size comes back as megler_set_surface.
+ */
+static void activity_setRequestedOrientation(mg_jcall *c)
+{
+    g_requested = c->args[0].i;
+    mg_run_orientation_requested(g_requested);
+}
+static void activity_getRequestedOrientation(mg_jcall *c) { c->ret.i = g_requested; }
 static void system_currentTimeMillis(mg_jcall *c) { c->ret.j = (i64)(mg_time_realtime_ns() / 1000000ull); }
 static void system_nanoTime(mg_jcall *c) { c->ret.j = (i64)mg_time_monotonic_ns(); }
 static void system_getProperty(mg_jcall *c)
@@ -406,8 +420,8 @@ static const mg_jhle g_android[] = {
     { "android/app/Activity", "getIntent", NULL, ctx_getIntent },
     { "android/app/Activity", "getWindowManager", NULL, ctx_getSystemService },
     { "android/app/Activity", "runOnUiThread", NULL, ret_void },
-    { "android/app/Activity", "setRequestedOrientation", NULL, ret_void },
-    { "android/app/Activity", "getRequestedOrientation", NULL, ret_zero },
+    { "android/app/Activity", "setRequestedOrientation", NULL, activity_setRequestedOrientation },
+    { "android/app/Activity", "getRequestedOrientation", NULL, activity_getRequestedOrientation },
     { "android/content/Intent", "getStringExtra", NULL, ret_null },
     { "android/content/Intent", "getExtras", NULL, ret_null },
     { "android/content/Intent", "getData", NULL, ret_null },
@@ -687,6 +701,12 @@ mg_jobj *mg_jni_android_setup(const char *activity_class, const char *package, c
     g_width = width;
     g_height = height;
     g_density = density_dpi > 0 ? density_dpi : 320;
+    {
+        /* (Turned as the run started, where it runs through megler_run; a test that sets this up by itself has it upright.) */
+        mg_surface s;
+        mg_run_surface(&s);
+        g_rotation = s.width == width && s.height == height ? s.rotation : 0;
+    }
     /* Code that opens its own APK as a file finds it where Android would have put it. */
     mg_fs_mount(g_apk_guest, apk_host_path);
     mg_configuration_set(width, height, g_density);
@@ -725,6 +745,15 @@ mg_jobj *mg_jni_android_setup(const char *activity_class, const char *package, c
     v.l = permanent(mg_jni_new_string(MG_APK_ABI)); mg_jni_set_static("android/os/Build", "CPU_ABI", 'L', v);
     android_constants();
     return g_activity;
+}
+
+void mg_jni_android_set_screen(int width, int height, int density_dpi, int rotation)
+{
+    g_width = width;
+    g_height = height;
+    if (density_dpi > 0) g_density = density_dpi;
+    g_rotation = rotation & 3;
+    mg_configuration_set(width, height, g_density);
 }
 
 mg_jobj *mg_jni_android_activity(void) { return g_activity; }
