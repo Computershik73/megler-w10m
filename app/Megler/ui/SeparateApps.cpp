@@ -7,6 +7,7 @@
 #include "shell/BundledApks.h"
 #include "shell/Files.h"
 #include "shell/PickedFile.h"
+#include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
@@ -261,11 +262,17 @@ void run(Job& job, int number, int total) {
             // CERT_E_UNTRUSTEDROOT: Windows trusts no certificate of Megler's making unless it is installed for the machine, which
             // an app may not do. On a phone the Device Portal installs it with the first package; desktop Windows has no portal.
             const bool untrusted = result.said.find("0x800b0109") != std::string::npos;
-            setStep(package, result.said +
-                                 (untrusted ? " Windows does not trust the certificate Megler signs apps' packages with: open the certificate "
-                                              "(below), choose Install Certificate, Local Machine, Place all certificates in the following "
-                                              "store, Trusted People, and install the app again."
-                                            : " The package is made: Windows's installer can install it (below).") +
+            // (Desktop Windows opens no certificate an app hands it: the command that makes the machine trust it, or the
+            // certificate in File Explorer.)
+            const std::string trust =
+                platform::isMobile() ? " Windows does not trust the certificate Megler signs apps' packages with: open the certificate (below), choose "
+                                       "Install Certificate, Local Machine, Place all certificates in the following store, Trusted People, and "
+                                       "install the app again."
+                                     : " Windows does not trust the certificate Megler signs apps' packages with. Trust it once, as administrator: "
+                                       "Copy the Command (below) and run it in PowerShell run as administrator -- " + appPackage::trustCommand() +
+                                           " -- or Show the Certificate, open it, Install Certificate, Local Machine, Trusted People. Then install the "
+                                           "app again.";
+            setStep(package, result.said + (untrusted ? trust : " The package is made: Windows's installer can install it (below).") +
                                  (kept.empty() ? std::string() : " (" + kept + ")"));
             return;
         }

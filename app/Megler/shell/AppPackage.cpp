@@ -1258,6 +1258,29 @@ void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
     }(path, std::move(done));
 }
 
+std::wstring signingCertificate() { return platform::localStateDirectory() + L"\\signing\\MeglerApps.cer"; }
+
+std::string trustCommand() {
+    return "Import-Certificate -FilePath \"" + narrow(signingCertificate()) + "\" -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople";
+}
+
+void showSigningCertificate(std::function<void(bool)> done) {
+    [](std::function<void(bool)> done) -> winrt::fire_and_forget {
+        bool ok = false;
+        const std::wstring certificate = signingCertificate();
+        try {
+            auto folder = co_await StorageFolder::GetFolderFromPathAsync(certificate.substr(0, certificate.find_last_of(L'\\')));
+            winrt::Windows::System::FolderLauncherOptions options;
+            options.ItemsToSelect().Append(co_await folder.GetFileAsync(L"MeglerApps.cer"));
+            ok = co_await winrt::Windows::System::Launcher::LaunchFolderAsync(folder, options);
+        } catch (hresult_error const& e) {
+            shellLog::write("app package: the folder of " + narrow(certificate) + " could not be shown: " + narrow(e.message()));
+        }
+        shellLog::write("app package: the folder of " + narrow(certificate) + (ok ? " shown in File Explorer" : " not shown by Windows"));
+        if (done) done(ok);
+    }(std::move(done));
+}
+
 static std::atomic<bool> gSelfUpdating{false};
 static std::mutex gSelfUpdateMutex;
 static std::string gSelfUpdateTo, gSelfUpdateFailure;

@@ -177,7 +177,18 @@ bool meglersStorageShared();
 void shareMeglersStorage();
 
 /// Hands a file to Windows to open as it opens one in the file manager: a package to its installer, a certificate to its
-/// own. On the UI thread; `done` is told whether Windows took it.
+/// own. On the UI thread; `done` is told whether Windows took it. (Desktop Windows opens no certificate an app hands it:
+/// Launcher refuses the file type, and Megler said "Windows didn't open it" -- see trustCommand.)
 void openWithSystem(const std::wstring& path, std::function<void(bool)> done);
+
+/// The certificate the apps' packages are signed with (LocalState\signing\MeglerApps.cer, made with the first package).
+std::wstring signingCertificate();
+/// What makes this machine trust it, which only an administrator may: PowerShell's Import-Certificate of it into the
+/// machine's Trusted People. Desktop Windows refuses an app's packages until then (0x800b0109); a phone's Device Portal
+/// installs the certificate with the first package.
+std::string trustCommand();
+/// Shows the certificate's folder in File Explorer, the certificate selected (opened there, it has Install Certificate).
+/// On the UI thread; `done` is told whether Windows took it.
+void showSigningCertificate(std::function<void(bool)> done);
 
 }  // namespace megler::app::appPackage

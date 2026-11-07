@@ -12,11 +12,14 @@
 #include "player/Session.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
+#include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
 #include "ui/AppShell.h"
 #include "ui/Components.h"
 #include "ui/SeparateApps.h"
+
+#include <winrt/Windows.ApplicationModel.DataTransfer.h>
 
 namespace megler::app::ui {
 
@@ -251,7 +254,15 @@ private:
         if (!s.made.appx.empty() && !installed) {
             const std::wstring appx = s.made.appx, certificate = s.made.certificate;
             add(more, textButton("Open the Package", [this, appx] { openFile(appx); }));
-            add(more, textButton("Open the Certificate", [this, certificate] { openFile(certificate); }));
+            if (platform::isMobile()) {
+                add(more, textButton("Open the Certificate", [this, certificate] { openFile(certificate); }));
+            } else {
+                // Desktop Windows opens no certificate an app hands it ("Windows didn't open it"), and only an administrator
+                // can make the machine trust one: the command that does, for PowerShell run as administrator, and the
+                // certificate in File Explorer, where it opens with Install Certificate.
+                add(more, textButton("Copy the Command", [this] { copyTrustCommand(); }));
+                add(more, textButton("Show the Certificate", [this] { showCertificate(); }));
+            }
         }
         if (more.Children().Size()) add(column, more);
 
@@ -290,6 +301,31 @@ private:
         appPackage::openWithSystem(path, [this, weak](bool ok) {
             if (!weak.lock()) return;
             opened_ = ok ? "Handed to Windows." : "Windows didn't open it.";
+            rebuild();
+        });
+    }
+
+    void copyTrustCommand() {
+        using namespace winrt::Windows::ApplicationModel::DataTransfer;
+        const std::string command = appPackage::trustCommand();
+        try {
+            DataPackage data;
+            data.SetText(hs(command));
+            Clipboard::SetContent(data);
+            opened_ = "Copied. Paste it into PowerShell run as administrator, then install again: " + command;
+        } catch (const hresult_error& e) {
+            shellLog::write("ui: the command could not be copied: " + narrow(e.message()));
+            opened_ = "Run this in PowerShell as administrator, then install again: " + command;
+        }
+        rebuild();
+    }
+
+    void showCertificate() {
+        const std::weak_ptr<Page> weak = shared_from_this();
+        appPackage::showSigningCertificate([this, weak](bool ok) {
+            if (!weak.lock()) return;
+            opened_ = ok ? "In File Explorer: open MeglerApps.cer, Install Certificate, Local Machine, place it in Trusted People, then install again."
+                         : "Windows didn't show it. The certificate is " + narrow(appPackage::signingCertificate()) + ".";
             rebuild();
         });
     }
