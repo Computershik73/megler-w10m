@@ -174,8 +174,21 @@ bool selfUpdating();
 /// The version installCopiedUpdate is installing ("0.1.0.610"), empty when it is not: the Library says so.
 std::string selfUpdateVersion();
 /// Why the newer Megler in Pictures\Megler was not installed, as the Library says it: that the copy is damaged and is to be
-/// copied again, or Windows's reason. Empty when nothing failed.
+/// copied again, that Windows does not let Megler install it (ownUpdateRefusedText), or Windows's reason. Empty when
+/// nothing failed.
 std::string selfUpdateFailure();
+/// What is said of Megler's own update `file` (Megler_<version>_ARM.appx) that Windows refused for access: accessDeniedText,
+/// with the file to open meanwhile from Pictures\Megler in the file manager, which hands it to Windows's own installer
+/// (where `inPictures`; else to download it from GitHub's releases).
+std::string ownUpdateRefusedText(const std::string& version, const std::string& file, bool inPictures);
+/// Megler's own update downloaded from GitHub (ui/Ota.cpp) that Windows refused for access: moved, with its certificate, from
+/// LocalState\update to Pictures\Megler, where the file manager opens it and where Megler tries it again at each start
+/// (installCopiedUpdate) -- by itself, once the phone's interop unlock is complete; and what the Library says
+/// (selfUpdateFailure) set to that. Whether it is there now. Off the UI thread.
+bool keepRefusedUpdate(const std::wstring& appx, const std::wstring& certificate, const std::string& version);
+/// Whether Megler's last try of its update to `version` was refused for access (LocalState\update-tried-<version>): GitHub's
+/// package of it is not offered again by itself (ui/Ota.cpp), for it waits in Pictures\Megler.
+bool updateRefusedForAccess(const std::string& version);
 /// Megler: the Android files of older builds in the shared folder (<shared>\android\<version>, on desktop Windows
 /// <version>-<ABI>, some 170 MB each) that no
 /// package in `installed` (installedApps' whole list) is of any more -- after Update All, every older build's. Slow:

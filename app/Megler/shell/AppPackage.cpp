@@ -1369,9 +1369,11 @@ bool damagedCopy(std::string said) {
     return false;
 }
 
-/// The newer Megler in Pictures\Megler as `file` not installed for `said`: what the Library says (selfUpdateFailure).
-void rememberFailure(const std::string& file, const std::string& version, const std::string& said) {
-    const std::string text = damagedCopy(said)
+/// The newer Megler in Pictures\Megler as `file` not installed for `said` (`denied`: refused for access, InstallResult::
+/// accessDenied): what the Library says (selfUpdateFailure).
+void rememberFailure(const std::string& file, const std::string& version, const std::string& said, bool denied = false) {
+    const std::string text = denied ? ownUpdateRefusedText(version, file, true)
+                             : damagedCopy(said)
                                  ? "Megler " + version + " was not installed: Windows found the data of Pictures\\Megler\\" + file +
                                        " invalid, as in a copy damaged on its way to the phone. Delete it there, copy it to the phone "
                                        "again, and open Megler."
@@ -1379,6 +1381,42 @@ void rememberFailure(const std::string& file, const std::string& version, const 
     std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
     gSelfUpdateFailure = text;
 }
+}
+
+std::string ownUpdateRefusedText(const std::string& version, const std::string& file, bool inPictures) {
+    // (Windows's own installer takes a package the file manager hands it whatever Megler's capabilities: the way round.)
+    const std::string opener = platform::isMobile() ? "the phone's file manager" : "File Explorer";
+    return "Megler " + version + " was not installed. " +
+           accessDeniedText(inPictures ? "open " + file + " from Pictures\\Megler in " + opener + "."
+                                       : "download " + file + " from Megler's releases on GitHub and open it in " + opener + ".");
+}
+
+bool keepRefusedUpdate(const std::wstring& appx, const std::wstring& certificate, const std::string& version) {
+    const std::string file = narrow(appx.substr(appx.find_last_of(L'\\') + 1));
+    bool moved = false;
+    try {
+        // LocalState is out of the file manager's reach; Pictures\Megler is where a phone's owner copies Megler's updates to.
+        auto folder = KnownFolders::PicturesLibrary().CreateFolderAsync(L"Megler", CreationCollisionOption::OpenIfExists).get();
+        StorageFile::GetFileFromPathAsync(appx).get().MoveAsync(folder, widen(file), NameCollisionOption::ReplaceExisting).get();
+        moved = true;
+        // (installCopiedUpdate tries a package only with the certificate beside it.)
+        if (files::exists(certificate))
+            StorageFile::GetFileFromPathAsync(certificate).get().MoveAsync(folder, L"Megler.cer", NameCollisionOption::ReplaceExisting).get();
+        shellLog::write("update: " + file + " moved to Pictures\\Megler, where the file manager opens it and Megler tries it again at its next start");
+    } catch (hresult_error const& e) {
+        shellLog::write(format("update: %s could not be moved to Pictures\\Megler: 0x%08x ", file.c_str(), unsigned(e.code())) + narrow(e.message()));
+    }
+    std::lock_guard<std::mutex> lock(gSelfUpdateMutex);
+    gSelfUpdateFailure = ownUpdateRefusedText(version, file, moved);
+    return moved;
+}
+
+bool updateRefusedForAccess(const std::string& version) {
+    std::string record;
+    if (!files::read(platform::localStateDirectory() + L"\\update-tried-" + widen(version), record)) return false;
+    // The last try's result (installOwnUpdate writes "denied: " for it), with no try begun after it.
+    const size_t denied = record.rfind("denied: ");
+    return denied != std::string::npos && (denied == 0 || record[denied - 1] == '\n') && record.find(" installs ", denied) == std::string::npos;
 }
 
 InstallResult installOwnUpdate(const std::wstring& appx, const std::wstring& certificate, const std::string& version, const std::string& from) {
@@ -1421,11 +1459,13 @@ InstallResult installOwnUpdate(const std::wstring& appx, const std::wstring& cer
     const bool unreached = false;
 #endif
     // A damaged copy is not a result either: it is tried again at the next start (Windows refuses it at once), in case a good
-    // one was copied in its place.
+    // one was copied in its place. Nor is a refusal for access (Megler has not got packageManagement: accessDeniedText):
+    // Windows refuses it at once too, and the next start after the phone's interop unlock is complete installs it.
     const bool damaged = !result.ok && damagedCopy(result.said);
+    const bool denied = !result.ok && result.accessDenied;
     shellLog::write("update: " + std::string(result.ok ? "installed: " : "not installed: ") + result.said);
-    files::append(tried, std::string(unreached ? "no result: " : damaged ? "damaged: " : "result: ") + (result.ok ? "installed: " : "not installed: ") +
-                             result.said + "\r\n");
+    files::append(tried, std::string(unreached ? "no result: " : damaged ? "damaged: " : denied ? "denied: " : "result: ") +
+                             (result.ok ? "installed: " : "not installed: ") + result.said + "\r\n");
     return result;
 }
 
@@ -1484,8 +1524,15 @@ void installCopiedUpdate() {
                 const size_t at = line != std::string::npos ? line + 1 : record.rfind("file: ", 0) == 0 ? 0 : std::string::npos;
                 const std::string triedFile = at == std::string::npos ? std::string() : record.substr(at + 6, record.find('\r', at) - (at + 6));
                 const size_t damaged = record.rfind("\ndamaged: ");
+                const size_t denied = record.rfind("\ndenied: ");
                 if (damaged != std::string::npos && record.find(" installs ", damaged) == std::string::npos) {
                     shellLog::write("update: " + name + " in Pictures\\Megler was damaged when tried: tried again, in case it was copied again");
+                    files::remove(tried);
+                    record.clear();
+                } else if (denied != std::string::npos && record.find(" installs ", denied) == std::string::npos) {
+                    // (Refused for access: Megler had not got packageManagement. The phone's interop unlock may be complete now.)
+                    shellLog::write("update: " + name + " in Pictures\\Megler was refused for access when tried: tried again, in case "
+                                    "Megler may install packages now");
                     files::remove(tried);
                     record.clear();
                 } else if (!file.empty() && triedFile != file) {
@@ -1522,7 +1569,7 @@ void installCopiedUpdate() {
             if (!file.empty()) files::append(tried, "file: " + file + "\r\n");
             const InstallResult result =
                 installOwnUpdate(std::wstring(bestFile.Path()), std::wstring(certificate.Path()), best, "found in Pictures\\Megler");
-            if (!result.ok) rememberFailure(name, best, result.said);
+            if (!result.ok) rememberFailure(name, best, result.said, result.accessDenied);
         } catch (hresult_error const& e) {
             shellLog::write(format("update: Pictures\\Megler could not be read: 0x%08x ", unsigned(e.code())) + narrow(e.message()));
         }
