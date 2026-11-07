@@ -99,7 +99,17 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
 struct InstallResult {
     bool ok = false;
     std::string said;
+    /// Windows refused every try for access (E_ACCESSDENIED, 0x80070005), the call itself or its result: Megler has not got
+    /// the restricted capability packageManagement, which Windows 10 Mobile grants a sideloaded app only with the capability
+    /// part of the phone's interop unlock. What is said then is accessDeniedText, not Windows's "Access is denied.".
+    bool accessDenied = false;
 };
+
+/// What Megler says where Windows refused it for access (InstallResult::accessDenied): that Windows does not let Megler
+/// install apps, and on a phone that its interop unlock is not complete and how to complete it (Interop Tools); then
+/// `meanwhile`, what the user can do until then: "Open the Package (below): Windows's own installer installs it." Desktop
+/// Windows rarely refuses it: there, that Windows refused Megler the packageManagement capability.
+std::string accessDeniedText(const std::string& meanwhile);
 
 /// Installs `made` by Windows's deployment engine (installWithPackageManager); on an Xbox, through the console's own Device
 /// Portal (shell/DevicePortal.h), the way an app installs packages there (DesktopMode_uwp's). Off the UI thread.
@@ -107,8 +117,8 @@ InstallResult install(const Made& made, const std::function<void(const std::stri
 /// A package installed by Windows's deployment engine itself (PackageManager.AddPackageAsync, the restricted capability
 /// packageManagement), which reads it where it lies: nothing of it goes through Megler's memory. Installed as the Store
 /// installs an app, and as a developer's package (of which a phone takes only so many) only where that is refused. An update
-/// of Megler's own package closes Megler. Not installed, with what Windows said, when every option was refused. Off the UI
-/// thread.
+/// of Megler's own package closes Megler. Not installed, with what Windows said, when every option was refused; written down
+/// then as the last refusal (LocalState\install-refusal.txt, which Save All Logs takes along). Off the UI thread.
 InstallResult installWithPackageManager(const std::wstring& path, const std::function<void(const std::string&)>& progress);
 /// Whether `said` (an install's refusal) is Windows not trusting the certificate the package is signed with
 /// (CERT_E_UNTRUSTEDROOT, CERT_E_CHAINING, TRUST_E_NOSIGNATURE's kin): the certificate is to be installed for the machine.

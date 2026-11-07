@@ -45,6 +45,16 @@ bool gWorking = false;
 std::string gWorkingLine;
 std::vector<std::function<void()>> gListWaiters; // what waits for the list (askList)
 int gDone = 0, gTotal = 0;           // of the jobs since the worker started
+bool gRefused = false;               // the last install or uninstall done or refused was refused for access (installsRefused)
+
+/// How an install or an uninstall of `package` ended, as far as access goes: refused for it (Megler has not got
+/// packageManagement), or not.
+void setRefused(const std::string& package, bool denied) {
+    std::lock_guard<std::mutex> lock(gMutex);
+    if (!package.empty()) gStatus[package].accessDenied = denied;
+    gRefused = denied;
+    gGeneration++;
+}
 
 std::string identityOf(const std::string& package) {
     char identity[64] = {};
@@ -269,12 +279,23 @@ void run(Job& job, int number, int total) {
         // Windows's deployment engine reads the package where it lies; on an Xbox, the console's portal is sent it (shell/AppPackage.h).
         const auto step = [&](const std::string& said) { setStep(package, stepOf(said)); };
         const appPackage::InstallResult result = appPackage::install(made, step);
+        setRefused(package, !result.ok && result.accessDenied);
         if (!result.ok) {
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
 #if defined(MEGLER_XBOX)
             // (An Xbox has no installer of its own for a package Megler made: what the console's portal said is all there is.)
             setStep(package, result.said + (kept.empty() ? std::string() : " (" + kept + ")"));
 #else
+            /*
+             * Refused for access at every try: Megler has not got packageManagement, which a phone grants only with the capability
+             * part of its interop unlock. Windows's own words, "Access is denied." four times, said nothing of why nor of what to
+             * do (a user's phone, 0.1.0.671); the package is made all the same, for Windows's own installer.
+             */
+            if (result.accessDenied) {
+                setStep(package, appPackage::accessDeniedText("Open the Package (below): Windows's own installer installs it.") +
+                                     (kept.empty() ? std::string() : " (" + kept + ")"));
+                return;
+            }
             /*
              * CERT_E_UNTRUSTEDROOT: Windows trusts no certificate of Megler's making (its key is this phone's own, in
              * LocalState) unless it is installed for the machine, which an app may not do. Until 2026-11-07 the phone's Device
@@ -344,14 +365,19 @@ void run(Job& job, int number, int total) {
         }
         setStep(job.package, stepOf("Uninstalling…"));
         const appPackage::InstallResult result = appPackage::uninstall(app);
+        setRefused(job.package, !result.ok && result.accessDenied);
         if (result.ok) {
             std::lock_guard<std::mutex> lock(gMutex);
             gInstalled.erase(std::remove_if(gInstalled.begin(), gInstalled.end(),
                                             [&](const appPackage::InstalledApp& a) { return a.identity == app.identity; }),
                              gInstalled.end());
         }
-        setStep(job.package, result.ok ? std::string("Uninstalled. What it kept in the shared folder, its part of Android's storage, stays.")
-                                       : result.said);
+        // (Refused for access, as an install is where Megler has not got packageManagement: Windows uninstalls it itself.)
+        const std::string elsewhere = platform::isMobile() ? "uninstall it from the phone's list of apps: press and hold it, then Uninstall."
+                                                           : "uninstall it in Windows's Settings, Apps.";
+        setStep(job.package, result.ok             ? std::string("Uninstalled. What it kept in the shared folder, its part of Android's storage, stays.")
+                             : result.accessDenied ? appPackage::accessDeniedText(elsewhere)
+                                                   : result.said);
     }
 }
 
@@ -630,6 +656,11 @@ void updateAll(AppShell& shell) {
 std::string working() {
     std::lock_guard<std::mutex> lock(gMutex);
     return gWorking || !gJobs.empty() ? gWorkingLine : std::string();
+}
+
+bool installsRefused() {
+    std::lock_guard<std::mutex> lock(gMutex);
+    return gRefused;
 }
 
 } // namespace megler::app::ui::separateApps

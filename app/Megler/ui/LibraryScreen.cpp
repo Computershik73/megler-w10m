@@ -271,6 +271,12 @@ private:
             box.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
             add(top, box);
         }
+        // Windows refused Megler's installs for access (Megler has not got packageManagement): why and what to do, once for all
+        // the apps, Update All's included -- each app's page says it too, by its Open the Package.
+        if (separateApps::installsRefused()) {
+            auto warning = warningCard(appPackage::accessDeniedText("each app's page has Open the Package: Windows's own installer installs it."));
+            add(top, warning);
+        }
         // Google Play chosen at the first start and not installed yet: said, with microG meanwhile (ui/GooglePlay.h).
         if (const std::string waiting = googlePlay::pending(); !waiting.empty()) {
             auto line = text(waiting, font::bodyMedium, weightNormal(), palette().onSurfaceVariant);
