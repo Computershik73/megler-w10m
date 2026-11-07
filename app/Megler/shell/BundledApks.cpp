@@ -2,6 +2,8 @@
 
 #include "shell/BundledApks.h"
 
+#include "megler.h"
+#include "library/Library.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
 #include "shell/Platform.h"
@@ -298,6 +300,33 @@ void check(const std::wstring& library, const std::wstring& shared, bool asked, 
 }  // namespace
 
 std::wstring originalOf(const std::wstring& path) { return originalAmong(originals(), path); }
+
+Replacement replacementFor(const ApkEntry& entry) {
+    const ApkReport& had = entry.report;
+    const wchar_t* name = had.package == "com.google.android.gms" && !had.microg ? L"PrebuiltGmsCore.apk"
+                          : had.package == "com.android.vending"               ? L"Phonesky.apk"
+                                                                                : nullptr;
+    if (!name || !had.valid || !had.ok) return {};
+    const std::wstring path = platform::installDirectory() + L"\\bitgapps\\" + name;
+    // (An entry that is a copy of it -- the library's, an app's in the shared folder -- is the package's APK already: nothing
+    // is read.)
+    if (!files::exists(path) || originalAmong({path}, entry.path) == path) return {};
+    std::string json;
+    if (char* report = megler_apk_report(narrow(path).c_str())) {
+        json = report;
+        megler_free(report);
+    }
+    const ApkReport ours = ApkReport::parse(json);
+    if (!ours.valid || !ours.ok || ours.package != had.package || ours.microg) return {};
+    const std::string versions = format("%lld where it had %lld", (long long)ours.versionCode, (long long)had.versionCode);
+    if (ours.versionCode > had.versionCode)
+        return {path, json, "Megler's package brings a later version (" + versions + ")"};
+    if (ours.versionCode / 1000 == had.versionCode / 1000 && !ours.abi.empty() && ours.libraries.size() > had.libraries.size())
+        return {path, json,
+                format("Megler's package brings the variant of %s of the same release (%s; %u libraries of %s where it had %u)", ours.abi.c_str(),
+                       versions.c_str(), unsigned(ours.libraries.size()), ours.abi.c_str(), unsigned(had.libraries.size()))};
+    return {};
+}
 
 bool copy(const std::wstring& source, const std::wstring& target) {
     uint64_t mended = 0;

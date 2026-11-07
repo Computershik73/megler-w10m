@@ -1055,8 +1055,7 @@ bool AppShell::playStoreCanStart(const std::string& package) {
         confirm("Install Google Play Services First",
                 "Google Play Store runs with Google Play services, which Megler has built in. Open Megler, install Google Play services "
                 "from its Library, then start Google Play Store again.",
-                "Open Megler", false,
-                [] { winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(L"megler:library")); });
+                "Open Megler", false, [] { systemHost::openMegler(L"library"); });
         return false;
     }
     std::string gms;

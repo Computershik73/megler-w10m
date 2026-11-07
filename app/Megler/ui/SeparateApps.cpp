@@ -7,6 +7,7 @@
 #if defined(MEGLER_XBOX)
 #include "shell/DevicePortal.h"
 #endif
+#include "shell/BundledApks.h"
 #include "shell/Files.h"
 #include "shell/PickedFile.h"
 #include "shell/Platform.h"
@@ -141,6 +142,22 @@ void removeUnusedApks(const std::vector<appPackage::InstalledApp>& installed) {
     appPackage::removeUnusedSharedApks(installed, used);
 }
 
+/// Google Play services installed as an app of its own (Google's or microG's) and not the apps' registered service: its
+/// registration after the install failed -- one tried while the once-a-build check of the bundled APKs held its APK open
+/// failed so after an Update All, and the record of the package it replaced was then forgotten -- and the apps ran with
+/// microG, Play Store refusing to start, until Google Play services' own package was opened. Registered from the library's
+/// entry, which costs nothing where it is registered already (appPackage::registerServiceApk). Off the UI thread.
+void registerInstalledServices(const std::vector<appPackage::InstalledApp>& installed) {
+    if (appPackage::isSingleApp()) return;
+    for (const ApkEntry& e : Library::instance().entries()) {
+        if (e.report.package != "com.google.android.gms" || e.installedPackage.empty()) continue;
+        if (std::none_of(installed.begin(), installed.end(), [&](const appPackage::InstalledApp& a) { return a.fullName == e.installedPackage; }))
+            continue;
+        if (!appPackage::registerServiceApk(e, e.installedPackage, false))
+            shellLog::write("separate apps: " + e.installedPackage + " is installed and still not the apps' Google Play services");
+    }
+}
+
 /// The list of the apps' packages, asked for again: Windows's package manager's, on an Xbox its Device Portal's
 /// (appPackage::installedApps). Off the UI thread.
 void listInstalled() {
@@ -171,6 +188,7 @@ void listInstalled() {
     // the copies of Google Play services' APK but the one registered, and the APKs apps handed over that were left. Then what
     // the shared folder holds, once a run.
     if (ok) appPackage::removeUnusedAndroidRoots(apps);
+    if (ok) registerInstalledServices(apps);
     if (ok) removeUnusedApks(apps);
     appPackage::removeUnusedServiceCopies();
     appPackage::removeOldHandedApks();
@@ -219,12 +237,31 @@ void run(Job& job, int number, int total) {
         // The APK is not packed: make keeps it in the shared folder, where the package's app reads it. An update takes it
         // from there as it is, or, from a package made before 645, copies it there while that package is still installed.
         setStep(package, stepOf("Making the package…"));
+        // Google Play services or Google Play Store, installed from an older APK than Megler's package brings now: its next
+        // package (Update All, after an update of Megler) is made from Megler's (bundledApks::replacementFor), whose report is
+        // the library's once it is installed. (An APK of the library's not installed yet is the user's choice, and installed
+        // as it is.)
+        bundledApks::Replacement replacement;
+        if (!job.picked && !entry.installedPackage.empty()) replacement = bundledApks::replacementFor(entry);
+        if (!replacement.path.empty()) {
+            shellLog::write("separate apps: " + entry.id + ": " + replacement.why + ": its package is made from Megler's " +
+                            narrow(replacement.path.substr(replacement.path.find_last_of(L'\\') + 1)));
+            entry.path = replacement.path;
+            entry.splitsDir.clear();
+            entry.size = files::size(replacement.path);
+            entry.report = ApkReport::parse(replacement.report);
+            entry.analysed = true;
+        }
         const appPackage::Made made = appPackage::make(entry, [&](const std::string& step) { setStep(package, stepOf(step)); }, job.picked.get());
         if (!made.error.empty()) {
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
             setStep(package, made.error + (kept.empty() ? std::string() : " (" + kept + ")"));
             return;
         }
+        // (make put the library's report of the APK before beside it, which the package's app reads as its own.)
+        if (!replacement.path.empty() &&
+            !files::write(appPackage::sharedFolder() + L"\\" + made.apkFolder + L"\\app.apk.json", replacement.report))
+            shellLog::write("separate apps: the report of " + entry.id + " could not be put beside its APK in the shared folder");
         {
             std::lock_guard<std::mutex> lock(gMutex);
             gStatus[package].made = made;
@@ -245,12 +282,16 @@ void run(Job& job, int number, int total) {
              * through Windows's own installer of certificates, which the app's page hands the file to.
              */
             const bool untrusted = appPackage::untrustedCertificate(result.said);
+            // (Desktop Windows opens no certificate an app hands it: the command that makes the machine trust it, or the
+            // certificate in File Explorer.)
             const std::string trust =
                 platform::isMobile()
                     ? " Windows does not trust the certificate Megler signs apps' packages with: open the certificate (below), let Windows "
                       "install it, and install the app again."
-                    : " Windows does not trust the certificate Megler signs apps' packages with: open the certificate (below), choose Install "
-                      "Certificate, Local Machine, Place all certificates in the following store, Trusted People, and install the app again.";
+                    : " Windows does not trust the certificate Megler signs apps' packages with. Trust it once, as administrator: "
+                      "Copy the Command (below) and run it in PowerShell run as administrator -- " + appPackage::trustCommand() +
+                          " -- or Show the Certificate, open it, Install Certificate, Local Machine, Trusted People. Then install the "
+                          "app again.";
             setStep(package, result.said + (untrusted ? trust : " The package is made: Windows's installer can install it (below).") +
                                  (kept.empty() ? std::string() : " (" + kept + ")"));
 #endif
@@ -276,6 +317,7 @@ void run(Job& job, int number, int total) {
         }
         // The library's entry is that APK now, and Megler's own copy, if it had one, goes: one copy of it on the phone. (In the
         // package, as before 645, Megler could not read it once Windows installed it as the Store installs an app.)
+        if (!replacement.path.empty()) files::write(Library::instance().directory() + L"\\" + widen(job.id) + L".json", replacement.report);
         appPackage::sharedApkInstalled(made);
         Library::instance().adopt(job.id, made.fullName, made.apkFolder);
         setStep(package, "Installed. Its APK is kept once, in the shared folder, where the app and Megler read it.");

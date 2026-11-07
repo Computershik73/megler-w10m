@@ -248,10 +248,32 @@ const SingleApp& single() {
         // Since 645 the app's APK is in the shared folder (make: apk=shared:apks\<identity>\<token>); before, in the package.
         s.apkFolder = apk.rfind("shared:", 0) == 0 ? shared + L"\\" + widen(apk.substr(7)) : install + L"\\" + widen(apk);
         if (!shared.empty()) s.androidRoot = shared + L"\\" + widen(iniValue(text, "root"));
+        s.megler = widen(iniValue(text, "megler"));
         shellLog::write("app package: this is " + s.package + "'s own package; Android's files in " + narrow(s.androidRoot));
         return s;
     }();
     return app;
+}
+
+const std::wstring& linkScheme() {
+    static const std::wstring scheme = [] {
+        std::string manifest;
+        const std::string tag = "<uap:Protocol Name=\"";
+        if (files::read(platform::installDirectory() + L"\\AppxManifest.xml", manifest)) {
+            const size_t at = manifest.find(tag), end = at == std::string::npos ? at : manifest.find('"', at + tag.size());
+            if (end != std::string::npos && end > at + tag.size()) return widen(manifest.substr(at + tag.size(), end - at - tag.size()));
+        }
+        return std::wstring(L"megler");
+    }();
+    return scheme;
+}
+
+std::wstring meglerFamilyName() {
+    const auto id = Package::Current().Id();
+    if (!isSingleApp()) return std::wstring(id.FamilyName());
+    // (A test identity's app was handed to megler: as Megler_<publisher id>, which was not there: Windows asked which of the
+    // release's Megler and its apps should open it, and the one picked looked for the APK in its own shared folder.)
+    return !single().megler.empty() ? single().megler : L"Megler_" + std::wstring(id.PublisherId());
 }
 
 void takeHandover() {
@@ -555,8 +577,10 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     for (const auto& [name, png] : logos) megler_appx_add_data(a, name.c_str(), png.data(), png.size());
     megler_appx_add_data(a, "AppxManifest.xml", manifestText.data(), manifestText.size());
     megler_appx_add_data(a, "resources.pri", pri.data(), pri.size());
+    // (megler=: the Megler the app hands APKs to and starts others through, by its package family name -- a test identity's is
+    // not the release's.)
     const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=shared:" + narrow(made.apkFolder) + "\r\nroot=android\\" +
-                            androidRootName() + "\r\n";
+                            androidRootName() + "\r\nmegler=" + narrow(std::wstring(Package::Current().Id().FamilyName())) + "\r\n";
     megler_appx_add_data(a, "MeglerApp.ini", ini.data(), ini.size());
     progress("Signing the package…");
     if (!megler_appx_finish(a, key, err, sizeof(err))) return fail(std::string("The package could not be made: ") + err);
@@ -1109,7 +1133,10 @@ std::wstring installedApk(const std::string& fullName) {
 }
 
 bool canRead(const std::wstring& apk) {
-    winrt::file_handle h{CreateFile2(apk.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING, nullptr)};
+    // (Another's writing allowed: the once-a-build check of the bundled APKs holds each copy open for writing while it compares
+    // it (bundledApks::checkLater, files::mend), and Google Play services' registration after Update All's install of it,
+    // asking here at that moment, failed: no app had it until GMS's own package was opened.)
+    winrt::file_handle h{CreateFile2(apk.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, nullptr)};
     char head[4] = {};
     DWORD got = 0;
     return h && ReadFile(h.get(), head, sizeof(head), &got, nullptr) && got == 4 && !memcmp(head, "PK\3\4", 4);
@@ -1227,6 +1254,29 @@ void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
         shellLog::write("app package: " + narrow(path) + (ok ? " handed to Windows" : " not taken by Windows"));
         if (done) done(ok);
     }(path, std::move(done));
+}
+
+std::wstring signingCertificate() { return platform::localStateDirectory() + L"\\signing\\MeglerApps.cer"; }
+
+std::string trustCommand() {
+    return "Import-Certificate -FilePath \"" + narrow(signingCertificate()) + "\" -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople";
+}
+
+void showSigningCertificate(std::function<void(bool)> done) {
+    [](std::function<void(bool)> done) -> winrt::fire_and_forget {
+        bool ok = false;
+        const std::wstring certificate = signingCertificate();
+        try {
+            auto folder = co_await StorageFolder::GetFolderFromPathAsync(certificate.substr(0, certificate.find_last_of(L'\\')));
+            winrt::Windows::System::FolderLauncherOptions options;
+            options.ItemsToSelect().Append(co_await folder.GetFileAsync(L"MeglerApps.cer"));
+            ok = co_await winrt::Windows::System::Launcher::LaunchFolderAsync(folder, options);
+        } catch (hresult_error const& e) {
+            shellLog::write("app package: the folder of " + narrow(certificate) + " could not be shown: " + narrow(e.message()));
+        }
+        shellLog::write("app package: the folder of " + narrow(certificate) + (ok ? " shown in File Explorer" : " not shown by Windows"));
+        if (done) done(ok);
+    }(std::move(done));
 }
 
 static std::atomic<bool> gSelfUpdating{false};

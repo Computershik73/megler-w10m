@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds, packs and signs the Megler app package.
 #
-#   tools/build-appx.sh [arm|x64|arm64|x86] [--rt] [--auto MODES] [--libcore] [--java] [--bitgapps ZIP] [--gms APK] [--play-store APK] [--clean] [--no-pack]
+#   tools/build-appx.sh [arm|x64|arm64|x86] [--rt] [--xbox] [--auto MODES] [--libcore] [--java] [--bitgapps ZIP] [--gms APK] [--play-store APK] [--microg APK] [--clean] [--no-pack]
 #
 #   arm        (default) the shipping package for Windows 10 Mobile, ARM32
 #   --rt       with arm: the same package for desktop Windows 10 on 32-bit ARM
@@ -74,10 +74,21 @@
 #   --bitgapps ZIP  include the GMS, GSF and Play Store APKs from a locally
 #              supplied BiTGApps archive in bitgapps/; implies --java. The
 #              archive and its extracted APKs are not stored in the repository.
+#              For every processor: the archive's GSF has no native code; its
+#              GMS and Play Store are 32-bit ARM's, so a desktop package needs
+#              --gms and --play-store of its own processor.
 #   --gms APK, --play-store APK  with --bitgapps: these APKs of Google Play
 #              services and Play Store take the place of the archive's (its
 #              GSF stays), as bitgapps/PrebuiltGmsCore.apk and Phonesky.apk,
 #              which the library offers. Not stored in the repository either.
+#              Google Play services comes in a variant for each processor
+#              (APKMirror: armeabi-v7a, arm64-v8a + armeabi-v7a, x86,
+#              x86 + x86_64): the package's processor's is wanted -- the
+#              arm64-v8a variant's armeabi-v7a code is 8 of its 40 libraries,
+#              and the x86_64 variant's x86 code likewise. tools/bitgapps-check.py
+#              refuses an APK whose native code is not wholly the package's
+#              processor's (docs/PER-APP-PACKAGES.md, "Google's APKs for each
+#              processor").
 #   --microg APK  with --bitgapps: microG's Google Play services, as
 #              bitgapps/MicroGGmsCore.apk, which the library publishes for
 #              the apps set to microG (Settings, Google Services).
@@ -215,13 +226,12 @@ if [ "$AUTO_JAVA" = 1 ]; then JAVA=1; fi
 # (Windows RT's tablets are 32-bit ARM; the desktop packages of the other processors are Windows.Universal already.)
 if [ "$RT" = 1 ] && [ "$ARCH" != arm ]; then echo "--rt goes with arm: desktop Windows on 32-bit ARM" >&2; exit 2; fi
 if [ -n "$BITGAPPS" ]; then
-  [ "$ARCH" = arm ] || { echo "--bitgapps requires arm" >&2; exit 2; }
   [ -f "$BITGAPPS" ] || { echo "--bitgapps archive not found: $BITGAPPS" >&2; exit 2; }
   JAVA=1
 fi
-for apk in "$GMS_APK" "$PLAY_STORE_APK"; do
+for apk in "$GMS_APK" "$PLAY_STORE_APK" "$MICROG_APK"; do
   [ -z "$apk" ] && continue
-  [ -n "$BITGAPPS" ] || { echo "--gms and --play-store go with --bitgapps (whose GSF is used)" >&2; exit 2; }
+  [ -n "$BITGAPPS" ] || { echo "--gms, --play-store and --microg go with --bitgapps (whose GSF is used)" >&2; exit 2; }
   [ -f "$apk" ] || { echo "APK not found: $apk" >&2; exit 2; }
 done
 if [ "$JAVA" = 1 ]; then LIBCORE=1; fi
@@ -701,6 +711,20 @@ if [ -n "$BITGAPPS" ]; then
     echo "    instead: PrebuiltGmsCore.apk is $(basename "$GMS_APK") ($(stat -c %s "$GMS_APK") bytes, sha256 $(sha256sum "$GMS_APK" | cut -d' ' -f1))"
   [ -n "$PLAY_STORE_APK" ] && cp "$PLAY_STORE_APK" "$STAGE/bitgapps/Phonesky.apk" &&
     echo "    instead: Phonesky.apk is $(basename "$PLAY_STORE_APK") ($(stat -c %s "$PLAY_STORE_APK") bytes, sha256 $(sha256sum "$PLAY_STORE_APK" | cut -d' ' -f1))"
+  # (Writable: cp makes the copy of a read-only APK read-only, and a stage registered as it is then has Megler's copies of it
+  # read-only too, which it cannot write to compare them with it -- microG was not published, and no app had it.)
+  chmod u+w "$STAGE"/bitgapps/*.apk
+  # Each the app its name says, and of this processor: Megler runs its own processor's code alone, and Google Play services'
+  # variant for arm64-v8a, which a phone's package once carried, has 8 of its 40 libraries for armeabi-v7a.
+  python "$(w "$ROOT/tools/bitgapps-check.py")" "$ABI" "$(w "$STAGE/bitgapps")" ||
+    { echo "--bitgapps: an APK above is not for $ABI: give that of $ABI (--gms, --play-store, --microg)" >&2; exit 1; }
+  # Google's sign-in (Google Play services' MinuteMaid) is a web page in a WebView: the processor's System WebView must be in
+  # the Android root (tools/webview-fetch.sh <abi> puts it in build/webview). The desktop packages had none -- build/webview
+  # held 32-bit ARM's alone -- and Play Store's Sign In came back at once ("this phone's Android root has no WebView").
+  if [ ! -f "$STAGE/android/app/webview/webview.apk" ]; then
+    echo "    WARNING: no WebView in the Android root: Google's sign-in cannot open (tools/webview-fetch.sh $ABI)" >&2
+    if [ "$PACK" = 1 ]; then echo "--bitgapps: refusing to pack Google's apps without a WebView to sign in with" >&2; exit 1; fi
+  fi
 fi
 
 # MARK: ANGLE
@@ -867,6 +891,11 @@ if [ "$DESKTOP" = 1 ]; then
     rm -f "$STAGE"/libEGL.dll "$STAGE"/libGLESv2.dll
     echo "    WARNING: ANGLE is NOT in this package: $ANGLE_WHY" >&2
     echo "    WARNING: the app will say \"ANGLE missing\" and no Android app can draw with OpenGL ES" >&2
+    # (As the phone's: a package that brings Google's apps is one to hand out.)
+    if [ -n "$BITGAPPS" ] && [ "$PACK" = 1 ]; then
+      echo "--bitgapps: refusing to pack an unusable app without ANGLE" >&2
+      exit 1
+    fi
   fi
 fi
 
