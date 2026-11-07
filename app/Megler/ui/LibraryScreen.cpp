@@ -299,6 +299,14 @@ private:
             auto warning = warningCard("Megler can't tell which apps are installed: " + separateApps::listProblem());
             warning.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
             add(top, warning);
+#if defined(MEGLER_XBOX)
+            // On an Xbox the console's Device Portal lists them: its user name and password asked for where it wants them,
+            // else the list asked for again (and what to do said once more), without an install to try first.
+            auto again = textButton(appPackage::portalWantsSignIn() ? "Sign In to the Device Portal" : "Try Again",
+                                    [this] { separateApps::requireList(shell_); });
+            again.HorizontalAlignment(HorizontalAlignment::Right);
+            add(top, again);
+#endif
         }
         std::vector<UIElement> rows;
         for (const auto& entry : entries) {

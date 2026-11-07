@@ -4,6 +4,9 @@
 
 #include "megler.h"
 #include "library/Library.h"
+#if defined(MEGLER_XBOX)
+#include "shell/DevicePortal.h"
+#endif
 #include "shell/Files.h"
 #include "shell/PickedFile.h"
 #include "shell/Platform.h"
@@ -138,8 +141,8 @@ void removeUnusedApks(const std::vector<appPackage::InstalledApp>& installed) {
     appPackage::removeUnusedSharedApks(installed, used);
 }
 
-/// The list of the apps' packages, asked for again: Windows's package manager's (appPackage::installedApps). Off the UI
-/// thread.
+/// The list of the apps' packages, asked for again: Windows's package manager's, on an Xbox its Device Portal's
+/// (appPackage::installedApps). Off the UI thread.
 void listInstalled() {
     std::vector<appPackage::InstalledApp> apps;
     std::string error;
@@ -226,11 +229,15 @@ void run(Job& job, int number, int total) {
             std::lock_guard<std::mutex> lock(gMutex);
             gStatus[package].made = made;
         }
-        // Windows's deployment engine reads the package where it lies (shell/AppPackage.h).
+        // Windows's deployment engine reads the package where it lies; on an Xbox, the console's portal is sent it (shell/AppPackage.h).
         const auto step = [&](const std::string& said) { setStep(package, stepOf(said)); };
         const appPackage::InstallResult result = appPackage::install(made, step);
         if (!result.ok) {
             const std::string kept = job.picked ? keepCopy(job, package) : std::string();
+#if defined(MEGLER_XBOX)
+            // (An Xbox has no installer of its own for a package Megler made: what the console's portal said is all there is.)
+            setStep(package, result.said + (kept.empty() ? std::string() : " (" + kept + ")"));
+#else
             /*
              * CERT_E_UNTRUSTEDROOT: Windows trusts no certificate of Megler's making (its key is this phone's own, in
              * LocalState) unless it is installed for the machine, which an app may not do. Until 2026-11-07 the phone's Device
@@ -246,6 +253,7 @@ void run(Job& job, int number, int total) {
                       "Certificate, Local Machine, Place all certificates in the following store, Trusted People, and install the app again.";
             setStep(package, result.said + (untrusted ? trust : " The package is made: Windows's installer can install it (below).") +
                                  (kept.empty() ? std::string() : " (" + kept + ")"));
+#endif
             return;
         }
         // The APK as the installed package's app reads it, in the shared folder (that of a package made before is gone now).
@@ -420,6 +428,47 @@ Status status(const std::string& androidPackage) {
     return statusLocked(androidPackage);
 }
 
+#if defined(MEGLER_XBOX)
+namespace {
+
+void askPortalSignIn(AppShell& shell) {
+    /*
+     * The user name and password of the console's Device Portal (Dev Home, Remote access settings, where its authentication
+     * is on), one field at a time: a dialog has one. Kept in Windows's credential locker (shell/DevicePortal.h), forgotten
+     * when the portal refuses them, and the list asked for again with them at once.
+     */
+    AppShell::DialogSpec name;
+    name.title = "The Xbox's Device Portal";
+    name.message = "The console's Device Portal, through which Megler installs its apps on an Xbox, asks for its user name and password: "
+                   "those set in Dev Home (Remote access settings). Its user name:";
+    name.field = true;
+    name.fieldText = devicePortal::savedCredentials().user;
+    name.fieldPlaceholder = "User name";
+    name.buttons = {"Cancel", "Next"};
+    std::weak_ptr<AppShell> weak = shell.weak_from_this();
+    shell.dialog(std::move(name), [weak](int button, std::string user) {
+        auto self = weak.lock();
+        if (!self || button != 1 || user.empty()) return;
+        AppShell::DialogSpec password;
+        password.title = "The Xbox's Device Portal";
+        password.message = "The password of the Device Portal's user " + user + ":";
+        password.field = true;
+        password.secret = true;
+        password.fieldPlaceholder = "Password";
+        password.buttons = {"Cancel", "Sign In"};
+        self->dialog(std::move(password), [weak, user](int button, std::string word) {
+            auto self = weak.lock();
+            if (!self || button != 1) return;
+            devicePortal::saveCredentials({user, word});
+            shellLog::write("separate apps: the Xbox's Device Portal's user name and password given, for " + user);
+            refresh(*self);
+        });
+    });
+}
+
+} // namespace
+#endif
+
 List list() {
     std::lock_guard<std::mutex> lock(gMutex);
     if (gReachable) return List::ready;
@@ -455,17 +504,29 @@ bool requireList(AppShell& shell, std::function<void()> retry) {
                                                      "installs one. Try again in a moment.");
         return false;
     }
+    const std::string why = listProblem();
+    shellLog::write("separate apps: nothing installed while no list of the installed apps can be had: " + why);
+#if defined(MEGLER_XBOX)
+    // The Xbox's Device Portal, which lists, installs and uninstalls the apps' packages on a console: its user name and
+    // password asked for where it wants them, else what it said and the way to it (appPackage::portalHelp, in `why` where
+    // it was not reached at all).
+    if (appPackage::portalWantsSignIn()) {
+        askPortalSignIn(shell);
+        return false;
+    }
+    shell.alert("The Xbox's Device Portal", "The console's Device Portal did not tell Megler which of its apps are installed: " + why +
+                                                " Megler installs nothing until it answers. Then try again.");
+#else
     /*
      * Windows's package manager, which lists, installs and uninstalls the apps' packages, did not answer. Until 2026-11-07
      * the phone's Device Portal was asked then, and this said to turn the portal on; nothing is asked of the portal any more,
      * and there is nothing to turn on: the restricted capabilities packageQuery and packageManagement are in Megler's
      * manifest, and Windows grants them when it installs Megler.
      */
-    const std::string why = listProblem();
-    shellLog::write("separate apps: nothing installed while no list of the installed apps can be had: " + why);
     shell.alert("Windows Did Not List the Apps",
                 "Windows's package manager did not tell Megler which of its apps are installed (" + why + "). Megler lists, installs and "
                 "uninstalls its apps through it, and installs nothing until it answers. Try again in a moment.");
+#endif
     return false;
 }
 

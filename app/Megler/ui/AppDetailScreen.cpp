@@ -247,17 +247,25 @@ private:
             }, p.error));
         }
         // The package made, when the deployment engine did not install it: Windows's own installer, as a file manager opens a
-        // package, and its certificate, which Windows has to trust (shell/AppPackage.h, untrustedCertificate).
+        // package, and its certificate, which Windows has to trust (shell/AppPackage.h, untrustedCertificate). (Not on an Xbox,
+        // which has no installer of packages for an app to hand one to: its Device Portal is all there is.)
+#if !defined(MEGLER_XBOX)
         if (!s.made.appx.empty() && !installed) {
             const std::wstring appx = s.made.appx, certificate = s.made.certificate;
             add(more, textButton("Open the Package", [this, appx] { openFile(appx); }));
             add(more, textButton("Open the Certificate", [this, certificate] { openFile(certificate); }));
         }
+#endif
         if (more.Children().Size()) add(column, more);
 
+#if defined(MEGLER_XBOX)
+        const char* installedBy = " in a package with the app's name and icon, made here and installed through the console's Device Portal.";
+#else
+        const char* installedBy = " in a package with the app's name and icon, made here and installed by Windows as the Store installs an app.";
+#endif
         std::string footer = r.ready() ? std::string("An app of the phone's own: Megler and this ") + (entry.splitsDir.empty() ? "APK" : "app's APKs") +
-                                             " in a package with the app's name and icon, made here and installed by Windows as the Store installs "
-                                             "an app. It starts straight into the app, in a process of its own with its own memory; its /sdcard is "
+                                             installedBy +
+                                             " It starts straight into the app, in a process of its own with its own memory; its /sdcard is "
                                              "shared with the other apps. The first time, the app's data in Megler goes along with it."
                                        : "This app can't run here: " + r.status();
         footer += " App Settings are this app's own: render size, language and region, location.";

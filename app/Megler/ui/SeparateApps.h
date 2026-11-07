@@ -1,7 +1,7 @@
 // The library's apps as apps of the phone's own (shell/AppPackage.h, docs/PER-APP-PACKAGES.md): which are installed and
-// which Megler made them, as Windows's package manager lists them, and installing, updating and uninstalling them -- one
-// at a time, on a worker thread, whichever page is shown. Megler is where they are managed; it runs an app itself only in
-// an auto run (auto/AutoRun.h).
+// which Megler made them, as Windows's package manager lists them (on an Xbox, the console's Device Portal), and installing,
+// updating and uninstalling them -- one at a time, on a worker thread, whichever page is shown. Megler is where they are
+// managed; it runs an app itself only in an auto run (auto/AutoRun.h).
 //
 // A package carries the Megler that made it: an update of Megler updates none of them, so those made by another Megler are
 // "outdated", and Update All makes and installs each of them again.
@@ -50,8 +50,9 @@ std::string listProblem();
 bool checking();
 Status status(const std::string& androidPackage);
 
-/// Makes the app's package and installs it by Windows's deployment engine. When Windows does not install it, the package
-/// stays made, for Windows's installer. With `whenRead`, once the library has read the APK (just added). UI thread.
+/// Makes the app's package and installs it by Windows's deployment engine (on an Xbox, through the console's Device Portal).
+/// When Windows does not install it, the package stays made, for Windows's installer. With `whenRead`, once the library has
+/// read the APK (just added). UI thread.
 void install(AppShell& shell, const std::string& apkId, bool whenRead = false);
 /// An APK the user picked, installed straight from where it is, as the library's `apkId`. UI thread.
 void installPicked(AppShell& shell, std::shared_ptr<PickedFile> picked, const std::string& apkId);
@@ -62,8 +63,9 @@ void updateAll(AppShell& shell);
 /// What is going on, "Updating Instagram (2 of 3): Packing…"; empty when nothing is.
 std::string working();
 
-/// The list of the apps' packages, which Windows's package manager gives (appPackage::installedApps): ready once it came
-/// (or once its lister has answered at all), unavailable when it could not be had, unknown before it has been asked for.
+/// The list of the apps' packages, which Windows's package manager gives (on an Xbox, the console's Device Portal:
+/// appPackage::installedApps): ready once it came (or once its lister has answered at all), unavailable when it could not be
+/// had, unknown before it has been asked for.
 enum class List { unknown, ready, unavailable };
 List list();
 /// The list asked for again (or the asking under way waited for), and `then` called on the UI thread once it has come or
@@ -72,7 +74,8 @@ void askList(AppShell& shell, std::function<void()> then);
 /// Whether an install may begin: only once Megler knows which of its apps are installed (the owner's wish, 2026-11-02 --
 /// without the list an install went as far as making the package and then failed). Otherwise false: asked for before the
 /// first list came, `retry` is called once it has (with none, the shell says to try again in a moment); when no list can
-/// be had, the shell says why, and the list is asked for again for the next try. UI thread.
+/// be had, the shell says why (on an Xbox whose Device Portal wants a user name and password, asks for them), and the list
+/// is asked for again for the next try. UI thread.
 bool requireList(AppShell& shell, std::function<void()> retry = {});
 
 } // namespace megler::app::ui::separateApps
