@@ -177,6 +177,12 @@ struct mg_dvm_method {
      */
     u16 jit_backs;
     volatile u8 jit_state;
+    /*
+     * 1: the app has hooked it (mg_dvm_hook.c, Xposed's XposedBridge): every call of it, however made, goes to the hook,
+     * which runs the original body through a copy of the method if it will. Its own body is left as it is, for the frames
+     * running it. (In the byte the struct had spare.)
+     */
+    volatile u8 hooked;
     struct mg_dvm_jit_code *volatile jit;
     /*
      * What the whole body is when it is one of the trivial shapes a call does in place (mg_dvm_interp.c, "trivial
@@ -686,6 +692,8 @@ struct mg_dvm_jit_code {
      * no handlers, not synchronized, no intrinsic. NULL: calls of it go the general way.
      */
     const void *fast;
+    /* Calls it does in place (inline_call): code forgotten once an app hooks methods, which such a call compiled before does not look at. */
+    u32 in_place;
     /*
      * Where the code is entered, in the order of their pcs: the heads of the loops compiled whole and the method's start,
      * each with its halfword in the code +1. (A table by pc took four bytes for every instruction of the method, for the
@@ -711,6 +719,14 @@ static inline u32 mg_dvm_jit_entry(const mg_dvm_jit_code *c, u32 pc)
 extern u32 g_dvm_jit_threshold;      /* jumps back before a method is compiled; 0 off (the flag no-jit, or no JIT on this host) */
 extern u32 g_dvm_jit_in_place;       /* calls of trivial methods compiled to be done in the code (inline_call), for the tests */
 void mg_dvm_jit_start(bool on, u32 threshold, bool trace);
+/*
+ * An app hooks methods (mg_dvm_hook.c): from now on a call compiled to be done in place (inline_call) looks first at whether
+ * its method is hooked, and the code compiled before, whose calls do not, is forgotten -- its methods interpreted until they
+ * are hot again. The first call does it; the others nothing. And all compiled code forgotten so (a class made inheritable:
+ * a call compiled as of a method nothing could override may have an override now). How many methods' code it was.
+ */
+u32 mg_dvm_jit_hooks_on(void);
+u32 mg_dvm_jit_forget_all(void);
 /* What the JIT has made so far, for the log: methods compiled (and of them waiting for their page), refused, its code and the pages it is on. */
 typedef struct mg_dvm_jit_stats {
     u32 methods, waiting, refused;
