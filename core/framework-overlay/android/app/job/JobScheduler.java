@@ -8,6 +8,10 @@
 // hold, network ones taken to hold while the phone has a network: its service made as the app's others are (megler.Services:
 // in its process's scope, megler.Processes), on the main thread, after its minimum latency.
 //
+// A job's service that is not a JobService but a Service whose onBind returns a JobServiceEngine's binder (AndroidX's
+// JobIntentService, on API 26 and later) is run through its engine, as Android's scheduler binds it and runs it through that
+// binder (JobServiceEngine, overlaid): it was dropped as "no job service of the app's".
+//
 // Not here: jobs persisted across the app's runs (setPersisted), constraints other than the time (charging, idle, a network
 // of a kind: taken to hold), content triggers, and the deadline: a job runs once it may.
 //
@@ -22,6 +26,7 @@ public abstract class JobScheduler {
         final JobInfo info;
         final java.util.ArrayDeque<JobWorkItem> work = new java.util.ArrayDeque<>();
         JobService service;
+        JobServiceEngine engine;           /* or the engine of a service that has one (JobIntentService) */
         JobParameters params;
         Runnable planned;
         boolean running;
@@ -98,15 +103,19 @@ public abstract class JobScheduler {
             synchronized (sJobs) { run.planned = null; if (sJobs.get(run.info.getId()) != run || run.running) return; run.running = true; }
             try {
                 android.app.Service s = megler.Services.service(run.info.getService());
-                if (!(s instanceof JobService)) {
+                JobServiceEngine engine = null;
+                if (s != null && !(s instanceof JobService))
+                    engine = JobServiceEngine.of(s.onBind(new android.content.Intent("android.app.job.JobService").setComponent(run.info.getService())));
+                if (!(s instanceof JobService) && engine == null) {
                     android.util.Log.w("Megler", "job " + run.info.getId() + ": " + run.info.getService().getClassName() + " is no job service of the app's");
                     synchronized (sJobs) { run.running = false; if (sJobs.get(run.info.getId()) == run) sJobs.remove(run.info.getId()); }
                     return;
                 }
-                run.service = (JobService) s;
+                if (engine == null) run.service = (JobService) s;
+                run.engine = engine;
                 run.params = new JobParameters(run);
-                android.util.Log.i("Megler", "job " + run.info.getId() + " (" + run.info.getService().getShortClassName() + ") runs");
-                if (!run.service.onStartJob(run.params)) finished(run.params, false);
+                android.util.Log.i("Megler", "job " + run.info.getId() + " (" + run.info.getService().getShortClassName() + ") runs" + (engine != null ? " through its engine" : ""));
+                if (!(engine != null ? engine.onStartJob(run.params) : run.service.onStartJob(run.params))) finished(run.params, false);
             } catch (Throwable t) {
                 android.util.Log.e("Megler", "job " + run.info.getId() + " failed", t);
                 if (run.params != null) finished(run.params, false);
@@ -154,9 +163,12 @@ public abstract class JobScheduler {
             boolean running;
             synchronized (sJobs) { planned = run.planned; run.planned = null; running = run.running; run.running = false; run.stopReason = reason; }
             if (planned != null) handler().removeCallbacks(planned);
-            if (running && run.service != null && run.params != null) {
+            if (running && (run.service != null || run.engine != null) && run.params != null) {
                 final Run r = run;
-                handler().post(() -> { try { r.service.onStopJob(r.params); } catch (Throwable t) { android.util.Log.w("Megler", "job " + r.info.getId() + ": onStopJob failed", t); } });
+                handler().post(() -> {
+                    try { if (r.engine != null) r.engine.onStopJob(r.params); else r.service.onStopJob(r.params); }
+                    catch (Throwable t) { android.util.Log.w("Megler", "job " + r.info.getId() + ": onStopJob failed", t); }
+                });
             }
         }
     }

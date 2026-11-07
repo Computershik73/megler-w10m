@@ -2392,6 +2392,8 @@ static int run_data(void)
     /* The jobs of the step "job-scheduler", run: the one scheduled with its extra, the one given work with both pieces, in order. */
     CHECK(wait_line("I/DataTest: job 41 said=hello", 0, 30) >= 0);
     CHECK(wait_line("I/DataTest: job 42 work=one,two,", 0, 30) >= 0);
+    /* And a service that is no JobService but gives its JobServiceEngine's binder, as AndroidX's JobIntentService: its work taken through the engine. */
+    CHECK(wait_line("I/DataTest: job 43 work=three,four, through its engine", 0, 30) >= 0);
     /* The download of the step "downloads": done, its row and file with the server's five bytes, the cookie sent, its cursor's
        observer told. */
     CHECK(wait_line("I/DataTest: downloads ok status=200 bytes=5 body=hello cookie=true observed=true file=5", 0, 30) >= 0);

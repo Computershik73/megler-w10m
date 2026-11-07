@@ -410,6 +410,10 @@ public class Main extends Activity {
             android.app.job.JobInfo queue = new android.app.job.JobInfo.Builder(42, work).build();
             js.enqueue(queue, new android.app.job.JobWorkItem(new android.content.Intent("one")));
             js.enqueue(queue, new android.app.job.JobWorkItem(new android.content.Intent("two")));
+            // And work for a service that is no JobService but has an engine, as AndroidX's JobIntentService has.
+            android.app.job.JobInfo engined = new android.app.job.JobInfo.Builder(43, new android.content.ComponentName(this, EngineWork.class)).build();
+            js.enqueue(engined, new android.app.job.JobWorkItem(new android.content.Intent("three")));
+            js.enqueue(engined, new android.app.job.JobWorkItem(new android.content.Intent("four")));
             detail = "result=" + r + " pending=" + pending + " latency=" + (pending != null ? pending.getMinLatencyMillis() : -1);
             return r == android.app.job.JobScheduler.RESULT_SUCCESS && pending != null && Work.class.getName().equals(pending.getService().getClassName())
                 && pending.getMinLatencyMillis() == 100;
@@ -3283,6 +3287,31 @@ public class Main extends Activity {
             return false;
         }
         @Override public boolean onStopJob(android.app.job.JobParameters p) { return false; }
+    }
+
+    /**
+     * The job 43 of the step "job-scheduler": a plain Service whose onBind gives its JobServiceEngine's binder, which takes its
+     * work on a thread of its own and ends when there is no more, as AndroidX's JobIntentService does on API 26 and later.
+     */
+    public static final class EngineWork extends android.app.Service {
+        private android.app.job.JobServiceEngine engine;
+        @Override public void onCreate() {
+            engine = new android.app.job.JobServiceEngine(this) {
+                @Override public boolean onStartJob(final android.app.job.JobParameters p) {
+                    new Thread(() -> {
+                        StringBuilder got = new StringBuilder();
+                        for (android.app.job.JobWorkItem w; (w = p.dequeueWork()) != null; ) {
+                            got.append(w.getIntent().getAction()).append(',');
+                            p.completeWork(w);
+                        }
+                        Log.i("DataTest", "job " + p.getJobId() + " work=" + got + " through its engine");
+                    }).start();
+                    return true;
+                }
+                @Override public boolean onStopJob(android.app.job.JobParameters p) { return false; }
+            };
+        }
+        @Override public android.os.IBinder onBind(android.content.Intent i) { return engine.getBinder(); }
     }
 
     public static final class Again extends android.app.Service {
