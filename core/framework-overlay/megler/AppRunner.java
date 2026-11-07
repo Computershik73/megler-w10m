@@ -511,6 +511,8 @@ public final class AppRunner {
             int phase = ev[1 + 4 * k], id = ev[2 + 4 * k];
             float x = Float.intBitsToFloat(ev[3 + 4 * k]), y = Float.intBitsToFloat(ev[4 + 4 * k]);
             try {
+                // Anything but a finger: the moves kept before it go out first (moveBatched).
+                if (phase >= 4) movesDispatched();
                 if (phase == 5) { back(); continue; }
                 if (phase == 6) { hostPause(id != 0); continue; }
                 if (phase == 7) { InputMethods.deliverPending(); continue; }
@@ -606,12 +608,14 @@ public final class AppRunner {
         } else if (phase == 1) {
             if (idx < 0) return;
             xs[idx] = x; ys[idx] = y;
-            action = MotionEvent.ACTION_MOVE;
+            moveBatched(now);
+            return;
         } else {
             if (idx < 0) return;
             xs[idx] = x; ys[idx] = y;
             action = phase == 3 ? MotionEvent.ACTION_CANCEL : down == 1 ? MotionEvent.ACTION_UP : MotionEvent.ACTION_POINTER_UP | (idx << 8);
         }
+        movesDispatched();
         MotionEvent e = MotionEvent.meglerObtain(downTime, now, action, down, java.util.Arrays.copyOf(ids, down), java.util.Arrays.copyOf(xs, down), java.util.Arrays.copyOf(ys, down));
         ViewRoot.dispatchTouch(e);
         if (phase >= 2) {
@@ -620,5 +624,39 @@ public final class AppRunner {
             if (phase == 3) down = 0;
         }
     }
+    /*
+     * Moves batched as Android batches them (its InputEventReceiver's consumeBatchedInputEvents): a move is kept rather than
+     * dispatched, the moves after it are added to it as its history (MotionEvent.meglerAddSample), and the one event goes out
+     * at the next frame, first in it (Choreographer.CALLBACK_INPUT); anything else -- a finger down or up, a key, the host's
+     * pause -- has the moves before it go out first. Each move went out on its own: pollInput hands over all that came while
+     * the main thread was busy, and Spotify on a Lumia 650, whose scroll listeners took 50 to 200 ms a move, worked through a
+     * backlog of hundreds of them -- one stretch of 25.6 s without a frame was input alone, and its list answered a finger
+     * seconds late (package 666).
+     */
+    private static MotionEvent sMoves;
+    private static boolean sMovesAsked;
+    private static final Runnable sMovesAtFrame = () -> { sMovesAsked = false; movesDispatched(); };
+
+    private static void moveBatched(long now) {
+        if (sMoves != null && sMoves.meglerSamePointers(ids, down)) {
+            sMoves.meglerAddSample(now, xs, ys);
+        } else {
+            movesDispatched();
+            sMoves = MotionEvent.meglerObtain(downTime, now, MotionEvent.ACTION_MOVE, down, java.util.Arrays.copyOf(ids, down), java.util.Arrays.copyOf(xs, down), java.util.Arrays.copyOf(ys, down));
+        }
+        if (!sMovesAsked) {
+            sMovesAsked = true;
+            android.view.Choreographer.getMainThreadInstance().postCallback(android.view.Choreographer.CALLBACK_INPUT, sMovesAtFrame, null);
+        }
+    }
+
+    /** The moves kept so far (moveBatched) out now: at the frame, and before anything that came after them. */
+    private static void movesDispatched() {
+        MotionEvent m = sMoves;
+        if (m == null) return;
+        sMoves = null;
+        ViewRoot.dispatchTouch(m);
+    }
+
     static final class ViewRootDispatch { static void key(KeyEvent e) { if (!ViewRoot.dispatchKey(e)) { Activity a = top(); if (a != null) a.dispatchKeyEvent(e); } } }
 }

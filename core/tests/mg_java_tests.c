@@ -1584,6 +1584,35 @@ static int run_demos(void)
         CHECK(moved == 0);
         if (moved) say("  (%d pixels are not where they were before the drag)", moved);
         CHECK(find_line("list: clicked row", 0) < 0);
+        {
+            /*
+             * Moves that come faster than the frames go out batched (AppRunner.moveBatched): thirty moves of 2 pixels up
+             * sent at once, held and lifted, then thirty down. The list has every move as a sample (an event's history and
+             * itself), in fewer events, and is where it was. (Not up and back in one batch: the event's own place would be
+             * where the finger came down, and the list, which reads only that, would take it for a tap.)
+             */
+            int burst, events = 0, samples = 0, from, got;
+            for (burst = 0; burst < 2; burst++) {
+                int dir = burst == 0 ? -1 : 1, start = burst == 0 ? y0 : y0 - 60;
+                from = g_nlines;
+                megler_touch(0, 1, (float)x, (float)start);
+                for (k = 1; k <= 30; k++) megler_touch(1, 1, (float)x, (float)(start + dir * 2 * k));
+                mg_sleep_ns(150000000ull);
+                megler_touch(2, 1, (float)x, (float)(start + dir * 60));
+                got = wait_line("I/DemoTest: list: a finger's moves came as ", from, 30);
+                events = samples = 0;
+                if (got >= 0) sscanf(strstr(line_at(got), "came as ") + 8, "%d events of %d samples", &events, &samples);
+                say("  thirty moves at once came to the list as %d events of %d samples", events, samples);
+                CHECK(samples == 30);
+                CHECK(events >= 1 && events < 30);
+                CHECK(find_line("list: a move's samples out of order", from) < 0);
+                settle();
+            }
+            moved = count_changed(list, all);
+            CHECK(moved == 0);
+            if (moved) say("  (%d pixels are not where they were before the batched moves)", moved);
+            CHECK(find_line("list: clicked row", 0) < 0);
+        }
     }
 
     /* A finger on the first row: the list runs down from there. The dialog first, which waits for its own button. */

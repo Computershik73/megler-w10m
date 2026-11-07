@@ -2440,6 +2440,18 @@ no native code or has it for 32-bit ARM.
   that happens to the app happens on its main thread. Back is one event, when
   the key comes up; other keys pass as they are. `megler_set_focused` has no
   counterpart in the framework and is not passed on.
+- **Moves are batched, as Android batches them** (since 667). A finger's
+  move is kept, not dispatched (`AppRunner.moveBatched`). The moves after it
+  join it as its history (`MotionEvent.getHistorySize`, `getHistoricalX`
+  and the rest; `addBatch`), and the one event goes out at the next frame,
+  first in it (`Choreographer.CALLBACK_INPUT`). Anything else that comes (a
+  finger down or up, a key, the host's pause) has the kept moves go out
+  first, so the order holds. `VelocityTracker` reads every sample of the
+  history, so a fling is as fast as the finger was. Before, every move went
+  out on its own: `pollInput` hands over all that came while the main thread
+  was busy. Spotify on a Lumia 650 took 50 to 200 ms a move in its scroll
+  listeners and worked through hundreds of them, one stretch of 25.6 s
+  without a frame, and its list answered a finger seconds late.
 - **Frames are the framework's business**: its `Choreographer` and `ViewRoot`
   draw when something was invalidated, into a bitmap the size of the screen,
   and call `Gfx.present`. That is `megler_window_host.present_pixels`: the
