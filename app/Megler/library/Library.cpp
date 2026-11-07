@@ -81,6 +81,14 @@ ApkReport ApkReport::parse(const std::string& json) {
         r.notes = stringsOf(o, L"notes");
         r.splits = stringsOf(o, L"splits");
         r.splitsLeftOut = stringsOf(o, L"splitsLeftOut");
+        // (A report an older core made says nothing of them: not known, which is not none.)
+        r.permissionsKnown = o.HasKey(L"permissions");
+        r.permissions = stringsOf(o, L"permissions");
+        if (o.HasKey(L"permissionMaxSdk") && o.GetNamedValue(L"permissionMaxSdk").ValueType() == JsonValueType::Array)
+            for (IJsonValue const& item : o.GetNamedArray(L"permissionMaxSdk"))
+                r.permissionMaxSdk.push_back(item.ValueType() == JsonValueType::Number ? int(item.GetNumber()) : 0);
+        r.permissionMaxSdk.resize(r.permissions.size(), 0);
+        r.smsRetriever = boolOf(o, L"smsRetriever");
         if (o.HasKey(L"libraries") && o.GetNamedValue(L"libraries").ValueType() == JsonValueType::Array) {
             for (IJsonValue const& item : o.GetNamedArray(L"libraries")) {
                 if (item.ValueType() != JsonValueType::Object) continue;
@@ -100,6 +108,20 @@ ApkReport ApkReport::parse(const std::string& json) {
         r = ApkReport();
     }
     return r;
+}
+
+bool ApkReport::asks(const std::string& permission) const {
+    if (!permissionsKnown) return true;
+    for (size_t i = 0; i < permissions.size(); ++i)
+        if (permissions[i] == permission) return i >= permissionMaxSdk.size() || permissionMaxSdk[i] == 0 || permissionMaxSdk[i] >= 34;
+    return false;
+}
+
+int ApkReport::capabilities() const {
+    if (!permissionsKnown) return -1;
+    std::vector<const char*> names;
+    for (const auto& p : permissions) names.push_back(p.c_str());
+    return int(megler_appx_capabilities(names.empty() ? nullptr : names.data(), int(names.size()), smsRetriever));
 }
 
 std::string ApkReport::status() const {

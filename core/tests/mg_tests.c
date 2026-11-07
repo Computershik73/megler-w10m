@@ -1942,7 +1942,26 @@ static void test_appx_manifest(void)
         "          <uap:FileTypeAssociation Name=\"apk\"><uap:SupportedFileTypes><uap:FileType>.apk</uap:FileType></uap:SupportedFileTypes>\r\n"
         "          </uap:FileTypeAssociation>\r\n        </uap:Extension>\r\n"
         "        <uap:Extension Category=\"windows.protocol\">\r\n          <uap:Protocol Name=\"megler\" />\r\n        </uap:Extension>\r\n"
-        "      </Extensions>\r\n    </Application></Applications></Package>\r\n";
+        "      </Extensions>\r\n    </Application></Applications>\r\n"
+        "  <Capabilities>\r\n    <!-- The network: <Capability Name=\"webcam\" /> in a comment is no capability. -->\r\n"
+        "    <Capability Name=\"internetClient\" />\r\n    <Capability Name=\"internetClientServer\" />\r\n"
+        "    <Capability Name=\"privateNetworkClientServer\" />\r\n    <!-- The libraries. -->\r\n"
+        "    <uap:Capability Name=\"picturesLibrary\" />\r\n    <uap:Capability Name=\"videosLibrary\" />\r\n"
+        "    <uap:Capability Name=\"musicLibrary\" />\r\n    <uap:Capability Name=\"documentsLibrary\" />\r\n"
+        "    <uap:Capability Name=\"removableStorage\" />\r\n    <uap:Capability Name=\"chat\" />\r\n"
+        "    <uap2:Capability Name=\"phoneCallHistoryPublic\" />\r\n    <uap3:Capability Name=\"backgroundMediaPlayback\" />\r\n"
+        "    <rescap:Capability Name=\"codeGeneration\" />\r\n    <rescap:Capability Name=\"packageManagement\" />\r\n"
+        "    <rescap:Capability Name=\"packageQuery\" />\r\n    <!-- The devices. -->\r\n    <DeviceCapability Name=\"webcam\" />\r\n"
+        "    <DeviceCapability Name=\"location\" />\r\n    <DeviceCapability Name=\"microphone\" />\r\n"
+        "    <DeviceCapability Name=\"bluetooth.rfcomm\">\r\n      <Device Id=\"any\"><Function Type=\"name:serialPort\" /></Device>\r\n"
+        "    </DeviceCapability>\r\n  </Capabilities>\r\n"
+        "  <Extensions><Extension Category=\"windows.publisherCacheFolders\" /></Extensions></Package>\r\n";
+    static const char *const permissions[] = { "android.permission.INTERNET", "android.permission.CAMERA", "com.example.permission.C2D_MESSAGE",
+                                               "android.permission.READ_MEDIA_AUDIO", "android.permission.VIBRATE" };
+    static const char *const storage[] = { "android.permission.WRITE_EXTERNAL_STORAGE" };
+    static const char *const phone[] = { "android.permission.READ_PHONE_STATE", "android.permission.RECEIVE_SMS" };
+    static const char *const devices[] = { "android.permission.ACCESS_COARSE_LOCATION", "android.permission.RECORD_AUDIO", "android.permission.READ_CALL_LOG",
+                                           "android.permission.READ_MEDIA_VISUAL_USER_SELECTED" };
     char err[200], name[64], name2[64];
     char *m, *m2;
     say("an app's own package: its manifest from Megler's");
@@ -1958,7 +1977,7 @@ static void test_appx_manifest(void)
     CHECK(mg_appx_app_identity("com.example.a.very.long.package.name.of.some.app.that.goes.on", name, sizeof(name)) && strlen(name) == 50);
     CHECK(mg_appx_app_identity("com.example.a.very.long.package.name.of.some.app.that.goes.on", name2, sizeof(name2)) && !strcmp(name, name2));
     CHECK(!mg_appx_app_identity("com.example/../x", name, sizeof(name)));
-    m = mg_appx_app_manifest(megler, "com.instagram.android", "Insta & <gram> \"x\"", NULL, NULL, err, sizeof(err));
+    m = mg_appx_app_manifest(megler, "com.instagram.android", "Insta & <gram> \"x\"", NULL, NULL, -1, err, sizeof(err));
     CHECK(m != NULL);
     if (!m) return;
     CHECK(strstr(m, "Name=\"MeglerApp.com.instagram.android.") != NULL);
@@ -1969,20 +1988,20 @@ static void test_appx_manifest(void)
     CHECK(strstr(m, "ShortName=\"Insta &amp; &lt;gram&gt; &quot;x&quot;\"") != NULL);
     CHECK(strstr(m, "EntryPoint=\"Megler.App\"") != NULL && strstr(m, "Description=\"Android games\"") != NULL);
     /* The same package again: the same product id; another: another. */
-    m2 = mg_appx_app_manifest(megler, "com.instagram.android", "Instagram", "transparent", "#102030", err, sizeof(err));
+    m2 = mg_appx_app_manifest(megler, "com.instagram.android", "Instagram", "transparent", "#102030", -1, err, sizeof(err));
     CHECK(m2 && !strncmp(strstr(m, "PhoneProductId=\""), strstr(m2, "PhoneProductId=\""), 54));
     /* The colours given, the tile's and the splash screen's; none given, Megler's. */
     CHECK(m2 && strstr(m2, "BackgroundColor=\"transparent\">") != NULL && strstr(m2, "Image=\"s.png\" BackgroundColor=\"#102030\"") != NULL);
     CHECK(strstr(m, "BackgroundColor=\"#000000\">") != NULL && strstr(m, "Image=\"s.png\" BackgroundColor=\"#000000\"") != NULL);
     free(m2);
-    m2 = mg_appx_app_manifest(megler, "com.whatsapp", "WhatsApp", NULL, NULL, err, sizeof(err));
+    m2 = mg_appx_app_manifest(megler, "com.whatsapp", "WhatsApp", NULL, NULL, -1, err, sizeof(err));
     CHECK(m2 && strncmp(strstr(m, "PhoneProductId=\""), strstr(m2, "PhoneProductId=\""), 54));
     free(m2);
     /* A short name of forty characters at most, a sequence of UTF-8 never cut. */
     m2 = mg_appx_app_manifest(megler, "ru.example", "\xD0\x9E\xD1\x87\xD0\xB5\xD0\xBD\xD1\x8C \xD0\xB4\xD0\xBB\xD0\xB8\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB5 "
                                                   "\xD0\xBD\xD0\xB0\xD0\xB7\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5 \xD0\xBF\xD1\x80\xD0\xB8\xD0\xBB\xD0\xBE\xD0\xB6\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F "
                                                   "\xD0\xB4\xD0\xBB\xD1\x8F \xD0\xBF\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x80\xD0\xBA\xD0\xB8 \xF0\x9F\x98\x80\xF0\x9F\x98\x80",
-                              NULL, NULL, err, sizeof(err));
+                              NULL, NULL, -1, err, sizeof(err));
     if (m2) {
         const char *s = strstr(m2, "ShortName=\"") + 11, *e = strchr(s, '"');
         size_t chars = 0;
@@ -1991,12 +2010,57 @@ static void test_appx_manifest(void)
     }
     CHECK(m2 != NULL);
     free(m2);
-    CHECK(mg_appx_app_manifest("<Package/>", "com.example", "x", NULL, NULL, err, sizeof(err)) == NULL && strstr(err, "Identity") != NULL);
+    CHECK(mg_appx_app_manifest("<Package/>", "com.example", "x", NULL, NULL, -1, err, sizeof(err)) == NULL && strstr(err, "Identity") != NULL);
     /* Megler's association of APKs is not the app's; its megler: links are. */
     CHECK(strstr(m, "windows.fileTypeAssociation") == NULL && strstr(m, "<uap:FileTypeAssociation") == NULL);
     CHECK(strstr(m, "<uap:Extension Category=\"windows.protocol\">\r\n          <uap:Protocol Name=\"megler\" />") != NULL);
     CHECK(strstr(m, "      </uap:VisualElements>\r\n      <Extensions>\r\n        <uap:Extension Category=\"windows.protocol\">") != NULL);
+    /* Asked for none of its own (-1): every capability of Megler's, its comments too. */
+    CHECK(strstr(m, "<!-- The devices. -->\r\n    <DeviceCapability Name=\"webcam\" />") != NULL && strstr(m, "Name=\"packageManagement\"") != NULL &&
+          strstr(m, "Name=\"chat\"") != NULL && strstr(m, "Name=\"documentsLibrary\"") != NULL);
     free(m);
+
+    /*
+     * What an app's package declares, from the permissions its manifest asks for: each permission's capabilities, the pictures
+     * library in every one (Megler's diagnosis folder), a permission Windows has nothing for adding nothing.
+     */
+    CHECK_INT((int)mg_appx_capabilities(NULL, 0, false), MG_APPX_CAP_PICTURES);
+    CHECK_INT((int)mg_appx_capabilities(permissions, (int)MG_COUNT(permissions), false),
+              MG_APPX_CAP_NETWORK | MG_APPX_CAP_PICTURES | MG_APPX_CAP_WEBCAM | MG_APPX_CAP_MUSIC);
+    CHECK_INT((int)mg_appx_capabilities(storage, 1, false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_VIDEOS | MG_APPX_CAP_MUSIC);
+    CHECK_INT((int)mg_appx_capabilities(phone, 2, false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_CALL_HISTORY | MG_APPX_CAP_CHAT);
+    CHECK_INT((int)mg_appx_capabilities(phone, 1, false), MG_APPX_CAP_PICTURES | MG_APPX_CAP_CALL_HISTORY);
+    /* An app that hears its code through Google Play services' SMS Retriever has the phone's messages heard for it. */
+    CHECK_INT((int)mg_appx_capabilities(NULL, 0, true), MG_APPX_CAP_PICTURES | MG_APPX_CAP_CHAT);
+    CHECK_INT((int)mg_appx_capabilities(devices, (int)MG_COUNT(devices), false),
+              MG_APPX_CAP_PICTURES | MG_APPX_CAP_VIDEOS | MG_APPX_CAP_LOCATION | MG_APPX_CAP_MICROPHONE | MG_APPX_CAP_CALL_HISTORY);
+    m = mg_appx_app_manifest(megler, "com.example.camera", "Camera", NULL, NULL, (int)mg_appx_capabilities(permissions, (int)MG_COUNT(permissions), false),
+                             err, sizeof(err));
+    CHECK(m != NULL);
+    if (!m) return;
+    /* Those of its permissions and Megler's own every package needs, in Megler's order, on lines of their own; no comments. */
+    CHECK(strstr(m, "  <Capabilities>\r\n    <Capability Name=\"internetClient\" />\r\n    <Capability Name=\"internetClientServer\" />\r\n"
+                    "    <Capability Name=\"privateNetworkClientServer\" />\r\n    <uap:Capability Name=\"picturesLibrary\" />\r\n"
+                    "    <uap:Capability Name=\"musicLibrary\" />\r\n    <uap3:Capability Name=\"backgroundMediaPlayback\" />\r\n"
+                    "    <rescap:Capability Name=\"codeGeneration\" />\r\n    <rescap:Capability Name=\"packageQuery\" />\r\n"
+                    "    <DeviceCapability Name=\"webcam\" />\r\n"
+                    "    <DeviceCapability Name=\"bluetooth.rfcomm\">\r\n      <Device Id=\"any\"><Function Type=\"name:serialPort\" /></Device>\r\n"
+                    "    </DeviceCapability>\r\n  </Capabilities>\r\n  <Extensions><Extension Category=\"windows.publisherCacheFolders\" />") != NULL);
+    /* Nothing it did not ask for, and none of Megler's that no app's package has. */
+    CHECK(!strstr(m, "videosLibrary") && !strstr(m, "documentsLibrary") && !strstr(m, "removableStorage") && !strstr(m, "\"chat\"") &&
+          !strstr(m, "phoneCallHistoryPublic") && !strstr(m, "packageManagement") && !strstr(m, "\"location\"") && !strstr(m, "\"microphone\"") &&
+          !strstr(m, "The network:") && !strstr(m, "The libraries.") && !strstr(m, "The devices."));
+    CHECK(strstr(m, "Name=\"MeglerApp.com.example.camera.") != NULL && strstr(m, "<DisplayName>Camera</DisplayName>") != NULL);
+    free(m);
+    /* An app that asks for nothing Windows guards: the pictures library and Megler's own alone, no network. */
+    m = mg_appx_app_manifest(megler, "com.example.calculator", "Calculator", NULL, NULL, (int)mg_appx_capabilities(NULL, 0, false), err, sizeof(err));
+    CHECK(m && strstr(m, "  <Capabilities>\r\n    <uap:Capability Name=\"picturesLibrary\" />\r\n    <uap3:Capability Name=\"backgroundMediaPlayback\" />\r\n") &&
+          !strstr(m, "internetClient") && !strstr(m, "DeviceCapability Name=\"webcam\""));
+    free(m);
+    /* A block that does not end is no manifest to make one from. */
+    CHECK(mg_appx_app_manifest("<Identity Name=\"M\" /><mp:PhoneIdentity PhoneProductId=\"x\" /><DisplayName>M</DisplayName>"
+                               "<uap:VisualElements DisplayName=\"M\"><uap:DefaultTile ShortName=\"M\"/><Capabilities><Capability Name=\"x\" />",
+                               "com.example", "x", NULL, NULL, 0, err, sizeof(err)) == NULL && strstr(err, "capabilities") != NULL);
 }
 
 /* resources.pri made for another name (core/src/appx/mg_appx_pri.c): a file of the same shape -- the name twice in UTF-16,

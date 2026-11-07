@@ -38,6 +38,9 @@ inline const char* singleAppId() { return "app.apk"; }
 
 /// The publisher cache folder "shared", which every package of Megler's publisher has; empty when Windows gives none.
 std::wstring sharedFolder();
+/// What a package that declares `capabilities` (megler_appx_capabilities' MEGLER_APPX_CAP_*; -1, all of Megler's) is let
+/// have, in words: "the network, the pictures library, the camera".
+std::string describeCapabilities(int capabilities);
 /// Remember an installed microG APK for clients of the same publisher; no service APK is bundled into each client.
 bool registerServiceApk(const ApkEntry& entry, const std::string& installedFullName, bool replace = false);
 void unregisterServiceApk(const std::string& installedFullName);

@@ -1944,11 +1944,40 @@ MEGLER_API bool megler_appx_finish(megler_appx *a, const megler_appx_key *key, c
 /* The identity name of the package of the Android app `android_package` ("MeglerApp." and the package), into out (at least
    51 bytes); false for a name that is not an Android package's. */
 MEGLER_API bool megler_appx_app_identity(const char *android_package, char *out, size_t outlen);
+/*
+ * What that package declares to Windows, from the permissions the Android app's manifest asks for (megler_apk_report's
+ * "permissions") and whether it has a receiver of Google Play services' SMS Retriever ("smsRetriever"): a mask of these, each
+ * the capabilities named after it, Megler's own needs in every package added:
+ *   NETWORK       internetClient, internetClientServer, privateNetworkClientServer: INTERNET
+ *   PICTURES      picturesLibrary: every package (Megler's diagnosis folder Pictures\Megler\diag; an app's own pictures)
+ *   VIDEOS        videosLibrary: the storage permissions, READ_MEDIA_VIDEO (and its visual ones)
+ *   MUSIC         musicLibrary: the storage permissions, READ_MEDIA_AUDIO
+ *   WEBCAM        webcam: CAMERA
+ *   MICROPHONE    microphone: RECORD_AUDIO
+ *   LOCATION      location: ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION, ACCESS_BACKGROUND_LOCATION
+ *   CHAT          chat: RECEIVE_SMS, READ_SMS, or Google Play services' SMS Retriever
+ *   CALL_HISTORY  phoneCallHistoryPublic: READ_PHONE_STATE, READ_CALL_LOG
+ * Megler's other capabilities are every package's (codeGeneration, packageQuery, backgroundMediaPlayback) or no app's
+ * (documentsLibrary and removableStorage, which want file types declared; packageManagement).
+ */
+enum {
+    MEGLER_APPX_CAP_NETWORK = 1,
+    MEGLER_APPX_CAP_PICTURES = 2,
+    MEGLER_APPX_CAP_VIDEOS = 4,
+    MEGLER_APPX_CAP_MUSIC = 8,
+    MEGLER_APPX_CAP_WEBCAM = 16,
+    MEGLER_APPX_CAP_MICROPHONE = 32,
+    MEGLER_APPX_CAP_LOCATION = 64,
+    MEGLER_APPX_CAP_CHAT = 128,
+    MEGLER_APPX_CAP_CALL_HISTORY = 256,
+};
+MEGLER_API unsigned megler_appx_capabilities(const char *const *permissions, int count, bool sms_retriever);
 /* That package's manifest, made from Megler's (the text of its AppxManifest.xml): the identity name, phone product id and
-   shown names changed, and the tile's and the splash screen's background colours when given ("#rrggbb" or "transparent";
-   NULL keeps Megler's), all else Megler's. A string to free with megler_free, or NULL (err says why). */
+   shown names changed, the tile's and the splash screen's background colours when given ("#rrggbb" or "transparent";
+   NULL keeps Megler's), its capabilities those of `capabilities` (megler_appx_capabilities; -1 keeps all of Megler's), all
+   else Megler's. A string to free with megler_free, or NULL (err says why). */
 MEGLER_API char *megler_appx_app_manifest(const char *megler_manifest, const char *android_package, const char *label, const char *tile_color,
-                             const char *splash_color, char *err, size_t errlen);
+                             const char *splash_color, int capabilities, char *err, size_t errlen);
 /* That package's resources.pri, from the one Megler carries made for a placeholder name as long (appx-template\resources.pri,
    whose resources.txt says the placeholder and the two tails; tools/build-appx.sh): into `out`, as large as `pri`. False
    (err says why) when the template is not such a file. */

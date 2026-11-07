@@ -105,6 +105,26 @@ std::string oneLine(std::string s) {
     return s;
 }
 
+}  // namespace
+
+std::string describeCapabilities(int capabilities) {
+    if (capabilities < 0) return "every capability of Megler's";
+    static const struct {
+        int cap;
+        const char* what;
+    } names[] = {{MEGLER_APPX_CAP_NETWORK, "the network"},          {MEGLER_APPX_CAP_PICTURES, "the pictures library"},
+                 {MEGLER_APPX_CAP_VIDEOS, "the videos library"},     {MEGLER_APPX_CAP_MUSIC, "the music library"},
+                 {MEGLER_APPX_CAP_WEBCAM, "the camera"},             {MEGLER_APPX_CAP_MICROPHONE, "the microphone"},
+                 {MEGLER_APPX_CAP_LOCATION, "the location"},         {MEGLER_APPX_CAP_CHAT, "text messages"},
+                 {MEGLER_APPX_CAP_CALL_HISTORY, "the call history"}};
+    std::string out;
+    for (const auto& n : names)
+        if (capabilities & n.cap) out += (out.empty() ? "" : ", ") + std::string(n.what);
+    return out.empty() ? "none of the phone's" : out;
+}
+
+namespace {
+
 /// The logos of a package (Megler's are Assets\*.png, drawn by Assets\make-assets.ps1): each file, its size, and how much of
 /// its shorter side the icon takes. The same names and sizes as Megler's, which resources.pri's template lists.
 struct Logo {
@@ -459,8 +479,13 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     std::string meglerManifest;
     if (!files::read(install + L"\\AppxManifest.xml", meglerManifest)) return fail("Megler's own manifest could not be read.");
     const std::string label = oneLine(entry.title());
+    // What the package declares to Windows: what the app's permissions need and Megler's own, not everything Megler declares
+    // (megler_appx_capabilities). A report an older core made says nothing of the permissions: Megler's, as before.
+    const int capabilities = r.capabilities();
+    shellLog::write("app package: " + r.package + " declares " + describeCapabilities(capabilities) + " to Windows, from " +
+                    (r.permissionsKnown ? std::to_string(r.permissions.size()) + " permissions of its manifest" : std::string("a report that names no permissions")));
     char* manifest = megler_appx_app_manifest(meglerManifest.c_str(), r.package.c_str(), label.c_str(), logos.empty() ? nullptr : "transparent",
-                                            nullptr, err, sizeof(err));
+                                            nullptr, capabilities, err, sizeof(err));
     if (!manifest) return fail(std::string("The manifest could not be made: ") + err);
     const std::string manifestText(manifest);
     megler_free(manifest);
