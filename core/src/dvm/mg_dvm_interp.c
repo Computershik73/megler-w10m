@@ -1532,11 +1532,12 @@ static bool interpret(mg_dvm_thread *t, mg_dvm_frame *f, mg_jvalue *ret)
 
 /*
  * The invoke at `pc` of frame f, done for compiled code (mg_dvm_jit.c, docs/JIT.md "calls"): the method found as do_invoke
- * finds it, then done as do_invoke does it -- an intrinsic or a trivial body in place, a native method called, bytecode run
- * to its return in a loop of its own on the host's stack (where do_invoke would have gone on in the same loop) -- with the
- * result in *res, for the move-result after it. 0 done; 1 thrown (pending, f->pc the invoke's); 2 the interpreter's to do,
- * nothing having happened yet: instructions watched, the host's stack too low for another loop (deep recursion through
- * compiled code goes on interpreted, without one), new String, a kind compiled code does not ask for.
+ * finds it, then done as do_invoke does it -- a hooked method's hook called, an intrinsic or a trivial body in place, a
+ * native method called, bytecode run to its return in a loop of its own on the host's stack (where do_invoke would have
+ * gone on in the same loop) -- with the result in *res, for the move-result after it. 0 done; 1 thrown (pending, f->pc the
+ * invoke's); 2 the interpreter's to do, nothing having happened yet: instructions watched, the host's stack too low for
+ * another loop (deep recursion through compiled code goes on interpreted, without one), new String, a kind compiled code
+ * does not ask for.
  */
 int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
 {
@@ -1628,6 +1629,7 @@ int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
         if (self->kind == MG_J_STRING && ref->cls == g_dvm.c_string && ref->name[0] == '<') return 2;
         break;
     }
+    if (target->hooked) return mg_dvm_hook_call(t, target, self, argv, NULL, res) ? 0 : 1;
     if (target->stub) mg_dvm_stub_called(m, target);
     if (target->intrinsic && intrinsic(t, target->intrinsic, argv, res)) return 0;
     if (target->shape != SHAPE_REGULAR && target->insns) {
@@ -1697,8 +1699,8 @@ int mg_dvm_jit_invoke(mg_dvm_thread *t, mg_dvm_frame *f, u32 pc, mg_jvalue *res)
  * else (its code's `fast`: no handlers, not synchronized, no intrinsic). A call cost some 120 ns under qemu-arm, 25 turns of
  * an arithmetic loop, and Compose's code is mostly calls (Spotify's main thread, package 660). Whatever is not plain goes
  * the general way, nothing having happened: a null object (which throws there), a method not compiled at its start or of
- * another shape, instructions watched, the profile or the call trace on, too little left of the host's stack or of the
- * frame stack's segment.
+ * another shape, a hooked one (mg_dvm_hook.c), instructions watched, the profile or the call trace on, too little left of
+ * the host's stack or of the frame stack's segment.
  */
 volatile u64 g_dvm_calls_fast, g_dvm_calls_declined, g_dvm_calls_general;
 
@@ -1735,7 +1737,7 @@ int mg_dvm_jit_fast(mg_dvm_jit_ctx *ctx, mg_dvm_method *m, u32 desc, u32 pc)
         }
     }
     c = target->jit;
-    if (!c || !c->fast || target->stub || target->shape != SHAPE_REGULAR || count != target->ins) FAST_DECLINE
+    if (!c || !c->fast || target->stub || target->hooked || target->shape != SHAPE_REGULAR || count != target->ins) FAST_DECLINE
     if (g_dvm.slow || g_dvm.profiling || g_call_trace || t->c_depth >= DVM_MAX_C_DEPTH - 8) FAST_DECLINE
     words = target->regs;
     if ((t->c_stack_low && (mg_addr)&callee < t->c_stack_low + 32u * 1024u) || words + FRAME_WORDS > (size_t)(t->stack_end - t->sp)) FAST_DECLINE
@@ -2016,7 +2018,10 @@ static MG_NOINLINE bool invoke_here(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj 
     mg_dvm_frame *f;
     bool ok = false;
     if (t->c_depth++ == 0) t->steps_left = g_dvm.step_limit;
-    if (!m->insns) {
+    if (m->hooked) {
+        /* A method the app has hooked, called from C (reflection, JNI, the runtime itself): the hook's call (mg_dvm_hook.c). */
+        ok = mg_dvm_hook_call(t, m, self, NULL, params, ret);
+    } else if (!m->insns) {
         if (m->flags & DVM_ACC_NATIVE) ok = invoke_native(t, m, self, NULL, params, ret);
         else mg_dvm_throw("java/lang/AbstractMethodError", "%s.%s%s", m->cls->name, m->name, m->sig);
     } else if ((f = push_frame(t, m, m->regs)) != NULL) {

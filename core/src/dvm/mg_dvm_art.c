@@ -1994,6 +1994,7 @@ bool mg_dvm_art_start(void)
     mg_dvm_art_reflect_start();
     mg_dvm_art_annot_start();
     mg_dvm_art_host_start();
+    mg_dvm_hook_start();
     g_dvm.c_string_factory = mg_dvm_find_class("java/lang/StringFactory");
     if (!g_dvm.c_string_factory) {
         mg_err("dvm: the boot class path has java.lang.StringFactory and it cannot be linked");

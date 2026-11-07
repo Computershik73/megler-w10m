@@ -931,6 +931,18 @@ mg_jobj *mg_dvm_reflect_field(mg_dvm_field *f);
 /* The other way: the runtime's method or field of a Method, Constructor or Field object; NULL for anything else. */
 mg_dvm_method *mg_dvm_reflected_method(mg_jobj *o);
 mg_dvm_field *mg_dvm_reflected_field(mg_jobj *o);
+/* What a box holds as a primitive of kind `kind`, widened as Java widens it; false for null, an object that is no box, a box that does not widen to it. */
+bool mg_dvm_reflect_unbox(mg_jobj *o, char kind, mg_jvalue *out);
+/*
+ * The arguments of a call of `m` given as objects (an Object[], or null for none), unboxed as Method.invoke unboxes them:
+ * one value per parameter into `params` (room for `cap`). False with IllegalArgumentException pending when they do not fit.
+ */
+bool mg_dvm_reflect_args(const mg_dvm_method *m, mg_jobj *args, mg_jvalue *params, u32 cap);
+/*
+ * The Method object of a hook's backup (mg_dvm_hook.c): a Method even for a constructor's copy, as LSPlant hands one back,
+ * so that Method.invoke runs its body on the object it is given (Constructor.newInstance would make another).
+ */
+mg_jobj *mg_dvm_reflect_backup(mg_dvm_method *m);
 /*
  * mg_dvm_art.c: a thread that native code made and attaches (JNI's
  * AttachCurrentThread) gets its java.lang.Thread now, with the name and group
@@ -946,6 +958,22 @@ bool mg_dvm_class_is_app(const mg_dvm_class *c);
 void mg_dvm_art_annot_start(void);
 /* mg_dvm_jvm.c: libjavacore.so and libopenjdk.so from <root>/lib, where guest code can run; and libopenjdkjvm.so's functions for them. */
 bool mg_dvm_load_libcore_natives(const char *root);
+
+/* ----------------------------------------------------------- mg_dvm_hook.c */
+
+/*
+ * Methods an app hooks, as Xposed's XposedBridge hooks them (Aliucord's Aliuhook, which does it with LSPlant on ART): every
+ * call of a hooked method -- from bytecode, from compiled code, through reflection, through JNI -- calls the hook's callback
+ * with the arguments boxed, and a copy of the method runs the original. mg_dvm_hook_call is that call, made where a call
+ * finds the method hooked: `argv` the call's registers as an invoke has them (the object first), or `params` one value per
+ * parameter as a call from C has them, the object in `self`. The method's value in *result as the interpreter keeps one;
+ * false with the exception pending.
+ */
+bool mg_dvm_hook_call(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, const mg_dvm_reg *argv, const mg_jvalue *params, mg_jvalue *result);
+/* On libcore: XposedBridge's natives, the runtime's own. */
+void mg_dvm_hook_start(void);
+/* For the collector: what the hooks keep, each hook's context and its backup's Method. Read without a lock (the world is stopped). */
+void mg_dvm_hook_roots(void (*fn)(mg_jobj *o, void *user), void *user);
 
 /* What a piece of the runtime's own memory is for, in mg_dvm_stats. */
 enum { DVM_META_OTHER, DVM_META_CLASS, DVM_META_METHOD, DVM_META_FIELD, DVM_META_VTABLE, DVM_META_DEX, DVM_META_NAME, DVM_META_POOL };
