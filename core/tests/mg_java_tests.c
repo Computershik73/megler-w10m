@@ -1235,6 +1235,10 @@ static void type_into_fields(const int row[4], int *at)
     expect_line("I/Megler: keyboard: the first thing the keyboard sent, typed text (1 character), finds no view with the focus: it goes nowhere", at, 30);
     tap(row[0] + row[2] / 2, row[1] + row[3] * 7 + row[3] / 2);
     expect_line("I/DemoTest: list: clicked row 7 \"typing\"", at, 30);
+    /* A field that sets its selection again in its onSelectionChanged, as WhatsApp's MentionableEntry does: told once a
+       selection has moved, with its new ends, and not when it stays (it was told of each end, again and again, until the
+       stack ran out). */
+    expect_line("I/DemoTest: typing: selection calls=3 3,3 8,8 11,11 at 11,11", at, 30);
     expect_line("I/DemoTest: typing: created", at, 30);
     layout = wait_line("I/DemoTest: typing: layout name=", *at, 30);
     CHECK(layout >= 0 && rect_in(line_at(layout), "name", name) && rect_in(line_at(layout), "number", number) && rect_in(line_at(layout), "secret", secret)

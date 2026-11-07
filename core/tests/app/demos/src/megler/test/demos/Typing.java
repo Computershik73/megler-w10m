@@ -21,6 +21,45 @@ import android.widget.TextView;
 public class Typing extends Activity {
     private EditText name, number, secret, note;
 
+    /*
+     * A field that keeps its cursor out of a word, as WhatsApp's MentionableEntry keeps it out of a mention: its
+     * onSelectionChanged sets the selection again every time, to the very ends it was told when they are outside the word.
+     * Android leaves a selection that does not move alone and tells the field once a change is whole, so this ends; Megler
+     * told it of each end, and of the same ends again, until the stack ran out. It gives up after 50 calls, for the test.
+     */
+    static final class Guarded extends EditText {
+        int calls;
+        String seen = "";
+
+        Guarded(android.content.Context c) {
+            super(c);
+        }
+
+        private static int outside(int p) {
+            return p > 6 && p < 11 ? 11 : p;               /* the word "@Anna", 6 to 11, as one */
+        }
+
+        @Override
+        protected void onSelectionChanged(int start, int end) {
+            super.onSelectionChanged(start, end);
+            if (seen == null || getText() == null || ++calls > 50) return;     /* (a TextView's constructor may call it) */
+            seen += " " + start + "," + end;
+            setSelection(outside(start), outside(end));
+        }
+    }
+
+    /* The cursor put in and out of the word: "selection calls=3 3,3 8,8 11,11 at 11,11" is Android's answer. */
+    private void selectionTold() {
+        Guarded g = new Guarded(this);
+        g.setText("Hello @Anna, see you");
+        g.calls = 0;
+        g.seen = "";
+        g.setSelection(3);
+        g.setSelection(3);
+        g.setSelection(8, 8);
+        Log.i("DemoTest", "typing: selection calls=" + g.calls + g.seen + " at " + g.getSelectionStart() + "," + g.getSelectionEnd());
+    }
+
     private static String place(android.view.View v) {
         int[] at = new int[2];
         v.getLocationOnScreen(at);
@@ -69,6 +108,7 @@ public class Typing extends Activity {
         secret = field(root, "secret", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD, 0, 80);
         note = field(root, "note", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES, 0, 200);
         setContentView(root);
+        selectionTold();
         Log.i("DemoTest", "typing: created");
     }
 

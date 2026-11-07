@@ -11,7 +11,12 @@
 //
 // And setInputType makes the text editable only when the key listener it sets is another than before, as Android's
 // setKeyListenerOnly does. It did each time: MAX's text field sets its input type in its own setText, before the text is
-// editable, and the two called each other until the stack ran out. Everything else is the original's, unchanged.
+// editable, and the two called each other until the stack ran out.
+//
+// And onSelectionChanged is called once a selection has moved, with its new ends, and not for the intermediate change of
+// its start (Selection.setSelection), as Android's spanChange calls it; a tap of a text field shows its cursor at once even
+// where the cursor stays. It was called for each end set, the first time with the old end: with WhatsApp's MentionableEntry,
+// which sets its selection again in its onSelectionChanged, that never ended. Everything else is the original's, unchanged.
 package android.widget;
 
 import android.content.Context;
@@ -412,7 +417,13 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         public void onSpanAdded(Spannable t, Object w, int s, int e) { if (w == Selection.SELECTION_END || w == Selection.SELECTION_START) { mBlinkStart = android.os.SystemClock.uptimeMillis(); invalidate(); } else if (w instanceof android.text.style.UpdateAppearance) relayout(); }
         public void onSpanRemoved(Spannable t, Object w, int s, int e) { if (w instanceof android.text.style.UpdateAppearance) relayout(); }
         public void onSpanChanged(Spannable t, Object w, int os, int oe, int ns, int ne) {
-            if (w == Selection.SELECTION_END || w == Selection.SELECTION_START) { mBlinkStart = android.os.SystemClock.uptimeMillis(); invalidate(); onSelectionChanged(getSelectionStart(), getSelectionEnd()); }
+            if (w == Selection.SELECTION_END || w == Selection.SELECTION_START) {
+                mBlinkStart = android.os.SystemClock.uptimeMillis(); invalidate();
+                // As Android's spanChange: told once the change is whole, not of an intermediate one (Selection.setSelection's
+                // start), with the end that moved where it now is.
+                if ((t.getSpanFlags(w) & Spanned.SPAN_INTERMEDIATE) == 0)
+                    onSelectionChanged(w == Selection.SELECTION_START ? ns : Selection.getSelectionStart(t), w == Selection.SELECTION_END ? ns : Selection.getSelectionEnd(t));
+            }
             else if (w instanceof android.text.style.UpdateAppearance) relayout();
         }
     }
@@ -928,6 +939,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
             if (mMovement != null) handled |= mMovement.onTouchEvent(this, (Spannable) mText, e);
             if (a == MotionEvent.ACTION_UP && isFocused() && onCheckIsTextEditor()) {
                 if (!(mMovement instanceof ArrowKeyMovementMethod)) { int off = getOffsetForPosition(e.getX(), e.getY()); if (off >= 0) Selection.setSelection((Spannable) mText, off); }
+                mBlinkStart = android.os.SystemClock.uptimeMillis(); invalidate();   // the cursor shown at once, where it stays too
                 megler.InputMethods.show(this);
                 handled = true;
             }
